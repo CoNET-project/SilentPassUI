@@ -10,6 +10,8 @@ const Home = () => {
   const { sRegion, setSRegion, setAllRegions, allRegions } = useDaemonContext();
   const [serverIpAddress, setServerIpAddress] = useState<string>('')
   const [power, setPower] = useState<boolean>(false);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,6 +39,8 @@ const Home = () => {
 
     _getAllRegions()
     _getServerIpAddress()
+
+    setTimeout(() => setIsInitialLoading(false), 3000);
   }, []);
 
   const handleTogglePower = async () => {
@@ -57,8 +61,6 @@ const Home = () => {
 
       const selectedCountryCode = allRegions[selectedCountryIndex].code
 
-      console.log(selectedCountryCode)
-
       await startSilentPass(selectedCountryCode)
       setPower(true);
       return
@@ -69,112 +71,136 @@ const Home = () => {
 
   return (
     <div className="home">
-      <h1 className="title">
-        Silent Pass <span>Proxy</span>
-      </h1>
-      {power ? (
-        <p className="connection">
-          Your connection is <span>protected!</span>
-        </p>
-      ) : (
-        <p className="connection">Your connection is not protected!</p>
-      )}
-      <button
-        className="power"
-        onClick={handleTogglePower}
-      >
-        {power ? (
-          <img src="/assets/power.png" width={83} height={85} alt="" />
-        ) : (
-          <img src="/assets/not-power.png" width={83} height={85} alt="" />
-        )}
-      </button>
+      <div className="stats-container">
+        <div>Online Miners: </div>
+        <div>Online Users: </div>
+      </div>
 
-      {power ? (
-        <p className="connected">Connected</p>
-      ) : (
-        <p className="not-connected">Not Connected</p>
-      )}
-
-      {!power && (
-        <div>
-          <button
-            className="auto-btn"
-            onClick={() => {
-              if (sRegion === -1)
-                setSRegion(Math.floor(Math.random() * allRegions.length));
-            }}
-          >
-            {sRegion === -1 ? (
-              <>
-                <img src="/assets/auto.png" width={24} height={24} alt="" />
-                Auto Select
-              </>
-            ) : (
-              <>
-                <ReactCountryFlag
-                  countryCode={allRegions[sRegion].code}
-                  svg
-                  aria-label="United States"
-                  style={{
-                    fontSize: "2em",
-                    lineHeight: "2em",
-                  }}
-                />
-                {allRegions[sRegion].country}
-              </>
-            )}
-          </button>
-          <p className="home-location">Selected Location</p>
-        </div>
-      )}
-
-      {power ? (
+      {isInitialLoading ? (
         <>
-          <div>
-            <ReactCountryFlag
-              countryCode={allRegions[sRegion].code}
-              svg
-              aria-label="United States"
-              style={{
-                fontSize: "2em",
-                lineHeight: "2em",
-                marginRight: ".5em",
-              }}
-            />
-            {allRegions[sRegion].country}
+          <button
+            className="power"
+          >
+            <img className="silent-pass-logo-loading" src="/assets/silent-pass-logo-grey.png" width={85} height={85} alt="" />
+          </button>
 
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: '20px', backgroundColor: '#1B1B1D', borderRadius: '16px', padding: '20px', width: 300, fontSize: '14px' }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: '4px' }}>
-              <div style={{ display: "flex", flexDirection: "row", justifyContent: "space-between" }}>
-                <div>Socks 5 Address:</div>
-                <div style={{ color: '#B1B1B2' }}>{serverIpAddress}</div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "row", justifyContent: 'space-between' }}>
-                <div>Port: </div>
-                <div style={{ color: '#B1B1B2' }}>3002</div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "row", justifyContent: 'space-between' }}>
-              <div>PAC URL:</div>
-              <div>{"http://" + serverIpAddress + "/pac"}</div>
-            </div>
-          </div>
+          <p className="not-connected">Welcome to Silent Pass</p>
         </>
       ) : (
-        <button className="region-btn" onClick={() => navigate("/regions")}>
-          <div>
-            <img src="/assets/global.png" width={22} height={22} alt="" />
-            <p>Select Region</p>
-          </div>
-          <img src="/assets/right.png" width={4} height={8} alt="" />
-        </button>
+        <>
+          {
+            power ? (
+              <p className="connection" >
+                Your connection is <span>protected!</span>
+              </p >
+            ) : (
+              <p className="connection">Your connection is not protected!</p>
+            )}
+
+          <button
+            className="power"
+            onClick={handleTogglePower}
+          >
+            {power ? (
+              <img src="/assets/power.png" width={83} height={85} alt="" />
+            ) : (
+              <img src="/assets/not-power.png" width={83} height={85} alt="" />
+            )}
+          </button>
+
+          {
+            power ? (
+              <p className="connected">Connected</p>
+            ) : (
+              <p className="not-connected">Not Connected</p>
+            )
+          }
+
+          {
+            !power && (
+              <div>
+                <button
+                  className="auto-btn"
+                  onClick={() => {
+                    if (sRegion === -1)
+                      setSRegion(Math.floor(Math.random() * allRegions.length));
+                  }}
+                >
+                  {sRegion === -1 ? (
+                    <>
+                      <img src="/assets/auto.png" width={24} height={24} alt="" />
+                      Auto Select
+                    </>
+                  ) : (
+                    <>
+                      <ReactCountryFlag
+                        countryCode={allRegions[sRegion].code}
+                        svg
+                        aria-label="United States"
+                        style={{
+                          fontSize: "2em",
+                          lineHeight: "2em",
+                        }}
+                      />
+                      {allRegions[sRegion].country}
+                    </>
+                  )}
+                </button>
+                <p className="home-location">Selected Location</p>
+              </div>
+            )
+          }
+
+          {
+            power ? (
+              <>
+                <div>
+                  <ReactCountryFlag
+                    countryCode={allRegions[sRegion].code}
+                    svg
+                    aria-label="United States"
+                    style={{
+                      fontSize: "2em",
+                      lineHeight: "2em",
+                      marginRight: ".5em",
+                    }}
+                  />
+                  {allRegions[sRegion].country}
+
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: '20px', backgroundColor: '#1B1B1D', borderRadius: '16px', padding: '20px', width: 300, fontSize: '14px' }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: '4px' }}>
+                    <div style={{ display: "flex", flexDirection: "row", justifyContent: "space-between" }}>
+                      <div>Socks 5 Address:</div>
+                      <div style={{ color: '#B1B1B2' }}>{serverIpAddress}</div>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "row", justifyContent: 'space-between' }}>
+                      <div>Port: </div>
+                      <div style={{ color: '#B1B1B2' }}>3002</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "row", justifyContent: 'space-between' }}>
+                    <div>PAC URL:</div>
+                    <div>{"http://" + serverIpAddress + "/pac"}</div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <button className="region-btn" onClick={() => navigate("/regions")}>
+                <div>
+                  <img src="/assets/global.png" width={22} height={22} alt="" />
+                  <p>Select Region</p>
+                </div>
+                <img src="/assets/right.png" width={4} height={8} alt="" />
+              </button>
+            )
+          }
+        </>
       )}
-    </div>
+    </div >
   );
 };
 

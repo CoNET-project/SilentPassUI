@@ -33,7 +33,7 @@ const Region = () => {
         <div className="areas">
           <button className="auto" onClick={auto}>
             <div>
-              <img src="/assets/auto.png" />
+              <img src="/assets/auto.png" width={24} height={24} />
               Auto Select
             </div>
           </button>

@@ -217,7 +217,7 @@ const Home = () => {
       </div >
       <div className="footer">
         <div className="footer-content">
-          © 2024 CoNET.network. All rights reserved
+          © {new Date().getFullYear()} CoNET.network. All rights reserved
         </div>
       </div>
     </>

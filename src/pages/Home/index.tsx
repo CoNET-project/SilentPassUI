@@ -12,6 +12,7 @@ const Home = () => {
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
+  const [isMenuVisible, setIsMenuVisible] = useState<boolean>(false)
 
   const navigate = useNavigate();
 
@@ -43,6 +44,10 @@ const Home = () => {
 
     setTimeout(() => setIsInitialLoading(false), 3000);
   }, []);
+
+  const toggleMenu = () => {
+    setIsMenuVisible(prevState => !prevState);
+  }
 
   const handleTogglePower = async () => {
     let selectedCountryIndex = -1
@@ -191,6 +196,66 @@ const Home = () => {
 
   return (
     <>
+      <div className="header">
+        <div className="header-content">
+          <div className="menu-icon" onClick={toggleMenu}>
+            <img src="/assets/menu.svg"></img>
+          </div>
+
+          <div>
+            <img src="/assets/header-title.svg"></img>
+          </div>
+
+          <div style={{ visibility: 'hidden' }}>
+            lang
+          </div>
+        </div>
+      </div>
+
+      <div className={`menu ${isMenuVisible ? 'menu-visible' : ''}`}>
+        <div className="menu-content">
+          <div>
+            <img src="/assets/header-title.svg"></img>
+          </div>
+
+          <div className="menu-container">
+            <a className="menu-item" href="https://conet.network/" target="_blank" rel="noreferrer">
+              <img src="/assets/site-icon.svg" width={24} height={24} />
+              Open CoNET Website
+            </a>
+
+            <a className="menu-item" href="https://t.me/conet_network" target="_blank" rel="noreferrer">
+              <img src="/assets/telegram-icon.svg" width={24} height={24} />
+              Join Telegram Group
+            </a>
+
+            <a className="menu-item" href="https://twitter.com/CoNET_Network" target="_blank" rel="noreferrer">
+              <img src="/assets/twitter-icon.svg" width={24} height={24} />
+              Follow us on Twitter
+            </a>
+
+            <a className="menu-item" href="https://discord.gg/JrpMBFkewd" target="_blank" rel="noreferrer">
+              <img src="/assets/discord-icon.svg" width={24} height={24} />
+              Join Discord Server
+            </a>
+
+            <div className="menu-item">
+              <img src="/assets/info-icon.svg" width={24} height={24} />
+              About
+            </div>
+          </div>
+
+          <div className="menu-footer">
+            <div className="menu-footer-content">
+              <div className="menu-item" onClick={toggleMenu}>
+                <img src="/assets/exit-icon.svg" width={24} height={24} />
+                Return to homepage
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="home">
         <div className="stats-container">
           <div>Online Miners: </div>
@@ -215,6 +280,7 @@ const Home = () => {
         )}
 
       </div >
+
       <div className="footer">
         <div className="footer-content">
           © {new Date().getFullYear()} CoNET.network. All rights reserved

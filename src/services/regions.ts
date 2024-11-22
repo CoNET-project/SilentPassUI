@@ -1,8 +1,6 @@
 import { ethers } from "ethers";
 import { contracts } from "../utils/contracts";
-
-const conetRpc = "https://rpc.conet.network";
-const conetProvider = new ethers.JsonRpcProvider(conetRpc);
+import { conetProvider } from "../utils/constants";
 
 // Get All Regions
 export const getAllRegions = async (): Promise<any> => {

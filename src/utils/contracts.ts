@@ -1,6 +1,7 @@
 import {
   ClaimableConetPointAbi,
   ConetGuardianNodesV6,
+  FaucetV3Abi,
   GuardianNodesInfoV6Abi,
 } from "./abis";
 
@@ -16,5 +17,9 @@ export const contracts = {
   ClaimableConetPoint: {
     address: "0xa4b389994A591735332A67f3561D60ce96409347",
     abi: ClaimableConetPointAbi,
+  },
+  FaucetV3: {
+    address: "0x04CD419cb93FD4f70059cAeEe34f175459Ae1b6a",
+    abi: FaucetV3Abi,
   },
 };

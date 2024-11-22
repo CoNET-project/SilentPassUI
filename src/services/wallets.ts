@@ -1,19 +1,29 @@
 import { ethers } from "ethers";
 import { generateKey } from "openpgp";
-import { customJsonStringify } from "../utils/utils";
+import {
+  customJsonStringify,
+  initProfileTokens,
+  postToEndpoint,
+} from "../utils/utils";
+import {
+  apiv3_endpoint,
+  apiv4_endpoint,
+  conetRpc,
+  localDatabaseName,
+} from "../utils/constants";
+import { contracts } from "../utils/contracts";
+import { CoNET_Data, setCoNET_Data } from "../utils/globals";
+var PouchDB = require("pouchdb");
 
-const databaseName = "conet";
-const XMLHttpRequestTimeout = 30 * 1000;
-const apiv3_endpoint = `https://apiv3.conet.network/api/`;
-const apiv4_endpoint = `https://apiv4.conet.network/api/`;
 let getFaucetRoop = 0;
-const conetRpc = "https://rpc.conet.network";
 
 export const createOrGetWallet = async () => {
-  if (!CoNET_Data?.profiles) {
+  if (!CoNET_Data || !CoNET_Data?.profiles) {
     const acc = createKeyHDWallets();
 
     const key = await createGPGKey("", "", "");
+
+    if (!acc) return;
 
     const profile: profile = {
       tokens: initProfileTokens(),
@@ -29,23 +39,30 @@ export const createOrGetWallet = async () => {
       privateKeyArmor: acc.signingKey.privateKey,
       hdPath: acc.path,
       index: acc.index,
-      tickets: { balance: "0" },
     };
 
-    CoNET_Data = {
-      mnemonicPhrase: acc.mnemonic.phrase,
+    const data: any = {
+      mnemonicPhrase: acc?.mnemonic?.phrase,
       profiles: [profile],
       isReady: true,
       ver: 0,
       nonce: 0,
     };
+
+    setCoNET_Data(data);
   }
 
-  CoNET_Data.profiles.forEach(async (n) => {
+  const tmpData = CoNET_Data;
+
+  tmpData?.profiles.forEach(async (n: profile) => {
     n.keyID = n.keyID.toLocaleLowerCase();
     await initV2(n);
     n.tokens.cCNTP.unlocked = false;
   });
+
+  setCoNET_Data(tmpData);
+
+  if (!CoNET_Data) return;
 
   await getFaucet(
     CoNET_Data.profiles[0].keyID,
@@ -56,12 +73,7 @@ export const createOrGetWallet = async () => {
 
   const profile = CoNET_Data.profiles[0];
 
-  const cmd: channelWroker = {
-    cmd: "profileVer",
-    data: [profile],
-  };
-
-  sendState("toFrontEnd", cmd);
+  return profile;
 };
 
 const createKeyHDWallets = () => {
@@ -73,74 +85,12 @@ const createKeyHDWallets = () => {
   }
 };
 
-const initProfileTokens = () => {
-  const ret: conet_tokens = {
-    CGPNs: {
-      balance: "0",
-      history: [],
-      network: "CONET Guardian Nodes (CGPNs)",
-      decimal: 1,
-      contract: CONET_Guardian_NodesV3,
-      name: "CGPNs",
-    },
-    CGPN2s: {
-      balance: "0",
-      history: [],
-      network: "CONET Guardian Nodes (CGPN2s)",
-      decimal: 1,
-      contract: CONET_Guardian_NodesV3,
-      name: "CGPN2s",
-    },
-    cCNTP: {
-      balance: "0",
-      history: [],
-      network: "CONET Holesky",
-      decimal: 18,
-      contract: cCNTP_new_Addr,
-      name: "cCNTP",
-    },
-    cBNBUSDT: {
-      balance: "0",
-      history: [],
-      network: "CONET Holesky",
-      decimal: 18,
-      contract: Claimable_BNBUSDTv3,
-      name: "cBNBUSDT",
-    },
-    cUSDB: {
-      balance: "0",
-      history: [],
-      network: "CONET Holesky",
-      decimal: 18,
-      contract: Claimable_BlastUSDBv3,
-      name: "cUSDB",
-    },
-    cUSDT: {
-      balance: "0",
-      history: [],
-      network: "CONET Holesky",
-      decimal: 18,
-      contract: Claimable_ETHUSDTv3,
-      name: "cUSDT",
-    },
-    conet: {
-      balance: "0",
-      history: [],
-      network: "CONET Holesky",
-      decimal: 18,
-      contract: "",
-      name: "conet",
-    },
-  };
-  return ret;
-};
-
 const createGPGKey = async (passwd: string, name: string, email: string) => {
   const userId = {
     name: name,
     email: email,
   };
-  const option = {
+  const option: any = {
     type: "ecc",
     passphrase: passwd,
     userIDs: [userId],
@@ -151,11 +101,11 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
-const getFaucet = async (keyId, privateKey: string) => {
+const getFaucet = async (keyId: string, privateKey: string) => {
   if (CoNET_Data?.profiles[0].tokens.conet.balance === "0") {
     if (++getFaucetRoop > 6) {
       getFaucetRoop = 0;
-      logger(`getFaucet Roop > 6 STOP process!`);
+      console.log(`getFaucet Roop > 6 STOP process!`);
       return null;
     }
     const url = `${apiv4_endpoint}conet-faucet`;
@@ -163,7 +113,7 @@ const getFaucet = async (keyId, privateKey: string) => {
     try {
       result = await postToEndpoint(url, true, { walletAddr: keyId });
     } catch (ex) {
-      logger(`getFaucet postToEndpoint [${url}] error! `, ex);
+      console.log(`getFaucet postToEndpoint [${url}] error! `, ex);
       return null;
     }
     getFaucetRoop = 0;
@@ -177,8 +127,8 @@ const getFaucet = async (keyId, privateKey: string) => {
     const provide = new ethers.JsonRpcProvider(conetRpc);
     const wallet = new ethers.Wallet(privateKey, provide);
     const faucetSmartContract = new ethers.Contract(
-      faucet_addr,
-      faucetAbi,
+      contracts.FaucetV3.address,
+      contracts.FaucetV3.abi,
       wallet
     );
 
@@ -198,53 +148,18 @@ const storeSystemData = async () => {
     return;
   }
 
-  const password = "conet123";
-
-  const data = {
-    mnemonicPhrase: CoNET_Data.mnemonicPhrase,
-    fx168Order: CoNET_Data.fx168Order || [],
-    dammy: buffer.Buffer.allocUnsafeSlow(1024 * (20 + Math.random() * 20)),
-    ver: CoNET_Data.ver || 1,
-    upgradev2: CoNET_Data.upgradev2,
-  };
-
-  const waitEntryptData = buffer.Buffer.from(JSON.stringify(data));
-
-  const filenameIterate1 = ethers.id(password);
-  const filenameIterate2 = ethers.id(filenameIterate1);
-  const filenameIterate3 = ethers.id(ethers.id(ethers.id(filenameIterate2)));
-
-  const encryptIterate1 = await CoNETModule.aesGcmEncrypt(
-    waitEntryptData,
-    password
-  );
-  const encryptIterate2 = await CoNETModule.aesGcmEncrypt(
-    encryptIterate1,
-    filenameIterate1
-  );
-  const encryptIterate3 = await CoNETModule.aesGcmEncrypt(
-    encryptIterate2,
-    filenameIterate2
-  );
-
-  CoNET_Data.encryptedString = encryptIterate3;
-
-  if (!CoNET_Data.encryptedString) {
-    return logger(`encryptStoreData aesGcmEncrypt Error!`);
-  }
-
   try {
     await storageHashData(
       "init",
-      buffer.Buffer.from(customJsonStringify(CoNET_Data)).toString("base64")
+      Buffer.from(customJsonStringify(CoNET_Data)).toString("base64")
     );
   } catch (ex) {
-    logger(`storeSystemData storageHashData Error!`, ex);
+    console.log(`storeSystemData storageHashData Error!`, ex);
   }
 };
 
 const storageHashData = async (docId: string, data: string) => {
-  const database = new PouchDB(databaseName, { auto_compaction: true });
+  const database = new PouchDB(localDatabaseName, { auto_compaction: true });
 
   let doc: any;
   try {
@@ -253,93 +168,39 @@ const storageHashData = async (docId: string, data: string) => {
     try {
       await database.put({ _id: docId, title: data, _rev: doc._rev });
     } catch (ex) {
-      logger(`put doc storageHashData Error!`, ex);
+      console.log(`put doc storageHashData Error!`, ex);
     }
   } catch (ex: any) {
     if (/^not_found/.test(ex.name)) {
       try {
         await database.post({ _id: docId, title: data });
       } catch (ex) {
-        logger(`create new doc storageHashData Error!`, ex);
+        console.log(`create new doc storageHashData Error!`, ex);
       }
     } else {
-      logger(`get doc storageHashData Error!`, ex);
+      console.log(`get doc storageHashData Error!`, ex);
     }
   }
 };
 
 const checkStorage = async () => {
-  const database = new PouchDB(databaseName, { auto_compaction: true });
+  const database = new PouchDB(localDatabaseName, { auto_compaction: true });
 
   try {
     const doc = await database.get("init", { latest: true });
-    CoNET_Data = JSON.parse(buffer.Buffer.from(doc.title, "base64").toString());
+    const data = JSON.parse(Buffer.from(doc.title, "base64").toString());
+    setCoNET_Data(data);
   } catch (ex) {
-    return logger(
+    return console.log(
       `checkStorage have no CoNET data in IndexDB, INIT CoNET data`
     );
   }
 };
 
-const initV2 = async (profile) => {
+const initV2 = async (profile: profile) => {
   const url = `${apiv3_endpoint}initV3`;
   const result = await postToEndpoint(url, true, {
     walletAddress: profile.keyID,
   });
-  logger(result);
-};
-
-const postToEndpoint = (url: string, post: boolean, jsonData: any) => {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = () => {
-      clearTimeout(timeCount);
-
-      if (xhr.status === 200) {
-        if (!xhr.responseText.length) {
-          return resolve("");
-        }
-
-        let ret;
-
-        try {
-          ret = JSON.parse(xhr.responseText);
-        } catch (ex) {
-          if (post) {
-            return resolve("");
-          }
-
-          return resolve(xhr.responseText);
-        }
-
-        return resolve(ret);
-      }
-
-      logger(
-        `postToEndpoint [${url}] xhr.status [${
-          xhr.status === 200
-        }] !== 200 Error`
-      );
-
-      return resolve(false);
-    };
-
-    xhr.onerror = (err) => {
-      logger(`xhr.onerror`, err);
-      clearTimeout(timeCount);
-      return reject(err);
-    };
-
-    xhr.open(post ? "POST" : "GET", url, true);
-
-    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-    xhr.send(jsonData ? JSON.stringify(jsonData) : "");
-
-    const timeCount = setTimeout(() => {
-      const Err = `Timeout!`;
-      logger(`postToEndpoint ${url} Timeout Error`, Err);
-      reject(new Error(Err));
-    }, XMLHttpRequestTimeout);
-  });
+  console.log(result);
 };

@@ -9,9 +9,9 @@ import {
   readPrivateKey,
 } from "openpgp";
 import { contracts } from "../utils/contracts";
-
-const conetRpc = "https://rpc.conet.network";
-const conetProvider = new ethers.JsonRpcProvider(conetRpc);
+import { conetProvider } from "../utils/constants";
+import { initProfileTokens, postToEndpoint } from "../utils/utils";
+import async from "async";
 
 let Guardian_Nodes: nodes_info[] = [];
 let cCNTPcurrentTotal = 0;
@@ -21,7 +21,6 @@ let mining_epoch = 0;
 let epoch = 0;
 let getAllNodesProcess = false;
 let miningProfile: profile | null = null;
-const XMLHttpRequestTimeout = 30 * 1000;
 
 const getAllNodes = async () => {
   if (getAllNodesProcess) {
@@ -63,16 +62,13 @@ const getAllNodes = async () => {
   let i = 0;
 
   await async
-    .mapLimit(Guardian_Nodes, 5, async (n: nodes_info, next) => {
+    .mapLimit(Guardian_Nodes, 5, async (n: nodes_info, next: any) => {
       const nodeInfo = await GuardianNodesInfo.getNodeInfoById(n.nftNumber);
       if (nodeInfo?.pgp) {
         i = n.nftNumber;
         n.region = nodeInfo.regionName;
         n.ip_addr = nodeInfo.ipaddress;
-        n.armoredPublicKey = buffer.Buffer.from(
-          nodeInfo.pgp,
-          "base64"
-        ).toString();
+        n.armoredPublicKey = Buffer.from(nodeInfo.pgp, "base64").toString();
         const pgpKey1 = await readKey({
           armoredKey: n.armoredPublicKey,
         });
@@ -114,7 +110,7 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
     name: name,
     email: email,
   };
-  const option = {
+  const option: any = {
     type: "ecc",
     passphrase: passwd,
     userIDs: [userId],
@@ -125,33 +121,28 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
-const _startMiningV2 = async (
-  profile: profile,
-  cmd: worker_command | null = null
-) => {
+const _startMiningV2 = async (profile: profile) => {
   await getAllNodes();
   miningAddress = profile.keyID.toLowerCase();
   const totalNodes = Guardian_Nodes.length - 1;
+
   if (!totalNodes) {
-    if (cmd) {
-      cmd.err = "FAILURE";
-      return returnUUIDChannel(cmd);
-    }
-    return;
+    throw new Error("FAILURE");
   }
+
   const nodoNumber = Math.floor(Math.random() * totalNodes);
   const connectNode = Guardian_Nodes[nodoNumber];
 
   if (!connectNode) {
-    if (cmd) {
-      cmd.err = "FAILURE";
-      return returnUUIDChannel(cmd);
-    }
-    return;
+    throw new Error("FAILURE");
   }
 
   if (!profile?.pgpKey) {
-    profile.pgpKey = await createGPGKey("", "", "");
+    const key = await createGPGKey("", "", "");
+    profile.pgpKey = {
+      privateKeyArmor: key.privateKey,
+      publicKeyArmor: key.publicKey,
+    };
   }
 
   const index = Guardian_Nodes.findIndex(
@@ -166,11 +157,7 @@ const _startMiningV2 = async (
   cCNTPcurrentTotal = !balance ? 0 : parseFloat(balance);
 
   if (!connectNode?.domain || !postData) {
-    if (cmd) {
-      cmd.err = "FAILURE";
-      return returnUUIDChannel(cmd);
-    }
-    return;
+    throw new Error("FAILURE");
   }
 
   const url = `https://${connectNode.domain}/post`;
@@ -181,12 +168,7 @@ const _startMiningV2 = async (
     { data: postData.requestData[0] },
     async (err: any, _data: any) => {
       if (err) {
-        console.log(err);
-        if (cmd) {
-          cmd.err = err;
-          return returnUUIDChannel(cmd);
-        }
-        return;
+        throw new Error(err);
       }
 
       console.log("_startMiningV2 success", _data);
@@ -194,13 +176,12 @@ const _startMiningV2 = async (
       mining_epoch = epoch;
 
       if (!profile?.tokens) {
-        profile.tokens = {};
+        profile.tokens = initProfileTokens();
       }
 
       if (!profile.tokens?.cCNTP) {
         profile.tokens.cCNTP = {
           balance: "0",
-          history: [],
           network: "CONET Holesky",
           decimal: 18,
           contract: contracts.ClaimableConetPoint.address,
@@ -214,15 +195,12 @@ const _startMiningV2 = async (
         miningProfile = profile;
         first = false;
 
-        if (cmd) {
-          cCNTPcurrentTotal = parseFloat(cCNTP.balance || "0");
-          response.currentCCNTP = "0";
-          cmd.data = ["success", JSON.stringify(response)];
-          return returnUUIDChannel(cmd);
-        }
+        cCNTPcurrentTotal = parseFloat(cCNTP.balance || "0");
+        response.currentCCNTP = "0";
 
-        return;
+        return ["success", JSON.stringify(response)];
       }
+
       const kk = parseFloat(response.rate);
       response.rate = isNaN(kk) ? "" : kk.toFixed(8);
       response.currentCCNTP = (
@@ -233,13 +211,8 @@ const _startMiningV2 = async (
         response.currentCCNTP = "0";
       }
 
-      const cmdd = {
-        cmd: "miningStatus",
-        data: [JSON.stringify(response)],
-      };
-
-      sendState("toFrontEnd", cmdd);
       const entryNode = getRandomNodeV2(nodoNumber);
+
       if (!entryNode) {
         console.log(`_startMiningV2 Error! getRandomNodeV2 return null!`);
         return;
@@ -299,9 +272,10 @@ const ceateMininngValidator = async (
     );
     return null;
   }
-  const key = buffer.Buffer.from(
+  const key = Buffer.from(
     self.crypto.getRandomValues(new Uint8Array(16))
   ).toString("base64");
+
   const command: SICommandObj = {
     command: "mining_validator",
     algorithm: "aes-256-cbc",
@@ -362,7 +336,7 @@ const createConnectCmd = async (
     return null;
   }
 
-  const key = buffer.Buffer.from(
+  const key = Buffer.from(
     self.crypto.getRandomValues(new Uint8Array(16))
   ).toString("base64");
   const command: SICommandObj = {
@@ -404,7 +378,7 @@ const encrypt_Message = async (
 ) => {
   const encryptObj = {
     message: await createMessage({
-      text: buffer.Buffer.from(JSON.stringify(message)).toString("base64"),
+      text: Buffer.from(JSON.stringify(message)).toString("base64"),
     }),
     encryptionKeys: await readKey({ armoredKey: armoredPublicKey }),
     signingKeys: privatePgpObj,
@@ -413,54 +387,11 @@ const encrypt_Message = async (
   return await encrypt(encryptObj);
 };
 
-const postToEndpoint = (url: string, post: boolean, jsonData: any) =>
-  new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = () => {
-      clearTimeout(timeCount);
-      //const status = parseInt(xhr.responseText.split (' ')[1])
-
-      if (xhr.status === 200) {
-        // parse JSON
-        xhr.abort();
-        if (!xhr.responseText.length) {
-          return resolve(true);
-        }
-        let ret;
-        try {
-          ret = JSON.parse(xhr.responseText);
-        } catch (ex) {
-          return resolve(true);
-        }
-        return resolve(ret);
-      }
-      xhr.abort();
-      console.log(
-        `postToEndpoint [${url}] xhr.status [${
-          xhr.status === 200
-        }] !== 200 Error`
-      );
-      return resolve(false);
-    };
-
-    xhr.open(post ? "POST" : "GET", url, true);
-    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-    xhr.send(jsonData ? JSON.stringify(jsonData) : "");
-
-    const timeCount = setTimeout(() => {
-      xhr.abort();
-      const Err = `Timeout!`;
-      console.log(`postToEndpoint ${url} Timeout Error`, Err);
-      reject(new Error(Err));
-    }, XMLHttpRequestTimeout);
-  });
-
 const postToEndpointSSE = (
   url: string,
   post: boolean,
   jsonData: any,
-  CallBack: (err: WorkerCommandError | null, data: string) => void
+  CallBack: (err: any, data: string) => void
 ) => {
   const xhr = new XMLHttpRequest();
 

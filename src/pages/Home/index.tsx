@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useNavigate } from "react-router-dom";
 import { useDaemonContext } from "../../providers/DaemonProvider";
-import { getAllRegions, getServerIpAddress, startSilentPass } from "../../api";
+import { getAllRegions } from "../../api";
 
 const Home = () => {
   const { sRegion, setSRegion, setAllRegions, allRegions } = useDaemonContext();
@@ -18,8 +18,7 @@ const Home = () => {
 
   useEffect(() => {
     const _getAllRegions = async () => {
-      const response = await getAllRegions();
-      const tmpRegions = response.data;
+      const tmpRegions = await getAllRegions();
 
       const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
         const separatedRegion = region.split(".");
@@ -32,15 +31,7 @@ const Home = () => {
       setAllRegions(treatedRegions);
     };
 
-    const _getServerIpAddress = async () => {
-      const response = await getServerIpAddress();
-      const tmpIpAddress = response.data;
-
-      setServerIpAddress(tmpIpAddress?.ip);
-    };
-
     _getAllRegions()
-    _getServerIpAddress()
 
     setTimeout(() => setIsInitialLoading(false), 3000);
   }, []);
@@ -68,7 +59,6 @@ const Home = () => {
 
       const selectedCountryCode = allRegions[selectedCountryIndex].code
 
-      await startSilentPass(selectedCountryCode)
       setTimeout(() => {
         setIsConnectionLoading(false)
         setPower(true);
@@ -239,10 +229,10 @@ const Home = () => {
               Join Discord Server
             </a>
 
-            <div className="menu-item">
+            {/* <div className="menu-item">
               <img src="/assets/info-icon.svg" width={24} height={24} />
               About
-            </div>
+            </div> */}
           </div>
 
           <div className="menu-footer">

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useNavigate } from "react-router-dom";
 import { useDaemonContext } from "../../providers/DaemonProvider";
-import { getAllRegions } from "../../api";
+import { getAllRegions } from "../../services/regions";
 
 const Home = () => {
   const { sRegion, setSRegion, setAllRegions, allRegions } = useDaemonContext();

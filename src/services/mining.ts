@@ -90,17 +90,17 @@ const getRandomNodeV2: (index: number) => null | nodes_info = (index = -1) => {
     return null;
   }
 
-  const nodoNumber = Math.floor(Math.random() * totalNodes);
-  if (index > -1 && nodoNumber === index) {
+  const nodeNumber = Math.floor(Math.random() * totalNodes);
+  if (index > -1 && nodeNumber === index) {
     console.log(
-      `getRandomNodeV2 nodoNumber ${nodoNumber} == index ${index} REUNING AGAIN!`
+      `getRandomNodeV2 nodeNumber ${nodeNumber} == index ${index} REUNING AGAIN!`
     );
     return getRandomNodeV2(index);
   }
 
-  const node = Guardian_Nodes[nodoNumber];
+  const node = Guardian_Nodes[nodeNumber];
   console.log(
-    `getRandomNodeV2 Guardian_Nodes length =${Guardian_Nodes.length} nodoNumber = ${nodoNumber} `
+    `getRandomNodeV2 Guardian_Nodes length =${Guardian_Nodes.length} nodeNumber = ${nodeNumber} `
   );
   return node;
 };
@@ -131,8 +131,8 @@ const startMiningV2 = async (profile: profile) => {
     return;
   }
 
-  const nodoNumber = Math.floor(Math.random() * totalNodes);
-  const connectNode = Guardian_Nodes[nodoNumber];
+  const nodeNumber = Math.floor(Math.random() * totalNodes);
+  const connectNode = Guardian_Nodes[nodeNumber];
 
   if (!connectNode) {
     console.log("connectNode is empty");
@@ -215,7 +215,7 @@ const startMiningV2 = async (profile: profile) => {
         response.currentCCNTP = "0";
       }
 
-      const entryNode = getRandomNodeV2(nodoNumber);
+      const entryNode = getRandomNodeV2(nodeNumber);
 
       if (!entryNode) {
         console.log(`_startMiningV2 Error! getRandomNodeV2 return null!`);

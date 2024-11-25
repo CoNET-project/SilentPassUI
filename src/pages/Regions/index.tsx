@@ -4,15 +4,13 @@ import { useDaemonContext } from "../../providers/DaemonProvider";
 import { useNavigate } from "react-router-dom";
 
 const Region = () => {
-  const { setSRegion, allRegions } = useDaemonContext();
+  const { setSRegion, allRegions, setIsRandom } = useDaemonContext();
   const navigate = useNavigate();
 
-  const auto = () => {
-    setSRegion(Math.floor(Math.random() * allRegions.length));
-    navigate("/");
-  };
-
   const handleRegion = (code: number) => {
+    if (code === -1) setIsRandom(true);
+    else setIsRandom(false);
+
     setSRegion(code);
     navigate("/");
   };
@@ -31,7 +29,7 @@ const Region = () => {
 
       <div className="board">
         <div className="areas">
-          <button className="auto" onClick={auto}>
+          <button className="auto" onClick={() => handleRegion(-1)}>
             <div>
               <img src="/assets/auto.png" width={24} height={24} />
               Auto Select

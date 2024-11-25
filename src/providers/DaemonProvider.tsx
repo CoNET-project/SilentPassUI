@@ -5,6 +5,8 @@ type DaemonContext = {
   setSRegion: (region: number) => void;
   allRegions: Region[];
   setAllRegions: (regions: Region[]) => void;
+  isRandom: boolean;
+  setIsRandom: (val: boolean) => void;
 };
 
 type DaemonProps = {
@@ -16,6 +18,8 @@ const defaultContextValue: DaemonContext = {
   setSRegion: () => { },
   allRegions: [],
   setAllRegions: () => { },
+  isRandom: true,
+  setIsRandom: () => { },
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -26,11 +30,12 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+  const [isRandom, setIsRandom] = useState<boolean>(true);
   const [sRegion, setSRegion] = useState<number>(-1);
   const [allRegions, setAllRegions] = useState<Region[]>([]);
 
   return (
-    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions }}>
+    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, isRandom, setIsRandom }}>
       {children}
     </Daemon.Provider>
   );

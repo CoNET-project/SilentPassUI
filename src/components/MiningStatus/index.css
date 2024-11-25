@@ -1,0 +1,35 @@
+.mining-status {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  gap: 16px;
+}
+
+.mining-status > div {
+  padding: 8px 14px;
+}
+
+.circle {
+  width: 8px;
+  height: 8px;
+  border-radius: 8px;
+}
+
+.mining {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.circle.green {
+  background-color: #05A21E;
+}
+
+.circle.red {
+  background-color: #FF0000;;
+}
+
+.mining-status > div:not(:first-child) {
+  border: 1px solid #CFCFCF0A;
+  border-radius: 16px;
+}

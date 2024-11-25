@@ -92,6 +92,11 @@ a {
   gap: 15px;
   cursor: pointer;
   width: 100%;
+
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+  padding: 0;
 }
 
 .menu-footer .menu-item {
@@ -149,6 +154,7 @@ h1 span {
 }
 
 .connection {
+  text-align: center;
   background-color: #22262d;
   border: 1px solid #474648;
   border-radius: 16px;
@@ -173,12 +179,16 @@ h1 span {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  position: relative;
+  z-index: 5;
 }
 
 .not-connected,
 .connected {
   font-weight: 700;
   margin: 0;
+
+  text-align: center;
 }
 
 .connected {
@@ -200,6 +210,7 @@ h1 span {
   color: #b1b1b2;
   font-size: 11px;
   margin: 0;
+  text-align: center;
 }
 
 .region-btn {
@@ -210,9 +221,11 @@ h1 span {
   border-radius: 32px;
   padding: 16px;
   background-color: transparent;
-  width: 252px;
   height: 56px;
   cursor: pointer;
+  gap: 12px;
+  position: relative;
+  z-index: 5;
 }
 
 .region-btn div {
@@ -241,6 +254,57 @@ h1 span {
   color: #b1b1b2;
 }
 
-p {
-  text-align: center !important;
+.rs-wrapper > p {
+  color: #E4E2E4;
+  margin-bottom: 16px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.region-selector {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.current-wallet {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.current-wallet > p {
+  font-weight: 700;
+}
+
+.current-wallet button {
+  background: 0;
+  border: 0;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  color: #9FBFE5;
+
+  cursor: pointer;
+
+  margin-top: 2px;
+}
+
+.current-wallet img {
+  width: 16px;
+  height: 16px;
+
+  margin-bottom: 2px;
+}
+
+.current-mined {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.current-mined p:first-child {
+  font-size: 32px;
 }

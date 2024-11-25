@@ -1,9 +1,9 @@
-import React from "react";
 import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 
 import { Home, Region } from "./pages";
 import { DaemonProvider } from "./providers/DaemonProvider";
+import About from './pages/About';
 
 function App() {
   return (
@@ -11,8 +11,9 @@ function App() {
       <DaemonProvider>
         <Router>
           <Routes>
-            <Route path="/" element={<Home />}></Route>
             <Route path="/regions" element={<Region />}></Route>
+            <Route path="/about" element={<About />}></Route>
+            <Route path="/" element={<Home />}></Route>
           </Routes>
         </Router>
       </DaemonProvider>

@@ -1,0 +1,27 @@
+.about {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+
+  width: 100%;
+  max-width: 360px;
+}
+
+.about p {
+  width: 100%;
+  max-width: initial;
+}
+
+.about h1, .about h2, .about p {
+  margin: 0;
+}
+
+.about h1 {
+  margin-bottom: 24px;
+  color: #9FBFE5FE;
+}
+
+.about h2 {
+  font-size: 16px;
+}

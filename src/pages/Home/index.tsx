@@ -45,6 +45,7 @@ const Home = () => {
 
     if (power) {
       setPower(false);
+      window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
       return
     }
 
@@ -58,6 +59,11 @@ const Home = () => {
       }
 
       const selectedCountryCode = allRegions[selectedCountryIndex].code
+
+      console.log('selected country: ', selectedCountryCode)
+
+      window?.webkit?.messageHandlers["startVPN"].postMessage(selectedCountryCode)
+
 
       setTimeout(() => {
         setIsConnectionLoading(false)

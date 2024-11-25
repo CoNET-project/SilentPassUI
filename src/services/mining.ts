@@ -248,7 +248,6 @@ const validator = async (
   }
   const wallet = new ethers.Wallet(profile.privateKeyArmor);
   response.minerResponseHash = await wallet.signMessage(response.hash);
-  //	clean data
   response.userWallets = response.nodeWallets = [];
   const request = await ceateMininngValidator(profile, sentryNode, response);
   if (!request) {

@@ -17,7 +17,7 @@ const PouchDB = require("pouchdb").default;
 
 let getFaucetRoop = 0;
 
-export const createOrGetWallet = async () => {
+const createOrGetWallet = async () => {
   await checkStorage();
 
   if (!CoNET_Data || !CoNET_Data?.profiles) {
@@ -58,7 +58,6 @@ export const createOrGetWallet = async () => {
 
   tmpData?.profiles.forEach(async (n: profile) => {
     n.keyID = n.keyID.toLocaleLowerCase();
-    await initV3(n);
     n.tokens.cCNTP.unlocked = false;
   });
 
@@ -199,10 +198,4 @@ const checkStorage = async () => {
   }
 };
 
-const initV3 = async (profile: profile) => {
-  const url = `${apiv3_endpoint}initV3`;
-  const result = await postToEndpoint(url, true, {
-    walletAddress: profile.keyID,
-  });
-  console.log(result);
-};
+export { createOrGetWallet, createGPGKey };

@@ -127,3 +127,13 @@ interface SICommandObj {
   requestData: any[];
   walletAddress: string;
 }
+
+interface Window {
+  webkit: {
+    messageHandlers: {
+      [handlerName: string]: {
+        postMessage: (message: any) => void;
+      };
+    };
+  };
+}

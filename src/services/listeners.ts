@@ -6,7 +6,7 @@ import { initProfileTokens } from "../utils/utils";
 
 let epoch = 0;
 
-const listenProfileVer = async () => {
+const listenProfileVer = async (callback: (profile: profile) => void) => {
   epoch = await conetProvider.getBlockNumber();
 
   conetProvider.on("block", async (block) => {
@@ -23,6 +23,8 @@ const listenProfileVer = async () => {
       }
 
       await Promise.all(runningList);
+
+      if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles[0]);
     }
   });
 

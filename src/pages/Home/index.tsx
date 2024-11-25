@@ -10,7 +10,7 @@ import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
 
 const Home = () => {
-  const { sRegion, setSRegion, setAllRegions, allRegions } = useDaemonContext();
+  const { profile, sRegion, setSRegion, setAllRegions, allRegions } = useDaemonContext();
   const [serverIpAddress, setServerIpAddress] = useState<string>('')
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
@@ -265,7 +265,7 @@ const Home = () => {
             <div className="current-wallet">
               <p>Current Wallet</p>
               <button onClick={copyWallet}>
-                <p>0x412FJK...B3AB46</p>
+                <p>{profile?.keyID.slice(0, 4)}...{profile?.keyID.slice(-4)}</p>
                 {
                   isWalletCopied ? (
                     <img src="/assets/check.svg" alt="Copy icon" />

@@ -64,6 +64,7 @@ const Home = () => {
 
       window?.webkit?.messageHandlers["startVPN"].postMessage(selectedCountryCode)
 
+      // startVpnMining()
 
       setTimeout(() => {
         setIsConnectionLoading(false)

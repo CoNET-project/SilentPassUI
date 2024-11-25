@@ -13,11 +13,13 @@ import {
 } from "../utils/constants";
 import { contracts } from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
-var PouchDB = require("pouchdb");
+const PouchDB = require("pouchdb").default;
 
 let getFaucetRoop = 0;
 
 export const createOrGetWallet = async () => {
+  await checkStorage();
+
   if (!CoNET_Data || !CoNET_Data?.profiles) {
     const acc = createKeyHDWallets();
 
@@ -56,7 +58,7 @@ export const createOrGetWallet = async () => {
 
   tmpData?.profiles.forEach(async (n: profile) => {
     n.keyID = n.keyID.toLocaleLowerCase();
-    await initV2(n);
+    await initV3(n);
     n.tokens.cCNTP.unlocked = false;
   });
 
@@ -159,7 +161,7 @@ const storeSystemData = async () => {
 };
 
 const storageHashData = async (docId: string, data: string) => {
-  const database = new PouchDB(localDatabaseName, { auto_compaction: true });
+  const database = PouchDB(localDatabaseName, { auto_compaction: true });
 
   let doc: any;
   try {
@@ -184,7 +186,7 @@ const storageHashData = async (docId: string, data: string) => {
 };
 
 const checkStorage = async () => {
-  const database = new PouchDB(localDatabaseName, { auto_compaction: true });
+  const database = PouchDB(localDatabaseName, { auto_compaction: true });
 
   try {
     const doc = await database.get("init", { latest: true });
@@ -197,7 +199,7 @@ const checkStorage = async () => {
   }
 };
 
-const initV2 = async (profile: profile) => {
+const initV3 = async (profile: profile) => {
   const url = `${apiv3_endpoint}initV3`;
   const result = await postToEndpoint(url, true, {
     walletAddress: profile.keyID,

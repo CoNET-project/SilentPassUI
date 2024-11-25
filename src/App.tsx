@@ -5,14 +5,23 @@ import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { DaemonProvider } from "./providers/DaemonProvider";
 import { createOrGetWallet } from "./services/wallets";
+import { startMiningV2 } from "./services/mining";
+import { CoNET_Data } from "./utils/globals";
+import { listenProfileVer } from "./services/listeners";
 
 global.Buffer = require('buffer').Buffer;
 
 function App() {
   useEffect(() => {
     const init = async () => {
-      createOrGetWallet();
+      await createOrGetWallet();
+      listenProfileVer();
+
+      if (!CoNET_Data || !CoNET_Data?.profiles) return
+
+      await startMiningV2(CoNET_Data?.profiles?.[0]);
     };
+
     init();
   }, []);
 

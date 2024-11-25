@@ -75,7 +75,7 @@ const getAllNodes = async () => {
         n.domain =
           pgpKey1.getKeyIDs()[1].toHex().toUpperCase() + ".conet.network";
       } else {
-        throw new Error("");
+        console.log("nodeInfo.pgp is empty");
       }
     })
     .catch(() => {});
@@ -121,20 +121,22 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
-const _startMiningV2 = async (profile: profile) => {
+const startMiningV2 = async (profile: profile) => {
   await getAllNodes();
   miningAddress = profile.keyID.toLowerCase();
   const totalNodes = Guardian_Nodes.length - 1;
 
   if (!totalNodes) {
-    throw new Error("FAILURE");
+    console.log("totalNodes is empty");
+    return;
   }
 
   const nodoNumber = Math.floor(Math.random() * totalNodes);
   const connectNode = Guardian_Nodes[nodoNumber];
 
   if (!connectNode) {
-    throw new Error("FAILURE");
+    console.log("connectNode is empty");
+    return;
   }
 
   if (!profile?.pgpKey) {
@@ -157,7 +159,8 @@ const _startMiningV2 = async (profile: profile) => {
   cCNTPcurrentTotal = !balance ? 0 : parseFloat(balance);
 
   if (!connectNode?.domain || !postData) {
-    throw new Error("FAILURE");
+    console.log("connectNode.domain or postData is empty");
+    return;
   }
 
   const url = `https://${connectNode.domain}/post`;
@@ -165,10 +168,11 @@ const _startMiningV2 = async (profile: profile) => {
   miningConnection = postToEndpointSSE(
     url,
     true,
-    { data: postData.requestData[0] },
+    { data: postData?.requestData?.[0] },
     async (err: any, _data: any) => {
       if (err) {
-        throw new Error(err);
+        console.log(err);
+        return;
       }
 
       console.log("_startMiningV2 success", _data);
@@ -272,9 +276,9 @@ const ceateMininngValidator = async (
     );
     return null;
   }
-  const key = Buffer.from(
-    self.crypto.getRandomValues(new Uint8Array(16))
-  ).toString("base64");
+  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString(
+    "base64"
+  );
 
   const command: SICommandObj = {
     command: "mining_validator",
@@ -336,9 +340,9 @@ const createConnectCmd = async (
     return null;
   }
 
-  const key = Buffer.from(
-    self.crypto.getRandomValues(new Uint8Array(16))
-  ).toString("base64");
+  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString(
+    "base64"
+  );
   const command: SICommandObj = {
     command: "mining",
     algorithm: "aes-256-cbc",
@@ -449,3 +453,5 @@ const postToEndpointSSE = (
 
   return xhr;
 };
+
+export { startMiningV2 };

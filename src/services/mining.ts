@@ -74,8 +74,6 @@ const getAllNodes = async () => {
         });
         n.domain =
           pgpKey1.getKeyIDs()[1].toHex().toUpperCase() + ".conet.network";
-      } else {
-        console.log("nodeInfo.pgp is empty");
       }
     })
     .catch(() => {});
@@ -435,20 +433,21 @@ const postToEndpointSSE = (
     console.log(`xhr.upload.onerror`, err);
   };
 
-  xhr.open(post ? "POST" : "GET", url, true);
-  xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-  xhr.send(typeof jsonData !== "string" ? JSON.stringify(jsonData) : jsonData);
-
   xhr.onerror = (err) => {
     console.log(`xhr.onerror`, err);
     clearTimeout(timeCount);
     CallBack("NOT_INTERNET", "");
   };
+
   const timeCount = setTimeout(() => {
     const Err = `postToEndpoint Timeout!`;
     console.log(`postToEndpoint Error`, Err);
     CallBack("TIMEOUT", "");
   }, 1000 * 45);
+
+  xhr.open(post ? "POST" : "GET", url, true);
+  xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  xhr.send(typeof jsonData !== "string" ? JSON.stringify(jsonData) : jsonData);
 
   return xhr;
 };

@@ -23,6 +23,9 @@
   align-items: center;
   box-sizing: border-box;
   width: 100%;
+  max-width: 500px;
   height: 100%;
   padding: 10px;
+
+  margin: 0 auto;
 }

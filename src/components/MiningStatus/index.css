@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   font-size: 12px;
-  gap: 16px;
+  gap: 10px;
 }
 
 .mining-status > div {
@@ -32,4 +32,16 @@
 .mining-status > div:not(:first-child) {
   border: 1px solid #CFCFCF0A;
   border-radius: 16px;
+}
+
+.rate {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.miners {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }

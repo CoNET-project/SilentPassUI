@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import "./index.css";
 import { useDaemonContext } from '../../providers/DaemonProvider';
+import Skeleton from '../Skeleton';
 
 const MiningStatus = () => {
   const { miningData } = useDaemonContext();
@@ -16,8 +17,8 @@ const MiningStatus = () => {
         <div className={`circle ${isMiningUp ? "green" : "red"}`}></div>
         <p>Mining {isMiningUp ? "UP" : "DOWN"}</p>
       </div>
-      <div className="rate">Mining Rate: {miningData?.rate}</div>
-      <div className="miners">Online Miners: {miningData?.online}</div>
+      <div className="rate">Mining Rate: {miningData?.rate ? miningData.rate : <Skeleton height="14px" width="45px" />}</div>
+      <div className="miners">Online Miners: {miningData?.online ? miningData.rate : <Skeleton height="14px" width="45px" />}</div>
     </div>
   );
 };

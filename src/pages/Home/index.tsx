@@ -8,6 +8,7 @@ import { getAllRegions } from "../../services/regions";
 import MiningStatus from '../../components/MiningStatus';
 import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
+import Skeleton from '../../components/Skeleton';
 
 const Home = () => {
   const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom } = useDaemonContext();
@@ -106,7 +107,7 @@ const Home = () => {
     if (power)
       return (
         <>
-          <p className="connection">Your connection is <span>protected!</span></p >
+          <p className="connection">Your connection is <span>protected!</span></p>
 
           <BlobWrapper>
             <button
@@ -118,7 +119,7 @@ const Home = () => {
           </BlobWrapper>
 
           <div className="current-mined">
-            <p>{profile?.tokens?.cCNTP?.balance}</p>
+            {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
             <p>CNTP</p>
           </div>
         </>
@@ -138,7 +139,7 @@ const Home = () => {
         </BlobWrapper>
 
         <div className="current-mined">
-          <p>{profile?.tokens?.cCNTP?.balance}</p>
+          {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
           <p>CNTP</p>
         </div>
       </>
@@ -279,16 +280,22 @@ const Home = () => {
             {renderRegionSelector()}
             <div className="current-wallet">
               <p>Current Wallet</p>
-              <button onClick={copyWallet}>
-                <p>{profile?.keyID.slice(0, 4)}...{profile?.keyID.slice(-4)}</p>
-                {
-                  isWalletCopied ? (
-                    <img src="/assets/check.svg" alt="Copy icon" />
-                  ) : (
-                    <img src="/assets/copy.svg" alt="Copy icon" />
-                  )
-                }
-              </button>
+              {
+                profile?.keyID ? (
+                  <button onClick={copyWallet}>
+                    <p>{profile?.keyID.slice(0, 4)}...{profile?.keyID.slice(-4)}</p>
+                    {
+                      isWalletCopied ? (
+                        <img src="/assets/check.svg" alt="Copy icon" />
+                      ) : (
+                        <img src="/assets/copy.svg" alt="Copy icon" />
+                      )
+                    }
+                  </button>
+                ) : (
+                  <Skeleton width="100px" height="24px" />
+                )
+              }
             </div>
           </>
         )}

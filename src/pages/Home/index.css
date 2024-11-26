@@ -280,6 +280,7 @@ h1 span {
 
 .current-wallet > p {
   font-weight: 700;
+  width: initial;
 }
 
 .current-wallet button {
@@ -308,14 +309,17 @@ h1 span {
   display: flex;
   align-items: center;
   gap: 8px;
+
+  padding-top: 24px;
+}
+
+.current-mined p {
+  width: initial;
+  margin: 0;
 }
 
 .current-mined p:first-child {
   font-size: 32px;
-}
-
-.current-mined p {
-  margin: 24px 0 0;
 }
 
 .welcome {

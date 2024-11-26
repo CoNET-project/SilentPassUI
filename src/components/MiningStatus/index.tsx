@@ -18,7 +18,7 @@ const MiningStatus = () => {
         <p>Mining {isMiningUp ? "UP" : "DOWN"}</p>
       </div>
       <div className="rate">Mining Rate: {miningData?.rate ? miningData.rate : <Skeleton height="14px" width="45px" />}</div>
-      <div className="miners">Online Miners: {miningData?.online ? miningData.rate : <Skeleton height="14px" width="45px" />}</div>
+      <div className="miners">Online Miners: {miningData?.online ? miningData.online : <Skeleton height="14px" width="45px" />}</div>
     </div>
   );
 };

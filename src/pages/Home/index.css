@@ -27,7 +27,7 @@ a {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
 }
 
 .menu-icon {
@@ -281,6 +281,10 @@ h1 span {
 .current-wallet > p {
   font-weight: 700;
   width: initial;
+}
+
+.current-wallet p {
+  margin: 0;
 }
 
 .current-wallet button {

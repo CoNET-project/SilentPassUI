@@ -7,6 +7,7 @@
 
 .mining-status > div {
   padding: 8px 14px;
+  font-size: 10px;
 }
 
 .circle {
@@ -22,15 +23,15 @@
 }
 
 .circle.green {
-  background-color: #05A21E;
+  background-color: #05a21e;
 }
 
 .circle.red {
-  background-color: #FF0000;;
+  background-color: #ff0000;
 }
 
 .mining-status > div:not(:first-child) {
-  border: 1px solid #CFCFCF0A;
+  border: 1px solid #cfcfcf0a;
   border-radius: 16px;
 }
 

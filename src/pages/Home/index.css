@@ -255,7 +255,7 @@ h1 span {
 }
 
 .rs-wrapper > p {
-  color: #E4E2E4;
+  color: #e4e2e4;
   margin-bottom: 16px;
   font-size: 11px;
   text-align: center;
@@ -264,6 +264,7 @@ h1 span {
 .region-selector {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 16px;
 }
 
@@ -285,7 +286,7 @@ h1 span {
   align-items: center;
   gap: 8px;
 
-  color: #9FBFE5;
+  color: #9fbfe5;
 
   cursor: pointer;
 

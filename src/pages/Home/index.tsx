@@ -119,7 +119,7 @@ const Home = () => {
           </BlobWrapper>
 
           <div className="current-mined">
-            <p>1.00456</p>
+            <p>{profile?.tokens?.cCNTP?.balance}</p>
             <p>CNTP</p>
           </div>
         </>
@@ -139,7 +139,7 @@ const Home = () => {
         </BlobWrapper>
 
         <div className="current-mined">
-          <p>1.00456</p>
+          <p>{profile?.tokens?.cCNTP?.balance}</p>
           <p>CNTP</p>
         </div>
       </>

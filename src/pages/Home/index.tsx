@@ -138,7 +138,10 @@ const Home = () => {
           </button>
         </BlobWrapper>
 
-        <p className="not-connected">Not Connected</p>
+        <div className="current-mined">
+          <p>1.00456</p>
+          <p>CNTP</p>
+        </div>
       </>
     )
   }

@@ -308,3 +308,30 @@ h1 span {
 .current-mined p:first-child {
   font-size: 32px;
 }
+
+.current-mined p {
+  margin: 24px 0 0;
+}
+
+.welcome {
+  display: flex;
+  flex-direction: column;
+}
+
+/* .welcome p {
+  margin: 0;
+  text-align: center;
+}
+
+.welcome p:first-child {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.welcome p:first-child span {
+  color: #9FBFE5FE;
+}
+
+.welcome p:last-child {
+  font-size: 11px;
+} */

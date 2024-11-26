@@ -254,6 +254,10 @@ h1 span {
   color: #b1b1b2;
 }
 
+.rs-wrapper {
+  width: 70%;
+}
+
 .rs-wrapper > p {
   color: #e4e2e4;
   margin-bottom: 16px;
@@ -336,3 +340,27 @@ h1 span {
 .welcome p:last-child {
   font-size: 11px;
 } */
+
+.auto-rs-power {
+  background: #D7E5F01F;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.auto-rs-power p {
+  margin: 0;
+}
+
+.auto-rs-power div p:first-child {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.auto-rs-power div p:last-child {
+  font-size: 12px;
+  color: #B1B1B2;
+}

@@ -10,14 +10,13 @@ import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
 
 const Home = () => {
-  const { profile, sRegion, setSRegion, setAllRegions, allRegions } = useDaemonContext();
+  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom } = useDaemonContext();
   const [serverIpAddress, setServerIpAddress] = useState<string>('')
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [isMenuVisible, setIsMenuVisible] = useState<boolean>(false)
   const [isWalletCopied, setIsWalletCopied] = useState<boolean>(false);
-  const [isAutoSelect, setIsAutoSelect] = useState<boolean>(false);
 
   const navigate = useNavigate();
 
@@ -147,11 +146,13 @@ const Home = () => {
   }
 
   const renderRegionSelector = () => {
-    if (isConnectionLoading) return
+    if (isConnectionLoading) return;
 
     return (
       <div className="rs-wrapper">
-        <p>Connect via Auto-Select or pick your region</p>
+        {
+          !power && <p>Connect via Auto-Select or pick your region</p>
+        }
         <div className="region-selector">
           {
             !power && (
@@ -189,21 +190,32 @@ const Home = () => {
           }
 
           {
-            power ? (
-              <div>
-                <ReactCountryFlag
-                  countryCode={allRegions[sRegion].code}
-                  svg
-                  aria-label="United States"
-                  style={{
-                    fontSize: "2em",
-                    lineHeight: "2em",
-                    marginRight: ".5em",
-                  }}
-                />
-                {allRegions[sRegion].country}
-              </div>
-            ) : (
+            power
+            ? isRandom
+              ? (
+                <div className="auto-rs-power">
+                  <div>
+                    <p>Auto Select</p>
+                    <p>{allRegions[sRegion].country}</p>
+                  </div>
+                  <img src="/assets/auto.png" width={48} height={48} alt="" />
+                </div>
+              ) : (
+                <div>
+                  <ReactCountryFlag
+                    countryCode={allRegions[sRegion].code}
+                    svg
+                    aria-label="United States"
+                    style={{
+                      fontSize: "2em",
+                      lineHeight: "2em",
+                      marginRight: ".5em",
+                    }}
+                  />
+                  {allRegions[sRegion].country}
+                </div>
+              )
+            : (
               <button className="region-btn" onClick={() => navigate("/regions")}>
                 <div>
                   <img src="/assets/global.png" width={22} height={22} alt="" />

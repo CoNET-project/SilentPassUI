@@ -119,7 +119,10 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
-const startMiningV2 = async (profile: profile) => {
+const startMiningV2 = async (
+  profile: profile,
+  callback: (response: nodeResponse) => void
+) => {
   await getAllNodes();
   miningAddress = profile.keyID.toLowerCase();
   const totalNodes = Guardian_Nodes.length - 1;
@@ -170,12 +173,26 @@ const startMiningV2 = async (profile: profile) => {
     async (err: any, _data: any) => {
       if (err) {
         console.log(err);
+        callback({
+          status: 404,
+          epoch: 0,
+          rate: "",
+          hash: "",
+          nodeWallet: "",
+          currentCCNTP: "",
+          minerResponseHash: "",
+          userWallets: [],
+          nodeWallets: [],
+          online: 0,
+        });
         return;
       }
 
       console.log("_startMiningV2 success", _data);
       const response: nodeResponse = JSON.parse(_data);
       mining_epoch = epoch;
+
+      callback(response);
 
       if (!profile?.tokens) {
         profile.tokens = initProfileTokens();

@@ -106,6 +106,7 @@ interface nodeResponse {
   minerResponseHash?: string;
   userWallets: string[];
   nodeWallets?: string[];
+  online: number;
 }
 
 type SICommandObj_Command =

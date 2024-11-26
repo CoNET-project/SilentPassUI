@@ -14,7 +14,7 @@ global.Buffer = require('buffer').Buffer;
 
 function App() {
 
-  const { setProfile } = useDaemonContext()
+  const { setProfile, setMiningData } = useDaemonContext()
 
   useEffect(() => {
     const init = async () => {
@@ -23,7 +23,7 @@ function App() {
 
       if (!CoNET_Data || !CoNET_Data?.profiles) return
 
-      await startMiningV2(CoNET_Data?.profiles?.[0]);
+      await startMiningV2(CoNET_Data?.profiles?.[0], setMiningData);
     };
 
     init();

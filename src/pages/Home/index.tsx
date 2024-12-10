@@ -18,6 +18,7 @@ const Home = () => {
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [isMenuVisible, setIsMenuVisible] = useState<boolean>(false)
   const [isWalletCopied, setIsWalletCopied] = useState<boolean>(false);
+  const [isPrivateKeyCopied, setIsPrivateKeyCopied] = useState<boolean>(false);
 
   const navigate = useNavigate();
 
@@ -192,39 +193,39 @@ const Home = () => {
 
           {
             power
-            ? isRandom
-              ? (
-                <div className="auto-rs-power">
-                  <div>
-                    <p>Auto Select</p>
-                    <p>{allRegions[sRegion].country}</p>
+              ? isRandom
+                ? (
+                  <div className="auto-rs-power">
+                    <div>
+                      <p>Auto Select</p>
+                      <p>{allRegions[sRegion].country}</p>
+                    </div>
+                    <img src="/assets/auto.png" width={48} height={48} alt="" />
                   </div>
-                  <img src="/assets/auto.png" width={48} height={48} alt="" />
-                </div>
-              ) : (
-                <div>
-                  <ReactCountryFlag
-                    countryCode={allRegions[sRegion].code}
-                    svg
-                    aria-label="United States"
-                    style={{
-                      fontSize: "2em",
-                      lineHeight: "2em",
-                      marginRight: ".5em",
-                    }}
-                  />
-                  {allRegions[sRegion].country}
-                </div>
+                ) : (
+                  <div>
+                    <ReactCountryFlag
+                      countryCode={allRegions[sRegion].code}
+                      svg
+                      aria-label="United States"
+                      style={{
+                        fontSize: "2em",
+                        lineHeight: "2em",
+                        marginRight: ".5em",
+                      }}
+                    />
+                    {allRegions[sRegion].country}
+                  </div>
+                )
+              : (
+                <button className="region-btn" onClick={() => navigate("/regions")}>
+                  <div>
+                    <img src="/assets/global.png" width={22} height={22} alt="" />
+                    <p>Select Region</p>
+                  </div>
+                  <img src="/assets/right.png" width={4} height={8} alt="" />
+                </button>
               )
-            : (
-              <button className="region-btn" onClick={() => navigate("/regions")}>
-                <div>
-                  <img src="/assets/global.png" width={22} height={22} alt="" />
-                  <p>Select Region</p>
-                </div>
-                <img src="/assets/right.png" width={4} height={8} alt="" />
-              </button>
-            )
           }
         </div>
       </div>
@@ -232,12 +233,22 @@ const Home = () => {
   }
 
   const copyWallet = () => {
-    navigator.clipboard.writeText("S");
+    navigator.clipboard.writeText(profile.keyID);
 
     setIsWalletCopied(true);
 
     setTimeout(() => {
       setIsWalletCopied(false);
+    }, 2000);
+  }
+
+  const copyPrivateKey = () => {
+    navigator.clipboard.writeText(profile.privateKeyArmor);
+
+    setIsPrivateKeyCopied(true);
+
+    setTimeout(() => {
+      setIsPrivateKeyCopied(false);
     }, 2000);
   }
 
@@ -286,6 +297,26 @@ const Home = () => {
                     <p>{profile?.keyID.slice(0, 4)}...{profile?.keyID.slice(-4)}</p>
                     {
                       isWalletCopied ? (
+                        <img src="/assets/check.svg" alt="Copy icon" />
+                      ) : (
+                        <img src="/assets/copy.svg" alt="Copy icon" />
+                      )
+                    }
+                  </button>
+                ) : (
+                  <Skeleton width="100px" height="24px" />
+                )
+              }
+            </div>
+
+            <div className="current-wallet">
+              <p>Private Key</p>
+              {
+                profile?.privateKeyArmor ? (
+                  <button onClick={copyPrivateKey}>
+                    <p>{profile?.privateKeyArmor.slice(0, 4)}...{profile?.privateKeyArmor.slice(-4)}</p>
+                    {
+                      isPrivateKeyCopied ? (
                         <img src="/assets/check.svg" alt="Copy icon" />
                       ) : (
                         <img src="/assets/copy.svg" alt="Copy icon" />

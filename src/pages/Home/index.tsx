@@ -289,44 +289,47 @@ const Home = () => {
           <>
             {renderButton()}
             {renderRegionSelector()}
-            <div className="current-wallet">
-              <p>Current Wallet</p>
-              {
-                profile?.keyID ? (
-                  <button onClick={copyWallet}>
-                    <p>{profile?.keyID.slice(0, 4)}...{profile?.keyID.slice(-4)}</p>
-                    {
-                      isWalletCopied ? (
-                        <img src="/assets/check.svg" alt="Copy icon" />
-                      ) : (
-                        <img src="/assets/copy.svg" alt="Copy icon" />
-                      )
-                    }
-                  </button>
-                ) : (
-                  <Skeleton width="100px" height="24px" />
-                )
-              }
-            </div>
 
-            <div className="current-wallet">
-              <p>Private Key</p>
-              {
-                profile?.privateKeyArmor ? (
-                  <button onClick={copyPrivateKey}>
-                    <p>{profile?.privateKeyArmor.slice(0, 4)}...{profile?.privateKeyArmor.slice(-4)}</p>
-                    {
-                      isPrivateKeyCopied ? (
-                        <img src="/assets/check.svg" alt="Copy icon" />
-                      ) : (
-                        <img src="/assets/copy.svg" alt="Copy icon" />
-                      )
-                    }
-                  </button>
-                ) : (
-                  <Skeleton width="100px" height="24px" />
-                )
-              }
+            <div className="wallet-info-container">
+              <div className="wallet-info">
+                <p>Current Wallet</p>
+                {
+                  profile?.keyID ? (
+                    <button onClick={copyWallet}>
+                      <p>{profile?.keyID.slice(0, 4)}...{profile?.keyID.slice(-4)}</p>
+                      {
+                        isWalletCopied ? (
+                          <img src="/assets/check.svg" alt="Copy icon" />
+                        ) : (
+                          <img src="/assets/copy.svg" alt="Copy icon" />
+                        )
+                      }
+                    </button>
+                  ) : (
+                    <Skeleton width="100px" height="24px" />
+                  )
+                }
+              </div>
+
+              <div className="wallet-info">
+                <p>Private Key</p>
+                {
+                  profile?.privateKeyArmor ? (
+                    <button onClick={copyPrivateKey}>
+                      <p>{profile?.privateKeyArmor.slice(0, 4)}...{profile?.privateKeyArmor.slice(-4)}</p>
+                      {
+                        isPrivateKeyCopied ? (
+                          <img src="/assets/check.svg" alt="Copy icon" />
+                        ) : (
+                          <img src="/assets/copy.svg" alt="Copy icon" />
+                        )
+                      }
+                    </button>
+                  ) : (
+                    <Skeleton width="100px" height="24px" />
+                  )
+                }
+              </div>
             </div>
           </>
         )}

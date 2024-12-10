@@ -25,9 +25,10 @@ a {
 .home {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-evenly;
   align-items: center;
-  gap: 20px;
+  height: 100%;
+  padding: 45px 0;
 }
 
 .menu-icon {
@@ -272,22 +273,28 @@ h1 span {
   gap: 16px;
 }
 
-.current-wallet {
+.wallet-info-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.wallet-info {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.current-wallet > p {
+.wallet-info > p {
   font-weight: 700;
   width: initial;
 }
 
-.current-wallet p {
+.wallet-info p {
   margin: 0;
 }
 
-.current-wallet button {
+.wallet-info button {
   background: 0;
   border: 0;
 
@@ -302,7 +309,7 @@ h1 span {
   margin-top: 2px;
 }
 
-.current-wallet img {
+.wallet-info img {
   width: 16px;
   height: 16px;
 
@@ -350,7 +357,7 @@ h1 span {
 } */
 
 .auto-rs-power {
-  background: #D7E5F01F;
+  background: #d7e5f01f;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -370,5 +377,5 @@ h1 span {
 
 .auto-rs-power div p:last-child {
   font-size: 12px;
-  color: #B1B1B2;
+  color: #b1b1b2;
 }

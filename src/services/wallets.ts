@@ -51,6 +51,27 @@ const createOrGetWallet = async () => {
       nonce: 0,
     };
 
+    const primaryWallet = ethers.Wallet.fromPhrase(data.mnemonicPhrase);
+    const secondaryWallet = primaryWallet.deriveChild(0);
+
+    const profile2: profile = {
+      tokens: initProfileTokens(),
+      publicKeyArmor: secondaryWallet.publicKey,
+      keyID: secondaryWallet.address,
+      isPrimary: true,
+      referrer: null,
+      isNode: false,
+      pgpKey: {
+        privateKeyArmor: key.privateKey,
+        publicKeyArmor: key.publicKey,
+      },
+      privateKeyArmor: secondaryWallet.signingKey.privateKey,
+      hdPath: secondaryWallet.path,
+      index: secondaryWallet.index,
+    };
+
+    data.profiles.push(profile2);
+
     setCoNET_Data(data);
   }
 

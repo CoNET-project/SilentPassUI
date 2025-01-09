@@ -9,7 +9,7 @@ import MiningStatus from '../../components/MiningStatus';
 import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
 import Skeleton from '../../components/Skeleton';
-import { getEntryNodes } from '../../services/mining';
+import { getEntryNodes, testClosestRegion } from '../../services/mining';
 import { CoNET_Data } from '../../utils/globals';
 
 const Home = () => {
@@ -73,14 +73,27 @@ const Home = () => {
 
       const selectedCountryCode = allRegions[selectedCountryIndex].code
 
-      console.log('selected country: ', selectedCountryCode)
-
       const nodeList = await getEntryNodes();
 
-      const randomNodeIndex = Math.floor(Math.random() * nodeList!.length);
+      const closestRegion = await testClosestRegion(allRegions);
 
-      const exitNode = nodeList?.[randomNodeIndex];
-      const entryNodes = nodeList?.filter((_, index) => index !== randomNodeIndex);
+      const nodeListFilteredByClosestRegion = nodeList!.filter((n) => n.region === closestRegion.node.region)
+      const nodeListFilteredBySelectedRegion = nodeList!.filter((n) => n.region.endsWith(selectedCountryCode));
+
+      const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredBySelectedRegion!.length);
+
+      const exitNode = nodeListFilteredBySelectedRegion?.[randomNodeIndex];
+
+      let entryNodes: any[] = [];
+
+      do {
+        const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredByClosestRegion!.length)
+        const choosenNode = nodeListFilteredByClosestRegion[randomNodeIndex];
+
+        if (!!entryNodes.find((item: any) => item.ip_addr === choosenNode.ip_addr)) continue;
+
+        entryNodes.push(choosenNode)
+      } while (entryNodes.length < 5);
 
       const conetProfile = CoNET_Data?.profiles[0];
 
@@ -93,9 +106,6 @@ const Home = () => {
       const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
 
       const base64VPNMessage = btoa(stringifiedVPNMessageObject);
-
-      console.log("START VPN MESSAGE OBJECT: ", startVPNMessageObject);
-      console.log("BASE 64 VPN: ", base64VPNMessage);
 
       window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
 

@@ -85,7 +85,7 @@ export default function Menu({ isMenuVisible, toggleMenu }: MenuProps) {
               {WEBSITE_LINK}
 
               <button
-                style={{ backgroundColor: 'transparent', border: 'none', padding: '0px', display: 'flex', alignItems: 'center' }}
+                style={{ backgroundColor: 'transparent', border: 'none', padding: '0px', display: 'flex', alignItems: 'end' }}
                 onClick={() => copyText("website")}
               >
                 {copiedWebsiteLink ? (
@@ -111,7 +111,7 @@ export default function Menu({ isMenuVisible, toggleMenu }: MenuProps) {
               {TELEGRAM_LINK}
 
               <button
-                style={{ backgroundColor: 'transparent', border: 'none', padding: '0px', display: 'flex', alignItems: 'center' }}
+                style={{ backgroundColor: 'transparent', border: 'none', padding: '0px', display: 'flex', alignItems: 'end' }}
                 onClick={() => copyText("telegram")}
               >
                 {copiedTelegramLink ? (
@@ -137,7 +137,7 @@ export default function Menu({ isMenuVisible, toggleMenu }: MenuProps) {
               {TWITTER_LINK}
 
               <button
-                style={{ backgroundColor: 'transparent', border: 'none', padding: '0px', display: 'flex', alignItems: 'center' }}
+                style={{ backgroundColor: 'transparent', border: 'none', padding: '0px', display: 'flex', alignItems: 'end' }}
                 onClick={() => copyText("twitter")}
               >
                 {copiedTwitterLink ? (
@@ -163,7 +163,7 @@ export default function Menu({ isMenuVisible, toggleMenu }: MenuProps) {
               {DISCORD_LINK}
 
               <button
-                style={{ backgroundColor: 'transparent', border: 'none', padding: '0px', display: 'flex', alignItems: 'center' }}
+                style={{ backgroundColor: 'transparent', border: 'none', padding: '0px', display: 'flex', alignItems: 'end' }}
                 onClick={() => copyText("discord")}
               >
                 {copiedDiscordLink ? (

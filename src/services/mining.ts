@@ -20,7 +20,72 @@ let miningConnection: any = null;
 let mining_epoch = 0;
 let epoch = 0;
 let getAllNodesProcess = false;
+let getEntryNodesProcess = false;
 let miningProfile: profile | null = null;
+
+const getEntryNodes = async () => {
+  if (getEntryNodesProcess) {
+    return;
+  }
+  getEntryNodesProcess = true;
+  const GuardianNodes = new ethers.Contract(
+    contracts.ConetGuardianNodesV6.address,
+    contracts.ConetGuardianNodesV6.abi,
+    conetProvider
+  );
+  let scanNodes = 0;
+  try {
+    const maxNodes: BigInt = await GuardianNodes.currentNodeID();
+    scanNodes = parseInt(maxNodes.toString());
+  } catch (ex) {
+    return console.log(`getEntryNodes currentNodeID Error`, ex);
+  }
+  if (!scanNodes) {
+    return console.log(`getEntryNodes STOP scan because scanNodes == 0`);
+  }
+  Guardian_Nodes = [];
+  for (let i = 0; i < scanNodes; i++) {
+    Guardian_Nodes.push({
+      region: "",
+      country: "",
+      ip_addr: "",
+      armoredPublicKey: "",
+      last_online: false,
+      nftNumber: 100 + i,
+    });
+  }
+  const GuardianNodesInfo = new ethers.Contract(
+    contracts.GuardianNodesInfoV6.address,
+    contracts.GuardianNodesInfoV6.abi,
+    conetProvider
+  );
+
+  let i = 0;
+
+  await async
+    .mapLimit(Guardian_Nodes, 5, async (n: nodes_info, next: any) => {
+      const nodeInfo = await GuardianNodesInfo.getNodeInfoById(n.nftNumber);
+      if (nodeInfo?.pgp) {
+        i = n.nftNumber;
+        n.region = nodeInfo.regionName;
+        n.ip_addr = nodeInfo.ipaddress;
+        n.armoredPublicKey = Buffer.from(nodeInfo.pgp, "base64").toString();
+        const pgpKey1 = await readKey({
+          armoredKey: n.armoredPublicKey,
+        });
+        n.domain =
+          pgpKey1.getKeyIDs()[1].toHex().toUpperCase() + ".conet.network";
+      }
+    })
+    .catch(() => {});
+  const index = Guardian_Nodes.findIndex((n) => n.nftNumber === i) + 1;
+  Guardian_Nodes = Guardian_Nodes.slice(0, index);
+  getAllNodesProcess = false;
+
+  return Guardian_Nodes;
+};
+
+
 
 const getAllNodes = async () => {
   if (getAllNodesProcess) {
@@ -469,4 +534,4 @@ const postToEndpointSSE = (
   return xhr;
 };
 
-export { startMiningV2 };
+export { startMiningV2, getEntryNodes };

@@ -9,6 +9,8 @@ import MiningStatus from '../../components/MiningStatus';
 import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
 import Skeleton from '../../components/Skeleton';
+import { getEntryNodes } from '../../services/mining';
+import { CoNET_Data } from '../../utils/globals';
 
 const Home = () => {
   const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom } = useDaemonContext();
@@ -73,7 +75,29 @@ const Home = () => {
 
       console.log('selected country: ', selectedCountryCode)
 
-      window?.webkit?.messageHandlers["startVPN"].postMessage(selectedCountryCode)
+      const nodeList = await getEntryNodes();
+
+      const randomNodeIndex = Math.floor(Math.random() * nodeList!.length);
+
+      const exitNode = nodeList?.[randomNodeIndex];
+      const entryNodes = nodeList?.filter((_, index) => index !== randomNodeIndex);
+
+      const conetProfile = CoNET_Data?.profiles[0];
+
+      const startVPNMessageObject = {
+        entryNodes,
+        exitNode,
+        privateKey: conetProfile?.privateKeyArmor,
+      }
+
+      const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
+
+      const base64VPNMessage = btoa(stringifiedVPNMessageObject);
+
+      console.log("START VPN MESSAGE OBJECT: ", startVPNMessageObject);
+      console.log("BASE 64 VPN: ", base64VPNMessage);
+
+      window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
 
       // startVpnMining()
 

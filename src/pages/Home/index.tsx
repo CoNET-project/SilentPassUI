@@ -342,7 +342,7 @@ const Home = () => {
                         isWalletCopied ? (
                           <img src="/assets/check.svg" alt="Copy icon" />
                         ) : (
-                          <img src="/assets/copy.svg" alt="Copy icon" />
+                          <img src="/assets/copy-purple.svg" alt="Copy icon" />
                         )
                       }
                     </button>
@@ -362,7 +362,7 @@ const Home = () => {
                         isPrivateKeyCopied ? (
                           <img src="/assets/check.svg" alt="Copy icon" />
                         ) : (
-                          <img src="/assets/copy.svg" alt="Copy icon" />
+                          <img src="/assets/copy-purple.svg" alt="Copy icon" />
                         )
                       }
                     </button>

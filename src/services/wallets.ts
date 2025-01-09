@@ -77,6 +77,31 @@ const createOrGetWallet = async () => {
 
   const tmpData = CoNET_Data;
 
+  if (tmpData && tmpData?.profiles.length < 2) {
+    const primaryWallet = ethers.Wallet.fromPhrase(tmpData.mnemonicPhrase);
+    const secondaryWallet = primaryWallet.deriveChild(0);
+
+    const key = await createGPGKey("", "", "");
+
+    const profile2: profile = {
+      tokens: initProfileTokens(),
+      publicKeyArmor: secondaryWallet.publicKey,
+      keyID: secondaryWallet.address,
+      isPrimary: true,
+      referrer: null,
+      isNode: false,
+      pgpKey: {
+        privateKeyArmor: key.privateKey,
+        publicKeyArmor: key.publicKey,
+      },
+      privateKeyArmor: secondaryWallet.signingKey.privateKey,
+      hdPath: secondaryWallet.path,
+      index: secondaryWallet.index,
+    };
+
+    tmpData.profiles.push(profile2);
+  }
+
   tmpData?.profiles.forEach(async (n: profile) => {
     n.keyID = n.keyID.toLocaleLowerCase();
     n.tokens.cCNTP.unlocked = false;

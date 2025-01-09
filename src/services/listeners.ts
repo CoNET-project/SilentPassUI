@@ -18,9 +18,8 @@ const listenProfileVer = async (callback: (profile: profile) => void) => {
         return;
       }
       const runningList: any[] = [];
-      for (let profile of profiles) {
-        runningList.push(getProfileAssets(profile));
-      }
+
+      runningList.push(getProfileAssets(profiles[0]));
 
       await Promise.all(runningList);
 

@@ -13,8 +13,7 @@ import { getEntryNodes, testClosestRegion } from '../../services/mining';
 import { CoNET_Data } from '../../utils/globals';
 
 const Home = () => {
-  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom } = useDaemonContext();
-  const [serverIpAddress, setServerIpAddress] = useState<string>('')
+  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom, setIsRandom } = useDaemonContext();
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
@@ -40,6 +39,10 @@ const Home = () => {
 
         return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
       }))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
+
+      const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
+      setSRegion(unitedStatesIndex)
+      setIsRandom(false);
 
       setAllRegions(treatedRegions);
     };
@@ -86,16 +89,20 @@ const Home = () => {
 
       let entryNodes: any[] = [];
 
-      do {
-        const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredByClosestRegion!.length)
-        const choosenNode = nodeListFilteredByClosestRegion[randomNodeIndex];
+      if (nodeListFilteredByClosestRegion.length < 5) {
+        entryNodes = nodeListFilteredByClosestRegion;
+      } else {
+        do {
+          const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredByClosestRegion!.length)
+          const choosenNode = nodeListFilteredByClosestRegion[randomNodeIndex];
 
-        if (!!entryNodes.find((item: any) => item.ip_addr === choosenNode.ip_addr)) continue;
+          if (!!entryNodes.find((item: any) => item.ip_addr === choosenNode.ip_addr)) continue;
 
-        entryNodes.push(choosenNode)
-      } while (entryNodes.length < 5);
+          entryNodes.push(choosenNode)
+        } while (entryNodes.length < 5);
+      }
 
-      const conetProfile = CoNET_Data?.profiles[0];
+      const conetProfile = CoNET_Data?.profiles[1];
 
       const startVPNMessageObject = {
         entryNodes,
@@ -169,7 +176,7 @@ const Home = () => {
             className="power"
             onClick={handleTogglePower}
           >
-            <img src="/assets/not-power.png" width={85} height={85} alt="" />
+            <img src="/assets/not-power.png" width={65} height={65} alt="" />
           </button>
         </BlobWrapper>
 
@@ -210,7 +217,7 @@ const Home = () => {
                       <ReactCountryFlag
                         countryCode={allRegions[sRegion].code}
                         svg
-                        aria-label="United States"
+                        aria-label={allRegions[sRegion].country}
                         style={{
                           fontSize: "2em",
                           lineHeight: "2em",

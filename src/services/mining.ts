@@ -85,67 +85,73 @@ const getEntryNodes = async () => {
   return Guardian_Nodes;
 };
 
-const postToEndpointGetBody: ( url: string, post: boolean, jsonData: any) => Promise<string> = ( url: string, post: boolean, jsonData ) => {
-	return new Promise ((resolve, reject) => {
-		const xhr = new XMLHttpRequest()
-		xhr.onload = () => {
-			clearTimeout (timeCount)
-			//const status = parseInt(xhr.responseText.split (' ')[1])
+const postToEndpointGetBody: (
+  url: string,
+  post: boolean,
+  jsonData: any
+) => Promise<string> = (url: string, post: boolean, jsonData) => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => {
+      clearTimeout(timeCount);
+      //const status = parseInt(xhr.responseText.split (' ')[1])
 
-			if (xhr.status === 200) {
-				// parse JSON
-				if ( !xhr.responseText.length ) {
-					return resolve ('')
-				}
-				return resolve ( xhr.responseText)
-			}
-			return resolve ('')
-		}
+      if (xhr.status === 200) {
+        // parse JSON
+        if (!xhr.responseText.length) {
+          return resolve("");
+        }
+        return resolve(xhr.responseText);
+      }
+      return resolve("");
+    };
 
-		xhr.open( post? 'POST': 'GET', url, true )
-		xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8')
-		// xhr.setRequestHeader('Connection', 'close')
+    xhr.open(post ? "POST" : "GET", url, true);
+    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    // xhr.setRequestHeader('Connection', 'close')
 
-		xhr.send(jsonData? JSON.stringify(jsonData): '')
+    xhr.send(jsonData ? JSON.stringify(jsonData) : "");
 
-		const timeCount = setTimeout (() => {
-			const Err = `postToEndpoint Timeout!`
-			return resolve ('')
-		}, 30 * 1000 )
-	})
+    const timeCount = setTimeout(() => {
+      const Err = `postToEndpoint Timeout!`;
+      return resolve("");
+    }, 30 * 1000);
+  });
+};
 
-}
-
-const getRandomNodeFromRegion: (region: string) => nodes_info = (region: string) => {
-	const allNodeInRegion = Guardian_Nodes.filter(n => n.region.endsWith(region))
-	const rendomIndex = Math.floor(Math.random() * allNodeInRegion.length - 1)
-	if (rendomIndex >= allNodeInRegion.length) {
-		return allNodeInRegion[0]
-	}
-	return allNodeInRegion[rendomIndex]
-}
-
+const getRandomNodeFromRegion: (region: string) => nodes_info = (
+  region: string
+) => {
+  const allNodeInRegion = Guardian_Nodes.filter((n) =>
+    n.region.endsWith(region)
+  );
+  const rendomIndex = Math.floor(Math.random() * allNodeInRegion.length - 1);
+  if (rendomIndex >= allNodeInRegion.length) {
+    return allNodeInRegion[0];
+  }
+  return allNodeInRegion[rendomIndex];
+};
 
 const testClosestRegion = async (allRegions: any[]) => {
-	let regionSort: any[] = []
+  let regionSort: any[] = [];
 
-	await async.mapLimit(allRegions, allRegions.length, async (r: any, next) => {
-		const node = getRandomNodeFromRegion(r.code)
-		if (!node?.domain) {
-			return
-		}
-		const url = `https://${node.domain}`
-		const startTime = new Date().getTime()
-		await postToEndpointGetBody(url, false, null)
-		const endTime = new Date().getTime()
-		const delay = endTime - startTime
-		regionSort.push({node, delay})
-	})
+  await async.mapLimit(allRegions, allRegions.length, async (r: any, next) => {
+    const node = getRandomNodeFromRegion(r.code);
+    if (!node?.domain) {
+      return;
+    }
+    const url = `https://${node.domain}`;
+    const startTime = new Date().getTime();
+    await postToEndpointGetBody(url, false, null);
+    const endTime = new Date().getTime();
+    const delay = endTime - startTime;
+    regionSort.push({ node, delay });
+  });
 
-	regionSort.sort((a, b) => a.delay-b.delay)
+  regionSort.sort((a, b) => a.delay - b.delay);
 
   return regionSort[0];
-}
+};
 
 const getAllNodes = async () => {
   if (getAllNodesProcess) {

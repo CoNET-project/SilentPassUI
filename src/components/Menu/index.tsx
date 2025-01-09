@@ -38,7 +38,7 @@ export default function Menu({ isMenuVisible, toggleMenu }: MenuProps) {
           </a>
 
           <button className="menu-item" onClick={() => navigate("/about")}>
-          <img src="/assets/about.svg" width={24} height={24} />
+            <img src="/assets/about.svg" width={24} height={24} />
             About
           </button>
 

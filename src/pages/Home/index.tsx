@@ -116,8 +116,6 @@ const Home = () => {
 
       window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
 
-      // startVpnMining()
-
       setTimeout(() => {
         setIsConnectionLoading(false)
         setPower(true);

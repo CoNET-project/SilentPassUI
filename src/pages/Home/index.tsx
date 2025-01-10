@@ -136,7 +136,7 @@ const Home = () => {
             <button
               className="power"
             >
-              <img src="/assets/loading-ring.png" className="loading-spinning" width={85} height={85} alt="" />
+              <img src="/assets/loading-ring.png" className="loading-spinning power-icon" alt="" />
             </button>
           </BlobWrapper>
 
@@ -154,7 +154,7 @@ const Home = () => {
               className="power"
               onClick={handleTogglePower}
             >
-              <img src="/assets/power.png" width={85} height={85} alt="" />
+              <img src="/assets/power.png" className="power-icon" alt="" />
             </button>
           </BlobWrapper>
 
@@ -174,7 +174,7 @@ const Home = () => {
             className="power"
             onClick={handleTogglePower}
           >
-            <img src="/assets/not-power.png" width={65} height={65} alt="" />
+            <img src="/assets/not-power.png" className="power-icon" alt="" />
           </button>
         </BlobWrapper>
 

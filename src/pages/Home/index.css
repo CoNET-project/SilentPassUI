@@ -169,8 +169,10 @@ h1 span {
 }
 
 .power {
-  width: 144px;
-  height: 144px;
+  width: 20vh;
+  height: 20vh;
+  min-width: 100px;
+  min-height: 100px;
   background-image: radial-gradient(#282930 50%, #585757 100%);
   outline: none;
   border: none;
@@ -182,6 +184,13 @@ h1 span {
   align-items: center;
   position: relative;
   z-index: 5;
+}
+
+.power-icon {
+  width: 10vh;
+  height: 10vh;
+  min-width: 50px;
+  min-height: 50px;
 }
 
 .not-connected,
@@ -320,6 +329,7 @@ h1 span {
   display: flex;
   align-items: center;
   gap: 8px;
+  line-height: 25px;
 }
 
 .current-mined p {

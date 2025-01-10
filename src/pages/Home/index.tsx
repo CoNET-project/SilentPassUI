@@ -9,7 +9,7 @@ import MiningStatus from '../../components/MiningStatus';
 import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
 import Skeleton from '../../components/Skeleton';
-import { getEntryNodes, testClosestRegion } from '../../services/mining';
+import { allNodes, closestNodes } from '../../services/mining';
 import { CoNET_Data } from '../../utils/globals';
 
 const Home = () => {
@@ -76,12 +76,8 @@ const Home = () => {
 
       const selectedCountryCode = allRegions[selectedCountryIndex].code
 
-      const nodeList = await getEntryNodes();
-
-      const closestRegion = await testClosestRegion(allRegions);
-
-      const nodeListFilteredByClosestRegion = nodeList!.filter((n) => n.region === closestRegion.node.region)
-      const nodeListFilteredBySelectedRegion = nodeList!.filter((n) => n.region.endsWith(selectedCountryCode));
+      const nodeListFilteredByClosestRegion = closestNodes
+      const nodeListFilteredBySelectedRegion = allNodes!.filter((n: any) => n.region.endsWith(selectedCountryCode));
 
       const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredBySelectedRegion!.length);
 
@@ -119,7 +115,8 @@ const Home = () => {
       setTimeout(() => {
         setIsConnectionLoading(false)
         setPower(true);
-      }, 5000)
+      }, 1000)
+
       return
     } catch (error) {
       setPower(false);

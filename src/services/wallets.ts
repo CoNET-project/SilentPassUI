@@ -173,14 +173,14 @@ const getFaucet = async (keyId: string, privateKey: string) => {
   } else {
     const provide = new ethers.JsonRpcProvider(conetRpc);
     const wallet = new ethers.Wallet(privateKey, provide);
-    const faucetSmartContract = new ethers.Contract(
+    const faucetContract = new ethers.Contract(
       contracts.FaucetV3.address,
       contracts.FaucetV3.abi,
       wallet
     );
 
     try {
-      const tx = await faucetSmartContract.getFaucet();
+      const tx = await faucetContract.getFaucet();
       console.log(`success hash = ${tx.hash}`);
       return true;
     } catch (ex) {

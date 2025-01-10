@@ -92,13 +92,13 @@ const getProfileAssets = async (profile: profile) => {
 };
 
 const scanCCNTP = async (walletAddr: string) => {
-  const erc20 = new ethers.Contract(
+  const erc20Contract = new ethers.Contract(
     contracts.ClaimableConetPoint.address,
     contracts.ClaimableConetPoint.abi,
     conetProvider
   );
   try {
-    const result = await erc20.balanceOf(walletAddr);
+    const result = await erc20Contract.balanceOf(walletAddr);
     return result;
   } catch (ex) {
     console.log(`scan_erc20_balance Error!`);

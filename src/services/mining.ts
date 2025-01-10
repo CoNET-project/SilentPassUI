@@ -13,7 +13,8 @@ import { conetProvider } from "../utils/constants";
 import { initProfileTokens, postToEndpoint } from "../utils/utils";
 import async from "async";
 
-let Guardian_Nodes: nodes_info[] = [];
+let allNodes: nodes_info[] = [];
+let closestNodes: nodes_info[] = [];
 let cCNTPcurrentTotal = 0;
 let miningAddress = "";
 let miningConnection: any = null;
@@ -22,68 +23,6 @@ let epoch = 0;
 let getAllNodesProcess = false;
 let getEntryNodesProcess = false;
 let miningProfile: profile | null = null;
-
-const getEntryNodes = async () => {
-  if (getEntryNodesProcess) {
-    return;
-  }
-  getEntryNodesProcess = true;
-  const GuardianNodes = new ethers.Contract(
-    contracts.ConetGuardianNodesV6.address,
-    contracts.ConetGuardianNodesV6.abi,
-    conetProvider
-  );
-  let scanNodes = 0;
-  try {
-    const maxNodes: BigInt = await GuardianNodes.currentNodeID();
-    scanNodes = parseInt(maxNodes.toString());
-  } catch (ex) {
-    return console.log(`getEntryNodes currentNodeID Error`, ex);
-  }
-  if (!scanNodes) {
-    return console.log(`getEntryNodes STOP scan because scanNodes == 0`);
-  }
-  Guardian_Nodes = [];
-  for (let i = 0; i < scanNodes; i++) {
-    Guardian_Nodes.push({
-      region: "",
-      country: "",
-      ip_addr: "",
-      armoredPublicKey: "",
-      last_online: false,
-      nftNumber: 100 + i,
-    });
-  }
-  const GuardianNodesInfo = new ethers.Contract(
-    contracts.GuardianNodesInfoV6.address,
-    contracts.GuardianNodesInfoV6.abi,
-    conetProvider
-  );
-
-  let i = 0;
-
-  await async
-    .mapLimit(Guardian_Nodes, 5, async (n: nodes_info, next: any) => {
-      const nodeInfo = await GuardianNodesInfo.getNodeInfoById(n.nftNumber);
-      if (nodeInfo?.pgp) {
-        i = n.nftNumber;
-        n.region = nodeInfo.regionName;
-        n.ip_addr = nodeInfo.ipaddress;
-        n.armoredPublicKey = Buffer.from(nodeInfo.pgp, "base64").toString();
-        const pgpKey1 = await readKey({
-          armoredKey: n.armoredPublicKey,
-        });
-        n.domain =
-          pgpKey1.getKeyIDs()[1].toHex().toUpperCase() + ".conet.network";
-      }
-    })
-    .catch(() => {});
-  const index = Guardian_Nodes.findIndex((n) => n.nftNumber === i) + 1;
-  Guardian_Nodes = Guardian_Nodes.slice(0, index);
-  getAllNodesProcess = false;
-
-  return Guardian_Nodes;
-};
 
 const postToEndpointGetBody: (
   url: string,
@@ -122,9 +61,7 @@ const postToEndpointGetBody: (
 const getRandomNodeFromRegion: (region: string) => nodes_info = (
   region: string
 ) => {
-  const allNodeInRegion = Guardian_Nodes.filter((n) =>
-    n.region.endsWith(region)
-  );
+  const allNodeInRegion = allNodes.filter((n) => n.region.endsWith(region));
   const rendomIndex = Math.floor(Math.random() * allNodeInRegion.length - 1);
   if (rendomIndex >= allNodeInRegion.length) {
     return allNodeInRegion[0];
@@ -133,7 +70,7 @@ const getRandomNodeFromRegion: (region: string) => nodes_info = (
 };
 
 const testClosestRegion = async (allRegions: any[]) => {
-  let regionSort: any[] = [];
+  let regionSort: ClosestRegion[] = [];
 
   await async.mapLimit(allRegions, allRegions.length, async (r: any, next) => {
     const node = getRandomNodeFromRegion(r.code);
@@ -153,19 +90,22 @@ const testClosestRegion = async (allRegions: any[]) => {
   return regionSort[0];
 };
 
-const getAllNodes = async () => {
+const getAllNodes = async (
+  allRegions: Region[],
+  setClosestRegion: (region: ClosestRegion) => void
+) => {
   if (getAllNodesProcess) {
     return;
   }
   getAllNodesProcess = true;
-  const GuardianNodes = new ethers.Contract(
+  const GuardianNodesContract = new ethers.Contract(
     contracts.ConetGuardianNodesV6.address,
     contracts.ConetGuardianNodesV6.abi,
     conetProvider
   );
   let scanNodes = 0;
   try {
-    const maxNodes: BigInt = await GuardianNodes.currentNodeID();
+    const maxNodes: BigInt = await GuardianNodesContract.currentNodeID();
     scanNodes = parseInt(maxNodes.toString());
   } catch (ex) {
     return console.log(`getAllNodes currentNodeID Error`, ex);
@@ -173,9 +113,9 @@ const getAllNodes = async () => {
   if (!scanNodes) {
     return console.log(`getAllNodes STOP scan because scanNodes == 0`);
   }
-  Guardian_Nodes = [];
+  allNodes = [];
   for (let i = 0; i < scanNodes; i++) {
-    Guardian_Nodes.push({
+    allNodes.push({
       region: "",
       country: "",
       ip_addr: "",
@@ -184,7 +124,7 @@ const getAllNodes = async () => {
       nftNumber: 100 + i,
     });
   }
-  const GuardianNodesInfo = new ethers.Contract(
+  const GuardianNodesInfoContract = new ethers.Contract(
     contracts.GuardianNodesInfoV6.address,
     contracts.GuardianNodesInfoV6.abi,
     conetProvider
@@ -193,8 +133,10 @@ const getAllNodes = async () => {
   let i = 0;
 
   await async
-    .mapLimit(Guardian_Nodes, 5, async (n: nodes_info, next: any) => {
-      const nodeInfo = await GuardianNodesInfo.getNodeInfoById(n.nftNumber);
+    .mapLimit(allNodes, 5, async (n: nodes_info, next: any) => {
+      const nodeInfo = await GuardianNodesInfoContract.getNodeInfoById(
+        n.nftNumber
+      );
       if (nodeInfo?.pgp) {
         i = n.nftNumber;
         n.region = nodeInfo.regionName;
@@ -208,13 +150,22 @@ const getAllNodes = async () => {
       }
     })
     .catch(() => {});
-  const index = Guardian_Nodes.findIndex((n) => n.nftNumber === i) + 1;
-  Guardian_Nodes = Guardian_Nodes.slice(0, index);
+  const index = allNodes.findIndex((n) => n.nftNumber === i) + 1;
+  allNodes = allNodes.slice(0, index);
+
+  const closestRegion = await testClosestRegion(allRegions);
+  setClosestRegion(closestRegion);
+  const nodeListFilteredByClosestRegion = allNodes!.filter(
+    (n) => n.region === closestRegion.node.region
+  );
+
+  closestNodes = nodeListFilteredByClosestRegion;
+
   getAllNodesProcess = false;
 };
 
 const getRandomNodeV2: (index: number) => null | nodes_info = (index = -1) => {
-  const totalNodes = Guardian_Nodes.length - 1;
+  const totalNodes = closestNodes.length - 1;
   if (!totalNodes) {
     return null;
   }
@@ -227,9 +178,9 @@ const getRandomNodeV2: (index: number) => null | nodes_info = (index = -1) => {
     return getRandomNodeV2(index);
   }
 
-  const node = Guardian_Nodes[nodeNumber];
+  const node = closestNodes[nodeNumber];
   console.log(
-    `getRandomNodeV2 Guardian_Nodes length =${Guardian_Nodes.length} nodeNumber = ${nodeNumber} `
+    `getRandomNodeV2 Guardian_Nodes length =${closestNodes.length} nodeNumber = ${nodeNumber} `
   );
   return node;
 };
@@ -252,11 +203,11 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
 
 const startMiningV2 = async (
   profile: profile,
+  allRegions: Region[],
   callback: (response: nodeResponse) => void
 ) => {
-  await getAllNodes();
   miningAddress = profile.keyID.toLowerCase();
-  const totalNodes = Guardian_Nodes.length - 1;
+  const totalNodes = closestNodes.length - 1;
 
   if (!totalNodes) {
     console.log("totalNodes is empty");
@@ -264,7 +215,7 @@ const startMiningV2 = async (
   }
 
   const nodeNumber = Math.floor(Math.random() * totalNodes);
-  const connectNode = Guardian_Nodes[nodeNumber];
+  const connectNode = closestNodes[nodeNumber];
 
   if (!connectNode) {
     console.log("connectNode is empty");
@@ -279,10 +230,10 @@ const startMiningV2 = async (
     };
   }
 
-  const index = Guardian_Nodes.findIndex(
+  const index = closestNodes.findIndex(
     (n) => n.ip_addr === connectNode.ip_addr
   );
-  Guardian_Nodes.splice(index, 1);
+  closestNodes.splice(index, 1);
 
   const postData = await createConnectCmd(profile, connectNode);
   let first = true;
@@ -600,4 +551,10 @@ const postToEndpointSSE = (
   return xhr;
 };
 
-export { startMiningV2, getEntryNodes, testClosestRegion };
+export {
+  startMiningV2,
+  getAllNodes,
+  testClosestRegion,
+  closestNodes,
+  allNodes,
+};

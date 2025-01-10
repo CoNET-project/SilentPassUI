@@ -5,6 +5,8 @@ type DaemonContext = {
   setSRegion: (region: number) => void;
   allRegions: Region[];
   setAllRegions: (regions: Region[]) => void;
+  closestRegion: any;
+  setClosestRegion: (region: ClosestRegion) => void;
   isRandom: boolean;
   setIsRandom: (val: boolean) => void;
   miningData: any;
@@ -24,6 +26,8 @@ const defaultContextValue: DaemonContext = {
   setSRegion: () => { },
   allRegions: [],
   setAllRegions: () => { },
+  closestRegion: null,
+  setClosestRegion: () => { },
   isRandom: true,
   setIsRandom: () => { },
   miningData: null,
@@ -45,12 +49,13 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [isRandom, setIsRandom] = useState<boolean>(true);
   const [sRegion, setSRegion] = useState<number>(-1);
   const [allRegions, setAllRegions] = useState<Region[]>([]);
+  const [closestRegion, setClosestRegion] = useState<any>(null);
   const [miningData, setMiningData] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
 
   return (
-    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp }}>
+    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp }}>
       {children}
     </Daemon.Provider>
   );

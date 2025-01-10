@@ -369,7 +369,11 @@ const Home = () => {
             </div>
           </>
         )}
-      </div >
+
+        <button className="vip-button" onClick={() => navigate("/vip")}>
+          VIP
+        </button>
+      </div>
 
       <div className="footer">
         <div className="footer-content">

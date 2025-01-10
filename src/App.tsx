@@ -9,6 +9,7 @@ import { createOrGetWallet } from "./services/wallets";
 import { getAllNodes, startMiningV2 } from "./services/mining";
 import { CoNET_Data } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
+import Vip from './pages/Vip';
 
 global.Buffer = require('buffer').Buffer;
 
@@ -39,6 +40,7 @@ function App() {
         <Routes>
           <Route path="/regions" element={<Region />}></Route>
           <Route path="/about" element={<About />}></Route>
+          <Route path="/vip" element={<Vip />}></Route>
           <Route path="/" element={<Home />}></Route>
         </Routes>
       </Router>

@@ -270,7 +270,6 @@ h1 span {
 
 .rs-wrapper > p {
   color: #e4e2e4;
-  margin-bottom: 16px;
   font-size: 11px;
   text-align: center;
 }
@@ -285,7 +284,7 @@ h1 span {
 .wallet-info-container {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .wallet-info {
@@ -386,4 +385,14 @@ h1 span {
 .auto-rs-power div p:last-child {
   font-size: 12px;
   color: #b1b1b2;
+}
+
+.vip-button {
+  width: 100%;
+  border: 0;
+  background: #2A3038;
+  padding: 12px 8px;
+  border-radius: 100px;
+  font-weight: 700;
+  color: #FFFFFF;
 }

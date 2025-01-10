@@ -1,0 +1,27 @@
+.vip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+
+  width: 100%;
+  max-width: 360px;
+}
+
+.vip p {
+  width: 100%;
+  max-width: initial;
+}
+
+.vip h1, .vip h2, .vip p {
+  margin: 0;
+}
+
+.vip h1 {
+  margin-bottom: 24px;
+  color: #9FBFE5FE;
+}
+
+.vip h2 {
+  font-size: 16px;
+}

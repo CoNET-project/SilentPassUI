@@ -30,14 +30,68 @@ const Vip = () => {
       <Menu isMenuVisible={isMenuVisible} toggleMenu={toggleMenu} />
 
       <div className="vip">
-        <h1>Vip</h1>
-        <p>Silent Pass is the next-generation decentralized dVPN designed to provide maximum privacy, security, and ease of use.</p>
-        <p>Whether you're looking to browse the web safely or access content from anywhere, Silent Pass delivers a seamless experience without compromising your data.</p>
-        <h2>Key Features</h2>
-        <p>Decentralized VPN: Protect your privacy with no central servers—your data is never stored or tracked.</p>
-        <p>Completely Free: Enjoy a secure dVPN without any fees or hidden charges.</p>
-        <p>No Registration Needed: No email or phone number required. Simply download, click start, and you're connected!</p>
-        <p>Secure & Private: Silent Pass ensures that your internet connection is encrypted, keeping you safe from prying eyes.</p>
+        <h1>Silent Pass Users: Free vs VIP</h1>
+        <h2>Free Users</h2>
+        <p>Free Users are required to share their computing resources while using Silent Pass VPN basic service. </p>
+        <p><strong>VIP Users</strong> could enjoy advance service, and are free from computing resources sharing.</p>
+        <ul>
+          <li><strong>Premium Users<strong> - Enjoy advanced service on </strong>One Single Device</strong></li>
+          <li><strong>Platinum Users</strong> - Enjoy advanced service on up to <strong>5 devices</strong></li>
+        </ul>
+        <h2>Why Upgrade to VIP?</h2>
+        <p>As a VIP User, you'll enjoy a range of exclusive features designed to enhance your experience:</p>
+        <ul>
+          <li>Higher Performance</li>
+          <li>More Regions</li>
+          <li>Enhanced Security</li>
+          <li>Split Tunnel</li>
+          <li>Tunnel Filter</li>
+          <li>Ad-block Feature</li>
+          <li>Extra $CONET Token Reward</li>
+        </ul>
+        <p>3 ways to upgrade your silent pass service:</p>
+        <ol>
+          <li>
+            <div>
+              <h3>Guardians NFT owner</h3>
+              <p><strong>Platinum Users</strong> Permanently. Visit <a target="_blank" rel="noreferrer" href="https://conet.network/guardian/">Guardian Plan</a> for details.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Guardians NFT owner</h3>
+              <p><strong>Platinum Users</strong> 1 year. Visit <a target="_blank" rel="noreferrer" href="https://conet.network/conetian/">CoNETian Plan</a> for details.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <div>
+                <h3>Subscription Users</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Subscription</th>
+                      <th>Monthly</th>
+                      <th>Anually</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Premium User</td>
+                      <td>$2.49</td>
+                      <td>$24.99</td>
+                    </tr>
+                    <tr>
+                      <td>Platinum User</td>
+                      <td>$9.99</td>
+                      <td>$99.99</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </li>
+        </ol>
       </div>
     </>
   );

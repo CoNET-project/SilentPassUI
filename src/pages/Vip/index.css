@@ -6,6 +6,9 @@
 
   width: 100%;
   max-width: 360px;
+
+  margin-top: 550px;
+  padding-bottom: 50px;
 }
 
 .vip p {
@@ -18,10 +21,43 @@
 }
 
 .vip h1 {
-  margin-bottom: 24px;
+  font-size: 20px;
+  margin-bottom: 6px;
   color: #9FBFE5FE;
 }
 
 .vip h2 {
   font-size: 16px;
+}
+
+.vip ul, .vip ol {
+  width: 100%;
+  list-style-position: inside;
+  text-align: left;
+  padding-left: 0;
+}
+
+.vip ol li {
+  margin: 8px 0;
+}
+
+.vip li a {
+  color: #9fbfe5;
+  text-decoration: underline;
+}
+
+.vip li > div > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vip li h3 {
+  margin: 0;
+}
+
+.vip table, .vip th, .vip td {
+  border: 1px solid #474648;
+  border-collapse: collapse;
+  padding: 4px;
 }

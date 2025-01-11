@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import Menu from '../../components/Menu';
 import "./index.css";
+import { useNavigate } from 'react-router-dom';
 
 const Vip = () => {
   const [isMenuVisible, setIsMenuVisible] = useState<boolean>(false)
+
+  const navigate = useNavigate();
 
   const toggleMenu = () => {
     setIsMenuVisible(prevState => !prevState);
@@ -92,6 +95,9 @@ const Vip = () => {
             </div>
           </li>
         </ol>
+        <button className="homepage-button" onClick={() => navigate("/")}>
+          Back to homepage
+        </button>
       </div>
     </>
   );

@@ -81,7 +81,7 @@ const Home = () => {
 
       const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredBySelectedRegion!.length);
 
-      const exitNode = nodeListFilteredBySelectedRegion?.[randomNodeIndex];
+      const exitNode = [nodeListFilteredBySelectedRegion?.[randomNodeIndex]];
 
       let entryNodes: any[] = [];
 
@@ -371,7 +371,7 @@ const Home = () => {
         )}
 
         <button className="vip-button" onClick={() => navigate("/vip")}>
-          VIP
+          VIP Service
         </button>
       </div>
 

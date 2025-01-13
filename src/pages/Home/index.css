@@ -395,4 +395,5 @@ h1 span {
   border-radius: 100px;
   font-weight: 700;
   color: #FFFFFF;
+  cursor: "pointer";
 }

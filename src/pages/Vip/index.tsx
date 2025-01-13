@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigate } from "react-router-dom";
+
 import Menu from '../../components/Menu';
 import "./index.css";
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +13,7 @@ const Vip = () => {
   const toggleMenu = () => {
     setIsMenuVisible(prevState => !prevState);
   }
+  const navigate = useNavigate();
 
   return (
     <>
@@ -34,12 +37,11 @@ const Vip = () => {
 
       <div className="vip">
         <h1>Silent Pass Users: Free vs VIP</h1>
-        <h2>Free Users</h2>
-        <p>Free Users are required to share their computing resources while using Silent Pass VPN basic service. </p>
-        <p><strong>VIP Users</strong> could enjoy advance service, and are free from computing resources sharing.</p>
+        <p><strong>Free Users</strong> are required to share their computing resources while using Silent Pass VPN basic service. </p>
+        <p><strong>VIP Users</strong> can enjoy advanced service and are free from computing resources sharing.</p>
         <ul>
-          <li><strong>Premium Users<strong> - Enjoy advanced service on </strong>One Single Device</strong></li>
-          <li><strong>Platinum Users</strong> - Enjoy advanced service on up to <strong>5 devices</strong></li>
+          <li style={{ padding: "8px", marginBottom: "16px" }}><strong>Premium Users</strong> - Enjoy advanced service on <strong style={{ color: "#9FBFE5FE" }}>One Single Device</strong></li>
+          <li style={{ padding: "8px", marginBottom: "16px" }}><strong>Platinum Users</strong> - Enjoy advanced service on up to <strong style={{ color: "#9FBFE5FE" }}>5 devices</strong></li>
         </ul>
         <h2>Why Upgrade to VIP?</h2>
         <p>As a VIP User, you'll enjoy a range of exclusive features designed to enhance your experience:</p>
@@ -47,30 +49,30 @@ const Vip = () => {
           <li>Higher Performance</li>
           <li>More Regions</li>
           <li>Enhanced Security</li>
-          <li>Split Tunnel</li>
-          <li>Tunnel Filter</li>
+          <li>Split-Tunnelling configurations</li>
+          <li>Personalize which apps get VPN protection</li>
           <li>Ad-block Feature</li>
           <li>Extra $CONET Token Reward</li>
         </ul>
         <p>3 ways to upgrade your silent pass service:</p>
-        <ol>
-          <li>
+        <ol style={{ listStyle: "none" }}>
+          <li style={{ marginBottom: "16px" }}>
             <div>
-              <h3>Guardians NFT owner</h3>
-              <p><strong>Platinum Users</strong> Permanently. Visit <a target="_blank" rel="noreferrer" href="https://conet.network/guardian/">Guardian Plan</a> for details.</p>
+              <h3 style={{ marginBottom: "8px" }}>1.  Guardians NFT owner</h3>
+              <p style={{ padding: "8px" }}><strong>Platinum Users</strong> Permanently. Visit <a target="_blank" rel="noreferrer" href="https://conet.network/guardian/">Guardian Plan</a> for details.</p>
             </div>
           </li>
-          <li>
+          <li style={{ marginBottom: "16px" }}>
             <div>
-              <h3>Guardians NFT owner</h3>
-              <p><strong>Platinum Users</strong> 1 year. Visit <a target="_blank" rel="noreferrer" href="https://conet.network/conetian/">CoNETian Plan</a> for details.</p>
+              <h3 style={{ marginBottom: "16px" }}>2.  CoNETian NFT owner</h3>
+              <p style={{ padding: "8px" }}><strong>Platinum Users</strong> 1 year. Visit <a target="_blank" rel="noreferrer" href="https://conet.network/conetian/">CoNETian Plan</a> for details.</p>
             </div>
           </li>
-          <li>
+          <li style={{ marginBottom: "16px" }}>
             <div>
               <div>
-                <h3>Subscription Users</h3>
-                <table>
+                <h3>3.  Subscription Users</h3>
+                <table style={{ marginTop: '16px', borderRadius: '8px' }}>
                   <thead>
                     <tr>
                       <th>Subscription</th>
@@ -95,10 +97,14 @@ const Vip = () => {
             </div>
           </li>
         </ol>
-        <button className="homepage-button" onClick={() => navigate("/")}>
-          Back to homepage
+
+        <button className="vip-button" onClick={() => navigate("/")}>
+          Go Back to Homepage
         </button>
+
       </div>
+
+
     </>
   );
 };

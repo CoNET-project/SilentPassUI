@@ -7,7 +7,7 @@
   width: 100%;
   max-width: 360px;
 
-  margin-top: 650px;
+  margin-top: 500px;
   padding-bottom: 50px;
 }
 
@@ -16,21 +16,24 @@
   max-width: initial;
 }
 
-.vip h1, .vip h2, .vip p {
+.vip h1,
+.vip h2,
+.vip p {
   margin: 0;
 }
 
 .vip h1 {
   font-size: 20px;
   margin-bottom: 6px;
-  color: #9FBFE5FE;
+  color: #9fbfe5fe;
 }
 
 .vip h2 {
   font-size: 16px;
 }
 
-.vip ul, .vip ol {
+.vip ul,
+.vip ol {
   width: 100%;
   list-style-position: inside;
   text-align: left;
@@ -56,18 +59,21 @@
   margin: 0;
 }
 
-.vip table, .vip th, .vip td {
+.vip table,
+.vip th,
+.vip td {
   border: 1px solid #474648;
   border-collapse: collapse;
   padding: 4px;
 }
 
-.homepage-button {
+.vip-button {
   width: 100%;
   border: 0;
-  background: #2A3038;
+  background: #2a3038;
   padding: 12px 8px;
   border-radius: 100px;
   font-weight: 700;
-  color: #FFFFFF;
+  color: #ffffff;
+  cursor: "pointer";
 }

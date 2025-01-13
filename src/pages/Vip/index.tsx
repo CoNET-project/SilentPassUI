@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 
 import Menu from '../../components/Menu';
 import "./index.css";
-import { useNavigate } from 'react-router-dom';
 
 const Vip = () => {
   const [isMenuVisible, setIsMenuVisible] = useState<boolean>(false)
@@ -13,7 +12,6 @@ const Vip = () => {
   const toggleMenu = () => {
     setIsMenuVisible(prevState => !prevState);
   }
-  const navigate = useNavigate();
 
   return (
     <>

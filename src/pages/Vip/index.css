@@ -7,7 +7,7 @@
   width: 100%;
   max-width: 360px;
 
-  margin-top: 550px;
+  margin-top: 500px;
   padding-bottom: 50px;
 }
 
@@ -60,4 +60,15 @@
   border: 1px solid #474648;
   border-collapse: collapse;
   padding: 4px;
+}
+
+.vip-button {
+  width: 100%;
+  border: 0;
+  background: #2A3038;
+  padding: 12px 8px;
+  border-radius: 100px;
+  font-weight: 700;
+  color: #FFFFFF;
+  cursor: "pointer";
 }

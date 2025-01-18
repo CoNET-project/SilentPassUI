@@ -12,6 +12,8 @@ import Skeleton from '../../components/Skeleton';
 import { allNodes, closestNodes, maxNodes, currentScanNodeNumber } from '../../services/mining';
 import { CoNET_Data } from '../../utils/globals';
 
+
+
 const Home = () => {
   const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom, setIsRandom} = useDaemonContext();
   const [power, setPower] = useState<boolean>(false);
@@ -79,6 +81,20 @@ const Home = () => {
     setIsMenuVisible(prevState => !prevState);
   }
 
+type Native_node = {
+	country: string
+	ip_addr: string
+	region: string
+	armoredPublicKey: string
+	nftNumber: string
+}
+
+
+type Native_StartVPNObj = {
+	entryNodes: Native_node[]
+	privateKey: string
+	exitNode: Native_node[]
+}
   const handleTogglePower = async () => {
     let selectedCountryIndex = -1
 
@@ -87,6 +103,11 @@ const Home = () => {
       window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
       return
     }
+	const conetProfile = CoNET_Data?.profiles[1];
+	const privateKey = conetProfile?.privateKeyArmor
+	if (!privateKey) {
+		return 
+	}
 
     try {
       setIsConnectionLoading(true)
@@ -104,29 +125,42 @@ const Home = () => {
 
       const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredBySelectedRegion!.length);
 
-      const exitNode = [nodeListFilteredBySelectedRegion?.[randomNodeIndex]];
+      const _exitNode = [nodeListFilteredBySelectedRegion?.[randomNodeIndex]];
 
-      let entryNodes: any[] = [];
+      let _entryNodes: nodes_info[] = nodeListFilteredByClosestRegion
 
-      if (nodeListFilteredByClosestRegion.length < 5) {
-        entryNodes = nodeListFilteredByClosestRegion;
-      } else {
+      if (nodeListFilteredByClosestRegion.length > 5) {
+		_entryNodes = []
         do {
           const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredByClosestRegion!.length)
-          const choosenNode = nodeListFilteredByClosestRegion[randomNodeIndex];
-
-          if (!!entryNodes.find((item: any) => item.ip_addr === choosenNode.ip_addr)) continue;
-
-          entryNodes.push(choosenNode)
-        } while (entryNodes.length < 5);
+          const choosenNode = nodeListFilteredByClosestRegion[randomNodeIndex]
+          _entryNodes.push(choosenNode)
+		  nodeListFilteredByClosestRegion.splice(randomNodeIndex, 1)
+        } while (_entryNodes.length < 5);
       }
 
-      const conetProfile = CoNET_Data?.profiles[1];
+      
+	  const entryNodes: Native_node[] = _entryNodes.map(n => {
+		return {
+			country: n.country, 
+			ip_addr: n.ip_addr, 
+			region: n.region, 
+			armoredPublicKey: n.armoredPublicKey, 
+			nftNumber: n.nftNumber.toString()
+		}})
+	  const exitNode = _exitNode.map(n => {
+		return {
+			country: n.country, 
+			ip_addr: n.ip_addr, 
+			region: n.region, 
+			armoredPublicKey: n.armoredPublicKey, 
+			nftNumber: n.nftNumber.toString()
+		}})
 
-      const startVPNMessageObject = {
+      const startVPNMessageObject: Native_StartVPNObj = {
         entryNodes,
         exitNode,
-        privateKey: conetProfile?.privateKeyArmor,
+        privateKey
       }
 
       const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);

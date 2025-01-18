@@ -13,7 +13,10 @@ import {
 } from "../utils/constants";
 import { contracts } from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
+
 const PouchDB = require("pouchdb").default;
+
+let isGetFaucetProcess = false
 
 let getFaucetRoop = 0;
 
@@ -149,10 +152,16 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
 };
 
 const getFaucet = async (keyId: string, privateKey: string) => {
+  if (isGetFaucetProcess) {
+	return null;
+  }
+  isGetFaucetProcess = true
+
   if (CoNET_Data?.profiles[0].tokens.conet.balance === "0") {
     if (++getFaucetRoop > 6) {
       getFaucetRoop = 0;
       console.log(`getFaucet Roop > 6 STOP process!`);
+	  
       return null;
     }
     const url = `${apiv4_endpoint}conet-faucet`;
@@ -161,14 +170,16 @@ const getFaucet = async (keyId: string, privateKey: string) => {
       result = await postToEndpoint(url, true, { walletAddr: keyId });
     } catch (ex) {
       console.log(`getFaucet postToEndpoint [${url}] error! `, ex);
+	  
       return null;
     }
     getFaucetRoop = 0;
 
     if (result) {
+		
       return true;
     }
-
+	
     return null;
   } else {
     const provide = new ethers.JsonRpcProvider(conetRpc);
@@ -182,9 +193,11 @@ const getFaucet = async (keyId: string, privateKey: string) => {
     try {
       const tx = await faucetContract.getFaucet();
       console.log(`success hash = ${tx.hash}`);
+	  
       return true;
     } catch (ex) {
       console.log(ex);
+	  
       return null;
     }
   }

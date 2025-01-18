@@ -1,10 +1,10 @@
-import React, { useContext, useEffect } from "react";
+import React, {useEffect } from "react";
 import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 
 import { Home, Region } from "./pages";
 import About from './pages/About';
-import { DaemonProvider, useDaemonContext } from "./providers/DaemonProvider";
+import { useDaemonContext } from "./providers/DaemonProvider";
 import { createOrGetWallet } from "./services/wallets";
 import { getAllNodes, startMiningV2 } from "./services/mining";
 import { CoNET_Data } from "./utils/globals";
@@ -18,21 +18,24 @@ function App() {
   const { setProfile, setMiningData, allRegions, setClosestRegion } = useDaemonContext();
 
   useEffect(() => {
-    if (allRegions.length === 0) return
+    // if (allRegions.length === 0) return
 
     const init = async () => {
       await createOrGetWallet();
       listenProfileVer(setProfile);
 
-      if (!CoNET_Data || !CoNET_Data?.profiles) return
+      
 
-      await getAllNodes(allRegions, setClosestRegion);
+      await getAllNodes(allRegions, setClosestRegion, () => {
+		if (!CoNET_Data || !CoNET_Data?.profiles) return
+		startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
+	  });
 
-      await startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
+      
     };
 
     init();
-  }, [allRegions]);
+  }, []);
 
   return (
     <div className="App">

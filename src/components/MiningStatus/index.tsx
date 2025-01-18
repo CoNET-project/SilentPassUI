@@ -8,7 +8,10 @@ const MiningStatus = () => {
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
 
   useEffect(() => {
-    setIsMiningUp(miningData?.status === 200)
+	if (miningData) {
+		setIsMiningUp(miningData?.status === 200)
+	}
+    
   }, miningData)
 
   return (
@@ -19,6 +22,7 @@ const MiningStatus = () => {
       </div>
       <div className="rate">Mining Rate: {miningData?.rate ? miningData.rate : <Skeleton height="14px" width="45px" />}</div>
       <div className="miners">Online Miners: {miningData?.online ? miningData.online : <Skeleton height="14px" width="45px" />}</div>
+	  <div className="miners">Online VPN Users: {miningData?.totalUsers ? miningData.totalUsers : <Skeleton height="14px" width="45px" />}</div>
     </div>
   );
 };

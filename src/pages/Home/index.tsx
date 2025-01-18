@@ -9,11 +9,11 @@ import MiningStatus from '../../components/MiningStatus';
 import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
 import Skeleton from '../../components/Skeleton';
-import { allNodes, closestNodes } from '../../services/mining';
+import { allNodes, closestNodes, maxNodes, currentScanNodeNumber } from '../../services/mining';
 import { CoNET_Data } from '../../utils/globals';
 
 const Home = () => {
-  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom, setIsRandom } = useDaemonContext();
+  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom, setIsRandom} = useDaemonContext();
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
@@ -21,13 +21,34 @@ const Home = () => {
   const [isWalletCopied, setIsWalletCopied] = useState<boolean>(false);
   const [isPrivateKeyCopied, setIsPrivateKeyCopied] = useState<boolean>(false);
 
+  const [isPortCopied, setIsPortCopied] = useState<boolean>(false);
+  const [isServerCopied, setIsServerCopied] = useState<boolean>(false);
+  const [isPACCopied, setIsPACCopied] = useState<boolean>(false);
+  const [initPercentage, setInitPercentage] = useState<number>(0);
+
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (allRegions && allRegions.length > 0) {
-      setIsInitialLoading(false);
-      return;
-    }
+	const listenGetAllNodes = () => {
+		
+		const initpercentage = maxNodes ? currentScanNodeNumber*100/maxNodes : 0
+		const status = Math.round(initpercentage)
+		setInitPercentage(status)
+
+		if (initpercentage < 90) {
+			return setTimeout(() => {
+				listenGetAllNodes()
+			}, 1000)
+		} else {
+			setIsInitialLoading(false);
+		}
+		
+		
+	}
+	listenGetAllNodes()
+  },[])
+
+  useEffect(() => {
 
     const _getAllRegions = async () => {
       const tmpRegions = await getAllRegions();
@@ -47,10 +68,12 @@ const Home = () => {
       setAllRegions(treatedRegions);
     };
 
+
+
     _getAllRegions()
 
-    setTimeout(() => setIsInitialLoading(false), 3000);
-  }, [allRegions, setAllRegions]);
+    // setTimeout(() => setIsInitialLoading(false), 3000);
+  }, [allRegions]);
 
   const toggleMenu = () => {
     setIsMenuVisible(prevState => !prevState);
@@ -144,6 +167,10 @@ const Home = () => {
     if (power)
       return (
         <>
+		<div className="current-mined">
+            {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
+            <p>CNTP</p>
+          </div>
           <p className="connection">Your connection is <span>protected!</span></p>
 
           <BlobWrapper>
@@ -155,15 +182,16 @@ const Home = () => {
             </button>
           </BlobWrapper>
 
-          <div className="current-mined">
-            {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
-            <p>CNTP</p>
-          </div>
+          
         </>
       )
 
     return (
       <>
+	  <div className="current-mined">
+          {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
+          <p>CNTP</p>
+        </div>
         <p className="connection">Your connection is not protected!</p>
 
         <BlobWrapper>
@@ -175,10 +203,7 @@ const Home = () => {
           </button>
         </BlobWrapper>
 
-        <div className="current-mined">
-          {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
-          <p>CNTP</p>
-        </div>
+        
       </>
     )
   }
@@ -188,9 +213,10 @@ const Home = () => {
 
     return (
       <div className="rs-wrapper">
-        {
+		
+        {/* {
           !power && <p>Connect via Auto-Select or pick your region</p>
-        }
+        } */}
         <div className="region-selector">
           {
             !power && (
@@ -268,6 +294,77 @@ const Home = () => {
     )
   }
 
+
+  const copyPort = () => {
+	navigator.clipboard.writeText("8888")
+	setIsPortCopied(true);
+
+    setTimeout(() => {
+		setIsPortCopied(false);
+    }, 2000);
+  }
+
+  const copyServer = () => {
+	navigator.clipboard.writeText("127.0.0.1")
+	setIsServerCopied(true);
+
+    setTimeout(() => {
+		setIsServerCopied(false);
+    }, 2000);
+  }
+
+  const copyPAC = () => {
+	navigator.clipboard.writeText("http://127.0.0.1:8888/pac")
+	setIsPACCopied(true);
+
+    setTimeout(() => {
+		setIsPACCopied(false);
+    }, 2000);
+  }
+
+  const proxyInfo = () => {
+	return (
+		<>
+			<div className="wallet-info-container">
+				<div className="wallet-info">
+					<p>Proxy Server:</p>
+					<button onClick={copyServer}>
+						<p>127.0.0.1</p>
+						{isServerCopied ? (
+							<img src="/assets/check.svg" alt="Copy icon" />
+						) : (
+							<img src="/assets/copy-purple.svg" alt="Copy icon" />
+						)}
+					</button>
+				</div>
+				<div className="wallet-info">
+					<p>Proxy Port:</p>
+					<button onClick={copyPort}>
+						<p>8888</p>
+						{isPortCopied ? (
+							<img src="/assets/check.svg" alt="Copy icon" />
+						) : (
+							<img src="/assets/copy-purple.svg" alt="Copy icon" />
+						)}
+					</button>
+				</div>
+				<div className="wallet-info">
+					<p>PAC:</p>
+					<button onClick={copyPAC}>
+						<p>http://127.0.0.1:8888/pac</p>
+						{isPACCopied ? (
+							<img src="/assets/check.svg" alt="Copy icon" />
+						) : (
+							<img src="/assets/copy-purple.svg" alt="Copy icon" />
+						)}
+					</button>
+					
+				</div>
+			</div>
+		</>
+	)
+  }
+
   const copyWallet = () => {
     navigator.clipboard.writeText(profile.keyID);
 
@@ -318,12 +415,15 @@ const Home = () => {
             >
               <img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" width={85} height={85} alt="" />
             </button>
-
+			<p className="not-connected">
+			Initializing {initPercentage}%
+			</p>
             <p className="not-connected">Welcome to Silent Pass</p>
           </>
         ) : (
           <>
             {renderButton()}
+			{power && proxyInfo()}
             {renderRegionSelector()}
 
             <div className="wallet-info-container">

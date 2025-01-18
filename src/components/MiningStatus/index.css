@@ -37,6 +37,7 @@
 .mining-status > div:not(:first-child) {
   border: 1px solid #cfcfcf0a;
   border-radius: 16px;
+  width: 80%;
 }
 
 .rate {

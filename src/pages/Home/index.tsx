@@ -470,7 +470,7 @@ const Home = () => {
           </>
         )}
 
-        <button className="vip-button" onClick={() => navigate("/vip")}>
+        <button className="vip-button" onClick={() => navigate("/vip")} style={{width: "80%"}}>
           VIP Service
         </button>
       </div>

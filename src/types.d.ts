@@ -3,6 +3,11 @@ interface Region {
   country: string;
 }
 
+interface ClosestRegion {
+  node: nodes_info;
+  delay: number;
+}
+
 interface keyPair {
   keyID: string;
   publicKeyArmor?: string;

@@ -9,10 +9,13 @@ import MiningStatus from '../../components/MiningStatus';
 import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
 import Skeleton from '../../components/Skeleton';
+import {maxNodes, currentScanNodeNumber } from '../../services/mining';
+import { CoNET_Data } from '../../utils/globals';
+
+
 
 const Home = () => {
-  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom } = useDaemonContext();
-  const [serverIpAddress, setServerIpAddress] = useState<string>('')
+  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom, setIsRandom, getAllNodes, closestRegion} = useDaemonContext();
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
@@ -20,13 +23,34 @@ const Home = () => {
   const [isWalletCopied, setIsWalletCopied] = useState<boolean>(false);
   const [isPrivateKeyCopied, setIsPrivateKeyCopied] = useState<boolean>(false);
 
+  const [isPortCopied, setIsPortCopied] = useState<boolean>(false);
+  const [isServerCopied, setIsServerCopied] = useState<boolean>(false);
+  const [isPACCopied, setIsPACCopied] = useState<boolean>(false);
+  const [initPercentage, setInitPercentage] = useState<number>(0);
+
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (allRegions && allRegions.length > 0) {
-      setIsInitialLoading(false);
-      return;
-    }
+	const listenGetAllNodes = () => {
+		
+		const initpercentage = maxNodes ? currentScanNodeNumber*100/maxNodes : 0
+		const status = Math.round(initpercentage)
+		setInitPercentage(status)
+
+		if (initpercentage < 90) {
+			return setTimeout(() => {
+				listenGetAllNodes()
+			}, 1000)
+		} else {
+			setIsInitialLoading(false);
+		}
+		
+		
+	}
+	listenGetAllNodes()
+  },[])
+
+  useEffect(() => {
 
     const _getAllRegions = async () => {
       const tmpRegions = await getAllRegions();
@@ -39,18 +63,47 @@ const Home = () => {
         return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
       }))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
 
+      const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
+	  if (sRegion<0) {
+		setSRegion(unitedStatesIndex)
+		setIsRandom(false);
+	  }
+
+
       setAllRegions(treatedRegions);
     };
 
+
+
     _getAllRegions()
 
-    setTimeout(() => setIsInitialLoading(false), 3000);
-  }, [allRegions, setAllRegions]);
+    // setTimeout(() => setIsInitialLoading(false), 3000);
+  }, []);
+
+//   useEffect(() => {
+// 	if (sRegion > -1) {
+// 		console.log(`sRegion = ${sRegion}`)
+// 	}
+//   },[sRegion])
 
   const toggleMenu = () => {
     setIsMenuVisible(prevState => !prevState);
   }
 
+type Native_node = {
+	country: string
+	ip_addr: string
+	region: string
+	armoredPublicKey: string
+	nftNumber: string
+}
+
+
+type Native_StartVPNObj = {
+	entryNodes: Native_node[]
+	privateKey: string
+	exitNode: Native_node[]
+}
   const handleTogglePower = async () => {
     let selectedCountryIndex = -1
 
@@ -59,8 +112,13 @@ const Home = () => {
       window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
       return
     }
+	const conetProfile = CoNET_Data?.profiles[1];
+	const privateKey = conetProfile?.privateKeyArmor
+	if (!privateKey) {
+		return 
+	}
 
-    try {
+    
       setIsConnectionLoading(true)
       if (sRegion === -1) {
         selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
@@ -69,22 +127,68 @@ const Home = () => {
         selectedCountryIndex = sRegion
       }
 
-      const selectedCountryCode = allRegions[selectedCountryIndex].code
+	  const allNodes = getAllNodes
+	  const exitRegion = allRegions[selectedCountryIndex].code
+	  const exitNodes =  allNodes.filter((n: any) => n.country === exitRegion)
 
-      console.log('selected country: ', selectedCountryCode)
+    //   const selectedCountryCode = allRegions[selectedCountryIndex].code
 
-      window?.webkit?.messageHandlers["startVPN"].postMessage(selectedCountryCode)
+      const entryNodeRegion = closestRegion.node.country
+      const __entryNodes = allNodes.filter((n: any) => n.country === entryNodeRegion);
 
-      // startVpnMining()
+      const randomExitIndex = Math.floor(Math.random() * (exitNodes.length-1));
+
+      const _exitNode = [exitNodes[randomExitIndex]]
+
+	  let _entryNodes = __entryNodes
+
+      if (_entryNodes.length > 5) {
+		_entryNodes = []
+        do {
+          const randomNodeIndex = Math.floor(Math.random() * (__entryNodes.length-1))
+          const choosenNode = __entryNodes[randomNodeIndex]
+          _entryNodes.push(choosenNode)
+		  __entryNodes.splice(randomNodeIndex, 1)
+        } while (_entryNodes.length < 5);
+      }
+
+      
+	  const entryNodes: Native_node[] = _entryNodes.map(n => {
+		return {
+			country: n.country, 
+			ip_addr: n.ip_addr, 
+			region: n.region, 
+			armoredPublicKey: n.armoredPublicKey, 
+			nftNumber: n.nftNumber.toString()
+		}})
+	  const exitNode = _exitNode.map(n => {
+		return {
+			country: n.country, 
+			ip_addr: n.ip_addr, 
+			region: n.region, 
+			armoredPublicKey: n.armoredPublicKey, 
+			nftNumber: n.nftNumber.toString()
+		}})
+
+      const startVPNMessageObject: Native_StartVPNObj = {
+        entryNodes,
+        exitNode,
+        privateKey
+      }
+
+      const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
+
+      const base64VPNMessage = btoa(stringifiedVPNMessageObject);
+
+      window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
 
       setTimeout(() => {
         setIsConnectionLoading(false)
         setPower(true);
-      }, 5000)
+      }, 1000)
+
       return
-    } catch (error) {
-      setPower(false);
-    }
+    
   };
 
   const renderButton = () => {
@@ -97,7 +201,7 @@ const Home = () => {
             <button
               className="power"
             >
-              <img src="/assets/loading-ring.png" className="loading-spinning" width={85} height={85} alt="" />
+              <img src="/assets/loading-ring.png" className="loading-spinning power-icon" alt="" />
             </button>
           </BlobWrapper>
 
@@ -108,6 +212,10 @@ const Home = () => {
     if (power)
       return (
         <>
+		<div className="current-mined">
+            {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
+            <p>CNTP</p>
+          </div>
           <p className="connection">Your connection is <span>protected!</span></p>
 
           <BlobWrapper>
@@ -115,19 +223,20 @@ const Home = () => {
               className="power"
               onClick={handleTogglePower}
             >
-              <img src="/assets/power.png" width={85} height={85} alt="" />
+              <img src="/assets/power.png" className="power-icon" alt="" />
             </button>
           </BlobWrapper>
 
-          <div className="current-mined">
-            {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
-            <p>CNTP</p>
-          </div>
+          
         </>
       )
 
     return (
       <>
+	  <div className="current-mined">
+          {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
+          <p>CNTP</p>
+        </div>
         <p className="connection">Your connection is not protected!</p>
 
         <BlobWrapper>
@@ -135,14 +244,11 @@ const Home = () => {
             className="power"
             onClick={handleTogglePower}
           >
-            <img src="/assets/not-power.png" width={85} height={85} alt="" />
+            <img src="/assets/not-power.png" className="power-icon" alt="" />
           </button>
         </BlobWrapper>
 
-        <div className="current-mined">
-          {profile?.tokens?.cCNTP?.balance ? <p>{profile.tokens.cCNTP.balance}</p> : <Skeleton width="127px" height="43px" />}
-          <p>CNTP</p>
-        </div>
+        
       </>
     )
   }
@@ -152,9 +258,10 @@ const Home = () => {
 
     return (
       <div className="rs-wrapper">
-        {
+		
+        {/* {
           !power && <p>Connect via Auto-Select or pick your region</p>
-        }
+        } */}
         <div className="region-selector">
           {
             !power && (
@@ -176,7 +283,7 @@ const Home = () => {
                       <ReactCountryFlag
                         countryCode={allRegions[sRegion].code}
                         svg
-                        aria-label="United States"
+                        aria-label={allRegions[sRegion].country}
                         style={{
                           fontSize: "2em",
                           lineHeight: "2em",
@@ -186,7 +293,7 @@ const Home = () => {
                     </>
                   )}
                 </button>
-                <p className="home-location">Selected Location</p>
+                {/* <p className="home-location">Selected Location</p> */}
               </div>
             )
           }
@@ -230,6 +337,77 @@ const Home = () => {
         </div>
       </div>
     )
+  }
+
+
+  const copyPort = () => {
+	navigator.clipboard.writeText("8888")
+	setIsPortCopied(true);
+
+    setTimeout(() => {
+		setIsPortCopied(false);
+    }, 2000);
+  }
+
+  const copyServer = () => {
+	navigator.clipboard.writeText("127.0.0.1")
+	setIsServerCopied(true);
+
+    setTimeout(() => {
+		setIsServerCopied(false);
+    }, 2000);
+  }
+
+  const copyPAC = () => {
+	navigator.clipboard.writeText("http://127.0.0.1:8888/pac")
+	setIsPACCopied(true);
+
+    setTimeout(() => {
+		setIsPACCopied(false);
+    }, 2000);
+  }
+
+  const proxyInfo = () => {
+	return (
+		<>
+			<div className="wallet-info-container">
+				<div className="wallet-info">
+					<p>Proxy Server:</p>
+					<button onClick={copyServer}>
+						<p>127.0.0.1</p>
+						{isServerCopied ? (
+							<img src="/assets/check.svg" alt="Copy icon" />
+						) : (
+							<img src="/assets/copy-purple.svg" alt="Copy icon" />
+						)}
+					</button>
+				</div>
+				<div className="wallet-info">
+					<p>Proxy Port:</p>
+					<button onClick={copyPort}>
+						<p>8888</p>
+						{isPortCopied ? (
+							<img src="/assets/check.svg" alt="Copy icon" />
+						) : (
+							<img src="/assets/copy-purple.svg" alt="Copy icon" />
+						)}
+					</button>
+				</div>
+				<div className="wallet-info">
+					<p>PAC:</p>
+					<button onClick={copyPAC}>
+						<p>http://127.0.0.1:8888/pac</p>
+						{isPACCopied ? (
+							<img src="/assets/check.svg" alt="Copy icon" />
+						) : (
+							<img src="/assets/copy-purple.svg" alt="Copy icon" />
+						)}
+					</button>
+					
+				</div>
+			</div>
+		</>
+	)
   }
 
   const copyWallet = () => {
@@ -282,12 +460,15 @@ const Home = () => {
             >
               <img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" width={85} height={85} alt="" />
             </button>
-
+			<p className="not-connected">
+			Initializing {initPercentage}%
+			</p>
             <p className="not-connected">Welcome to Silent Pass</p>
           </>
         ) : (
           <>
             {renderButton()}
+			{power && proxyInfo()}
             {renderRegionSelector()}
 
             <div className="wallet-info-container">
@@ -301,7 +482,7 @@ const Home = () => {
                         isWalletCopied ? (
                           <img src="/assets/check.svg" alt="Copy icon" />
                         ) : (
-                          <img src="/assets/copy.svg" alt="Copy icon" />
+                          <img src="/assets/copy-purple.svg" alt="Copy icon" />
                         )
                       }
                     </button>
@@ -321,7 +502,7 @@ const Home = () => {
                         isPrivateKeyCopied ? (
                           <img src="/assets/check.svg" alt="Copy icon" />
                         ) : (
-                          <img src="/assets/copy.svg" alt="Copy icon" />
+                          <img src="/assets/copy-purple.svg" alt="Copy icon" />
                         )
                       }
                     </button>
@@ -333,7 +514,11 @@ const Home = () => {
             </div>
           </>
         )}
-      </div >
+
+        <button className="vip-button" onClick={() => navigate("/vip")} style={{width: "80%"}}>
+          VIP Service
+        </button>
+      </div>
 
       <div className="footer">
         <div className="footer-content">

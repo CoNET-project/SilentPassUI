@@ -29,12 +29,6 @@ const Region = () => {
 
       <div className="board">
         <div className="areas">
-          <button className="auto" onClick={() => handleRegion(-1)}>
-            <div>
-              <img src="/assets/auto.png" width={24} height={24} />
-              Auto Select
-            </div>
-          </button>
           <div style={{ display: "flex", flexDirection: 'column', gap: '12px', width: '100%', alignItems: 'center' }}>
             <p className="location">Locations</p>
             <div style={{ display: "flex", flexDirection: 'column', gap: '20px', width: '80%', alignItems: 'center' }}>

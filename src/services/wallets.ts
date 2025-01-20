@@ -13,7 +13,10 @@ import {
 } from "../utils/constants";
 import { contracts } from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
+
 const PouchDB = require("pouchdb").default;
+
+let isGetFaucetProcess = false
 
 let getFaucetRoop = 0;
 
@@ -51,10 +54,56 @@ const createOrGetWallet = async () => {
       nonce: 0,
     };
 
+    const primaryWallet = ethers.Wallet.fromPhrase(data.mnemonicPhrase);
+    const secondaryWallet = primaryWallet.deriveChild(0);
+
+    const profile2: profile = {
+      tokens: initProfileTokens(),
+      publicKeyArmor: secondaryWallet.publicKey,
+      keyID: secondaryWallet.address,
+      isPrimary: true,
+      referrer: null,
+      isNode: false,
+      pgpKey: {
+        privateKeyArmor: key.privateKey,
+        publicKeyArmor: key.publicKey,
+      },
+      privateKeyArmor: secondaryWallet.signingKey.privateKey,
+      hdPath: secondaryWallet.path,
+      index: secondaryWallet.index,
+    };
+
+    data.profiles.push(profile2);
+
     setCoNET_Data(data);
   }
 
   const tmpData = CoNET_Data;
+
+  if (tmpData && tmpData?.profiles.length < 2) {
+    const primaryWallet = ethers.Wallet.fromPhrase(tmpData.mnemonicPhrase);
+    const secondaryWallet = primaryWallet.deriveChild(0);
+
+    const key = await createGPGKey("", "", "");
+
+    const profile2: profile = {
+      tokens: initProfileTokens(),
+      publicKeyArmor: secondaryWallet.publicKey,
+      keyID: secondaryWallet.address,
+      isPrimary: true,
+      referrer: null,
+      isNode: false,
+      pgpKey: {
+        privateKeyArmor: key.privateKey,
+        publicKeyArmor: key.publicKey,
+      },
+      privateKeyArmor: secondaryWallet.signingKey.privateKey,
+      hdPath: secondaryWallet.path,
+      index: secondaryWallet.index,
+    };
+
+    tmpData.profiles.push(profile2);
+  }
 
   tmpData?.profiles.forEach(async (n: profile) => {
     n.keyID = n.keyID.toLocaleLowerCase();
@@ -103,10 +152,16 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
 };
 
 const getFaucet = async (keyId: string, privateKey: string) => {
+  if (isGetFaucetProcess) {
+	return null;
+  }
+  isGetFaucetProcess = true
+
   if (CoNET_Data?.profiles[0].tokens.conet.balance === "0") {
     if (++getFaucetRoop > 6) {
       getFaucetRoop = 0;
       console.log(`getFaucet Roop > 6 STOP process!`);
+	  
       return null;
     }
     const url = `${apiv4_endpoint}conet-faucet`;
@@ -115,30 +170,34 @@ const getFaucet = async (keyId: string, privateKey: string) => {
       result = await postToEndpoint(url, true, { walletAddr: keyId });
     } catch (ex) {
       console.log(`getFaucet postToEndpoint [${url}] error! `, ex);
+	  
       return null;
     }
     getFaucetRoop = 0;
 
     if (result) {
+		
       return true;
     }
-
+	
     return null;
   } else {
     const provide = new ethers.JsonRpcProvider(conetRpc);
     const wallet = new ethers.Wallet(privateKey, provide);
-    const faucetSmartContract = new ethers.Contract(
+    const faucetContract = new ethers.Contract(
       contracts.FaucetV3.address,
       contracts.FaucetV3.abi,
       wallet
     );
 
     try {
-      const tx = await faucetSmartContract.getFaucet();
+      const tx = await faucetContract.getFaucet();
       console.log(`success hash = ${tx.hash}`);
+	  
       return true;
     } catch (ex) {
       console.log(ex);
+	  
       return null;
     }
   }

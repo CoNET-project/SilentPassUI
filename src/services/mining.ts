@@ -12,39 +12,122 @@ import { contracts } from "../utils/contracts";
 import { conetProvider } from "../utils/constants";
 import { initProfileTokens, postToEndpoint } from "../utils/utils";
 import async from "async";
+import { getAllRegions } from "./regions";
 
-let Guardian_Nodes: nodes_info[] = [];
+let allNodes: nodes_info[] = [];
+let closestNodes: nodes_info[] = [];
+let allRegions: string[] = []
 let cCNTPcurrentTotal = 0;
 let miningAddress = "";
 let miningConnection: any = null;
 let mining_epoch = 0;
 let epoch = 0;
 let getAllNodesProcess = false;
+let getEntryNodesProcess = false;
 let miningProfile: profile | null = null;
+let currentScanNodeNumber = 0
+let maxNodes = 0
+let closestRegion: ClosestRegion[] = []
+const postToEndpointGetBody: (
+  url: string,
+  post: boolean,
+  jsonData: any
+) => Promise<string> = (url: string, post: boolean, jsonData) => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => {
+      clearTimeout(timeCount);
+      //const status = parseInt(xhr.responseText.split (' ')[1])
 
-const getAllNodes = async () => {
+      if (xhr.status === 200) {
+        // parse JSON
+        if (!xhr.responseText.length) {
+          return resolve("");
+        }
+        return resolve(xhr.responseText);
+      }
+      return resolve("");
+    };
+
+    xhr.open(post ? "POST" : "GET", url, true);
+    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    // xhr.setRequestHeader('Connection', 'close')
+
+    xhr.send(jsonData ? JSON.stringify(jsonData) : "");
+
+    const timeCount = setTimeout(() => {
+      const Err = `postToEndpoint Timeout!`;
+      return resolve("");
+    }, 30 * 1000);
+  });
+};
+
+const getRandomNodeFromRegion: (region: string) => nodes_info = (
+  region: string
+) => {
+  const allNodeInRegion = allNodes.filter((n) => n.region.endsWith(region));
+  const rendomIndex = Math.floor(Math.random() * (allNodeInRegion.length - 1));
+  if (rendomIndex >= allNodeInRegion.length) {
+    return allNodeInRegion[0];
+  }
+  return allNodeInRegion[rendomIndex];
+};
+
+const testClosestRegion = async (callback: () => void) => {
+	closestRegion = [];
+
+  async.mapLimit(allRegions, allRegions.length, async (r: string, next) => {
+    const node = getRandomNodeFromRegion(r);
+    if (!node?.domain) {
+      return;
+    }
+    const url = `https://${node.domain}`;
+    const startTime = new Date().getTime();
+    await postToEndpointGetBody(url, false, null);
+    const endTime = new Date().getTime();
+    const delay = endTime - startTime;
+    closestRegion.push({ node, delay });
+  }, err => {
+	console.log (`testClosestRegion success!`)
+	closestRegion.sort((a, b) => a.delay - b.delay);
+	closestRegion.forEach(n => {
+		closestNodes.push(n.node)
+	})
+	callback()
+  });
+
+
+};
+
+const getAllNodes = async (
+  _allRegions: Region[],
+  setClosestRegion: (region: ClosestRegion) => void,
+  callback:(allnodes: nodes_info[])=>void
+) => {
   if (getAllNodesProcess) {
+	setClosestRegion(closestRegion[0]);
     return;
   }
   getAllNodesProcess = true;
-  const GuardianNodes = new ethers.Contract(
+
+  const GuardianNodesContract = new ethers.Contract(
     contracts.ConetGuardianNodesV6.address,
     contracts.ConetGuardianNodesV6.abi,
     conetProvider
   );
-  let scanNodes = 0;
+  maxNodes = 0;
   try {
-    const maxNodes: BigInt = await GuardianNodes.currentNodeID();
-    scanNodes = parseInt(maxNodes.toString());
+    const _maxNodes: BigInt = await GuardianNodesContract.currentNodeID();
+    maxNodes = parseInt(_maxNodes.toString());
   } catch (ex) {
     return console.log(`getAllNodes currentNodeID Error`, ex);
   }
-  if (!scanNodes) {
+  if (!maxNodes) {
     return console.log(`getAllNodes STOP scan because scanNodes == 0`);
   }
-  Guardian_Nodes = [];
-  for (let i = 0; i < scanNodes; i++) {
-    Guardian_Nodes.push({
+  allNodes = [];
+  for (let i = 0; i < maxNodes; i++) {
+    allNodes.push({
       region: "",
       country: "",
       ip_addr: "",
@@ -53,37 +136,58 @@ const getAllNodes = async () => {
       nftNumber: 100 + i,
     });
   }
-  const GuardianNodesInfo = new ethers.Contract(
+  const GuardianNodesInfoContract = new ethers.Contract(
     contracts.GuardianNodesInfoV6.address,
     contracts.GuardianNodesInfoV6.abi,
     conetProvider
   );
-
+  const country: Map<string, boolean> = new Map()
+  currentScanNodeNumber = 0;
   let i = 0;
-
   await async
-    .mapLimit(Guardian_Nodes, 5, async (n: nodes_info, next: any) => {
-      const nodeInfo = await GuardianNodesInfo.getNodeInfoById(n.nftNumber);
+    .mapLimit(allNodes, 10, async (n: nodes_info, next: any) => {
+      const nodeInfo = await GuardianNodesInfoContract.getNodeInfoById(
+        n.nftNumber
+      );
       if (nodeInfo?.pgp) {
+		
+		
         i = n.nftNumber;
+		currentScanNodeNumber ++;
+		console.log(currentScanNodeNumber)
         n.region = nodeInfo.regionName;
+		const _country = n.region.split('.')[1]
+		country.set(_country, true)
         n.ip_addr = nodeInfo.ipaddress;
+		n.country = _country;
         n.armoredPublicKey = Buffer.from(nodeInfo.pgp, "base64").toString();
         const pgpKey1 = await readKey({
           armoredKey: n.armoredPublicKey,
         });
         n.domain =
           pgpKey1.getKeyIDs()[1].toHex().toUpperCase() + ".conet.network";
+		  return
       }
+	  throw new Error(`Ended`)
     })
-    .catch(() => {});
-  const index = Guardian_Nodes.findIndex((n) => n.nftNumber === i) + 1;
-  Guardian_Nodes = Guardian_Nodes.slice(0, index);
-  getAllNodesProcess = false;
+    .catch(() => {
+		
+	});
+  maxNodes = currentScanNodeNumber - currentScanNodeNumber * .1;
+
+  const index = allNodes.findIndex((n) => n.nftNumber === i) + 1;
+  allNodes = allNodes.slice(0, index);
+  allRegions = Array.from(country.keys())
+  testClosestRegion(() => {
+	maxNodes = currentScanNodeNumber;
+	setClosestRegion(closestRegion[0]);
+	callback(allNodes);
+  });
+
 };
 
 const getRandomNodeV2: (index: number) => null | nodes_info = (index = -1) => {
-  const totalNodes = Guardian_Nodes.length - 1;
+  const totalNodes = closestNodes.length - 1;
   if (!totalNodes) {
     return null;
   }
@@ -96,9 +200,9 @@ const getRandomNodeV2: (index: number) => null | nodes_info = (index = -1) => {
     return getRandomNodeV2(index);
   }
 
-  const node = Guardian_Nodes[nodeNumber];
+  const node = closestNodes[nodeNumber];
   console.log(
-    `getRandomNodeV2 Guardian_Nodes length =${Guardian_Nodes.length} nodeNumber = ${nodeNumber} `
+    `getRandomNodeV2 Guardian_Nodes length =${closestNodes.length} nodeNumber = ${nodeNumber} `
   );
   return node;
 };
@@ -119,27 +223,35 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
+let startMiningV2Process = false
+
 const startMiningV2 = async (
   profile: profile,
+  _allRegions: Region[],
   callback: (response: nodeResponse) => void
 ) => {
-  await getAllNodes();
-  miningAddress = profile.keyID.toLowerCase();
-  const totalNodes = Guardian_Nodes.length - 1;
+	if (startMiningV2Process) {
+		return
+	}
 
-  if (!totalNodes) {
+	startMiningV2Process = true
+  miningAddress = profile.keyID.toLowerCase();
+
+
+  if (!closestRegion.length) {
     console.log("totalNodes is empty");
+	startMiningV2Process = false
     return;
   }
-
-  const nodeNumber = Math.floor(Math.random() * totalNodes);
-  const connectNode = Guardian_Nodes[nodeNumber];
+  const connectNode = closestRegion[0].node
+  
 
   if (!connectNode) {
+	startMiningV2Process = false
     console.log("connectNode is empty");
     return;
   }
-
+  const entryRegion = connectNode.country
   if (!profile?.pgpKey) {
     const key = await createGPGKey("", "", "");
     profile.pgpKey = {
@@ -148,10 +260,6 @@ const startMiningV2 = async (
     };
   }
 
-  const index = Guardian_Nodes.findIndex(
-    (n) => n.ip_addr === connectNode.ip_addr
-  );
-  Guardian_Nodes.splice(index, 1);
 
   const postData = await createConnectCmd(profile, connectNode);
   let first = true;
@@ -188,11 +296,22 @@ const startMiningV2 = async (
         return;
       }
 
+
       console.log("_startMiningV2 success", _data);
       const response: nodeResponse = JSON.parse(_data);
       mining_epoch = epoch;
 
-      callback(response);
+      if (first) {
+        miningProfile = profile;
+        first = false;
+
+        cCNTPcurrentTotal = parseFloat("0");
+        response.currentCCNTP = "0";
+
+        return ["success", JSON.stringify(response)];
+      }
+
+      
 
       if (!profile?.tokens) {
         profile.tokens = initProfileTokens();
@@ -207,19 +326,7 @@ const startMiningV2 = async (
           name: "cCNTP",
         };
       }
-
-      const cCNTP = profile.tokens.cCNTP;
-
-      if (first) {
-        miningProfile = profile;
-        first = false;
-
-        cCNTPcurrentTotal = parseFloat(cCNTP.balance || "0");
-        response.currentCCNTP = "0";
-
-        return ["success", JSON.stringify(response)];
-      }
-
+	const entryNode = getRandomNodeFromRegion(entryRegion);
       const kk = parseFloat(response.rate);
       response.rate = isNaN(kk) ? "" : kk.toFixed(8);
       response.currentCCNTP = (
@@ -229,15 +336,9 @@ const startMiningV2 = async (
         cCNTPcurrentTotal = parseFloat(profile.tokens.cCNTP.balance);
         response.currentCCNTP = "0";
       }
-
-      const entryNode = getRandomNodeV2(nodeNumber);
-
-      if (!entryNode) {
-        console.log(`_startMiningV2 Error! getRandomNodeV2 return null!`);
-        return;
-      }
-
+	  callback(response);
       validator(response, profile, entryNode);
+	  return ["success", JSON.stringify(response)];
     }
   );
 };
@@ -469,4 +570,12 @@ const postToEndpointSSE = (
   return xhr;
 };
 
-export { startMiningV2 };
+export {
+  startMiningV2,
+  getAllNodes,
+  testClosestRegion,
+  closestNodes,
+  allNodes,
+  maxNodes,
+  currentScanNodeNumber
+};

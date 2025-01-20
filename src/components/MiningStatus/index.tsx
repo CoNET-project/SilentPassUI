@@ -8,17 +8,24 @@ const MiningStatus = () => {
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
 
   useEffect(() => {
-    setIsMiningUp(miningData?.status === 200)
+	if (miningData) {
+		setIsMiningUp(miningData?.status === 200)
+	}
+    
   }, miningData)
 
   return (
-    <div className="mining-status">
-      <div className="mining">
-        <div className={`circle ${isMiningUp ? "green" : "red"}`}></div>
-        <p>Mining {isMiningUp ? "UP" : "DOWN"}</p>
-      </div>
-      <div className="rate">Mining Rate: {miningData?.rate ? miningData.rate : <Skeleton height="14px" width="45px" />}</div>
-      <div className="miners">Online Miners: {miningData?.online ? miningData.online : <Skeleton height="14px" width="45px" />}</div>
+    <div style={{width:"90%"}}>
+		<div className="mining-status">
+			{/* <div className="mining">
+				<div className={`circle ${isMiningUp ? "green" : "red"}`}></div>
+				<p>Mining {isMiningUp ? "UP" : "DOWN"}</p>
+			</div> */}
+			<div className="rate">Rate: <div className={`circle ${isMiningUp ? "green" : "red"}`}></div><div>{miningData?.rate ? miningData.rate : <Skeleton height="14px" width="45px" />}</div></div>
+			<div className="miners">Miners: {miningData?.online ? miningData.online : <Skeleton height="14px" width="45px" />}</div>
+			<div className="miners">VPN Users: {miningData?.totalUsers ? miningData.totalUsers : <Skeleton height="14px" width="45px" />}</div>
+
+		</div>
     </div>
   );
 };

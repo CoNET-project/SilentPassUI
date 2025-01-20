@@ -432,7 +432,7 @@ type Native_StartVPNObj = {
 
   return (
     <>
-      <div className="header">
+      <div className="header" style={{padding: "1rem 0 0 0"}}>
         <div className="header-content">
           <div className="menu-icon" onClick={toggleMenu}>
             <img src="/assets/menu.svg"></img>
@@ -515,12 +515,12 @@ type Native_StartVPNObj = {
           </>
         )}
 
-        <button className="vip-button" onClick={() => navigate("/vip")} style={{width: "80%"}}>
+        {/* <button className="vip-button" onClick={() => navigate("/vip")} style={{width: "80%"}}>
           VIP Service
-        </button>
+        </button> */}
       </div>
 
-      <div className="footer">
+      <div className="footer" style={{padding: "0 0 1rem 0"}}>
         <div className="footer-content">
           © {new Date().getFullYear()} CoNET.network. All rights reserved
         </div>

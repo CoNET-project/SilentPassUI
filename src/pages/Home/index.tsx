@@ -9,13 +9,13 @@ import MiningStatus from '../../components/MiningStatus';
 import BlobWrapper from '../../components/BlobWrapper';
 import Menu from '../../components/Menu';
 import Skeleton from '../../components/Skeleton';
-import { allNodes, closestNodes, maxNodes, currentScanNodeNumber } from '../../services/mining';
+import {maxNodes, currentScanNodeNumber } from '../../services/mining';
 import { CoNET_Data } from '../../utils/globals';
 
 
 
 const Home = () => {
-  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom, setIsRandom} = useDaemonContext();
+  const { profile, sRegion, setSRegion, setAllRegions, allRegions, isRandom, setIsRandom, getAllNodes, closestRegion} = useDaemonContext();
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
@@ -64,8 +64,11 @@ const Home = () => {
       }))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
 
       const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
-      setSRegion(unitedStatesIndex)
-      setIsRandom(false);
+	  if (sRegion<0) {
+		setSRegion(unitedStatesIndex)
+		setIsRandom(false);
+	  }
+
 
       setAllRegions(treatedRegions);
     };
@@ -75,7 +78,13 @@ const Home = () => {
     _getAllRegions()
 
     // setTimeout(() => setIsInitialLoading(false), 3000);
-  }, [allRegions]);
+  }, []);
+
+//   useEffect(() => {
+// 	if (sRegion > -1) {
+// 		console.log(`sRegion = ${sRegion}`)
+// 	}
+//   },[sRegion])
 
   const toggleMenu = () => {
     setIsMenuVisible(prevState => !prevState);
@@ -109,7 +118,7 @@ type Native_StartVPNObj = {
 		return 
 	}
 
-    try {
+    
       setIsConnectionLoading(true)
       if (sRegion === -1) {
         selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
@@ -118,24 +127,28 @@ type Native_StartVPNObj = {
         selectedCountryIndex = sRegion
       }
 
-      const selectedCountryCode = allRegions[selectedCountryIndex].code
+	  const allNodes = getAllNodes
+	  const exitRegion = allRegions[selectedCountryIndex].code
+	  const exitNodes =  allNodes.filter((n: any) => n.country === exitRegion)
 
-      const nodeListFilteredByClosestRegion = closestNodes
-      const nodeListFilteredBySelectedRegion = allNodes!.filter((n: any) => n.region.endsWith(selectedCountryCode));
+    //   const selectedCountryCode = allRegions[selectedCountryIndex].code
 
-      const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredBySelectedRegion!.length);
+      const entryNodeRegion = closestRegion.node.country
+      const __entryNodes = allNodes.filter((n: any) => n.country === entryNodeRegion);
 
-      const _exitNode = [nodeListFilteredBySelectedRegion?.[randomNodeIndex]];
+      const randomExitIndex = Math.floor(Math.random() * (exitNodes.length-1));
 
-      let _entryNodes: nodes_info[] = nodeListFilteredByClosestRegion
+      const _exitNode = [exitNodes[randomExitIndex]]
 
-      if (nodeListFilteredByClosestRegion.length > 5) {
+	  let _entryNodes = __entryNodes
+
+      if (_entryNodes.length > 5) {
 		_entryNodes = []
         do {
-          const randomNodeIndex = Math.floor(Math.random() * nodeListFilteredByClosestRegion!.length)
-          const choosenNode = nodeListFilteredByClosestRegion[randomNodeIndex]
+          const randomNodeIndex = Math.floor(Math.random() * (__entryNodes.length-1))
+          const choosenNode = __entryNodes[randomNodeIndex]
           _entryNodes.push(choosenNode)
-		  nodeListFilteredByClosestRegion.splice(randomNodeIndex, 1)
+		  __entryNodes.splice(randomNodeIndex, 1)
         } while (_entryNodes.length < 5);
       }
 
@@ -175,9 +188,7 @@ type Native_StartVPNObj = {
       }, 1000)
 
       return
-    } catch (error) {
-      setPower(false);
-    }
+    
   };
 
   const renderButton = () => {

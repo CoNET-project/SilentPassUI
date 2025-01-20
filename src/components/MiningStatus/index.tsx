@@ -15,15 +15,15 @@ const MiningStatus = () => {
   }, miningData)
 
   return (
-    <div style={{width:"80%"}}>
+    <div style={{width:"90%"}}>
 		<div className="mining-status">
-			<div className="mining">
-			<div className={`circle ${isMiningUp ? "green" : "red"}`}></div>
-			<p>Mining {isMiningUp ? "UP" : "DOWN"}</p>
-			</div>
-			<div className="rate">Rate: {miningData?.rate ? miningData.rate : <Skeleton height="14px" width="45px" />}</div>
+			{/* <div className="mining">
+				<div className={`circle ${isMiningUp ? "green" : "red"}`}></div>
+				<p>Mining {isMiningUp ? "UP" : "DOWN"}</p>
+			</div> */}
+			<div className="rate">Rate: <div className={`circle ${isMiningUp ? "green" : "red"}`}></div><div>{miningData?.rate ? miningData.rate : <Skeleton height="14px" width="45px" />}</div></div>
 			<div className="miners">Miners: {miningData?.online ? miningData.online : <Skeleton height="14px" width="45px" />}</div>
-			<div className="miners">Online VPN Users: {miningData?.totalUsers ? miningData.totalUsers : <Skeleton height="14px" width="45px" />}</div>
+			<div className="miners">VPN Users: {miningData?.totalUsers ? miningData.totalUsers : <Skeleton height="14px" width="45px" />}</div>
 
 		</div>
     </div>

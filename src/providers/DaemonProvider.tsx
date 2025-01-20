@@ -15,6 +15,8 @@ type DaemonContext = {
   setProfile: (profile: any) => void;
   isMiningUp: boolean;
   setIsMiningUp: (val: boolean) => void;
+  setaAllNodes: (data: nodes_info[]) => void
+  getAllNodes: nodes_info[]
 };
 
 type DaemonProps = {
@@ -36,6 +38,8 @@ const defaultContextValue: DaemonContext = {
   setProfile: () => { },
   isMiningUp: false,
   setIsMiningUp: () => { },
+  setaAllNodes: () => {},
+  getAllNodes: []
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -53,9 +57,10 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [miningData, setMiningData] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
+  const [getAllNodes, setaAllNodes] = useState<nodes_info[]>([]);
 
   return (
-    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp }}>
+    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes }}>
       {children}
     </Daemon.Provider>
   );

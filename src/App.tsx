@@ -15,7 +15,7 @@ global.Buffer = require('buffer').Buffer;
 
 function App() {
 
-  const { setProfile, setMiningData, allRegions, setClosestRegion } = useDaemonContext();
+  const { setProfile, setMiningData, allRegions, setClosestRegion, setaAllNodes } = useDaemonContext();
 
   useEffect(() => {
     // if (allRegions.length === 0) return
@@ -24,10 +24,11 @@ function App() {
       await createOrGetWallet();
       listenProfileVer(setProfile);
 
-      
-
-      await getAllNodes(allRegions, setClosestRegion, () => {
-		if (!CoNET_Data || !CoNET_Data?.profiles) return
+      await getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
+		setaAllNodes(allNodes)
+		if (!CoNET_Data || !CoNET_Data?.profiles) {
+			return
+		}
 		startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
 	  });
 

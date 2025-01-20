@@ -66,7 +66,7 @@ const getRandomNodeFromRegion: (region: string) => nodes_info = (
   region: string
 ) => {
   const allNodeInRegion = allNodes.filter((n) => n.region.endsWith(region));
-  const rendomIndex = Math.floor(Math.random() * allNodeInRegion.length - 1);
+  const rendomIndex = Math.floor(Math.random() * (allNodeInRegion.length - 1));
   if (rendomIndex >= allNodeInRegion.length) {
     return allNodeInRegion[0];
   }
@@ -102,7 +102,7 @@ const testClosestRegion = async (callback: () => void) => {
 const getAllNodes = async (
   _allRegions: Region[],
   setClosestRegion: (region: ClosestRegion) => void,
-  callback:()=>void
+  callback:(allnodes: nodes_info[])=>void
 ) => {
   if (getAllNodesProcess) {
 	setClosestRegion(closestRegion[0]);
@@ -159,6 +159,7 @@ const getAllNodes = async (
 		const _country = n.region.split('.')[1]
 		country.set(_country, true)
         n.ip_addr = nodeInfo.ipaddress;
+		n.country = _country;
         n.armoredPublicKey = Buffer.from(nodeInfo.pgp, "base64").toString();
         const pgpKey1 = await readKey({
           armoredKey: n.armoredPublicKey,
@@ -180,7 +181,7 @@ const getAllNodes = async (
   testClosestRegion(() => {
 	maxNodes = currentScanNodeNumber;
 	setClosestRegion(closestRegion[0]);
-	callback();
+	callback(allNodes);
   });
 
 };

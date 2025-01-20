@@ -293,7 +293,7 @@ type Native_StartVPNObj = {
                     </>
                   )}
                 </button>
-                <p className="home-location">Selected Location</p>
+                {/* <p className="home-location">Selected Location</p> */}
               </div>
             )
           }

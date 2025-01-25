@@ -5,8 +5,8 @@ type DaemonContext = {
   setSRegion: (region: number) => void;
   allRegions: Region[];
   setAllRegions: (regions: Region[]) => void;
-  closestRegion: any;
-  setClosestRegion: (region: ClosestRegion) => void;
+  closestRegion: nodes_info[];
+  setClosestRegion: (region: nodes_info[]) => void;
   isRandom: boolean;
   setIsRandom: (val: boolean) => void;
   miningData: any;
@@ -28,7 +28,7 @@ const defaultContextValue: DaemonContext = {
   setSRegion: () => { },
   allRegions: [],
   setAllRegions: () => { },
-  closestRegion: null,
+  closestRegion: [],
   setClosestRegion: () => { },
   isRandom: true,
   setIsRandom: () => { },

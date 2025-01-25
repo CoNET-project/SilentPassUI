@@ -133,27 +133,16 @@ type Native_StartVPNObj = {
 
     //   const selectedCountryCode = allRegions[selectedCountryIndex].code
 
-      const entryNodeRegion = closestRegion.node.country
-      const __entryNodes = allNodes.filter((n: any) => n.country === entryNodeRegion);
 
       const randomExitIndex = Math.floor(Math.random() * (exitNodes.length-1));
 
       const _exitNode = [exitNodes[randomExitIndex]]
 
-	  let _entryNodes = __entryNodes
+	  let _entryNodes = closestRegion
 
-      if (_entryNodes.length > 5) {
-		_entryNodes = []
-        do {
-          const randomNodeIndex = Math.floor(Math.random() * (__entryNodes.length-1))
-          const choosenNode = __entryNodes[randomNodeIndex]
-          _entryNodes.push(choosenNode)
-		  __entryNodes.splice(randomNodeIndex, 1)
-        } while (_entryNodes.length < 5);
-      }
 
       
-	  const entryNodes: Native_node[] = _entryNodes.map(n => {
+	  const entryNodes = _entryNodes.map(n => {
 		return {
 			country: n.country, 
 			ip_addr: n.ip_addr, 

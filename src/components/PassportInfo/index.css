@@ -1,0 +1,61 @@
+.main-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  background: #191919;
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.main-card span {
+  font-size: 14px;
+  color: #989899;
+}
+
+.main-card p {
+  font-size: 24px;
+}
+
+.main-card div:last-child {
+  text-align: right;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.buttons button {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 16px 8px;
+  border: 0;
+  border-radius: 16px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.buttons button:first-child {
+  background-color: #282930;
+  color: #ffffff;
+}
+
+.buttons button:last-child {
+  background-color: #9fbfe533;
+  color: #9fbfe5fe;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.disabled {
+  background: #191919 !important;
+  color: #5a5a5afe !important;
+}

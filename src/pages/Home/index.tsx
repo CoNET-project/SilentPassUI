@@ -13,6 +13,7 @@ import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM } from "../../utils/utils";
 import { startSilentPass } from "../../api";
+import PassportInfo from "../../components/PassportInfo";
 
 interface RenderButtonProps {
   errorStartingSilentPass: boolean;
@@ -241,6 +242,8 @@ const Home = () => {
             <RenderButton profile={profile} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} />
 
             <CopyProxyInfo />
+
+            <PassportInfo />
 
             {!power && !isConnectionLoading &&
               <RegionSelector

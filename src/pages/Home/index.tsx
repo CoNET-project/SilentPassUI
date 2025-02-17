@@ -242,17 +242,15 @@ const Home = () => {
 
             <CopyProxyInfo />
 
-            <RegionSelector
-              title={allRegions?.[sRegion]?.country}
-              regionCode={allRegions?.[sRegion]?.code}
-              action={() => navigate("/regions")}
-            />
+            {!power && !isConnectionLoading &&
+              <RegionSelector
+                title={allRegions?.[sRegion]?.country}
+                regionCode={allRegions?.[sRegion]?.code}
+                action={() => navigate("/regions")}
+              />
+            }
           </>
         )}
-
-        {/* <button className="vip-button" onClick={() => navigate("/vip")}>
-          VIP Service
-        </button> */}
       </div>
 
       <Footer />

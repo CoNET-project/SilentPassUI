@@ -17,11 +17,12 @@ import Support from './pages/Support';
 import FAQ from './pages/FAQ';
 import ConfigDevice from './pages/ConfigDevice';
 import Passcode from './pages/Passcode';
+import { getServerIpAddress } from "./api";
 
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfile, setMiningData, allRegions, setClosestRegion, setaAllNodes } = useDaemonContext();
+  const { setProfile, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort } = useDaemonContext();
 
   useEffect(() => {
     const handlePassport = async () => {
@@ -50,9 +51,25 @@ function App() {
       setProfile(CoNET_Data.profiles[0]);
     }
 
+    const _getServerIpAddress = async () => {
+      try {
+        const response = await getServerIpAddress();
+        const tmpIpAddress = response.data;
+
+        setServerIpAddress(tmpIpAddress?.ip || "");
+        setServerPort('3002');
+      } catch (ex) {
+        console.log(ex)
+      }
+    };
+
     const init = async () => {
       await createOrGetWallet();
       listenProfileVer(setProfile);
+
+      if (!window?.webkit) {
+        _getServerIpAddress();
+      }
 
       await getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setaAllNodes(allNodes)

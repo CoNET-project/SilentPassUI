@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode, useState } from "react";
+import React, { createContext, useContext, ReactNode, useState, useEffect } from "react";
 
 type DaemonContext = {
   sRegion: number;
@@ -17,6 +17,12 @@ type DaemonContext = {
   setIsMiningUp: (val: boolean) => void;
   setaAllNodes: (data: nodes_info[]) => void
   getAllNodes: nodes_info[]
+  serverIpAddress: string
+  setServerIpAddress: (ip: string) => void
+  serverPort: string
+  setServerPort: (port: string) => void
+  serverPac: string
+  setServerPac: (pac: string) => void
 };
 
 type DaemonProps = {
@@ -39,7 +45,13 @@ const defaultContextValue: DaemonContext = {
   isMiningUp: false,
   setIsMiningUp: () => { },
   setaAllNodes: () => { },
-  getAllNodes: []
+  getAllNodes: [],
+  serverIpAddress: "127.0.0.1",
+  setServerIpAddress: () => { },
+  serverPort: "8888",
+  setServerPort: () => { },
+  serverPac: "",
+  setServerPac: () => { }
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -58,9 +70,20 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [profile, setProfile] = useState<any>(null);
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [getAllNodes, setaAllNodes] = useState<nodes_info[]>([]);
+  const [serverIpAddress, setServerIpAddress] = useState<string>(defaultContextValue.serverIpAddress);
+  const [serverPort, setServerPort] = useState<string>(defaultContextValue.serverPort);
+  const [serverPac, setServerPac] = useState<string>("");
+
+  useEffect(() => {
+    {
+      const pac = `http://${serverIpAddress}:${serverPort}/pac`
+      setServerPac(pac)
+    }
+  }, [serverIpAddress, serverPort])
+
 
   return (
-    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes }}>
+    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac }}>
       {children}
     </Daemon.Provider>
   );

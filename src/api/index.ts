@@ -23,3 +23,13 @@ export const startSilentPass = async (
     throw error;
   }
 };
+
+export const getServerIpAddress = async (): Promise<AxiosResponse<any>> => {
+  try {
+    const response = await api.get("/ipaddress");
+    return response;
+  } catch (error) {
+    console.error("Error fetching regions:", error);
+    throw error;
+  }
+};

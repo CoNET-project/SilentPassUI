@@ -240,7 +240,7 @@ const Home = () => {
 
             <RenderButton profile={profile} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} />
 
-            {!window?.webkit && <CopyProxyInfo />}
+            <CopyProxyInfo />
 
             <RegionSelector
               title={allRegions?.[sRegion]?.country}

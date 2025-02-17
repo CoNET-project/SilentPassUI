@@ -1,8 +1,11 @@
 .mining-status {
   display: flex;
   align-items: center;
+  flex-direction: row;
+  justify-content: space-evenly;
   font-size: 12px;
   gap: 10px;
+  width: 100%;
 }
 
 .mining-status > div {
@@ -34,19 +37,13 @@
   background-color: #ff0000;
 }
 
-.mining-status > div:not(:first-child) {
-  border: 1px solid #cfcfcf0a;
-  border-radius: 16px;
-  width: 80%;
-}
-
-.rate {
+.miners {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.miners {
+.users {
   display: flex;
   align-items: center;
   gap: 4px;

@@ -4,19 +4,21 @@ import {
   FaucetV3Abi,
   GuardianNodesInfoV6Abi,
   ConetStorageAbi,
+  FreePassportAbi,
+  ConetDepinAbi,
 } from "./abis";
 
-export const contracts = {
+const contracts = {
   GuardianNodesInfoV6: {
-    address: "0x9e213e8B155eF24B466eFC09Bcde706ED23C537a",
+    address: "0x88cBCc093344F2e1A6c2790A537574949D711E9d",
     abi: GuardianNodesInfoV6Abi,
   },
   ConetGuardianNodesV6: {
-    address: "0x35c6f84C5337e110C9190A5efbaC8B850E960384",
+    address: "0x312c96DbcCF9aa277999b3a11b7ea6956DdF5c61",
     abi: ConetGuardianNodesV6,
   },
   ClaimableConetPoint: {
-    address: "0xa4b389994A591735332A67f3561D60ce96409347",
+    address: "0x6C7C575010F86A311673432319299F3D68e4b522",
     abi: ClaimableConetPointAbi,
   },
   FaucetV3: {
@@ -24,7 +26,17 @@ export const contracts = {
     abi: FaucetV3Abi,
   },
   ConetStorage: {
-    address: "0xB56Dfa5154B0DF39639eF701202f6e04EAc8Dda4",
+    address: "0x20f8B4De2922d2e9d83B73f4561221d9278Af181",
     abi: ConetStorageAbi,
   },
+  FreePassport: {
+    address: "0xEa6356BcE3E1264C03C93CBa668BB486765a46BA",
+    abi: FreePassportAbi,
+  },
+  ConetDepin: {
+    address: "0xC6edDb4Bc6161259325cf56AEf8b0D4fb289898A",
+    abi: ConetDepinAbi,
+  },
 };
+
+export default contracts;

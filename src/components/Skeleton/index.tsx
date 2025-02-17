@@ -4,13 +4,14 @@ import './index.css';
 interface SkeletonProps {
   width: string;
   height: string;
+  style?: React.CSSProperties;
 }
 
-const Skeleton: React.FC<SkeletonProps> = ({ width, height }) => {
+const Skeleton: React.FC<SkeletonProps> = ({ width, height, style }) => {
   return (
     <div
       className="skeleton"
-      style={{ width, height }}
+      style={{ ...style, width, height }}
     />
   );
 };

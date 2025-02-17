@@ -1,0 +1,269 @@
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.subscription-header {
+  text-align: left;
+}
+
+.subscription-header p {
+  font-size: 14px;
+  color: #CACACC;
+}
+
+.subscription-header h1 {
+  margin-bottom: 12px;
+}
+
+.subscription-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  margin-bottom: 20px;
+}
+
+.subscription-footer button {
+  width: 100%;
+  padding: 16px 8px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  border-radius: 16px;
+  gap: 8px;
+
+  background-color: #282930;
+  color: #FFFFFF;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.subscription-footer button.step-3 {
+  background-color: #494849;
+  color: #282930;
+}
+
+.subscription-footer button.step-3 svg {
+  animation: rotate 1.4s linear infinite;
+}
+
+.subscription-footer button.step-5 {
+  background: none;
+  color: #9FBFE5FE;
+}
+
+.subscription-footer p {
+  font-size: 11px;
+  color: #CACACC;
+  text-align: left;
+}
+
+.current {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #191919;
+
+  margin-top: 30px;
+  margin-bottom: 30px;
+
+  text-align: left;
+}
+
+.current p {
+  color: #989899;
+}
+
+.current div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.current div p {
+  width: fit-content;
+}
+
+.buy-more {
+  margin-bottom: 30px;
+}
+
+.buy-more h3 {
+  text-align: left;
+  font-size: 24px;
+}
+
+.buy-more > p {
+  width: 295px;
+  font-size: 12px;
+  color: #989899;
+  text-align: left;
+}
+
+.plan-options {
+  width: fit-content;
+  margin: 24px auto;
+
+  display: flex;
+  background-color: #191919;
+  border-radius: 8px;
+  padding: 4px;
+
+  gap: 2px;
+}
+
+.plan-options button {
+  flex: 1;
+  color: #FFFFFF;
+  padding: 4px 16px;
+  border-radius: 4px;
+
+  width: 88px;
+
+  display: flex;
+  justify-content: center;
+
+  cursor: pointer;
+}
+
+.plan-options button:not(.active):hover {
+  background-color: #282828;
+}
+
+.plan-options button.active {
+  background-color: #3F3F40;
+}
+
+.plan-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.plan-cards .plan {
+  display: flex;
+  justify-content: space-between;
+
+  background: #191919;
+  padding: 16px;
+  border-radius: 16px;
+
+  text-align: left;
+}
+
+.plan-cards .plan > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.plan-cards .plan p {
+  font-size: 24px;
+}
+
+.plan-cards .plan span {
+  font-size: 14px;
+  color: #989899;
+}
+
+.plan-cards .plan span.pay-type {
+  font-size: 12px;
+}
+
+.transaction-details {
+  text-align: left;
+
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+
+  margin: 30px 0 30px;
+}
+
+.transaction-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transaction-info > div, .summary-table {
+  background-color: #191919;
+  padding: 14px 16px;
+
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: 16px;
+}
+
+.transaction-info > div div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transaction-info svg {
+  width: 24px;
+  height: 24px;
+}
+
+.transaction-info > div div p {
+  font-size: 14px;
+}
+
+.transaction-info > div div span {
+  font-size: 12px;
+  color: #989899;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.summary-heading {
+  display: flex;
+  justify-content: space-between;
+}
+
+.summary-heading p {
+  width: fit-content
+}
+
+.summary-table {
+  flex-direction: column;
+}
+
+.summary-table div {
+  width: 100%;
+
+  display: flex;
+  justify-content: space-between;
+
+  font-size: 14px;
+}
+
+.summary-table div p:last-child {
+  text-align: right;
+}
+
+.quotes {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.quotes p {
+  margin-bottom: 3px;
+}

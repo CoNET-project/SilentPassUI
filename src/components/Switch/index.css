@@ -1,0 +1,45 @@
+.wrapper {
+  width: 51px;
+  height: 31px;
+
+  border-radius: 99px;
+
+  position: relative;
+}
+
+.wrapper .ball {
+  position: absolute;
+  top: 2px;
+
+  width: 27px;
+  height: 27px;
+
+  background: #FFFFFF;
+  border-radius: 99px;
+
+  transition: left .24s ease;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.wrapper.true {
+  background-color: #32D74B;
+}
+
+.wrapper.icon.true {
+  background-color: #D775FF;
+}
+
+.wrapper.false {
+  background-color: #78788052;
+}
+
+.wrapper.true .ball {
+  left: 21px;
+}
+
+.wrapper.false .ball {
+  left: 2px;
+}

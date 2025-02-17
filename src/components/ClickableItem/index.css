@@ -1,0 +1,40 @@
+.container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  background-color: #191919;
+  padding: 16px;
+
+  cursor: pointer;
+
+  user-select: none;
+}
+
+.def {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.def .icon-wrapper {
+  background-color: #9FBFE5FE;
+  border-radius: 4px;
+  padding: 3px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.children {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  color: #989899;
+}
+
+.chevron.rotated {
+  transform: rotate(90deg);
+}

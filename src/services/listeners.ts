@@ -1,8 +1,14 @@
+import { blast_CNTPAbi, ClaimableConetPointAbi } from "./../utils/abis";
 import { ethers } from "ethers";
-import { conetProvider } from "../utils/constants";
+import {
+  conetDepinProvider,
+  conetProvider,
+  ethProvider,
+} from "../utils/constants";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
-import { contracts } from "../utils/contracts";
+import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
+import { getFreePassportInfo, getVpnTimeUsed } from "./wallets";
 
 let epoch = 0;
 
@@ -23,6 +29,8 @@ const listenProfileVer = async (callback: (profile: profile) => void) => {
 
       await Promise.all(runningList);
 
+      await getVpnTimeUsed();
+
       if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles[0]);
     }
   });
@@ -38,9 +46,12 @@ const getProfileAssets = async (profile: profile) => {
       profile.tokens = initProfileTokens();
     }
 
-    const [cCNTP, conet] = await Promise.all([
+    const [cCNTP, conet, conetDepin, conet_eth, eth] = await Promise.all([
       scanCCNTP(key),
       scanCONETHolesky(key),
+      scanCONETDepin(key),
+      scanConetETH(key),
+      scanETH(key),
     ]);
 
     if (profile.tokens?.cCNTP) {
@@ -75,6 +86,56 @@ const getProfileAssets = async (profile: profile) => {
       };
     }
 
+    if (profile.tokens?.conetDepin) {
+      profile.tokens.conetDepin.balance =
+        conetDepin === false
+          ? ""
+          : parseFloat(ethers.formatEther(conetDepin)).toFixed(6);
+    } else {
+      profile.tokens.conetDepin = {
+        balance:
+          conetDepin === false
+            ? ""
+            : parseFloat(ethers.formatEther(conetDepin)).toFixed(6),
+        network: "CONET DePIN",
+        decimal: 18,
+        contract: "",
+        name: "conetDepin",
+      };
+    }
+
+    if (profile.tokens?.eth) {
+      profile.tokens.eth.balance =
+        eth === false ? "" : parseFloat(ethers.formatEther(eth)).toFixed(6);
+    } else {
+      profile.tokens.eth = {
+        balance:
+          eth === false ? "" : parseFloat(ethers.formatEther(eth)).toFixed(6),
+        network: "ETH",
+        decimal: 18,
+        contract: "",
+        name: "eth",
+      };
+    }
+
+    if (profile.tokens?.conet_eth) {
+      profile.tokens.conet_eth.balance =
+        conet_eth === false
+          ? ""
+          : parseFloat(ethers.formatEther(conet_eth)).toFixed(6);
+    } else {
+      profile.tokens.conet_eth = {
+        balance:
+          conet_eth === false
+            ? ""
+            : parseFloat(ethers.formatEther(conet_eth)).toFixed(6),
+        network: "CONET DePIN",
+        decimal: 18,
+        contract: "",
+        name: "conet_eth",
+      };
+    }
+
     const temp = CoNET_Data;
 
     if (!temp) {
@@ -83,8 +144,6 @@ const getProfileAssets = async (profile: profile) => {
 
     temp.profiles[0] = profile;
 
-    console.log("ccntp balance", profile.tokens.cCNTP.balance);
-
     setCoNET_Data(temp);
   }
 
@@ -92,26 +151,63 @@ const getProfileAssets = async (profile: profile) => {
 };
 
 const scanCCNTP = async (walletAddr: string) => {
-  const erc20Contract = new ethers.Contract(
+  return await scan_erc20_balance(
+    walletAddr,
     contracts.ClaimableConetPoint.address,
     contracts.ClaimableConetPoint.abi,
     conetProvider
   );
-  try {
-    const result = await erc20Contract.balanceOf(walletAddr);
-    return result;
-  } catch (ex) {
-    console.log(`scan_erc20_balance Error!`);
-    return false;
-  }
+};
+
+const scanCONETDepin = async (walletAddr: string) => {
+  return await scan_erc20_balance(
+    walletAddr,
+    contracts.ConetDepin.address,
+    conetDepinProvider,
+    contracts.ClaimableConetPoint.abi
+  );
+};
+
+const scanConetETH = async (walletAddr: string) => {
+  return await scan_natural_balance(walletAddr, conetDepinProvider);
 };
 
 const scanCONETHolesky = async (walletAddr: string) => {
+  return await scan_natural_balance(walletAddr, conetProvider);
+};
+
+const scanETH = async (walletAddr: string) => {
+  return await scan_natural_balance(walletAddr, ethProvider);
+};
+
+const scan_erc20_balance: (
+  walletAddr: string,
+  address: string,
+  provider: any,
+  abi: any
+) => Promise<false | any> = (walletAddr, contractAddress, abi, provider) =>
+  new Promise(async (resolve) => {
+    const contract = new ethers.Contract(
+      contractAddress,
+      blast_CNTPAbi,
+      provider
+    );
+
+    try {
+      const result = await contract.balanceOf(walletAddr);
+      return resolve(result);
+    } catch (ex) {
+      console.log(`scan_erc20_balance Error!`);
+      return resolve(false);
+    }
+  });
+
+const scan_natural_balance = async (walletAddr: string, provider: any) => {
   try {
-    const result = await conetProvider.getBalance(walletAddr);
+    const result = await provider.getBalance(walletAddr);
     return result;
   } catch (ex) {
-    console.log(`scan_natureBalance Error!`, ex);
+    console.log(`scan_natureBalance Error!`);
     return false;
   }
 };

@@ -17,10 +17,10 @@ const Region = () => {
 
   return (
     <div className="regions">
-      <div style={{ marginRight: '80px' }}>
+      <div style={{ width: '100%' }}>
         <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', cursor: 'pointer' }} onClick={() => navigate("/")}>
           <button className="back">
-            <img src="/assets/left.png" />
+            <img style={{ width: "32px", height: "32px" }} src="/assets/left.svg" />
           </button>
 
           <h1 style={{ paddingBottom: '10px' }}>Select Region</h1>

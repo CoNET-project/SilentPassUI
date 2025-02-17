@@ -12,7 +12,7 @@ import Footer from '../../components/Footer';
 import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM } from "../../utils/utils";
-import { startSilentPass } from "../../api";
+import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfo from "../../components/PassportInfo";
 
 interface RenderButtonProps {
@@ -135,22 +135,33 @@ const Home = () => {
   }, [allRegions]);
 
   const handleTogglePower = async () => {
+    setIsConnectionLoading(true)
     let error = false;
     setErrorStartingSilentPass(false);
     let selectedCountryIndex = -1
 
     if (power) {
-      setPower(false);
-      window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+      if (window?.webkit) {
+        window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+        setPower(false);
+      } else {
+        try {
+          const response = await stopSilentPass();
+          if (response.status === 200) {
+            setPower(false);
+          }
+        } catch (ex) { }
+      }
+      setTimeout(() => setIsConnectionLoading(false), 1000)
       return
     }
+
     const conetProfile = CoNET_Data?.profiles[0];
     const privateKey = conetProfile?.privateKeyArmor
     if (!privateKey) {
       return
     }
 
-    setIsConnectionLoading(true)
     if (sRegion === -1) {
       selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
       setSRegion(selectedCountryIndex);

@@ -1,0 +1,34 @@
+.text-display {
+  text-align: left;
+
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.text-display div {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.text-display h1 {
+  font-size: 32px;
+  margin-top: -18px;
+}
+
+.text-display h2 {
+  font-size: 18px;
+}
+
+.text-display p, .text-display li {
+  color: #989899;
+}
+
+.text-display ul, .text-display ol {
+  margin-left: 16px;
+}
+
+.text-display a {
+  color: #9FBFE5FE;
+}

@@ -1,0 +1,18 @@
+.back-button {
+  background: none;
+  border: none;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.back-button p {
+  color: #9FBFE5FE;
+  font-size: 16px;
+
+  width: fit-content;
+}

@@ -35,8 +35,17 @@ interface CryptoAsset {
 }
 
 interface conet_tokens {
-  conet: CryptoAsset;
   cCNTP: CryptoAsset;
+  conet: CryptoAsset;
+  conetDepin: CryptoAsset;
+  conet_eth: CryptoAsset;
+  eth: CryptoAsset;
+}
+
+interface freePassport {
+  nftID: string;
+  expires: string;
+  expiresDays: string;
 }
 
 interface profile extends keyPair {
@@ -53,6 +62,8 @@ interface profile extends keyPair {
   nodeID?: number;
   nodeIP_address?: string;
   nodeRegion?: string;
+  activeFreePassport?: freePassport;
+  vpnTimeUsedInMin?: number;
 }
 
 type encrypt_keys_object = {
@@ -143,3 +154,17 @@ interface Window {
     };
   };
 }
+
+type Native_node = {
+  country: string;
+  ip_addr: string;
+  region: string;
+  armoredPublicKey: string;
+  nftNumber: string;
+};
+
+type Native_StartVPNObj = {
+  entryNodes: Native_node[];
+  privateKey: string;
+  exitNode: Native_node[];
+};

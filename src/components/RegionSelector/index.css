@@ -1,0 +1,52 @@
+.container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background-color: #191919;
+  padding: 16px;
+
+  cursor: pointer;
+
+  user-select: none;
+}
+
+.def {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+}
+
+.def .icon-wrapper {
+  background-color: #9fbfe5fe;
+  border-radius: 4px;
+  padding: 3px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.def .flag-icon-wrapper {
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.children {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  color: #989899;
+}
+
+.chevron.rotated {
+  transform: rotate(90deg);
+}

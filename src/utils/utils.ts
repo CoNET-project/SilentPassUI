@@ -1,5 +1,5 @@
 import { XMLHttpRequestTimeout } from "./constants";
-import { contracts } from "./contracts";
+import contracts from "./contracts";
 
 export const customJsonStringify = (item: any) => {
   const result = JSON.stringify(
@@ -7,6 +7,15 @@ export const customJsonStringify = (item: any) => {
     (key, value) => (typeof value === "bigint" ? value.toString() : value) // return everything else unchanged
   );
   return result;
+};
+
+export const formatMinutesToHHMM = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(
+    2,
+    "0"
+  )}:00`;
 };
 
 export const initProfileTokens = () => {
@@ -18,12 +27,33 @@ export const initProfileTokens = () => {
       contract: contracts.ClaimableConetPoint.address,
       name: "cCNTP",
     },
+    conetDepin: {
+      balance: "0",
+      network: "CONET DePIN",
+      decimal: 18,
+      contract: contracts.ConetDepin.address,
+      name: "conetDepin",
+    },
     conet: {
       balance: "0",
       network: "CONET Holesky",
       decimal: 18,
       contract: "",
       name: "conet",
+    },
+    conet_eth: {
+      balance: "0",
+      network: "CONET DePIN",
+      decimal: 18,
+      contract: "",
+      name: "conet_eth",
+    },
+    eth: {
+      balance: "0",
+      network: "ETH",
+      decimal: 18,
+      contract: "",
+      name: "eth",
     },
   };
   return ret;
@@ -49,7 +79,7 @@ export const postToEndpoint = (url: string, post: boolean, jsonData: any) => {
             return resolve("");
           }
 
-          return resolve(xhr.responseText);
+          return resolve(true);
         }
 
         return resolve(ret);
@@ -82,4 +112,28 @@ export const postToEndpoint = (url: string, post: boolean, jsonData: any) => {
       reject(new Error(Err));
     }, XMLHttpRequestTimeout);
   });
+};
+
+export const getRemainingTime = (timestamp: number): string => {
+  const now = Math.floor(Date.now() / 1000); // Convert current time to seconds
+  const diff = timestamp - now;
+
+  if (diff <= 0) return "00:00:00"; // Time has already passed
+
+  const days = Math.floor(diff / 86400); // 86400 seconds in a day
+  const hours = Math.floor((diff % 86400) / 3600);
+  const minutes = Math.floor((diff % 3600) / 60);
+  const seconds = diff % 60;
+
+  if (days > 0) {
+    return `${days} day${days !== 1 ? "s" : ""} + ${String(hours).padStart(
+      2,
+      "0"
+    )}:${String(minutes).padStart(2, "0")}h`;
+  }
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}:${String(seconds).padStart(2, "0")}`;
 };

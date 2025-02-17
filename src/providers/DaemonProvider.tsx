@@ -38,7 +38,7 @@ const defaultContextValue: DaemonContext = {
   setProfile: () => { },
   isMiningUp: false,
   setIsMiningUp: () => { },
-  setaAllNodes: () => {},
+  setaAllNodes: () => { },
   getAllNodes: []
 };
 

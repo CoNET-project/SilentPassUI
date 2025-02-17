@@ -6,17 +6,17 @@ import {
   postToEndpoint,
 } from "../utils/utils";
 import {
-  apiv3_endpoint,
   apiv4_endpoint,
+  conetProvider,
   conetRpc,
   localDatabaseName,
 } from "../utils/constants";
-import { contracts } from "../utils/contracts";
+import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 
 const PouchDB = require("pouchdb").default;
 
-let isGetFaucetProcess = false
+let isGetFaucetProcess = false;
 
 let getFaucetRoop = 0;
 
@@ -114,10 +114,7 @@ const createOrGetWallet = async () => {
 
   if (!CoNET_Data) return;
 
-  await getFaucet(
-    CoNET_Data.profiles[0].keyID,
-    CoNET_Data.profiles[0].privateKeyArmor
-  );
+  await getFaucet(CoNET_Data.profiles[0]);
 
   await storeSystemData();
 
@@ -151,57 +148,38 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
-const getFaucet = async (keyId: string, privateKey: string) => {
-  if (isGetFaucetProcess) {
-	return null;
+const getCONET_api_health = async () => {
+  const url = `${apiv4_endpoint}health`;
+  const result: any = await postToEndpoint(url, false, null);
+  if (result === true || result?.health === true) {
+    return true;
   }
-  isGetFaucetProcess = true
+  return false;
+};
 
-  if (CoNET_Data?.profiles[0].tokens.conet.balance === "0") {
-    if (++getFaucetRoop > 6) {
-      getFaucetRoop = 0;
-      console.log(`getFaucet Roop > 6 STOP process!`);
-	  
-      return null;
+const getFaucet: (profile: profile) => Promise<boolean | any> = async (
+  profile
+) =>
+  new Promise(async (resolve) => {
+    const conet = profile?.tokens?.conet;
+
+    const health = await getCONET_api_health();
+    if (!health) {
+      return resolve(false);
     }
+
     const url = `${apiv4_endpoint}conet-faucet`;
     let result;
     try {
-      result = await postToEndpoint(url, true, { walletAddr: keyId });
+      result = await postToEndpoint(url, true, { walletAddr: profile.keyID });
     } catch (ex) {
       console.log(`getFaucet postToEndpoint [${url}] error! `, ex);
-	  
-      return null;
+      return resolve(false);
     }
-    getFaucetRoop = 0;
-
-    if (result) {
-		
-      return true;
-    }
-	
-    return null;
-  } else {
-    const provide = new ethers.JsonRpcProvider(conetRpc);
-    const wallet = new ethers.Wallet(privateKey, provide);
-    const faucetContract = new ethers.Contract(
-      contracts.FaucetV3.address,
-      contracts.FaucetV3.abi,
-      wallet
-    );
-
-    try {
-      const tx = await faucetContract.getFaucet();
-      console.log(`success hash = ${tx.hash}`);
-	  
-      return true;
-    } catch (ex) {
-      console.log(ex);
-	  
-      return null;
-    }
-  }
-};
+    setTimeout(() => {
+      return resolve(true);
+    }, 1000);
+  });
 
 const storeSystemData = async () => {
   if (!CoNET_Data) {
@@ -257,4 +235,107 @@ const checkStorage = async () => {
   }
 };
 
-export { createOrGetWallet, createGPGKey };
+const requireFreePassport = async () => {
+  if (!CoNET_Data) {
+    return;
+  }
+
+  const wallet = new ethers.Wallet(
+    CoNET_Data.profiles[0].privateKeyArmor,
+    conetProvider
+  );
+
+  const freePassportContract = new ethers.Contract(
+    contracts.FreePassport.address,
+    contracts.FreePassport.abi,
+    wallet
+  );
+
+  try {
+    const tx = await freePassportContract.getFreePassport();
+    console.log(`success hash = ${tx.hash}`);
+  } catch (ex) {
+    console.log(ex);
+  }
+};
+
+const getFreePassportInfo = async () => {
+  if (!CoNET_Data) {
+    return;
+  }
+
+  const wallet = new ethers.Wallet(
+    CoNET_Data.profiles[0].privateKeyArmor,
+    conetProvider
+  );
+
+  const freePassportContract = new ethers.Contract(
+    contracts.FreePassport.address,
+    contracts.FreePassport.abi,
+    wallet
+  );
+
+  try {
+    const tx = await freePassportContract.getUserInfo(wallet.address);
+    return tx;
+  } catch (ex) {
+    console.log(ex);
+  }
+};
+
+const tryToRequireFreePassport = async () => {
+  if (!CoNET_Data) {
+    return;
+  }
+
+  do {
+    await getFaucet(CoNET_Data.profiles[0]);
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await requireFreePassport();
+    await new Promise((resolve) => setTimeout(resolve, 12000));
+  } while (CoNET_Data.profiles[0].tokens.conet.balance < "0.0001");
+};
+
+const getVpnTimeUsed = async () => {
+  if (!CoNET_Data?.profiles[0]) return;
+
+  const profile = CoNET_Data.profiles[0];
+
+  const wallet = new ethers.Wallet(
+    CoNET_Data.profiles[0].privateKeyArmor,
+    conetProvider
+  );
+
+  const freePassportContract = new ethers.Contract(
+    contracts.FreePassport.address,
+    contracts.FreePassport.abi,
+    wallet
+  );
+
+  let vpnTimeUsedInMin = 0;
+
+  try {
+    vpnTimeUsedInMin = await freePassportContract.balanceOf(wallet.address, 3);
+  } catch (ex) {
+    console.log(`getVpnTimeUsed error!`, ex);
+  }
+
+  if (vpnTimeUsedInMin) {
+    profile.vpnTimeUsedInMin = vpnTimeUsedInMin;
+  }
+
+  const temp = CoNET_Data;
+  temp.profiles[0] = profile;
+  setCoNET_Data(temp);
+};
+
+export {
+  createOrGetWallet,
+  createGPGKey,
+  requireFreePassport,
+  tryToRequireFreePassport,
+  getFreePassportInfo,
+  getFaucet,
+  getVpnTimeUsed,
+};

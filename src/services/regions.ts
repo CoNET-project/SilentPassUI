@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { contracts } from "../utils/contracts";
+import contracts from "../utils/contracts";
 import { conetProvider } from "../utils/constants";
 
 // Get All Regions

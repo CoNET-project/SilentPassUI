@@ -22,7 +22,7 @@ import { getServerIpAddress } from "./api";
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfile, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort } = useDaemonContext();
+  const { setProfile, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin } = useDaemonContext();
 
   useEffect(() => {
     const handlePassport = async () => {
@@ -64,6 +64,9 @@ function App() {
     };
 
     const init = async () => {
+      const vpnTimeUsedInMin = parseInt(localStorage.getItem("vpnTimeUsedInMin") || "0");
+      _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
+
       await createOrGetWallet();
       listenProfileVer(setProfile);
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode, useState, useEffect } from "react";
+import React, { createContext, useContext, ReactNode, useState, useEffect, useRef } from "react";
 
 type DaemonContext = {
   sRegion: number;
@@ -23,6 +23,7 @@ type DaemonContext = {
   setServerPort: (port: string) => void
   serverPac: string
   setServerPac: (pac: string) => void
+  _vpnTimeUsedInMin: React.MutableRefObject<number>
 };
 
 type DaemonProps = {
@@ -51,7 +52,8 @@ const defaultContextValue: DaemonContext = {
   serverPort: "8888",
   setServerPort: () => { },
   serverPac: "",
-  setServerPac: () => { }
+  setServerPac: () => { },
+  _vpnTimeUsedInMin: { current: 0 }
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -73,6 +75,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [serverIpAddress, setServerIpAddress] = useState<string>(defaultContextValue.serverIpAddress);
   const [serverPort, setServerPort] = useState<string>(defaultContextValue.serverPort);
   const [serverPac, setServerPac] = useState<string>("");
+  const _vpnTimeUsedInMin = useRef<number>(0);
 
   useEffect(() => {
     {
@@ -83,7 +86,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac }}>
+    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin }}>
       {children}
     </Daemon.Provider>
   );

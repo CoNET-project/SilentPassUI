@@ -1,6 +1,6 @@
 import "./index.css";
 import { mappedCountryCodes } from "../../utils/regions";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { getAllRegions } from "../../services/regions";
 import BlobWrapper from '../../components/BlobWrapper';
@@ -14,16 +14,18 @@ import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfo from "../../components/PassportInfo";
+import { conetProvider } from "../../utils/constants";
 
 interface RenderButtonProps {
   errorStartingSilentPass: boolean;
   isConnectionLoading: boolean;
   power: boolean;
   profile: any;
+  _vpnTimeUsedInMin: number;
   handleTogglePower: () => void;
 }
 
-const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnectionLoading, power, profile }: RenderButtonProps) => {
+const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnectionLoading, power, profile, _vpnTimeUsedInMin }: RenderButtonProps) => {
   if (isConnectionLoading)
     return (
       <div className="button-wrapper">
@@ -53,7 +55,8 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
 
         <div className="current-mined">
           <strong>Total time used</strong>
-          <p>{formatMinutesToHHMM(parseInt(profile?.vpnTimeUsedInMin) || 0)}</p>
+          {/* <p>{formatMinutesToHHMM(parseInt(profile?.vpnTimeUsedInMin) || 0)}</p> */}
+          <p>{formatMinutesToHHMM(_vpnTimeUsedInMin)}</p>
         </div>
       </div>
     )
@@ -72,7 +75,8 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
 
         <div className="current-mined">
           <strong>Total time used</strong>
-          <p>{formatMinutesToHHMM(parseInt(profile?.vpnTimeUsedInMin) || 0)}</p>
+          {/* <p>{formatMinutesToHHMM(parseInt(profile?.vpnTimeUsedInMin) || 0)}</p> */}
+          <p>{formatMinutesToHHMM(_vpnTimeUsedInMin)}</p>
         </div>
       </div>
 
@@ -81,15 +85,36 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
   )
 }
 
+
 const Home = () => {
-  const { profile, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion } = useDaemonContext();
+  const { profile, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin } = useDaemonContext();
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [errorStartingSilentPass, setErrorStartingSilentPass] = useState<boolean>(false);
+  const vpnTimeTimeout = useRef<NodeJS.Timeout>();
 
   const navigate = useNavigate();
+
+
+  useEffect(() => {
+    const countMinutes = () => {
+      const timeout = setTimeout(() => {
+        _vpnTimeUsedInMin.current = (_vpnTimeUsedInMin.current) + 1;
+        localStorage.setItem("vpnTimeUsedInMin", (_vpnTimeUsedInMin.current).toString());
+        countMinutes();
+      }, 60000)
+
+      vpnTimeTimeout.current = timeout;
+    }
+
+    clearInterval(vpnTimeTimeout.current);
+
+    if (power) {
+      countMinutes()
+    }
+  }, [power]);
 
   useEffect(() => {
     const listenGetAllNodes = () => {
@@ -250,7 +275,7 @@ const Home = () => {
               <img src="/assets/header-title.svg"></img>
             </div>
 
-            <RenderButton profile={profile} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} />
+            <RenderButton profile={profile} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 
             <CopyProxyInfo />
 

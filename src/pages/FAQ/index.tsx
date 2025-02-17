@@ -4,6 +4,7 @@ import SilentPassServiceTable from "./assets/silent-pass-service-table.svg";
 import SilentPassBenefitsTable from "./assets/silent-pass-benefits-table.svg";
 
 import "./index.css";
+import { PROXY_PAC, PROXY_PORT, PROXY_SERVER } from '../../utils/constants';
 
 const FAQ = () => {
   return (
@@ -80,9 +81,9 @@ const FAQ = () => {
         <p>
           Support Windows 10~, Linux & MacOS <br />
           Local Proxy Auto-Config (PAC) Url: <br />
-          http://localhost:3002/pac <br />
-          Proxy server: localhost <br />
-          Port number: 3002 <br />
+          {PROXY_PAC} <br />
+          Proxy server: {PROXY_SERVER} <br />
+          Port number: {PROXY_PORT} <br />
         </p>
       </div>
     </div>

@@ -17,6 +17,10 @@ const conetProvider = new ethers.JsonRpcProvider(conetRpc);
 const ethProvider = new ethers.JsonRpcProvider(ethRpc());
 const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);
 
+const PROXY_SERVER = "127.0.0.1";
+const PROXY_PORT = "3002";
+const PROXY_PAC = `http://${PROXY_SERVER}:${PROXY_PORT}/pac`;
+
 export {
   localDatabaseName,
   XMLHttpRequestTimeout,
@@ -26,4 +30,7 @@ export {
   conetProvider,
   ethProvider,
   conetDepinProvider,
+  PROXY_SERVER,
+  PROXY_PORT,
+  PROXY_PAC,
 };

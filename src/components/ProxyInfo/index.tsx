@@ -6,6 +6,7 @@ import Separator from '../Separator';
 import Skeleton from '../Skeleton';
 
 import './index.css';
+import { PROXY_PAC, PROXY_PORT, PROXY_SERVER } from '../../utils/constants';
 
 export default function ProxyInfo() {
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
@@ -13,7 +14,7 @@ export default function ProxyInfo() {
   const [isProxyPortCopied, setIsProxyPortCopied] = useState<boolean>(false);
   const [isPACCopied, setIsPACCopied] = useState<boolean>(false);
 
-  const handleCopy = (text:string, setMethod: (val: boolean) => any) => {
+  const handleCopy = (text: string, setMethod: (val: boolean) => any) => {
     navigator.clipboard.writeText(text);
 
     setMethod(true);
@@ -32,8 +33,8 @@ export default function ProxyInfo() {
         <ClickableItem title="Proxy server:" chevron={false}>
           {
             true ? (
-              <button onClick={() => handleCopy("127.0.0.1", setIsProxyServerCopied)}>
-                <p>127.0.0.1</p>
+              <button onClick={() => handleCopy(PROXY_SERVER, setIsProxyServerCopied)}>
+                <p>{PROXY_SERVER}</p>
                 {
                   isProxyServerCopied ? (
                     <img src="/assets/check.svg" alt="Copy icon" />
@@ -51,8 +52,8 @@ export default function ProxyInfo() {
         <ClickableItem title="Proxy Port:" chevron={false}>
           {
             true ? (
-              <button onClick={() => handleCopy("8888", setIsProxyPortCopied)}>
-                <p>8888</p>
+              <button onClick={() => handleCopy(PROXY_PORT, setIsProxyPortCopied)}>
+                <p>{PROXY_PORT}</p>
                 {
                   isProxyPortCopied ? (
                     <img src="/assets/check.svg" alt="Copy icon" />
@@ -70,8 +71,8 @@ export default function ProxyInfo() {
         <ClickableItem title="PAC:" chevron={false}>
           {
             true ? (
-              <button onClick={() => handleCopy("http://127.0.0.1:8888/pac", setIsPACCopied)}>
-                <p>http://127.0.0.1:8888/pac</p>
+              <button onClick={() => handleCopy(PROXY_PAC, setIsPACCopied)}>
+                <p>{PROXY_PAC}</p>
                 {
                   isPACCopied ? (
                     <img src="/assets/check.svg" alt="Copy icon" />

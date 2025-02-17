@@ -279,7 +279,7 @@ const Home = () => {
 
             <CopyProxyInfo />
 
-            <PassportInfo />
+            {/* <PassportInfo /> */}
 
             {!power && !isConnectionLoading &&
               <RegionSelector

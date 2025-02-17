@@ -2712,6 +2712,13 @@ export const FreePassportAbi = [
     type: "function",
   },
   {
+    inputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    name: "_premium",
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
     inputs: [
       { internalType: "address", name: "to", type: "address" },
       { internalType: "uint256", name: "time", type: "uint256" },
@@ -2798,6 +2805,13 @@ export const FreePassportAbi = [
     type: "function",
   },
   {
+    inputs: [{ internalType: "uint256", name: "_days", type: "uint256" }],
+    name: "changeFreePassportExpiresDays",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
     inputs: [],
     name: "currentID",
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
@@ -2811,6 +2825,7 @@ export const FreePassportAbi = [
       { internalType: "uint256", name: "nftIDs", type: "uint256" },
       { internalType: "uint256", name: "expires", type: "uint256" },
       { internalType: "uint256", name: "expiresDays", type: "uint256" },
+      { internalType: "bool", name: "premium", type: "bool" },
     ],
     stateMutability: "view",
     type: "function",
@@ -2829,6 +2844,7 @@ export const FreePassportAbi = [
       { internalType: "uint256[]", name: "nftIDs", type: "uint256[]" },
       { internalType: "uint256[]", name: "expires", type: "uint256[]" },
       { internalType: "uint256[]", name: "expiresDays", type: "uint256[]" },
+      { internalType: "bool[]", name: "premium", type: "bool[]" },
     ],
     stateMutability: "view",
     type: "function",
@@ -2847,6 +2863,7 @@ export const FreePassportAbi = [
     inputs: [
       { internalType: "address", name: "to", type: "address" },
       { internalType: "uint256", name: "expiresDayes", type: "uint256" },
+      { internalType: "bool", name: "premium", type: "bool" },
     ],
     name: "mintPassport",
     outputs: [],

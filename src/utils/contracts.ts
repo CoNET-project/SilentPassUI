@@ -30,7 +30,7 @@ const contracts = {
     abi: ConetStorageAbi,
   },
   FreePassport: {
-    address: "0xEa6356BcE3E1264C03C93CBa668BB486765a46BA",
+    address: "0xb889F14b557C2dB610f283055A988952953E0E94",
     abi: FreePassportAbi,
   },
   ConetDepin: {

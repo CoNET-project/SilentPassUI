@@ -285,6 +285,7 @@ const Home = () => {
               <RegionSelector
                 title={allRegions?.[sRegion]?.country}
                 regionCode={allRegions?.[sRegion]?.code}
+                showArrow={!power}
                 action={() => !power && navigate("/regions")}
               />
             }

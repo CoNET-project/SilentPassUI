@@ -14,14 +14,14 @@ interface RegionSelectorProps {
   children?: ReactNode;
   toggle?: boolean;
   theme?: boolean;
-  chevron?: boolean;
+  showArrow?: boolean;
   switchComp?: boolean;
   switchState?: boolean;
 }
 
-export default function RegionSelector({ regionCode, icon, title, action, children, switchComp, switchState = false, toggle = false, theme = false, chevron = true }: RegionSelectorProps) {
+export default function RegionSelector({ regionCode, icon, title, action, children, switchComp, switchState = false, toggle = false, theme = false, showArrow = true }: RegionSelectorProps) {
   return (
-    <div className="container" onClick={action}>
+    <div className="container" style={{ cursor: showArrow ? 'pointer' : 'not-allowed' }} onClick={action}>
       <div className="def">
         <div className="flag-icon-wrapper">
           <ReactCountryFlag
@@ -40,7 +40,7 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
       <div className="children">
         {children}
         {
-          chevron && (
+          showArrow && (
             <div className={`chevron ${toggle ? 'rotated' : ''}`}>
               <ChevronArrow />
             </div>

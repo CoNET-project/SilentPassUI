@@ -18,6 +18,7 @@ import FAQ from './pages/FAQ';
 import ConfigDevice from './pages/ConfigDevice';
 import Passcode from './pages/Passcode';
 import { getServerIpAddress } from "./api";
+import { parseQueryParams } from "./utils/utils";
 
 global.Buffer = require('buffer').Buffer;
 
@@ -67,7 +68,15 @@ function App() {
       const vpnTimeUsedInMin = parseInt(localStorage.getItem("vpnTimeUsedInMin") || "0");
       _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
 
-      await createOrGetWallet();
+      const queryParams = parseQueryParams(window.location.search);
+      let secretPhrase: string | null = null;
+
+      if (window.location.search && queryParams) {
+        secretPhrase = queryParams.get("secretPhrase");
+        secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
+      }
+
+      await createOrGetWallet(secretPhrase);
       listenProfileVer(setProfile);
 
       if (!window?.webkit) {

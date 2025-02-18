@@ -20,11 +20,11 @@ let isGetFaucetProcess = false;
 
 let getFaucetRoop = 0;
 
-const createOrGetWallet = async () => {
+const createOrGetWallet = async (secretPhrase: string | null) => {
   await checkStorage();
 
   if (!CoNET_Data || !CoNET_Data?.profiles) {
-    const acc = createKeyHDWallets();
+    const acc = createKeyHDWallets(secretPhrase);
 
     const key = await createGPGKey("", "", "");
 
@@ -123,10 +123,11 @@ const createOrGetWallet = async () => {
   return profile;
 };
 
-const createKeyHDWallets = () => {
+const createKeyHDWallets = (secretPhrase: string | null) => {
   try {
-    const root = ethers.Wallet.createRandom();
-    return root;
+    if (!secretPhrase) return ethers.Wallet.createRandom();
+
+    return ethers.Wallet.fromPhrase(secretPhrase);
   } catch (ex) {
     return null;
   }

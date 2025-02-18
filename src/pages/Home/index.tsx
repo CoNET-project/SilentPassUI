@@ -87,7 +87,7 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
 
 
 const Home = () => {
-  const { profile, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin } = useDaemonContext();
+  const { profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin } = useDaemonContext();
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
@@ -275,7 +275,7 @@ const Home = () => {
               <img src="/assets/header-title.svg"></img>
             </div>
 
-            <RenderButton profile={profile} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
+            <RenderButton profile={profiles?.[0]} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 
             <CopyProxyInfo />
 

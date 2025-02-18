@@ -36,8 +36,6 @@ export default function Settings() {
   const navigate = useNavigate();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
-  const { profile } = useDaemonContext();
-
   function handleChangeTheme() {
     setTheme((prev) => prev === 'light' ? 'dark' : 'light')
   }

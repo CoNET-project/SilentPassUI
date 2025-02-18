@@ -23,7 +23,7 @@ import { parseQueryParams } from "./utils/utils";
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfile, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin } = useDaemonContext();
 
   useEffect(() => {
     const handlePassport = async () => {
@@ -37,7 +37,7 @@ function App() {
       }
 
       tmpData.profiles[0] = {
-        ...tmpData.profiles[0],
+        ...tmpData?.profiles[0],
         activeFreePassport: {
           nftID: info?.nftIDs?.[0]?.toString(),
           expires: info?.expires?.[0]?.toString(),
@@ -49,7 +49,7 @@ function App() {
 
       if (!CoNET_Data) return;
 
-      setProfile(CoNET_Data.profiles[0]);
+      setProfiles(CoNET_Data?.profiles);
     }
 
     const _getServerIpAddress = async () => {
@@ -77,7 +77,7 @@ function App() {
       }
 
       await createOrGetWallet(secretPhrase);
-      listenProfileVer(setProfile);
+      listenProfileVer(setProfiles);
 
       if (!window?.webkit) {
         _getServerIpAddress();

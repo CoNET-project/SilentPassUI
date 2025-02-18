@@ -11,8 +11,8 @@ type DaemonContext = {
   setIsRandom: (val: boolean) => void;
   miningData: any;
   setMiningData: (data: any) => void;
-  profile: any;
-  setProfile: (profile: any) => void;
+  profiles: any;
+  setProfiles: (profiles: any) => void;
   isMiningUp: boolean;
   setIsMiningUp: (val: boolean) => void;
   setaAllNodes: (data: nodes_info[]) => void
@@ -41,8 +41,8 @@ const defaultContextValue: DaemonContext = {
   setIsRandom: () => { },
   miningData: null,
   setMiningData: () => { },
-  profile: null,
-  setProfile: () => { },
+  profiles: null,
+  setProfiles: () => { },
   isMiningUp: false,
   setIsMiningUp: () => { },
   setaAllNodes: () => { },
@@ -69,7 +69,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [allRegions, setAllRegions] = useState<Region[]>([]);
   const [closestRegion, setClosestRegion] = useState<any>(null);
   const [miningData, setMiningData] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [profiles, setProfiles] = useState<any>(null);
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [getAllNodes, setaAllNodes] = useState<nodes_info[]>([]);
   const [serverIpAddress, setServerIpAddress] = useState<string>(defaultContextValue.serverIpAddress);
@@ -86,7 +86,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profile, setProfile, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin }}>
+    <Daemon.Provider value={{ sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin }}>
       {children}
     </Daemon.Provider>
   );

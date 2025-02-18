@@ -281,11 +281,11 @@ const Home = () => {
 
             {/* <PassportInfo /> */}
 
-            {!power && !isConnectionLoading &&
+            {!isConnectionLoading &&
               <RegionSelector
                 title={allRegions?.[sRegion]?.country}
                 regionCode={allRegions?.[sRegion]?.code}
-                action={() => navigate("/regions")}
+                action={() => !power && navigate("/regions")}
               />
             }
           </>

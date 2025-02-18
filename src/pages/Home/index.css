@@ -9,6 +9,7 @@ a {
   align-items: center;
   position: absolute;
   top: 0;
+  padding-top: 1rem;
 }
 
 .header-content {
@@ -275,6 +276,7 @@ h1 span {
   flex-direction: column;
   align-items: center;
   line-height: 22px;
+  padding-top: 3rem;
 }
 
 .current-mined p,

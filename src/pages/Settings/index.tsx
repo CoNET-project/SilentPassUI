@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../../components/Skeleton';
 import { getRemainingTime } from '../../utils/utils';
+import PassportInfo from '../../components/PassportInfo';
 
 type OptionGroup = {
   heading: string;
@@ -113,20 +114,8 @@ export default function Settings() {
     <div className="page-container">
       <h1>Settings</h1>
       <div className="nft-info">
-        <div className="main-card">
-          <div style={{ textAlign: 'start' }}>
-            <span>Silent Pass Passport</span>
-            <p>Freemium</p>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end' }}>
-            <span>Expiration date</span>
-            {
-              profile?.activeFreePassport?.expires ?
-                <p>{getRemainingTime(profile?.activeFreePassport?.expires)}</p>
-                : <Skeleton width='50px' height='20px' />
-            }
-          </div>
-        </div>
+        <PassportInfo />
+
         <div className="buttons">
           <button onClick={() => navigate("/wallet")}>My Account</button>
           <button className='disabled'>

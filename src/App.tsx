@@ -23,7 +23,7 @@ import { parseQueryParams } from "./utils/utils";
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated } = useDaemonContext();
 
   useEffect(() => {
     const handlePassport = async () => {
@@ -50,6 +50,7 @@ function App() {
       if (!CoNET_Data) return;
 
       setProfiles(CoNET_Data?.profiles);
+      setActivePassportUpdated(true);
     }
 
     const _getServerIpAddress = async () => {

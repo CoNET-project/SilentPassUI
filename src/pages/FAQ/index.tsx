@@ -255,7 +255,7 @@ const FAQ = () => {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
             >
-              <p>For any issues, visit the Silent Pass webpage or contact us via support@conet.network.</p>
+              <p>For any issues, visit the Silent Pass webpage or contact us via support@silentpass.io</p>
             </motion.div>
           }
         </div>

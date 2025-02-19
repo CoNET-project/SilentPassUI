@@ -274,8 +274,14 @@ const startMiningV2 = async (
         return;
       }
 
-      // console.log("_startMiningV2 success", _data);
-      const response: nodeResponse = JSON.parse(_data);
+      let response: any = {};
+
+      try {
+        response = JSON.parse(_data);
+      } catch (ex) {
+        console.log(ex);
+        return;
+      }
 
       if (first) {
         first = false;

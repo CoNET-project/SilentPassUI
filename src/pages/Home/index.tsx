@@ -13,8 +13,7 @@ import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
-import PassportInfo from "../../components/PassportInfo";
-import { conetProvider } from "../../utils/constants";
+import PassportInfoPopup from "../../components/PassportInfoPopup";
 
 interface RenderButtonProps {
   errorStartingSilentPass: boolean;
@@ -87,7 +86,7 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
 
 
 const Home = () => {
-  const { profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin } = useDaemonContext();
+  const { profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isPassportInfoOpen } = useDaemonContext();
   const [power, setPower] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
@@ -279,8 +278,6 @@ const Home = () => {
 
             <CopyProxyInfo />
 
-            {/* <PassportInfo /> */}
-
             {!isConnectionLoading &&
               <RegionSelector
                 title={allRegions?.[sRegion]?.country}
@@ -294,6 +291,8 @@ const Home = () => {
       </div>
 
       <Footer />
+
+      <PassportInfoPopup />
     </>
   );
 };

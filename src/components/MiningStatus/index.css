@@ -34,7 +34,10 @@
 }
 
 .circle.red {
-  background-color: #ff0000;
+  background-color: #b3261e;
+}
+.circle.yellow {
+  background-color: #f0b90b;
 }
 
 .miners {
@@ -47,4 +50,15 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.passport-status {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  background-color: #282930;
+  border-radius: 16px;
+  cursor: pointer;
 }

@@ -80,7 +80,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [serverPort, setServerPort] = useState<string>(defaultContextValue.serverPort);
   const [serverPac, setServerPac] = useState<string>("");
   const _vpnTimeUsedInMin = useRef<number>(0);
-  const [isPassportInfoOpen, setIsPassportInfoOpen] = useState<boolean>(true);
+  const [isPassportInfoOpen, setIsPassportInfoOpen] = useState<boolean>(false);
 
   useEffect(() => {
     {

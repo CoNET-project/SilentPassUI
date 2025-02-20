@@ -1,14 +1,19 @@
-import { blast_CNTPAbi, ClaimableConetPointAbi } from "./../utils/abis";
+import { blast_CNTPAbi } from "./../utils/abis";
 import { ethers } from "ethers";
 import {
   conetDepinProvider,
   conetProvider,
   ethProvider,
 } from "../utils/constants";
-import { CoNET_Data, setCoNET_Data } from "../utils/globals";
+import {
+  CoNET_Data,
+  processingBlock,
+  setCoNET_Data,
+  setProcessingBlock,
+} from "../utils/globals";
 import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
-import { getFreePassportInfo, getVpnTimeUsed } from "./wallets";
+import { getVpnTimeUsed } from "./wallets";
 
 let epoch = 0;
 
@@ -19,19 +24,27 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
     if (block === epoch + 1) {
       epoch++;
 
-      const profiles = CoNET_Data?.profiles;
-      if (!profiles) {
-        return;
+      if (processingBlock === true) return;
+
+      if (block % 10 === 0) {
+        setProcessingBlock(true);
+
+        const profiles = CoNET_Data?.profiles;
+        if (!profiles) {
+          return;
+        }
+        const runningList: any[] = [];
+
+        runningList.push(getProfileAssets(profiles[0]));
+
+        await Promise.all(runningList);
+
+        await getVpnTimeUsed();
+
+        if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles);
+
+        setProcessingBlock(false);
       }
-      const runningList: any[] = [];
-
-      runningList.push(getProfileAssets(profiles[0]));
-
-      await Promise.all(runningList);
-
-      await getVpnTimeUsed();
-
-      if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles);
     }
   });
 

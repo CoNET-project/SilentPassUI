@@ -14,7 +14,7 @@ import { getRemainingTime } from '../../utils/utils';
 
 export default function AccountList() {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-  const { profile } = useDaemonContext();
+  const { profiles } = useDaemonContext();
 
   function toggleAccount(accountAddress: string) {
     setOpenAccountList((prev) => (
@@ -24,8 +24,8 @@ export default function AccountList() {
 
   return (
     <div className="account-list">
-      <div className={`account-wrapper ${openAccountList.includes(profile?.keyID) ? 'active' : ''}`}>
-        <div className="account-main-card" onClick={() => toggleAccount(profile?.keyID)}>
+      <div className={`account-wrapper ${openAccountList.includes(profiles?.[0]?.keyID) ? 'active' : ''}`}>
+        <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}>
           <div>
             <h3>Main Wallet</h3>
             <img className="chevron" src="./assets/right-chevron.svg" />
@@ -39,14 +39,14 @@ export default function AccountList() {
                 <ConetToken />
                 <p>$CONET</p>
               </div>
-              <p>{profile?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+              <p>{profiles?.[0]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <ConetEthToken />
                 <p>$ETH</p>
               </div>
-              <p>{profile?.tokens?.conet_eth?.balance || (0.0).toFixed(6)}</p>
+              <p>{profiles?.[0]?.tokens?.conet_eth?.balance || (0.0).toFixed(6)}</p>
             </div>
           </div>
           <Separator />
@@ -55,14 +55,14 @@ export default function AccountList() {
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
               <p>Freemium</p>
               {
-                profile?.activeFreePassport?.expires ?
-                  <p>{getRemainingTime(profile?.activeFreePassport?.expires)}</p>
+                profiles?.[0]?.activeFreePassport?.expires ?
+                  <p>{getRemainingTime(profiles?.[0]?.activeFreePassport?.expires)}</p>
                   : <Skeleton width='50px' height='20px' />
               }
             </div>
           </div>
           <Separator />
-          <CopyAccountInfo wallet={profile} />
+          <CopyAccountInfo wallet={profiles?.[0]} />
         </div>
       </div>
 
@@ -75,8 +75,7 @@ export default function AccountList() {
       </div>
 
       <div className={`account-wrapper solana ${openAccountList.includes("123") ? 'active' : ''}`}>
-        {/* <div className="disabled account-main-card" onClick={() => toggleAccount("123")}> */}
-        <div className="disabled account-main-card">
+        <div className="account-main-card" onClick={() => toggleAccount("123")}>
           <div>
             <h3>Solana Wallet</h3>
             <img className="chevron" src="./assets/right-chevron.svg" />
@@ -91,18 +90,18 @@ export default function AccountList() {
                 <SpToken />
                 <p>$SP</p>
               </div>
-              <p>0</p>
+              <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <SolanaToken />
                 <p>$SOL</p>
               </div>
-              <p>0</p>
+              <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
             </div>
           </div>
           <Separator />
-          <CopyAccountInfo wallet={profile} />
+          <CopyAccountInfo wallet={profiles?.[1]} />
         </div>
       </div>
     </div>

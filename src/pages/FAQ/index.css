@@ -6,7 +6,14 @@
   gap: 24px;
 }
 
-.text-display div {
+.faq-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.faq-item-content {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -17,18 +24,34 @@
   margin-top: -18px;
 }
 
-.text-display h2 {
-  font-size: 18px;
-}
-
-.text-display p, .text-display li {
+.text-display p,
+.text-display li {
   color: #989899;
 }
 
-.text-display ul, .text-display ol {
+.text-display ul,
+.text-display ol {
   margin-left: 16px;
 }
 
 .text-display a {
-  color: #9FBFE5FE;
+  color: #9fbfe5fe;
+}
+
+h2.title {
+  font-size: 24px;
+  color: #9fbfe5fe;
+}
+
+.title-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: row;
+}
+
+.divider {
+  width: 100%;
+  height: 1px;
+  background-color: #3f3f40;
 }

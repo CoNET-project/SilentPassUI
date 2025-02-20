@@ -5,7 +5,7 @@ import Skeleton from "../Skeleton";
 
 const PassportInfo = () => {
   const navigate = useNavigate();
-  const { profile } = useDaemonContext();
+  const { profiles } = useDaemonContext();
 
   return (
     <div className="main-card">
@@ -16,8 +16,8 @@ const PassportInfo = () => {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end' }}>
         <span>Expiration date</span>
         {
-          profile?.activeFreePassport?.expires ?
-            <p>{getRemainingTime(profile?.activeFreePassport?.expires)}</p>
+          profiles?.[0]?.activeFreePassport?.expires ?
+            <p>{getRemainingTime(profiles?.[0]?.activeFreePassport?.expires)}</p>
             : <Skeleton width='50px' height='20px' />
         }
       </div>

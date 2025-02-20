@@ -8,11 +8,13 @@ import {
 import {
   apiv4_endpoint,
   conetProvider,
-  conetRpc,
   localDatabaseName,
 } from "../utils/constants";
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
+import { Keypair } from "@solana/web3.js";
+import { mnemonicToSeedSync } from "bip39";
+import { sha512 } from "@noble/hashes/sha512";
 
 const PouchDB = require("pouchdb").default;
 
@@ -20,11 +22,42 @@ let isGetFaucetProcess = false;
 
 let getFaucetRoop = 0;
 
-const createOrGetWallet = async () => {
+// Function to derive the keypair from mnemonic
+async function getSolanaKeypairFromMnemonic(mnemonic: string) {
+  // Convert mnemonic to seed
+  const seed = mnemonicToSeedSync(mnemonic);
+
+  // Derive the seed for the first account using Solana's HD wallet path
+  const derivedSeed = await deriveSolanaSeed(seed);
+
+  // Generate a Keypair from the derived seed
+  return Keypair.fromSeed(derivedSeed);
+}
+
+// Function to derive the seed for the given derivation path
+async function deriveSolanaSeed(seed: any) {
+  // Derive a 32-byte key from the seed using SHA512 (Solana's derivation process)
+  const hash = sha512(seed);
+  return hash.slice(0, 32); // Take the first 32 bytes as the private key
+}
+
+const convertSecretKeyToPrivateKey = (secretKey: any) => {
+  // Extract the first 32 bytes (private key)
+  const privateKey = secretKey.slice(0, 32);
+
+  // Convert to a 64-character hex string (Ethereum format)
+  const privateKeyHex = Buffer.from(privateKey).toString("hex");
+
+  return privateKeyHex;
+};
+
+const createOrGetWallet = async (secretPhrase: string | null) => {
   await checkStorage();
 
+  if (secretPhrase) setCoNET_Data(null);
+
   if (!CoNET_Data || !CoNET_Data?.profiles) {
-    const acc = createKeyHDWallets();
+    const acc = createKeyHDWallets(secretPhrase);
 
     const key = await createGPGKey("", "", "");
 
@@ -44,6 +77,7 @@ const createOrGetWallet = async () => {
       privateKeyArmor: acc.signingKey.privateKey,
       hdPath: acc.path,
       index: acc.index,
+      type: "ethereum",
     };
 
     const data: any = {
@@ -54,42 +88,59 @@ const createOrGetWallet = async () => {
       nonce: 0,
     };
 
-    const primaryWallet = ethers.Wallet.fromPhrase(data.mnemonicPhrase);
-    const secondaryWallet = primaryWallet.deriveChild(0);
+    if (acc?.mnemonic?.phrase) {
+      const secondaryWallet: Keypair = await getSolanaKeypairFromMnemonic(
+        acc?.mnemonic?.phrase
+      );
 
-    const profile2: profile = {
-      tokens: initProfileTokens(),
-      publicKeyArmor: secondaryWallet.publicKey,
-      keyID: secondaryWallet.address,
-      isPrimary: true,
-      referrer: null,
-      isNode: false,
-      pgpKey: {
-        privateKeyArmor: key.privateKey,
-        publicKeyArmor: key.publicKey,
-      },
-      privateKeyArmor: secondaryWallet.signingKey.privateKey,
-      hdPath: secondaryWallet.path,
-      index: secondaryWallet.index,
-    };
+      const privateKeyHex = convertSecretKeyToPrivateKey(
+        secondaryWallet.secretKey
+      );
 
-    data.profiles.push(profile2);
+      const profile2: profile = {
+        tokens: initProfileTokens(),
+        publicKeyArmor: secondaryWallet.publicKey.toString(),
+        keyID: secondaryWallet.publicKey.toBase58(),
+        isPrimary: true,
+        referrer: null,
+        isNode: false,
+        pgpKey: {
+          privateKeyArmor: key.privateKey,
+          publicKeyArmor: key.publicKey,
+        },
+        privateKeyArmor: privateKeyHex,
+        hdPath: null,
+        index: 0,
+        type: "solana",
+      };
+
+      data.profiles.push(profile2);
+    }
 
     setCoNET_Data(data);
   }
 
   const tmpData = CoNET_Data;
+  if (tmpData) tmpData.profiles.length = 2;
 
-  if (tmpData && tmpData?.profiles.length < 2) {
-    const primaryWallet = ethers.Wallet.fromPhrase(tmpData.mnemonicPhrase);
-    const secondaryWallet = primaryWallet.deriveChild(0);
+  if (
+    tmpData &&
+    (tmpData?.profiles.length < 2 || tmpData?.profiles[1]?.type !== "solana")
+  ) {
+    const secondaryWallet = await getSolanaKeypairFromMnemonic(
+      tmpData.mnemonicPhrase
+    );
+
+    const privateKeyHex = convertSecretKeyToPrivateKey(
+      secondaryWallet.secretKey
+    );
 
     const key = await createGPGKey("", "", "");
 
     const profile2: profile = {
       tokens: initProfileTokens(),
-      publicKeyArmor: secondaryWallet.publicKey,
-      keyID: secondaryWallet.address,
+      publicKeyArmor: secondaryWallet.publicKey.toString(),
+      keyID: secondaryWallet.publicKey.toBase58(),
       isPrimary: true,
       referrer: null,
       isNode: false,
@@ -97,12 +148,13 @@ const createOrGetWallet = async () => {
         privateKeyArmor: key.privateKey,
         publicKeyArmor: key.publicKey,
       },
-      privateKeyArmor: secondaryWallet.signingKey.privateKey,
-      hdPath: secondaryWallet.path,
-      index: secondaryWallet.index,
+      privateKeyArmor: privateKeyHex,
+      hdPath: null,
+      index: 0,
+      type: "solana",
     };
 
-    tmpData.profiles.push(profile2);
+    tmpData.profiles[1] = profile2;
   }
 
   tmpData?.profiles.forEach(async (n: profile) => {
@@ -123,10 +175,11 @@ const createOrGetWallet = async () => {
   return profile;
 };
 
-const createKeyHDWallets = () => {
+const createKeyHDWallets = (secretPhrase: string | null) => {
   try {
-    const root = ethers.Wallet.createRandom();
-    return root;
+    if (!secretPhrase) return ethers.Wallet.createRandom();
+
+    return ethers.Wallet.fromPhrase(secretPhrase);
   } catch (ex) {
     return null;
   }

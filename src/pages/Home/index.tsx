@@ -13,8 +13,7 @@ import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
-import PassportInfo from "../../components/PassportInfo";
-import { conetProvider } from "../../utils/constants";
+import PassportInfoPopup from "../../components/PassportInfoPopup";
 
 interface RenderButtonProps {
   errorStartingSilentPass: boolean;
@@ -87,8 +86,7 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
 
 
 const Home = () => {
-  const { profile, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin } = useDaemonContext();
-  const [power, setPower] = useState<boolean>(false);
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin } = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
@@ -275,16 +273,15 @@ const Home = () => {
               <img src="/assets/header-title.svg"></img>
             </div>
 
-            <RenderButton profile={profile} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
+            <RenderButton profile={profiles?.[0]} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 
             <CopyProxyInfo />
-
-            {/* <PassportInfo /> */}
 
             {!isConnectionLoading &&
               <RegionSelector
                 title={allRegions?.[sRegion]?.country}
                 regionCode={allRegions?.[sRegion]?.code}
+                showArrow={!power}
                 action={() => !power && navigate("/regions")}
               />
             }
@@ -293,6 +290,8 @@ const Home = () => {
       </div>
 
       <Footer />
+
+      <PassportInfoPopup />
     </>
   );
 };

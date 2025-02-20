@@ -12,7 +12,7 @@ import { getFreePassportInfo, getVpnTimeUsed } from "./wallets";
 
 let epoch = 0;
 
-const listenProfileVer = async (callback: (profile: profile) => void) => {
+const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
   epoch = await conetProvider.getBlockNumber();
 
   conetProvider.on("block", async (block) => {
@@ -31,7 +31,7 @@ const listenProfileVer = async (callback: (profile: profile) => void) => {
 
       await getVpnTimeUsed();
 
-      if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles[0]);
+      if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles);
     }
   });
 

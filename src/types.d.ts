@@ -48,6 +48,8 @@ interface freePassport {
   expiresDays: string;
 }
 
+type keyPairType = "ethereum" | "solana";
+
 interface profile extends keyPair {
   isPrimary?: boolean;
   pgpKey?: pgpKeyPair;
@@ -59,6 +61,7 @@ interface profile extends keyPair {
   isNode: boolean;
   referrer: string | null | undefined;
   data?: any;
+  type?: keyPairType;
   nodeID?: number;
   nodeIP_address?: string;
   nodeRegion?: string;

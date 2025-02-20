@@ -86,8 +86,7 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
 
 
 const Home = () => {
-  const { profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isPassportInfoOpen } = useDaemonContext();
-  const [power, setPower] = useState<boolean>(false);
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin } = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);

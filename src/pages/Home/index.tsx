@@ -155,7 +155,7 @@ const Home = () => {
     };
 
     _getAllRegions()
-  }, [allRegions]);
+  }, []);
 
   const handleTogglePower = async () => {
     setIsConnectionLoading(true)

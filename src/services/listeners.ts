@@ -176,8 +176,8 @@ const scanCONETDepin = async (walletAddr: string) => {
   return await scan_erc20_balance(
     walletAddr,
     contracts.ConetDepin.address,
-    conetDepinProvider,
-    contracts.ClaimableConetPoint.abi
+    contracts.ClaimableConetPoint.abi,
+    conetDepinProvider
   );
 };
 
@@ -196,8 +196,8 @@ const scanETH = async (walletAddr: string) => {
 const scan_erc20_balance: (
   walletAddr: string,
   address: string,
-  provider: any,
-  abi: any
+  abi: any,
+  provider: any
 ) => Promise<false | any> = (walletAddr, contractAddress, abi, provider) =>
   new Promise(async (resolve) => {
     const contract = new ethers.Contract(

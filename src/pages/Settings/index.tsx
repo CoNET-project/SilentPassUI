@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../../components/Skeleton';
 import { getRemainingTime } from '../../utils/utils';
-import PassportInfo from '../../components/PassportInfo';
+import ActivePassportInfo from '../../components/ActivePassportInfo';
 
 type OptionGroup = {
   heading: string;
@@ -112,7 +112,7 @@ export default function Settings() {
     <div className="page-container">
       <h1>Settings</h1>
       <div className="nft-info">
-        <PassportInfo />
+        <ActivePassportInfo />
 
         <div className="buttons">
           <button onClick={() => navigate("/wallet")}>My Account</button>

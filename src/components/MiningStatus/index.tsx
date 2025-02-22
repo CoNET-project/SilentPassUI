@@ -17,7 +17,7 @@ const MiningStatus = () => {
   }, [miningData])
 
   useEffect(() => {
-    const passportExpiration = profiles?.[0]?.activeFreePassport?.expires
+    const passportExpiration = profiles?.[0]?.activePassport?.expires
     if (passportExpiration) {
       const timeLeft = passportExpiration - Math.floor(Date.now() / 1000)
       setPassportTimeLeft(timeLeft)

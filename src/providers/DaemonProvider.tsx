@@ -30,6 +30,8 @@ type DaemonContext = {
   setIsPassportInfoOpen: (val: boolean) => void
   activePassportUpdated: boolean
   setActivePassportUpdated: (val: boolean) => void
+  activePassport: any
+  setActivePassport: (val: any) => void
 };
 
 type DaemonProps = {
@@ -65,7 +67,9 @@ const defaultContextValue: DaemonContext = {
   isPassportInfoOpen: false,
   setIsPassportInfoOpen: () => { },
   activePassportUpdated: false,
-  setActivePassportUpdated: () => { }
+  setActivePassportUpdated: () => { },
+  activePassport: null,
+  setActivePassport: () => { },
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -91,6 +95,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const _vpnTimeUsedInMin = useRef<number>(0);
   const [isPassportInfoOpen, setIsPassportInfoOpen] = useState<boolean>(false);
   const [activePassportUpdated, setActivePassportUpdated] = useState<boolean>(false);
+  const [activePassport, setActivePassport] = useState<any>(null);
 
   useEffect(() => {
     {
@@ -101,7 +106,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoOpen, setIsPassportInfoOpen, activePassportUpdated, setActivePassportUpdated }}>
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoOpen, setIsPassportInfoOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport }}>
       {children}
     </Daemon.Provider>
   );

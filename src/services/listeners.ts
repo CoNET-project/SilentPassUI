@@ -13,7 +13,7 @@ import {
 } from "../utils/globals";
 import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
-import { getVpnTimeUsed } from "./wallets";
+import { getPassportsInfoForProfile, getVpnTimeUsed } from "./wallets";
 
 let epoch = 0;
 
@@ -40,6 +40,8 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
         await Promise.all(runningList);
 
         await getVpnTimeUsed();
+
+        await getPassportsInfoForProfile(profiles[0]);
 
         if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles);
 

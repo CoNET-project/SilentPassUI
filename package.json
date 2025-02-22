@@ -3,6 +3,9 @@
   "version": "2.2",
   "private": true,
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/material": "^6.4.5",
     "@noble/ed25519": "^2.2.3",
     "@noble/hashes": "^1.7.1",
     "@solana/web3.js": "^1.98.0",

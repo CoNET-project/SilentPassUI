@@ -3,7 +3,7 @@ import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getFreePassportInfo, tryToRequireFreePassport } from "./services/wallets";
+import { createOrGetWallet, getCurrentPassportInfo, tryToRequireFreePassport } from "./services/wallets";
 import { getAllNodes, startMiningV2 } from "./services/mining";
 import { CoNET_Data, setCoNET_Data } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
@@ -23,12 +23,12 @@ import { parseQueryParams } from "./utils/utils";
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport } = useDaemonContext();
 
   useEffect(() => {
     const handlePassport = async () => {
       await tryToRequireFreePassport();
-      const info = await getFreePassportInfo();
+      const info = await getCurrentPassportInfo();
 
       const tmpData = CoNET_Data;
 
@@ -38,12 +38,15 @@ function App() {
 
       tmpData.profiles[0] = {
         ...tmpData?.profiles[0],
-        activeFreePassport: {
-          nftID: info?.nftIDs?.[0]?.toString(),
-          expires: info?.expires?.[0]?.toString(),
-          expiresDays: info?.expiresDays?.[0]?.toString()
+        activePassport: {
+          nftID: info?.nftIDs?.toString(),
+          expires: info?.expires?.toString(),
+          expiresDays: info?.expiresDays?.toString(),
+          premium: info?.premium?.toString()
         },
       };
+
+      setActivePassport(tmpData.profiles[0].activePassport);
 
       setCoNET_Data(tmpData);
 

@@ -7,6 +7,7 @@ import {
 } from "../utils/utils";
 import {
   apiv4_endpoint,
+  conetDepinProvider,
   conetProvider,
   localDatabaseName,
 } from "../utils/constants";
@@ -299,8 +300,8 @@ const requireFreePassport = async () => {
   );
 
   const freePassportContract = new ethers.Contract(
-    contracts.FreePassport.address,
-    contracts.FreePassport.abi,
+    contracts.PassportCancun.address,
+    contracts.PassportCancun.abi,
     wallet
   );
 
@@ -312,28 +313,57 @@ const requireFreePassport = async () => {
   }
 };
 
-const getFreePassportInfo = async () => {
+const getCurrentPassportInfoInChain = async (chain: string) => {
   if (!CoNET_Data) {
     return;
+  }
+  let provider;
+  let contractAddress;
+  let contractAbi;
+
+  if (chain === "mainnet") {
+    provider = conetDepinProvider;
+    contractAddress = contracts.PassportMainnet.address;
+    contractAbi = contracts.PassportMainnet.abi;
+  } else {
+    provider = conetProvider;
+    contractAddress = contracts.PassportCancun.address;
+    contractAbi = contracts.PassportCancun.abi;
   }
 
   const wallet = new ethers.Wallet(
     CoNET_Data.profiles[0].privateKeyArmor,
-    conetProvider
+    provider
   );
 
-  const freePassportContract = new ethers.Contract(
-    contracts.FreePassport.address,
-    contracts.FreePassport.abi,
+  const passportContract = new ethers.Contract(
+    contractAddress,
+    contractAbi,
     wallet
   );
 
   try {
-    const tx = await freePassportContract.getUserInfo(wallet.address);
+    const tx = await passportContract.getCurrentPassport(wallet.address);
     return tx;
   } catch (ex) {
     console.log(ex);
   }
+};
+
+const getCurrentPassportInfo = async () => {
+  if (!CoNET_Data) {
+    return;
+  }
+
+  const resultCancun = await getCurrentPassportInfoInChain("cancun");
+
+  if (resultCancun?.nftIDs?.toString() !== "0") {
+    return resultCancun;
+  }
+
+  const resultMainnet = await getCurrentPassportInfoInChain("mainnet");
+
+  return resultMainnet;
 };
 
 const tryToRequireFreePassport = async () => {
@@ -361,8 +391,8 @@ const getVpnTimeUsed = async () => {
   );
 
   const freePassportContract = new ethers.Contract(
-    contracts.FreePassport.address,
-    contracts.FreePassport.abi,
+    contracts.PassportCancun.address,
+    contracts.PassportCancun.abi,
     wallet
   );
 
@@ -383,12 +413,100 @@ const getVpnTimeUsed = async () => {
   setCoNET_Data(temp);
 };
 
+const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
+  const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
+  const tmpMainnetPassports = await getPassportsInfo(profile, "mainnet");
+
+  const cancunPassports: passportInfo[] = [];
+  const mainnetPassports: passportInfo[] = [];
+
+  for (let i = 0; i < tmpCancunPassports?.nftIDs?.length; i++) {
+    cancunPassports.push({
+      walletAddress: profile.keyID,
+      nftID: parseInt(tmpCancunPassports.nftIDs[i].toString()),
+      expires: parseInt(tmpCancunPassports.expires[i].toString()),
+      expiresDays: parseInt(tmpCancunPassports.expiresDays[i].toString()),
+      premium: tmpCancunPassports.premium[i],
+      network: "Conet Holesky",
+    });
+  }
+
+  for (let i = 0; i < tmpMainnetPassports?.nftIDs?.length; i++) {
+    mainnetPassports.push({
+      walletAddress: profile.keyID,
+      nftID: parseInt(tmpMainnetPassports.nftIDs[i].toString()),
+      expires: parseInt(tmpMainnetPassports.expires[i].toString()),
+      expiresDays: parseInt(tmpMainnetPassports.expiresDays[i].toString()),
+      premium: tmpMainnetPassports.premium[i],
+      network: "CONET DePIN",
+    });
+  }
+
+  const allPassports = cancunPassports.concat(mainnetPassports);
+
+  allPassports?.sort((a, b) => {
+    return a.nftID - b.nftID;
+  });
+
+  profile.silentPassPassports = allPassports;
+
+  const temp = CoNET_Data;
+
+  if (!temp) {
+    return;
+  }
+
+  temp.profiles[0] = profile;
+
+  setCoNET_Data(temp);
+};
+
+const getPassportsInfo = async (
+  profile: profile,
+  chain: string
+): Promise<passportInfoFromChain> => {
+  let provider;
+  let contractAddress;
+  let contractAbi;
+
+  if (chain === "mainnet") {
+    provider = conetDepinProvider;
+    contractAddress = contracts.PassportMainnet.address;
+    contractAbi = contracts.PassportMainnet.abi;
+  } else {
+    provider = conetProvider;
+    contractAddress = contracts.PassportCancun.address;
+    contractAbi = contracts.PassportCancun.abi;
+  }
+
+  const wallet = new ethers.Wallet(profile.privateKeyArmor, provider);
+  const passportContract = new ethers.Contract(
+    contractAddress,
+    contractAbi,
+    wallet
+  );
+
+  try {
+    const tx = await passportContract.getUserInfo(wallet.address);
+    return tx;
+  } catch (ex) {
+    console.log(ex);
+    return {
+      nftIDs: [],
+      expires: [],
+      expiresDays: [],
+      premium: [],
+    };
+  }
+};
+
 export {
   createOrGetWallet,
   createGPGKey,
   requireFreePassport,
   tryToRequireFreePassport,
-  getFreePassportInfo,
+  getCurrentPassportInfo,
   getFaucet,
   getVpnTimeUsed,
+  getPassportsInfoForProfile,
 };

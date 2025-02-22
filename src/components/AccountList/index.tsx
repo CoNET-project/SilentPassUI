@@ -11,10 +11,11 @@ import { ReactComponent as ConetEthToken } from './assets/conet-eth-token.svg'
 import { ReactComponent as SolanaToken } from './assets/solana-token.svg'
 import { ReactComponent as SpToken } from './assets/sp-token.svg'
 import { getRemainingTime } from '../../utils/utils';
+import PassportInfo from '../PassportInfo';
 
 export default function AccountList() {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-  const { profiles } = useDaemonContext();
+  const { profiles, activePassport } = useDaemonContext();
 
   function toggleAccount(accountAddress: string) {
     setOpenAccountList((prev) => (
@@ -49,16 +50,23 @@ export default function AccountList() {
               <p>{profiles?.[0]?.tokens?.conet_eth?.balance || (0.0).toFixed(6)}</p>
             </div>
           </div>
+
           <Separator />
+
           <div className="info-wrapper">
             <p>Silent Pass Passport</p>
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-              <p>Freemium</p>
-              {
-                profiles?.[0]?.activeFreePassport?.expires ?
-                  <p>{getRemainingTime(profiles?.[0]?.activeFreePassport?.expires)}</p>
-                  : <Skeleton width='50px' height='20px' />
-              }
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
+              {profiles?.[0]?.silentPassPassports
+                ? [...profiles?.[0]?.silentPassPassports]
+                  .sort((a: any, b: any) => {
+                    const isAActive = a?.nftID === activePassport?.nftID;
+                    const isBActive = b?.nftID === activePassport?.nftID;
+                    return isAActive === isBActive ? 0 : isAActive ? -1 : 1;
+                  })
+                  .map((passport: any) => (
+                    <PassportInfo key={passport.nftID} passportInfo={passport} selectedValue={activePassport} />
+                  ))
+                : <Skeleton width={'100%'} height={'20px'} />}
             </div>
           </div>
           <Separator />

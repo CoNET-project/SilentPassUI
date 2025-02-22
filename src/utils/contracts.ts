@@ -4,8 +4,9 @@ import {
   FaucetV3Abi,
   GuardianNodesInfoV6Abi,
   ConetStorageAbi,
-  FreePassportAbi,
+  PassportCancunAbi,
   ConetDepinAbi,
+  PassportMainnetAbi,
 } from "./abis";
 
 const contracts = {
@@ -29,9 +30,13 @@ const contracts = {
     address: "0x20f8B4De2922d2e9d83B73f4561221d9278Af181",
     abi: ConetStorageAbi,
   },
-  FreePassport: {
+  PassportCancun: {
     address: "0xb889F14b557C2dB610f283055A988952953E0E94",
-    abi: FreePassportAbi,
+    abi: PassportCancunAbi,
+  },
+  PassportMainnet: {
+    address: "0x054498c353452A6F29FcA5E7A0c4D13b2D77fF08",
+    abi: PassportMainnetAbi,
   },
   ConetDepin: {
     address: "0xC6edDb4Bc6161259325cf56AEf8b0D4fb289898A",

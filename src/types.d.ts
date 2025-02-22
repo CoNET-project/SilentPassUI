@@ -46,6 +46,7 @@ interface freePassport {
   nftID: string;
   expires: string;
   expiresDays: string;
+  premium: string;
 }
 
 type keyPairType = "ethereum" | "solana";
@@ -65,8 +66,9 @@ interface profile extends keyPair {
   nodeID?: number;
   nodeIP_address?: string;
   nodeRegion?: string;
-  activeFreePassport?: freePassport;
+  activePassport?: freePassport;
   vpnTimeUsedInMin?: number;
+  silentPassPassports?: passportInfo[];
 }
 
 type encrypt_keys_object = {
@@ -82,6 +84,22 @@ type encrypt_keys_object = {
   fx168Order?: fx168_Order[];
   upgradev2?: boolean;
 };
+
+interface passportInfoFromChain {
+  nftIDs: BigInt[];
+  expires: BigInt[];
+  expiresDays: BigInt[];
+  premium: boolean[];
+}
+
+interface passportInfo {
+  walletAddress: string;
+  nftID: number;
+  expires: number;
+  expiresDays: number;
+  premium: boolean;
+  network: string;
+}
 
 type Passcode = {
   status: PasscodeStatus;

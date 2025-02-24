@@ -159,12 +159,23 @@
   border-radius: 16px;
 
   text-align: left;
+
+  border: 1.5px solid #191919;
+  cursor: pointer;
+}
+
+.plan-cards .plan.active {
+  border-color: #9FBFE5FE;
 }
 
 .plan-cards .plan > div {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+}
+
+.plan-cards .plan > div:last-child {
+  width: 71px;
 }
 
 .plan-cards .plan p {
@@ -266,4 +277,73 @@
 
 .quotes p {
   margin-bottom: 3px;
+}
+
+.blue-text {
+  font-weight: 700;
+  color: #4E72B6;
+}
+
+.declined-wrapper {
+  width: 110px;
+  height: 110px;
+  margin: 0 auto;
+  padding: 32px;
+  border: 4px solid #FFEDEA;
+  border-radius: 9999px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  margin-bottom: 32px;
+}
+
+.declined-description {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.declined-description p:first-child {
+  font-size: 24px;
+  font-weight: 700;
+  color: #FFB4AB;
+}
+
+.purchase-details {
+  background: #262626;
+  padding: 16px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  border-radius: 16px;
+}
+
+.detail p, .purchase-success p {
+  width: fit-content;
+}
+
+.detail {
+  display: flex;
+  justify-content: space-between;
+}
+
+.purchase-success {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 60px;
+}
+
+.purchase-success p {
+  font-size: 24px;
+}
+
+.purchase-success p:last-child {
+  color: #9FBFE5FE;
+  font-weight: 700;
 }

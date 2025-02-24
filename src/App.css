@@ -43,3 +43,11 @@
 
   padding: 42px 16px 100px;
 }
+
+.page-container.h-full {
+  height: 100%;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}

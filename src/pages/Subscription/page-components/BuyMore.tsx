@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 export default function BuyMore() {
   const [choosenOption, setChoosenOption] = useState<'monthly' | 'yearly'>('yearly');
+  const [choosenPlan, setChoosenPlan] = useState<'standard' | 'premium'>('premium');
 
   return (
     <div className="buy-more">
@@ -11,9 +12,9 @@ export default function BuyMore() {
         <button onClick={() => setChoosenOption('yearly')} className={choosenOption === 'yearly' ? 'active' : ''}>Yearly</button>
       </div>
       <div className="plan-cards">
-        <div className="plan">
+        <div className={`plan ${choosenPlan === 'standard' ? 'active' : ''}`} onClick={() => setChoosenPlan('standard')}>
           <div>
-            <p>Premium</p>
+            <p>Standard</p>
             <span>1 device</span>
           </div>
           <div>
@@ -22,9 +23,9 @@ export default function BuyMore() {
             <span className="pay-type">paid {choosenOption}</span>
           </div>
         </div>
-        <div className="plan">
+        <div className={`plan ${choosenPlan === 'premium' ? 'active' : ''}`} onClick={() => setChoosenPlan('premium')}>
           <div>
-            <p>Platinum</p>
+            <p>Premium</p>
             <span>5 devices</span>
           </div>
           <div>

@@ -4,7 +4,7 @@ import { getRemainingTime } from "../../utils/utils";
 import Skeleton from "../Skeleton";
 import Radio from '@mui/material/Radio';
 
-const PassportInfo = ({ passportInfo, selectedValue }: any) => {
+const PassportInfo = ({ passportInfo, selectedValue, onChange }: any) => {
 
   const getPassportTitle = () => {
     if (passportInfo?.expiresDays?.toString() === '7')
@@ -36,7 +36,7 @@ const PassportInfo = ({ passportInfo, selectedValue }: any) => {
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', gap: '8px' }}>
       <Radio
         checked={selectedValue?.nftID?.toString() === passportInfo?.nftID?.toString()}
-        // onChange={handleChange}
+        onChange={onChange}
         value="a"
         name="radio-buttons"
         inputProps={{ 'aria-label': 'A' }}

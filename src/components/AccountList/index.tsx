@@ -12,10 +12,12 @@ import { ReactComponent as SolanaToken } from './assets/solana-token.svg'
 import { ReactComponent as SpToken } from './assets/sp-token.svg'
 import { getRemainingTime } from '../../utils/utils';
 import PassportInfo from '../PassportInfo';
+import SelectActivePassportPopup from '../PassportInfoPopup';
 
 export default function AccountList() {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
   const { profiles, activePassport } = useDaemonContext();
+  const [isSelectPassportPopupOpen, setIsSelectPassportPopupOpen] = useState(false);
 
   function toggleAccount(accountAddress: string) {
     setOpenAccountList((prev) => (
@@ -64,7 +66,7 @@ export default function AccountList() {
                     return isAActive === isBActive ? 0 : isAActive ? -1 : 1;
                   })
                   .map((passport: any) => (
-                    <PassportInfo key={passport.nftID} passportInfo={passport} selectedValue={activePassport} />
+                    <PassportInfo key={passport.nftID} passportInfo={passport} selectedValue={activePassport} onChange={() => setIsSelectPassportPopupOpen(true)} />
                   ))
                 : <Skeleton width={'100%'} height={'20px'} />}
             </div>
@@ -112,6 +114,8 @@ export default function AccountList() {
           <CopyAccountInfo wallet={profiles?.[1]} />
         </div>
       </div>
+
+      <SelectActivePassportPopup setIsOpen={setIsSelectPassportPopupOpen} isOpen={isSelectPassportPopupOpen} />
     </div>
   )
 }

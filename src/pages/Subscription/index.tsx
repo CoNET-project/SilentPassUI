@@ -14,7 +14,7 @@ import './index.css';
 export type Step = 1 | 2 | 3 | 4 | 5;
 
 export default function Subscription() {
-  const [step, setStep] = useState<Step>(4);
+  const [step, setStep] = useState<Step>(1);
 
   const navigate = useNavigate();
 

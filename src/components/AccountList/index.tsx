@@ -21,20 +21,66 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
   const { profiles, activePassport } = useDaemonContext();
   const [isSelectPassportPopupOpen, setIsSelectPassportPopupOpen] = useState(false);
 
+  const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
+  const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
+
   function toggleAccount(accountAddress: string) {
     setOpenAccountList((prev) => (
       prev.includes(accountAddress) ? prev.filter((item) => item !== accountAddress) : [...prev, accountAddress]
     ))
   }
 
+  function handleCopy(e: any, account: 'main' | 'solana') {
+    e.preventDefault();
+
+    if (account === 'main') {
+      navigator.clipboard.writeText(profiles?.[0].keyID);
+      setMainAccountAddressCopied(true);
+    }
+
+    if (account === 'solana') {
+      navigator.clipboard.writeText(profiles?.[1].keyID);
+      setSolanaAccountAddressCopied(true);
+    }
+
+    setTimeout(() => {
+      setMainAccountAddressCopied(false);
+      setSolanaAccountAddressCopied(false);
+    }, 2000)
+  }
+
+  console.log("PROFILES: ", profiles);
+
   return (
     <div className="account-list">
       <div className={`account-wrapper ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes(profiles?.[0]?.keyID) ? 'active' : ''}`}>
         <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}>
-          <div>
+          <div className="name">
             <h3>Main Wallet</h3>
             <img className="chevron" src="./assets/right-chevron.svg" />
           </div>
+          {
+            simplifiedView && (
+              <div className="copy">
+                {
+                  profiles?.[0].keyID ? (
+                    <p>{profiles[0].keyID}</p>
+                  ) : (
+                    <Skeleton width="100%" height="20px" />
+                  )
+                }
+                <button onClick={(e) => handleCopy(e, 'main')}>
+                  {
+                    mainAccountAddressCopied ? (
+                      <img src="/assets/check.svg" alt="Copy icon" />
+                    ) : (
+                      <img src="/assets/copy-purple.svg" alt="Copy icon" />
+                    )
+                  }
+               </button>
+              </div>
+            )
+          }
         </div>
         <div className="info-card">
           <div className="info-wrapper">
@@ -96,10 +142,32 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
 
       <div className={`account-wrapper solana ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes("123") ? 'active' : ''}`}>
         <div className="account-main-card" onClick={() => toggleAccount("123")}>
-          <div>
+          <div className="name">
             <h3>Solana Wallet</h3>
             <img className="chevron" src="./assets/right-chevron.svg" />
           </div>
+          {
+            simplifiedView && (
+              <div className="copy">
+                {
+                  profiles?.[1].keyID ? (
+                    <p>{profiles[1].keyID}</p>
+                  ) : (
+                    <Skeleton width="100%" height="20px" />
+                  )
+                }
+                <button onClick={(e) => handleCopy(e, 'solana')}>
+                  {
+                    solanaAccountAddressCopied ? (
+                      <img src="/assets/check.svg" alt="Copy icon" />
+                    ) : (
+                      <img src="/assets/copy-purple.svg" alt="Copy icon" />
+                    )
+                  }
+               </button>
+              </div>
+            )
+          }
         </div>
 
         <div className="info-card">
@@ -108,16 +176,46 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <SpToken />
-                <p>$SP</p>
+                {
+                  simplifiedView ? (
+                    <div>
+                      <p>Silent Pass</p>
+                      <p>18.61M $SP</p>
+                    </div>
+                  ) : (
+                    <p>$SP</p>
+                  )
+                }
               </div>
-              <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+              {
+                simplifiedView ? (
+                  <p>$543.51</p>
+                ) : (
+                  <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+                )
+              }
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <SolanaToken />
-                <p>$SOL</p>
+                {
+                  simplifiedView ? (
+                    <div>
+                      <p>Solana</p>
+                      <p>0.902 SOL</p>
+                    </div>
+                  ) : (
+                    <p>$SP</p>
+                  )
+                }
               </div>
-              <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+              {
+                simplifiedView ? (
+                  <p>$138.39</p>
+                ) : (
+                  <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+                )
+              }
             </div>
           </div>
           {

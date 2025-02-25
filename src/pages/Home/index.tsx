@@ -15,8 +15,12 @@ import { formatMinutesToHHMM } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 
+const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
+const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
+const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
+
 interface RenderButtonProps {
-  errorStartingSilentPass: boolean;
+  errorMessage: string;
   isConnectionLoading: boolean;
   power: boolean;
   profile: any;
@@ -24,7 +28,7 @@ interface RenderButtonProps {
   handleTogglePower: () => void;
 }
 
-const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnectionLoading, power, profile, _vpnTimeUsedInMin }: RenderButtonProps) => {
+const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, power, profile, _vpnTimeUsedInMin }: RenderButtonProps) => {
   if (isConnectionLoading)
     return (
       <div className="button-wrapper">
@@ -36,7 +40,7 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
           </button>
         </BlobWrapper>
 
-        <p className="connected">Loading...</p>
+        <p className="connected" style={{ zIndex: 10 }}>Loading...</p>
       </div>
     )
 
@@ -79,7 +83,7 @@ const RenderButton = ({ errorStartingSilentPass, handleTogglePower, isConnection
         </div>
       </div>
 
-      {errorStartingSilentPass && <span style={{ color: '#bf3b37', fontSize: '12px' }}>Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.</span>}
+      {errorMessage && <span style={{ color: '#bf3b37', fontSize: '12px' }}>{errorMessage}</span>}
     </>
   )
 }
@@ -90,7 +94,7 @@ const Home = () => {
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
-  const [errorStartingSilentPass, setErrorStartingSilentPass] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const vpnTimeTimeout = useRef<NodeJS.Timeout>();
 
   const navigate = useNavigate();
@@ -157,10 +161,21 @@ const Home = () => {
     _getAllRegions()
   }, []);
 
+  const isPassportValid = (expires: number | undefined) => {
+    if (!expires) {
+      return false
+    }
+
+    const now = Math.floor(Date.now());
+    const expiresDate = new Date(expires * 1000);
+
+    return expiresDate.getTime() > now
+  }
+
   const handleTogglePower = async () => {
     setIsConnectionLoading(true)
     let error = false;
-    setErrorStartingSilentPass(false);
+    setErrorMessage('');
     let selectedCountryIndex = -1
 
     if (power) {
@@ -179,8 +194,27 @@ const Home = () => {
       return
     }
 
+    if (!profiles?.[0]?.activePassport?.expires) {
+      setTimeout(() => {
+        setIsConnectionLoading(false)
+        setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
+      }, 1000)
+
+      return
+    }
+
+    if (!isPassportValid(profiles?.[0]?.activePassport?.expires)) {
+      setTimeout(() => {
+        setIsConnectionLoading(false)
+        setErrorMessage(PASSPORT_EXPIRED_ERROR);
+      }, 1000)
+
+      return
+    }
+
     const conetProfile = CoNET_Data?.profiles[0];
     const privateKey = conetProfile?.privateKeyArmor
+
     if (!privateKey) {
       return
     }
@@ -236,7 +270,7 @@ const Home = () => {
         await startSilentPass(startVPNMessageObject);
       } catch (ex) {
         error = true
-        setErrorStartingSilentPass(true);
+        setErrorMessage(GENERIC_ERROR);
       }
     }
 
@@ -273,7 +307,7 @@ const Home = () => {
               <img src="/assets/header-title.svg"></img>
             </div>
 
-            <RenderButton profile={profiles?.[0]} errorStartingSilentPass={errorStartingSilentPass} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
+            <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 
             <CopyProxyInfo />
 

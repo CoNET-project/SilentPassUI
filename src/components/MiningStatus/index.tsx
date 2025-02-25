@@ -6,7 +6,7 @@ import Skeleton from '../Skeleton';
 const OneDayInSeconds = 86400;
 
 const MiningStatus = () => {
-  const { miningData, profiles, setIsPassportInfoOpen, activePassportUpdated } = useDaemonContext();
+  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated } = useDaemonContext();
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
 
@@ -17,7 +17,7 @@ const MiningStatus = () => {
   }, [miningData])
 
   useEffect(() => {
-    const passportExpiration = profiles?.[0]?.activeFreePassport?.expires
+    const passportExpiration = profiles?.[0]?.activePassport?.expires
     if (passportExpiration) {
       const timeLeft = passportExpiration - Math.floor(Date.now() / 1000)
       setPassportTimeLeft(timeLeft)
@@ -25,7 +25,7 @@ const MiningStatus = () => {
   }, [activePassportUpdated, profiles])
 
   const openPassportInfo = () => {
-    setIsPassportInfoOpen(true)
+    setIsPassportInfoPopupOpen(true)
   }
 
   return (

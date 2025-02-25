@@ -38,7 +38,7 @@ function App() {
 
       tmpData.profiles[0] = {
         ...tmpData?.profiles[0],
-        activeFreePassport: {
+        activePassport: {
           nftID: info?.nftIDs?.[0]?.toString(),
           expires: info?.expires?.[0]?.toString(),
           expiresDays: info?.expiresDays?.[0]?.toString()

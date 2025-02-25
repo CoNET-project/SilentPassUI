@@ -16,8 +16,8 @@ const PassportInfo = () => {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end' }}>
         <span>Expiration date</span>
         {
-          profiles?.[0]?.activeFreePassport?.expires ?
-            <p>{getRemainingTime(profiles?.[0]?.activeFreePassport?.expires)}</p>
+          profiles?.[0]?.activePassport?.expires ?
+            <p>{getRemainingTime(profiles?.[0]?.activePassport?.expires)}</p>
             : <Skeleton width='50px' height='20px' />
         }
       </div>

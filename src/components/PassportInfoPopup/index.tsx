@@ -4,10 +4,10 @@ import './index.css';
 import Skeleton from "../Skeleton";
 
 const PassportInfoPopup = () => {
-  const { profiles, isPassportInfoOpen, setIsPassportInfoOpen } = useDaemonContext();
+  const { profiles, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen } = useDaemonContext();
 
-  return isPassportInfoOpen ? (
-    <div className="home-popup-backdrop" onClick={() => setIsPassportInfoOpen(false)}>
+  return isPassportInfoPopupOpen ? (
+    <div className="home-popup-backdrop" onClick={() => setIsPassportInfoPopupOpen(false)}>
       <div className="home-nft-info">
         <div className="home-main-card">
           <div style={{ display: "flex", flexDirection: 'column', textAlign: 'start', gap: '16px' }}>
@@ -18,8 +18,8 @@ const PassportInfoPopup = () => {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: '16px' }}>
             <span>Expiration date</span>
             {
-              profiles?.[0]?.activeFreePassport?.expires ?
-                <p>{getRemainingTime(profiles?.[0]?.activeFreePassport?.expires)}</p>
+              profiles?.[0]?.activePassport?.expires ?
+                <p>{getRemainingTime(profiles?.[0]?.activePassport?.expires)}</p>
                 : <Skeleton width='50px' height='20px' />
             }
           </div>
@@ -31,7 +31,7 @@ const PassportInfoPopup = () => {
             <span>Upgrade</span>
           </button>
 
-          <button onClick={() => setIsPassportInfoOpen(false)}>Close</button>
+          <button onClick={() => setIsPassportInfoPopupOpen(false)}>Close</button>
         </div>
       </div>
     </div>

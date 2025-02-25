@@ -65,7 +65,7 @@ interface profile extends keyPair {
   nodeID?: number;
   nodeIP_address?: string;
   nodeRegion?: string;
-  activeFreePassport?: freePassport;
+  activePassport?: freePassport;
   vpnTimeUsedInMin?: number;
 }
 

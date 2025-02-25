@@ -10,7 +10,7 @@ import { ReactComponent as ConetEthToken } from './assets/conet-eth-token.svg';
 import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import PassportInfo from '../PassportInfo';
-import SelectActivePassportPopup from '../PassportInfoPopup';
+import SelectActivePassportPopup from '../SelectActivePassportPopup';
 
 interface AccountListProps {
   simplifiedView?: boolean;
@@ -77,7 +77,7 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
                       <img src="/assets/copy-purple.svg" alt="Copy icon" />
                     )
                   }
-               </button>
+                </button>
               </div>
             )
           }
@@ -164,7 +164,7 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
                       <img src="/assets/copy-purple.svg" alt="Copy icon" />
                     )
                   }
-               </button>
+                </button>
               </div>
             )
           }
@@ -229,7 +229,7 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
         </div>
       </div>
 
-      <SelectActivePassportPopup setIsOpen={setIsSelectPassportPopupOpen} isOpen={isSelectPassportPopupOpen} />
+      <SelectActivePassportPopup />
     </div>
   )
 }

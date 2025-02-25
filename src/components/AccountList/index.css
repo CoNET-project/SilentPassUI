@@ -29,7 +29,7 @@
 
 .account-wrapper.active {
   /* should create the animation */
-  height: 480px;
+  height: fit-content;
 }
 
 .solana.account-wrapper.active {
@@ -144,7 +144,7 @@
 }
 
 .simplified .info-wrapper div div div p:first-child {
-  color: #FFFFFF;
+  color: #ffffff;
 }
 
 .simplified .info-wrapper div div div p:last-child {

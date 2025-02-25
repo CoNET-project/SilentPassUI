@@ -6,7 +6,7 @@ import Skeleton from '../Skeleton';
 const OneDayInSeconds = 86400;
 
 const MiningStatus = () => {
-  const { miningData, profiles, setIsPassportInfoOpen, activePassportUpdated } = useDaemonContext();
+  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated } = useDaemonContext();
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
 
@@ -25,7 +25,7 @@ const MiningStatus = () => {
   }, [activePassportUpdated, profiles])
 
   const openPassportInfo = () => {
-    setIsPassportInfoOpen(true)
+    setIsPassportInfoPopupOpen(true)
   }
 
   return (

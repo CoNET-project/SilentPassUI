@@ -26,12 +26,14 @@ type DaemonContext = {
   serverPac: string
   setServerPac: (pac: string) => void
   _vpnTimeUsedInMin: React.MutableRefObject<number>
-  isPassportInfoOpen: boolean
-  setIsPassportInfoOpen: (val: boolean) => void
+  isPassportInfoPopupOpen: boolean
+  setIsPassportInfoPopupOpen: (val: boolean) => void
   activePassportUpdated: boolean
   setActivePassportUpdated: (val: boolean) => void
   activePassport: any
   setActivePassport: (val: any) => void
+  isSelectPassportPopupOpen: any
+  setIsSelectPassportPopupOpen: (val: any) => void
 };
 
 type DaemonProps = {
@@ -64,12 +66,14 @@ const defaultContextValue: DaemonContext = {
   serverPac: "",
   setServerPac: () => { },
   _vpnTimeUsedInMin: { current: 0 },
-  isPassportInfoOpen: false,
-  setIsPassportInfoOpen: () => { },
+  isPassportInfoPopupOpen: false,
+  setIsPassportInfoPopupOpen: () => { },
   activePassportUpdated: false,
   setActivePassportUpdated: () => { },
   activePassport: null,
   setActivePassport: () => { },
+  isSelectPassportPopupOpen: false,
+  setIsSelectPassportPopupOpen: () => { },
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -93,7 +97,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [serverPort, setServerPort] = useState<string>(defaultContextValue.serverPort);
   const [serverPac, setServerPac] = useState<string>("");
   const _vpnTimeUsedInMin = useRef<number>(0);
-  const [isPassportInfoOpen, setIsPassportInfoOpen] = useState<boolean>(false);
+  const [isPassportInfoPopupOpen, setIsPassportInfoPopupOpen] = useState<boolean>(false);
+  const [isSelectPassportPopupOpen, setIsSelectPassportPopupOpen] = useState<boolean>(false);
   const [activePassportUpdated, setActivePassportUpdated] = useState<boolean>(false);
   const [activePassport, setActivePassport] = useState<any>(null);
 
@@ -106,7 +111,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoOpen, setIsPassportInfoOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport }}>
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen }}>
       {children}
     </Daemon.Provider>
   );

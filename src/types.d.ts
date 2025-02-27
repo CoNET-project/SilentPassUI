@@ -51,6 +51,11 @@ interface freePassport {
 
 type keyPairType = "ethereum" | "solana";
 
+interface SolanaWallet {
+  publicKey: string;
+  privateKey: string;
+}
+
 interface profile extends keyPair {
   isPrimary?: boolean;
   pgpKey?: pgpKeyPair;

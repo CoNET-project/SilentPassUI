@@ -13,44 +13,43 @@ import {
 } from "../utils/constants";
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
-import { Keypair } from "@solana/web3.js";
-import { mnemonicToSeedSync } from "bip39";
-import { sha512 } from "@noble/hashes/sha512";
+import * as Bip39 from "bip39";
+import {
+  createKeyPairFromPrivateKeyBytes,
+  getBase58Decoder,
+  getAddressFromPublicKey,
+} from "@solana/web3.js";
 
 const PouchDB = require("pouchdb").default;
 
-let isGetFaucetProcess = false;
-
-let getFaucetRoop = 0;
-
-// Function to derive the keypair from mnemonic
-async function getSolanaKeypairFromMnemonic(mnemonic: string) {
-  // Convert mnemonic to seed
-  const seed = mnemonicToSeedSync(mnemonic);
-
-  // Derive the seed for the first account using Solana's HD wallet path
-  const derivedSeed = await deriveSolanaSeed(seed);
-
-  // Generate a Keypair from the derived seed
-  return Keypair.fromSeed(derivedSeed);
+interface SolanaWallet {
+  publicKey: string;
+  privateKey: string;
 }
 
-// Function to derive the seed for the given derivation path
-async function deriveSolanaSeed(seed: any) {
-  // Derive a 32-byte key from the seed using SHA512 (Solana's derivation process)
-  const hash = sha512(seed);
-  return hash.slice(0, 32); // Take the first 32 bytes as the private key
-}
+const initSolana: (mnemonic: string) => Promise<any> = (mnemonic: string) =>
+  new Promise(async (resolve) => {
+    const vsc = Bip39.validateMnemonic(mnemonic);
 
-const convertSecretKeyToPrivateKey = (secretKey: any) => {
-  // Extract the first 32 bytes (private key)
-  const privateKey = secretKey.slice(0, 32);
-
-  // Convert to a 64-character hex string (Ethereum format)
-  const privateKeyHex = Buffer.from(privateKey).toString("hex");
-
-  return privateKeyHex;
-};
+    if (!vsc) {
+      return resolve(false);
+    }
+    const seed = Bip39.mnemonicToSeedSync(mnemonic, "").slice(0, 32);
+    const keys = await createKeyPairFromPrivateKeyBytes(seed, true);
+    const privateKeyBytes = (
+      await crypto.subtle.exportKey("pkcs8", keys.privateKey)
+    ).slice(-32);
+    const publicKeyBytes = await crypto.subtle.exportKey("raw", keys.publicKey);
+    const publicKey = await getAddressFromPublicKey(keys.publicKey);
+    const secretKeyBytes = new Uint8Array([
+      // @ts-ignore
+      ...new Uint8Array(privateKeyBytes),
+      // @ts-ignore
+      ...new Uint8Array(publicKeyBytes),
+    ]);
+    const privateKey = getBase58Decoder().decode(secretKeyBytes);
+    return resolve({ privateKey, publicKey });
+  });
 
 const createOrGetWallet = async (secretPhrase: string | null) => {
   await checkStorage();
@@ -90,18 +89,12 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     };
 
     if (acc?.mnemonic?.phrase) {
-      const secondaryWallet: Keypair = await getSolanaKeypairFromMnemonic(
-        acc?.mnemonic?.phrase
-      );
-
-      const privateKeyHex = convertSecretKeyToPrivateKey(
-        secondaryWallet.secretKey
-      );
+      const result = await initSolana(acc?.mnemonic?.phrase);
 
       const profile2: profile = {
         tokens: initProfileTokens(),
-        publicKeyArmor: secondaryWallet.publicKey.toString(),
-        keyID: secondaryWallet.publicKey.toBase58(),
+        publicKeyArmor: "",
+        keyID: result?.publicKey || "",
         isPrimary: true,
         referrer: null,
         isNode: false,
@@ -109,7 +102,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
           privateKeyArmor: key.privateKey,
           publicKeyArmor: key.publicKey,
         },
-        privateKeyArmor: privateKeyHex,
+        privateKeyArmor: result?.privateKey || "",
         hdPath: null,
         index: 0,
         type: "solana",
@@ -122,26 +115,20 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
   }
 
   const tmpData = CoNET_Data;
-  if (tmpData) tmpData.profiles.length = 2;
+  if (tmpData) tmpData.profiles.length = 1;
 
   if (
     tmpData &&
     (tmpData?.profiles.length < 2 || tmpData?.profiles[1]?.type !== "solana")
   ) {
-    const secondaryWallet = await getSolanaKeypairFromMnemonic(
-      tmpData.mnemonicPhrase
-    );
-
-    const privateKeyHex = convertSecretKeyToPrivateKey(
-      secondaryWallet.secretKey
-    );
+    const result = await initSolana(tmpData?.mnemonicPhrase);
 
     const key = await createGPGKey("", "", "");
 
     const profile2: profile = {
       tokens: initProfileTokens(),
-      publicKeyArmor: secondaryWallet.publicKey.toString(),
-      keyID: secondaryWallet.publicKey.toBase58(),
+      publicKeyArmor: "",
+      keyID: result?.publicKey || "",
       isPrimary: true,
       referrer: null,
       isNode: false,
@@ -149,7 +136,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
         privateKeyArmor: key.privateKey,
         publicKeyArmor: key.publicKey,
       },
-      privateKeyArmor: privateKeyHex,
+      privateKeyArmor: result?.privateKey || "",
       hdPath: null,
       index: 0,
       type: "solana",

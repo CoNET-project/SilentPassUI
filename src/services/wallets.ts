@@ -14,11 +14,9 @@ import {
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 import * as Bip39 from "bip39";
-import {
-  createKeyPairFromPrivateKeyBytes,
-  getBase58Decoder,
-  getAddressFromPublicKey,
-} from "@solana/web3.js";
+
+import { Keypair, PublicKey } from "@solana/web3.js";
+import Bs58 from "bs58";
 
 const PouchDB = require("pouchdb").default;
 
@@ -27,29 +25,17 @@ interface SolanaWallet {
   privateKey: string;
 }
 
-const initSolana: (mnemonic: string) => Promise<any> = (mnemonic: string) =>
-  new Promise(async (resolve) => {
-    const vsc = Bip39.validateMnemonic(mnemonic);
+const initSolana = async (mnemonic: string): Promise<any> => {
+  if (!Bip39.validateMnemonic(mnemonic)) return false;
 
-    if (!vsc) {
-      return resolve(false);
-    }
-    const seed = Bip39.mnemonicToSeedSync(mnemonic, "").slice(0, 32);
-    const keys = await createKeyPairFromPrivateKeyBytes(seed, true);
-    const privateKeyBytes = (
-      await crypto.subtle.exportKey("pkcs8", keys.privateKey)
-    ).slice(-32);
-    const publicKeyBytes = await crypto.subtle.exportKey("raw", keys.publicKey);
-    const publicKey = await getAddressFromPublicKey(keys.publicKey);
-    const secretKeyBytes = new Uint8Array([
-      // @ts-ignore
-      ...new Uint8Array(privateKeyBytes),
-      // @ts-ignore
-      ...new Uint8Array(publicKeyBytes),
-    ]);
-    const privateKey = getBase58Decoder().decode(secretKeyBytes);
-    return resolve({ privateKey, publicKey });
-  });
+  const seed = (await Bip39.mnemonicToSeed(mnemonic)).slice(0, 32);
+  const keypair = Keypair.fromSeed(new Uint8Array(seed));
+
+  return {
+    publicKey: keypair.publicKey.toBase58(),
+    privateKey: Bs58.encode(keypair.secretKey),
+  };
+};
 
 const createOrGetWallet = async (secretPhrase: string | null) => {
   await checkStorage();
@@ -115,7 +101,6 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
   }
 
   const tmpData = CoNET_Data;
-  if (tmpData) tmpData.profiles.length = 1;
 
   if (
     tmpData &&

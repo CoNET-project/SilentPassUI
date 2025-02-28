@@ -5,9 +5,12 @@ import './index.css';
 import Separator from '../Separator';
 
 const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
-  const currentPassportName = currentPassport?.premium ? 'Premium Passport' : 'FreemiumPassport';
+  console.log("CURRENT PASSPORT: ", currentPassport);
+  console.log("NEW PASSPORT: ", newPassport);
+
+  const currentPassportName = currentPassport?.premium !== "false" ? 'Premium Passport' : 'Freemium Passport';
   const currentPassportExpiration = getRemainingTime(currentPassport?.expires)
-  const newPassportName = newPassport?.premium ? 'Premium Passport' : 'FreemiumPassport';
+  const newPassportName = newPassport?.premium ? 'Premium Passport' : 'Freemium Passport';
   const newPassportExpiration = getRemainingTime(newPassport?.expires)
 
   const [isChangeLoading, setIsChangeLoading] = useState(false);

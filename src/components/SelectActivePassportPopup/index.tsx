@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { getRemainingTime } from '../../utils/utils';
 import './index.css';
 import Separator from '../Separator';
+import { changeActiveNFT, estimateChangeNFTGasFee } from '../../services/wallets';
+import Skeleton from '../Skeleton';
 
 const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
   console.log("CURRENT PASSPORT: ", currentPassport);
@@ -14,17 +16,42 @@ const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
   const newPassportExpiration = getRemainingTime(newPassport?.expires)
 
   const [isChangeLoading, setIsChangeLoading] = useState(false);
+  const [estimatedGasFee, setEstimatedGasFee] = useState('');
 
-  const { isSelectPassportPopupOpen, setIsSelectPassportPopupOpen } = useDaemonContext();
+  const { setIsSelectPassportPopupOpen } = useDaemonContext();
 
   async function handleChangeActiveNFT() {
-    setIsChangeLoading(true);
+    try {
+      setIsChangeLoading(true);
 
-    setIsSelectPassportPopupOpen(false);
-    setIsChangeLoading(false);
+      const result = await changeActiveNFT('mainnet', newPassport.nftID)
+
+      setIsSelectPassportPopupOpen(false);
+    } catch (ex) {
+      console.log(ex)
+    } finally {
+      setIsChangeLoading(false);
+      setEstimatedGasFee('');
+    }
   }
 
-  return isSelectPassportPopupOpen ? (
+  useEffect(() => {
+    if (!newPassport?.nftID) return;
+
+    (async () => {
+      try {
+        const gasFeeValues = await estimateChangeNFTGasFee('mainnet', newPassport.nftID)
+
+        if (!gasFeeValues) return;
+
+        setEstimatedGasFee(gasFeeValues.gasFee)
+      } catch (ex) {
+        console.log(ex);
+      }
+    })()
+  }, [newPassport?.nftID])
+
+  return (
     <div className="home-popup-backdrop" onClick={() => setIsSelectPassportPopupOpen(false)}>
       <div className="home-nft-info" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
@@ -59,15 +86,21 @@ const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
             <Separator />
             <div style={{ width: '100%' }}>
               <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-                <p style={{ textAlign: 'left', fontSize: '16px' }}>GAS fee</p>
-                <p style={{ textAlign: 'right', fontSize: '16px' }}>{0.001} $ETH</p>
+                <p style={{ textAlign: 'left', fontSize: '16px', width: 'fit-content' }}>GAS fee</p>
+                {
+                  estimatedGasFee ? (
+                    <p style={{ textAlign: 'right', fontSize: '16px', width: 'fit-content' }}>{estimatedGasFee} $ETH</p>
+                  ) : (
+                    <Skeleton width="210px" height="21px" />
+                  )
+                }
               </div>
             </div>
           </div>
         </div>
 
         <div className="home-buttons">
-          <button style={{ height: '47px' }} onClick={handleChangeActiveNFT}>
+          <button style={{ height: '47px',  }} disabled={!estimatedGasFee} onClick={handleChangeActiveNFT}>
             {
               isChangeLoading ? <img className="loading-spinning" src="/assets/loading-ring.png" style={{ width: '24px', height: '24px' }} alt="" /> : <span>Change</span>
             }
@@ -77,7 +110,7 @@ const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
         </div>
       </div>
     </div>
-  ) : <></>
+  )
 };
 
 export default SelectActivePassportPopup;

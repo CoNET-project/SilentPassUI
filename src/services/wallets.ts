@@ -1,4 +1,4 @@
-import { ethers } from "ethers";
+import { ethers, formatEther, formatUnits } from "ethers";
 import { generateKey } from "openpgp";
 import {
   customJsonStringify,
@@ -15,7 +15,7 @@ import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 import * as Bip39 from "bip39";
 
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
 
 const PouchDB = require("pouchdb").default;
@@ -321,20 +321,114 @@ const getCurrentPassportInfoInChain = async (chain: string) => {
   }
 };
 
+const changeActiveNFT = async (chain: string, nftId: string) => {
+  if (!CoNET_Data) {
+    return;
+  }
+  let provider;
+  let contractAddress;
+  let contractAbi;
+
+  if (chain === "mainnet") {
+    provider = conetDepinProvider;
+    contractAddress = contracts.PassportMainnet.address;
+    contractAbi = contracts.PassportMainnet.abi;
+  } else {
+    provider = conetProvider;
+    contractAddress = contracts.PassportCancun.address;
+    contractAbi = contracts.PassportCancun.abi;
+  }
+
+  const wallet = new ethers.Wallet(
+    CoNET_Data.profiles[0].privateKeyArmor,
+    provider
+  );
+
+  const passportContract = new ethers.Contract(
+    contractAddress,
+    contractAbi,
+    wallet
+  );
+
+  try {
+    const tx = await passportContract.changeActiveNFT(nftId);
+    return tx;
+  } catch (ex) {
+    console.log(ex)
+  }
+}
+
+const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
+  if (!CoNET_Data) {
+    return;
+  }
+
+  let provider;
+  let contractAddress;
+  let contractAbi;
+
+  if (chain === "mainnet") {
+    provider = conetDepinProvider;
+    contractAddress = contracts.PassportMainnet.address;
+    contractAbi = contracts.PassportMainnet.abi;
+  } else {
+    provider = conetProvider;
+    contractAddress = contracts.PassportCancun.address;
+    contractAbi = contracts.PassportCancun.abi;
+  }
+
+  const wallet = new ethers.Wallet(
+    CoNET_Data.profiles[0].privateKeyArmor,
+    provider
+  );
+
+  const passportContract = new ethers.Contract(
+    contractAddress,
+    contractAbi,
+    wallet
+  );
+
+  try {
+    // Verify if the function exists
+    if (!passportContract.changeActiveNFT) {
+      throw new Error("Function changeActiveNFT not found in contract ABI.");
+    }
+
+    // Estimate gas usage
+    const gasLimit = await passportContract.changeActiveNFT.estimateGas(nftId);
+
+    // Get the gas price
+    const feeData = await provider.getFeeData();
+    const gasPrice = feeData.gasPrice || ethers.ZeroAddress; // Ensure a fallback value
+
+    // Calculate gas fee
+    const gasFee = Number(gasLimit) * Number(gasPrice); // BigInt operation
+
+    return {
+      gasLimit: gasLimit.toString(),
+      gasPrice: formatUnits(gasPrice, "gwei"),
+      gasFee: formatEther(gasFee.toString()), // Convert to ETH
+    };
+  } catch (ex) {
+    console.error("Gas estimation failed:", ex);
+  }
+};
+
+
 const getCurrentPassportInfo = async () => {
   if (!CoNET_Data) {
     return;
   }
 
-  const resultCancun = await getCurrentPassportInfoInChain("cancun");
-
-  if (resultCancun?.nftIDs?.toString() !== "0") {
-    return resultCancun;
-  }
-
   const resultMainnet = await getCurrentPassportInfoInChain("mainnet");
 
-  return resultMainnet;
+  if (resultMainnet?.nftIDs?.toString() !== "0") {
+    return resultMainnet;
+  }
+
+  const resultCancun = await getCurrentPassportInfoInChain("cancun");
+
+  return resultCancun;
 };
 
 const tryToRequireFreePassport = async () => {
@@ -477,6 +571,8 @@ export {
   requireFreePassport,
   tryToRequireFreePassport,
   getCurrentPassportInfo,
+  changeActiveNFT,
+  estimateChangeNFTGasFee,
   getFaucet,
   getVpnTimeUsed,
   getPassportsInfoForProfile,

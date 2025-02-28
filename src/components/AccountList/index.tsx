@@ -25,7 +25,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
   const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
   const [passportToChange, setPassportToChange] = useState();
 
-  const { setIsSelectPassportPopupOpen } = useDaemonContext();
+  const { isSelectPassportPopupOpen, setIsSelectPassportPopupOpen } = useDaemonContext();
 
   function toggleAccount(accountAddress: string) {
     setOpenAccountList((prev) => (
@@ -248,10 +248,14 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
         </div>
       </div>
 
-      <SelectActivePassportPopup
-        currentPassport={activePassport}
-        newPassport={passportToChange}
-      />
+      {
+        isSelectPassportPopupOpen && (
+          <SelectActivePassportPopup
+            currentPassport={activePassport}
+            newPassport={passportToChange}
+          />
+        )
+      }
     </div>
   )
 }

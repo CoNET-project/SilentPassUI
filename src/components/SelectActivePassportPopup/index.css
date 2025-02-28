@@ -73,6 +73,12 @@
   gap: 8px;
 }
 
+.home-buttons button:first-child:disabled {
+  background-color: #333;
+  color: #ddd;
+  cursor: not-allowed
+}
+
 .home-buttons button:last-child {
   background-color: #282930;
   color: #ffffff;

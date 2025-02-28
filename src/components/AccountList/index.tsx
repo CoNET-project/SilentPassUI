@@ -20,10 +20,12 @@ interface AccountListProps {
 export default function AccountList({ showMainWallet = true, simplifiedView = false }: AccountListProps) {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
   const { profiles, activePassport } = useDaemonContext();
-  const [isSelectPassportPopupOpen, setIsSelectPassportPopupOpen] = useState(false);
 
   const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
   const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
+  const [passportToChange, setPassportToChange] = useState();
+
+  const { setIsSelectPassportPopupOpen } = useDaemonContext();
 
   function toggleAccount(accountAddress: string) {
     setOpenAccountList((prev) => (
@@ -49,8 +51,6 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
       setSolanaAccountAddressCopied(false);
     }, 2000)
   }
-
-  console.log("PROFILES: ", profiles);
 
   return (
     <div className="account-list">
@@ -117,7 +117,10 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                             return isAActive === isBActive ? 0 : isAActive ? -1 : 1;
                           })
                           .map((passport: any) => (
-                            <PassportInfo key={passport.nftID} passportInfo={passport} selectedValue={activePassport} onChange={() => setIsSelectPassportPopupOpen(true)} />
+                            <PassportInfo key={passport.nftID} passportInfo={passport} selectedValue={activePassport} onChange={() => {
+                              setIsSelectPassportPopupOpen(true)
+                              setPassportToChange(passport)
+                            }} />
                           ))
                         : <Skeleton width={'100%'} height={'20px'} />}
                     </div>
@@ -245,7 +248,10 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
         </div>
       </div>
 
-      <SelectActivePassportPopup />
+      <SelectActivePassportPopup
+        currentPassport={activePassport}
+        newPassport={passportToChange}
+      />
     </div>
   )
 }

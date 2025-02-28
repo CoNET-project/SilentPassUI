@@ -13,10 +13,11 @@ import PassportInfo from '../PassportInfo';
 import SelectActivePassportPopup from '../SelectActivePassportPopup';
 
 interface AccountListProps {
+  showMainWallet?: boolean;
   simplifiedView?: boolean;
 }
 
-export default function AccountList({ simplifiedView = false }: AccountListProps) {
+export default function AccountList({ showMainWallet = true, simplifiedView = false }: AccountListProps) {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
   const { profiles, activePassport } = useDaemonContext();
   const [isSelectPassportPopupOpen, setIsSelectPassportPopupOpen] = useState(false);
@@ -53,80 +54,95 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
 
   return (
     <div className="account-list">
-      <div className={`account-wrapper ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes(profiles?.[0]?.keyID) ? 'active' : ''}`}>
-        <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}>
-          <div className="name">
-            <h3>Main Wallet</h3>
-            <img className="chevron" src="./assets/right-chevron.svg" />
-          </div>
-          {
-            simplifiedView && (
-              <div className="copy">
-                {
-                  profiles?.[0].keyID ? (
-                    <p>{profiles[0].keyID}</p>
-                  ) : (
-                    <Skeleton width="100%" height="20px" />
-                  )
-                }
-                <button onClick={(e) => handleCopy(e, 'main')}>
+      {showMainWallet &&
+        <div className={`account-wrapper ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes(profiles?.[0]?.keyID) ? 'active' : ''}`}>
+          <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}>
+            <div className="name">
+              <h3>Main Wallet</h3>
+              <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
+            </div>
+            {
+              simplifiedView && (
+                <div className="copy">
                   {
-                    mainAccountAddressCopied ? (
-                      <img src="/assets/check.svg" alt="Copy icon" />
+                    profiles?.[0].keyID ? (
+                      <p>{profiles[0].keyID}</p>
                     ) : (
-                      <img src="/assets/copy-purple.svg" alt="Copy icon" />
+                      <Skeleton width="100%" height="20px" />
                     )
                   }
-                </button>
-              </div>
-            )
-          }
-        </div>
-        <div className="info-card">
-          <div className="info-wrapper">
-            <p>Token assets</p>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <ConetToken />
-                <p>$CONET</p>
-              </div>
-              <p>{profiles?.[0]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <ConetEthToken />
-                <p>$ETH</p>
-              </div>
-              <p>{profiles?.[0]?.tokens?.conet_eth?.balance || (0.0).toFixed(6)}</p>
-            </div>
-          </div>
-          {
-            !simplifiedView && (
-              <>
-                <Separator />
-                <div className="info-wrapper">
-                  <p>Silent Pass Passport</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
-                    {profiles?.[0]?.silentPassPassports
-                      ? [...profiles?.[0]?.silentPassPassports]
-                        .sort((a: any, b: any) => {
-                          const isAActive = a?.nftID === activePassport?.nftID;
-                          const isBActive = b?.nftID === activePassport?.nftID;
-                          return isAActive === isBActive ? 0 : isAActive ? -1 : 1;
-                        })
-                        .map((passport: any) => (
-                          <PassportInfo key={passport.nftID} passportInfo={passport} selectedValue={activePassport} onChange={() => setIsSelectPassportPopupOpen(true)} />
-                        ))
-                      : <Skeleton width={'100%'} height={'20px'} />}
-                  </div>
+                  <button onClick={(e) => handleCopy(e, 'main')}>
+                    {
+                      mainAccountAddressCopied ? (
+                        <img src="/assets/check.svg" alt="Copy icon" />
+                      ) : (
+                        <img src="/assets/copy-purple.svg" alt="Copy icon" />
+                      )
+                    }
+                  </button>
                 </div>
-                <Separator />
-                <CopyAccountInfo wallet={profiles?.[0]} />
-              </>
-            )
-          }
+              )
+            }
+          </div>
+          <div className="info-card">
+            <div className="info-wrapper">
+              <p>Token assets</p>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <ConetToken />
+                  <p>$CONET</p>
+                </div>
+                <p>{profiles?.[0]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <ConetEthToken />
+                  <p>$ETH</p>
+                </div>
+                <p>{profiles?.[0]?.tokens?.conet_eth?.balance || (0.0).toFixed(6)}</p>
+              </div>
+            </div>
+            {
+              !simplifiedView && (
+                <>
+                  <Separator />
+                  <div className="info-wrapper">
+                    <p>Silent Pass Passport</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
+                      {profiles?.[0]?.silentPassPassports
+                        ? [...profiles?.[0]?.silentPassPassports]
+                          .sort((a: any, b: any) => {
+                            const isAActive = a?.nftID === activePassport?.nftID;
+                            const isBActive = b?.nftID === activePassport?.nftID;
+                            return isAActive === isBActive ? 0 : isAActive ? -1 : 1;
+                          })
+                          .map((passport: any) => (
+                            <PassportInfo key={passport.nftID} passportInfo={passport} selectedValue={activePassport} onChange={() => setIsSelectPassportPopupOpen(true)} />
+                          ))
+                        : <Skeleton width={'100%'} height={'20px'} />}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <CopyAccountInfo wallet={profiles?.[0]} showRecoveryPhrase={true} />
+
+                  {/* <Separator />
+
+                <div>
+                  <button className='disabled'>
+                    <img src="/assets/conet-gray.svg" alt="Platform" />
+                    <p>Open CONET Platform</p>
+                  </button>
+                  <p>*Open CoNET Platform - Redeem Silent Pass passport and transfer Silent Pass passport to Silent Pass Account (public wallet address) if user has guardian NFT or CoNETian NFT.</p>
+                </div>
+ */}
+                </>
+              )
+            }
+          </div>
         </div>
-      </div>
+      }
 
       {
         !simplifiedView && (
@@ -144,7 +160,7 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
         <div className="account-main-card" onClick={() => toggleAccount("123")}>
           <div className="name">
             <h3>Solana Wallet</h3>
-            <img className="chevron" src="./assets/right-chevron.svg" />
+            <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
           </div>
           {
             simplifiedView && (
@@ -179,11 +195,11 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
                 {
                   simplifiedView ? (
                     <div>
-                      <p>Silent Pass</p>
-                      <p>18.61M $SP</p>
+                      <p>Solana</p>
+                      <p>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</p>
                     </div>
                   ) : (
-                    <p>$SP</p>
+                    <p>$SOL</p>
                   )
                 }
               </div>
@@ -191,7 +207,7 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
                 simplifiedView ? (
                   <p>$543.51</p>
                 ) : (
-                  <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+                  <p>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</p>
                 )
               }
             </div>
@@ -201,8 +217,8 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
                 {
                   simplifiedView ? (
                     <div>
-                      <p>Solana</p>
-                      <p>0.902 SOL</p>
+                      <p>Silent Pass</p>
+                      <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6)}</p>
                     </div>
                   ) : (
                     <p>$SP</p>
@@ -213,7 +229,7 @@ export default function AccountList({ simplifiedView = false }: AccountListProps
                 simplifiedView ? (
                   <p>$138.39</p>
                 ) : (
-                  <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+                  <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6)}</p>
                 )
               }
             </div>

@@ -14,7 +14,7 @@
 }
 
 .simplified.account-wrapper {
-  height: 80px;
+  height: 90px;
 }
 
 .account-wrapper .account-main-card .name img {
@@ -33,7 +33,7 @@
 }
 
 .solana.account-wrapper.active {
-  height: 400px;
+  height: 300px;
 }
 
 .simplified.account-wrapper.active {
@@ -67,7 +67,10 @@
 }
 
 .simplified .account-main-card {
-  height: 80px;
+  height: 90px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .account-main-card div:last-child {

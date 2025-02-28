@@ -35,7 +35,6 @@ export default function BuyMore() {
           </div>
         </div>
       </div>
-      <p>*If you are a Guardian or CoNETian, ​​transfer your NFT to your Main Account on Silent Pass VPN app.</p>
     </div>
   )
 }

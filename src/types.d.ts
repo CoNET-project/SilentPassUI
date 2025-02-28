@@ -40,6 +40,8 @@ interface conet_tokens {
   conetDepin: CryptoAsset;
   conet_eth: CryptoAsset;
   eth: CryptoAsset;
+  sol: CryptoAsset;
+  sp: CryptoAsset;
 }
 
 interface freePassport {

@@ -1,5 +1,5 @@
-import { blast_CNTPAbi } from "./../utils/abis";
 import { ethers } from "ethers";
+import { blast_CNTPAbi } from "./../utils/abis";
 import {
   conetDepinProvider,
   conetProvider,
@@ -14,6 +14,8 @@ import {
 import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
 import { getPassportsInfoForProfile, getVpnTimeUsed } from "./wallets";
+import { Connection, PublicKey } from "@solana/web3.js";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 let epoch = 0;
 
@@ -35,7 +37,7 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
         }
         const runningList: any[] = [];
 
-        runningList.push(getProfileAssets(profiles[0]));
+        runningList.push(getProfileAssets(profiles[0], profiles[1]));
 
         await Promise.all(runningList);
 
@@ -53,21 +55,25 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
   epoch = await conetProvider.getBlockNumber();
 };
 
-const getProfileAssets = async (profile: profile) => {
+const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
   const key = profile.keyID;
+  const solanaKey = solanaProfile.keyID;
 
   if (key) {
     if (!profile.tokens) {
       profile.tokens = initProfileTokens();
     }
 
-    const [cCNTP, conet, conetDepin, conet_eth, eth] = await Promise.all([
-      scanCCNTP(key),
-      scanCONETHolesky(key),
-      scanCONETDepin(key),
-      scanConetETH(key),
-      scanETH(key),
-    ]);
+    const [cCNTP, conet, conetDepin, conet_eth, eth, sol, sp] =
+      await Promise.all([
+        scanCCNTP(key),
+        scanCONETHolesky(key),
+        scanCONETDepin(key),
+        scanConetETH(key),
+        scanETH(key),
+        scanSolanaSol(solanaKey),
+        scanSolanaSp(solanaKey),
+      ]);
 
     if (profile.tokens?.cCNTP) {
       profile.tokens.cCNTP.balance =
@@ -151,6 +157,31 @@ const getProfileAssets = async (profile: profile) => {
       };
     }
 
+    if (solanaProfile.tokens?.sol) {
+      solanaProfile.tokens.sol.balance = sol === false ? "" : sol?.toFixed(6);
+    } else {
+      solanaProfile.tokens.sol = {
+        balance: sol === false ? "" : sol?.toFixed(6),
+        network: "Solana Mainnet",
+        decimal: 18,
+        contract: "",
+        name: "sol",
+      };
+    }
+
+    if (solanaProfile.tokens?.sp) {
+      solanaProfile.tokens.sp.balance =
+        sp === false ? "" : parseFloat(sp).toFixed(6);
+    } else {
+      solanaProfile.tokens.sp = {
+        balance: sp === false ? "" : parseFloat(sp).toFixed(6),
+        network: "Solana Mainnet",
+        decimal: 18,
+        contract: "",
+        name: "sp",
+      };
+    }
+
     const temp = CoNET_Data;
 
     if (!temp) {
@@ -158,6 +189,7 @@ const getProfileAssets = async (profile: profile) => {
     }
 
     temp.profiles[0] = profile;
+    temp.profiles[1] = solanaProfile;
 
     setCoNET_Data(temp);
   }
@@ -195,6 +227,36 @@ const scanETH = async (walletAddr: string) => {
   return await scan_natural_balance(walletAddr, ethProvider);
 };
 
+const scanSolanaSol = async (walletAddr: string) => {
+  try {
+    // Validate wallet address format
+    if (!PublicKey.isOnCurve(walletAddr)) {
+      throw new Error("Invalid wallet address format");
+    }
+
+    // Connect to Solana Mainnet (or use 'devnet' for testing)
+    const endpoint =
+      "https://solana-mainnet.g.alchemy.com/v2/46Ln0bW3o755DmDhfSPeeLuU7qKqVb0M";
+    const connection = new Connection(endpoint, "singleGossip");
+
+    // Convert the wallet address to a PublicKey
+    const publicKey = new PublicKey(walletAddr);
+
+    // Get balance (returned in lamports, 1 SOL = 1,000,000,000 lamports)
+    const balance = await connection.getBalance(publicKey);
+
+    // Convert to SOL
+    return balance / 1_000_000_000;
+  } catch (error) {
+    console.error("Error fetching balance $SOL:", error);
+    return false;
+  }
+};
+
+const scanSolanaSp = async (walletAddr: string) => {
+  return await scan_spl_balance(walletAddr, contracts.PassportSolana.address);
+};
+
 const scan_erc20_balance: (
   walletAddr: string,
   address: string,
@@ -223,6 +285,39 @@ const scan_natural_balance = async (walletAddr: string, provider: any) => {
     return result;
   } catch (ex) {
     console.log(`scan_natureBalance Error!`);
+    return false;
+  }
+};
+
+const scan_spl_balance = async (walletAddr: string, tokenAddress: string) => {
+  try {
+    // Connect to Solana Mainnet (or use 'devnet' for testing)
+    const endpoint =
+      "https://solana-mainnet.g.alchemy.com/v2/46Ln0bW3o755DmDhfSPeeLuU7qKqVb0M";
+    const connection = new Connection(endpoint, "singleGossip");
+
+    const publicKey = new PublicKey(walletAddr);
+    const mintPublicKey = new PublicKey(tokenAddress);
+
+    // Get token accounts of the wallet
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      publicKey,
+      {
+        programId: TOKEN_PROGRAM_ID,
+      }
+    );
+
+    // Find the correct token account
+    for (let account of tokenAccounts.value) {
+      const info = account.account.data.parsed.info;
+      if (info.mint === mintPublicKey.toBase58()) {
+        return info.tokenAmount.uiAmount; // Return balance in tokens
+      }
+    }
+
+    return 0; // If the user has no balance for the token
+  } catch (error) {
+    console.error("Error fetching $SP balance:", error);
     return false;
   }
 };

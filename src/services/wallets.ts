@@ -131,7 +131,6 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
   }
 
   tmpData?.profiles.forEach(async (n: profile) => {
-    n.keyID = n.keyID.toLocaleLowerCase();
     n.tokens.cCNTP.unlocked = false;
   });
 

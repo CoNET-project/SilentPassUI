@@ -55,6 +55,20 @@ export const initProfileTokens = () => {
       contract: "",
       name: "eth",
     },
+    sol: {
+      balance: "0",
+      network: "Solana Mainnet",
+      decimal: 18,
+      contract: "",
+      name: "sol",
+    },
+    sp: {
+      balance: "0",
+      network: "Solana Mainnet",
+      decimal: 18,
+      contract: contracts.PassportSolana.address,
+      name: "sp",
+    },
   };
   return ret;
 };

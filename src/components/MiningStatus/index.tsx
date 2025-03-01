@@ -28,6 +28,8 @@ const MiningStatus = () => {
     setIsPassportInfoPopupOpen(true)
   }
 
+  const activePassportName = profiles?.[0]?.activePassport.premium ? 'Premium' : 'Freemium'
+
   return (
     <div className="mining-status">
       <div className="miners">
@@ -36,7 +38,9 @@ const MiningStatus = () => {
 
       <div className='passport-status' onClick={openPassportInfo}>
         <div className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
-        Freemium
+        {
+          profiles?.[0]?.activePassport ? <p>{activePassportName}</p> : <Skeleton width="40px" height="15px" />
+        }
         <img src="/assets/info.svg" alt="Info icon" />
       </div>
 

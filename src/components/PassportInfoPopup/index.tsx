@@ -4,7 +4,9 @@ import './index.css';
 import Skeleton from "../Skeleton";
 
 const PassportInfoPopup = () => {
-  const { profiles, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen } = useDaemonContext();
+  const { profiles, activePassport, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen } = useDaemonContext();
+
+  const activePassportName = activePassport?.premium ? "Premium" : "Freemium";
 
   return isPassportInfoPopupOpen ? (
     <div className="home-popup-backdrop" onClick={() => setIsPassportInfoPopupOpen(false)}>
@@ -12,7 +14,9 @@ const PassportInfoPopup = () => {
         <div className="home-main-card">
           <div style={{ display: "flex", flexDirection: 'column', textAlign: 'start', gap: '16px' }}>
             <span>Silent Pass Passport</span>
-            <p>Freemium</p>
+            {
+              activePassport ? <p>{activePassportName}</p> : <Skeleton width="120px" height="32px" />
+            }
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end', gap: '16px' }}>

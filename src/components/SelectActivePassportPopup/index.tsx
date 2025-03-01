@@ -18,6 +18,8 @@ const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
   const [isChangeLoading, setIsChangeLoading] = useState(false);
   const [estimatedGasFee, setEstimatedGasFee] = useState('');
 
+  const { profiles } = useDaemonContext();
+
   const { setIsSelectPassportPopupOpen } = useDaemonContext();
 
   async function handleChangeActiveNFT() {
@@ -100,9 +102,11 @@ const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
         </div>
 
         <div className="home-buttons">
-          <button style={{ height: '47px',  }} disabled={!estimatedGasFee} onClick={handleChangeActiveNFT}>
+          <button style={{ height: '47px',  }} disabled={!estimatedGasFee || profiles?.[0]?.tokens?.conet_eth?.balance < Number(estimatedGasFee)} onClick={handleChangeActiveNFT}>
             {
-              isChangeLoading ? <img className="loading-spinning" src="/assets/loading-ring.png" style={{ width: '24px', height: '24px' }} alt="" /> : <span>Change</span>
+              isChangeLoading ? <img className="loading-spinning" src="/assets/loading-ring.png" style={{ width: '24px', height: '24px' }} alt="" /> : (
+                <span>{estimatedGasFee && profiles?.[0]?.tokens?.conet_eth?.balance < Number(estimatedGasFee) ? 'No funds' : 'Change'}</span>
+              )
             }
           </button>
 

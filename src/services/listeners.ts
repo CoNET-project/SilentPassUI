@@ -242,17 +242,31 @@ const scanSolanaSol = async (walletAddr: string) => {
       throw new Error("Invalid wallet address format");
     }
 
-    // Connect to Solana Mainnet (or use 'devnet' for testing)
-    const connection = new Connection(solanaRpc, "singleGossip");
+    const payload = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "getBalance",
+      params: [walletAddr],
+    };
 
-    // Convert the wallet address to a PublicKey
-    const publicKey = new PublicKey(walletAddr);
+    const response = await fetch(solanaRpc, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-    // Get balance (returned in lamports, 1 SOL = 1,000,000,000 lamports)
-    const balance = await connection.getBalance(publicKey);
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
 
-    // Convert to SOL
-    return balance / 1_000_000_000;
+    const data = await response.json();
+    if (data.result) {
+      return data.result.value / 1_000_000_000; // Convert lamports to SOL
+    } else {
+      throw new Error("No balance found");
+    }
   } catch (error) {
     console.error("Error fetching balance $SOL:", error);
     return false;
@@ -297,31 +311,44 @@ const scan_natural_balance = async (walletAddr: string, provider: any) => {
 
 const scan_spl_balance = async (walletAddr: string, tokenAddress: string) => {
   try {
-    // Connect to Solana Mainnet (or use 'devnet' for testing)
-    const connection = new Connection(solanaRpc, "singleGossip");
+    const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"; // Solana SPL Token Program ID
 
-    const publicKey = new PublicKey(walletAddr);
-    const mintPublicKey = new PublicKey(tokenAddress);
+    const payload = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "getTokenAccountsByOwner",
+      params: [
+        walletAddr,
+        { programId: TOKEN_PROGRAM_ID },
+        { encoding: "jsonParsed" },
+      ],
+    };
 
-    // Get token accounts of the wallet
-    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
-      publicKey,
-      {
-        programId: TOKEN_PROGRAM_ID,
-      }
-    );
+    const response = await fetch(solanaRpc, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-    // Find the correct token account
-    for (let account of tokenAccounts.value) {
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const tokenAccounts = data.result?.value ?? [];
+
+    for (let account of tokenAccounts) {
       const info = account.account.data.parsed.info;
-      if (info.mint === mintPublicKey.toBase58()) {
+      if (info.mint === tokenAddress) {
         return info.tokenAmount.uiAmount; // Return balance in tokens
       }
     }
 
-    return 0; // If the user has no balance for the token
+    return 0; // No balance found
   } catch (error) {
-    console.error("Error fetching $SP balance:", error);
+    console.error("Error fetching SPL balance:", error);
     return false;
   }
 };

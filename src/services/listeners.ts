@@ -4,6 +4,7 @@ import {
   conetDepinProvider,
   conetProvider,
   ethProvider,
+  solanaRpc,
 } from "../utils/constants";
 import {
   CoNET_Data,
@@ -13,7 +14,11 @@ import {
 } from "../utils/globals";
 import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
-import { getPassportsInfoForProfile, getVpnTimeUsed } from "./wallets";
+import {
+  getPassportsInfoForProfile,
+  getVpnTimeUsed,
+  storeSystemData,
+} from "./wallets";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
@@ -28,7 +33,7 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
 
       if (processingBlock === true) return;
 
-      if (block % 10 === 0) {
+      if (block % 15 === 0) {
         setProcessingBlock(true);
 
         const profiles = CoNET_Data?.profiles;
@@ -45,7 +50,10 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
 
         await getPassportsInfoForProfile(profiles[0]);
 
-        if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles);
+        if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0)
+          callback(CoNET_Data?.profiles);
+
+        storeSystemData();
 
         setProcessingBlock(false);
       }
@@ -235,9 +243,7 @@ const scanSolanaSol = async (walletAddr: string) => {
     }
 
     // Connect to Solana Mainnet (or use 'devnet' for testing)
-    const endpoint =
-      "https://solana-mainnet.g.alchemy.com/v2/46Ln0bW3o755DmDhfSPeeLuU7qKqVb0M";
-    const connection = new Connection(endpoint, "singleGossip");
+    const connection = new Connection(solanaRpc, "singleGossip");
 
     // Convert the wallet address to a PublicKey
     const publicKey = new PublicKey(walletAddr);
@@ -292,9 +298,7 @@ const scan_natural_balance = async (walletAddr: string, provider: any) => {
 const scan_spl_balance = async (walletAddr: string, tokenAddress: string) => {
   try {
     // Connect to Solana Mainnet (or use 'devnet' for testing)
-    const endpoint =
-      "https://solana-mainnet.g.alchemy.com/v2/46Ln0bW3o755DmDhfSPeeLuU7qKqVb0M";
-    const connection = new Connection(endpoint, "singleGossip");
+    const connection = new Connection(solanaRpc, "singleGossip");
 
     const publicKey = new PublicKey(walletAddr);
     const mintPublicKey = new PublicKey(tokenAddress);

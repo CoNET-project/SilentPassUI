@@ -206,7 +206,7 @@ const getFaucet: (profile: profile) => Promise<boolean | any> = async (
     }, 1000);
   });
 
-const storeSystemData = async () => {
+export const storeSystemData = async () => {
   if (!CoNET_Data) {
     return;
   }
@@ -354,9 +354,9 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
     const tx = await passportContract.changeActiveNFT(nftId);
     return tx;
   } catch (ex) {
-    console.log(ex)
+    console.log(ex);
   }
-}
+};
 
 const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
   if (!CoNET_Data) {
@@ -413,7 +413,6 @@ const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
     console.error("Gas estimation failed:", ex);
   }
 };
-
 
 const getCurrentPassportInfo = async () => {
   if (!CoNET_Data) {

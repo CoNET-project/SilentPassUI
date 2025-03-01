@@ -11,8 +11,7 @@ const _ethRpc = [
   "https://eth.llamarpc.com",
   "https://ethereum-rpc.publicnode.com",
 ];
-const solanaRpc =
-  "https://solana-mainnet.g.alchemy.com/v2/46Ln0bW3o755DmDhfSPeeLuU7qKqVb0M";
+const solanaRpc = "https://api.mainnet-beta.solana.com";
 const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
 
 const conetProvider = new ethers.JsonRpcProvider(conetRpc);

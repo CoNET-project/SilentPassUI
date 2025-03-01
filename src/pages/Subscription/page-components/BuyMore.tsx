@@ -1,37 +1,51 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useDaemonContext } from '../../../providers/DaemonProvider';
 
 export default function BuyMore() {
-  const [choosenOption, setChoosenOption] = useState<'monthly' | 'yearly'>('yearly');
-  const [choosenPlan, setChoosenPlan] = useState<'standard' | 'premium'>('premium');
+  const { purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime } = useDaemonContext();
+
+  const [standardPrice, setStandardPrice] = useState('2.49');
+  const [premiumPrice, setPremiumPrice] = useState('9.99');
+
+  useEffect(() => {
+    if (purchasingPlanPaymentTime === 'monthly') {
+      setStandardPrice('2.49');
+      setPremiumPrice('9.99');
+    } else {
+      setStandardPrice('24.99');
+      setPremiumPrice('99.99');
+    }
+
+  }, [purchasingPlanPaymentTime]);
 
   return (
     <div className="buy-more">
       <h3>Buy more</h3>
       <div className="plan-options">
-        <button onClick={() => setChoosenOption('monthly')} className={choosenOption === 'monthly' ? 'active' : ''}>Monthly</button>
-        <button onClick={() => setChoosenOption('yearly')} className={choosenOption === 'yearly' ? 'active' : ''}>Yearly</button>
+        <button onClick={() => setPurchasingPlanPaymentTime('monthly')} className={purchasingPlanPaymentTime === 'monthly' ? 'active' : ''}>Monthly</button>
+        <button onClick={() => setPurchasingPlanPaymentTime('yearly')} className={purchasingPlanPaymentTime === 'yearly' ? 'active' : ''}>Yearly</button>
       </div>
       <div className="plan-cards">
-        <div className={`plan ${choosenPlan === 'standard' ? 'active' : ''}`} onClick={() => setChoosenPlan('standard')}>
+        <div className={`plan ${purchasingPlan === 'standard' ? 'active' : ''}`} onClick={() => setPurchasingPlan('standard')}>
           <div>
             <p>Standard</p>
             <span>1 device</span>
           </div>
           <div>
-            <span>$USDT</span>
-            <p>24.99</p>
-            <span className="pay-type">paid {choosenOption}</span>
+            <span>$USD</span>
+            <p>{standardPrice}</p>
+            <span className="pay-type">paid {purchasingPlanPaymentTime}</span>
           </div>
         </div>
-        <div className={`plan ${choosenPlan === 'premium' ? 'active' : ''}`} onClick={() => setChoosenPlan('premium')}>
+        <div className={`plan ${purchasingPlan === 'premium' ? 'active' : ''}`} onClick={() => setPurchasingPlan('premium')}>
           <div>
             <p>Premium</p>
             <span>5 devices</span>
           </div>
           <div>
-            <span>$USDT</span>
-            <p>99.99</p>
-            <span className="pay-type">paid {choosenOption}</span>
+            <span>$USD</span>
+            <p>{premiumPrice}</p>
+            <span className="pay-type">paid {purchasingPlanPaymentTime}</span>
           </div>
         </div>
       </div>

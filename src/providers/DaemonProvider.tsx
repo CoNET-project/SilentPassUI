@@ -34,6 +34,10 @@ type DaemonContext = {
   setActivePassport: (val: any) => void
   isSelectPassportPopupOpen: any
   setIsSelectPassportPopupOpen: (val: any) => void
+  purchasingPlan: string
+  setPurchasingPlan: (val: string) => void
+  purchasingPlanPaymentTime: string
+  setPurchasingPlanPaymentTime: (val: string) => void
 };
 
 type DaemonProps = {
@@ -74,6 +78,10 @@ const defaultContextValue: DaemonContext = {
   setActivePassport: () => { },
   isSelectPassportPopupOpen: false,
   setIsSelectPassportPopupOpen: () => { },
+  purchasingPlan: "premium",
+  setPurchasingPlan: () => { },
+  purchasingPlanPaymentTime: "monthly",
+  setPurchasingPlanPaymentTime: () => { },
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -101,6 +109,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [isSelectPassportPopupOpen, setIsSelectPassportPopupOpen] = useState<boolean>(false);
   const [activePassportUpdated, setActivePassportUpdated] = useState<boolean>(false);
   const [activePassport, setActivePassport] = useState<any>(null);
+  const [purchasingPlan, setPurchasingPlan] = useState<string>("premium");
+  const [purchasingPlanPaymentTime, setPurchasingPlanPaymentTime] = useState<string>("monthly");
 
   useEffect(() => {
     {
@@ -111,7 +121,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen }}>
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime }}>
       {children}
     </Daemon.Provider>
   );

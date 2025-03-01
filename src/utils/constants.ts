@@ -11,6 +11,8 @@ const _ethRpc = [
   "https://eth.llamarpc.com",
   "https://ethereum-rpc.publicnode.com",
 ];
+const solanaRpc =
+  "https://solana-mainnet.g.alchemy.com/v2/46Ln0bW3o755DmDhfSPeeLuU7qKqVb0M";
 const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
 
 const conetProvider = new ethers.JsonRpcProvider(conetRpc);
@@ -23,6 +25,7 @@ export {
   apiv3_endpoint,
   apiv4_endpoint,
   conetRpc,
+  solanaRpc,
   conetProvider,
   ethProvider,
   conetDepinProvider,

@@ -174,3 +174,35 @@ export const parseQueryParams = (queryString: string) => {
 
   return params;
 };
+
+export const getPassportTitle = (passportInfo: any) => {
+  if (passportInfo?.expiresDays?.toString() === "7") return "Freemium Passport";
+
+  if (passportInfo?.expiresDays && passportInfo?.expiresDays > 365)
+    return "Unlimited Passport";
+
+  if (passportInfo?.premium) return "Premium Passport";
+
+  return "Standard Passport";
+};
+
+export const getExpirationDate = (passportInfo: any) => {
+  if (passportInfo?.expires && passportInfo?.expires > 31536000000) {
+    return "Unlimited";
+  }
+
+  if (passportInfo?.expires === 0) {
+    return "Not started";
+  }
+
+  if (passportInfo?.expires)
+    return `${getRemainingTime(passportInfo?.expires)}`;
+};
+
+export const getPlanDuration = (passportInfo: any) => {
+  if (passportInfo?.expiresDays === "7") return "Free for 7 days";
+  if (passportInfo?.expiresDays === "30") return "Monthly Plan";
+  if (passportInfo?.expiresDays === "365") return "Yearly Plan";
+  if (passportInfo?.expiresDays > "365") return "Unlimited";
+  if (passportInfo?.expiresDays === "0") return "";
+};

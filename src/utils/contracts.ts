@@ -7,6 +7,7 @@ import {
   PassportCancunAbi,
   ConetDepinAbi,
   PassportMainnetAbi,
+  SpOracleAbi,
 } from "./abis";
 
 const contracts = {
@@ -53,6 +54,11 @@ const contracts = {
   PassportSolana: {
     address: "Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump",
     network: "Solana Mainnet",
+  },
+  SpOracle: {
+    address: "0xA57Dc01fF9a340210E5ba6CF01b4EE6De8e50719",
+    abi: SpOracleAbi,
+    network: "CONET Holesky",
   },
 };
 

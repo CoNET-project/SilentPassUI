@@ -196,3 +196,96 @@ type Native_StartVPNObj = {
   privateKey: string;
   exitNode: Native_node[];
 };
+
+interface spOracle {
+  sp249: string;
+  sp2499: string;
+  sp999: string;
+  sp9999: string;
+  so: string;
+}
+
+interface ICoNET_DL_masterSetup {
+  SP_purchase: string;
+  solanaManager: string;
+  SP_Oracle: string;
+  ethEndpoint: string;
+  SilentPassAirdrop: string[];
+  mainnet_passport_airdrop: string;
+  conetian_eth_airdrop: string;
+  epochManagre: string;
+  LayerMinus: [];
+  constGAMEAccount: string[];
+  cancun_Guardiner_init: string;
+  cancun_CONETian_Init: string;
+  ETH_Manager: string[];
+  conetDePINAdmin_scan: string[];
+  conetDePINEthAdmin: string[];
+  conetDePINAdmin: string[];
+  conetFaucetAdmin_1: string[];
+  constGAMEAccount: string[];
+
+  GossipNodeAdmin: string[];
+  //			new Admin
+  oracleManager: string;
+  conetNodeAdmin: string[];
+  conetCNTPAdmin: string[];
+  guardianAmin: string[];
+  guardianReferralAdmin: string[];
+  gameCNTPAdmin: string[];
+  claimableAdminNew: string;
+  guardianBuyADMIN: string[];
+  initManager: string[];
+  conetPointAdmin: string;
+  GuardianReferralsFree: string;
+  cusdtAdmin: string;
+  cnptReferralAdmin: string;
+  conetStorageAdmin: string;
+  conetFaucetAdmin: string[];
+  newFaucetAdmin: string[];
+  conetFaucetAdmin2;
+  claimableAdmin: string;
+  claimableAdminForNode: string;
+  GuardianAdmin: string;
+  GuardianReferrals: string;
+  "13b995b1fDotCa": {
+    Key: string;
+    cert: string;
+  };
+  Cassandra: {
+    databaseEndPoints: string[];
+    auth: {
+      username: string;
+      password: string;
+    };
+    certificate: ICoNET_certificate;
+    keyspace: string;
+  };
+  seguroWebhook: {
+    path: string;
+    Secret_key: string;
+    endpointSecret: string;
+  };
+  CoNETPubSub: {
+    port_number: number;
+    certificate: ICoNET_certificate;
+    client: ICoNET_certificate;
+  };
+  master_wallet_public: string;
+  cloudflare: {
+    X_Auth_Email: string;
+    X_Auth_Key: string;
+    endpoint: string;
+    zoneID: string;
+    domainname: string;
+    path: string;
+  };
+  ssl: {
+    certificate: string;
+    key: string;
+  };
+  passwd: string;
+  PORT: number;
+  CoinMarketCapAPIKey: string;
+  storagePATH: string[];
+}

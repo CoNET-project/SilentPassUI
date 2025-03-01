@@ -1,26 +1,28 @@
 import Separator from '../../../components/Separator';
 
-export default function FourthStep() {
+export default function FourthStep({ price, gasfee }: { price: string, gasfee: string }) {
   return (
     <div className="step-container">
       <div className="purchase-success">
         <img src="/assets/purchase-check.svg" />
-        <p>The transaction</p>
-        <p>was successful</p>
+        <div>
+          <p>The transaction</p>
+          <p>was successful</p>
+        </div>
       </div>
       <div className="purchase-details">
         <div className="detail">
           <p>Silent Pass Passport</p>
-          <p>24.99 SP</p>
+          <p>{price} $SP</p>
         </div>
         <div className="detail">
           <p>GAS fee</p>
-          <p>1 SOL</p>
+          <p>{gasfee} $SOL</p>
         </div>
         <Separator />
         <div className="detail">
           <p>Total</p>
-          <p>24.99 SP + 1 SOL</p>
+          <p>{price} $SP + ${gasfee} $SOL</p>
         </div>
       </div>
     </div>

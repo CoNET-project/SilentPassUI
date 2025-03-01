@@ -15,9 +15,11 @@ import SelectActivePassportPopup from '../SelectActivePassportPopup';
 interface AccountListProps {
   showMainWallet?: boolean;
   simplifiedView?: boolean;
+  spInUsd?: number;
+  solInUsd?: number;
 }
 
-export default function AccountList({ showMainWallet = true, simplifiedView = false }: AccountListProps) {
+export default function AccountList({ showMainWallet = true, simplifiedView = false, spInUsd = 0, solInUsd = 0 }: AccountListProps) {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
   const { profiles, activePassport } = useDaemonContext();
 
@@ -66,7 +68,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                 <div className="copy">
                   {
                     profiles?.[0].keyID ? (
-                      <p>{profiles[0].keyID}</p>
+                      <p>{profiles?.[0]?.keyID?.slice(0, 5)}...{profiles?.[0]?.keyID?.slice(-5)}</p>
                     ) : (
                       <Skeleton width="100%" height="20px" />
                     )
@@ -170,7 +172,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
               <div className="copy">
                 {
                   profiles?.[1].keyID ? (
-                    <p>{profiles[1].keyID}</p>
+                    <p>{profiles?.[1]?.keyID?.slice(0, 5)}...{profiles?.[1]?.keyID?.slice(-5)}</p>
                   ) : (
                     <Skeleton width="100%" height="20px" />
                   )
@@ -198,28 +200,6 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                 {
                   simplifiedView ? (
                     <div>
-                      <p>Solana</p>
-                      <p>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</p>
-                    </div>
-                  ) : (
-                    <p>$SOL</p>
-                  )
-                }
-              </div>
-              {
-                simplifiedView ? (
-                  <p>$543.51</p>
-                ) : (
-                  <p>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</p>
-                )
-              }
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <SolanaToken />
-                {
-                  simplifiedView ? (
-                    <div>
                       <p>Silent Pass</p>
                       <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6)}</p>
                     </div>
@@ -230,9 +210,31 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
               </div>
               {
                 simplifiedView ? (
-                  <p>$138.39</p>
+                  <p>${(spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.balance || '0')).toFixed(2)}</p>
                 ) : (
                   <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6)}</p>
+                )
+              }
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <SolanaToken />
+                {
+                  simplifiedView ? (
+                    <div>
+                      <p>Solana</p>
+                      <p>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</p>
+                    </div>
+                  ) : (
+                    <p>$SOL</p>
+                  )
+                }
+              </div>
+              {
+                simplifiedView ? (
+                  <p>${(solInUsd * parseFloat(profiles?.[1]?.tokens?.sol?.balance || '0')).toFixed(2)}</p>
+                ) : (
+                  <p>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</p>
                 )
               }
             </div>

@@ -50,10 +50,12 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false }: 
               {
                 isAddressHidden ?
                   <div style={{ filter: 'blur(3px)' }}>
-                    <span>{wallet.keyID}</span>
+                    <span>{wallet.privateKeyArmor.slice(0, 5)}...{wallet.privateKeyArmor.slice(-5)}
+                    </span>
                   </div>
                   :
-                  <span>{wallet.keyID}</span>
+                  <span>{wallet.privateKeyArmor.slice(0, 5)}...{wallet.privateKeyArmor.slice(-5)}
+                  </span>
               }
             </div>
             <div className="button-list">
@@ -85,9 +87,11 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false }: 
               {
                 isKeyHidden ?
                   <div style={{ filter: 'blur(3px)' }}>
-                    <span>{wallet.privateKeyArmor}</span>
+                    <span>{wallet.privateKeyArmor.slice(0, 5)}...{wallet.privateKeyArmor.slice(-5)}
+                    </span>
                   </div>
-                  : <span>{wallet.privateKeyArmor}</span>
+                  : <span>{wallet.privateKeyArmor.slice(0, 5)}...{wallet.privateKeyArmor.slice(-5)}
+                  </span>
               }
             </div>
             <div className="button-list">

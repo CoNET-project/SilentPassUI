@@ -50,11 +50,11 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false }: 
               {
                 isAddressHidden ?
                   <div style={{ filter: 'blur(3px)' }}>
-                    <span>{wallet.privateKeyArmor.slice(0, 5)}...{wallet.privateKeyArmor.slice(-5)}
+                    <span>{wallet.keyID.slice(0, 5)}...{wallet.keyID.slice(-5)}
                     </span>
                   </div>
                   :
-                  <span>{wallet.privateKeyArmor.slice(0, 5)}...{wallet.privateKeyArmor.slice(-5)}
+                  <span>{wallet.keyID.slice(0, 5)}...{wallet.keyID.slice(-5)}
                   </span>
               }
             </div>

@@ -1,3 +1,4 @@
+import { purchasePassport } from "./../services/passportPurchase";
 export const GuardianNodesInfoV6Abi = [
   {
     inputs: [],
@@ -3454,6 +3455,119 @@ export const SpOracleAbi = [
     name: "updatePrice",
     outputs: [],
     stateMutability: "nonpayable",
+    type: "function",
+  },
+];
+
+export const PurchasePassportAbi = [
+  { inputs: [], stateMutability: "nonpayable", type: "constructor" },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: false, internalType: "address", name: "to", type: "address" },
+      { indexed: false, internalType: "string", name: "_tx", type: "string" },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "insufficient_amount",
+        type: "uint256",
+      },
+    ],
+    name: "purchaseFailed",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: false, internalType: "address", name: "to", type: "address" },
+      { indexed: false, internalType: "string", name: "_tx", type: "string" },
+    ],
+    name: "purchaseNFT",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: false, internalType: "address", name: "to", type: "address" },
+      { indexed: false, internalType: "string", name: "_tx", type: "string" },
+    ],
+    name: "purchaseSuccess",
+    type: "event",
+  },
+  {
+    inputs: [
+      { internalType: "string", name: "_tx", type: "string" },
+      { internalType: "uint256", name: "_amount", type: "uint256" },
+    ],
+    name: "_purchaseFailed",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ internalType: "string", name: "_tx", type: "string" }],
+    name: "_purchaseSuccess",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ internalType: "address", name: "", type: "address" }],
+    name: "adminList",
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address", name: "addr", type: "address" },
+      { internalType: "bool", name: "status", type: "bool" },
+    ],
+    name: "changeAddressInAdminlist",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ internalType: "bytes32", name: "", type: "bytes32" }],
+    name: "failedList",
+    outputs: [
+      { internalType: "uint256", name: "insufficient", type: "uint256" },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ internalType: "string", name: "_tx", type: "string" }],
+    name: "purchase",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ internalType: "bytes32", name: "", type: "bytes32" }],
+    name: "purchaseList",
+    outputs: [{ internalType: "address", name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ internalType: "string", name: "_tx", type: "string" }],
+    name: "searchTx",
+    outputs: [
+      { internalType: "address", name: "to", type: "address" },
+      { internalType: "bool", name: "purchased", type: "bool" },
+      { internalType: "bool", name: "success", type: "bool" },
+      { internalType: "bool", name: "failed", type: "bool" },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [{ internalType: "bytes32", name: "", type: "bytes32" }],
+    name: "successList",
+    outputs: [{ internalType: "address", name: "", type: "address" }],
+    stateMutability: "view",
     type: "function",
   },
 ];

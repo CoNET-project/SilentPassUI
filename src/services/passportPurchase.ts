@@ -13,6 +13,7 @@ import { ethers } from "ethers";
 import Bs58 from "bs58";
 import contracts from "../utils/contracts";
 import { conetProvider, solanaRpc } from "../utils/constants";
+import { CoNET_Data } from "../utils/globals";
 
 const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q";
 const spDecimalPlaces = 6;
@@ -99,6 +100,10 @@ const checkPrice = async (_amount: string) => {
 };
 
 export const purchasePassport = async (privateKey: string, amount: string) => {
+  if (!CoNET_Data) {
+    return;
+  }
+
   try {
     const solanaConnection = new Connection(solanaRpc);
     const solana_account_privatekey_array = Bs58.decode(privateKey);
@@ -120,9 +125,9 @@ export const purchasePassport = async (privateKey: string, amount: string) => {
       new PublicKey(sp_team)
     );
 
-    const tx = new Transaction();
+    const transferTx = new Transaction();
 
-    tx.add(
+    transferTx.add(
       createTransferInstruction(
         sourceAccount.address,
         destinationAccount.address,
@@ -135,11 +140,30 @@ export const purchasePassport = async (privateKey: string, amount: string) => {
       "confirmed"
     );
 
-    tx.recentBlockhash = await latestBlockHash.blockhash;
+    transferTx.recentBlockhash = await latestBlockHash.blockhash;
 
-    const signature = await sendAndConfirmTransaction(solanaConnection, tx, [
-      solana_account_keypair,
-    ]);
+    const signature = await sendAndConfirmTransaction(
+      solanaConnection,
+      transferTx,
+      [solana_account_keypair]
+    );
+
+    const wallet = new ethers.Wallet(
+      CoNET_Data?.profiles[0]?.privateKeyArmor,
+      conetProvider
+    );
+
+    const purchasePassportContract = new ethers.Contract(
+      contracts.PurchasePassport.address,
+      contracts.PurchasePassport.abi,
+      wallet
+    );
+
+    const purchaseTx = await purchasePassportContract.purchase(signature);
+    const completedTx = await purchaseTx.wait();
+
+    return completedTx;
+    console.log(`success hash = ${purchaseTx.hash}`);
 
     console.log(signature);
   } catch (error) {

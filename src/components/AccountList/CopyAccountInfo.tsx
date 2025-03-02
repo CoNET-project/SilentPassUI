@@ -5,10 +5,11 @@ import Skeleton from '../Skeleton';
 
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
+import { ethers } from 'ethers';
 
 let copyTimeoutId: NodeJS.Timeout;
 
-export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false }: any) {
+export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, isEthers = true }: any) {
   const [copied, setCopied] = useState({
     address: "",
     info: "",
@@ -40,6 +41,13 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false }: 
     }), 3000);
   }
 
+  const getAddress = (wallet: any) => {
+    if (isEthers) {
+      return ethers.getAddress(wallet?.keyID).slice(0, 7) + '...' + ethers.getAddress(wallet?.keyID).slice(-5);
+    }
+    return wallet?.keyID.slice(0, 7) + '...' + wallet?.keyID.slice(-5);
+  }
+
   return (
     <>
       <div className="copy-div">
@@ -50,11 +58,11 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false }: 
               {
                 isAddressHidden ?
                   <div style={{ filter: 'blur(3px)' }}>
-                    <span>{wallet.keyID.slice(0, 5)}...{wallet.keyID.slice(-5)}
+                    <span>{getAddress(wallet)}
                     </span>
                   </div>
                   :
-                  <span>{wallet.keyID.slice(0, 5)}...{wallet.keyID.slice(-5)}
+                  <span>{getAddress(wallet)}
                   </span>
               }
             </div>
@@ -87,10 +95,10 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false }: 
               {
                 isKeyHidden ?
                   <div style={{ filter: 'blur(3px)' }}>
-                    <span>{wallet.privateKeyArmor.slice(0, 5)}...{wallet.privateKeyArmor.slice(-5)}
+                    <span>{wallet.privateKeyArmor.slice(0, 7)}...{wallet.privateKeyArmor.slice(-5)}
                     </span>
                   </div>
-                  : <span>{wallet.privateKeyArmor.slice(0, 5)}...{wallet.privateKeyArmor.slice(-5)}
+                  : <span>{wallet.privateKeyArmor.slice(0, 7)}...{wallet.privateKeyArmor.slice(-5)}
                   </span>
               }
             </div>

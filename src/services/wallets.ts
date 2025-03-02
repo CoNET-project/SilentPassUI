@@ -138,13 +138,13 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 
   if (!CoNET_Data) return;
 
-  await getFaucet(CoNET_Data.profiles[0]);
+  getFaucet(CoNET_Data.profiles[0]);
 
-  await storeSystemData();
+  storeSystemData();
 
-  const profile = CoNET_Data.profiles[0];
+  const profiles = CoNET_Data.profiles[0];
 
-  return profile;
+  return profiles;
 };
 
 const createKeyHDWallets = (secretPhrase: string | null) => {

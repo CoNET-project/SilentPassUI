@@ -130,7 +130,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 
                   <Separator />
 
-                  <CopyAccountInfo wallet={profiles?.[0]} showRecoveryPhrase={true} />
+                  <CopyAccountInfo wallet={profiles?.[0]} showRecoveryPhrase={true} isEthers={true} />
 
                   {/* <Separator />
 
@@ -243,7 +243,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
             !simplifiedView && (
               <>
                 <Separator />
-                <CopyAccountInfo wallet={profiles?.[1]} />
+                <CopyAccountInfo wallet={profiles?.[1]} isEthers={false} />
               </>
             )
           }

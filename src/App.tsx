@@ -56,18 +56,6 @@ function App() {
       setActivePassportUpdated(true);
     }
 
-    const _getServerIpAddress = async () => {
-      try {
-        const response = await getServerIpAddress();
-        const tmpIpAddress = response.data;
-
-        setServerIpAddress(tmpIpAddress?.ip || "");
-        setServerPort('3002');
-      } catch (ex) {
-        console.log(ex)
-      }
-    };
-
     const init = async () => {
       const vpnTimeUsedInMin = parseInt(localStorage.getItem("vpnTimeUsedInMin") || "0");
       _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
@@ -80,14 +68,11 @@ function App() {
         secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
       }
 
-      await createOrGetWallet(secretPhrase);
+      const profiles = await createOrGetWallet(secretPhrase);
+      setProfiles(profiles);
       listenProfileVer(setProfiles);
 
-      if (!window?.webkit) {
-        _getServerIpAddress();
-      }
-
-      await getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
+      getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setaAllNodes(allNodes)
 
         if (!CoNET_Data || !CoNET_Data?.profiles) {
@@ -97,10 +82,28 @@ function App() {
         startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
       });
 
-      await handlePassport();
+      handlePassport();
     };
 
     init();
+  }, []);
+
+  useEffect(() => {
+    const _getServerIpAddress = async () => {
+      try {
+        const response = await getServerIpAddress();
+        const tmpIpAddress = response.data;
+
+        setServerIpAddress(tmpIpAddress?.ip || "");
+        setServerPort('3002');
+      } catch (ex) {
+        console.log(ex)
+      }
+    };
+
+    if (!window?.webkit) {
+      _getServerIpAddress();
+    }
   }, []);
 
   return (

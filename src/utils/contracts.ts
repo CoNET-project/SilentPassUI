@@ -37,6 +37,10 @@ const contracts = {
     address: "0xC6edDb4Bc6161259325cf56AEf8b0D4fb289898A",
     abi: ConetDepinAbi,
   },
+  SP: {
+	address: "Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump",
+	decimal: 6
+  }
 };
 
 export default contracts;

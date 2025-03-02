@@ -90,14 +90,14 @@ export default function AccountList() {
                 <SpToken />
                 <p>$SP</p>
               </div>
-              <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+              <p>{profiles?.[1]?.tokens?.SP?.balance || (0.0).toFixed(6)}</p>
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <SolanaToken />
                 <p>$SOL</p>
               </div>
-              <p>{profiles?.[1]?.tokens?.conetDepin?.balance || (0.0).toFixed(6)}</p>
+              <p>{profiles?.[1]?.tokens?.solana?.balance || (0.0).toFixed(6)}</p>
             </div>
           </div>
           <Separator />

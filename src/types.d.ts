@@ -35,11 +35,12 @@ interface CryptoAsset {
 }
 
 interface conet_tokens {
-  cCNTP: CryptoAsset;
-  conet: CryptoAsset;
+  conet: CryptoAsset
   conetDepin: CryptoAsset;
   conet_eth: CryptoAsset;
   eth: CryptoAsset;
+  solana: CryptoAsset
+  SP: CryptoAsset
 }
 
 interface freePassport {

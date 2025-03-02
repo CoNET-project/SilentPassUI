@@ -15,7 +15,7 @@ export default function Wallet() {
 
       <div className="cta-buttons">
         <div className="highlight-2">
-          <button className='disabled'>
+          <button className='enable'>
             <img src="/assets/conet-outline-gray.svg" alt="Platform" />
             <p>Purchase Silent Pass Passport</p>
           </button>

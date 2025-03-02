@@ -242,8 +242,6 @@ const startMiningV2 = async (
   const postData = await createConnectCmd(profile, connectNode);
   let first = true;
 
-  const balance = profile?.tokens?.cCNTP?.balance;
-  cCNTPcurrentTotal = !balance ? 0 : parseFloat(balance);
 
   if (!connectNode?.domain || !postData) {
     console.log("connectNode.domain or postData is empty");
@@ -296,26 +294,7 @@ const startMiningV2 = async (
         profile.tokens = initProfileTokens();
       }
 
-      if (!profile.tokens?.cCNTP) {
-        profile.tokens.cCNTP = {
-          balance: "0",
-          network: "CONET Holesky",
-          decimal: 18,
-          contract: contracts.ClaimableConetPoint.address,
-          name: "cCNTP",
-        };
-      }
-      const index = Math.floor(Math.random() * entryNodes.length - 1);
-      const entryNode = entryNodes[index];
-      const kk = parseFloat(response.rate);
-      response.rate = isNaN(kk) ? "" : kk.toFixed(8);
-      response.currentCCNTP = (
-        parseFloat(profile.tokens.cCNTP.balance || "0") - cCNTPcurrentTotal
-      ).toFixed(8);
-      if (response.currentCCNTP < "0") {
-        cCNTPcurrentTotal = parseFloat(profile.tokens.cCNTP.balance);
-        response.currentCCNTP = "0";
-      }
+  
       callback(response);
       // validator(response, profile, entryNode);
       return ["success", JSON.stringify(response)];

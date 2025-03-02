@@ -20,13 +20,13 @@ export const formatMinutesToHHMM = (minutes: number): string => {
 
 export const initProfileTokens = () => {
   const ret: conet_tokens = {
-    cCNTP: {
-      balance: "0",
-      network: "CONET Holesky",
-      decimal: 18,
-      contract: contracts.ClaimableConetPoint.address,
-      name: "cCNTP",
-    },
+    // cCNTP: {
+    //   balance: "0",
+    //   network: "CONET Holesky",
+    //   decimal: 18,
+    //   contract: contracts.ClaimableConetPoint.address,
+    //   name: "cCNTP",
+    // },
     conetDepin: {
       balance: "0",
       network: "CONET DePIN",
@@ -55,6 +55,20 @@ export const initProfileTokens = () => {
       contract: "",
       name: "eth",
     },
+	solana: {
+	  balance: "0",
+	  network: "Solana",
+	  decimal: 6,
+	  contract: "",
+	  name: "solana",
+	},
+	SP: {
+		balance: "0",
+		network: "Solana",
+		decimal: 6,
+		contract: contracts.SP.address,
+		name: "SilnetPass",
+	}
   };
   return ret;
 };

@@ -12,10 +12,10 @@ import {
 } from "../utils/constants";
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, PublicKey } from "@solana/web3.js";
 import { mnemonicToSeedSync } from "bip39";
 import { sha512 } from "@noble/hashes/sha512";
-
+import Bs58 from 'bs58'
 const PouchDB = require("pouchdb").default;
 
 let isGetFaucetProcess = false;
@@ -43,12 +43,17 @@ async function deriveSolanaSeed(seed: any) {
 
 const convertSecretKeyToPrivateKey = (secretKey: any) => {
   // Extract the first 32 bytes (private key)
-  const privateKey = secretKey.slice(0, 32);
+  //   const privateKey = secretKey.slice(0, 32);
+  //	secretKey = private key (0,32) + public key (32, 64)
+  //	Phontom wallet import need BS58 inlcude private key (0,32) + public key (32, 64)
+  
+  //	const privateKeyHex = Buffer.from(privateKey).toString("hex");
 
-  // Convert to a 64-character hex string (Ethereum format)
-  const privateKeyHex = Buffer.from(privateKey).toString("hex");
 
-  return privateKeyHex;
+//   return privateKeyHex;
+
+    const privateKeyBs58 = Bs58.encode(secretKey)
+	return privateKeyBs58
 };
 
 const createOrGetWallet = async (secretPhrase: string | null) => {
@@ -99,6 +104,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 
       const profile2: profile = {
         tokens: initProfileTokens(),
+		
         publicKeyArmor: secondaryWallet.publicKey.toString(),
         keyID: secondaryWallet.publicKey.toBase58(),
         isPrimary: true,
@@ -135,6 +141,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
       secondaryWallet.secretKey
     );
 
+	
     const key = await createGPGKey("", "", "");
 
     const profile2: profile = {
@@ -157,9 +164,11 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     tmpData.profiles[1] = profile2;
   }
 
-  tmpData?.profiles.forEach(async (n: profile) => {
-    n.keyID = n.keyID.toLocaleLowerCase();
-    n.tokens.cCNTP.unlocked = false;
+  tmpData?.profiles.forEach(async (n: profile, index: number) => {
+	//		Solana wallet don't need to toLocaleLowerCase
+	if (index === 0) {
+		n.keyID = n.keyID.toLocaleLowerCase();
+	}
   });
 
   setCoNET_Data(tmpData);

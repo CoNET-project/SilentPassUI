@@ -8,6 +8,7 @@ import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg
 
 let copyTimeoutId: NodeJS.Timeout;
 
+
 export default function CopyAccountInfo({ wallet }: any) {
   const [copied, setCopied] = useState({
     address: "",

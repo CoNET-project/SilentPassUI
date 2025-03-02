@@ -4,18 +4,25 @@ import {
   conetDepinProvider,
   conetProvider,
   ethProvider,
+  XMLHttpRequestTimeout,
+  solanaRPC,
 } from "../utils/constants";
 import {
   CoNET_Data,
   processingBlock,
   setCoNET_Data,
   setProcessingBlock,
+  lastProceeeTime,
+  setLastProceeeTime
 } from "../utils/globals";
 import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
-import { getVpnTimeUsed } from "./wallets";
+import { getVpnTimeUsed } from "./wallets"; 
+import { Connection, PublicKey, Keypair } from "@solana/web3.js"
+import Bs58 from "bs58"
 
 let epoch = 0;
+const SOLANA_CONNECTION = new Connection(solanaRPC)
 
 const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
   epoch = await conetProvider.getBlockNumber();
@@ -25,8 +32,10 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
       epoch++;
 
       if (processingBlock === true) return;
-
-      if (block % 10 === 0) {
+	  
+	  const currentTime = new Date().getTime()
+	  //	over 30 seconds!
+      if (currentTime > lastProceeeTime + XMLHttpRequestTimeout ) {
         setProcessingBlock(true);
 
         const profiles = CoNET_Data?.profiles;
@@ -36,20 +45,106 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
         const runningList: any[] = [];
 
         runningList.push(getProfileAssets(profiles[0]));
-
+		runningList.push(getSolanaAssets(profiles[1]))
         await Promise.all(runningList);
 
         await getVpnTimeUsed();
 
         if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles);
-
-        setProcessingBlock(false);
+		setProcessingBlock(false)
+        setLastProceeeTime(new Date().getTime())
       }
     }
   });
 
   epoch = await conetProvider.getBlockNumber();
 };
+const scan_spl_balance = async (walletAddr: string, tokenAddress: string) => {
+	try {
+	  const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"; // Solana SPL Token Program ID
+  
+	  const payload = {
+		jsonrpc: "2.0",
+		id: 1,
+		method: "getTokenAccountsByOwner",
+		params: [
+		  walletAddr,
+		  { programId: TOKEN_PROGRAM_ID },
+		  { encoding: "jsonParsed" },
+		],
+	  };
+  
+	  const response = await fetch(solanaRPC, {
+		method: "POST",
+		headers: {
+		  "Content-Type": "application/json",
+		},
+		body: JSON.stringify(payload),
+	  });
+  
+	  if (!response.ok) {
+		throw new Error(`HTTP error! Status: ${response.status}`);
+	  }
+  
+	  const data = await response.json();
+	  const tokenAccounts = data.result?.value ?? [];
+  
+	  for (let account of tokenAccounts) {
+		const info = account.account.data.parsed.info;
+		if (info.mint === tokenAddress) {
+		  return info.tokenAmount.uiAmount; // Return balance in tokens
+		}
+	  }
+  
+	  return 0; // No balance found
+	} catch (error) {
+	  console.error("Error fetching SPL balance:", error);
+	  return false;
+	}
+};
+const getSolanaAssets = async (profile: profile) => {
+	
+	const publciKey = new PublicKey(profile.keyID)
+	const [balanceSo, balanceSP] = await Promise.all([
+		SOLANA_CONNECTION.getBalance(publciKey),
+		scan_spl_balance(profile.keyID, contracts.SP.address)
+	])
+	
+	if (profile.tokens?.solana) {
+		const solanaObj = profile.tokens.solana
+		profile.tokens.solana.balance =
+		  parseFloat(
+			ethers.formatUnits(balanceSo.toString(), solanaObj.decimal).toString()
+		).toFixed(6)
+	} else {
+		profile.tokens.solana = {
+		  balance:
+		  parseFloat(
+			ethers.formatUnits(balanceSo.toString(), 9).toString()
+		  ).toFixed(6),
+		  network: "Solana",
+		  decimal: 9,
+		  contract: "",
+		  name: "Solana",
+		}
+	}
+
+		if (profile.tokens?.SP) {
+			const spOBJ = profile.tokens.SP
+			profile.tokens.SP.balance = balanceSP ? balanceSP.toFixed(4): "0"
+		} else {
+			profile.tokens.SP = {
+			  balance: balanceSP ? balanceSP.toFixed(4): "0",
+			  network: "Solana",
+			  decimal: contracts.SP.decimal,
+			  contract: contracts.SP.address,
+			  name: "Solana",
+			}
+		}
+	
+
+}
+
 
 const getProfileAssets = async (profile: profile) => {
   const key = profile.keyID;
@@ -59,45 +154,45 @@ const getProfileAssets = async (profile: profile) => {
       profile.tokens = initProfileTokens();
     }
 
-    const [cCNTP, conet, conetDepin, conet_eth, eth] = await Promise.all([
-      scanCCNTP(key),
-      scanCONETHolesky(key),
+    const [conetDepin, conet_eth, eth] = await Promise.all([
+    //   scanCCNTP(key),
+    //   scanCONETHolesky(key),
       scanCONETDepin(key),
       scanConetETH(key),
       scanETH(key),
     ]);
 
-    if (profile.tokens?.cCNTP) {
-      profile.tokens.cCNTP.balance =
-        cCNTP === false ? "" : parseFloat(ethers.formatEther(cCNTP)).toFixed(6);
-    } else {
-      profile.tokens.cCNTP = {
-        balance:
-          cCNTP === false
-            ? ""
-            : parseFloat(ethers.formatEther(cCNTP)).toFixed(6),
-        network: "CONET Holesky",
-        decimal: 18,
-        contract: contracts.ClaimableConetPoint.address,
-        name: "cCNTP",
-      };
-    }
+    // if (profile.tokens?.cCNTP) {
+    //   profile.tokens.cCNTP.balance =
+    //     cCNTP === false ? "" : parseFloat(ethers.formatEther(cCNTP)).toFixed(6);
+    // } else {
+    //   profile.tokens.cCNTP = {
+    //     balance:
+    //       cCNTP === false
+    //         ? ""
+    //         : parseFloat(ethers.formatEther(cCNTP)).toFixed(6),
+    //     network: "CONET Holesky",
+    //     decimal: 18,
+    //     contract: contracts.ClaimableConetPoint.address,
+    //     name: "cCNTP",
+    //   };
+    // }
 
-    if (profile.tokens?.conet) {
-      profile.tokens.conet.balance =
-        conet === false ? "" : parseFloat(ethers.formatEther(conet)).toFixed(6);
-    } else {
-      profile.tokens.conet = {
-        balance:
-          conet === false
-            ? ""
-            : parseFloat(ethers.formatEther(conet)).toFixed(6),
-        network: "CONET Holesky",
-        decimal: 18,
-        contract: "",
-        name: "conet",
-      };
-    }
+    // if (profile.tokens?.conet) {
+    //   profile.tokens.conet.balance =
+    //     conet === false ? "" : parseFloat(ethers.formatEther(conet)).toFixed(6);
+    // } else {
+    //   profile.tokens.conet = {
+    //     balance:
+    //       conet === false
+    //         ? ""
+    //         : parseFloat(ethers.formatEther(conet)).toFixed(6),
+    //     network: "CONET Holesky",
+    //     decimal: 18,
+    //     contract: "",
+    //     name: "conet",
+    //   };
+    // }
 
     if (profile.tokens?.conetDepin) {
       profile.tokens.conetDepin.balance =

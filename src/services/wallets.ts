@@ -355,6 +355,7 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
     return tx;
   } catch (ex) {
     console.log(ex);
+    throw ex;
   }
 };
 

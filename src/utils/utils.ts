@@ -1,3 +1,5 @@
+import bs58 from "bs58";
+import { Keypair } from "@solana/web3.js";
 import { XMLHttpRequestTimeout } from "./constants";
 import contracts from "./contracts";
 
@@ -206,3 +208,25 @@ export const getPlanDuration = (passportInfo: any) => {
   if (passportInfo?.expiresDays > "365") return "Unlimited";
   if (passportInfo?.expiresDays === "0") return "";
 };
+
+export function isValidSolanaBase58PrivateKey(base58Key: string) {
+  try {
+    // Decode Base58 string to Uint8Array
+    let privateKey = bs58.decode(base58Key);
+
+    // Check if it's 64 bytes (Ed25519 private key length)
+    if (privateKey.length !== 64) {
+      console.error("Invalid private key length:", privateKey.length);
+      return false;
+    }
+
+    // Attempt to create a Keypair
+    let keypair = Keypair.fromSecretKey(privateKey);
+
+    console.log("Valid private key! Public Key:", keypair.publicKey.toBase58());
+    return true;
+  } catch (error) {
+    console.error("Invalid Private Key:", error);
+    return false;
+  }
+}

@@ -3,6 +3,7 @@ import { generateKey } from "openpgp";
 import {
   customJsonStringify,
   initProfileTokens,
+  isValidSolanaBase58PrivateKey,
   postToEndpoint,
 } from "../utils/utils";
 import {
@@ -104,7 +105,9 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 
   if (
     tmpData &&
-    (tmpData?.profiles.length < 2 || tmpData?.profiles[1]?.type !== "solana")
+    (tmpData?.profiles.length < 2 ||
+      tmpData?.profiles[1]?.type !== "solana" ||
+      !isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor))
   ) {
     const result = await initSolana(tmpData?.mnemonicPhrase);
 

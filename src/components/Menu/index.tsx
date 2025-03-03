@@ -9,6 +9,9 @@ import { ReactComponent as SettingsIconBlue } from "./assets/settings-icon-blue.
 import { ReactComponent as SettingsIconGrey } from "./assets/settings-icon-grey.svg"
 import { ReactComponent as SupportIconGrey } from "./assets/support-icon-grey.svg"
 import { ReactComponent as SupportIconBlue } from "./assets/support-icon-blue.svg"
+import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg"
+import { ReactComponent as SwapIconBlue } from "./assets/swap-icon-blue.svg"
+
 
 export default function Menu() {
   const navigate = useNavigate();
@@ -23,6 +26,10 @@ export default function Menu() {
       <button className={location.pathname === "/wallet" ? "active" : ""} onClick={() => navigate("/wallet")}>
         {location.pathname === "/wallet" ? <WalletBlueIcon /> : <WalletIconGrey />}
         <p>My Account</p>
+      </button>
+      <button className={location.pathname === "/swap" ? "active" : ""} onClick={() => navigate("/swap")}>
+        {location.pathname === "/swap" ? <SwapIconBlue /> : <SwapIconGrey />}
+        <p>Swap</p>
       </button>
       <button className={location.pathname === "/settings" ? "active" : ""} onClick={() => navigate("/settings")}>
         {location.pathname === "/settings" ? <SettingsIconBlue /> : <SettingsIconGrey />}

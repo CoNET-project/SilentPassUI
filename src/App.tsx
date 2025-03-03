@@ -9,6 +9,7 @@ import { CoNET_Data, setCoNET_Data } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
 import Vip from './pages/Vip';
 import Wallet from './pages/Wallet';
+import Swap from './pages/Swap';
 import Settings from './pages/Settings';
 import Languages from './pages/Languages';
 import Applications from './pages/Applications';
@@ -109,6 +110,7 @@ function App() {
           <Route path="/config-device" element={<ConfigDevice />}></Route>
           <Route path="/vip" element={<Vip />}></Route>
           <Route path="/wallet" element={<Wallet />}></Route>
+          <Route path="/swap" element={<Swap />}></Route>
           <Route path="/settings" element={<Settings />}></Route>
           <Route path="/passcode/new" element={<Passcode new />}></Route>
           <Route path="/passcode/change" element={<Passcode />}></Route>

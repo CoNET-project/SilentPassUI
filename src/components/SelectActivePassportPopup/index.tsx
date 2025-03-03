@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { getExpirationDate, getPassportTitle } from '../../utils/utils';
 import './index.css';
@@ -6,15 +6,15 @@ import Separator from '../Separator';
 import { changeActiveNFT, estimateChangeNFTGasFee } from '../../services/wallets';
 import Skeleton from '../Skeleton';
 
-const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
-  const currentPassportName = currentPassport?.premium !== "false" ? 'Premium Passport' : 'Freemium Passport';
+const SelectActivePassportPopup = ({ newPassport }: any) => {
+  const { profiles, activePassport, setIsSelectPassportPopupOpen } = useDaemonContext();
+
+  const currentPassportName = useMemo(() => getPassportTitle(activePassport) + ' Passport', [activePassport])
   const newPassportName = getPassportTitle(newPassport) + ' Passport';
   const newPassportExpiration = getExpirationDate(newPassport);
 
   const [isChangeLoading, setIsChangeLoading] = useState(false);
   const [estimatedGasFee, setEstimatedGasFee] = useState('');
-
-  const { profiles, activePassport, setIsSelectPassportPopupOpen } = useDaemonContext();
 
   async function handleChangeActiveNFT() {
     try {

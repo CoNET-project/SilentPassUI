@@ -253,7 +253,6 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
       {
         isSelectPassportPopupOpen && (
           <SelectActivePassportPopup
-            currentPassport={activePassport}
             newPassport={passportToChange}
           />
         )

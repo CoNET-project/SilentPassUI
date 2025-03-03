@@ -1,5 +1,5 @@
 import { useDaemonContext } from "../../providers/DaemonProvider";
-import { getRemainingTime } from "../../utils/utils";
+import { getExpirationDate, getPassportTitle } from "../../utils/utils";
 import './index.css';
 import Skeleton from "../Skeleton";
 import { useNavigate } from "react-router-dom";
@@ -9,7 +9,6 @@ const PassportInfoPopup = () => {
 
   const navigate = useNavigate();
 
-  const activePassportName = activePassport?.premium ? "Premium" : "Freemium";
 
   return isPassportInfoPopupOpen ? (
     <div className="home-popup-backdrop" onClick={() => setIsPassportInfoPopupOpen(false)}>
@@ -18,7 +17,7 @@ const PassportInfoPopup = () => {
           <div style={{ display: "flex", flexDirection: 'column', textAlign: 'start', gap: '16px' }}>
             <span>Silent Pass Passport</span>
             {
-              activePassport ? <p>{activePassportName}</p> : <Skeleton width="120px" height="32px" />
+              activePassport ? <p>{getPassportTitle(activePassport)}</p> : <Skeleton width="120px" height="32px" />
             }
           </div>
 
@@ -26,7 +25,7 @@ const PassportInfoPopup = () => {
             <span>Expiration date</span>
             {
               profiles?.[0]?.activePassport?.expires ?
-                <p>{getRemainingTime(profiles?.[0]?.activePassport?.expires)}</p>
+                <p>{getExpirationDate(activePassport)}</p>
                 : <Skeleton width='50px' height='20px' />
             }
           </div>

@@ -13,9 +13,6 @@ import lockIcon from "./assets/lock-icon.svg";
 import Separator from '../../components/Separator';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDaemonContext } from '../../providers/DaemonProvider';
-import Skeleton from '../../components/Skeleton';
-import { getRemainingTime } from '../../utils/utils';
 import ActivePassportInfo from '../../components/ActivePassportInfo';
 
 type OptionGroup = {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useDaemonContext } from "../../providers/DaemonProvider";
-import { getRemainingTime } from '../../utils/utils';
+import { getExpirationDate, getPassportTitle } from '../../utils/utils';
 import './index.css';
 import Separator from '../Separator';
 import { changeActiveNFT, estimateChangeNFTGasFee } from '../../services/wallets';
@@ -8,16 +8,13 @@ import Skeleton from '../Skeleton';
 
 const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
   const currentPassportName = currentPassport?.premium !== "false" ? 'Premium Passport' : 'Freemium Passport';
-  const currentPassportExpiration = getRemainingTime(currentPassport?.expires)
-  const newPassportName = newPassport?.premium ? 'Premium Passport' : 'Freemium Passport';
-  const newPassportExpiration = getRemainingTime(newPassport?.expires)
+  const newPassportName = getPassportTitle(newPassport) + ' Passport';
+  const newPassportExpiration = getExpirationDate(newPassport);
 
   const [isChangeLoading, setIsChangeLoading] = useState(false);
   const [estimatedGasFee, setEstimatedGasFee] = useState('');
 
-  const { profiles } = useDaemonContext();
-
-  const { setIsSelectPassportPopupOpen, setActivePassport } = useDaemonContext();
+  const { profiles, activePassport, setIsSelectPassportPopupOpen } = useDaemonContext();
 
   async function handleChangeActiveNFT() {
     try {
@@ -67,7 +64,7 @@ const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
 
                 <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                   <p style={{ textAlign: 'left', fontSize: '16px' }}>{currentPassportName}</p>
-                  <p style={{ textAlign: 'right', fontSize: '16px' }}>until {currentPassportExpiration}</p>
+                  <p style={{ textAlign: 'right', fontSize: '16px' }}> {getExpirationDate(activePassport)}</p>
                 </div>
               </div>
 
@@ -78,7 +75,7 @@ const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
 
                 <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                   <p style={{ textAlign: 'left', fontSize: '16px' }}>{newPassportName}</p>
-                  <p style={{ textAlign: 'right', fontSize: '16px' }}>{newPassportExpiration} days</p>
+                  <p style={{ textAlign: 'right', fontSize: '16px' }}>{newPassportExpiration}</p>
                 </div>
               </div>
             </div>

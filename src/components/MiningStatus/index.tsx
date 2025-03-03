@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import "./index.css";
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../Skeleton';
+import { getPassportTitle } from '../../utils/utils';
 
 const OneDayInSeconds = 86400;
 
 const MiningStatus = () => {
-  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated } = useDaemonContext();
+  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport } = useDaemonContext();
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
 
@@ -28,8 +29,6 @@ const MiningStatus = () => {
     setIsPassportInfoPopupOpen(true)
   }
 
-  const activePassportName = profiles?.[0]?.activePassport.premium ? 'Premium' : 'Freemium'
-
   return (
     <div className="mining-status">
       <div className="miners">
@@ -39,7 +38,7 @@ const MiningStatus = () => {
       <div className='passport-status' onClick={openPassportInfo}>
         <div className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
         {
-          profiles?.[0]?.activePassport ? <p>{activePassportName}</p> : <Skeleton width="40px" height="15px" />
+          profiles?.[0]?.activePassport ? <p>{getPassportTitle(activePassport)}</p> : <Skeleton width="40px" height="15px" />
         }
         <img src="/assets/info.svg" alt="Info icon" />
       </div>

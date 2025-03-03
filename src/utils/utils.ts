@@ -176,14 +176,14 @@ export const parseQueryParams = (queryString: string) => {
 };
 
 export const getPassportTitle = (passportInfo: any) => {
-  if (passportInfo?.expiresDays?.toString() === "7") return "Freemium Passport";
+  if (passportInfo?.expiresDays?.toString() === "7") return "Freemium";
 
   if (passportInfo?.expiresDays && passportInfo?.expiresDays > 365)
-    return "Unlimited Passport";
+    return "Unlimited";
 
-  if (passportInfo?.premium) return "Premium Passport";
+  if (passportInfo?.premium) return "Premium";
 
-  return "Standard Passport";
+  return "Standard";
 };
 
 export const getExpirationDate = (passportInfo: any) => {

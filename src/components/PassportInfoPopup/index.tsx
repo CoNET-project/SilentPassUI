@@ -2,9 +2,12 @@ import { useDaemonContext } from "../../providers/DaemonProvider";
 import { getRemainingTime } from "../../utils/utils";
 import './index.css';
 import Skeleton from "../Skeleton";
+import { useNavigate } from "react-router-dom";
 
 const PassportInfoPopup = () => {
   const { profiles, activePassport, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen } = useDaemonContext();
+
+  const navigate = useNavigate();
 
   const activePassportName = activePassport?.premium ? "Premium" : "Freemium";
 
@@ -30,8 +33,8 @@ const PassportInfoPopup = () => {
         </div>
 
         <div className="home-buttons">
-          <button className="home-disabled">
-            <img src="./assets/conet-outline-gray.svg" />
+          <button onClick={() => navigate('/subscription')}>
+            <img src="./assets/conet-outline-blue.svg" />
             <span>Upgrade</span>
           </button>
 

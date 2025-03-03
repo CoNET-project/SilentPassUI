@@ -146,7 +146,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 
   storeSystemData();
 
-  const profiles = CoNET_Data.profiles[0];
+  const profiles = CoNET_Data.profiles;
 
   return profiles;
 };
@@ -594,7 +594,8 @@ const refreshSolanaBalances = async (solanaProfile: profile) => {
     ]);
 
     if (solanaProfile.tokens?.sol) {
-      solanaProfile.tokens.sol.balance = sol === false ? "" : sol?.toFixed(6);
+      solanaProfile.tokens.sol.balance =
+        sol === false ? solanaProfile.tokens.sol.balance : sol?.toFixed(6);
     } else {
       solanaProfile.tokens.sol = {
         balance: sol === false ? "" : sol?.toFixed(6),
@@ -607,7 +608,9 @@ const refreshSolanaBalances = async (solanaProfile: profile) => {
 
     if (solanaProfile.tokens?.sp) {
       solanaProfile.tokens.sp.balance =
-        sp === false ? "" : parseFloat(sp).toFixed(6);
+        sp === false
+          ? solanaProfile.tokens.sp.balance
+          : parseFloat(sp).toFixed(6);
     } else {
       solanaProfile.tokens.sp = {
         balance: sp === false ? "" : parseFloat(sp).toFixed(6),

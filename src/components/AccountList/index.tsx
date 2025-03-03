@@ -11,7 +11,7 @@ import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import PassportInfo from '../PassportInfo';
 import SelectActivePassportPopup from '../SelectActivePassportPopup';
-import { refreshSolanaBalances } from '../../services/wallets';
+import { refreshSolanaBalances, storeSystemData } from '../../services/wallets';
 import { CoNET_Data } from '../../utils/globals';
 
 interface AccountListProps {
@@ -62,6 +62,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 
     try {
       await refreshSolanaBalances(profiles?.[1]);
+
+      storeSystemData();
 
       const tmpData = CoNET_Data;
 

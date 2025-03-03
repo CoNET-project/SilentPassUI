@@ -48,7 +48,7 @@ interface freePassport {
   nftID: string;
   expires: string;
   expiresDays: string;
-  premium: string;
+  premium: boolean;
 }
 
 type keyPairType = "ethereum" | "solana";

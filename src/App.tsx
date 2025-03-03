@@ -42,7 +42,7 @@ function App() {
           nftID: info?.nftIDs?.toString(),
           expires: info?.expires?.toString(),
           expiresDays: info?.expiresDays?.toString(),
-          premium: info?.premium?.toString()
+          premium: info?.premium
         },
       };
 

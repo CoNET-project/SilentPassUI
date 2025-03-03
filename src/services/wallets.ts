@@ -490,7 +490,7 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
       nftID: _currentPassport?.nftIDs?.toString(),
       expires: _currentPassport?.expires?.toString(),
       expiresDays: _currentPassport?.expiresDays?.toString(),
-      premium: _currentPassport?.premium?.toString(),
+      premium: _currentPassport?.premium,
     },
   };
 

@@ -360,4 +360,4 @@ const scan_spl_balance = async (walletAddr: string, tokenAddress: string) => {
   }
 };
 
-export { listenProfileVer };
+export { listenProfileVer, scanSolanaSol, scanSolanaSp };

@@ -18,6 +18,7 @@ import * as Bip39 from "bip39";
 
 import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
+import { scanSolanaSol, scanSolanaSp } from "./listeners";
 
 const PouchDB = require("pouchdb").default;
 
@@ -585,6 +586,61 @@ const getPassportsInfo = async (
   }
 };
 
+const refreshSolanaBalances = async (solanaProfile: profile) => {
+  try {
+    const [sol, sp] = await Promise.all([
+      scanSolanaSol(solanaProfile.keyID),
+      scanSolanaSp(solanaProfile.keyID),
+    ]);
+
+    if (solanaProfile.tokens?.sol) {
+      solanaProfile.tokens.sol.balance = sol === false ? "" : sol?.toFixed(6);
+    } else {
+      solanaProfile.tokens.sol = {
+        balance: sol === false ? "" : sol?.toFixed(6),
+        network: "Solana Mainnet",
+        decimal: 18,
+        contract: "",
+        name: "sol",
+      };
+    }
+
+    if (solanaProfile.tokens?.sp) {
+      solanaProfile.tokens.sp.balance =
+        sp === false ? "" : parseFloat(sp).toFixed(6);
+    } else {
+      solanaProfile.tokens.sp = {
+        balance: sp === false ? "" : parseFloat(sp).toFixed(6),
+        network: "Solana Mainnet",
+        decimal: 18,
+        contract: "",
+        name: "sp",
+      };
+    }
+
+    const temp = CoNET_Data;
+
+    if (!temp) {
+      return false;
+    }
+
+    temp.profiles[1] = {
+      ...temp.profiles[1],
+      tokens: {
+        ...temp.profiles[1].tokens,
+        sp: solanaProfile.tokens.sp,
+        sol: solanaProfile.tokens.sol,
+      },
+    };
+
+    setCoNET_Data(temp);
+
+    return true;
+  } catch (ex) {
+    return false;
+  }
+};
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -596,4 +652,5 @@ export {
   getFaucet,
   getVpnTimeUsed,
   getPassportsInfoForProfile,
+  refreshSolanaBalances,
 };

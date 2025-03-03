@@ -11,6 +11,8 @@ import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import PassportInfo from '../PassportInfo';
 import SelectActivePassportPopup from '../SelectActivePassportPopup';
+import { refreshSolanaBalances } from '../../services/wallets';
+import { CoNET_Data } from '../../utils/globals';
 
 interface AccountListProps {
   showMainWallet?: boolean;
@@ -21,11 +23,12 @@ interface AccountListProps {
 
 export default function AccountList({ showMainWallet = true, simplifiedView = false, spInUsd = 0, solInUsd = 0 }: AccountListProps) {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-  const { profiles, activePassport } = useDaemonContext();
+  const { profiles, activePassport, setProfiles } = useDaemonContext();
 
   const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
   const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
   const [passportToChange, setPassportToChange] = useState();
+  const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
 
   const { isSelectPassportPopupOpen, setIsSelectPassportPopupOpen } = useDaemonContext();
 
@@ -39,12 +42,12 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
     e.preventDefault();
 
     if (account === 'main') {
-      navigator.clipboard.writeText(profiles?.[0].keyID);
+      navigator.clipboard.writeText(profiles?.[0]?.keyID);
       setMainAccountAddressCopied(true);
     }
 
     if (account === 'solana') {
-      navigator.clipboard.writeText(profiles?.[1].keyID);
+      navigator.clipboard.writeText(profiles?.[1]?.keyID);
       setSolanaAccountAddressCopied(true);
     }
 
@@ -52,6 +55,40 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
       setMainAccountAddressCopied(false);
       setSolanaAccountAddressCopied(false);
     }, 2000)
+  }
+
+  async function handleRefreshSolanaBalances() {
+    setIsRefreshingSolanaBalances(true);
+
+    try {
+      await refreshSolanaBalances(profiles?.[1]);
+
+      const tmpData = CoNET_Data;
+
+      if (!tmpData) {
+        return;
+      }
+
+      tmpData.profiles[1] = profiles?.[1];
+
+      setProfiles(tmpData.profiles);
+    } catch (ex) {
+      console.log(ex);
+    }
+
+    setTimeout(() => setIsRefreshingSolanaBalances(false), 2000);
+  }
+
+  const renderRefreshButton = () => {
+    if (!profiles?.[1]?.keyID) {
+      return <p className='refresh disabled'>Refresh</p>
+    }
+
+    if (isRefreshingSolanaBalances) {
+      return <p className='refresh'>Refreshing...</p>
+    }
+
+    return <p className='refresh' onClick={handleRefreshSolanaBalances}>Refresh</p>
   }
 
   return (
@@ -88,7 +125,9 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
           </div>
           <div className="info-card">
             <div className="info-wrapper">
-              <p>Token assets</p>
+              <div className='token-assets-title'>
+                <p className='title'>Token assets</p>
+              </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <ConetToken />
@@ -193,7 +232,10 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 
         <div className="info-card">
           <div className="info-wrapper">
-            <p>Token assets</p>
+            <div className='token-assets-title'>
+              <p className='title'>Token assets</p>
+              {renderRefreshButton()}
+            </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <SpToken />
@@ -216,6 +258,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                 )
               }
             </div>
+
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <SolanaToken />

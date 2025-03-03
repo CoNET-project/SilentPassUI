@@ -298,3 +298,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.token-assets-title {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.token-assets-title > .title {
+  color: #ffffff !important;
+}
+
+.token-assets-title > .refresh.disabled {
+  color: #5a5a5afe !important;
+  cursor: not-allowed;
+}
+
+.token-assets-title > .refresh {
+  color: #9fbfe5fe !important;
+  cursor: pointer;
+}

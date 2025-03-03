@@ -24,7 +24,6 @@ const SelectActivePassportPopup = ({ currentPassport, newPassport }: any) => {
       setIsChangeLoading(true);
 
       await changeActiveNFT('mainnet', newPassport.nftID)
-      setActivePassport(newPassport);
 
       setIsSelectPassportPopupOpen(false);
     } catch (ex) {

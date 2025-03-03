@@ -46,6 +46,9 @@ function App() {
         },
       };
 
+      if (tmpData.profiles[0].activePassport?.expiresDays !== '7')
+        tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7)
+
       setActivePassport(tmpData.profiles[0].activePassport);
 
       setCoNET_Data(tmpData);
@@ -70,7 +73,7 @@ function App() {
 
       const profiles = await createOrGetWallet(secretPhrase);
       setProfiles(profiles);
-      listenProfileVer(setProfiles);
+      listenProfileVer(setProfiles, setActivePassport);
 
       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setaAllNodes(allNodes)

@@ -24,7 +24,10 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 let epoch = 0;
 
-const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
+const listenProfileVer = async (
+  _setProfiles: (profiles: profile[]) => void,
+  _setActivePassport: (profiles: freePassport) => void
+) => {
   epoch = await conetProvider.getBlockNumber();
 
   conetProvider.on("block", async (block) => {
@@ -33,7 +36,7 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
 
       if (processingBlock === true) return;
 
-      if (block % 15 === 0) {
+      if (block % 10 === 0) {
         setProcessingBlock(true);
 
         const profiles = CoNET_Data?.profiles;
@@ -50,8 +53,12 @@ const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
 
         await getPassportsInfoForProfile(profiles[0]);
 
-        if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0)
-          callback(CoNET_Data?.profiles);
+        if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
+          _setProfiles(CoNET_Data?.profiles);
+
+          if (CoNET_Data.profiles[0].activePassport)
+            _setActivePassport(CoNET_Data.profiles[0].activePassport);
+        }
 
         storeSystemData();
 

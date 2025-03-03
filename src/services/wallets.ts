@@ -314,8 +314,8 @@ const getCurrentPassportInfoInChain = async (chain: string) => {
   );
 
   try {
-    const tx = await passportContract.getCurrentPassport(wallet.address);
-    return tx;
+    const result = await passportContract.getCurrentPassport(wallet.address);
+    return result;
   } catch (ex) {
     console.log(ex);
   }
@@ -482,6 +482,18 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
   const tmpMainnetPassports = await getPassportsInfo(profile, "mainnet");
 
+  const _currentPassport = await getCurrentPassportInfo();
+
+  profile = {
+    ...profile,
+    activePassport: {
+      nftID: _currentPassport?.nftIDs?.toString(),
+      expires: _currentPassport?.expires?.toString(),
+      expiresDays: _currentPassport?.expiresDays?.toString(),
+      premium: _currentPassport?.premium?.toString(),
+    },
+  };
+
   const cancunPassports: passportInfo[] = [];
   const mainnetPassports: passportInfo[] = [];
 
@@ -507,7 +519,12 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
     });
   }
 
-  const allPassports = cancunPassports.concat(mainnetPassports);
+  let allPassports = cancunPassports.concat(mainnetPassports);
+
+  if (profile.activePassport?.expiresDays !== "7")
+    allPassports = allPassports?.filter(
+      (passport) => passport.expiresDays !== 7
+    );
 
   allPassports?.sort((a, b) => {
     return a.nftID - b.nftID;

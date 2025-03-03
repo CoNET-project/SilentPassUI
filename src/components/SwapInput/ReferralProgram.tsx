@@ -7,11 +7,11 @@ export default function ReferralProgram() {
   const [walletAddress, setWalletAddress] = useState('');
 
   return (
-    <div className={`disabled account-wrapper referral-program ${isOpen ? 'active' : ''}`}>
+    <div className={`account-wrapper referral-program ${isOpen ? 'active' : ''}`}>
       {/* <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}> */}
-      <div className="account-main-card">
+      <div className="disabled account-main-card">
         <div>
-          <h3>Join SP Club</h3>
+          <h3>Referral Program</h3>
           <img className="chevron" src="./assets/right-chevron.svg" />
         </div>
       </div>

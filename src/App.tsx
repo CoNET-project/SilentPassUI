@@ -90,6 +90,10 @@ function App() {
     };
 
     init();
+
+    const interval = setInterval(handlePassport, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {

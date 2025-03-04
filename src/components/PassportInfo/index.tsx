@@ -20,7 +20,6 @@ const PassportInfo = ({ passportInfo, selectedValue, onChange }: any) => {
             color: "#9FBFE5FE",
           },
         }}
-
       />
       <p style={{ fontSize: '12px', color: '#B1B1B2', textAlign: 'left', fontWeight: 700, paddingTop: 1 }}>{getPassportTitle(passportInfo)} Passport</p>
       <p style={{ fontSize: '10px', color: '#B1B1B2', textAlign: 'right', fontWeight: 500, paddingBottom: 1 }}>{getExpirationDate(passportInfo)}</p>

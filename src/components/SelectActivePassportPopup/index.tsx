@@ -22,6 +22,8 @@ const SelectActivePassportPopup = ({ newPassport }: any) => {
 
       await changeActiveNFT('mainnet', newPassport.nftID)
 
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+
       setIsSelectPassportPopupOpen(false);
     } catch (ex) {
       console.log(ex)

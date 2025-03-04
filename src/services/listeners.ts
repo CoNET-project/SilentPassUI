@@ -26,7 +26,8 @@ let epoch = 0;
 
 const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
-  _setActivePassport: (profiles: freePassport) => void
+  _setActivePassport: (profiles: freePassport) => void,
+  _updateCurrentPassport: () => Promise<void>,
 ) => {
   epoch = await conetProvider.getBlockNumber();
 
@@ -63,6 +64,10 @@ const listenProfileVer = async (
         storeSystemData();
 
         setProcessingBlock(false);
+      }
+
+      if (block % 2 === 0) {
+        await _updateCurrentPassport();
       }
     }
   });

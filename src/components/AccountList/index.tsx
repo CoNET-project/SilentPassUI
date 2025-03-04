@@ -152,7 +152,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                   <div className="info-wrapper">
                     <p>Silent Pass Passport</p>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
-                      {profiles?.[0]?.silentPassPassports
+                      {(profiles?.[0]?.silentPassPassports && profiles?.[0]?.activePassport)
                         ? [...profiles?.[0]?.silentPassPassports]
                           .sort((a: any, b: any) => {
                             const isAActive = a?.nftID === activePassport?.nftID;

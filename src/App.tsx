@@ -20,6 +20,7 @@ import ConfigDevice from './pages/ConfigDevice';
 import Passcode from './pages/Passcode';
 import { getServerIpAddress } from "./api";
 import { parseQueryParams } from "./utils/utils";
+import Transfer from './pages/Transfer';
 
 global.Buffer = require('buffer').Buffer;
 
@@ -74,7 +75,7 @@ function App() {
 
       const profiles = await createOrGetWallet(secretPhrase);
       setProfiles(profiles);
-      listenProfileVer(setProfiles, setActivePassport);
+      listenProfileVer(setProfiles, setActivePassport, handlePassport);
 
       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setaAllNodes(allNodes)
@@ -90,10 +91,6 @@ function App() {
     };
 
     init();
-
-    const interval = setInterval(handlePassport, 15000);
-
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -130,6 +127,7 @@ function App() {
           <Route path="/languages" element={<Languages />}></Route>
           <Route path="/applications" element={<Applications />}></Route>
           <Route path="/subscription" element={<Subscription />}></Route>
+          <Route path="/transfer" element={<Transfer />}></Route>
           <Route path="/support" element={<Support />}></Route>
           <Route path="/" element={<Home />}></Route>
         </Routes>

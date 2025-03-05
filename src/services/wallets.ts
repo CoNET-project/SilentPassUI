@@ -495,7 +495,7 @@ const calculateTransferNftGas = async (toAddr: string, nftId: string) => {
   } catch (ex) {
     console.error("Gas estimation failed:", ex);
   }
-}
+};
 
 const transferNft = async (toAddr: string, nftId: string) => {
   if (!CoNET_Data) {
@@ -533,7 +533,7 @@ const transferNft = async (toAddr: string, nftId: string) => {
     console.log(ex);
     throw ex;
   }
-}
+};
 
 const getVpnTimeUsed = async () => {
   if (!CoNET_Data?.profiles[0]) return;
@@ -672,11 +672,14 @@ const getPassportsInfo = async (
   }
 };
 
-const refreshSolanaBalances = async (solanaProfile: profile, node: nodes_info) => {
-	if (!node) {
-		return
-	}
-  const solanaRPC_url = `http://${node.domain}/solana-rpc`
+const refreshSolanaBalances = async (
+  solanaProfile: profile,
+  node: nodes_info
+) => {
+  if (!node) {
+    return;
+  }
+  const solanaRPC_url = `https://${node.domain}/solana-rpc`;
   try {
     const [sol, sp] = await Promise.all([
       scanSolanaSol(solanaProfile.keyID, solanaRPC_url),

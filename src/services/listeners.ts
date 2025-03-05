@@ -4,7 +4,6 @@ import {
   conetDepinProvider,
   conetProvider,
   ethProvider,
-  solanaRpc,
 } from "../utils/constants";
 import {
   CoNET_Data,
@@ -14,21 +13,19 @@ import {
 } from "../utils/globals";
 import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
-import {checkCurrentRate} from '../services/passportPurchase'
+import { checkCurrentRate } from "../services/passportPurchase";
 import {
   getPassportsInfoForProfile,
   getVpnTimeUsed,
   storeSystemData,
 } from "./wallets";
-import { Connection, PublicKey } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { PublicKey } from "@solana/web3.js";
 
 let epoch = 0;
 
 const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
   _setActivePassport: (profiles: freePassport) => void,
-  _updateCurrentPassport: () => Promise<void>,
   setMiningData: (response: nodeResponse) => void
 ) => {
   epoch = await conetProvider.getBlockNumber();
@@ -39,39 +36,34 @@ const listenProfileVer = async (
 
       if (processingBlock === true) return;
 
+      const profiles = CoNET_Data?.profiles;
+
+      if (!profiles) {
+        return;
+      }
+
+      setProcessingBlock(true);
+
       if (block % 10 === 0) {
-        setProcessingBlock(true);
-
-        const profiles = CoNET_Data?.profiles;
-        if (!profiles) {
-          return;
-        }
-        const runningList: any[] = [];
-
-        runningList.push(getProfileAssets(profiles[0], profiles[1]));
-
-        await Promise.all(runningList);
-		//	get rate update
-		checkCurrentRate (setMiningData);
+        await getProfileAssets(profiles[0], profiles[1]);
+        checkCurrentRate(setMiningData);
         await getVpnTimeUsed();
-
-        await getPassportsInfoForProfile(profiles[0]);
-
-        if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
-          _setProfiles(CoNET_Data?.profiles);
-
-          if (CoNET_Data.profiles[0].activePassport)
-            _setActivePassport(CoNET_Data.profiles[0].activePassport);
-        }
-
-        storeSystemData();
-
-        setProcessingBlock(false);
       }
 
       if (block % 2 === 0) {
-        await _updateCurrentPassport();
+        await getPassportsInfoForProfile(profiles[0]);
       }
+
+      if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
+        _setProfiles(CoNET_Data?.profiles);
+
+        if (CoNET_Data.profiles[0].activePassport)
+          _setActivePassport(CoNET_Data.profiles[0].activePassport);
+      }
+
+      storeSystemData();
+
+      setProcessingBlock(false);
     }
   });
 
@@ -87,14 +79,13 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
       profile.tokens = initProfileTokens();
     }
 
-    const [cCNTP, conet, conetDepin, conet_eth, eth] =
-      await Promise.all([
-        scanCCNTP(key),
-        scanCONETHolesky(key),
-        scanCONETDepin(key),
-        scanConetETH(key),
-        scanETH(key)
-      ]);
+    const [cCNTP, conet, conetDepin, conet_eth, eth] = await Promise.all([
+      scanCCNTP(key),
+      scanCONETHolesky(key),
+      scanCONETDepin(key),
+      scanConetETH(key),
+      scanETH(key),
+    ]);
 
     if (profile.tokens?.cCNTP) {
       profile.tokens.cCNTP.balance =
@@ -262,7 +253,11 @@ const scanSolanaSol = async (walletAddr: string, randomSolanaRPC: string) => {
 };
 
 const scanSolanaSp = async (walletAddr: string, solanaRPC_url: string) => {
-  return await scan_spl_balance(walletAddr, contracts.PassportSolana.address, solanaRPC_url);
+  return await scan_spl_balance(
+    walletAddr,
+    contracts.PassportSolana.address,
+    solanaRPC_url
+  );
 };
 
 const scan_erc20_balance: (
@@ -297,7 +292,11 @@ const scan_natural_balance = async (walletAddr: string, provider: any) => {
   }
 };
 
-const scan_spl_balance = async (walletAddr: string, tokenAddress: string, solanaRPC_url: string ) => {
+const scan_spl_balance = async (
+  walletAddr: string,
+  tokenAddress: string,
+  solanaRPC_url: string
+) => {
   try {
     const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"; // Solana SPL Token Program ID
 

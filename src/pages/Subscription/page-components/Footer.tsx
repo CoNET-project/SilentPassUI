@@ -1,5 +1,3 @@
-
-
 import { Step } from '../../../types/global-types';
 import { ReactComponent as ProgressIcon } from "../assets/progress-activity.svg";
 

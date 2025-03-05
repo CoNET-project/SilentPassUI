@@ -1,6 +1,6 @@
-import LoadingRing from '../../../components/LoadingRing';
+import LoadingRing from '../LoadingRing';
 
-export default function ThirdStep() {
+export default function Loading() {
   return (
     <div className="step-container">
       <LoadingRing />

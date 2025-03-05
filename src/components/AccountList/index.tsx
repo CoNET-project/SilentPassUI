@@ -13,6 +13,7 @@ import PassportInfo from '../PassportInfo';
 import SelectActivePassportPopup from '../SelectActivePassportPopup';
 import { refreshSolanaBalances, storeSystemData } from '../../services/wallets';
 import { CoNET_Data } from '../../utils/globals';
+import { useNavigate } from 'react-router-dom';
 
 interface AccountListProps {
   showMainWallet?: boolean;
@@ -31,6 +32,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
   const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
 
   const { isSelectPassportPopupOpen, setIsSelectPassportPopupOpen } = useDaemonContext();
+
+  const navigate = useNavigate();
 
   function toggleAccount(accountAddress: string) {
     setOpenAccountList((prev) => (
@@ -206,7 +209,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
         !simplifiedView && (
           <div className="cta-buttons" style={{ marginBottom: "0px" }}>
             <div className="highlight-1">
-              <button className='disabled'>
+              <button onClick={() => navigate('/transfer')}>
                 <p>Transfer Silent Pass Passport</p>
               </button>
             </div>

@@ -1,4 +1,4 @@
-export default function FifthStep() {
+export default function Declined() {
   return (
     <>
       <span style={{ display: 'block' }}></span>

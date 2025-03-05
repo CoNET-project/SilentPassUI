@@ -5,15 +5,14 @@ import FirstStep from './page-components/FirstStep';
 import Header from './page-components/Header';
 import PageFooter from './page-components/Footer';
 import SecondStep from './page-components/SecondStep';
-import ThirdStep from './page-components/ThirdStep';
-import FifthStep from './page-components/FifthStep';
 import FourthStep from './page-components/FourthStep';
 
 import './index.css';
 import { getOracle, purchasePassport } from '../../services/passportPurchase';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-
-export type Step = 1 | 2 | 3 | 4 | 5;
+import Loading from '../../components/global-steps/Loading';
+import Declined from '../../components/global-steps/Declined';
+import { Step } from '../../types/global-types';
 
 export default function Subscription() {
   const [step, setStep] = useState<Step>(1);
@@ -142,9 +141,9 @@ export default function Subscription() {
 
       {step === 1 && <FirstStep spInUsd={spInUsd} solInUsd={solInUsd} />} {/* Purchase payment */}
       {step === 2 && <SecondStep price={price} gasfee={gasfee} updateCounter={updateCounter} spInUsd={spInUsd} solInUsd={solInUsd} />} {/* Purchase confirmation */}
-      {step === 3 && <ThirdStep />} {/* Purchase loading */}
+      {step === 3 && <Loading />} {/* Purchase loading */}
       {step === 4 && <FourthStep price={price} gasfee={gasfee} />} {/* Purchase successful */}
-      {step === 5 && <FifthStep />} {/* Purchase declined */}
+      {step === 5 && <Declined />} {/* Purchase declined */}
 
       <PageFooter step={step} handleButtonAction={handleButtonAction} isSubmitButtonDisabled={isSubmitButtonDisabled} />
     </div>

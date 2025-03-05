@@ -202,11 +202,11 @@ export const getExpirationDate = (passportInfo: any) => {
 };
 
 export const getPlanDuration = (passportInfo: any) => {
-  if (passportInfo?.expiresDays === "7") return "Free for 7 days";
-  if (passportInfo?.expiresDays === "30") return "Monthly Plan";
-  if (passportInfo?.expiresDays === "365") return "Yearly Plan";
-  if (passportInfo?.expiresDays > "365") return "Unlimited";
-  if (passportInfo?.expiresDays === "0") return "";
+  if (String(passportInfo?.expiresDays) === "7") return "Free for 7 days";
+  if (String(passportInfo?.expiresDays) === "30") return "Monthly Plan";
+  if (String(passportInfo?.expiresDays) === "365") return "Yearly Plan";
+  if (String(passportInfo?.expiresDays) > "365") return "Unlimited";
+  if (String(passportInfo?.expiresDays) === "0") return "";
 };
 
 export function isValidSolanaBase58PrivateKey(base58Key: string) {

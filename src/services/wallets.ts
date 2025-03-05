@@ -394,25 +394,21 @@ const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
   );
 
   try {
-    // Verify if the function exists
     if (!passportContract.changeActiveNFT) {
       throw new Error("Function changeActiveNFT not found in contract ABI.");
     }
 
-    // Estimate gas usage
     const gasLimit = await passportContract.changeActiveNFT.estimateGas(nftId);
 
-    // Get the gas price
     const feeData = await provider.getFeeData();
-    const gasPrice = feeData.gasPrice || ethers.ZeroAddress; // Ensure a fallback value
+    const gasPrice = feeData.gasPrice || ethers.ZeroAddress;
 
-    // Calculate gas fee
-    const gasFee = Number(gasLimit) * Number(gasPrice); // BigInt operation
+    const gasFee = Number(gasLimit) * Number(gasPrice);
 
     return {
       gasLimit: gasLimit.toString(),
       gasPrice: formatUnits(gasPrice, "gwei"),
-      gasFee: formatEther(gasFee.toString()), // Convert to ETH
+      gasFee: formatEther(gasFee.toString()),
     };
   } catch (ex) {
     console.error("Gas estimation failed:", ex);
@@ -448,6 +444,96 @@ const tryToRequireFreePassport = async () => {
     await new Promise((resolve) => setTimeout(resolve, 12000));
   } while (CoNET_Data.profiles[0].tokens.conet.balance < "0.0001");
 };
+
+const calculateTransferNftGas = async (toAddr: string, nftId: string) => {
+  if (!CoNET_Data) {
+    return;
+  }
+
+  let provider;
+  let contractAddress;
+  let contractAbi;
+
+  provider = conetDepinProvider;
+  contractAddress = contracts.PassportMainnet.address;
+  contractAbi = contracts.PassportMainnet.abi;
+
+  const wallet = new ethers.Wallet(
+    CoNET_Data.profiles[0].privateKeyArmor,
+    provider
+  );
+
+  const passportContract = new ethers.Contract(
+    contractAddress,
+    contractAbi,
+    wallet
+  );
+
+  try {
+    if (!passportContract.safeTransferFrom) {
+      throw new Error("Function safeTransferFrom not found in contract ABI.");
+    }
+
+    const gasLimit = await passportContract.safeTransferFrom.estimateGas(
+      wallet.address,
+      toAddr,
+      nftId,
+      1,
+      "0x"
+    );
+
+    const feeData = await provider.getFeeData();
+    const gasPrice = feeData.gasPrice || ethers.ZeroAddress;
+
+    const gasFee = Number(gasLimit) * Number(gasPrice);
+
+    return {
+      gasLimit: gasLimit.toString(),
+      gasPrice: formatUnits(gasPrice, "gwei"),
+      gasFee: formatEther(gasFee.toString()),
+    };
+  } catch (ex) {
+    console.error("Gas estimation failed:", ex);
+  }
+}
+
+const transferNft = async (toAddr: string, nftId: string) => {
+  if (!CoNET_Data) {
+    return;
+  }
+  let provider;
+  let contractAddress;
+  let contractAbi;
+
+  provider = conetDepinProvider;
+  contractAddress = contracts.PassportMainnet.address;
+  contractAbi = contracts.PassportMainnet.abi;
+
+  const wallet = new ethers.Wallet(
+    CoNET_Data.profiles[0].privateKeyArmor,
+    provider
+  );
+
+  const passportContract = new ethers.Contract(
+    contractAddress,
+    contractAbi,
+    wallet
+  );
+
+  try {
+    const tx = await passportContract.safeTransferFrom(
+      wallet.address,
+      toAddr,
+      nftId,
+      1,
+      "0x"
+    );
+    return tx;
+  } catch (ex) {
+    console.log(ex);
+    throw ex;
+  }
+}
 
 const getVpnTimeUsed = async () => {
   if (!CoNET_Data?.profiles[0]) return;
@@ -657,6 +743,8 @@ export {
   changeActiveNFT,
   estimateChangeNFTGasFee,
   getFaucet,
+  calculateTransferNftGas,
+  transferNft,
   getVpnTimeUsed,
   getPassportsInfoForProfile,
   refreshSolanaBalances,

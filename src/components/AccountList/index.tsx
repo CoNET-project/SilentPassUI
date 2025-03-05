@@ -64,19 +64,15 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
     setIsRefreshingSolanaBalances(true);
 
     try {
-		let _randomSolanaRPC = randomSolanaRPC
-		if (!_randomSolanaRPC) {
-			const nodes = getAllNodes
-			const index = Math.floor(Math.random() * (nodes.length - 1))
-			await refreshSolanaBalances(profiles?.[1], nodes[index]);
+      let _randomSolanaRPC = randomSolanaRPC
+      if (!_randomSolanaRPC) {
+        const nodes = getAllNodes
+        const index = Math.floor(Math.random() * (nodes.length - 1))
+        await refreshSolanaBalances(profiles?.[1], nodes[index]);
 
-		} else {
-			await refreshSolanaBalances(profiles?.[1], _randomSolanaRPC);
-		}
-
-			
-		
-      
+      } else {
+        await refreshSolanaBalances(profiles?.[1], _randomSolanaRPC);
+      }
 
       storeSystemData();
 
@@ -164,7 +160,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
               !simplifiedView && (
                 <>
                   <Separator />
-                  <div className="info-wrapper">
+                  <div className="info-wrapper" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                     <p>Silent Pass Passport</p>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
                       {(profiles?.[0]?.silentPassPassports && profiles?.[0]?.activePassport)

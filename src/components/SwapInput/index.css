@@ -13,23 +13,13 @@
   transition: height 0.2s ease;
 }
 
-.account-wrapper .account-main-card img {
-  transform: rotate(90deg);
-
-  transition: transform 0.12s ease-in-out;
-}
-
-.account-wrapper.active .account-main-card img {
-  transform: rotate(270deg);
-}
-
 .account-wrapper.active {
   /* should create the animation */
-  height: 540px;
+  height: 600px;
 }
 
 .solana.account-wrapper.active {
-  height: 400px;
+  height: 330px;
 }
 
 .referral-program.account-wrapper.active {
@@ -231,8 +221,7 @@
   color: #5a5a5afe !important;
 }
 
-
-.input-box{
+.input-box {
   display: flex;
 
   max-width: 370px;
@@ -244,19 +233,19 @@
   justify-content: space-between;
 }
 
-.swap-button{
+.swap-button {
   display: flex;
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: var(--SilentPass-Blue01, rgba(159, 191, 229, 1.00));
+  background: var(--SilentPass-Blue01, rgba(159, 191, 229, 1));
   justify-content: center;
   align-items: center;
   margin: -10px 0px;
   z-index: 2;
 }
 
-.box-text{
+.box-text {
   font-weight: 400;
   line-height: 20px; /* 142.857% */
   letter-spacing: 0.25px;
@@ -266,9 +255,6 @@
   max-width: 200px;
   -moz-appearance: textfield;
 }
-
-
-
 
 .sp-selector {
   display: flex;
@@ -287,7 +273,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #A9C3EF;
+  background: #a9c3ef;
   border-radius: 50%;
   color: black;
   font-weight: bold;
@@ -306,13 +292,13 @@
   display: inline-block;
 }
 
-.tab-selector{
-  padding:8px 16px;
+.tab-selector {
+  padding: 8px 16px;
   border-radius: 4px;
   font-size: 14px;
 }
 
-.tab-selector:hover{
+.tab-selector:hover {
   background-color: #262626;
   cursor: pointer;
 }

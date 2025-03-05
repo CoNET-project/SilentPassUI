@@ -141,16 +141,17 @@ type nodes_info = {
 };
 
 interface nodeResponse {
-  status: number;
-  epoch: number;
-  hash: string;
-  rate: string;
-  nodeWallet: string;
+  status?: number;
+  epoch?: number;
+  hash?: string;
+  rate?: string;
+  nodeWallet?: string;
   currentCCNTP?: string;
   minerResponseHash?: string;
-  userWallets: string[];
+  userWallets?: string[];
+  totalUsers: string
   nodeWallets?: string[];
-  online: number;
+  online?: string;
 }
 
 type SICommandObj_Command =

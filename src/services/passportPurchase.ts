@@ -14,7 +14,7 @@ import {
   import contracts from "../utils/contracts";
   import { conetProvider, solanaRpc } from "../utils/constants";
   import { CoNET_Data } from "../utils/globals";
-  
+  import {epoch_info_ABI} from "../utils/abis"
   const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q";
   const spDecimalPlaces = 6;
   
@@ -98,6 +98,54 @@ import {
   
 	return "";
   };
+  const epoch_mining_info_cancun_addr = '0x31680dc539cb1835d7C1270527bD5D209DfBC547'.toLocaleLowerCase()
+  const epoch_mining_infoSC = new ethers.Contract(epoch_mining_info_cancun_addr, epoch_info_ABI, conetProvider)
+
+export const checkCurrentRate = async (setMiningData: (response: nodeResponse) => void) => {
+	let _epoch: BigInt
+	let _totalMiners: BigInt
+	let _minerRate: ethers.BigNumberish
+	let _totalUsrs: BigInt
+
+	try {
+		[_epoch, _totalMiners, _minerRate, _totalUsrs] = await epoch_mining_infoSC.currentInfo()
+	} catch (ex: any) {
+		return console.log(`checkCurrentRate Error! ${ex.message}`)
+	}
+
+	if (parseInt(_epoch.toString()) > 0) {
+		const online = _totalMiners.toString()
+		const rate = ethers.formatEther(_minerRate)
+		const totalUsers = _totalUsrs.toString()
+		const epoch = parseInt(_epoch.toString())
+		const currentRate: nodeResponse = {
+			online, rate, totalUsers, epoch
+		}
+		return setMiningData(currentRate)
+	}
+	return null
+	
+}
+
+  const update_purchase_cancun = async (signature: string) => {
+	if (!CoNET_Data?.profiles[0]?.privateKeyArmor) {
+		return
+	}
+	const wallet = new ethers.Wallet(
+		CoNET_Data?.profiles[0]?.privateKeyArmor,
+		conetProvider
+	  );
+  
+	  const purchasePassportContract = new ethers.Contract(
+		contracts.PurchasePassport.address,
+		contracts.PurchasePassport.abi,
+		wallet
+	  );
+	const purchaseTx = await purchasePassportContract.purchase(signature);
+	const completedTx = await purchaseTx.wait();
+	await waitingStatusChange(purchasePassportContract, wallet.address)
+	return completedTx;
+  }
   
   export const purchasePassport = async (privateKey: string, amount: string) => {
 	if (!CoNET_Data) {
@@ -148,27 +196,18 @@ import {
 		[solana_account_keypair]
 	  );
   
-	  const wallet = new ethers.Wallet(
-		CoNET_Data?.profiles[0]?.privateKeyArmor,
-		conetProvider
-	  );
-  
-	  const purchasePassportContract = new ethers.Contract(
-		contracts.PurchasePassport.address,
-		contracts.PurchasePassport.abi,
-		wallet
-	  );
+	  await update_purchase_cancun(signature)
   
 	  
-	  const purchaseTx = await purchasePassportContract.purchase(signature);
-	  const completedTx = await purchaseTx.wait();
-	  await waitingStatusChange(purchasePassportContract, CoNET_Data?.profiles[0]?.keyID)
-	  return completedTx;
-	  console.log(`success hash = ${purchaseTx.hash}`);
-  
-	  console.log(signature);
-	} catch (error) {
-	  console.log(error);
+	} catch (error: any) {
+	  const _tx: string = error.message
+	  const tx1 = _tx.split(/Signature /i)
+		if (tx1[1]) {
+			const tx = tx1[1].split(' ')[0]
+			await update_purchase_cancun(tx)
+			return tx;
+		}
+
 	  throw error;
 	}
   };
@@ -200,7 +239,6 @@ import {
 		  if (!blockTs?.transactions) {
 			  return
 		  }
-  
 		  
 		  for (let tx of blockTs.transactions) {
 			  const event = await conetProvider.getTransactionReceipt(tx)

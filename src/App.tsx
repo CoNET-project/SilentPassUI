@@ -4,7 +4,8 @@ import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
 import { createOrGetWallet, getCurrentPassportInfo, tryToRequireFreePassport } from "./services/wallets";
-import { getAllNodes, startMiningV2 } from "./services/mining";
+import { getAllNodes } from "./services/mining"; 
+import {checkCurrentRate} from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
 import Vip from './pages/Vip';
@@ -25,8 +26,11 @@ import Transfer from './pages/Transfer';
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport } = useDaemonContext();
-
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, randomSolanaRPC } = useDaemonContext();
+  const setSOlanaRPC = (allNodes: nodes_info[]) => {
+	const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
+	setRandomSolanaRPC(allNodes[randomIndex])
+  }
   useEffect(() => {
     const handlePassport = async () => {
       await tryToRequireFreePassport();
@@ -75,16 +79,16 @@ function App() {
 
       const profiles = await createOrGetWallet(secretPhrase);
       setProfiles(profiles);
-      listenProfileVer(setProfiles, setActivePassport, handlePassport);
-
+      listenProfileVer(setProfiles, setActivePassport, handlePassport, setMiningData);
+	  checkCurrentRate(setMiningData);
       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
-        setaAllNodes(allNodes)
-
+        setSOlanaRPC(allNodes)
+		const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
+		setRandomSolanaRPC(allNodes[randomIndex])
         if (!CoNET_Data || !CoNET_Data?.profiles) {
           return
         }
-
-        startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
+        
       });
 
       handlePassport();

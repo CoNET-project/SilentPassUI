@@ -586,11 +586,15 @@ const getPassportsInfo = async (
   }
 };
 
-const refreshSolanaBalances = async (solanaProfile: profile) => {
+const refreshSolanaBalances = async (solanaProfile: profile, node: nodes_info) => {
+	if (!node) {
+		return
+	}
+  const solanaRPC_url = `http://${node.domain}/solana-rpc`
   try {
     const [sol, sp] = await Promise.all([
-      scanSolanaSol(solanaProfile.keyID),
-      scanSolanaSp(solanaProfile.keyID),
+      scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
+      scanSolanaSp(solanaProfile.keyID, solanaRPC_url),
     ]);
 
     if (solanaProfile.tokens?.sol) {

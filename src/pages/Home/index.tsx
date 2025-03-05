@@ -90,7 +90,7 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
 
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin } = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, randomSolanaRPC, setRandomSolanaRPC } = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);

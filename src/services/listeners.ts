@@ -14,6 +14,7 @@ import {
 } from "../utils/globals";
 import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
+import {checkCurrentRate} from '../services/passportPurchase'
 import {
   getPassportsInfoForProfile,
   getVpnTimeUsed,
@@ -28,6 +29,7 @@ const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
   _setActivePassport: (profiles: freePassport) => void,
   _updateCurrentPassport: () => Promise<void>,
+  setMiningData: (response: nodeResponse) => void
 ) => {
   epoch = await conetProvider.getBlockNumber();
 
@@ -49,7 +51,8 @@ const listenProfileVer = async (
         runningList.push(getProfileAssets(profiles[0], profiles[1]));
 
         await Promise.all(runningList);
-
+		//	get rate update
+		checkCurrentRate (setMiningData);
         await getVpnTimeUsed();
 
         await getPassportsInfoForProfile(profiles[0]);
@@ -84,15 +87,13 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
       profile.tokens = initProfileTokens();
     }
 
-    const [cCNTP, conet, conetDepin, conet_eth, eth, sol, sp] =
+    const [cCNTP, conet, conetDepin, conet_eth, eth] =
       await Promise.all([
         scanCCNTP(key),
         scanCONETHolesky(key),
         scanCONETDepin(key),
         scanConetETH(key),
-        scanETH(key),
-        scanSolanaSol(solanaKey),
-        scanSolanaSp(solanaKey),
+        scanETH(key)
       ]);
 
     if (profile.tokens?.cCNTP) {
@@ -177,34 +178,6 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
       };
     }
 
-    if (solanaProfile.tokens?.sol) {
-      solanaProfile.tokens.sol.balance =
-        sol === false ? solanaProfile.tokens.sol.balance : sol?.toFixed(6);
-    } else {
-      solanaProfile.tokens.sol = {
-        balance: sol === false ? "" : sol?.toFixed(6),
-        network: "Solana Mainnet",
-        decimal: 18,
-        contract: "",
-        name: "sol",
-      };
-    }
-
-    if (solanaProfile.tokens?.sp) {
-      solanaProfile.tokens.sp.balance =
-        sp === false
-          ? solanaProfile.tokens.sp.balance
-          : parseFloat(sp).toFixed(6);
-    } else {
-      solanaProfile.tokens.sp = {
-        balance: sp === false ? "" : parseFloat(sp).toFixed(6),
-        network: "Solana Mainnet",
-        decimal: 18,
-        contract: "",
-        name: "sp",
-      };
-    }
-
     const temp = CoNET_Data;
 
     if (!temp) {
@@ -250,7 +223,7 @@ const scanETH = async (walletAddr: string) => {
   return await scan_natural_balance(walletAddr, ethProvider);
 };
 
-const scanSolanaSol = async (walletAddr: string) => {
+const scanSolanaSol = async (walletAddr: string, randomSolanaRPC: string) => {
   try {
     // Validate wallet address format
     if (!PublicKey.isOnCurve(walletAddr)) {
@@ -264,7 +237,7 @@ const scanSolanaSol = async (walletAddr: string) => {
       params: [walletAddr],
     };
 
-    const response = await fetch(solanaRpc, {
+    const response = await fetch(randomSolanaRPC, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -288,8 +261,8 @@ const scanSolanaSol = async (walletAddr: string) => {
   }
 };
 
-const scanSolanaSp = async (walletAddr: string) => {
-  return await scan_spl_balance(walletAddr, contracts.PassportSolana.address);
+const scanSolanaSp = async (walletAddr: string, solanaRPC_url: string) => {
+  return await scan_spl_balance(walletAddr, contracts.PassportSolana.address, solanaRPC_url);
 };
 
 const scan_erc20_balance: (
@@ -324,7 +297,7 @@ const scan_natural_balance = async (walletAddr: string, provider: any) => {
   }
 };
 
-const scan_spl_balance = async (walletAddr: string, tokenAddress: string) => {
+const scan_spl_balance = async (walletAddr: string, tokenAddress: string, solanaRPC_url: string ) => {
   try {
     const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"; // Solana SPL Token Program ID
 
@@ -339,7 +312,7 @@ const scan_spl_balance = async (walletAddr: string, tokenAddress: string) => {
       ],
     };
 
-    const response = await fetch(solanaRpc, {
+    const response = await fetch(solanaRPC_url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

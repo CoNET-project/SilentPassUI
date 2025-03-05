@@ -23,7 +23,7 @@ interface AccountListProps {
 
 export default function AccountList({ showMainWallet = true, simplifiedView = false, spInUsd = 0, solInUsd = 0 }: AccountListProps) {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-  const { profiles, activePassport, setProfiles } = useDaemonContext();
+  const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes } = useDaemonContext();
 
   const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
   const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
@@ -61,7 +61,19 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
     setIsRefreshingSolanaBalances(true);
 
     try {
-      await refreshSolanaBalances(profiles?.[1]);
+		let _randomSolanaRPC = randomSolanaRPC
+		if (!_randomSolanaRPC) {
+			const nodes = getAllNodes
+			const index = Math.floor(Math.random() * (nodes.length - 1))
+			await refreshSolanaBalances(profiles?.[1], nodes[index]);
+
+		} else {
+			await refreshSolanaBalances(profiles?.[1], _randomSolanaRPC);
+		}
+
+			
+		
+      
 
       storeSystemData();
 

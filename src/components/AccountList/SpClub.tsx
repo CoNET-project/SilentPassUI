@@ -8,11 +8,11 @@ export default function SpClub() {
 
   return (
     <div className={`account-wrapper referral-program ${isOpen ? 'active' : ''}`}>
-      {/* <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}> */}
-      <div className="disabled account-main-card">
-        <div>
+      <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}>
+        {/* <div className="disabled account-main-card"> */}
+        <div className="name">
           <h3>Join SP Club</h3>
-          <img className="chevron" src="./assets/right-chevron.svg" />
+          <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
         </div>
       </div>
       <div className="info-card">
@@ -21,6 +21,22 @@ export default function SpClub() {
             <p>Input you inviter wallet address</p>
             <input value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="wallet address" />
           </div>
+
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '24px', flexDirection: 'row', alignItems: 'center' }}>
+            <div style={{ width: '100%', height: '1px', background: '#FFFFFF' }} />
+
+            <div>
+              <p style={{ fontSize: '20px' }}>or</p>
+            </div>
+
+            <div style={{ width: '100%', height: '1px', background: '#FFFFFF' }} />
+
+          </div>
+
+          <div style={{ width: '100%' }}>
+            <p style={{ width: '100%', textAlign: 'center', fontSize: '16px' }}>Get Silent Pass Passport and join the club</p>
+          </div>
+
           <button><p>Confirm</p></button>
         </div>
       </div>

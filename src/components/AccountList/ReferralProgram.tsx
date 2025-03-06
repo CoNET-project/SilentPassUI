@@ -53,7 +53,8 @@ export default function ReferralProgram() {
 
   return (
     <div className={`account-wrapper ${openAccountList.includes(profiles?.[0]?.keyID) ? 'active' : ''}`}>
-      <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}>
+      {/* <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}> */}
+      <div className="disabled account-main-card">
         <div className="name">
           <h3>Referral Program</h3>
           <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />

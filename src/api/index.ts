@@ -53,7 +53,8 @@ export const joinSpClub = async (
 ) => {
   const message = JSON.stringify({
     walletAddress: conetProfile.keyID,
-    // solanaWallet: solanaProfile.keyID,
+    solanaWallet: solanaProfile.keyID,
+    referrer: "",
   });
 
   const wallet = new ethers.Wallet(conetProfile.privateKeyArmor);

@@ -86,6 +86,7 @@ function App() {
 
       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setSOlanaRPC(allNodes)
+		setaAllNodes(allNodes)
         const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
         setRandomSolanaRPC(allNodes[randomIndex])
         if (!CoNET_Data || !CoNET_Data?.profiles) {

@@ -177,7 +177,7 @@ const Home = () => {
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
-
+	
     if (power) {
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
@@ -265,20 +265,21 @@ const Home = () => {
       const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
       const base64VPNMessage = btoa(stringifiedVPNMessageObject);
       window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
-    } else {
+    }
       try {
         await startSilentPass(startVPNMessageObject);
       } catch (ex) {
-        error = true
-        setErrorMessage(GENERIC_ERROR);
+        // error = true
+        // setErrorMessage(GENERIC_ERROR);
       }
-    }
 
     setTimeout(() => {
       setIsConnectionLoading(false)
 
-      if (!error)
-        setPower(true);
+      if (!error) {
+		setPower(true);
+	  }
+        
     }, 1000)
 
     return

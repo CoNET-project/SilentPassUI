@@ -68,6 +68,7 @@ interface profile extends keyPair {
   tokens: conet_tokens;
   isNode: boolean;
   referrer: string | null | undefined;
+  spClub?: SpClub;
   data?: any;
   type?: keyPairType;
   nodeID?: number;
@@ -76,6 +77,13 @@ interface profile extends keyPair {
   activePassport?: freePassport;
   vpnTimeUsedInMin?: number;
   silentPassPassports?: passportInfo[];
+}
+
+interface SpClub {
+  memberId: string;
+  referrer: string;
+  referees: string[];
+  totalReferees: number;
 }
 
 type encrypt_keys_object = {
@@ -149,7 +157,7 @@ interface nodeResponse {
   currentCCNTP?: string;
   minerResponseHash?: string;
   userWallets?: string[];
-  totalUsers: string
+  totalUsers: string;
   nodeWallets?: string[];
   online?: string;
 }

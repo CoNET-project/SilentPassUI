@@ -19,24 +19,14 @@ import { ethers } from 'ethers';
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 
-export default function ReferralProgram() {
-  const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-  const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes } = useDaemonContext();
+const SP_EARNED_FROM_REFERRAL = 10
 
-  const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
-  const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
-  const [passportToChange, setPassportToChange] = useState();
-  const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
+export default function ReferralProgram() {
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const { profiles } = useDaemonContext();
+
   const [isAddressHidden, setIsAddressHidden] = useState(true);
   const [copied, setCopied] = useState(false);
-
-  const { isSelectPassportPopupOpen, setIsSelectPassportPopupOpen } = useDaemonContext();
-
-  function toggleAccount(accountAddress: string) {
-    setOpenAccountList((prev) => (
-      prev.includes(accountAddress) ? prev.filter((item) => item !== accountAddress) : [...prev, accountAddress]
-    ))
-  }
 
   function handleCopy() {
     navigator.clipboard.writeText(profiles?.[0]?.keyID);
@@ -52,8 +42,8 @@ export default function ReferralProgram() {
   }
 
   return (
-    <div className={`account-wrapper ${openAccountList.includes(profiles?.[0]?.keyID) ? 'active' : ''}`}>
-      {/* <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}> */}
+    <div className={`account-wrapper ${isOpen ? 'active' : ''}`}>
+      {/* <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}> */}
       <div className="disabled account-main-card">
         <div className="name">
           <h3>Referral Program</h3>
@@ -109,13 +99,13 @@ export default function ReferralProgram() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <p>Referees</p>
             </div>
-            <p>{100}</p>
+            <p>{profiles?.[0]?.spClub?.referees?.length}</p>
           </div>
           <div style={{ marginLeft: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <p>$SP</p>
             </div>
-            <p>{100.0006453}</p>
+            <p>{(Number(profiles?.[0]?.spClub?.totalReferees) * SP_EARNED_FROM_REFERRAL) || 0}</p>
           </div>
         </div>
 
@@ -124,12 +114,11 @@ export default function ReferralProgram() {
         <div className="info-wrapper" style={{ maxHeight: '200px', overflowY: 'auto', }}>
           <p>History</p>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', paddingLeft: '16px' }}>
-            {(profiles?.[0]?.silentPassPassports && profiles?.[0]?.activePassport)
-              ?
-              (
+            {profiles?.[0]?.spClub?.referees
+              ? profiles?.[0]?.spClub.referees?.map((referee: any) =>
                 <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', gap: '8px' }}>
-                  <p style={{ width: 'auto', fontSize: '16px', color: '#989899', fontWeight: 400 }}>{'0x628r9823u98u98sud9f8u'.slice(0, 5) + '...' + '0x628r9823u98u98sud9f8u'.slice(-5)}</p>
-                  <p style={{ width: 'auto', fontSize: '16px', color: '#9FBFE5FE', fontWeight: 400 }}>+ 10 $SP</p>
+                  <p style={{ width: 'auto', fontSize: '16px', color: '#989899', fontWeight: 400 }}>{referee?.slice(0, 5) + '...' + referee?.slice(-5)}</p>
+                  <p style={{ width: 'auto', fontSize: '16px', color: '#9FBFE5FE', fontWeight: 400 }}>+ {SP_EARNED_FROM_REFERRAL} $SP</p>
                 </div>
               )
               : <Skeleton width={'100%'} height={'20px'} />}

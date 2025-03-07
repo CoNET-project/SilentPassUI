@@ -737,6 +737,55 @@ const refreshSolanaBalances = async (
   }
 };
 
+const getSpClubInfo = async (profile: profile) => {
+  const temp = CoNET_Data;
+
+  if (!temp) {
+    return false;
+  }
+
+  const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider);
+  const contract = new ethers.Contract(
+    contracts.SpClub.address,
+    contracts.SpClub.abi,
+    wallet
+  );
+
+  if (!profile.spClub) {
+    profile.spClub = {
+      memberId: "0",
+      referrer: "",
+      referees: [],
+      totalReferees: 0,
+    };
+  }
+
+  try {
+    const result = await contract.membership(profile.keyID);
+    profile.spClub.memberId = result;
+  } catch (error) {
+    console.log(error);
+  }
+
+  try {
+    const result = await contract.getReferrer(profile.keyID);
+    profile.spClub.referrer = result;
+  } catch (error) {
+    console.log(error);
+  }
+
+  try {
+    const result = await contract.getReferees(profile.keyID, 0);
+    profile.spClub.referees = result.referees;
+    profile.spClub.totalReferees = result._total_length;
+  } catch (error) {
+    console.log(error);
+  }
+
+  temp.profiles[0] = profile;
+  setCoNET_Data(temp);
+};
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -751,4 +800,5 @@ export {
   getVpnTimeUsed,
   getPassportsInfoForProfile,
   refreshSolanaBalances,
+  getSpClubInfo,
 };

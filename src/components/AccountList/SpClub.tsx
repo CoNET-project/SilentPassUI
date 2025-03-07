@@ -7,6 +7,7 @@ export default function SpClub() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [walletAddress, setWalletAddress] = useState('');
   const [isCongratsPopupOpen, setIsCongratsPopupOpen] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   return (
     <>
@@ -40,7 +41,7 @@ export default function SpClub() {
               <p style={{ width: '100%', textAlign: 'center', fontSize: '16px' }}>Get Silent Pass Passport and join the club</p>
             </div>
 
-            <button><p>Confirm</p></button>
+            <button><p>Join Club</p></button>
           </div>
         </div>
       </div>

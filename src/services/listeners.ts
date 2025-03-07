@@ -16,6 +16,7 @@ import { initProfileTokens } from "../utils/utils";
 import { checkCurrentRate } from "../services/passportPurchase";
 import {
   getPassportsInfoForProfile,
+  getSpClubInfo,
   getVpnTimeUsed,
   storeSystemData,
 } from "./wallets";
@@ -45,9 +46,10 @@ const listenProfileVer = async (
       setProcessingBlock(true);
 
       if (block % 10 === 0) {
-        await getProfileAssets(profiles[0], profiles[1]);
         checkCurrentRate(setMiningData);
+        await getProfileAssets(profiles[0], profiles[1]);
         await getVpnTimeUsed();
+        await getSpClubInfo(profiles[0]);
       }
 
       if (block % 2 === 0) {

@@ -18,13 +18,27 @@ const Backdrop = styled.div`
 const PopupContainer = styled.div`
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 56px;
   background: #191919;
   border-radius: 16px;
-  padding: 16px;
   width: 100%;
   max-width: 380px;
 `;
+
+const PopupContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 56px;
+  padding: 0 16px 16px 16px;
+  width: 100%;
+`;
+
+const CardTop = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+`
 
 const TextContent = styled.div`
   display: flex;
@@ -67,25 +81,34 @@ const Button = styled.button`
   background-color: #9fbfe533;
 `;
 
-const SpClubCongratsPopup = ({ setIsCongratsPopupOpen }: { setIsCongratsPopupOpen: React.Dispatch<React.SetStateAction<boolean>> }) => {
+const SP_EARNED_FROM_REFERRAL = 10
+
+const SpClubCongratsPopup = ({ setIsCongratsPopupOpen, memberId }: any) => {
 
   return (
     <Backdrop onClick={() => setIsCongratsPopupOpen(false)}>
       <PopupContainer onClick={(e) => e.stopPropagation()}>
-        <TextContent>
-          <TitleContainer>
-            <div style={{ fontSize: '32px' }}>Congratulations!</div>
-            <div style={{ fontSize: '20px', width: '300px' }}>You've earned <span style={{ color: '#9FBFE5FE', fontWeight: '700' }}>10 $SP</span> and unlocked access to the <span style={{ color: '#9FBFE5FE', fontWeight: '700' }}>$SP Club!</span></div>
-          </TitleContainer>
-          <InfoContainer>
-            <div style={{ fontSize: '16px', color: '#989899' }}>Your SP Club Member ID:</div>
-            <div style={{ fontSize: '16px' }}>#123454354</div>
-          </InfoContainer>
-        </TextContent>
+        <CardTop>
+          <img src="/assets/congrats-card-top.png" alt="congrats" style={{ width: '100%', height: '100%', borderRadius: '16px 16px 0 0' }} />
+          <img src="/assets/clapping-hands.png" alt="congrats" style={{ width: '88px', height: '88px', marginTop: '-65px' }} />
+        </CardTop>
 
-        <ButtonsContainer>
-          <Button onClick={() => setIsCongratsPopupOpen(false)}>Close</Button>
-        </ButtonsContainer>
+        <PopupContent>
+          <TextContent>
+            <TitleContainer>
+              <div style={{ fontSize: '32px' }}>Congratulations!</div>
+              <div style={{ fontSize: '20px', width: '300px' }}>You've earned <span style={{ color: '#9FBFE5FE', fontWeight: '700' }}>{SP_EARNED_FROM_REFERRAL} $SP</span> and unlocked access to the <span style={{ color: '#9FBFE5FE', fontWeight: '700' }}>$SP Club!</span></div>
+            </TitleContainer>
+            <InfoContainer>
+              <div style={{ fontSize: '16px', color: '#989899' }}>Your SP Club Member ID:</div>
+              <div style={{ fontSize: '16px' }}>{memberId}</div>
+            </InfoContainer>
+          </TextContent>
+
+          <ButtonsContainer>
+            <Button onClick={() => setIsCongratsPopupOpen(false)}>Close</Button>
+          </ButtonsContainer>
+        </PopupContent>
       </PopupContainer>
     </Backdrop>
   );

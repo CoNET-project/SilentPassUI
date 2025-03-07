@@ -1,6 +1,6 @@
 import bs58 from "bs58";
 import { Keypair } from "@solana/web3.js";
-import { XMLHttpRequestTimeout } from "./constants";
+import { apiv4_endpoint, XMLHttpRequestTimeout } from "./constants";
 import contracts from "./contracts";
 
 export const customJsonStringify = (item: any) => {
@@ -230,3 +230,12 @@ export function isValidSolanaBase58PrivateKey(base58Key: string) {
     return false;
   }
 }
+
+export const getCONET_api_health = async () => {
+  const url = `${apiv4_endpoint}health`;
+  const result: any = await postToEndpoint(url, false, null);
+  if (result?.health === true) {
+    return true;
+  }
+  return false;
+};

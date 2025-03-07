@@ -2,6 +2,9 @@ import { useState } from 'react'
 
 import "./index.css";
 import SpClubCongratsPopup from '../SpClubCongratsPopup';
+import SimpleLoadingRing from '../SimpleLoadingRing';
+import { joinSpClub } from '../../api';
+import { useDaemonContext } from '../../providers/DaemonProvider';
 
 export default function SpClub() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -9,11 +12,28 @@ export default function SpClub() {
   const [isCongratsPopupOpen, setIsCongratsPopupOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
+  const { profiles } = useDaemonContext();
+
+  const handleJoinClub = async () => {
+    setIsLoading(true)
+
+    try {
+      const result = await joinSpClub(profiles[0], profiles[1]);
+
+      if (result !== false)
+        setIsCongratsPopupOpen(true)
+    } catch (error) {
+      console.log(error);
+    }
+
+    setTimeout(() => setIsLoading(false), 2000)
+  }
+
   return (
     <>
       <div className={`account-wrapper referral-program ${isOpen ? 'active' : ''}`}>
-        {/* <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}> */}
-        <div className="disabled account-main-card">
+        <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}>
+          {/* <div className="disabled account-main-card"> */}
           <div className="name">
             <h3>Join SP Club</h3>
             <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
@@ -41,7 +61,11 @@ export default function SpClub() {
               <p style={{ width: '100%', textAlign: 'center', fontSize: '16px' }}>Get Silent Pass Passport and join the club</p>
             </div>
 
-            <button><p>Join Club</p></button>
+            <button onClick={handleJoinClub}>
+              {isLoading ? <SimpleLoadingRing /> :
+                <p>Join Club</p>
+              }
+            </button>
           </div>
         </div>
       </div>

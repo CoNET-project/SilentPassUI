@@ -182,14 +182,14 @@ const Home = () => {
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
-      } else {
-        try {
-          const response = await stopSilentPass();
-          if (response.status === 200) {
-            setPower(false);
-          }
-        } catch (ex) { }
-      }
+      } 
+	try {
+		const response = await stopSilentPass();
+		if (response.status === 200) {
+		setPower(false);
+		}
+	} catch (ex) { }
+      
       setTimeout(() => setIsConnectionLoading(false), 1000)
       return
     }

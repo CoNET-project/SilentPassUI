@@ -621,6 +621,8 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
       (passport) => passport.expiresDays !== 7
     );
 
+  allPassports = allPassports.filter((passport) => passport.nftID !== 0);
+
   allPassports?.sort((a, b) => {
     return a.nftID - b.nftID;
   });

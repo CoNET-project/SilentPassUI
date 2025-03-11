@@ -18,6 +18,7 @@ import { ethers } from 'ethers';
 
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
+import { getPassportTitle } from '../../utils/utils';
 
 const SP_EARNED_FROM_REFERRAL = 10
 
@@ -42,7 +43,7 @@ export default function ReferralProgram() {
   }
 
   return (
-    <div className={`account-wrapper ${isOpen ? 'active' : ''}`}>
+    <div className={`account-wrapper fit-content ${isOpen ? 'active' : ''}`}>
       <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
@@ -116,11 +117,11 @@ export default function ReferralProgram() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', paddingLeft: '16px' }}>
             {profiles?.[0]?.spClub
               ?
-              profiles.spClub?.totalReferees > 0 ?
+              profiles?.[0].spClub?.totalReferees > 0 ?
                 profiles?.[0]?.spClub.referees?.map((referee: any) =>
                   <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', gap: '8px' }}>
-                    <p style={{ width: 'auto', fontSize: '16px', color: '#FFFFFF', fontWeight: 400 }}>{referee.activePlan}</p>
-                    <p style={{ width: 'auto', fontSize: '16px', color: '#989899', fontWeight: 400 }}>{referee.walletAddress?.slice(0, 5) + '...' + referee?.slice(-5)}</p>
+                    <p style={{ width: 'auto', fontSize: '16px', color: '#FFFFFF', fontWeight: 400 }}>{getPassportTitle(referee?.activePassport)}</p>
+                    <p style={{ width: 'auto', fontSize: '16px', color: '#989899', fontWeight: 400 }}>{referee?.walletAddress?.slice(0, 5) + '...' + referee?.walletAddress?.slice(-5)}</p>
                   </div>
                 ) :
                 <p>No invitees</p>

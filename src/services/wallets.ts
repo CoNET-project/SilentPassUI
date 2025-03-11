@@ -789,7 +789,8 @@ const getSpClubInfo = async (profile: profile) => {
 
     try {
       const refereesResult = await contract.getReferees(profile.keyID, 0);
-      profile.spClub.totalReferees = refereesResult._total_length;
+      profile.spClub.totalReferees = Number(refereesResult._total_length);
+      profile.spClub.referees = [];
 
       if (
         refereesResult?.referees?.length > 0 &&
@@ -798,28 +799,30 @@ const getSpClubInfo = async (profile: profile) => {
       )
         profile.spClub.totalReferees = 0;
 
-      refereesResult.referees
-        .filter(
-          (referee: string) =>
-            referee !== "0x0000000000000000000000000000000000000000"
-        )
-        .forEach(async (referee: string) => {
-          const _activePassport = await getCurrentPassportInfo(referee);
+      const validReferees = refereesResult.referees.filter(
+        (referee: string) =>
+          referee !== "0x0000000000000000000000000000000000000000"
+      );
 
-          const activePassport = {
-            nftID: _activePassport?.nftIDs?.toString(),
-            expires: _activePassport?.expires?.toString(),
-            expiresDays: _activePassport?.expiresDays?.toString(),
-            premium: _activePassport?.premium,
-          };
+      // Use map to handle async operations
+      const refereePromises = validReferees.map(async (referee: string) => {
+        const _activePassport = await getCurrentPassportInfo(referee);
 
-          const _referee = {
-            walletAddress: referee,
-            activePassport: activePassport,
-          };
+        const activePassport = {
+          nftID: _activePassport?.nftIDs?.toString(),
+          expires: _activePassport?.expires?.toString(),
+          expiresDays: _activePassport?.expiresDays?.toString(),
+          premium: _activePassport?.premium,
+        };
 
-          profile.spClub?.referees.push(_referee);
-        });
+        return {
+          walletAddress: referee,
+          activePassport: activePassport,
+        };
+      });
+
+      // Wait for all promises to resolve
+      profile.spClub.referees = await Promise.all(refereePromises);
     } catch (error) {
       console.log(error);
     }

@@ -65,7 +65,7 @@ export default function SpClub() {
           </div>
 
           {
-            profiles?.[0]?.spClub?.referrer &&
+            profiles?.[0]?.spClub?.referrer && profiles?.[0]?.spClub?.referrer?.toString() !== '' &&
             <div>
               <p style={{ fontSize: '14px', color: '#FFFFFF' }}>Inviter</p>
               <p style={{ fontSize: '16px', color: '#989899' }}>{profiles?.[0]?.spClub?.referrer?.toString().slice(0, 5) + '...' + profiles?.[0]?.spClub?.referrer?.toString().slice(-5)}</p>
@@ -116,7 +116,7 @@ export default function SpClub() {
 
   return (
     <>
-      <div className={`account-wrapper referral-program ${isOpen ? 'active' : ''}`}>
+      <div className={`account-wrapper referral-program fit-content ${isOpen ? 'active' : ''}`} >
         <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}>
           {/* <div className="disabled account-main-card"> */}
           <div className="name">

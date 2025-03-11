@@ -69,7 +69,15 @@ function App() {
     }
 
     const init = async () => {
-      const vpnTimeUsedInMin = parseInt(localStorage.getItem("vpnTimeUsedInMin") || "0");
+		let vpnTimeUsedInMin = 0
+		try {
+			const ss = await localStorage.getItem("vpnTimeUsedInMin")
+			if (ss) {
+				vpnTimeUsedInMin = parseInt(ss)
+			}
+		} catch (ex) {
+
+		}
       _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
 
       const queryParams = parseQueryParams(window.location.search);

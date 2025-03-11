@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import './index.css';
 
+import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
+import { ReactComponent as SpToken } from './assets/sp-token.svg';
+
 const TokenCard: React.FC<{ token: any }> = ({ token }) => {
   return (
     <div className="token-card">
       <div className="token-info">
-        <img src={token.logo} alt={token.label} className="token-logo" />
+        {token.logo}
         <div>
           <p className="token-label">{token.label}</p>
           <p
@@ -36,7 +39,7 @@ export default function TokenTab() {
   const tokens = [
     {
       "label" : "Silent Pass",
-      "logo": "SPLogo",
+      "logo": <SpToken width={32} height={32} />,
       "priceVariation": 0.5381,
       "amount": "18.61M",
       "price": 541.51,
@@ -44,13 +47,13 @@ export default function TokenTab() {
     },
     {
       "label" : "Solana",
-      "logo": "SolanaLogo",
+      "logo": <SolanaToken width={32} height={32} />,
       "priceVariation": -0.002,
       "amount": 0.902,
       "price": 138.39,
       "currency": "SOL"
     },
-    
+
   ]
 
   const [tokenData, setTokenData] = useState<any>({
@@ -62,7 +65,7 @@ export default function TokenTab() {
     "impact":1.41
   })
 
-  
+
 
   return (
     <div style={{width:"100%"}}>

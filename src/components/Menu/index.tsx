@@ -11,7 +11,6 @@ import { ReactComponent as SupportIconGrey } from "./assets/support-icon-grey.sv
 import { ReactComponent as SupportIconBlue } from "./assets/support-icon-blue.svg"
 import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg"
 import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg"
-import { ReactComponent as SwapIconDisabled } from "./assets/swap-icon-disabled.svg"
 
 export default function Menu() {
   const navigate = useNavigate();
@@ -27,8 +26,8 @@ export default function Menu() {
         {location.pathname === "/wallet" ? <WalletBlueIcon /> : <WalletIconGrey />}
         <p>My Account</p>
       </button>
-      <button disabled style={{ cursor: 'not-allowed' }}>
-        <SwapIconDisabled />
+      <button className={location.pathname === "/swap" ? "active" : ""} onClick={() => navigate("/swap")}>
+      {location.pathname === "/settings" ? <SwapBlueIcon /> : <SwapIconGrey />}
         <p style={{ color: '#5a5a5afe' }}>Swap</p>
       </button>
       <button className={location.pathname === "/settings" ? "active" : ""} onClick={() => navigate("/settings")}>

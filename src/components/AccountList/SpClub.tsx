@@ -65,10 +65,10 @@ export default function SpClub() {
           </div>
 
           {
-            profiles?.[0]?.spClub?.inviter &&
+            profiles?.[0]?.spClub?.referrer &&
             <div>
               <p style={{ fontSize: '14px', color: '#FFFFFF' }}>Inviter</p>
-              <p style={{ fontSize: '16px', color: '#989899' }}>{profiles?.[0]?.spClub?.inviter?.toString()}</p>
+              <p style={{ fontSize: '16px', color: '#989899' }}>{profiles?.[0]?.spClub?.referrer?.toString().slice(0, 5) + '...' + profiles?.[0]?.spClub?.referrer?.toString().slice(-5)}</p>
             </div>
           }
 

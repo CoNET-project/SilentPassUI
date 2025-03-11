@@ -68,7 +68,7 @@ const contracts = {
     network: "CONET Holesky",
   },
   SpClub: {
-    address: "0x1FB1E32E801D240C9727c954ff93614Baa933702",
+    address: "0xe1949263B338D8c1eD7d4CbDE2026eb82DB78D3a",
     abi: SpClubAbi,
     network: "CONET DePIN",
   },

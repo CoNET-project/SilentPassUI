@@ -774,16 +774,9 @@ const getSpClubInfo = async (profile: profile) => {
     console.log(error);
   }
 
-  try {
-    const result = await contract.getReferrer(profile.keyID);
-    profile.spClub.referrer = result;
-  } catch (error) {
-    console.log(error);
-  }
-
   if (profile.spClub.memberId) {
     try {
-      const referrerResult = await contract.getReferer(profile.keyID);
+      const referrerResult = await contract.getReferrer(profile.keyID);
 
       if (
         referrerResult.referrer !== "0x0000000000000000000000000000000000000000"

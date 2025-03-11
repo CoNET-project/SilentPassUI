@@ -124,8 +124,8 @@ function App() {
         console.log(ex)
       }
     };
-
-    if (!window?.webkit) {
+	//@ts-ignore
+    if (!window?.webkit && !window?.Android) {
       _getServerIpAddress();
     }
   }, []);

@@ -782,6 +782,7 @@ const getSpClubInfo = async (profile: profile) => {
         referrerResult.referrer !== "0x0000000000000000000000000000000000000000"
       )
         profile.spClub.referrer = referrerResult.referrer;
+      else profile.spClub.referrer = "";
     } catch (error) {
       console.log(error);
     }

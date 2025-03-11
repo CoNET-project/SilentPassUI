@@ -182,14 +182,14 @@ const Home = () => {
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
-      } else {
-        try {
-          const response = await stopSilentPass();
-          if (response.status === 200) {
-            setPower(false);
-          }
-        } catch (ex) { }
-      }
+      } 
+	try {
+		const response = await stopSilentPass();
+		if (response.status === 200) {
+		setPower(false);
+		}
+	} catch (ex) { }
+      
       setTimeout(() => setIsConnectionLoading(false), 1000)
       return
     }
@@ -265,20 +265,21 @@ const Home = () => {
       const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
       const base64VPNMessage = btoa(stringifiedVPNMessageObject);
       window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
-    } else {
-      try {
-        await startSilentPass(startVPNMessageObject);
-      } catch (ex) {
-        error = true
-        setErrorMessage(GENERIC_ERROR);
-      }
+    }
+    try {
+      await startSilentPass(startVPNMessageObject);
+    } catch (ex) {
+      // error = true
+      // setErrorMessage(GENERIC_ERROR);
     }
 
     setTimeout(() => {
       setIsConnectionLoading(false)
 
-      if (!error)
+      if (!error) {
         setPower(true);
+      }
+
     }, 1000)
 
     return
@@ -287,7 +288,7 @@ const Home = () => {
   return (
     <>
       <Header />
-      <div className="home">
+      <div className="home" style={{ overflowX: 'hidden' }}>
         {isInitialLoading ? (
           <>
             <button

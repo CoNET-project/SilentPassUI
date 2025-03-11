@@ -495,7 +495,7 @@ const calculateTransferNftGas = async (toAddr: string, nftId: string) => {
   } catch (ex) {
     console.error("Gas estimation failed:", ex);
   }
-}
+};
 
 const transferNft = async (toAddr: string, nftId: string) => {
   if (!CoNET_Data) {
@@ -533,7 +533,7 @@ const transferNft = async (toAddr: string, nftId: string) => {
     console.log(ex);
     throw ex;
   }
-}
+};
 
 const getVpnTimeUsed = async () => {
   if (!CoNET_Data?.profiles[0]) return;
@@ -672,11 +672,14 @@ const getPassportsInfo = async (
   }
 };
 
-const refreshSolanaBalances = async (solanaProfile: profile, node: nodes_info) => {
-	if (!node) {
-		return
-	}
-  const solanaRPC_url = `http://${node.domain}/solana-rpc`
+const refreshSolanaBalances = async (
+  solanaProfile: profile,
+  node: nodes_info
+) => {
+  if (!node) {
+    return;
+  }
+  const solanaRPC_url = `https://${node.domain}/solana-rpc`;
   try {
     const [sol, sp] = await Promise.all([
       scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
@@ -734,6 +737,55 @@ const refreshSolanaBalances = async (solanaProfile: profile, node: nodes_info) =
   }
 };
 
+const getSpClubInfo = async (profile: profile) => {
+  const temp = CoNET_Data;
+
+  if (!temp) {
+    return false;
+  }
+
+  const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider);
+  const contract = new ethers.Contract(
+    contracts.SpClub.address,
+    contracts.SpClub.abi,
+    wallet
+  );
+
+  if (!profile.spClub) {
+    profile.spClub = {
+      memberId: "0",
+      referrer: "",
+      referees: [],
+      totalReferees: 0,
+    };
+  }
+
+  try {
+    const result = await contract.membership(profile.keyID);
+    profile.spClub.memberId = result;
+  } catch (error) {
+    console.log(error);
+  }
+
+  try {
+    const result = await contract.getReferrer(profile.keyID);
+    profile.spClub.referrer = result;
+  } catch (error) {
+    console.log(error);
+  }
+
+  try {
+    const result = await contract.getReferees(profile.keyID, 0);
+    profile.spClub.referees = result.referees;
+    profile.spClub.totalReferees = result._total_length;
+  } catch (error) {
+    console.log(error);
+  }
+
+  temp.profiles[0] = profile;
+  setCoNET_Data(temp);
+};
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -748,4 +800,5 @@ export {
   getVpnTimeUsed,
   getPassportsInfoForProfile,
   refreshSolanaBalances,
+  getSpClubInfo,
 };

@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import Footer from '../../components/Footer';
 import './index.css';
 import AccountList from '../../components/AccountList';
+import SpClub from '../../components/AccountList/SpClub';
 import ReferralProgram from '../../components/AccountList/ReferralProgram';
 
 export default function Wallet() {
@@ -29,7 +30,11 @@ export default function Wallet() {
         </div>
       </div>
 
-      <ReferralProgram />
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
+        <SpClub />
+        <ReferralProgram />
+      </div>
+
 
       <Footer />
     </div>

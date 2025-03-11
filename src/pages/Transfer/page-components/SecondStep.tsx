@@ -59,14 +59,14 @@ export default function SecondStep({ selectedNftId, updateCounter, gasFee }: Sec
 
             <div>
               <p>GAS Fee</p>
-              {gasFee ? <p>{gasFee} SP</p> : <Skeleton height="19px" width="160px" />}
+              {gasFee ? <p>{gasFee} $ETH</p> : <Skeleton height="19px" width="160px" />}
             </div>
 
             <Separator />
 
             <div>
               <p>Total</p>
-              {gasFee ? <p>{gasFee} SP</p> : <Skeleton height="19px" width="160px" />}
+              {gasFee ? <p>{gasFee} $ETH</p> : <Skeleton height="19px" width="160px" />}
             </div>
           </div>
         </div>

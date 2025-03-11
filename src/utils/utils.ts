@@ -154,6 +154,15 @@ export const getRemainingTime = (timestamp: number): string => {
   )}:${String(seconds).padStart(2, "0")}`;
 };
 
+export const isPassportValid = (timestamp: number): boolean => {
+  const now = Math.floor(Date.now() / 1000); // Convert current time to seconds
+  const diff = timestamp - now;
+
+  if (diff <= 0) return false; // Time has already passed
+
+  return true;
+};
+
 export const parseQueryParams = (queryString: string) => {
   const params = new Map();
 

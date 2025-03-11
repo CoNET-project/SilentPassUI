@@ -288,7 +288,10 @@ const requireFreePassport = async () => {
   }
 };
 
-const getCurrentPassportInfoInChain = async (chain: string) => {
+const getCurrentPassportInfoInChain = async (
+  walletAddress: string,
+  chain: string
+) => {
   if (!CoNET_Data) {
     return;
   }
@@ -318,7 +321,7 @@ const getCurrentPassportInfoInChain = async (chain: string) => {
   );
 
   try {
-    const result = await passportContract.getCurrentPassport(wallet.address);
+    const result = await passportContract.getCurrentPassport(walletAddress);
     return result;
   } catch (ex) {
     console.log(ex);
@@ -415,18 +418,20 @@ const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
   }
 };
 
-const getCurrentPassportInfo = async () => {
-  if (!CoNET_Data) {
-    return;
-  }
-
-  const resultMainnet = await getCurrentPassportInfoInChain("mainnet");
+const getCurrentPassportInfo = async (walletAddress: string) => {
+  const resultMainnet = await getCurrentPassportInfoInChain(
+    walletAddress,
+    "mainnet"
+  );
 
   if (resultMainnet?.nftIDs?.toString() !== "0") {
     return resultMainnet;
   }
 
-  const resultCancun = await getCurrentPassportInfoInChain("cancun");
+  const resultCancun = await getCurrentPassportInfoInChain(
+    walletAddress,
+    "cancun"
+  );
 
   return resultCancun;
 };
@@ -572,7 +577,7 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
   const tmpMainnetPassports = await getPassportsInfo(profile, "mainnet");
 
-  const _currentPassport = await getCurrentPassportInfo();
+  const _currentPassport = await getCurrentPassportInfo(profile.keyID);
 
   profile = {
     ...profile,
@@ -774,16 +779,94 @@ const getSpClubInfo = async (profile: profile) => {
     console.log(error);
   }
 
-  try {
-    const result = await contract.getReferees(profile.keyID, 0);
-    profile.spClub.referees = result.referees;
-    profile.spClub.totalReferees = result._total_length;
-  } catch (error) {
-    console.log(error);
+  if (profile.spClub.memberId) {
+    try {
+      const referrerResult = await contract.getReferer(profile.keyID);
+
+      if (
+        referrerResult.referrer !== "0x0000000000000000000000000000000000000000"
+      )
+        profile.spClub.referrer = referrerResult.referrer;
+    } catch (error) {
+      console.log(error);
+    }
+
+    try {
+      const refereesResult = await contract.getReferees(profile.keyID, 0);
+      profile.spClub.totalReferees = refereesResult._total_length;
+
+      if (
+        refereesResult?.referees?.length > 0 &&
+        refereesResult?.referees?.[0] ===
+          "0x0000000000000000000000000000000000000000"
+      )
+        profile.spClub.totalReferees = 0;
+
+      refereesResult.referees
+        .filter(
+          (referee: string) =>
+            referee !== "0x0000000000000000000000000000000000000000"
+        )
+        .forEach(async (referee: string) => {
+          const _activePassport = await getCurrentPassportInfo(referee);
+
+          const activePassport = {
+            nftID: _activePassport?.nftIDs?.toString(),
+            expires: _activePassport?.expires?.toString(),
+            expiresDays: _activePassport?.expiresDays?.toString(),
+            premium: _activePassport?.premium,
+          };
+
+          const _referee = {
+            walletAddress: referee,
+            activePassport: activePassport,
+          };
+
+          profile.spClub?.referees.push(_referee);
+        });
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   temp.profiles[0] = profile;
   setCoNET_Data(temp);
+};
+
+const getSpClubMemberId = async (profile: profile) => {
+  const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider);
+  const contract = new ethers.Contract(
+    contracts.SpClub.address,
+    contracts.SpClub.abi,
+    wallet
+  );
+
+  if (!profile.spClub) {
+    profile.spClub = {
+      memberId: "0",
+      referrer: "",
+      referees: [],
+      totalReferees: 0,
+    };
+  }
+
+  try {
+    const result = await contract.membership(profile.keyID);
+    profile.spClub.memberId = result;
+  } catch (error) {
+    console.log(error);
+  }
+
+  const temp = CoNET_Data;
+
+  if (!temp) {
+    return "0";
+  }
+
+  temp.profiles[0] = profile;
+  setCoNET_Data(temp);
+
+  return profile.spClub.memberId;
 };
 
 export {
@@ -801,4 +884,5 @@ export {
   getPassportsInfoForProfile,
   refreshSolanaBalances,
   getSpClubInfo,
+  getSpClubMemberId,
 };

@@ -43,8 +43,8 @@ export default function ReferralProgram() {
 
   return (
     <div className={`account-wrapper ${isOpen ? 'active' : ''}`}>
-      {/* <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}> */}
-      <div className="disabled account-main-card">
+      <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}>
+        {/* <div className="disabled account-main-card"> */}
         <div className="name">
           <h3>Referral Program</h3>
           <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
@@ -112,15 +112,18 @@ export default function ReferralProgram() {
         <Separator />
 
         <div className="info-wrapper" style={{ maxHeight: '200px', overflowY: 'auto', }}>
-          <p>History</p>
+          <p>Invitees</p>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', paddingLeft: '16px' }}>
-            {profiles?.[0]?.spClub?.referees
-              ? profiles?.[0]?.spClub.referees?.map((referee: any) =>
-                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', gap: '8px' }}>
-                  <p style={{ width: 'auto', fontSize: '16px', color: '#989899', fontWeight: 400 }}>{referee?.slice(0, 5) + '...' + referee?.slice(-5)}</p>
-                  <p style={{ width: 'auto', fontSize: '16px', color: '#9FBFE5FE', fontWeight: 400 }}>+ {SP_EARNED_FROM_REFERRAL} $SP</p>
-                </div>
-              )
+            {profiles?.[0]?.spClub
+              ?
+              profiles.spClub?.totalReferees > 0 ?
+                profiles?.[0]?.spClub.referees?.map((referee: any) =>
+                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', gap: '8px' }}>
+                    <p style={{ width: 'auto', fontSize: '16px', color: '#FFFFFF', fontWeight: 400 }}>{referee.activePlan}</p>
+                    <p style={{ width: 'auto', fontSize: '16px', color: '#989899', fontWeight: 400 }}>{referee.walletAddress?.slice(0, 5) + '...' + referee?.slice(-5)}</p>
+                  </div>
+                ) :
+                <p>No invitees</p>
               : <Skeleton width={'100%'} height={'20px'} />}
           </div>
         </div>

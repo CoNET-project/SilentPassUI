@@ -49,12 +49,13 @@ export const getServerIpAddress = async (): Promise<AxiosResponse<any>> => {
 
 export const joinSpClub = async (
   conetProfile: profile,
-  solanaProfile: profile
+  solanaProfile: profile,
+  referrer: string
 ) => {
   const message = JSON.stringify({
     walletAddress: conetProfile.keyID,
     solanaWallet: solanaProfile.keyID,
-    referrer: "",
+    referrer: referrer,
   });
 
   const wallet = new ethers.Wallet(conetProfile.privateKeyArmor);

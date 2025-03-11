@@ -79,10 +79,15 @@ interface profile extends keyPair {
   silentPassPassports?: passportInfo[];
 }
 
+interface SpClubReferees {
+  walletAddress: string;
+  activePassport: freePassport;
+}
+
 interface SpClub {
   memberId: string;
   referrer: string;
-  referees: string[];
+  referees: SpClubReferees[];
   totalReferees: number;
 }
 

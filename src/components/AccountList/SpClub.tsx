@@ -5,28 +5,113 @@ import SpClubCongratsPopup from '../SpClubCongratsPopup';
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import { joinSpClub } from '../../api';
 import { useDaemonContext } from '../../providers/DaemonProvider';
+import { getSpClubMemberId } from '../../services/wallets';
+import { isPassportValid } from '../../utils/utils';
 
 export default function SpClub() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [walletAddress, setWalletAddress] = useState('');
   const [isCongratsPopupOpen, setIsCongratsPopupOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [memberId, setMemberId] = useState<string>('0');
+  const [referrer, setReferrer] = useState<string>('');
 
   const { profiles } = useDaemonContext();
+
+  const fetchMemberIdWithRetry = async (startTime = Date.now()): Promise<string | null> => {
+    const _memberId = await getSpClubMemberId(profiles[0]);
+
+    if (_memberId.toString() !== '0') {
+      return _memberId.toString();
+    }
+
+    if (Date.now() - startTime >= 60000) { // Stop after 1 minute
+      return null;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    return fetchMemberIdWithRetry(startTime); // Recursive call with startTime
+  };
 
   const handleJoinClub = async () => {
     setIsLoading(true)
 
     try {
-      const result = await joinSpClub(profiles[0], profiles[1]);
+      const result = await joinSpClub(profiles[0], profiles[1], referrer);
 
-      if (result !== false)
+      if (result !== false) {
+        const _memberId = await fetchMemberIdWithRetry()
+
+        if (_memberId === null) throw new Error("Couldn't fetch memberId")
+
+        setMemberId(_memberId);
         setIsCongratsPopupOpen(true)
+      }
     } catch (error) {
       console.log(error);
     }
 
     setTimeout(() => setIsLoading(false), 2000)
+  }
+
+  const renderCardContent = () => {
+    if (profiles?.[0]?.spClub?.memberId && profiles?.[0]?.spClub?.memberId !== '0') {
+      return (
+        <div className="info-wrapper" style={{
+          gap: '16px'
+        }}>
+          <div>
+            <p style={{ fontSize: '14px', color: '#FFFFFF' }}>Member ID</p>
+            <p style={{ fontSize: '16px', color: '#989899' }}>{profiles?.[0]?.spClub?.memberId.toString()}</p>
+          </div>
+
+          {
+            profiles?.[0]?.spClub?.inviter &&
+            <div>
+              <p style={{ fontSize: '14px', color: '#FFFFFF' }}>Inviter</p>
+              <p style={{ fontSize: '16px', color: '#989899' }}>{profiles?.[0]?.spClub?.inviter?.toString()}</p>
+            </div>
+          }
+
+          {
+            !isPassportValid(parseInt(profiles?.[0]?.spClub?.expires)) &&
+            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+              <p style={{ fontSize: '16px', color: '#FFFFFF', textAlign: 'center' }}>Passport Expired.</p>
+              <p style={{ fontSize: '12px', color: '#989899', textAlign: 'center' }}>Buy another passport to reactivate your club membership.</p>
+            </div>
+          }
+        </div>
+      )
+    }
+
+    return (
+      <div className="info-wrapper" style={{ gap: '24px' }}>
+        <div>
+          <p>Input you inviter's wallet address</p>
+          <input value={referrer} onChange={(e) => setReferrer(e.target.value)} placeholder="wallet address" style={{ color: '#FFFFFF' }} />
+        </div>
+
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '24px', flexDirection: 'row', alignItems: 'center' }}>
+          <div style={{ width: '100%', height: '1px', background: '#FFFFFF' }} />
+
+          <div>
+            <p style={{ fontSize: '20px' }}>or</p>
+          </div>
+
+          <div style={{ width: '100%', height: '1px', background: '#FFFFFF' }} />
+
+        </div>
+
+        <div style={{ width: '100%' }}>
+          <p style={{ width: '100%', textAlign: 'center', fontSize: '16px' }}>Get Silent Pass Passport and join the club</p>
+        </div>
+
+        <button style={{ cursor: 'pointer' }} onClick={handleJoinClub}>
+          {isLoading ? <SimpleLoadingRing /> :
+            <p>Join Club</p>
+          }
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -40,39 +125,14 @@ export default function SpClub() {
           </div>
         </div>
         <div className="info-card">
-          <div className="info-wrapper">
-            <div>
-              <p>Input you inviter wallet address</p>
-              <input value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="wallet address" />
-            </div>
 
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '24px', flexDirection: 'row', alignItems: 'center' }}>
-              <div style={{ width: '100%', height: '1px', background: '#FFFFFF' }} />
-
-              <div>
-                <p style={{ fontSize: '20px' }}>or</p>
-              </div>
-
-              <div style={{ width: '100%', height: '1px', background: '#FFFFFF' }} />
-
-            </div>
-
-            <div style={{ width: '100%' }}>
-              <p style={{ width: '100%', textAlign: 'center', fontSize: '16px' }}>Get Silent Pass Passport and join the club</p>
-            </div>
-
-            <button onClick={handleJoinClub}>
-              {isLoading ? <SimpleLoadingRing /> :
-                <p>Join Club</p>
-              }
-            </button>
-          </div>
+          {renderCardContent()}
         </div>
       </div>
 
       {
         isCongratsPopupOpen && (
-          <SpClubCongratsPopup setIsCongratsPopupOpen={setIsCongratsPopupOpen} />
+          <SpClubCongratsPopup setIsCongratsPopupOpen={setIsCongratsPopupOpen} memberId={memberId} />
         )
       }
     </>

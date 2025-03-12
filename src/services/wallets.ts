@@ -744,7 +744,7 @@ const refreshSolanaBalances = async (
   }
 };
 
-const getSpClubInfo = async (profile: profile) => {
+const getSpClubInfo = async (profile: profile, currentPageInvitees: number) => {
   const temp = CoNET_Data;
 
   if (!temp) {
@@ -788,7 +788,10 @@ const getSpClubInfo = async (profile: profile) => {
     }
 
     try {
-      const refereesResult = await contract.getReferees(profile.keyID, 0);
+      const refereesResult = await contract.getReferees(
+        profile.keyID,
+        currentPageInvitees
+      );
       profile.spClub.totalReferees = Number(refereesResult._total_length);
       profile.spClub.referees = [];
 
@@ -826,6 +829,79 @@ const getSpClubInfo = async (profile: profile) => {
     } catch (error) {
       console.log(error);
     }
+  }
+
+  temp.profiles[0] = profile;
+  setCoNET_Data(temp);
+};
+
+const getRefereesPage = async (
+  profile: profile,
+  currentPageInvitees: number
+) => {
+  const temp = CoNET_Data;
+
+  if (!temp) {
+    return false;
+  }
+
+  const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider);
+  const contract = new ethers.Contract(
+    contracts.SpClub.address,
+    contracts.SpClub.abi,
+    wallet
+  );
+
+  if (!profile.spClub) {
+    profile.spClub = {
+      memberId: "0",
+      referrer: "",
+      referees: [],
+      totalReferees: 0,
+    };
+  }
+
+  try {
+    const refereesResult = await contract.getReferees(
+      profile.keyID,
+      currentPageInvitees
+    );
+    profile.spClub.totalReferees = Number(refereesResult._total_length);
+    profile.spClub.referees = [];
+
+    if (
+      refereesResult?.referees?.length > 0 &&
+      refereesResult?.referees?.[0] ===
+        "0x0000000000000000000000000000000000000000"
+    )
+      profile.spClub.totalReferees = 0;
+
+    const validReferees = refereesResult.referees.filter(
+      (referee: string) =>
+        referee !== "0x0000000000000000000000000000000000000000"
+    );
+
+    // Use map to handle async operations
+    const refereePromises = validReferees.map(async (referee: string) => {
+      const _activePassport = await getCurrentPassportInfo(referee);
+
+      const activePassport = {
+        nftID: _activePassport?.nftIDs?.toString(),
+        expires: _activePassport?.expires?.toString(),
+        expiresDays: _activePassport?.expiresDays?.toString(),
+        premium: _activePassport?.premium,
+      };
+
+      return {
+        walletAddress: referee,
+        activePassport: activePassport,
+      };
+    });
+
+    // Wait for all promises to resolve
+    profile.spClub.referees = await Promise.all(refereePromises);
+  } catch (error) {
+    console.log(error);
   }
 
   temp.profiles[0] = profile;
@@ -884,4 +960,5 @@ export {
   refreshSolanaBalances,
   getSpClubInfo,
   getSpClubMemberId,
+  getRefereesPage,
 };

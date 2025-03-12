@@ -26,7 +26,7 @@ import Transfer from './pages/Transfer';
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, randomSolanaRPC } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
@@ -69,15 +69,15 @@ function App() {
     }
 
     const init = async () => {
-		let vpnTimeUsedInMin = 0
-		try {
-			const ss = await localStorage.getItem("vpnTimeUsedInMin")
-			if (ss) {
-				vpnTimeUsedInMin = parseInt(ss)
-			}
-		} catch (ex) {
+      let vpnTimeUsedInMin = 0
+      try {
+        const ss = await localStorage.getItem("vpnTimeUsedInMin")
+        if (ss) {
+          vpnTimeUsedInMin = parseInt(ss)
+        }
+      } catch (ex) {
 
-		}
+      }
       _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
 
       const queryParams = parseQueryParams(window.location.search);
@@ -124,7 +124,7 @@ function App() {
         console.log(ex)
       }
     };
-	//@ts-ignore
+    //@ts-ignore
     if (!window?.webkit && !window?.Android) {
       _getServerIpAddress();
     }

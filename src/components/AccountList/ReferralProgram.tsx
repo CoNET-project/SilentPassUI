@@ -1,24 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './index.css';
 import Separator from '../Separator';
-import CopyAccountInfo from './CopyAccountInfo';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../Skeleton';
 
-import { ReactComponent as ConetToken } from './assets/conet-token.svg';
-import { ReactComponent as ConetEthToken } from './assets/conet-eth-token.svg';
-import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
-import { ReactComponent as SpToken } from './assets/sp-token.svg';
-import PassportInfo from '../PassportInfo';
-import SelectActivePassportPopup from '../SelectActivePassportPopup';
-import { refreshSolanaBalances, storeSystemData } from '../../services/wallets';
-import { CoNET_Data } from '../../utils/globals';
-import { useNavigate } from 'react-router-dom';
 import { ethers } from 'ethers';
 
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { getPassportTitle } from '../../utils/utils';
+import { currentPageInvitees, setCurrentPageInvitees } from '../../utils/globals';
+import { getRefereesPage } from '../../services/wallets';
 
 const SP_EARNED_FROM_REFERRAL = 10
 
@@ -28,6 +20,30 @@ export default function ReferralProgram() {
 
   const [isAddressHidden, setIsAddressHidden] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [shouldRerender, setShouldRerender] = useState(false);
+
+
+  const handlePreviousPage = async () => {
+    if (currentPageInvitees > 0) {
+      setCurrentPageInvitees(currentPageInvitees - 1)
+      await getRefereesPage(profiles[0], currentPageInvitees)
+      setShouldRerender(true)
+    }
+  }
+
+  const handleNextPage = async () => {
+    if (currentPageInvitees < Math.ceil(profiles?.[0]?.spClub?.totalReferees / 100)) {
+      setCurrentPageInvitees(currentPageInvitees + 1)
+      await getRefereesPage(profiles[0], currentPageInvitees)
+      setShouldRerender(true)
+    }
+  }
+
+  useEffect(() => {
+    if (shouldRerender) {
+      setShouldRerender(false)
+    }
+  }, [shouldRerender])
 
   function handleCopy() {
     navigator.clipboard.writeText(profiles?.[0]?.keyID);
@@ -57,7 +73,7 @@ export default function ReferralProgram() {
           {profiles?.[0]?.keyID ?
             <>
               <div className="copy-text">
-                <p>Wallet Address</p>
+                <p>Copy this wallet address to invite your friends to Silent Pass</p>
                 {
                   isAddressHidden ?
                     <div style={{ filter: 'blur(3px)' }}>
@@ -98,7 +114,7 @@ export default function ReferralProgram() {
           </div>
           <div style={{ marginLeft: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <p>Referees</p>
+              <p>Invitees</p>
             </div>
             <p>{profiles?.[0]?.spClub?.referees?.length}</p>
           </div>
@@ -106,15 +122,16 @@ export default function ReferralProgram() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <p>$SP</p>
             </div>
-            <p>{(Number(profiles?.[0]?.spClub?.totalReferees) * SP_EARNED_FROM_REFERRAL) || 0}</p>
+            <p>0</p>
           </div>
         </div>
 
         <Separator />
 
-        <div className="info-wrapper" style={{ maxHeight: '200px', overflowY: 'auto', }}>
+        <div className="info-wrapper" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
           <p>Invitees</p>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', paddingLeft: '16px' }}>
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', paddingLeft: '16px', maxHeight: '100px', overflowY: 'auto', paddingRight: '10px' }}>
             {profiles?.[0]?.spClub
               ?
               profiles?.[0].spClub?.totalReferees > 0 ?
@@ -126,6 +143,16 @@ export default function ReferralProgram() {
                 ) :
                 <p>No invitees</p>
               : <Skeleton width={'100%'} height={'20px'} />}
+          </div>
+
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <div style={{ cursor: 'pointer' }} onClick={handlePreviousPage}>
+              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} />
+            </div>
+            <div>{currentPageInvitees + 1} of {Math.ceil(profiles?.[0]?.spClub?.totalReferees / 100)}</div>
+            <div style={{ cursor: 'pointer' }} onClick={handleNextPage}>
+              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} style={{ transform: 'rotate(180deg)' }} />
+            </div>
           </div>
         </div>
       </div>

@@ -7,6 +7,7 @@ import {
 } from "../utils/constants";
 import {
   CoNET_Data,
+  currentPageInvitees,
   processingBlock,
   setCoNET_Data,
   setProcessingBlock,
@@ -49,7 +50,7 @@ const listenProfileVer = async (
         checkCurrentRate(setMiningData);
         await getProfileAssets(profiles[0], profiles[1]);
         await getVpnTimeUsed();
-        await getSpClubInfo(profiles[0]);
+        await getSpClubInfo(profiles[0], currentPageInvitees);
       }
 
       if (block % 2 === 0) {

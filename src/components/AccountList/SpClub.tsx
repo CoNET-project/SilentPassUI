@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import "./index.css";
 import SpClubCongratsPopup from '../SpClubCongratsPopup';
@@ -8,14 +8,25 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import { getSpClubMemberId } from '../../services/wallets';
 import { isPassportValid } from '../../utils/utils';
 
+const OneDayInSeconds = 86400;
+
 export default function SpClub() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isCongratsPopupOpen, setIsCongratsPopupOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [memberId, setMemberId] = useState<string>('0');
   const [referrer, setReferrer] = useState<string>('');
+  const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
 
-  const { profiles } = useDaemonContext();
+  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport } = useDaemonContext();
+
+  useEffect(() => {
+    const passportExpiration = profiles?.[0]?.activePassport?.expires
+    if (passportExpiration) {
+      const timeLeft = passportExpiration - Math.floor(Date.now() / 1000)
+      setPassportTimeLeft(timeLeft)
+    }
+  }, [activePassportUpdated, profiles])
 
   const fetchMemberIdWithRetry = async (startTime = Date.now()): Promise<string | null> => {
     const _memberId = await getSpClubMemberId(profiles[0]);
@@ -120,7 +131,15 @@ export default function SpClub() {
         <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}>
           {/* <div className="disabled account-main-card"> */}
           <div className="name">
-            <h3>Join SP Club</h3>
+            <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', alignItems: 'center' }}>
+              <h3>Join SP Club</h3>
+              <div
+                style={{
+                  width: '12px',
+                  height: '12px',
+                }}
+                className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
+            </div>
             <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
           </div>
         </div>

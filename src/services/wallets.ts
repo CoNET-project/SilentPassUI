@@ -11,11 +11,13 @@ import {
   conetDepinProvider,
   conetProvider,
   localDatabaseName,
+  rewardWalletAddress,
+  solanaRpc,
 } from "../utils/constants";
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 import * as Bip39 from "bip39";
-
+import { Connection, PublicKey } from "@solana/web3.js";
 import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
 import { scanSolanaSol, scanSolanaSp } from "./listeners";
@@ -944,6 +946,99 @@ const getSpClubMemberId = async (profile: profile) => {
   return profile.spClub.memberId;
 };
 
+async function getReceivedAmounts(walletAddress: string) {
+  const connection = new Connection(solanaRpc, "confirmed");
+
+  try {
+    const walletPubKey = new PublicKey(walletAddress);
+    const senderPubKey = new PublicKey(rewardWalletAddress);
+
+    // Step 1: Get transaction signatures
+    const signatures = await connection.getSignaturesForAddress(walletPubKey, {
+      limit: 20,
+    });
+
+    if (signatures.length === 0) {
+      console.log("No transactions found.");
+      return [];
+    }
+
+    // For only one transaction it works. Here's an example.
+    // For multiple transactions it fails because the server doesn't support it.
+    // const transaction = await connection.getTransaction(
+    //   signatures[0].signature,
+    //   {
+    //     commitment: "confirmed",
+    //     maxSupportedTransactionVersion: 0, // Ensures we handle versioned transactions
+    //   }
+    // );
+    // console.log(transaction);
+
+    // Step 2: Fetch all transactions in **one batch request**
+    const transactions = await connection.getTransactions(
+      signatures.map((sig) => sig.signature),
+      { commitment: "confirmed" }
+    );
+    // Step 3: Filter transactions where sender matches
+    const receivedTransactions = transactions
+      .filter((tx: any) => tx && tx.meta)
+      .map((tx) => {
+        if (!tx || !tx.meta) return null;
+
+        // Get account balances before and after the transaction
+        const preBalances = tx.meta.preBalances;
+        const postBalances = tx.meta.postBalances;
+
+        // Get account keys (supports both legacy & versioned transactions)
+        const accountKeys =
+          tx.transaction.message.getAccountKeys().staticAccountKeys;
+
+        // Find the index of the recipient (walletAddress) in the account keys
+        const recipientIndex = accountKeys.findIndex(
+          (key: any) => key.toBase58() === walletPubKey.toBase58()
+        );
+
+        if (recipientIndex === -1) return null; // Wallet not found in the transaction
+
+        // Calculate SOL received (in lamports, convert to SOL)
+        const solReceived =
+          (postBalances[recipientIndex] - preBalances[recipientIndex]) / 1e9;
+
+        // Extract token transfers (SPL tokens)
+        const tokenTransfers = tx.meta.postTokenBalances?.map(
+          (tokenBalance: any) => {
+            const preToken = tx?.meta?.preTokenBalances?.find(
+              (pre) =>
+                pre.mint === tokenBalance.mint && pre.owner === walletAddress
+            );
+
+            const receivedAmount =
+              (tokenBalance.uiTokenAmount.uiAmount || 0) -
+              (preToken?.uiTokenAmount.uiAmount || 0);
+
+            return {
+              mint: tokenBalance.mint,
+              receivedAmount,
+            };
+          }
+        );
+
+        return {
+          signature: tx.transaction.signatures[0],
+          solReceived,
+          tokenTransfers,
+        };
+      });
+
+    console.log(receivedTransactions.filter((tx: any) => tx !== null));
+
+    return receivedTransactions.filter((tx: any) => tx !== null);
+  } catch (error) {
+    console.error("Error fetching transaction history:", error);
+    return [];
+  }
+}
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -961,4 +1056,5 @@ export {
   getSpClubInfo,
   getSpClubMemberId,
   getRefereesPage,
+  getReceivedAmounts,
 };

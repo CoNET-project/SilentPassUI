@@ -13,6 +13,7 @@ const _ethRpc = [
 ];
 const solanaRpc = "https://solana-rpc.conet.network";
 const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
+const rewardWalletAddress = "GUq7PhyAUZko2mPhv3CupmdJKQ61LH8VyrdsRL25q7zg";
 
 const conetProvider = new ethers.JsonRpcProvider(conetRpc);
 const ethProvider = new ethers.JsonRpcProvider(ethRpc());
@@ -25,6 +26,7 @@ export {
   apiv4_endpoint,
   conetRpc,
   solanaRpc,
+  rewardWalletAddress,
   conetProvider,
   ethProvider,
   conetDepinProvider,

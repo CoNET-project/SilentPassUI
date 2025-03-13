@@ -42,7 +42,7 @@ export const getServerIpAddress = async (): Promise<AxiosResponse<any>> => {
     const response = await api.get("/ipaddress");
     return response;
   } catch (error) {
-    console.error("Error fetching regions:", error);
+    console.error("Error fetching ipaddress:", error);
     throw error;
   }
 };

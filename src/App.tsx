@@ -89,9 +89,10 @@ function App() {
       }
 
       const profiles = await createOrGetWallet(secretPhrase);
-      setProfiles(profiles);
 
-      listenProfileVer(setProfiles, setActivePassport, setMiningData);
+      console.log("PROFILES: ", profiles);
+
+      setProfiles(profiles);
 
       checkCurrentRate(setMiningData);
 
@@ -104,7 +105,7 @@ function App() {
         if (!CoNET_Data || !CoNET_Data?.profiles) {
           return
         }
-
+        listenProfileVer(setProfiles, setActivePassport, setMiningData);
       });
 
       handlePassport();

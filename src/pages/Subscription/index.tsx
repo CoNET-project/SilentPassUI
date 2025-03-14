@@ -13,6 +13,7 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/global-steps/Loading';
 import Declined from '../../components/global-steps/Declined';
 import { Step } from '../../types/global-types';
+import { calcSpInUsd } from '../../utils/utils';
 
 export default function Subscription() {
   const [step, setStep] = useState<Step>(1);
@@ -87,12 +88,6 @@ export default function Subscription() {
     else if (purchasingPlan === 'premium' && purchasingPlanPaymentTime === 'yearly')
       setPriceInSp(sp9999)
   }, [purchasingPlan, purchasingPlanPaymentTime, sp249, sp2499, sp999, sp9999])
-
-  const calcSpInUsd = (sp9999: string) => {
-    const sp9999Number = Number(sp9999)
-    const _spInUsd = 99.99 / sp9999Number
-    return _spInUsd
-  }
 
   async function handleButtonAction() {
     if (step === 1) {

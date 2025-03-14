@@ -81,6 +81,8 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     if (acc?.mnemonic?.phrase) {
       const result = await initSolana(acc?.mnemonic?.phrase);
 
+      console.log("RESULT: ", result);
+
       const profile2: profile = {
         tokens: initProfileTokens(),
         publicKeyArmor: "",
@@ -688,7 +690,8 @@ const refreshSolanaBalances = async (
   if (!node) {
     return;
   }
-  const solanaRPC_url = `https://${node.domain}`;
+  const solanaRPC_url = `https://${node.domain}/solana-rpc`;
+  /* const solanaRPC_url = `https://solana-rpc.conet.network`; */
   try {
     const [sol, sp] = await Promise.all([
       scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
@@ -970,7 +973,8 @@ async function getReceivedAmounts(
     // For multiple transactions it fails because the server doesn't support it.
     const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
     const _connection1 = new Connection(
-      `https://${_node1.domain}`,
+      `https://${_node1.domain}/solana-rpc`,
+      /* solanaRpc, */
       "confirmed"
     );
     const transaction = await _connection1.getTransaction(

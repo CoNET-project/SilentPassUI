@@ -5,6 +5,8 @@
     border-radius: 8px;
     background: #1a1a1a;
     width: 100%;
+
+    padding: 8px;
   }
 
   .token-card {
@@ -14,6 +16,16 @@
 
     padding: 15px;
     width: 100%;
+
+    cursor: pointer;
+
+    background: #191919;
+
+    transition: background .12s ease;
+  }
+
+  .token-card:hover {
+    background: #292929;
   }
 
   .token-info {

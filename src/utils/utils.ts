@@ -218,6 +218,12 @@ export const getPlanDuration = (passportInfo: any) => {
   if (String(passportInfo?.expiresDays) === "0") return "";
 };
 
+export const calcSpInUsd = (sp9999: string) => {
+  const sp9999Number = Number(sp9999)
+  const _spInUsd = 99.99 / sp9999Number
+  return _spInUsd
+}
+
 export function isValidSolanaBase58PrivateKey(base58Key: string) {
   try {
     // Decode Base58 string to Uint8Array

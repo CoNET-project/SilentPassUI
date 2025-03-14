@@ -3,10 +3,17 @@ import './index.css';
 
 import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
+import { useDaemonContext } from '../../providers/DaemonProvider';
 
-const TokenCard: React.FC<{ token: any }> = ({ token }) => {
+interface TokenTabProps {
+  setTokenGraph: (tokenGraph: string) => void;
+  tokenData: any;
+  quotation: any;
+}
+
+const TokenCard: React.FC<{ token: any, action: () => void }> = ({ token, action }) => {
   return (
-    <div className="token-card">
+    <div className="token-card" onClick={action}>
       <div className="token-info">
         {token.logo}
         <div>
@@ -34,44 +41,35 @@ const TokenCard: React.FC<{ token: any }> = ({ token }) => {
 };
 
 
-export default function TokenTab() {
+export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenTabProps) {
+  const { profiles } = useDaemonContext();
+
+  console.log("PROFILES: ", profiles);
 
   const tokens = [
     {
       "label" : "Silent Pass",
       "logo": <SpToken width={32} height={32} />,
       "priceVariation": 0.5381,
-      "amount": "18.61M",
-      "price": 541.51,
+      "amount": profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6),
+      "price": (profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6)) * quotation["SP"],
       "currency": "$SP"
     },
     {
       "label" : "Solana",
       "logo": <SolanaToken width={32} height={32} />,
       "priceVariation": -0.002,
-      "amount": 0.902,
-      "price": 138.39,
-      "currency": "SOL"
+      "amount": profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6),
+     "price": (profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)) * quotation["SOL"],
+      "currency": "$SOL"
     },
-
   ]
-
-  const [tokenData, setTokenData] = useState<any>({
-    "provider": "CoNet",
-    "token_from": "SOL",
-    "token_to": "$SP",
-    "price_to": 29831412.44,
-    "fees": 0.011,
-    "impact":1.41
-  })
-
-
 
   return (
     <div style={{width:"100%"}}>
       <div className="token-list">
         {tokens.map((token, index) => (
-          <TokenCard key={index} token={token} />
+          <TokenCard key={index} token={token} action={() => setTokenGraph(token.currency)} />
         ))}
       </div>
 

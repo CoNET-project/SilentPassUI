@@ -38,7 +38,7 @@ type DaemonContext = {
   setPurchasingPlan: (val: string) => void
   purchasingPlanPaymentTime: string
   setPurchasingPlanPaymentTime: (val: string) => void
-  randomSolanaRPC: nodes_info|null
+  randomSolanaRPC: nodes_info | null
   setRandomSolanaRPC: (val: nodes_info) => void;
 };
 
@@ -115,7 +115,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [activePassport, setActivePassport] = useState<any>(null);
   const [purchasingPlan, setPurchasingPlan] = useState<string>("premium");
   const [purchasingPlanPaymentTime, setPurchasingPlanPaymentTime] = useState<string>("monthly");
-  const [randomSolanaRPC, setRandomSolanaRPC] = useState<nodes_info|null>(null);
+  const [randomSolanaRPC, setRandomSolanaRPC] = useState<nodes_info | null>(null);
 
   useEffect(() => {
     {
@@ -126,7 +126,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, setRandomSolanaRPC, randomSolanaRPC}}>
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, setRandomSolanaRPC, randomSolanaRPC }}>
       {children}
     </Daemon.Provider>
   );

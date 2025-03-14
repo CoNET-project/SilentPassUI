@@ -26,15 +26,18 @@ import Transfer from './pages/Transfer';
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, randomSolanaRPC } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
   }
   useEffect(() => {
     const handlePassport = async () => {
+      if (!CoNET_Data?.profiles[0]?.keyID) return
+
       await tryToRequireFreePassport();
-      const info = await getCurrentPassportInfo();
+
+      const info = await getCurrentPassportInfo(CoNET_Data?.profiles[0]?.keyID);
 
       const tmpData = CoNET_Data;
 
@@ -66,7 +69,15 @@ function App() {
     }
 
     const init = async () => {
-      const vpnTimeUsedInMin = parseInt(localStorage.getItem("vpnTimeUsedInMin") || "0");
+      let vpnTimeUsedInMin = 0
+      try {
+        const ss = await localStorage.getItem("vpnTimeUsedInMin")
+        if (ss) {
+          vpnTimeUsedInMin = parseInt(ss)
+        }
+      } catch (ex) {
+
+      }
       _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
 
       const queryParams = parseQueryParams(window.location.search);
@@ -86,7 +97,7 @@ function App() {
 
       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setSOlanaRPC(allNodes)
-		setaAllNodes(allNodes)
+        setaAllNodes(allNodes)
         const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
         setRandomSolanaRPC(allNodes[randomIndex])
         if (!CoNET_Data || !CoNET_Data?.profiles) {
@@ -113,8 +124,8 @@ function App() {
         console.log(ex)
       }
     };
-
-    if (!window?.webkit) {
+    //@ts-ignore
+    if (!window?.webkit && !window?.Android) {
       _getServerIpAddress();
     }
   }, []);

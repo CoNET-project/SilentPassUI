@@ -42,19 +42,20 @@ export const getServerIpAddress = async (): Promise<AxiosResponse<any>> => {
     const response = await api.get("/ipaddress");
     return response;
   } catch (error) {
-    console.error("Error fetching regions:", error);
+    console.error("Error fetching ipaddress:", error);
     throw error;
   }
 };
 
 export const joinSpClub = async (
   conetProfile: profile,
-  solanaProfile: profile
+  solanaProfile: profile,
+  referrer: string
 ) => {
   const message = JSON.stringify({
     walletAddress: conetProfile.keyID,
     solanaWallet: solanaProfile.keyID,
-    referrer: "",
+    referrer: referrer,
   });
 
   const wallet = new ethers.Wallet(conetProfile.privateKeyArmor);

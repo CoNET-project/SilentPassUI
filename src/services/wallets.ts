@@ -11,11 +11,13 @@ import {
   conetDepinProvider,
   conetProvider,
   localDatabaseName,
+  rewardWalletAddress,
+  solanaRpc,
 } from "../utils/constants";
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 import * as Bip39 from "bip39";
-
+import { Connection, PublicKey } from "@solana/web3.js";
 import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
 import { scanSolanaSol, scanSolanaSp } from "./listeners";
@@ -288,7 +290,10 @@ const requireFreePassport = async () => {
   }
 };
 
-const getCurrentPassportInfoInChain = async (chain: string) => {
+const getCurrentPassportInfoInChain = async (
+  walletAddress: string,
+  chain: string
+) => {
   if (!CoNET_Data) {
     return;
   }
@@ -318,7 +323,7 @@ const getCurrentPassportInfoInChain = async (chain: string) => {
   );
 
   try {
-    const result = await passportContract.getCurrentPassport(wallet.address);
+    const result = await passportContract.getCurrentPassport(walletAddress);
     return result;
   } catch (ex) {
     console.log(ex);
@@ -415,18 +420,20 @@ const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
   }
 };
 
-const getCurrentPassportInfo = async () => {
-  if (!CoNET_Data) {
-    return;
-  }
-
-  const resultMainnet = await getCurrentPassportInfoInChain("mainnet");
+const getCurrentPassportInfo = async (walletAddress: string) => {
+  const resultMainnet = await getCurrentPassportInfoInChain(
+    walletAddress,
+    "mainnet"
+  );
 
   if (resultMainnet?.nftIDs?.toString() !== "0") {
     return resultMainnet;
   }
 
-  const resultCancun = await getCurrentPassportInfoInChain("cancun");
+  const resultCancun = await getCurrentPassportInfoInChain(
+    walletAddress,
+    "cancun"
+  );
 
   return resultCancun;
 };
@@ -572,7 +579,7 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
   const tmpMainnetPassports = await getPassportsInfo(profile, "mainnet");
 
-  const _currentPassport = await getCurrentPassportInfo();
+  const _currentPassport = await getCurrentPassportInfo(profile.keyID);
 
   profile = {
     ...profile,
@@ -615,6 +622,8 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
     allPassports = allPassports?.filter(
       (passport) => passport.expiresDays !== 7
     );
+
+  allPassports = allPassports.filter((passport) => passport.nftID !== 0);
 
   allPassports?.sort((a, b) => {
     return a.nftID - b.nftID;
@@ -737,7 +746,7 @@ const refreshSolanaBalances = async (
   }
 };
 
-const getSpClubInfo = async (profile: profile) => {
+const getSpClubInfo = async (profile: profile, currentPageInvitees: number) => {
   const temp = CoNET_Data;
 
   if (!temp) {
@@ -767,17 +776,132 @@ const getSpClubInfo = async (profile: profile) => {
     console.log(error);
   }
 
-  try {
-    const result = await contract.getReferrer(profile.keyID);
-    profile.spClub.referrer = result;
-  } catch (error) {
-    console.log(error);
+  if (profile.spClub.memberId) {
+    try {
+      const referrerResult = await contract.getReferrer(profile.keyID);
+
+      if (
+        referrerResult.referrer !== "0x0000000000000000000000000000000000000000"
+      )
+        profile.spClub.referrer = referrerResult.referrer;
+      else profile.spClub.referrer = "";
+    } catch (error) {
+      console.log(error);
+    }
+
+    try {
+      const refereesResult = await contract.getReferees(
+        profile.keyID,
+        currentPageInvitees
+      );
+      profile.spClub.totalReferees = Number(refereesResult._total_length);
+      profile.spClub.referees = [];
+
+      if (
+        refereesResult?.referees?.length > 0 &&
+        refereesResult?.referees?.[0] ===
+          "0x0000000000000000000000000000000000000000"
+      )
+        profile.spClub.totalReferees = 0;
+
+      const validReferees = refereesResult.referees.filter(
+        (referee: string) =>
+          referee !== "0x0000000000000000000000000000000000000000"
+      );
+
+      // Use map to handle async operations
+      const refereePromises = validReferees.map(async (referee: string) => {
+        const _activePassport = await getCurrentPassportInfo(referee);
+
+        const activePassport = {
+          nftID: _activePassport?.nftIDs?.toString(),
+          expires: _activePassport?.expires?.toString(),
+          expiresDays: _activePassport?.expiresDays?.toString(),
+          premium: _activePassport?.premium,
+        };
+
+        return {
+          walletAddress: referee,
+          activePassport: activePassport,
+        };
+      });
+
+      // Wait for all promises to resolve
+      profile.spClub.referees = await Promise.all(refereePromises);
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  temp.profiles[0] = profile;
+  setCoNET_Data(temp);
+};
+
+const getRefereesPage = async (
+  profile: profile,
+  currentPageInvitees: number
+) => {
+  const temp = CoNET_Data;
+
+  if (!temp) {
+    return false;
+  }
+
+  const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider);
+  const contract = new ethers.Contract(
+    contracts.SpClub.address,
+    contracts.SpClub.abi,
+    wallet
+  );
+
+  if (!profile.spClub) {
+    profile.spClub = {
+      memberId: "0",
+      referrer: "",
+      referees: [],
+      totalReferees: 0,
+    };
   }
 
   try {
-    const result = await contract.getReferees(profile.keyID, 0);
-    profile.spClub.referees = result.referees;
-    profile.spClub.totalReferees = result._total_length;
+    const refereesResult = await contract.getReferees(
+      profile.keyID,
+      currentPageInvitees
+    );
+    profile.spClub.totalReferees = Number(refereesResult._total_length);
+    profile.spClub.referees = [];
+
+    if (
+      refereesResult?.referees?.length > 0 &&
+      refereesResult?.referees?.[0] ===
+        "0x0000000000000000000000000000000000000000"
+    )
+      profile.spClub.totalReferees = 0;
+
+    const validReferees = refereesResult.referees.filter(
+      (referee: string) =>
+        referee !== "0x0000000000000000000000000000000000000000"
+    );
+
+    // Use map to handle async operations
+    const refereePromises = validReferees.map(async (referee: string) => {
+      const _activePassport = await getCurrentPassportInfo(referee);
+
+      const activePassport = {
+        nftID: _activePassport?.nftIDs?.toString(),
+        expires: _activePassport?.expires?.toString(),
+        expiresDays: _activePassport?.expiresDays?.toString(),
+        premium: _activePassport?.premium,
+      };
+
+      return {
+        walletAddress: referee,
+        activePassport: activePassport,
+      };
+    });
+
+    // Wait for all promises to resolve
+    profile.spClub.referees = await Promise.all(refereePromises);
   } catch (error) {
     console.log(error);
   }
@@ -785,6 +909,135 @@ const getSpClubInfo = async (profile: profile) => {
   temp.profiles[0] = profile;
   setCoNET_Data(temp);
 };
+
+const getSpClubMemberId = async (profile: profile) => {
+  const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider);
+  const contract = new ethers.Contract(
+    contracts.SpClub.address,
+    contracts.SpClub.abi,
+    wallet
+  );
+
+  if (!profile.spClub) {
+    profile.spClub = {
+      memberId: "0",
+      referrer: "",
+      referees: [],
+      totalReferees: 0,
+    };
+  }
+
+  try {
+    const result = await contract.membership(profile.keyID);
+    profile.spClub.memberId = result;
+  } catch (error) {
+    console.log(error);
+  }
+
+  const temp = CoNET_Data;
+
+  if (!temp) {
+    return "0";
+  }
+
+  temp.profiles[0] = profile;
+  setCoNET_Data(temp);
+
+  return profile.spClub.memberId;
+};
+
+async function getReceivedAmounts(walletAddress: string) {
+  const connection = new Connection(solanaRpc, "confirmed");
+
+  try {
+    const walletPubKey = new PublicKey(walletAddress);
+    const senderPubKey = new PublicKey(rewardWalletAddress);
+
+    // Step 1: Get transaction signatures
+    const signatures = await connection.getSignaturesForAddress(walletPubKey, {
+      limit: 20,
+    });
+
+    if (signatures.length === 0) {
+      console.log("No transactions found.");
+      return [];
+    }
+
+    // For only one transaction it works. Here's an example.
+    // For multiple transactions it fails because the server doesn't support it.
+    // const transaction = await connection.getTransaction(
+    //   signatures[0].signature,
+    //   {
+    //     commitment: "confirmed",
+    //     maxSupportedTransactionVersion: 0, // Ensures we handle versioned transactions
+    //   }
+    // );
+    // console.log(transaction);
+
+    // Step 2: Fetch all transactions in **one batch request**
+    const transactions = await connection.getTransactions(
+      signatures.map((sig) => sig.signature),
+      { commitment: "confirmed" }
+    );
+    // Step 3: Filter transactions where sender matches
+    const receivedTransactions = transactions
+      .filter((tx: any) => tx && tx.meta)
+      .map((tx) => {
+        if (!tx || !tx.meta) return null;
+
+        // Get account balances before and after the transaction
+        const preBalances = tx.meta.preBalances;
+        const postBalances = tx.meta.postBalances;
+
+        // Get account keys (supports both legacy & versioned transactions)
+        const accountKeys =
+          tx.transaction.message.getAccountKeys().staticAccountKeys;
+
+        // Find the index of the recipient (walletAddress) in the account keys
+        const recipientIndex = accountKeys.findIndex(
+          (key: any) => key.toBase58() === walletPubKey.toBase58()
+        );
+
+        if (recipientIndex === -1) return null; // Wallet not found in the transaction
+
+        // Calculate SOL received (in lamports, convert to SOL)
+        const solReceived =
+          (postBalances[recipientIndex] - preBalances[recipientIndex]) / 1e9;
+
+        // Extract token transfers (SPL tokens)
+        const tokenTransfers = tx.meta.postTokenBalances?.map(
+          (tokenBalance: any) => {
+            const preToken = tx?.meta?.preTokenBalances?.find(
+              (pre) =>
+                pre.mint === tokenBalance.mint && pre.owner === walletAddress
+            );
+
+            const receivedAmount =
+              (tokenBalance.uiTokenAmount.uiAmount || 0) -
+              (preToken?.uiTokenAmount.uiAmount || 0);
+
+            return {
+              mint: tokenBalance.mint,
+              receivedAmount,
+            };
+          }
+        );
+
+        return {
+          signature: tx.transaction.signatures[0],
+          solReceived,
+          tokenTransfers,
+        };
+      });
+
+    console.log(receivedTransactions.filter((tx: any) => tx !== null));
+
+    return receivedTransactions.filter((tx: any) => tx !== null);
+  } catch (error) {
+    console.error("Error fetching transaction history:", error);
+    return [];
+  }
+}
 
 export {
   createOrGetWallet,
@@ -801,4 +1054,7 @@ export {
   getPassportsInfoForProfile,
   refreshSolanaBalances,
   getSpClubInfo,
+  getSpClubMemberId,
+  getRefereesPage,
+  getReceivedAmounts,
 };

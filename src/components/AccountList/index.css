@@ -41,7 +41,7 @@
 }
 
 .referral-program.account-wrapper.active {
-  height: 340px;
+  height: fit-content;
 }
 
 .account-wrapper.active .account-main-card {
@@ -189,6 +189,7 @@
   align-items: center;
   padding: 16px;
   text-align: left;
+  gap: 8px;
 }
 
 .copy-div button {
@@ -231,6 +232,10 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.fit-content.account-wrapper.active {
+  height: fit-content !important;
 }
 
 .referral-program .info-wrapper {

@@ -19,17 +19,17 @@ export default function FirstStep({ to, setTo, selectedNftId, setSelectedNFtId }
         {
           (CoNET_Data?.profiles?.[0].silentPassPassports && CoNET_Data?.profiles?.[0].activePassport)
             ? CoNET_Data.profiles[0].silentPassPassports?.filter((passport) => passport.nftID !== Number(CoNET_Data?.profiles[0].activePassport?.nftID)).map((passport) => (
-                <div className={`passport-button ${Number(passport.nftID) === Number(selectedNftId) ? 'selected' : ''}`} onClick={() => setSelectedNFtId(String(passport.nftID))}>
-                  <div className="heading">
-                    <h3>{getPassportTitle(passport)} Passport</h3>
-                    <p>{getPlanDuration(passport)}</p>
-                  </div>
-                  <div className="info">
-                    <div><p>Expiration date: <strong>{getExpirationDate(passport)}</strong></p></div>
-                    <div><p>NFT ID: <strong>{passport.nftID}</strong></p></div>
-                  </div>
+              <div className={`passport-button ${Number(passport.nftID) === Number(selectedNftId) ? 'selected' : ''}`} onClick={() => setSelectedNFtId(String(passport.nftID))}>
+                <div className="heading" style={{ alignItems: 'center' }}>
+                  <h3>{getPassportTitle(passport)} Passport</h3>
+                  <p>{getPlanDuration(passport)}</p>
                 </div>
-              ))
+                <div className="info" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <div><p>Expiration date: <strong>{getExpirationDate(passport)}</strong></p></div>
+                  <div><p>NFT ID: <strong>{passport.nftID}</strong></p></div>
+                </div>
+              </div>
+            ))
             : <></>
         }
       </div>

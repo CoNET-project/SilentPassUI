@@ -97,7 +97,7 @@ const SpClubCongratsPopup = ({ setIsCongratsPopupOpen, memberId }: any) => {
           <TextContent>
             <TitleContainer>
               <div style={{ fontSize: '32px' }}>Congratulations!</div>
-              <div style={{ fontSize: '20px', width: '300px' }}>You've earned <span style={{ color: '#9FBFE5FE', fontWeight: '700' }}>{SP_EARNED_FROM_REFERRAL} $SP</span> and unlocked access to the <span style={{ color: '#9FBFE5FE', fontWeight: '700' }}>$SP Club!</span></div>
+              <div style={{ fontSize: '20px', width: '300px' }}>You've earned <span style={{ color: '#9FBFE5FE', fontWeight: '700' }}>{SP_EARNED_FROM_REFERRAL} $SP</span> and unlocked access to the <span style={{ color: '#9FBFE5FE', fontWeight: '700' }}>SP Club!</span></div>
             </TitleContainer>
             <InfoContainer>
               <div style={{ fontSize: '16px', color: '#989899' }}>Your SP Club Member ID:</div>

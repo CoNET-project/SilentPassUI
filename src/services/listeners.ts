@@ -8,6 +8,7 @@ import {
 import {
   CoNET_Data,
   currentPageInvitees,
+  globalAllNodes,
   processingBlock,
   setCoNET_Data,
   setProcessingBlock,
@@ -52,10 +53,11 @@ const listenProfileVer = async (
         await getProfileAssets(profiles[0], profiles[1]);
         await getVpnTimeUsed();
         await getSpClubInfo(profiles[0], currentPageInvitees);
-        // const receivedTransactions = await getReceivedAmounts(
-        //   profiles[1].keyID
-        // );
-        // console.log(receivedTransactions);
+        const receivedTransactions = await getReceivedAmounts(
+          profiles[1].keyID,
+          globalAllNodes
+        );
+        console.log(receivedTransactions);
       }
 
       if (block % 2 === 0) {

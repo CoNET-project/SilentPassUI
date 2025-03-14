@@ -6,7 +6,7 @@ import { useDaemonContext } from "./providers/DaemonProvider";
 import { createOrGetWallet, getCurrentPassportInfo, tryToRequireFreePassport } from "./services/wallets";
 import { getAllNodes } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
-import { CoNET_Data, setCoNET_Data } from "./utils/globals";
+import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
 import Vip from './pages/Vip';
 import Wallet from './pages/Wallet';
@@ -98,6 +98,7 @@ function App() {
       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setSOlanaRPC(allNodes)
         setaAllNodes(allNodes)
+        setGlobalAllNodes(allNodes)
         const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
         setRandomSolanaRPC(allNodes[randomIndex])
         if (!CoNET_Data || !CoNET_Data?.profiles) {

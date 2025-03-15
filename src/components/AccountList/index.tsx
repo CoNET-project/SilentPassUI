@@ -66,14 +66,6 @@ export default function AccountList() {
         </div>
       </div>
 
-      <div className="cta-buttons" style={{ marginBottom: "0px" }}>
-        <div className="highlight-1">
-          <button className='disabled'>
-            <p>Transfer Silent Pass Passport</p>
-          </button>
-        </div>
-      </div>
-
       <div className={`account-wrapper solana ${openAccountList.includes("123") ? 'active' : ''}`}>
         <div className="account-main-card" onClick={() => toggleAccount("123")}>
           <div>

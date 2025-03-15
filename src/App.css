@@ -11,6 +11,31 @@
   color: white;
 }
 
+button {
+  background: 0;
+  border: 0;
+  display: flex;
+  align-items: center;
+  color: #FFFFFF;
+  gap: 12px;
+}
+
+button img {
+  height: 16px;
+  width: 16px;
+}
+
+.option-wrapper {
+  height: 53px;
+  overflow: hidden;
+
+  transition: height .12s ease;
+}
+
+.option-wrapper.open {
+  height: 212px;
+}
+
 .header {
   width: 100%;
   display: flex;
@@ -40,6 +65,11 @@
 
 .page-container {
   width: 100%;
+
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
 
   padding: 42px 16px 100px;
 }

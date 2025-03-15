@@ -55,3 +55,22 @@
   width: 26px;
   height: 26px;
 }
+
+.wallet-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 32px;
+}
+
+.wallet-heading button {
+  gap: 8px;
+
+  cursor: pointer;
+}
+
+.wallet-heading button p {
+  color: #9FBFE5FE;
+  font-weight: 700;
+}

@@ -1,0 +1,215 @@
+h2 {
+  font-size: 20px;
+  font-weight: bold;
+  text-align: left;
+  margin-bottom: 10px;
+}
+
+.sub-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin: 24px 0;
+}
+
+.sub-heading button {
+  background: #9FBFE5FE;
+  color: #3F3F40;
+}
+
+.main-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  background: #191919;
+  border-radius: 16px;
+}
+
+.generate-btn {
+  background-color: #007bff;
+  padding: 10px 15px;
+  font-weight: bold;
+  font-size: 14px;
+  border-radius: 8px;
+  float: right;
+}
+
+.category-switch {
+  display: flex;
+  gap: 16px;
+
+  border-radius: 16px;
+  background: #3F3F40;
+  padding: 16px;
+}
+
+.category-switch button {
+  flex: 1;
+  padding: 12px;
+  font-size: 24px;
+  border-radius: 8px;
+
+  padding: 4px 16px;
+  border-radius: 8px;
+
+  cursor: pointer;
+
+  background: #3F3F40;
+  transition: background .12s ease;
+}
+
+.category-switch button:hover {
+  background: #2F2F2F;
+}
+
+.category-switch button.active {
+  background: #191919;
+}
+
+.filters {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+
+  padding: 0 16px;
+}
+
+.filters button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+
+  padding: 4px 6px;
+  border-radius: 12px;
+
+  cursor: pointer;
+
+  color: #B1B1B2;
+  background: #191919;
+  transition: background .12s ease;
+}
+
+.filters button:hover {
+  background: #2F2F2F;
+}
+
+.filters button.active {
+  background: #3F3F40;
+}
+
+.filters button, .category-switch button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.quantity-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1a1a1a;
+  padding: 8px;
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+.quantity-selector p {
+  font-size: 14px;
+}
+
+.quantity-selector span {
+  padding: 0 10px;
+  font-size: 18px;
+}
+
+.quantity-selector div {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+}
+
+.quantity-selector div button {
+  border-radius: 4px;
+
+  color: #1C1B1F;
+  background: #9FBFE5FE;
+
+  width: 32px;
+  height: 32px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  font-size: 18px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.quantity-selector div button:disabled {
+  color: #5B5B5B;
+  background: #262626;
+
+  cursor: not-allowed;
+}
+
+.nft-list {
+  margin-top: 15px;
+}
+
+.nft-item {
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+
+  border-top: 1px solid #3F3F40;
+}
+
+.nft-info {
+  text-align: left;
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nft-id {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.redeem-code {
+  font-size: 12px;
+  color: #676768;
+  word-break: break-all;
+}
+
+.nft-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: white;
+  cursor: pointer;
+}
+
+.icon-btn.hidden svg {
+  margin-top: 2px;
+}
+
+.icon-btn img {
+  width: 20px;
+  height: 20px;
+  filter: grayscale(.8);
+  margin-right: 4px;
+}

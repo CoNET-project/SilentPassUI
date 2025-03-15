@@ -1,0 +1,37 @@
+.affiliate-options {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+  flex: 1;
+}
+
+.affiliate-options .copy-button {
+  width: 100%;
+  border-radius: 16px;
+
+  display: flex;
+  padding: 16px 8px;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+
+  color: #FFFFFF;
+  background: #4E72B6;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  margin-top: 32px;
+}
+
+.affiliate-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.affiliate-footer > p {
+  font-size: 12px;
+  color: #989899;
+}

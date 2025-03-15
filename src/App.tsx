@@ -1,24 +1,16 @@
 import { useEffect } from "react";
 import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
-import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
 import { createOrGetWallet, getFreePassportInfo, tryToRequireFreePassport } from "./services/wallets";
 import { getAllNodes, startMiningV2 } from "./services/mining";
 import { CoNET_Data, setCoNET_Data } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
-import Vip from './pages/Vip';
 import Wallet from './pages/Wallet';
-import Settings from './pages/Settings';
-import Languages from './pages/Languages';
-import Applications from './pages/Applications';
-import Subscription from './pages/Subscription';
-import Support from './pages/Support';
-import FAQ from './pages/FAQ';
-import ConfigDevice from './pages/ConfigDevice';
-import Passcode from './pages/Passcode';
 import { getServerIpAddress } from "./api";
 import { parseQueryParams } from "./utils/utils";
+import Subscription from './pages/Subscription';
+import Management from './pages/Management';
 
 global.Buffer = require('buffer').Buffer;
 
@@ -104,19 +96,20 @@ function App() {
     <div className="App">
       <Router>
         <Routes>
-          <Route path="/regions" element={<Region />}></Route>
+          {/* <Route path="/regions" element={<Region />}></Route>
           <Route path="/faq" element={<FAQ />}></Route>
           <Route path="/config-device" element={<ConfigDevice />}></Route>
-          <Route path="/vip" element={<Vip />}></Route>
-          <Route path="/wallet" element={<Wallet />}></Route>
-          <Route path="/settings" element={<Settings />}></Route>
+          <Route path="/vip" element={<Vip />}></Route> */}
+          <Route path="/" element={<Wallet />}></Route>
+          {/* <Route path="/settings" element={<Settings />}></Route>
           <Route path="/passcode/new" element={<Passcode new />}></Route>
           <Route path="/passcode/change" element={<Passcode />}></Route>
           <Route path="/languages" element={<Languages />}></Route>
-          <Route path="/applications" element={<Applications />}></Route>
+          <Route path="/applications" element={<Applications />}></Route> */}
           <Route path="/subscription" element={<Subscription />}></Route>
-          <Route path="/support" element={<Support />}></Route>
-          <Route path="/" element={<Home />}></Route>
+          <Route path="/management" element={<Management />}></Route>
+           {/* <Route path="/support" element={<Support />}></Route>
+          <Route path="/ww" element={<Home />}></Route> */}
         </Routes>
       </Router>
     </div>

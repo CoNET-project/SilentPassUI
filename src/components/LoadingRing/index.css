@@ -1,0 +1,45 @@
+@keyframes rotationClock {
+  from {
+    transform: translateX(-50%) rotate(0deg);
+  }
+  to {
+    transform: translateX(-50%) rotate(360deg);
+  }
+}
+
+@keyframes rotation {
+  from {
+    transform: translateX(-50%) rotate(0deg);
+  }
+  to {
+    transform: translateX(-50%) rotate(-360deg);
+  }
+}
+
+.rotationClock {
+  animation: rotationClock 2s infinite linear;
+  top: calc(50% - 48px);
+  left: 50%;
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.rotation {
+  animation: rotation 2s infinite linear;
+  top: calc(50% - 72px);
+  left: 50%;
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.loading-ring {
+  height: 160px;
+  position: relative;
+  margin-bottom: 24px;
+}

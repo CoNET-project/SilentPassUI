@@ -21,12 +21,6 @@ export default function Subscription() {
   const [updateCounter, setUpdateCounter] = useState(0);
   const [spInUsd, setSpInUsd] = useState(0);
   const [solInUsd, setSolInUsd] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [oracleError, setOracleError] = useState(false);
-  const [sp249, setSp249] = useState('0');
-  const [sp2499, setSp2499] = useState('0');
-  const [sp999, setSp999] = useState('0');
-  const [sp9999, setSp9999] = useState('0');
   const [isSubmitButtonDisabled, setIsSubmitButtonDisabled] = useState(false);
 
   const { profiles } = useDaemonContext();
@@ -63,7 +57,7 @@ export default function Subscription() {
     }
 
     if (step === 4 || step === 5) {
-      navigate("/wallet")
+      navigate("/")
       return;
     }
   }

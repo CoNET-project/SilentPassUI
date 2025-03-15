@@ -6,7 +6,7 @@ import Skeleton from '../Skeleton';
 const OneDayInSeconds = 86400;
 
 const MiningStatus = () => {
-  const { miningData, profiles, setIsPassportInfoOpen, activePassportUpdated } = useDaemonContext();
+  const { miningData, profiles, activePassportUpdated } = useDaemonContext();
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
 
@@ -24,20 +24,11 @@ const MiningStatus = () => {
     }
   }, [activePassportUpdated, profiles])
 
-  const openPassportInfo = () => {
-    setIsPassportInfoOpen(true)
-  }
 
   return (
     <div className="mining-status">
       <div className="miners">
         Miners: {miningData?.online ? miningData.online : <Skeleton height="14px" width="45px" />}
-      </div>
-
-      <div className='passport-status' onClick={openPassportInfo}>
-        <div className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
-        Freemium
-        <img src="/assets/info.svg" alt="Info icon" />
       </div>
 
       <div className="users">Users: {miningData?.totalUsers ? miningData.totalUsers : <Skeleton height="14px" width="45px" />}</div>

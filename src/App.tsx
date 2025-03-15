@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getFreePassportInfo, tryToRequireFreePassport } from "./services/wallets";
+import { createOrGetWallet, tryToRequireFreePassport } from "./services/wallets";
 import { getAllNodes, startMiningV2 } from "./services/mining";
 import { CoNET_Data, setCoNET_Data } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
@@ -18,33 +18,6 @@ function App() {
   const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated } = useDaemonContext();
 
   useEffect(() => {
-    const handlePassport = async () => {
-      await tryToRequireFreePassport();
-      const info = await getFreePassportInfo();
-
-      const tmpData = CoNET_Data;
-
-      if (!tmpData) {
-        return;
-      }
-
-      tmpData.profiles[0] = {
-        ...tmpData?.profiles[0],
-        activeFreePassport: {
-          nftID: info?.nftIDs?.[0]?.toString(),
-          expires: info?.expires?.[0]?.toString(),
-          expiresDays: info?.expiresDays?.[0]?.toString()
-        },
-      };
-
-      setCoNET_Data(tmpData);
-
-      if (!CoNET_Data) return;
-
-      setProfiles(CoNET_Data?.profiles);
-      setActivePassportUpdated(true);
-    }
-
     const _getServerIpAddress = async () => {
       try {
         const response = await getServerIpAddress();
@@ -85,8 +58,6 @@ function App() {
 
         startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
       });
-
-      await handlePassport();
     };
 
     init();

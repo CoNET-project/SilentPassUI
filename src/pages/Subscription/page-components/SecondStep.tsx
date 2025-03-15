@@ -2,14 +2,10 @@ import Separator from '../../../components/Separator';
 
 import { ReactComponent as SpToken } from '../assets/sp-token.svg';
 
-import { ReactComponent as WalletIcon } from '../assets/wallet-icon.svg';
 import { ReactComponent as QuotesIcon } from '../assets/quotes-icon.svg';
 import AccountList from '../../../components/AccountList';
-import { useDaemonContext } from '../../../providers/DaemonProvider';
 
 export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solInUsd }: any) {
-  const { profiles } = useDaemonContext();
-
   return (
     <div className="transaction-details">
       <AccountList showMainWallet={false} simplifiedView spInUsd={spInUsd} solInUsd={solInUsd} />
@@ -20,9 +16,18 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>Premium Passport</p>
-              <p style={{ flex: 1, fontSize: '14px', fontWeight: '400', color: '#989899' }}>30 days</p>
+              <p style={{ fontSize: '14px', fontWeight: '400', color: '#989899' }}>365 days</p>
             </div>
-            <span>5 Devices</span>
+            <span>Quantity: 03</span>
+          </div>
+        </div>
+        <div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>Premium Passport</p>
+              <p style={{ fontSize: '14px', fontWeight: '400', color: '#989899' }}>30 days</p>
+            </div>
+            <span>Quantity: 05</span>
           </div>
         </div>
       </div>
@@ -31,18 +36,7 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
         <p>Paying with</p>
         <div className='simple-content'>
           <SpToken />
-          <p>$SP</p>
-        </div>
-      </div>
-
-      <div className="transaction-info">
-        <p>Wallet</p>
-        <div>
-          <WalletIcon />
-          <div>
-            <p>Solana Wallet</p>
-            <span>{profiles?.[1]?.keyID?.slice(0, 5)}...{profiles?.[1]?.keyID?.slice(-5)}</span>
-          </div>
+          <p>SP</p>
         </div>
       </div>
 
@@ -57,7 +51,12 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
 
         <div className="summary-table">
           <div>
-            <p>Premium Passport </p>
+            <p>Monthly Premium Passport </p>
+            <p>{parseFloat(price).toFixed(4)} $SP</p>
+          </div>
+
+          <div>
+            <p>Yearly Premium Passport </p>
             <p>{parseFloat(price).toFixed(4)} $SP</p>
           </div>
 

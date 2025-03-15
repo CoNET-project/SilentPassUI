@@ -26,10 +26,20 @@ type DaemonContext = {
   serverPac: string
   setServerPac: (pac: string) => void
   _vpnTimeUsedInMin: React.MutableRefObject<number>
-  isPassportInfoOpen: boolean
-  setIsPassportInfoOpen: (val: boolean) => void
+  isPassportInfoPopupOpen: boolean
+  setIsPassportInfoPopupOpen: (val: boolean) => void
   activePassportUpdated: boolean
   setActivePassportUpdated: (val: boolean) => void
+  activePassport: any
+  setActivePassport: (val: any) => void
+  isSelectPassportPopupOpen: any
+  setIsSelectPassportPopupOpen: (val: any) => void
+  purchasingPlan: string
+  setPurchasingPlan: (val: string) => void
+  purchasingPlanPaymentTime: string
+  setPurchasingPlanPaymentTime: (val: string) => void
+  randomSolanaRPC: nodes_info | null
+  setRandomSolanaRPC: (val: nodes_info) => void;
 };
 
 type DaemonProps = {
@@ -62,10 +72,20 @@ const defaultContextValue: DaemonContext = {
   serverPac: "",
   setServerPac: () => { },
   _vpnTimeUsedInMin: { current: 0 },
-  isPassportInfoOpen: false,
-  setIsPassportInfoOpen: () => { },
+  isPassportInfoPopupOpen: false,
+  setIsPassportInfoPopupOpen: () => { },
   activePassportUpdated: false,
-  setActivePassportUpdated: () => { }
+  setActivePassportUpdated: () => { },
+  activePassport: null,
+  setActivePassport: () => { },
+  isSelectPassportPopupOpen: false,
+  setIsSelectPassportPopupOpen: () => { },
+  purchasingPlan: "premium",
+  setPurchasingPlan: () => { },
+  purchasingPlanPaymentTime: "monthly",
+  setPurchasingPlanPaymentTime: () => { },
+  setRandomSolanaRPC: () => { },
+  randomSolanaRPC: null
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -89,8 +109,13 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [serverPort, setServerPort] = useState<string>(defaultContextValue.serverPort);
   const [serverPac, setServerPac] = useState<string>("");
   const _vpnTimeUsedInMin = useRef<number>(0);
-  const [isPassportInfoOpen, setIsPassportInfoOpen] = useState<boolean>(false);
+  const [isPassportInfoPopupOpen, setIsPassportInfoPopupOpen] = useState<boolean>(false);
+  const [isSelectPassportPopupOpen, setIsSelectPassportPopupOpen] = useState<boolean>(false);
   const [activePassportUpdated, setActivePassportUpdated] = useState<boolean>(false);
+  const [activePassport, setActivePassport] = useState<any>(null);
+  const [purchasingPlan, setPurchasingPlan] = useState<string>("premium");
+  const [purchasingPlanPaymentTime, setPurchasingPlanPaymentTime] = useState<string>("monthly");
+  const [randomSolanaRPC, setRandomSolanaRPC] = useState<nodes_info | null>(null);
 
   useEffect(() => {
     {
@@ -101,7 +126,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoOpen, setIsPassportInfoOpen, activePassportUpdated, setActivePassportUpdated }}>
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, setRandomSolanaRPC, randomSolanaRPC }}>
       {children}
     </Daemon.Provider>
   );

@@ -12,7 +12,7 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/global-steps/Loading';
 import Declined from '../../components/global-steps/Declined';
 
-type Step = 1 | 2 | 3 | 4 | 5;
+export type Step = 1 | 2 | 3 | 4 | 5;
 
 export default function Subscription() {
   const [step, setStep] = useState<Step>(1);
@@ -53,7 +53,6 @@ export default function Subscription() {
     if (step === 2) {
       try {
         nextStep();
-        await purchasePassport(profiles[1]?.privateKeyArmor, price);
         setStep(4);
       } catch (error) {
         setStep(5);

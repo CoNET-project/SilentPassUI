@@ -4,7 +4,7 @@ import { Step } from '..';
 export default function Header({ step, setStep }: { step: Step, setStep: (step: Step) => void }) {
   return (
     <>
-      {(step === 1 || step === 2) && <BackButton to="/wallet" action={() => setStep(1)} />}
+      {(step === 2) && <BackButton to="/" />}
       {step === 2 && <h1>Confirm your order</h1>}
       {step === 3 && (
         <div className="subscription-header">

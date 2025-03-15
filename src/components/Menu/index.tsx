@@ -6,7 +6,7 @@ import { ReactComponent as WalletBlueIcon } from "./assets/wallet-icon-blue.svg"
 import { ReactComponent as ManagementIconGrey } from "./assets/management-grey.svg";
 import { ReactComponent as ManagementBlueIcon } from "./assets/management-blue.svg";
 
-export default function Menu() {
+export default function Menu({ disableManagement }: any) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -16,7 +16,7 @@ export default function Menu() {
         {location.pathname === "/" ? <WalletBlueIcon /> : <WalletIconGrey />}
         <p>My Account</p>
       </button>
-      <button className={location.pathname === "/management" ? "active" : ""} onClick={() => navigate("/management")}>
+      <button className={location.pathname === "/management" ? "active" : ""} onClick={() => navigate("/management")} disabled={disableManagement}>
         {location.pathname === "/management" ? <ManagementBlueIcon /> : <ManagementIconGrey />}
         <p>Management</p>
       </button>

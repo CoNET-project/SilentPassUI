@@ -13,27 +13,35 @@
   transition: height 0.2s ease;
 }
 
-.account-wrapper .account-main-card img {
+.simplified.account-wrapper {
+  height: 90px;
+}
+
+.account-wrapper .account-main-card .name img {
   transform: rotate(90deg);
 
   transition: transform 0.12s ease-in-out;
 }
 
-.account-wrapper.active .account-main-card img {
+.account-wrapper.active .account-main-card .name img {
   transform: rotate(270deg);
 }
 
 .account-wrapper.active {
   /* should create the animation */
-  height: 400px;
+  height: fit-content;
 }
 
 .solana.account-wrapper.active {
   height: 400px;
 }
 
+.simplified.account-wrapper.active {
+  height: 240px;
+}
+
 .referral-program.account-wrapper.active {
-  height: 230px;
+  height: fit-content;
 }
 
 .account-wrapper.active .account-main-card {
@@ -58,12 +66,18 @@
   z-index: 1;
 }
 
+.simplified .account-main-card {
+  height: 90px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .account-main-card div:last-child {
   width: 100%;
   padding-right: 12px;
 
   display: flex;
-  justify-content: space-between;
   align-items: center;
 }
 
@@ -107,6 +121,39 @@
   padding: 12px 16px;
 }
 
+.info-wrapper div p:last-child {
+  width: fit-content;
+}
+
+.simplified .info-wrapper > div {
+  padding-left: 16px;
+}
+
+.simplified .info-wrapper > div:not(:last-child) {
+  margin-bottom: 16px;
+}
+
+.simplified .info-wrapper svg {
+  width: 32px;
+  height: 32px;
+
+  margin-right: 8px;
+}
+
+.simplified .info-wrapper div div div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.simplified .info-wrapper div div div p:first-child {
+  color: #ffffff;
+}
+
+.simplified .info-wrapper div div div p:last-child {
+  font-size: 12px;
+}
+
 .info-wrapper > p {
   margin-bottom: 8px;
 }
@@ -142,6 +189,7 @@
   align-items: center;
   padding: 16px;
   text-align: left;
+  gap: 8px;
 }
 
 .copy-div button {
@@ -184,6 +232,10 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.fit-content.account-wrapper.active {
+  height: fit-content !important;
 }
 
 .referral-program .info-wrapper {
@@ -229,4 +281,47 @@
 .disabled {
   background: #191919 !important;
   color: #5a5a5afe !important;
+}
+
+.name {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.copy {
+  display: flex;
+  gap: 8px;
+}
+
+.copy p {
+  font-size: 12px;
+  color: #989899;
+
+  width: fit-content;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.token-assets-title {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.token-assets-title > .title {
+  color: #ffffff !important;
+}
+
+.token-assets-title > .refresh.disabled {
+  color: #5a5a5afe !important;
+  cursor: not-allowed;
+}
+
+.token-assets-title > .refresh {
+  color: #9fbfe5fe !important;
+  cursor: pointer;
 }

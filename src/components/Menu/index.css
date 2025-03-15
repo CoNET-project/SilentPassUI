@@ -32,3 +32,8 @@
 .menu button.active {
   color: #9FBFE5FE;
 }
+
+.menu button:disabled {
+  opacity: .3;
+  cursor: not-allowed;
+}

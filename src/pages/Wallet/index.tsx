@@ -8,7 +8,7 @@ import { useState } from 'react';
 import AffiliateOptions from '../../components/AffiliateOptions';
 
 export default function Wallet() {
-  const [isAffiliate, setIsAffiliate] = useState<boolean>(true);
+  const [isAffiliate, setIsAffiliate] = useState<boolean>(false);
   const navigate = useNavigate();
 
   return (
@@ -29,7 +29,7 @@ export default function Wallet() {
 
       <AffiliateOptions isAffiliate={isAffiliate} />
 
-      <Footer />
+      <Footer disableManagement={!isAffiliate} />
     </div>
   )
 }

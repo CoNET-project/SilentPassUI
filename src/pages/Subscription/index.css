@@ -59,6 +59,10 @@
   font-weight: 700;
 }
 
+.subscription-footer button.step-4 {
+  margin-top: 24px;
+}
+
 .subscription-footer button.step-3 svg {
   animation: rotate 1.4s linear infinite;
 }

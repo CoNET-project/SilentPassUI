@@ -12,10 +12,10 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/global-steps/Loading';
 import Declined from '../../components/global-steps/Declined';
 
-export type Step = 1 | 2 | 3 | 4 | 5;
+export type Step = 2 | 3 | 4 | 5;
 
 export default function Subscription() {
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(2);
   const [price, setPriceInSp] = useState('0');
   const [gasfee, setGasfee] = useState('0');
   const [updateCounter, setUpdateCounter] = useState(0);
@@ -39,10 +39,10 @@ export default function Subscription() {
 
 
   async function handleButtonAction() {
-    if (step === 1) {
+    /* if (step === 1) {
       nextStep();
       return;
-    }
+    } */
 
     if (step === 2) {
       try {
@@ -63,10 +63,10 @@ export default function Subscription() {
   }
 
   useEffect(() => {
-    if (step === 1) {
+    /* if (step === 1) {
       const result = (!profiles?.[1]?.tokens?.sp?.balance || Number(price) > profiles?.[1]?.tokens?.sp?.balance);
       return setIsSubmitButtonDisabled(result);
-    }
+    } */
 
     if (step === 2) {
       const result = (!profiles?.[1]?.tokens?.sp?.balance || (Number(price) > profiles?.[1]?.tokens?.sp?.balance) || (Number(gasfee) > profiles?.[1]?.tokens?.sol?.balance));
@@ -82,7 +82,7 @@ export default function Subscription() {
 
       <Header step={step} setStep={setStep} />
 
-      {step === 1 && <FirstStep spInUsd={spInUsd} solInUsd={solInUsd} />} {/* Purchase payment */}
+      {/* {step === 1 && <FirstStep spInUsd={spInUsd} solInUsd={solInUsd} />} */}
       {step === 2 && <SecondStep price={price} gasfee={gasfee} updateCounter={updateCounter} spInUsd={spInUsd} solInUsd={solInUsd} />} {/* Purchase confirmation */}
       {step === 3 && <Loading />} {/* Purchase loading */}
       {step === 4 && <FourthStep price={price} gasfee={gasfee} />} {/* Purchase successful */}

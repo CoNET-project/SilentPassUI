@@ -74,3 +74,14 @@
   color: #9FBFE5FE;
   font-weight: 700;
 }
+
+.page-container .toggle-button {
+  position: absolute;
+  top: 16px;
+  right: 41%;
+
+  background: rgba(159, 191, 229, 1.00);;
+  color: black;
+  padding: 8px;
+  border-radius: 8px;
+}

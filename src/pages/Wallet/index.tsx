@@ -13,6 +13,7 @@ export default function Wallet() {
 
   return (
     <div className="page-container">
+      <button className="toggle-button" onClick={() => setIsAffiliate((prev) => !prev)}>Toggle</button>
       <div className="wallet-heading">
         <h1>My Account</h1>
         {

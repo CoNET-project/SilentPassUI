@@ -190,7 +190,7 @@ export const parseQueryParams = (queryString: string) => {
 export const getPassportTitle = (passportInfo: any) => {
   if (passportInfo?.expiresDays?.toString() === "7") return "Freemium";
 
-  if (passportInfo?.expiresDays && passportInfo?.expiresDays > 365)
+  if (passportInfo?.expires && passportInfo?.expires > 32503690800000)
     return "Guardian";
 
   if (passportInfo?.premium) return "Premium";
@@ -199,7 +199,7 @@ export const getPassportTitle = (passportInfo: any) => {
 };
 
 export const getExpirationDate = (passportInfo: any) => {
-  if (passportInfo?.expires && passportInfo?.expires > 31536000000) {
+  if (passportInfo?.expires && passportInfo?.expires > 32503690800000) {
     return "Unlimited";
   }
 

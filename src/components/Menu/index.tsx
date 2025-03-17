@@ -26,10 +26,10 @@ export default function Menu() {
         {location.pathname === "/wallet" ? <WalletBlueIcon /> : <WalletIconGrey />}
         <p>My Account</p>
       </button>
-      <button className={location.pathname === "/swap" ? "active" : ""} onClick={() => navigate("/swap")}>
-      {location.pathname === "/settings" ? <SwapBlueIcon /> : <SwapIconGrey />}
+      {/* <button className={location.pathname === "/swap" ? "active" : ""} onClick={() => navigate("/swap")}>
+        {location.pathname === "/settings" ? <SwapBlueIcon /> : <SwapIconGrey />}
         <p style={{ color: '#5a5a5afe' }}>Swap</p>
-      </button>
+      </button> */}
       <button className={location.pathname === "/settings" ? "active" : ""} onClick={() => navigate("/settings")}>
         {location.pathname === "/settings" ? <SettingsIconBlue /> : <SettingsIconGrey />}
         <p>Settings</p>

@@ -26,10 +26,10 @@ export default function Wallet() {
         <RedeemPassport />
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
+      {/* <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
         <SpClub />
         <ReferralProgram />
-      </div>
+      </div> */}
 
 
       <Footer />

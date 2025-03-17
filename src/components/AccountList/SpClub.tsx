@@ -127,7 +127,7 @@ export default function SpClub() {
 
   return (
     <>
-      <div className={`account-wrapper referral-program fit-content ${isOpen ? 'active' : ''}`} >
+      <div className={`account-wrapper referral-program fit-content ${isOpen ? 'active' : ''}`}>
         <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}>
           {/* <div className="disabled account-main-card"> */}
           <div className="name">

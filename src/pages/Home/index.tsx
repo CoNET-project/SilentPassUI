@@ -162,9 +162,8 @@ const Home = () => {
   }, []);
 
   const isPassportValid = (expires: number | undefined) => {
-    if (!expires) {
-      return false
-    }
+    if (!expires) return false
+    if (expires > 32503690800000) return true;
 
     const now = Math.floor(Date.now());
     const expiresDate = new Date(expires * 1000);
@@ -182,7 +181,7 @@ const Home = () => {
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
-      } 
+      }
 	  //@ts-ignore
 	  if (window?.Android) {
 		//@ts-ignore
@@ -194,7 +193,7 @@ const Home = () => {
 		setPower(false);
 		}
 	} catch (ex) { }
-      
+
       setTimeout(() => setIsConnectionLoading(false), 1000)
       return
     }

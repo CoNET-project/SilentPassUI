@@ -21,7 +21,7 @@ export default function ChoosePlan() {
           </div>
           <div>
             <span>$USD</span>
-            <p>{monthly !== 0 ? 9.99 * monthly : 9.99}</p>
+            <p>{monthly !== 0 ? (9.99 * monthly).toFixed(2) : 9.99}</p>
           </div>
         </div>
         <div className="plan-option">
@@ -36,7 +36,7 @@ export default function ChoosePlan() {
           </div>
           <div>
             <span>$USD</span>
-            <p>{yearly !== 0 ? 24.99 * yearly : 24.99}</p>
+            <p>{yearly !== 0 ? (24.99 * yearly).toFixed(2) : 24.99}</p>
           </div>
         </div>
       </div>

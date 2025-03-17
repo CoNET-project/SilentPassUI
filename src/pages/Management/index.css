@@ -34,6 +34,7 @@ h2 {
   font-size: 14px;
   border-radius: 8px;
   float: right;
+  cursor: pointer;
 }
 
 .category-switch {
@@ -212,4 +213,14 @@ h2 {
   height: 20px;
   filter: grayscale(.8);
   margin-right: 4px;
+}
+
+.refresh {
+	color: #9fbfe5fe !important;
+	cursor: pointer;
+	padding-bottom: 0.5rem;
+}
+.refreshing {
+	color: #748dabfe !important;
+	padding-bottom: 0.5rem;
 }

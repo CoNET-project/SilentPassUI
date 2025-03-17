@@ -6,6 +6,7 @@ import {
   ConetStorageAbi,
   FreePassportAbi,
   ConetDepinAbi,
+  Distributor
 } from "./abis";
 
 const contracts = {
@@ -37,6 +38,10 @@ const contracts = {
     address: "0xC6edDb4Bc6161259325cf56AEf8b0D4fb289898A",
     abi: ConetDepinAbi,
   },
+  distributor: {
+	address: '0x147385a07Cf222Aee0e7FAe0746fed7a4d45C740',
+	abi: Distributor
+  }
 };
 
 export default contracts;

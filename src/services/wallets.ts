@@ -383,6 +383,103 @@ const getVpnTimeUsed = async () => {
   setCoNET_Data(temp);
 };
 
+const NFTsProcess = async () => {
+	if (!CoNET_Data?.profiles[0]) {
+		return;
+	}
+	const profile = CoNET_Data.profiles[0];
+	const message = JSON.stringify({ walletAddress: profile.keyID })
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+        message, signMessage
+    }
+	const url = `${apiv4_endpoint}getTestNFTs`;
+	try {
+		const result: any = await postToEndpoint(url, true, sendData);
+		return true
+	} catch(ex) {
+		return false
+	}
+}
+
+const getNFTs = async() => {
+	if (!CoNET_Data?.profiles[0]) {
+		return null;
+	}
+	const profile = CoNET_Data.profiles[0]
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, conetProvider)
+	let _monthly: _distributorNFTs
+	let _yearly: _distributorNFTs
+	try {
+		[_monthly, _yearly] = await 
+		Promise.all([
+			contract_distributor.getListOfMonthly(profile.keyID, 0, 100),
+			contract_distributor.getListOfAnnual(profile.keyID, 0, 100)
+		])
+
+		
+	} catch(ex) {
+		return null
+	}
+
+	const monthly: distributorNFTs = {
+		nfts: [],
+		current: parseInt(_monthly.current.toString()),
+		total: parseInt(_monthly.total.toString())
+	}
+	const yearly: distributorNFTs = {
+		nfts: [],
+		current: parseInt(_yearly.current.toString()),
+		total: parseInt(_yearly.total.toString())
+	}
+	if (_monthly) {
+		_monthly.nfts.forEach((n, index) => {
+			const item: distributorNFTItem = {
+				id: parseInt(n.toString()),
+				used: _monthly.used[index],
+				code: _monthly.code[index]
+			}
+			monthly.nfts.push(item)
+		})
+	}
+	if (_yearly) {
+		_yearly.nfts.forEach((n, index) => {
+			const item: distributorNFTItem = {
+				id: parseInt(n.toString()),
+				used: _monthly.used[index],
+				code: _monthly.code[index]
+			}
+			yearly.nfts.push(item)
+		})
+	}
+
+	const ret: distributorNFTObj = {monthly, yearly}
+	return ret
+}
+interface _distributorNFTs {
+	nfts: BigInt[]
+	used: boolean[]
+	code: boolean[]
+	current: BigInt
+	total: BigInt
+}
+
+export interface distributorNFTItem {
+	id: number
+	used: boolean
+	code: boolean
+}
+
+export interface distributorNFTs {
+	nfts: distributorNFTItem[]
+	current: number
+	total: number
+}
+export interface distributorNFTObj {
+	monthly: distributorNFTs
+	yearly: distributorNFTs
+}
 export {
   createOrGetWallet,
   createGPGKey,
@@ -391,4 +488,6 @@ export {
   getFreePassportInfo,
   getFaucet,
   getVpnTimeUsed,
+  NFTsProcess,
+  getNFTs
 };

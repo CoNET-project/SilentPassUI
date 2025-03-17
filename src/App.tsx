@@ -18,18 +18,6 @@ function App() {
   const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated } = useDaemonContext();
 
   useEffect(() => {
-    const _getServerIpAddress = async () => {
-      try {
-        const response = await getServerIpAddress();
-        const tmpIpAddress = response.data;
-
-        setServerIpAddress(tmpIpAddress?.ip || "");
-        setServerPort('3002');
-      } catch (ex) {
-        console.log(ex)
-      }
-    };
-
     const init = async () => {
       const vpnTimeUsedInMin = parseInt(localStorage.getItem("vpnTimeUsedInMin") || "0");
       _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
@@ -44,10 +32,6 @@ function App() {
 
       await createOrGetWallet(secretPhrase);
       listenProfileVer(setProfiles);
-
-      if (!window?.webkit) {
-        _getServerIpAddress();
-      }
 
       await getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setaAllNodes(allNodes)

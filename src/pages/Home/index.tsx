@@ -11,7 +11,7 @@ import CopyProxyInfo from '../../components/CopyProxyInfo';
 import Footer from '../../components/Footer';
 import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
-import { formatMinutesToHHMM } from "../../utils/utils";
+import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 
@@ -160,16 +160,6 @@ const Home = () => {
 
     _getAllRegions()
   }, []);
-
-  const isPassportValid = (expires: number | undefined) => {
-    if (!expires) return false
-    if (expires > 32503690800000) return true;
-
-    const now = Math.floor(Date.now());
-    const expiresDate = new Date(expires * 1000);
-
-    return expiresDate.getTime() > now
-  }
 
   const handleTogglePower = async () => {
     setIsConnectionLoading(true)

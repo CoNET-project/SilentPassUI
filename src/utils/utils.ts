@@ -131,12 +131,12 @@ export const postToEndpoint = (url: string, post: boolean, jsonData: any) => {
 };
 
 export const getRemainingTime = (timestamp: number): string => {
-  const now = Math.floor(Date.now() / 1000); // Convert current time to seconds
+  const now = Math.floor(Date.now() / 1000);
   const diff = timestamp - now;
 
-  if (diff <= 0) return "00:00:00"; // Time has already passed
+  if (diff <= 0) return "00:00:00";
 
-  const days = Math.floor(diff / 86400); // 86400 seconds in a day
+  const days = Math.floor(diff / 86400);
   const hours = Math.floor((diff % 86400) / 3600);
   const minutes = Math.floor((diff % 3600) / 60);
   const seconds = diff % 60;
@@ -154,14 +154,15 @@ export const getRemainingTime = (timestamp: number): string => {
   )}:${String(seconds).padStart(2, "0")}`;
 };
 
-export const isPassportValid = (timestamp: number): boolean => {
-  const now = Math.floor(Date.now() / 1000); // Convert current time to seconds
-  const diff = timestamp - now;
+export const isPassportValid = (expires: number | undefined) => {
+  if (!expires) return false;
+  if (expires > 32503690800000) return true;
 
-  if (diff <= 0) return false; // Time has already passed
+  const now = Math.floor(Date.now());
+  const expiresDate = new Date(expires * 1000);
 
-  return true;
-};
+  return expiresDate.getTime() > now
+}
 
 export const parseQueryParams = (queryString: string) => {
   const params = new Map();

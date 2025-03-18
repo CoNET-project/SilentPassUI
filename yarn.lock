@@ -3128,6 +3128,13 @@ balanced-match@^1.0.0:
   resolved "https://registry.npmjs.org/balanced-match/-/balanced-match-1.0.2.tgz"
   integrity sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==
 
+base-x@3.0.9:
+  version "3.0.9"
+  resolved "https://registry.yarnpkg.com/base-x/-/base-x-3.0.9.tgz#6349aaabb58526332de9f60995e548a53fe21320"
+  integrity sha512-H7JU6iBHTal1gp56aKoaa//YUxEaAOUiydvrV/pILqIHXTtqxSkATOnDA2u+jZ/61sD+L/412+7kzXRtWukhpQ==
+  dependencies:
+    safe-buffer "^5.0.1"
+
 base-x@^3.0.2:
   version "3.0.10"
   resolved "https://registry.npmjs.org/base-x/-/base-x-3.0.10.tgz"
@@ -10017,6 +10024,15 @@ utils-merge@1.0.1:
   version "1.0.1"
   resolved "https://registry.npmjs.org/utils-merge/-/utils-merge-1.0.1.tgz"
   integrity sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==
+
+uuid62@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/uuid62/-/uuid62-1.0.2.tgz#1aa50c0108c72dfae51c4abfb6f30f4d22054d7d"
+  integrity sha512-vI7jxJboVd6eFRpyZn5ONx5DAQgu7hO0TcE6Qy+riw/XSw8A8+qc3SplJPZ9+nKqlAuN7RMriSn2ehMWeIPCiA==
+  dependencies:
+    base-x "3.0.9"
+    buffer "6.0.3"
+    uuid "8.3.2"
 
 uuid@8.3.2, uuid@^8.3.2:
   version "8.3.2"

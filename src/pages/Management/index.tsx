@@ -3,7 +3,7 @@ import Footer from '../../components/Footer';
 
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
-import {NFTsProcess, getNFTs, distributorNFTItem, distributorNFTObj } from '../../services/wallets'
+import {NFTsProcess, getNFTs, distributorNFTItem, distributorNFTObj, redeemProcess } from '../../services/wallets'
 import './index.css';
 import NFT_item from './NFT_item'
 type NFT = {
@@ -49,66 +49,8 @@ export default function Management() {
   const [isGetNFTs, setisGetNFTs] = useState(false);
   const [isReflashNFTs, setisReflashNFTs] = useState(false);
   const [allNFTs, setAllNFTs] = useState<distributorNFTObj|null>(null);
-  const [showRedeemProcess, setShowRedeemProcess] = useState<boolean[]>([])
-  const [redeemProcess, setRedeemProcess] = useState<number[]>([])
-
-  const getRedeemCode = async () => {
-	const items = getFilteredNFTsV2()
-	let currentItem = items[0]
-	if (redeemProcess.length > 0) {
-		const currentID = redeemProcess[redeemProcess.length-1]
-		const index = items.findIndex(n => n.id === currentID) + 1
-		if (index >= items.length) {
-			return
-		}
-		currentItem = items[index]
-	}
-
-	const allredeemProcess = [...redeemProcess]
-	allredeemProcess.push(currentItem.id)
-	setRedeemProcess(allredeemProcess)
-	setTimeout(() => {
-		const allredeemProcess1 = [...redeemProcess]
-		const indexAll = allredeemProcess1.findIndex(n => n === currentItem.id)
-		allredeemProcess1.splice(indexAll, 1)
-		setRedeemProcess(allredeemProcess1)
-	}, 10000)
-  }
-
-  const initialHiddenCodes = Object.fromEntries(
-    Object.values(nftData).flatMap((cat) =>
-      Object.values(cat).flatMap((nfts) => nfts.map((nft) => [nft.id, true]))
-    )
-  );
-  const [hiddenCodes, setHiddenCodes] = useState<Record<string, boolean>>(initialHiddenCodes);
-  const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
-  
-  const makeRedeemProcess = (items:distributorNFTItem[]) => {
-	
-	if (!items?.length) {
-		return
-	}
-
-	const redeemProcessArray: boolean[] = []
-
-	items.forEach((n, indexItem) => {
-		const index = redeemProcess.findIndex(nn => nn === n.id)
-		if (index > -1) {
-			redeemProcessArray.push(true)
-		} else {
-			redeemProcessArray.push(false)
-		}
-
-	})
-	
-	setShowRedeemProcess(redeemProcessArray)
-  }
-
-  useEffect(() => {
-	const items = getFilteredNFTsV2()
-	makeRedeemProcess(items)
-
-  }, [category, filter, redeemProcess])
+  const [clickRedeem, setClickRedeem] = useState(false)
+  const [redeemProcessing, setRedeemProcessing] = useState(false)
 
   useEffect(() => {
 
@@ -117,6 +59,70 @@ export default function Management() {
 	})
 
   }, [])
+
+  useEffect(() => {
+	const doRedeem = async () => {
+		await getRedeem()
+		
+	}
+	if (clickRedeem) {
+		doRedeem()
+	}
+  }, [clickRedeem])
+
+  const initialHiddenCodes = Object.fromEntries(
+    Object.values(nftData).flatMap((cat) =>
+      Object.values(cat).flatMap((nfts) => nfts.map((nft) => [nft.id, true]))
+    )
+  );
+  const [hiddenCodes, setHiddenCodes] = useState<Record<string, boolean>>(initialHiddenCodes);
+  const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
+
+  const getRedeem = async () => {
+	if (!allNFTs||!getAvailableRedeem()) {
+		return
+	}
+
+	
+	const _category = category
+	const allItems = allNFTs[category].nfts.filter(n => !n.code && !n.showRedeemProcess)
+	
+	if (allItems.length === 0) {
+		return
+	}
+	const item = allItems[0]
+	const newItem: distributorNFTItem = {id: item.id, code: item.code, showRedeemProcess: true, used: false}
+
+	setAllNFTs(currentItems => {
+		if (!currentItems) {
+			return currentItems
+		}
+		currentItems[_category].nfts = currentItems[_category].nfts.map(n => n.id === item.id ? newItem: n)
+		return currentItems 
+	})
+	setRedeemProcessing(true)
+	const code = await redeemProcess(item.id, _category === 'monthly' ? true : false)
+	
+	if (code) {
+		newItem.code = code
+		newItem.showRedeemProcess = false
+		setAllNFTs(currentItems => {
+			if (!currentItems) {
+				return currentItems
+			}
+			currentItems[_category].nfts = currentItems[_category].nfts.map(n => n.id === item.id ? newItem: n)
+			return currentItems 
+		})
+	}
+	setRedeemProcessing(false)
+	setClickRedeem(false)
+  }
+
+  const getAvailableRedeem = () => {
+	const items = getFilteredNFTsV2()
+	const availableItems = items.filter(n => !n.code && !n.showRedeemProcess)
+	return availableItems.length > 0
+  }
 
   const newNFTsProcessUI = async () => {
 	if (isGetNFTs) {
@@ -199,10 +205,10 @@ export default function Management() {
       <div className="sub-heading">
         <h3>Your NFTs</h3>
 		{
-			filter === 'no Redeem' && redeemProcess.length < getFilteredNFTsV2().length ?
-			<button className="generate-btn" onClick={getRedeemCode}>
+			filter === 'no Redeem' && getAvailableRedeem() && !redeemProcessing &&
+			<button className="generate-btn" onClick={() => setClickRedeem(true)}>
 				Generate codes
-			</button> : ''
+			</button> 
 		}
         
       </div>
@@ -279,7 +285,20 @@ export default function Management() {
 		</div>
 			
 		  {getFilteredNFTsV2().map((n, index) => (
-			NFT_item(n, showRedeemProcess[index])
+				<div key={n.id} className="nft-item">
+				<div className="nft-info">
+					<p className="nft-id">{n.id}</p>
+				</div>
+				<div className="nft-info">
+					<p className="nft-id">{n.code}</p>
+				</div>
+				{
+					n.showRedeemProcess ?
+					<p className='refreshing'>Redeem...</p> :
+					<p className='refreshing'></p>
+				}
+				
+			</div>
 		  ))}
 		</div>
 

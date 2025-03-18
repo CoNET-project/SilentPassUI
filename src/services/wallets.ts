@@ -4,6 +4,8 @@ import {
   customJsonStringify,
   initProfileTokens,
   postToEndpoint,
+  aesGcmEncrypt,
+  aesGcmDecrypt
 } from "../utils/utils";
 import {
   apiv4_endpoint,
@@ -15,6 +17,8 @@ import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 import { Keypair } from "@solana/web3.js";
 import { mnemonicToSeedSync } from "bip39";
 import { sha512 } from "@noble/hashes/sha512";
+import {mapLimit} from 'async'
+const uuid62 = require('uuid62')
 
 const PouchDB = require("pouchdb").default;
 
@@ -394,7 +398,7 @@ const NFTsProcess = async () => {
 	const sendData = {
         message, signMessage
     }
-	const url = `${apiv4_endpoint}getTestNFTs`;
+	const url = `${apiv4_endpoint}getTestNFTsNew`;
 	try {
 		const result: any = await postToEndpoint(url, true, sendData);
 		return true
@@ -403,7 +407,7 @@ const NFTsProcess = async () => {
 	}
 }
 
-const getNFTs = async() => {
+const getNFTs = async () => {
 	if (!CoNET_Data?.profiles[0]) {
 		return null;
 	}
@@ -434,33 +438,78 @@ const getNFTs = async() => {
 		total: parseInt(_yearly.total.toString())
 	}
 	if (_monthly) {
-		_monthly.nfts.forEach((n, index) => {
+		let index = 0
+		await mapLimit(_monthly.nfts, 1, async (n, next) => {
 			const item: distributorNFTItem = {
 				id: parseInt(n.toString()),
 				used: _monthly.used[index],
-				code: _monthly.code[index]
+				code: _monthly.code[index] ? await aesGcmDecrypt(_monthly.code[index], profile.privateKeyArmor): '',
+				showRedeemProcess: false
 			}
 			monthly.nfts.push(item)
+			index ++
 		})
 	}
 	if (_yearly) {
-		_yearly.nfts.forEach((n, index) => {
+		let index = 0
+		await mapLimit(_yearly.nfts, 1, async (n, next) => {
 			const item: distributorNFTItem = {
 				id: parseInt(n.toString()),
-				used: _monthly.used[index],
-				code: _monthly.code[index]
+				used: _yearly.used[index],
+				code: _yearly.code[index] ? await aesGcmDecrypt(_yearly.code[index], profile.privateKeyArmor): '',
+				showRedeemProcess: false
 			}
 			yearly.nfts.push(item)
+			index ++
 		})
+
 	}
 
 	const ret: distributorNFTObj = {monthly, yearly}
 	return ret
 }
+
+const checkApprovedForAll = async (wallet: ethers.Wallet) => {
+	const passport_contract = new ethers.Contract(contracts.testPassport.address, contracts.testPassport.abi, wallet)
+	try {
+		const approved = await passport_contract.isApprovedForAll(wallet.address, contracts.distributor.address)
+		if (!approved) {
+			const tx = await passport_contract.setApprovalForAll(contracts.distributor.address, true)
+			await tx.wait()
+		}
+	} catch (ex) {
+		return false
+	}
+	return true
+}
+
+const redeemProcess = async(id: number, monthly: boolean) => {
+	if (!CoNET_Data?.profiles[0]) {
+		return null;
+	}
+	const profile = CoNET_Data.profiles[0]
+	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetProvider)
+	if (!await checkApprovedForAll(wallet)) {
+		return null
+	}
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
+	const RedeemCode = uuid62.v4()
+	const encrypto = await aesGcmEncrypt(RedeemCode, profile.privateKeyArmor)
+	const hash = ethers.id(encrypto)
+	try {
+		const tx = await contract_distributor._generatorCode(monthly, hash, encrypto)
+		await tx.wait()
+	} catch (ex) {
+		return null
+	}
+	return RedeemCode
+}
+
+
 interface _distributorNFTs {
 	nfts: BigInt[]
 	used: boolean[]
-	code: boolean[]
+	code: string[]
 	current: BigInt
 	total: BigInt
 }
@@ -468,7 +517,8 @@ interface _distributorNFTs {
 export interface distributorNFTItem {
 	id: number
 	used: boolean
-	code: boolean
+	code: string
+	showRedeemProcess: boolean
 }
 
 export interface distributorNFTs {
@@ -476,10 +526,13 @@ export interface distributorNFTs {
 	current: number
 	total: number
 }
+
 export interface distributorNFTObj {
 	monthly: distributorNFTs
 	yearly: distributorNFTs
 }
+
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -489,5 +542,6 @@ export {
   getFaucet,
   getVpnTimeUsed,
   NFTsProcess,
-  getNFTs
+  getNFTs,
+  redeemProcess
 };

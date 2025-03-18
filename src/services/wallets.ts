@@ -505,6 +505,47 @@ const redeemProcess = async(id: number, monthly: boolean) => {
 	return RedeemCode
 }
 
+const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string) => {
+	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetProvider)
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
+	try {
+		const tx = await contract_distributor.codeToClient(code, solana)
+		await tx.wait()
+	} catch (ex) {
+		return null
+	}
+	return true
+}
+
+const RealizationRedeem = async (code: string) => {
+	if (!CoNET_Data?.profiles?.length) {
+		return null;
+	}
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	if (!solanaWallet||!profile) {
+		return null;
+	}
+	const ethBalance = parseInt(profile.tokens.conet_eth.balance)
+	if (ethBalance > 0.000001) {
+		return await RealizationRedeem_withSmartContract(profile, solanaWallet, code)
+	}
+	const url = `${apiv4_endpoint}codeToClient`
+	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet })
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+        message, signMessage
+    }
+	try {
+		const result: any = await postToEndpoint(url, true, sendData);
+		
+	} catch(ex) {
+		return null
+	}
+	return true
+}
+
 
 interface _distributorNFTs {
 	nfts: BigInt[]

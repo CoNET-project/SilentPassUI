@@ -9,6 +9,7 @@ import {
   PassportMainnetAbi,
   SpOracleAbi,
   PurchasePassportAbi,
+  Distributor,
   SpClubAbi,
 } from "./abis";
 
@@ -66,6 +67,10 @@ const contracts = {
     address: "0xE111F88A0204eE1F5DFE2cF5796F9C2179EeBBDd",
     abi: PurchasePassportAbi,
     network: "CONET Holesky",
+  },
+  distributor: {
+    address: '0x0c0f13c0F336A369142Bd12Ba268BC36e36E3684',
+    abi: Distributor
   },
   SpClub: {
     address: "0xe1949263B338D8c1eD7d4CbDE2026eb82DB78D3a",

@@ -1057,6 +1057,87 @@ async function getReceivedAmounts(
     console.error("Error fetching transaction history:", error);
     return [];
   }
+};
+
+/* const checkApprovedForAll = async (wallet: ethers.Wallet) => {
+	const passport_contract = new ethers.Contract(contracts.testPassport.address, contracts.testPassport.abi, wallet)
+	try {
+		const approved = await passport_contract.isApprovedForAll(wallet.address, contracts.distributor.address)
+		if (!approved) {
+			const tx = await passport_contract.setApprovalForAll(contracts.distributor.address, true)
+			await tx.wait()
+		}
+	} catch (ex) {
+		return false
+	}
+	return true
+}
+
+const redeemProcess = async(id: number, monthly: boolean) => {
+	if (!CoNET_Data?.profiles[0]) {
+		return null;
+	}
+	const profile = CoNET_Data.profiles[0]
+	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetProvider)
+	if (!await checkApprovedForAll(wallet)) {
+		return null
+	}
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
+	const RedeemCode = uuid62.v4()
+	const encrypto = await aesGcmEncrypt(RedeemCode, profile.privateKeyArmor)
+	const hash = ethers.id(encrypto)
+	try {
+		const tx = await contract_distributor._generatorCode(monthly, hash, encrypto)
+		await tx.wait()
+	} catch (ex) {
+		return null
+	}
+	return RedeemCode
+} */
+
+const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string) => {
+	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetProvider)
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
+	try {
+		const tx = await contract_distributor.codeToClient(code, solana)
+		await tx.wait()
+
+    console.log("TX: ", tx);
+	} catch (ex) {
+    console.log("EX: ", ex);
+		return null
+	}
+	return true
+}
+
+const RealizationRedeem = async (code: string) => {
+	if (!CoNET_Data?.profiles?.length) {
+		return null;
+	}
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	if (!solanaWallet||!profile) {
+		return null;
+	}
+	const ethBalance = parseInt(profile.tokens.conet_eth.balance)
+	if (ethBalance > 0.000001) {
+		return await RealizationRedeem_withSmartContract(profile, solanaWallet, code)
+	}
+	const url = `${apiv4_endpoint}codeToClient`
+	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet })
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+  }
+	try {
+		const result: any = await postToEndpoint(url, true, sendData);
+
+    return result;
+	} catch(ex) {
+    console.log("EX: ", ex);
+		return null
+	}
 }
 
 export {
@@ -1077,4 +1158,5 @@ export {
   getSpClubMemberId,
   getRefereesPage,
   getReceivedAmounts,
+  RealizationRedeem
 };

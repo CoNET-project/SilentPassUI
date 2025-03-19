@@ -2,17 +2,30 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./index.css"; // Import external CSS file
 import SuccessModal from './SuccessModal';
+import { RealizationRedeem } from '../../services/wallets';
+import SimpleLoadingRing from '../SimpleLoadingRing';
 
 export default function RedeemPassport() {
   const [redeemCode, setRedeemCode] = useState("");
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
+  const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
+  const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
 
   const navigate = useNavigate();
 
   async function handlePassportRedeem() {
-    if (redeemCode) {
+    try {
+      setIsRedeemProcessLoading(true);
+      const redeem = await RealizationRedeem(redeemCode);
+
       setIsSuccessModalOpen(true);
+    } catch (err: any) {
+      setAnErrorOccurred(true);
+      console.log("ERROR: ", err);
+    } finally {
+      setRedeemCode('');
+      setIsRedeemProcessLoading(false);
     }
   }
 
@@ -37,8 +50,9 @@ export default function RedeemPassport() {
             value={redeemCode}
             onChange={(e) => setRedeemCode(e.target.value)}
           />
+          {anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
           <button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
-            Confirm
+            {isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
           </button>
           <div className="redeem-divider">
             <div className="line"></div>

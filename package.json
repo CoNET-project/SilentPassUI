@@ -16,6 +16,7 @@
     "axios": "^1.7.7",
     "bip39": "^3.1.0",
     "blobshape": "^1.0.0",
+    "bs58": "^6.0.0",
     "copy-to-clipboard": "^3.3.3",
     "ethers": "^6.13.4",
     "motion": "^12.4.5",
@@ -30,8 +31,8 @@
     "react-spring": "^9.7.4",
     "stream-http": "^3.2.0",
     "typescript": "^4.9.5",
-    "web-vitals": "^2.1.4",
-	"uuid62": "^1.0.2"
+    "uuid62": "^1.0.2",
+    "web-vitals": "^2.1.4"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -60,6 +61,7 @@
   "devDependencies": {
     "@types/async": "^3.2.24",
     "@types/blobshape": "^1.0.3",
+    "@types/bs58": "^4.0.4",
     "@types/node": "^22.9.3"
   }
 }

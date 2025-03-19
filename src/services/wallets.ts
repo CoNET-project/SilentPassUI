@@ -9,15 +9,18 @@ import {
 } from "../utils/utils";
 import {
   apiv4_endpoint,
+  conetDepinProvider,
   conetProvider,
   localDatabaseName,
 } from "../utils/constants";
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
-import { Keypair } from "@solana/web3.js";
-import { mnemonicToSeedSync } from "bip39";
+import { Keypair, PublicKey } from "@solana/web3.js";
 import { sha512 } from "@noble/hashes/sha512";
 import {mapLimit} from 'async'
+import * as Bip39 from "bip39"
+import Bs58 from "bs58"
+
 const uuid62 = require('uuid62')
 
 const PouchDB = require("pouchdb").default;
@@ -26,17 +29,22 @@ let isGetFaucetProcess = false;
 
 let getFaucetRoop = 0;
 
-// Function to derive the keypair from mnemonic
-async function getSolanaKeypairFromMnemonic(mnemonic: string) {
-  // Convert mnemonic to seed
-  const seed = mnemonicToSeedSync(mnemonic);
+interface SolanaWallet {
+	publicKey: string;
+	privateKey: string;
+  }
 
-  // Derive the seed for the first account using Solana's HD wallet path
-  const derivedSeed = await deriveSolanaSeed(seed);
-
-  // Generate a Keypair from the derived seed
-  return Keypair.fromSeed(derivedSeed);
-}
+const initSolana = async (mnemonic: string): Promise<any> => {
+	if (!Bip39.validateMnemonic(mnemonic)) return false;
+  
+	const seed = (await Bip39.mnemonicToSeed(mnemonic)).slice(0, 32);
+	const keypair = Keypair.fromSeed(new Uint8Array(seed));
+    const ret: SolanaWallet = {
+		publicKey: keypair.publicKey.toBase58(),
+	  	privateKey: Bs58.encode(keypair.secretKey),
+	}
+	return ret
+  };
 
 // Function to derive the seed for the given derivation path
 async function deriveSolanaSeed(seed: any) {
@@ -45,15 +53,16 @@ async function deriveSolanaSeed(seed: any) {
   return hash.slice(0, 32); // Take the first 32 bytes as the private key
 }
 
-const convertSecretKeyToPrivateKey = (secretKey: any) => {
-  // Extract the first 32 bytes (private key)
-  const privateKey = secretKey.slice(0, 32);
 
-  // Convert to a 64-character hex string (Ethereum format)
-  const privateKeyHex = Buffer.from(privateKey).toString("hex");
 
-  return privateKeyHex;
-};
+const testSolana = (solanaPublicKey: string) => {
+	try {
+		const key = new PublicKey(solanaPublicKey)
+	} catch (ex) {
+		return false
+	}
+	return true
+}
 
 const createOrGetWallet = async (secretPhrase: string | null) => {
   await checkStorage();
@@ -93,18 +102,15 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     };
 
     if (acc?.mnemonic?.phrase) {
-      const secondaryWallet: Keypair = await getSolanaKeypairFromMnemonic(
+      const secondaryWallet = await initSolana(
         acc?.mnemonic?.phrase
       );
 
-      const privateKeyHex = convertSecretKeyToPrivateKey(
-        secondaryWallet.secretKey
-      );
 
       const profile2: profile = {
         tokens: initProfileTokens(),
         publicKeyArmor: secondaryWallet.publicKey.toString(),
-        keyID: secondaryWallet.publicKey.toBase58(),
+        keyID: secondaryWallet.publicKey,
         isPrimary: true,
         referrer: null,
         isNode: false,
@@ -112,7 +118,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
           privateKeyArmor: key.privateKey,
           publicKeyArmor: key.publicKey,
         },
-        privateKeyArmor: privateKeyHex,
+        privateKeyArmor: secondaryWallet.secretKey,
         hdPath: null,
         index: 0,
         type: "solana",
@@ -128,15 +134,11 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
   if (tmpData) tmpData.profiles.length = 2;
 
   if (
-    tmpData &&
-    (tmpData?.profiles.length < 2 || tmpData?.profiles[1]?.type !== "solana")
+    tmpData && ( tmpData?.profiles.length < 2 ||
+     tmpData?.profiles[1]?.type !== "solana" || !testSolana(tmpData?.profiles[1]?.keyID))
   ) {
-    const secondaryWallet = await getSolanaKeypairFromMnemonic(
+    const secondaryWallet = await initSolana(
       tmpData.mnemonicPhrase
-    );
-
-    const privateKeyHex = convertSecretKeyToPrivateKey(
-      secondaryWallet.secretKey
     );
 
     const key = await createGPGKey("", "", "");
@@ -144,7 +146,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     const profile2: profile = {
       tokens: initProfileTokens(),
       publicKeyArmor: secondaryWallet.publicKey.toString(),
-      keyID: secondaryWallet.publicKey.toBase58(),
+      keyID: secondaryWallet.publicKey,
       isPrimary: true,
       referrer: null,
       isNode: false,
@@ -152,7 +154,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
         privateKeyArmor: key.privateKey,
         publicKeyArmor: key.publicKey,
       },
-      privateKeyArmor: privateKeyHex,
+      privateKeyArmor: secondaryWallet.privateKey,
       hdPath: null,
       index: 0,
       type: "solana",
@@ -161,10 +163,10 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     tmpData.profiles[1] = profile2;
   }
 
-  tmpData?.profiles.forEach(async (n: profile) => {
-    n.keyID = n.keyID.toLocaleLowerCase();
-    n.tokens.cCNTP.unlocked = false;
-  });
+//   tmpData?.profiles.forEach(async (n: profile) => {
+//     n.keyID = n.keyID.toLocaleLowerCase();
+//     n.tokens.cCNTP.unlocked = false;
+//   });
 
   setCoNET_Data(tmpData);
 
@@ -412,55 +414,60 @@ const getNFTs = async () => {
 		return null;
 	}
 	const profile = CoNET_Data.profiles[0]
-	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, conetProvider)
-	let _monthly: _distributorNFTs
-	let _yearly: _distributorNFTs
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, conetDepinProvider)
+	let _monthly: _distributorNFTs|null= null
+	let _yearly: _distributorNFTs|null = null
 	try {
-		[_monthly, _yearly] = await
-		Promise.all([
-			contract_distributor.getListOfMonthly(profile.keyID, 0, 100),
-			contract_distributor.getListOfAnnual(profile.keyID, 0, 100)
-		])
+		_monthly = await contract_distributor.getListOfMonthly(profile.keyID, 0, 100)
+	} catch (ex) {
 
-
+	}
+	try {
+		_yearly = await contract_distributor.getListOfAnnual(profile.keyID, 0, 100)
 	} catch(ex) {
-		return null
+		
 	}
 
 	const monthly: distributorNFTs = {
 		nfts: [],
-		current: parseInt(_monthly.current.toString()),
-		total: parseInt(_monthly.total.toString())
+		current: _monthly ? parseInt(_monthly.current.toString()): 0,
+		total: _monthly ?  parseInt(_monthly.total.toString()): 0
 	}
 	const yearly: distributorNFTs = {
 		nfts: [],
-		current: parseInt(_yearly.current.toString()),
-		total: parseInt(_yearly.total.toString())
+		current: _yearly ? parseInt(_yearly.current.toString()): 0,
+		total: _yearly ? parseInt(_yearly.total.toString()): 0
 	}
 	if (_monthly) {
 		let index = 0
 		await mapLimit(_monthly.nfts, 1, async (n, next) => {
-			const item: distributorNFTItem = {
-				id: parseInt(n.toString()),
-				used: _monthly.used[index],
-				code: _monthly.code[index] ? await aesGcmDecrypt(_monthly.code[index], profile.privateKeyArmor): '',
-				showRedeemProcess: false
+			if (_monthly) {
+				const item: distributorNFTItem = {
+					id: parseInt(n.toString()),
+					used: _monthly.used[index],
+					code: _monthly.code[index] ? await aesGcmDecrypt(_monthly.code[index], profile.privateKeyArmor): '',
+					showRedeemProcess: false
+				}
+				monthly.nfts.push(item)
+				index ++
 			}
-			monthly.nfts.push(item)
-			index ++
+			
 		})
 	}
 	if (_yearly) {
 		let index = 0
 		await mapLimit(_yearly.nfts, 1, async (n, next) => {
-			const item: distributorNFTItem = {
-				id: parseInt(n.toString()),
-				used: _yearly.used[index],
-				code: _yearly.code[index] ? await aesGcmDecrypt(_yearly.code[index], profile.privateKeyArmor): '',
-				showRedeemProcess: false
+			if (_yearly) {
+				const item: distributorNFTItem = {
+					id: parseInt(n.toString()),
+					used: _yearly.used[index],
+					code: _yearly.code[index] ? await aesGcmDecrypt(_yearly.code[index], profile.privateKeyArmor): '',
+					showRedeemProcess: false
+				}
+				yearly.nfts.push(item)
+				index ++
 			}
-			yearly.nfts.push(item)
-			index ++
+			
 		})
 
 	}
@@ -470,7 +477,7 @@ const getNFTs = async () => {
 }
 
 const checkApprovedForAll = async (wallet: ethers.Wallet) => {
-	const passport_contract = new ethers.Contract(contracts.testPassport.address, contracts.testPassport.abi, wallet)
+	const passport_contract = new ethers.Contract(contracts.SPPassport.address, contracts.testPassport.abi, wallet)
 	try {
 		const approved = await passport_contract.isApprovedForAll(wallet.address, contracts.distributor.address)
 		if (!approved) {
@@ -488,14 +495,15 @@ const redeemProcess = async(id: number, monthly: boolean) => {
 		return null;
 	}
 	const profile = CoNET_Data.profiles[0]
-	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetProvider)
+	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider)
 	if (!await checkApprovedForAll(wallet)) {
 		return null
 	}
 	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
 	const RedeemCode = uuid62.v4()
 	const encrypto = await aesGcmEncrypt(RedeemCode, profile.privateKeyArmor)
-	const hash = ethers.id(encrypto)
+	const _hash = ethers.solidityPacked(['string'], [RedeemCode])
+    const hash = ethers.zeroPadBytes(_hash, 32)
 	try {
 		const tx = await contract_distributor._generatorCode(monthly, hash, encrypto)
 		await tx.wait()

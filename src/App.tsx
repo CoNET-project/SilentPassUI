@@ -31,18 +31,19 @@ function App() {
         secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
       }
 
-      await createOrGetWallet(secretPhrase);
+      const profiles = await createOrGetWallet(secretPhrase);
+	  setProfiles(profiles)
       listenProfileVer(setProfiles);
 
-      await getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
-        setaAllNodes(allNodes)
+    //   await getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
+    //     setaAllNodes(allNodes)
 
-        if (!CoNET_Data || !CoNET_Data?.profiles) {
-          return
-        }
+    //     if (!CoNET_Data || !CoNET_Data?.profiles) {
+    //       return
+    //     }
 
-        startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
-      });
+    //     startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
+    //   });
     };
 
     init();

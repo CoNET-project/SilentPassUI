@@ -16,17 +16,18 @@ import { initProfileTokens } from "../utils/utils";
 import { getVpnTimeUsed } from "./wallets";
 
 let epoch = 0;
-
+let first = true
 const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
   epoch = await conetProvider.getBlockNumber();
-
+  
   conetProvider.on("block", async (block) => {
     if (block === epoch + 1) {
       epoch++;
 
       if (processingBlock === true) return;
 
-      if (block % 10 === 0) {
+      if (first || block % 10 === 0) {
+		first = false
         setProcessingBlock(true);
 
         const profiles = CoNET_Data?.profiles;

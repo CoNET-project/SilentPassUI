@@ -12,7 +12,7 @@ import './index.css';
 type NFTCategory = "monthly" | "yearly";
 type NFTFilter = "all" | "used" | "to be used" | "no redeem";
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 
 export default function Management() {
@@ -223,14 +223,7 @@ export default function Management() {
           >
             All
           </button>
-          <button
-            className={filter === "used" ? "active" : ""}
-            onClick={() => {
-              setFilter("used")
-            }}
-          >
-            Used
-          </button>
+          
           <button
             className={filter === "to be used" ? "active" : ""}
             onClick={() => {
@@ -238,6 +231,14 @@ export default function Management() {
             }}
           >
             To be used
+          </button>
+		  <button
+            className={filter === "used" ? "active" : ""}
+            onClick={() => {
+              setFilter("used")
+            }}
+          >
+            Used
           </button>
           <button
             className={filter === "no redeem" ? "active" : ""}

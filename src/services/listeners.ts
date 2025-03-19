@@ -4,6 +4,7 @@ import {
   conetDepinProvider,
   conetProvider,
   ethProvider,
+  changeRPC
 } from "../utils/constants";
 import {
   CoNET_Data,
@@ -297,6 +298,7 @@ const scan_natural_balance = async (walletAddr: string, provider: any) => {
     const result = await provider.getBalance(walletAddr);
     return result;
   } catch (ex) {
+	changeRPC()
     console.log(`scan_natureBalance Error!`);
     return false;
   }

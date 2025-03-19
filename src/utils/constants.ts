@@ -7,18 +7,22 @@ const XMLHttpRequestTimeout = 30 * 1000;
 const conetRpc = "https://cancun-rpc.conet.network";
 const mainChain_rpc = "https://mainnet-rpc.conet.network";
 const _ethRpc = [
-  "https://rpc.ankr.com/eth",
+  "http://rpc.ankr.com/eth",
   "https://eth.llamarpc.com",
   "https://ethereum-rpc.publicnode.com",
+  "https://eth-mainnet.public.blastapi.io"
 ];
 const solanaRpc = "https://solana-rpc.conet.network";
 const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
 const rewardWalletAddress = "GUq7PhyAUZko2mPhv3CupmdJKQ61LH8VyrdsRL25q7zg";
 
 const conetProvider = new ethers.JsonRpcProvider(conetRpc);
-const ethProvider = new ethers.JsonRpcProvider(ethRpc());
+let ethProvider = new ethers.JsonRpcProvider(ethRpc());
 const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);
 
+const changeRPC = () => {
+	ethProvider = new ethers.JsonRpcProvider(ethRpc());
+}
 export {
   localDatabaseName,
   XMLHttpRequestTimeout,
@@ -30,4 +34,5 @@ export {
   conetProvider,
   ethProvider,
   conetDepinProvider,
+  changeRPC
 };

@@ -30,127 +30,136 @@ interface SolanaWallet {
 }
 
 const initSolana = async (mnemonic: string): Promise<any> => {
-  if (!Bip39.validateMnemonic(mnemonic)) return false;
-
-  const seed = (await Bip39.mnemonicToSeed(mnemonic)).slice(0, 32);
-  const keypair = Keypair.fromSeed(new Uint8Array(seed));
-
-  return {
-    publicKey: keypair.publicKey.toBase58(),
-    privateKey: Bs58.encode(keypair.secretKey),
+	if (!Bip39.validateMnemonic(mnemonic)) return false;
+  
+	const seed = (await Bip39.mnemonicToSeed(mnemonic)).slice(0, 32);
+	const keypair = Keypair.fromSeed(new Uint8Array(seed));
+  
+	return {
+	  publicKey: keypair.publicKey.toBase58(),
+	  privateKey: Bs58.encode(keypair.secretKey),
+	};
   };
-};
+
+const isValidSolanaPublicKey = (publicKey: string) => {
+	try{
+		const walletPubKey = new PublicKey(publicKey);
+	} catch(ex) {
+		return false
+	}
+	return true
+}
 
 const createOrGetWallet = async (secretPhrase: string | null) => {
-  await checkStorage();
+	await checkStorage();
 
-  if (secretPhrase) setCoNET_Data(null);
-
-  if (!CoNET_Data || !CoNET_Data?.profiles) {
-    const acc = createKeyHDWallets(secretPhrase);
-
-    const key = await createGPGKey("", "", "");
-
-    if (!acc) return;
-
-    const profile: profile = {
-      tokens: initProfileTokens(),
-      publicKeyArmor: acc.publicKey,
-      keyID: acc.address,
-      isPrimary: true,
-      referrer: null,
-      isNode: false,
-      pgpKey: {
-        privateKeyArmor: key.privateKey,
-        publicKeyArmor: key.publicKey,
-      },
-      privateKeyArmor: acc.signingKey.privateKey,
-      hdPath: acc.path,
-      index: acc.index,
-      type: "ethereum",
-    };
-
-    const data: any = {
-      mnemonicPhrase: acc?.mnemonic?.phrase,
-      profiles: [profile],
-      isReady: true,
-      ver: 0,
-      nonce: 0,
-    };
-
-    if (acc?.mnemonic?.phrase) {
-      const result = await initSolana(acc?.mnemonic?.phrase);
-
-      const profile2: profile = {
-        tokens: initProfileTokens(),
-        publicKeyArmor: "",
-        keyID: result?.publicKey || "",
-        isPrimary: true,
-        referrer: null,
-        isNode: false,
-        pgpKey: {
-          privateKeyArmor: key.privateKey,
-          publicKeyArmor: key.publicKey,
-        },
-        privateKeyArmor: result?.privateKey || "",
-        hdPath: null,
-        index: 0,
-        type: "solana",
-      };
-
-      data.profiles.push(profile2);
-    }
-
-    setCoNET_Data(data);
-  }
-
-  const tmpData = CoNET_Data;
-
-  if (
-    tmpData &&
-    (tmpData?.profiles.length < 2 ||
-      tmpData?.profiles[1]?.type !== "solana" ||
-      !isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor))
-  ) {
-    const result = await initSolana(tmpData?.mnemonicPhrase);
-
-    const key = await createGPGKey("", "", "");
-
-    const profile2: profile = {
-      tokens: initProfileTokens(),
-      publicKeyArmor: "",
-      keyID: result?.publicKey || "",
-      isPrimary: true,
-      referrer: null,
-      isNode: false,
-      pgpKey: {
-        privateKeyArmor: key.privateKey,
-        publicKeyArmor: key.publicKey,
-      },
-      privateKeyArmor: result?.privateKey || "",
-      hdPath: null,
-      index: 0,
-      type: "solana",
-    };
-
-    tmpData.profiles[1] = profile2;
-  }
-
-  tmpData?.profiles.forEach(async (n: profile) => {
-    n.tokens.cCNTP.unlocked = false;
-  });
-
-  setCoNET_Data(tmpData);
-
-  if (!CoNET_Data) return;
-
-  getFaucet(CoNET_Data.profiles[0]);
-
-  storeSystemData();
-
-  const profiles = CoNET_Data.profiles;
-
-  return profiles;
+	if (secretPhrase) setCoNET_Data(null);
+  
+	if (!CoNET_Data || !CoNET_Data?.profiles) {
+	  const acc = createKeyHDWallets(secretPhrase);
+  
+	  const key = await createGPGKey("", "", "");
+  
+	  if (!acc) return;
+  
+	  const profile: profile = {
+		tokens: initProfileTokens(),
+		publicKeyArmor: acc.publicKey,
+		keyID: acc.address,
+		isPrimary: true,
+		referrer: null,
+		isNode: false,
+		pgpKey: {
+		  privateKeyArmor: key.privateKey,
+		  publicKeyArmor: key.publicKey,
+		},
+		privateKeyArmor: acc.signingKey.privateKey,
+		hdPath: acc.path,
+		index: acc.index,
+		type: "ethereum",
+	  };
+  
+	  const data: any = {
+		mnemonicPhrase: acc?.mnemonic?.phrase,
+		profiles: [profile],
+		isReady: true,
+		ver: 0,
+		nonce: 0,
+	  };
+  
+	  if (acc?.mnemonic?.phrase) {
+		const result = await initSolana(acc?.mnemonic?.phrase);
+  
+		const profile2: profile = {
+		  tokens: initProfileTokens(),
+		  publicKeyArmor: "",
+		  keyID: result?.publicKey || "",
+		  isPrimary: true,
+		  referrer: null,
+		  isNode: false,
+		  pgpKey: {
+			privateKeyArmor: key.privateKey,
+			publicKeyArmor: key.publicKey,
+		  },
+		  privateKeyArmor: result?.privateKey || "",
+		  hdPath: null,
+		  index: 0,
+		  type: "solana",
+		};
+  
+		data.profiles.push(profile2);
+	  }
+  
+	  setCoNET_Data(data);
+	}
+  
+	const tmpData = CoNET_Data;
+  
+	if (
+	  tmpData &&
+	  (tmpData?.profiles.length < 2 ||
+		tmpData?.profiles[1]?.type !== "solana" ||!isValidSolanaPublicKey(tmpData?.profiles[1]?.keyID) ||
+		!isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor))
+	) {
+	  const result = await initSolana(tmpData?.mnemonicPhrase);
+  
+	  const key = await createGPGKey("", "", "");
+  
+	  const profile2: profile = {
+		tokens: initProfileTokens(),
+		publicKeyArmor: "",
+		keyID: result?.publicKey || "",
+		isPrimary: true,
+		referrer: null,
+		isNode: false,
+		pgpKey: {
+		  privateKeyArmor: key.privateKey,
+		  publicKeyArmor: key.publicKey,
+		},
+		privateKeyArmor: result?.privateKey || "",
+		hdPath: null,
+		index: 0,
+		type: "solana",
+	  };
+  
+	  tmpData.profiles[1] = profile2;
+	}
+  
+	tmpData?.profiles.forEach(async (n: profile) => {
+	  n.tokens.cCNTP.unlocked = false;
+	});
+  
+	setCoNET_Data(tmpData);
+  
+	if (!CoNET_Data) return;
+  
+	getFaucet(CoNET_Data.profiles[0]);
+  
+	storeSystemData();
+  
+	const profiles = CoNET_Data.profiles;
+  
+	return profiles;
 };
 
 const createKeyHDWallets = (secretPhrase: string | null) => {

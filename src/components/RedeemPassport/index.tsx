@@ -15,18 +15,15 @@ export default function RedeemPassport() {
   const navigate = useNavigate();
 
   async function handlePassportRedeem() {
-    try {
+
       setIsRedeemProcessLoading(true);
       const redeem = await RealizationRedeem(redeemCode);
-
+	  setIsRedeemProcessLoading(false);
+	  if (!redeem) {
+		return setAnErrorOccurred(true);
+	  }
       setIsSuccessModalOpen(true);
-    } catch (err: any) {
-      setAnErrorOccurred(true);
-      console.log("ERROR: ", err);
-    } finally {
       setRedeemCode('');
-      setIsRedeemProcessLoading(false);
-    }
   }
 
   return (

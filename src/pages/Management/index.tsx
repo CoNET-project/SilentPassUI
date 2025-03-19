@@ -3,6 +3,7 @@ import Footer from '../../components/Footer';
 
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
+import { ReactComponent as RefreshIcon } from "./assets/refresh-icon.svg";
 import {NFTsProcess, getNFTs, distributorNFTItem, distributorNFTObj, redeemProcess } from '../../services/wallets'
 import './index.css';
 import NFT_item from './NFT_item'
@@ -12,7 +13,9 @@ type NFT = {
 };
 
 type NFTCategory = "monthly" | "yearly";
-type NFTFilter = "all" | "used" | "no Redeem";
+type NFTFilter = "all" | "used" | "to be used" | "no redeem";
+
+const ITEMS_PER_PAGE = 4;
 
 const nftData: Record<NFTCategory, { used: NFT[]; notUsed: NFT[] }> = {
   monthly: {
@@ -49,21 +52,20 @@ export default function Management() {
   const [isGetNFTs, setisGetNFTs] = useState(false);
   const [isReflashNFTs, setisReflashNFTs] = useState(false);
   const [allNFTs, setAllNFTs] = useState<distributorNFTObj|null>(null);
-  const [clickRedeem, setClickRedeem] = useState(false)
-  const [redeemProcessing, setRedeemProcessing] = useState(false)
+  const [clickRedeem, setClickRedeem] = useState(false);
+  const [redeemProcessing, setRedeemProcessing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-
-	getNFTs().then(nfts => {
-		setAllNFTs(nfts)
-	})
-
+    getNFTs().then(nfts => {
+      setAllNFTs(nfts)
+    })
   }, [])
 
   useEffect(() => {
 	const doRedeem = async () => {
 		await getRedeem()
-		
+
 	}
 	if (clickRedeem) {
 		doRedeem()
@@ -79,49 +81,49 @@ export default function Management() {
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
 
   const getRedeem = async () => {
-	if (!allNFTs||!getAvailableRedeem()) {
-		return
-	}
+    if (!allNFTs||!getAvailableRedeem()) {
+      return
+    }
 
-	
-	const _category = category
-	const allItems = allNFTs[category].nfts.filter(n => !n.code && !n.showRedeemProcess)
-	
-	if (allItems.length === 0) {
-		return
-	}
-	const item = allItems[0]
-	const newItem: distributorNFTItem = {id: item.id, code: item.code, showRedeemProcess: true, used: false}
 
-	setAllNFTs(currentItems => {
-		if (!currentItems) {
-			return currentItems
-		}
-		currentItems[_category].nfts = currentItems[_category].nfts.map(n => n.id === item.id ? newItem: n)
-		return currentItems 
-	})
-	setRedeemProcessing(true)
-	const code = await redeemProcess(item.id, _category === 'monthly' ? true : false)
-	
-	if (code) {
-		newItem.code = code
-		newItem.showRedeemProcess = false
-		setAllNFTs(currentItems => {
-			if (!currentItems) {
-				return currentItems
-			}
-			currentItems[_category].nfts = currentItems[_category].nfts.map(n => n.id === item.id ? newItem: n)
-			return currentItems 
-		})
-	}
-	setRedeemProcessing(false)
-	setClickRedeem(false)
+    const _category = category
+    const allItems = allNFTs[category].nfts.filter(n => !n.code && !n.showRedeemProcess)
+
+    if (allItems.length === 0) {
+      return
+    }
+    const item = allItems[0]
+    const newItem: distributorNFTItem = {id: item.id, code: item.code, showRedeemProcess: true, used: false}
+
+    setAllNFTs(currentItems => {
+      if (!currentItems) {
+        return currentItems
+      }
+      currentItems[_category].nfts = currentItems[_category].nfts.map(n => n.id === item.id ? newItem: n)
+      return currentItems
+    })
+    setRedeemProcessing(true)
+    const code = await redeemProcess(item.id, _category === 'monthly' ? true : false)
+
+    if (code) {
+      newItem.code = code
+      newItem.showRedeemProcess = false
+      setAllNFTs(currentItems => {
+        if (!currentItems) {
+          return currentItems
+        }
+        currentItems[_category].nfts = currentItems[_category].nfts.map(n => n.id === item.id ? newItem: n)
+        return currentItems
+      })
+    }
+    setRedeemProcessing(false)
+    setClickRedeem(false)
   }
 
   const getAvailableRedeem = () => {
-	const items = getFilteredNFTsV2()
-	const availableItems = items.filter(n => !n.code && !n.showRedeemProcess)
-	return availableItems.length > 0
+    const items = getFilteredNFTs()
+    const availableItems = items.filter(n => !n.code && !n.showRedeemProcess)
+    return availableItems.length > 0
   }
 
   const newNFTsProcessUI = async () => {
@@ -154,34 +156,33 @@ export default function Management() {
 	setisReflashNFTs(false)
   }
 
-  const renderReflashNFTsButton = () => {
-	if (isReflashNFTs) {
-		return <p className='refreshing'>Reflash NFTs...</p>
-	}
-  
-	return <p className='refresh' onClick={() => reflashNftsProcess()}>Reflash NFTs</p>
-  }
+  console.log("NFTS: ", allNFTs);
 
+  const getFilteredNFTs = (): distributorNFTItem[] => {
+    if (!allNFTs || !allNFTs[category].nfts) {
+      return []
+    }
+    if (filter === "all") {
+      const ret = allNFTs[category].nfts
 
-  const getFilteredNFTsV2 = (): distributorNFTItem[] => {
-	if (!allNFTs || !allNFTs[category].nfts) {
-		return []
-	}
-	if (filter === "all") {
-		const ret = allNFTs[category].nfts
+      return ret
+    }
 
-		return ret
-	}
+    if (filter === 'to be used') {
+      const ret = allNFTs[category].nfts.filter(n => n.code && !n.used)
 
-	if (filter === 'used') {
-		const ret = allNFTs[category].nfts.filter(n => n.used)
+      return ret
+    }
 
-		return ret
-	}
+    if (filter === 'used') {
+      const ret = allNFTs[category].nfts.filter(n => n.used)
 
-	const ret = allNFTs[category].nfts.filter(n => !n.code)
+      return ret
+    }
 
-	return ret
+    const ret = allNFTs[category].nfts.filter(n => !n.code)
+
+    return ret
   }
 
   const copyCode = (id: string, code: string) => {
@@ -197,38 +198,51 @@ export default function Management() {
     setHiddenCodes((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  console.log("ALL NFTS: ", allNFTs);
+
+  const filteredNFTs = getFilteredNFTs();
+  const totalPages = Math.ceil(filteredNFTs.length / ITEMS_PER_PAGE);
+  const paginatedNFTs = filteredNFTs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
   return (
     <div className="page-container">
-      <h1>Management</h1>
-	  {renderNewNFTsButton()}
-	  {renderReflashNFTsButton()}
+      <div className="management-heading">
+        <h1>Management</h1>
+        <button onClick={() => reflashNftsProcess()}>
+          <RefreshIcon />
+          <p>{ isReflashNFTs ? "Refreshing... " : "Refresh"}</p>
+        </button>
+      </div>
+      {/* {renderNewNFTsButton()} */}
       <div className="sub-heading">
         <h3>Your NFTs</h3>
-		{
-			filter === 'no Redeem' && getAvailableRedeem() && !redeemProcessing &&
-			<button className="generate-btn" onClick={() => setClickRedeem(true)}>
-				Generate codes
-			</button> 
-		}
-        
+        {
+          filter === 'no redeem' && getAvailableRedeem() && !redeemProcessing &&
+          <button className="generate-btn" onClick={() => setClickRedeem(true)}>
+            Generate codes
+          </button>
+        }
       </div>
-
+      <div className="pagination-controls">
+        <button disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}>Previous</button>
+        <span>Page {currentPage} of {totalPages}</span>
+        <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => prev + 1)}>Next</button>
+      </div>
       <div className="main-content-wrapper">
-	  
         <div className="category-switch">
           <button
             className={category === "monthly" ? "active" : ""}
             onClick={() => {
-				setCategory("monthly")
-			}}
+              setCategory("monthly")
+            }}
           >
             Monthly
           </button>
           <button
             className={category === "yearly" ? "active" : ""}
             onClick={() => {
-				setCategory("yearly")
-			}}
+              setCategory("yearly")
+            }}
           >
             Yearly
           </button>
@@ -238,26 +252,34 @@ export default function Management() {
           <button
             className={filter === "all" ? "active" : ""}
             onClick={() => {
-				setFilter("all")
-			}}
+              setFilter("all")
+            }}
           >
             All
           </button>
           <button
             className={filter === "used" ? "active" : ""}
             onClick={() => {
-				setFilter("used")
-			}}
+              setFilter("used")
+            }}
           >
             Used
           </button>
           <button
-            className={filter === "no Redeem" ? "active" : ""}
+            className={filter === "to be used" ? "active" : ""}
             onClick={() => {
-				setFilter('no Redeem')
-			}}
+              setFilter('to be used')
+            }}
           >
-            no Redeem
+            To be used
+          </button>
+          <button
+            className={filter === "no redeem" ? "active" : ""}
+            onClick={() => {
+              setFilter('no redeem')
+            }}
+          >
+            To generate
           </button>
         </div>
 
@@ -274,56 +296,55 @@ export default function Management() {
           </div>
         </div> */}
 
-		<div className="nft-list">
-		<div className="nft-item">
-		<div className="nft-info">
-			Total {getFilteredNFTsV2().length} NFTs
-		</div>
-		<div className="nft-actions">
-			Pages 1 
-		</div>
-		</div>
-			
-		  {getFilteredNFTsV2().map((n, index) => (
-				<div key={n.id} className="nft-item">
-				<div className="nft-info">
-					<p className="nft-id">{n.id}</p>
-				</div>
-				<div className="nft-info">
-					<p className="nft-id">{n.code}</p>
-				</div>
-				{
-					n.showRedeemProcess ?
-					<p className='refreshing'>Redeem...</p> :
-					<p className='refreshing'></p>
-				}
-				
-			</div>
-		  ))}
-		</div>
-
         {/* <div className="nft-list">
-          {getFilteredNFTs().map((nft) => (
+          {getFilteredNFTs().map((n, index) => (
+            <div key={n.id} className="nft-item">
+            <div className="nft-info">
+              <p className="nft-id">{n.id}</p>
+            </div>
+            <div className="nft-info">
+              <p className="nft-id">{n.code}</p>
+            </div>
+            {
+              n.showRedeemProcess ?
+              <p className='refreshing'>Redeem...</p> :
+              <p className='refreshing'></p>
+            }
+          </div>
+          ))}
+        </div> */}
+
+        <div className="nft-list">
+          {paginatedNFTs.map((nft) => (
             <div key={nft.id} className="nft-item">
               <div className="nft-info">
                 <p className="nft-id">{nft.id}</p>
-                <p className="redeem-text">Redeem code</p>
-                {hiddenCodes[nft.id] ? "••••••••••••••••" : nft.redeemCode}
+                {nft.code && <p className="redeem-text">Redeem code</p>}
+                {nft.code && <p className="redeem-code">{hiddenCodes[nft.id] ? "••••••••••••••••" : nft.code}</p>}
               </div>
-              <div className="nft-actions">
-              <button
-                className="icon-btn"
-                onClick={() => copyCode(nft.id, nft.redeemCode)}
-              >
-                {copiedStates[nft.id] ? <img src="/assets/check.svg" alt="Copy icon" /> : <img src="/assets/copy-purple.svg" alt="Copy icon" />}
-              </button>
-                <button className={`icon-btn ${hiddenCodes[nft.id] && 'hidden'}`} onClick={() => toggleVisibility(nft.id)}>
-                  {hiddenCodes[nft.id] ? <VisibilityOffIcon /> : <VisibilityOnIcon />}
-                </button>
-              </div>
+              {
+                nft.showRedeemProcess && (
+                  <p>Redeeming code...</p>
+                )
+              }
+              {
+                nft.code && (
+                  <div className="nft-actions">
+                    <button
+                      className="icon-btn"
+                      onClick={() => copyCode(String(nft.id), nft.code)}
+                    >
+                      {copiedStates[nft.id] ? <img src="/assets/check.svg" alt="Copy icon" /> : <img src="/assets/copy-purple.svg" alt="Copy icon" />}
+                    </button>
+                    <button className={`icon-btn ${hiddenCodes[nft.id] && 'hidden'}`} onClick={() => toggleVisibility(String(nft.id))}>
+                      {hiddenCodes[nft.id] ? <VisibilityOffIcon /> : <VisibilityOnIcon />}
+                    </button>
+                  </div>
+                )
+              }
             </div>
           ))}
-        </div> */}
+        </div>
       </div>
       <Footer />
     </div>

@@ -10,7 +10,9 @@ h2 {
   align-items: center;
   justify-content: space-between;
 
-  margin: 24px 0;
+  margin: 0 0 24px;
+
+  height: 37px;
 }
 
 .sub-heading button {
@@ -71,7 +73,7 @@ h2 {
 
 .filters {
   display: flex;
-  gap: 16px;
+  gap: 4px;
   margin-top: 10px;
 
   padding: 0 16px;
@@ -84,6 +86,8 @@ h2 {
 
   padding: 4px 6px;
   border-radius: 12px;
+
+  font-size: 12px;
 
   cursor: pointer;
 
@@ -104,6 +108,28 @@ h2 {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.management-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 32px;
+}
+
+.management-heading button {
+  gap: 8px;
+
+  border: 1px solid #9FBFE5FE;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.management-heading button p {
+  color: #9FBFE5FE;
+  font-weight: 700;
 }
 
 .quantity-selector {
@@ -167,7 +193,6 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
 
   border-top: 1px solid #3F3F40;
 }
@@ -223,4 +248,13 @@ h2 {
 .refreshing {
 	color: #748dabfe !important;
 	padding-bottom: 0.5rem;
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+
+  margin: 8px 0;
 }

@@ -8,7 +8,6 @@
 .cta-buttons > div {
   display: flex;
   flex-direction: column;
-  gap: 24px;
 }
 
 .cta-buttons > div > p {
@@ -17,7 +16,7 @@
   color: #989899;
 }
 
-.cta-buttons button {
+.cta-buttons button.cta-button {
   width: 100%;
 
   display: flex;

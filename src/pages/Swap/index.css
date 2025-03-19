@@ -5,18 +5,6 @@
   margin-bottom: 40px;
 }
 
-.cta-buttons > div {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.cta-buttons > div > p {
-  text-align: left;
-  font-size: 12px;
-  color: #989899;
-}
-
 .cta-buttons div.highlight-1 button {
   padding: 16px;
   background: rgba(159, 191, 229, 0.2);

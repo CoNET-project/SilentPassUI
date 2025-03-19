@@ -1,0 +1,262 @@
+.redeem-dropdown {
+  color: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+
+  overflow: hidden;
+
+  height: 74px;
+
+  transition: height .12s ease;
+}
+
+.redeem-dropdown.is-open {
+  height: 333px;
+}
+
+/* Dropdown Header */
+.redeem-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(to right, #3b82f6, #4E72B6);
+  border-radius: 16px 16px 0 0;
+  cursor: pointer;
+  border: none;
+  width: 100%;
+}
+
+.redeem-header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.redeem-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.redeem-arrow {
+  transition: transform 0.3s ease;
+}
+
+.redeem-arrow.rotate {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Content */
+.redeem-content {
+  background-color: #111;
+  padding: 16px;
+  border-radius: 0 0 16px 16px;
+}
+
+.redeem-label {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 8px;
+
+  text-align: left;
+}
+
+.redeem-input {
+  width: 100%;
+  background-color: #3F3F40;
+  color: white;
+  padding: 8px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  border: none;
+  outline: none;
+}
+
+.redeem-button {
+  width: 100%;
+  padding: 16px 8px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.redeem-button.confirm {
+  background-color: #282930;
+  color: white;
+  margin-bottom: 10px;
+
+  display: flex;
+  justify-content: center;
+
+  font-size: 18px;
+  font-weight: 700px;
+}
+
+.cta-buttons button.redeem-button.purchase {
+  background-color: #4E72B6;
+  color: white;
+
+  display: flex;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+/* Divider */
+.redeem-divider {
+  display: flex;
+  align-items: center;
+  color: #aaa;
+  font-size: 14px;
+  margin: 10px 0;
+}
+
+.redeem-divider .line {
+  flex: 1;
+  height: 1px;
+  background-color: #444;
+  margin: 0 8px;
+}
+
+/* Success Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  z-index: 10;
+
+  cursor: pointer;
+}
+
+.modal {
+  width: 90%;
+  max-width: 320px;
+  background: #191919;
+  border-radius: 16px;
+  text-align: center;
+
+  border: 1px solid #3F3F40;
+
+  cursor: default;
+}
+
+.modal-header {
+  background: linear-gradient(90deg, rgba(159, 191, 229, 1.00) 0%, rgba(78, 114, 182, 1.00) 100%);
+  padding: 20px;
+  border-radius: 8px 8px 0 0;
+
+  height: 135px;
+
+  position: relative;
+  overflow: hidden;
+}
+
+.modal-header > svg {
+  position: absolute;
+  bottom: -8px;
+}
+
+.modal-header > svg:first-child {
+  left: 30px;
+}
+
+.modal-header > svg:last-child {
+  right: 30px;
+}
+
+.modal-icon {
+  font-size: 40px;
+
+  width: 80px;
+  height: 80px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: #FFFFFF;
+
+  border-radius: 999px;
+
+  margin: -40px auto 0;
+
+  position: relative;
+  z-index: 11;
+}
+
+.modal-body {
+  padding: 16px;
+  color: white;
+}
+
+.modal-body h2 {
+  margin: 0;
+  font-size: 22px;
+
+  margin-bottom: 16px;
+}
+
+.modal-body p {
+  font-size: 20px;
+
+  margin-bottom: 32px;
+}
+
+.modal-body p strong {
+  color: #9FBFE5FE;
+}
+
+.modal-body p.passport-id {
+  color: #989899;
+
+  display: flex;
+  justify-content: space-between;
+  font-size: 16px;
+}
+
+.modal-body p.passport-id span {
+  color: #FFF;
+}
+
+.modal-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.modal-button {
+  width: 100%;
+  padding: 10px;
+  border-radius: 16px;
+  font-size: 14px;
+  cursor: pointer;
+
+  display: flex;
+  justify-content: center;
+
+  color: #9FBFE5FE;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.modal-button.close {
+  background-color: #9fbfe533;
+  border: none;
+
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.modal-button.purchase {
+  background-color: #4a6ea9;
+  color: white;
+  border: none;
+}

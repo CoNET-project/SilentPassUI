@@ -4,6 +4,7 @@ import './index.css';
 import AccountList from '../../components/AccountList';
 import SpClub from '../../components/AccountList/SpClub';
 import ReferralProgram from '../../components/AccountList/ReferralProgram';
+import RedeemPassport from '../../components/RedeemPassport';
 
 export default function Wallet() {
   const navigate = useNavigate();
@@ -15,19 +16,14 @@ export default function Wallet() {
       <AccountList />
 
       <div className="cta-buttons">
-        <div>
+        {/* <div>
           <button className='disabled'>
             <img src="/assets/conet-gray.svg" alt="Platform" />
             <p>Open CONET Platform</p>
           </button>
           <p>*Open CoNET Platform - Redeem Silent Pass passport and transfer Silent Pass passport to Silent Pass Account (public wallet address) if user has guardian NFT or CoNETian NFT.</p>
-        </div>
-        <div>
-          <button onClick={() => navigate('/subscription')}>
-            <img src="/assets/conet-outline-white.svg" alt="Platform" />
-            <p>Get Silent Pass Passport</p>
-          </button>
-        </div>
+        </div> */}
+        <RedeemPassport />
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>

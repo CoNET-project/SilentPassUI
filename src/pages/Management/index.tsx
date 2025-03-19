@@ -6,7 +6,6 @@ import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg
 import { ReactComponent as RefreshIcon } from "./assets/refresh-icon.svg";
 import {NFTsProcess, getNFTs, distributorNFTItem, distributorNFTObj, redeemProcess } from '../../services/wallets'
 import './index.css';
-import NFT_item from './NFT_item'
 type NFT = {
   id: string;
   redeemCode: string;
@@ -16,33 +15,6 @@ type NFTCategory = "monthly" | "yearly";
 type NFTFilter = "all" | "used" | "to be used" | "no redeem";
 
 const ITEMS_PER_PAGE = 4;
-
-const nftData: Record<NFTCategory, { used: NFT[]; notUsed: NFT[] }> = {
-  monthly: {
-    used: [
-      { id: "NFT-001", redeemCode: "NFT-USED-001" },
-      { id: "NFT-002", redeemCode: "NFT-USED-002" },
-      { id: "NFT-003", redeemCode: "NFT-USED-003" },
-    ],
-    notUsed: [
-      { id: "NFT-004", redeemCode: "NFT-UNUSED-004" },
-      { id: "NFT-005", redeemCode: "NFT-UNUSED-005" },
-      { id: "NFT-006", redeemCode: "NFT-UNUSED-006" },
-    ],
-  },
-  yearly: {
-    used: [
-      { id: "NFT-007", redeemCode: "NFT-USED-007" },
-      { id: "NFT-008", redeemCode: "NFT-USED-008" },
-      { id: "NFT-009", redeemCode: "NFT-USED-009" },
-    ],
-    notUsed: [
-      { id: "NFT-010", redeemCode: "NFT-UNUSED-010" },
-      { id: "NFT-011", redeemCode: "NFT-UNUSED-011" },
-      { id: "NFT-012", redeemCode: "NFT-UNUSED-012" },
-    ],
-  },
-};
 
 
 export default function Management() {
@@ -72,11 +44,7 @@ export default function Management() {
 	}
   }, [clickRedeem])
 
-  const initialHiddenCodes = Object.fromEntries(
-    Object.values(nftData).flatMap((cat) =>
-      Object.values(cat).flatMap((nfts) => nfts.map((nft) => [nft.id, true]))
-    )
-  );
+  const initialHiddenCodes = {};
   const [hiddenCodes, setHiddenCodes] = useState<Record<string, boolean>>(initialHiddenCodes);
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
 
@@ -84,7 +52,6 @@ export default function Management() {
     if (!allNFTs||!getAvailableRedeem()) {
       return
     }
-
 
     const _category = category
     const allItems = allNFTs[category].nfts.filter(n => !n.code && !n.showRedeemProcess)

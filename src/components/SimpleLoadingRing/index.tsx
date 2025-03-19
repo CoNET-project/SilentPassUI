@@ -1,3 +1,5 @@
+import './index.css';
+
 export default function SimpleLoadingRing() {
   return (
     <div className="loading-ring-container">

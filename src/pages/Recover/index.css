@@ -81,17 +81,41 @@
 
 .recover-button {
   width: 210px;
-  padding: 16px 0;
+  height: 60px;
 
   border-radius: 16px;
   margin: 0 auto;
 
   display: flex;
   justify-content: center;
+  align-items: center;
 
   background: #9FBFE5FE;
   color: #0D0D0D;
 
   font-size: 16px;
   font-weight: 700;
+
+  cursor: pointer;
+}
+
+.recover-button img {
+  width: 30px;
+  height: 30px;
+}
+
+.recover-button:disabled {
+  background: #4C4C4C;
+
+  cursor: not-allowed;
+}
+
+span.error-warn {
+  color: #B3261E;
+  font-size: 12px;
+
+  display: block;
+  margin: -12px 0 12px;
+
+  text-align: left;
 }

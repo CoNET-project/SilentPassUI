@@ -416,13 +416,13 @@ const getNFTs = async () => {
 	let _monthly: _distributorNFTs
 	let _yearly: _distributorNFTs
 	try {
-		[_monthly, _yearly] = await 
+		[_monthly, _yearly] = await
 		Promise.all([
 			contract_distributor.getListOfMonthly(profile.keyID, 0, 100),
 			contract_distributor.getListOfAnnual(profile.keyID, 0, 100)
 		])
 
-		
+
 	} catch(ex) {
 		return null
 	}
@@ -539,13 +539,21 @@ const RealizationRedeem = async (code: string) => {
     }
 	try {
 		const result: any = await postToEndpoint(url, true, sendData);
-		
+
 	} catch(ex) {
 		return null
 	}
 	return true
 }
 
+const recoverWallet = async (phrases: string[]) => {
+  if (phrases.length !== 12) return;
+
+  const fullPhrases = phrases.join(" ");
+  const recoveredAccount = await ethers.Wallet.fromPhrase(fullPhrases);
+
+  return recoveredAccount;
+}
 
 interface _distributorNFTs {
 	nfts: BigInt[]
@@ -584,5 +592,6 @@ export {
   getVpnTimeUsed,
   NFTsProcess,
   getNFTs,
-  redeemProcess
+  redeemProcess,
+  recoverWallet
 };

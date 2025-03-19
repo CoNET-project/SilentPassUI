@@ -16,14 +16,10 @@ export default function Wallet() {
       <button className="toggle-button" onClick={() => setIsAffiliate((prev) => !prev)}>Toggle</button>
       <div className="wallet-heading">
         <h1>My Account</h1>
-        {
-          !isAffiliate && (
-            <button onClick={() => navigate("/recover")}>
-              <RecoverIcon />
-              <p>Recover</p>
-            </button>
-          )
-        }
+        <button onClick={() => navigate("/recover")}>
+          <RecoverIcon />
+          <p>Recover</p>
+        </button>
       </div>
 
       <AccountList />

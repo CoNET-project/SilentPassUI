@@ -8,7 +8,7 @@ import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg
 
 let copyTimeoutId: NodeJS.Timeout;
 
-export default function CopyAccountInfo({ wallet }: any) {
+export default function CopyAccountInfo({ wallet, noRecoveryPhrase = false }: any) {
   const [copied, setCopied] = useState({
     address: "",
     info: "",
@@ -110,41 +110,47 @@ export default function CopyAccountInfo({ wallet }: any) {
           : <Skeleton width='100%' height='20px' />
         }
       </div>
-      <Separator />
-      <div className="copy-div">
-        {CoNET_Data?.mnemonicPhrase ?
+      {
+        !noRecoveryPhrase && (
           <>
-            <div className="copy-text">
-              <p>Recovery Phrase</p>
-              {
-                isWordsHidden ?
-                  <div style={{ filter: 'blur(3px)' }}>
-                    <span>{CoNET_Data?.mnemonicPhrase || ''}</span>
+            <Separator />
+            <div className="copy-div">
+              {CoNET_Data?.mnemonicPhrase ?
+                <>
+                  <div className="copy-text">
+                    <p>Recovery Phrase</p>
+                    {
+                      isWordsHidden ?
+                        <div style={{ filter: 'blur(3px)' }}>
+                          <span>{CoNET_Data?.mnemonicPhrase || ''}</span>
+                        </div>
+                        :
+                        <span>{CoNET_Data?.mnemonicPhrase || ''}</span>
+                    }
                   </div>
-                  :
-                  <span>{CoNET_Data?.mnemonicPhrase || ''}</span>
+                  <div className="button-list">
+                    <button onClick={() => handleCopy("words")}>
+                      {
+                        (copied.address === CoNET_Data?.mnemonicPhrase && copied.info === "words") ? (
+                          <img src="/assets/check.svg" alt="Copy icon" />
+                        ) : (
+                          <img src="/assets/copy-purple.svg" alt="Copy icon" />
+                        )
+                      }
+                    </button>
+                    <button className={isWordsHidden ? "hidden" : ""} onClick={() => setIsWordsHidden((prev) => !prev)}>
+                      {
+                        isWordsHidden ? <VisibilityOffIcon /> : <VisibilityOnIcon />
+                      }
+                    </button>
+                  </div>
+                </>
+                : <Skeleton width='20px' height='20px' />
               }
             </div>
-            <div className="button-list">
-              <button onClick={() => handleCopy("words")}>
-                {
-                  (copied.address === CoNET_Data?.mnemonicPhrase && copied.info === "words") ? (
-                    <img src="/assets/check.svg" alt="Copy icon" />
-                  ) : (
-                    <img src="/assets/copy-purple.svg" alt="Copy icon" />
-                  )
-                }
-              </button>
-              <button className={isWordsHidden ? "hidden" : ""} onClick={() => setIsWordsHidden((prev) => !prev)}>
-                {
-                  isWordsHidden ? <VisibilityOffIcon /> : <VisibilityOnIcon />
-                }
-              </button>
-            </div>
           </>
-          : <Skeleton width='20px' height='20px' />
-        }
-      </div>
+        )
+      }
     </>
   )
 }

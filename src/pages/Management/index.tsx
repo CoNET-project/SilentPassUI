@@ -4,17 +4,15 @@ import Footer from '../../components/Footer';
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { ReactComponent as RefreshIcon } from "./assets/refresh-icon.svg";
+import { ReactComponent as ArrowIcon } from "./assets/arrow.svg";
+
 import {NFTsProcess, getNFTs, distributorNFTItem, distributorNFTObj, redeemProcess } from '../../services/wallets'
 import './index.css';
-type NFT = {
-  id: string;
-  redeemCode: string;
-};
 
 type NFTCategory = "monthly" | "yearly";
 type NFTFilter = "all" | "used" | "to be used" | "no redeem";
 
-const ITEMS_PER_PAGE = 4;
+const ITEMS_PER_PAGE = 5;
 
 
 export default function Management() {
@@ -27,10 +25,20 @@ export default function Management() {
   const [clickRedeem, setClickRedeem] = useState(false);
   const [redeemProcessing, setRedeemProcessing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [hiddenCodes, setHiddenCodes] = useState<Record<string, boolean>>({});
+  const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     getNFTs().then(nfts => {
+      if (!nfts) return;
+
       setAllNFTs(nfts)
+      const plainNFTIDList = [...nfts?.monthly?.nfts, ...nfts?.yearly.nfts].map((nft) => nft.id);
+      const hiddenCodesMapping: Record<string, boolean> = {};
+
+      plainNFTIDList.forEach((nftId) => hiddenCodesMapping[nftId] = true);
+
+      setHiddenCodes(hiddenCodesMapping);
     })
   }, [])
 
@@ -43,10 +51,6 @@ export default function Management() {
 		doRedeem()
 	}
   }, [clickRedeem])
-
-  const initialHiddenCodes = {};
-  const [hiddenCodes, setHiddenCodes] = useState<Record<string, boolean>>(initialHiddenCodes);
-  const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
 
   const getRedeem = async () => {
     if (!allNFTs||!getAvailableRedeem()) {
@@ -94,12 +98,12 @@ export default function Management() {
   }
 
   const newNFTsProcessUI = async () => {
-	if (isGetNFTs) {
-		return
-	}
-	setisGetNFTs(true)
-	await NFTsProcess()
-	setisGetNFTs(false)
+    if (isGetNFTs) {
+      return
+    }
+    setisGetNFTs(true)
+    await NFTsProcess()
+    setisGetNFTs(false)
   }
 
 
@@ -189,11 +193,6 @@ export default function Management() {
             Generate codes
           </button>
         }
-      </div>
-      <div className="pagination-controls">
-        <button disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}>Previous</button>
-        <span>Page {currentPage} of {totalPages}</span>
-        <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => prev + 1)}>Next</button>
       </div>
       <div className="main-content-wrapper">
         <div className="category-switch">
@@ -313,6 +312,19 @@ export default function Management() {
           ))}
         </div>
       </div>
+      {
+        !!totalPages && (
+          <div className="pagination-controls">
+            <button disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}>
+              <ArrowIcon style={{ transform: "rotate(180deg)" }} />
+            </button>
+            <span>Page {currentPage} of {totalPages}</span>
+            <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => prev + 1)}>
+              <ArrowIcon />
+            </button>
+          </div>
+        )
+      }
       <Footer />
     </div>
   )

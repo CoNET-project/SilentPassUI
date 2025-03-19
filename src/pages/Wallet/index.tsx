@@ -18,7 +18,7 @@ export default function Wallet() {
         <h1>My Account</h1>
         {
           !isAffiliate && (
-            <button>
+            <button onClick={() => navigate("/recover")}>
               <RecoverIcon />
               <p>Recover</p>
             </button>

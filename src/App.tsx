@@ -11,6 +11,7 @@ import { getServerIpAddress } from "./api";
 import { parseQueryParams } from "./utils/utils";
 import Subscription from './pages/Subscription';
 import Management from './pages/Management';
+import Recover from './pages/Recover';
 
 global.Buffer = require('buffer').Buffer;
 
@@ -63,6 +64,7 @@ function App() {
           <Route path="/applications" element={<Applications />}></Route> */}
           <Route path="/subscription" element={<Subscription />}></Route>
           <Route path="/management" element={<Management />}></Route>
+          <Route path="/recover" element={<Recover />}></Route>
            {/* <Route path="/support" element={<Support />}></Route>
           <Route path="/ww" element={<Home />}></Route> */}
         </Routes>

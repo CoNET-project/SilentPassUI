@@ -55,3 +55,7 @@ h2.title {
   height: 1px;
   background-color: #3f3f40;
 }
+
+span.warn {
+  color: #B3261E;
+}

@@ -32,7 +32,7 @@ const FAQ = () => {
           }}
         >
           <div className="title-wrapper">
-            <h3>What’s the Silent Pass service level and the benefits?</h3>
+            <h3>What’s the Silent Pass service level?</h3>
             {dropdownOpen === 1 ?
               <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
               <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
@@ -46,9 +46,8 @@ const FAQ = () => {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
             >
-              <p>Service Levels and Benefits: (for both Proxy and VPN)</p>
+              <p>Service Levels and Benefits: <br /> (for both Proxy and VPN)</p>
               <img alt="Silent Pass Benefits Table" src={SilentPassBenefitsTable} />
-              <p>Annual Silent Pass users are eligible to run Light Node on CoNET DePIN network without staking required within the Silent Pass service validity period, to earn $CONET token reward in return.  Please refer to Light Node session for details.</p>
             </motion.div>
           }
         </div>
@@ -81,7 +80,6 @@ const FAQ = () => {
               transition={{ duration: 0.5 }}
             >
               <img alt="Silent Pass Service Table" src={SilentPassServiceTable} />
-              <p>Silent Pass token is the only accepted token for service subscription.</p>
             </motion.div>
           }
         </div>
@@ -114,7 +112,8 @@ const FAQ = () => {
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.5 }}
               >
-                <p>Silent Pass Wallet are unique identity for each device. The Silent Pass Passport need to be transfer to your device’s Silent Pass wallet, then your Silent Pass service would be initiated.</p>
+                <p>Silent Pass Wallet are unique identity for each device. The Silent Pass Passport could be purchased within the APP, or be transferred to your wallet, then your Silent Pass service would be initiated. </p>
+                <p>Please refer to <a href="https://www.figma.com/exit?url=https%3A%2F%2Fyoutube.com%2Fshorts%2FO6l3r_qpqzo%3Ffeature%3Dshared" target="_blank">Tutorial Video</a> for how to get your Silent Pass wallet address.</p>
               </motion.div>
             }
           </div>
@@ -123,7 +122,7 @@ const FAQ = () => {
 
       <div className='divider' />
 
-      {/* How to transfer the Silent Pass Passport to other devices? */}
+      {/* Why do I need to transfer Silent Pass Passport? */}
       <AnimatePresence>
         <div
           className='faq-item'
@@ -132,7 +131,7 @@ const FAQ = () => {
           }}
         >
           <div className="title-wrapper">
-            <h3>How to transfer the Silent Pass Passport to other devices?</h3>
+            <h3>Why do I need to transfer Silent Pass Passport?</h3>
             {dropdownOpen === 4 ?
               <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
               <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
@@ -147,12 +146,7 @@ const FAQ = () => {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
             >
-              <p>Silent Pass Passport can only be transferred thru CoNET Platform. Please log in the CoNET Platform with your Silent Pass wallet. Below are the steps to follow.</p>
-              <ul>
-                <li>Copy the 12 recovery phrases of your Silent Pass Wallet in APP.</li>
-                <li>Log in the CoNET Platform by using the 12 recovery phrases.</li>
-                <li>Transfer the Passports to other devices.</li>
-              </ul>
+              <p>If you are a premium subscriber, you would get 5 Passport NFTs in your Silent Pass Wallet. You could transfer the Passport NFT to the other Silent Pass wallet in other devices, to initiate Silent Pass service in other devices.</p>
             </motion.div>
           }
         </div>
@@ -160,7 +154,7 @@ const FAQ = () => {
 
       <div className='divider' />
 
-      {/* What’s the expire date for Guardian & CoNETian NFT holder? */}
+      {/* How to transfer the Silent Pass Passport to other devices? */}
       <AnimatePresence>
         <div
           className='faq-item'
@@ -169,7 +163,7 @@ const FAQ = () => {
           }}
         >
           <div className="title-wrapper">
-            <h3>What’s the expire date for Guardian & CoNETian NFT holder?</h3>
+            <h3>How to transfer the Silent Pass Passport to other devices?</h3>
             {dropdownOpen === 5 ?
               <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
               <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
@@ -184,10 +178,11 @@ const FAQ = () => {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
             >
-              <ul>
-                <li>If you are Guardian NFT holder, your Silent Pass service would be permanently for 5 devices for each Guardian NFT.  No expire date for your services.</li>
-                <li>If you are CoNETian NFT holder, you will receive 5 Silent Pass Passport in your CoNETian Wallet. You can transfer the Passport to your Silent Pass Wallet to initiate the service. The service would valid for 1 year once you activate the passport in Silent Pass VPN or Silent Pass Proxy APP.</li>
-              </ul>
+              <p>The Passport NFT transaction could be completed within Silent Pass VPN APP.</p>
+              <ol>
+                <li>Log in your Silent Pass VPN/Proxy application</li>
+                <li>Transfer Passport NFT to the Silent Pass Wallet in other devices. Please refer to Tutorial Video <span className="warn">(to be updated)</span> for step-by step guidance.</li>
+              </ol>
             </motion.div>
           }
         </div>
@@ -195,7 +190,7 @@ const FAQ = () => {
 
       <div className='divider' />
 
-      {/* What’s different of Silent Pass Proxy & Silent Pass VPN? */}
+      {/* How to check the expire date of my Silent Pass Service? */}
       <AnimatePresence>
         <div
           className='faq-item'
@@ -204,7 +199,7 @@ const FAQ = () => {
           }}
         >
           <div className="title-wrapper">
-            <h3>What’s different of Silent Pass Proxy & Silent Pass VPN?</h3>
+            <h3>How to check the expire date of my Silent Pass Service?</h3>
             {dropdownOpen === 6 ?
               <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
               <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
@@ -219,10 +214,42 @@ const FAQ = () => {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
             >
+              <p>Please refer to <a href="https://www.youtube.com/watch?v=0YmHHe4PEkk">Tutorial Video</a> for step-by-step guidance.</p>
+            </motion.div>
+          }
+        </div>
+      </AnimatePresence>
+
+      <div className='divider' />
+
+      {/* What’s different of Silent Pass Proxy & Silent Pass VPN? */}
+      <AnimatePresence>
+        <div
+          className='faq-item'
+          onClick={() => {
+            handleDropdownClick(7)
+          }}
+        >
+          <div className="title-wrapper">
+            <h3>What’s different of Silent Pass Proxy & Silent Pass VPN?</h3>
+            {dropdownOpen === 7 ?
+              <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
+              <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
+            }
+          </div>
+
+          {dropdownOpen === 7 &&
+            <motion.div
+              className='faq-item-content'
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.5 }}
+            >
               <p>We offer 2 different Silent Pass services to better fit your need. </p>
               <ul>
-                <li>Silent Pass Proxy is the application runs on your PC/laptop to provide VPN protection for your web browser.</li>
-                <li>Silent Pass VPN APP can be download in apple store, it runs on your mobile/MAC/other devise to provide VPN protection for your entire device. It’s available for iPhone and MAC at this stage, Silent Pass Android APP coming soon.</li>
+                <li><span style={{ color: "#FFFFFF", fontWeight: "700" }}>Silent Pass Proxy</span> is the application runs on your PC/laptop to provide VPN protection for your web browser.</li>
+                <li><span style={{ color: "#FFFFFF", fontWeight: "700" }}>Silent Pass VPN</span> APP can be download in apple store, it runs on your mobile/MAC/other devise to provide VPN protection for your entire device. It’s available for iPhone and MAC at this stage, Silent Pass Android APP coming soon.</li>
               </ul>
             </motion.div>
           }
@@ -236,18 +263,18 @@ const FAQ = () => {
         <div
           className='faq-item'
           onClick={() => {
-            handleDropdownClick(7)
+            handleDropdownClick(8)
           }}
         >
           <div className="title-wrapper">
             <h3>How do I contact Silent Pass support?</h3>
-            {dropdownOpen === 7 ?
+            {dropdownOpen === 8 ?
               <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
               <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
             }
           </div>
 
-          {dropdownOpen === 7 &&
+          {dropdownOpen === 8 &&
             <motion.div
               className='faq-item-content'
               initial={{ opacity: 0, y: -10 }}
@@ -270,18 +297,18 @@ const FAQ = () => {
         <div
           className='faq-item'
           onClick={() => {
-            handleDropdownClick(8)
+            handleDropdownClick(9)
           }}
         >
           <div className="title-wrapper">
             <h3>How can I use Silent Pass VPN?</h3>
-            {dropdownOpen === 8 ?
+            {dropdownOpen === 9 ?
               <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
               <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
             }
           </div>
 
-          {dropdownOpen === 8 &&
+          {dropdownOpen === 9 &&
             <motion.div
               className='faq-item-content'
               initial={{ opacity: 0, y: -10 }}
@@ -297,23 +324,23 @@ const FAQ = () => {
 
       <div className='divider' />
 
-      {/* APP supported in beta version? */}
+      {/* How can I use Telegram under Silent Pass VPN Protection? */}
       <AnimatePresence>
         <div
           className='faq-item'
           onClick={() => {
-            handleDropdownClick(9)
+            handleDropdownClick(10)
           }}
         >
           <div className="title-wrapper">
-            <h3>APP supported in beta version*</h3>
-            {dropdownOpen === 9 ?
+            <h3>How can I use Telegram under Silent Pass VPN Protection?</h3>
+            {dropdownOpen === 10 ?
               <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
               <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
             }
           </div>
 
-          {dropdownOpen === 9 &&
+          {dropdownOpen === 10 &&
             <motion.div
               className='faq-item-content'
               initial={{ opacity: 0, y: -10 }}
@@ -321,7 +348,14 @@ const FAQ = () => {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
             >
-              <p>To provide better user experience, our R&D team keeps working on the development on improving service quality. On the latest Beta version, Silent Pass could protect your security on below APPs, more applications protecting would be provided in the upcoming official Version.</p>
+              <p>After the Silent Pass APP had been run on your device, you need to setup your Telegram proxy setting to use Telegram APP. </p>
+              <ol>
+                <li>Run Silent Pass APP on your device.</li>
+                <li>Run Telegram APP on your device.</li>
+                <li>Change Telegram Proxy Setting, Telegram Setting {'=>'} Data and Storage {'=>'} Proxy</li>
+                <li>Add Proxy, Proxy information could be found in the Silent Pass VPN APP homepage</li>
+              </ol>
+              <p>Please refer to <a href="https://www.youtube.com/watch?v=15fJpywnFFM" target="_blank">Tutorial Video</a> for step-by-step guidance.</p>
             </motion.div>
           }
         </div>
@@ -338,18 +372,18 @@ const FAQ = () => {
         <div
           className='faq-item'
           onClick={() => {
-            handleDropdownClick(10)
+            handleDropdownClick(11)
           }}
         >
           <div className="title-wrapper">
             <h3>How can I use Silent Pass Proxy?</h3>
-            {dropdownOpen === 10 ?
+            {dropdownOpen === 11 ?
               <img className="chevron" width='24px' src="/assets/up-chevron.svg" /> :
               <img className="chevron" width='24px' src="/assets/down-chevron.svg" />
             }
           </div>
 
-          {dropdownOpen === 10 &&
+          {dropdownOpen === 11 &&
             <motion.div
               className='faq-item-content'
               initial={{ opacity: 0, y: -10 }}

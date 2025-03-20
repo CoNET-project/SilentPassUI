@@ -1104,19 +1104,64 @@ const redeemProcess = async(id: number, monthly: boolean) => {
 	return RedeemCode
 } */
 
+
+const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string) => new Promise(async resolve => {
+	const distributor_addr = contracts.distributor.address.toLowerCase()
+	let currentBlock = await conetDepinProvider.getBlockNumber()
+	const checkCNTPTransfer = (tR: ethers.TransactionReceipt) => {
+		for (let log of tR.logs) {
+			const LogDescription = SC.interface.parseLog(log)
+			
+			if (LogDescription?.name === 'Reddem') {
+				const toAddress  = LogDescription.args[1]
+				if (toAddress.toLowerCase() == profileKey) {
+					const nftID = LogDescription.args[2]
+					conetDepinProvider.removeListener('block', listenBlock)
+					clearTimeout(_time)
+					return resolve (parseInt(nftID.toString()))
+				}
+			}
+		}
+	}
+
+	const listenBlock = async (block: number) => {
+		if (block > currentBlock) {
+			currentBlock = block
+			const blockTs = await conetDepinProvider.getBlock(block)
+			if (!blockTs?.transactions) {
+				return
+			}
+			console.log(`listenersRealizationRedeem ${block} has process now!`)
+			for (let tx of blockTs.transactions) {
+				const event = await conetDepinProvider.getTransactionReceipt(tx)
+				
+				if ( event?.to?.toLowerCase() === distributor_addr) {
+					checkCNTPTransfer(event)
+				}
+			}
+		}
+	}
+
+	conetDepinProvider.on('block', listenBlock)
+
+	const _time = setTimeout(() => {
+		//		TimeOUT
+		resolve (null)
+	}, 1000 * 60)
+})
+
 const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string) => {
 	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider)
 	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
 	try {
 		const tx = await contract_distributor.codeToClient(code, solana)
-		await tx.wait()
-
-    console.log("TX: ", tx);
+		const nftID = await listenersRealizationRedeem(contract_distributor, profile.keyID.toLowerCase())
+		return nftID
 	} catch (ex) {
-    console.log("EX: ", ex);
+    	console.log("EX: ", ex);
 		return null
 	}
-	return true
+	
 }
 
 const RealizationRedeem = async (code: string) => {

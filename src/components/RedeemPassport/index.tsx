@@ -11,6 +11,7 @@ export default function RedeemPassport() {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
+  const [successNFTID, setSuccessNFTID] = useState(0);
 
   const navigate = useNavigate();
 
@@ -22,8 +23,9 @@ export default function RedeemPassport() {
 	  if (!redeem) {
 		return setAnErrorOccurred(true);
 	  }
+	  setSuccessNFTID(redeem)
       setIsSuccessModalOpen(true);
-      setRedeemCode('');
+      setRedeemCode('')
   }
 
   return (
@@ -63,7 +65,7 @@ export default function RedeemPassport() {
       </div>
 
       {/* Success Modal */}
-      {isSuccessModalOpen && <SuccessModal onClose={() => setIsSuccessModalOpen(false)} />}
+      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID}  onClose={() => setIsSuccessModalOpen(false)} />}
     </>
   );
 }

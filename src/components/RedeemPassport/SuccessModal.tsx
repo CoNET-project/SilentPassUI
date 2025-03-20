@@ -6,9 +6,10 @@ import "./index.css"; // Use the same CSS file for styling
 
 interface SuccessModalProps {
   onClose: () => void;
+  nftID: number;
 }
 
-export default function SuccessModal({ onClose }: SuccessModalProps) {
+export default function SuccessModal({ nftID, onClose }: SuccessModalProps) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -24,7 +25,7 @@ export default function SuccessModal({ onClose }: SuccessModalProps) {
           <p>
             Now that you own a <strong>Standard Silent Pass Passport</strong>, start browsing freely and safely.
           </p>
-          <p className="passport-id">Your Passport ID: <span>#1234567890</span></p>
+          <p className="passport-id">Your Passport ID: <span>#{nftID}</span></p>
         </div>
         <div className="modal-footer">
           <button className="modal-button close" onClick={onClose}>Close</button>

@@ -1105,7 +1105,7 @@ const redeemProcess = async(id: number, monthly: boolean) => {
 } */
 
 const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string) => {
-	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetProvider)
+	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider)
 	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
 	try {
 		const tx = await contract_distributor.codeToClient(code, solana)
@@ -1128,7 +1128,7 @@ const RealizationRedeem = async (code: string) => {
 	if (!solanaWallet||!profile) {
 		return null;
 	}
-	const ethBalance = parseInt(profile.tokens.conet_eth.balance)
+	const ethBalance = parseFloat(profile.tokens.conet_eth.balance)
 	if (ethBalance > 0.000001) {
 		return await RealizationRedeem_withSmartContract(profile, solanaWallet, code)
 	}

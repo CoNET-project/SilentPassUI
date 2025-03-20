@@ -3,8 +3,6 @@ import Footer from '../../components/Footer';
 import './index.css';
 
 import languageIcon from "./assets/language.svg";
-import applicationIcon from "./assets/applications.svg";
-import themeIcon from "./assets/theme.svg";
 import adsBlockIcon from "./assets/ads-block.svg";
 import extraRewardIcon from "./assets/extra-reward.svg";
 import splitTunnelingIcon from "./assets/split-tunneling.svg";

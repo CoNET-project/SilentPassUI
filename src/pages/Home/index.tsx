@@ -19,6 +19,8 @@ const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App 
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
 const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
 
+const VPN_URLS = ['vpn', 'vpn-beta'];
+
 interface RenderButtonProps {
   errorMessage: string;
   isConnectionLoading: boolean;
@@ -88,6 +90,19 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
   )
 }
 
+const SystemSettingsButton = () => {
+  const [checked, setChecked] = useState<boolean>(false);
+
+  return (
+    <button
+      className={`system-settings-button ${checked ? "checked" : ""}`}
+      onClick={() => setChecked(!checked)}
+    >
+      <span className="circle">{checked && "✔"}</span>
+      Enable for System Settings
+    </button>
+  )
+}
 
 const Home = () => {
   const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, randomSolanaRPC, setRandomSolanaRPC } = useDaemonContext();
@@ -286,6 +301,9 @@ const Home = () => {
     return
   };
 
+  const isSilentPassVPN = VPN_URLS.some(url => window.location.href.includes(url));
+  const isDevelopment = window.location.href.includes('localhost');
+
   return (
     <>
       <Header />
@@ -312,6 +330,12 @@ const Home = () => {
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 
             <CopyProxyInfo />
+
+            {
+              (isDevelopment || !isSilentPassVPN) && (
+                <SystemSettingsButton />
+              )
+            }
 
             {!isConnectionLoading &&
               <RegionSelector

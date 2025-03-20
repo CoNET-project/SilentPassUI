@@ -32,7 +32,7 @@ const PassportInfoPopup = () => {
         </div>
 
         <div className="home-buttons">
-          <button onClick={() => navigate('/subscription')}>
+          <button onClick={() => navigate('/wallet')}>
             <img src="./assets/conet-outline-blue.svg" />
             <span>Upgrade</span>
           </button>

@@ -39,7 +39,7 @@ const contracts = {
     abi: ConetDepinAbi,
   },
   distributor: {
-	address: '0xA8Eb4B0794576f516Cf211CeA0c3AC13B1e0D7CD',
+	address: '0x40d64D88A86D6efb721042225B812379dc97bc89',
 	abi: Distributor
   },
   testPassport: {

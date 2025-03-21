@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
+import {checkFreePassportProcess} from '../../services/wallets'
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
@@ -111,6 +112,7 @@ const Home = () => {
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const vpnTimeTimeout = useRef<NodeJS.Timeout>();
+  
 
   const navigate = useNavigate();
 
@@ -134,17 +136,22 @@ const Home = () => {
   }, [power]);
 
   useEffect(() => {
+	let first = 0
     const listenGetAllNodes = () => {
-      const initpercentage = maxNodes ? currentScanNodeNumber * 100 / maxNodes : 0
-      const status = Math.round(initpercentage)
-      setInitPercentage(status)
-
-      if (initpercentage < 90) {
+      const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0
+      const _status = Math.round(_initpercentage) 
+	  const status = _status <= first ? first + 2 : _status
+	  first = status
+	if (status > 100) {
+		setInitPercentage(98)
+	} else {
+		setInitPercentage(status)
+	}
+      
+	  if (status < 99 ) {
         return setTimeout(() => {
           listenGetAllNodes()
         }, 1000)
-      } else {
-        setIsInitialLoading(false);
       }
     }
 
@@ -153,7 +160,10 @@ const Home = () => {
 
   useEffect(() => {
     const _getAllRegions = async () => {
-      const tmpRegions = await getAllRegions();
+		const [tmpRegions] = await 
+		Promise.all([
+			getAllRegions()
+		])
 
       const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
         const separatedRegion = region.split(".");
@@ -175,6 +185,13 @@ const Home = () => {
 
     _getAllRegions()
   }, []);
+
+  useEffect(() => {
+	if (!getAllNodes.length) {
+		return
+	}
+	setIsInitialLoading(false);
+  }, [getAllNodes])
 
   const handleTogglePower = async () => {
     setIsConnectionLoading(true)
@@ -236,6 +253,13 @@ const Home = () => {
     }
 
     const allNodes = getAllNodes
+	if (!allNodes.length) {
+		setTimeout(() => {
+			setIsConnectionLoading(false)
+			setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
+		  }, 1000)
+		return 
+	}
     const exitRegion = allRegions[selectedCountryIndex].code
     const exitNodes = allNodes.filter((n: any) => n.country === exitRegion)
 

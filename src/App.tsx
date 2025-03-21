@@ -3,7 +3,7 @@ import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfo, tryToRequireFreePassport } from "./services/wallets";
+import { createOrGetWallet, getCurrentPassportInfo, tryToRequireFreePassport, checkFreePassport } from "./services/wallets";
 import { getAllNodes } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
@@ -94,7 +94,7 @@ function App() {
       listenProfileVer(setProfiles, setActivePassport, setMiningData);
 
       checkCurrentRate(setMiningData);
-
+	  checkFreePassport()
       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setSOlanaRPC(allNodes)
         setaAllNodes(allNodes)

@@ -23,7 +23,10 @@ export default function RedeemPassport() {
 	  if (!redeem) {
 		return setAnErrorOccurred(true);
 	  }
-	  setSuccessNFTID(redeem)
+	  if (typeof redeem === 'number') {
+		setSuccessNFTID(redeem)
+	  }
+	  
       setIsSuccessModalOpen(true);
       setRedeemCode('')
   }

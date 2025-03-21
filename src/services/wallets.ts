@@ -14,6 +14,7 @@ import {
   rewardWalletAddress,
   solanaRpc,
 } from "../utils/constants";
+import {} from './listeners'
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 import * as Bip39 from "bip39";
@@ -312,8 +313,8 @@ const getCurrentPassportInfoInChain = async (
 
   if (chain === "mainnet") {
     provider = conetDepinProvider;
-    contractAddress = contracts.PassportMainnet.address;
-    contractAbi = contracts.PassportMainnet.abi;
+    contractAddress = contracts.distributor.address;
+    contractAbi = contracts.distributor.abi;
   } else {
     provider = conetProvider;
     contractAddress = contracts.PassportCancun.address;
@@ -439,12 +440,7 @@ const getCurrentPassportInfo = async (walletAddress: string) => {
     return resultMainnet;
   }
 
-  const resultCancun = await getCurrentPassportInfoInChain(
-    walletAddress,
-    "cancun"
-  );
-
-  return resultCancun;
+  return resultMainnet;
 };
 
 const tryToRequireFreePassport = async () => {
@@ -1177,21 +1173,142 @@ const RealizationRedeem = async (code: string) => {
 	if (ethBalance > 0.000001) {
 		return await RealizationRedeem_withSmartContract(profile, solanaWallet, code)
 	}
+	
 	const url = `${apiv4_endpoint}codeToClient`
-	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet })
+	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, uuid: code })
 	const wallet = new ethers.Wallet(profile.privateKeyArmor)
 	const signMessage = await wallet.signMessage(message)
 	const sendData = {
       message, signMessage
-  }
+    }
+
 	try {
 		const result: any = await postToEndpoint(url, true, sendData);
-
-    return result;
+		if (result?.error) {
+			return null
+		}
+		const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
+    	const nft = await listenersRealizationRedeem(contract_distributor, profile.keyID.toLowerCase())
+		return nft
 	} catch(ex) {
     console.log("EX: ", ex);
 		return null
 	}
+}
+
+const waitingNFT = (wallet: ethers.Wallet) => new Promise(async resolve => {
+	const passportNFT = new ethers.Contract(contracts.PassportMainnet.address, contracts.PassportMainnet.abi, wallet)
+	const distributor_addr = contracts.distributor.address.toLowerCase()
+	let currentBlock = await conetDepinProvider.getBlockNumber()
+	let myWallet = wallet.address.toLowerCase()
+	const checkCNTPTransfer = (tR: ethers.TransactionReceipt) => {
+		for (let log of tR.logs) {
+			const LogDescription = passportNFT.interface.parseLog(log)
+			
+			if (LogDescription?.name === 'TransferSingle') {
+				const toAddress  = LogDescription.args[2]
+				if (toAddress.toLowerCase() == myWallet) {
+					const nftID = LogDescription.args[3]
+					conetDepinProvider.removeListener('block', listenning)
+					clearTimeout(_time)
+					checkFreePassportProcess = 40
+					
+					return resolve (parseInt(nftID.toString()))
+				}
+			}
+		}
+	}
+
+	const listenning = async (block: number) => {
+		checkFreePassportProcess = 30
+		if (block > currentBlock) {
+			currentBlock = block
+			const blockTs = await conetDepinProvider.getBlock(block)
+			if (!blockTs?.transactions) {
+				return
+			}
+			console.log(`listenersRealizationRedeem ${block} has process now!`)
+			for (let tx of blockTs.transactions) {
+				const event = await conetDepinProvider.getTransactionReceipt(tx)
+				
+				if ( event?.to?.toLowerCase() === distributor_addr) {
+					checkCNTPTransfer(event)
+				}
+			}
+		}
+	}
+	conetDepinProvider.on('block', listenning)
+	const _time = setTimeout(() => {
+		//		TimeOUT
+		resolve (null)
+		conetDepinProvider.removeListener('block', listenning)
+		checkFreePassportProcess = 0
+	}, 1000 * 60)
+})
+
+
+const getFreeNFT = async (wallet: ethers.Wallet) => {
+	if (!await getCONET_api_health()) {
+		checkFreePassportProcess = 0
+		return null
+	}
+	checkFreePassportProcess = 20
+
+	const url = `${apiv4_endpoint}freePassport`
+	const message = JSON.stringify({ walletAddress: wallet.address})
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+		message, signMessage
+	}
+	try {
+		const result: any = await postToEndpoint(url, true, sendData);
+		return await waitingNFT (wallet)
+		
+	} catch(ex) {
+		console.log("EX: ", ex);
+		checkFreePassportProcess = 0
+		return null
+	}
+}
+
+let checkFreePassportProcess = 0
+const checkFreePassport = async () => {
+	if (!CoNET_Data?.profiles?.length) {
+		checkFreePassportProcess = -1
+		return null;
+	}
+	if (checkFreePassportProcess > 0) {
+		return
+	}
+	checkFreePassportProcess = 10
+	const profile = CoNET_Data?.profiles[0]
+
+	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider)
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
+	let canGetFreeNFT: boolean
+	let currentNFT
+	try {
+		[canGetFreeNFT, currentNFT] = await
+		Promise.all ([
+			contract_distributor._freeUserOwnerShip(wallet.address),
+			contract_distributor.getCurrentPassport(wallet.address)
+		])
+
+	} catch (ex) {
+		checkFreePassportProcess = 0
+		return null
+	}
+
+	const nftID = parseInt(currentNFT[0].toString())
+
+	if (!canGetFreeNFT || !nftID ) {
+		await getFreeNFT (wallet)
+		await getPassportsInfoForProfile(profile)
+		checkFreePassportProcess = 50
+		return true
+	}
+	checkFreePassportProcess = 50
+	return true
 }
 
 export {
@@ -1212,5 +1329,7 @@ export {
   getSpClubMemberId,
   getRefereesPage,
   getReceivedAmounts,
-  RealizationRedeem
+  RealizationRedeem,
+  checkFreePassport,
+  checkFreePassportProcess
 };

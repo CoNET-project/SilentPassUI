@@ -26,7 +26,7 @@ import Transfer from './pages/Transfer';
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsIOS } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsIOS, setIsLocalProxy } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
@@ -118,10 +118,11 @@ function App() {
       try {
         const response = await getServerIpAddress();
         const tmpIpAddress = response.data;
-
         setServerIpAddress(tmpIpAddress?.ip || "");
         setServerPort('3002');
+		setIsLocalProxy(true)
       } catch (ex) {
+		setIsIOS(true)
 		if (window?.webkit) {
 			setIsIOS(true)
 		}

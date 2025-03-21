@@ -42,6 +42,8 @@ type DaemonContext = {
   setRandomSolanaRPC: (val: nodes_info) => void;
   isIOS: boolean
   setIsIOS: (val: boolean) => void
+  isLocalProxy: boolean
+  setIsLocalProxy: (val: boolean)=> void
 };
 
 type DaemonProps = {
@@ -89,7 +91,10 @@ const defaultContextValue: DaemonContext = {
   setRandomSolanaRPC: () => { },
   randomSolanaRPC: null,
   isIOS: false,
-  setIsIOS: () => {}
+  setIsIOS: () => {},
+  isLocalProxy: false,
+  setIsLocalProxy(val) {
+  },
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -121,6 +126,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [purchasingPlanPaymentTime, setPurchasingPlanPaymentTime] = useState<string>("monthly");
   const [randomSolanaRPC, setRandomSolanaRPC] = useState<nodes_info | null>(null);
   const [isIOS, setIsIOS] = useState(false);
+  const [isLocalProxy, setIsLocalProxy] = useState(false);
 
   useEffect(() => {
     {
@@ -131,7 +137,14 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS }}>
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, 
+				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, 
+				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, 
+				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, 
+				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, 
+				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, 
+				purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, 
+				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy }}>
       {children}
     </Daemon.Provider>
   );

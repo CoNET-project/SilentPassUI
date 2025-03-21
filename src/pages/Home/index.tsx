@@ -88,9 +88,22 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
   )
 }
 
+const SystemSettingsButton = () => {
+	const [checked, setChecked] = useState<boolean>(false);
+  
+	return (
+	  <button
+		className={`system-settings-button ${checked ? "checked" : ""}`}
+		onClick={() => setChecked(!checked)}
+	  >
+		<span className="circle">{checked && "✔"}</span>
+		Enable for System Settings
+	  </button>
+	)
+}
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, randomSolanaRPC, setRandomSolanaRPC } = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy } = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
@@ -312,7 +325,11 @@ const Home = () => {
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 
             <CopyProxyInfo />
-
+			{
+              (isLocalProxy) && (
+                <SystemSettingsButton />
+              )
+            }
             {!isConnectionLoading &&
               <RegionSelector
                 title={allRegions?.[sRegion]?.country}

@@ -4,7 +4,7 @@ import "./index.css"; // Import external CSS file
 import SuccessModal from './SuccessModal';
 import { RealizationRedeem } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
-
+import { useDaemonContext } from "../../providers/DaemonProvider";
 export default function RedeemPassport() {
   const [redeemCode, setRedeemCode] = useState("");
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -12,7 +12,7 @@ export default function RedeemPassport() {
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
   const [successNFTID, setSuccessNFTID] = useState(0);
-
+  const { isIOS } = useDaemonContext();
   const navigate = useNavigate();
 
   async function handlePassportRedeem() {
@@ -56,14 +56,20 @@ export default function RedeemPassport() {
           <button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
             {isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
           </button>
-          <div className="redeem-divider">
-            <div className="line"></div>
-            <span>or</span>
-            <div className="line"></div>
-          </div>
-          <button className="redeem-button purchase" onClick={() => navigate("/subscription")}>
-            Go to purchase
-          </button>
+		  {
+			!isIOS &&
+				<>
+					<div className="redeem-divider">
+						<div className="line"></div>
+						<span>or</span>
+						<div className="line"></div>
+					</div>
+					<button className="redeem-button purchase" onClick={() => navigate("/subscription")}>
+						Go to purchase
+					</button>
+				</>
+		  }
+          
         </div>
       </div>
 

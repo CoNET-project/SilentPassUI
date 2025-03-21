@@ -586,7 +586,7 @@ const getVpnTimeUsed = async () => {
 };
 
 const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
-  const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
+//   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
   const tmpMainnetPassports = await getPassportsInfo(profile, "mainnet");
 
   const _currentPassport = await getCurrentPassportInfo(profile.keyID);
@@ -604,16 +604,16 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
   const cancunPassports: passportInfo[] = [];
   const mainnetPassports: passportInfo[] = [];
 
-  for (let i = 0; i < tmpCancunPassports?.nftIDs?.length; i++) {
-    cancunPassports.push({
-      walletAddress: profile.keyID,
-      nftID: parseInt(tmpCancunPassports.nftIDs[i].toString()),
-      expires: parseInt(tmpCancunPassports.expires[i].toString()),
-      expiresDays: parseInt(tmpCancunPassports.expiresDays[i].toString()),
-      premium: tmpCancunPassports.premium[i],
-      network: "Conet Holesky",
-    });
-  }
+//   for (let i = 0; i < tmpCancunPassports?.nftIDs?.length; i++) {
+//     cancunPassports.push({
+//       walletAddress: profile.keyID,
+//       nftID: parseInt(tmpCancunPassports.nftIDs[i].toString()),
+//       expires: parseInt(tmpCancunPassports.expires[i].toString()),
+//       expiresDays: parseInt(tmpCancunPassports.expiresDays[i].toString()),
+//       premium: tmpCancunPassports.premium[i],
+//       network: "Conet Holesky",
+//     });
+//   }
 
   for (let i = 0; i < tmpMainnetPassports?.nftIDs?.length; i++) {
     mainnetPassports.push({

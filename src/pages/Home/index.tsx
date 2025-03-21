@@ -15,7 +15,6 @@ import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 import {checkFreePassportProcess} from '../../services/wallets'
-
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
 const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
@@ -106,7 +105,7 @@ const SystemSettingsButton = () => {
 }
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, randomSolanaRPC, setRandomSolanaRPC } = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy } = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
@@ -356,7 +355,7 @@ const Home = () => {
             <CopyProxyInfo />
 
             {
-              (isDevelopment || !isSilentPassVPN) && (
+              isLocalProxy && (
                 <SystemSettingsButton />
               )
             }

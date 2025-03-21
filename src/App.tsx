@@ -3,7 +3,7 @@ import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfo, tryToRequireFreePassport } from "./services/wallets";
+import { createOrGetWallet, getCurrentPassportInfo, tryToRequireFreePassport, checkFreePassport } from "./services/wallets";
 import { getAllNodes } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
@@ -26,7 +26,7 @@ import Transfer from './pages/Transfer';
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsIOS, setIsLocalProxy } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
@@ -94,7 +94,7 @@ function App() {
       listenProfileVer(setProfiles, setActivePassport, setMiningData);
 
       checkCurrentRate(setMiningData);
-
+	  checkFreePassport()
       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
         setSOlanaRPC(allNodes)
         setaAllNodes(allNodes)
@@ -118,20 +118,17 @@ function App() {
       try {
         const response = await getServerIpAddress();
         const tmpIpAddress = response.data;
+
         setServerIpAddress(tmpIpAddress?.ip || "");
         setServerPort('3002');
-		setIsLocalProxy(true)
       } catch (ex) {
-		setIsIOS(true)
-		if (window?.webkit) {
-			setIsIOS(true)
-		}
         console.log(ex)
       }
     };
-    
-    _getServerIpAddress();
-    
+    //@ts-ignore
+    if (!window?.webkit && !window?.Android) {
+      _getServerIpAddress();
+    }
   }, []);
 
   return (
@@ -143,7 +140,7 @@ function App() {
           <Route path="/config-device" element={<ConfigDevice />}></Route>
           <Route path="/vip" element={<Vip />}></Route>
           <Route path="/wallet" element={<Wallet />}></Route>
-          {/* <Route path="/swap" element={<Swap />}></Route> */}
+          <Route path="/swap" element={<Swap />}></Route>
           <Route path="/settings" element={<Settings />}></Route>
           <Route path="/passcode/new" element={<Passcode new />}></Route>
           <Route path="/passcode/change" element={<Passcode />}></Route>

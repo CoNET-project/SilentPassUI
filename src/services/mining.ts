@@ -174,7 +174,7 @@ const getAllNodes = async (
   allNodes = allNodes.slice(0, index);
   allRegions = Array.from(country.keys());
   testClosestRegion(() => {
-    maxNodes = currentScanNodeNumber;
+    // maxNodes = currentScanNodeNumber;
     const country = testRegion[0].node.country;
     const entryRegionNodes = allNodes.filter((n) => n.country === country);
     do {

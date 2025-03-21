@@ -27,7 +27,7 @@ import {
 import { PublicKey } from "@solana/web3.js";
 
 let epoch = 0;
-
+let first = true
 const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
   _setActivePassport: (profiles: freePassport) => void,
@@ -49,7 +49,8 @@ const listenProfileVer = async (
 
       setProcessingBlock(true);
 
-      if (block % 10 === 0) {
+      if (block % 10 === 0 || first) {
+		first = false
         checkCurrentRate(setMiningData);
         await getProfileAssets(profiles[0], profiles[1]);
         await getVpnTimeUsed();
@@ -73,7 +74,6 @@ const listenProfileVer = async (
       }
 
       storeSystemData();
-
       setProcessingBlock(false);
     }
   });

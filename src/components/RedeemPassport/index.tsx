@@ -4,16 +4,15 @@ import "./index.css"; // Import external CSS file
 import SuccessModal from './SuccessModal';
 import { RealizationRedeem } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
-import { useDaemonContext } from "../../providers/DaemonProvider";
 
 export default function RedeemPassport() {
   const [redeemCode, setRedeemCode] = useState("");
-  const [isOpen, setIsOpen] = useState<boolean>(true);
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
   const [successNFTID, setSuccessNFTID] = useState(0);
-  const { isIOS } = useDaemonContext();
+
   const navigate = useNavigate();
 
   async function handlePassportRedeem() {
@@ -24,7 +23,10 @@ export default function RedeemPassport() {
 	  if (!redeem) {
 		return setAnErrorOccurred(true);
 	  }
-	  setSuccessNFTID(redeem)
+	  if (typeof redeem === 'number') {
+		setSuccessNFTID(redeem)
+	  }
+	  
       setIsSuccessModalOpen(true);
       setRedeemCode('')
   }
@@ -42,12 +44,7 @@ export default function RedeemPassport() {
         </button>
 
         <div className="redeem-content">
-			{
-				isIOS
-					? <label className="redeem-label">Start Your Free Trail</label>
-					: <label className="redeem-label">Input redeem code</label>
-			}
-          
+          <label className="redeem-label">Input redeem code</label>
           <input
             type="text"
             placeholder="#1234"
@@ -59,22 +56,14 @@ export default function RedeemPassport() {
           <button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
             {isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
           </button>
-		  {
-			!isIOS &&
-			(
-				<>
-				  <div className="redeem-divider">
-					<div className="line"></div>
-					<span>or</span>
-					<div className="line"></div>
-				  </div>
-				  <button className="redeem-button purchase" onClick={() => navigate("/subscription")}>
-					Go to purchase
-				  </button>
-				</>
-			)
-		  }
-          
+          <div className="redeem-divider">
+            <div className="line"></div>
+            <span>or</span>
+            <div className="line"></div>
+          </div>
+          <button className="redeem-button purchase" onClick={() => navigate("/subscription")}>
+            Go to purchase
+          </button>
         </div>
       </div>
 

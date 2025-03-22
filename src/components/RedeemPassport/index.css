@@ -2,10 +2,8 @@
 	color: white;
 	border-radius: 16px;
 	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  
 	overflow: hidden;
-  
-	height: 74px;
+	height: 75px;
   
 	transition: height .12s ease;
   }
@@ -97,7 +95,7 @@
   .cta-buttons button.redeem-button.purchase {
 	background-color: #4E72B6;
 	color: white;
-  
+
 	display: flex;
 	justify-content: center;
 	font-weight: 700;

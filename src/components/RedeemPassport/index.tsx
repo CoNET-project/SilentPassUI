@@ -38,17 +38,18 @@ export default function RedeemPassport() {
         <button className="redeem-header cta-button" onClick={() => setIsOpen(!isOpen)}>
           <div className="redeem-header-content">
             <img src="/assets/conet-outline-white.svg" alt="Platform" className="redeem-icon" />
-			{
-				isIOS ? <p>Get Silent Pass Passport</p>
-				: <p>Input Redeem Code</p>
-			}
+			<p>Get Silent Pass Passport</p>
             
           </div>
           <span className={`redeem-arrow ${isOpen ? "rotate" : ""}`}>▼</span>
         </button>
 
         <div className="redeem-content">
-          <label className="redeem-label">Start Your Free Trial!</label>
+			{
+				isIOS ? <label className="redeem-label">Start Your Free Trial!</label>
+				:  <label className="redeem-label">Input Redeem Code!</label>
+			}
+         
           <input
             type="text"
             placeholder="#1234"

@@ -1147,8 +1147,9 @@ const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string) => 
 
 	const _time = setTimeout(() => {
 		//		TimeOUT
-		resolve (null)
-	}, 1000 * 60)
+		// conetDepinProvider.removeListener('block', listenBlock)
+		// resolve (null)
+	}, 1000 * 180)
 })
 
 const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string) => {
@@ -1186,17 +1187,19 @@ const RealizationRedeem = async (code: string) => {
 	const sendData = {
       message, signMessage
     }
-
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
 	try {
-		const result: any = await postToEndpoint(url, true, sendData);
-		if (result?.error) {
+		const [nft, result] = await Promise.all ([
+			listenersRealizationRedeem(contract_distributor, profile.keyID.toLowerCase()),
+			postToEndpoint(url, true, sendData)
+		])
+		if (typeof result === 'boolean'|| result === ''|| result?.error ) {
 			return null
 		}
-		const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
-    	const nft = await listenersRealizationRedeem(contract_distributor, profile.keyID.toLowerCase())
+		
 		return nft
 	} catch(ex) {
-    console.log("EX: ", ex);
+    	console.log("EX: ", ex);
 		return null
 	}
 }

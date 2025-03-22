@@ -355,7 +355,7 @@ const Home = () => {
             <CopyProxyInfo />
 
             {
-              isLocalProxy && (
+              isLocalProxy && power && (
                 <SystemSettingsButton />
               )
             }

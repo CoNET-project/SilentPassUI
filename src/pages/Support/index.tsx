@@ -9,6 +9,7 @@ import { useMemo } from 'react';
 import ProxyInfo from '../../components/ProxyInfo';
 import { useNavigate } from 'react-router-dom';
 
+
 type OptionGroup = {
   id: number;
   heading: string;
@@ -52,11 +53,13 @@ export default function Support() {
   ]), [navigate]);
 
   return (
+	
     <div className="page-container">
       <h1>Support</h1>
 
       <div className="options">
         {
+
           optionGroups.map((optionGroup) => optionGroup.id === 2 ? <ProxyInfo /> : (
             <>
               <div className="option-group">

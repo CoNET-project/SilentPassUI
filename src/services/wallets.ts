@@ -662,8 +662,8 @@ const getPassportsInfo = async (
 
   if (chain === "mainnet") {
     provider = conetDepinProvider;
-    contractAddress = contracts.PassportMainnet.address;
-    contractAbi = contracts.PassportMainnet.abi;
+    contractAddress = contracts.distributor.address;
+    contractAbi = contracts.distributor.abi;
   } else {
     provider = conetProvider;
     contractAddress = contracts.PassportCancun.address;

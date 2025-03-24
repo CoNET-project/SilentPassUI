@@ -350,8 +350,8 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
 
   if (chain === "mainnet") {
     provider = conetDepinProvider;
-    contractAddress = contracts.PassportMainnet.address;
-    contractAbi = contracts.PassportMainnet.abi;
+    contractAddress = contracts.distributor.address;
+    contractAbi = contracts.distributor.abi;
   } else {
     provider = conetProvider;
     contractAddress = contracts.PassportCancun.address;
@@ -371,6 +371,7 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
 
   try {
     const tx = await passportContract.changeActiveNFT(nftId);
+	await tx.wait()
     return tx;
   } catch (ex) {
     console.log(ex);

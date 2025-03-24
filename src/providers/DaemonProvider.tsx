@@ -44,6 +44,8 @@ type DaemonContext = {
   setIsIOS: (val: boolean) => void
   isLocalProxy: boolean
   setIsLocalProxy: (val: boolean)=> void
+  globalProxy: boolean,
+  setGlobalProxy: (val: boolean)=> void
 };
 
 type DaemonProps = {
@@ -93,8 +95,10 @@ const defaultContextValue: DaemonContext = {
   isIOS: false,
   setIsIOS: () => {},
   isLocalProxy: false,
-  setIsLocalProxy(val) {
-  },
+  setIsLocalProxy(val) {},
+  globalProxy: false,
+  setGlobalProxy: () => {}
+
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -106,6 +110,7 @@ export function useDaemonContext() {
 
 export function DaemonProvider({ children }: DaemonProps) {
   const [power, setPower] = useState<boolean>(false);
+  const [globalProxy, setGlobalProxy] = useState(false)
   const [isRandom, setIsRandom] = useState<boolean>(true);
   const [sRegion, setSRegion] = useState<number>(-1);
   const [allRegions, setAllRegions] = useState<Region[]>([]);
@@ -144,7 +149,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, 
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, 
 				purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, 
-				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy }}>
+				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy }}>,
+				
       {children}
     </Daemon.Provider>
   );

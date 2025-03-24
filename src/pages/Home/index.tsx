@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
+import { getServerIpAddress } from "../../api";
 import {checkFreePassportProcess} from '../../services/wallets'
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
@@ -91,21 +92,32 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
 }
 
 const SystemSettingsButton = () => {
-  const [checked, setChecked] = useState<boolean>(false);
+	const {globalProxy, setGlobalProxy } = useDaemonContext();
 
   return (
     <button
-      className={`system-settings-button ${checked ? "checked" : ""}`}
-      onClick={() => setChecked(!checked)}
+      className={`system-settings-button ${globalProxy ? "checked" : ""}`}
+      onClick={() => {
+		if (globalProxy) {
+			if (window?.webkit) {
+				window?.webkit?.messageHandlers["stopProxy"].postMessage("")
+			}
+			return setGlobalProxy(false)
+		}
+		if (window?.webkit) {
+			window?.webkit?.messageHandlers["startProxy"].postMessage("")
+		}
+		return setGlobalProxy(true)
+	  }}
     >
-      <span className="circle">{checked && "✔"}</span>
+      <span className="circle">{globalProxy && "✔"}</span>
       Enable for System Settings
     </button>
   )
 }
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy } = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
@@ -197,7 +209,14 @@ const Home = () => {
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
-
+	try {
+		const response = await getServerIpAddress();
+        const tmpIpAddress = response.data;
+        setServerIpAddress(tmpIpAddress?.ip || "");
+		setIsLocalProxy(true)
+	} catch (ex) {
+		setIsLocalProxy(false)
+	}
     if (power) {
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)

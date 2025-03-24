@@ -124,7 +124,7 @@ function App() {
 		setIsLocalProxy(true)
       } catch (ex) {
 		setIsIOS(true)
-        console.log(ex)
+		setIsLocalProxy(false)
       }
     };
     //if (!window?.webkit && !window?.Android) {

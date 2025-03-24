@@ -2,8 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import Footer from '../../components/Footer';
 import './index.css';
 import AccountList from '../../components/AccountList';
-import SpClub from '../../components/AccountList/SpClub';
-import ReferralProgram from '../../components/AccountList/ReferralProgram';
 import RedeemPassport from '../../components/RedeemPassport';
 
 export default function Wallet() {
@@ -26,10 +24,10 @@ export default function Wallet() {
         <RedeemPassport />
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
+      {/* <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
         <SpClub />
         <ReferralProgram />
-      </div>
+      </div> */}
 
 
       <Footer />

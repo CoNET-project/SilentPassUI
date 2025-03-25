@@ -322,7 +322,7 @@ const Home = () => {
       const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
       const base64VPNMessage = btoa(stringifiedVPNMessageObject);
       //	@ts-ignore
-      window.Android?.sendData(base64VPNMessage)
+      window.Androi.sendData(base64VPNMessage)
 	}
     try {
       await startSilentPass(startVPNMessageObject);

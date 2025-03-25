@@ -1,12 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 
 import "./index.css";
 import SpClubCongratsPopup from '../SpClubCongratsPopup';
-import SimpleLoadingRing from '../SimpleLoadingRing';
 import { joinSpClub } from '../../api';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import { getSpClubMemberId } from '../../services/wallets';
-import { isPassportValid } from '../../utils/utils';
+
+import AirdropRewards from './assets/airdrop-rewards.png';
+import EarlyAccess from './assets/early-access.png';
+import EducationHub from './assets/education-hub.png';
+import ExclusivePerks from './assets/exclusive-perks.png';
+import LoyaltyDiscounts from './assets/loyalty-discounts.png';
+import ReferralProgram from './assets/referral-program.png';
 
 const OneDayInSeconds = 86400;
 
@@ -65,62 +70,37 @@ export default function SpClub() {
   }
 
   const renderCardContent = () => {
-    if (profiles?.[0]?.spClub?.memberId && profiles?.[0]?.spClub?.memberId !== '0') {
-      return (
-        <div className="info-wrapper" style={{
-          gap: '16px'
-        }}>
-          <div>
-            <p style={{ fontSize: '14px', color: '#FFFFFF' }}>Member ID</p>
-            <p style={{ fontSize: '16px', color: '#989899' }}>{profiles?.[0]?.spClub?.memberId.toString()}</p>
-          </div>
-
-          {
-            profiles?.[0]?.spClub?.referrer && profiles?.[0]?.spClub?.referrer?.toString() !== '' &&
-            <div>
-              <p style={{ fontSize: '14px', color: '#FFFFFF' }}>Inviter</p>
-              <p style={{ fontSize: '16px', color: '#989899' }}>{profiles?.[0]?.spClub?.referrer?.toString().slice(0, 5) + '...' + profiles?.[0]?.spClub?.referrer?.toString().slice(-5)}</p>
-            </div>
-          }
-
-          {
-            !isPassportValid(parseInt(profiles?.[0]?.spClub?.expires)) &&
-            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-              <p style={{ fontSize: '16px', color: '#FFFFFF', textAlign: 'center' }}>Passport Expired.</p>
-              <p style={{ fontSize: '12px', color: '#989899', textAlign: 'center' }}>Buy another passport to reactivate your club membership.</p>
-            </div>
-          }
-        </div>
-      )
-    }
-
     return (
-      <div className="info-wrapper" style={{ gap: '24px' }}>
-        <div>
-          <p>Input you inviter's wallet address</p>
-          <input value={referrer} onChange={(e) => setReferrer(e.target.value)} placeholder="wallet address" style={{ color: '#FFFFFF' }} />
-        </div>
-
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '24px', flexDirection: 'row', alignItems: 'center' }}>
-          <div style={{ width: '100%', height: '1px', background: '#FFFFFF' }} />
-
+      <div style={{ display: "flex", flexDirection: "column", gap: "24px", padding: "16px"}}>
+        <h2>Join the SP Club <br />Unlock Premium Benefits </h2>
+        <p style={{ textAlign: "left" }}>Upgrade to a Silent Pass subscription and gain access to the SP Club, an exclusive membership designed for those who value privacy, rewards, and Web3 innovation. As a member, you’ll unlock premium features, loyalty incentives, and community-driven opportunities.</p>
+        <div className="sp-club-grid">
           <div>
-            <p style={{ fontSize: '20px' }}>or</p>
+            <img src={AirdropRewards} />
+            <p>Airdrops & Rewards</p>
           </div>
-
-          <div style={{ width: '100%', height: '1px', background: '#FFFFFF' }} />
-
+          <div>
+            <img src={LoyaltyDiscounts} />
+            <p>Loyalty Discounts</p>
+          </div>
+          <div>
+            <img src={ReferralProgram} />
+            <p>Referral Program</p>
+          </div>
+          <div>
+            <img src={EducationHub} />
+            <p>Education Hub</p>
+          </div>
+          <div>
+            <img src={EarlyAccess} />
+            <p>Early <br />Access</p>
+          </div>
+          <div>
+            <img src={ExclusivePerks} />
+            <p>Exclusive Perks</p>
+          </div>
         </div>
-
-        <div style={{ width: '100%' }}>
-          <p style={{ width: '100%', textAlign: 'center', fontSize: '16px' }}>Get Silent Pass Passport and join the club</p>
-        </div>
-
-        <button style={{ cursor: 'pointer' }} onClick={handleJoinClub}>
-          {isLoading ? <SimpleLoadingRing /> :
-            <p>Join Club</p>
-          }
-        </button>
+        <p style={{ fontSize: "12px", textAlign: "left" }}>Find out more at <a style={{ color: "#9FBFE5FE" }} href="https://subscription.silentpass.io">https://subscription.silentpass.io</a></p>
       </div>
     )
   }
@@ -133,12 +113,6 @@ export default function SpClub() {
           <div className="name">
             <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', alignItems: 'center' }}>
               <h3>Join SP Club</h3>
-              <div
-                style={{
-                  width: '12px',
-                  height: '12px',
-                }}
-                className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
             </div>
             <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
           </div>

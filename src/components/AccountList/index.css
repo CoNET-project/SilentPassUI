@@ -325,3 +325,14 @@
   color: #9fbfe5fe !important;
   cursor: pointer;
 }
+
+.sp-club-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.sp-club-grid p {
+  font-weight: 600;
+}

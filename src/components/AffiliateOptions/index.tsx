@@ -4,51 +4,38 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import { useNavigate } from 'react-router-dom';
 import ChoosePlan from '../ChoosePlan';
 
-interface AffiliateOptionsProps {
-  isAffiliate: boolean;
-}
+import { ReactComponent as PaypalIcon } from './assets/paypal.svg';
+import StripeIcon from './assets/stripe.png';
 
-export default function AffiliateOptions({ isAffiliate }: AffiliateOptionsProps) {
+export default function AffiliateOptions() {
   const navigate = useNavigate();
 
   const { profiles } = useDaemonContext();
-  const [isKeyCopied, setIsKeyCopied] = useState<boolean>(false);
-
-  function handleCopyKey() {
-    navigator.clipboard.writeText(profiles[0].keyID)
-    setIsKeyCopied(true)
-
-    setTimeout(() => {
-      setIsKeyCopied(false)
-    }, 2000)
-  }
 
   function subscribe() {
     navigate("/subscription");
   }
 
+  function subscribePaypal() {}
+
+  function subscribeStripe() {}
+
   return (
     <div className="affiliate-options">
-      {
-        isAffiliate ? <ChoosePlan /> : <div />
-      }
+      <ChoosePlan />
 
       <div className="affiliate-footer">
-        <button onClick={isAffiliate ? subscribe : handleCopyKey} disabled={!profiles?.[0]?.keyID} className="copy-button">
-          <p>{isAffiliate ? "Pay with $SP" : "Copy public key"}</p>
-          {
-            !isAffiliate && (isKeyCopied ? (
-              <img src="/assets/check.svg" alt="Copy icon" />
-            ) : (
-              <img src="/assets/copy-purple.svg" alt="Copy icon" />
-            ))
-          }
+        <button onClick={subscribe} disabled={!profiles?.[0]?.keyID} className="sp-buy-button">
+          <p>Pay with $SP</p>
         </button>
-        {
-          !isAffiliate && (
-            <p>Copy your CoNET wallet public key and submit it to the Silent Pass Team to complete your Affiliate Program registration.</p>
-          )
-        }
+        <button onClick={subscribePaypal} disabled={!profiles?.[0]?.keyID} className="paypal-buy-button">
+          <p>Pay with</p>
+          <PaypalIcon />
+        </button>
+        <button onClick={subscribeStripe} disabled={!profiles?.[0]?.keyID} className="stripe-buy-button">
+          <p>Pay with</p>
+          <img src={StripeIcon} alt="Stripe" />
+        </button>
       </div>
     </div>
   )

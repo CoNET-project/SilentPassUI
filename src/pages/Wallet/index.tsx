@@ -4,26 +4,22 @@ import './index.css';
 import AccountList from '../../components/AccountList';
 
 import { ReactComponent as RecoverIcon } from './assets/recover-icon.svg';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import AffiliateOptions from '../../components/AffiliateOptions';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { getNFTs} from '../../services/wallets'
 export default function Wallet() {
-  const [isAffiliate, setIsAffiliate] = useState<boolean>(false);
   const { profiles } = useDaemonContext();
   const navigate = useNavigate();
   useEffect(() => {
-	getNFTs().then(nfts => {
-		if (!nfts) {
-			return
-		}
-		const total = nfts.monthly.total + nfts.yearly.total
-		if (total > 0) {
-			setIsAffiliate(true)
-		}
-
-	})
+    getNFTs().then(nfts => {
+      if (!nfts) {
+        return
+      }
+      const total = nfts.monthly.total + nfts.yearly.total
+    })
   }, [profiles])
+
   return (
     <div className="page-container">
       <div className="wallet-heading">
@@ -36,9 +32,9 @@ export default function Wallet() {
 
       <AccountList />
 
-      <AffiliateOptions isAffiliate={isAffiliate} />
+      <AffiliateOptions />
 
-      <Footer disableManagement={!isAffiliate} />
+      <Footer />
     </div>
   )
 }

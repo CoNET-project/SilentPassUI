@@ -6,7 +6,7 @@ import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg
 import { ReactComponent as RefreshIcon } from "./assets/refresh-icon.svg";
 import { ReactComponent as ArrowIcon } from "./assets/arrow.svg";
 
-import {NFTsProcess, getNFTs, distributorNFTItem, distributorNFTObj, redeemProcess } from '../../services/wallets'
+import { NFTsProcess, getNFTs, distributorNFTItem, distributorNFTObj } from '../../services/wallets';
 import './index.css';
 
 type NFTCategory = "monthly" | "yearly";
@@ -18,12 +18,9 @@ const ITEMS_PER_PAGE = 10;
 export default function Management() {
   const [category, setCategory] = useState<NFTCategory>("monthly");
   const [filter, setFilter] = useState<NFTFilter>("all");
-  const [generateQuantity, setGenerateQuantity] = useState<number>(5);
   const [isGetNFTs, setisGetNFTs] = useState(false);
   const [isReflashNFTs, setisReflashNFTs] = useState(false);
   const [allNFTs, setAllNFTs] = useState<distributorNFTObj|null>(null);
-  const [clickRedeem, setClickRedeem] = useState(false);
-  const [redeemProcessing, setRedeemProcessing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [hiddenCodes, setHiddenCodes] = useState<Record<string, boolean>>({});
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
@@ -42,61 +39,6 @@ export default function Management() {
     })
   }, [])
 
-  useEffect(() => {
-	const doRedeem = async () => {
-		await getRedeem()
-
-	}
-	if (clickRedeem) {
-		doRedeem()
-	}
-  }, [clickRedeem])
-
-  const getRedeem = async () => {
-    if (!allNFTs||!getAvailableRedeem()) {
-      return
-    }
-
-    const _category = category
-    const allItems = allNFTs[category].nfts.filter(n => !n.code && !n.showRedeemProcess)
-
-    if (allItems.length === 0) {
-      return
-    }
-    const item = allItems[0]
-    const newItem: distributorNFTItem = {id: item.id, code: item.code, showRedeemProcess: true, used: false}
-
-    setAllNFTs(currentItems => {
-      if (!currentItems) {
-        return currentItems
-      }
-      currentItems[_category].nfts = currentItems[_category].nfts.map(n => n.id === item.id ? newItem: n)
-      return currentItems
-    })
-    setRedeemProcessing(true)
-    const code = await redeemProcess(item.id, _category === 'monthly' ? true : false)
-
-    if (code) {
-      newItem.code = code
-      newItem.showRedeemProcess = false
-      setAllNFTs(currentItems => {
-        if (!currentItems) {
-          return currentItems
-        }
-        currentItems[_category].nfts = currentItems[_category].nfts.map(n => n.id === item.id ? newItem: n)
-        return currentItems
-      })
-    }
-    setRedeemProcessing(false)
-    setClickRedeem(false)
-  }
-
-  const getAvailableRedeem = () => {
-    const items = getFilteredNFTs()
-    const availableItems = items.filter(n => !n.code && !n.showRedeemProcess)
-    return availableItems.length > 0
-  }
-
   const newNFTsProcessUI = async () => {
     if (isGetNFTs) {
       return
@@ -104,16 +46,6 @@ export default function Management() {
     setisGetNFTs(true)
     await NFTsProcess()
     setisGetNFTs(false)
-  }
-
-
-  const renderNewNFTsButton = () => {
-
-    if (isGetNFTs) {
-      return <p className='refreshing'>new NFTs...</p>
-    }
-
-    return <p className='refresh' onClick={() => newNFTsProcessUI()}>get new NFTs</p>
   }
 
   const reflashNftsProcess = async () => {
@@ -126,8 +58,6 @@ export default function Management() {
 	setAllNFTs(result)
 	setisReflashNFTs(false)
   }
-
-  console.log("NFTS: ", allNFTs);
 
   const getFilteredNFTs = (): distributorNFTItem[] => {
     if (!allNFTs || !allNFTs[category].nfts) {
@@ -169,8 +99,6 @@ export default function Management() {
     setHiddenCodes((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  console.log("ALL NFTS: ", allNFTs);
-
   const filteredNFTs = getFilteredNFTs();
   const totalPages = Math.ceil(filteredNFTs.length / ITEMS_PER_PAGE);
   const paginatedNFTs = filteredNFTs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -187,12 +115,6 @@ export default function Management() {
       {/* {renderNewNFTsButton()} */}
       <div className="sub-heading">
         <h3>Your NFTs</h3>
-        {
-          filter === 'no redeem' && getAvailableRedeem() && !redeemProcessing &&
-          <button className="generate-btn" onClick={() => setClickRedeem(true)}>
-            Generate codes
-          </button>
-        }
       </div>
       <div className="main-content-wrapper">
         <div className="category-switch">
@@ -223,7 +145,7 @@ export default function Management() {
           >
             All
           </button>
-          
+
           <button
             className={filter === "to be used" ? "active" : ""}
             onClick={() => {

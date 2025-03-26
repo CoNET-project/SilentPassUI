@@ -36,7 +36,7 @@ interface SolanaWallet {
 
 const initSolana = async (mnemonic: string): Promise<any> => {
 	if (!Bip39.validateMnemonic(mnemonic)) return false;
-  
+
 	const seed = (await Bip39.mnemonicToSeed(mnemonic)).slice(0, 32);
 	const keypair = Keypair.fromSeed(new Uint8Array(seed));
     const ret: SolanaWallet = {
@@ -403,6 +403,7 @@ const NFTsProcess = async () => {
 	const url = `${apiv4_endpoint}getTestNFTsNew`;
 	try {
 		const result: any = await postToEndpoint(url, true, sendData);
+
 		return true
 	} catch(ex) {
 		return false
@@ -425,7 +426,7 @@ const getNFTs = async () => {
 	try {
 		_yearly = await contract_distributor.getListOfAnnual(profile.keyID, 0, 100)
 	} catch(ex) {
-		
+
 	}
 
 	const monthly: distributorNFTs = {
@@ -451,7 +452,7 @@ const getNFTs = async () => {
 				monthly.nfts.push(item)
 				index ++
 			}
-			
+
 		})
 	}
 	if (_yearly) {
@@ -467,7 +468,7 @@ const getNFTs = async () => {
 				yearly.nfts.push(item)
 				index ++
 			}
-			
+
 		})
 
 	}

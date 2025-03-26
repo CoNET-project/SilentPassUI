@@ -9,7 +9,6 @@ import { ReactComponent as ConetToken } from './assets/conet-token.svg';
 import { ReactComponent as ConetEthToken } from './assets/conet-eth-token.svg';
 import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
-import { CoNET_Data } from '../../utils/globals';
 import { useNavigate } from 'react-router-dom';
 
 interface AccountListProps {

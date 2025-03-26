@@ -15,36 +15,38 @@ import contracts from "../utils/contracts";
 import { initProfileTokens } from "../utils/utils";
 import { getVpnTimeUsed } from "./wallets";
 
-let epoch = 0;
-let first = true
+let epoch = 0
+
+const screanAssets = async (callback: (profiles: profile[]) => void) => {
+	setProcessingBlock(true);
+
+	const profiles = CoNET_Data?.profiles;
+	if (!profiles) {
+	  return;
+	}
+	const runningList: any[] = [];
+
+	runningList.push(getProfileAssets(profiles[0]));
+
+	await Promise.all(runningList);
+
+	await getVpnTimeUsed();
+
+	if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles);
+
+	setProcessingBlock(false);
+}
 const listenProfileVer = async (callback: (profiles: profile[]) => void) => {
   epoch = await conetProvider.getBlockNumber();
-  
+  screanAssets(callback)
   conetProvider.on("block", async (block) => {
     if (block === epoch + 1) {
       epoch++;
 
       if (processingBlock === true) return;
 
-      if (first || block % 10 === 0) {
-		first = false
-        setProcessingBlock(true);
-
-        const profiles = CoNET_Data?.profiles;
-        if (!profiles) {
-          return;
-        }
-        const runningList: any[] = [];
-
-        runningList.push(getProfileAssets(profiles[0]));
-
-        await Promise.all(runningList);
-
-        await getVpnTimeUsed();
-
-        if (CoNET_Data?.profiles[0]) callback(CoNET_Data?.profiles);
-
-        setProcessingBlock(false);
+      if (block % 10 === 0) {
+		screanAssets(callback)
       }
     }
   });

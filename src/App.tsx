@@ -16,9 +16,10 @@ import Recover from './pages/Recover';
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated } = useDaemonContext();
-
+  const { setProfiles, _vpnTimeUsedInMin } = useDaemonContext();
+  let process = false
   useEffect(() => {
+
     const init = async () => {
       const vpnTimeUsedInMin = parseInt(localStorage.getItem("vpnTimeUsedInMin") || "0");
       _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
@@ -45,7 +46,10 @@ function App() {
     //     startMiningV2(CoNET_Data?.profiles?.[0], allRegions, setMiningData);
     //   });
     };
-
+	if (process) {
+		return
+	}
+	process = true
     init();
   }, []);
 

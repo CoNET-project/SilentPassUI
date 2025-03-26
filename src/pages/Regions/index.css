@@ -10,8 +10,6 @@
 .board {
   padding: 10px 0;
   max-height: 80vh;
-  overflow-y: auto;
-  overflow-x: hidden;
   width: 100%;
 }
 

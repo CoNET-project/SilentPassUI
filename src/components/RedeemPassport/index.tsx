@@ -5,6 +5,12 @@ import SuccessModal from './SuccessModal';
 import { RealizationRedeem } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import { useDaemonContext } from "../../providers/DaemonProvider";
+interface plan {
+	total: string
+	publicKey: string
+	Solana: string
+}
+
 export default function RedeemPassport() {
   const [redeemCode, setRedeemCode] = useState("");
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -13,7 +19,7 @@ export default function RedeemPassport() {
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
   const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
   const [successNFTID, setSuccessNFTID] = useState(0);
-  const { isIOS } = useDaemonContext();
+  const { isIOS, profiles } = useDaemonContext();
   const navigate = useNavigate();
 
   async function handlePassportRedeem() {
@@ -30,6 +36,23 @@ export default function RedeemPassport() {
 	  
       setIsSuccessModalOpen(true);
       setRedeemCode('')
+  }
+
+  const startSubscription = () => {
+	if (!profiles ||profiles.length < 2) {
+		return
+	}
+
+	const planObj:plan = {
+		publicKey: profiles[0].keyID,
+		Solana: profiles[1].keyID,
+		total: selectedPlan
+	}
+
+	const base64VPNMessage = btoa(JSON.stringify(planObj));
+	if (window?.webkit?.messageHandlers) {
+		window?.webkit?.messageHandlers["pay"].postMessage(base64VPNMessage)
+	}
   }
 
   return (
@@ -105,7 +128,7 @@ export default function RedeemPassport() {
 			</div>
 			<div className="subscription">
 				<p>7 day free, <br /> then get 12 months for $32.49</p>
-				<button onClick={() => {}}>Start subscription</button>
+				<button onClick={() => startSubscription()}>Start subscription</button>
 				<div className="sub-details">
 				<p>Subscription details:</p>
 				<ul>

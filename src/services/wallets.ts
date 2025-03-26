@@ -350,8 +350,8 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
 
   if (chain === "mainnet") {
     provider = conetDepinProvider;
-    contractAddress = contracts.PassportMainnet.address;
-    contractAbi = contracts.PassportMainnet.abi;
+    contractAddress = contracts.distributor.address;
+    contractAbi = contracts.distributor.abi;
   } else {
     provider = conetProvider;
     contractAddress = contracts.PassportCancun.address;
@@ -371,6 +371,7 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
 
   try {
     const tx = await passportContract.changeActiveNFT(nftId);
+	await tx.wait()
     return tx;
   } catch (ex) {
     console.log(ex);
@@ -436,11 +437,16 @@ const getCurrentPassportInfo = async (walletAddress: string) => {
     "mainnet"
   );
 
-  if (resultMainnet?.nftIDs?.toString() !== "0") {
+  if (resultMainnet[0]?.toString() !== "0") {
     return resultMainnet;
   }
 
-  return resultMainnet;
+  const resultCancun = await getCurrentPassportInfoInChain(
+    walletAddress,
+    "cancun"
+  );
+
+  return resultCancun;
 };
 
 const tryToRequireFreePassport = async () => {
@@ -581,7 +587,7 @@ const getVpnTimeUsed = async () => {
 };
 
 const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
-  const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
+//   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
   const tmpMainnetPassports = await getPassportsInfo(profile, "mainnet");
 
   const _currentPassport = await getCurrentPassportInfo(profile.keyID);
@@ -589,26 +595,26 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
   profile = {
     ...profile,
     activePassport: {
-      nftID: _currentPassport?.nftIDs?.toString(),
-      expires: _currentPassport?.expires?.toString(),
-      expiresDays: _currentPassport?.expiresDays?.toString(),
-      premium: _currentPassport?.premium,
+      nftID: _currentPassport[0].toString(),
+      expires: _currentPassport[1].toString(),
+      expiresDays: _currentPassport[2].toString(),
+      premium: _currentPassport[3].toString(),
     },
   };
 
   const cancunPassports: passportInfo[] = [];
   const mainnetPassports: passportInfo[] = [];
 
-  for (let i = 0; i < tmpCancunPassports?.nftIDs?.length; i++) {
-    cancunPassports.push({
-      walletAddress: profile.keyID,
-      nftID: parseInt(tmpCancunPassports.nftIDs[i].toString()),
-      expires: parseInt(tmpCancunPassports.expires[i].toString()),
-      expiresDays: parseInt(tmpCancunPassports.expiresDays[i].toString()),
-      premium: tmpCancunPassports.premium[i],
-      network: "Conet Holesky",
-    });
-  }
+//   for (let i = 0; i < tmpCancunPassports?.nftIDs?.length; i++) {
+//     cancunPassports.push({
+//       walletAddress: profile.keyID,
+//       nftID: parseInt(tmpCancunPassports.nftIDs[i].toString()),
+//       expires: parseInt(tmpCancunPassports.expires[i].toString()),
+//       expiresDays: parseInt(tmpCancunPassports.expiresDays[i].toString()),
+//       premium: tmpCancunPassports.premium[i],
+//       network: "Conet Holesky",
+//     });
+//   }
 
   for (let i = 0; i < tmpMainnetPassports?.nftIDs?.length; i++) {
     mainnetPassports.push({
@@ -657,8 +663,8 @@ const getPassportsInfo = async (
 
   if (chain === "mainnet") {
     provider = conetDepinProvider;
-    contractAddress = contracts.PassportMainnet.address;
-    contractAbi = contracts.PassportMainnet.abi;
+    contractAddress = contracts.distributor.address;
+    contractAbi = contracts.distributor.abi;
   } else {
     provider = conetProvider;
     contractAddress = contracts.PassportCancun.address;
@@ -1142,8 +1148,9 @@ const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string) => 
 
 	const _time = setTimeout(() => {
 		//		TimeOUT
-		resolve (null)
-	}, 1000 * 60)
+		// conetDepinProvider.removeListener('block', listenBlock)
+		// resolve (null)
+	}, 1000 * 180)
 })
 
 const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string) => {
@@ -1181,17 +1188,19 @@ const RealizationRedeem = async (code: string) => {
 	const sendData = {
       message, signMessage
     }
-
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
 	try {
-		const result: any = await postToEndpoint(url, true, sendData);
-		if (result?.error) {
+		const [nft, result] = await Promise.all ([
+			listenersRealizationRedeem(contract_distributor, profile.keyID.toLowerCase()),
+			postToEndpoint(url, true, sendData)
+		])
+		if (typeof result === 'boolean'|| result === ''|| result?.error ) {
 			return null
 		}
-		const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
-    	const nft = await listenersRealizationRedeem(contract_distributor, profile.keyID.toLowerCase())
+		
 		return nft
 	} catch(ex) {
-    console.log("EX: ", ex);
+    	console.log("EX: ", ex);
 		return null
 	}
 }

@@ -26,7 +26,7 @@ import Transfer from './pages/Transfer';
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
@@ -48,10 +48,10 @@ function App() {
       tmpData.profiles[0] = {
         ...tmpData?.profiles[0],
         activePassport: {
-          nftID: info?.nftIDs?.toString(),
-          expires: info?.expires?.toString(),
-          expiresDays: info?.expiresDays?.toString(),
-          premium: info?.premium
+          nftID: info[0].toString(),
+          expires: info[1].toString(),
+          expiresDays: info[2].toString(),
+          premium: info[3]
         },
       };
 
@@ -121,14 +121,15 @@ function App() {
 
         setServerIpAddress(tmpIpAddress?.ip || "");
         setServerPort('3002');
+		setIsLocalProxy(true)
       } catch (ex) {
-        console.log(ex)
+		setIsIOS(true)
+		setIsLocalProxy(false)
       }
     };
-    //@ts-ignore
-    if (!window?.webkit && !window?.Android) {
+    //if (!window?.webkit && !window?.Android) {
       _getServerIpAddress();
-    }
+    
   }, []);
 
   return (

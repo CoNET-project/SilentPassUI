@@ -40,6 +40,12 @@ type DaemonContext = {
   setPurchasingPlanPaymentTime: (val: string) => void
   randomSolanaRPC: nodes_info | null
   setRandomSolanaRPC: (val: nodes_info) => void;
+  isIOS: boolean
+  setIsIOS: (val: boolean) => void
+  isLocalProxy: boolean
+  setIsLocalProxy: (val: boolean)=> void
+  globalProxy: boolean,
+  setGlobalProxy: (val: boolean)=> void
 };
 
 type DaemonProps = {
@@ -85,7 +91,14 @@ const defaultContextValue: DaemonContext = {
   purchasingPlanPaymentTime: "monthly",
   setPurchasingPlanPaymentTime: () => { },
   setRandomSolanaRPC: () => { },
-  randomSolanaRPC: null
+  randomSolanaRPC: null,
+  isIOS: false,
+  setIsIOS: () => {},
+  isLocalProxy: false,
+  setIsLocalProxy(val) {},
+  globalProxy: false,
+  setGlobalProxy: () => {}
+
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -97,6 +110,7 @@ export function useDaemonContext() {
 
 export function DaemonProvider({ children }: DaemonProps) {
   const [power, setPower] = useState<boolean>(false);
+  const [globalProxy, setGlobalProxy] = useState(false)
   const [isRandom, setIsRandom] = useState<boolean>(true);
   const [sRegion, setSRegion] = useState<number>(-1);
   const [allRegions, setAllRegions] = useState<Region[]>([]);
@@ -116,6 +130,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [purchasingPlan, setPurchasingPlan] = useState<string>("premium");
   const [purchasingPlanPaymentTime, setPurchasingPlanPaymentTime] = useState<string>("monthly");
   const [randomSolanaRPC, setRandomSolanaRPC] = useState<nodes_info | null>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isLocalProxy, setIsLocalProxy] = useState(false);
 
   useEffect(() => {
     {
@@ -126,7 +142,15 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, setRandomSolanaRPC, randomSolanaRPC }}>
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, 
+				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, 
+				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, 
+				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, 
+				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, 
+				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, 
+				purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, 
+				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy }}>,
+				
       {children}
     </Daemon.Provider>
   );

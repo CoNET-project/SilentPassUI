@@ -2,6 +2,7 @@ import bs58 from "bs58";
 import { Keypair } from "@solana/web3.js";
 import { apiv4_endpoint, XMLHttpRequestTimeout } from "./constants";
 import contracts from "./contracts";
+import { StringDecoder } from "node:string_decoder";
 
 export const customJsonStringify = (item: any) => {
   const result = JSON.stringify(
@@ -75,7 +76,7 @@ export const initProfileTokens = () => {
   return ret;
 };
 
-export const postToEndpoint = (url: string, post: boolean, jsonData: any) => {
+export const postToEndpoint = (url: string, post: boolean, jsonData: any): Promise<""|boolean|{error: string}> => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.onload = () => {
@@ -188,12 +189,15 @@ export const parseQueryParams = (queryString: string) => {
 };
 
 export const getPassportTitle = (passportInfo: any) => {
-  if (passportInfo?.expiresDays?.toString() === "7") return "Freemium";
+	if (!passportInfo) {
+		return "..."
+	}
+  if (passportInfo.expiresDays?.toString() === "7") return "Freemium";
 
-  if (passportInfo?.expires && passportInfo?.expires > 32503690800000)
+  if (passportInfo.expires && passportInfo?.expires > 32503690800000)
     return "Guardian";
 
-  if (passportInfo?.premium) return "Premium";
+  if (passportInfo.premium === true || passportInfo.premium === 'true') return "Premium";
 
   return "Standard";
 };

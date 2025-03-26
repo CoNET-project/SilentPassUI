@@ -16,14 +16,16 @@ export default function Wallet() {
 
   console.log("PROFILES: ", profiles);
 
-  const hasGuardian = profiles?.[0].silentPassPassports?.some((passport: any) => passport.expires > 32503690800000);
-  const hasSPClub = !!profiles?.spClub?.memberId;
+  const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
+  const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7;
 
   return (
     <div className="page-container">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
         <h1>My Account</h1>
-        { hasGuardian && (hasSPClub ? <GoldBadge /> : <BlueBadge />) }
+        { !!profiles?.[0]?.activePassport?.nftID && (
+          hasGuardianActive ? <GoldBadge /> : !freePassportActive && <BlueBadge />
+        ) }
       </div>
 
       <AccountList />

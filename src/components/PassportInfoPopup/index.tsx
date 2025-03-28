@@ -9,6 +9,7 @@ const PassportInfoPopup = () => {
 
   const navigate = useNavigate();
 
+  const passportTitle = getPassportTitle(activePassport);
 
   return isPassportInfoPopupOpen ? (
     <div className="home-popup-backdrop" onClick={() => setIsPassportInfoPopupOpen(false)}>
@@ -17,7 +18,7 @@ const PassportInfoPopup = () => {
           <div style={{ display: "flex", flexDirection: 'column', textAlign: 'start', gap: '16px' }}>
             <span>Silent Pass Passport</span>
             {
-              activePassport ? <p>{getPassportTitle(activePassport)}</p> : <Skeleton width="120px" height="32px" />
+              activePassport ? <p>{passportTitle}</p> : <Skeleton width="120px" height="32px" />
             }
           </div>
 
@@ -32,7 +33,7 @@ const PassportInfoPopup = () => {
         </div>
 
         <div className="home-buttons">
-          <button onClick={() => navigate('/subscription')}>
+          <button disabled={(passportTitle !== 'Premium' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate('/subscription')}>
             <img src="./assets/conet-outline-blue.svg" />
             <span>Upgrade</span>
           </button>

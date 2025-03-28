@@ -78,6 +78,12 @@
   color: #ffffff;
 }
 
+.home-buttons button:disabled {
+  background: #191919 !important;
+  color: #5a5a5afe !important;
+  cursor: not-allowed;
+}
+
 .home-options {
   display: flex;
   flex-direction: column;

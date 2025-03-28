@@ -9,9 +9,11 @@ import splitTunnelingIcon from "./assets/split-tunneling.svg";
 import lockIcon from "./assets/lock-icon.svg";
 
 import Separator from '../../components/Separator';
-import { useMemo, useState } from 'react';
+import { act, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ActivePassportInfo from '../../components/ActivePassportInfo';
+import { useDaemonContext } from '../../providers/DaemonProvider';
+import { getPassportTitle } from '../../utils/utils';
 
 type OptionGroup = {
   heading: string;
@@ -28,6 +30,8 @@ type OptionGroup = {
 type OptionGroups = OptionGroup[];
 
 export default function Settings() {
+  const { activePassport } = useDaemonContext();
+
   const navigate = useNavigate();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
@@ -103,6 +107,8 @@ export default function Settings() {
     },
   ]), [navigate]);
 
+  const passportTitle = getPassportTitle(activePassport)
+
   return (
     <div className="page-container">
       <h1>Settings</h1>
@@ -111,7 +117,7 @@ export default function Settings() {
 
         <div className="buttons">
           <button onClick={() => navigate("/wallet")}>My Account</button>
-          <button className='disabled'>
+          <button disabled={(passportTitle !== 'Premium' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate("/subscription")}>
             <img src="./assets/conet-outline-gray.svg" />
             <span>Upgrade Passport</span>
           </button>

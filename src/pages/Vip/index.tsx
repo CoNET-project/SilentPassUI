@@ -58,7 +58,7 @@ const Vip = () => {
                   <tbody>
                     <tr>
                       <td>Premium User</td>
-                      <td>$2.49</td>
+                      <td>$2.99</td>
                       <td>$24.99</td>
                     </tr>
                     <tr>

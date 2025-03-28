@@ -4,12 +4,12 @@ import { useDaemonContext } from '../../../providers/DaemonProvider';
 export default function BuyMore() {
   const { purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime } = useDaemonContext();
 
-  const [standardPrice, setStandardPrice] = useState('2.49');
+  const [standardPrice, setStandardPrice] = useState('2.99');
   const [premiumPrice, setPremiumPrice] = useState('9.99');
 
   useEffect(() => {
     if (purchasingPlanPaymentTime === 'monthly') {
-      setStandardPrice('2.49');
+      setStandardPrice('2.99');
       setPremiumPrice('9.99');
     } else {
       setStandardPrice('24.99');

@@ -31,6 +31,7 @@ function App() {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
   }
+  
   useEffect(() => {
     const handlePassport = async () => {
       if (!CoNET_Data?.profiles[0]?.keyID) return
@@ -123,7 +124,9 @@ function App() {
         setServerPort('3002');
 		setIsLocalProxy(true)
       } catch (ex) {
-		setIsIOS(true)
+		if (window?.webkit) {
+			setIsIOS(true)
+		}
 		setIsLocalProxy(false)
       }
     };

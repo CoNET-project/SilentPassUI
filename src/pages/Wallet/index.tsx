@@ -2,20 +2,28 @@ import { useNavigate } from 'react-router-dom';
 import Footer from '../../components/Footer';
 import './index.css';
 import AccountList from '../../components/AccountList';
-import SpClub from '../../components/AccountList/SpClub';
-import ReferralProgram from '../../components/AccountList/ReferralProgram';
 import RedeemPassport from '../../components/RedeemPassport';
+import { ReactComponent as RecoverIcon } from './assets/recover-icon.svg';
+import { useEffect } from 'react';
+
+import { useDaemonContext } from "../../providers/DaemonProvider";
 
 export default function Wallet() {
+  const { profiles } = useDaemonContext();
   const navigate = useNavigate();
 
   return (
     <div className="page-container">
-      <h1>My Account</h1>
+      <div className="wallet-heading">
+        <h1>My Account</h1>
+        {/* <button onClick={() => navigate("/recover")}>
+          <RecoverIcon />
+          <p>Recover</p>
+        </button> */}
+      </div>
 
       <AccountList />
-
-      <div className="cta-buttons">
+	  <div className="cta-buttons">
         {/* <div>
           <button className='disabled'>
             <img src="/assets/conet-gray.svg" alt="Platform" />
@@ -25,12 +33,7 @@ export default function Wallet() {
         </div> */}
         <RedeemPassport />
       </div>
-
-      {/* <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
-        <SpClub />
-        <ReferralProgram />
-      </div> */}
-
+      
 
       <Footer />
     </div>

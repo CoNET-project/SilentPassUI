@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./index.css"; // Import external CSS file
 import SuccessModal from './SuccessModal';
 import { RealizationRedeem } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import { useDaemonContext } from "../../providers/DaemonProvider";
+import {stripe_pay_Annual, stripe_pay_monthly} from '../../utils/constants'
+import AffiliateOptions from '../../components/AffiliateOptions';
 interface plan {
 	total: string
 	publicKey: string
@@ -18,9 +20,28 @@ export default function RedeemPassport() {
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
   const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
-  const [successNFTID, setSuccessNFTID] = useState(0);
-  const { isIOS, profiles } = useDaemonContext();
+ 
+  const { isIOS, profiles, paymentKind, purchasingPlan, successNFTID, setSuccessNFTID } = useDaemonContext();
   const navigate = useNavigate();
+
+	useEffect(() => {
+		const processVisa = async () => {
+			if (paymentKind !== 0) {
+				navigate('/Subscription')
+			}
+		}
+		processVisa()
+
+	}, [paymentKind]);
+
+	useEffect(() => {
+		if (successNFTID > 100) {
+			setAnErrorOccurred(true);
+			setIsSuccessModalOpen(true);
+      		setRedeemCode('')
+		}
+		
+	}, [successNFTID])
 
   async function handlePassportRedeem() {
 
@@ -70,97 +91,107 @@ export default function RedeemPassport() {
 
         <div className="redeem-content">
 			{
-				isIOS ? <label className="redeem-label">Already a Subscriber?</label>
-				:  <label className="redeem-label">Input Redeem Code!</label>
+				!isRedeemProcessLoading &&
+				<>
+					{
+						isIOS ? <label className="redeem-label">Already a Subscriber?</label>
+						:  <label className="redeem-label">Input Redeem Code!</label>
+					}
+				
+					<input
+						type="text"
+						placeholder="#1234"
+						className="redeem-input"
+						value={redeemCode}
+						onChange={(e) => setRedeemCode(e.target.value)}
+					/>
+				</>
 			}
-         
-          <input
-            type="text"
-            placeholder="#1234"
-            className="redeem-input"
-            value={redeemCode}
-            onChange={(e) => setRedeemCode(e.target.value)}
-          />
+			
           {anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
           <button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
             {isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
           </button>
 		  {
-			isIOS &&
+			!isRedeemProcessLoading &&
 			<>
-				<div className="redeem-divider">
-				<div className="line"></div>
-				<span>or</span>
-				<div className="line"></div>
-			</div>
-			<div className="subscription-plans">
-				<div
-				className={`plan ${selectedPlan === '12' ? 'selected' : ''}`}
-				onClick={() => setSelectedPlan('12')}
-				>
-				<div className="plan-content">
-					<div className={`sub-option ${selectedPlan === '12' ? 'selected' : ''}`} />
-					<div className="plan-details">
-					<div className="plan-title">12 months plan</div>
-					<div className="plan-price">$2.71/month, billed annually</div>
-					<div className="plan-savings">(Save 18%)</div>
-					</div>
-				</div>
-				<div className="free-trial">7-Day Free Trial</div>
-				</div>
-
-				<div
-				className={`plan ${selectedPlan === '1' ? 'selected' : ''}`}
-				onClick={() => setSelectedPlan('1')}
-				>
-				<div className="plan-content">
-					<div className={`sub-option ${selectedPlan === '1' ? 'selected' : ''}`} />
-					<div className="plan-details">
-					<div className="plan-title">1 month plan</div>
-					<div className="plan-price">$3.29/month</div>
-					</div>
-				</div>
-				<div className="no-free-trial">No Free Trial</div>
-				</div>
-			</div>
-			<div className="redeem-divider">
-				<div className="line"></div>
-			</div>
-			<div className="subscription">
-				<p>7 day free, <br /> then get 12 months for $32.49</p>
-				<button onClick={() => startSubscription()}>Start subscription</button>
-				<div className="sub-details">
-				<p>Subscription details:</p>
-				<ul>
-					<li>Your Apple ID account will be charged on the last day of your free trial.</li>
-					<li>Your subscription will automatically renew at the end of each billing period unless it is canceled at least 24 hours before the expiry date.</li>
-					<li>You can manage and cancel your subscriptions by going to your App Store account settings after purchase.</li>
-					<li>Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.</li>
-					<li>By subscribing, you agree to the Terms of Service and Privacy Policy.</li>
-				</ul>
-				</div>
-			</div>
-			</>
-		  }
-		  {
-			!isIOS &&
-				<>
-					<div className="redeem-divider">
+				 {
+					isIOS &&
+					<>
+						<div className="redeem-divider">
 						<div className="line"></div>
 						<span>or</span>
 						<div className="line"></div>
 					</div>
-					<button className="redeem-button purchase" onClick={() => navigate("/subscription")}>
-						Go to purchase
-					</button>
-				</>
+					<div className="subscription-plans">
+						<div
+						className={`plan ${selectedPlan === '12' ? 'selected' : ''}`}
+						onClick={() => setSelectedPlan('12')}
+						>
+						<div className="plan-content">
+							<div className={`sub-option ${selectedPlan === '12' ? 'selected' : ''}`} />
+							<div className="plan-details">
+							<div className="plan-title">12 months plan</div>
+							<div className="plan-price">$2.71/month, billed annually</div>
+							<div className="plan-savings">(Save 18%)</div>
+							</div>
+						</div>
+						<div className="free-trial">7-Day Free Trial</div>
+						</div>
+
+						<div
+						className={`plan ${selectedPlan === '1' ? 'selected' : ''}`}
+						onClick={() => setSelectedPlan('1')}
+						>
+						<div className="plan-content">
+							<div className={`sub-option ${selectedPlan === '1' ? 'selected' : ''}`} />
+							<div className="plan-details">
+							<div className="plan-title">1 month plan</div>
+							<div className="plan-price">$3.29/month</div>
+							</div>
+						</div>
+						<div className="no-free-trial">No Free Trial</div>
+						</div>
+					</div>
+					<div className="redeem-divider">
+						<div className="line"></div>
+					</div>
+					<div className="subscription">
+						<p>7 day free, <br /> then get 12 months for $32.49</p>
+						<button onClick={() => startSubscription()}>Start subscription</button>
+						<div className="sub-details">
+						<p>Subscription details:</p>
+						<ul>
+							<li>Your Apple ID account will be charged on the last day of your free trial.</li>
+							<li>Your subscription will automatically renew at the end of each billing period unless it is canceled at least 24 hours before the expiry date.</li>
+							<li>You can manage and cancel your subscriptions by going to your App Store account settings after purchase.</li>
+							<li>Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.</li>
+							<li>By subscribing, you agree to the Terms of Service and Privacy Policy.</li>
+						</ul>
+						</div>
+					</div>
+					</>
+				}
+				{
+					!isIOS &&
+						<>
+							<div className="redeem-divider">
+								<div className="line"></div>
+								<span>or</span>
+								<div className="line"></div>
+							</div>
+							< AffiliateOptions/>
+						</>
+				}
+			</>
 		  }
+		 
           
         </div>
       </div>
 
       {/* Success Modal */}
-      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID}  onClose={() => setIsSuccessModalOpen(false)} />}
+      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID} onClose={() => setIsSuccessModalOpen(false)} />}
     </>
   );
 }

@@ -6,6 +6,7 @@ import {
 	ConetStorageAbi,
 	PassportCancunAbi,
 	ConetDepinAbi,
+	PaymentPassport,
 	PassportMainnetAbi,
 	SpOracleAbi,
 	PurchasePassportAbi,
@@ -77,6 +78,11 @@ import {
 	  abi: SpClubAbi,
 	  network: "CONET DePIN",
 	},
+	PaymentPassport: {
+		address: '0xDa961275aAb40aCb1943D8969aB40efdA3719943',
+		network: "CONET DePIN",
+		abi: PaymentPassport
+	}
   };
   
   export default contracts;

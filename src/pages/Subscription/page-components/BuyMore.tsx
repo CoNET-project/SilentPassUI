@@ -1,54 +1,40 @@
-import { useEffect, useState } from 'react';
-import { useDaemonContext } from '../../../providers/DaemonProvider';
+import { useState } from 'react';
 
 export default function BuyMore() {
-  const { purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime } = useDaemonContext();
-
-  const [standardPrice, setStandardPrice] = useState('2.49');
-  const [premiumPrice, setPremiumPrice] = useState('9.99');
-
-  useEffect(() => {
-    if (purchasingPlanPaymentTime === 'monthly') {
-      setStandardPrice('2.49');
-      setPremiumPrice('9.99');
-    } else {
-      setStandardPrice('24.99');
-      setPremiumPrice('99.99');
-    }
-
-  }, [purchasingPlanPaymentTime]);
+  const [choosenOption, setChoosenOption] = useState<'monthly' | 'yearly'>('yearly');
 
   return (
     <div className="buy-more">
       <h3>Buy more</h3>
       <div className="plan-options">
-        <button onClick={() => setPurchasingPlanPaymentTime('monthly')} className={purchasingPlanPaymentTime === 'monthly' ? 'active' : ''}>Monthly</button>
-        <button onClick={() => setPurchasingPlanPaymentTime('yearly')} className={purchasingPlanPaymentTime === 'yearly' ? 'active' : ''}>Yearly</button>
+        <button onClick={() => setChoosenOption('monthly')} className={choosenOption === 'monthly' ? 'active' : ''}>Monthly</button>
+        <button onClick={() => setChoosenOption('yearly')} className={choosenOption === 'yearly' ? 'active' : ''}>Yearly</button>
       </div>
       <div className="plan-cards">
-        <div className={`plan ${purchasingPlan === 'standard' ? 'active' : ''}`} onClick={() => setPurchasingPlan('standard')}>
+        <div className="plan">
           <div>
-            <p>Standard</p>
+            <p>Premium</p>
             <span>1 device</span>
           </div>
           <div>
-            <span>$USD</span>
-            <p>{standardPrice}</p>
-            <span className="pay-type">paid {purchasingPlanPaymentTime}</span>
+            <span>$USDT</span>
+            <p>24.99</p>
+            <span className="pay-type">paid {choosenOption}</span>
           </div>
         </div>
-        <div className={`plan ${purchasingPlan === 'premium' ? 'active' : ''}`} onClick={() => setPurchasingPlan('premium')}>
+        <div className="plan">
           <div>
-            <p>Premium</p>
+            <p>Platinum</p>
             <span>5 devices</span>
           </div>
           <div>
-            <span>$USD</span>
-            <p>{premiumPrice}</p>
-            <span className="pay-type">paid {purchasingPlanPaymentTime}</span>
+            <span>$USDT</span>
+            <p>99.99</p>
+            <span className="pay-type">paid {choosenOption}</span>
           </div>
         </div>
       </div>
+      <p>*If you are a Guardian or CoNETian, ​​transfer your NFT to your Main Account on Silent Pass VPN app.</p>
     </div>
   )
 }

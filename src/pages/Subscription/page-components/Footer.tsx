@@ -1,4 +1,4 @@
-import { Step } from '../../../types/global-types';
+import { Step } from '../';
 import { ReactComponent as ProgressIcon } from "../assets/progress-activity.svg";
 
 interface FooterProps {
@@ -14,7 +14,7 @@ export default function Footer({ step, isSubmitButtonDisabled, handleButtonActio
       <button className={`step-${step} ${isSubmitButtonDisabled ? "disabled" : ""}`} disabled={isSubmitButtonDisabled} onClick={() => !isSubmitButtonDisabled && handleButtonAction()} style={{ cursor: isSubmitButtonDisabled ? "not-allowed" : "pointer" }}>
         {step === 3 && <ProgressIcon />}
 
-        {step === 1 && "Pay with $SP"}
+        {/* {step === 1 && "Pay with $SP"} */}
         {step === 2 && "Pay"}
         {step === 3 && "Processing"}
         {step === 4 && "Back to My Wallet"}

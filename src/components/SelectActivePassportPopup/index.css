@@ -76,7 +76,7 @@
 .home-buttons button:first-child:disabled {
   background-color: #333;
   color: #ddd;
-  cursor: not-allowed
+  cursor: not-allowed!important;
 }
 
 .home-buttons button:last-child {

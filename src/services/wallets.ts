@@ -13,6 +13,7 @@ import {
   localDatabaseName,
   rewardWalletAddress,
   solanaRpc,
+  payment_endpoint
 } from "../utils/constants";
 import {} from './listeners'
 import contracts from "../utils/contracts";
@@ -1246,6 +1247,7 @@ const waitingNFT = (wallet: ethers.Wallet) => new Promise(async resolve => {
 			}
 		}
 	}
+	
 	conetDepinProvider.on('block', listenning)
 	const _time = setTimeout(() => {
 		//		TimeOUT
@@ -1320,6 +1322,63 @@ const checkFreePassport = async () => {
 	return true
 }
 
+const getPaymentUrl = async (price: number) => {
+	if (!CoNET_Data?.profiles?.length) {
+		return null;
+	}
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	if (!solanaWallet||!profile) {
+		return null;
+	}
+	
+	const url = `${payment_endpoint}payment_stripe`
+	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, price})
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+    }
+	const result = await postToEndpoint(url, true, sendData)
+	return result
+}
+
+const waitingPaymentStatus = async (): Promise<false|number> => {
+	if (!CoNET_Data?.profiles?.length) {
+		return false;
+	}
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	if (!solanaWallet||!profile) {
+		return false;
+	}
+	
+	const url = `${payment_endpoint}payment_stripe_waiting`
+	const message = JSON.stringify({ walletAddress: profile.keyID})
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+    }
+
+	const waiting = async (): Promise<false|number> => new Promise(async resolve => {
+		const result = await postToEndpoint(url, true, sendData)
+		if (!result || !result?.status) {
+			return resolve (false)
+		}
+		if (result.status < 100) {
+			return setTimeout(() => {
+				return waiting().then (jj => resolve(jj))
+			}, 10 * 1000)
+		}
+		return resolve(result.status)
+	})
+	const result = await waiting ()
+	return result
+}
+
+
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -1340,5 +1399,7 @@ export {
   getReceivedAmounts,
   RealizationRedeem,
   checkFreePassport,
-  checkFreePassportProcess
+  checkFreePassportProcess,
+  getPaymentUrl,
+  waitingPaymentStatus
 };

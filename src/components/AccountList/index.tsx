@@ -117,8 +117,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
               simplifiedView && (
                 <div className="copy">
                   {
-                    profiles?.[0].keyID ? (
-                      <p>{profiles?.[0]?.keyID?.slice(0, 5)}...{profiles?.[0]?.keyID?.slice(-5)}</p>
+                    profiles[0]?.keyID?.slice ? (
+                      <p>{profiles[0].keyID?.slice(0, 5)}...{profiles?.[0]?.keyID?.slice(-5)}</p>
                     ) : (
                       <Skeleton width="100%" height="20px" />
                     )
@@ -223,8 +223,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
             simplifiedView && (
               <div className="copy">
                 {
-                  profiles?.[1].keyID ? (
-                    <p>{profiles?.[1]?.keyID?.slice(0, 5)}...{profiles?.[1]?.keyID?.slice(-5)}</p>
+                  profiles[1]?.keyID?.slice ? (
+                    <p>{profiles[1].keyID.slice(0, 5)}...{profiles[1].keyID.slice(-5)}</p>
                   ) : (
                     <Skeleton width="100%" height="20px" />
                   )

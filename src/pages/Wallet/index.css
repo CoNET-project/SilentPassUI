@@ -8,6 +8,7 @@
 .cta-buttons > div {
   display: flex;
   flex-direction: column;
+  gap: 24px;
 }
 
 .cta-buttons > div > p {
@@ -16,7 +17,7 @@
   color: #989899;
 }
 
-.cta-buttons button.cta-button {
+.cta-buttons button {
   width: 100%;
 
   display: flex;
@@ -27,12 +28,6 @@
   text-align: left;
   font-size: 16px;
 
-  background: linear-gradient(
-      0deg,
-      rgba(0, 0, 0, 0.2) 0%,
-      rgba(0, 0, 0, 0.2) 100%
-    ),
-    linear-gradient(93deg, #4e72b6 0%, #9fbfe5 100%);
 
   border-radius: 8px;
   cursor: pointer;
@@ -40,14 +35,12 @@
 
 .cta-buttons div.highlight-1 button {
   padding: 16px;
-  background: rgba(159, 191, 229, 0.2);
+  background: rgba(159, 191, 229, 0.20);
 
   justify-content: center;
 
-  border-radius: 16px;
-
   font-weight: bold;
-  color: rgba(159, 191, 229, 1);
+  color: rgba(159, 191, 229, 1.00);
 }
 
 .cta-buttons div.highlight-1 button p {
@@ -55,15 +48,40 @@
 }
 
 .cta-buttons div.highlight-2 button {
-  background: linear-gradient(
-      0deg,
-      rgba(0, 0, 0, 0.2) 0%,
-      rgba(0, 0, 0, 0.2) 100%
-    ),
-    linear-gradient(93deg, #4e72b6 0%, #9fbfe5 100%);
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.20) 0%, rgba(0, 0, 0, 0.20) 100%), linear-gradient(93deg, #4E72B6 0%, #9FBFE5 100%);
 }
 
 .cta-buttons button img {
   width: 26px;
   height: 26px;
+}
+
+.wallet-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 32px;
+}
+
+.wallet-heading button {
+  gap: 8px;
+
+  cursor: pointer;
+}
+
+.wallet-heading button p {
+  color: #9FBFE5FE;
+  font-weight: 700;
+}
+
+.page-container .toggle-button {
+  position: absolute;
+  top: 16px;
+  right: 41%;
+
+  background: rgba(159, 191, 229, 1.00);;
+  color: black;
+  padding: 8px;
+  border-radius: 8px;
 }

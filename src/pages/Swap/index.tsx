@@ -2,18 +2,33 @@ import { useNavigate } from 'react-router-dom';
 import Footer from '../../components/Footer';
 import './index.css';
 import SwapInput from '../../components/SwapInput';
-import ReferralProgram from '../../components/AccountList/ReferralProgram';
+import { useState } from 'react';
+import BackButton from '../../components/BackButton';
+import TokenGraph from '../../components/TokenGraph';
 
 export default function Swap() {
+  const [tokenGraph, setTokenGraph] = useState('');
   const navigate = useNavigate();
 
   return (
     <div className="page-container">
-      <h1>Swap</h1>
+      {
+        !tokenGraph
+          ? (
+            <>
+              <h1>Swap</h1>
 
-      <SwapInput />
+              <SwapInput setTokenGraph={setTokenGraph} />
+            </>
+          ) : (
+            <>
+              <BackButton action={() => setTokenGraph('')} />
 
-     
+              <TokenGraph token={tokenGraph} />
+            </>
+          )
+      }
+
       <Footer />
     </div>
   )

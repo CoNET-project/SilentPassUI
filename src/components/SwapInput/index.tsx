@@ -1,44 +1,42 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './index.css';
-import Separator from '../Separator';
-import CopyAccountInfo from './CopyAccountInfo';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-import Skeleton from '../Skeleton';
 
-import { ReactComponent as ConetToken } from './assets/conet-token.svg'
-import { ReactComponent as EthToken } from './assets/eth-token.svg'
-import { ReactComponent as ConetEthToken } from './assets/conet-eth-token.svg'
-import { ReactComponent as SolanaToken } from './assets/solana-token.svg'
-import { ReactComponent as SpToken } from './assets/sp-token.svg'
-import { getRemainingTime } from '../../utils/utils';
-import { ReactComponent as SwapIconBlack } from "./assets/swap-icon-black.svg"
-import * as motion from "motion/react-client"
+import { ReactComponent as SwapIconBlack } from "./assets/swap-icon-black.svg";
+import * as motion from "motion/react-client";
 import TokenTab from '../TokenTab';
 import ActivityTab from '../ActivityTab';
 
+import { ReactComponent as SpToken } from "./assets/sp-token.svg";
+import { ReactComponent as SolanaToken } from "./assets/solana-token.svg";
+import { getOracle } from '../../services/passportPurchase';
+import { calcSpInUsd } from '../../utils/utils';
+import Skeleton from '../Skeleton';
 
-interface SPSelectorProps {
-  options: string[];
-  onChange: (value: string) => void;
+interface SwapInputProps {
+  setTokenGraph: (tokenGraph: string) => void;
 }
 
-function SPSelector({ options, onChange }: SPSelectorProps) {
-  const [selected, setSelected] = useState(options[0]);
+interface SPSelectorProps {
+  option: string;
+  onChange: () => void;
+}
 
+function SPSelector({ option, onChange }: SPSelectorProps) {
   return (
-    <motion.div 
-      className="sp-selector" 
+    <motion.div
+      className="sp-selector"
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3 }}
     >
-      <div className="sp-icon">SP</div>
+      { option === "SP" ? <SpToken width={32} height={32} /> : <SolanaToken width={32} height={32} /> }
       <button
         className="sp-button"
-        onClick={() => onChange(selected)}
+        onClick={() => onChange()}
         style={{marginLeft:"8px"}}
       >
-        <span>{selected}</span>
+        <span>{option}</span>
         <motion.span
           animate={{ rotate: 180 }}
           transition={{ duration: 0.3 }}
@@ -49,23 +47,72 @@ function SPSelector({ options, onChange }: SPSelectorProps) {
       </button>
     </motion.div>
   );
-} 
+}
 
-
-export default function SwapInput() {
-  const [openAccountList, setOpenAccountList] = useState<string[]>([]);
+export default function SwapInput({ setTokenGraph }: SwapInputProps) {
   const { profiles } = useDaemonContext();
   const [rotation, setRotation] = useState(0);
   const [tabSelector, setTabSelector] = useState<string>("tokens")
 
-  const [fromAmount, setFromAmount] = useState<any>(0)
-  const [toAmount, setToAmount] = useState<any>(0)
+  const [fromToken, setFromToken] = useState("SP");
+  const [toToken, setToToken] = useState("SOL");
+  const [fromAmount, setFromAmount] = useState<any>(0);
+  const [toAmount, setToAmount] = useState<any>(0);
 
-  function toggleAccount(accountAddress: string) {
+  const [isQuotationLoading, setIsQuotation] = useState<boolean>(true);
+
+  const [quotation, setQuotation] = useState({
+    "SP": "",
+    "SOL": "",
+  })
+
+  const tokenData = useMemo(() => ({
+    "provider": "CoNET",
+    "token_from": fromToken,
+    "token_to": toToken,
+    "price_to": (quotation as any)[fromToken] / (quotation as any)[toToken] || 0,
+    "fees": 0.011,
+    "impact": 1.41
+  }), [fromToken, quotation, toToken])
+
+  function toggleTokens() {
+    setFromToken((prev) => prev === "SP" ? "SOL" : "SP")
+    setToToken((prev) => prev === "SP" ? "SOL" : "SP")
+
+    setFromAmount(0)
+    setToAmount(0)
+  }
+
+  /* function toggleAccount(accountAddress: string) {
     setOpenAccountList((prev) => (
       prev.includes(accountAddress) ? prev.filter((item) => item !== accountAddress) : [...prev, accountAddress]
     ))
-  }
+  } */
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const oracleData = await getOracle();
+
+        if (!oracleData?.data) throw new Error("Unable to obtain oracle data");
+
+        const quotationData = {
+          "SP": String(calcSpInUsd(oracleData.data.sp9999)),
+          "SOL": oracleData.data.so,
+        }
+
+        setQuotation(quotationData);
+      } catch (err: any) {
+        console.log("ERR: ", err);
+      } finally {
+        setIsQuotation(false);
+      }
+    })()
+  }, [])
+
+  useEffect(() => {
+
+  }, [fromToken])
 
   return (
     <div style={{display: 'flex', flexDirection: 'column', marginTop:"38px", alignItems:"center"
@@ -74,20 +121,32 @@ export default function SwapInput() {
       <div className='input-box'>
         <div style={{justifyContent:'space-between', textAlign: 'left', display: 'flex', flexDirection: 'column'}}>
           <p className='box-text' style={{fontSize: '14px'}}>You Pay</p>
-          <input
-          type="number"
-          className='box-text'
-          style={{fontSize: '28px', lineHeight: '36px'}}
-          value={fromAmount}
-          onChange={(e) => setFromAmount(e.target.value)}
-          placeholder="0"
-        />
-          <p className='box-text' style={{fontSize: '14px'}}>$0.00</p>
+          {
+            isQuotationLoading ? (
+              <Skeleton width="180px" height="100px" />
+            ) : (
+              <>
+                <input
+                  type="number"
+                  className='box-text'
+                  style={{fontSize: '28px', lineHeight: '36px'}}
+                  value={fromAmount}
+                  onChange={(e) => {
+                    if (Number(e.target.value) < 0) return;
+                    setFromAmount(Number(e.target.value))
+                    setToAmount(((Number(e.target.value) * Number((quotation as any)[fromToken])) / (quotation as any)[toToken]).toFixed(5))
+                  }}
+                  placeholder="0"
+                />
+                <p className='box-text' style={{fontSize: '14px'}}>$ {(fromAmount * Number((quotation as any)[fromToken])).toFixed(2)}</p>
+              </>
+            )
+          }
         </div>
 
 
         <div style={{justifyContent:'flex-end', textAlign: 'left', display: 'flex', flexDirection: 'column', maxWidth:"146px", gap: '8px'}}>
-          <SPSelector options={['SP', 'SOLANA']} onChange={()=>{console.log("change")}}/>
+          <SPSelector option={fromToken} onChange={toggleTokens}/>
           <div style={{display:"flex", gap:"4px"}}>
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>0%</p>
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>50%</p>
@@ -103,26 +162,23 @@ export default function SwapInput() {
           if(rotation % 360 == 0){
             setRotation(rotation + 360)
           }
-
         }}
-
         style={{cursor:"pointer"}}
       >
         <div className='swap-button'>
           <SwapIconBlack/>
         </div>
       </motion.button>
-      
+
       <div className='input-box'>
         <div style={{justifyContent:'space-between', textAlign: 'left', display: 'flex', flexDirection: 'column'}}>
           <p className='box-text' style={{fontSize: '14px'}}>You Receive</p>
-          <p className='box-text' style={{fontSize: '28px', lineHeight: '36px'}}>0</p>
-          <p className='box-text' style={{fontSize: '14px'}}>$0.00</p>
+          <p className='box-text' style={{fontSize: '28px', lineHeight: '36px'}}>{toAmount}</p>
+          <p className='box-text' style={{fontSize: '14px'}}>$ {(toAmount * Number((quotation as any)[toToken])).toFixed(2)}</p>
         </div>
 
-
         <div style={{justifyContent:'flex-end', textAlign: 'left', display: 'flex', flexDirection: 'column', maxWidth:"146px", gap: '8px'}}>
-          <SPSelector options={['SP', 'SOLANA']} onChange={()=>{console.log("change")}}/>
+        <SPSelector option={toToken} onChange={toggleTokens}/>
           <div style={{display:"flex", gap:"4px"}}>
             <p style={{color:"#676768", textAlign:"right", fontSize:"12px"}}>0</p>
           </div>
@@ -137,7 +193,7 @@ export default function SwapInput() {
         </div>
       </div>
 
-      {tabSelector === "tokens" ? <TokenTab/> : <ActivityTab/>}
+      {tabSelector === "tokens" ? <TokenTab quotation={quotation} setTokenGraph={setTokenGraph} tokenData={tokenData} /> : <ActivityTab />}
 
     </div>
 

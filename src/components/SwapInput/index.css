@@ -15,11 +15,11 @@
 
 .account-wrapper.active {
   /* should create the animation */
-  height: auto;
+  height: 600px;
 }
 
 .solana.account-wrapper.active {
-  height: 310px;
+  height: 330px;
 }
 
 .referral-program.account-wrapper.active {
@@ -260,7 +260,7 @@
 .sp-selector {
   display: flex;
   align-items: center;
-  background: #333;
+  background: #3B3B3C;
   color: white;
   padding: 8px;
   border-radius: 50px;

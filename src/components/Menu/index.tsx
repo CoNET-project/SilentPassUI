@@ -27,7 +27,7 @@ export default function Menu() {
         <p>My Account</p>
       </button>
       <button className={location.pathname === "/swap" ? "active" : ""} onClick={() => navigate("/swap")}>
-        {location.pathname === "/settings" ? <SwapBlueIcon /> : <SwapIconGrey />}
+        {location.pathname === "/swap" ? <SwapBlueIcon /> : <SwapIconGrey />}
         <p>Swap</p>
       </button>
       <button className={location.pathname === "/settings" ? "active" : ""} onClick={() => navigate("/settings")}>

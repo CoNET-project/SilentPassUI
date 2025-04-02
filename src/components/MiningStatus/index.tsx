@@ -38,7 +38,7 @@ const MiningStatus = () => {
       <div className='passport-status' onClick={openPassportInfo}>
         <div className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
         {
-          profiles?.[0]?.activePassport ? <p>{getPassportTitle(activePassport)}</p> : <Skeleton width="40px" height="15px" />
+          profiles?.[0]?.activePassport ? <p style={{'width': 'unset'}}>{getPassportTitle(activePassport)}</p> : <Skeleton width="40px" height="15px" />
         }
         <img src="/assets/info.svg" alt="Info icon" />
       </div>

@@ -14,8 +14,8 @@ import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
+import { getServerIpAddress } from "../../api";
 import {checkFreePassportProcess} from '../../services/wallets'
-
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
 const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
@@ -92,27 +92,38 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
 }
 
 const SystemSettingsButton = () => {
-  const [checked, setChecked] = useState<boolean>(false);
+	const {globalProxy, setGlobalProxy } = useDaemonContext();
 
   return (
     <button
-      className={`system-settings-button ${checked ? "checked" : ""}`}
-      onClick={() => setChecked(!checked)}
+      className={`system-settings-button ${globalProxy ? "checked" : ""}`}
+      onClick={() => {
+		if (globalProxy) {
+			if (window?.webkit) {
+				window?.webkit?.messageHandlers["stopProxy"].postMessage("")
+			}
+			return setGlobalProxy(false)
+		}
+		if (window?.webkit) {
+			window?.webkit?.messageHandlers["startProxy"].postMessage("")
+		}
+		return setGlobalProxy(true)
+	  }}
     >
-      <span className="circle">{checked && "✔"}</span>
+      <span className="circle">{globalProxy && "✔"}</span>
       Enable for System Settings
     </button>
   )
 }
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, randomSolanaRPC, setRandomSolanaRPC } = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const vpnTimeTimeout = useRef<NodeJS.Timeout>();
-  
+
 
   const navigate = useNavigate();
 
@@ -139,7 +150,7 @@ const Home = () => {
 	let first = 0
     const listenGetAllNodes = () => {
       const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0
-      const _status = Math.round(_initpercentage) 
+      const _status = Math.round(_initpercentage)
 	  const status = _status <= first ? first + 2 : _status
 	  first = status
 	if (status > 100) {
@@ -147,7 +158,7 @@ const Home = () => {
 	} else {
 		setInitPercentage(status)
 	}
-      
+
 	  if (status < 99 ) {
         return setTimeout(() => {
           listenGetAllNodes()
@@ -160,7 +171,7 @@ const Home = () => {
 
   useEffect(() => {
     const _getAllRegions = async () => {
-		const [tmpRegions] = await 
+		const [tmpRegions] = await
 		Promise.all([
 			getAllRegions()
 		])
@@ -198,7 +209,14 @@ const Home = () => {
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
-
+	try {
+		const response = await getServerIpAddress();
+        const tmpIpAddress = response.data;
+        setServerIpAddress(tmpIpAddress?.ip || "");
+		setIsLocalProxy(true)
+	} catch (ex) {
+		setIsLocalProxy(false)
+	}
     if (power) {
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
@@ -258,7 +276,7 @@ const Home = () => {
 			setIsConnectionLoading(false)
 			setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
 		  }, 1000)
-		return 
+		return
 	}
     const exitRegion = allRegions[selectedCountryIndex].code
     const exitNodes = allNodes.filter((n: any) => n.country === exitRegion)
@@ -304,7 +322,7 @@ const Home = () => {
       const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
       const base64VPNMessage = btoa(stringifiedVPNMessageObject);
       //	@ts-ignore
-      window.Android?.sendData(base64VPNMessage)
+      window.Androi.sendData(base64VPNMessage)
 	}
     try {
       await startSilentPass(startVPNMessageObject);
@@ -356,7 +374,7 @@ const Home = () => {
             <CopyProxyInfo />
 
             {
-              (isDevelopment || !isSilentPassVPN) && (
+              isLocalProxy && power && (
                 <SystemSettingsButton />
               )
             }

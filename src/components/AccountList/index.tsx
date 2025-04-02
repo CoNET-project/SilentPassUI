@@ -24,7 +24,7 @@ interface AccountListProps {
 
 export default function AccountList({ showMainWallet = true, simplifiedView = false, spInUsd = 0, solInUsd = 0 }: AccountListProps) {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-  const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes } = useDaemonContext();
+  const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes, isIOS } = useDaemonContext();
 
   const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
   const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
@@ -202,7 +202,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
       }
 
       {
-        !simplifiedView && (
+        !simplifiedView && !isIOS && (
           <div className="cta-buttons" style={{ marginBottom: "0px" }}>
             <div className="highlight-1">
               <button onClick={() => navigate('/transfer')}>

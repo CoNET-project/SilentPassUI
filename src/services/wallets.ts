@@ -13,6 +13,7 @@ import {
   localDatabaseName,
   rewardWalletAddress,
   solanaRpc,
+  payment_endpoint
 } from "../utils/constants";
 import {} from './listeners'
 import contracts from "../utils/contracts";
@@ -32,10 +33,10 @@ interface SolanaWallet {
 
 const initSolana = async (mnemonic: string): Promise<any> => {
 	if (!Bip39.validateMnemonic(mnemonic)) return false;
-  
+
 	const seed = (await Bip39.mnemonicToSeed(mnemonic)).slice(0, 32);
 	const keypair = Keypair.fromSeed(new Uint8Array(seed));
-  
+
 	return {
 	  publicKey: keypair.publicKey.toBase58(),
 	  privateKey: Bs58.encode(keypair.secretKey),
@@ -55,14 +56,14 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 	await checkStorage();
 
 	if (secretPhrase) setCoNET_Data(null);
-  
+
 	if (!CoNET_Data || !CoNET_Data?.profiles) {
 	  const acc = createKeyHDWallets(secretPhrase);
-  
+
 	  const key = await createGPGKey("", "", "");
-  
+
 	  if (!acc) return;
-  
+
 	  const profile: profile = {
 		tokens: initProfileTokens(),
 		publicKeyArmor: acc.publicKey,
@@ -79,7 +80,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		index: acc.index,
 		type: "ethereum",
 	  };
-  
+
 	  const data: any = {
 		mnemonicPhrase: acc?.mnemonic?.phrase,
 		profiles: [profile],
@@ -87,10 +88,10 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		ver: 0,
 		nonce: 0,
 	  };
-  
+
 	  if (acc?.mnemonic?.phrase) {
 		const result = await initSolana(acc?.mnemonic?.phrase);
-  
+
 		const profile2: profile = {
 		  tokens: initProfileTokens(),
 		  publicKeyArmor: "",
@@ -107,15 +108,15 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		  index: 0,
 		  type: "solana",
 		};
-  
+
 		data.profiles.push(profile2);
 	  }
-  
+
 	  setCoNET_Data(data);
 	}
-  
+
 	const tmpData = CoNET_Data;
-  
+
 	if (
 	  tmpData &&
 	  (tmpData?.profiles.length < 2 ||
@@ -123,9 +124,9 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		!isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor))
 	) {
 	  const result = await initSolana(tmpData?.mnemonicPhrase);
-  
+
 	  const key = await createGPGKey("", "", "");
-  
+
 	  const profile2: profile = {
 		tokens: initProfileTokens(),
 		publicKeyArmor: "",
@@ -142,24 +143,24 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		index: 0,
 		type: "solana",
 	  };
-  
+
 	  tmpData.profiles[1] = profile2;
 	}
-  
+
 	tmpData?.profiles.forEach(async (n: profile) => {
 	  n.tokens.cCNTP.unlocked = false;
 	});
-  
+
 	setCoNET_Data(tmpData);
-  
+
 	if (!CoNET_Data) return;
-  
+
 	getFaucet(CoNET_Data.profiles[0]);
-  
+
 	storeSystemData();
-  
+
 	const profiles = CoNET_Data.profiles;
-  
+
 	return profiles;
 };
 
@@ -1113,7 +1114,7 @@ const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string) => 
 	const checkCNTPTransfer = (tR: ethers.TransactionReceipt) => {
 		for (let log of tR.logs) {
 			const LogDescription = SC.interface.parseLog(log)
-			
+
 			if (LogDescription?.name === 'Reddem') {
 				const toAddress  = LogDescription.args[1]
 				if (toAddress.toLowerCase() == profileKey) {
@@ -1136,7 +1137,7 @@ const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string) => 
 			console.log(`listenersRealizationRedeem ${block} has process now!`)
 			for (let tx of blockTs.transactions) {
 				const event = await conetDepinProvider.getTransactionReceipt(tx)
-				
+
 				if ( event?.to?.toLowerCase() === distributor_addr) {
 					checkCNTPTransfer(event)
 				}
@@ -1164,7 +1165,7 @@ const RealizationRedeem_withSmartContract = async (profile: profile, solana: str
     	console.log("EX: ", ex);
 		return null
 	}
-	
+
 }
 
 const RealizationRedeem = async (code: string) => {
@@ -1180,7 +1181,7 @@ const RealizationRedeem = async (code: string) => {
 	if (ethBalance > 0.000001) {
 		return await RealizationRedeem_withSmartContract(profile, solanaWallet, code)
 	}
-	
+
 	const url = `${apiv4_endpoint}codeToClient`
 	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, uuid: code })
 	const wallet = new ethers.Wallet(profile.privateKeyArmor)
@@ -1197,7 +1198,7 @@ const RealizationRedeem = async (code: string) => {
 		if (typeof result === 'boolean'|| result === ''|| result?.error ) {
 			return null
 		}
-		
+
 		return nft
 	} catch(ex) {
     	console.log("EX: ", ex);
@@ -1213,7 +1214,7 @@ const waitingNFT = (wallet: ethers.Wallet) => new Promise(async resolve => {
 	const checkCNTPTransfer = (tR: ethers.TransactionReceipt) => {
 		for (let log of tR.logs) {
 			const LogDescription = passportNFT.interface.parseLog(log)
-			
+
 			if (LogDescription?.name === 'TransferSingle') {
 				const toAddress  = LogDescription.args[2]
 				if (toAddress.toLowerCase() == myWallet) {
@@ -1221,7 +1222,7 @@ const waitingNFT = (wallet: ethers.Wallet) => new Promise(async resolve => {
 					conetDepinProvider.removeListener('block', listenning)
 					clearTimeout(_time)
 					checkFreePassportProcess = 40
-					
+
 					return resolve (parseInt(nftID.toString()))
 				}
 			}
@@ -1239,13 +1240,14 @@ const waitingNFT = (wallet: ethers.Wallet) => new Promise(async resolve => {
 			console.log(`listenersRealizationRedeem ${block} has process now!`)
 			for (let tx of blockTs.transactions) {
 				const event = await conetDepinProvider.getTransactionReceipt(tx)
-				
+
 				if ( event?.to?.toLowerCase() === distributor_addr) {
 					checkCNTPTransfer(event)
 				}
 			}
 		}
 	}
+
 	conetDepinProvider.on('block', listenning)
 	const _time = setTimeout(() => {
 		//		TimeOUT
@@ -1272,7 +1274,7 @@ const getFreeNFT = async (wallet: ethers.Wallet) => {
 	try {
 		const result: any = await postToEndpoint(url, true, sendData);
 		return await waitingNFT (wallet)
-		
+
 	} catch(ex) {
 		console.log("EX: ", ex);
 		checkFreePassportProcess = 0
@@ -1320,6 +1322,63 @@ const checkFreePassport = async () => {
 	return true
 }
 
+const getPaymentUrl = async (price: number) => {
+	if (!CoNET_Data?.profiles?.length) {
+		return null;
+	}
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	if (!solanaWallet||!profile) {
+		return null;
+	}
+
+	const url = `${payment_endpoint}payment_stripe`
+	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, price})
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+    }
+	const result = await postToEndpoint(url, true, sendData)
+	return result
+}
+
+const waitingPaymentStatus = async (): Promise<false|number> => {
+	if (!CoNET_Data?.profiles?.length) {
+		return false;
+	}
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	if (!solanaWallet||!profile) {
+		return false;
+	}
+
+	const url = `${payment_endpoint}payment_stripe_waiting`
+	const message = JSON.stringify({ walletAddress: profile.keyID})
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+    }
+
+	const waiting = async (): Promise<false|number> => new Promise(async resolve => {
+		const result = await postToEndpoint(url, true, sendData)
+		if (!result || !result?.status) {
+			return resolve (false)
+		}
+		if (result.status < 100) {
+			return setTimeout(() => {
+				return waiting().then (jj => resolve(jj))
+			}, 10 * 1000)
+		}
+		return resolve(result.status)
+	})
+	const result = await waiting ()
+	return result
+}
+
+
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -1340,5 +1399,7 @@ export {
   getReceivedAmounts,
   RealizationRedeem,
   checkFreePassport,
-  checkFreePassportProcess
+  checkFreePassportProcess,
+  getPaymentUrl,
+  waitingPaymentStatus
 };

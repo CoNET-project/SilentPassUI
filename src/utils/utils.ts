@@ -76,7 +76,7 @@ export const initProfileTokens = () => {
   return ret;
 };
 
-export const postToEndpoint = (url: string, post: boolean, jsonData: any): Promise<""|boolean|{error: string}> => {
+export const postToEndpoint = (url: string, post: boolean, jsonData: any): Promise<""|boolean|any> => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.onload = () => {
@@ -111,18 +111,23 @@ export const postToEndpoint = (url: string, post: boolean, jsonData: any): Promi
       return resolve(false);
     };
 
-    xhr.onerror = (err) => {
-      console.log(`xhr.onerror`, err);
-      clearTimeout(timeCount);
-      return reject(err);
-    };
+    // xhr.onerror = (err) => {
+    //   console.log(`xhr.onerror`, err);
+    //   clearTimeout(timeCount);
+    //   return reject(err);
+    // }
 
-    xhr.open(post ? "POST" : "GET", url, true);
 
-    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-    xhr.send(jsonData ? JSON.stringify(jsonData) : "");
-
+	xhr.onabort = ev => {
+		console.log(`ev`)
+		reject(ev)
+	}
+	xhr.onerror = err => {
+		reject (err)
+	}
+	xhr.open(post ? "POST" : "GET", url, true)
+	xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+	xhr.send(jsonData ? JSON.stringify(jsonData) : "")
     const timeCount = setTimeout(() => {
       const Err = `Timeout!`;
       console.log(`postToEndpoint ${url} Timeout Error`, Err);

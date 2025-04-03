@@ -46,6 +46,10 @@ type DaemonContext = {
   setIsLocalProxy: (val: boolean)=> void
   globalProxy: boolean,
   setGlobalProxy: (val: boolean)=> void
+  paymentKind: number,
+  setPaymentKind: (val: number) => void
+  successNFTID: number,
+  setSuccessNFTID: (val: number) => void
 };
 
 type DaemonProps = {
@@ -97,8 +101,11 @@ const defaultContextValue: DaemonContext = {
   isLocalProxy: false,
   setIsLocalProxy(val) {},
   globalProxy: false,
-  setGlobalProxy: () => {}
-
+  setGlobalProxy: () => {},
+  paymentKind: 0,
+  setPaymentKind: () => {},
+  successNFTID: 0,
+  setSuccessNFTID: () => {}
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -132,6 +139,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [randomSolanaRPC, setRandomSolanaRPC] = useState<nodes_info | null>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [isLocalProxy, setIsLocalProxy] = useState(false);
+  const [paymentKind, setPaymentKind] = useState(0)
+  const [successNFTID, setSuccessNFTID] = useState(0)
 
   useEffect(() => {
     {
@@ -142,15 +151,16 @@ export function DaemonProvider({ children }: DaemonProps) {
 
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, 
-				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, 
-				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, 
-				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, 
-				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, 
-				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, 
-				purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, 
-				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy }}>,
-				
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions,
+				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData,
+				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,
+				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin,
+				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
+				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
+				purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime,
+				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
+				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID }}>,
+
       {children}
     </Daemon.Provider>
   );

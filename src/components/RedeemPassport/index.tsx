@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./index.css"; // Import external CSS file
 import SuccessModal from './SuccessModal';
 import { RealizationRedeem } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import { useDaemonContext } from "../../providers/DaemonProvider";
-import { ReactComponent as StripeIcon} from "./assets/stripe.svg"
+import { ReactComponent as StripeIcon } from "./assets/stripe.svg";
 
 interface plan {
 	total: string
@@ -20,9 +20,32 @@ export default function RedeemPassport() {
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
   const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
-  const [successNFTID, setSuccessNFTID] = useState(0);
-  const { isIOS, profiles } = useDaemonContext();
+
+  const { isIOS, profiles, paymentKind, purchasingPlan, successNFTID, setPaymentKind, setSuccessNFTID } = useDaemonContext();
   const navigate = useNavigate();
+
+	function subscribe(val: number) {
+		setPaymentKind(val);
+	}
+
+	useEffect(() => {
+		const processVisa = async () => {
+			if (paymentKind !== 0) {
+				navigate('/Subscription')
+			}
+		}
+		processVisa()
+
+	}, [paymentKind]);
+
+	useEffect(() => {
+		if (successNFTID > 100) {
+			setAnErrorOccurred(true);
+			setIsSuccessModalOpen(true);
+      		setRedeemCode('')
+		}
+
+	}, [successNFTID])
 
   async function handlePassportRedeem() {
 
@@ -41,53 +64,63 @@ export default function RedeemPassport() {
   }
 
   const startSubscription = () => {
-		if (!profiles ||profiles.length < 2) {
-			return
-		}
+	if (!profiles ||profiles.length < 2) {
+		return
+	}
 
-		const planObj:plan = {
-			publicKey: profiles[0].keyID,
-			Solana: profiles[1].keyID,
-			total: selectedPlan
-		}
+	const planObj:plan = {
+		publicKey: profiles[0].keyID,
+		Solana: profiles[1].keyID,
+		total: selectedPlan
+	}
 
-		const base64VPNMessage = btoa(JSON.stringify(planObj));
-		if (window?.webkit?.messageHandlers) {
-			window?.webkit?.messageHandlers["pay"].postMessage(base64VPNMessage)
-		}
+	const base64VPNMessage = btoa(JSON.stringify(planObj));
+	if (window?.webkit?.messageHandlers) {
+		window?.webkit?.messageHandlers["pay"].postMessage(base64VPNMessage)
+	}
   }
 
   return (
     <>
-      <div className={`redeem-dropdown ${isIOS ? "is-ios" : ""} ${isOpen ? "is-open" : ""}`}>
+      <div className={`redeem-dropdown ${isOpen ? "is-open" : ""}`}>
         {/* Dropdown Button */}
         <button className="redeem-header cta-button" onClick={() => setIsOpen(!isOpen)}>
           <div className="redeem-header-content">
             <img src="/assets/conet-outline-white.svg" alt="Platform" className="redeem-icon" />
-						<p>Get Silent Pass Passport</p>
+			<p>Get Silent Pass Passport</p>
+
           </div>
           <span className={`redeem-arrow ${isOpen ? "rotate" : ""}`}>▼</span>
         </button>
 
         <div className="redeem-content">
 			{
-				isIOS ? <label className="redeem-label">Already a Subscriber?</label>
-				:  <label className="redeem-label">Input Redeem Code!</label>
+				!isRedeemProcessLoading &&
+				<>
+					{
+						isIOS ? <label className="redeem-label">Already a Subscriber?</label>
+						:  <label className="redeem-label">Input Redeem Code!</label>
+					}
+
+					<input
+						type="text"
+						placeholder="#1234"
+						className="redeem-input"
+						value={redeemCode}
+						onChange={(e) => setRedeemCode(e.target.value)}
+					/>
+				</>
 			}
 
-          <input
-            type="text"
-            placeholder="#1234"
-            className="redeem-input"
-            value={redeemCode}
-            onChange={(e) => setRedeemCode(e.target.value)}
-          />
           {anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
           <button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
             {isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
           </button>
 		  {
-				isIOS &&
+			!isRedeemProcessLoading &&
+			<>
+				 {
+					isIOS &&
 					<>
 						<div className="redeem-divider">
 						<div className="line"></div>
@@ -141,31 +174,34 @@ export default function RedeemPassport() {
 						</ul>
 						</div>
 					</div>
-				</>
+					</>
+				}
+				{
+					!isIOS &&
+						<>
+							<div className="redeem-divider">
+								<div className="line"></div>
+								<span>or</span>
+								<div className="line"></div>
+							</div>
+							<button className="redeem-button purchase" onClick={() => subscribe(0)}>
+								Go to purchase
+							</button>
+							<button className="redeem-button stripe" onClick={() => subscribe(1)}>
+								Pay with
+								<StripeIcon />
+							</button>
+						</>
+				}
+			</>
 		  }
-		  {
-			!isIOS &&
-				<>
-					<div className="redeem-divider">
-						<div className="line"></div>
-						<span>or</span>
-						<div className="line"></div>
-					</div>
-					<button className="redeem-button purchase" onClick={() => navigate("/subscription")}>
-						Go to purchase
-					</button>
-					<button className="redeem-button stripe" onClick={() => navigate("/subscription")}>
-						Pay with
-						<StripeIcon />
-					</button>
-				</>
-		  }
+
 
         </div>
       </div>
 
       {/* Success Modal */}
-      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID}  onClose={() => setIsSuccessModalOpen(false)} />}
+      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID} onClose={() => setIsSuccessModalOpen(false)} />}
     </>
   );
 }

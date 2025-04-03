@@ -15,11 +15,11 @@
 
 .account-wrapper.active {
   /* should create the animation */
-  height: 600px;
+  height: 520px;
 }
 
 .solana.account-wrapper.active {
-  height: 250px;
+  height: 330px;
 }
 
 .referral-program.account-wrapper.active {

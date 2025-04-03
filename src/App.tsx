@@ -121,15 +121,15 @@ function App() {
 
         setServerIpAddress(tmpIpAddress?.ip || "");
         setServerPort('3002');
-		setIsLocalProxy(true)
+		    setIsLocalProxy(true)
       } catch (ex) {
-		setIsIOS(true)
-		setIsLocalProxy(false)
+        setIsIOS(false)
+        setIsLocalProxy(false)
       }
     };
     //if (!window?.webkit && !window?.Android) {
       _getServerIpAddress();
-    
+
   }, []);
 
   return (

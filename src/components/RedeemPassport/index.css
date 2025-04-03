@@ -11,7 +11,11 @@
   }
 
   .redeem-dropdown.is-open {
-	height: 950px;
+		height: 420px;
+  }
+
+	.redeem-dropdown.is-ios.is-open {
+		height: 950px;
   }
 
   /* Dropdown Header */
@@ -77,11 +81,11 @@
   }
 
   .redeem-button {
-	width: 100%;
-	padding: 16px 8px;
-	border-radius: 8px;
-	border: none;
-	cursor: pointer;
+		width: 100%;
+		padding: 16px 8px;
+		border-radius: 8px;
+		border: none;
+		cursor: pointer;
   }
 
   .redeem-button.confirm {
@@ -107,6 +111,16 @@
 	font-weight: 700;
 	font-size: 18px;
   }
+
+	.cta-buttons button.redeem-button.stripe {
+		background-color: #635BFF;
+		display: flex;
+		justify-content: center;
+		font-weight: 700;
+		font-size: 18px;
+
+		margin-top: 16px;
+	}
 
   /* Divider */
   .redeem-divider {

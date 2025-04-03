@@ -28,7 +28,7 @@ export default function BuyMore() {
       <div className="plan-cards">
         <div className={`plan ${purchasingPlan === 'standard' ? 'active' : ''}`} onClick={() => setPurchasingPlan('standard')}>
           <div>
-            <p>Standard</p>
+            <p>Monthly</p>
             <span>1 device</span>
           </div>
           <div>
@@ -39,7 +39,7 @@ export default function BuyMore() {
         </div>
         <div className={`plan ${purchasingPlan === 'premium' ? 'active' : ''}`} onClick={() => setPurchasingPlan('premium')}>
           <div>
-            <p>Premium</p>
+            <p>Annually</p>
             <span>5 devices</span>
           </div>
           <div>

@@ -38,7 +38,7 @@ export default function Subscription() {
 	}
 	ffcus = true
 	const processVisa = async () => {
-		if (paymentKind !== 0) {
+		if (paymentKind === 2) {
 			setStep(3)
 			const price = purchasingPlan === 'standard'? 299: 2499
 			const result = await getPaymentUrl(price)
@@ -53,7 +53,9 @@ export default function Subscription() {
 			setSuccessNFTID(re1)
 			setPaymentKind(0)
 			return navigate('/wallet')
-		}
+		} else {
+      setStep(2);
+    }
 	}
 	processVisa()
     const interval = setInterval(() => setUpdateCounter((prev) => prev - 1), 1000);

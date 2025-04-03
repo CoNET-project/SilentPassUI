@@ -29,13 +29,9 @@ export default function RedeemPassport() {
 	}
 
 	useEffect(() => {
-		const processVisa = async () => {
-			if (paymentKind !== 0) {
-				navigate('/Subscription')
-			}
+		if (paymentKind !== 0) {
+			navigate('/Subscription')
 		}
-		processVisa()
-
 	}, [paymentKind]);
 
 	useEffect(() => {
@@ -184,10 +180,10 @@ export default function RedeemPassport() {
 								<span>or</span>
 								<div className="line"></div>
 							</div>
-							<button className="redeem-button purchase" onClick={() => subscribe(0)}>
+							<button className="redeem-button purchase" onClick={() => subscribe(1)}>
 								Go to purchase
 							</button>
-							<button className="redeem-button stripe" onClick={() => subscribe(1)}>
+							<button className="redeem-button stripe" onClick={() => subscribe(2)}>
 								Pay with
 								<StripeIcon />
 							</button>

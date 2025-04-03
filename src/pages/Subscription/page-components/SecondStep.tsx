@@ -19,7 +19,7 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
         <div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{purchasingPlan === 'premium' ? 'Premium' : 'Standard'} Passport</p>
+              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{purchasingPlan === 'premium' ? 'Annual' : 'Monthly'} Passport</p>
               <p style={{ flex: 1, fontSize: '14px', fontWeight: '400', color: '#989899' }}>{purchasingPlanPaymentTime === 'monthly' ? '30' : '365'} days</p>
             </div>
             <span>{purchasingPlan === 'premium' ? '5' : '1'} Device{purchasingPlan === 'premium' ? 's' : ''}</span>
@@ -57,7 +57,7 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
 
         <div className="summary-table">
           <div>
-            <p>{purchasingPlan === 'premium' ? 'Premium' : 'Standard'} Passport </p>
+            <p>{purchasingPlan === 'premium' ? 'Annually' : 'Monthly'} Passport </p>
             <p>{parseFloat(price).toFixed(4)} $SP</p>
           </div>
 

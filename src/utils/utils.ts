@@ -202,9 +202,9 @@ export const getPassportTitle = (passportInfo: any) => {
   if (passportInfo.expires && passportInfo?.expires > 32503690800000)
     return "Guardian";
 
-  if (passportInfo.premium === true || passportInfo.premium === 'true') return "Premium";
+  if (passportInfo.premium === true || passportInfo.premium === 'true') return "Annually";
 
-  return "Standard";
+  return "Monthly";
 };
 
 export const getExpirationDate = (passportInfo: any) => {

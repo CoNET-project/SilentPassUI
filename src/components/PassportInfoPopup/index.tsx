@@ -33,7 +33,7 @@ const PassportInfoPopup = () => {
         </div>
 
         <div className="home-buttons">
-          <button disabled={(passportTitle !== 'Premium' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate('/subscription')}>
+          <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate('/subscription')}>
             <img src="./assets/conet-outline-blue.svg" />
             <span>Upgrade</span>
           </button>

@@ -19,20 +19,16 @@ export default function RedeemPassport() {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
-  const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
 
-  const { isIOS, profiles, paymentKind, purchasingPlan, successNFTID, setPaymentKind, setSuccessNFTID } = useDaemonContext();
+  const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID } = useDaemonContext();
   const navigate = useNavigate();
 
-	function subscribe(val: number) {
-		setPaymentKind(val);
+	/* 1 = $SP
+	2 = STRIPE */
+	function handlePurchase(type: 1 | 2) {
+		setPaymentKind(type);
+		navigate("/subscription");
 	}
-
-	useEffect(() => {
-		if (paymentKind !== 0) {
-			navigate('/Subscription')
-		}
-	}, [paymentKind]);
 
 	useEffect(() => {
 		if (successNFTID > 100) {
@@ -59,6 +55,10 @@ export default function RedeemPassport() {
       setRedeemCode('')
   }
 
+	function handleChooseOption(option: '1' | '12') {
+		setSelectedPlan(option);
+	}
+
   const startSubscription = () => {
 	if (!profiles ||profiles.length < 2) {
 		return
@@ -71,9 +71,9 @@ export default function RedeemPassport() {
 	}
 
 	const base64VPNMessage = btoa(JSON.stringify(planObj));
-	if (window?.webkit?.messageHandlers) {
-		window?.webkit?.messageHandlers["pay"].postMessage(base64VPNMessage)
-	}
+		if (window?.webkit?.messageHandlers) {
+			window?.webkit?.messageHandlers["pay"].postMessage(base64VPNMessage)
+		}
   }
 
   return (
@@ -180,10 +180,37 @@ export default function RedeemPassport() {
 								<span>or</span>
 								<div className="line"></div>
 							</div>
-							<button className="redeem-button purchase" onClick={() => subscribe(1)}>
-								Go to purchase
+							<div className="passport-options">
+								<p>Choose plan</p>
+								<div className="option-list">
+									<button className={`option ${selectedPlan === '1' ? 'selected' : ''}`} onClick={() => handleChooseOption('1')}>
+										<div>
+											<p>Monthly</p>
+											<span>1 device</span>
+										</div>
+										<div>
+											<span>$USD</span>
+											<p>2.99</p>
+											<span>paid monthly</span>
+										</div>
+									</button>
+									<button className={`option ${selectedPlan === '12' ? 'selected' : ''}`} onClick={() => handleChooseOption('12')}>
+										<div>
+											<p>Annually</p>
+											<span>1 device</span>
+										</div>
+										<div>
+											<span>$USD</span>
+											<p>24.99</p>
+											<span>paid yearly</span>
+										</div>
+									</button>
+								</div>
+							</div>
+							<button className="redeem-button purchase" onClick={() => handlePurchase(1)}>
+								Pay with $SP
 							</button>
-							<button className="redeem-button stripe" onClick={() => subscribe(2)}>
+							<button className="redeem-button stripe" onClick={() => handlePurchase(2)}>
 								Pay with
 								<StripeIcon />
 							</button>

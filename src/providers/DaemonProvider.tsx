@@ -34,10 +34,6 @@ type DaemonContext = {
   setActivePassport: (val: any) => void
   isSelectPassportPopupOpen: any
   setIsSelectPassportPopupOpen: (val: any) => void
-  purchasingPlan: string
-  setPurchasingPlan: (val: string) => void
-  purchasingPlanPaymentTime: string
-  setPurchasingPlanPaymentTime: (val: string) => void
   randomSolanaRPC: nodes_info | null
   setRandomSolanaRPC: (val: nodes_info) => void;
   isIOS: boolean
@@ -49,7 +45,9 @@ type DaemonContext = {
   paymentKind: number,
   setPaymentKind: (val: number) => void
   successNFTID: number,
-  setSuccessNFTID: (val: number) => void
+  setSuccessNFTID: (val: number) => void,
+  selectedPlan: "12" | "1",
+  setSelectedPlan: (val: "12" | "1") => void,
 };
 
 type DaemonProps = {
@@ -90,10 +88,6 @@ const defaultContextValue: DaemonContext = {
   setActivePassport: () => { },
   isSelectPassportPopupOpen: false,
   setIsSelectPassportPopupOpen: () => { },
-  purchasingPlan: "premium",
-  setPurchasingPlan: () => { },
-  purchasingPlanPaymentTime: "monthly",
-  setPurchasingPlanPaymentTime: () => { },
   setRandomSolanaRPC: () => { },
   randomSolanaRPC: null,
   isIOS: false,
@@ -105,7 +99,9 @@ const defaultContextValue: DaemonContext = {
   paymentKind: 0,
   setPaymentKind: () => {},
   successNFTID: 0,
-  setSuccessNFTID: () => {}
+  setSuccessNFTID: () => {},
+  selectedPlan: "12",
+  setSelectedPlan: () => {},
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -134,13 +130,12 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [isSelectPassportPopupOpen, setIsSelectPassportPopupOpen] = useState<boolean>(false);
   const [activePassportUpdated, setActivePassportUpdated] = useState<boolean>(false);
   const [activePassport, setActivePassport] = useState<any>(null);
-  const [purchasingPlan, setPurchasingPlan] = useState<string>("premium");
-  const [purchasingPlanPaymentTime, setPurchasingPlanPaymentTime] = useState<string>("monthly");
   const [randomSolanaRPC, setRandomSolanaRPC] = useState<nodes_info | null>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [isLocalProxy, setIsLocalProxy] = useState(false);
   const [paymentKind, setPaymentKind] = useState(0)
   const [successNFTID, setSuccessNFTID] = useState(0)
+  const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
 
   useEffect(() => {
     {
@@ -157,9 +152,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
-				purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
-				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID }}>,
+				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan }}>,
 
       {children}
     </Daemon.Provider>

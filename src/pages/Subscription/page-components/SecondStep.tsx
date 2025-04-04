@@ -8,7 +8,7 @@ import AccountList from '../../../components/AccountList';
 import { useDaemonContext } from '../../../providers/DaemonProvider';
 
 export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solInUsd }: any) {
-  const { profiles, purchasingPlan, purchasingPlanPaymentTime } = useDaemonContext();
+  const { profiles, selectedPlan } = useDaemonContext();
 
   return (
     <div className="transaction-details">
@@ -19,10 +19,10 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
         <div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{purchasingPlan === 'premium' ? 'Annual' : 'Monthly'} Passport</p>
-              <p style={{ flex: 1, fontSize: '14px', fontWeight: '400', color: '#989899' }}>{purchasingPlanPaymentTime === 'monthly' ? '30' : '365'} days</p>
+              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{selectedPlan === '12' ? 'Annual' : 'Monthly'} Passport</p>
+              <p style={{ flex: 1, fontSize: '14px', fontWeight: '400', color: '#989899', whiteSpace: 'nowrap' }}>{selectedPlan === '1' ? '30' : '365'} days</p>
             </div>
-            <span>{purchasingPlan === 'premium' ? '5' : '1'} Device{purchasingPlan === 'premium' ? 's' : ''}</span>
+            <span>1 device</span>
           </div>
         </div>
       </div>
@@ -57,7 +57,7 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
 
         <div className="summary-table">
           <div>
-            <p>{purchasingPlan === 'premium' ? 'Annually' : 'Monthly'} Passport </p>
+            <p>{selectedPlan === '12' ? 'Annually' : 'Monthly'} Passport </p>
             <p>{parseFloat(price).toFixed(4)} $SP</p>
           </div>
 

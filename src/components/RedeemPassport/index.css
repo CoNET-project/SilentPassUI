@@ -11,7 +11,7 @@
   }
 
   .redeem-dropdown.is-open {
-		height: 420px;
+		height: 674px;
   }
 
 	.redeem-dropdown.is-ios.is-open {
@@ -415,3 +415,57 @@
   .no-free-trial {
 	background-color: #9e9e9e; /* Gray for no free trial */
   }
+
+.passport-options {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.passport-options .option-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+
+	margin-bottom: 24px;
+}
+
+.option-list .option {
+	border: 1.5px solid transparent;
+	border-radius: 16px;
+	padding: 16px;
+
+	display: flex;
+	gap: 24px;
+	align-self: stretch;
+
+	cursor: pointer;
+}
+
+.option-list .option.selected {
+	border: 1.5px solid #9FBFE5FE;
+}
+
+.option-list .option div:first-child {
+	flex: 1;
+
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	align-items: flex-start;
+}
+
+.option-list .option div:last-child {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+}
+
+.option-list .option span {
+	color: #989899;
+	font-size: 14px;
+}
+
+.option-list .option p {
+	font-size: 24px;
+}

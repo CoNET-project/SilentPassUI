@@ -16,7 +16,7 @@ global.Buffer = require('buffer').Buffer;
 export type Step = 2 | 3 | 4 | 5;
 
 export default function Subscription() {
-  const { paymentKind, purchasingPlan, profiles, setSuccessNFTID, setPaymentKind } = useDaemonContext();
+  const { paymentKind, selectedPlan, profiles, setSuccessNFTID, setPaymentKind } = useDaemonContext();
   const [step, setStep] = useState<Step>(2);
   const [price, setPriceInSp] = useState('0');
   const [gasfee, setGasfee] = useState('0');
@@ -40,7 +40,7 @@ export default function Subscription() {
 	const processVisa = async () => {
 		if (paymentKind === 2) {
 			setStep(3)
-			const price = purchasingPlan === 'standard'? 299: 2499
+			const price = selectedPlan === '1' ? 299 : 2499
 			const result = await getPaymentUrl(price)
 			if (result === null || !result?.url) {
 				return setStep(5);

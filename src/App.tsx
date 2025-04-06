@@ -121,9 +121,12 @@ function App() {
 
         setServerIpAddress(tmpIpAddress?.ip || "");
         setServerPort('3002');
-		    setIsLocalProxy(true)
+		setIsLocalProxy(true)
       } catch (ex) {
-        setIsIOS(false)
+		if (window?.webkit) {
+			setIsIOS(true)
+		}
+        
         setIsLocalProxy(false)
       }
     };

@@ -46,8 +46,8 @@ type DaemonContext = {
   setPaymentKind: (val: number) => void
   successNFTID: number,
   setSuccessNFTID: (val: number) => void,
-  selectedPlan: "12" | "1",
-  setSelectedPlan: (val: "12" | "1") => void,
+  selectedPlan: "12" | "1" | "",
+  setSelectedPlan: (val: "12" | "1"| "") => void,
 };
 
 type DaemonProps = {
@@ -135,7 +135,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [isLocalProxy, setIsLocalProxy] = useState(false);
   const [paymentKind, setPaymentKind] = useState(0)
   const [successNFTID, setSuccessNFTID] = useState(0)
-  const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
+  const [selectedPlan, setSelectedPlan] = useState<'12' | '1' | ''>('12');
 
   useEffect(() => {
     {

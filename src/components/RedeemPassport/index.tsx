@@ -35,9 +35,19 @@ export default function RedeemPassport() {
 			setAnErrorOccurred(true);
 			setIsSuccessModalOpen(true);
       		setRedeemCode('')
+			setSuccessNFTID(0)
 		}
 
 	}, [successNFTID])
+
+	useEffect(() => {
+		let sp = profiles[1]
+		if (!sp) {
+			return
+		}
+
+
+	}, [profiles])
 
   async function handlePassportRedeem() {
 
@@ -207,7 +217,7 @@ export default function RedeemPassport() {
 									</button>
 								</div>
 							</div>
-							<button className="redeem-button purchase" onClick={() => handlePurchase(1)}>
+							<button className='redeem-button purchase' onClick={() => handlePurchase(1)}>
 								Pay with $SP
 							</button>
 							<button className="redeem-button stripe" onClick={() => handlePurchase(2)}>

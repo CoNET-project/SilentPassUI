@@ -173,6 +173,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                           .map((passport: any) => (
                             <PassportInfo key={passport.nftID} passportInfo={passport} selectedValue={activePassport} onChange={() => {
                               setIsSelectPassportPopupOpen(true)
+							  
                               setPassportToChange(passport)
                             }} />
                           ))

@@ -359,8 +359,8 @@ const Home = () => {
             </button>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <p className="not-connected">Welcome to Silent Pass</p>
-              <p className="not-connected">{initPercentage}%</p>
+              <p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
+              {/* <p className="not-connected">{initPercentage}%</p> */}
             </div>
           </>
         ) : (

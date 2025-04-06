@@ -344,8 +344,8 @@ const scan_spl_balance = async (
         return info.tokenAmount.uiAmount; // Return balance in tokens
       }
     }
-
-    return 0; // No balance found
+	let ret = 0
+    return ret; // No balance found
   } catch (error) {
     console.error("Error fetching SPL balance:", error);
     return false;

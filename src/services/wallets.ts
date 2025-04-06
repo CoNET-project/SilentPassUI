@@ -24,13 +24,8 @@ import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
 import { scanSolanaSol, scanSolanaSp } from "./listeners";
 
+const SPOracleSmartContract = new ethers.Contract(contracts.SpOracle.address, contracts.SpOracle.abi, conetProvider)
 const PouchDB = require("pouchdb").default;
-
-interface SolanaWallet {
-  publicKey: string;
-  privateKey: string;
-}
-
 const initSolana = async (mnemonic: string): Promise<any> => {
 	if (!Bip39.validateMnemonic(mnemonic)) return false;
 
@@ -700,7 +695,7 @@ const refreshSolanaBalances = async (
   if (!node) {
     return;
   }
-  const solanaRPC_url = `https://${node.domain}`;
+  const solanaRPC_url = `https://${node.domain}/solana-rpc`;
   try {
     const [sol, sp] = await Promise.all([
       scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
@@ -1071,6 +1066,15 @@ async function getReceivedAmounts(
   }
 };
 
+const getSPOracle = async () => {
+	try {
+		const quote = await SPOracleSmartContract.getQuote()
+		return quote
+	} catch (ex) {
+		return null
+	}
+}
+
 /* const checkApprovedForAll = async (wallet: ethers.Wallet) => {
 	const passport_contract = new ethers.Contract(contracts.testPassport.address, contracts.testPassport.abi, wallet)
 	try {
@@ -1401,5 +1405,6 @@ export {
   checkFreePassport,
   checkFreePassportProcess,
   getPaymentUrl,
-  waitingPaymentStatus
+  waitingPaymentStatus,
+  getSPOracle
 };

@@ -46,7 +46,6 @@ export default function Wallet() {
         <ReferralProgram />
       </div>
 
-
       <Footer />
     </div>
   )

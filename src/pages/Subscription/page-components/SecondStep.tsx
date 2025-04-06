@@ -7,7 +7,7 @@ import { ReactComponent as QuotesIcon } from '../assets/quotes-icon.svg';
 import AccountList from '../../../components/AccountList';
 import { useDaemonContext } from '../../../providers/DaemonProvider';
 
-export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solInUsd }: any) {
+export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solInUsd, SP_balance}: any) {
   const { profiles, selectedPlan } = useDaemonContext();
 
   return (
@@ -22,20 +22,24 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
               <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{selectedPlan === '12' ? 'Annual' : 'Monthly'} Passport</p>
               <p style={{ flex: 1, fontSize: '14px', fontWeight: '400', color: '#989899', whiteSpace: 'nowrap' }}>{selectedPlan === '1' ? '30' : '365'} days</p>
             </div>
-            <span>1 device</span>
+            <span>1 device {price} $SP</span>
           </div>
         </div>
       </div>
 
+	  
       <div className="transaction-info">
-        <p>Paying with</p>
+
+		<p className="title">Paying with</p>
+
         <div className='simple-content'>
           <SpToken />
-          <p>$SP</p>
+          <p>$SP Balance</p>
+		  <p>{SP_balance}</p>
         </div>
       </div>
 
-      <div className="transaction-info">
+      {/* <div className="transaction-info">
         <p>Wallet</p>
         <div>
           <WalletIcon />
@@ -44,7 +48,7 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
             <span>{profiles?.[1]?.keyID?.slice(0, 5)}...{profiles?.[1]?.keyID?.slice(-5)}</span>
           </div>
         </div>
-      </div>
+      </div> */}
 
       <div className="summary">
         <div className="summary-heading">
@@ -58,19 +62,19 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
         <div className="summary-table">
           <div>
             <p>{selectedPlan === '12' ? 'Annually' : 'Monthly'} Passport </p>
-            <p>{parseFloat(price).toFixed(4)} $SP</p>
+            <p>{price} $SP</p>
           </div>
 
           <div>
             <p>GAS Fee</p>
-            <p>{parseFloat(gasfee).toFixed(4)} $SOL</p>
+            <p>{parseFloat(gasfee).toFixed(6)} $SOL</p>
           </div>
 
           <Separator />
 
           <div>
             <p>Total</p>
-            <p>{parseFloat(price).toFixed(4)} $SP + {parseFloat(gasfee).toFixed(4)} $SOL</p>
+            <p>{parseFloat(price).toFixed(6)} $SP + {parseFloat(gasfee).toFixed(4)} $SOL</p>
           </div>
         </div>
       </div>

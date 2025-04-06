@@ -103,6 +103,7 @@
 .home-disabled {
   background: #191919 !important;
   color: #5a5a5afe !important;
+  cursor:not-allowed!important;
 }
 
 .home-buttons button.home-disabled {

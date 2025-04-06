@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-
+import {ethers} from 'ethers'
 import Header from './page-components/Header';
 import PageFooter from './page-components/Footer';
 import SecondStep from './page-components/SecondStep';
@@ -11,6 +11,7 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/global-steps/Loading';
 import Declined from '../../components/global-steps/Declined';
 import { getPaymentUrl, waitingPaymentStatus } from '../../services/wallets';
+import {getOracle, purchasePassport} from '../../services/passportPurchase'
 
 global.Buffer = require('buffer').Buffer;
 export type Step = 2 | 3 | 4 | 5;
@@ -24,14 +25,49 @@ export default function Subscription() {
   const [spInUsd, setSpInUsd] = useState(0);
   const [solInUsd, setSolInUsd] = useState(0);
   const [isSubmitButtonDisabled, setIsSubmitButtonDisabled] = useState(false);
-
+  const [spBalance, setSPBalance] = useState(0);
   const navigate = useNavigate();
+  
+  const setReflashQuote = () => {
+	setUpdateCounter((prev) => prev - 1)
+  }
+
+  useEffect(() => {
+	if (updateCounter) {
+		setTimeout(() => setUpdateCounter((prev) => prev - 1), 1000)
+		return
+	}
+	getSolanaQuote()
+  }, [updateCounter])
 
   function nextStep() {
     if (step > 4) return;
     setStep((prev) => (prev + 1 as Step));
   }
   let ffcus = false
+
+  const getSolanaQuote = async () => {
+	const quote = await getOracle()
+	if (quote?.data) {
+		const data = quote.data
+		if (selectedPlan === '1') {
+			setPriceInSp(data.sp249)
+		} else {
+			setPriceInSp(data.sp2499)
+		}
+		( selectedPlan === '1') ? setSpInUsd(2.49/parseFloat(data.sp249)) : setSpInUsd(24.99/parseFloat(data.sp2499))
+		setSolInUsd(parseFloat(data.so))
+		setGasfee('0.00007999')
+	}
+	
+	if (profiles && profiles?.length) {
+		const _spBalance= profiles[1]?.tokens?.sp
+		setSPBalance(parseFloat(_spBalance.balance))
+	}
+	setUpdateCounter(60)
+	setReflashQuote()
+  }
+
   useEffect(() => {
 	if (ffcus) {
 		return
@@ -54,12 +90,11 @@ export default function Subscription() {
 			setPaymentKind(0)
 			return navigate('/wallet')
 		} else {
-      setStep(2);
-    }
+			setStep(2);
+		}
 	}
+	
 	processVisa()
-    const interval = setInterval(() => setUpdateCounter((prev) => prev - 1), 1000);
-    return () => clearInterval(interval);
   }, [])
 
 
@@ -72,6 +107,7 @@ export default function Subscription() {
     if (step === 2) {
       try {
         nextStep();
+		await purchasePassport(price)
         setStep(4);
       } catch (error) {
         setStep(5);
@@ -108,7 +144,7 @@ export default function Subscription() {
       <Header step={step} />
 
       {/* {step === 1 && <FirstStep spInUsd={spInUsd} solInUsd={solInUsd} />} */}
-      {step === 2 && <SecondStep price={price} gasfee={gasfee} updateCounter={updateCounter} spInUsd={spInUsd} solInUsd={solInUsd} />} {/* Purchase confirmation */}
+      {step === 2 && <SecondStep price={price} gasfee={gasfee} updateCounter={updateCounter} spInUsd={spInUsd} solInUsd={solInUsd} SP_balance={spBalance} />} {/* Purchase confirmation */}
       {step === 3 && <Loading />} {/* Purchase loading */}
       {step === 4 && <FourthStep price={price} gasfee={gasfee} />} {/* Purchase successful */}
       {step === 5 && <Declined />} {/* Purchase declined */}

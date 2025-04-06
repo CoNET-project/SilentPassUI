@@ -46,10 +46,10 @@ import {
 	  try {
 		const [_sp249, _sp999, _sp2499, _sp9999, _so] =
 		  await SP_Oracle_SC_reaonly.getQuote();
-		const sp249 = ethers.formatEther(_sp249);
-		const sp999 = ethers.formatEther(_sp999);
-		const sp2499 = ethers.formatEther(_sp2499);
-		const sp9999 = ethers.formatEther(_sp9999);
+		const sp249 = ethers.formatEther(_sp249).split('.')[0]
+		const sp999 = ethers.formatEther(_sp999).split('.')[0];
+		const sp2499 = ethers.formatEther(_sp2499).split('.')[0];
+		const sp9999 = ethers.formatEther(_sp9999).split('.')[0];
 		const so = ethers.formatEther(_so);
   
 		oracleData = {
@@ -147,11 +147,11 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 	return completedTx;
   }
   
-  export const purchasePassport = async (privateKey: string, amount: string) => {
+  export const purchasePassport = async (amount: string) => {
 	if (!CoNET_Data) {
 	  return;
 	}
-  
+    const privateKey = CoNET_Data.profiles[1]?.privateKeyArmor
 	try {
 	  const solanaConnection = new Connection(solanaRpc);
 	  const solana_account_privatekey_array = Bs58.decode(privateKey);

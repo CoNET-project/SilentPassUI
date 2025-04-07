@@ -117,10 +117,10 @@ export default function Settings() {
 
         <div className="buttons">
           <button onClick={() => navigate("/wallet")}>My Account</button>
-          <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate("/subscription")}>
+          {/* <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate("/subscription")}>
             <img src="./assets/conet-outline-gray.svg" />
             <span>Upgrade Passport</span>
-          </button>
+          </button> */}
         </div>
       </div>
 

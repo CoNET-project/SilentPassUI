@@ -69,7 +69,7 @@ import {
 	  }
 	}
   
-	return null;
+	return oracleData;
   };
   
   const checkPrice = async (_amount: string) => {

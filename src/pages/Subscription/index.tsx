@@ -91,6 +91,7 @@ export default function Subscription() {
 			return navigate('/wallet')
 		} else {
 			setStep(2);
+			getSolanaQuote();
 		}
 	}
 	

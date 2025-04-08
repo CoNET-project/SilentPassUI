@@ -114,7 +114,7 @@ export default function Management() {
       </div>
       {/* {renderNewNFTsButton()} */}
       <div className="sub-heading">
-        <h3>Your NFTs</h3>
+        <h3>Your Silent Pass Passport Redeem Code</h3>
       </div>
       <div className="main-content-wrapper">
         <div className="category-switch">

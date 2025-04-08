@@ -9,8 +9,6 @@ interface FirstStepProps {
 }
 
 export default function FirstStep({ to, setTo, selectedNftId, setSelectedNFtId }: FirstStepProps) {
-  console.log("PASSPORTS: ", CoNET_Data?.profiles[0].silentPassPassports);
-
   return (
     <div className="step-container" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
       <div className="input-container">

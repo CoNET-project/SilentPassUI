@@ -48,6 +48,10 @@ type DaemonContext = {
   setSuccessNFTID: (val: number) => void,
   selectedPlan: "12" | "1",
   setSelectedPlan: (val: "12" | "1") => void,
+  monthlyQtd: number,
+  setMonthlyQtd: (val: number) => void,
+  annuallyQtd: number,
+  setAnnuallyQtd: (val: number) => void,
 };
 
 type DaemonProps = {
@@ -102,6 +106,10 @@ const defaultContextValue: DaemonContext = {
   setSuccessNFTID: () => {},
   selectedPlan: "12",
   setSelectedPlan: () => {},
+  monthlyQtd: 0,
+  setMonthlyQtd: () => {},
+  annuallyQtd: 0,
+  setAnnuallyQtd: () => {},
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -136,6 +144,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [paymentKind, setPaymentKind] = useState(0)
   const [successNFTID, setSuccessNFTID] = useState(0)
   const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
+  const [monthlyQtd, setMonthlyQtd] = useState<number>(0);
+  const [annuallyQtd, setAnnuallyQtd] = useState<number>(0);
 
   useEffect(() => {
     {
@@ -144,6 +154,19 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [serverIpAddress, serverPort])
 
+  function handleChangeQtd(val: number, param: string) {
+    let newVal = val;
+
+    if (val > 5) newVal = 5;
+
+    if (val < 0) newVal = 0;
+
+    if (param === '1') {
+      setMonthlyQtd(newVal);
+    } else {
+      setAnnuallyQtd(newVal);
+    }
+  }
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions,
@@ -153,7 +176,9 @@ export function DaemonProvider({ children }: DaemonProps) {
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
-				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan }}>,
+				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan,
+        monthlyQtd, annuallyQtd, setMonthlyQtd: (val: number) => handleChangeQtd(val, '1'), setAnnuallyQtd: (val: number) => handleChangeQtd(val, '12')
+        }}>,
 
       {children}
     </Daemon.Provider>

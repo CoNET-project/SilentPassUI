@@ -8,7 +8,7 @@ import AccountList from '../../../components/AccountList';
 import { useDaemonContext } from '../../../providers/DaemonProvider';
 
 export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solInUsd }: any) {
-  const { profiles, selectedPlan } = useDaemonContext();
+  const { profiles, selectedPlan, monthlyQtd, annuallyQtd } = useDaemonContext();
 
   return (
     <div className="transaction-details">
@@ -19,7 +19,7 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
         <div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{selectedPlan === '12' ? 'Annual' : 'Monthly'} Passport</p>
+              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{selectedPlan === '12' ? `${annuallyQtd} Annual` : `${monthlyQtd} Monthly`} Passport</p>
               <p style={{ flex: 1, fontSize: '14px', fontWeight: '400', color: '#989899', whiteSpace: 'nowrap' }}>{selectedPlan === '1' ? '30' : '365'} days</p>
             </div>
             <span>1 device</span>

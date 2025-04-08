@@ -6,7 +6,7 @@ export default function Header({ step }: { step: Step }) {
     <>
       {(step === 2 || step === 3) && (
         <div>
-          <BackButton to="/wallet" />
+          <BackButton to="/" />
           {step === 3 && (
             <div className="subscription-header">
               <h1>Transaction in progress</h1>

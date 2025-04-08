@@ -102,7 +102,7 @@
 	height: 58px;
   }
 
-  .cta-buttons button.redeem-button.purchase {
+  button.redeem-button.purchase {
 	background-color: #4E72B6;
 	color: white;
 
@@ -112,7 +112,7 @@
 	font-size: 18px;
   }
 
-	.cta-buttons button.redeem-button.stripe {
+	button.redeem-button.stripe {
 		background-color: #635BFF;
 		display: flex;
 		justify-content: center;
@@ -422,6 +422,12 @@
 	gap: 16px;
 }
 
+.passport-options h3 {
+	font-size: 24px;
+	font-weight: bold;
+	text-align: left;
+}
+
 .passport-options .option-list {
 	display: flex;
 	flex-direction: column;
@@ -468,4 +474,10 @@
 
 .option-list .option p {
 	font-size: 24px;
+}
+
+.redeem-passport {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import BackButton from '../../components/BackButton';
 import ProxyInfo from '../../components/ProxyInfo';
 
@@ -8,6 +8,7 @@ import './index.css';
 import ClickableItem from '../../components/ClickableItem';
 import Separator from '../../components/Separator';
 import Footer from '../../components/Footer';
+import { useNavigate } from 'react-router-dom';
 
 export default function Applications() {
   const [applications, setApplications] = useState({
@@ -20,6 +21,10 @@ export default function Applications() {
     whatsapp: false,
     youtube: false,
   })
+
+  const navigate = useNavigate();
+
+  useEffect(() => navigate("/"), [navigate]);
 
   return (
     <div className="page-container">

@@ -52,7 +52,7 @@ export default function Subscription() {
 			}
 			setSuccessNFTID(re1)
 			setPaymentKind(0)
-			return navigate('/wallet')
+			return navigate('/')
 		} else {
       setStep(2);
     }

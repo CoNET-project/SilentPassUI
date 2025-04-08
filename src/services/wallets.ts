@@ -1,6 +1,7 @@
 import { ethers, formatEther, formatUnits } from "ethers";
 import { generateKey } from "openpgp";
 import {
+  aesGcmDecrypt,
   customJsonStringify,
   initProfileTokens,
   isValidSolanaBase58PrivateKey,
@@ -23,8 +24,37 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
 import { scanSolanaSol, scanSolanaSp } from "./listeners";
+import { mapLimit } from 'async';
+
+const uuid62 = require('uuid62')
 
 const PouchDB = require("pouchdb").default;
+
+interface _distributorNFTs {
+	nfts: BigInt[]
+	used: boolean[]
+	code: string[]
+	current: BigInt
+	total: BigInt
+}
+
+export interface distributorNFTItem {
+	id: number
+	used: boolean
+	code: string
+	showRedeemProcess: boolean
+}
+
+export interface distributorNFTs {
+	nfts: distributorNFTItem[]
+	current: number
+	total: number
+}
+
+export interface distributorNFTObj {
+	monthly: distributorNFTs
+	yearly: distributorNFTs
+}
 
 interface SolanaWallet {
   publicKey: string;
@@ -1071,8 +1101,97 @@ async function getReceivedAmounts(
   }
 };
 
+const NFTsProcess = async () => {
+	if (!CoNET_Data?.profiles[0]) {
+		return;
+	}
+	const profile = CoNET_Data.profiles[0];
+	const message = JSON.stringify({ walletAddress: profile.keyID })
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+        message, signMessage
+    }
+	const url = `${apiv4_endpoint}getTestNFTsNew`;
+	try {
+		const result: any = await postToEndpoint(url, true, sendData);
+
+		return true
+	} catch(ex) {
+		return false
+	}
+}
+
+const getNFTs = async () => {
+	if (!CoNET_Data?.profiles[0]) {
+		return null;
+	}
+	const profile = CoNET_Data.profiles[0]
+	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, conetDepinProvider)
+	let _monthly: _distributorNFTs|null= null
+	let _yearly: _distributorNFTs|null = null
+	try {
+		_monthly = await contract_distributor.getListOfMonthly(profile.keyID, 0, 100)
+	} catch (ex) {
+
+	}
+	try {
+		_yearly = await contract_distributor.getListOfAnnual(profile.keyID, 0, 100)
+	} catch(ex) {
+
+	}
+
+	const monthly: distributorNFTs = {
+		nfts: [],
+		current: _monthly ? parseInt(_monthly.current.toString()): 0,
+		total: _monthly ?  parseInt(_monthly.total.toString()): 0
+	}
+	const yearly: distributorNFTs = {
+		nfts: [],
+		current: _yearly ? parseInt(_yearly.current.toString()): 0,
+		total: _yearly ? parseInt(_yearly.total.toString()): 0
+	}
+	if (_monthly) {
+		let index = 0
+		await mapLimit(_monthly.nfts, 1, async (n, next) => {
+			if (_monthly) {
+				const item: distributorNFTItem = {
+					id: parseInt(n.toString()),
+					used: _monthly.used[index],
+					code: _monthly.code[index] ? await aesGcmDecrypt(_monthly.code[index], profile.privateKeyArmor): '',
+					showRedeemProcess: false
+				}
+				monthly.nfts.push(item)
+				index ++
+			}
+
+		})
+	}
+	if (_yearly) {
+		let index = 0
+		await mapLimit(_yearly.nfts, 1, async (n, next) => {
+			if (_yearly) {
+				const item: distributorNFTItem = {
+					id: parseInt(n.toString()),
+					used: _yearly.used[index],
+					code: _yearly.code[index] ? await aesGcmDecrypt(_yearly.code[index], profile.privateKeyArmor): '',
+					showRedeemProcess: false
+				}
+				yearly.nfts.push(item)
+				index ++
+			}
+
+		})
+
+	}
+
+	const ret: distributorNFTObj = {monthly, yearly}
+	return ret
+}
+
+
 /* const checkApprovedForAll = async (wallet: ethers.Wallet) => {
-	const passport_contract = new ethers.Contract(contracts.testPassport.address, contracts.testPassport.abi, wallet)
+	const passport_contract = new ethers.Contract(contracts.SPPassport.address, contracts.testPassport.abi, wallet)
 	try {
 		const approved = await passport_contract.isApprovedForAll(wallet.address, contracts.distributor.address)
 		if (!approved) {
@@ -1090,14 +1209,15 @@ const redeemProcess = async(id: number, monthly: boolean) => {
 		return null;
 	}
 	const profile = CoNET_Data.profiles[0]
-	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetProvider)
+	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider)
 	if (!await checkApprovedForAll(wallet)) {
 		return null
 	}
 	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
 	const RedeemCode = uuid62.v4()
 	const encrypto = await aesGcmEncrypt(RedeemCode, profile.privateKeyArmor)
-	const hash = ethers.id(encrypto)
+	const _hash = ethers.solidityPacked(['string'], [RedeemCode])
+    const hash = ethers.zeroPadBytes(_hash, 32)
 	try {
 		const tx = await contract_distributor._generatorCode(monthly, hash, encrypto)
 		await tx.wait()
@@ -1377,8 +1497,6 @@ const waitingPaymentStatus = async (): Promise<false|number> => {
 	return result
 }
 
-
-
 export {
   createOrGetWallet,
   createGPGKey,
@@ -1401,5 +1519,7 @@ export {
   checkFreePassport,
   checkFreePassportProcess,
   getPaymentUrl,
-  waitingPaymentStatus
+  waitingPaymentStatus,
+  NFTsProcess,
+  getNFTs,
 };

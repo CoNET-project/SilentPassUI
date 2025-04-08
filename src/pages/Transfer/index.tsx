@@ -46,7 +46,7 @@ export default function Transfer() {
     }
 
     if (step === 4 || step === 5) {
-      navigate("/wallet")
+      navigate("/")
       return;
     }
   }

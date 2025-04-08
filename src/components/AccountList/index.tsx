@@ -201,18 +201,6 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
         </div>
       }
 
-      {
-        !simplifiedView && !isIOS && (
-          <div className="cta-buttons" style={{ marginBottom: "0px" }}>
-            <div className="highlight-1">
-              <button onClick={() => navigate('/transfer')}>
-                <p>Transfer Silent Pass Passport</p>
-              </button>
-            </div>
-          </div>
-        )
-      }
-
       <div className={`account-wrapper solana ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes("123") ? 'active' : ''}`}>
         <div className="account-main-card" onClick={() => toggleAccount("123")}>
           <div className="name">

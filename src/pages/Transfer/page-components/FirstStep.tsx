@@ -9,6 +9,8 @@ interface FirstStepProps {
 }
 
 export default function FirstStep({ to, setTo, selectedNftId, setSelectedNFtId }: FirstStepProps) {
+  console.log("PASSPORTS: ", CoNET_Data?.profiles[0].silentPassPassports);
+
   return (
     <div className="step-container" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
       <div className="input-container">
@@ -18,7 +20,9 @@ export default function FirstStep({ to, setTo, selectedNftId, setSelectedNFtId }
       <div className="passport-list">
         {
           (CoNET_Data?.profiles?.[0].silentPassPassports && CoNET_Data?.profiles?.[0].activePassport)
-            ? CoNET_Data.profiles[0].silentPassPassports?.filter((passport) => passport.nftID !== Number(CoNET_Data?.profiles[0].activePassport?.nftID)).map((passport) => (
+            ? CoNET_Data.profiles[0].silentPassPassports
+              .filter((passport) => passport.nftID !== Number(CoNET_Data?.profiles[0].activePassport?.nftID) && getExpirationDate(passport) !== "00:00:00")
+              .map((passport) => (
               <div className={`passport-button ${Number(passport.nftID) === Number(selectedNftId) ? 'selected' : ''}`} onClick={() => setSelectedNFtId(String(passport.nftID))}>
                 <div className="heading" style={{ alignItems: 'center' }}>
                   <h3>{getPassportTitle(passport)} Passport</h3>

@@ -16,6 +16,7 @@ import { parseQueryParams } from "./utils/utils";
 
 import Management from './pages/Management';
 import Recover from './pages/Recover';
+import Transfer from './pages/Transfer';
 
 global.Buffer = require('buffer').Buffer;
 
@@ -145,8 +146,8 @@ function App() {
           <Route path="/subscription" element={<Subscription />}></Route>
           <Route path="/management" element={<Management />}></Route>
           <Route path="/recover" element={<Recover />}></Route>
-          {/* <Route path="/transfer" element={<Transfer />}></Route>
-          <Route path="/support" element={<Support />}></Route>
+          <Route path="/transfer" element={<Transfer />}></Route>
+          {/* <Route path="/support" element={<Support />}></Route>
           <Route path="/" element={<Home />}></Route> */}
         </Routes>
       </Router>

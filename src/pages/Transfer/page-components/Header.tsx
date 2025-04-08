@@ -9,7 +9,7 @@ export default function Header({ step, setStep }: { step: Step, setStep: (step: 
     <>
       {(step === 1 || step === 2) && (
         <div className="transfer-header">
-          <BackButton action={() => step === 1 ? navigate('/wallet') : setStep(1)} />
+          <BackButton action={() => step === 1 ? navigate('/') : setStep(1)} />
             <h1>{step === 1 ? 'Transfer Passport' : 'Confirm your transfer'}</h1>
         </div>
       )}

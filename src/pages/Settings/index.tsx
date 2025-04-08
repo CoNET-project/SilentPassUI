@@ -116,7 +116,7 @@ export default function Settings() {
         <ActivePassportInfo />
 
         <div className="buttons">
-          <button onClick={() => navigate("/wallet")}>My Account</button>
+          <button onClick={() => navigate("/")}>My Account</button>
           <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate("/subscription")}>
             <img src="./assets/conet-outline-gray.svg" />
             <span>Upgrade Passport</span>

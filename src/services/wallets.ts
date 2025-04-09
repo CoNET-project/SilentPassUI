@@ -1347,6 +1347,7 @@ const getPaymentUrl = async (price: number) => {
 	return result
 }
 
+
 const waitingPaymentStatus = async (): Promise<false|number> => {
 	if (!CoNET_Data?.profiles?.length) {
 		return false;
@@ -1364,24 +1365,25 @@ const waitingPaymentStatus = async (): Promise<false|number> => {
 	const sendData = {
       message, signMessage
     }
-
+	let waitingPaymentStatusLoop = 0
 	const waiting = async (): Promise<false|number> => new Promise(async resolve => {
 		const result = await postToEndpoint(url, true, sendData)
-		if (!result || !result?.status) {
-			return resolve (false)
-		}
-		if (result.status < 100) {
+		
+		if (result.status < 100|| result === false) {
+			if (waitingPaymentStatusLoop > 50 ) {
+				return resolve(false)
+			}
 			return setTimeout(() => {
 				return waiting().then (jj => resolve(jj))
 			}, 10 * 1000)
 		}
+		
 		return resolve(result.status)
 	})
+
 	const result = await waiting ()
 	return result
 }
-
-
 
 export {
   createOrGetWallet,

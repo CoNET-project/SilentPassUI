@@ -70,7 +70,7 @@ export default function RedeemPassport() {
 	}
 
   const startSubscription = () => {
-	if (!profiles ||profiles.length < 2) {
+	if (!profiles ||profiles.length < 2||!isIOS) {
 		return
 	}
 
@@ -81,9 +81,11 @@ export default function RedeemPassport() {
 	}
 
 	const base64VPNMessage = btoa(JSON.stringify(planObj));
-		if (window?.webkit?.messageHandlers) {
-			window?.webkit?.messageHandlers["pay"].postMessage(base64VPNMessage)
-		}
+	
+	window?.webkit?.messageHandlers["pay"]?.postMessage(base64VPNMessage)
+	setPaymentKind(3);
+	navigate("/subscription");
+	
   }
 
   return (

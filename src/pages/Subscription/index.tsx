@@ -74,24 +74,40 @@ export default function Subscription() {
 	}
 	ffcus = true
 	const processVisa = async () => {
-		if (paymentKind === 2) {
-			setStep(3)
-			const price = selectedPlan === '1' ? 299 : 2499
-			const result = await getPaymentUrl(price)
-			if (result === null || !result?.url) {
-				return setStep(5);
+		switch(paymentKind) {
+			case 2: {
+				setStep(3)
+				const price = selectedPlan === '1' ? 299 : 2499
+				const result = await getPaymentUrl(price)
+				if (result === null || !result?.url) {
+					return setStep(5);
+				}
+				window.open(result.url, '_blank')
+				const re1 = await waitingPaymentStatus()
+				if (!re1) {
+					return setStep(5);
+				}
+				setSuccessNFTID(re1)
+				setPaymentKind(0)
+				return navigate('/wallet')
 			}
-			window.open(result.url, '_blank')
-			const re1 = await waitingPaymentStatus()
-			if (!re1) {
-				return setStep(5);
+			case 3: {
+				setStep(3)
+				const re1 = await waitingPaymentStatus()
+				if (!re1) {
+					return setStep(5);
+				}
+				setSuccessNFTID(re1)
+				setPaymentKind(0)
+				return navigate('/wallet')
 			}
-			setSuccessNFTID(re1)
-			setPaymentKind(0)
-			return navigate('/wallet')
-		} else {
-			setStep(2);
-			getSolanaQuote();
+			default:
+			case 1: {
+				setStep(2);
+				return getSolanaQuote();
+			}
+			
+			
 		}
 	}
 	

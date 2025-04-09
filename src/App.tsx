@@ -123,9 +123,9 @@ function App() {
         setServerPort('3002');
 		setIsLocalProxy(true)
       } catch (ex) {
-		if (window?.webkit) {
+		// if (window?.webkit) {
 			setIsIOS(true)
-		}
+		// }
         
         setIsLocalProxy(false)
       }

@@ -11,7 +11,7 @@
   }
 
   .redeem-dropdown.is-open {
-		height: 674px;
+		height: 746px;
   }
 
 	.redeem-dropdown.is-ios.is-open {
@@ -114,6 +114,16 @@
 
 	.cta-buttons button.redeem-button.stripe {
 		background-color: #635BFF;
+		display: flex;
+		justify-content: center;
+		font-weight: 700;
+		font-size: 18px;
+
+		margin-top: 16px;
+	}
+
+	.cta-buttons button.redeem-button.paypal {
+		background-color: #253B80;
 		display: flex;
 		justify-content: center;
 		font-weight: 700;

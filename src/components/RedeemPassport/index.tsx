@@ -6,12 +6,15 @@ import { RealizationRedeem } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg";
+import { ReactComponent as PaypalIcon } from "./assets/paypal.svg";
 
 interface plan {
 	total: string
 	publicKey: string
 	Solana: string
 }
+
+const VPN_URLS = ['vpn', 'vpn-beta'];
 
 export default function RedeemPassport() {
   const [redeemCode, setRedeemCode] = useState("");
@@ -22,6 +25,9 @@ export default function RedeemPassport() {
 
   const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID } = useDaemonContext();
   const navigate = useNavigate();
+
+	const isSilentPassVPN = VPN_URLS.some(url => window.location.href.includes(url));
+  const isDevelopment = window.location.href.includes('localhost');
 
 	/* 1 = $SP
 	2 = STRIPE */
@@ -210,6 +216,14 @@ export default function RedeemPassport() {
 							<button className="redeem-button purchase" onClick={() => handlePurchase(1)}>
 								Pay with $SP
 							</button>
+							{
+								(!isSilentPassVPN || isDevelopment) && (
+									<button className="redeem-button paypal">
+										Pay with
+										<PaypalIcon />
+									</button>
+								)
+							}
 							<button className="redeem-button stripe" onClick={() => handlePurchase(2)}>
 								Pay with
 								<StripeIcon />

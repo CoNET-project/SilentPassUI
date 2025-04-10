@@ -90,7 +90,7 @@ export default function RedeemPassport() {
 
   return (
     <>
-      <div className={`redeem-dropdown ${isOpen ? "is-open" : ""}`}>
+      <div className={`redeem-dropdown ${isOpen ? "is-open" : ""} ${isIOS ? "is-ios": ""}`}>
         {/* Dropdown Button */}
         <button className="redeem-header cta-button" onClick={() => setIsOpen(!isOpen)}>
           <div className="redeem-header-content">
@@ -178,7 +178,7 @@ export default function RedeemPassport() {
 							<li>Your subscription will automatically renew at the end of each billing period unless it is canceled at least 24 hours before the expiry date.</li>
 							<li>You can manage and cancel your subscriptions by going to your App Store account settings after purchase.</li>
 							<li>Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.</li>
-							<li>By subscribing, you agree to the Terms of Service and Privacy Policy.</li>
+							<li>By subscribing, you agree to the <a href="https://silentpass.io/terms/" target="_blank" style={{color:"lightblue"}}>Terms of Service</a> and <a href="https://silentpass.io/privacy-cookies/" style={{color:"lightblue"}} target="_blank">Privacy Policy.</a></li>
 						</ul>
 						</div>
 					</div>

@@ -1,5 +1,6 @@
 import { Step } from '../../../types/global-types';
 import { ReactComponent as ProgressIcon } from "../assets/progress-activity.svg";
+import { useDaemonContext } from '../../../providers/DaemonProvider';
 
 interface FooterProps {
   step: Step;
@@ -8,9 +9,12 @@ interface FooterProps {
 }
 
 export default function Footer({ step, isSubmitButtonDisabled, handleButtonAction }: FooterProps) {
+	const { profiles, isIOS, paymentKind } = useDaemonContext();
   return (
     <div className="subscription-footer">
-      {(step === 2 || step === 3) && <p>Your transaction completion time may vary and can take up to 24 hours. Confirmation of Transaction Hash will display on completion.</p>}
+      {(step === 2 || step === 3) && paymentKind === 1 &&
+	  	<p>Your transaction completion time may vary and can take up to 24 hours. Confirmation of Transaction Hash will display on completion.</p>
+	  }
       <button className={`step-${step} ${isSubmitButtonDisabled ? "disabled" : ""}`} disabled={isSubmitButtonDisabled} onClick={() => !isSubmitButtonDisabled && handleButtonAction()} style={{ cursor: isSubmitButtonDisabled ? "not-allowed" : "pointer" }}>
         {step === 3 && <ProgressIcon />}
 

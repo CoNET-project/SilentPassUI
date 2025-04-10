@@ -12,7 +12,7 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 
 export default function Wallet() {
   const navigate = useNavigate();
-  const { profiles } = useDaemonContext();
+  const { profiles, isIOS } = useDaemonContext();
 
   console.log("PROFILES: ", profiles);
 
@@ -40,11 +40,14 @@ export default function Wallet() {
         </div> */}
         <RedeemPassport />
       </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
-        <SpClub />
-        <ReferralProgram />
-      </div>
+	  {
+		!isIOS  && 
+		<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
+			<SpClub />
+			<ReferralProgram />
+		</div>
+	  }
+      
 
       <Footer />
     </div>

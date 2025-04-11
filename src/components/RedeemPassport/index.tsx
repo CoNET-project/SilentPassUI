@@ -22,10 +22,13 @@ export default function RedeemPassport() {
 	}
 
 	useEffect(() => {
-		const urlSearchParams = new URLSearchParams(window.location.href);
+		const urlSearchParams = new URLSearchParams(document.location.search);
 
 		const type = urlSearchParams.get('type');
 		const qtd = urlSearchParams.get('qtd');
+
+		console.log("TYPE: ", type);
+		console.log("QTD: ", qtd);
 
 		if (!type) return;
 

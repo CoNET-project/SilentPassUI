@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import "./index.css"; // Import external CSS file
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg";
+import { useEffect } from 'react';
 
 export default function RedeemPassport() {
   const { selectedPlan, setSelectedPlan, monthlyQtd, setMonthlyQtd, annuallyQtd, setAnnuallyQtd, setPaymentKind } = useDaemonContext();
@@ -19,6 +20,29 @@ export default function RedeemPassport() {
 	function handleChooseOption(option: '1' | '12') {
 		setSelectedPlan(option);
 	}
+
+	useEffect(() => {
+		const urlSearchParams = new URLSearchParams(window.location.href);
+
+		const type = urlSearchParams.get('type');
+		const qtd = urlSearchParams.get('qtd');
+
+		if (!type) return;
+
+		if (Number(type) === 1) {
+			setSelectedPlan("1");
+
+			if (qtd) {
+				setMonthlyQtd(Number(qtd));
+			}
+		} else {
+			setSelectedPlan("12");
+
+			if (qtd) {
+				setAnnuallyQtd(Number(qtd));
+			}
+		}
+	}, [setAnnuallyQtd, setMonthlyQtd, setSelectedPlan])
 
 	const monthlyPrice = monthlyQtd === 0 ? 2.99 : monthlyQtd === 5 ? 9.99 : monthlyQtd * 2.99
 	const annuallyPrice = annuallyQtd === 0 ? 24.99 : annuallyQtd === 5 ? 99.99 : annuallyQtd * 24.99

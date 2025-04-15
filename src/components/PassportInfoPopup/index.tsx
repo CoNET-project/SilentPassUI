@@ -33,10 +33,10 @@ const PassportInfoPopup = () => {
         </div>
 
         <div className="home-buttons">
-          <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate('/wallet')}>
+          {/* <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate('/wallet')}>
             <img src="./assets/conet-outline-blue.svg" />
             <span>Upgrade</span>
-          </button>
+          </button> */}
 
           <button onClick={() => setIsPassportInfoPopupOpen(false)}>Close</button>
         </div>

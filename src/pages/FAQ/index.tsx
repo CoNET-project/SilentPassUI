@@ -17,6 +17,7 @@ const FAQ = () => {
     }
   }
 
+  
   return (
 	isIOS ?
 	<div className="page-container text-display faq">

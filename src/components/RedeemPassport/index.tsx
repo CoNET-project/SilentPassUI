@@ -35,7 +35,6 @@ export default function RedeemPassport() {
 			setAnErrorOccurred(true);
 			setIsSuccessModalOpen(true);
       		setRedeemCode('')
-			setSuccessNFTID(0)
 		}
 
 	}, [successNFTID])
@@ -103,7 +102,7 @@ export default function RedeemPassport() {
 
         <div className="redeem-content">
 			{
-				!isRedeemProcessLoading &&
+				!isRedeemProcessLoading && !isIOS &&
 				<>
 					{
 						isIOS ? <label className="redeem-label">Already a Subscriber?</label>
@@ -117,68 +116,68 @@ export default function RedeemPassport() {
 						value={redeemCode}
 						onChange={(e) => setRedeemCode(e.target.value)}
 					/>
+					{anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
+					<button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
+					{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
+					</button>
 				</>
+				
 			}
 
-          {anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
-          <button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
-            {isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
-          </button>
+          
 		  {
 			!isRedeemProcessLoading &&
 			<>
 				 {
 					isIOS &&
 					<>
-						<div className="redeem-divider">
-						<div className="line"></div>
-						<span>or</span>
-						<div className="line"></div>
-					</div>
-					<div className="subscription-plans">
-						<div
-						className={`plan ${selectedPlan === '12' ? 'selected' : ''}`}
-						onClick={() => setSelectedPlan('12')}
-						>
-						<div className="plan-content">
-							<div className={`sub-option ${selectedPlan === '12' ? 'selected' : ''}`} />
-							<div className="plan-details">
-							<div className="plan-title">12 months plan</div>
-							<div className="plan-price">$2.71/month, billed annually</div>
-							<div className="plan-savings">(Save 18%)</div>
-							</div>
-						</div>
-						<div className="free-trial">7-Day Free Trial</div>
-						</div>
-
-						<div
-						className={`plan ${selectedPlan === '1' ? 'selected' : ''}`}
-						onClick={() => setSelectedPlan('1')}
-						>
-						<div className="plan-content">
-							<div className={`sub-option ${selectedPlan === '1' ? 'selected' : ''}`} />
-							<div className="plan-details">
-							<div className="plan-title">1 month plan</div>
-							<div className="plan-price">$3.29/month</div>
-							</div>
-						</div>
-						<div className="no-free-trial">No Free Trial</div>
+						{/* <div className="redeem-divider">
+							<div className="line"></div>
+							<span>or</span>
+							<div className="line"></div>
+						</div> */}
+					<div className="passport-options">
+						<p>Choose plan</p>
+						<div className="option-list">
+							
+							<button className={`option ${selectedPlan === '12' ? 'selected' : ''}`} onClick={() => handleChooseOption('12')}>
+								<div>
+									<p>Annually Plan</p>
+									<span>1 Device</span>
+								</div>
+								<div>
+									<span>USD</span>
+									<p>32.49</p>
+									<span>Billed Annually</span>
+								</div>
+							</button>
+							<button className={`option ${selectedPlan === '1' ? 'selected' : ''}`} onClick={() => handleChooseOption('1')}>
+								<div>
+									<p>Monthly Plan</p>
+									<span>1 Device</span>
+								</div>
+								<div>
+									<span>USD</span>
+									<p>3.29</p>
+									<span>Billed Monthly</span>
+								</div>
+							</button>
 						</div>
 					</div>
 					<div className="redeem-divider">
 						<div className="line"></div>
 					</div>
 					<div className="subscription">
-						<p>7 day free, <br /> then get 12 months for $32.49</p>
+						<p>7 days Free Trial!</p>
 						<button onClick={() => startSubscription()}>Start subscription</button>
 						<div className="sub-details">
 						<p>Subscription details:</p>
 						<ul>
-							<li>Your Apple ID account will be charged on the last day of your free trial.</li>
+							<li>Your Apple ID account will be charged when you start subscription.</li>
 							<li>Your subscription will automatically renew at the end of each billing period unless it is canceled at least 24 hours before the expiry date.</li>
 							<li>You can manage and cancel your subscriptions by going to your App Store account settings after purchase.</li>
 							<li>Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.</li>
-							<li>By subscribing, you agree to the <a href="https://silentpass.io/terms/" target="_blank" style={{color:"lightblue"}}>Terms of Service</a> and <a href="https://silentpass.io/privacy-cookies/" style={{color:"lightblue"}} target="_blank">Privacy Policy.</a></li>
+							<li>By subscribing, you agree to the <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" style={{color:"lightblue"}}>Apple’s Terms of Use</a>, and <a href="https://silentpass.io/privacy-cookies/" style={{color:"lightblue"}} target="_blank">Privacy Policy.</a></li>
 						</ul>
 						</div>
 					</div>

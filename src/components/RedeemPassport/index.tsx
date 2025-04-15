@@ -102,7 +102,7 @@ export default function RedeemPassport() {
 
         <div className="redeem-content">
 			{
-				!isRedeemProcessLoading && !isIOS &&
+				!isRedeemProcessLoading &&
 				<>
 					{
 						isIOS ? <label className="redeem-label">Already a Subscriber?</label>
@@ -120,6 +120,11 @@ export default function RedeemPassport() {
 					<button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
 					{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
 					</button>
+					<div className="redeem-divider">
+						<div className="line"></div>
+						<span>or</span>
+						<div className="line"></div>
+					</div>
 				</>
 				
 			}
@@ -137,29 +142,27 @@ export default function RedeemPassport() {
 							<div className="line"></div>
 						</div> */}
 					<div className="passport-options">
-						<p>Choose plan</p>
+						<p>Unlock the full power of Silent Pass VPN with the Silent Pass Passport</p>
 						<div className="option-list">
 							
 							<button className={`option ${selectedPlan === '12' ? 'selected' : ''}`} onClick={() => handleChooseOption('12')}>
-								<div>
-									<p>Annually Plan</p>
+								{/* <div>
+									<p>Annual</p>
 									<span>1 Device</span>
-								</div>
+									<span style={{'textAlign': 'left'}}>12 months VPN service</span>
+								</div> */}
 								<div>
-									<span>USD</span>
-									<p>32.49</p>
-									<span>Billed Annually</span>
+									<span >Annual Plan (12 Months)</span>
+									<p>$2.71 / month / 1 Device</p>
+									<span style={{'textAlign': 'left'}}>Billed $32.49 for 12 months, then renews yearly</span>
 								</div>
 							</button>
 							<button className={`option ${selectedPlan === '1' ? 'selected' : ''}`} onClick={() => handleChooseOption('1')}>
+								
 								<div>
-									<p>Monthly Plan</p>
-									<span>1 Device</span>
-								</div>
-								<div>
-									<span>USD</span>
-									<p>3.29</p>
-									<span>Billed Monthly</span>
+									<span>Monthly Plan (1 Month)</span>
+									<p>$3.29 / month / 1 Device</p>
+									<span style={{'textAlign': 'left'}}>Billed $3.29 every month</span>
 								</div>
 							</button>
 						</div>
@@ -186,11 +189,7 @@ export default function RedeemPassport() {
 				{
 					!isIOS &&
 						<>
-							<div className="redeem-divider">
-								<div className="line"></div>
-								<span>or</span>
-								<div className="line"></div>
-							</div>
+
 							<div className="passport-options">
 								<p>Choose plan</p>
 								<div className="option-list">

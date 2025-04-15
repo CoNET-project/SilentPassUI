@@ -22,6 +22,12 @@ export default function ReferralProgram() {
   const [copied, setCopied] = useState(false);
   const [shouldRerender, setShouldRerender] = useState(false);
 
+  const [inviter, setInviter] = useState('');
+
+  const handleSetInviter = async () => {
+    // call the backend to set the inviter here
+    console.log("NEW INVITER: ", inviter);
+  }
 
   const handlePreviousPage = async () => {
     if (currentPageInvitees > 0) {
@@ -73,17 +79,7 @@ export default function ReferralProgram() {
           {profiles?.[0]?.keyID ?
             <>
               <div className="copy-text">
-                <p>Copy this wallet address to invite your friends to Silent Pass</p>
-                {
-                  isAddressHidden ?
-                    <div style={{ filter: 'blur(3px)' }}>
-                      <span>{getAddress(profiles[0])}
-                      </span>
-                    </div>
-                    :
-                    <span>{getAddress(profiles[0])}
-                    </span>
-                }
+                <p>Wallet Address</p>
               </div>
               <div className="button-list">
                 <button onClick={() => handleCopy()}>
@@ -105,6 +101,44 @@ export default function ReferralProgram() {
             : <Skeleton width='100%' height='20px' />
           }
         </div>
+
+        <div style={{ padding: "0 16px", marginBottom: "32px" }}>
+          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>Copy this wallet address to invite your friends to Silent Pass</p>
+        </div>
+
+        {
+          profiles?.[0] && profiles[0]?.referrer ? (
+            <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
+              <p>Inviter's wallet address</p>
+              {
+                isAddressHidden ?
+                  <div style={{ filter: 'blur(3px)' }}>
+                    <span style={{ color: '#989899' }}>{profiles[0].referrer}
+                    </span>
+                  </div>
+                  :
+                  <span style={{ color: '#989899' }}>{profiles[0].referrer}
+                  </span>
+              }
+            </div>
+          ) : (
+            <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
+              <p>Inviter's wallet address</p>
+              <input
+                type="text"
+                style={{ width: "100%", background: "#3F3F40", borderRadius: "8px", padding: "8px", color: "#989899", border: 0 }}
+                value={inviter} onChange={(e) => setInviter(e.target.value)}
+              />
+              <button style={{
+                marginTop: "16px", padding: "12px 0",
+                display: "flex", justifyContent: "center",
+                cursor: "pointer", width: "100%",
+                background: "#282930", borderRadius: "16px",
+                fontWeight: "bold",
+              }} disabled={inviter.length < 20} onClick={handleSetInviter}>Confirm</button>
+            </div>
+          )
+        }
 
         <Separator />
 

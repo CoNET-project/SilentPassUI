@@ -408,69 +408,95 @@ const NFTsProcess = async () => {
 		return false
 	}
 }
+const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, conetDepinProvider)
+const _getMonthlyNFTs = async(start: number, key: string, privateKeyArmor: string, monthly: distributorNFTs) => {
+	let _monthly: any = null
+	try {
+		_monthly = await contract_distributor.getListOfMonthly(key, start, start + 200)
+	} catch (ex) {
+
+	}
+	if (!_monthly) {
+		return
+	}
+
+	let index = 0
+	await mapLimit(_monthly.used, 1, async (n: boolean, next) => {
+		
+		const item: distributorNFTItem = {
+			id: parseInt(_monthly.nfts[index].toString()),
+			used: n,
+			code: _monthly.code[index] ? await aesGcmDecrypt(_monthly.code[index], privateKeyArmor): '',
+			showRedeemProcess: false
+		}
+		monthly.nfts.push(item)
+		index ++
+		
+	})
+	monthly.current = parseInt(_monthly.current.toString())
+	monthly.total = parseInt(_monthly.total.toString())
+	if (monthly.total > start + _monthly.used.length) {
+		await _getMonthlyNFTs (start + _monthly.used.length, key, privateKeyArmor, monthly)
+	}
+}
+
+const _getAnnualNFTs = async(start: number, key: string, privateKeyArmor: string, yearly: distributorNFTs) => {
+	let _yearly: any = null
+	try {
+		_yearly = await contract_distributor.getListOfMonthly(key, start, start + 200)
+	} catch (ex) {
+
+	}
+	if (!_yearly) {
+		return
+	}
+
+	let index = 0
+	await mapLimit(_yearly.used, 1, async (n: boolean, next) => {
+		const item: distributorNFTItem = {
+			id: parseInt(_yearly.nfts[index].toString()),
+			used: n,
+			code: _yearly.code[index] ? await aesGcmDecrypt(_yearly.code[index], privateKeyArmor): '',
+			showRedeemProcess: false
+		}
+		yearly.nfts.push(item)
+		index ++
+		
+	})
+	yearly.current = parseInt(_yearly.current.toString())
+	yearly.total = parseInt(_yearly.total.toString())
+	if (_yearly.total > start + _yearly.used.length) {
+		await _getAnnualNFTs (start + _yearly.used.length, key, privateKeyArmor, yearly)
+	}
+}
 
 const getNFTs = async () => {
 	if (!CoNET_Data?.profiles[0]) {
 		return null;
 	}
 	const profile = CoNET_Data.profiles[0]
-	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, conetDepinProvider)
-	let _monthly: _distributorNFTs|null= null
-	let _yearly: _distributorNFTs|null = null
-	try {
-		_monthly = await contract_distributor.getListOfMonthly(profile.keyID, 0, 100)
-	} catch (ex) {
-
-	}
-	try {
-		_yearly = await contract_distributor.getListOfAnnual(profile.keyID, 0, 100)
-	} catch(ex) {
-		
-	}
+	
 
 	const monthly: distributorNFTs = {
 		nfts: [],
-		current: _monthly ? parseInt(_monthly.current.toString()): 0,
-		total: _monthly ?  parseInt(_monthly.total.toString()): 0
+		current: 0,
+		total: 0
 	}
+
+
 	const yearly: distributorNFTs = {
 		nfts: [],
-		current: _yearly ? parseInt(_yearly.current.toString()): 0,
-		total: _yearly ? parseInt(_yearly.total.toString()): 0
+		current: 0,
+		total: 0
 	}
-	if (_monthly) {
-		let index = 0
-		await mapLimit(_monthly.nfts, 1, async (n, next) => {
-			if (_monthly) {
-				const item: distributorNFTItem = {
-					id: parseInt(n.toString()),
-					used: _monthly.used[index],
-					code: _monthly.code[index] ? await aesGcmDecrypt(_monthly.code[index], profile.privateKeyArmor): '',
-					showRedeemProcess: false
-				}
-				monthly.nfts.push(item)
-				index ++
-			}
-			
-		})
-	}
-	if (_yearly) {
-		let index = 0
-		await mapLimit(_yearly.nfts, 1, async (n, next) => {
-			if (_yearly) {
-				const item: distributorNFTItem = {
-					id: parseInt(n.toString()),
-					used: _yearly.used[index],
-					code: _yearly.code[index] ? await aesGcmDecrypt(_yearly.code[index], profile.privateKeyArmor): '',
-					showRedeemProcess: false
-				}
-				yearly.nfts.push(item)
-				index ++
-			}
-			
-		})
 
-	}
+	let key = profile.keyID
+	
+	await Promise.all([
+		_getAnnualNFTs(0, key, profile.privateKeyArmor, yearly),
+		_getMonthlyNFTs(0, key, profile.privateKeyArmor, monthly)
+	])
+	
 
 	const ret: distributorNFTObj = {monthly, yearly}
 	return ret

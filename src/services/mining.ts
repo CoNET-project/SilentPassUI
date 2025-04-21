@@ -206,8 +206,9 @@ const getAllNodesV2 = async (
 	const allNodes = await checkLocalStorageNodes()
 	if (allNodes) {
 		getAllRegions(allNodes)
-		testClosestRegion(() => {
-			return callback(allNodes)
+		return testClosestRegion(() => {
+			callback(allNodes)
+			getAllNodes(setClosestRegion, () => {})
 		})
 		
 	}

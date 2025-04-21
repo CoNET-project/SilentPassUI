@@ -14,7 +14,7 @@ const _ethRpc = [
   "https://ethereum-rpc.publicnode.com",
   "https://eth-mainnet.public.blastapi.io"
 ];
-const solanaRpc = "https://solana-rpc.conet.network";
+
 const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
 const rewardWalletAddress = "GUq7PhyAUZko2mPhv3CupmdJKQ61LH8VyrdsRL25q7zg";
 const stripe_pay_monthly = 'https://buy.stripe.com/test_9AQ16b6Du82p0Ja9AG?client_reference_id='
@@ -33,7 +33,6 @@ export {
   apiv3_endpoint,
   apiv4_endpoint,
   conetRpc,
-  solanaRpc,
   rewardWalletAddress,
   conetProvider,
   ethProvider,

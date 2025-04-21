@@ -36,7 +36,12 @@ export default function RedeemPassport() {
 	const _getRewordStaus = async() => {
 		setSpRewordloading(true)
 		const status = await getRewordStaus()
-		setSpRewordEnable (status)
+		if (status === true) {
+			setSpRewordEnable (status)
+		} else {
+			setSpRewordEnable (false)
+		}
+		
 		setSpRewordloading(false)
 	}
 

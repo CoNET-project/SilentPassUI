@@ -12,7 +12,7 @@ import {
   import { ethers } from "ethers";
   import Bs58 from "bs58";
   import contracts from "../utils/contracts";
-  import { conetProvider, solanaRpc } from "../utils/constants";
+  import { conetProvider } from "../utils/constants";
   import { CoNET_Data } from "../utils/globals";
   import {epoch_info_ABI} from "../utils/abis"
   const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q";
@@ -147,13 +147,19 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 	return completedTx;
   }
   
-  export const purchasePassport = async (amount: string) => {
+  export const purchasePassport = async (amount: string, allNodes: nodes_info[]) => {
 	if (!CoNET_Data) {
 	  return;
 	}
     const privateKey = CoNET_Data.profiles[1]?.privateKeyArmor
+	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
+	const solanaConnection = new Connection(
+		`https://${_node1.domain}/solana-rpc`,
+		"confirmed"
+	  );
 	try {
-	  const solanaConnection = new Connection(solanaRpc);
+
+	  
 	  const solana_account_privatekey_array = Bs58.decode(privateKey);
 	  const solana_account_keypair = Keypair.fromSecretKey(
 		solana_account_privatekey_array
@@ -257,46 +263,46 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 	  })
   })
   
-  const checkts = async (solanaTx: string) => {
-	//		from: J3qsMcDnE1fSmWLd1WssMBE5wX77kyLpyUxckf73w9Cs
-	//		to: 2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q
+//   const checkts = async (solanaTx: string) => {
+// 	//		from: J3qsMcDnE1fSmWLd1WssMBE5wX77kyLpyUxckf73w9Cs
+// 	//		to: 2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q
   
-	const solanaConnection = new Connection(solanaRpc);
+// 	const solanaConnection = new Connection(solanaRpc);
   
-	const tx = await solanaConnection.getTransaction(solanaTx, {
-	  maxSupportedTransactionVersion: 0,
-	});
-	const meta = tx?.meta;
-	if (meta) {
-	  const postTokenBalances = meta.postTokenBalances;
-	  const preTokenBalances = meta.preTokenBalances;
-	  if (preTokenBalances?.length == 2 && postTokenBalances?.length == 2) {
-		const from = postTokenBalances[0].owner;
-		if (
-		  from &&
-		  preTokenBalances[0].mint === contracts.PassportSolana.address &&
-		  preTokenBalances[1].owner === sp_team
-		) {
-		  const _transferAmount =
-			parseFloat(postTokenBalances[1].uiTokenAmount.amount) -
-			parseFloat(preTokenBalances[1].uiTokenAmount.amount);
-		  const amount = ethers.formatUnits(
-			_transferAmount.toFixed(0),
-			spDecimalPlaces
-		  );
-		  console.log(`transferAmount = ${amount}`);
-		  const check = await checkPrice(amount);
+// 	const tx = await solanaConnection.getTransaction(solanaTx, {
+// 	  maxSupportedTransactionVersion: 0,
+// 	});
+// 	const meta = tx?.meta;
+// 	if (meta) {
+// 	  const postTokenBalances = meta.postTokenBalances;
+// 	  const preTokenBalances = meta.preTokenBalances;
+// 	  if (preTokenBalances?.length == 2 && postTokenBalances?.length == 2) {
+// 		const from = postTokenBalances[0].owner;
+// 		if (
+// 		  from &&
+// 		  preTokenBalances[0].mint === contracts.PassportSolana.address &&
+// 		  preTokenBalances[1].owner === sp_team
+// 		) {
+// 		  const _transferAmount =
+// 			parseFloat(postTokenBalances[1].uiTokenAmount.amount) -
+// 			parseFloat(preTokenBalances[1].uiTokenAmount.amount);
+// 		  const amount = ethers.formatUnits(
+// 			_transferAmount.toFixed(0),
+// 			spDecimalPlaces
+// 		  );
+// 		  console.log(`transferAmount = ${amount}`);
+// 		  const check = await checkPrice(amount);
   
-		  if (!check) {
-			returnPool.push({
-			  from,
-			  amount,
-			});
-			// returnSP();
-			return console.log(`check = false back! ${amount}`);
-		  }
-		}
-	  }
-	}
-  };
+// 		  if (!check) {
+// 			returnPool.push({
+// 			  from,
+// 			  amount,
+// 			});
+// 			// returnSP();
+// 			return console.log(`check = false back! ${amount}`);
+// 		  }
+// 		}
+// 	  }
+// 	}
+//   };
   

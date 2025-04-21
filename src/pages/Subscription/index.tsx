@@ -17,7 +17,7 @@ global.Buffer = require('buffer').Buffer;
 export type Step = 2 | 3 | 4 | 5;
 
 export default function Subscription() {
-  const { paymentKind, selectedPlan, profiles, setSuccessNFTID, setPaymentKind } = useDaemonContext();
+  const { paymentKind, selectedPlan, profiles, setSuccessNFTID, setPaymentKind, getAllNodes } = useDaemonContext();
   const [step, setStep] = useState<Step>(2);
   const [price, setPriceInSp] = useState('0');
   const [gasfee, setGasfee] = useState('0');
@@ -165,7 +165,7 @@ export default function Subscription() {
     if (step === 2) {
       try {
         nextStep();
-		await purchasePassport(price)
+		await purchasePassport(price, getAllNodes)
         setStep(4);
       } catch (error) {
         setStep(5);

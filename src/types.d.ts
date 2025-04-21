@@ -33,6 +33,7 @@ interface Region {
 	name: string;
 	unlocked?: boolean;
 	usd?: string
+	balance1?: number
   }
   
   interface conet_tokens {

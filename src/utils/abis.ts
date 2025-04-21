@@ -1,4 +1,4 @@
-import { purchasePassport } from "./../services/passportPurchase";
+
 export const GuardianNodesInfoV6Abi = [
   {
     inputs: [],

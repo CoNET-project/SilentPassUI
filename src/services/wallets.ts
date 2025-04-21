@@ -13,7 +13,6 @@ import {
   conetProvider,
   localDatabaseName,
   rewardWalletAddress,
-  solanaRpc,
   payment_endpoint,
   paypal_endpoint
 } from "../utils/constants";
@@ -730,10 +729,11 @@ const refreshSolanaBalances = async (
 		const sol1 = (_sol >= 1_000_000) ? (_sol/1_000_000).toFixed(3) + 'M' : _sol.toFixed(5)
 		if (solanaProfile.tokens?.sol) {
 			solanaProfile.tokens.sol.balance = sol1
-			  
+			solanaProfile.tokens.sol.balance1 = _sol
 		  } else {
 			solanaProfile.tokens.sol = {
 			  balance:sol1,
+			  balance1: _sol,
 			  network: "Solana Mainnet",
 			  decimal: 18,
 			  contract: "",
@@ -742,15 +742,18 @@ const refreshSolanaBalances = async (
 			};
 		  }
 	}
-    
-	const sol_usd = parseFloat(solanaProfile.tokens.sol.balance) * solPrice
-	solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(2) + 'M' : sol_usd.toFixed(2)
+    if (solanaProfile.tokens.sol?.balance1 && solanaProfile.tokens.sol.balance1 > 0) {
+		const sol_usd = solanaProfile.tokens.sol.balance1 * solPrice
+		solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(2) + 'M' : sol_usd.toFixed(2)
+	}
+	
 
 	if (sp !== false) {
 		const _sp = parseFloat(sp.toString())
 		const sp1 = (_sp >= 1_000_000) ? (_sp/1_000_000).toFixed(2) + 'M' : _sp.toFixed(2)
 		if (solanaProfile.tokens?.sp) {
 			solanaProfile.tokens.sp.balance = sp1
+			solanaProfile.tokens.sp.balance1 = _sp
 		  } else {
 			solanaProfile.tokens.sp = {
 			  balance: sp1,
@@ -758,13 +761,16 @@ const refreshSolanaBalances = async (
 			  decimal: 18,
 			  contract: "",
 			  name: "sp",
+			  balance1: _sp,
 			  usd:''
 			};
 		  }
 	}
-    
-	const sp_usd = parseFloat(solanaProfile.tokens.sp.balance) / spPrice
-	solanaProfile.tokens.sp.usd = sp_usd  >= 1_000_000 ? (sp_usd/1_000_000).toFixed(2) + 'M' : sp_usd.toFixed(2)
+    if (solanaProfile.tokens.sp?.balance1 && solanaProfile.tokens.sp?.balance1 > 0) {
+		const sp_usd = solanaProfile.tokens.sp.balance1 / spPrice
+		solanaProfile.tokens.sp.usd = sp_usd  >= 1_000_000 ? (sp_usd/1_000_000).toFixed(2) + 'M' : sp_usd.toFixed(2)
+	}
+	
 
 
     const temp = CoNET_Data;
@@ -997,11 +1003,14 @@ async function getReceivedAmounts (
   try {
     const walletPubKey = new PublicKey(walletAddress);
     const senderPubKey = new PublicKey(rewardWalletAddress);
-
-    const connection = new Connection(solanaRpc, "confirmed");
+	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
+    const _connection1 = new Connection(
+      `https://${_node1.domain}/solana-rpc`,
+      "confirmed"
+    );
 
     // Step 1: Get transaction signatures
-    const signatures = await connection.getSignaturesForAddress(walletPubKey, {
+    const signatures = await _connection1.getSignaturesForAddress(walletPubKey, {
       limit: 20,
     });
 
@@ -1012,11 +1021,7 @@ async function getReceivedAmounts (
 
     // For only one transaction it works. Here's an example.
     // For multiple transactions it fails because the server doesn't support it.
-    const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
-    const _connection1 = new Connection(
-      `https://${_node1.domain}/solana-rpc`,
-      "confirmed"
-    );
+    
     const transaction = await _connection1.getTransaction(
       signatures[0].signature,
       {
@@ -1120,8 +1125,8 @@ const getRewordStaus = async(): Promise<boolean> => {
 	const price = formatEther(quote[3].toString())
 	const spReworkBalance = parseInt(price.toString())
 	const profiles = CoNET_Data.profiles
-	const SPBalance = parseInt(profiles[1].tokens?.sp?.balance)
-	if (SPBalance < spReworkBalance) {
+	const SPBalance = profiles[1].tokens?.sp?.balance1
+	if (SPBalance === undefined || SPBalance < spReworkBalance) {
 		return false
 	}
 	const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)

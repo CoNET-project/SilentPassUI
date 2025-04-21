@@ -7,6 +7,7 @@ const payment_endpoint = `https://hooks.conet.network/api/`;
 const XMLHttpRequestTimeout = 90 * 1000;
 const conetRpc = "https://cancun-rpc.conet.network";
 const mainChain_rpc = "https://mainnet-rpc.conet.network";
+const paypal_endpoint = `https://centerapi.fx168api.com/`;
 const _ethRpc = [
   "http://rpc.ankr.com/eth",
   "https://eth.llamarpc.com",
@@ -40,5 +41,6 @@ export {
   changeRPC,
   stripe_pay_monthly,
   stripe_pay_Annual,
-  payment_endpoint
+  payment_endpoint,
+  paypal_endpoint
 };

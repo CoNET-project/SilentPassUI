@@ -93,14 +93,14 @@ export default function SpClub() {
           </div>
           <div>
             <img src={EarlyAccess} />
-            <p>Early <br />Access</p>
+            <p>Early Access</p>
           </div>
           <div>
             <img src={ExclusivePerks} />
             <p>Exclusive Perks</p>
           </div>
         </div>
-        <p style={{ fontSize: "12px", textAlign: "left" }}>Find out more at <a style={{ color: "#9FBFE5FE" }} href="https://subscription.silentpass.io">https://subscription.silentpass.io</a></p>
+        <p style={{ fontSize: "12px", textAlign: "left" }}>Find out more at <a style={{ color: "#9FBFE5FE" }} href="https://subscription.silentpass.io" target='_blank'>https://subscription.silentpass.io</a></p>
       </div>
     )
   }

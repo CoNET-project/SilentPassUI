@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./index.css"; // Import external CSS file
 import SuccessModal from './SuccessModal';
-import { RealizationRedeem } from '../../services/wallets';
+import { RealizationRedeem, getRewordStaus } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg";
+import { ReactComponent as PaypalIcon } from "./assets/paypal.svg";
 
 interface plan {
 	total: string
@@ -19,16 +20,36 @@ export default function RedeemPassport() {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
-
+  const [spRewordEnable, setSpRewordEnable] = useState(false)
+  const [spRewordloading, setSpRewordloading] = useState(true)
   const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID } = useDaemonContext();
   const navigate = useNavigate();
 
 	/* 1 = $SP
 	2 = STRIPE */
-	function handlePurchase(type: 1 | 2) {
+	function handlePurchase(type: 1 | 2 | 4) {
 		setPaymentKind(type);
 		navigate("/subscription");
 	}
+	let first = true
+
+	const _getRewordStaus = async() => {
+		setSpRewordloading(true)
+		const status = await getRewordStaus()
+		setSpRewordEnable (status)
+		setSpRewordloading(false)
+	}
+
+
+
+	useEffect(() => {
+		if (!first) {
+			return
+		}
+		first = false
+		_getRewordStaus()
+
+	}, [])
 
 	useEffect(() => {
 		if (successNFTID > 100) {
@@ -39,14 +60,6 @@ export default function RedeemPassport() {
 
 	}, [successNFTID])
 
-	useEffect(() => {
-		let sp = profiles[1]
-		if (!sp) {
-			return
-		}
-
-
-	}, [profiles])
 
   async function handlePassportRedeem() {
 
@@ -62,6 +75,17 @@ export default function RedeemPassport() {
 
       setIsSuccessModalOpen(true);
       setRedeemCode('')
+  }
+
+
+  const spRewordProcess = () => {
+	if (!spRewordEnable) {
+		return
+	}
+	setSpRewordloading(true)
+	setPaymentKind(5)
+	navigate("/subscription")
+
   }
 
 	function handleChooseOption(option: '1' | '12') {
@@ -95,12 +119,20 @@ export default function RedeemPassport() {
           <div className="redeem-header-content">
             <img src="/assets/conet-outline-white.svg" alt="Platform" className="redeem-icon" />
 			<p>Get Silent Pass Passport</p>
-
           </div>
           <span className={`redeem-arrow ${isOpen ? "rotate" : ""}`}>▼</span>
         </button>
 
         <div className="redeem-content">
+			<label className="redeem-label">$SP Holder Reword</label>
+			<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
+				{spRewordloading ? <SimpleLoadingRing /> : "Claim"}
+			</button>
+			<div className="redeem-divider">
+				<div className="line"></div>
+				<span>or</span>
+				<div className="line"></div>
+			</div>
 			{
 				!isRedeemProcessLoading &&
 				<>
@@ -110,6 +142,7 @@ export default function RedeemPassport() {
 					}
 
 					<input
+
 						type="text"
 						placeholder="#1234"
 						className="redeem-input"
@@ -118,7 +151,7 @@ export default function RedeemPassport() {
 					/>
 					{anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
 					<button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
-					{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
+						{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
 					</button>
 					<div className="redeem-divider">
 						<div className="line"></div>
@@ -217,13 +250,25 @@ export default function RedeemPassport() {
 									</button>
 								</div>
 							</div>
-							<button className='redeem-button purchase' onClick={() => handlePurchase(1)}>
-								Pay with $SP
-							</button>
-							<button className="redeem-button stripe" onClick={() => handlePurchase(2)}>
-								Pay with
-								<StripeIcon />
-							</button>
+							<div id="outer">
+								<div className="inner" style={{marginRight: "1rem"}}>
+									<button className='redeem-button purchase' onClick={() => handlePurchase(1)}>
+										$SP
+									</button>
+								</div>
+								<div className="inner" style={{marginRight: "1rem", marginTop: "-1rem"}}>
+									<button className="redeem-button stripe" onClick={() => handlePurchase(2)}>
+										<StripeIcon />
+									</button>
+								</div>
+								<div className="inner" style={{marginTop: "-1rem"}}>
+									<button className="redeem-button paypal" onClick={() => handlePurchase(4)}>
+										<PaypalIcon style={{width: "4rem"}}/>
+									</button>
+								</div>
+								
+							</div>
+							
 						</>
 				}
 			</>
@@ -234,7 +279,7 @@ export default function RedeemPassport() {
       </div>
 
       {/* Success Modal */}
-      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID} onClose={() => setIsSuccessModalOpen(false)} />}
+      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID} onClose={() => {setIsSuccessModalOpen(false); setSuccessNFTID(0)}} />}
     </>
   );
 }

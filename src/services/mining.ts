@@ -12,6 +12,7 @@ import contracts from "../utils/contracts";
 import { conetProvider } from "../utils/constants";
 import { initProfileTokens, postToEndpoint } from "../utils/utils";
 import async from "async";
+import {checkLocalStorageNodes, storageAllNodes} from './wallets'
 
 let allNodes: nodes_info[] = [];
 let closestNodes: nodes_info[] = [];
@@ -100,7 +101,6 @@ const testClosestRegion = async (callback: () => void) => {
 };
 
 const getAllNodes = async (
-  _allRegions: Region[],
   setClosestRegion: (entryNodes: nodes_info[]) => void,
   callback: (allnodes: nodes_info[]) => void
 ) => {
@@ -108,6 +108,7 @@ const getAllNodes = async (
     setClosestRegion(entryNodes);
     return;
   }
+
   getAllNodesProcess = true;
 
   const GuardianNodesContract = new ethers.Contract(
@@ -186,8 +187,33 @@ const getAllNodes = async (
     } while (entryNodes.length < 5);
     setClosestRegion(entryNodes);
     callback(allNodes);
+	storageAllNodes(allNodes)
   });
 };
+
+const getAllRegions = (nodes: nodes_info[]) => {
+	const country: Map<string, boolean> = new Map();
+	nodes.forEach(n => {
+		const _country = n.region.split(".")[1]
+		country.set(_country, true)
+	})
+	allRegions = Array.from(country.keys())
+}
+
+const getAllNodesV2 = async (
+	setClosestRegion: (entryNodes: nodes_info[]) => void,
+	callback: (allnodes: nodes_info[]) => void) => {
+	const allNodes = await checkLocalStorageNodes()
+	if (allNodes) {
+		getAllRegions(allNodes)
+		testClosestRegion(() => {
+			return callback(allNodes)
+		})
+		
+	}
+	getAllNodes(setClosestRegion, callback)
+}
+
 
 const createGPGKey = async (passwd: string, name: string, email: string) => {
   const userId = {
@@ -404,4 +430,5 @@ export {
   allNodes,
   maxNodes,
   currentScanNodeNumber,
+  getAllNodesV2
 };

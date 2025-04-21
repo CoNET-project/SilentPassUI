@@ -12,7 +12,7 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
 
   return (
     <div className="transaction-details">
-      <AccountList showMainWallet={false} simplifiedView spInUsd={spInUsd} solInUsd={solInUsd} />
+      <AccountList showMainWallet={false} spInUsd={spInUsd} solInUsd={solInUsd} />
 
       <div className="transaction-info">
         <p>You're buying</p>

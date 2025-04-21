@@ -11,11 +11,11 @@
   }
 
   .redeem-dropdown.is-open {
-		height: 674px;
+		height: 750px;
   }
 
   .redeem-dropdown.is-ios.is-open {
-		height: 950px;
+		height: 1200px;
   }
 
   /* Dropdown Header */
@@ -78,21 +78,27 @@
 	margin-bottom: 24px;
 	border: none;
 	outline: none;
+	height: 3rem;
   }
-
+  .redeem-button.disable {
+	color: #565555!important;
+    cursor: not-allowed;
+  }
   .redeem-button {
-		width: 100%;
+		width: 6.1rem;
 		padding: 16px 8px;
 		border-radius: 8px;
 		border: none;
 		cursor: pointer;
+		display:inline-block;
+		height: 3.26rem;
   }
 
   .redeem-button.confirm {
 	background-color: #282930;
 	color: white;
 	margin-bottom: 10px;
-
+	width: 100%;
 	display: flex;
 	justify-content: center;
 
@@ -137,6 +143,15 @@
 	background-color: #444;
 	margin: 0 8px;
   }
+  .cta-buttons button.redeem-button.paypal {
+	background-color: #253B80;
+	display: flex;
+	justify-content: center;
+	font-weight: 700;
+	font-size: 18px;
+
+	margin-top: 16px;
+}
 
   /* Success Modal */
   .modal-overlay {
@@ -448,7 +463,7 @@
 
 .option-list .option div:first-child {
 	flex: 1;
-
+	
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
@@ -459,6 +474,7 @@
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
+	width: 30%;
 }
 
 .option-list .option span {
@@ -468,4 +484,14 @@
 
 .option-list .option p {
 	font-size: 24px;
+}
+
+#outer
+{
+	display: flex;
+	width: 100%;
+}
+.inner
+{
+
 }

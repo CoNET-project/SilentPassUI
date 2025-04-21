@@ -1,10 +1,11 @@
-import { ethers, formatEther, formatUnits } from "ethers";
+import { ethers, formatEther, formatUnits, parseEther } from "ethers";
 import { generateKey } from "openpgp";
 import {
   customJsonStringify,
   initProfileTokens,
   isValidSolanaBase58PrivateKey,
   postToEndpoint,
+
 } from "../utils/utils";
 import {
   apiv4_endpoint,
@@ -13,7 +14,8 @@ import {
   localDatabaseName,
   rewardWalletAddress,
   solanaRpc,
-  payment_endpoint
+  payment_endpoint,
+  paypal_endpoint
 } from "../utils/constants";
 import {} from './listeners'
 import contracts from "../utils/contracts";
@@ -23,6 +25,8 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
 import { scanSolanaSol, scanSolanaSp } from "./listeners";
+import axios from 'axios';
+
 
 const SPOracleSmartContract = new ethers.Contract(contracts.SpOracle.address, contracts.SpOracle.abi, conetProvider)
 const PouchDB = require("pouchdb").default;
@@ -271,6 +275,22 @@ const checkStorage = async () => {
     );
   }
 };
+
+const checkLocalStorageNodes = async () => {
+	const database = PouchDB(localDatabaseName, { auto_compaction: true });
+
+	try {
+	  const doc = await database.get("nodes", { latest: true });
+	  const data = JSON.parse(Buffer.from(doc.title, "base64").toString())
+	  return data
+	} catch (ex) {
+	  return null
+	}
+}
+
+const storageAllNodes = async (allNodes: any[]) => {
+	await storageHashData('nodes', Buffer.from(JSON.stringify(allNodes)).toString('base64'))
+}
 
 const requireFreePassport = async () => {
   if (!CoNET_Data) {
@@ -697,38 +717,55 @@ const refreshSolanaBalances = async (
   }
   const solanaRPC_url = `https://${node.domain}/solana-rpc`;
   try {
-    const [sol, sp] = await Promise.all([
+    const [sol, sp, oracle] = await Promise.all([
       scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
       scanSolanaSp(solanaProfile.keyID, solanaRPC_url),
+	  getSPOracle(),
     ]);
+	const solPrice = parseFloat(formatEther(oracle[4]).toString())
+	const spPrice = parseFloat(formatEther(oracle[0]).toString())/2.49
+	if (sol !== false) {
+		const _sol = parseFloat(sol.toString())
 
-    if (solanaProfile.tokens?.sol) {
-      solanaProfile.tokens.sol.balance =
-        sol === false ? solanaProfile.tokens.sol.balance : sol?.toFixed(6);
-    } else {
-      solanaProfile.tokens.sol = {
-        balance: sol === false ? "" : sol?.toFixed(6),
-        network: "Solana Mainnet",
-        decimal: 18,
-        contract: "",
-        name: "sol",
-      };
-    }
+		const sol1 = (_sol >= 1_000_000) ? (_sol/1_000_000).toFixed(3) + 'M' : _sol.toFixed(5)
+		if (solanaProfile.tokens?.sol) {
+			solanaProfile.tokens.sol.balance = sol1
+			  
+		  } else {
+			solanaProfile.tokens.sol = {
+			  balance:sol1,
+			  network: "Solana Mainnet",
+			  decimal: 18,
+			  contract: "",
+			  name: "sol",
+			  usd: ''
+			};
+		  }
+	}
+    
+	const sol_usd = parseFloat(solanaProfile.tokens.sol.balance) * solPrice
+	solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(2) + 'M' : sol_usd.toFixed(2)
 
-    if (solanaProfile.tokens?.sp) {
-      solanaProfile.tokens.sp.balance =
-        sp === false
-          ? solanaProfile.tokens.sp.balance
-          : parseFloat(sp).toFixed(6);
-    } else {
-      solanaProfile.tokens.sp = {
-        balance: sp === false ? "" : parseFloat(sp).toFixed(6),
-        network: "Solana Mainnet",
-        decimal: 18,
-        contract: "",
-        name: "sp",
-      };
-    }
+	if (sp !== false) {
+		const _sp = parseFloat(sp.toString())
+		const sp1 = (_sp >= 1_000_000) ? (_sp/1_000_000).toFixed(2) + 'M' : _sp.toFixed(2)
+		if (solanaProfile.tokens?.sp) {
+			solanaProfile.tokens.sp.balance = sp1
+		  } else {
+			solanaProfile.tokens.sp = {
+			  balance: sp1,
+			  network: "Solana Mainnet",
+			  decimal: 18,
+			  contract: "",
+			  name: "sp",
+			  usd:''
+			};
+		  }
+	}
+    
+	const sp_usd = parseFloat(solanaProfile.tokens.sp.balance) / spPrice
+	solanaProfile.tokens.sp.usd = sp_usd  >= 1_000_000 ? (sp_usd/1_000_000).toFixed(2) + 'M' : sp_usd.toFixed(2)
+
 
     const temp = CoNET_Data;
 
@@ -953,7 +990,7 @@ const getSpClubMemberId = async (profile: profile) => {
   return profile.spClub.memberId;
 };
 
-async function getReceivedAmounts(
+async function getReceivedAmounts (
   walletAddress: string,
   allNodes: nodes_info[]
 ) {
@@ -977,7 +1014,7 @@ async function getReceivedAmounts(
     // For multiple transactions it fails because the server doesn't support it.
     const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
     const _connection1 = new Connection(
-      `https://${_node1.domain}`,
+      `https://${_node1.domain}/solana-rpc`,
       "confirmed"
     );
     const transaction = await _connection1.getTransaction(
@@ -1073,6 +1110,65 @@ const getSPOracle = async () => {
 	} catch (ex) {
 		return null
 	}
+}
+
+const getRewordStaus = async(): Promise<boolean> => {
+	if (!CoNET_Data) {
+		return false
+	}
+	const quote = await getSPOracle()
+	const price = formatEther(quote[3].toString())
+	const spReworkBalance = parseInt(price.toString())
+	const profiles = CoNET_Data.profiles
+	const SPBalance = parseInt(profiles[1].tokens?.sp?.balance)
+	if (SPBalance < spReworkBalance) {
+		return false
+	}
+	const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)
+	try {
+		const status = await contract_SpReward.isReadyReword(profiles[0].keyID, profiles[1].keyID)
+		return status
+	} catch (ex) {
+		return false
+	}
+	
+}
+
+
+const spRewardRequest = async (): Promise<number> => {
+	if (!CoNET_Data) {
+		return 0
+	}
+	let ret = 0
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	if (!solanaWallet||!profile) {
+		return 0
+	}
+	const quote = await getSPOracle()
+	const price = formatEther(quote[3].toString())
+	const spReworkBalance = parseInt(price.toString())
+	const profiles = CoNET_Data.profiles
+	const SPBalance = parseInt(profiles[1].tokens?.sp?.balance)
+	if (SPBalance < spReworkBalance) {
+		return -1
+	}
+	
+	const url = `${payment_endpoint}spReward`
+	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet})
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+    }
+
+	const result = await postToEndpoint(url, true, sendData)
+	if (result === false) {
+		return -1
+	}
+
+	return ret
+
 }
 
 /* const checkApprovedForAll = async (wallet: ethers.Wallet) => {
@@ -1385,6 +1481,24 @@ const waitingPaymentStatus = async (): Promise<false|number> => {
 	return result
 }
 
+const getPaypalUrl = async (price: number) => {
+	if (!CoNET_Data?.profiles?.length) {
+	  return null;
+	}
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	if (!solanaWallet||!profile) {
+	  return null;
+	}
+  
+	const url = `${paypal_endpoint}app/api/Order/createOrderNftStr?`;
+	const message = JSON.stringify({ walletAddress: profile.keyID, solana: solanaWallet, price})
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const res = await axios.post(url, {message, signMessage})
+	return res.data;
+}
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -1408,5 +1522,10 @@ export {
   checkFreePassportProcess,
   getPaymentUrl,
   waitingPaymentStatus,
-  getSPOracle
+  getSPOracle,
+  getPaypalUrl,
+  getRewordStaus,
+  spRewardRequest,
+  checkLocalStorageNodes,
+  storageAllNodes
 };

@@ -202,7 +202,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
         </div>
       }
 
-      {
+      {/* {
         !simplifiedView && !isIOS && (
           <div className="cta-buttons" style={{ marginBottom: "0px" }}>
             <div className="highlight-1">
@@ -212,7 +212,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
             </div>
           </div>
         )
-      }
+      } */}
 
       <div className={`account-wrapper solana ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes("123") ? 'active' : ''}`}>
         <div className="account-main-card" onClick={() => toggleAccount("123")}>
@@ -257,7 +257,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                   simplifiedView ? (
                     <div>
                       <p>Silent Pass</p>
-                      <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6)}</p>
+                      <p>{profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</p>
                     </div>
                   ) : (
                     <p>$SP</p>
@@ -266,12 +266,21 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
               </div>
               {
                 simplifiedView ? (
-                  <p>${(spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.balance || '0')).toFixed(2)}</p>
+                  <p>${(spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2)}</p>
                 ) : (
-                  <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6)}</p>
+					
+					<p>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</p>
+				
                 )
               }
             </div>
+			{
+				!simplifiedView && 
+				<div className='asset-second-line'>
+					<p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)}</p>
+				</div>
+			}
+			
 
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -291,10 +300,17 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                 simplifiedView ? (
                   <p>${(solInUsd * parseFloat(profiles?.[1]?.tokens?.sol?.balance || '0')).toFixed(2)}</p>
                 ) : (
-                  <p>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</p>
+                  <p>${profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)}</p>
                 )
               }
             </div>
+			{
+				!simplifiedView && 
+				<div className='asset-second-line'>
+					<p>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</p>
+				</div>
+			}
+			
           </div>
           {
             !simplifiedView && (
@@ -305,6 +321,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
             )
           }
         </div>
+		
       </div>
 
       {

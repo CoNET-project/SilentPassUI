@@ -32,6 +32,7 @@ interface Region {
 	contract: string;
 	name: string;
 	unlocked?: boolean;
+	usd?: string
   }
   
   interface conet_tokens {

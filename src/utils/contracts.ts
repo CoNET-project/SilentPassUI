@@ -11,6 +11,7 @@ import {
 	PurchasePassportAbi,
 	Distributor,
 	SpClubAbi,
+	SpReword
   } from "./abis";
   
   const contracts = {
@@ -77,6 +78,11 @@ import {
 	  abi: SpClubAbi,
 	  network: "CONET DePIN",
 	},
+	SpReword: {
+		address: '0xEDea8558BA486e21180d7b9656A973cdE46593db',
+		abi: SpReword,
+		network: 'CONET DePIN'
+	}
   };
   
   export default contracts;

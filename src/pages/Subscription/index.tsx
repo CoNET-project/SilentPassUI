@@ -10,7 +10,7 @@ import './index.css';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/global-steps/Loading';
 import Declined from '../../components/global-steps/Declined';
-import { getPaymentUrl, waitingPaymentStatus } from '../../services/wallets';
+import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest } from '../../services/wallets';
 import {getOracle, purchasePassport} from '../../services/passportPurchase'
 
 global.Buffer = require('buffer').Buffer;
@@ -75,6 +75,45 @@ export default function Subscription() {
 	ffcus = true
 	const processVisa = async () => {
 		switch(paymentKind) {
+			//		get SP Reword
+			case 5: {
+				setStep(3)
+				const result = await spRewardRequest ()
+				if (result <0) {
+					return setStep(5)
+				}
+				// setTimeout(() => {
+				// 	setSuccessNFTID(3000)
+				// 	setPaymentKind(0)
+				// 	return navigate('/wallet')
+				// }, 5000)
+				return
+			}
+
+			//		Pay with Paypal
+			case 4: {
+				
+				setStep(3)
+				const price = selectedPlan === '1' ? 1 : 2
+				const result = await getPaypalUrl(price)
+				if(result && result.code===0){
+					let codeUrl=(result.data && result.data.ordersPayVo && result.data.ordersPayVo.payUrl && JSON.parse(result.data.ordersPayVo.payUrl).code_url?result.data && result.data.ordersPayVo && result.data.ordersPayVo.payUrl && JSON.parse(result.data.ordersPayVo.payUrl).code_url || '' :'');
+					if (!codeUrl) {
+						return setStep(5);
+					}
+					window.open(codeUrl, '_blank')
+					const re1 = await waitingPaymentStatus()
+					if (!re1) {
+						return setStep(5);
+					}
+					setSuccessNFTID(re1)
+					setPaymentKind(0)
+					return navigate('/wallet')
+				}
+				return setStep(5);
+				
+			}
+			//		pay with Stripe
 			case 2: {
 				setStep(3)
 				const price = selectedPlan === '1' ? 299 : 2499
@@ -91,6 +130,7 @@ export default function Subscription() {
 				setPaymentKind(0)
 				return navigate('/wallet')
 			}
+			//		Apple Pay
 			case 3: {
 				setStep(3)
 				const re1 = await waitingPaymentStatus()
@@ -101,6 +141,7 @@ export default function Subscription() {
 				setPaymentKind(0)
 				return navigate('/wallet')
 			}
+			//		Pay with SP
 			default:
 			case 1: {
 				setStep(2);

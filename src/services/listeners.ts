@@ -241,6 +241,7 @@ const scanSolanaSol = async (walletAddr: string, randomSolanaRPC: string) => {
 
     const response = await fetch(randomSolanaRPC, {
       method: "POST",
+	  credentials: 'omit',
       headers: {
         "Content-Type": "application/json",
       },
@@ -325,6 +326,7 @@ const scan_spl_balance = async (
 
     const response = await fetch(solanaRPC_url, {
       method: "POST",
+	  credentials: 'omit',
       headers: {
         "Content-Type": "application/json",
       },
@@ -353,3 +355,6 @@ const scan_spl_balance = async (
 };
 
 export { listenProfileVer, scanSolanaSol, scanSolanaSp };
+
+
+//		

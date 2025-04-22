@@ -742,7 +742,7 @@ const refreshSolanaBalances = async (
 			};
 		  }
 	}
-    if (solanaProfile.tokens.sol?.balance1 && solanaProfile.tokens.sol.balance1 > 0) {
+    if ( typeof solanaProfile.tokens.sol?.balance1 === 'number') {
 		const sol_usd = solanaProfile.tokens.sol.balance1 * solPrice
 		solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(2) + 'M' : sol_usd.toFixed(2)
 	}
@@ -766,7 +766,7 @@ const refreshSolanaBalances = async (
 			};
 		  }
 	}
-    if (solanaProfile.tokens.sp?.balance1 && solanaProfile.tokens.sp?.balance1 > 0) {
+    if ( typeof solanaProfile.tokens.sp?.balance1 === 'number') {
 		const sp_usd = solanaProfile.tokens.sp.balance1 / spPrice
 		solanaProfile.tokens.sp.usd = sp_usd  >= 1_000_000 ? (sp_usd/1_000_000).toFixed(2) + 'M' : sp_usd.toFixed(2)
 	}
@@ -1122,7 +1122,7 @@ const getRewordStaus = async(): Promise<boolean> => {
 		return false
 	}
 	const quote = await getSPOracle()
-	const price = formatEther(quote[3].toString())
+	const price = formatEther(quote[2].toString())
 	const spReworkBalance = parseInt(price.toString())
 	const profiles = CoNET_Data.profiles
 	const SPBalance = profiles[1].tokens?.sp?.balance1
@@ -1151,7 +1151,7 @@ const spRewardRequest = async (): Promise<number> => {
 		return 0
 	}
 	const quote = await getSPOracle()
-	const price = formatEther(quote[3].toString())
+	const price = formatEther(quote[2].toString())
 	const spReworkBalance = parseInt(price.toString())
 	const profiles = CoNET_Data.profiles
 	const SPBalance = parseInt(profiles[1].tokens?.sp?.balance)
@@ -1213,7 +1213,7 @@ const redeemProcess = async(id: number, monthly: boolean) => {
 } */
 
 
-const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string) => new Promise(async resolve => {
+const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string): Promise<number> => new Promise(async resolve => {
 	const distributor_addr = contracts.distributor.address.toLowerCase()
 	let currentBlock = await conetDepinProvider.getBlockNumber()
 	const checkCNTPTransfer = (tR: ethers.TransactionReceipt) => {
@@ -1259,7 +1259,7 @@ const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string) => 
 	}, 1000 * 180)
 })
 
-const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string) => {
+const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string): Promise<null|number> => {
 	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider)
 	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
 	try {
@@ -1273,7 +1273,7 @@ const RealizationRedeem_withSmartContract = async (profile: profile, solana: str
 
 }
 
-const RealizationRedeem = async (code: string) => {
+const RealizationRedeem = async (code: string): Promise<null|number> => {
 	if (!CoNET_Data?.profiles?.length) {
 		return null;
 	}

@@ -10,14 +10,14 @@ import './index.css';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/global-steps/Loading';
 import Declined from '../../components/global-steps/Declined';
-import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest } from '../../services/wallets';
+import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest, RealizationRedeem } from '../../services/wallets';
 import {getOracle, purchasePassport} from '../../services/passportPurchase'
 
 global.Buffer = require('buffer').Buffer;
 export type Step = 2 | 3 | 4 | 5;
 
 export default function Subscription() {
-  const { paymentKind, selectedPlan, profiles, setSuccessNFTID, setPaymentKind, getAllNodes } = useDaemonContext();
+  const { paymentKind, selectedPlan, setSelectedPlan,  profiles, setSuccessNFTID, setPaymentKind, getAllNodes } = useDaemonContext();
   const [step, setStep] = useState<Step>(2);
   const [price, setPriceInSp] = useState('0');
   const [gasfee, setGasfee] = useState('0');
@@ -75,19 +75,35 @@ export default function Subscription() {
 	ffcus = true
 	const processVisa = async () => {
 		switch(paymentKind) {
+			//		
+			case 6: {
+				setStep(3)
+				const redeemCode = selectedPlan
+				const redeem = await RealizationRedeem(redeemCode)
+				setSelectedPlan('12')
+				if (redeem === null ) {
+					return setStep(5)
+				}
+				
+				setSuccessNFTID(redeem)
+				setPaymentKind(0)
+				return navigate('/wallet')
+			}
 			//		get SP Reword
 			case 5: {
 				setStep(3)
 				const result = await spRewardRequest ()
-				if (result <0) {
+				if (result < 0) {
 					return setStep(5)
 				}
-				// setTimeout(() => {
-				// 	setSuccessNFTID(3000)
-				// 	setPaymentKind(0)
-				// 	return navigate('/wallet')
-				// }, 5000)
-				return
+				const re1 = await waitingPaymentStatus()
+				if (re1 === false) {
+					return setStep(5)
+				}
+				setSuccessNFTID(re1)
+				setPaymentKind(0)
+				return navigate('/wallet')
+				
 			}
 
 			//		Pay with Paypal
@@ -176,7 +192,7 @@ export default function Subscription() {
     }
 
     if (step === 4 || step === 5) {
-      navigate("/")
+      navigate("/wallet")
       return;
     }
   }

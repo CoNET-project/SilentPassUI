@@ -58,7 +58,6 @@ export default function RedeemPassport() {
 
 	useEffect(() => {
 		if (successNFTID > 100) {
-			setAnErrorOccurred(true);
 			setIsSuccessModalOpen(true);
       		setRedeemCode('')
 		}
@@ -67,26 +66,29 @@ export default function RedeemPassport() {
 
 
   async function handlePassportRedeem() {
+	setPaymentKind(6)
+	setSelectedPlan(redeemCode)
+	navigate("/subscription")
 
-      setIsRedeemProcessLoading(true);
-      const redeem = await RealizationRedeem(redeemCode);
-	  setIsRedeemProcessLoading(false);
-	  if (!redeem) {
-		return setAnErrorOccurred(true);
-	  }
-	  if (typeof redeem === 'number') {
-		setSuccessNFTID(redeem)
-	  }
+    setIsRedeemProcessLoading(true);
+    //   const redeem = await RealizationRedeem(redeemCode);
+	//   setIsRedeemProcessLoading(false);
+	//   if (!redeem) {
+	// 	return setAnErrorOccurred(true);
+	//   }
+	//   if (typeof redeem === 'number') {
+	// 	setSuccessNFTID(redeem)
+	//   }
 
-      setIsSuccessModalOpen(true);
-      setRedeemCode('')
+    //   setIsSuccessModalOpen(true);
+    //   setRedeemCode('')
   }
 
 
   const spRewordProcess = () => {
-	if (!spRewordEnable) {
-		return
-	}
+	// if (!spRewordEnable) {
+	// 	return
+	// }
 	setSpRewordloading(true)
 	setPaymentKind(5)
 	navigate("/subscription")
@@ -147,7 +149,6 @@ export default function RedeemPassport() {
 					}
 
 					<input
-
 						type="text"
 						placeholder="#1234"
 						className="redeem-input"

@@ -14,7 +14,7 @@ export default function CopyAccountInfo({ wallet }: any) {
     info: "",
   });
 
-  const [isAddressHidden, setIsAddressHidden] = useState(true);
+  const [isAddressHidden, setIsAddressHidden] = useState(false);
   const [isKeyHidden, setIsKeyHidden] = useState(true);
   const [isWordsHidden, setIsWordsHidden] = useState(true);
 

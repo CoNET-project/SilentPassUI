@@ -15,7 +15,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
     info: "",
   });
 
-  const [isAddressHidden, setIsAddressHidden] = useState(true);
+  const [isAddressHidden, setIsAddressHidden] = useState(false);
   const [isKeyHidden, setIsKeyHidden] = useState(true);
   const [isWordsHidden, setIsWordsHidden] = useState(true);
 

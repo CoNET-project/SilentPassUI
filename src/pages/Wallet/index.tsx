@@ -3,7 +3,7 @@ import Footer from '../../components/Footer';
 import './index.css';
 import AccountList from '../../components/AccountList';
 import SpClub from '../../components/AccountList/SpClub';
-// import ReferralProgram from '../../components/AccountList/ReferralProgram';
+import ReferralProgram from '../../components/AccountList/ReferralProgram';
 import RedeemPassport from '../../components/RedeemPassport';
 
 import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';

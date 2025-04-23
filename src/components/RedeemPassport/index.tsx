@@ -131,7 +131,7 @@ export default function RedeemPassport() {
         </button>
 
         <div className="redeem-content">
-			<label className="redeem-label">$SP Holder Reword</label>
+			<label className="redeem-label">$SP Holder Reward</label>
 			<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
 				{spRewordloading ? <SimpleLoadingRing /> : "Claim"}
 			</button>

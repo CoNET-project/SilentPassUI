@@ -18,9 +18,9 @@ export default function ReferralProgram() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const { profiles } = useDaemonContext();
 
-  const [isAddressHidden, setIsAddressHidden] = useState(true);
+  const [isAddressHidden, setIsAddressHidden] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [shouldRerender, setShouldRerender] = useState(false);
+  const [shouldRerender, setShouldRerender] = useState(true);
 
 
   const handlePreviousPage = async () => {

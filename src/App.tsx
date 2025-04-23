@@ -41,9 +41,9 @@ function App() {
 	  setServerPort('3002');
 	  setIsLocalProxy(true)
 	} catch (ex) {
-	  // if (window?.webkit) {
+	  if (window?.webkit) {
 		  setIsIOS(true)
-	  // }
+	  }
 	  
 	  setIsLocalProxy(false)
 	}
@@ -52,7 +52,7 @@ function App() {
   const handlePassport = async () => {
 	if (!CoNET_Data?.profiles[0]?.keyID) return
 
-	await tryToRequireFreePassport();
+	//await tryToRequireFreePassport();
 
 	const info = await getCurrentPassportInfo(CoNET_Data?.profiles[0]?.keyID);
 
@@ -72,8 +72,9 @@ function App() {
 	  },
 	};
 
+	const activeNFTNumber = tmpData.profiles[0].activePassport||0
 	if (tmpData.profiles[0].activePassport?.expiresDays !== '7')
-	  tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7)
+	  tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
 
 	setActivePassport(tmpData.profiles[0].activePassport);
 

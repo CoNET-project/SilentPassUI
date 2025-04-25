@@ -90,45 +90,45 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
       profile.tokens = initProfileTokens();
     }
 
-    const [cCNTP, conet, conetDepin, conet_eth, eth] = await Promise.all([
-      scanCCNTP(key),
-      scanCONETHolesky(key),
+    const [conetDepin, conet_eth, eth] = await Promise.all([
+    //   scanCCNTP(key),
+    //   scanCONETHolesky(key),
       scanCONETDepin(key),
       scanConetETH(key),
       scanETH(key),
     ]);
 
-    if (profile.tokens?.cCNTP) {
-      profile.tokens.cCNTP.balance =
-        cCNTP === false ? "" : parseFloat(ethers.formatEther(cCNTP)).toFixed(6);
-    } else {
-      profile.tokens.cCNTP = {
-        balance:
-          cCNTP === false
-            ? ""
-            : parseFloat(ethers.formatEther(cCNTP)).toFixed(6),
-        network: "CONET Holesky",
-        decimal: 18,
-        contract: contracts.ClaimableConetPoint.address,
-        name: "cCNTP",
-      };
-    }
+    // if (profile.tokens?.cCNTP) {
+    //   profile.tokens.cCNTP.balance =
+    //     cCNTP === false ? "" : parseFloat(ethers.formatEther(cCNTP)).toFixed(6);
+    // } else {
+    //   profile.tokens.cCNTP = {
+    //     balance:
+    //       cCNTP === false
+    //         ? ""
+    //         : parseFloat(ethers.formatEther(cCNTP)).toFixed(6),
+    //     network: "CONET Holesky",
+    //     decimal: 18,
+    //     contract: contracts.ClaimableConetPoint.address,
+    //     name: "cCNTP",
+    //   };
+    // }
 
-    if (profile.tokens?.conet) {
-      profile.tokens.conet.balance =
-        conet === false ? "" : parseFloat(ethers.formatEther(conet)).toFixed(6);
-    } else {
-      profile.tokens.conet = {
-        balance:
-          conet === false
-            ? ""
-            : parseFloat(ethers.formatEther(conet)).toFixed(6),
-        network: "CONET Holesky",
-        decimal: 18,
-        contract: "",
-        name: "conet",
-      };
-    }
+    // if (profile.tokens?.conet) {
+    //   profile.tokens.conet.balance =
+    //     conet === false ? "" : parseFloat(ethers.formatEther(conet)).toFixed(6);
+    // } else {
+    //   profile.tokens.conet = {
+    //     balance:
+    //       conet === false
+    //         ? ""
+    //         : parseFloat(ethers.formatEther(conet)).toFixed(6),
+    //     network: "CONET Holesky",
+    //     decimal: 18,
+    //     contract: "",
+    //     name: "conet",
+    //   };
+    // }
 
     if (profile.tokens?.conetDepin) {
       profile.tokens.conetDepin.balance =

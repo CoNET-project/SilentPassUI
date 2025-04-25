@@ -451,17 +451,17 @@ const getCurrentPassportInfo = async (walletAddress: string) => {
     walletAddress,
     "mainnet"
   );
+  return resultMainnet
+//   if (resultMainnet[0]?.toString() !== "0") {
+//     return resultMainnet;
+//   }
 
-  if (resultMainnet[0]?.toString() !== "0") {
-    return resultMainnet;
-  }
+//   const resultCancun = await getCurrentPassportInfoInChain(
+//     walletAddress,
+//     "cancun"
+//   );
 
-  const resultCancun = await getCurrentPassportInfoInChain(
-    walletAddress,
-    "cancun"
-  );
-
-  return resultCancun;
+//   return resultCancun;
 };
 
 const tryToRequireFreePassport = async () => {
@@ -630,8 +630,13 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
 //       network: "Conet Holesky",
 //     });
 //   }
-
+   const nowTime = new Date().getTime()
   for (let i = 0; i < tmpMainnetPassports?.nftIDs?.length; i++) {
+    const expires = new Date (parseInt(tmpMainnetPassports.expires[i].toString()+'000')).getTime()
+	if (expires > 0 && expires <= nowTime) {
+		continue
+	}
+
     mainnetPassports.push({
       walletAddress: profile.keyID,
       nftID: parseInt(tmpMainnetPassports.nftIDs[i].toString()),

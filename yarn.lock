@@ -1698,6 +1698,11 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
+"@jup-ag/api@^6.0.41":
+  version "6.0.41"
+  resolved "https://registry.yarnpkg.com/@jup-ag/api/-/api-6.0.41.tgz#2ec279663144cc5123d21c5bc1081ff2ab595c2d"
+  integrity sha512-u+eFVzw/dqlP1MBYYa9Ak39PTPMJjV8mHh2cZ3GkWQLBhoXFE8FkNMsKUJcYwLUkFHSz1kIOCNhDfxAjvwGuwg==
+
 "@leichtgewicht/ip-codec@^2.0.1":
   version "2.0.5"
   resolved "https://registry.npmjs.org/@leichtgewicht/ip-codec/-/ip-codec-2.0.5.tgz"

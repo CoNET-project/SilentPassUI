@@ -252,7 +252,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <SpToken />
+                <SpToken width={20} height={20}/>
                 {
                   simplifiedView ? (
                     <div>

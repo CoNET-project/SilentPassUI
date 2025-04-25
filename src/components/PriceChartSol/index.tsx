@@ -1,20 +1,24 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import './index.css'
 
 const PRICE_CHART_ID = 'price-chart-widget-container';
+const PAIR_CHAIN_ID = 'solana';
+const PAIR_ADDRESS = '9AGSjaHxuTm4sLHAyRvn1eb4UT6rvuBwkb3Y6wP26BPu';
 
-export const PriceChartWidget = () => {
+export default function PriceChart() {
   const containerRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const loadWidget = () => {
-      if (typeof window.createMyWidget === 'function') {
-        window.createMyWidget(PRICE_CHART_ID, {
-          autoSize: true,
-          chainId: 'solana',
-          pairAddress: '9AGSjaHxuTm4sLHAyRvn1eb4UT6rvuBwkb3Y6wP26BPu',
-          showHoldersChart: false,
+      if (typeof (window as any).createMyWidget === 'function') {
+        (window as any).createMyWidget(PRICE_CHART_ID, {
+          width: '348px',
+          height: '300px',
+		  autoSize: false,
+          chainId: PAIR_CHAIN_ID,
+          pairAddress: PAIR_ADDRESS,
           defaultInterval: '1D',
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'Etc/UTC',
           theme: 'moralis',
@@ -26,7 +30,9 @@ export const PriceChartWidget = () => {
           candleDownColor: '#E64C4C',
           hideLeftToolbar: true,
           hideTopToolbar: true,
-          hideBottomToolbar: true
+          hideBottomToolbar: true,
+		  visible: false,
+		  showHoldersChart: false,
         });
       } else {
         console.error('createMyWidget function is not defined.');
@@ -58,4 +64,4 @@ export const PriceChartWidget = () => {
       />
     </div>
   );
-};
+}

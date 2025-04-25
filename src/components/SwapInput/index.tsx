@@ -12,6 +12,9 @@ import { ReactComponent as SolanaToken } from "./assets/solana-token.svg";
 import { getOracle } from '../../services/passportPurchase';
 import { calcSpInUsd } from '../../utils/utils';
 import Skeleton from '../Skeleton';
+import {Sp2SolQuote, Sol2SpQuote, swapTokens, solanaAddr, spAddr } from '../../services/swap'
+import SimpleLoadingRing from '../SimpleLoadingRing'
+
 
 interface SwapInputProps {
   setTokenGraph: (tokenGraph: string) => void;
@@ -42,7 +45,6 @@ function SPSelector({ option, onChange }: SPSelectorProps) {
           transition={{ duration: 0.3 }}
           className="sp-chevron"
         >
-          ▼
         </motion.span>
       </button>
     </motion.div>
@@ -50,16 +52,19 @@ function SPSelector({ option, onChange }: SPSelectorProps) {
 }
 
 export default function SwapInput({ setTokenGraph }: SwapInputProps) {
-  const { profiles } = useDaemonContext();
-  const [rotation, setRotation] = useState(0);
-  const [tabSelector, setTabSelector] = useState<string>("tokens")
+  const { profiles } = useDaemonContext()
+  const [rotation, setRotation] = useState(0)
+  const [tabSelector, setTabSelector] = useState("tokens")
 
-  const [fromToken, setFromToken] = useState("SP");
-  const [toToken, setToToken] = useState("SOL");
-  const [fromAmount, setFromAmount] = useState<any>(0);
-  const [toAmount, setToAmount] = useState<any>(0);
-
-  const [isQuotationLoading, setIsQuotation] = useState<boolean>(true);
+  const [fromToken, setFromToken] = useState<'SP'|'SOL'>("SP")
+  const [toToken, setToToken] = useState<'SP'|'SOL'>("SOL");
+  const [fromAmount, setFromAmount] = useState('0')
+  const [toAmount, setToAmount] = useState<string>('0.00000000')
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState(false)
+  const [isQuotationLoading, setIsQuotation] = useState(true)
+  const [swapError, setSwapError] = useState("")
+  const [swapSuccess, setSwapSuccess] = useState("")
 
   const [quotation, setQuotation] = useState({
     "SP": "",
@@ -75,12 +80,41 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
     "impact": 1.41
   }), [fromToken, quotation, toToken])
 
+  const inputOver = () => {
+	const ba = fromToken == 'SP' ? profiles?.[1]?.tokens?.sp?.balance1 : profiles?.[1]?.tokens?.sol.balance1
+	if (fromAmount < ba) {
+		return ''
+	}
+	return 'darkred'
+  }
+
+  const tokenClick = () => {
+
+  }
+
+  const confirmClick = async () => {
+	if (swapError||swapSuccess) {
+		setSwapSuccess('')
+		return setSwapError('')
+	}
+
+	setIsRedeemProcessLoading(true)
+	const from = (fromToken === 'SOL') ? solanaAddr : spAddr
+	const to = (fromToken === 'SOL') ? spAddr : solanaAddr
+	const tx = await swapTokens(from, to,profiles?.[1]?.privateKeyArmor, fromAmount)
+	setIsRedeemProcessLoading(false)
+	if (tx) {
+		return setSwapSuccess(tx)
+	}
+	setSwapError('Error!')
+  }
+  
   function toggleTokens() {
     setFromToken((prev) => prev === "SP" ? "SOL" : "SP")
     setToToken((prev) => prev === "SP" ? "SOL" : "SP")
 
-    setFromAmount(0)
-    setToAmount(0)
+    setFromAmount('0')
+    setToAmount('0.000000')
   }
 
   /* function toggleAccount(accountAddress: string) {
@@ -108,10 +142,33 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         setIsQuotation(false);
       }
     })()
+
   }, [])
 
-  useEffect(() => {
+  const getQuote = async () => {
+	const quote = await (fromToken === 'SOL' ?  Sol2SpQuote(fromAmount.toString()) : Sp2SolQuote(fromAmount.toString()))
+	const total = parseFloat(parseFloat(quote).toFixed(6))
+	if (total > 0) {
+		setToAmount(total.toFixed(6))
+		const ba = fromToken == 'SP' ? profiles?.[1]?.tokens?.sp?.balance1 : profiles?.[1]?.tokens?.sol.balance1
+		if (fromAmount < ba) {
+			setShowConfirm(true)
+		} else {
+			setShowConfirm(false)
+		}
+	}
+  }
 
+  useEffect(() => {
+	if (parseFloat(fromAmount) > 0) {
+		getQuote()
+	}
+
+  }, [fromAmount])
+  
+
+  useEffect(() => {
+	
   }, [fromToken])
 
   return (
@@ -126,32 +183,46 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
               <Skeleton width="180px" height="100px" />
             ) : (
               <>
-                <input
-                  type="number"
+                <input type="number"
+				  step='0.01'
                   className='box-text'
-                  style={{fontSize: '28px', lineHeight: '36px'}}
+                  style={{fontSize: '28px', lineHeight: '36px', color: inputOver() }}
                   value={fromAmount}
+				  onKeyDown={(evt) => ["e", "E", "+", "-"].includes(evt.key) && evt.preventDefault()}
                   onChange={(e) => {
-                    if (Number(e.target.value) < 0) return;
-                    setFromAmount(Number(e.target.value))
-                    setToAmount(((Number(e.target.value) * Number((quotation as any)[fromToken])) / (quotation as any)[toToken]).toFixed(5))
+					const v = Number(e.target.value)
+					const kk = fromAmount
+					if (!/^\d*(\.\d{0,6})?$/i.test(e.target.value)) {
+
+						return setFromAmount(fromAmount)
+					}
+
+					// if (/e/i.test(e.target.value)) {
+					// 	const replace = e.target.value.replace(/e/i, '')
+					// 	return setFromAmount(replace)
+					// }
+					if (v <=0 ) {
+						return setFromAmount(e.target.value)
+					}
+                    setFromAmount(v.toString())
+                    setToAmount(((v * Number((quotation as any)[fromToken])) / (quotation as any)[toToken]).toFixed(5))
                   }}
                   placeholder="0"
                 />
-                <p className='box-text' style={{fontSize: '14px'}}>$ {(fromAmount * Number((quotation as any)[fromToken])).toFixed(2)}</p>
+                <p className='box-text' style={{fontSize: '14px'}}>$ {(Number(fromAmount) * Number((quotation as any)[fromToken])).toFixed(2)}</p>
               </>
             )
           }
         </div>
 
 
-        <div style={{justifyContent:'flex-end', textAlign: 'left', display: 'flex', flexDirection: 'column', maxWidth:"146px", gap: '8px'}}>
-          <SPSelector option={fromToken} onChange={toggleTokens}/>
-          <div style={{display:"flex", gap:"4px"}}>
+        <div style={{justifyContent:'center', textAlign: 'left', display: 'flex', flexDirection: 'column', maxWidth:"146px", gap: '8px'}}>
+          <SPSelector option={fromToken} onChange={tokenClick}/>
+          {/* <div style={{display:"flex", gap:"4px"}}>
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>0%</p>
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>50%</p>
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>Max</p>
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -165,7 +236,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         }}
         style={{cursor:"pointer"}}
       >
-        <div className='swap-button'>
+        <div className='swap-button' onClick={toggleTokens}>
           <SwapIconBlack/>
         </div>
       </motion.button>
@@ -174,27 +245,44 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         <div style={{justifyContent:'space-between', textAlign: 'left', display: 'flex', flexDirection: 'column'}}>
           <p className='box-text' style={{fontSize: '14px'}}>You Receive</p>
           <p className='box-text' style={{fontSize: '28px', lineHeight: '36px'}}>{toAmount}</p>
-          <p className='box-text' style={{fontSize: '14px'}}>$ {(toAmount * Number((quotation as any)[toToken])).toFixed(2)}</p>
+          <p className='box-text' style={{fontSize: '14px'}}>$ {( Number(toAmount) * Number((quotation as any)[toToken])).toFixed(2)}</p>
         </div>
 
         <div style={{justifyContent:'flex-end', textAlign: 'left', display: 'flex', flexDirection: 'column', maxWidth:"146px", gap: '8px'}}>
-        <SPSelector option={toToken} onChange={toggleTokens}/>
-          <div style={{display:"flex", gap:"4px"}}>
+        <SPSelector option={toToken} onChange={tokenClick}/>
+          {/* <div style={{display:"flex", gap:"4px"}}>
             <p style={{color:"#676768", textAlign:"right", fontSize:"12px"}}>0</p>
-          </div>
+          </div> */}
         </div>
 
       </div>
-
+	  {
+			swapError && 
+				<div className="declined-description">
+					<p>{swapError}</p>
+				</div>
+	  }
+	  {
+		swapSuccess && 
+			<div className="success-description">
+				<a target='_blank' href={'https://solscan.io/tx/'+swapSuccess} >Success! Click to See The Detail</a>
+			</div>
+	  }
+	  {
+		showConfirm &&
+			<button className="redeem-button confirm" onClick={confirmClick} style={{color : swapError ? 'darkred': swapSuccess ? '#249517': ''}}>
+				{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
+			</button>
+	  }
       <div style={{background:"#191919", borderRadius:"8px", padding:"4px", marginTop: "48px", marginBottom:"24px"}}>
         <div style={{display:"flex"}}>
           <p className="tab-selector" style={{background: tabSelector === "tokens" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('tokens')}>Tokens</p>
-          <p className="tab-selector" style={{background: tabSelector === "activity" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('activity')}>Activity</p>
+          {/* <p className="tab-selector" style={{background: tabSelector === "activity" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('activity')}>Activity</p> */}
         </div>
       </div>
 
       {tabSelector === "tokens" ? <TokenTab quotation={quotation} setTokenGraph={setTokenGraph} tokenData={tokenData} /> : <ActivityTab />}
-
+	
     </div>
 
 

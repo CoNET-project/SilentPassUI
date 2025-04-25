@@ -16,6 +16,7 @@ export default function PriceChart() {
         (window as any).createMyWidget(PRICE_CHART_ID, {
           width: '348px',
           height: '300px',
+		  autoSize: false,
           chainId: PAIR_CHAIN_ID,
           pairAddress: PAIR_ADDRESS,
           defaultInterval: '1D',

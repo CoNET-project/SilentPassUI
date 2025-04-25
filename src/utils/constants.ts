@@ -19,6 +19,7 @@ const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
 const rewardWalletAddress = "GUq7PhyAUZko2mPhv3CupmdJKQ61LH8VyrdsRL25q7zg";
 const stripe_pay_monthly = 'https://buy.stripe.com/test_9AQ16b6Du82p0Ja9AG?client_reference_id='
 const stripe_pay_Annual ='https://buy.stripe.com/test_eVa2af5zqdmJ2Ri14b?client_reference_id='
+const SilentPassOfficial = 'A8Vk2LsNqKktabs4xPY4YUmYxBoDqcTdxY5em4EQm8v1'
 
 const conetProvider = new ethers.JsonRpcProvider(conetRpc);
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());
@@ -36,6 +37,7 @@ export {
   rewardWalletAddress,
   conetProvider,
   ethProvider,
+  SilentPassOfficial,
   conetDepinProvider,
   changeRPC,
   stripe_pay_monthly,

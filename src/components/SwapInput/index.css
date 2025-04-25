@@ -12,7 +12,13 @@
 
   transition: height 0.2s ease;
 }
-
+input[type='number'] {
+    -moz-appearance:textfield;
+}
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+}
 .account-wrapper.active {
   /* should create the animation */
   
@@ -304,3 +310,40 @@
   background-color: #262626;
   cursor: pointer;
 }
+
+.redeem-button {
+	width: 6.1rem;
+	padding: 16px 8px;
+	border-radius: 8px;
+	border: none;
+	cursor: pointer;
+	display:inline-block;
+	height: 3.26rem;
+	margin-top: 2rem;
+}
+
+.declined-description {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 2rem;
+  }
+  
+  .declined-description p:first-child {
+	font-size: 20px;
+	font-weight: 700;
+	color: #ffb4ab;
+  }
+
+  .success-description {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 2rem;
+  }
+  
+  .success-description a:first-child {
+	font-size: 20px;
+	font-weight: 700;
+	color: #9fbfe5fe;
+  }

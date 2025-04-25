@@ -126,6 +126,29 @@ const Home = () => {
 
 
   const navigate = useNavigate();
+  const _getAllRegions = async () => {
+	const [tmpRegions] = await
+	Promise.all([
+		getAllRegions()
+	])
+
+  const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
+	const separatedRegion = region.split(".");
+	const code = separatedRegion[1];
+	const country = mappedCountryCodes[code];
+
+	return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
+  }))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
+
+  const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
+
+  if (sRegion < 0) {
+	setSRegion(unitedStatesIndex)
+	setIsRandom(false);
+  }
+
+  setAllRegions(treatedRegions);
+  };
 
 
   useEffect(() => {
@@ -149,60 +172,38 @@ const Home = () => {
   useEffect(() => {
 	let first = 0
     const listenGetAllNodes = () => {
-      const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0
-      const _status = Math.round(_initpercentage)
-	  const status = _status <= first ? first + 2 : _status
-	  first = status
-	if (status > 100) {
-		setInitPercentage(98)
-	} else {
-		setInitPercentage(status)
-	}
-
-	  if (status < 99 ) {
-        return setTimeout(() => {
-          listenGetAllNodes()
-        }, 1000)
-      }
-    }
+		const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0
+		const _status = Math.round(_initpercentage)
+		const status = _status <= first ? first + 2 : _status
+		first = status
+	  if (status > 100) {
+		  setInitPercentage(98)
+	  } else {
+		  setInitPercentage(status)
+	  }
+  
+		if (status < 99 ) {
+		  return setTimeout(() => {
+			listenGetAllNodes()
+		  }, 1000)
+		}
+	  }
 
     listenGetAllNodes()
   }, [])
 
   useEffect(() => {
-    const _getAllRegions = async () => {
-		const [tmpRegions] = await
-		Promise.all([
-			getAllRegions()
-		])
 
-      const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
-        const separatedRegion = region.split(".");
-        const code = separatedRegion[1];
-        const country = mappedCountryCodes[code];
-
-        return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
-      }))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
-
-      const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
-
-      if (sRegion < 0) {
-        setSRegion(unitedStatesIndex)
-        setIsRandom(false);
-      }
-
-      setAllRegions(treatedRegions);
-    };
 
     _getAllRegions()
   }, []);
 
   useEffect(() => {
-	if (!getAllNodes.length) {
+	if (!closestRegion?.length) {
 		return
 	}
 	setIsInitialLoading(false);
-  }, [getAllNodes])
+  }, [closestRegion])
 
   const handleTogglePower = async () => {
     setIsConnectionLoading(true)

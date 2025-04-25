@@ -11,7 +11,7 @@
   }
 
   .redeem-dropdown.is-open {
-		height: 750px;
+		height:850px;
   }
 
   .redeem-dropdown.is-ios.is-open {
@@ -111,7 +111,7 @@
   .cta-buttons button.redeem-button.purchase {
 	background-color: #4E72B6;
 	color: white;
-
+	margin: 0px;
 	display: flex;
 	justify-content: center;
 	font-weight: 700;

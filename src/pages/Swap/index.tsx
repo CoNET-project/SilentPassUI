@@ -17,7 +17,7 @@ export default function Swap() {
           ? (
             <>
               <h1>Swap</h1>
-
+				<p>Beta</p>
               <SwapInput setTokenGraph={setTokenGraph} />
             </>
           ) : (

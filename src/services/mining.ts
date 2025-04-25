@@ -202,11 +202,12 @@ const getAllRegions = (nodes: nodes_info[]) => {
 
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
-	callback: (allnodes: nodes_info[]) => void) => {
+	callback: (_allnodes: nodes_info[]) => void) => {
 	const allNodes = await checkLocalStorageNodes()
 	if (allNodes) {
 		getAllRegions(allNodes)
 		return testClosestRegion(() => {
+			setClosestRegion(closestNodes)
 			callback(allNodes)
 			getAllNodes(setClosestRegion, () => {})
 		})

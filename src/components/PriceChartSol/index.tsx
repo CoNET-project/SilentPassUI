@@ -3,7 +3,7 @@ import './index.css'
 
 const PRICE_CHART_ID = 'price-chart-widget-container';
 const PAIR_CHAIN_ID = 'solana';
-const PAIR_ADDRESS = '9AGSjaHxuTm4sLHAyRvn1eb4UT6rvuBwkb3Y6wP26BPu';
+const PAIR_ADDRESS = 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE';
 
 export default function PriceChart() {
   const containerRef = useRef(null);

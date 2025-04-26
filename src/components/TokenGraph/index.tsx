@@ -4,7 +4,7 @@ import { ReactComponent as SpToken } from './assets/sp-token.svg'
 
 import './index.css'
 import PriceChart from '../PriceChart';
-
+import PriceChartSol from '../PriceChartSol';
 interface TokenGraphProps {
   token: string;
 }
@@ -13,10 +13,15 @@ export default function TokenGraph({ token }: TokenGraphProps) {
   return (
     <div className="token-graph">
       <div className="graph">
-        <PriceChart />
+		{
+			token === '$SP' 
+				? <PriceChart />
+				: <PriceChartSol />
+		}
+        
       </div>
 
-      <div className="balance">
+      {/* <div className="balance">
         <p>Your balance</p>
         <div className="token-card">
           <div className="token-info">
@@ -33,9 +38,9 @@ export default function TokenGraph({ token }: TokenGraphProps) {
             <p className="token-price">$0.00</p>
           </div>
         </div>
-      </div>
+      </div> */}
 
-      <div className="about">
+      {/* <div className="about">
         <p>About</p>
         <p className="about-text">Solana is a highly functional open source project that banks on blockchain technology's permissionless nature to provide decentralized finance (DeFi)
         solutions. It is a layer 1 network that offers fast speeds and affordable costs. While the idea and initial work on the project began in 2017, Solana was officially launched in March 2020 by the Solana Foundation with headquarters in Geneva, Switzerland.</p>
@@ -99,7 +104,7 @@ export default function TokenGraph({ token }: TokenGraphProps) {
             <p style={{color:"#989899"}}>1.37M <span style={{color:"red"}}>-8.92%</span></p>
           </div>
         </div>
-      </div>
+      </div> */}
 
     </div>
   )

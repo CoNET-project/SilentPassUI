@@ -73,7 +73,7 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
         ))}
       </div>
 
-      <p style={{margin:"24px 0", textAlign:"left", color:"#989899", fontSize:"11px"}}>Tokens lists are generated using market data provided by various third party providers including CoinGecko, Birdeye and Jupiter. Performance is based on the prior 24 hour period. Past performance is not indicative of future performance.</p>
+      {/* <p style={{margin:"24px 0", textAlign:"left", color:"#989899", fontSize:"11px"}}>Tokens lists are generated using market data provided by various third party providers including CoinGecko, Birdeye and Jupiter. Performance is based on the prior 24 hour period. Past performance is not indicative of future performance.</p>
 
       <div className='token-data'>
         <div className="detail-row">
@@ -115,7 +115,7 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
             <p style={{color:"#989899"}}>{tokenData?.impact}%</p>
           </div>
         </div>
-      </div>
+      </div> */}
     </div>
   )
 }

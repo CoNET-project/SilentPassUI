@@ -1,6 +1,6 @@
 import { ethers, formatUnits, parseUnits } from "ethers"
 import { createJupiterApiClient, QuoteGetRequest } from '@jup-ag/api'
-import { Connection, PublicKey, Keypair, VersionedTransaction } from "@solana/web3.js"
+import { Connection, PublicKey, Keypair, VersionedTransaction, } from "@solana/web3.js"
 import bs58 from "bs58"
 import {
 	globalAllNodes
@@ -55,23 +55,31 @@ const getTokenQuote = async (from: string, to: string, fromEthAmount: string) =>
 
 
 
-export const swapTokens = async (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<string> => new Promise(async resolve => {
+export const swapTokens = async (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<false|string> => new Promise(async resolve => {
 	const wallet = Keypair.fromSecretKey(bs58.decode(privateKey))
 	const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(from))
 	const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
 	const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed")
-	const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json()
+	const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&restrictIntermediateTokens=true`)).json()
 	const { swapTransaction } = await (
 		await fetch('https://quote-api.jup.ag/v6/swap', {
 			method: 'POST',
 			headers: {'Content-Type': 'application/json'},
 			body: JSON.stringify({
+                dynamicComputeUnitLimit: true,
+                dynamicSlippage: true,
+                prioritizationFeeLamports: {
+                    priorityLevelWithMaxLamports: {
+                        maxLamports: 1000000,
+                        priorityLevel: "veryHigh"
+                    }
+                },
 				// quoteResponse from /quote api
 				quoteResponse,
 				// user public key to be used for the swap
-				userPublicKey: wallet.publicKey.toString(),
+				userPublicKey: wallet.publicKey.toString()
 				// auto wrap and unwrap SOL. default is true
-				wrapAndUnwrapSol: true
+				// wrapAndUnwrapSol: true,
 				// Optional, use if you want to charge a fee.  feeBps must have been passed in /quote API.
 				// feeAccount: "fee_account_public_key"
 			})
@@ -88,18 +96,25 @@ export const swapTokens = async (from: string, to: string, privateKey: string, f
 		skipPreflight: true,
 		maxRetries: 2
 	})
-	resolve (txid)
-	try {
-		await SOLANA_CONNECTION.confirmTransaction({
-			blockhash: latestBlockHash.blockhash,
-			lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-			signature: txid
-		})
-	} catch (ex) {
+	const result = await getTransaction (txid, SOLANA_CONNECTION)
+	resolve (result)
+})
 
-	}
-	
-
+const getTransaction = (tx: string, SOLANA_CONNECTION: Connection, count = 0): Promise<false|string> => new Promise( async resolve => {
+    count ++
+    const thash = await SOLANA_CONNECTION.getTransaction(tx,{ maxSupportedTransactionVersion: 0 })
+    if (!thash) {
+        if (count < 6) {
+            return setTimeout(async () => {
+                return resolve(await getTransaction(tx, SOLANA_CONNECTION, count))
+            }, 1000 * 10 )
+        }
+        return resolve(false)
+    }
+    if (!thash.meta?.err) {
+        return resolve (tx)
+    }
+    return resolve (false)
 })
 
 export const Sp2SolQuote = async (amount: string) => {

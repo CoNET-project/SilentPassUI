@@ -1,6 +1,11 @@
 .chart-markup-table .price-axis-container{
 	width: 0px!important;
 }
-#price-chart-widget-container > div > a {
+#token-widget-container > div > a {
 	display: none!important;
+}
+
+.graph > div {
+	width: 100%!important;
+    height: 100%!important;
 }

@@ -64,15 +64,12 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
     setIsRefreshingSolanaBalances(true);
 
     try {
-      let _randomSolanaRPC = randomSolanaRPC
-      if (!_randomSolanaRPC) {
+      
         const nodes = getAllNodes
         const index = Math.floor(Math.random() * (nodes.length - 1))
         await refreshSolanaBalances(nodes[index]);
 
-      } else {
-        await refreshSolanaBalances(_randomSolanaRPC);
-      }
+      
 
       storeSystemData();
 

@@ -23,18 +23,19 @@ const TokenCard: React.FC<{ token: any, action: () => void }> = ({ token, action
               token.priceVariation >= 0 ? "positive" : "negative"
             }`}
           >
-            {token.priceVariation >= 0
+            {/* {token.priceVariation >= 0
               ? `+${(token.priceVariation * 100).toFixed(2)}%`
-              : `${(token.priceVariation * 100).toFixed(2)}%`}
+              : `${(token.priceVariation * 100).toFixed(2)}%`} */}
           </p>
         </div>
       </div>
       <div className="token-values">
-        <p className="token-amount">
-          {token.amount.toLocaleString()}{" "}
-          {token.label.includes("Solana") ? "SOL" : "$SP"}
+        <p className="token-amount" >
+		  $ {token.price.toFixed(2)}
+          {/* {token.amount.toLocaleString()}{" "} */}
+          
         </p>
-        <p className="token-price">${token.price.toFixed(2)}</p>
+        <p className="token-price">{token.amount}</p>
       </div>
     </div>
   );
@@ -60,7 +61,7 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
       "logo": <SolanaToken width={32} height={32} />,
       "priceVariation": -0.002,
       "amount": profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6),
-     "price": (profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)) * quotation["SOL"],
+      "price": (profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)) * quotation["SOL"],
       "currency": "$SOL"
     },
   ]
@@ -73,7 +74,7 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
         ))}
       </div>
 
-      {/* <p style={{margin:"24px 0", textAlign:"left", color:"#989899", fontSize:"11px"}}>Tokens lists are generated using market data provided by various third party providers including CoinGecko, Birdeye and Jupiter. Performance is based on the prior 24 hour period. Past performance is not indicative of future performance.</p>
+      {/* <p style={{margin:"24px 0", textAlign:"left", color:"#989899", fontSize:"11px"}}>Tokens lists are generated using market data provided by various third party providers including CoinGecko, Birdeye and Jupiter. Performance is based on the prior 24 hour period. Past performance is not indicative of future performance.</p> */}
 
       <div className='token-data'>
         <div className="detail-row">
@@ -82,12 +83,12 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
           </div>
           <p style={{color:"#989899"}}>{tokenData?.provider}</p>
         </div>
-        <div className="detail-row">
+        {/* <div className="detail-row">
           <div>
             <p>Price</p>
           </div>
           <p style={{color:"#989899"}}>1 {tokenData?.token_from} ≈ {tokenData?.price_to} {tokenData?.token_to}</p>
-        </div>
+        </div> */}
         <div className="detail-row">
           <div>
             <p>Slippage</p>
@@ -98,7 +99,7 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
           </div>
         </div>
 
-        <div className="detail-row">
+        <div className="detail-row last-row">
           <div>
             <p>Fee</p>
           </div>
@@ -107,15 +108,15 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
           </div>
         </div>
 
-        <div className="detail-row last-row">
+        {/* <div className="detail-row last-row">
           <div>
             <p>Price Impact</p>
           </div>
           <div>
             <p style={{color:"#989899"}}>{tokenData?.impact}%</p>
           </div>
-        </div>
-      </div> */}
+        </div> */}
+      </div>
     </div>
   )
 }

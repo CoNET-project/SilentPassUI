@@ -10,6 +10,7 @@ import ActivityTab from '../ActivityTab';
 import { ReactComponent as SpToken } from "./assets/sp-token.svg";
 import { ReactComponent as SolanaToken } from "./assets/solana-token.svg";
 import { getOracle } from '../../services/passportPurchase';
+import { refreshSolanaBalances } from '../../services/wallets'
 import { calcSpInUsd } from '../../utils/utils';
 import Skeleton from '../Skeleton';
 import {Sp2SolQuote, Sol2SpQuote, swapTokens, solanaAddr, spAddr } from '../../services/swap'
@@ -52,7 +53,7 @@ function SPSelector({ option, onChange }: SPSelectorProps) {
 }
 
 export default function SwapInput({ setTokenGraph }: SwapInputProps) {
-  const { profiles } = useDaemonContext()
+  const { profiles, getAllNodes } = useDaemonContext()
   const [rotation, setRotation] = useState(0)
   const [tabSelector, setTabSelector] = useState("tokens")
 
@@ -72,11 +73,11 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
   })
 
   const tokenData = useMemo(() => ({
-    "provider": "CoNET",
+    "provider": "Silent Pass",
     "token_from": fromToken,
     "token_to": toToken,
     "price_to": (quotation as any)[fromToken] / (quotation as any)[toToken] || 0,
-    "fees": 0.011,
+    "fees": 0,
     "impact": 1.41
   }), [fromToken, quotation, toToken])
 
@@ -104,6 +105,9 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 	const tx = await swapTokens(from, to,profiles?.[1]?.privateKeyArmor, fromAmount)
 	setIsRedeemProcessLoading(false)
 	if (tx) {
+		const nodes = getAllNodes
+		const index = Math.floor(Math.random() * (nodes.length - 1))
+		await refreshSolanaBalances(nodes[index])
 		return setSwapSuccess(tx)
 	}
 	setSwapError('Error!')
@@ -274,7 +278,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 				{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
 			</button>
 	  }
-      <div style={{background:"#191919", borderRadius:"8px", padding:"4px", marginTop: "48px", marginBottom:"24px"}}>
+      <div style={{background:"#191919", borderRadius:"8px", padding:"4px", marginTop: "2rem", marginBottom:"24px" }}>
         <div style={{display:"flex"}}>
           <p className="tab-selector" style={{background: tabSelector === "tokens" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('tokens')}>Tokens</p>
           {/* <p className="tab-selector" style={{background: tabSelector === "activity" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('activity')}>Activity</p> */}

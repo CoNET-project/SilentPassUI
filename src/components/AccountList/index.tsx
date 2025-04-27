@@ -68,10 +68,10 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
       if (!_randomSolanaRPC) {
         const nodes = getAllNodes
         const index = Math.floor(Math.random() * (nodes.length - 1))
-        await refreshSolanaBalances(profiles?.[1], nodes[index]);
+        await refreshSolanaBalances(nodes[index]);
 
       } else {
-        await refreshSolanaBalances(profiles?.[1], _randomSolanaRPC);
+        await refreshSolanaBalances(_randomSolanaRPC);
       }
 
       storeSystemData();

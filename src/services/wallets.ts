@@ -16,7 +16,6 @@ import {
   payment_endpoint,
   paypal_endpoint
 } from "../utils/constants";
-import {} from './listeners'
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 import * as Bip39 from "bip39";
@@ -713,13 +712,15 @@ const getPassportsInfo = async (
 };
 
 const refreshSolanaBalances = async (
-  solanaProfile: profile,
-  node: nodes_info
+	randomNode: nodes_info
 ) => {
-  if (!node) {
-    return;
-  }
-  const solanaRPC_url = `https://${node.domain}/solana-rpc`;
+	const solanaProfile = CoNET_Data?.profiles[0];
+
+	if (!solanaProfile) {
+	  return false
+	}
+	
+  const solanaRPC_url = `https://${randomNode.domain}/solana-rpc`;
   try {
     const [sol, sp, oracle] = await Promise.all([
       scanSolanaSol(solanaProfile.keyID, solanaRPC_url),

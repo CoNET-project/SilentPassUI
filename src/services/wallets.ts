@@ -714,7 +714,7 @@ const getPassportsInfo = async (
 const refreshSolanaBalances = async (
 	randomNode: nodes_info
 ) => {
-	const solanaProfile = CoNET_Data?.profiles[0];
+	const solanaProfile = CoNET_Data?.profiles[1];
 
 	if (!solanaProfile) {
 	  return false
@@ -793,7 +793,7 @@ const refreshSolanaBalances = async (
         sol: solanaProfile.tokens.sol,
       },
     };
-
+	
     setCoNET_Data(temp);
 
     return true;

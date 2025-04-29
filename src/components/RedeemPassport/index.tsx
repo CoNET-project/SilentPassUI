@@ -131,39 +131,53 @@ export default function RedeemPassport() {
         </button>
 
         <div className="redeem-content">
-			<label className="redeem-label">$SP Holder Reward</label>
-			<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
-				{spRewordloading ? <SimpleLoadingRing /> : "Claim"}
-			</button>
-			<div className="redeem-divider">
-				<div className="line"></div>
-				<span>or</span>
-				<div className="line"></div>
-			</div>
 			{
-				!isRedeemProcessLoading &&
+				!isIOS && 
 				<>
-					{
-						isIOS ? <label className="redeem-label">Already a Subscriber?</label>
-						:  <label className="redeem-label">Input Redeem Code!</label>
-					}
-
-					<input
-						type="text"
-						placeholder="#1234"
-						className="redeem-input"
-						value={redeemCode}
-						onChange={(e) => setRedeemCode(e.target.value)}
-					/>
-					{anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
-					<button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
-						{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
+					<label className="redeem-label">$SP Holder Reward</label>
+					<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
+						{spRewordloading ? <SimpleLoadingRing /> : "Claim"}
 					</button>
 					<div className="redeem-divider">
 						<div className="line"></div>
 						<span>or</span>
 						<div className="line"></div>
 					</div>
+				</>
+			}
+			
+			{
+				!isRedeemProcessLoading &&
+				<>
+					{
+						
+					}
+					{
+						!isIOS && 
+						<>
+							{
+								isIOS ? <label className="redeem-label">Already a Subscriber?</label>
+								:  <label className="redeem-label">Input Redeem Code!</label>
+							}
+							<input
+								type="text"
+								placeholder="#1234"
+								className="redeem-input"
+								value={redeemCode}
+								onChange={(e) => setRedeemCode(e.target.value)}
+							/>
+							{anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
+							<button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
+								{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
+							</button>
+							<div className="redeem-divider">
+								<div className="line"></div>
+								<span>or</span>
+								<div className="line"></div>
+							</div>
+						</>
+					}
+					
 				</>
 				
 			}

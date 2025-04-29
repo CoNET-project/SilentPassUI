@@ -41,9 +41,9 @@ function App() {
 	  setServerPort('3002');
 	  setIsLocalProxy(true)
 	} catch (ex) {
-	  if (window?.webkit) {
+	//   if (window?.webkit) {
 		  setIsIOS(true)
-	  }
+	//   }
 	  
 	  setIsLocalProxy(false)
 	}
@@ -150,7 +150,7 @@ function App() {
           <Route path="/config-device" element={<ConfigDevice />}></Route>
           <Route path="/vip" element={<Vip />}></Route>
           <Route path="/wallet" element={<Wallet />}></Route>
-          <Route path="/swap" element={<Swap />}></Route>
+          {/* <Route path="/swap" element={<Swap />}></Route> */}
           <Route path="/settings" element={<Settings />}></Route>
           <Route path="/passcode/new" element={<Passcode new />}></Route>
           <Route path="/passcode/change" element={<Passcode />}></Route>

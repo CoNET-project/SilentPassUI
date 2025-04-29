@@ -220,7 +220,7 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
-const getCONET_api_health = async () => {
+export const getCONET_api_health = async () => {
   const url = `${apiv4_endpoint}health`;
   const result: any = await postToEndpoint(url, false, null);
   if (result === true || result?.health === true) {

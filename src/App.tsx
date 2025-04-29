@@ -17,7 +17,8 @@ import { parseQueryParams } from "./utils/utils";
 import Management from './pages/Management';
 import Recover from './pages/Recover';
 import Transfer from './pages/Transfer';
-
+import Cryptopay from './pages/CryptoPay'
+import QRCode from './pages/QRCode'
 global.Buffer = require('buffer').Buffer;
 
 function App() {
@@ -26,106 +27,106 @@ function App() {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
   }
-  useEffect(() => {
-    const handlePassport = async () => {
-      if (!CoNET_Data?.profiles[0]?.keyID) return
+//   useEffect(() => {
+//     const handlePassport = async () => {
+//       if (!CoNET_Data?.profiles[0]?.keyID) return
 
-      await tryToRequireFreePassport();
+//       await tryToRequireFreePassport();
 
-      const info = await getCurrentPassportInfo(CoNET_Data?.profiles[0]?.keyID);
+//       const info = await getCurrentPassportInfo(CoNET_Data?.profiles[0]?.keyID);
 
-      const tmpData = CoNET_Data;
+//       const tmpData = CoNET_Data;
 
-      if (!tmpData) {
-        return;
-      }
+//       if (!tmpData) {
+//         return;
+//       }
 
-      tmpData.profiles[0] = {
-        ...tmpData?.profiles[0],
-        activePassport: {
-          nftID: info[0].toString(),
-          expires: info[1].toString(),
-          expiresDays: info[2].toString(),
-          premium: info[3]
-        },
-      };
+//       tmpData.profiles[0] = {
+//         ...tmpData?.profiles[0],
+//         activePassport: {
+//           nftID: info[0].toString(),
+//           expires: info[1].toString(),
+//           expiresDays: info[2].toString(),
+//           premium: info[3]
+//         },
+//       };
 
-      if (tmpData.profiles[0].activePassport?.expiresDays !== '7')
-        tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7)
+//       if (tmpData.profiles[0].activePassport?.expiresDays !== '7')
+//         tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7)
 
-      setActivePassport(tmpData.profiles[0].activePassport);
+//       setActivePassport(tmpData.profiles[0].activePassport);
 
-      setCoNET_Data(tmpData);
+//       setCoNET_Data(tmpData);
 
-      if (!CoNET_Data) return;
+//       if (!CoNET_Data) return;
 
-      setProfiles(CoNET_Data?.profiles);
-      setActivePassportUpdated(true);
-    }
+//       setProfiles(CoNET_Data?.profiles);
+//       setActivePassportUpdated(true);
+//     }
 
-    const init = async () => {
-      let vpnTimeUsedInMin = 0
-      try {
-        const ss = await localStorage.getItem("vpnTimeUsedInMin")
-        if (ss) {
-          vpnTimeUsedInMin = parseInt(ss)
-        }
-      } catch (ex) {
+//     const init = async () => {
+//       let vpnTimeUsedInMin = 0
+//       try {
+//         const ss = await localStorage.getItem("vpnTimeUsedInMin")
+//         if (ss) {
+//           vpnTimeUsedInMin = parseInt(ss)
+//         }
+//       } catch (ex) {
 
-      }
-      _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
+//       }
+//       _vpnTimeUsedInMin.current = vpnTimeUsedInMin;
 
-      const queryParams = parseQueryParams(window.location.search);
-      let secretPhrase: string | null = null;
+//       const queryParams = parseQueryParams(window.location.search);
+//       let secretPhrase: string | null = null;
 
-      if (window.location.search && queryParams) {
-        secretPhrase = queryParams.get("secretPhrase");
-        secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
-      }
+//       if (window.location.search && queryParams) {
+//         secretPhrase = queryParams.get("secretPhrase");
+//         secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
+//       }
 
-      const profiles = await createOrGetWallet(secretPhrase);
-      setProfiles(profiles);
+//       const profiles = await createOrGetWallet(secretPhrase);
+//       setProfiles(profiles);
 
-      listenProfileVer(setProfiles, setActivePassport, setMiningData);
+//       listenProfileVer(setProfiles, setActivePassport, setMiningData);
 
-      checkCurrentRate(setMiningData);
-	  checkFreePassport()
-      getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
-        setSOlanaRPC(allNodes)
-        setaAllNodes(allNodes)
-        setGlobalAllNodes(allNodes)
-        const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
-        setRandomSolanaRPC(allNodes[randomIndex])
-        if (!CoNET_Data || !CoNET_Data?.profiles) {
-          return
-        }
+//       checkCurrentRate(setMiningData);
+// 	  checkFreePassport()
+//       getAllNodes(allRegions, setClosestRegion, (allNodes: nodes_info[]) => {
+//         setSOlanaRPC(allNodes)
+//         setaAllNodes(allNodes)
+//         setGlobalAllNodes(allNodes)
+//         const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
+//         setRandomSolanaRPC(allNodes[randomIndex])
+//         if (!CoNET_Data || !CoNET_Data?.profiles) {
+//           return
+//         }
 
-      });
+//       });
 
-      handlePassport();
-    };
+//       handlePassport();
+//     };
 
-    init();
-  }, []);
+//     init();
+//   }, []);
 
-  useEffect(() => {
-    const _getServerIpAddress = async () => {
-      try {
-        const response = await getServerIpAddress();
-        const tmpIpAddress = response.data;
+//   useEffect(() => {
+//     const _getServerIpAddress = async () => {
+//       try {
+//         const response = await getServerIpAddress();
+//         const tmpIpAddress = response.data;
 
-        setServerIpAddress(tmpIpAddress?.ip || "");
-        setServerPort('3002');
-		    setIsLocalProxy(true)
-      } catch (ex) {
-        setIsIOS(false)
-        setIsLocalProxy(false)
-      }
-    };
-    //if (!window?.webkit && !window?.Android) {
-      _getServerIpAddress();
+//         setServerIpAddress(tmpIpAddress?.ip || "");
+//         setServerPort('3002');
+// 		    setIsLocalProxy(true)
+//       } catch (ex) {
+//         setIsIOS(false)
+//         setIsLocalProxy(false)
+//       }
+//     };
+//     //if (!window?.webkit && !window?.Android) {
+//       _getServerIpAddress();
 
-  }, []);
+//   }, []);
 
   return (
     <div className="App">
@@ -135,8 +136,9 @@ function App() {
           <Route path="/faq" element={<FAQ />}></Route>
           <Route path="/config-device" element={<ConfigDevice />}></Route>
           <Route path="/vip" element={<Vip />}></Route> */}
-          <Route path="/" element={<Wallet />}></Route>
+          <Route path="/" element={<Cryptopay />}></Route>
           <Route path="/swap" element={<Swap />}></Route>
+		  <Route path="/qrcode" element={<QRCode />}></Route>
           {/* <Route path="/settings" element={<Settings />}></Route>
           <Route path="/passcode/new" element={<Passcode new />}></Route>
           <Route path="/passcode/change" element={<Passcode />}></Route>
@@ -147,6 +149,7 @@ function App() {
           <Route path="/management" element={<Management />}></Route>
           <Route path="/recover" element={<Recover />}></Route>
           <Route path="/transfer" element={<Transfer />}></Route>
+
           {/* <Route path="/support" element={<Support />}></Route>
           <Route path="/" element={<Home />}></Route> */}
         </Routes>

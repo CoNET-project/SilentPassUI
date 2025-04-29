@@ -205,7 +205,7 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
-let startMiningV2Process = false;
+
 
 const ceateMininngValidator = async (
   currentProfile: profile,
@@ -404,4 +404,5 @@ export {
   allNodes,
   maxNodes,
   currentScanNodeNumber,
+  postToEndpointSSE
 };

@@ -52,6 +52,8 @@ type DaemonContext = {
   setMonthlyQtd: (val: number) => void,
   annuallyQtd: number,
   setAnnuallyQtd: (val: number) => void,
+  agentWallet: string,
+  setAgentWallet: (val: string) => void
 };
 
 type DaemonProps = {
@@ -110,6 +112,8 @@ const defaultContextValue: DaemonContext = {
   setMonthlyQtd: () => {},
   annuallyQtd: 0,
   setAnnuallyQtd: () => {},
+  setAgentWallet: () => {},
+  agentWallet: ''
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -146,6 +150,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
   const [monthlyQtd, setMonthlyQtd] = useState<number>(0);
   const [annuallyQtd, setAnnuallyQtd] = useState<number>(0);
+  const [agentWallet, setAgentWallet] = useState('');
 
   useEffect(() => {
     {
@@ -177,7 +182,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan,
-        monthlyQtd, annuallyQtd, setMonthlyQtd: (val: number) => handleChangeQtd(val, '1'), setAnnuallyQtd: (val: number) => handleChangeQtd(val, '12')
+        		monthlyQtd, annuallyQtd, setMonthlyQtd: (val: number) => handleChangeQtd(val, '1'), setAnnuallyQtd: (val: number) => handleChangeQtd(val, '12'),
+				agentWallet, setAgentWallet
         }}>,
 
       {children}

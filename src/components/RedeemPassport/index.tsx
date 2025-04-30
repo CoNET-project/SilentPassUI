@@ -131,8 +131,7 @@ export default function RedeemPassport() {
         </button>
 
         <div className="redeem-content">
-			{
-				!isIOS && 
+			
 				<>
 					<label className="redeem-label">$SP Holder Reward</label>
 					<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
@@ -144,16 +143,12 @@ export default function RedeemPassport() {
 						<div className="line"></div>
 					</div>
 				</>
-			}
+			
 			
 			{
 				!isRedeemProcessLoading &&
 				<>
 					{
-						
-					}
-					{
-						!isIOS && 
 						<>
 							{
 								isIOS ? <label className="redeem-label">Already a Subscriber?</label>

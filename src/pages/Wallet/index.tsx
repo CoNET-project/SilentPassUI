@@ -42,7 +42,7 @@ export default function Wallet() {
       </div>
 	  {
 		<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
-			{/* <SpClub /> */}
+			<SpClub />
 			{/* <ReferralProgram /> */}
 		</div>
 	  }

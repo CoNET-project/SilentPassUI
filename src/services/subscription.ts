@@ -26,9 +26,9 @@ export const getCryptoPay = async (agentWallet: string, cryptoName: string) => {
 }
 
 
-const _waitingPay = async (uuid: string) => {
+const _waitingPay = async (wallet: string) => {
 	try {
-		const result = await postToEndpoint(waitingPayUrl, true, { uuid })
+		const result = await postToEndpoint(waitingPayUrl, true, { wallet })
 		return result
 	} catch(ex) {
 		console.log("EX: ", ex)
@@ -36,14 +36,14 @@ const _waitingPay = async (uuid: string) => {
 	}
 }
 
-export const waitingPay = (uuid: string): Promise<any> => new Promise(async resolve => {
-	const status = await _waitingPay(uuid)
+export const waitingPaymentReady = (wallet: string): Promise<any> => new Promise(async resolve => {
+	const status = await _waitingPay(wallet)
 	if (!status) {
 		return resolve(false)
 	}
 	if (status.status ===1) {
 		return setTimeout(async () => {
-			return resolve(await waitingPay (uuid))
+			return resolve(await waitingPaymentReady (wallet))
 		}, 15 * 1000)
 	}
 	resolve(status)

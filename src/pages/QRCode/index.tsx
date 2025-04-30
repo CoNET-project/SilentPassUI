@@ -6,22 +6,29 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import BackButton from '../../components/BackButton'
 import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg';
 import { useEffect, useState } from 'react';
-import {getCryptoPay, waitingPay} from '../../services/subscription'
+import {getCryptoPay, waitingPaymentReady} from '../../services/subscription'
 import './index.css';
 
 export default function CryptoPay() {
 	const { selectedPlan, setSelectedPlan, monthlyQtd, setMonthlyQtd, annuallyQtd, setAnnuallyQtd, setPaymentKind, paymentKind, agentWallet } = useDaemonContext();
 
 	const navigate = useNavigate();
-	const [updateCounter, setUpdateCounter] = useState(new Date('1970/12/1 12:0:0'));
+	const [updateCounter, setUpdateCounter] = useState(new Date('1970/12/1 12:0:1'));
 	const [timeoutProcess, setTimeoutProcess] = useState<NodeJS.Timeout>()
 	const [cryptoName, setCryptoName] = useState(paymentKind === 1 ? 'BNB' : 'BNB USDT')
 	const [serverAddress, setServerAddress] = useState('')
 	const [showPrice, setShowPrice] = useState('')
+	const [showLoading, setShowLoading] = useState(true)
 	const [error, setError] = useState(false)
+	const [errorMessage, setErrorMessage] = useState('')
+
 	let ffcus = false
 
 	const setTimeElm = () => {
+		if (updateCounter.getHours() === 0) {
+			setError(true)
+			return setErrorMessage(`Timeout Error!`)
+		}
 		setUpdateCounter((prev) => new Date(prev.getTime() - 1000))
 	}
 
@@ -33,8 +40,21 @@ export default function CryptoPay() {
 		}
 		setServerAddress(kkk?.wallet)
 		setShowPrice(kkk?.transferNumber)
-		const waiting = await waitingPay (kkk?.uuid)
-		
+		setShowLoading(false)
+		const waiting = await waitingPaymentReady (kkk?.wallet)
+		if (waiting === false) {
+			setError(true)
+
+			return
+		}
+
+		setTimeout(() => {
+			setShowLoading(false)
+			setError(true)
+			setErrorMessage(`Please contact Silent Pass team to ask this problem with this address: ${kkk?.wallet}`)
+		}, 3000)
+
+
 	}
 
 	useEffect(() => {
@@ -57,7 +77,13 @@ export default function CryptoPay() {
    <div className="page-container">
 	  <BackButton to='/' />
 	  {
-		serverAddress ?
+		showLoading ?
+			<LoadingRing /> 
+		: error ? 
+			<>
+				<p>{errorMessage}</p>
+				<p style={{color: 'darkred', paddingTop: '2rem'}}>Something Error!</p>
+			</> :
 		<>
 			<div className="summary-heading">
 				<p>Send payment</p>
@@ -88,9 +114,10 @@ export default function CryptoPay() {
 				<p>{showPrice} {cryptoName} </p>
 			</div>
 			</div>
-		</> : 
-			<LoadingRing /> 
-		}
+		</>
+		
+	  }
+	  
 
 	</div>
   )

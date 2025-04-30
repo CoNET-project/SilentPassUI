@@ -6,7 +6,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import BackButton from '../../components/BackButton'
 import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg';
 import { useEffect, useState } from 'react';
-import {getCryptoPay} from '../../services/subscription'
+import {getCryptoPay, waitingPay} from '../../services/subscription'
 import './index.css';
 
 export default function CryptoPay() {
@@ -17,6 +17,7 @@ export default function CryptoPay() {
 	const [timeoutProcess, setTimeoutProcess] = useState<NodeJS.Timeout>()
 	const [cryptoName, setCryptoName] = useState(paymentKind === 1 ? 'BNB' : 'BNB USDT')
 	const [serverAddress, setServerAddress] = useState('')
+	const [showPrice, setShowPrice] = useState('')
 	const [error, setError] = useState(false)
 	let ffcus = false
 
@@ -31,6 +32,9 @@ export default function CryptoPay() {
 			return setError(true)
 		}
 		setServerAddress(kkk?.wallet)
+		setShowPrice(kkk?.transferNumber)
+		const waiting = await waitingPay (kkk?.uuid)
+		
 	}
 
 	useEffect(() => {
@@ -81,11 +85,10 @@ export default function CryptoPay() {
 			<div className="summary-heading">
 				<p>Total amount</p>
 				<div className="quotes">
-				<p>24.99</p>
+				<p>{showPrice} {cryptoName} </p>
 			</div>
 			</div>
 		</> : 
-
 			<LoadingRing /> 
 		}
 

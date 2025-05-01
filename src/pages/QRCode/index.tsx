@@ -8,6 +8,7 @@ import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg';
 import { useEffect, useState } from 'react';
 import {getCryptoPay, waitingPaymentReady} from '../../services/subscription'
 import './index.css';
+import SuccessModal from './SuccessModal'
 
 export default function CryptoPay() {
 	const { selectedPlan, setSelectedPlan, monthlyQtd, setMonthlyQtd, annuallyQtd, setAnnuallyQtd, setPaymentKind, paymentKind, agentWallet } = useDaemonContext();
@@ -21,6 +22,7 @@ export default function CryptoPay() {
 	const [showLoading, setShowLoading] = useState(true)
 	const [error, setError] = useState(false)
 	const [errorMessage, setErrorMessage] = useState('')
+	const [successInfo, setSuccessInfo] = useState('')
 
 	let ffcus = false
 
@@ -33,28 +35,21 @@ export default function CryptoPay() {
 	}
 
 	const getData = async () => {
-		console.log(cryptoName)
+
 		const kkk = await getCryptoPay(agentWallet, cryptoName)
 		if (!kkk) {
 			return setError(true)
 		}
+		
 		setServerAddress(kkk?.wallet)
 		setShowPrice(kkk?.transferNumber)
 		setShowLoading(false)
 		const waiting = await waitingPaymentReady (kkk?.wallet)
-		if (waiting === false) {
+		if (!waiting?.status) {
 			setError(true)
-
 			return
 		}
-
-		setTimeout(() => {
-			setShowLoading(false)
-			setError(true)
-			setErrorMessage(`Please contact Silent Pass team to ask this problem with this address: ${kkk?.wallet}`)
-		}, 3000)
-
-
+		setSuccessInfo(waiting.status)
 	}
 
 	useEffect(() => {
@@ -83,7 +78,8 @@ export default function CryptoPay() {
 			<>
 				<p>{errorMessage}</p>
 				<p style={{color: 'darkred', paddingTop: '2rem'}}>Something Error!</p>
-			</> :
+			</> : successInfo ?
+			<SuccessModal onClose={() => navigate('/')} nftID={successInfo} /> :
 		<>
 			<div className="summary-heading">
 				<p>Send payment</p>

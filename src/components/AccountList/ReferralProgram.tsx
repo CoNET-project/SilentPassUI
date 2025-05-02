@@ -31,13 +31,16 @@ export default function ReferralProgram() {
     "rsp": 1/31,
 	"rcp": 0,
   })
-  const expiration = getExpirationDate(profiles?.[0]?.activePassport?.expires) === '00:00:00' ? true : false
+  const nft = parseInt(profiles?.[0]?.activePassport?.nftID)
+  const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires) === '00:00:00' ? true : false
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
-  const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7 && Number(profiles[0].activePassport.expiresDays) > 0;
+  const freePassportActive = nft > 0 && Number(profiles[0].activePassport.expiresDays) <= 7 && Number(profiles[0].activePassport.expiresDays) > 0;
 
   const setTokenGraph = () => {
 
   }
+
+
   const handleSetInviter = async () => {
 	setIsRedeemProcessLoading(true)
 	const result = await addReferrals(inviter)
@@ -106,7 +109,7 @@ export default function ReferralProgram() {
 
       <div className="info-card">
 	        {
-				freePassportActive &&
+				(freePassportActive || expiration) &&
 				<p style={{padding:'1rem', color: 'darkred'}}>Only subscribers may earn referral points.</p>
 			}
         <div className="copy-div">

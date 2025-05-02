@@ -8,7 +8,7 @@ import { ethers } from 'ethers';
 import {addReferrals} from '../../services/swap'
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
-import { getPassportTitle } from '../../utils/utils';
+import { getPassportTitle, getExpirationDate } from '../../utils/utils';
 import { currentPageInvitees, setCurrentPageInvitees } from '../../utils/globals';
 import { getRefereesPage } from '../../services/wallets'
 import SimpleLoadingRing from '../SimpleLoadingRing'
@@ -31,8 +31,10 @@ export default function ReferralProgram() {
     "rsp": 1/31,
 	"rcp": 0,
   })
+  const expiration = getExpirationDate(profiles?.[0]?.activePassport?.expires) === '00:00:00' ? true : false
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
   const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7 && Number(profiles[0].activePassport.expiresDays) > 0;
+
   const setTokenGraph = () => {
 
   }
@@ -94,8 +96,8 @@ export default function ReferralProgram() {
 	  }}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
-          <h3 style={{color: freePassportActive ? 'rgb(96,96,96)' : 'rgb(154,196,229)'}}>Referral Program {freePassportActive && <span style={{color: 'darkred'}}>!</span>} </h3>
-		  { !freePassportActive && (
+          <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : 'rgb(154,196,229)'}}>Referral Program {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
+		  { !freePassportActive && !expiration && (
 			hasGuardianActive ? <GoldBadge /> : <BlueBadge />)
 		  }
           <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />

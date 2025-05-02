@@ -71,6 +71,7 @@ interface Region {
 	isNode: boolean;
 	referrer: string | null | undefined;
 	spClub?: SpClub;
+	SpClubPoints?: SpClubPoints
 	data?: any;
 	type?: keyPairType;
 	nodeID?: number;
@@ -85,12 +86,22 @@ interface Region {
 	walletAddress: string;
 	activePassport: freePassport;
   }
+
+  interface SpClubPoints {
+	SPHolderPoint: number
+	RefferentSPHolderPoint: number
+	SubscriptionPoint: number
+	RefferentSubscriptionPoint: number
+	ClaimableSubscriptionPoint: number
+	ClaimableRefferentSubscriptionPoint: number
+  }
   
   interface SpClub {
 	memberId: string;
 	referrer: string;
 	referees: SpClubReferees[];
 	totalReferees: number;
+
   }
   
   type encrypt_keys_object = {

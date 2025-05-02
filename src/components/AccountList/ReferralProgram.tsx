@@ -3,14 +3,15 @@ import './index.css';
 import Separator from '../Separator';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../Skeleton';
-
+import SPClubRewardTab from '../SPClubRewardTab'
 import { ethers } from 'ethers';
-
+import {addReferrals} from '../../services/swap'
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { getPassportTitle } from '../../utils/utils';
 import { currentPageInvitees, setCurrentPageInvitees } from '../../utils/globals';
-import { getRefereesPage } from '../../services/wallets';
+import { getRefereesPage } from '../../services/wallets'
+import SimpleLoadingRing from '../SimpleLoadingRing'
 
 const SP_EARNED_FROM_REFERRAL = 10
 
@@ -18,15 +19,29 @@ export default function ReferralProgram() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const { profiles } = useDaemonContext();
 
-  const [isAddressHidden, setIsAddressHidden] = useState(true);
+  const [animation, setAnimation] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shouldRerender, setShouldRerender] = useState(false);
-
+  const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState(false)
+  const [inputError, setInputError] = useState(false);
   const [inviter, setInviter] = useState('');
+  const [quotation, setQuotation] = useState({
+    "rfp": 1/31,
+    "rsp": 1/31,
+	"rcp": 0,
+  })
 
+  const setTokenGraph = () => {
+
+  }
   const handleSetInviter = async () => {
-    // call the backend to set the inviter here
-    console.log("NEW INVITER: ", inviter);
+	setIsRedeemProcessLoading(true)
+	const result = await addReferrals(inviter)
+	setIsRedeemProcessLoading(false)
+	if (!result) {
+		setIsRedeemProcessLoading(false)
+		setInputError(true)
+	}
   }
 
   const handlePreviousPage = async () => {
@@ -66,7 +81,15 @@ export default function ReferralProgram() {
 
   return (
     <div className={`account-wrapper fit-content ${isOpen ? 'active' : ''}`}>
-      <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}>
+      <div className="account-main-card" onClick={() => {
+		if (!isOpen) {
+			setAnimation(true)
+			setTimeout(() => {
+				setAnimation(false)
+			}, 2000)
+		}
+		setIsOpen((prev) => !prev)
+	  }}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
           <h3>Referral Program</h3>
@@ -76,10 +99,11 @@ export default function ReferralProgram() {
 
       <div className="info-card">
         <div className="copy-div">
-          {profiles?.[0]?.keyID ?
+          {
+		  	profiles?.[0]?.keyID ?
             <>
               <div className="copy-text">
-                <p>Wallet Address</p>
+                <p>{profiles[0].keyID.substring(0,6)+'...'+profiles[0].keyID.substring(profiles[0].keyID.length - 6)}</p>
               </div>
               <div className="button-list">
                 <button onClick={() => handleCopy()}>
@@ -91,11 +115,6 @@ export default function ReferralProgram() {
                     )
                   }
                 </button>
-                <button className={isAddressHidden ? "hidden" : ""} onClick={() => setIsAddressHidden((prev) => !prev)}>
-                  {
-                    isAddressHidden ? <VisibilityOffIcon /> : <VisibilityOnIcon />
-                  }
-                </button>
               </div>
             </>
             : <Skeleton width='100%' height='20px' />
@@ -103,39 +122,38 @@ export default function ReferralProgram() {
         </div>
 
         <div style={{ padding: "0 16px", marginBottom: "32px" }}>
-          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>Copy this wallet address to invite your friends to Silent Pass</p>
+          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>Copy this to invite your friends to Silent Pass</p>
         </div>
 
         {
-          profiles?.[0] && profiles[0]?.referrer ? (
+          profiles?.[0]?.referrer ? (
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
               <p>Inviter's wallet address</p>
               {
-                isAddressHidden ?
-                  <div style={{ filter: 'blur(3px)' }}>
-                    <span style={{ color: '#989899' }}>{profiles[0].referrer}
-                    </span>
-                  </div>
-                  :
-                  <span style={{ color: '#989899' }}>{profiles[0].referrer}
+                
+                  <span style={{ color: '#989899' }}>{profiles[0].referrer.substring(0,6)+'...'+profiles[0].referrer.substring(profiles[0].referrer.length - 6)}
                   </span>
               }
             </div>
           ) : (
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
               <p>Inviter's wallet address</p>
-              <input
-                type="text"
+              <input className={inputError? 'wallet-address-input-error':''}
+                type="text" 
                 style={{ width: "100%", background: "#3F3F40", borderRadius: "8px", padding: "8px", color: "#989899", border: 0 }}
-                value={inviter} onChange={(e) => setInviter(e.target.value)}
+                value={inviter} onChange={(e) => {
+					setInputError(false)
+					setInviter(e.target.value)
+				}}
               />
+
               <button style={{
                 marginTop: "16px", padding: "12px 0",
                 display: "flex", justifyContent: "center",
                 cursor: "pointer", width: "100%",
                 background: "#282930", borderRadius: "16px",
                 fontWeight: "bold",
-              }} disabled={inviter.length < 20} onClick={handleSetInviter}>Confirm</button>
+              }} onClick={handleSetInviter}>{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}</button>
             </div>
           )
         }
@@ -143,7 +161,8 @@ export default function ReferralProgram() {
         <Separator />
 
         <div className="info-wrapper">
-          <div className='token-assets-title'>
+			<SPClubRewardTab quotation = {quotation} setTokenGraph={setTokenGraph} animation = {animation}/>
+          {/* <div className='token-assets-title'>
             <p className='title'>Rewards</p>
           </div>
           <div style={{ marginLeft: '16px' }}>
@@ -157,7 +176,7 @@ export default function ReferralProgram() {
               <p>$SP</p>
             </div>
             <p>0</p>
-          </div>
+          </div> */}
         </div>
 
         <Separator />

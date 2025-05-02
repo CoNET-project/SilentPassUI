@@ -5004,4 +5004,285 @@ export const Distributor = [
 	}
 ]
 
+export const SpClubPoint = [
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"inputs": [],
+		"name": "ClubPoint",
+		"outputs": [
+			{
+				"internalType": "contract SPClubPoint",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "PassportReword",
+		"outputs": [
+			{
+				"internalType": "contract SPPassportReword",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "Referrals",
+		"outputs": [
+			{
+				"internalType": "contract ReferralsV3",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "RewordNFT_ID",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "adminList",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "addr",
+				"type": "address"
+			},
+			{
+				"internalType": "bool",
+				"name": "status",
+				"type": "bool"
+			}
+		],
+		"name": "changeAddressInAdminlist",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "distributor",
+		"outputs": [
+			{
+				"internalType": "contract SPPassportDistributor",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			}
+		],
+		"name": "getAllPoints",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "SPHolderPoint",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "RefferentSPHolderPoint",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "SubscriptionPoint",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "RefferentSubscriptionPoint",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "ClaimableSubscriptionPoint",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "ClaimableRefferentSubscriptionPoint",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			}
+		],
+		"name": "getCurrentPassport",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "nftID",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "expires",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "expiresDays",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "premium",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "referrer",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "_referee",
+				"type": "address"
+			}
+		],
+		"name": "initAddReferrer",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "string",
+				"name": "solanaWallet",
+				"type": "string"
+			}
+		],
+		"name": "isReadyReword",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "ret",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "string",
+				"name": "solanaWallet",
+				"type": "string"
+			}
+		],
+		"name": "mintReword",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			}
+		],
+		"name": "revokeReword",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "sp_passport",
+		"outputs": [
+			{
+				"internalType": "contract CoNETDePIN_Passport",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+]
+export const ReferralsV3 = [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"string","name":"solanaAccount","type":"string"}],"name":"BindingSolana","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"_referees","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"},{"internalType":"uint256","name":"","type":"uint256"}],"name":"_referrers","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"referrer","type":"address"}],"name":"addReferrer","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"address_solana","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"adminList","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"addr","type":"address"},{"internalType":"bool","name":"status","type":"bool"}],"name":"changeAddressInAdminlist","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"refere","type":"address"},{"internalType":"address[]","name":"referees","type":"address[]"}],"name":"checkReferees","outputs":[{"internalType":"bool","name":"hasAddress","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"}],"name":"getBindingSolana","outputs":[{"internalType":"string","name":"solanaAccount","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"referrer","type":"address"},{"internalType":"uint256","name":"start","type":"uint256"}],"name":"getReferees","outputs":[{"internalType":"uint256","name":"_total_length","type":"uint256"},{"internalType":"address[]","name":"referees","type":"address[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"referrer","type":"address"}],"name":"getReferees_length","outputs":[{"internalType":"uint256","name":"_total_length","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"referee","type":"address"}],"name":"getReferrer","outputs":[{"internalType":"address","name":"referrer","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"referrer","type":"address"},{"internalType":"address","name":"_referee","type":"address"}],"name":"initAddReferrer","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"","type":"string"}],"name":"solana_address","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}]
+
 export const SpReword = [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"status","type":"uint256"}],"name":"paymentStatus","type":"event"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"adminList","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"addr","type":"address"},{"internalType":"bool","name":"status","type":"bool"}],"name":"changeAddressInAdminlist","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"distributor","outputs":[{"internalType":"contract SPPassportDistributor","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"string","name":"solanaWallet","type":"string"}],"name":"isReadyReword","outputs":[{"internalType":"bool","name":"ret","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"string","name":"solanaWallet","type":"string"}],"name":"mintReword","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"rewordTimestamp","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"showstamp","outputs":[{"internalType":"uint256","name":"time","type":"uint256"},{"internalType":"bool","name":"can","type":"bool"},{"internalType":"uint256","name":"timeS","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"solanaMap","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"name":"solanaUsed","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"sp_passport","outputs":[{"internalType":"contract CoNETDePIN_Passport","name":"","type":"address"}],"stateMutability":"view","type":"function"}]

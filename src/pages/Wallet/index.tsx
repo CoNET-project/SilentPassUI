@@ -5,7 +5,7 @@ import AccountList from '../../components/AccountList';
 import SpClub from '../../components/AccountList/SpClub';
 import ReferralProgram from '../../components/AccountList/ReferralProgram';
 import RedeemPassport from '../../components/RedeemPassport';
-
+import RewardPoint from '../../components/AccountList/RewardPoint'
 import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
 import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
 import { useDaemonContext } from '../../providers/DaemonProvider';
@@ -29,7 +29,7 @@ export default function Wallet() {
       </div>
 
       <AccountList />
-
+	  <RewardPoint />
       <div className="cta-buttons">
         {/* <div>
           <button className='disabled'>
@@ -41,7 +41,7 @@ export default function Wallet() {
         <RedeemPassport />
       </div>
 	  {
-		<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
+		<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '20px' }}>
 			<SpClub />
 			<ReferralProgram />
 		</div>

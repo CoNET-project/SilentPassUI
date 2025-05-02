@@ -33,7 +33,20 @@ const listenProfileVer = async (
   _setActivePassport: (profiles: freePassport) => void,
   setMiningData: (response: nodeResponse) => void
 ) => {
-  epoch = await conetProvider.getBlockNumber();
+	const profiles = CoNET_Data?.profiles;
+
+      if (!profiles) {
+        return;
+      }
+	checkCurrentRate(setMiningData);
+	await getProfileAssets(profiles[0], profiles[1]);
+	await getVpnTimeUsed();
+	await getSpClubInfo(profiles[0], currentPageInvitees);
+	const receivedTransactions = await getReceivedAmounts(
+		profiles[1].keyID,
+		globalAllNodes
+	);
+  	await conetProvider.getBlockNumber();
 
   conetProvider.on("block", async (block) => {
     if (block === epoch + 1) {
@@ -80,55 +93,44 @@ const listenProfileVer = async (
 
   epoch = await conetProvider.getBlockNumber();
 };
+const ReferralsContract = new ethers.Contract(contracts.Referrals.address, contracts.Referrals.abi, conetDepinProvider)
+const SPClubPointContract = new ethers.Contract(contracts.SPClubPoint.address, contracts.SPClubPoint.abi, conetDepinProvider)
+const getReferrals = async (key: string) => {
+	try {
+		const ret = await ReferralsContract._referees(key)
+		if (ret === ethers.ZeroAddress) {
+			return null
+		}
+		return ret
+	} catch (ex) {
+		return null
+	}
+}
+
+const getSPClubPoint = async (key: string) => {
+	try {
+		const points = await SPClubPointContract.getAllPoints(key)
+		return points
+	} catch (ex) {
+		return null
+	}
+}
 
 const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
   const key = profile.keyID;
-  const solanaKey = solanaProfile.keyID;
 
   if (key) {
     if (!profile.tokens) {
       profile.tokens = initProfileTokens();
     }
 
-    const [conetDepin, conet_eth, eth] = await Promise.all([
-    //   scanCCNTP(key),
-    //   scanCONETHolesky(key),
+    const [conetDepin, conet_eth, eth, referrals, points] = await Promise.all([
       scanCONETDepin(key),
       scanConetETH(key),
       scanETH(key),
+	  getReferrals(key),
+	  getSPClubPoint(key)
     ]);
-
-    // if (profile.tokens?.cCNTP) {
-    //   profile.tokens.cCNTP.balance =
-    //     cCNTP === false ? "" : parseFloat(ethers.formatEther(cCNTP)).toFixed(6);
-    // } else {
-    //   profile.tokens.cCNTP = {
-    //     balance:
-    //       cCNTP === false
-    //         ? ""
-    //         : parseFloat(ethers.formatEther(cCNTP)).toFixed(6),
-    //     network: "CONET Holesky",
-    //     decimal: 18,
-    //     contract: contracts.ClaimableConetPoint.address,
-    //     name: "cCNTP",
-    //   };
-    // }
-
-    // if (profile.tokens?.conet) {
-    //   profile.tokens.conet.balance =
-    //     conet === false ? "" : parseFloat(ethers.formatEther(conet)).toFixed(6);
-    // } else {
-    //   profile.tokens.conet = {
-    //     balance:
-    //       conet === false
-    //         ? ""
-    //         : parseFloat(ethers.formatEther(conet)).toFixed(6),
-    //     network: "CONET Holesky",
-    //     decimal: 18,
-    //     contract: "",
-    //     name: "conet",
-    //   };
-    // }
 
     if (profile.tokens?.conetDepin) {
       profile.tokens.conetDepin.balance =
@@ -180,6 +182,17 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
       };
     }
 
+	profile.referrer = referrals
+	
+	profile.SpClubPoints = {
+		SPHolderPoint: points ? parseInt(points[0].toString()):0,
+		RefferentSPHolderPoint: points ? parseInt(points[1].toString()):0,
+		SubscriptionPoint: points ? parseInt(points[2].toString()):0,
+		RefferentSubscriptionPoint: points ? parseInt(points[3].toString()):0,
+		ClaimableSubscriptionPoint: points ? parseInt(points[4].toString()):0,
+		ClaimableRefferentSubscriptionPoint: points ? parseInt(points[5].toString()):0
+	}
+	
     const temp = CoNET_Data;
 
     if (!temp) {

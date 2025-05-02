@@ -65,39 +65,37 @@ const getRandomNodeFromRegion: (region: string) => nodes_info = (
 ) => {
   const allNodeInRegion = allNodes.filter((n) => n.region.endsWith(region));
   const rendomIndex = Math.floor(Math.random() * (allNodeInRegion.length - 1));
-  if (rendomIndex >= allNodeInRegion.length) {
-    return allNodeInRegion[0];
+  const node = allNodeInRegion[rendomIndex]
+  if (!node?.domain) {
+	return getRandomNodeFromRegion(region)
   }
-  return allNodeInRegion[rendomIndex];
+
+  return node
 };
 
 const testClosestRegion = async (callback: () => void) => {
   testRegion = [];
 
-  async.mapLimit(
-    allRegions,
-    allRegions.length,
-    async (r: string, next) => {
-      const node = getRandomNodeFromRegion(r);
-      if (!node?.domain) {
-        return;
-      }
-      const url = `https://${node.domain}`;
+  async.each(allRegions, (item, _callback) => {
+	const node = getRandomNodeFromRegion(item)
+	const url = `https://${node.domain}`;
       const startTime = new Date().getTime();
-      await postToEndpointGetBody(url, false, null);
-      const endTime = new Date().getTime();
-      const delay = endTime - startTime;
-      testRegion.push({ node, delay });
-    },
-    (err) => {
-      console.log(`testClosestRegion success!`);
-      testRegion.sort((a, b) => a.delay - b.delay);
-      testRegion.forEach((n) => {
-        closestNodes.push(n.node);
-      });
-      callback();
-    }
-  );
+	  const test = async () => {
+		await postToEndpointGetBody(url, false, null);
+		const endTime = new Date().getTime();
+		const delay = endTime - startTime;
+		testRegion.push({ node, delay })
+		_callback(new Error(''))
+	  }
+      test()
+      
+  }).then (() => {
+	testRegion.forEach(n => closestNodes.push(n.node))
+	// callback()
+  }).catch (ex=> {
+	testRegion.forEach(n => closestNodes.push(n.node))
+	callback()
+  })
 };
 
 const getAllNodes = async (

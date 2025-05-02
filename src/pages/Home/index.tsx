@@ -58,12 +58,6 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
             <img src="/assets/power.png" className="power-icon" alt="" />
           </button>
         </BlobWrapper>
-
-        <div className="current-mined">
-          <strong>Total time used</strong>
-          {/* <p>{formatMinutesToHHMM(parseInt(profile?.vpnTimeUsedInMin) || 0)}</p> */}
-          <p>{formatMinutesToHHMM(_vpnTimeUsedInMin)}</p>
-        </div>
       </div>
     )
 
@@ -78,12 +72,6 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
             <img src="/assets/not-power.png" className="power-icon" alt="" />
           </button>
         </BlobWrapper>
-
-        <div className="current-mined">
-          <strong>Total time used</strong>
-          {/* <p>{formatMinutesToHHMM(parseInt(profile?.vpnTimeUsedInMin) || 0)}</p> */}
-          <p>{formatMinutesToHHMM(_vpnTimeUsedInMin)}</p>
-        </div>
       </div>
 
       {errorMessage && <span style={{ color: '#bf3b37', fontSize: '12px' }}>{errorMessage}</span>}

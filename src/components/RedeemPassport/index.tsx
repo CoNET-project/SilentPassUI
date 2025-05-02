@@ -16,7 +16,7 @@ interface plan {
 
 export default function RedeemPassport() {
   const [redeemCode, setRedeemCode] = useState("");
-  const [isOpen, setIsOpen] = useState<boolean>(true);
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);

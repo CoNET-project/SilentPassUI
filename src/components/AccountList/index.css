@@ -1,9 +1,8 @@
 .account-list {
   display: flex;
   flex-direction: column;
-  gap: 40px;
-
-  margin-bottom: 40px;
+  gap: 20px;
+  margin-bottom: 20px;
 }
 
 .account-wrapper {
@@ -231,6 +230,7 @@
 .copy-text {
   display: flex;
   flex-direction: column;
+  color: #9FBFE5FE;
   gap: 4px;
 }
 
@@ -340,4 +340,8 @@
 .asset-second-line{
 	padding-left: 1.3rem;
 	padding-bottom: 1rem;
+}
+.wallet-address-input-error{
+	background: rgb(161 142 142)!important;
+	color: darkred!important;
 }

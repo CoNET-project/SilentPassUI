@@ -11,7 +11,9 @@ import {
 	PurchasePassportAbi,
 	Distributor,
 	SpClubAbi,
-	SpReword
+	SpReword,
+	ReferralsV3,
+	SpClubPoint
   } from "./abis";
   
   const contracts = {
@@ -81,6 +83,16 @@ import {
 	SpReword: {
 		address: '0xEDea8558BA486e21180d7b9656A973cdE46593db',
 		abi: SpReword,
+		network: 'CONET DePIN'
+	},
+	Referrals: {
+		address: '0xE235f3b481270F5DF2362c25FF5ED8Bdc834DcE9',
+		abi:ReferralsV3,
+		network: 'CONET DePIN'
+	},
+	SPClubPoint: {
+		address: '0x9D27BEdb1d093F38726F60551CfefaD83fA838a2',
+		abi: SpClubPoint,
 		network: 'CONET DePIN'
 	}
   };

@@ -46,50 +46,59 @@ const listenProfileVer = async (
 		profiles[1].keyID,
 		globalAllNodes
 	);
+	if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
+		_setProfiles(CoNET_Data?.profiles);
+
+		if (CoNET_Data.profiles[0].activePassport)
+		_setActivePassport(CoNET_Data.profiles[0].activePassport);
+	}
+
+	storeSystemData();
+	setProcessingBlock(false);
   	await conetProvider.getBlockNumber();
 
-  conetProvider.on("block", async (block) => {
-    if (block === epoch + 1) {
-      epoch++;
+	conetProvider.on("block", async (block) => {
+		if (block === epoch + 1) {
+		epoch++;
 
-      if (processingBlock === true) return;
+		if (processingBlock === true) return;
 
-      const profiles = CoNET_Data?.profiles;
+		const profiles = CoNET_Data?.profiles;
 
-      if (!profiles) {
-        return;
-      }
+		if (!profiles) {
+			return;
+		}
 
-      setProcessingBlock(true);
+		setProcessingBlock(true);
 
-      if (block % 10 === 0 || first) {
-		first = false
-        checkCurrentRate(setMiningData);
-        await getProfileAssets(profiles[0], profiles[1]);
-        await getVpnTimeUsed();
-        await getSpClubInfo(profiles[0], currentPageInvitees);
-        const receivedTransactions = await getReceivedAmounts(
-          profiles[1].keyID,
-          globalAllNodes
-        );
-        console.log(receivedTransactions);
-      }
+		if (block % 10 === 0 || first) {
+			first = false
+			checkCurrentRate(setMiningData);
+			await getProfileAssets(profiles[0], profiles[1]);
+			await getVpnTimeUsed();
+			await getSpClubInfo(profiles[0], currentPageInvitees);
+			const receivedTransactions = await getReceivedAmounts(
+			profiles[1].keyID,
+			globalAllNodes
+			);
+			console.log(receivedTransactions);
+		}
 
-      if (block % 2 === 0) {
-        await getPassportsInfoForProfile(profiles[0]);
-      }
+		if (block % 2 === 0) {
+			await getPassportsInfoForProfile(profiles[0]);
+		}
 
-      if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
-        _setProfiles(CoNET_Data?.profiles);
+		if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
+			_setProfiles(CoNET_Data?.profiles);
 
-        if (CoNET_Data.profiles[0].activePassport)
-          _setActivePassport(CoNET_Data.profiles[0].activePassport);
-      }
+			if (CoNET_Data.profiles[0].activePassport)
+			_setActivePassport(CoNET_Data.profiles[0].activePassport);
+		}
 
-      storeSystemData();
-      setProcessingBlock(false);
-    }
-  });
+		storeSystemData();
+		setProcessingBlock(false);
+		}
+	});
 
   epoch = await conetProvider.getBlockNumber();
 };

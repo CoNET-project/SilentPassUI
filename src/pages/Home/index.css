@@ -196,7 +196,7 @@ a {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-
+	z-index: 999;
 	height: 31px;
 
 	transition: height 0.2s ease;

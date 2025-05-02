@@ -198,12 +198,14 @@ export const getPassportTitle = (passportInfo: any) => {
 		return "..."
 	}
 	
-  if (passportInfo.expiresDays < 30) return "Freemium";
+  if (passportInfo.expiresDays < 30 && passportInfo.expiresDays > 0){
+	return "Freemium";
+  }
 
-  if (passportInfo.expires && passportInfo?.expires > 32503690800000)
+  if (passportInfo?.expires > 32503690800000)
     return "Guardian";
 
-  if (passportInfo.premium === true || passportInfo.premium === 'true') return "Annually";
+  if (passportInfo.expiresDays > 31) return "Annually";
 
   return "Monthly";
 };

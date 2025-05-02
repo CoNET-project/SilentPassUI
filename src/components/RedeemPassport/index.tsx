@@ -86,9 +86,9 @@ export default function RedeemPassport() {
 
 
   const spRewordProcess = () => {
-	// if (!spRewordEnable) {
-	// 	return
-	// }
+	if (!spRewordEnable) {
+		return
+	}
 	setSpRewordloading(true)
 	setPaymentKind(5)
 	navigate("/subscription")

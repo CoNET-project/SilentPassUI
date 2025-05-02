@@ -12,13 +12,14 @@ import { getPassportTitle } from '../../utils/utils';
 import { currentPageInvitees, setCurrentPageInvitees } from '../../utils/globals';
 import { getRefereesPage } from '../../services/wallets'
 import SimpleLoadingRing from '../SimpleLoadingRing'
+import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
+import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
 
 const SP_EARNED_FROM_REFERRAL = 10
 
 export default function ReferralProgram() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const { profiles } = useDaemonContext();
-
   const [animation, setAnimation] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shouldRerender, setShouldRerender] = useState(false);
@@ -30,7 +31,8 @@ export default function ReferralProgram() {
     "rsp": 1/31,
 	"rcp": 0,
   })
-
+  const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
+  const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7 && Number(profiles[0].activePassport.expiresDays) > 0;
   const setTokenGraph = () => {
 
   }
@@ -92,14 +94,23 @@ export default function ReferralProgram() {
 	  }}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
-          <h3>Referral Program</h3>
+          <h3 style={{color: freePassportActive ? 'rgb(96,96,96)' : 'rgb(154,196,229)'}}>Referral Program {freePassportActive && <span style={{color: 'darkred'}}>!</span>} </h3>
+		  { !freePassportActive && (
+			hasGuardianActive ? <GoldBadge /> : <BlueBadge />)
+		  }
           <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
         </div>
       </div>
 
       <div className="info-card">
+	        {
+				freePassportActive &&
+				<p style={{padding:'1rem', color: 'darkred'}}>Only subscribers may earn referral points.</p>
+			}
         <div className="copy-div">
+			
           {
+			
 		  	profiles?.[0]?.keyID ?
             <>
               <div className="copy-text">
@@ -130,7 +141,6 @@ export default function ReferralProgram() {
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
               <p>Inviter's wallet address</p>
               {
-                
                   <span style={{ color: '#989899' }}>{profiles[0].referrer.substring(0,6)+'...'+profiles[0].referrer.substring(profiles[0].referrer.length - 6)}
                   </span>
               }

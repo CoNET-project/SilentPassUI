@@ -14,8 +14,6 @@ export default function Wallet() {
   const navigate = useNavigate();
   const { profiles, isIOS } = useDaemonContext();
 
-  console.log("PROFILES: ", profiles);
-
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
   const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7;
 
@@ -25,7 +23,7 @@ export default function Wallet() {
         <h1>My Account</h1>
         { !!profiles?.[0]?.activePassport?.nftID && (
           hasGuardianActive ? <GoldBadge /> : !freePassportActive && <BlueBadge />
-        ) }
+        )}
       </div>
 
       <AccountList />

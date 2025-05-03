@@ -5,8 +5,6 @@ import { useDaemonContext } from "../../providers/DaemonProvider";
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg";
 import { useEffect } from 'react';
 
-
-
 export default function CryptoPayment() {
   const { selectedPlan, setSelectedPlan, monthlyQtd, setMonthlyQtd, annuallyQtd, setAnnuallyQtd, setPaymentKind } = useDaemonContext();
   const navigate = useNavigate();
@@ -55,6 +53,22 @@ export default function CryptoPayment() {
 		<div className="passport-options">
 			<h3>Choose Payment</h3>
 			<div className="option-list">
+			<button className={`option ${selectedPlan === '1' ? 'selected' : ''}`} onClick={() => handleChooseOption('1')}>
+					<div>
+						<p>Monthly</p>
+						<span>1 device</span>
+					</div>
+					{/* <div className="qtd-selector">
+						<button disabled={annuallyQtd === 0} onClick={() => setAnnuallyQtd(annuallyQtd - 1)}>-</button>
+						<p>{annuallyQtd}</p>
+						<button disabled={annuallyQtd === 5} onClick={() => setAnnuallyQtd(annuallyQtd + 1)}>+</button>
+					</div> */}
+					<div>
+						<span>$USD</span>
+						<p>{monthlyPrice}</p>
+						<span className="pay-type">paid yearly</span>
+					</div>
+				</button>
 				<button className={`option ${selectedPlan === '12' ? 'selected' : ''}`} onClick={() => handleChooseOption('12')}>
 					<div>
 						<p>Annually</p>
@@ -77,7 +91,7 @@ export default function CryptoPayment() {
 			Pay with BNB
 		</button>
 		<button className="redeem-button purchase" onClick={() => handlePurchase(2)} >
-			Pay with BNB USDT
+			Pay with BSC USDT
 		</button>
 	</div>
     

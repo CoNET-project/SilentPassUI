@@ -16,7 +16,7 @@ export default function CryptoPay() {
 	const navigate = useNavigate();
 	const [updateCounter, setUpdateCounter] = useState(new Date('1970/12/1 12:0:1'));
 	const [timeoutProcess, setTimeoutProcess] = useState<NodeJS.Timeout>()
-	const [cryptoName, setCryptoName] = useState(paymentKind === 1 ? 'BNB' : 'BNB USDT')
+	const [cryptoName, setCryptoName] = useState(paymentKind === 1 ? 'BNB' : 'BSC USDT')
 	const [serverAddress, setServerAddress] = useState('')
 	const [showPrice, setShowPrice] = useState('')
 	const [showLoading, setShowLoading] = useState(true)
@@ -36,7 +36,7 @@ export default function CryptoPay() {
 
 	const getData = async () => {
 
-		const kkk = await getCryptoPay(agentWallet, cryptoName)
+		const kkk = await getCryptoPay(agentWallet, cryptoName, selectedPlan)
 		if (!kkk) {
 			return setError(true)
 		}
@@ -44,6 +44,7 @@ export default function CryptoPay() {
 		setServerAddress(kkk?.wallet)
 		setShowPrice(kkk?.transferNumber)
 		setShowLoading(false)
+
 		const waiting = await waitingPaymentReady (kkk?.wallet)
 		if (!waiting?.status) {
 			setError(true)

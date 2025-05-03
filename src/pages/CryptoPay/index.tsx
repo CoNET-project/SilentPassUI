@@ -3,16 +3,17 @@ import { useDaemonContext } from "../../providers/DaemonProvider";
 import CryptoPayment from '../../components/cryptoPay';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from "react-router-dom";
+import {clearWaiting} from '../../services/subscription'
 export default function CryptoPay() {
 	const { selectedPlan, setSelectedPlan, monthlyQtd, setMonthlyQtd, annuallyQtd, setAnnuallyQtd, setAgentWallet, agentWallet } = useDaemonContext();
 	const [searchParams, setSearchParams] = useSearchParams();
 	let ffcus = false
 	const getLinkedWallet = () => {
 		const agentWallet = searchParams.get("wallet")
-		if (!agentWallet) {
-			return 
+		if (agentWallet) {
+			setAgentWallet(agentWallet)
 		}
-		setAgentWallet(agentWallet)
+		clearWaiting()
 
 	}
 	
@@ -27,23 +28,10 @@ export default function CryptoPay() {
 	return (
 		
 		<div className="page-container">
-			
-			{
-				agentWallet ?
-				<>
-					<div className="wallet-heading">
-						<h1>Crypto Payment</h1>
-					</div>
-					<CryptoPayment />
-				</>
-				:
-				<>
-					<h1 style={{textAlign:'center'}}>404</h1>
-					<h3 style={{textAlign:'center'}}>Not Found</h3>
-				</>
-				
-			}
-			
+			<div className="wallet-heading">
+				<h1>Crypto Payment</h1>
+			</div>
+			<CryptoPayment />
 		</div>
 	)
 

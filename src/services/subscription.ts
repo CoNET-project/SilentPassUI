@@ -1,9 +1,5 @@
-import {getCONET_api_health} from './wallets'
+
 import {
-	aesGcmDecrypt,
-	customJsonStringify,
-	initProfileTokens,
-	isValidSolanaBase58PrivateKey,
 	postToEndpoint,
   } from "../utils/utils";
 
@@ -13,13 +9,13 @@ import {
 const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
 const waitingPayUrl = `${payment_endpoint}cryptoPayment_waiting`
 let listening: NodeJS.Timeout|null = null
-export const getCryptoPay = async (agentWallet: string, cryptoName: string) => {
+export const getCryptoPay = async (agentWallet: string, cryptoName: string, plan: string) => {
 	if (listening) {
 		clearTimeout(listening)
 	}
 	
 	try {
-		const result = await postToEndpoint(getCryptoPayUrl, true, { agentWallet, cryptoName})
+		const result = await postToEndpoint(getCryptoPayUrl, true, { agentWallet, cryptoName, plan})
 		return result
 	} catch(ex) {
 		console.log("EX: ", ex)
@@ -54,3 +50,9 @@ export const waitingPaymentReady = (wallet: string): Promise<any> => new Promise
 	}
 	resolve(status)
 })
+
+export const clearWaiting = () => {
+	if (listening) {
+		clearTimeout(listening)
+	}
+}

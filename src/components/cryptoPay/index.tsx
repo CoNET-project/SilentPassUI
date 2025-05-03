@@ -1,13 +1,31 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import "./index.css"; // Import external CSS file
 import { useDaemonContext } from "../../providers/DaemonProvider";
-
-import { ReactComponent as StripeIcon } from "./assets/stripe.svg";
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import {checkWallet} from '../../services/subscription'
 
 export default function CryptoPayment() {
-  const { selectedPlan, setSelectedPlan, monthlyQtd, setMonthlyQtd, annuallyQtd, setAnnuallyQtd, setPaymentKind } = useDaemonContext();
+  const { selectedPlan, setSelectedPlan, monthlyQtd, annuallyQtd, setPaymentKind, agentWallet } = useDaemonContext();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [vaildAddress, setVaildAddress] = useState(true)
+  let ffcus = false
+  useEffect(() => {
+	if (ffcus) {
+		return
+	}
+	ffcus = true
+	const agentWallet = searchParams.get("wallet")
+	
+	if (agentWallet) {
+		const test = checkWallet(agentWallet)
+		if (!test) {
+			setVaildAddress(false)
+		}
+	}
+
+
+},[])
 
 	function handlePurchase(type: 1 | 2) {
 
@@ -51,6 +69,12 @@ export default function CryptoPayment() {
   return (
       <div className="redeem-passport">
 		<div className="passport-options">
+			{
+				!vaildAddress &&
+				<>
+					<p style={{color: 'darkred', fontWeight: '600'}}>The agent's address is incorrect. Please contact the agent before making payment.</p>
+				</>
+			}
 			<h3>Choose Payment</h3>
 			<div className="option-list">
 			<button className={`option ${selectedPlan === '1' ? 'selected' : ''}`} onClick={() => handleChooseOption('1')}>

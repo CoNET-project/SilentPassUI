@@ -6,6 +6,8 @@ import {
 import {
 	payment_endpoint,
   } from "../utils/constants";
+
+import {ethers} from 'ethers'
 const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
 const waitingPayUrl = `${payment_endpoint}cryptoPayment_waiting`
 let listening: NodeJS.Timeout|null = null
@@ -50,6 +52,10 @@ export const waitingPaymentReady = (wallet: string): Promise<any> => new Promise
 	}
 	resolve(status)
 })
+
+export const checkWallet = (wallet: string) => {
+	return ethers.isAddress(wallet)
+}
 
 export const clearWaiting = () => {
 	if (listening) {

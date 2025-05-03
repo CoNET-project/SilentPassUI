@@ -194,7 +194,7 @@ export const parseQueryParams = (queryString: string) => {
 };
 
 export const getPassportTitle = (passportInfo: any) => {
-	if (!passportInfo) {
+	if (!passportInfo|| parseInt(passportInfo.nftID) < 100) {
 		return "..."
 	}
 	

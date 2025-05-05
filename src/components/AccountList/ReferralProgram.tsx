@@ -28,8 +28,8 @@ export default function ReferralProgram() {
   const [inviter, setInviter] = useState('');
   const [quotation, setQuotation] = useState({
     "rfp": 1/31,
-    "rsp": 1/31,
-	"rcp": 0,
+    "rsp": 0/31,
+	"rcp": 0/31,
   })
   const nft = parseInt(profiles?.[0]?.activePassport?.nftID)
   const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires) === '00:00:00' ? true : false
@@ -99,7 +99,7 @@ export default function ReferralProgram() {
 	  }}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
-          <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : 'rgb(154,196,229)'}}>Referral Program {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
+          <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive ? '#EFBF04': 'rgb(154,196,229)'}}>Referral Program {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
 		  { !freePassportActive && !expiration && (
 			hasGuardianActive ? <GoldBadge /> : <BlueBadge />)
 		  }

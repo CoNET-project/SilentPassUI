@@ -14,7 +14,9 @@ import {
   localDatabaseName,
   rewardWalletAddress,
   payment_endpoint,
-  paypal_endpoint
+  paypal_endpoint,
+  changeRPC,
+  ethProvider
 } from "../utils/constants";
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
@@ -24,7 +26,7 @@ import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
 import { scanSolanaSol, scanSolanaSp } from "./listeners";
 import axios from 'axios';
-
+import { blast_CNTPAbi } from "./../utils/abis";
 
 const SPOracleSmartContract = new ethers.Contract(contracts.SpOracle.address, contracts.SpOracle.abi, conetProvider)
 const PouchDB = require("pouchdb").default;
@@ -315,8 +317,7 @@ const requireFreePassport = async () => {
 };
 
 const getCurrentPassportInfoInChain = async (
-  walletAddress: string,
-  chain: string
+  walletAddress: string
 ) => {
   if (!CoNET_Data) {
     return;
@@ -325,15 +326,11 @@ const getCurrentPassportInfoInChain = async (
   let contractAddress;
   let contractAbi;
 
-  if (chain === "mainnet") {
+
     provider = conetDepinProvider;
     contractAddress = contracts.distributor.address;
     contractAbi = contracts.distributor.abi;
-  } else {
-    provider = conetProvider;
-    contractAddress = contracts.PassportCancun.address;
-    contractAbi = contracts.PassportCancun.abi;
-  }
+
 
   const wallet = new ethers.Wallet(
     CoNET_Data.profiles[0].privateKeyArmor,
@@ -362,15 +359,10 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
   let contractAddress;
   let contractAbi;
 
-  if (chain === "mainnet") {
     provider = conetDepinProvider;
     contractAddress = contracts.distributor.address;
     contractAbi = contracts.distributor.abi;
-  } else {
-    provider = conetProvider;
-    contractAddress = contracts.PassportCancun.address;
-    contractAbi = contracts.PassportCancun.abi;
-  }
+
 
   const wallet = new ethers.Wallet(
     CoNET_Data.profiles[0].privateKeyArmor,
@@ -386,6 +378,7 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
   try {
     const tx = await passportContract.changeActiveNFT(nftId);
 	await tx.wait()
+	await getPassportsInfoForProfile(CoNET_Data.profiles[0])
     return tx;
   } catch (ex) {
     console.log(ex);
@@ -445,23 +438,6 @@ const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
   }
 };
 
-const getCurrentPassportInfo = async (walletAddress: string) => {
-  const resultMainnet = await getCurrentPassportInfoInChain(
-    walletAddress,
-    "mainnet"
-  );
-  return resultMainnet
-//   if (resultMainnet[0]?.toString() !== "0") {
-//     return resultMainnet;
-//   }
-
-//   const resultCancun = await getCurrentPassportInfoInChain(
-//     walletAddress,
-//     "cancun"
-//   );
-
-//   return resultCancun;
-};
 
 const tryToRequireFreePassport = async () => {
   if (!CoNET_Data) {
@@ -604,7 +580,7 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
 //   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
   const tmpMainnetPassports = await getPassportsInfo(profile, "mainnet");
 
-  const _currentPassport = await getCurrentPassportInfo(profile.keyID);
+  const _currentPassport = await getCurrentPassportInfoInChain(profile.keyID);
 
   profile = {
     ...profile,
@@ -711,93 +687,96 @@ const getPassportsInfo = async (
   }
 };
 
+let reflaseSolanaBalancesProcess = false
 const refreshSolanaBalances = async (
 	randomNode: nodes_info
 ) => {
 	const solanaProfile = CoNET_Data?.profiles[1];
 
-	if (!solanaProfile) {
+	if (!solanaProfile||reflaseSolanaBalancesProcess) {
 	  return false
 	}
-	
-  const solanaRPC_url = `https://${randomNode.domain}/solana-rpc`;
-  try {
-    const [sol, sp, oracle] = await Promise.all([
-      scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
-      scanSolanaSp(solanaProfile.keyID, solanaRPC_url),
-	  getSPOracle(),
-    ]);
-	const solPrice = parseFloat(formatEther(oracle[4]).toString())
-	const spPrice = parseFloat(formatEther(oracle[0]).toString())/2.49
-	if (sol !== false) {
-		const _sol = parseFloat(sol.toString())
+	reflaseSolanaBalancesProcess = true
+		
+		const solanaRPC_url = `https://${randomNode.domain}/solana-rpc`;
+		try {
+			const [sol, sp, oracle] = await Promise.all([
+			scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
+			scanSolanaSp(solanaProfile.keyID, solanaRPC_url),
+			getSPOracle(),
+			]);
+			const solPrice = parseFloat(formatEther(oracle[4]).toString())
+			const spPrice = parseFloat(formatEther(oracle[0]).toString())/2.49
+			if (sol !== false) {
+				const _sol = parseFloat(sol.toString())
 
-		const sol1 = (_sol >= 1_000_000) ? (_sol/1_000_000).toFixed(3) + 'M' : _sol.toFixed(5)
-		if (solanaProfile.tokens?.sol) {
-			solanaProfile.tokens.sol.balance = sol1
-			solanaProfile.tokens.sol.balance1 = _sol
-		  } else {
-			solanaProfile.tokens.sol = {
-			  balance:sol1,
-			  balance1: _sol,
-			  network: "Solana Mainnet",
-			  decimal: 18,
-			  contract: "",
-			  name: "sol",
-			  usd: ''
-			};
-		  }
-	}
-    if ( typeof solanaProfile.tokens.sol?.balance1 === 'number') {
-		const sol_usd = solanaProfile.tokens.sol.balance1 * solPrice
-		solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(2) + 'M' : sol_usd.toFixed(2)
-	}
-	
+				const sol1 = (_sol >= 1_000_000) ? (_sol/1_000_000).toFixed(3) + 'M' : _sol.toFixed(5)
+				if (solanaProfile.tokens?.sol) {
+					solanaProfile.tokens.sol.balance = sol1
+					solanaProfile.tokens.sol.balance1 = _sol
+				} else {
+					solanaProfile.tokens.sol = {
+					balance:sol1,
+					balance1: _sol,
+					network: "Solana Mainnet",
+					decimal: 18,
+					contract: "",
+					name: "sol",
+					usd: ''
+					};
+				}
+			}
+			if ( typeof solanaProfile.tokens.sol?.balance1 === 'number') {
+				const sol_usd = solanaProfile.tokens.sol.balance1 * solPrice
+				solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(2) + 'M' : sol_usd.toFixed(2)
+			}
+			
 
-	if (sp !== false) {
-		const _sp = parseFloat(sp.toString())
-		const sp1 = (_sp >= 1_000_000) ? (_sp/1_000_000).toFixed(2) + 'M' : _sp.toFixed(2)
-		if (solanaProfile.tokens?.sp) {
-			solanaProfile.tokens.sp.balance = sp1
-			solanaProfile.tokens.sp.balance1 = _sp
-		  } else {
-			solanaProfile.tokens.sp = {
-			  balance: sp1,
-			  network: "Solana Mainnet",
-			  decimal: 18,
-			  contract: "",
-			  name: "sp",
-			  balance1: _sp,
-			  usd:''
-			};
-		  }
-	}
-    if ( typeof solanaProfile.tokens.sp?.balance1 === 'number') {
-		const sp_usd = solanaProfile.tokens.sp.balance1 / spPrice
-		solanaProfile.tokens.sp.usd = sp_usd  >= 1_000_000 ? (sp_usd/1_000_000).toFixed(2) + 'M' : sp_usd.toFixed(2)
-	}
-	
+			if (sp !== false) {
+				const _sp = parseFloat(sp.toString())
+				const sp1 = (_sp >= 1_000_000) ? (_sp/1_000_000).toFixed(2) + 'M' : _sp.toFixed(2)
+				if (solanaProfile.tokens?.sp) {
+					solanaProfile.tokens.sp.balance = sp1
+					solanaProfile.tokens.sp.balance1 = _sp
+				} else {
+					solanaProfile.tokens.sp = {
+					balance: sp1,
+					network: "Solana Mainnet",
+					decimal: 18,
+					contract: "",
+					name: "sp",
+					balance1: _sp,
+					usd:''
+					};
+				}
+			}
+			if ( typeof solanaProfile.tokens.sp?.balance1 === 'number') {
+				const sp_usd = solanaProfile.tokens.sp.balance1 / spPrice
+				solanaProfile.tokens.sp.usd = sp_usd  >= 1_000_000 ? (sp_usd/1_000_000).toFixed(2) + 'M' : sp_usd.toFixed(2)
+			}
+			
 
 
-    const temp = CoNET_Data;
+			const temp = CoNET_Data;
 
-    if (!temp) {
-      return false;
-    }
+			if (temp) {
+				temp.profiles[1] = {
+					...temp.profiles[1],
+					tokens: {
+					...temp.profiles[1].tokens,
+					sp: solanaProfile.tokens.sp,
+					sol: solanaProfile.tokens.sol,
+					},
+				};
+				
+				setCoNET_Data(temp);
+			}
 
-    temp.profiles[1] = {
-      ...temp.profiles[1],
-      tokens: {
-        ...temp.profiles[1].tokens,
-        sp: solanaProfile.tokens.sp,
-        sol: solanaProfile.tokens.sol,
-      },
-    };
-	
-    setCoNET_Data(temp);
+	reflaseSolanaBalancesProcess = false
 
-    return true;
+	return true;
   } catch (ex) {
+	reflaseSolanaBalancesProcess = false
     return false;
   }
 };
@@ -867,7 +846,7 @@ const getSpClubInfo = async (profile: profile, currentPageInvitees: number) => {
 
       // Use map to handle async operations
       const refereePromises = validReferees.map(async (referee: string) => {
-        const _activePassport = await getCurrentPassportInfo(referee);
+        const _activePassport = await getCurrentPassportInfoInChain(referee);
 
         const activePassport = {
           nftID: _activePassport?.nftIDs?.toString(),
@@ -941,7 +920,7 @@ const getRefereesPage = async (
 
     // Use map to handle async operations
     const refereePromises = validReferees.map(async (referee: string) => {
-      const _activePassport = await getCurrentPassportInfo(referee);
+      const _activePassport = await getCurrentPassportInfoInChain(referee);
 
       const activePassport = {
         nftID: _activePassport?.nftIDs?.toString(),
@@ -1145,7 +1124,6 @@ const getRewordStaus = async(): Promise<boolean> => {
 	
 }
 
-
 const spRewardRequest = async (): Promise<number> => {
 	if (!CoNET_Data) {
 		return 0
@@ -1177,10 +1155,169 @@ const spRewardRequest = async (): Promise<number> => {
 	if (result === false) {
 		return -1
 	}
+	await getPassportsInfoForProfile(CoNET_Data.profiles[0])
 
 	return ret
 
 }
+const scan_erc20_balance: (
+  walletAddr: string,
+  address: string,
+  abi: any,
+  provider: any
+) => Promise<false | any> = (walletAddr, contractAddress, abi, provider) =>
+  new Promise(async (resolve) => {
+	const contract = new ethers.Contract(
+	  contractAddress,
+	  blast_CNTPAbi,
+	  provider
+	);
+
+	try {
+	  const result = await contract.balanceOf(walletAddr);
+	  return resolve(result);
+	} catch (ex) {
+	  console.log(`scan_erc20_balance Error!`);
+	  return resolve(false);
+	}
+  });
+
+const scanCONETDepin = async (walletAddr: string) => {
+	return await scan_erc20_balance(
+	  walletAddr,
+	  contracts.ConetDepin.address,
+	  contracts.ClaimableConetPoint.abi,
+	  conetDepinProvider
+	);
+  };
+
+  const scan_natural_balance = async (walletAddr: string, provider: any) => {
+	try {
+	  const result = await provider.getBalance(walletAddr);
+	  return result;
+	} catch (ex) {
+	  changeRPC()
+	  console.log(`scan_natureBalance Error!`);
+	  return false;
+	}
+  };
+const scanConetETH = async (walletAddr: string) => {
+  return await scan_natural_balance(walletAddr, conetDepinProvider);
+};
+const scanETH = async (walletAddr: string) => {
+	return await scan_natural_balance(walletAddr, ethProvider);
+};
+const ReferralsContract = new ethers.Contract(contracts.Referrals.address, contracts.Referrals.abi, conetDepinProvider)
+const getReferrals = async (key: string) => {
+	try {
+		const ret = await ReferralsContract._referees(key)
+		if (ret === ethers.ZeroAddress) {
+			return null
+		}
+		return ret
+	} catch (ex) {
+		return null
+	}
+}
+const SPClubPointContract = new ethers.Contract(contracts.SPClubPoint.address, contracts.SPClubPoint.abi, conetDepinProvider)
+const getSPClubPoint = async (key: string) => {
+	try {
+		const points = await SPClubPointContract.getAllPoints(key)
+		return points
+	} catch (ex) {
+		return null
+	}
+}
+const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
+  const key = profile.keyID;
+
+  if (key) {
+	if (!profile.tokens) {
+	  profile.tokens = initProfileTokens();
+	}
+
+	const [conetDepin, conet_eth, referrals, points] = await Promise.all([
+	  scanCONETDepin(key),
+	  scanConetETH(key),
+	  getReferrals(key),
+	  getSPClubPoint(key)
+	]);
+
+	if (profile.tokens?.conetDepin) {
+	  profile.tokens.conetDepin.balance =
+		conetDepin === false
+		  ? ""
+		  : parseFloat(ethers.formatEther(conetDepin)).toFixed(6);
+	} else {
+	  profile.tokens.conetDepin = {
+		balance:
+		  conetDepin === false
+			? ""
+			: parseFloat(ethers.formatEther(conetDepin)).toFixed(6),
+		network: "CONET DePIN",
+		decimal: 18,
+		contract: "",
+		name: "conetDepin",
+	  };
+	}
+
+	// if (profile.tokens?.eth) {
+	//   profile.tokens.eth.balance =
+	// 	eth === false ? "" : parseFloat(ethers.formatEther(eth)).toFixed(6);
+	// } else {
+	//   profile.tokens.eth = {
+	// 	balance:
+	// 	  eth === false ? "" : parseFloat(ethers.formatEther(eth)).toFixed(6),
+	// 	network: "ETH",
+	// 	decimal: 18,
+	// 	contract: "",
+	// 	name: "eth",
+	//   };
+	// }
+
+	if (profile.tokens?.conet_eth) {
+	  profile.tokens.conet_eth.balance =
+		conet_eth === false
+		  ? ""
+		  : parseFloat(ethers.formatEther(conet_eth)).toFixed(6);
+	} else {
+	  profile.tokens.conet_eth = {
+		balance:
+		  conet_eth === false
+			? ""
+			: parseFloat(ethers.formatEther(conet_eth)).toFixed(6),
+		network: "CONET DePIN",
+		decimal: 18,
+		contract: "",
+		name: "conet_eth",
+	  };
+	}
+
+	profile.referrer = referrals
+	
+	profile.SpClubPoints = {
+		SPHolderPoint: points ? parseInt(points[0].toString()):0,
+		RefferentSPHolderPoint: points ? parseInt(points[1].toString()):0,
+		SubscriptionPoint: points ? parseInt(points[2].toString()):0,
+		RefferentSubscriptionPoint: points ? parseInt(points[3].toString()):0,
+		ClaimableSubscriptionPoint: points ? parseInt(points[4].toString()):0,
+		ClaimableRefferentSubscriptionPoint: points ? parseInt(points[5].toString()):0
+	}
+	
+	const temp = CoNET_Data;
+
+	if (!temp) {
+	  return false;
+	}
+
+	temp.profiles[0] = profile;
+	temp.profiles[1] = solanaProfile;
+
+	setCoNET_Data(temp);
+  }
+
+  return true;
+};
 
 /* const checkApprovedForAll = async (wallet: ethers.Wallet) => {
 	const passport_contract = new ethers.Contract(contracts.testPassport.address, contracts.testPassport.abi, wallet)
@@ -1226,7 +1363,7 @@ const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string): Pr
 		for (let log of tR.logs) {
 			const LogDescription = SC.interface.parseLog(log)
 
-			if (LogDescription?.name === 'Reddem') {
+			if (LogDescription?.name === 'TransferSingle') {
 				const toAddress  = LogDescription.args[1]
 				if (toAddress.toLowerCase() == profileKey) {
 					const nftID = LogDescription.args[2]
@@ -1284,14 +1421,15 @@ const RealizationRedeem = async (code: string): Promise<null|number> => {
 		return null;
 	}
 	const profile = CoNET_Data?.profiles[0]
-	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	const solana = CoNET_Data?.profiles[1]
+	const solanaWallet = solana.keyID
 	if (!solanaWallet||!profile) {
 		return null;
 	}
-	const ethBalance = parseFloat(profile.tokens.conet_eth.balance)
-	if (ethBalance > 0.000001) {
-		return await RealizationRedeem_withSmartContract(profile, solanaWallet, code)
-	}
+	// const ethBalance = parseFloat(profile.tokens.conet_eth.balance)
+	// if (ethBalance > 0.000001) {
+	// 	return await RealizationRedeem_withSmartContract(profile, solanaWallet, code)
+	// }
 
 	const url = `${apiv4_endpoint}codeToClient`
 	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, uuid: code })
@@ -1300,17 +1438,12 @@ const RealizationRedeem = async (code: string): Promise<null|number> => {
 	const sendData = {
       message, signMessage
     }
-	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
 	try {
-		const [nft, result] = await Promise.all ([
-			listenersRealizationRedeem(contract_distributor, profile.keyID.toLowerCase()),
-			postToEndpoint(url, true, sendData)
-		])
+		const result = await postToEndpoint(url, true, sendData)
 		if (typeof result === 'boolean'|| result === ''|| result?.error ) {
 			return null
 		}
-
-		return nft
+		return result.status
 	} catch(ex) {
     	console.log("EX: ", ex);
 		return null
@@ -1426,6 +1559,7 @@ const checkFreePassport = async () => {
 	if (!canGetFreeNFT || !nftID ) {
 		await getFreeNFT (wallet)
 		await getPassportsInfoForProfile(profile)
+
 		checkFreePassportProcess = 50
 		return true
 	}
@@ -1460,7 +1594,7 @@ const waitingPaymentStatus = async (): Promise<false|number> => {
 		return false;
 	}
 	const profile = CoNET_Data?.profiles[0]
-	const solanaWallet = CoNET_Data?.profiles[1].keyID
+	const solanaWallet = CoNET_Data?.profiles[1]
 	if (!solanaWallet||!profile) {
 		return false;
 	}
@@ -1484,11 +1618,11 @@ const waitingPaymentStatus = async (): Promise<false|number> => {
 				return waiting().then (jj => resolve(jj))
 			}, 10 * 1000)
 		}
-		
 		return resolve(result.status)
 	})
 
 	const result = await waiting ()
+
 	return result
 }
 
@@ -1515,7 +1649,7 @@ export {
   createGPGKey,
   requireFreePassport,
   tryToRequireFreePassport,
-  getCurrentPassportInfo,
+  getCurrentPassportInfoInChain,
   changeActiveNFT,
   estimateChangeNFTGasFee,
   getFaucet,
@@ -1538,5 +1672,6 @@ export {
   getRewordStaus,
   spRewardRequest,
   checkLocalStorageNodes,
-  storageAllNodes
+  storageAllNodes,
+  getProfileAssets
 };

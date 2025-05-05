@@ -7,7 +7,7 @@ import { changeActiveNFT, estimateChangeNFTGasFee } from '../../services/wallets
 import Skeleton from '../Skeleton';
 
 const SelectActivePassportPopup = ({ newPassport }: any) => {
-  const { profiles, activePassport, setIsSelectPassportPopupOpen } = useDaemonContext();
+  const { profiles, setActivePassport, activePassport, setIsSelectPassportPopupOpen } = useDaemonContext();
 
   const currentPassportName = useMemo(() => getPassportTitle(activePassport) + ' Passport', [activePassport])
   const newPassportName = getPassportTitle(newPassport) + ' Passport';
@@ -21,15 +21,14 @@ const SelectActivePassportPopup = ({ newPassport }: any) => {
       setIsChangeLoading(true);
 
       await changeActiveNFT('mainnet', newPassport.nftID)
-
+	  setActivePassport(profiles.activePassport)
       await new Promise((resolve) => setTimeout(resolve, 6000));
 
       setIsSelectPassportPopupOpen(false);
+	  setIsChangeLoading(false);
+      setEstimatedGasFee('');
     } catch (ex) {
       console.log(ex)
-    } finally {
-      setIsChangeLoading(false);
-      setEstimatedGasFee('');
     }
   }
 

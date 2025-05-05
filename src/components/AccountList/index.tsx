@@ -24,7 +24,7 @@ interface AccountListProps {
 
 export default function AccountList({ showMainWallet = true, simplifiedView = false, spInUsd = 0, solInUsd = 0 }: AccountListProps) {
   const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-  const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes, isIOS } = useDaemonContext();
+  const { profiles, activePassport, randomSolanaRPC, getAllNodes, isIOS } = useDaemonContext();
 
   const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
   const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
@@ -80,8 +80,6 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
       }
 
       tmpData.profiles[1] = profiles?.[1];
-
-      setProfiles(tmpData.profiles);
     } catch (ex) {
       console.log(ex);
     }

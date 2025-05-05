@@ -2,16 +2,11 @@ import { ethers } from "ethers";
 import { blast_CNTPAbi } from "./../utils/abis";
 import {
   conetDepinProvider,
-  conetProvider,
-  ethProvider,
-  changeRPC
 } from "../utils/constants";
 import {
   CoNET_Data,
   currentPageInvitees,
   globalAllNodes,
-  processingBlock,
-  setCoNET_Data,
   setProcessingBlock,
 } from "../utils/globals";
 import contracts from "../utils/contracts";
@@ -23,229 +18,84 @@ import {
   getSpClubInfo,
   getVpnTimeUsed,
   storeSystemData,
+  getProfileAssets
 } from "./wallets";
 import { PublicKey } from "@solana/web3.js";
 
 let epoch = 0;
-let first = true
+let blockProcess = 0
 const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
   _setActivePassport: (profiles: freePassport) => void,
   setMiningData: (response: nodeResponse) => void
 ) => {
 	const profiles = CoNET_Data?.profiles;
-
-      if (!profiles) {
-        return;
-      }
+	const now = new Date().getTime()
+	if (!profiles||now - blockProcess < 1000 * 10) {
+		return;
+	}
+	blockProcess = now
+	
+	await conetDepinProvider.getBlockNumber();
 	checkCurrentRate(setMiningData);
 	await getProfileAssets(profiles[0], profiles[1]);
 	await getVpnTimeUsed();
 	await getSpClubInfo(profiles[0], currentPageInvitees);
-	const receivedTransactions = await getReceivedAmounts(
+	await getPassportsInfoForProfile(profiles[0])
+	await getReceivedAmounts(
 		profiles[1].keyID,
 		globalAllNodes
 	);
-	if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
-		_setProfiles(CoNET_Data?.profiles);
+	
+	_setProfiles(profiles);
 
-		if (CoNET_Data.profiles[0].activePassport)
-		_setActivePassport(CoNET_Data.profiles[0].activePassport);
+	if (profiles[0].activePassport) {
+		_setActivePassport(profiles[0].activePassport);
 	}
 
-	storeSystemData();
-	setProcessingBlock(false);
-  	await conetProvider.getBlockNumber();
-
-	conetProvider.on("block", async (block) => {
+	await storeSystemData();
+	await setProcessingBlock(false);
+	blockProcess = now
+	conetDepinProvider.on("block", async (block) => {
 		if (block === epoch + 1) {
-		epoch++;
 
-		if (processingBlock === true) return;
+			epoch++;
+			
+			const profiles = CoNET_Data?.profiles;
+			const now = new Date().getTime()
+			if (!profiles||now - blockProcess < 1000 * 10) {
+				return;
+			}
 
-		const profiles = CoNET_Data?.profiles;
+			blockProcess = now
+				await checkCurrentRate(setMiningData);
+				await getProfileAssets(profiles[0], profiles[1]);
+				await getVpnTimeUsed();
+				await getSpClubInfo(profiles[0], currentPageInvitees);
+				
+				const receivedTransactions = await getReceivedAmounts(
+					profiles[1].keyID,
+					globalAllNodes
+				);
+				console.log(receivedTransactions);
+			
+				await getPassportsInfoForProfile(profiles[0]);
+			
+				if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
+					_setProfiles(CoNET_Data?.profiles);
+					if (CoNET_Data.profiles[0].activePassport)
+					_setActivePassport(CoNET_Data.profiles[0].activePassport);
+				}
 
-		if (!profiles) {
-			return;
-		}
-
-		setProcessingBlock(true);
-
-		if (block % 10 === 0 || first) {
-			first = false
-			checkCurrentRate(setMiningData);
-			await getProfileAssets(profiles[0], profiles[1]);
-			await getVpnTimeUsed();
-			await getSpClubInfo(profiles[0], currentPageInvitees);
-			const receivedTransactions = await getReceivedAmounts(
-			profiles[1].keyID,
-			globalAllNodes
-			);
-			console.log(receivedTransactions);
-		}
-
-		if (block % 2 === 0) {
-			await getPassportsInfoForProfile(profiles[0]);
-		}
-
-		if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
-			_setProfiles(CoNET_Data?.profiles);
-
-			if (CoNET_Data.profiles[0].activePassport)
-			_setActivePassport(CoNET_Data.profiles[0].activePassport);
-		}
-
-		storeSystemData();
-		setProcessingBlock(false);
+				await storeSystemData();
+				await setProcessingBlock(false);
+			blockProcess = now
 		}
 	});
 
-  epoch = await conetProvider.getBlockNumber();
-};
-const ReferralsContract = new ethers.Contract(contracts.Referrals.address, contracts.Referrals.abi, conetDepinProvider)
-const SPClubPointContract = new ethers.Contract(contracts.SPClubPoint.address, contracts.SPClubPoint.abi, conetDepinProvider)
-const getReferrals = async (key: string) => {
-	try {
-		const ret = await ReferralsContract._referees(key)
-		if (ret === ethers.ZeroAddress) {
-			return null
-		}
-		return ret
-	} catch (ex) {
-		return null
-	}
-}
-
-const getSPClubPoint = async (key: string) => {
-	try {
-		const points = await SPClubPointContract.getAllPoints(key)
-		return points
-	} catch (ex) {
-		return null
-	}
-}
-
-const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
-  const key = profile.keyID;
-
-  if (key) {
-    if (!profile.tokens) {
-      profile.tokens = initProfileTokens();
-    }
-
-    const [conetDepin, conet_eth, eth, referrals, points] = await Promise.all([
-      scanCONETDepin(key),
-      scanConetETH(key),
-      scanETH(key),
-	  getReferrals(key),
-	  getSPClubPoint(key)
-    ]);
-
-    if (profile.tokens?.conetDepin) {
-      profile.tokens.conetDepin.balance =
-        conetDepin === false
-          ? ""
-          : parseFloat(ethers.formatEther(conetDepin)).toFixed(6);
-    } else {
-      profile.tokens.conetDepin = {
-        balance:
-          conetDepin === false
-            ? ""
-            : parseFloat(ethers.formatEther(conetDepin)).toFixed(6),
-        network: "CONET DePIN",
-        decimal: 18,
-        contract: "",
-        name: "conetDepin",
-      };
-    }
-
-    if (profile.tokens?.eth) {
-      profile.tokens.eth.balance =
-        eth === false ? "" : parseFloat(ethers.formatEther(eth)).toFixed(6);
-    } else {
-      profile.tokens.eth = {
-        balance:
-          eth === false ? "" : parseFloat(ethers.formatEther(eth)).toFixed(6),
-        network: "ETH",
-        decimal: 18,
-        contract: "",
-        name: "eth",
-      };
-    }
-
-    if (profile.tokens?.conet_eth) {
-      profile.tokens.conet_eth.balance =
-        conet_eth === false
-          ? ""
-          : parseFloat(ethers.formatEther(conet_eth)).toFixed(6);
-    } else {
-      profile.tokens.conet_eth = {
-        balance:
-          conet_eth === false
-            ? ""
-            : parseFloat(ethers.formatEther(conet_eth)).toFixed(6),
-        network: "CONET DePIN",
-        decimal: 18,
-        contract: "",
-        name: "conet_eth",
-      };
-    }
-
-	profile.referrer = referrals
-	
-	profile.SpClubPoints = {
-		SPHolderPoint: points ? parseInt(points[0].toString()):0,
-		RefferentSPHolderPoint: points ? parseInt(points[1].toString()):0,
-		SubscriptionPoint: points ? parseInt(points[2].toString()):0,
-		RefferentSubscriptionPoint: points ? parseInt(points[3].toString()):0,
-		ClaimableSubscriptionPoint: points ? parseInt(points[4].toString()):0,
-		ClaimableRefferentSubscriptionPoint: points ? parseInt(points[5].toString()):0
-	}
-	
-    const temp = CoNET_Data;
-
-    if (!temp) {
-      return false;
-    }
-
-    temp.profiles[0] = profile;
-    temp.profiles[1] = solanaProfile;
-
-    setCoNET_Data(temp);
-  }
-
-  return true;
+  epoch = await conetDepinProvider.getBlockNumber();
 };
 
-const scanCCNTP = async (walletAddr: string) => {
-  return await scan_erc20_balance(
-    walletAddr,
-    contracts.ClaimableConetPoint.address,
-    contracts.ClaimableConetPoint.abi,
-    conetProvider
-  );
-};
-
-const scanCONETDepin = async (walletAddr: string) => {
-  return await scan_erc20_balance(
-    walletAddr,
-    contracts.ConetDepin.address,
-    contracts.ClaimableConetPoint.abi,
-    conetDepinProvider
-  );
-};
-
-const scanConetETH = async (walletAddr: string) => {
-  return await scan_natural_balance(walletAddr, conetDepinProvider);
-};
-
-const scanCONETHolesky = async (walletAddr: string) => {
-  return await scan_natural_balance(walletAddr, conetProvider);
-};
-
-const scanETH = async (walletAddr: string) => {
-  return await scan_natural_balance(walletAddr, ethProvider);
-};
 
 const scanSolanaSol = async (walletAddr: string, randomSolanaRPC: string) => {
   try {
@@ -294,38 +144,6 @@ const scanSolanaSp = async (walletAddr: string, solanaRPC_url: string) => {
   );
 };
 
-const scan_erc20_balance: (
-  walletAddr: string,
-  address: string,
-  abi: any,
-  provider: any
-) => Promise<false | any> = (walletAddr, contractAddress, abi, provider) =>
-  new Promise(async (resolve) => {
-    const contract = new ethers.Contract(
-      contractAddress,
-      blast_CNTPAbi,
-      provider
-    );
-
-    try {
-      const result = await contract.balanceOf(walletAddr);
-      return resolve(result);
-    } catch (ex) {
-      console.log(`scan_erc20_balance Error!`);
-      return resolve(false);
-    }
-  });
-
-const scan_natural_balance = async (walletAddr: string, provider: any) => {
-  try {
-    const result = await provider.getBalance(walletAddr);
-    return result;
-  } catch (ex) {
-	changeRPC()
-    console.log(`scan_natureBalance Error!`);
-    return false;
-  }
-};
 
 const scan_spl_balance = async (
   walletAddr: string,

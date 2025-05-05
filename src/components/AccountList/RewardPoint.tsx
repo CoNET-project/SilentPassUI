@@ -16,8 +16,8 @@ export default function RewardPoint() {
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
   const [quotation, setQuotation] = useState({
     "ufp": 0.5/31,
-    "usp": 0.5/31,
-	"ucp": 0,
+    "usp": 0/31,
+	"ucp": 0/31,
   })
   const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport } = useDaemonContext();
   let first = true

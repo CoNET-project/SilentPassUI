@@ -3,7 +3,7 @@ import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfo, tryToRequireFreePassport, checkFreePassport } from "./services/wallets";
+import { createOrGetWallet, getCurrentPassportInfoInChain, tryToRequireFreePassport, checkFreePassport } from "./services/wallets";
 import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
@@ -54,7 +54,7 @@ function App() {
 
 	//await tryToRequireFreePassport();
 
-	const info = await getCurrentPassportInfo(CoNET_Data?.profiles[0]?.keyID);
+	const info = await getCurrentPassportInfoInChain(CoNET_Data?.profiles[0]?.keyID);
 
 	const tmpData = CoNET_Data;
 
@@ -127,8 +127,8 @@ function App() {
 	  }
 
 	});
+	await handlePassport ()
 
-	handlePassport();
   }
 
   let first = true

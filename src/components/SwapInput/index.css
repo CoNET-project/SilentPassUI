@@ -310,7 +310,7 @@ input::-webkit-inner-spin-button {
   cursor: pointer;
 }
 
-.redeem-button {
+.redeem-button-swap {
 	width: 6.1rem;
 	padding: 16px 8px;
 	border-radius: 8px;

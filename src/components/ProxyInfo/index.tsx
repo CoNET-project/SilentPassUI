@@ -4,6 +4,7 @@ import ClickableItem from '../ClickableItem';
 import proxyInfoIcon from "./assets/proxy-information.svg";
 import Separator from '../Separator';
 import Skeleton from '../Skeleton';
+import sharedDevice from './assets/share_devices.png'
 
 import './index.css';
 import { useDaemonContext } from '../../providers/DaemonProvider';
@@ -30,7 +31,7 @@ export default function ProxyInfo() {
     <div className="option-group">
       <h3>Proxy</h3>
       <div className={`option-wrapper ${isDropdownOpen ? 'open' : ''}`}>
-        <ClickableItem title="Proxy Information" icon={proxyInfoIcon} action={() => setIsDropdownOpen((prev) => !prev)} toggle={isDropdownOpen}></ClickableItem>
+        <ClickableItem title='Proxy Server Infomation' icon={proxyInfoIcon} action={() => setIsDropdownOpen((prev) => !prev)} toggle={isDropdownOpen}></ClickableItem>
         <Separator />
         <ClickableItem title="Proxy server:" chevron={false}>
           {

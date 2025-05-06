@@ -21,7 +21,7 @@ interface RegionSelectorProps {
 
 export default function RegionSelector({ regionCode, icon, title, action, children, switchComp, switchState = false, toggle = false, theme = false, showArrow = true }: RegionSelectorProps) {
   return (
-    <div className="container" style={{ cursor: showArrow ? 'pointer' : 'not-allowed' }} onClick={action}>
+    <div className="container-region" style={{ cursor: showArrow ? 'pointer' : 'not-allowed' }} onClick={action}>
       <div className="def">
         <div className="flag-icon-wrapper">
           <ReactCountryFlag
@@ -35,7 +35,7 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
             }}
           />
         </div>
-        <p>{title}</p>
+        {/* <p>{title}</p> */}
       </div>
       <div className="children">
         {children}

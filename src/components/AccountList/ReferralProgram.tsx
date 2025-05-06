@@ -31,6 +31,7 @@ export default function ReferralProgram() {
     "rsp": 0/31,
 	"rcp": 0/31,
   })
+  
   const nft = parseInt(profiles?.[0]?.activePassport?.nftID)
   const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires) === '00:00:00' ? true : false
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
@@ -138,7 +139,7 @@ export default function ReferralProgram() {
         </div>
 
         <div style={{ padding: "0 16px", marginBottom: "32px" }}>
-          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>Copy this to invite your friends to Silent Pass</p>
+          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>Copy this to invite your friends to earn $SP</p>
         </div>
 
         {

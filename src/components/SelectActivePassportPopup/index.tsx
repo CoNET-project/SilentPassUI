@@ -36,15 +36,16 @@ const SelectActivePassportPopup = ({ newPassport }: any) => {
     if (!newPassport?.nftID) return;
 
     (async () => {
-      try {
-        const gasFeeValues = await estimateChangeNFTGasFee('mainnet', newPassport.nftID)
+		setEstimatedGasFee('0')
+    //   try {
+    //     const gasFeeValues = await estimateChangeNFTGasFee('mainnet', newPassport.nftID)
 
-        if (!gasFeeValues) return;
+    //     if (!gasFeeValues) return;
 
-        setEstimatedGasFee(gasFeeValues.gasFee)
-      } catch (ex) {
-        console.log(ex);
-      }
+    //     setEstimatedGasFee(gasFeeValues.gasFee)
+    //   } catch (ex) {
+    //     console.log(ex);
+    //   }
     })()
   }, [newPassport?.nftID])
 
@@ -81,7 +82,7 @@ const SelectActivePassportPopup = ({ newPassport }: any) => {
               </div>
             </div>
             <Separator />
-            <div style={{ width: '100%' }}>
+            {/* <div style={{ width: '100%' }}>
               <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                 <p style={{ textAlign: 'left', fontSize: '16px', width: 'fit-content' }}>GAS fee</p>
                 {
@@ -92,7 +93,7 @@ const SelectActivePassportPopup = ({ newPassport }: any) => {
                   )
                 }
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
 

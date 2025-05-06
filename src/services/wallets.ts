@@ -363,7 +363,6 @@ const changeActiveNFT = async (chain: string, nftId: string) => {
     contractAddress = contracts.distributor.address;
     contractAbi = contracts.distributor.abi;
 
-
   const wallet = new ethers.Wallet(
     CoNET_Data.profiles[0].privateKeyArmor,
     provider

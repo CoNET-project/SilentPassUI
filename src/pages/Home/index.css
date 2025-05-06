@@ -30,8 +30,8 @@ a {
 	align-items: center;
 	overflow-y: auto;
 	height: 100%;
-	width: 90%;
-	padding: 45px 0;
+	width: 100%;
+	padding: 45px 1rem;
   }
 
   .stats-container {

@@ -52,8 +52,6 @@ function App() {
   const handlePassport = async () => {
 	if (!CoNET_Data?.profiles[0]?.keyID) return
 
-	//await tryToRequireFreePassport();
-
 	const info = await getCurrentPassportInfoInChain(CoNET_Data?.profiles[0]?.keyID);
 
 	const tmpData = CoNET_Data;

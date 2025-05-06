@@ -443,13 +443,8 @@ const tryToRequireFreePassport = async () => {
     return;
   }
 
-  do {
-    await getFaucet(CoNET_Data.profiles[0]);
-
-    await new Promise((resolve) => setTimeout(resolve, 3000));
     await requireFreePassport();
-    await new Promise((resolve) => setTimeout(resolve, 12000));
-  } while (CoNET_Data.profiles[0].tokens.conet.balance < "0.0001");
+
 };
 
 const calculateTransferNftGas = async (toAddr: string, nftId: string) => {

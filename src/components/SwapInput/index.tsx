@@ -177,6 +177,11 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 	
   }, [fromToken])
 
+  const useMax=()=>{
+      let val=fromToken === 'SOL'?(profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6))
+      setFromAmount(val);
+  }
+
   return (
     <div style={{display: 'flex', flexDirection: 'column', marginTop:"38px", alignItems:"center"
     }}>
@@ -229,6 +234,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>50%</p>
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>Max</p>
           </div> */}
+          <div className="make-max" onClick={useMax}>Max</div>
         </div>
       </div>
 

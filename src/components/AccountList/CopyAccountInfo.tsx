@@ -2,10 +2,13 @@ import { useState } from 'react';
 import Separator from '../Separator';
 import { CoNET_Data } from '../../utils/globals';
 import Skeleton from '../Skeleton';
+import CodeButton from './CodeButton';
 
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { ethers } from 'ethers';
+
+import styles from './copyAccountInfo.module.css';
 
 let copyTimeoutId: NodeJS.Timeout;
 
@@ -47,26 +50,35 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
     }
     return wallet?.keyID.slice(0, 7) + '...' + wallet?.keyID.slice(-5);
   }
+  const getWholeAddress = (wallet: any) => {
+    if (isEthers) {
+      return ethers.getAddress(wallet?.keyID);
+    }
+    return wallet?.keyID;
+  }
 
   return (
     <>
-      <div className="copy-div">
+      <div className={styles.copyDiv}>
         {wallet?.keyID ?
           <>
-            <div className="copy-text">
-              <p>Wallet Address</p>
-              {
-                isAddressHidden ?
-                  <div style={{ filter: 'blur(3px)' }}>
+            <div className={styles.copyDivLt}>
+              <div className={styles.copyText}>
+                <p>Wallet Address</p>
+                {
+                  isAddressHidden ?
+                    <div style={{ filter: 'blur(3px)' }}>
+                      <span>{getAddress(wallet)}
+                      </span>
+                    </div>
+                    :
                     <span>{getAddress(wallet)}
                     </span>
-                  </div>
-                  :
-                  <span>{getAddress(wallet)}
-                  </span>
-              }
+                }
+              </div>
+              <CodeButton copyVal={getWholeAddress(wallet)} isEthers={isEthers} />
             </div>
-            <div className="button-list">
+            <div className={styles.buttonList}>
               <button onClick={() => handleCopy("address")}>
                 {
                   (copied.address === wallet?.keyID && copied.info === "address") ? (
@@ -76,7 +88,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
                   )
                 }
               </button>
-              <button className={isAddressHidden ? "hidden" : ""} onClick={() => setIsAddressHidden((prev) => !prev)}>
+              <button className={isAddressHidden ? styles.hidden : ""} onClick={() => setIsAddressHidden((prev) => !prev)}>
                 {
                   isAddressHidden ? <VisibilityOffIcon /> : <VisibilityOnIcon />
                 }
@@ -87,10 +99,10 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
         }
       </div>
       <Separator />
-      <div className="copy-div">
+      <div className={styles.copyDiv}>
         {wallet?.privateKeyArmor ?
           <>
-            <div className="copy-text">
+            <div className={styles.copyText}>
               <p>Private Key</p>
               {
                 isKeyHidden ?
@@ -102,7 +114,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
                   </span>
               }
             </div>
-            <div className="button-list">
+            <div className={styles.buttonList}>
               <button onClick={() => handleCopy("key")}>
                 {
                   (copied.address === wallet?.privateKeyArmor && copied.info === "key") ? (
@@ -112,7 +124,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
                   )
                 }
               </button>
-              <button className={isKeyHidden ? "hidden" : ""} onClick={() => setIsKeyHidden((prev) => !prev)}>
+              <button className={isKeyHidden ? styles.hidden : ""} onClick={() => setIsKeyHidden((prev) => !prev)}>
                 {
                   isKeyHidden ? <VisibilityOffIcon /> : <VisibilityOnIcon />
                 }
@@ -125,10 +137,10 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
 
       {showRecoveryPhrase && <>
         <Separator />
-        <div className="copy-div">
+        <div className={styles.copyDiv}>
           {CoNET_Data?.mnemonicPhrase ?
             <>
-              <div className="copy-text">
+              <div className={styles.copyText}>
                 <p>Recovery Phrase</p>
                 {
                   isWordsHidden ?
@@ -139,7 +151,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
                     <span>{CoNET_Data?.mnemonicPhrase || ''}</span>
                 }
               </div>
-              <div className="button-list">
+              <div className={styles.buttonList}>
                 <button onClick={() => handleCopy("words")}>
                   {
                     (copied.address === CoNET_Data?.mnemonicPhrase && copied.info === "words") ? (
@@ -149,7 +161,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
                     )
                   }
                 </button>
-                <button className={isWordsHidden ? "hidden" : ""} onClick={() => setIsWordsHidden((prev) => !prev)}>
+                <button className={isWordsHidden ? styles.hidden : ""} onClick={() => setIsWordsHidden((prev) => !prev)}>
                   {
                     isWordsHidden ? <VisibilityOffIcon /> : <VisibilityOnIcon />
                   }

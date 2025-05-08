@@ -346,3 +346,20 @@ input::-webkit-inner-spin-button {
 	font-weight: 700;
 	color: #9fbfe5fe;
   }
+  .make-max{
+    background: #333;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    width: 40px;
+    text-align: center;
+    padding: 5px 0;
+    margin: 0 auto;
+    &:hover{
+        opacity: 0.8;
+    }
+  }

@@ -1,13 +1,13 @@
-.container {
+.container-region {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: 100%;
+  width: 60%;
   background-color: #191919;
-  padding: 16px;
+  padding: 0.5rem;
 
   cursor: pointer;
-
+  width: 14.5rem;
   user-select: none;
 }
 

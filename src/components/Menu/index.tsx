@@ -37,7 +37,6 @@ export default function Menu() {
       <button className={location.pathname === "/support" ? "active" : ""} onClick={() => navigate("/support")}>
         {location.pathname === "/support" ? <SupportIconBlue /> : <SupportIconGrey />}
         {/*<p>Support</p>*/}
-      </button>
     </div>
   )
 }

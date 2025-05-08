@@ -211,11 +211,8 @@ const Home = () => {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
       }
-	  //@ts-ignore
-	  if (window?.Android) {
-		//@ts-ignore
-		window.Android?.sendData("")
-	  }
+	  
+	  
 	try {
 		const response = await stopSilentPass();
 		if (response.status === 200) {
@@ -300,16 +297,22 @@ const Home = () => {
       exitNode,
       privateKey
     }
-
+	const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject)
+	const base64VPNMessage = btoa(stringifiedVPNMessageObject)
     if (window?.webkit) {
-      const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
-      const base64VPNMessage = btoa(stringifiedVPNMessageObject);
       window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
     }
+
+	//	@ts-ignore
+	if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+		//	@ts-ignore
+		AndroidBridge.receiveMessageFromJS(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
+	} else {
+		//	@ts-ignore
+		console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
+	}
 	//	@ts-ignore
 	if (window?.Android) {
-      const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject);
-      const base64VPNMessage = btoa(stringifiedVPNMessageObject);
       //	@ts-ignore
       window.Androi.sendData(base64VPNMessage)
 	}

@@ -3,7 +3,8 @@ import "./index.css";
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../Skeleton';
 import { getPassportTitle } from '../../utils/utils';
-
+import { ReactComponent as ConetToken } from './assets/conet-token.svg';
+import { ReactComponent as SpToken } from './assets/sp-token.svg';
 const OneDayInSeconds = 86400;
 
 const MiningStatus = () => {
@@ -32,7 +33,7 @@ const MiningStatus = () => {
   return (
     <div className="mining-status">
       <div className="miners">
-        Miners: {miningData?.online ? miningData.online : <Skeleton height="14px" width="45px" />}
+        <ConetToken /> {miningData?.online ? miningData.online : <Skeleton height="14px" width="45px" />}
       </div>
 
       <div className='passport-status' onClick={openPassportInfo}>
@@ -43,7 +44,7 @@ const MiningStatus = () => {
         <img src="/assets/info.svg" alt="Info icon" />
       </div>
 
-      <div className="users">Users: {miningData?.totalUsers ? miningData.totalUsers : <Skeleton height="14px" width="45px" />}</div>
+      <div className="users"><SpToken width={20} height={20}/>{miningData?.totalUsers ? miningData.totalUsers : <Skeleton height="14px" width="45px" />}</div>
     </div>
   );
 };

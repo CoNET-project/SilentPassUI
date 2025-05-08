@@ -62,7 +62,7 @@ import {
 	  network: "Solana Mainnet",
 	},
 	SpOracle: {
-	  address: "0xA57Dc01fF9a340210E5ba6CF01b4EE6De8e50719",
+	  address: "0x96B2d95084C0D4b0dD67461Da06E22451389dE23",
 	  abi: SpOracleAbi,
 	  network: "CONET Holesky",
 	},

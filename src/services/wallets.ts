@@ -28,7 +28,7 @@ import { scanSolanaSol, scanSolanaSp } from "./listeners";
 import axios from 'axios';
 import { blast_CNTPAbi } from "./../utils/abis";
 
-const SPOracleSmartContract = new ethers.Contract(contracts.SpOracle.address, contracts.SpOracle.abi, conetProvider)
+const SPOracleSmartContract = new ethers.Contract(contracts.SpOracle.address, contracts.SpOracle.abi, conetDepinProvider)
 const PouchDB = require("pouchdb").default;
 const initSolana = async (mnemonic: string): Promise<any> => {
 	if (!Bip39.validateMnemonic(mnemonic)) return false;
@@ -443,13 +443,8 @@ const tryToRequireFreePassport = async () => {
     return;
   }
 
-  do {
-    await getFaucet(CoNET_Data.profiles[0]);
-
-    await new Promise((resolve) => setTimeout(resolve, 3000));
     await requireFreePassport();
-    await new Promise((resolve) => setTimeout(resolve, 12000));
-  } while (CoNET_Data.profiles[0].tokens.conet.balance < "0.0001");
+
 };
 
 const calculateTransferNftGas = async (toAddr: string, nftId: string) => {

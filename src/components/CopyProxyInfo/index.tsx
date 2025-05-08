@@ -3,7 +3,7 @@ import Skeleton from '../Skeleton';
 
 import { ReactComponent as ChevronArrow } from "./assets/right-chevron.svg";
 import { useDaemonContext } from '../../providers/DaemonProvider';
-
+import sharedDevice from './assets/share_devices.png'
 type CopyProxyInfoProps = {
 
 }
@@ -29,12 +29,12 @@ export default function CopyProxyInfo({ }: CopyProxyInfoProps) {
   return (
     <div className={`wallet-info-container ${isOpen ? 'open' : ''}`}>
       <div className="wallet-info-heading" onClick={() => setIsOpen((prev) => !prev)}>
-        <p>Proxy Information</p>
+        <img src = {sharedDevice} width="44px" />
         <ChevronArrow />
       </div>
       <hr />
       <div className="wallet-info">
-        <p>Proxy server:</p>
+        <p>Server:</p>
         {
           true ? (
             <button onClick={() => handleCopy(serverIpAddress, setIsProxyServerCopied)}>
@@ -54,7 +54,7 @@ export default function CopyProxyInfo({ }: CopyProxyInfoProps) {
       </div>
 
       <div className="wallet-info">
-        <p>Proxy port:</p>
+        <p>Port:</p>
         {
           true ? (
             <button onClick={() => handleCopy(serverPort, setIsProxyPortCopied)}>

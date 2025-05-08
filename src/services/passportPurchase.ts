@@ -12,7 +12,7 @@ import {
   import { ethers } from "ethers";
   import Bs58 from "bs58";
   import contracts from "../utils/contracts";
-  import { conetProvider } from "../utils/constants";
+  import { conetDepinProvider, conetProvider } from "../utils/constants";
   import { CoNET_Data } from "../utils/globals";
   import {epoch_info_ABI} from "../utils/abis"
   const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q";
@@ -40,7 +40,7 @@ import {
 	  const SP_Oracle_SC_reaonly = new ethers.Contract(
 		contracts.SpOracle.address,
 		contracts.SpOracle.abi,
-		conetProvider
+		conetDepinProvider
 	  );
   
 	  try {
@@ -98,8 +98,8 @@ import {
   
 	return "";
   };
-  const epoch_mining_info_cancun_addr = '0x31680dc539cb1835d7C1270527bD5D209DfBC547'.toLocaleLowerCase()
-  const epoch_mining_infoSC = new ethers.Contract(epoch_mining_info_cancun_addr, epoch_info_ABI, conetProvider)
+  const epoch_mining_info_cancun_addr = '0xbC713Fef0c7Bb178151cE45eFF1FD17d020a9ecD'.toLocaleLowerCase()
+  const epoch_mining_infoSC = new ethers.Contract(epoch_mining_info_cancun_addr, epoch_info_ABI, conetDepinProvider)
 
 export const checkCurrentRate = async (setMiningData: (response: nodeResponse) => void) => {
 	let _epoch: BigInt

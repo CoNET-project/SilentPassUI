@@ -30,8 +30,8 @@ a {
 	align-items: center;
 	overflow-y: auto;
 	height: 100%;
-	width: 90%;
-	padding: 45px 0;
+	width: 100%;
+	padding: 1rem 1rem 5rem 1rem;
   }
 
   .stats-container {
@@ -196,8 +196,9 @@ a {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	z-index: 999;
-	height: 31px;
+	width: 14rem;
+	z-index: 990;
+	height: 3rem;
 
 	transition: height 0.2s ease;
 

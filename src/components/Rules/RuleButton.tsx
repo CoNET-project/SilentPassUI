@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect,CSSProperties} from 'react';
-import { Popup,NavBar,List,SearchBar } from 'antd-mobile';
+import { Popup,NavBar,List,SearchBar,Ellipsis } from 'antd-mobile';
 import styles from './ruleButton.module.css';
-import { SetOutline,RightOutline } from 'antd-mobile-icons';
+import { SetOutline,RightOutline,EditSOutline,DeleteOutline,CheckCircleOutline,LoopOutline } from 'antd-mobile-icons';
 import { List as VirtualizedList, AutoSizer } from 'react-virtualized'
 
 const RuleButton=({})=> {
@@ -13,7 +13,7 @@ const RuleButton=({})=> {
         {name:'Region',value:'region'},
     ]);
     const [specialList, setSpecialList] = useState<Array<{ name: string,value: string }>>([
-        {name:'ekahau.com',value:'ekahau.com'},
+        {name:'ekahau.comekahau.comekahau.comekahau.comekahau.comekahau.comekahau.comekahau.comekahau.com',value:'ekahau.com'},
         {name:'ekahau.com2',value:'ekahau.com2'},
         {name:'ekahau.com3',value:'ekahau.com3'},
         {name:'ekahau.com4',value:'ekahau.com4'},
@@ -44,7 +44,11 @@ const RuleButton=({})=> {
                     style={style}
                     clickable={false}
                 >
-                    {item.name}<div><a>编辑</a><a>删除</a></div>
+                    <Ellipsis direction='end' content={item.name} />
+                    <div className={styles.operation}>
+                        <a className={styles.itemBtn}><EditSOutline /></a>
+                        <a className={styles.itemBtn}><DeleteOutline /></a>
+                    </div>
                 </List.Item>
             )
         }

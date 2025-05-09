@@ -6,6 +6,7 @@ import { ReactComponent as ChevronArrow } from "./assets/right-chevron.svg";
 
 import Switch from '../Switch';
 import ReactCountryFlag from 'react-country-flag';
+// import RuleButton from './../Rules/RuleButton';
 
 interface RegionSelectorProps {
   regionCode: string;
@@ -39,6 +40,7 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
         {/* <p>{title}</p> */}
       </div>
       <div className="children">
+        {/*<RuleButton />*/}
         {children}
         {
           showArrow && (

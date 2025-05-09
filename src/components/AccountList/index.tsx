@@ -276,7 +276,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                                             </div>
                                     }
                                 </div>
-                                <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
+                                <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
                             </div>
                             <div className="token-assets-item-val">
                                 {
@@ -314,7 +314,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                                             </div>
                                     }
                                 </div>
-                                <SendButton type={'$SOL'} wallet={profiles?.[1]} isEthers={false} usd={simplifiedView ? (solInUsd * parseFloat(profiles?.[1]?.tokens?.sol?.balance || '0')).toFixed(2) :profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)} balance={profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)} />
+                                <SendButton type={'$SOL'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (solInUsd * parseFloat(profiles?.[1]?.tokens?.sol?.balance || '0')).toFixed(2) :profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)} balance={profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)} />
                             </div>
                             <div className="token-assets-item-val">
                                 {

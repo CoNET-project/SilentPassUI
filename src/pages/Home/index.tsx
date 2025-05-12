@@ -7,16 +7,15 @@ import BlobWrapper from '../../components/BlobWrapper';
 import { maxNodes, currentScanNodeNumber } from '../../services/mining';
 import { CoNET_Data } from '../../utils/globals';
 import Header from '../../components/Header';
-import CopyProxyInfo from '../../components/CopyProxyInfo';
-import Footer from '../../components/Footer';
-import RegionSelector from '../../components/RegionSelector';
-import { useNavigate } from 'react-router-dom';
-import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
-import { startSilentPass, stopSilentPass } from "../../api";
-import PassportInfoPopup from "../../components/PassportInfoPopup";
-import { getServerIpAddress } from "../../api";
-import {checkFreePassportProcess} from '../../services/wallets'
-const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
+import CopyProxyInfo from '../../components/CopyProxyInfo'
+import Footer from '../../components/Footer'
+import RegionSelector from '../../components/RegionSelector'
+import { useNavigate } from 'react-router-dom'
+import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils"
+import { startSilentPass, stopSilentPass } from "../../api"
+import PassportInfoPopup from "../../components/PassportInfoPopup"
+import { getServerIpAddress } from "../../api"
+const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.'
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
 const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
 
@@ -211,7 +210,17 @@ const Home = () => {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
       }
-	  
+	  	//	@ts-ignore
+		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+			
+			const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
+			//	@ts-ignore
+			AndroidBridge.receiveMessageFromJS(base)
+			setPower(false);
+		} else {
+			//	@ts-ignore
+			console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
+		}
 	  
 	try {
 		const response = await stopSilentPass();
@@ -305,8 +314,10 @@ const Home = () => {
 
 	//	@ts-ignore
 	if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+		
+		const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
 		//	@ts-ignore
-		AndroidBridge.receiveMessageFromJS(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
+		AndroidBridge.receiveMessageFromJS(base)
 	} else {
 		//	@ts-ignore
 		console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)

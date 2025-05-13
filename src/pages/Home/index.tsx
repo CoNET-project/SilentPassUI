@@ -14,7 +14,8 @@ import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
-import { getServerIpAddress } from "../../api";
+import { getServerIpAddress } from "../../api"
+import bannaer from './assets/banner-1.png'
 import {checkFreePassportProcess} from '../../services/wallets'
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
@@ -360,6 +361,13 @@ const Home = () => {
             <div>
               <img src="/assets/header-title.svg"></img>
             </div>
+
+			<div>
+				<button onClick={() => navigate("/wallet")}>
+					<img className="bannaer" src={bannaer} style={{width:"25rem",height: "5rem"}}></img>
+				</button>
+				
+			</div>
 
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 

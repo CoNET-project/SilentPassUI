@@ -379,3 +379,49 @@
   color: #fff!important;
   line-height: 2.6;
 }
+.passport-options {
+	text-align: left;
+}
+#outer {
+	display: flex;
+	width: 100%;
+}
+
+button.redeem-button.purchase {
+	background-color: #4E72B6;
+	color: white;
+	margin: 0px;
+	display: flex;
+	justify-content: center;
+	font-weight: 700;
+	font-size: 18px;
+}
+.button_img {
+	width: 25px;
+	height: 25px;
+}
+
+.club-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.club-container  .left {
+  display: flex;
+  align-items: center;
+}
+
+.club-container .text-box {
+  display: flex;
+  flex-direction: column;
+}
+
+
+
+  .qr-container {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+  }

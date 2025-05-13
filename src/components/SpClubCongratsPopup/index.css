@@ -24,6 +24,7 @@
   padding: 16px;
   width: 100%;
   max-width: 380px;
+  z-index: 9999;
 }
 
 .home-main-card {

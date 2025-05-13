@@ -119,23 +119,33 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 					</div>
 					<div className="qr-container">
 						<div className="left">
-							
-							{QRCode(QRWallet)}
-							
+							{
+								QRCode(QRWallet)
+							}
 						</div>
 						<div className="right" style={{paddingLeft: '1rem'}}>
 							<p>Only send {cryptoName} to this address</p>
 						</div>
 					</div>
 
-					<div className="summary-heading" style={{fontSize: 'small'}}>
-						<p>{QRWallet}</p>
+					<div className="qr-container" style={{fontSize: 'small'}}>
+						<div className="left">
+							<p>{getShotAddress(serverAddress)}</p>
+						</div>
+					<div className="right" style={{paddingLeft: '1rem'}}>
+					<button onClick={() => handleCopy(serverAddress)}>
+						{
+							copied ? <img src="/assets/check.svg" alt="Copy icon" /> : <img src="/assets/copy-purple.svg" style={{cursor: 'pointer'}} alt="Copy icon" />
+						}
+					</button>
+						
+					</div>
 					</div>
 					<div className="summary-heading">
 						<p>Total amount</p>
 						<div className="quotes">
-							<p>{showPrice} {cryptoName} </p>
-						</div>
+						<p>{showPrice} {cryptoName} </p>
+					</div>
 					</div>
 				</>
 		}

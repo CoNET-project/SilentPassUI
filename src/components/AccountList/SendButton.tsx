@@ -4,7 +4,7 @@ import { LocationOutline,LeftOutline } from 'antd-mobile-icons';
 import styles from './sendButton.module.css';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL, ComputeBudgetProgram } from "@solana/web3.js";
-import { createTransferInstruction,getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
+import { createTransferInstruction, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import Bs58 from "bs58";
 import { ethers } from 'ethers';
 import {
@@ -102,14 +102,14 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             setSubLoading(true);
 
             // 解码私钥并创建 Keypair
-            const fromKeypair = Keypair.fromSecretKey(Bs58.decode(fromBase58PrivateKey));
+            let fromKeypair = Keypair.fromSecretKey(Bs58.decode(fromBase58PrivateKey));
             
             // 创建连接
             const connection = new Connection(rpcUrl, "confirmed");
 
             const SP_address = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
             const SP_Address = new PublicKey(SP_address)
-            const to_address = new PublicKey(toPublicKeyString)
+            let to_address = new PublicKey(toPublicKeyString)
 
             const sourceAccount = await getOrCreateAssociatedTokenAccount(
                 connection, 
@@ -136,9 +136,9 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                     sourceAccount.address,
                     destinationAccount.address,
                     fromKeypair.publicKey,
-                    amountSol * 1000000
+					ethers.parseUnits(amountSol.toFixed(4), 6)
                 )
-            );
+            )
             const latestBlockHash = await connection.getLatestBlockhash('confirmed')
             transaction.recentBlockhash = latestBlockHash.blockhash
             // 发送并确认交易

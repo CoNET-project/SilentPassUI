@@ -18,6 +18,10 @@ import bnb_usdt from './assets/bnb_usdt_token.png'
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import QRCode from '../QRCode'
 import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg'
+import {getCryptoPay, waitingPaymentReady} from '../../services/subscription'
+import { CoNET_Data } from '../../utils/globals';
+
+
 const OneDayInSeconds = 86400;
 
 type cryptoName = 'BNB' | 'BSC USDT'
@@ -27,15 +31,18 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
   const [memberId, setMemberId] = useState<string>('0');
   const [referrer, setReferrer] = useState<string>('');
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
-  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport } = useDaemonContext()
+  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID } = useDaemonContext()
   const [showBuyClusBlue, setShowBuyClusBlue] = useState(true)
   const [showBuyClusloading, setShowBuyClusloading] = useState(false)
   const [QRWallet, setQRWallet] = useState('')
   const [updateCounter, setUpdateCounter] = useState(new Date('1970/12/1 12:0:1'))
   const [showPrice, setShowPrice] = useState('')
   const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT')
-  	const [error, setError] = useState(false)
-	const [errorMessage, setErrorMessage] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [serverAddress, setServerAddress] = useState('')
+
+  	const [showError, setShowError] = useState(false)
+	const [errorMessage, setErrorMessage] = useState('The service is unavailable, please try again later.')
   useEffect(() => {
     const passportExpiration = profiles?.[0]?.activePassport?.expires
     if (passportExpiration) {
@@ -57,7 +64,19 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 
     await new Promise((resolve) => setTimeout(resolve, 2000));
     return fetchMemberIdWithRetry(startTime); // Recursive call with startTime
-  };
+  }
+
+  	const getShotAddress = (address: string) => {
+		return address.substring(0, 8) + '...' + address.substring(address.length-6)
+	}
+
+	const handleCopy = (value: string) => {
+		navigator.clipboard.writeText(value);
+    	setCopied(true)
+		setTimeout(() => {
+			setCopied(false)
+		}, 3000)
+	}
 
   const handleJoinClub = async () => {
     setIsLoading(true)
@@ -80,32 +99,108 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
     setTimeout(() => setIsLoading(false), 2000)
   }
 
-  const purchaseBluePlan = (token: cryptoName) => {
-	setShowBuyClusloading(true)
+  const showErrorMessage = (errorMessage: string) => {
+	if (errorMessage) {
+		setErrorMessage(errorMessage)
+	}
+	setQRWallet('')
+	setServerAddress('')
+	setShowPrice('')
 	setTimeout(() => {
-		setShowBuyClusloading(false)
-		setShowBuyClusBlue(false)
-		setQRWallet('0x31e95B9B1a7DE73e4C911F10ca9de21c969929ff')
-	}, 1000)
+		setShowBuyClusBlue(true)
+		return setShowError(false)
+	}, 5000)
+	return setShowError(true)
+  }
+
+  
+
+  const purchaseBluePlan = async (token: cryptoName) => {
+	const profile: profile = profiles[0]
+	const agentWallet = profile.referrer||''
+	setShowBuyClusloading(true)
+	setShowBuyClusBlue(false)
+	setCryptoName(token)
+	const kkk = await getCryptoPay(token, '3')
+
+	setShowBuyClusloading(false)
+	if (!kkk) {
+		return showErrorMessage('')
+	}
+	
+	setServerAddress(kkk.wallet)
+	setShowPrice(kkk?.transferNumber)
+	setQRWallet(kkk.wallet)
+	const waiting = await waitingPaymentReady (kkk?.wallet)
+	if (!waiting?.status) {
+		showErrorMessage(waiting?.error)
+		return
+	}
+
+	setSuccessNFTID(waiting.status)
+	setQRWallet('')
+	setServerAddress('')
+	setShowPrice('')
+	//		test error 
+	// setTimeout(() => {
+	// 	setShowBuyClusloading(false)
+	// 	return showErrorMessage('')
+	// }, 1000)
+
+	//		test error 
+	// setTimeout(() => {
+	// 	setShowBuyClusloading(false)
+	// 	return showErrorMessage('')
+	// }, 1000)
+
+
+	//		test qrcode
+	// setTimeout(() => {
+	// 	setShowBuyClusloading(false)
+	// 	setShowBuyClusBlue(false)
+	// 	setQRWallet('0x31e95B9B1a7DE73e4C911F10ca9de21c969929ff')
+
+	// 	setTimeout(() => {
+	// 		setSuccessNFTID(5000)
+	// 		setQRWallet('')
+	// 	}, 5000)
+	// }, 1000)
+
   }
   	const setTimeElm = () => {
 		if (updateCounter.getHours() === 0) {
-			setError(true)
+			setShowError(true)
 			return setErrorMessage(`Timeout Error!`)
 		}
 		setUpdateCounter((prev) => new Date(prev.getTime() - 1000))
 	}
+
 	useEffect(() => {
 		
 		setTimeout (() => {
 			setTimeElm()
 		}, 1000)
+
 	},[updateCounter])
 
   const renderCardContent = () => {
   	
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "24px", padding: "16px"}}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px"}}>
+		<div className="passport-options" style={{gap:"2px"}}>
+			<p>
+				🎫 1 Silent Pass Passport for 3 months-usage right;
+			</p>
+			<p>
+				🎁 One-time issuance of 93 subscription points;
+			</p>
+			<p>
+				💰 Immediately receive $25U worth of $SP tokens.
+			</p>
+			<div className="redeem-divider">
+				<div className="line"></div>
+			</div>
+		</div>
 		{
 			QRWallet &&
 				<>
@@ -130,10 +225,10 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 
 					<div className="qr-container" style={{fontSize: 'small'}}>
 						<div className="left">
-							<p>{getShotAddress(serverAddress)}</p>
+							<p>{getShotAddress(QRWallet)}</p>
 						</div>
 					<div className="right" style={{paddingLeft: '1rem'}}>
-					<button onClick={() => handleCopy(serverAddress)}>
+					<button onClick={() => handleCopy(QRWallet)}>
 						{
 							copied ? <img src="/assets/check.svg" alt="Copy icon" /> : <img src="/assets/copy-purple.svg" style={{cursor: 'pointer'}} alt="Copy icon" />
 						}
@@ -150,95 +245,98 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 				</>
 		}
 		{
-			showBuyClusBlue && 
-				<div id="">
-					<div className="passport-options" style={{gap:"2px"}}>
-						<p>
-							🎫 1 Silent Pass Passport for 3 months-usage right;
-						</p>
-						<p>
-							🎁 One-time issuance of 93 subscription points;
-						</p>
-						<p>
-							💰 Immediately receive $25U worth of $SP tokens.
-						</p>
-						<div className="option-list" style={{marginTop: "1rem"}}>
-							<button className='option selected'>
-								<BlueBadge style={{width: "60px"}}/>
-									<div style={{display: "flex", flexDirection: "column", marginLeft: "-20px", width: "20rem"}}>
-										<span style={{textAlign: "left"}}>1 device</span>
-										<span style={{textAlign: "left"}}>3 months VPN</span>
-									</div>
-								
-								<div>
-									<span>$USD</span>
-									<p>31.00</p>
-								</div>
-							</button>
-						</div>
-					</div>
+			showBuyClusBlue && !showError &&
+				<div className="passport-options" style={{gap:"2px"}}>
 					{
 						showBuyClusloading &&
-						<>
+					
 							<div className="inner" style={{marginRight: "1rem"}}>
 								<button className='redeem-button purchase'>
 									<SimpleLoadingRing />
 								</button>
 							</div>
-						</>
+						
 					}
 					{
 						!showBuyClusloading &&
-						<div id="outer">
-							<div className="inner" style={{marginRight: "1rem"}}>
-								<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BNB')}>
-									<img src = {bnb_token} className="button_img"/>
+						<>
+							<div className="option-list" style={{marginTop: "1rem"}}>
+								<button className='option selected'>
+									<BlueBadge style={{width: "60px"}}/>
+										<div style={{display: "flex", flexDirection: "column", marginLeft: "-20px", width: "20rem"}}>
+											<span style={{textAlign: "left"}}>1 device</span>
+											<span style={{textAlign: "left"}}>3 months VPN</span>
+										</div>
+									
+									<div>
+										<span>$USD</span>
+										<p>31.00</p>
+									</div>
 								</button>
 							</div>
-							<div className="inner" style={{marginRight: "1rem"}}>
-								<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BSC USDT')}>
-									<img src = {bnb_usdt} className="button_img"/>
-								</button>
+							<div id="outer">
+								<div className="inner" style={{marginRight: "1rem"}}>
+									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BNB')}>
+										<img src = {bnb_token} className="button_img"/>
+									</button>
+								</div>
+								<div className="inner" style={{marginRight: "1rem"}}>
+									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BSC USDT')}>
+										<img src = {bnb_usdt} className="button_img"/>
+									</button>
+								</div>
 							</div>
-						</div>
+						</>
+						
 					}
 				
 				</div>
 		}
+		{
+			showError && 
+			<>
+				<p style={{color: 'red'}}>{errorMessage}</p>
+			</>
+		}
 		
+		{
+			!QRWallet &&
+			<>
+				<div className="redeem-divider">
+					<div className="line"></div>
+				</div>
+				<h2>Join the SP Club <br />Unlock Premium Benefits </h2>
+				<p style={{ textAlign: "left" }}>Upgrade to a Silent Pass subscription and gain access to the SP Club, an exclusive membership designed for those who value privacy, rewards, and Web3 innovation. As a member, you’ll unlock premium features, loyalty incentives, and community-driven opportunities.</p>
+				<div className="sp-club-grid">
+				<div>
+					<img src={AirdropRewards} />
+					<p>Airdrops & Rewards</p>
+				</div>
+				<div>
+					<img src={LoyaltyDiscounts} />
+					<p>Loyalty Discounts</p>
+				</div>
+				<div>
+					<img src={ReferralProgram} />
+					<p>Referral Program</p>
+				</div>
+				<div>
+					<img src={EducationHub} />
+					<p>Education Hub</p>
+				</div>
+				<div>
+					<img src={EarlyAccess} />
+					<p>Early Access</p>
+				</div>
+				<div>
+					<img src={ExclusivePerks} />
+					<p>Exclusive Perks</p>
+				</div>
+				</div>
+				<p style={{ fontSize: "12px", textAlign: "left" }}>Find out more at <a style={{ color: "#9FBFE5FE" }} href="https://subscription.silentpass.io" target='_blank'>https://subscription.silentpass.io</a></p>
+			</>
+		}
 		
-		<div className="redeem-divider">
-			<div className="line"></div>
-		</div>
-        <h2>Join the SP Club <br />Unlock Premium Benefits </h2>
-        <p style={{ textAlign: "left" }}>Upgrade to a Silent Pass subscription and gain access to the SP Club, an exclusive membership designed for those who value privacy, rewards, and Web3 innovation. As a member, you’ll unlock premium features, loyalty incentives, and community-driven opportunities.</p>
-        <div className="sp-club-grid">
-          <div>
-            <img src={AirdropRewards} />
-            <p>Airdrops & Rewards</p>
-          </div>
-          <div>
-            <img src={LoyaltyDiscounts} />
-            <p>Loyalty Discounts</p>
-          </div>
-          <div>
-            <img src={ReferralProgram} />
-            <p>Referral Program</p>
-          </div>
-          <div>
-            <img src={EducationHub} />
-            <p>Education Hub</p>
-          </div>
-          <div>
-            <img src={EarlyAccess} />
-            <p>Early Access</p>
-          </div>
-          <div>
-            <img src={ExclusivePerks} />
-            <p>Exclusive Perks</p>
-          </div>
-        </div>
-        <p style={{ fontSize: "12px", textAlign: "left" }}>Find out more at <a style={{ color: "#9FBFE5FE" }} href="https://subscription.silentpass.io" target='_blank'>https://subscription.silentpass.io</a></p>
       </div>
     )
   }

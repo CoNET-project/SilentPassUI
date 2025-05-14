@@ -7,7 +7,7 @@ export default function QRCode (receiveWallet: string) {
 		
 		<div className="redeem-passport">
 			
-			<QRCodeSVG value = {receiveWallet} level='L' marginSize={2}/>
+			<QRCodeSVG value = {receiveWallet} level='L' marginSize={2} style={{width: "6rem"}}/>
 		</div>
 	)
 

@@ -32,7 +32,6 @@ const CodeButton=({ copyVal,isEthers }: CopyParams)=> {
                 closeOnMaskClick={true}
                 onClose={() => {setVisible(false)}}
                 className={styles.codeModal}
-                getContainer={document.getElementById('app')}
                 content={<div className={styles.codeCont}>
                     <div className={styles.hd}>Receive Address</div>
                     <div className={styles.bd}>

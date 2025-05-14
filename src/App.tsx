@@ -140,7 +140,7 @@ function App() {
 
 
   return (
-    <div className="App" id="app">
+    <div className="App">
       <Router>
         <Routes>
           <Route path="/regions" element={<Region />}></Route>

@@ -204,7 +204,6 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                 onMaskClick={() => {setVisible(false)}}
                 position='right'
                 bodyStyle={{ width: '100%',backgroundColor:'#0d0d0d' }}
-                getContainer={document.getElementById('app')}
                 className={styles.sendBtnPopup}
                 closeOnMaskClick={true}
             >

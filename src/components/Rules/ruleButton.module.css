@@ -7,6 +7,11 @@
     line-height: 1;
     padding: 2px 5px;
 }
+.ruleLoading{
+    display: flex;
+    justify-content: center;
+    padding: 90px 0 0;
+}
 .ruleCont{
     .hd{
         display: flex;
@@ -14,7 +19,6 @@
         color: #666;
         font-size: 22px;
         font-weight: 500;
-
     }
     .searchBar{
         margin: 15px 0 0;
@@ -82,6 +86,10 @@
         }
         :global(.adm-list-body-inner) {
             height: calc(100vh - 260px);
+            margin-top: 0;
+        }
+        :global(.adm-checkbox) {
+            flex: 1;
         }
     }
     :global(.adm-nav-bar-back) {

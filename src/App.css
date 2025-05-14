@@ -9,6 +9,7 @@
   height: 100vh;
   text-align: center;
   color: white;
+  position: relative;
 }
 
 .header {

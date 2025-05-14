@@ -7,10 +7,8 @@ import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConf
 import { createTransferInstruction,getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import Bs58 from "bs58";
 import { ethers } from 'ethers';
-import {
-    globalAllNodes
-    
-  } from "../../utils/globals"
+import {globalAllNodes} from "../../utils/globals"
+import BigNumber from 'bignumber.js';
 
 interface SendParams {
     type: string; 
@@ -27,9 +25,14 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
     const [address, setAddress] = useState('');
     const [amount, setAmount] = useState<string | undefined>();
     const [subLoading, setSubLoading] = useState(false);
+    const [calcPrice, setCalcPrice] = useState('0.00');
 
     const useMax=()=>{
+        let price=BigNumber(usd);
+        let bala=BigNumber(balance);
+        let valBig=BigNumber(balance);
         setAmount(balance+'');
+        setCalcPrice(price.dividedBy(bala).multipliedBy(valBig).toFixed(2));
     }
     const getErrorMessage = (error: unknown): string => {
         if (error instanceof Error) return error.message;
@@ -79,9 +82,10 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                     <div className={styles.link}><a href={'https://solscan.io/tx/'+signature} target="_blank">View transactions</a></div>
                 </div>,
                 confirmText:'Close',
+                onConfirm:()=>{setVisible(false)}
             })
 
-            setTimeout(()=>{handleRefreshSolanaBalances()},100000)
+            setTimeout(()=>{handleRefreshSolanaBalances()},20000)
           } catch (error) {
             setSubLoading(false);
             Modal.alert({
@@ -155,12 +159,13 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                     <div className={styles.link}><a href={'https://solscan.io/tx/'+signature} target="_blank">View transactions</a></div>
                 </div>,
                 confirmText:'Close',
+                onConfirm:()=>{setVisible(false)}
             })
 
             setSubLoading(false);
 
 
-            setTimeout(()=>{handleRefreshSolanaBalances()},100000)
+            setTimeout(()=>{handleRefreshSolanaBalances()},20000)
         } catch (error) {
             setSubLoading(false);
             Modal.alert({
@@ -198,7 +203,10 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                 visible={visible}
                 onMaskClick={() => {setVisible(false)}}
                 position='right'
-                bodyStyle={{ width: '100vw',backgroundColor:'#0d0d0d' }}
+                bodyStyle={{ width: '100%',backgroundColor:'#0d0d0d' }}
+                getContainer={document.getElementById('app')}
+                className={styles.sendBtnPopup}
+                closeOnMaskClick={true}
             >
                 <div className={styles.modalWrap}>
                     <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>Send {type}</NavBar>
@@ -218,13 +226,19 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                                 max={balance}
                                 placeholder="Amount"
                                 value={amount}
-                                onChange={val => {setAmount(val)}}
+                                onChange={val => {
+                                    let price=BigNumber(usd);
+                                    let bala=BigNumber(balance);
+                                    let valBig=BigNumber(val);
+                                    setAmount(val);
+                                    setCalcPrice(price.dividedBy(bala).multipliedBy(valBig).toFixed(2));
+                                }}
                             />
                             <div className={styles.unit}>{type}</div>
                             <div className={styles.max} onClick={useMax}>Max</div>
                         </div>
                         <div className={styles.extraInfo}>
-                            <div className={styles.usval}>${usd}</div>
+                            <div className={styles.usval}>${calcPrice}</div>
                             <div className={styles.available}>Available {balance}</div>
                         </div>
                         <div className={styles.oper}><Button block loading={subLoading} color='primary' size='large' disabled={!(address&&amount)} onClick={handleSend}>Confirm</Button></div>

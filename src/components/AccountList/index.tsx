@@ -66,13 +66,9 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 
         try {
       
-            const nodes = getAllNodes
-            const index = Math.floor(Math.random() * (nodes.length - 1))
-            await refreshSolanaBalances(nodes[index]);
+            await refreshSolanaBalances()
 
-      
-
-            storeSystemData();
+            storeSystemData()
 
             const tmpData = CoNET_Data;
 

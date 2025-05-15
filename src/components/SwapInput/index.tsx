@@ -105,9 +105,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 	const tx = await swapTokens(from, to,profiles?.[1]?.privateKeyArmor, fromAmount)
 	setIsRedeemProcessLoading(false)
 	if (tx) {
-		const nodes = getAllNodes
-		const index = Math.floor(Math.random() * (nodes.length - 1))
-		await refreshSolanaBalances(nodes[index])
+		await refreshSolanaBalances()
 		return setSwapSuccess(tx)
 	}
 	setSwapError('Error!')

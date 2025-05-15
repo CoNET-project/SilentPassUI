@@ -7,6 +7,7 @@ import {
   postToEndpoint,
 
 } from "../utils/utils";
+import {allNodes} from './mining'
 import {
   apiv4_endpoint,
   conetDepinProvider,
@@ -18,6 +19,7 @@ import {
   changeRPC,
   ethProvider
 } from "../utils/constants";
+
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
 import * as Bip39 from "bip39";
@@ -40,7 +42,7 @@ const initSolana = async (mnemonic: string): Promise<any> => {
 	  publicKey: keypair.publicKey.toBase58(),
 	  privateKey: Bs58.encode(keypair.secretKey),
 	};
-  };
+  }
 
 const isValidSolanaPublicKey = (publicKey: string) => {
 	try{
@@ -351,37 +353,29 @@ const getCurrentPassportInfoInChain = async (
   }
 };
 
-const changeActiveNFT = async (chain: string, nftId: string) => {
-  if (!CoNET_Data) {
-    return;
+const activeNFTUrl = `${payment_endpoint}activeNFT`
+
+const changeActiveNFT = async (nftId: string) => {
+  if (!CoNET_Data?.profiles) {
+    return
   }
-  let provider;
-  let contractAddress;
-  let contractAbi;
-
-    provider = conetDepinProvider;
-    contractAddress = contracts.distributor.address;
-    contractAbi = contracts.distributor.abi;
-
-  const wallet = new ethers.Wallet(
-    CoNET_Data.profiles[0].privateKeyArmor,
-    provider
-  );
-
-  const passportContract = new ethers.Contract(
-    contractAddress,
-    contractAbi,
-    wallet
-  );
-
+  const profile = CoNET_Data.profiles[0]
+  const solanaWallet = CoNET_Data.profiles[1].keyID
   try {
-    const tx = await passportContract.changeActiveNFT(nftId);
-	await tx.wait()
+    const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, data: nftId})
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+    }
+
+	const result = await postToEndpoint(activeNFTUrl, true, sendData)
+	
 	await getPassportsInfoForProfile(CoNET_Data.profiles[0])
-    return tx;
+    return true
   } catch (ex) {
     console.log(ex);
-    throw ex;
+    return false
   }
 };
 
@@ -683,16 +677,16 @@ const getPassportsInfo = async (
 
 let reflaseSolanaBalancesProcess = false
 const refreshSolanaBalances = async (
-	randomNode: nodes_info
 ) => {
 	const solanaProfile = CoNET_Data?.profiles[1];
 
-	if (!solanaProfile||reflaseSolanaBalancesProcess) {
+	if (!solanaProfile||reflaseSolanaBalancesProcess||!allNodes) {
 	  return false
 	}
+	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
 	reflaseSolanaBalancesProcess = true
 		
-		const solanaRPC_url = `https://${randomNode.domain}/solana-rpc`;
+		const solanaRPC_url = `https://${_node1.domain}/solana-rpc`;
 		try {
 			const [sol, sp, oracle] = await Promise.all([
 			scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
@@ -1097,21 +1091,31 @@ const getSPOracle = async () => {
 }
 
 const getRewordStaus = async(): Promise<boolean> => {
-	if (!CoNET_Data) {
-		return false
-	}
-	const quote = await getSPOracle()
-	const price = formatEther(quote[2].toString())
-	const spReworkBalance = parseInt(price.toString())
-	const profiles = CoNET_Data.profiles
-	const SPBalance = profiles[1].tokens?.sp?.balance1
-	if (SPBalance === undefined || SPBalance < spReworkBalance) {
-		return false
-	}
 	const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)
+
+	
+
+	const profiles = CoNET_Data?.profiles
+	if (!profiles || profiles.length < 2 ) {
+		return false
+	}
 	try {
-		const status = await contract_SpReward.isReadyReword(profiles[0].keyID, profiles[1].keyID)
-		return status
+		const [ quote, status ] = await Promise.all ([
+			getSPOracle(),
+			contract_SpReward.isReadyReword(profiles[0].keyID, profiles[1].keyID),
+			refreshSolanaBalances()
+			
+		])
+
+		const price = formatEther(quote[2].toString())
+		const initBalance = parseInt(status[1].toString())/10 ** 6
+		const spReworkBalance = parseInt(price.toString())
+		const SPBalance = profiles[1].tokens?.sp?.balance1
+		//		balance < price && (initBalance === 0 || initBalance > 0 && initBalance > balance)
+		if (SPBalance === undefined ||  SPBalance < spReworkBalance && (initBalance === 0 || initBalance > 0 && initBalance > SPBalance)) {
+			return false
+		}
+		return status[0]
 	} catch (ex) {
 		return false
 	}
@@ -1127,14 +1131,6 @@ const spRewardRequest = async (): Promise<number> => {
 	const solanaWallet = CoNET_Data?.profiles[1].keyID
 	if (!solanaWallet||!profile) {
 		return 0
-	}
-	const quote = await getSPOracle()
-	const price = formatEther(quote[2].toString())
-	const spReworkBalance = parseInt(price.toString())
-	const profiles = CoNET_Data.profiles
-	const SPBalance = parseInt(profiles[1].tokens?.sp?.balance)
-	if (SPBalance < spReworkBalance) {
-		return -1
 	}
 	
 	const url = `${payment_endpoint}spReward`
@@ -1175,6 +1171,9 @@ const scan_erc20_balance: (
 	  return resolve(false);
 	}
   });
+
+
+
 
 const scanCONETDepin = async (walletAddr: string) => {
 	return await scan_erc20_balance(
@@ -1651,7 +1650,7 @@ export {
   transferNft,
   getVpnTimeUsed,
   getPassportsInfoForProfile,
-  refreshSolanaBalances,
+  refreshSolanaBalances,			//			refreshSolanaBalances
   getSpClubInfo,
   getSpClubMemberId,
   getRefereesPage,

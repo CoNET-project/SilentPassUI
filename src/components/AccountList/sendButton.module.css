@@ -28,6 +28,20 @@
         margin: 3px 0 0;
     }
 }
+.sendBtnPopup{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 380px;
+    transform: translate(-50%, 0);
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-popup-body) {
+        position: absolute;
+    }
+}
 .modalWrap{
     position: relative;
     .loadingWrap{

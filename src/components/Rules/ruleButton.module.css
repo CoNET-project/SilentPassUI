@@ -12,13 +12,29 @@
     justify-content: center;
     padding: 90px 0 0;
 }
+.ruleBtnPopup{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 380px;
+    transform: translate(-50%, 0);
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-popup-body) {
+        position: absolute;
+    }
+}
 .ruleCont{
     .hd{
         display: flex;
         justify-content: center;
+        align-items: center;
         color: #666;
         font-size: 22px;
         font-weight: 500;
+        position: relative;
     }
     .searchBar{
         margin: 15px 0 0;

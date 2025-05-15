@@ -12,7 +12,7 @@ import BigNumber from 'bignumber.js';
 
 interface SendParams {
     type: string; 
-    balance: number;
+    balance: number|string;
     handleRefreshSolanaBalances:()=>Promise<void>;
     usd:number;
     wallet:any;
@@ -29,9 +29,9 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
 
     const useMax=()=>{
         let price=BigNumber(usd);
-        let bala=BigNumber(balance);
-        let valBig=BigNumber(balance);
-        setAmount(balance+'');
+        let bala=BigNumber(convertStringToNumber(balance));
+        let valBig=BigNumber(convertStringToNumber(balance));
+        setAmount(convertStringToNumber(balance)+'');
         setCalcPrice(price.dividedBy(bala).multipliedBy(valBig).toFixed(2));
     }
     const getErrorMessage = (error: unknown): string => {
@@ -39,6 +39,23 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         if (typeof error === 'string') return error;
         return 'Unknown error';
     };
+    const convertStringToNumber=(str:string|number): number => {
+        const multiplier: Record<'K'|'M'|'B'|'T', number> = {
+            'K': 1e3,   // 千
+            'M': 1e6,   // 百万
+            'B': 1e9,   // 十亿
+            'T': 1e12   // 万亿
+        };
+
+        // 提取数字部分和单位
+        const match = (str+'').match(/^([\d.]+)([KMBT]?)$/i);
+        if (!match) return NaN;
+
+        const num = parseFloat(match[1]);
+        const unit = match[2].toUpperCase() as keyof typeof multiplier;
+
+        return unit ? num * multiplier[unit] : num;
+    }
     /**
          * 向 Solana 钱包转账 SOL
          * 
@@ -222,14 +239,18 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                             <Input
                                 type="number"
                                 min={0}
-                                max={balance}
+                                max={convertStringToNumber(balance)}
                                 placeholder="Amount"
                                 value={amount}
                                 onChange={val => {
+                                    
                                     let price=BigNumber(usd);
-                                    let bala=BigNumber(balance);
-                                    let valBig=BigNumber(val);
-                                    setAmount(val);
+                                    let bala=BigNumber(convertStringToNumber(balance));
+                                    let valBig=BigNumber(val?val:0);
+                                    
+                                    if (/^\d*\.?\d{0,6}$/.test(val)) {
+                                        setAmount(val);
+                                    }
                                     setCalcPrice(price.dividedBy(bala).multipliedBy(valBig).toFixed(2));
                                 }}
                             />

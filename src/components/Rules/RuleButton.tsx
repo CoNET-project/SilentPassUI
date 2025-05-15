@@ -1,10 +1,11 @@
 import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
-import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading } from 'antd-mobile';
+import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock } from 'antd-mobile';
 import styles from './ruleButton.module.css';
 import { SetOutline,RightOutline,EditSOutline,DeleteOutline,CheckCircleOutline,LoopOutline } from 'antd-mobile-icons';
 import { List as VirtualizedList, AutoSizer } from 'react-virtualized'
 import _,{ debounce } from 'lodash';
 import axios from 'axios';
+import AddItem from './AddItem';
 
 interface ProxySet {
   [key: string]: any[]; 
@@ -48,6 +49,22 @@ const RuleButton=({})=> {
                     }}
                 >
                     {item.name}<RightOutline />
+                </List.Item>
+            )
+        }else if(classify=='special'){
+            return (
+                <List.Item
+                    key={key}
+                    style={style}
+                    clickable={false}
+                >
+                    <Checkbox value={item.valueTag}>
+                        <Ellipsis direction='end' content={item.name} />
+                        <div className={styles.operation}>
+                            <a className={styles.itemBtn}><EditSOutline /></a>
+                            <a className={styles.itemBtn}><DeleteOutline /></a>
+                        </div>
+                    </Checkbox>
                 </List.Item>
             )
         }else{
@@ -163,7 +180,7 @@ const RuleButton=({})=> {
             const result=res.data;
             setProxySet(result);
             setClassifyList(result.classifyList);
-            setSpecialList(result.specialList);
+            //setSpecialList(result.specialList);
             setOfficialList(result.officialList);
             setRegionList(result.regionList);
 
@@ -189,6 +206,7 @@ const RuleButton=({})=> {
         }
         setLoading(false);
     }
+    
 
     return (
         <>
@@ -201,35 +219,38 @@ const RuleButton=({})=> {
                     setVisible(false)
                 }}
                 position='right'
-                bodyStyle={{ width: '100vw',backgroundColor:'#0d0d0d' }}
+                bodyStyle={{ width: '100%',backgroundColor:'#0d0d0d' }}
+                className={styles.ruleBtnPopup}
             >
                 {loading?<div className={styles.ruleLoading}>
                     <SpinLoading style={{ '--size': '32px' }} />
                 </div>:<div className={styles.ruleCont}>
                     <NavBar back='Back' onBack={handleBack} style={{'--height': '70px'}}></NavBar>
-                    {classify!='all'?<div className={styles.hd}>{classify}</div>:''}
+                    {classify!='all'?<div className={styles.hd}>
+                        {classify}{classify=='special'?<AddItem />:''}
+                    </div>:''}
                     <div className={styles.searchBar}><SearchBar value={searchVal} onChange={handleSearchChange} placeholder='Please enter search content' style={{'--height': '40px'}} /></div>
                     <div className={styles.list}>
                         <Checkbox.Group value={checkboxValue} onChange={handleCheckboxChange}>
                             <List header=''>
-                                <AutoSizer>
+                                {searchByKeyword(filterVal).length?<AutoSizer>
                                     {({ width,height }: { width: number,height: number }) => (
                                         <VirtualizedList
-                                            rowCount={searchByKeyword(filterVal).length}
-                                            rowRenderer={rowRenderer}
-                                            width={width}
-                                            height={height}
-                                            rowHeight={46}
-                                            overscanRowCount={10}
-                                        />
+                                                rowCount={searchByKeyword(filterVal).length}
+                                                rowRenderer={rowRenderer}
+                                                width={width}
+                                                height={height}
+                                                rowHeight={46}
+                                                overscanRowCount={10}
+                                            />
                                     )}
-                                </AutoSizer>
+                                </AutoSizer>:<ErrorBlock status='empty' />}
                             </List>
                         </Checkbox.Group>
                     </div>
-
                 </div>}
             </Popup>
+
         </>
     );
 }

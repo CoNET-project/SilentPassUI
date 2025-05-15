@@ -22,6 +22,10 @@ import Passcode from './pages/Passcode';
 import { getServerIpAddress } from "./api";
 import { parseQueryParams } from "./utils/utils";
 import Transfer from './pages/Transfer';
+import { setDefaultConfig } from 'antd-mobile';
+import zhCN from 'antd-mobile/es/locales/zh-CN';
+import enUS from 'antd-mobile/es/locales/en-US';
+
 
 global.Buffer = require('buffer').Buffer;
 
@@ -137,7 +141,12 @@ function App() {
 	}
   }, [])
 
-
+  useEffect(() => {
+  		setDefaultConfig({
+		    	locale: enUS,
+		  })
+  },[])
+  
 
   return (
     <div className="App">

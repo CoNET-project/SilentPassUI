@@ -194,7 +194,7 @@ const Home = () => {
 	setIsInitialLoading(false);
   }, [closestRegion])
 
-  const handleTogglePower = async () => {
+const handleTogglePower = async () => {
     setIsConnectionLoading(true)
     let error = false;
     setErrorMessage('');
@@ -207,22 +207,34 @@ const Home = () => {
 	} catch (ex) {
 		setIsLocalProxy(false)
 	}
+
+	
     if (power) {
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
       }
-	  
-	  
-	try {
-		const response = await stopSilentPass();
-		if (response.status === 200) {
-		setPower(false);
+	  	//	@ts-ignore
+		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+			
+			const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
+			//	@ts-ignore
+			AndroidBridge.receiveMessageFromJS(base)
+			setPower(false);
+		} else {
+			//	@ts-ignore
+			console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
 		}
-	} catch (ex) { }
+	  
+		try {
+			const response = await stopSilentPass();
+			if (response.status === 200) {
+			setPower(false);
+			}
+		} catch (ex) { }
 
-      setTimeout(() => setIsConnectionLoading(false), 1000)
-      return
+		setTimeout(() => setIsConnectionLoading(false), 1000)
+		return
     }
 
     if (!profiles?.[0]?.activePassport?.expires) {
@@ -306,17 +318,16 @@ const Home = () => {
 
 	//	@ts-ignore
 	if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+		
+		const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
 		//	@ts-ignore
-		AndroidBridge.receiveMessageFromJS(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
+		AndroidBridge.receiveMessageFromJS(base)
 	} else {
 		//	@ts-ignore
 		console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
 	}
-	//	@ts-ignore
-	if (window?.Android) {
-      //	@ts-ignore
-      window.Androi.sendData(base64VPNMessage)
-	}
+
+
     try {
       await startSilentPass(startVPNMessageObject);
     } catch (ex) {

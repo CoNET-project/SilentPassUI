@@ -17,9 +17,14 @@ import PassportInfoPopup from "../../components/PassportInfoPopup";
 import { getServerIpAddress } from "../../api"
 import bannaer from './assets/banner-1.png'
 import {checkFreePassportProcess} from '../../services/wallets'
+import airdrop from './assets/airdrop_swing_SP.gif'
+
+
+
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
 const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
+
 
 const VPN_URLS = ['vpn', 'vpn-beta'];
 
@@ -371,6 +376,7 @@ const handleTogglePower = async () => {
           <>
             <div>
               <img src="/assets/header-title.svg"></img>
+			  <img src={airdrop} style={{height:"4rem", cursor: "pointer"}}/>
             </div>
 
 			<div>

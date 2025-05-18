@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './index.css';
 import Separator from '../Separator';
 import CopyAccountInfo from './CopyAccountInfo';
@@ -15,6 +15,7 @@ import { refreshSolanaBalances, storeSystemData } from '../../services/wallets';
 import { CoNET_Data } from '../../utils/globals';
 import { useNavigate } from 'react-router-dom';
 import SendButton from './SendButton';
+import AirdropSuccess from './SuccessModal'
 
 interface AccountListProps {
     showMainWallet?: boolean;
@@ -25,15 +26,22 @@ interface AccountListProps {
 
 export default function AccountList({ showMainWallet = true, simplifiedView = false, spInUsd = 0, solInUsd = 0 }: AccountListProps) {
     const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-    const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes, isIOS } = useDaemonContext();
+    const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes, isIOS, airdropProcess, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, airdropSuccess, setAirdropProcess, setAirdropSuccess, airdropTokens } = useDaemonContext();
 
     const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
     const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
     const [passportToChange, setPassportToChange] = useState();
     const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
-
-    const { isSelectPassportPopupOpen, setIsSelectPassportPopupOpen } = useDaemonContext();
-
+	let firstProcess = true
+	useEffect(() => {
+		if (!firstProcess) {
+			return
+		}
+		firstProcess = false
+		if (airdropProcess) {
+			toggleAccount('123')
+		}
+	}, [])
     const navigate = useNavigate();
 
     function toggleAccount(accountAddress: string) {
@@ -41,6 +49,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
             prev.includes(accountAddress) ? prev.filter((item) => item !== accountAddress) : [...prev, accountAddress]
         ))
     }
+
+
 
     function handleCopy(e: any, account: 'main' | 'solana') {
         e.preventDefault();
@@ -62,6 +72,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
     }
 
     async function handleRefreshSolanaBalances() {
+		setAirdropSuccess(false)
+		setAirdropProcess(false)
         setIsRefreshingSolanaBalances(true);
 
         try {
@@ -247,8 +259,6 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                             {renderRefreshButton()}
                         </div>
                         
-
-
                         <div className="token-assets-item">
                             <div className="token-assets-item-lt">
                                 <div className="token-assets-item-label">
@@ -346,6 +356,11 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                     />
                 )
             }
+			{
+				airdropSuccess && 
+				<AirdropSuccess tokens={airdropTokens} onClose={handleRefreshSolanaBalances}/>
+			}
+
         </div>
     )
 }

@@ -31,7 +31,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
   const [memberId, setMemberId] = useState<string>('0');
   const [referrer, setReferrer] = useState<string>('');
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
-  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID } = useDaemonContext()
+  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID, airdropProcess, airdropTokens } = useDaemonContext()
   const [showBuyClusBlue, setShowBuyClusBlue] = useState(true)
   const [showBuyClusloading, setShowBuyClusloading] = useState(false)
   const [QRWallet, setQRWallet] = useState('')
@@ -50,6 +50,12 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
       setPassportTimeLeft(timeLeft)
     }
   }, [activePassportUpdated, profiles])
+  useEffect(() => {
+	if (airdropProcess) {
+		setIsOpen (false)
+	}
+  }, [])
+
 
   const fetchMemberIdWithRetry = async (startTime = Date.now()): Promise<string | null> => {
     const _memberId = await getSpClubMemberId(profiles[0]);
@@ -274,7 +280,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 									</div>
 								</button>
 							</div>
-							{/* <div id="outer">
+							<div id="outer">
 								<div className="inner" style={{marginRight: "1rem"}}>
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BNB')}>
 										<img src = {bnb_token} className="button_img"/>
@@ -285,7 +291,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 										<img src = {bnb_usdt} className="button_img"/>
 									</button>
 								</div>
-							</div> */}
+							</div>
 						</>
 						
 					}

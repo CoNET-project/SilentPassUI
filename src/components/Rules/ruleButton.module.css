@@ -107,6 +107,9 @@
         :global(.adm-checkbox) {
             flex: 1;
         }
+        :global(.adm-input-element) {
+            color: #888;
+        }
     }
     :global(.adm-nav-bar-back) {
         color: #a4bee0;

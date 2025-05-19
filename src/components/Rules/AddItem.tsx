@@ -4,7 +4,10 @@ import { AddOutline } from 'antd-mobile-icons';
 import styles from './addItem.module.css';
 import _ from 'lodash';
 
-const AddItem=({})=> {
+interface AddParams {
+    getCustomSetting: () => void;
+}
+const AddItem=({getCustomSetting}:AddParams)=> {
     const [visible, setVisible] = useState(false);
     const [value, setValue] = useState('');
 
@@ -31,25 +34,30 @@ const AddItem=({})=> {
             let storage = window.localStorage;
             if(storage.specialList){
                 let specialList=JSON.parse(storage.specialList);
-                if(_.some(specialList, item => _.isEqual(item.value, values.address))){
+                if(_.some(specialList, item => _.isEqual(item.valueTag, values.address))){
                     Toast.show({
                         icon: 'fail',
                         content: 'Current value already exists',
                     })
                 }else{
-                    specialList.push({"name":values.address,"value":values.address,"valueTag":values.address});
+                    specialList.push({"name":values.address,"value":values.address,"valueTag":values.address,checked:"false"});
                     storage.specialList=JSON.stringify(specialList);
                     setVisible(false);
                     //更新列表
+                    getCustomSetting();
+
                     Toast.show({
                         icon: 'success',
                         content: 'Success',
                     })
                 }
             }else{
-                storage.specialList=JSON.stringify([{"name":values.address,"value":values.address,"valueTag":values.address}]);
+                storage.specialList=JSON.stringify([{"name":values.address,"value":values.address,"valueTag":values.address,checked:"false"}]);
                 setVisible(false);
+                
                 //更新列表
+                getCustomSetting();
+
                 Toast.show({
                     icon: 'success',
                     content: 'Success',

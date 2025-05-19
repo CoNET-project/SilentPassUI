@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
-import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock } from 'antd-mobile';
+import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock,Dialog,Toast,Input } from 'antd-mobile';
 import styles from './ruleButton.module.css';
-import { SetOutline,RightOutline,EditSOutline,DeleteOutline,CheckCircleOutline,LoopOutline } from 'antd-mobile-icons';
+import { SetOutline,RightOutline,EditSOutline,DeleteOutline,CheckOutline } from 'antd-mobile-icons';
 import { List as VirtualizedList, AutoSizer } from 'react-virtualized'
 import _,{ debounce } from 'lodash';
 import axios from 'axios';
@@ -10,7 +10,121 @@ import AddItem from './AddItem';
 interface ProxySet {
   [key: string]: any[]; 
 }
+interface ListItem {
+    checked: string;
+    valueTag: any; 
+    name:string;
+    value: string | string[];
+}
 
+const SpecialItem=({item,index,key,style,getCustomSetting}: {item:any;index: number;key: string;style: CSSProperties;getCustomSetting:() => void;})=>{
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState(item.valueTag);
+
+    const changeStatus=()=>{
+        setIsEditing(!isEditing);
+    }
+    const modifySpecialArrayByValue=(arr:any[], valueToModify:string, valueEdited:string) =>{
+        return _.map(arr, (child) => {
+            if (child.value === valueToModify) {
+                return {
+                    name: valueEdited,
+                    value: valueEdited,
+                    valueTag: valueEdited,
+                    checked:child.checked
+                };
+            }
+            return child;
+        });
+    }
+
+    const saveItem=()=>{
+        let storage = window.localStorage;
+        //检查是否合规
+        // 匹配 IPv4 地址，支持 CIDR（如 192.168.1.1/32）
+        const ipWithCidrRegex = /^(?:\d{1,3}\.){3}\d{1,3}(?:\/(?:\d|[12]\d|3[0-2]))?$/;
+
+        // 校验每段是否在 0~255
+        const isValidIp = (ip: any) => {
+            const [address] = ip.split('/');
+            return address.split('.').every((segment: any) => {
+                const n = Number(segment);
+                return n >= 0 && n <= 255;
+            });
+        };
+
+        // 匹配域名（支持 abc.com、abc.io、abc.dd.ys、abc.yr 等）
+        const domainRegex = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63})+$/;
+
+        if((ipWithCidrRegex.test(editValue) && isValidIp(editValue)) || domainRegex.test(editValue)){
+            if(storage.specialList){
+                let specialList=JSON.parse(storage.specialList);
+                if(_.some(specialList, child => _.isEqual(child.valueTag, editValue)) && editValue!==item.valueTag){
+                    Toast.show({
+                        icon: 'fail',
+                        content: 'Current value already exists',
+                    });
+                    return ;
+                }else{
+                    //更新 原来的值修改成新的值（specialList）
+                    if(storage.specialList){
+                        let specialList=JSON.parse(storage.specialList);
+                        storage.specialList = JSON.stringify(modifySpecialArrayByValue(specialList,item.valueTag,editValue));
+                    }
+
+                    getCustomSetting();
+
+                    setIsEditing(!isEditing);
+                }
+            }else{
+                Toast.show({
+                    icon: 'fail',
+                    content: 'Current value not exists',
+                });
+            }
+        }else{
+            Toast.show({
+                icon: 'fail',
+                content: 'Please check the format',
+            })
+        }
+    }
+    const removeItem=()=>{
+        Dialog.confirm({
+            content: 'Are you sure to delete?',
+            onConfirm: () => {
+                let storage = window.localStorage;
+                //更新storage
+                if(storage.specialList){
+                    let specialList=JSON.parse(storage.specialList);
+                    storage.specialList = JSON.stringify(_.reject(specialList, (child:any) => child.valueTag === item.valueTag));
+                }
+                getCustomSetting();
+
+                Toast.show({
+                    icon: 'success',
+                    content: 'success',
+                })
+            },
+        })
+    }
+
+    return (
+        <List.Item
+            key={key}
+            style={style}
+            clickable={false}
+        >
+            {isEditing?<Input placeholder='Please enter' value={editValue} onChange={(val:any) => {setEditValue(val)}} />:<Checkbox value={item.valueTag}>
+                <Ellipsis direction='end' content={item.name} />
+            </Checkbox>}
+            <div className={styles.operation}>
+                {isEditing?<span className={styles.itemBtn} onClick={saveItem}><CheckOutline /></span>:<span className={styles.itemBtn} onClick={changeStatus}><EditSOutline /></span>}
+                {isEditing?'':<span className={styles.itemBtn} onClick={removeItem}><DeleteOutline /></span>}
+            </div>
+        </List.Item>
+    )
+}
 const RuleButton=({})=> {
     const [loading, setLoading] = useState(false);
     const [visible, setVisible] = useState(false);
@@ -19,26 +133,27 @@ const RuleButton=({})=> {
     const [checkboxValue, setCheckboxValue] = useState<string[]>([]);
     const [allCheckboxValue, setAllCheckboxValue] = useState<string[]>([]);
     const [proxySet, setProxySet] = useState<ProxySet>({});
+    const proxySetRef= useRef<ProxySet>({});
     const [classify, setClassify] = useState('all');
-    const [classifyList, setClassifyList] = useState<Array<{ name: string;value: string | string[];valueTag:string;}>>([]);
-    const [specialList, setSpecialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;}>>([]);
-    const [officialList, setOfficialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;}>>([]);
-    const [regionList, setRegionList] = useState<Array<{ name: string;value: string | string[];valueTag:string;}>>([]);
+    const [classifyList, setClassifyList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
+    const [specialList, setSpecialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
+    const [officialList, setOfficialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
+    const [regionList, setRegionList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
 
     useEffect(()=>{
         getSetting();
     },[]);
 
-    const rowList: Record<string, Array<{ name: string;value: string | string[];valueTag:string;}>>={
+    const rowList: Record<string, Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>={
         'all':classifyList,
-        'special':specialList,
-        'official':officialList,
-        'region':regionList
+        'special':(specialList?specialList:[]),
+        'official':(officialList?officialList:[]),
+        'region':(regionList?regionList:[])
     }
 
     const rowRenderer=({index,key,style}: {index: number;key: string;style: CSSProperties}) =>{
         const item = searchByKeyword(filterVal)[index];
-        if(classify=='all' && !filterVal){
+        if(classify==='all' && !filterVal){
             return (
                 <List.Item
                     key={key}
@@ -51,22 +166,8 @@ const RuleButton=({})=> {
                     {item.name}<RightOutline />
                 </List.Item>
             )
-        }else if(classify=='special'){
-            return (
-                <List.Item
-                    key={key}
-                    style={style}
-                    clickable={false}
-                >
-                    <Checkbox value={item.valueTag}>
-                        <Ellipsis direction='end' content={item.name} />
-                        <div className={styles.operation}>
-                            <a className={styles.itemBtn}><EditSOutline /></a>
-                            <a className={styles.itemBtn}><DeleteOutline /></a>
-                        </div>
-                    </Checkbox>
-                </List.Item>
-            )
+        }else if(classify==='special'){
+            return <SpecialItem index={index} key={key} style={style} item={item} getCustomSetting={getCustomSetting} />
         }else{
             return (
                 <List.Item
@@ -74,18 +175,13 @@ const RuleButton=({})=> {
                     style={style}
                     clickable={false}
                 >
-                    {/*<Ellipsis direction='end' content={item.name} />
-                    <div className={styles.operation}>
-                        <a className={styles.itemBtn}><EditSOutline /></a>
-                        <a className={styles.itemBtn}><DeleteOutline /></a>
-                    </div>*/}
                     <Checkbox value={item.valueTag}><Ellipsis direction='end' content={item.name} /></Checkbox>
                 </List.Item>
             )
         }
     }
     const handleBack=()=>{
-        if(classify=='all'){setVisible(false)}else{setClassify('all')}
+        if(classify==='all'){setVisible(false)}else{setClassify('all')}
     }
     const handleSearchChange=(val:string)=>{
         setSearchVal(val); 
@@ -98,12 +194,7 @@ const RuleButton=({})=> {
         []
     );
     const searchByKeyword=(keyword:string)=> {
-        if(classify=='all' && keyword){
-            // return _.filter([
-            //     ...rowList.special, 
-            //     ...rowList.official, 
-            //     ...rowList.region
-            // ], item => item.name.includes(keyword) || item.value.includes(keyword));
+        if(classify==='all' && keyword){
             return _.filter([
                 ...rowList.special, 
                 ...rowList.official, 
@@ -111,7 +202,6 @@ const RuleButton=({})=> {
             ], item => {
                 // 检查 name 是否包含关键字
                 const nameMatches = _.includes(_.toLower(item.name), _.toLower(keyword));
-                
                 // 检查 value 是否是数组并包含关键字
                 const valueMatches = _.isArray(item.value) 
                     ? _.some(item.value, value => _.includes(_.toLower(value), _.toLower(keyword))) 
@@ -120,11 +210,9 @@ const RuleButton=({})=> {
                 return nameMatches || valueMatches;
             });
         }
-        // return _.filter(rowList[classify], item => item.name.includes(keyword) || item.value.includes(keyword));
         return _.filter(rowList[classify], item => {
             // 检查 name 是否包含关键字
             const nameMatches = _.includes(_.toLower(item.name), _.toLower(keyword));
-            
             // 检查 value 是否是数组并包含关键字
             const valueMatches = _.isArray(item.value) 
                 ? _.some(item.value, value => _.includes(_.toLower(value), _.toLower(keyword))) 
@@ -135,19 +223,35 @@ const RuleButton=({})=> {
     }
     const handleCheckboxChange=(val:any)=>{
         let storage = window.localStorage;
+        const existSpecialSet=(storage&&storage.specialList?JSON.parse(storage.specialList):[]);
+        const existSet=JSON.parse(storage.slientpassProxyLocalSet);
+        const valueTagSet = new Set(val);
+
+        _.forEach(existSet, (list, key) => {
+            if (key !== 'classifyList') { // 排除 classifyList
+                _.forEach(list, (item) => {
+                    item.checked = valueTagSet.has(item.valueTag) ? "true" : "false";
+                });
+            }
+        });
+        storage.slientpassProxyLocalSet = JSON.stringify(existSet);
+
+        _.forEach(existSpecialSet, (item) => {
+            item.checked = valueTagSet.has(item.valueTag) ? "true" : "false";
+        });
+        storage.specialList = JSON.stringify(existSpecialSet);
+
         setCheckboxValue(val as string[]);
-        const differenceArray = _.difference(allCheckboxValue,val);
-        storage.slientpassProxyNotSet=JSON.stringify(differenceArray);
-        //传递初始化数据
-        console.log(convertValuetagToValueArray(val),'val')
+        //传递数据
+        convertValuetagToValueArray(val);
     }
     const convertValuetagToValueArray=(tags: string[])=>{
-        if(JSON.stringify(proxySet)!=='{}'){
+        if(JSON.stringify(proxySetRef.current)!=='{}'){
             const result: string[] = [];
             const ipResult: string[] = [];
-            const keysToExtract = Object.keys(proxySet).filter(key => key !== 'classifyList');
+            const keysToExtract = Object.keys(proxySetRef.current).filter(key => key !== 'classifyList');
             keysToExtract.forEach((keyName) => {
-                const list = proxySet[keyName];
+                const list = proxySetRef.current[keyName];
                 if (list) {
                     const matches = _.filter(list, item => _.includes(tags, item.valueTag));
                     _.forEach(matches, (item: { valueTag: string; value: string | string[] }) => {
@@ -169,44 +273,100 @@ const RuleButton=({})=> {
                     });
                 }
             });
-            return {DOMAIN:result,IP:ipResult};
+            //****************************************需要添加传递设置的代码 START****************************************
+            console.log({DOMAIN:result,IP:ipResult}); 
+
+            //****************************************需要添加传递设置的代码 END****************************************
         }
     }
     const getSetting=async()=>{
         let storage = window.localStorage;
         setLoading(true);
+
+        //****************************************需要更换成真实的配置地址 START****************************************
         const res = await axios.get('http://localhost/proxySet.json', {});
-        if(res.status==200){
+        //****************************************需要更换成真实的配置地址 END****************************************
+        if(res.status===200){
+            if(storage.specialList){
+                res.data.specialList=(JSON.parse(storage.specialList));
+            }
+
             const result=res.data;
             setProxySet(result);
+            proxySetRef.current=result;
             setClassifyList(result.classifyList);
-            //setSpecialList(result.specialList);
             setOfficialList(result.officialList);
             setRegionList(result.regionList);
+            setSpecialList(result.specialList);
 
-            // 获取所有列表的键，排除 classifyList
-            const keysToExtract = Object.keys(result).filter(key => key !== 'classifyList');
-            // 使用 flatMap 提取所有 valueTag，并使用 uniq 去重
-            const extractValues= _.uniq(_.flatMap(keysToExtract, key => _.map(result[key], 'valueTag')));
-            setAllCheckboxValue(extractValues);
-
-            if(storage.slientpassProxyNotSet){
-                const existExclude=JSON.parse(storage.slientpassProxyNotSet);
-                // 从结果中删除 excludeArray 中的项
-                const filteredValues = _.difference(extractValues, existExclude);
-                setCheckboxValue(filteredValues);
-                //传递初始化数据
-                //convertValuetagToValueArray(filteredValues)
-            }else{
-                setCheckboxValue(extractValues);
-                storage.slientpassProxyNotSet=JSON.stringify([]);
-                //传递初始化数据
-                //convertValuetagToValueArray(extractValues)
-            }
+            initCheckbox(result);
         }
         setLoading(false);
     }
-    
+    const updateLocalSet=(A:any, B:any) =>{
+        const keysToCompare = _.difference(_.keys(A), ['classifyList']);
+        keysToCompare.forEach(key => {
+            if (B[key]) {
+                _.forEach(B[key], (bItem:any) => {
+                    const aItem = _.find(A[key], { valueTag: bItem.valueTag });
+                    if (!aItem) {
+                        A[key].push(bItem);
+                    }
+                });
+                _.remove(A[key], (aItem:any) => {
+                    return !_.find(B[key], { valueTag: aItem.valueTag });
+                });
+                _.forEach(A[key], (aItem:any) => {
+                    const bItem = _.find(B[key], { valueTag: aItem.valueTag });
+                    if (bItem && !_.isEqual(aItem.value, bItem.value)) {
+                        aItem.value = bItem.value;
+                    }
+                });
+            }
+        });
+        return A;
+    }
+    const calcCheckedArr=(result:any)=>{
+        const combinedLists: ListItem[] = Object.keys(result).filter(key => key !== 'classifyList').reduce((acc, key) => acc.concat(result[key]), []); 
+        const checkedValueTags = _.chain(combinedLists).filter({ checked: "true" }).map('valueTag').value(); 
+        return checkedValueTags;
+    }
+    const initCheckbox=(result:any)=>{
+        let storage = window.localStorage;
+        // 获取所有列表的键，排除 classifyList
+        const keysToExtract = Object.keys(result).filter(key => key !== 'classifyList');
+        // 使用 flatMap 提取所有 valueTag，并使用 uniq 去重
+        const extractValues= _.uniq(_.flatMap(keysToExtract, key => _.map(result[key], 'valueTag')));
+        setAllCheckboxValue(extractValues);
+
+        if(storage.slientpassProxyLocalSet){
+            const existSet=JSON.parse(storage.slientpassProxyLocalSet);
+            const newExistSet=updateLocalSet(existSet,result);
+            const checkboxVal=calcCheckedArr(result&&result.specialList?{...newExistSet,...result.specialList}:newExistSet);
+            storage.slientpassProxyLocalSet = JSON.stringify(newExistSet);
+
+            setCheckboxValue(checkboxVal);
+            //传递初始化数据
+            convertValuetagToValueArray(checkboxVal);
+        }else{
+            storage.slientpassProxyLocalSet=JSON.stringify(result);
+            const checkboxVal=calcCheckedArr(result);
+            setCheckboxValue(checkboxVal);
+            //传递初始化数据
+            convertValuetagToValueArray(checkboxVal);
+        }
+    }
+    const getCustomSetting=()=>{
+        let storage = window.localStorage;
+        if(storage.specialList){
+            setSpecialList(JSON.parse(storage.specialList));
+            setProxySet({officialList:officialList,regionList:regionList,specialList:JSON.parse(storage.specialList)});
+            proxySetRef.current={officialList:officialList,regionList:regionList,specialList:JSON.parse(storage.specialList)};
+            initCheckbox({officialList:officialList,regionList:regionList,specialList:JSON.parse(storage.specialList)});
+        }else{
+            storage.specialList=JSON.stringify([]);
+        }
+    }
 
     return (
         <>
@@ -226,8 +386,8 @@ const RuleButton=({})=> {
                     <SpinLoading style={{ '--size': '32px' }} />
                 </div>:<div className={styles.ruleCont}>
                     <NavBar back='Back' onBack={handleBack} style={{'--height': '70px'}}></NavBar>
-                    {classify!='all'?<div className={styles.hd}>
-                        {classify}{classify=='special'?<AddItem />:''}
+                    {classify!=='all'?<div className={styles.hd}>
+                        {classify}{classify==='special'?<AddItem getCustomSetting={getCustomSetting} />:''}
                     </div>:''}
                     <div className={styles.searchBar}><SearchBar value={searchVal} onChange={handleSearchChange} placeholder='Please enter search content' style={{'--height': '40px'}} /></div>
                     <div className={styles.list}>

@@ -1,0 +1,57 @@
+.addBtn{
+    position: absolute;
+    right: 4vw;
+    top: 50%;
+    transform: translate(0, -50%);
+}
+.addModal{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 380px;
+    transform: translate(-50%, 0);
+    .addCont{
+        .hd{
+            display: flex;
+            justify-content: center;
+            color: #f1f1f1;
+            font-size: 18px;
+            font-weight: 500;
+            margin: 0 0 15px;
+        }
+        .cancelBtn{
+            margin: 7px 0 0;
+            --border-color: #666;
+            color: #666;
+        }
+        :global(.adm-list-item) {
+            background: transparent;
+        }
+        :global(.adm-list-body) {
+            background: #333;
+            border-color: transparent;
+            border-radius: 6px;
+        }
+        :global(.adm-input-element) {
+            color: #f1f1f1;
+        }
+        :global(.adm-form .adm-form-footer) {
+            padding: 20px 0 0;
+        }
+    }
+    :global(.adm-mask) {
+        position: absolute;
+        background: rgba(0, 0, 0, 0。8)!important;
+    }
+    :global(.adm-center-popup-wrap) {
+        width: 92%;
+        max-width: 100%;
+        background: #1f1f1f;
+        border-radius: 8px;
+        position: absolute;
+    }
+    :global(.adm-center-popup-body){
+        background: #1f1f1f;
+    }
+}

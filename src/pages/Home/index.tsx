@@ -238,11 +238,13 @@ const handleTogglePower = async () => {
 
 	
     if (power) {
+
+		//		iOS
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
       }
-	  	//	@ts-ignore
+	  	//	@ts-ignore		Android
 		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
 			
 			const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
@@ -254,6 +256,7 @@ const handleTogglePower = async () => {
 			console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
 		}
 	  
+		//			Desktop
 		try {
 			const response = await stopSilentPass();
 			if (response.status === 200) {

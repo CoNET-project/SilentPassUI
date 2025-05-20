@@ -39,7 +39,7 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
         </div>
         {/* <p>{title}</p> */}
       </div>
-      <div className="children">
+      {/* <div className="children">
         <RuleButton />
         {children}
         {
@@ -52,7 +52,7 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
         {
           switchComp && <Switch state={switchState} icon={theme ? (switchState ? "/assets/dark-theme-icon.svg" : "/assets/light-theme-icon.svg") : undefined} />
         }
-      </div>
+      </div> */}
     </div>
   )
 }

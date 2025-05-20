@@ -425,3 +425,8 @@ button.redeem-button.purchase {
 	justify-content: space-between;
 	align-items: center;
   }
+
+  .wallet-address-input-error{
+	
+	background: darkred!important;
+  }

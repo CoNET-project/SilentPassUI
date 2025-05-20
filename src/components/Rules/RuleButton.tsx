@@ -283,24 +283,24 @@ const RuleButton=({})=> {
         let storage = window.localStorage;
         setLoading(true);
 
-        //****************************************需要更换成真实的配置地址 START****************************************
-        const res = await axios.get('http://localhost/proxySet.json', {});
-        //****************************************需要更换成真实的配置地址 END****************************************
-        if(res.status===200){
-            if(storage.specialList){
-                res.data.specialList=(JSON.parse(storage.specialList));
-            }
+        // //****************************************需要更换成真实的配置地址 START****************************************
+        // const res = await axios.get('http://localhost/proxySet.json', {});
+        // //****************************************需要更换成真实的配置地址 END****************************************
+        // if(res.status===200){
+        //     if(storage.specialList){
+        //         res.data.specialList=(JSON.parse(storage.specialList));
+        //     }
 
-            const result=res.data;
-            setProxySet(result);
-            proxySetRef.current=result;
-            setClassifyList(result.classifyList);
-            setOfficialList(result.officialList);
-            setRegionList(result.regionList);
-            setSpecialList(result.specialList);
+        //     const result=res.data;
+        //     setProxySet(result);
+        //     proxySetRef.current=result;
+        //     setClassifyList(result.classifyList);
+        //     setOfficialList(result.officialList);
+        //     setRegionList(result.regionList);
+        //     setSpecialList(result.specialList);
 
-            initCheckbox(result);
-        }
+        //     initCheckbox(result);
+        // }
         setLoading(false);
     }
     const updateLocalSet=(A:any, B:any) =>{

@@ -72,10 +72,13 @@ export const clearWaiting = () => {
 const airDropForSPUrl = `${apiv4_endpoint}airDropForSP`
 
 let airDropForSPProcess = false
-let airDropForSPStatus: null | boolean = null
-export const airDropForSP = async (): Promise<boolean> => {
-	if (airDropForSPStatus !== null) {
-		return airDropForSPStatus
+
+
+
+let airDropStatus: null | airDropStatus = null
+export const airDropForSP = async (): Promise<airDropStatus|false> => {
+	if (airDropStatus !== null) {
+		return airDropStatus
 	}
 	  if (!CoNET_Data?.profiles || airDropForSPProcess) {
 
@@ -95,17 +98,19 @@ export const airDropForSP = async (): Promise<boolean> => {
 		}
 	
 		const result = await postToEndpoint(airDropForSPUrl, true, sendData)
-		
-		if (result?.status) {
-			return airDropForSPStatus = true
+		const status = result?.status
+		if (status) {
+			airDropStatus = status
+			return status
 		}
 		
-		return airDropForSPStatus = false
+		return false
 	  } catch (ex) {
 		console.log(ex)
 		return false
 	  }
 }
+
 const getAirDropForSPUrl = `${payment_endpoint}getAirDropForSP`
 
 let getAirDropForSPProcess = false
@@ -127,11 +132,60 @@ export const getirDropForSP = async (): Promise<boolean|number> => {
 		}
 	
 		const result = await postToEndpoint(getAirDropForSPUrl, true, sendData)
-		airDropForSPStatus = null
+		if (airDropStatus) {
+			airDropStatus.isReadyForSP = false
+		}
+
 		if (result?.amount) {
 			return result.amount
 		}
 		
+		return false
+	  } catch (ex) {
+		console.log(ex)
+		return false
+	  }
+}
+
+let getirDropForSPReffProcess = false
+const getAirDropForSPReffUrl = `${payment_endpoint}getAirDropForSPReff`
+
+export const getirDropForSPReff = async (referrer: string): Promise<boolean|number> => {
+	  if (!CoNET_Data?.profiles || getirDropForSPReffProcess) {
+		return false
+	  }
+
+	  getirDropForSPReffProcess = true
+
+	  const isAddr = ethers.isAddress(referrer)
+	  if (!isAddr) {
+		return false
+	  }
+
+	  const profile = CoNET_Data.profiles[0]
+	  const solanaWallet = CoNET_Data.profiles[1].keyID
+
+	  try {
+		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, referrer })
+		const wallet = new ethers.Wallet(profile.privateKeyArmor)
+		const signMessage = await wallet.signMessage(message)
+		const sendData = {
+		  message, signMessage
+		}
+	
+		const result = await postToEndpoint(getAirDropForSPReffUrl, true, sendData)
+		
+
+		if (result?.status) {
+
+			if (airDropStatus) {
+				airDropStatus.isReadyForReferees = false
+			}
+
+			return result.amount
+		}
+
+		getirDropForSPReffProcess = false
 		return false
 	  } catch (ex) {
 		console.log(ex)

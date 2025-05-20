@@ -19,6 +19,7 @@ import bannaer from './assets/banner-1.png'
 import {checkFreePassportProcess} from '../../services/wallets'
 import {airDropForSP, getirDropForSP} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
+import airdropReff from './assets/airdropReff.gif'
 import SimpleLoadingRing from '../../components/SimpleLoadingRing'
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
@@ -110,13 +111,14 @@ const SystemSettingsButton = () => {
 }
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress, setAirdropProcess, setAirdropSuccess, setAirdropTokens} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const vpnTimeTimeout = useRef<NodeJS.Timeout>();
-  const [isairDropForSP, setIsairDropForSP] = useState(false)
+  const [isAirDropForSP, setIsAirDropForSP] = useState(false)
+  const [isReadyForReferees, setIsReadyForReferees] = useState(false)
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
 
 
@@ -196,21 +198,34 @@ const Home = () => {
 
 
   const init = async () => {
-	const _airDropForSP = await airDropForSP()
-	setIsairDropForSP(_airDropForSP)
+	const status = await airDropForSP()
+	if (status !== false) {
+		setIsAirDropForSP(status.isReadyForSP)
+		setIsReadyForReferees(status.isReadyForReferees)
+	}
+	
   }
 
   const airdropProcess = async () => {
 
 	setIsProcessAirDrop(true)
-	const kk = await getirDropForSP()
-	setIsairDropForSP(false)
-	if (typeof kk === 'number') {
-		setAirdropProcess(true)
-		setAirdropSuccess(true)
-		setAirdropTokens(kk)
-		navigate('/wallet')
+	setAirdropProcess(true)
+	if (isAirDropForSP) {
+		const kk = await getirDropForSP()
+		setIsAirDropForSP(false)
+		
+		if (typeof kk === 'number') {
+			
+			setAirdropSuccess(true)
+			setAirdropTokens(kk)
+			navigate('/wallet')
+		}
+		return
 	}
+	setAirdropProcessReff(true)
+	navigate('/wallet')
+	
+	
 
   }
 
@@ -404,9 +419,20 @@ const handleTogglePower = async () => {
               <img src="/assets/header-title.svg"></img>
 			  {
 				
-				isairDropForSP && !isProcessAirDrop &&
-				
-				<img src={airdrop} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/>
+				!isProcessAirDrop && 
+				<>
+					{
+						isAirDropForSP &&
+							<img src={airdrop} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/> 
+					}
+					{
+						!isAirDropForSP && isReadyForReferees &&
+							<img src={airdropReff} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/>
+						
+					}
+				</>
+
+				 	
 			  }
 			  
 			  

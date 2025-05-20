@@ -316,4 +316,7 @@ interface Region {
 	CoinMarketCapAPIKey: string;
 	storagePATH: string[];
   }
-  
+interface airDropStatus {
+	isReadyForSP: boolean
+	isReadyForReferees: boolean
+}

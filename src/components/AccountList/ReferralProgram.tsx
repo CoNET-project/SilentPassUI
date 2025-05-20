@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import './index.css';
 import Separator from '../Separator';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../Skeleton';
 import SPClubRewardTab from '../SPClubRewardTab'
-import { ethers } from 'ethers';
-import {addReferrals} from '../../services/swap'
+import { ethers } from 'ethers'
+import {getirDropForSPReff} from '../../services/subscription'
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { getPassportTitle, getExpirationDate } from '../../utils/utils';
@@ -19,13 +19,14 @@ const SP_EARNED_FROM_REFERRAL = 10
 
 export default function ReferralProgram() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const { profiles } = useDaemonContext();
+  const { profiles, airdropProcessReff, setAirdropSuccess, setAirdropTokens, setAirdropProcess, setAirdropProcessReff } = useDaemonContext();
   const [animation, setAnimation] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shouldRerender, setShouldRerender] = useState(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState(false)
   const [inputError, setInputError] = useState(false);
   const [inviter, setInviter] = useState('');
+  const inputRef = useRef(null);
   const [quotation, setQuotation] = useState({
     "rfp": 1/31,
     "rsp": 0/31,
@@ -44,12 +45,18 @@ export default function ReferralProgram() {
 
   const handleSetInviter = async () => {
 	setIsRedeemProcessLoading(true)
-	const result = await addReferrals(inviter)
+	const result = await getirDropForSPReff (inviter)
 	setIsRedeemProcessLoading(false)
-	if (!result) {
-		setIsRedeemProcessLoading(false)
-		setInputError(true)
+
+	if (typeof result === 'boolean') {
+		return setInputError(true)
 	}
+
+	setAirdropSuccess(true)
+	setAirdropTokens(result)
+	setIsOpen(false)
+	setAirdropProcess(true)
+	setAirdropProcessReff(false)
   }
 
   const handlePreviousPage = async () => {
@@ -73,6 +80,19 @@ export default function ReferralProgram() {
       setShouldRerender(false)
     }
   }, [shouldRerender])
+
+  
+  let first = true
+  useEffect(() => {
+    if (first) {
+		first = false
+        if (airdropProcessReff) {
+			setIsOpen(true)
+			//@ts-ignore
+			inputRef?.current?.focus()
+		}
+    }
+  }, [])
 
   function handleCopy() {
     navigator.clipboard.writeText(profiles?.[0]?.keyID);
@@ -155,6 +175,7 @@ export default function ReferralProgram() {
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
               <p>Inviter's wallet address</p>
               <input className={inputError? 'wallet-address-input-error':''}
+			    ref={inputRef}
                 type="text" 
                 style={{ width: "100%", background: "#3F3F40", borderRadius: "8px", padding: "8px", color: "#989899", border: 0 }}
                 value={inviter} onChange={(e) => {

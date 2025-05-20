@@ -54,7 +54,8 @@ type DaemonContext = {
   airdropSuccess: boolean
   airdropTokens: number
   setAirdropTokens: (val: number) => void
-
+  airdropProcessReff: boolean
+  setAirdropProcessReff: (val: boolean) => void
 };
 
 type DaemonProps = {
@@ -114,8 +115,9 @@ const defaultContextValue: DaemonContext = {
   setAirdropSuccess: () => {},
   airdropSuccess: false,
   airdropTokens: 0,
-  setAirdropTokens: () => {}
-
+  setAirdropTokens: () => {},
+ airdropProcessReff: false,
+  setAirdropProcessReff: () => {}
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -153,6 +155,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [airdropProcess, setAirdropProcess] = useState(false)
   const [airdropSuccess, setAirdropSuccess] = useState(false)
   const [airdropTokens, setAirdropTokens] = useState(0)
+  const [airdropProcessReff, setAirdropProcessReff] = useState(false)
 
   useEffect(() => {
     {
@@ -171,7 +174,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
-				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens }}>,
+				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff }}>,
 
       {children}
     </Daemon.Provider>

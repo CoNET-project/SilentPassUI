@@ -50,6 +50,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
       setPassportTimeLeft(timeLeft)
     }
   }, [activePassportUpdated, profiles])
+
   useEffect(() => {
 	if (airdropProcess) {
 		setIsOpen (false)
@@ -201,7 +202,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 				🎁 One-time issuance of 93 subscription points;
 			</p>
 			<p>
-				💰 Immediately receive $25U worth of $SP tokens.
+				💰 Immediately receive 25USD worth of $SP tokens.
 			</p>
 			<div className="redeem-divider">
 				<div className="line"></div>

@@ -26,22 +26,21 @@ interface AccountListProps {
 
 export default function AccountList({ showMainWallet = true, simplifiedView = false, spInUsd = 0, solInUsd = 0 }: AccountListProps) {
     const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-    const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes, isIOS, airdropProcess, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, airdropSuccess, setAirdropProcess, setAirdropSuccess, airdropTokens } = useDaemonContext();
+    const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes, isIOS, airdropProcess, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, airdropSuccess, setAirdropProcess, setAirdropSuccess, airdropTokens, airdropProcessReff } = useDaemonContext();
 
     const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
     const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
     const [passportToChange, setPassportToChange] = useState();
     const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
-	let firstProcess = true
+
+
 	useEffect(() => {
-		if (!firstProcess) {
-			return
-		}
-		firstProcess = false
-		if (airdropProcess) {
+
+		if (airdropProcess && !airdropProcessReff) {
 			toggleAccount('123')
 		}
-	}, [])
+	}, [airdropProcessReff, airdropProcess])
+
     const navigate = useNavigate();
 
     function toggleAccount(accountAddress: string) {

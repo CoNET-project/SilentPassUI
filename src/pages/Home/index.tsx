@@ -14,11 +14,16 @@ import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
-import { getServerIpAddress } from "../../api";
+import { getServerIpAddress } from "../../api"
+import bannaer from './assets/banner-1.png'
 import {checkFreePassportProcess} from '../../services/wallets'
+import {airDropForSP, getirDropForSP} from '../../services/subscription'
+import airdrop from './assets/airdrop_swing_SP.gif'
+import SimpleLoadingRing from '../../components/SimpleLoadingRing'
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
 const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
+
 
 const VPN_URLS = ['vpn', 'vpn-beta'];
 
@@ -105,37 +110,41 @@ const SystemSettingsButton = () => {
 }
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress, setAirdropProcess, setAirdropSuccess, setAirdropTokens} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const vpnTimeTimeout = useRef<NodeJS.Timeout>();
+  const [isairDropForSP, setIsairDropForSP] = useState(false)
+  const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
 
 
   const navigate = useNavigate();
   const _getAllRegions = async () => {
+	
 	const [tmpRegions] = await
 	Promise.all([
 		getAllRegions()
 	])
 
-  const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
-	const separatedRegion = region.split(".");
-	const code = separatedRegion[1];
-	const country = mappedCountryCodes[code];
+	const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
+		const separatedRegion = region.split(".");
+		const code = separatedRegion[1];
+		const country = mappedCountryCodes[code];
 
-	return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
-  }))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
+		return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
+	}))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
 
-  const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
+	const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
 
-  if (sRegion < 0) {
-	setSRegion(unitedStatesIndex)
-	setIsRandom(false);
-  }
+	if (sRegion < 0) {
+		setSRegion(unitedStatesIndex)
+		setIsRandom(false);
+	}
 
-  setAllRegions(treatedRegions);
+	setAllRegions(treatedRegions);
+	
   };
 
 
@@ -160,6 +169,7 @@ const Home = () => {
   useEffect(() => {
 	let first = 0
     const listenGetAllNodes = () => {
+		
 		const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0
 		const _status = Math.round(_initpercentage)
 		const status = _status <= first ? first + 2 : _status
@@ -181,19 +191,38 @@ const Home = () => {
   }, [])
 
   useEffect(() => {
-
-
     _getAllRegions()
   }, []);
+
+
+  const init = async () => {
+	const _airDropForSP = await airDropForSP()
+	setIsairDropForSP(_airDropForSP)
+  }
+
+  const airdropProcess = async () => {
+
+	setIsProcessAirDrop(true)
+	const kk = await getirDropForSP()
+	setIsairDropForSP(false)
+	if (typeof kk === 'number') {
+		setAirdropProcess(true)
+		setAirdropSuccess(true)
+		setAirdropTokens(kk)
+		navigate('/wallet')
+	}
+
+  }
 
   useEffect(() => {
 	if (!closestRegion?.length) {
 		return
 	}
 	setIsInitialLoading(false);
+	init()
   }, [closestRegion])
 
-  const handleTogglePower = async () => {
+const handleTogglePower = async () => {
     setIsConnectionLoading(true)
     let error = false;
     setErrorMessage('');
@@ -206,22 +235,37 @@ const Home = () => {
 	} catch (ex) {
 		setIsLocalProxy(false)
 	}
+
+	
     if (power) {
+
+		//		iOS
       if (window?.webkit) {
         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
       }
-	  
-	  
-	try {
-		const response = await stopSilentPass();
-		if (response.status === 200) {
-		setPower(false);
+	  	//	@ts-ignore		Android
+		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+			
+			const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
+			//	@ts-ignore
+			AndroidBridge.receiveMessageFromJS(base)
+			setPower(false);
+		} else {
+			//	@ts-ignore
+			console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
 		}
-	} catch (ex) { }
+	  
+		//			Desktop
+		try {
+			const response = await stopSilentPass();
+			if (response.status === 200) {
+			setPower(false);
+			}
+		} catch (ex) { }
 
-      setTimeout(() => setIsConnectionLoading(false), 1000)
-      return
+		setTimeout(() => setIsConnectionLoading(false), 1000)
+		return
     }
 
     if (!profiles?.[0]?.activePassport?.expires) {
@@ -305,17 +349,16 @@ const Home = () => {
 
 	//	@ts-ignore
 	if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+		
+		const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
 		//	@ts-ignore
-		AndroidBridge.receiveMessageFromJS(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
+		AndroidBridge.receiveMessageFromJS(base)
 	} else {
 		//	@ts-ignore
 		console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
 	}
-	//	@ts-ignore
-	if (window?.Android) {
-      //	@ts-ignore
-      window.Androi.sendData(base64VPNMessage)
-	}
+
+
     try {
       await startSilentPass(startVPNMessageObject);
     } catch (ex) {
@@ -333,7 +376,7 @@ const Home = () => {
     }, 1000)
 
     return
-  };
+};
 
   const isSilentPassVPN = VPN_URLS.some(url => window.location.href.includes(url));
   const isDevelopment = window.location.href.includes('localhost');
@@ -359,7 +402,22 @@ const Home = () => {
           <>
             <div>
               <img src="/assets/header-title.svg"></img>
+			  {
+				
+				isairDropForSP && !isProcessAirDrop &&
+				
+				<img src={airdrop} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/>
+			  }
+			  
+			  
             </div>
+
+			<div>
+				<button onClick={() => navigate("/wallet")}>
+					<img className="bannaer" src={bannaer} style={{width:"25rem",height: "5rem"}}></img>
+				</button>
+				
+			</div>
 
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 

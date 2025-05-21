@@ -48,6 +48,13 @@ type DaemonContext = {
   setSuccessNFTID: (val: number) => void,
   selectedPlan: "12" | "1" | string,
   setSelectedPlan: (val: "12" | "1"| string ) => void,
+  airdropProcess: boolean,
+  setAirdropProcess: (val: boolean) => void
+  setAirdropSuccess: (val: boolean) => void
+  airdropSuccess: boolean
+  airdropTokens: number
+  setAirdropTokens: (val: number) => void
+
 };
 
 type DaemonProps = {
@@ -102,6 +109,13 @@ const defaultContextValue: DaemonContext = {
   setSuccessNFTID: () => {},
   selectedPlan: "12",
   setSelectedPlan: () => {},
+  setAirdropProcess: () => {},
+  airdropProcess: false,
+  setAirdropSuccess: () => {},
+  airdropSuccess: false,
+  airdropTokens: 0,
+  setAirdropTokens: () => {}
+
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -136,6 +150,9 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [paymentKind, setPaymentKind] = useState(0)
   const [successNFTID, setSuccessNFTID] = useState(0)
   const [selectedPlan, setSelectedPlan] = useState< '12' | '1' | string >('12');
+  const [airdropProcess, setAirdropProcess] = useState(false)
+  const [airdropSuccess, setAirdropSuccess] = useState(false)
+  const [airdropTokens, setAirdropTokens] = useState(0)
 
   useEffect(() => {
     {
@@ -153,7 +170,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
-				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan }}>,
+				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
+				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens }}>,
 
       {children}
     </Daemon.Provider>

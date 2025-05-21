@@ -8,12 +8,13 @@ import RedeemPassport from '../../components/RedeemPassport';
 import RewardPoint from '../../components/AccountList/RewardPoint'
 import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
 import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
-import { useDaemonContext } from '../../providers/DaemonProvider';
+import { useDaemonContext } from '../../providers/DaemonProvider'
+import { useEffect, useRef, useState } from "react";
 
 export default function Wallet() {
-  const navigate = useNavigate();
-  const { profiles, isIOS } = useDaemonContext();
-
+  const navigate = useNavigate()
+  const { profiles, isIOS } = useDaemonContext()
+  const [openClub, setOpenClub] = useState(true)
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
   const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7;
 
@@ -40,7 +41,7 @@ export default function Wallet() {
       </div>
 	  {
 		<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '20px' }}>
-			<SpClub />
+			{SpClub(openClub, setOpenClub)}
 			<ReferralProgram />
 		</div>
 	  }

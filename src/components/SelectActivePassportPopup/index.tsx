@@ -20,7 +20,10 @@ const SelectActivePassportPopup = ({ newPassport }: any) => {
     try {
       setIsChangeLoading(true);
 
-      await changeActiveNFT('mainnet', newPassport.nftID)
+      const result = await changeActiveNFT(newPassport.nftID)
+	  if (!result) {
+		 return 
+	  }
 	  setActivePassport(profiles.activePassport)
       await new Promise((resolve) => setTimeout(resolve, 6000));
 

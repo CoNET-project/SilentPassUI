@@ -205,7 +205,9 @@ export const getPassportTitle = (passportInfo: any) => {
   if (passportInfo?.expires > 32503690800000)
     return "Guardian";
 
-  if (passportInfo.expiresDays > 31) return "Annually";
+  if (passportInfo.expiresDays > 100) return "Annually"
+
+  if (passportInfo.expiresDays > 90) return "Quarter"
 
   return "Monthly";
 };

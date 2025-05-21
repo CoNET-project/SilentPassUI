@@ -15,6 +15,9 @@ import ActivePassportInfo from '../../components/ActivePassportInfo';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import { getPassportTitle } from '../../utils/utils';
 
+import Languages from '../../components/Languages';
+import { useTranslation } from 'react-i18next';
+
 type OptionGroup = {
   heading: string;
   items: {
@@ -30,6 +33,8 @@ type OptionGroup = {
 type OptionGroups = OptionGroup[];
 
 export default function Settings() {
+  const { t, i18n } = useTranslation();
+  const [visible, setVisible] = useState(false);
   const { activePassport } = useDaemonContext();
 
   const navigate = useNavigate();
@@ -47,8 +52,8 @@ export default function Settings() {
           id: 1,
           icon: languageIcon,
           title: "Language",
-          childrenText: "English",
-          action: () => navigate("/languages")
+          childrenText: 'English',
+          action: () => setVisible(true)
         },
         /* {
           id: 2,
@@ -145,6 +150,7 @@ export default function Settings() {
       </div>
 
       <Footer />
+      <Languages visible={visible} setVisible={setVisible} />
     </div>
   )
 }

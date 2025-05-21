@@ -31,7 +31,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-
+  white-space: nowrap;
   color: #989899;
 }
 

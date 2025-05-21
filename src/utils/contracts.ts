@@ -81,7 +81,7 @@ import {
 	  network: "CONET DePIN",
 	},
 	SpReword: {
-		address: '0xEDea8558BA486e21180d7b9656A973cdE46593db',
+		address: '0x0e78F4f06B1F34cf5348361AA35e4Ec6460658bb',
 		abi: SpReword,
 		network: 'CONET DePIN'
 	},

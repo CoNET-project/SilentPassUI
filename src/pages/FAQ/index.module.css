@@ -1,0 +1,92 @@
+.wrap{
+    width: 100%;
+    .title{
+        font-size: 26px;
+        font-weight: 500;
+        display: flex;
+        padding: 0 4vw;
+    }
+    .content{
+        margin: 16px 0 0;
+        padding: 0 4vw;
+        text-align: left;
+        .table{
+            margin: 10px 0 0;
+            border-radius: 5px;
+           
+            overflow-x: auto;
+            width: 100%;
+            table{
+                min-width: 100%;
+                background-color: #17181e;
+                border: 0.5px #232327 solid;
+                border-right: none;
+                border-bottom: none;
+                border-collapse: collapse;
+                td{
+                    text-align: center;
+                    padding: 10px 12px;
+                    border-right: 0.5px #232327 solid;
+                    border-bottom: 0.5px #232327 solid;
+                    white-space: nowrap;
+                    font-size: 14px;
+                    .icon{
+                        color: #9ab4d5;
+                        font-size: 22px;
+                        display: block;
+                        margin: 0 auto;
+                    }
+                }
+                tbody tr:first-child {
+                    font-weight: 500;
+                    color: #fff;
+                }
+                td:first-child {
+                    font-weight: 500;
+                    color: #f1f1f1;
+                }
+            }
+        }
+        .table::-webkit-scrollbar {
+            height: 2px;
+        }
+        :global(.adm-list-body) {
+            background-color: transparent;
+        }
+        :global(.adm-list-default .adm-list-body) {
+            border-top: none;
+            border-bottom: none;
+        }
+        :global(.adm-list-item) {
+            background-color: transparent;
+            padding-left: 0;
+            padding-right: 0;
+        }
+        :global(.adm-collapse-panel-header) {
+            border-top: 1px #3f3f40 solid;
+        }
+        :global(.adm-list-item-content) {
+            border-top: none;
+            font-size: 15px;
+            font-weight: 500;
+            padding-right: 0;
+        }
+        :global(a.adm-list-item:active:not(.adm-list-item-disabled)) {
+            background-color: transparent;
+        }
+        :global(a.adm-list-item:active:not(.adm-list-item-disabled)::after) {
+            border-bottom:none;
+        }
+        :global(.adm-list-item-content-arrow) {
+            color: #a4bee0;
+        }
+        :global(.adm-collapse-panel-content .adm-list-item-content-main) {
+            font-weight: 400;
+            width: 100%;
+            font-size: 14px;
+        }
+    }
+    :global(.adm-nav-bar-back) {
+        color: #a4bee0;
+    }
+}

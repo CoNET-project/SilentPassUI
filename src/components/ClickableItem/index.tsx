@@ -4,6 +4,7 @@ import './index.css';
 import { ReactComponent as ChevronArrow } from "./assets/right-chevron.svg";
 
 import Switch from '../Switch';
+import { useTranslation } from 'react-i18next';
 
 interface ClickableItemProps {
   icon?: string;
@@ -18,6 +19,7 @@ interface ClickableItemProps {
 }
 
 export default function ClickableItem({ icon, title, action, children, switchComp, switchState = false, toggle = false, theme = false, chevron = true }: ClickableItemProps) {
+  const { t, i18n } = useTranslation();
   return (
     <div className="container" onClick={action}>
       <div className="def">
@@ -31,7 +33,7 @@ export default function ClickableItem({ icon, title, action, children, switchCom
         <p>{title}</p>
       </div>
       <div className="children">
-        {children}
+        {title=='Language'?t('lang'):children}
         {
           chevron && (
             <div className={`chevron ${toggle ? 'rotated' : ''}`}>

@@ -12,7 +12,6 @@ import Vip from './pages/Vip';
 import Wallet from './pages/Wallet';
 import Swap from './pages/Swap';
 import Settings from './pages/Settings';
-import Languages from './pages/Languages';
 import Applications from './pages/Applications';
 import Subscription from './pages/Subscription';
 import Support from './pages/Support';
@@ -25,11 +24,16 @@ import Transfer from './pages/Transfer';
 import { setDefaultConfig } from 'antd-mobile';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
 import enUS from 'antd-mobile/es/locales/en-US';
+import './i18n'; // 加载多语言配置
+
+import { useTranslation } from 'react-i18next';
 
 
 global.Buffer = require('buffer').Buffer;
 
 function App() {
+	const { i18n } = useTranslation();
+
   const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
@@ -145,8 +149,22 @@ function App() {
   		setDefaultConfig({
 		    	locale: enUS,
 		  })
+  		type AntdLocale = {
+			  en: typeof enUS;
+			  zh: typeof zhCN;
+			}
+  		let storage = window.localStorage;
+  		let lang='en';
+  		const antdMLang: AntdLocale={en:enUS,zh:zhCN};
+  		if(localStorage&&localStorage.lang){
+  				lang=localStorage.lang;
+  		}
+  		setDefaultConfig({
+		    	locale: antdMLang[lang as keyof typeof antdMLang],
+		  })
+		  i18n.changeLanguage(lang);
+		  localStorage.lang=lang;
   },[])
-  
 
   return (
     <div className="App">
@@ -161,7 +179,6 @@ function App() {
           <Route path="/settings" element={<Settings />}></Route>
           <Route path="/passcode/new" element={<Passcode new />}></Route>
           <Route path="/passcode/change" element={<Passcode />}></Route>
-          <Route path="/languages" element={<Languages />}></Route>
           <Route path="/applications" element={<Applications />}></Route>
           <Route path="/subscription" element={<Subscription />}></Route>
           <Route path="/transfer" element={<Transfer />}></Route>

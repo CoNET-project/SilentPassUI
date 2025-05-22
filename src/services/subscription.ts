@@ -13,7 +13,7 @@ const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
 const waitingPayUrl = `${payment_endpoint}cryptoPayment_waiting`
 let listening: NodeJS.Timeout|null = null
 
-export const getCryptoPay = async (cryptoName: string, plan: string) => {
+export const getCryptoPay = async (cryptoName: string, plan: string): Promise<null|{transferNumber: string, wallet: string}> => {
 	if (listening) {
 		clearTimeout(listening)
 	}

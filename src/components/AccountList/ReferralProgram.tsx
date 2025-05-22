@@ -42,6 +42,15 @@ export default function ReferralProgram() {
 
   }
 
+  const showAddress = (address: string) => {
+	const link = document.createElement('a');
+	link.href = `https://mainnet.conet.network/address/${address}`
+	link.target = '_blank'
+	document.body.appendChild(link)
+	link.click()
+	document.body.removeChild(link)
+  }
+
 
   const handleSetInviter = async () => {
 	setIsRedeemProcessLoading(true)
@@ -219,7 +228,7 @@ export default function ReferralProgram() {
         <Separator />
 
         <div className="info-wrapper" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
-          <p>Invitees</p>
+          <p>Invitees <span style={{    color: "#9FBFE5FE"}}>{profiles?.[0].spClub?.totalReferees}</span></p>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', paddingLeft: '16px', maxHeight: '100px', overflowY: 'auto', paddingRight: '10px' }}>
             {profiles?.[0]?.spClub
@@ -227,8 +236,8 @@ export default function ReferralProgram() {
               profiles?.[0].spClub?.totalReferees > 0 ?
                 profiles?.[0]?.spClub.referees?.map((referee: any) =>
                   <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', gap: '8px' }}>
-                    <p style={{ width: 'auto', fontSize: '16px', color: '#FFFFFF', fontWeight: 400 }}>{getPassportTitle(referee?.activePassport)}</p>
-                    <p style={{ width: 'auto', fontSize: '16px', color: '#989899', fontWeight: 400 }}>{referee?.walletAddress?.slice(0, 5) + '...' + referee?.walletAddress?.slice(-5)}</p>
+                    {/* <p style={{ width: 'auto', fontSize: '16px', color: '#FFFFFF', fontWeight: 400 }}>{getPassportTitle(referee?.activePassport)}</p> */}
+                    <p onClick={() => showAddress(referee.walletAddress)} style={{ width: 'auto', fontSize: '16px', color: '#9FBFE5FE', fontWeight: 400, cursor: "pointer" }}>{referee?.walletAddress?.slice(0, 5) + '...' + referee?.walletAddress?.slice(-5)}</p>
                   </div>
                 ) :
                 <p>No invitees</p>

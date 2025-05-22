@@ -19,12 +19,13 @@ import SimpleLoadingRing from '../SimpleLoadingRing';
 import QRCode from '../QRCode'
 import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg'
 import {getCryptoPay, waitingPaymentReady} from '../../services/subscription'
+import {ReactComponent as QuotesTx} from './assets/trx.svg'
 import { CoNET_Data } from '../../utils/globals';
 
 
 const OneDayInSeconds = 86400;
 
-type cryptoName = 'BNB' | 'BSC USDT'
+type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX'
 export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.SetStateAction<boolean>>) {
   const [isCongratsPopupOpen, setIsCongratsPopupOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -131,7 +132,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	const kkk = await getCryptoPay(token, '3')
 
 	setShowBuyClusloading(false)
-	if (!kkk) {
+	if (!kkk?.wallet||!kkk?.transferNumber) {
 		return showErrorMessage('')
 	}
 	
@@ -290,6 +291,11 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 								<div className="inner" style={{marginRight: "1rem"}}>
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BSC USDT')}>
 										<img src = {bnb_usdt} className="button_img"/>
+									</button>
+								</div>
+								<div className="inner" style={{marginRight: "1rem"}}>
+									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('TRON TRX')}>
+										<QuotesTx style={{width: '26px', height: '26px'}}/>
 									</button>
 								</div>
 							</div>

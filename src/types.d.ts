@@ -84,7 +84,7 @@ interface Region {
   
   interface SpClubReferees {
 	walletAddress: string;
-	activePassport: freePassport;
+	activePassport: string//freePassport;
   }
 
   interface SpClubPoints {

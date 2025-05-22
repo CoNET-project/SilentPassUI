@@ -39,7 +39,7 @@ const listenProfileVer = async (
 	await conetDepinProvider.getBlockNumber();
 	checkCurrentRate(setMiningData);
 	await getProfileAssets(profiles[0], profiles[1]);
-	await getVpnTimeUsed();
+	// await getVpnTimeUsed();
 	await getSpClubInfo(profiles[0], currentPageInvitees);
 	await getPassportsInfoForProfile(profiles[0])
 	await getReceivedAmounts(
@@ -70,7 +70,7 @@ const listenProfileVer = async (
 			blockProcess = now
 				await checkCurrentRate(setMiningData);
 				await getProfileAssets(profiles[0], profiles[1]);
-				await getVpnTimeUsed();
+				// await getVpnTimeUsed();
 				await getSpClubInfo(profiles[0], currentPageInvitees);
 				
 				const receivedTransactions = await getReceivedAmounts(

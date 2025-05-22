@@ -42,7 +42,7 @@ const initSolana = async (mnemonic: string): Promise<any> => {
 	  publicKey: keypair.publicKey.toBase58(),
 	  privateKey: Bs58.encode(keypair.secretKey),
 	};
-  }
+}
 
 const isValidSolanaPublicKey = (publicKey: string) => {
 	try{
@@ -79,7 +79,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		privateKeyArmor: acc.signingKey.privateKey,
 		hdPath: acc.path,
 		index: acc.index,
-		type: "ethereum",
+		type: "ethereum"
 	  };
 
 	  const data: any = {
@@ -107,7 +107,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		  privateKeyArmor: result?.privateKey || "",
 		  hdPath: null,
 		  index: 0,
-		  type: "solana",
+		  type: "solana"
 		};
 
 		data.profiles.push(profile2);
@@ -142,7 +142,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		privateKeyArmor: result?.privateKey || "",
 		hdPath: null,
 		index: 0,
-		type: "solana",
+		type: "solana"
 	  };
 
 	  tmpData.profiles[1] = profile2;
@@ -1202,11 +1202,14 @@ const scanETH = async (walletAddr: string) => {
 };
 const ReferralsContract = new ethers.Contract(contracts.Referrals.address, contracts.Referrals.abi, conetDepinProvider)
 const getReferrals = async (key: string) => {
+
 	try {
-		const ret = await ReferralsContract._referees(key)
-		if (ret === ethers.ZeroAddress) {
-			return null
-		}
+		const ret = await
+		Promise.all ([
+			ReferralsContract._referees(key),
+			ReferralsContract.getReferees(key, 0)
+		])
+		
 		return ret
 	} catch (ex) {
 		return null
@@ -1229,7 +1232,7 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 	  profile.tokens = initProfileTokens();
 	}
 
-	const [conetDepin, conet_eth, referrals, points] = await Promise.all([
+	const [conetDepin, conet_eth, referrals, points, ] = await Promise.all([
 	  scanCONETDepin(key),
 	  scanConetETH(key),
 	  getReferrals(key),
@@ -1286,7 +1289,22 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 	  };
 	}
 
-	profile.referrer = referrals
+	
+	if (referrals) {
+		if (profile.spClub && typeof profile.spClub == 'object') {
+			
+			profile.spClub.totalReferees = parseInt(referrals[1][0].toString())
+			profile.spClub.referees = referrals[1][1].map((n:string) => { return { walletAddress: n, activePassport: ''}})
+		} else {
+			profile.spClub = {
+				referees: referrals[1][1].map((n:string) => n),
+				totalReferees: parseInt(referrals[1][0].toString()),
+				memberId: '',
+				referrer: ''
+			}
+		}
+	}
+	
 	
 	profile.SpClubPoints = {
 		SPHolderPoint: points ? parseInt(points[0].toString()):0,

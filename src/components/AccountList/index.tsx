@@ -74,7 +74,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 		setAirdropSuccess(false)
 		setAirdropProcess(false)
         setIsRefreshingSolanaBalances(true);
-
+		
         try {
       
             await refreshSolanaBalances()
@@ -357,7 +357,9 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
             }
 			{
 				airdropSuccess && 
-				<AirdropSuccess tokens={airdropTokens} onClose={handleRefreshSolanaBalances}/>
+				<AirdropSuccess tokens={airdropTokens} onClose={() => { 
+					handleRefreshSolanaBalances()
+				}}/>
 			}
 
         </div>

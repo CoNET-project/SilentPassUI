@@ -20,7 +20,10 @@ import {checkFreePassportProcess} from '../../services/wallets'
 import {airDropForSP, getirDropForSP} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
 import airdropReff from './assets/airdropReff.gif'
+import { useTranslation } from 'react-i18next'
 import SimpleLoadingRing from '../../components/SimpleLoadingRing'
+
+
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
 const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
@@ -120,7 +123,6 @@ const Home = () => {
   const [isAirDropForSP, setIsAirDropForSP] = useState(false)
   const [isReadyForReferees, setIsReadyForReferees] = useState(false)
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
-
 
   const navigate = useNavigate();
   const _getAllRegions = async () => {
@@ -392,7 +394,7 @@ const handleTogglePower = async () => {
 
     return
 };
-
+const { t, i18n } = useTranslation()
   const isSilentPassVPN = VPN_URLS.some(url => window.location.href.includes(url));
   const isDevelopment = window.location.href.includes('localhost');
 
@@ -405,6 +407,7 @@ const handleTogglePower = async () => {
             <button
               className="power"
             >
+			
               <img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
             </button>
 

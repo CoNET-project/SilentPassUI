@@ -1,6 +1,7 @@
 import Separator from '../../../components/Separator';
 import { getPassportTitle } from '../../../utils/utils';
 import { CoNET_Data } from "../../../utils/globals";
+import { useTranslation } from 'react-i18next'
 
 interface FourthStep {
   gasFee: string;
@@ -9,7 +10,7 @@ interface FourthStep {
 
 export default function FourthStep({ gasFee, selectedNftId }: FourthStep) {
   const choosenPassport = CoNET_Data?.profiles[0].silentPassPassports?.find((passport) => passport.nftID === Number(selectedNftId));
-
+  const { t, i18n } = useTranslation()
   return (
     <div className="step-container">
       <div className="purchase-success">
@@ -21,7 +22,7 @@ export default function FourthStep({ gasFee, selectedNftId }: FourthStep) {
       </div>
       <div className="purchase-details">
         <div className="detail">
-          <p>{getPassportTitle(choosenPassport)} Passport</p>
+          <p>{getPassportTitle(choosenPassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))} Passport</p>
           <p>1</p>
         </div>
         <div className="detail">

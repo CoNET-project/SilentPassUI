@@ -7,7 +7,7 @@ import CodeButton from './CodeButton';
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { ethers } from 'ethers';
-
+import { useTranslation } from 'react-i18next'
 import styles from './copyAccountInfo.module.css';
 
 let copyTimeoutId: NodeJS.Timeout;
@@ -21,6 +21,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
   const [isAddressHidden, setIsAddressHidden] = useState(false);
   const [isKeyHidden, setIsKeyHidden] = useState(true);
   const [isWordsHidden, setIsWordsHidden] = useState(true);
+  const { t, i18n } = useTranslation()
 
   function handleCopy(info: string) {
     let value = '';
@@ -64,7 +65,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
           <>
             <div className={styles.copyDivLt}>
               <div className={styles.copyText}>
-                <p>Wallet Address</p>
+                <p>{t('comp-comm-wallet-address')} </p>
                 {
                   isAddressHidden ?
                     <div style={{ filter: 'blur(3px)' }}>

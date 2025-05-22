@@ -14,6 +14,7 @@ import { getRefereesPage } from '../../services/wallets'
 import SimpleLoadingRing from '../SimpleLoadingRing'
 import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
 import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
+import { useTranslation } from 'react-i18next'
 
 const SP_EARNED_FROM_REFERRAL = 10
 
@@ -27,6 +28,7 @@ export default function ReferralProgram() {
   const [inputError, setInputError] = useState(false);
   const [inviter, setInviter] = useState('');
   const inputRef = useRef(null);
+  const { t, i18n } = useTranslation()
   const [quotation, setQuotation] = useState({
     "rfp": 1/31,
     "rsp": 0/31,
@@ -34,7 +36,7 @@ export default function ReferralProgram() {
   })
   
   const nft = parseInt(profiles?.[0]?.activePassport?.nftID)
-  const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires) === '00:00:00' ? true : false
+  const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour')) === '00:00:00' ? true : false
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
   const freePassportActive = nft > 0 && Number(profiles[0].activePassport.expiresDays) <= 7 && Number(profiles[0].activePassport.expiresDays) > 0;
 

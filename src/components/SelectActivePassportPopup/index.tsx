@@ -5,13 +5,15 @@ import './index.css';
 import Separator from '../Separator';
 import { changeActiveNFT, estimateChangeNFTGasFee } from '../../services/wallets';
 import Skeleton from '../Skeleton';
+import { useTranslation } from 'react-i18next'
 
 const SelectActivePassportPopup = ({ newPassport }: any) => {
+	const { t, i18n } = useTranslation()
   const { profiles, setActivePassport, activePassport, setIsSelectPassportPopupOpen } = useDaemonContext();
 
-  const currentPassportName = useMemo(() => getPassportTitle(activePassport) + ' Passport', [activePassport])
-  const newPassportName = getPassportTitle(newPassport) + ' Passport';
-  const newPassportExpiration = getExpirationDate(newPassport);
+  const currentPassportName = useMemo(() => getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly')) + ' Passport', [activePassport])
+  const newPassportName = getPassportTitle(newPassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly')) + ' Passport';
+  const newPassportExpiration = getExpirationDate(newPassport, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour'));
 
   const [isChangeLoading, setIsChangeLoading] = useState(false);
   const [estimatedGasFee, setEstimatedGasFee] = useState('');
@@ -69,7 +71,7 @@ const SelectActivePassportPopup = ({ newPassport }: any) => {
 
                 <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                   <p style={{ textAlign: 'left', fontSize: '16px' }}>{currentPassportName}</p>
-                  <p style={{ textAlign: 'right', fontSize: '16px' }}> {getExpirationDate(activePassport)}</p>
+                  <p style={{ textAlign: 'right', fontSize: '16px' }}> {getExpirationDate(activePassport, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour'))}</p>
                 </div>
               </div>
 

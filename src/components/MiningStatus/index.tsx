@@ -5,12 +5,15 @@ import Skeleton from '../Skeleton';
 import { getPassportTitle } from '../../utils/utils';
 import { ReactComponent as ConetToken } from './assets/conet-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
+import { useTranslation } from 'react-i18next'
+
 const OneDayInSeconds = 86400;
 
 const MiningStatus = () => {
   const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport } = useDaemonContext();
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
+  const { t, i18n } = useTranslation()
 
   useEffect(() => {
     if (miningData) {
@@ -39,7 +42,7 @@ const MiningStatus = () => {
       <div className='passport-status' onClick={openPassportInfo}>
         <div className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
         {
-          profiles?.[0]?.activePassport ? <p style={{'width': 'unset'}}>{getPassportTitle(activePassport)}</p> : <Skeleton width="40px" height="15px" />
+          profiles?.[0]?.activePassport ? <p style={{'width': 'unset'}}>{getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))}</p> : <Skeleton width="40px" height="15px" />
         }
         <img src="/assets/info.svg" alt="Info icon" />
       </div>

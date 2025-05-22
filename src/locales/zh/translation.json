@@ -1,0 +1,62 @@
+{
+    "back":"返回",
+
+    "faq": "常见问题",
+    "faq1": "Silent Pass服务级别与相应的权益? ",
+    "faq1-1": "服务等级与权益:",
+    "faq1-2": "(Proxy 和VPN服务)",
+    "faq1-3": "试用用户",
+    "faq1-4": "免费用户",
+    "faq1-5": "普通用户",
+    "faq1-6": "Silent Pass 服务",
+    "faq1-7": "(仅限于7天试用期内)",
+    "faq1-8": "(当日)",
+    "faq1-9": "终端数量",
+    "faq2": "Proxy 和VPN服务",
+
+	"comp-comm-wallet-address": "钱包地址",
+	"comp-comm-receive": "收款",
+	"comp-comm-receive-address": "收款地址",
+	"comp-comm-you": "您的",
+	"comp-comm-addr": "地址",
+	"comp-comm-copy": "复制",
+	"comp-comm-copied": "已复制",
+
+	"comp-PassportInfoPopup-1": "Silent Pass 通证",
+	"comp-PassportInfoPopup-2": "有效期限",
+
+	"comp-accountlist-main-wallet": "主钱包",
+	"comp-accountlist-assets": "资产",
+	"comp-accountlist-solana": "索拉纳",
+
+
+
+	"passport_unlimit": "无限期",
+	"passport_Freemium": "免费卡",
+	"passport_Guardian": "守护者卡",
+	"passport_Annually": "年卡",
+	"passport_Quarter": "季卡",
+	"passport_Monthly": "月卡",
+	"passport_free7days": "免费7天",
+	"passport_notUsed": "未使用",
+	"passport_day": "天",
+	"passport_hour": "小时",
+
+	"region_select": "请选择区域",
+	"region_US": "美利坚合众国",
+	"region_DE": "德国",
+	"region_GB": "英国",
+	"region_ES": "西班牙",
+	"region_CA": "加拿大",
+	"region_JP": "日本",
+	"region_CH": "瑞士",
+	"region_AT": "奥地利",
+	"region_AU": "澳大利亚",
+	"region_SG": "新加坡",
+	"region_CN": "中国香港",
+
+	"wallet_title": "我的账号",
+
+    "lang":"中文",
+    "language":"语言"
+}

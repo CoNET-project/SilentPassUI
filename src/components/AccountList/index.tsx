@@ -16,6 +16,7 @@ import { CoNET_Data } from '../../utils/globals';
 import { useNavigate } from 'react-router-dom';
 import SendButton from './SendButton';
 import AirdropSuccess from './SuccessModal'
+import { useTranslation } from 'react-i18next'
 
 interface AccountListProps {
     showMainWallet?: boolean;
@@ -32,7 +33,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
     const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
     const [passportToChange, setPassportToChange] = useState();
     const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
-
+	const { t, i18n } = useTranslation()
 
 	useEffect(() => {
 
@@ -115,7 +116,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                 <div className={`account-wrapper ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes(profiles?.[0]?.keyID) ? 'active' : ''}`}>
                     <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}>
                         <div className="name">
-                            <h3>Main Wallet</h3>
+                            <h3>{t('comp-accountlist-main-wallet')}</h3>
                             <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
                         </div>
                         {
@@ -144,7 +145,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                     <div className="info-card">
                         <div className="info-wrapper">
                             <div className='token-assets-title'>
-                                <p className='title'>Token assets</p>
+                                <p className='title'>{t('comp-accountlist-assets')}</p>
                             </div>
                             <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -166,7 +167,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                                 <>
                                     <Separator />
                                     <div className="info-wrapper" style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                                        <p>Silent Pass Passport</p>
+                                        <p>{t('comp-PassportInfoPopup-1')}</p>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
                                             {(profiles?.[0]?.silentPassPassports && profiles?.[0]?.activePassport)
                                                 ? [...profiles?.[0]?.silentPassPassports]

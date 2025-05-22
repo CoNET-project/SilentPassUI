@@ -1,0 +1,64 @@
+{
+    "back":"Back",
+
+    "faq": "FAQ",
+    "faq1": "What’s the Silent Pass service level?",
+    "faq1-1": "Service Levels and Benefits:",
+    "faq1-2": "(for both Proxy and VPN)",
+    "faq1-3": "Free Trial User",
+    "faq1-4": "Free Subscription User",
+    "faq1-5": "Standard User",
+    "faq1-6": "Silent Pass Service",
+    "faq1-7": " (limited Trial Period)",
+    "faq1-8": " (Daily)",
+    "faq1-9": "Devices",
+    "faq2": "(for both Proxy and VPN)",
+
+	"comp-PassportInfoPopup-1": "Silent Pass Passport",
+	"comp-PassportInfoPopup-2": "Expiration date",
+
+	"comp-comm-wallet-address": "Wallet Address",
+	"comp-comm-receive": "Receive",
+	"comp-comm-addr": "Address",
+	"comp-comm-receive-address": "Receive Address",
+	"comp-comm-you": "Your",
+	"comp-comm-copy": "Copy",
+	"comp-comm-copied": "Copied",
+	"comp-comm-privatekey": "Copied",
+
+	"comp-accountlist-main-wallet": "Main Wallet",
+	"comp-accountlist-solana": "Solana",
+	"comp-accountlist-assets": "Token assets",
+
+	"passport_unlimit": "Unlimit",
+	"passport_Freemium": "Freemium",
+	"passport_Guardian": "Guardian",
+	"passport_Annually": "Annually",
+	"passport_Quarter": "Quarter",
+	"passport_Monthly": "Monthly",
+	"passport_free7days": "Free 7 Days",
+	"passport_notUsed": "Not Used",
+	"passport_day": "day",
+	"passport_hour": "h",
+
+	"region_select": "Select Region",
+	"region_US": "United States",
+	"region_DE": "Germany",
+	"region_GB": "United Kingdom",
+	"region_ES": "Spain",
+	"region_CA": "Canada",
+	"region_JP": "Japan",
+	"region_CH": "Switzerland",
+	"region_AT": "Austria",
+	"region_AU": "Australia",
+	"region_SG": "Singapore",
+	"region_CN": "HongKong China",
+
+	"wallet_title": "My Account",
+
+    "lang":"English",
+    "language":"Language"
+	
+
+	
+}

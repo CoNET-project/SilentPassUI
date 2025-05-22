@@ -10,6 +10,7 @@ import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
 import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
 import { useDaemonContext } from '../../providers/DaemonProvider'
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from 'react-i18next'
 
 export default function Wallet() {
   const navigate = useNavigate()
@@ -17,11 +18,11 @@ export default function Wallet() {
   const [openClub, setOpenClub] = useState(true)
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
   const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7;
-
+  const { t, i18n } = useTranslation()
   return (
     <div className="page-container">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-        <h1>My Account</h1>
+        <h1>{t('wallet_title')}</h1>
         { !!profiles?.[0]?.activePassport?.nftID && (
           hasGuardianActive ? <GoldBadge /> : !freePassportActive && <BlueBadge />
         )}

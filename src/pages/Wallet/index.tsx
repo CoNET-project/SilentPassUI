@@ -11,6 +11,8 @@ import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
 import { useDaemonContext } from '../../providers/DaemonProvider'
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from 'react-i18next'
+import zhCN from 'antd-mobile/es/locales/zh-CN';
+import enUS from 'antd-mobile/es/locales/en-US';
 
 export default function Wallet() {
   const navigate = useNavigate()
@@ -19,6 +21,7 @@ export default function Wallet() {
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
   const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7;
   const { t, i18n } = useTranslation()
+
   return (
     <div className="page-container">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>

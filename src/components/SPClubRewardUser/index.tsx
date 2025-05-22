@@ -6,6 +6,7 @@ import rsp from './assets/usp.png'
 import rcp from './assets/ucp.png'
 import newCoin from './assets/newCoin.gif'
 import { useDaemonContext } from '../../providers/DaemonProvider';
+import { useTranslation } from 'react-i18next'
 
 interface TokenTabProps {
   setTokenGraph: (tokenGraph: string) => void;
@@ -49,11 +50,11 @@ export default function SPClubRewardTab({ setTokenGraph, quotation, animation }:
   const balance_rfp = parseInt(profiles?.[0]?.SpClubPoints?.SPHolderPoint||0)
   const balance_rsp = parseInt(profiles?.[0]?.SpClubPoints?.SubscriptionPoint||0)
   const balance_rcp = parseInt(profiles?.[0]?.SpClubPoints?.ClaimableSubscriptionPoint||0)
-
+  const { t, i18n } = useTranslation()
 
   const tokens = [
     {
-      "label" : "Daily Check-In",
+      "label" : t('comp-SPClubRewardTab-1'),
       "logo": <img src = {animation ? newCoin: rfp } style={{width: '32px'}}/>,
       "priceVariation": 0.5381,
       "amount": balance_rfp.toFixed(0),
@@ -61,7 +62,7 @@ export default function SPClubRewardTab({ setTokenGraph, quotation, animation }:
       "currency": "$RFP"
     },
     {
-      "label" : "Subscription",
+      "label" : t('comp-SPClubRewardTab-2'),
       "logo": <img src= {animation ? newCoin: rsp} style={{width: '32px'}}/>,
       "priceVariation": -0.002,
       "amount": balance_rsp.toFixed(0),
@@ -69,7 +70,7 @@ export default function SPClubRewardTab({ setTokenGraph, quotation, animation }:
       "currency": "$RSP"
     },
     {
-      "label" : "Claimable",
+      "label" : t('comp-SPClubRewardTab-3'),
       "logo": <img src= {animation ? newCoin: rcp} style={{width: '32px'}}/>,
       "priceVariation": -0.002,
       "amount": balance_rcp.toFixed(0),

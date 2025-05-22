@@ -15,7 +15,8 @@ import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 import { getServerIpAddress } from "../../api"
-import bannaer from './assets/banner-1.png'
+import bannaer from './assets/banner.png'
+import bannaer_cn from './assets/banner_cn.png'
 import {checkFreePassportProcess} from '../../services/wallets'
 import {airDropForSP, getirDropForSP} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
@@ -123,7 +124,7 @@ const Home = () => {
   const [isAirDropForSP, setIsAirDropForSP] = useState(false)
   const [isReadyForReferees, setIsReadyForReferees] = useState(false)
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
-
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate();
   const _getAllRegions = async () => {
 	
@@ -394,7 +395,7 @@ const handleTogglePower = async () => {
 
     return
 };
-const { t, i18n } = useTranslation()
+  
   const isSilentPassVPN = VPN_URLS.some(url => window.location.href.includes(url));
   const isDevelopment = window.location.href.includes('localhost');
 
@@ -443,7 +444,7 @@ const { t, i18n } = useTranslation()
 
 			<div>
 				<button onClick={() => navigate("/wallet")}>
-					<img className="bannaer" src={bannaer} style={{width:"25rem",height: "5rem"}}></img>
+					<img className="bannaer" src={i18n.language === 'zh' ? bannaer_cn : bannaer} style={{width:"25rem",height: "5rem"}}></img>
 				</button>
 				
 			</div>

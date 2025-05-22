@@ -15,7 +15,7 @@ const languageList = [{name:"English",value:'en'},{name:"中文",value:'zh'}];
 
 const Languages=({visible, setVisible}: LanguagesProps)=> {
     const { t,i18n } = useTranslation();
-
+	
     const handleBack=()=>{
         setVisible(false);
     }

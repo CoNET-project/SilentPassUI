@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Separator from '../Separator';
 import { CoNET_Data } from '../../utils/globals';
 import Skeleton from '../Skeleton';
-
+import { useTranslation } from 'react-i18next'
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 
@@ -17,7 +17,7 @@ export default function CopyAccountInfo({ wallet }: any) {
   const [isAddressHidden, setIsAddressHidden] = useState(false);
   const [isKeyHidden, setIsKeyHidden] = useState(true);
   const [isWordsHidden, setIsWordsHidden] = useState(true);
-
+  const { t, i18n } = useTranslation()
   function handleCopy(info: string) {
     let value = '';
 
@@ -81,7 +81,7 @@ export default function CopyAccountInfo({ wallet }: any) {
         {wallet?.privateKeyArmor ?
           <>
             <div className="copy-text">
-              <p>Private Key</p>
+              <p>{t('comp-comm-privatekey')} </p>
               {
                 isKeyHidden ?
                   <div style={{ filter: 'blur(3px)' }}>
@@ -115,7 +115,7 @@ export default function CopyAccountInfo({ wallet }: any) {
         {CoNET_Data?.mnemonicPhrase ?
           <>
             <div className="copy-text">
-              <p>Recovery Phrase</p>
+              <p>{t('comp-comm-RecoveryPhrase')} </p>
               {
                 isWordsHidden ?
                   <div style={{ filter: 'blur(3px)' }}>

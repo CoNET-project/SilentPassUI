@@ -7,6 +7,7 @@ import SimpleLoadingRing from '../SimpleLoadingRing';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg";
 import { ReactComponent as PaypalIcon } from "./assets/paypal.svg";
+import { useTranslation } from 'react-i18next'
 
 interface plan {
 	total: string
@@ -23,6 +24,7 @@ export default function RedeemPassport() {
   const [spRewordEnable, setSpRewordEnable] = useState(false)
   const [spRewordloading, setSpRewordloading] = useState(true)
   const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID } = useDaemonContext();
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate();
 
 	/* 1 = $SP
@@ -125,7 +127,7 @@ export default function RedeemPassport() {
         <button className="redeem-header cta-button" onClick={() => setIsOpen(!isOpen)}>
           <div className="redeem-header-content">
             <img src="/assets/conet-outline-white.svg" alt="Platform" className="redeem-icon" />
-			<p>Get Silent Pass Passport</p>
+			<p>{t('comp-RedeemPassport-title')} </p>
           </div>
           <span className={`redeem-arrow ${isOpen ? "rotate" : ""}`}>▼</span>
         </button>
@@ -133,9 +135,9 @@ export default function RedeemPassport() {
         <div className="redeem-content">
 			
 				<>
-					<label className="redeem-label">25USD $SP Holder Reward</label>
+					<label className="redeem-label">{t('comp-RedeemPassport-25usdRedeem')} </label>
 					<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
-						{spRewordloading ? <SimpleLoadingRing /> : "Claim"}
+						{spRewordloading ? <SimpleLoadingRing /> : t('comp-comm-Claim')}
 					</button>
 					<div className="redeem-divider">
 						<div className="line"></div>
@@ -152,7 +154,7 @@ export default function RedeemPassport() {
 						<>
 							{
 								isIOS ? <label className="redeem-label">Already a Subscriber?</label>
-								:  <label className="redeem-label">Input Redeem Code!</label>
+								:  <label className="redeem-label">{t('comp-RedeemPassport-imput')} </label>
 							}
 							<input
 								type="text"
@@ -163,7 +165,7 @@ export default function RedeemPassport() {
 							/>
 							{anErrorOccurred && <span className="error-warn">An error occurred, try again later.</span>}
 							<button className="redeem-button confirm" onClick={handlePassportRedeem} disabled={!redeemCode}>
-								{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
+								{isRedeemProcessLoading ? <SimpleLoadingRing /> : t('comp-comm-Claim')}
 							</button>
 							<div className="redeem-divider">
 								<div className="line"></div>
@@ -239,28 +241,28 @@ export default function RedeemPassport() {
 						<>
 
 							<div className="passport-options">
-								<p>Choose plan</p>
+								<p>{t('comp-RedeemPassport-choosePlan')} </p>
 								<div className="option-list">
 									<button className={`option ${selectedPlan === '1' ? 'selected' : ''}`} onClick={() => handleChooseOption('1')}>
 										<div>
-											<p>Monthly</p>
-											<span>1 device</span>
+											<p>{t('passport_Monthly')} </p>
+											<span>{t('comp-RedeemPassport-1device')}, {t('passport_unlimitBandweidth')}  </span>
 										</div>
 										<div>
 											<span>$USD</span>
 											<p>2.99</p>
-											<span>paid monthly</span>
+											<span>{t('comp-RedeemPassport-paidMonthly')} </span>
 										</div>
 									</button>
 									<button className={`option ${selectedPlan === '12' ? 'selected' : ''}`} onClick={() => handleChooseOption('12')}>
 										<div>
-											<p>Annually</p>
-											<span>1 device</span>
+											<p>{t('passport_Annually')} </p>
+											<span>{t('comp-RedeemPassport-1device')}, {t('passport_unlimitBandweidth')} </span>
 										</div>
 										<div>
 											<span>$USD</span>
 											<p>24.99</p>
-											<span>paid yearly</span>
+											<span>{t('comp-RedeemPassport-paidAnnually')} </span>
 										</div>
 									</button>
 								</div>

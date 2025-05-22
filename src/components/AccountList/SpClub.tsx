@@ -12,7 +12,7 @@ import EducationHub from './assets/education-hub.png';
 import ExclusivePerks from './assets/exclusive-perks.png';
 import LoyaltyDiscounts from './assets/loyalty-discounts.png';
 import ReferralProgram from './assets/referral-program.png';
-import { ReactComponent as BlueBadge } from './assets/blue-badge.svg'
+import { ReactComponent as GlodBadge } from './assets/gold-badge.svg'
 import bnb_token from './assets/bnb_token.png'
 import bnb_usdt from './assets/bnb_usdt_token.png'
 import SimpleLoadingRing from '../SimpleLoadingRing';
@@ -21,7 +21,7 @@ import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg'
 import {getCryptoPay, waitingPaymentReady} from '../../services/subscription'
 import {ReactComponent as QuotesTx} from './assets/trx.svg'
 import { CoNET_Data } from '../../utils/globals';
-
+import { useTranslation } from 'react-i18next'
 
 const OneDayInSeconds = 86400;
 
@@ -41,6 +41,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
   const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT')
   const [copied, setCopied] = useState(false)
   const [serverAddress, setServerAddress] = useState('')
+  const { t, i18n } = useTranslation()
 
   	const [showError, setShowError] = useState(false)
 	const [errorMessage, setErrorMessage] = useState('The service is unavailable, please try again later.')
@@ -197,13 +198,19 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
       <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px"}}>
 		<div className="passport-options" style={{gap:"2px"}}>
 			<p>
-				🎫 1 Silent Pass Passport for 3 months-usage right;
+				{t('comp-accountlist-SpClub-detail-1')}
 			</p>
 			<p>
-				🎁 One-time issuance of 93 subscription points;
+				{t('comp-accountlist-SpClub-detail-2')}
 			</p>
 			<p>
-				💰 Immediately receive 25USD worth of $SP tokens.
+				{t('comp-accountlist-SpClub-detail-3')}
+			</p>
+			<p>
+				{t('comp-accountlist-SpClub-detail-4')}
+			</p>
+			<p>
+				{t('comp-accountlist-SpClub-detail-5')}
 			</p>
 			<div className="redeem-divider">
 				<div className="line"></div>
@@ -270,10 +277,10 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 						<>
 							<div className="option-list" style={{marginTop: "1rem"}}>
 								<button className='option selected'>
-									<BlueBadge style={{width: "60px"}}/>
+									<GlodBadge style={{width: "60px"}}/>
 										<div style={{display: "flex", flexDirection: "column", marginLeft: "-20px", width: "20rem"}}>
-											<span style={{textAlign: "left"}}>1 device</span>
-											<span style={{textAlign: "left"}}>3 months VPN</span>
+											<span style={{textAlign: "left"}}>{t('comp-RedeemPassport-1device')}</span>
+											<span style={{textAlign: "left"}}>{t('passport_unlimit')}, {t('passport_unlimitBandweidth')}</span>
 										</div>
 									
 									<div>
@@ -283,7 +290,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 								</button>
 							</div>
 							<div id="outer">
-								<div className="inner" style={{marginRight: "1rem"}}>
+								{/* <div className="inner" style={{marginRight: "1rem"}}>
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BNB')}>
 										<img src = {bnb_token} className="button_img"/>
 									</button>
@@ -297,7 +304,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('TRON TRX')}>
 										<QuotesTx style={{width: '26px', height: '26px'}}/>
 									</button>
-								</div>
+								</div> */}
 							</div>
 						</>
 						
@@ -318,35 +325,35 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 				<div className="redeem-divider">
 					<div className="line"></div>
 				</div>
-				<h2>Join the SP Club <br />Unlock Premium Benefits </h2>
-				<p style={{ textAlign: "left" }}>Upgrade to a Silent Pass subscription and gain access to the SP Club, an exclusive membership designed for those who value privacy, rewards, and Web3 innovation. As a member, you’ll unlock premium features, loyalty incentives, and community-driven opportunities.</p>
+				<h2>{t('comp-accountlist-SpClub-title1')} <br />{t('comp-accountlist-SpClub-title2')}</h2>
+				<p style={{ textAlign: "left" }}>{t('comp-accountlist-SpClub-detail')} </p>
 				<div className="sp-club-grid">
 				<div>
 					<img src={AirdropRewards} />
-					<p>Airdrops & Rewards</p>
+					<p>{t('comp-accountlist-SpClub-detail1')} </p>
 				</div>
 				<div>
 					<img src={LoyaltyDiscounts} />
-					<p>Loyalty Discounts</p>
+					<p>{t('comp-accountlist-SpClub-detail2')} </p>
 				</div>
 				<div>
 					<img src={ReferralProgram} />
-					<p>Referral Program</p>
+					<p>{t('comp-accountlist-SpClub-detail3')} </p>
 				</div>
 				<div>
 					<img src={EducationHub} />
-					<p>Education Hub</p>
+					<p>{t('comp-accountlist-SpClub-detail4')} </p>
 				</div>
 				<div>
 					<img src={EarlyAccess} />
-					<p>Early Access</p>
+					<p>{t('comp-accountlist-SpClub-detail5')} </p>
 				</div>
 				<div>
 					<img src={ExclusivePerks} />
-					<p>Exclusive Perks</p>
+					<p>{t('comp-accountlist-SpClub-detail6')} </p>
 				</div>
 				</div>
-				<p style={{ fontSize: "12px", textAlign: "left" }}>Find out more at <a style={{ color: "#9FBFE5FE" }} href="https://subscription.silentpass.io" target='_blank'>https://subscription.silentpass.io</a></p>
+				<p style={{ fontSize: "12px", textAlign: "left" }}>{t('comp-accountlist-SpClub-findMore')} <a style={{ color: "#9FBFE5FE" }} href="https://subscription.silentpass.io" target='_blank'>https://subscription.silentpass.io</a></p>
 			</>
 		}
 		
@@ -363,7 +370,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
           {/* <div className="disabled account-main-card"> */}
           <div className="name">
             <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', alignItems: 'center' }}>
-              <h3>Join SP Club</h3>
+              <h3>{t('comp-accountlist-SpClub-title')} </h3>
             </div>
             <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
           </div>

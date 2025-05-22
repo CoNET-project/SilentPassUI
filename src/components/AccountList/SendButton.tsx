@@ -5,10 +5,11 @@ import styles from './sendButton.module.css';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL, ComputeBudgetProgram } from "@solana/web3.js";
 import { createTransferInstruction,getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
-import Bs58 from "bs58";
+import Bs58 from "bs58"
 import { ethers } from 'ethers';
 import {globalAllNodes} from "../../utils/globals"
 import BigNumber from 'bignumber.js';
+import { useTranslation } from 'react-i18next'
 
 interface SendParams {
     type: string; 
@@ -26,6 +27,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
     const [amount, setAmount] = useState<string | undefined>();
     const [subLoading, setSubLoading] = useState(false);
     const [calcPrice, setCalcPrice] = useState('0.00');
+	const { t, i18n } = useTranslation()
 
     const useMax=()=>{
         let price=BigNumber(usd);
@@ -214,7 +216,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         <>
             <div className={styles.sendBtn} onClick={() => {setVisible(true)}}>
                 <LocationOutline className={styles.sendIcon} />
-                <span className={styles.text}>Send</span>
+                <span className={styles.text}>{t('comp-comm-Send')} </span>
             </div>
             <Popup
                 visible={visible}

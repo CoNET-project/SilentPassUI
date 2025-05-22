@@ -104,7 +104,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
         {wallet?.privateKeyArmor ?
           <>
             <div className={styles.copyText}>
-              <p>Private Key</p>
+              <p>{t('comp-comm-privatekey')} </p>
               {
                 isKeyHidden ?
                   <div style={{ filter: 'blur(3px)' }}>
@@ -142,7 +142,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
           {CoNET_Data?.mnemonicPhrase ?
             <>
               <div className={styles.copyText}>
-                <p>Recovery Phrase</p>
+                <p>{t('comp-comm-RecoveryPhrase')} </p>
                 {
                   isWordsHidden ?
                     <div style={{ filter: 'blur(3px)' }}>

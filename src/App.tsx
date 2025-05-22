@@ -147,8 +147,8 @@ function App() {
 
   useEffect(() => {
   		setDefaultConfig({
-		    	locale: enUS,
-		  })
+			locale: enUS,
+		})
   		type AntdLocale = {
 			  en: typeof enUS;
 			  zh: typeof zhCN;
@@ -156,14 +156,20 @@ function App() {
   		let storage = window.localStorage;
   		let lang='en';
   		const antdMLang: AntdLocale={en:enUS,zh:zhCN};
-  		if(localStorage&&localStorage.lang){
-  				lang=localStorage.lang;
-  		}
+  		if(localStorage && localStorage.lang){
+  			lang=localStorage.lang;
+  		} else {
+			//@ts-ignore
+			const userLang = navigator.language || navigator.userLanguage;
+			if (/^zh/.test(userLang)) {
+				lang='zh'
+			}
+		}
   		setDefaultConfig({
-		    	locale: antdMLang[lang as keyof typeof antdMLang],
-		  })
-		  i18n.changeLanguage(lang);
-		  localStorage.lang=lang;
+			locale: antdMLang[lang as keyof typeof antdMLang],
+		})
+		i18n.changeLanguage(lang);
+		localStorage.lang=lang;
   },[])
 
   return (

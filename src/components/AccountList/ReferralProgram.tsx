@@ -131,7 +131,7 @@ export default function ReferralProgram() {
 	  }}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
-          <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive ? '#EFBF04': 'rgb(154,196,229)'}}>Referral Program {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
+          <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive ? '#EFBF04': 'rgb(154,196,229)'}}>{t('comp-accountlist-SpClub-detail3')} {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
 		  { !freePassportActive && !expiration && (
 			hasGuardianActive ? <GoldBadge /> : <BlueBadge />)
 		  }
@@ -142,7 +142,7 @@ export default function ReferralProgram() {
       <div className="info-card">
 	        {
 				(freePassportActive || expiration) &&
-				<p style={{padding:'1rem', color: 'darkred'}}>Only subscribers may earn referral points.</p>
+				<p style={{padding:'1rem', color: 'darkred'}}>{t('comp-accountlist-Referral-onlySubscribers')}</p>
 			}
         <div className="copy-div">
 			
@@ -170,13 +170,13 @@ export default function ReferralProgram() {
         </div>
 
         <div style={{ padding: "0 16px", marginBottom: "32px" }}>
-          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>Copy this to invite your friends to earn $SP</p>
+          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>{t('comp-accountlist-Referral-copy')}</p>
         </div>
 
         {
           profiles?.[0]?.referrer ? (
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
-              <p>Inviter's wallet address</p>
+              <p>{t('comp-accountlist-Referral-Inviter')} </p>
               {
                   <span style={{ color: '#989899' }}>{profiles[0].referrer.substring(0,6)+'...'+profiles[0].referrer.substring(profiles[0].referrer.length - 6)}
                   </span>
@@ -184,7 +184,7 @@ export default function ReferralProgram() {
             </div>
           ) : (
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
-              <p>Inviter's wallet address</p>
+              <p>{t('comp-accountlist-Referral-Inviter')} </p>
               <input className={inputError? 'wallet-address-input-error':''}
 			    ref={inputRef}
                 type="text" 
@@ -230,7 +230,7 @@ export default function ReferralProgram() {
         <Separator />
 
         <div className="info-wrapper" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
-          <p>Invitees <span style={{    color: "#9FBFE5FE"}}>{profiles?.[0].spClub?.totalReferees}</span></p>
+          <p>{t('comp-accountlist-Referral-Invitees')} <span style={{    color: "#9FBFE5FE"}}>{profiles?.[0].spClub?.totalReferees}</span></p>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', paddingLeft: '16px', maxHeight: '100px', overflowY: 'auto', paddingRight: '10px' }}>
             {profiles?.[0]?.spClub
@@ -242,7 +242,7 @@ export default function ReferralProgram() {
                     <p onClick={() => showAddress(referee.walletAddress)} style={{ width: 'auto', fontSize: '16px', color: '#9FBFE5FE', fontWeight: 400, cursor: "pointer" }}>{referee?.walletAddress?.slice(0, 5) + '...' + referee?.walletAddress?.slice(-5)}</p>
                   </div>
                 ) :
-                <p>No invitees</p>
+                <p>{t('comp-accountlist-Referral-noInvitees')} </p>
               : <Skeleton width={'100%'} height={'20px'} />}
           </div>
 

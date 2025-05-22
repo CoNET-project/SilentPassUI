@@ -100,14 +100,14 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 
     const renderRefreshButton = () => {
         if (!profiles?.[1]?.keyID) {
-            return <p className='refresh disabled'>Refresh</p>
+            return <p className='refresh disabled'>{ t('comp-comm-Refresh')} </p>
         }
 
         if (isRefreshingSolanaBalances) {
-            return <p className='refresh'>Refreshing...</p>
+            return <p className='refresh'>{ t('comp-comm-Refreshing')}</p>
         }
 
-        return <p className='refresh' onClick={handleRefreshSolanaBalances}>Refresh</p>
+        return <p className='refresh' onClick={handleRefreshSolanaBalances}>{ t('comp-comm-Refresh')}</p>
     }
 
     return (
@@ -225,7 +225,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
             <div className={`account-wrapper solana ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes("123") ? 'active' : ''}`}>
                 <div className="account-main-card" onClick={() => toggleAccount("123")}>
                     <div className="name">
-                        <h3>Solana Wallet</h3>
+                        <h3>{t('comp-accountlist-solanaWallet')} </h3>
                         <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
                     </div>
                     {
@@ -255,7 +255,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                 <div className="info-card">
                     <div className="info-wrapper">
                         <div className='token-assets-title'>
-                            <p className='title'>Token assets</p>
+                            <p className='title'>{t('comp-accountlist-assets')} </p>
                             {renderRefreshButton()}
                         </div>
                         

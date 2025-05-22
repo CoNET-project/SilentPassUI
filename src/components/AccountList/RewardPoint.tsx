@@ -6,6 +6,7 @@ import { joinSpClub } from '../../api';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import { getSpClubMemberId } from '../../services/wallets';
 import SPClubRewardUser from '../SPClubRewardUser'
+import { useTranslation } from 'react-i18next'
 
 export default function RewardPoint() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -14,6 +15,8 @@ export default function RewardPoint() {
   const [memberId, setMemberId] = useState<string>('0');
   const [animation, setAnimation] = useState(false);
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
+  const { t, i18n } = useTranslation()
+
   const [quotation, setQuotation] = useState({
     "ufp": 0.5/31,
     "usp": 0/31,
@@ -63,7 +66,7 @@ export default function RewardPoint() {
           {/* <div className="disabled account-main-card"> */}
           <div className="name">
             <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', alignItems: 'center' }}>
-              <h3>User Reward Point</h3>
+              <h3>{t('comp-accountlist-Reward-title')} </h3>
             </div>
             <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
           </div>

@@ -6,7 +6,10 @@ import { List as VirtualizedList, AutoSizer } from 'react-virtualized'
 import _,{ debounce } from 'lodash';
 import axios from 'axios';
 import AddItem from './AddItem';
-
+import res from './proxySet.json'
+import { useTranslation } from 'react-i18next'
+import { useDaemonContext } from "../../providers/DaemonProvider";
+import { sendRule } from "../../api"
 interface ProxySet {
   [key: string]: any[]; 
 }
@@ -139,7 +142,8 @@ const RuleButton=({})=> {
     const [specialList, setSpecialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
     const [officialList, setOfficialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
     const [regionList, setRegionList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
-
+	const { t, i18n } = useTranslation()
+	const { isLocalProxy} = useDaemonContext();
     useEffect(()=>{
         getSetting();
     },[]);
@@ -245,7 +249,7 @@ const RuleButton=({})=> {
         //传递数据
         convertValuetagToValueArray(val);
     }
-    const convertValuetagToValueArray=(tags: string[])=>{
+    const convertValuetagToValueArray= async (tags: string[])=>{
         if(JSON.stringify(proxySetRef.current)!=='{}'){
             const result: string[] = [];
             const ipResult: string[] = [];
@@ -274,8 +278,30 @@ const RuleButton=({})=> {
                 }
             });
             //****************************************需要添加传递设置的代码 START****************************************
-            console.log({DOMAIN:result,IP:ipResult}); 
-
+			const stringifiedVPNMessageObject = JSON.stringify({DOMAIN:result,IP:ipResult})
+			const base64VPNMessage = btoa(stringifiedVPNMessageObject)
+            console.log(); 
+				
+				
+				//			Desktop
+			
+			await sendRule(stringifiedVPNMessageObject)
+			
+		
+			if (window?.webkit) {
+				//window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+			
+			}
+			//	@ts-ignore		Android
+			if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+				
+				const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
+				//	@ts-ignore
+				// AndroidBridge.receiveMessageFromJS(base)
+				
+			}
+				
+				
             //****************************************需要添加传递设置的代码 END****************************************
         }
     }
@@ -287,19 +313,21 @@ const RuleButton=({})=> {
         // const res = await axios.get('http://localhost/proxySet.json', {});
         // //****************************************需要更换成真实的配置地址 END****************************************
         // if(res.status===200){
-        //     if(storage.specialList){
-        //         res.data.specialList=(JSON.parse(storage.specialList));
-        //     }
+            if(storage.specialList){
+                res.specialList=(JSON.parse(storage.specialList));
+            }
 
-        //     const result=res.data;
-        //     setProxySet(result);
-        //     proxySetRef.current=result;
-        //     setClassifyList(result.classifyList);
-        //     setOfficialList(result.officialList);
-        //     setRegionList(result.regionList);
-        //     setSpecialList(result.specialList);
+            const result=res.data;
+            setProxySet(result);
+            proxySetRef.current=result;
+			//	@ts-ignore
+            setClassifyList(result.classifyList);
+            setOfficialList(result.officialList);
+            setRegionList(result.regionList);
+			//	@ts-ignore
+            setSpecialList(result.specialList);
 
-        //     initCheckbox(result);
+            initCheckbox(result);
         // }
         setLoading(false);
     }
@@ -389,7 +417,7 @@ const RuleButton=({})=> {
                     {classify!=='all'?<div className={styles.hd}>
                         {classify}{classify==='special'?<AddItem getCustomSetting={getCustomSetting} />:''}
                     </div>:''}
-                    <div className={styles.searchBar}><SearchBar value={searchVal} onChange={handleSearchChange} placeholder='Please enter search content' style={{'--height': '40px'}} /></div>
+                    <div className={styles.searchBar}><SearchBar value={searchVal} onChange={handleSearchChange} placeholder={t('comp-Rules-RuleButton-input-placeholder')} style={{'--height': '40px'}} /></div>
                     <div className={styles.list}>
                         <Checkbox.Group value={checkboxValue} onChange={handleCheckboxChange}>
                             <List header=''>

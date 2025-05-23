@@ -70,6 +70,8 @@
 	"comp-RedeemPassport-paidMonthly": "paid monthly",
 	"comp-RedeemPassport-paidAnnually": "paid yearly",
 
+	"comp-Rules-RuleButton-input-placeholder": "Please enter search content",
+
 
 	"passport_unlimit": "Unlimit",
 	"passport_Freemium": "Freemium",
@@ -82,6 +84,8 @@
 	"passport_day": "day",
 	"passport_hour": "h",
 	"passport_unlimitBandweidth": "Unlimited Traffic",
+
+
 
 	"region_select": "Select Region",
 	"region_US": "United States",

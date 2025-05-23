@@ -37,6 +37,18 @@ export const stopSilentPass = async (): Promise<AxiosResponse<any>> => {
   }
 };
 
+export const sendRule = async (data: string) => {
+	try {
+		const response = await api.post("/rule", {
+			data
+		})
+		return response;
+	} catch (error) {
+		console.error("Error starting silent pass:", error);
+		throw error;
+	}
+}
+
 export const getServerIpAddress = async (): Promise<AxiosResponse<any>> => {
   try {
     const response = await api.get("/ipaddress");

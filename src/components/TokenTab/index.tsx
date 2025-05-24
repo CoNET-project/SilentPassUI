@@ -4,7 +4,7 @@ import './index.css';
 import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-
+import { useTranslation } from 'react-i18next'
 interface TokenTabProps {
   setTokenGraph: (tokenGraph: string) => void;
   tokenData: any;
@@ -12,6 +12,7 @@ interface TokenTabProps {
 }
 
 const TokenCard: React.FC<{ token: any, action: () => void }> = ({ token, action }) => {
+	const { t, i18n } = useTranslation()
   return (
     <div className="token-card" onClick={action}>
       <div className="token-info">
@@ -44,7 +45,7 @@ const TokenCard: React.FC<{ token: any, action: () => void }> = ({ token, action
 
 export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenTabProps) {
   const { profiles } = useDaemonContext();
-
+	const { t, i18n } = useTranslation()
   console.log("PROFILES: ", profiles);
 
   const tokens = [
@@ -79,7 +80,7 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
       <div className='token-data'>
         <div className="detail-row">
           <div>
-            <p>Provider</p>
+            <p>{t('comp-TokenTab-provide')}</p>
           </div>
           <p style={{color:"#989899"}}>{tokenData?.provider}</p>
         </div>
@@ -91,17 +92,17 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
         </div> */}
         <div className="detail-row">
           <div>
-            <p>Slippage</p>
+            <p>{t('comp-TokenTab-Slippage')}</p>
           </div>
           <div  style={{display:"flex", gap:"4px"}}>
-            <p style={{color:"#989899"}}>Auto</p>
+            <p style={{color:"#989899"}}>{t('comp-TokenTab-Auto')}</p>
             <p style={{color:"#989899"}}>2.50%</p>
           </div>
         </div>
 
         <div className="detail-row last-row">
           <div>
-            <p>Fee</p>
+            <p>{t('comp-TokenTab-fee')}</p>
           </div>
           <div>
             <p style={{color:"#989899"}}>$ {tokenData?.fees}</p>

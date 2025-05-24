@@ -5,10 +5,12 @@ import SwapInput from '../../components/SwapInput';
 import { useState } from 'react';
 import BackButton from '../../components/BackButton';
 import TokenGraph from '../../components/TokenGraph';
+import { useTranslation } from 'react-i18next'
 
 export default function Swap() {
   const [tokenGraph, setTokenGraph] = useState('');
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation()
 
   return (
     <div className="page-container">
@@ -16,7 +18,7 @@ export default function Swap() {
         !tokenGraph
           ? (
             <>
-              <h1>Swap</h1>
+              <h1>{t('swap_title')}</h1>
               <SwapInput setTokenGraph={setTokenGraph} />
             </>
           ) : (

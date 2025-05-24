@@ -27,6 +27,7 @@
 	"comp-comm-Refresh": "刷新",
 	"comp-comm-Refreshing": "正在刷新中...",
 	"comp-comm-Claim": "申领",
+	"comp-comm-Confirm": "确认",
 
 	"comp-PassportInfoPopup-1": "Silent Pass 通证",
 	"comp-PassportInfoPopup-2": "有效期限",
@@ -69,6 +70,16 @@
 	"comp-RedeemPassport-1device": "1个设备",
 	"comp-RedeemPassport-paidMonthly": "月支付",
 	"comp-RedeemPassport-paidAnnually": "年支付",
+
+	"comp-SwapInput-pay": "出售",
+	"comp-SwapInput-Max": "全部",
+	"comp-SwapInput-Receive": "获得",
+	"comp-SwapInput-provide": "Silent Pass团队",
+
+	"comp-TokenTab-provide": "服务提供者",
+	"comp-TokenTab-Slippage": "滑点",
+	"comp-TokenTab-Auto": "自动",
+	"comp-TokenTab-fee": "手续费",
 	
 	"comp-Rules-RuleButton-input-placeholder": "请输入检索内容",
 
@@ -97,8 +108,23 @@
 	"region_SG": "新加坡",
 	"region_CN": "中国香港",
 
+	"swap_title": "交易",
+
+	"Settings_Title": "设定",
+
 	"wallet_title": "我的账号",
+	"Settings_General": "通用",
+	"Settings_Passcode": "屏幕锁定",
+	"Settings_Passcode_on": "开启屏幕锁定",
+	"Settings_Passcode_change": "修改屏锁密码",
+	"Settings_Passcode_Addon": "附加功能",
+	"Settings_Passcode_soon": "开发中",
+	"Settings_Passcode_Ads": "广告过滤",
+	"Settings_Passcode_Reward": "奖励活动",
+	"Settings_Passcode_WebsiteFilter": "网站过滤",
 
     "lang":"中文",
-    "language":"语言"
+    "language":"语言",
+	"en": "英文",
+	"zh": "中文"
 }

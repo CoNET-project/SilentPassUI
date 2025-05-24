@@ -4,7 +4,6 @@ import styles from './ruleButton.module.css';
 import { SetOutline,RightOutline,EditSOutline,DeleteOutline,CheckOutline } from 'antd-mobile-icons';
 import { List as VirtualizedList, AutoSizer } from 'react-virtualized'
 import _,{ debounce } from 'lodash';
-import axios from 'axios';
 import AddItem from './AddItem';
 import res from './proxySet.json'
 import { useTranslation } from 'react-i18next'
@@ -284,8 +283,10 @@ const RuleButton=({})=> {
 				
 				
 				//			Desktop
+			if (isLocalProxy) {
+				await sendRule(stringifiedVPNMessageObject)
+			}
 			
-			await sendRule(stringifiedVPNMessageObject)
 			
 		
 			if (window?.webkit) {

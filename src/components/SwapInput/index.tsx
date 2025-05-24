@@ -15,7 +15,7 @@ import { calcSpInUsd } from '../../utils/utils';
 import Skeleton from '../Skeleton';
 import {Sp2SolQuote, Sol2SpQuote, swapTokens, solanaAddr, spAddr } from '../../services/swap'
 import SimpleLoadingRing from '../SimpleLoadingRing'
-
+import { useTranslation } from 'react-i18next'
 
 interface SwapInputProps {
   setTokenGraph: (tokenGraph: string) => void;
@@ -66,14 +66,14 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
   const [isQuotationLoading, setIsQuotation] = useState(true)
   const [swapError, setSwapError] = useState("")
   const [swapSuccess, setSwapSuccess] = useState("")
-
+  const { t, i18n } = useTranslation()
   const [quotation, setQuotation] = useState({
     "SP": "",
     "SOL": "",
   })
 
   const tokenData = useMemo(() => ({
-    "provider": "Silent Pass",
+    "provider": t('comp-SwapInput-provide'),
     "token_from": fromToken,
     "token_to": toToken,
     "price_to": (quotation as any)[fromToken] / (quotation as any)[toToken] || 0,
@@ -152,6 +152,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
   const getQuote = async () => {
 	const quote = await (fromToken === 'SOL' ?  Sol2SpQuote(fromAmount.toString()) : Sp2SolQuote(fromAmount.toString()))
 	const total = parseFloat(parseFloat(quote).toFixed(6))
+	
 	if (total > 0) {
 		setToAmount(total.toFixed(6))
 		const ba = fromToken == 'SP' ? profiles?.[1]?.tokens?.sp?.balance1 : profiles?.[1]?.tokens?.sol.balance1
@@ -179,14 +180,14 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
       let val=fromToken === 'SOL'?(profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6))
       setFromAmount(val);
   }
-
+  
   return (
     <div style={{display: 'flex', flexDirection: 'column', marginTop:"38px", alignItems:"center"
     }}>
 
       <div className='input-box'>
         <div style={{justifyContent:'space-between', textAlign: 'left', display: 'flex', flexDirection: 'column'}}>
-          <p className='box-text' style={{fontSize: '14px'}}>You Pay</p>
+          <p className='box-text' style={{fontSize: '14px'}}>{t('comp-SwapInput-pay')}</p>
           {
             isQuotationLoading ? (
               <Skeleton width="180px" height="100px" />
@@ -232,7 +233,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>50%</p>
             <p style={{padding: '4px 6px', color:"#676768", background:"#3B3B3C", borderRadius:"40px", textAlign:"center", fontSize:"12px"}}>Max</p>
           </div> */}
-          <div className="make-max" onClick={useMax}>Max</div>
+          <div className="make-max" onClick={useMax}>{t('comp-SwapInput-Max')}</div>
         </div>
       </div>
 
@@ -253,7 +254,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 
       <div className='input-box'>
         <div style={{justifyContent:'space-between', textAlign: 'left', display: 'flex', flexDirection: 'column'}}>
-          <p className='box-text' style={{fontSize: '14px'}}>You Receive</p>
+          <p className='box-text' style={{fontSize: '14px'}}>{t('comp-SwapInput-Receive')}</p>
           <p className='box-text' style={{fontSize: '28px', lineHeight: '36px'}}>{toAmount}</p>
           <p className='box-text' style={{fontSize: '14px'}}>$ {( Number(toAmount) * Number((quotation as any)[toToken])).toFixed(2)}</p>
         </div>
@@ -281,12 +282,12 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 	  {
 		showConfirm &&
 			<button className="redeem-button confirm" onClick={confirmClick} style={{color : swapError ? 'darkred': swapSuccess ? '#249517': ''}}>
-				{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}
+				{isRedeemProcessLoading ? <SimpleLoadingRing /> : t('comp-comm-Confirm')}
 			</button>
 	  }
       <div style={{background:"#191919", borderRadius:"8px", padding:"4px", marginTop: "2rem", marginBottom:"24px" }}>
         <div style={{display:"flex"}}>
-          <p className="tab-selector" style={{background: tabSelector === "tokens" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('tokens')}>Tokens</p>
+          <p className="tab-selector" style={{background: tabSelector === "tokens" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('tokens')}>{t('comp-accountlist-assets')}</p>
           {/* <p className="tab-selector" style={{background: tabSelector === "activity" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('activity')}>Activity</p> */}
         </div>
       </div>

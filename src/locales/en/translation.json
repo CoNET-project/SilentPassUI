@@ -30,6 +30,7 @@
 	"comp-comm-Refresh": "Refresh",
 	"comp-comm-Refreshing": "Refreshing...",
 	"comp-comm-Claim": "Claim",
+	"comp-comm-Confirm": "Confirm",
 
 	"comp-accountlist-main-wallet": "Main Wallet",
 	"comp-accountlist-solana": "Solana",
@@ -70,8 +71,17 @@
 	"comp-RedeemPassport-paidMonthly": "paid monthly",
 	"comp-RedeemPassport-paidAnnually": "paid yearly",
 
-	"comp-Rules-RuleButton-input-placeholder": "Please enter search content",
+	"comp-SwapInput-pay": "You Pay",
+	"comp-SwapInput-Max": "Max",
+	"comp-SwapInput-Receive": "You Receive",
+	"comp-SwapInput-provide": "Silent Pass",
 
+	"comp-TokenTab-provide": "Provide",
+	"comp-TokenTab-Slippage": "Slippage",
+	"comp-TokenTab-Auto": "Auto",
+	"comp-TokenTab-fee": "Fee",
+
+	"comp-Rules-RuleButton-input-placeholder": "Please enter search content",
 
 	"passport_unlimit": "Unlimit",
 	"passport_Freemium": "Freemium",
@@ -85,7 +95,7 @@
 	"passport_hour": "h",
 	"passport_unlimitBandweidth": "Unlimited Traffic",
 
-
+	"swap_title": "Swap",
 
 	"region_select": "Select Region",
 	"region_US": "United States",
@@ -102,9 +112,23 @@
 
 	"wallet_title": "My Account",
 
+	"Settings_Title": "Settings",
+	"Settings_General": "General",
+	"Settings_Passcode": "Passcode",
+	"Settings_Passcode_on": "Turn passcode on",
+	"Settings_Passcode_change": "Change passcode",
+	"Settings_Passcode_Addon": "Add-on",
+	"Settings_Passcode_soon": "soon",
+	"Settings_Passcode_Ads": "Ads Block",
+	"Settings_Passcode_Reward": "Extra Reward",
+	"Settings_Passcode_WebsiteFilter": "Website Filter",
+
+
+
     "lang":"English",
-    "language":"Language"
-	
+    "language":"Language",
+	"en": "English",
+	"zh": "Chinese"
 
 	
 }

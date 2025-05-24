@@ -9,7 +9,7 @@ import splitTunnelingIcon from "./assets/split-tunneling.svg";
 import lockIcon from "./assets/lock-icon.svg";
 
 import Separator from '../../components/Separator';
-import { act, useMemo, useState } from 'react';
+import { act, useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ActivePassportInfo from '../../components/ActivePassportInfo';
 import { useDaemonContext } from '../../providers/DaemonProvider';
@@ -46,13 +46,13 @@ export default function Settings() {
 
   const optionGroups = useMemo<OptionGroups>(() => ([
     {
-      heading: "General",
+      heading: t('Settings_General'),
       items: [
         {
           id: 1,
           icon: languageIcon,
-          title: "Language",
-          childrenText: 'English',
+          title: t('language'),
+          childrenText: t(`${i18n.language}`),
           action: () => setVisible(true)
         },
         /* {
@@ -70,58 +70,60 @@ export default function Settings() {
         // }
       ]
     }, {
-      heading: "Passcode",
+      heading: t('Settings_Passcode'),
       items: [
         {
           id: 1,
           icon: lockIcon,
-          title: "Turn passcode on",
+          title: t('Settings_Passcode_on'),
           // action: () => navigate("/passcode/new"),
-          childrenText: "soon",
+          childrenText: t('Settings_Passcode_soon'),
         },
         {
           id: 2,
           icon: lockIcon,
-          title: "Change passcode",
+          title: t('Settings_Passcode_change'),
           // action: () => navigate("/passcode/change"),
-          childrenText: "soon",
+          childrenText: t('Settings_Passcode_soon'),
         }
       ]
     }, {
-      heading: "Add-on",
+      heading: t('Settings_Passcode_Addon'),
       items: [
         {
           id: 1,
           icon: adsBlockIcon,
-          title: "Ads Block",
-          childrenText: "soon",
+          title: t('Settings_Passcode_Ads'),
+          childrenText: t('Settings_Passcode_soon'),
         },
         {
           id: 2,
           icon: extraRewardIcon,
-          title: "Extra Reward",
-          childrenText: "soon",
+          title: t('Settings_Passcode_Reward'),
+          childrenText: '',
+		  action: () => navigate("/wallet"),
         },
         {
           id: 3,
           icon: splitTunnelingIcon,
-          title: "Split Tunelling",
-          childrenText: "soon",
+          title: t('Settings_Passcode_WebsiteFilter'),
+          childrenText: '',
+		  
         },
       ]
     },
-  ]), [navigate]);
+  ]), [visible, navigate ]);
 
   const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))
 
   return (
     <div className="page-container">
-      <h1>Settings</h1>
+      <h1>{t('Settings_Title')}</h1>
       <div className="nft-info">
         <ActivePassportInfo />
 
         <div className="buttons">
-          <button onClick={() => navigate("/wallet")}>My Account</button>
+          <button onClick={() => navigate("/wallet")}>{t('wallet_title')}</button>
           {/* <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate("/subscription")}>
             <img src="./assets/conet-outline-gray.svg" />
             <span>Upgrade Passport</span>
@@ -138,7 +140,7 @@ export default function Settings() {
                 <div>
                   {optionGroup.items.map((item, index) => (
                     <>
-                      <ClickableItem title={item.title} icon={item.icon} action={item?.action} switchState={item?.theme ? theme === 'light' : false} switchComp={item?.theme} theme={item?.theme} chevron={!item?.theme}>{item.childrenText && <p>{item.childrenText}</p>}</ClickableItem>
+                      <ClickableItem title={item.title} icon={item.icon} action={item?.action} switchState={item?.theme ? theme === 'light' : false} switchComp={item?.theme} theme={item?.theme} chevron={!item?.theme}>{item.childrenText && <p style={{}}>{item.childrenText}</p>}</ClickableItem>
                       {index < optionGroup.items.length - 1 && <Separator />}
                     </>
                   ))}

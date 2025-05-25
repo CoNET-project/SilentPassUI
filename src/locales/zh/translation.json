@@ -28,6 +28,20 @@
 	"comp-comm-Refreshing": "正在刷新中...",
 	"comp-comm-Claim": "申领",
 	"comp-comm-Confirm": "确认",
+	"comp-comm-Paywith": "付款方式",
+	"comp-comm-Balance": "余额",
+	"comp-comm-Summary": "概括",
+	"comp-comm-QuoteUpdates": "报价将更新于",
+	"comp-comm-GASFee": "网络费用",
+	"comp-comm-Total": "合计",
+	"comp-comm-Pay": "确认支付",
+	"comp-comm-notxHash": "支付失败",
+	"comp-comm-Insufficient-balance": "$SP或$Sol余额不足",
+	"comp-comm-declined": "购买失败",
+	"comp-comm-txHash": "购买凭据",
+	"comp-comm-contactUs": "请通过Discord、Telegram或发送电子邮件至(info@silentpass.io)与我们联系",
+	"comp-comm-backToWallet": "返回",
+	"comp-comm-LoadingRing": "正在处理中...",
 
 	"comp-PassportInfoPopup-1": "Silent Pass 通证",
 	"comp-PassportInfoPopup-2": "有效期限",
@@ -93,7 +107,9 @@
 	"passport_notUsed": "未使用",
 	"passport_day": "天",
 	"passport_hour": "小时",
+	"passport_secound": "秒",
 	"passport_unlimitBandweidth": "无限流量",
+
 
 	"region_select": "请选择区域",
 	"region_US": "美利坚合众国",
@@ -112,7 +128,16 @@
 
 	"Settings_Title": "设定",
 
+	"Subscription-Footer-transferInfo": "您的交易完成时间可能会有所不同，并且可能需要更多时间，交易哈希确认将在完成后显示。",
+
+	"Subscription-SecondStep-title":"您正在购买",
+
+	"Subscription-Header-title":"确认您的订单",
+	"Subscription-Header-progress":"交易正在进行中",
+	"Subscription-Header-progress-detail":"您的订单完成时间可能会有所不同，请耐心等待，我们会在订单完成后通知您。",
+
 	"wallet_title": "我的账号",
+
 	"Settings_General": "通用",
 	"Settings_Passcode": "屏幕锁定",
 	"Settings_Passcode_on": "开启屏幕锁定",

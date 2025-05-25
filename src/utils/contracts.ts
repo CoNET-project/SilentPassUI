@@ -57,7 +57,7 @@ import {
 	  abi: ConetDepinAbi,
 	  network: "CONET DePIN",
 	},
-	PassportSolana: {
+	SPToken: {
 	  address: "Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump",
 	  network: "Solana Mainnet",
 	},

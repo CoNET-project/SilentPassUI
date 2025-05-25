@@ -8,16 +8,17 @@ import FourthStep from './page-components/FourthStep';
 
 import './index.css';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-import Loading from '../../components/global-steps/Loading';
-import Declined from '../../components/global-steps/Declined';
+import Loading from '../../components/Global-steps/Loading';
 import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest, RealizationRedeem } from '../../services/wallets';
-import {getOracle, purchasePassport} from '../../services/passportPurchase'
+import {getOracle, purchasePassport, postPurchasePassport} from '../../services/passportPurchase'
+import { useTranslation } from 'react-i18next'
 
 global.Buffer = require('buffer').Buffer;
 export type Step = 2 | 3 | 4 | 5;
 
 export default function Subscription() {
-  const { paymentKind, selectedPlan, setSelectedPlan,  profiles, setSuccessNFTID, setPaymentKind, getAllNodes } = useDaemonContext();
+  const { paymentKind, selectedPlan, setSelectedPlan,  profiles, setSuccessNFTID, setPaymentKind, getAllNodes, setAirdropProcess } = useDaemonContext();
+  const { t, i18n } = useTranslation()
   const [step, setStep] = useState<Step>(2);
   const [price, setPriceInSp] = useState('0');
   const [gasfee, setGasfee] = useState('0');
@@ -25,8 +26,11 @@ export default function Subscription() {
   const [spInUsd, setSpInUsd] = useState(0);
   const [solInUsd, setSolInUsd] = useState(0);
   const [isSubmitButtonDisabled, setIsSubmitButtonDisabled] = useState(false);
-  const [spBalance, setSPBalance] = useState(0);
+  const [spBalance, setSPBalance] = useState('')
+  const [solBalance, setSolBalance] = useState(0);
   const navigate = useNavigate();
+  const [txHash, setTxHash] = useState('')
+
   
   const setReflashQuote = () => {
 	setUpdateCounter((prev) => prev - 1)
@@ -61,8 +65,11 @@ export default function Subscription() {
 	}
 	
 	if (profiles && profiles?.length) {
-		const _spBalance= profiles[1]?.tokens?.sp
-		setSPBalance(parseFloat(_spBalance.balance))
+		const profile: profile = profiles[1]
+		const _spBalance= profile.tokens.sp.balance||'0'
+		const _solBalance = profile.tokens.sol.balance1||0
+		setSPBalance(_spBalance)
+		setSolBalance(_solBalance)
 	}
 	setUpdateCounter(60)
 	setReflashQuote()
@@ -171,20 +178,66 @@ export default function Subscription() {
 	processVisa()
   }, [])
 
+const declined = () =>  {
+	
+  return (
+    <>
+      <span style={{ display: 'block' }}></span>
 
-  async function handleButtonAction() {
+      <div className="step-container">
+        <div className="declined-wrapper">
+          <img src="/assets/decline.svg" alt="X" />
+        </div>
+        <div className="declined-description" style={{wordBreak: 'break-all'}}>
+          <p>{t('comp-comm-declined')}</p>
+		  {
+			!txHash && 
+			<p style={{width:"100%"}}>{t('comp-comm-notxHash')} </p>
+		  }
+		  { txHash &&
+		  	<>
+				<p>{t('comp-comm-txHash')}</p>
+				<p>
+					{txHash}
+				</p>
+			</>
+			
+		  }
+		  
+          <p style={{wordBreak: 'break-word'}}>{t('comp-comm-contactUs')}</p>
+        </div>
+      </div>
+    </>
+  )
+}
+
+  const handleButtonAction = async () => {
     /* if (step === 1) {
       nextStep();
       return;
     } */
 
     if (step === 2) {
+		setAirdropProcess(false)
       try {
-        nextStep();
-		await purchasePassport(price, getAllNodes)
-        setStep(4);
+        nextStep()
+		const tx = await purchasePassport(price, getAllNodes)
+		if (!tx) {
+			return setStep(5)
+		}
+		
+		setTxHash(tx)
+		
+		
+		const status = await postPurchasePassport(tx)
+		if (!status) {
+			return setStep(5)
+		}
+		setSuccessNFTID(status)
+		return navigate("/wallet")
+		
       } catch (error) {
-        setStep(5);
+        setStep(5)
         console.log('error purchasing passport')
       }
 
@@ -218,10 +271,10 @@ export default function Subscription() {
       <Header step={step} />
 
       {/* {step === 1 && <FirstStep spInUsd={spInUsd} solInUsd={solInUsd} />} */}
-      {step === 2 && <SecondStep price={price} gasfee={gasfee} updateCounter={updateCounter} spInUsd={spInUsd} solInUsd={solInUsd} SP_balance={spBalance} />} {/* Purchase confirmation */}
+      {step === 2 && <SecondStep price={price} gasfee={gasfee} updateCounter={updateCounter} spInUsd={spInUsd} solInUsd={solInUsd} SP_balance={spBalance} SolBalance={solBalance}/>} {/* Purchase confirmation */}
       {step === 3 && <Loading />} {/* Purchase loading */}
       {step === 4 && <FourthStep price={price} gasfee={gasfee} />} {/* Purchase successful */}
-      {step === 5 && <Declined />} {/* Purchase declined */}
+      {step === 5 && declined()} {/* Purchase declined */}
 
       <PageFooter step={step} handleButtonAction={handleButtonAction} isSubmitButtonDisabled={isSubmitButtonDisabled} />
     </div>

@@ -69,7 +69,7 @@ export const initProfileTokens = () => {
       balance: "0",
       network: "Solana Mainnet",
       decimal: 18,
-      contract: contracts.PassportSolana.address,
+      contract: contracts.SPToken.address,
       name: "sp",
     },
   };

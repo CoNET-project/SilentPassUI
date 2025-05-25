@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import './index.css';
 import { Step } from '../../types/global-types';
-import Loading from '../../components/global-steps/Loading';
-import Declined from '../../components/global-steps/Declined';
+import Loading from '../../components/Global-steps/Loading';
+import Declined from '../../components/Global-steps/Declined';
 import Header from './page-components/Header';
 import PageFooter from './page-components/Footer';
 import { useNavigate } from 'react-router-dom';
@@ -92,7 +92,7 @@ export default function Transfer() {
       {step === 2 && <SecondStep gasFee={gasFee} updateCounter={updateCounter} selectedNftId={selectedNftId} />} {/* Purchase confirmation */}
       {step === 3 && <Loading />} {/* Purchase loading */}
       {step === 4 && <FourthStep gasFee={gasFee} selectedNftId={selectedNftId} />} {/* Purchase successful */}
-      {step === 5 && <Declined />} {/* Purchase declined */}
+      {step === 5 && Declined('')} {/* Purchase declined */}
 
       <PageFooter step={step} handleButtonAction={handleButtonAction} isSubmitButtonDisabled={!to || !selectedNftId || !gasFee} />
     </div>

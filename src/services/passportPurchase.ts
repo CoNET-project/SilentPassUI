@@ -4,18 +4,25 @@ import {
 	Keypair,
 	Transaction,
 	sendAndConfirmTransaction,
-  } from "@solana/web3.js";
-  import {
-	getOrCreateAssociatedTokenAccount,
-	createTransferInstruction,
-  } from "@solana/spl-token";
-  import { ethers } from "ethers";
+	ComputeBudgetProgram
+  } from "@solana/web3.js"
+import {
+	postToEndpoint,
+} from "../utils/utils"
+import {
+	payment_endpoint,
+	apiv4_endpoint
+} from "../utils/constants"
+import {waitingPaymentReady} from './subscription'
+  import { ethers } from "ethers"
   import Bs58 from "bs58";
   import contracts from "../utils/contracts";
   import { conetDepinProvider, conetProvider } from "../utils/constants";
   import { CoNET_Data } from "../utils/globals";
   import {epoch_info_ABI} from "../utils/abis"
-  const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q";
+  import nacl from 'tweetnacl'
+  
+  const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q"
   const spDecimalPlaces = 6;
   
   interface OracleData {
@@ -147,76 +154,72 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 	return completedTx;
   }
   
-  export const purchasePassport = async (amount: string, allNodes: nodes_info[]) => {
+  const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+		microLamports: 9000
+	})
+	const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
+		units: 200000
+	})
+
+  export const purchasePassport = (_amount: string, allNodes: nodes_info[]): Promise<undefined|string> => new Promise(async executor => {
 	if (!CoNET_Data) {
-	  return;
+	   return executor(undefined)
 	}
-    const privateKey = CoNET_Data.profiles[1]?.privateKeyArmor
-	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
-	const solanaConnection = new Connection(
-		`https://${_node1.domain}/solana-rpc`,
-		"confirmed"
-	  );
-	try {
+	return executor('2cCyqNKdMCHKm8htLopues7eDNze84MV4u6ta5Vh8ch82ajRoU5QHHQ2mQBqDLvMDu8jaqf165uTDMkm1dyZCkdM')
 
-	  
-	  const solana_account_privatekey_array = Bs58.decode(privateKey);
-	  const solana_account_keypair = Keypair.fromSecretKey(
-		solana_account_privatekey_array
-	  );
-  
-	  let sourceAccount = await getOrCreateAssociatedTokenAccount(
-		solanaConnection,
-		solana_account_keypair,
-		new PublicKey(contracts.PassportSolana.address),
-		solana_account_keypair.publicKey
-	  );
-  
-	  let destinationAccount = await getOrCreateAssociatedTokenAccount(
-		solanaConnection,
-		solana_account_keypair,
-		new PublicKey(contracts.PassportSolana.address),
-		new PublicKey(sp_team)
-	  );
-  
-	  const transferTx = new Transaction();
-  
-	  transferTx.add(
-		createTransferInstruction(
-		  sourceAccount.address,
-		  destinationAccount.address,
-		  solana_account_keypair.publicKey,
-		  ethers.parseUnits(amount, spDecimalPlaces)
-		)
-	  );
-  
-	  const latestBlockHash = await solanaConnection.getLatestBlockhash(
-		"confirmed"
-	  );
-  
-	  transferTx.recentBlockhash = await latestBlockHash.blockhash;
-  
-	  const signature = await sendAndConfirmTransaction(
-		solanaConnection,
-		transferTx,
-		[solana_account_keypair]
-	  );
-  
-	  await update_purchase_cancun(signature)
-  
-	  
-	} catch (error: any) {
-	  const _tx: string = error.message
-	  const tx1 = _tx.split(/Signature /i)
-		if (tx1[1]) {
-			const tx = tx1[1].split(' ')[0]
-			await update_purchase_cancun(tx)
-			return tx;
-		}
+    // const privateKey = CoNET_Data.profiles[1]?.privateKeyArmor
+	// const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
+	// const solanaConnection = new Connection(
+	// 	`https://${_node1.domain}/solana-rpc`,
+	// 	"confirmed"
+	// )
+	// const SPToken = new PublicKey(contracts.SPToken.address)
+	// const amount = ethers.parseUnits(_amount, spDecimalPlaces)
+	// let transactionSignature
+	// try {
 
-	  throw error;
-	}
-  };
+	//   const solana_account_privatekey_array = Bs58.decode(privateKey);
+	//   const solana_account_keypair = Keypair.fromSecretKey(
+	// 	solana_account_privatekey_array
+	//   );
+  
+	//   let sourceAccount = await getOrCreateAssociatedTokenAccount(
+	// 	solanaConnection,
+	// 	solana_account_keypair,
+	// 	SPToken,
+	// 	solana_account_keypair.publicKey
+	//   );
+  
+	//   let destinationAccount = await getOrCreateAssociatedTokenAccount(
+	// 	solanaConnection,
+	// 	solana_account_keypair,
+	// 	SPToken,
+	// 	new PublicKey(sp_team)
+	//   );
+  
+	//   const transferTx = new Transaction().add(modifyComputeUnits).add(addPriorityFee)
+  
+	//   transferTx.add(
+	// 	createTransferInstruction(
+	// 	  sourceAccount.address,
+	// 	  destinationAccount.address,
+	// 	  solana_account_keypair.publicKey,
+	// 	  amount
+	// 	)
+	//   )
+  
+	//    	const latestBlockHash = await solanaConnection.getLatestBlockhash('confirmed')
+    // 	transferTx.recentBlockhash = latestBlockHash.blockhash
+  
+	//   transactionSignature = await solanaConnection.sendTransaction(transferTx, [solana_account_keypair])
+	  
+	  
+	  
+	// } catch (error: any) {
+		
+	// }
+	// return executor(transactionSignature)
+  })
   
   
   const waitingStatusChange = (_contract: ethers.Contract, profileKeyID: string) => new Promise (async (resolve, reject) => {
@@ -262,6 +265,52 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 		  }
 	  })
   })
+
+  const purchasePassportBySP = `${payment_endpoint}purchasePassportBySP`
+
+
+  export const postPurchasePassport = async (hash: string): Promise<number|false> => {
+
+	  if (!CoNET_Data?.profiles) {
+		return false
+	  }
+  
+	  const profile = CoNET_Data.profiles[0]
+	  const solanaWallet = CoNET_Data.profiles[1].keyID
+	  const encodedMessage = new TextEncoder().encode(profile.keyID.toLowerCase())
+	  const privateKey = CoNET_Data.profiles[1]?.privateKeyArmor
+	  const solana_account_privatekey_array = Bs58.decode(privateKey)
+	  const solana_account_keypair = Keypair.fromSecretKey(
+		 solana_account_privatekey_array
+	  )
+
+	  const _data = nacl.sign.detached(encodedMessage, solana_account_keypair.secretKey)
+	  const data = Bs58.encode(_data)
+	  try {
+		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, hash, data })
+		const wallet = new ethers.Wallet(profile.privateKeyArmor)
+		const signMessage = await wallet.signMessage(message)
+		const sendData = {
+		  message, signMessage
+		}
+	
+		const result = await postToEndpoint(purchasePassportBySP, true, sendData)
+		const status = result?.status
+		if (status) {
+			
+			const waiting = await waitingPaymentReady(profile.keyID)
+			if (waiting?.status) {
+				return waiting.status
+			}
+			
+		}
+		
+		return false
+	  } catch (ex) {
+		console.log(ex)
+		return false
+	  }
+  }
   
 //   const checkts = async (solanaTx: string) => {
 // 	//		from: J3qsMcDnE1fSmWLd1WssMBE5wX77kyLpyUxckf73w9Cs

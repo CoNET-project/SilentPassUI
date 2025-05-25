@@ -31,6 +31,20 @@
 	"comp-comm-Refreshing": "Refreshing...",
 	"comp-comm-Claim": "Claim",
 	"comp-comm-Confirm": "Confirm",
+	"comp-comm-Paywith": "Paying with",
+	"comp-comm-Balance": "Balance",
+	"comp-comm-Summary": "Summary",
+	"comp-comm-QuoteUpdates": "Quote updates in ",
+	"comp-comm-GASFee": "GAS Fee",
+	"comp-comm-Total": "Total",
+	"comp-comm-Pay": "Pay",
+	"comp-comm-Insufficient-balance": "$SP or $Sol insufficient Balance",
+	"comp-comm-declined": "Purchase declined",
+	"comp-comm-txHash": "Purchase hash is",
+	"comp-comm-notxHash": "Payment failed",
+	"comp-comm-contactUs": "Please contact us on Discord, Telegram or Email info@silentpass.io to us",
+	"comp-comm-backToWallet": "Back to My Wallet",
+	"comp-comm-LoadingRing": "Please wait, this may take a few seconds.",
 
 	"comp-accountlist-main-wallet": "Main Wallet",
 	"comp-accountlist-solana": "Solana",
@@ -93,6 +107,7 @@
 	"passport_notUsed": "Not Used",
 	"passport_day": "day",
 	"passport_hour": "h",
+	"passport_secound": "s",
 	"passport_unlimitBandweidth": "Unlimited Traffic",
 
 	"swap_title": "Swap",
@@ -122,6 +137,12 @@
 	"Settings_Passcode_Ads": "Ads Block",
 	"Settings_Passcode_Reward": "Extra Reward",
 	"Settings_Passcode_WebsiteFilter": "Website Filter",
+
+	"Subscription-Header-title":"Confirm your order",
+	"Subscription-Header-progress":"Transaction in progress",
+	"Subscription-Header-progress-detail":"Your order completion time may vary, please wait and we’ll let you know when it’s completed.",
+	"Subscription-Footer-transferInfo": "Your transaction completion time may vary and can take more times Confirmation of Transaction Hash will display on completion.",
+	"Subscription-SecondStep-title":"You're buying",
 
 
 

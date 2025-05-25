@@ -139,7 +139,7 @@ const scanSolanaSol = async (walletAddr: string, randomSolanaRPC: string) => {
 const scanSolanaSp = async (walletAddr: string, solanaRPC_url: string) => {
   return await scan_spl_balance(
     walletAddr,
-    contracts.PassportSolana.address,
+    contracts.SPToken.address,
     solanaRPC_url
   );
 };

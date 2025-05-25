@@ -1,6 +1,6 @@
 import {
 	postToEndpoint,
-  } from "../utils/utils";
+} from "../utils/utils";
 
 import {
 	payment_endpoint,

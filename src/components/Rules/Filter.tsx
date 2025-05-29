@@ -395,6 +395,7 @@ const Filter=({visible, setVisible}:FilterProps)=> {
             convertValuetagToValueArray(checkboxVal);
         }
     }
+	
     const getCustomSetting=()=>{
         let storage = window.localStorage;
         if(storage.specialList){
@@ -407,15 +408,17 @@ const Filter=({visible, setVisible}:FilterProps)=> {
         }
     }
     const getClassifyName=(val:string)=>{
-        if(val==='special'){
-            return i18n.language==='en'?'Special':'定制'
-        }
-        if(val==='official'){
-            return i18n.language==='en'?'Official':'官网'
-        }
-        if(val==='region'){
-            return i18n.language==='en'?'Region':'地区'
-        }
+		return t(`Settings_Passcode_WebsiteFilter-title-${val}`)
+        // if(val==='special'){
+		// 	t('Special')
+        //     return i18n.language==='en'?'Special':'定制'
+        // }
+        // if(val==='official'){
+        //     return i18n.language==='en'?'Official':'官网'
+        // }
+        // if(val==='region'){
+        //     return i18n.language==='en'?'Region':'地区'
+        // }
     }
     const handleChangeSwitch=(val:boolean)=>{
         switchValueRef.current=val;

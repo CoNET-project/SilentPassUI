@@ -3,6 +3,8 @@ import Footer from '../../components/Footer';
 import './index.css';
 
 import languageIcon from "./assets/language.svg";
+import systemProxi from './assets/applications.svg'
+
 import adsBlockIcon from "./assets/ads-block.svg";
 import extraRewardIcon from "./assets/extra-reward.svg";
 import splitTunnelingIcon from "./assets/split-tunneling.svg";
@@ -39,7 +41,7 @@ export default function Settings() {
   const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [visible2, setVisible2] = useState(false);
-  const { activePassport } = useDaemonContext();
+  const { activePassport, isLocalProxy } = useDaemonContext();
 
   const navigate = useNavigate();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -124,7 +126,7 @@ export default function Settings() {
   const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))
 
   const handleChangeSwitch=(val:boolean)=>{
-      setSwitchValue(val);
+      setSwitchValue(val)
       if(val){
         if (window?.webkit) {
           window?.webkit?.messageHandlers["startProxy"].postMessage("")
@@ -165,20 +167,23 @@ export default function Settings() {
                       {index < optionGroup.items.length - 1 && <Separator />}
                     </>
                   ))}
-                  {index==0?<>
-                    <Separator />
-                    <div className="container">
-                        <div className="def">
-                          <div className="icon-wrapper">
-                            <img src={languageIcon} alt="Icon" />
-                          </div>
-                          <p>{t('system-proxy')}</p>
-                        </div>
-                        <div className="children">
-                          <Switch checked={switchValue} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} />
-                        </div>
-                      </div>
-                  </>:''}
+                  {
+				  	index === 0 && isLocalProxy ? 
+					<>
+						<Separator />
+						<div className="container">
+							<div className="def">
+								<div className="icon-wrapper">
+									<img src={systemProxi} alt="Icon" />
+								</div>
+								<p>{t('system-proxy')}</p>
+							</div>
+							<div className="children">
+								<Switch checked={switchValue} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} />
+							</div>
+						</div>
+                  	</>:''
+				  }
                 </div>
               </div>
             </>

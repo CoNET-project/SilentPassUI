@@ -70,20 +70,8 @@ export default function RedeemPassport() {
   async function handlePassportRedeem() {
 	setPaymentKind(6)
 	setSelectedPlan(redeemCode)
+	setIsRedeemProcessLoading(true);
 	navigate("/subscription")
-
-    setIsRedeemProcessLoading(true);
-    //   const redeem = await RealizationRedeem(redeemCode);
-	//   setIsRedeemProcessLoading(false);
-	//   if (!redeem) {
-	// 	return setAnErrorOccurred(true);
-	//   }
-	//   if (typeof redeem === 'number') {
-	// 	setSuccessNFTID(redeem)
-	//   }
-
-    //   setIsSuccessModalOpen(true);
-    //   setRedeemCode('')
   }
 
 

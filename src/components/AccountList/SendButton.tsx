@@ -227,12 +227,12 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                 closeOnMaskClick={true}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>Send {type}</NavBar>
+                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('comp-accountlist-SendButton')} {type}</NavBar>
                     <div className={styles.logo}><SpToken width={100} height={100}/></div>
                     <div className={styles.form}>
                         <div className={styles.addressInput}>
                             <Input
-                                placeholder="Recipient's Solana address"
+                                placeholder={t('comp-accountlist-SendButton-placeholder')}
                                 value={address}
                                 onChange={val => {setAddress(val)}}
                             />
@@ -242,7 +242,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                                 type="number"
                                 min={0}
                                 max={convertStringToNumber(balance)}
-                                placeholder="Amount"
+                                placeholder={t('comp-accountlist-SendButton-Amount')}
                                 value={amount}
                                 onChange={val => {
                                     
@@ -257,17 +257,17 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                                 }}
                             />
                             <div className={styles.unit}>{type}</div>
-                            <div className={styles.max} onClick={useMax}>Max</div>
+                            <div className={styles.max} onClick={useMax}>{t('comp-SwapInput-Max')}</div>
                         </div>
                         <div className={styles.extraInfo}>
                             <div className={styles.usval}>${calcPrice}</div>
-                            <div className={styles.available}>Available {balance}</div>
+                            <div className={styles.available}>{t('comp-accountlist-SendButton-Available')} {balance} </div>
                         </div>
-                        <div className={styles.oper}><Button block loading={subLoading} color='primary' size='large' disabled={!(address&&amount)} onClick={handleSend}>Confirm</Button></div>
+                        <div className={styles.oper}><Button block loading={subLoading} color='primary' size='large' disabled={!(address&&amount)} onClick={handleSend}>{t('comp-comm-Confirm')}</Button></div>
                     </div>
                     {subLoading?<div className={styles.loadingWrap}>
                         <SpinLoading style={{ '--size': '48px' }} />
-                        <div className={styles.text}>Sending...</div>
+                        <div className={styles.text}>{t('comp-comm-LoadingRing')}</div>
                     </div>:''}
                 </div>
             </Popup>

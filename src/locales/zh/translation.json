@@ -83,6 +83,10 @@
 	"comp-accountlist-Referral-Inviter": "您的邀请人钱包地址",
 	"comp-accountlist-Referral-Invitees": "您的受邀者总数",
 	"comp-accountlist-Referral-noInvitees": "无受邀者",
+	"comp-accountlist-SendButton": "转账",
+	"comp-accountlist-SendButton-placeholder": "收款人Solana钱包",
+	"comp-accountlist-SendButton-Amount": "代币数量",
+	"comp-accountlist-SendButton-Available": "可用的余额",
 
 	"comp-SPClubRewardTab-1": "每日打卡",
 	"comp-SPClubRewardTab-2": "订阅",
@@ -158,6 +162,10 @@
 	"Settings_Passcode_Ads": "广告过滤",
 	"Settings_Passcode_Reward": "奖励活动",
 	"Settings_Passcode_WebsiteFilter": "网站过滤",
+	
+	"Settings_Passcode_WebsiteFilter-title-special": "定制过滤",
+	"Settings_Passcode_WebsiteFilter-title-official": "官网过滤",
+	"Settings_Passcode_WebsiteFilter-title-region": "地区过滤",
 
     "lang":"中文",
     "language":"语言",

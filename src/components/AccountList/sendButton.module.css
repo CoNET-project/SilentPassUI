@@ -107,6 +107,7 @@
                 line-height: 1;
                 cursor: pointer;
                 user-select: none;
+				width: 3rem;
                 &:hover{
                     opacity: 0.8;
                 }

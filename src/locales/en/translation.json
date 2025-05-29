@@ -83,6 +83,10 @@
 	"comp-accountlist-Referral-Inviter": "Inviter's wallet address",
 	"comp-accountlist-Referral-Invitees": "Invitees",
 	"comp-accountlist-Referral-noInvitees": "No invitees",
+	"comp-accountlist-SendButton": "Send ",
+	"comp-accountlist-SendButton-placeholder": "Recipient's Solana address",
+	"comp-accountlist-SendButton-Amount": "Amount",
+	"comp-accountlist-SendButton-Available": "Available",
 
 	"comp-SPClubRewardTab-1": "Daily Check-In",
 	"comp-SPClubRewardTab-2": "Subscription",
@@ -154,6 +158,9 @@
 	"Subscription-Header-progress-detail":"Your order completion time may vary, please wait and we’ll let you know when it’s completed.",
 	"Subscription-Footer-transferInfo": "Your transaction completion time may vary and can take more times Confirmation of Transaction Hash will display on completion.",
 	"Subscription-SecondStep-title":"You're buying",
+	"Settings_Passcode_WebsiteFilter-title-special": "Special Filters",
+	"Settings_Passcode_WebsiteFilter-title-official": "Official Filters",
+	"Settings_Passcode_WebsiteFilter-title-region": "Region Filters",
 
 
 

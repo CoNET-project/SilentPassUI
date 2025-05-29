@@ -453,11 +453,11 @@ const handleTogglePower = async () => {
 
             <CopyProxyInfo />
 
-            {
+            {/*{
               isLocalProxy && power && (
                 <SystemSettingsButton />
               )
-            }
+            }*/}
 
             {!isConnectionLoading &&
               <RegionSelector

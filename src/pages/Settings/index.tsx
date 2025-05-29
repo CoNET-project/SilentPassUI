@@ -19,6 +19,7 @@ import Languages from '../../components/Languages';
 import { useTranslation } from 'react-i18next';
 
 import Filter from './../../components/Rules/Filter';
+import { Switch } from 'antd-mobile';
 
 type OptionGroup = {
   heading: string;
@@ -42,6 +43,8 @@ export default function Settings() {
 
   const navigate = useNavigate();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  const [switchValue, setSwitchValue] = useState(true);
 
   function handleChangeTheme() {
     setTheme((prev) => prev === 'light' ? 'dark' : 'light')
@@ -120,6 +123,19 @@ export default function Settings() {
 
   const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))
 
+  const handleChangeSwitch=(val:boolean)=>{
+      setSwitchValue(val);
+      if(val){
+        if (window?.webkit) {
+          window?.webkit?.messageHandlers["startProxy"].postMessage("")
+        }
+      }else{
+        if (window?.webkit) {
+          window?.webkit?.messageHandlers["stopProxy"].postMessage("")
+        }
+      }
+  }
+
   return (
     <div className="page-container">
       <h1>{t('Settings_Title')}</h1>
@@ -137,17 +153,32 @@ export default function Settings() {
 
       <div className="options">
         {
-          optionGroups.map((optionGroup) => (
+          optionGroups.map((optionGroup,index) => (
             <>
               <div className="option-group">
                 <h3>{optionGroup.heading}</h3>
                 <div>
+                  
                   {optionGroup.items.map((item, index) => (
                     <>
                       <ClickableItem title={item.title} icon={item.icon} action={item?.action} switchState={item?.theme ? theme === 'light' : false} switchComp={item?.theme} theme={item?.theme} chevron={!item?.theme}>{item.childrenText && <p style={{}}>{item.childrenText}</p>}</ClickableItem>
                       {index < optionGroup.items.length - 1 && <Separator />}
                     </>
                   ))}
+                  {index==0?<>
+                    <Separator />
+                    <div className="container">
+                        <div className="def">
+                          <div className="icon-wrapper">
+                            <img src={languageIcon} alt="Icon" />
+                          </div>
+                          <p>系统代理</p>
+                        </div>
+                        <div className="children">
+                          <Switch checked={switchValue} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} />
+                        </div>
+                      </div>
+                  </>:''}
                 </div>
               </div>
             </>

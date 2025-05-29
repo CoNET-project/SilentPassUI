@@ -153,8 +153,8 @@ const Filter=({visible, setVisible}:FilterProps)=> {
     const [regionList, setRegionList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
 	const { t, i18n } = useTranslation();
 	const { isLocalProxy} = useDaemonContext();
-    const [switchValue, setSwitchValue] = useState(false);
-    const switchValueRef=useRef(false);
+    const [switchValue, setSwitchValue] = useState(true);
+    const switchValueRef=useRef(true);
 
     useEffect(()=>{
         getSetting();

@@ -1,9 +1,9 @@
 {
 	"data": {
 		"classifyList" : [
-			{"name":"Special","value":"special","valueTag":"special"},
-			{"name":"Official Website","value":"official","valueTag":"official"},
-			{"name":"Region","value":"region","valueTag":"region"}
+			{"name":"Special","nameCn":"定制","value":"special","valueTag":"special"},
+			{"name":"Official Website","nameCn":"官网","value":"official","valueTag":"official"},
+			{"name":"Region","nameCn":"地区","value":"region","valueTag":"region"}
 		],
 		"officialList":[
 			{
@@ -1839,8 +1839,5 @@
 			{"name": "Zambia", "value": ".zm", "valueTag": ".zm","checked":"false"},
 			{"name": "Zimbabwe", "value": ".zw", "valueTag": ".zw","checked":"false"}
 		]
-	},
-	"specialList": []
-
-
+	}
 }

@@ -1,3 +1,4 @@
+import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
 import ClickableItem from '../../components/ClickableItem';
 import Footer from '../../components/Footer';
 import './index.css';
@@ -17,6 +18,7 @@ type OptionGroup = {
     id: number;
     icon: string;
     title: string;
+    divId?: string;
     childrenText?: string;
     action?: () => void;
   }[]
@@ -27,12 +29,17 @@ type OptionGroups = OptionGroup[];
 export default function Support() {
   const navigate = useNavigate();
 
+  
+
+
+
   const optionGroups = useMemo<OptionGroups>(() => ([
     {
       id: 2,
       heading: "Proxy",
       items: [],
-    }, {
+    }, 
+    {
       id: 3,
       heading: "About",
       items: [
@@ -49,7 +56,19 @@ export default function Support() {
         //   action: () => navigate("/config-device"),
         // }
       ]
-    }
+    },
+    // {
+    //   id: 4,
+    //   heading: "Customer service",
+    //   items: [
+    //     {
+    //       id: 5,
+    //       icon: helpIcon,
+    //       title: "Outline Service",
+    //       divId:'comm100-button-efd822ce-7299-4fda-9fc1-252dd2f01fc5'
+    //     },
+    //   ]
+    // }
   ]), [navigate]);
 
   return (
@@ -67,7 +86,7 @@ export default function Support() {
                 <div>
                   {optionGroup.items.map((item, index) => (
                     <>
-                      <ClickableItem title={item.title} icon={item.icon} action={item?.action}>{item.childrenText && <p>{item.childrenText}</p>}</ClickableItem>
+                      <div id={item&&item.divId?item.divId:''}><ClickableItem title={item.title} icon={item.icon} action={item?.action}>{item.childrenText && <p>{item.childrenText}</p>}</ClickableItem></div>
                       {index < optionGroup.items.length - 1 && <Separator />}
                     </>
                   ))}

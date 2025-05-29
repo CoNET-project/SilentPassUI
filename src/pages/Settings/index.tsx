@@ -18,6 +18,8 @@ import { getPassportTitle } from '../../utils/utils';
 import Languages from '../../components/Languages';
 import { useTranslation } from 'react-i18next';
 
+import Filter from './../../components/Rules/Filter';
+
 type OptionGroup = {
   heading: string;
   items: {
@@ -35,6 +37,7 @@ type OptionGroups = OptionGroup[];
 export default function Settings() {
   const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
+  const [visible2, setVisible2] = useState(false);
   const { activePassport } = useDaemonContext();
 
   const navigate = useNavigate();
@@ -107,6 +110,7 @@ export default function Settings() {
           id: 3,
           icon: splitTunnelingIcon,
           title: t('Settings_Passcode_WebsiteFilter'),
+          action: () => setVisible2(true),
           childrenText: '',
 		  
         },
@@ -153,6 +157,7 @@ export default function Settings() {
 
       <Footer />
       <Languages visible={visible} setVisible={setVisible} />
+      <Filter visible={visible2} setVisible={setVisible2} />
     </div>
   )
 }

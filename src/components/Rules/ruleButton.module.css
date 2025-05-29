@@ -27,6 +27,20 @@
     }
 }
 .ruleCont{
+    .ruleSwitch{
+        color: #fff;
+        display: flex;
+        align-items: center;
+        label{
+            margin: 0 6px 0 0;
+        }
+        :global(.adm-switch-checkbox:before){
+            background: #d4d4d4;
+        }
+        :global(.adm-switch-checkbox){
+            background: #d4d4d4;
+        }
+    } 
     .hd{
         display: flex;
         justify-content: center;
@@ -113,5 +127,9 @@
     }
     :global(.adm-nav-bar-back) {
         color: #a4bee0;
+    }
+    :global(.adm-nav-bar-right) {
+        display: flex;
+        justify-content: flex-end;
     }
 }

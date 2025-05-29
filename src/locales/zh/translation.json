@@ -1,5 +1,15 @@
 {
     "back":"返回",
+    "add":"新增",
+    "success":"成功",
+    "confirm":"确认",
+    "cancel":"取消",
+    "filter-tip-1":"请检查格式",
+    "filter-tip-2":"当前值已经存在",
+    "filter-tip-3":"添加规则",
+    "filter-tip-4":"确定删除?",
+    "filter-placeholder-1":"请输入域名或IP",
+    "filter":"开启过滤",
 
     "faq": "常见问题",
     "faq1": "Silent Pass服务级别与相应的权益? ",

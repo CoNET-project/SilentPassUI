@@ -29,6 +29,7 @@ const Languages=({visible, setVisible}: LanguagesProps)=> {
         localStorage.lang=value;
         i18n.changeLanguage(value);
         if(value && value[0]) setDefaultConfig({locale: antdMLang[value[0] as keyof typeof antdMLang]});
+        setVisible(false)
     }
 
     return (

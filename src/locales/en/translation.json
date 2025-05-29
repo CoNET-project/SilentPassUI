@@ -1,5 +1,15 @@
 {
     "back":"Back",
+    "add":"Add",
+    "success":"Success",
+    "confirm":"Confirm",
+    "cancel":"Cancel",
+    "filter-tip-1":"Please check the format",
+    "filter-tip-2":"Current value already exists",
+    "filter-tip-3":"Add new rules",
+    "filter-tip-4":"Are you sure to delete?",
+    "filter-placeholder-1":"Please enter domain or IP",
+    "filter":"Enable filtering",
 
     "faq": "FAQ",
     "faq1": "What’s the Silent Pass service level?",

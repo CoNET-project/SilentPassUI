@@ -3,6 +3,7 @@ import { Modal,Button,Form,Input,Toast } from 'antd-mobile';
 import { AddOutline } from 'antd-mobile-icons';
 import styles from './addItem.module.css';
 import _ from 'lodash';
+import { useTranslation } from 'react-i18next';
 
 interface AddParams {
     getCustomSetting: () => void;
@@ -10,6 +11,7 @@ interface AddParams {
 const AddItem=({getCustomSetting}:AddParams)=> {
     const [visible, setVisible] = useState(false);
     const [value, setValue] = useState('');
+    const { t, i18n } = useTranslation();
 
     const handleAddItem=()=>{
         setVisible(true);
@@ -37,7 +39,7 @@ const AddItem=({getCustomSetting}:AddParams)=> {
                 if(_.some(specialList, item => _.isEqual(item.valueTag, values.address))){
                     Toast.show({
                         icon: 'fail',
-                        content: 'Current value already exists',
+                        content: t('filter-tip-2'),
                     })
                 }else{
                     specialList.push({"name":values.address,"value":values.address,"valueTag":values.address,checked:"false"});
@@ -48,7 +50,7 @@ const AddItem=({getCustomSetting}:AddParams)=> {
 
                     Toast.show({
                         icon: 'success',
-                        content: 'Success',
+                        content: t('success'),
                     })
                 }
             }else{
@@ -60,19 +62,19 @@ const AddItem=({getCustomSetting}:AddParams)=> {
 
                 Toast.show({
                     icon: 'success',
-                    content: 'Success',
+                    content: t('success'),
                 })
             }
         }else{
             Toast.show({
                 icon: 'fail',
-                content: 'Please check the format',
+                content: t('filter-tip-1'),
             })
         }
     }
     return (
         <>
-            <Button size='mini' color='primary' fill='solid' className={styles.addBtn} onClick={handleAddItem}><AddOutline /><span>Add</span></Button>
+            <Button size='mini' color='primary' fill='solid' className={styles.addBtn} onClick={handleAddItem}><AddOutline /><span>{t('add')}</span></Button>
             <Modal
                 visible={visible}
                 closeOnAction
@@ -81,7 +83,7 @@ const AddItem=({getCustomSetting}:AddParams)=> {
                 onClose={() => {setVisible(false)}}
                 className={styles.addModal}
                 content={<div className={styles.addCont}>
-                    <div className={styles.hd}>Add new rules</div>
+                    <div className={styles.hd}>{t('filter-tip-3')}</div>
                     <Form 
                         requiredMarkStyle='text-required'
                         layout='horizontal'
@@ -89,13 +91,13 @@ const AddItem=({getCustomSetting}:AddParams)=> {
                         onFinish={handleConfirm}
                         footer={
                             <>
-                                <Button block disabled={!value} type='submit' color='primary' size='middle'>Confirm</Button>
-                                <Button onClick={()=>{setVisible(false)}} className={styles.cancelBtn} block fill='outline' color='default' size='middle'>Cancel</Button>
+                                <Button block disabled={!value} type='submit' color='primary' size='middle'>{t('confirm')}</Button>
+                                <Button onClick={()=>{setVisible(false)}} className={styles.cancelBtn} block fill='outline' color='default' size='middle'>{t('cancel')}</Button>
                             </>
                         }
                     >
                         <Form.Item name='address'>
-                            <Input placeholder='Please enter domain or IP' value={value} onChange={val => {setValue(val)}} />
+                            <Input placeholder={t('filter-placeholder-1')} value={value} onChange={val => {setValue(val)}} />
                         </Form.Item>
                     </Form>
                 </div>}

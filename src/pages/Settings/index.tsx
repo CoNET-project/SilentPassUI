@@ -172,7 +172,7 @@ export default function Settings() {
                           <div className="icon-wrapper">
                             <img src={languageIcon} alt="Icon" />
                           </div>
-                          <p>系统代理</p>
+                          <p>{t('system-proxy')}</p>
                         </div>
                         <div className="children">
                           <Switch checked={switchValue} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} />

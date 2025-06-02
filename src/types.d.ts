@@ -80,6 +80,7 @@ interface Region {
 	activePassport?: freePassport;
 	vpnTimeUsedInMin?: number;
 	silentPassPassports?: passportInfo[];
+	webFilter?: boolean
   }
   
   interface SpClubReferees {
@@ -116,6 +117,7 @@ interface Region {
 	nonce: number;
 	fx168Order?: fx168_Order[];
 	upgradev2?: boolean;
+	webFilter: boolean
   };
   
   interface passportInfoFromChain {

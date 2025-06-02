@@ -159,6 +159,7 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 
 	  const isAddr = ethers.isAddress(referrer)
 	  if (!isAddr) {
+		getirDropForSPReffProcess = false
 		return false
 	  }
 
@@ -175,7 +176,7 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 	
 		const result = await postToEndpoint(getAirDropForSPReffUrl, true, sendData)
 		
-
+		getirDropForSPReffProcess = false
 		if (result?.status) {
 
 			if (airDropStatus) {
@@ -185,9 +186,10 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 			return result.amount
 		}
 
-		getirDropForSPReffProcess = false
+		
 		return false
 	  } catch (ex) {
+		getirDropForSPReffProcess = false
 		console.log(ex)
 		return false
 	  }

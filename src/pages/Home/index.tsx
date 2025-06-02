@@ -17,12 +17,10 @@ import PassportInfoPopup from "../../components/PassportInfoPopup";
 import { getServerIpAddress } from "../../api"
 import bannaer from './assets/banner.png'
 import bannaer_cn from './assets/banner_cn.png'
-import {checkFreePassportProcess} from '../../services/wallets'
 import {airDropForSP, getirDropForSP} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
 import airdropReff from './assets/airdropReff.gif'
 import { useTranslation } from 'react-i18next'
-import SimpleLoadingRing from '../../components/SimpleLoadingRing'
 
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
@@ -172,6 +170,7 @@ const Home = () => {
   }, [power]);
 
   useEffect(() => {
+	_getAllRegions()
 	let first = 0
     const listenGetAllNodes = () => {
 		
@@ -190,14 +189,10 @@ const Home = () => {
 			listenGetAllNodes()
 		  }, 1000)
 		}
-	  }
+	}
 
     listenGetAllNodes()
   }, [])
-
-  useEffect(() => {
-    _getAllRegions()
-  }, []);
 
 
   const init = async () => {
@@ -227,9 +222,6 @@ const Home = () => {
 	}
 	setAirdropProcessReff(true)
 	navigate('/wallet')
-	
-	
-
   }
 
   useEffect(() => {

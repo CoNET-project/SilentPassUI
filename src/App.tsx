@@ -114,7 +114,7 @@ function App() {
 	}
 
 	const profiles = await createOrGetWallet(secretPhrase);
-	setProfiles(profiles);
+	setProfiles(profiles)
 
 	listenProfileVer(setProfiles, setActivePassport, setMiningData);
 

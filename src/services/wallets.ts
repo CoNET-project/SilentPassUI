@@ -79,7 +79,8 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		privateKeyArmor: acc.signingKey.privateKey,
 		hdPath: acc.path,
 		index: acc.index,
-		type: "ethereum"
+		type: "ethereum",
+		webFilter: true
 	  };
 
 	  const data: any = {
@@ -1292,15 +1293,17 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 	
 	if (referrals) {
 		if (profile.spClub && typeof profile.spClub == 'object') {
-			
+			profile.referrer = profile.spClub.referrer = /^0x000/.test(referrals[0]) ? '' : referrals[0]
 			profile.spClub.totalReferees = parseInt(referrals[1][0].toString())
 			profile.spClub.referees = referrals[1][1].map((n:string) => { return { walletAddress: n, activePassport: ''}})
+			
 		} else {
+			profile.referrer = /^0x000/.test(referrals[0]) ? '' : referrals[0]
 			profile.spClub = {
 				referees: referrals[1][1].map((n:string) => n),
 				totalReferees: parseInt(referrals[1][0].toString()),
 				memberId: '',
-				referrer: ''
+				referrer: /^0x000/.test(referrals[0]) ? '' : referrals[0]
 			}
 		}
 	}

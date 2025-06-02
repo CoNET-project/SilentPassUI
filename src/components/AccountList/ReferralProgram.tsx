@@ -178,7 +178,11 @@ export default function ReferralProgram() {
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
               <p>{t('comp-accountlist-Referral-Inviter')} </p>
               {
-                  <span style={{ color: '#989899' }}>{profiles[0].referrer.substring(0,6)+'...'+profiles[0].referrer.substring(profiles[0].referrer.length - 6)}
+                  <span style={{ color: '#989899' }}>{
+						profiles[0].referrer ? 
+						profiles[0].referrer.substring(0,6)+'...'+profiles[0].referrer.substring(profiles[0].referrer.length - 6) : ''
+
+					}
                   </span>
               }
             </div>
@@ -201,7 +205,7 @@ export default function ReferralProgram() {
                 cursor: "pointer", width: "100%",
                 background: "#282930", borderRadius: "16px",
                 fontWeight: "bold",
-              }} onClick={handleSetInviter}>{isRedeemProcessLoading ? <SimpleLoadingRing /> : "Confirm"}</button>
+              }} onClick={handleSetInviter}>{isRedeemProcessLoading ? <SimpleLoadingRing /> : t('comp-comm-Confirm')}</button>
             </div>
           )
         }

@@ -9,6 +9,10 @@ import response from './proxySet.json'
 import { useTranslation } from 'react-i18next'
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { sendRule } from "../../api"
+import { refreshSolanaBalances, storeSystemData } from '../../services/wallets';
+import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "../../utils/globals"
+
+
 interface ProxySet {
   [key: string]: any[]; 
 }
@@ -138,6 +142,8 @@ const SpecialItem=({item,index,key,style,getCustomSetting}: {item:any;index: num
         </List.Item>
     )
 }
+
+
 const Filter=({visible, setVisible}:FilterProps)=> {
     const [loading, setLoading] = useState(false);
     const [searchVal, setSearchVal] = useState('');
@@ -152,12 +158,11 @@ const Filter=({visible, setVisible}:FilterProps)=> {
     const [officialList, setOfficialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
     const [regionList, setRegionList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
 	const { t, i18n } = useTranslation();
-	const { isLocalProxy} = useDaemonContext();
-    const [switchValue, setSwitchValue] = useState(true);
+	const { isLocalProxy, getWebFilter, setGetWebFilter} = useDaemonContext()
     const switchValueRef=useRef(true);
 
     useEffect(()=>{
-        getSetting();
+        getSetting()
     },[]);
 
     const rowList: Record<string, Array<{ name: string;nameCn?: string;value: string | string[];valueTag:string;checked?:string;}>>={
@@ -340,6 +345,8 @@ const Filter=({visible, setVisible}:FilterProps)=> {
 
         initCheckbox(result);
         setLoading(false);
+		setGetWebFilter(CoNET_Data?.webFilter !== undefined ? CoNET_Data.webFilter: true)
+		
     }
     
     const updateLocalSet=(A:any, B:any) =>{
@@ -420,10 +427,17 @@ const Filter=({visible, setVisible}:FilterProps)=> {
         //     return i18n.language==='en'?'Region':'地区'
         // }
     }
-    const handleChangeSwitch=(val:boolean)=>{
+    const handleChangeSwitch=async (val:boolean)=>{
         switchValueRef.current=val;
-        setSwitchValue(val);
+
+        setGetWebFilter(val);
+		if (CoNET_Data) {
+			CoNET_Data.webFilter = val
+			storeSystemData()
+		}
+		
         getSetting();
+		
     }
 
     return (
@@ -440,7 +454,7 @@ const Filter=({visible, setVisible}:FilterProps)=> {
                 {loading?<div className={styles.ruleLoading}>
                     <SpinLoading style={{ '--size': '32px' }} />
                 </div>:<div className={styles.ruleCont}>
-                    <NavBar back={t('back')} onBack={handleBack} right={<div className={styles.ruleSwitch}><label>{t('filter')}</label><Switch checked={switchValue} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} /></div>} style={{'--height': '70px'}}></NavBar>
+                    <NavBar back={t('back')} onBack={handleBack} right={<div className={styles.ruleSwitch}><label>{t('filter')}</label><Switch checked={getWebFilter} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} /></div>} style={{'--height': '70px'}}></NavBar>
                     {classify!=='all'?<div className={styles.hd}>
                         {getClassifyName(classify)}{classify==='special'?<AddItem getCustomSetting={getCustomSetting} />:''}
                     </div>:''}

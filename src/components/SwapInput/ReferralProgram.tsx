@@ -1,11 +1,12 @@
 import { useState } from 'react'
 
 import "./index.css";
+import { useTranslation } from 'react-i18next'
 
 export default function ReferralProgram() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [walletAddress, setWalletAddress] = useState('');
-
+  const { t, i18n } = useTranslation()
   return (
     <div className={`account-wrapper referral-program ${isOpen ? 'active' : ''}`}>
       {/* <div className="account-main-card" onClick={() => setIsOpen((prev) => !prev)}> */}

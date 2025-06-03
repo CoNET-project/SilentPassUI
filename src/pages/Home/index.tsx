@@ -113,7 +113,7 @@ const SystemSettingsButton = () => {
 }
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, switchValue} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
@@ -251,7 +251,7 @@ const handleTogglePower = async () => {
 
 		//		iOS
       if (window?.webkit) {
-        window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+        if(switchValue) window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
         setPower(false);
       }
 	  	//	@ts-ignore		Android
@@ -353,7 +353,7 @@ const handleTogglePower = async () => {
     }
 	const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject)
 	const base64VPNMessage = btoa(stringifiedVPNMessageObject)
-    if (window?.webkit) {
+    if (window?.webkit && switchValue) {
       window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
     }
 

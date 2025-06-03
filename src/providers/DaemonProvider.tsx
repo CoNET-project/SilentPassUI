@@ -45,9 +45,9 @@ type DaemonContext = {
   paymentKind: number,
   setPaymentKind: (val: number) => void
   successNFTID: number,
-  setSuccessNFTID: (val: number) => void,
-  selectedPlan: "12" | "1" | string,
-  setSelectedPlan: (val: "12" | "1"| string ) => void,
+  setSuccessNFTID: (val: number) => void
+  selectedPlan: "12" | "1" | string
+  setSelectedPlan: (val: "12" | "1"| string ) => void
   airdropProcess: boolean,
   setAirdropProcess: (val: boolean) => void
   setAirdropSuccess: (val: boolean) => void
@@ -58,6 +58,9 @@ type DaemonContext = {
   setAirdropProcessReff: (val: boolean) => void
   getWebFilter: boolean
   setGetWebFilter: (val:boolean) => void
+  switchValue: boolean;
+  setSwitchValue: (val: boolean) => void;
+  webFilterRef:React.MutableRefObject<boolean>;
 };
 
 type DaemonProps = {
@@ -118,10 +121,13 @@ const defaultContextValue: DaemonContext = {
   airdropSuccess: false,
   airdropTokens: 0,
   setAirdropTokens: () => {},
- airdropProcessReff: false,
+  airdropProcessReff: false,
   setAirdropProcessReff: () => {},
   getWebFilter: false,
-  setGetWebFilter: () => {}
+  setGetWebFilter: () => {},
+  switchValue: true,
+  setSwitchValue: () => {},
+  webFilterRef:{ current: false },
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -161,6 +167,9 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [airdropTokens, setAirdropTokens] = useState(0)
   const [airdropProcessReff, setAirdropProcessReff] = useState(false)
   const [getWebFilter, setGetWebFilter] = useState(false)
+  const webFilterRef=useRef(getWebFilter);
+  const [switchValue, setSwitchValue] = useState(true);
+  const firstLoad = useRef(true);
 
   useEffect(() => {
     {
@@ -169,6 +178,28 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [serverIpAddress, serverPort])
 
+  useEffect(()=>{
+    let storage = window.localStorage;
+    const systemProxy=(storage&&storage.systemProxy?JSON.parse(storage.systemProxy):true);
+    setSwitchValue(systemProxy);
+
+    const webFilter=(storage&&storage.webFilter?JSON.parse(storage.webFilter):false);
+    setGetWebFilter(webFilter);
+  },[])
+
+  useEffect(()=>{
+    if(!firstLoad.current){
+      let storage = window.localStorage;
+      storage.systemProxy=JSON.stringify(switchValue);
+    }
+    firstLoad.current=false;
+  },[switchValue])
+
+  useEffect(()=>{
+    let storage = window.localStorage;
+    webFilterRef.current=getWebFilter;
+    storage.webFilter=JSON.stringify(getWebFilter);
+  },[getWebFilter])
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions,
@@ -179,7 +210,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
-				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, setGetWebFilter }}>,
+				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, setGetWebFilter,switchValue, setSwitchValue, webFilterRef }}>,
 
       {children}
     </Daemon.Provider>

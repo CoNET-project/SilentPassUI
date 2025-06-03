@@ -41,12 +41,13 @@ export default function Settings() {
   const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [visible2, setVisible2] = useState(false);
-  const { activePassport, isLocalProxy } = useDaemonContext();
+  const { activePassport, isLocalProxy, power,switchValue, setSwitchValue } = useDaemonContext();
+
 
   const navigate = useNavigate();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
-  const [switchValue, setSwitchValue] = useState(true);
+  // const [switchValue, setSwitchValue] = useState(true);
 
   function handleChangeTheme() {
     setTheme((prev) => prev === 'light' ? 'dark' : 'light')
@@ -127,7 +128,7 @@ export default function Settings() {
 
   const handleChangeSwitch=(val:boolean)=>{
       setSwitchValue(val)
-      if(val){
+      if(val && power){
         if (window?.webkit) {
           window?.webkit?.messageHandlers["startProxy"].postMessage("")
         }

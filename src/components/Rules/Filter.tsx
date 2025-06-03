@@ -158,12 +158,11 @@ const Filter=({visible, setVisible}:FilterProps)=> {
     const [officialList, setOfficialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
     const [regionList, setRegionList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
 	const { t, i18n } = useTranslation();
-	const { isLocalProxy, getWebFilter, setGetWebFilter} = useDaemonContext()
-    const switchValueRef=useRef(true);
+	const { isLocalProxy, getWebFilter, setGetWebFilter, webFilterRef} = useDaemonContext()
 
     useEffect(()=>{
         getSetting()
-    },[]);
+    },[getWebFilter]);
 
     const rowList: Record<string, Array<{ name: string;nameCn?: string;value: string | string[];valueTag:string;checked?:string;}>>={
         'all':classifyList,
@@ -295,7 +294,9 @@ const Filter=({visible, setVisible}:FilterProps)=> {
                 }
             });
             //****************************************需要添加传递设置的代码 START****************************************
-			const stringifiedVPNMessageObject = switchValueRef.current?JSON.stringify({DOMAIN:result,IP:ipResult}):JSON.stringify({DOMAIN:[],IP:[]})
+			const stringifiedVPNMessageObject = webFilterRef.current?JSON.stringify({DOMAIN:result,IP:ipResult}):JSON.stringify({DOMAIN:[],IP:[]})
+
+            console.log(stringifiedVPNMessageObject,'stringifiedVPNMessageObjectstringifiedVPNMessageObjectstringifiedVPNMessageObject')
 			const base64VPNMessage = btoa(stringifiedVPNMessageObject)
             // console.log(stringifiedVPNMessageObject,'stringifiedVPNMessageObject'); 
 				
@@ -428,16 +429,13 @@ const Filter=({visible, setVisible}:FilterProps)=> {
         // }
     }
     const handleChangeSwitch=async (val:boolean)=>{
-        switchValueRef.current=val;
+        webFilterRef.current=val;
 
         setGetWebFilter(val);
 		if (CoNET_Data) {
 			CoNET_Data.webFilter = val
 			storeSystemData()
-		}
-		
-        getSetting();
-		
+		}		
     }
 
     return (

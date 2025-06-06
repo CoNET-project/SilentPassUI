@@ -67,7 +67,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
          * @param rpcUrl - Solana 网络 RPC URL（如：https://api.mainnet-beta.solana.com）
     */
     const transferSolanaSOL=async(fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string)=> {
-          try {
+        try {
             setSubLoading(true);
             // 解码私钥并创建 Keypair
             const fromKeypair = Keypair.fromSecretKey(Bs58.decode(fromBase58PrivateKey));
@@ -105,7 +105,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             })
 
             setTimeout(()=>{handleRefreshSolanaBalances()},20000)
-          } catch (error) {
+        } catch (error) {
             setSubLoading(false);
             Modal.alert({
                 bodyClassName:styles.failModalWrap,
@@ -118,7 +118,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                 </div>,
                 confirmText:'Close',
             })
-          }
+        }
     }
     const transferSolanaSP=async(fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string)=> {
         try {

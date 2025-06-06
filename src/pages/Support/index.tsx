@@ -9,6 +9,7 @@ import Separator from '../../components/Separator';
 import { useMemo } from 'react';
 import ProxyInfo from '../../components/ProxyInfo';
 import { useNavigate } from 'react-router-dom';
+import { Popup } from 'antd-mobile';
 
 
 type OptionGroup = {
@@ -28,7 +29,6 @@ type OptionGroups = OptionGroup[];
 
 export default function Support() {
   const navigate = useNavigate();
-
   
 
 
@@ -57,18 +57,18 @@ export default function Support() {
         // }
       ]
     },
-    // {
-    //   id: 4,
-    //   heading: "Customer service",
-    //   items: [
-    //     {
-    //       id: 5,
-    //       icon: helpIcon,
-    //       title: "Outline Service",
-    //       divId:'comm100-button-efd822ce-7299-4fda-9fc1-252dd2f01fc5'
-    //     },
-    //   ]
-    // }
+    {
+      id: 4,
+      heading: "Customer service",
+      items: [
+        {
+          id: 5,
+          icon: helpIcon,
+          title: "Customer Service",
+          action: () => {window.open('https://vue.comm100.com/chatwindow.aspx?siteId=90007504&planId=efd822ce-7299-4fda-9fc1-252dd2f01fc5#')}
+        },
+      ]
+    }
   ]), [navigate]);
 
   return (
@@ -79,23 +79,24 @@ export default function Support() {
       <div className="options">
         {
 
-          optionGroups.map((optionGroup) => optionGroup.id === 2 ? <ProxyInfo /> : (
-            <>
-              <div className="option-group">
+          optionGroups.map((optionGroup,i) => optionGroup.id === 2 ? <div key={i}><ProxyInfo /></div> : (
+              <div className="option-group" key={i}>
                 <h3>{optionGroup.heading}</h3>
                 <div>
                   {optionGroup.items.map((item, index) => (
-                    <>
+                    <div key={index}>
                       <div id={item&&item.divId?item.divId:''}><ClickableItem title={item.title} icon={item.icon} action={item?.action}>{item.childrenText && <p>{item.childrenText}</p>}</ClickableItem></div>
                       {index < optionGroup.items.length - 1 && <Separator />}
-                    </>
+                    </div>
                   ))}
                 </div>
               </div>
-            </>
           ))
         }
       </div>
+
+      
+      
 
       <Footer />
     </div>

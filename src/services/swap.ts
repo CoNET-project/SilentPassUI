@@ -1,6 +1,6 @@
 import { ethers, formatUnits, parseUnits } from "ethers"
 import { createJupiterApiClient, QuoteGetRequest } from '@jup-ag/api'
-import { Connection, PublicKey, Keypair, VersionedTransaction, } from "@solana/web3.js"
+import { Connection, PublicKey, Keypair, VersionedTransaction, Commitment } from "@solana/web3.js"
 import bs58 from "bs58"
 import {
 	globalAllNodes
@@ -77,6 +77,7 @@ export const swapTokens = async (from: string, to: string, privateKey: string, f
 	const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(from))
 	const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
 	const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed")
+
 	const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&restrictIntermediateTokens=true`)).json()
 	const { swapTransaction } = await (
 		await fetch('https://quote-api.jup.ag/v6/swap', {
@@ -113,15 +114,31 @@ export const swapTokens = async (from: string, to: string, privateKey: string, f
 		skipPreflight: true,
 		maxRetries: 2
 	})
+	//等待网络确认
+	const confirmation = await SOLANA_CONNECTION.confirmTransaction(txid, "confirmed" as Commitment);
+	console.log(confirmation,'confirmationconfirmationconfirmationconfirmationconfirmationconfirmationconfirmationconfirmation')
+    if (confirmation.value.err) {
+      return {
+        txid,
+        success: false,
+        error: confirmation.value.err,
+      };
+    }
+
+
+
+
 	const result = await getTransaction (txid, SOLANA_CONNECTION)
 	resolve (result)
+	
 })
 
 const getTransaction = (tx: string, SOLANA_CONNECTION: Connection, count = 0): Promise<false|string> => new Promise( async resolve => {
     count ++
-    const thash = await SOLANA_CONNECTION.getTransaction(tx,{ maxSupportedTransactionVersion: 0 })
+
+	const thash = await SOLANA_CONNECTION.getTransaction(tx,{ maxSupportedTransactionVersion: 0 })
     if (!thash) {
-        if (count < 6) {
+        if (count < 3) {
             return setTimeout(async () => {
                 return resolve(await getTransaction(tx, SOLANA_CONNECTION, count))
             }, 1000 * 10 )
@@ -132,6 +149,7 @@ const getTransaction = (tx: string, SOLANA_CONNECTION: Connection, count = 0): P
         return resolve (tx)
     }
     return resolve (false)
+    
 })
 
 export const Sp2SolQuote = async (amount: string) => {

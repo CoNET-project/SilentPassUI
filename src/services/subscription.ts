@@ -294,14 +294,10 @@ export const getBalanceFromPDA = async (solanaRPC_url: string, spToken: CryptoAs
 
         // ───────────── Compute “claimable” ─────────────
         const elapsed = nowTs - _startTime
-        if (elapsed <= 0) {
-            console.log("Nothing has vested yet.")
-            console.log("claimable = 0")
-            return;
-        }
+
 
         let vested: bigint;
-        if (elapsed >= releaseDuration) {
+        if (elapsed < 0 || elapsed >= releaseDuration ) {
             vested = _totalAmount
         } else {
             vested = (_totalAmount * BigInt(elapsed)) / BigInt(releaseDuration)

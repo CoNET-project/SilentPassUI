@@ -25,7 +25,7 @@
     "faq1-9": "终端数量",
     "faq2": "Proxy 和VPN服务",
 
-	"comp-comm-wallet-address": "钱包地址",
+	"comp-comm-wallet-address": "主钱包地址",
 	"comp-comm-wallet-address-1": "Solana 钱包地址",
 	"comp-comm-receive": "收款",
 	"comp-comm-receive-address": "收款地址",
@@ -33,7 +33,7 @@
 	"comp-comm-addr": "地址",
 	"comp-comm-copy": "复制",
 	"comp-comm-copied": "已复制",
-	"comp-comm-privatekey": "钱包私钥(请妥善保存)",
+	"comp-comm-privatekey": "私钥(请勿泄漏)",
 	"comp-comm-RecoveryPhrase": "账号恢复助记词",
 	"comp-comm-Send": "转账",
 	"comp-comm-Refresh": "刷新",
@@ -55,7 +55,7 @@
 	"comp-comm-backToWallet": "返回",
 	"comp-comm-LoadingRing": "正在处理中...",
 
-	"comp-PassportInfoPopup-1": "SP通证",
+	"comp-PassportInfoPopup-1": "Silent Pass 通行证",
 	"comp-PassportInfoPopup-2": "有效期限",
 
 	"comp-accountlist-main-wallet": "主钱包 (CoNET)",

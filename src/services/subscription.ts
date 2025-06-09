@@ -4,13 +4,38 @@ import {
 
 import {
 	payment_endpoint,
-	apiv4_endpoint
-} from "../utils/constants";
+	apiv4_endpoint,
+	
+} from "../utils/constants"
 
+import contracts from "../utils/contracts";
+import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
+import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
 import {ethers} from 'ethers'
-import { CoNET_Data } from "../utils/globals";
+import { CoNET_Data } from "../utils/globals"
+import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
+import Bs58 from 'bs58'
+import {
+  AnchorProvider,
+  Program,
+  BN,
+  web3,
+  Wallet
+} from "@coral-xyz/anchor"
+
+import {allNodes} from './mining'
+
+interface CompatibleWallet {
+	publicKey: PublicKey;
+	signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T>;
+	signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]>;
+}
+
+
+
 const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
 const waitingPayUrl = `${payment_endpoint}cryptoPayment_waiting`
+const TOKEN_MINT = new web3.PublicKey(contracts.SPToken.address)
 let listening: NodeJS.Timeout|null = null
 
 export const getCryptoPay = async (cryptoName: string, plan: string): Promise<null|{transferNumber: string, wallet: string}> => {
@@ -21,16 +46,21 @@ export const getCryptoPay = async (cryptoName: string, plan: string): Promise<nu
 	if (!profiles) {
 		return null
 	}
-	
+
+	const message = JSON.stringify({ walletAddress:  profiles[0].keyID.toLowerCase(), solanaWallet: profiles[1].keyID, data: {cryptoName, plan}})
+	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+    }
 	try {
-		const result = await postToEndpoint(getCryptoPayUrl, true, { agentWallet: profiles[0].referrer, cryptoName, plan, solana: profiles[1].keyID, walletAddress: profiles[0].keyID.toLowerCase()})
+		const result = await postToEndpoint(getCryptoPayUrl, true, sendData)
 		return result
 	} catch(ex) {
 		console.log("EX: ", ex)
 		return null
 	}
 }
-
 
 const _waitingPay = async (wallet: string) => {
 
@@ -70,9 +100,9 @@ export const clearWaiting = () => {
 }
 
 const airDropForSPUrl = `${apiv4_endpoint}airDropForSP`
-
+const SP_tokenDecimals = 6
 let airDropForSPProcess = false
-
+const PROGRAM_ID = new web3.PublicKey(anchor_linear_vesting_del.address)
 
 
 let airDropStatus: null | airDropStatus = null
@@ -193,4 +223,127 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 		console.log(ex)
 		return false
 	  }
+}
+
+interface CompatibleWallet {
+  publicKey: PublicKey
+  signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T>
+  signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]>
+  payer: web3.Keypair
+}
+
+export const getBalanceFromPDA = async (solanaRPC_url: string, spToken: CryptoAsset, VESTING_ID = 0) => {
+    if (!CoNET_Data?.profiles||!allNodes) {
+		return
+	}
+	
+	const BENEFICIARY_privatekey =  CoNET_Data.profiles[1].privateKeyArmor
+	const BENEFICIARY_bs58 = Bs58.decode(BENEFICIARY_privatekey)
+	const BENEFICIARY =  web3.Keypair.fromSecretKey(BENEFICIARY_bs58)
+       // STEP 1: Derive PDA
+
+    const [vestingPda] = await PublicKey.findProgramAddressSync([
+		Buffer.from("vesting"), 
+		BENEFICIARY.publicKey.toBuffer(), 
+		TOKEN_MINT.toBuffer(), 
+		Uint8Array.of(VESTING_ID)],
+        PROGRAM_ID
+    )
+
+    const anchorConnection = new web3.Connection(solanaRPC_url)
+
+	const anchorWallet: CompatibleWallet = {
+		publicKey: BENEFICIARY.publicKey,
+		payer: BENEFICIARY,
+		signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
+			return tx
+		},
+		signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> => {
+			// Sign logic (again, for mock you can return txs unchanged)
+			return txs;
+		}
+	}
+
+    const anchorProvider = new AnchorProvider(anchorConnection, anchorWallet, {
+        preflightCommitment: 'confirmed'
+    })
+
+
+    const program = new Program(anchor_linear_vesting_del as AnchorLinearVesting, anchorProvider)
+    
+    // 3. Fetch balance
+    try {
+		//@ts-ignore
+        const vestingAccount =  await program.account.vestingAccount.fetch(vestingPda)
+		
+
+        // ───────────── Get “now” timestamp ─────────────
+        const latestSlot = await anchorProvider.connection.getSlot()
+        const nowTs = await anchorProvider.connection.getBlockTime(latestSlot)
+        if (nowTs === null) {
+            throw new Error("Failed to fetch block time")
+        }
+
+        // ───────────── Convert BN → BigInt/number ─────────────
+        const _startTime = vestingAccount.startTime.toNumber() // UNIX seconds
+        const releaseDuration = vestingAccount.releaseDuration.toNumber() // seconds
+
+        // BN → BigInt:
+        const _totalAmount = BigInt(vestingAccount.totalAmount.toString())
+        const _claimedAmount = BigInt(vestingAccount.claimedAmount.toString())
+
+        // ───────────── Compute “claimable” ─────────────
+        const elapsed = nowTs - _startTime
+        if (elapsed <= 0) {
+            console.log("Nothing has vested yet.")
+            console.log("claimable = 0")
+            return;
+        }
+
+        let vested: bigint;
+        if (elapsed >= releaseDuration) {
+            vested = _totalAmount
+        } else {
+            vested = (_totalAmount * BigInt(elapsed)) / BigInt(releaseDuration)
+        }
+
+        const _claimableAmount = vested > _claimedAmount ? vested - _claimedAmount : BigInt(0)
+		const claimableAmount = parseFloat(ethers.formatUnits(_claimableAmount, SP_tokenDecimals))
+		const totalAmount = parseFloat(ethers.formatUnits(_totalAmount, SP_tokenDecimals))
+		const claimedAmount = parseFloat(ethers.formatUnits(_claimedAmount, SP_tokenDecimals))
+		const startTime = new Date(_startTime * 1000)
+		const lockedAmount = totalAmount-claimedAmount
+        console.log("─ VestingAccount data ─────────────────")
+        console.log("startTime (unix):", startTime)
+        console.log("releaseDuration:", releaseDuration, "sec")
+        console.log("totalAmount (raw):", totalAmount)
+        console.log("claimedAmount (raw):", claimedAmount)
+        console.log("Now (unix):", new Date(nowTs*1000))
+        console.log("Elapsed (sec):", elapsed)
+        console.log("Vested so far (raw):", ethers.formatUnits(vested, SP_tokenDecimals))
+        console.log("Claimable now (raw):", )
+		if (!spToken?.staking) {
+			spToken.staking = []
+		}
+		
+		spToken.staking[VESTING_ID] = {
+			totalAmount,
+			startTime,
+			claimedAmount,
+			releaseDuration,
+			claimableAmount,
+			lockedAmount 
+		}
+
+		spToken.balance1 = spToken.balance1 || 0
+		spToken.balance1 +=  lockedAmount
+		spToken.balance = (spToken.balance1 >= 1_000_000) ? (spToken.balance1/1_000_000).toFixed(2) + 'M' : spToken.balance1.toFixed(2)
+
+        console.log(`success!`)
+		await getBalanceFromPDA(solanaRPC_url, spToken, ++VESTING_ID )
+
+    } catch (ex) {
+        console.log(`getBalanceFromPDA Error!`)
+    }
+
 }

@@ -12,7 +12,7 @@ import EducationHub from './assets/education-hub.png';
 import ExclusivePerks from './assets/exclusive-perks.png';
 import LoyaltyDiscounts from './assets/loyalty-discounts.png';
 import ReferralProgram from './assets/referral-program.png';
-import { ReactComponent as GlodBadge } from './assets/gold-badge.svg'
+import { ReactComponent as CrownBadge } from './assets/crown.svg'
 import bnb_token from './assets/bnb_token.png'
 import bnb_usdt from './assets/bnb_usdt_token.png'
 import SimpleLoadingRing from '../SimpleLoadingRing';
@@ -130,7 +130,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	setShowBuyClusloading(true)
 	setShowBuyClusBlue(false)
 	setCryptoName(token)
-	const kkk = await getCryptoPay(token, '3')
+	const kkk = await getCryptoPay(token, '3100')
 
 	setShowBuyClusloading(false)
 	if (!kkk?.wallet||!kkk?.transferNumber) {
@@ -196,13 +196,14 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
   	
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px"}}>
-		<div className="passport-options" style={{gap:"2px"}}>
+		<div className="passport-options" style={{gap:"2px", alignSelf: "center"}}>
 			<p>
 				{t('comp-accountlist-SpClub-detail-1')}
 			</p>
 			<p>
 				{t('comp-accountlist-SpClub-detail-2')}
 			</p>
+			<p style={{marginTop: "1rem"}}></p>
 			<p>
 				{t('comp-accountlist-SpClub-detail-3')}
 			</p>
@@ -211,6 +212,12 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 			</p>
 			<p>
 				{t('comp-accountlist-SpClub-detail-5')}
+			</p>
+			<p>
+				{t('comp-accountlist-SpClub-detail-6')}
+			</p>
+			<p>
+				{t('comp-accountlist-SpClub-detail-7')}
 			</p>
 			<div className="redeem-divider">
 				<div className="line"></div>
@@ -277,7 +284,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 						<>
 							<div className="option-list" style={{marginTop: "1rem"}}>
 								<button className='option selected'>
-									<GlodBadge style={{width: "60px"}}/>
+									<CrownBadge style={{width: "120px"}}/>
 										<div style={{display: "flex", flexDirection: "column", marginLeft: "-20px", width: "20rem"}}>
 											<span style={{textAlign: "left"}}>{t('comp-RedeemPassport-1device')}</span>
 											<span style={{textAlign: "left"}}>{t('passport_unlimit')}, {t('passport_unlimitBandweidth')}</span>
@@ -290,7 +297,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 								</button>
 							</div>
 							<div id="outer">
-								{/* <div className="inner" style={{marginRight: "1rem"}}>
+								<div className="inner" style={{marginRight: "1rem"}}>
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BNB')}>
 										<img src = {bnb_token} className="button_img"/>
 									</button>
@@ -300,7 +307,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 										<img src = {bnb_usdt} className="button_img"/>
 									</button>
 								</div>
-								<div className="inner" style={{marginRight: "1rem"}}>
+								{/* <div className="inner" style={{marginRight: "1rem"}}>
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('TRON TRX')}>
 										<QuotesTx style={{width: '26px', height: '26px'}}/>
 									</button>

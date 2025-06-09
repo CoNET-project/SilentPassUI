@@ -71,6 +71,17 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
         }, 2000)
     }
 
+	const totalLocked = (token: CryptoAsset) => {
+		if (!token?.staking) {
+			return 0
+		}
+		let total = 0
+		token.staking.forEach(n => {
+			total += n.totalAmount - n.claimedAmount
+		})
+		return total
+	}
+
     async function handleRefreshSolanaBalances() {
 		setAirdropSuccess(false)
 		setAirdropProcess(false)
@@ -145,9 +156,9 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                     <div className="info-card">
                         <div className="info-wrapper">
                             <div className='token-assets-title'>
-                                <p className='title'>{t('comp-accountlist-assets')}</p>
+                                <p style={{textAlign: "left"}} className='title'>{t('comp-accountlist-assets-1')}</p>
                             </div>
-                            <div>
+                            {/* <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <ConetToken />
                                     <p>$CONET</p>
@@ -160,7 +171,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                                     <p>$ETH</p>
                                 </div>
                                 <p>{profiles?.[0]?.tokens?.conet_eth?.balance || (0.0).toFixed(6)}</p>
-                            </div>
+                            </div> */}
                         </div>
                         {
                             !simplifiedView && (
@@ -255,7 +266,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                 <div className="info-card">
                     <div className="info-wrapper">
                         <div className='token-assets-title'>
-                            <p className='title'>{t('comp-accountlist-assets')} </p>
+                            <p className='title'>{t('comp-accountlist-assets-2')} </p>
                             {renderRefreshButton()}
                         </div>
                         
@@ -276,10 +287,26 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                                         }
                                     </div>
                                     {
-                                        !simplifiedView && 
-                                            <div className='asset-second-line'>
+                                        !simplifiedView &&
+										<>
+											<div className='asset-second-line'>
                                                 <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)}</p>
+												
                                             </div>
+											{
+												profiles?.[1]?.tokens?.sp?.staking?.length > 0 &&
+												<>
+													<div className='asset-second-line'>
+														<p style={{color: "#6c4949"}}>{totalLocked(profiles[1].tokens.sp).toFixed(2)} 🔒</p>
+													</div>
+												</>
+												
+												
+											}
+											
+										</>
+                                            
+											
                                     }
                                 </div>
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />

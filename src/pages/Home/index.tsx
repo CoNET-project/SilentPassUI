@@ -442,8 +442,11 @@ const handleTogglePower = async () => {
 			</div>
 
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
-
-            <CopyProxyInfo />
+			  {
+				isLocalProxy &&
+				<CopyProxyInfo />
+			  }
+            
 
             {/*{
               isLocalProxy && power && (
@@ -453,9 +456,11 @@ const handleTogglePower = async () => {
 
             {!isConnectionLoading &&
               <RegionSelector
+				
                 title={allRegions?.[sRegion]?.country}
                 regionCode={allRegions?.[sRegion]?.code}
                 showArrow={!power}
+				isLocalServer={isLocalProxy}
                 action={() => !power && navigate("/regions")}
               />
             }

@@ -141,7 +141,7 @@ export const getRemainingTime = (timestamp: number, day: string, hour: string): 
   const diff = timestamp - now;
 
   if (diff <= 0) return "00:00:00";
-
+ 
   const days = Math.floor(diff / 86400);
   const hours = Math.floor((diff % 86400) / 3600);
   const minutes = Math.floor((diff % 3600) / 60);
@@ -162,7 +162,7 @@ export const getRemainingTime = (timestamp: number, day: string, hour: string): 
 
 export const isPassportValid = (expires: number | undefined) => {
   if (!expires) return false;
-  if (expires > 32503690800000) return true;
+  if (expires > 4900000000) return true;
 
   const now = Math.floor(Date.now());
   const expiresDate = new Date(expires * 1000);
@@ -193,7 +193,7 @@ export const parseQueryParams = (queryString: string) => {
   return params;
 };
 
-export const getPassportTitle = (passportInfo: any, Freemium: string, Guardian: string, Annually: string, Quarter: string, Monthly: string) => {
+export const getPassportTitle = (passportInfo: any, Freemium: string, Guardian: string, Annually: string, Quarter: string, Monthly: string, Infinite: string) => {
 	if (!passportInfo|| parseInt(passportInfo.nftID) < 100) {
 		return "..."
 	}
@@ -202,10 +202,12 @@ export const getPassportTitle = (passportInfo: any, Freemium: string, Guardian: 
 	return Freemium;
   }
 
-  if (passportInfo?.expires > 32503690800000)
-    return Guardian;
+  if (passportInfo?.expires > 32503690800000 ) {
+	return Guardian;
+  }
+  if (passportInfo.expiresDays > 366) return Infinite
 
-  if (passportInfo.expiresDays > 100) return Annually
+  if (passportInfo.expiresDays > 100 ) return Annually
 
   if (passportInfo.expiresDays > 90) return Quarter
 
@@ -213,7 +215,7 @@ export const getPassportTitle = (passportInfo: any, Freemium: string, Guardian: 
 };
 
 export const getExpirationDate = (passportInfo: any, unlimit: string, not_used: string, day: string, hour: string) => {
-  if (passportInfo?.expires && passportInfo?.expires > 32503690800000) {
+  if (passportInfo?.expires && passportInfo?.expires > 4900000000) {
     return unlimit;
   }
 

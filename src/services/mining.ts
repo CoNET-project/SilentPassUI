@@ -181,7 +181,7 @@ const getAllNodes = async (
       if (node?.ip_addr) {
         entryNodes.push(node);
       }
-    } while (entryNodes.length < 5);
+    } while (entryNodes.length < 10);
     setClosestRegion(entryNodes);
     callback(allNodes);
 	storageAllNodes(allNodes)

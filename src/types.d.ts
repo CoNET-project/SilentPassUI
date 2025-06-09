@@ -24,7 +24,14 @@ interface Region {
 	publicKeyObj?: any;
 	privateKeyObj?: any;
   };
-  
+  interface Staking {
+	totalAmount: number
+	claimedAmount: number
+	startTime: Date
+	releaseDuration: number
+	claimableAmount: number
+	lockedAmount: number
+  }
   interface CryptoAsset {
 	balance: string;
 	network: string;
@@ -34,6 +41,7 @@ interface Region {
 	unlocked?: boolean;
 	usd?: string
 	balance1?: number
+	staking?: Staking[]
   }
   
   interface conet_tokens {

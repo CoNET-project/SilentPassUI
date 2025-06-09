@@ -13,7 +13,7 @@ const ActivePassportInfo = () => {
     <div className="main-card">
       <div style={{ textAlign: 'start' }}>
         <span>{t('comp-PassportInfoPopup-1')}</span>
-        {activePassport ? <p>{getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))}</p> : <Skeleton width="120px" height="32px" />}
+        {activePassport ? <p>{getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'))}</p> : <Skeleton width="120px" height="32px" />}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'end' }}>
         <span>{t('comp-PassportInfoPopup-2')}</span>

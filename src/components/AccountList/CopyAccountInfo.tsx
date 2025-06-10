@@ -57,15 +57,16 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
     }
     return wallet?.keyID;
   }
-
+//	profiles?.[1]?.tokens?.sp?.balance
   return (
+	
     <>
       <div className={styles.copyDiv}>
         {wallet?.keyID ?
           <>
             <div className={styles.copyDivLt}>
               <div className={styles.copyText}>
-                <p>{t('comp-comm-wallet-address')} </p>
+                <p>{t(/^0x/.test(wallet?.keyID) ? 'comp-comm-wallet-address': 'comp-comm-wallet-address-1')} </p>
                 {
                   isAddressHidden ?
                     <div style={{ filter: 'blur(3px)' }}>

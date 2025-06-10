@@ -57,18 +57,18 @@ export default function Support() {
         // }
       ]
     },
-    // {
-    //   id: 4,
-    //   heading: "Customer service",
-    //   items: [
-    //     {
-    //       id: 5,
-    //       icon: helpIcon,
-    //       title: "Customer Service",
-    //       action: () => {window.open('https://vue.comm100.com/chatwindow.aspx?siteId=90007504&planId=efd822ce-7299-4fda-9fc1-252dd2f01fc5#')}
-    //     },
-    //   ]
-    // }
+    {
+      id: 4,
+      heading: "Customer service",
+      items: [
+        {
+          id: 5,
+          icon: helpIcon,
+          title: "Customer Service",
+          action: () => {window.open('https://vue.comm100.com/chatwindow.aspx?siteId=90007504&planId=efd822ce-7299-4fda-9fc1-252dd2f01fc5#')}
+        },
+      ]
+    }
   ]), [navigate]);
 
   return (

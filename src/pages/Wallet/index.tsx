@@ -11,14 +11,14 @@ import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
 import { useDaemonContext } from '../../providers/DaemonProvider'
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from 'react-i18next'
-import zhCN from 'antd-mobile/es/locales/zh-CN';
-import enUS from 'antd-mobile/es/locales/en-US';
+import crown from './assets/crown_icon.gif'
 
 export default function Wallet() {
   const navigate = useNavigate()
   const { profiles, isIOS } = useDaemonContext()
   const [openClub, setOpenClub] = useState(true)
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
+  const hasCrownActive = Number(profiles?.[0]?.activePassport?.expires) > 4900000000;
   const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7;
   const { t, i18n } = useTranslation()
 
@@ -26,8 +26,8 @@ export default function Wallet() {
     <div className="page-container">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
         <h1>{t('wallet_title')}</h1>
-        { !!profiles?.[0]?.activePassport?.nftID && (
-          hasGuardianActive ? <GoldBadge /> : !freePassportActive && <BlueBadge />
+        { profiles?.[0]?.activePassport?.nftID && (
+          hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <img src={crown} width="40rem"/> : !freePassportActive && <BlueBadge />
         )}
       </div>
 

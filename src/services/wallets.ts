@@ -18,7 +18,9 @@ import {
   paypal_endpoint,
   changeRPC,
   ethProvider
-} from "../utils/constants";
+} from "../utils/constants"
+
+import {getBalanceFromPDA} from './subscription'
 
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
@@ -717,7 +719,7 @@ const refreshSolanaBalances = async (
 			}
 			if ( typeof solanaProfile.tokens.sol?.balance1 === 'number') {
 				const sol_usd = solanaProfile.tokens.sol.balance1 * solPrice
-				solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(2) + 'M' : sol_usd.toFixed(2)
+				solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(4) + 'M' : sol_usd.toFixed(4)
 			}
 			
 
@@ -739,15 +741,17 @@ const refreshSolanaBalances = async (
 					};
 				}
 			}
+
+			await getBalanceFromPDA(solanaRPC_url, solanaProfile.tokens.sp)
 			if ( typeof solanaProfile.tokens.sp?.balance1 === 'number') {
 				const sp_usd = solanaProfile.tokens.sp.balance1 / spPrice
-				solanaProfile.tokens.sp.usd = sp_usd  >= 1_000_000 ? (sp_usd/1_000_000).toFixed(2) + 'M' : sp_usd.toFixed(2)
+				solanaProfile.tokens.sp.usd = sp_usd  >= 1_000_000 ? (sp_usd/1_000_000).toFixed(4) + 'M' : sp_usd.toFixed(4)
 			}
 			
 
 
 			const temp = CoNET_Data;
-
+			
 			if (temp) {
 				temp.profiles[1] = {
 					...temp.profiles[1],
@@ -760,7 +764,7 @@ const refreshSolanaBalances = async (
 				
 				setCoNET_Data(temp);
 			}
-
+	
 	reflaseSolanaBalancesProcess = false
 
 	return true;

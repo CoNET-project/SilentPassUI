@@ -22,7 +22,7 @@ export default function FourthStep({ gasFee, selectedNftId }: FourthStep) {
       </div>
       <div className="purchase-details">
         <div className="detail">
-          <p>{getPassportTitle(choosenPassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))} Passport</p>
+          <p>{getPassportTitle(choosenPassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'))} Passport</p>
           <p>1</p>
         </div>
         <div className="detail">

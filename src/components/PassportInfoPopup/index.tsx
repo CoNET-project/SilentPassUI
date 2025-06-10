@@ -10,7 +10,7 @@ const PassportInfoPopup = () => {
 	const { t, i18n } = useTranslation()
   const navigate = useNavigate();
 
-  const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'));
+  const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'));
 
   return isPassportInfoPopupOpen ? (
     <div className="home-popup-backdrop" onClick={() => setIsPassportInfoPopupOpen(false)}>

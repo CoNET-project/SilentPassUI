@@ -6,14 +6,14 @@ import Skeleton from '../Skeleton';
 import SPClubRewardTab from '../SPClubRewardTab'
 import { ethers } from 'ethers'
 import {getirDropForSPReff} from '../../services/subscription'
-import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
-import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { getPassportTitle, getExpirationDate } from '../../utils/utils';
 import { currentPageInvitees, setCurrentPageInvitees } from '../../utils/globals';
 import { getRefereesPage } from '../../services/wallets'
 import SimpleLoadingRing from '../SimpleLoadingRing'
 import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
 import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
+import crown from './assets/crown_icon.gif';
+import { ReactComponent as Crown } from './assets/crown.svg';
 import { useTranslation } from 'react-i18next'
 
 const SP_EARNED_FROM_REFERRAL = 10
@@ -41,6 +41,7 @@ export default function ReferralProgram() {
   const nft = parseInt(profiles?.[0]?.activePassport?.nftID)
   const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour')) === '00:00:00' ? true : false
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
+  const hasCrownActive = Number(profiles?.[0]?.activePassport?.expires) > 4900000000;
   const freePassportActive = nft > 0 && Number(profiles[0].activePassport.expiresDays) <= 7 && Number(profiles[0].activePassport.expiresDays) > 0;
 
   const setTokenGraph = () => {
@@ -156,9 +157,9 @@ export default function ReferralProgram() {
 	  }}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
-          <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive ? '#EFBF04': 'rgb(154,196,229)'}}>{t('comp-accountlist-SpClub-detail3')} {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
+          <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive||hasCrownActive ? '#EFBF04': 'rgb(154,196,229)'}}>{t('comp-accountlist-SpClub-detail3')} {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
 		  { !freePassportActive && !expiration && (
-			hasGuardianActive ? <GoldBadge /> : <BlueBadge />)
+			hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <Crown width="3rem" /> : <BlueBadge /> )
 		  }
           <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
         </div>

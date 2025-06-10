@@ -19,7 +19,7 @@ export default function SecondStep({ selectedNftId, updateCounter, gasFee }: Sec
   const { profiles } = useDaemonContext();
   const { t, i18n } = useTranslation()
   const choosenPassport = CoNET_Data?.profiles[0].silentPassPassports?.find((passport) => passport.nftID === Number(selectedNftId));
-  const passTitle = getPassportTitle(choosenPassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))
+  const passTitle = getPassportTitle(choosenPassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'))
   return (
     <>
       <div className="transaction-details">

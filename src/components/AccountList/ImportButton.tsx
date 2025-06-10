@@ -1,5 +1,5 @@
 import {useState,useRef,useEffect} from 'react';
-import { Popup,NavBar,Button,TextArea } from 'antd-mobile';
+import { Popup,NavBar,Button,TextArea,Toast } from 'antd-mobile';
 import { ExclamationTriangleOutline } from 'antd-mobile-icons';
 import styles from './importButton.module.css';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +10,7 @@ import { CoNET_Data, setCoNET_Data, globalAllNodes } from "./../../utils/globals
 import { getCurrentPassportInfoInChain } from "./../../services/wallets";
 import { getAssociatedTokenAddress, getAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { useDaemonContext } from "./../../providers/DaemonProvider";
+import { refreshSolanaBalances, storeSystemData } from './../../services/wallets';
 
 interface SendParams {
     type: string; 
@@ -60,30 +61,25 @@ const ImportButton=({  })=> {
             const privateKey = value;
             const wallet = Keypair.fromSecretKey(bs58.decode(privateKey));
             const publicKey = wallet.publicKey.toBase58();
-            // Solana主网连接
-            const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
-            const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed");
+            
             setLoading(true);
-            // 查询 SOL 余额
-            const solBalanceLamports = await SOLANA_CONNECTION.getBalance(wallet.publicKey);
-            const solBalance = solBalanceLamports / 1e9;
 
             const tmpData = _.cloneDeep(CoNET_Data);
-
-
-            tmpData.profiles[1].tokens.sol.balance = solBalance.toFixed(6);
-            tmpData.profiles[1].tokens.sol.balance1 = solBalance;
-
-
+            tmpData.profiles[1].privateKeyArmor = privateKey;
             tmpData.profiles[1].keyID = publicKey;
             tmpData.profiles[1].type = "solana";
 
             setCoNET_Data(tmpData);
-            setLoading(false);
 
-            console.log(CoNET_Data,'CoNET_Data')
-            // const info = await getCurrentPassportInfoInChain(CoNET_Data?.profiles[1]?.keyID);
-            // console.log(info,'infoinfoinfoinfoinfoinfoinfo')
+            storeSystemData()
+            await refreshSolanaBalances();
+
+            Toast.show({
+                icon: 'success',
+            });
+            setValue('');
+
+            setLoading(false);
             setVisible(false);
         }
     }

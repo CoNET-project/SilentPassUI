@@ -124,7 +124,7 @@ export default function Settings() {
     },
   ]), [visible, navigate ]);
 
-  const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'))
+  const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'))
 
   const handleChangeSwitch=(val:boolean)=>{
       setSwitchValue(val)

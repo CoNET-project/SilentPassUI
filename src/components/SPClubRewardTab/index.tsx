@@ -82,6 +82,8 @@ export default function SPClubRewardTab({ setTokenGraph, quotation, animation }:
   return (
     <div style={{width:"100%"}}>
       <div className="token-list">
+		<p style={{}}>{t('comp-SPClubRewardTab-detail')}</p>
+		
         {tokens.map((token, index) => (
           <TokenCard key={index} token={token} action={() => setTokenGraph(token.currency)} />
         ))}

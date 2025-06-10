@@ -133,6 +133,7 @@ export default function ReferralProgram() {
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
           <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive||hasCrownActive ? '#EFBF04': 'rgb(154,196,229)'}}>{t('comp-accountlist-SpClub-detail3')} {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
+		  
 		  { !freePassportActive && !expiration && (
 			hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <Crown width="3rem" /> : <BlueBadge /> )
 		  }
@@ -145,9 +146,14 @@ export default function ReferralProgram() {
 				(freePassportActive || expiration) &&
 				<p style={{padding:'1rem', color: 'darkred'}}>{t('comp-accountlist-Referral-onlySubscribers')}</p>
 			}
-        <div className="copy-div">
-			
-          {
+		<div style={{ padding: "1rem 1rem 0rem 1rem"}}>
+          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>{t('comp-accountlist-Referral-copy')}</p>
+        </div>
+		<div className="copy-div">
+			<div>
+				<p>{t('comp-accountlist-Referral-detail')}</p>
+			</div>
+          {	
 			
 		  	profiles?.[0]?.keyID ?
             <>
@@ -170,9 +176,7 @@ export default function ReferralProgram() {
           }
         </div>
 
-        <div style={{ padding: "0 16px", marginBottom: "32px" }}>
-          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>{t('comp-accountlist-Referral-copy')}</p>
-        </div>
+        
 
         {
           profiles?.[0]?.referrer ? (

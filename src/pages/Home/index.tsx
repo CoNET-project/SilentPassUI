@@ -15,8 +15,8 @@ import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 import { getServerIpAddress } from "../../api"
-import bannaer from './assets/banner.png'
-import bannaer_cn from './assets/banner_cn.png'
+import bannaer from './assets/640Banner.gif'
+import bannaer_cn from './assets/banner-cn.gif'
 import {airDropForSP, getirDropForSP} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
 import airdropReff from './assets/airdropReff.gif'

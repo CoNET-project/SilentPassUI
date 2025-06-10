@@ -34,14 +34,12 @@ interface CompatibleWallet {
 
 
 const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
-const waitingPayUrl = `${payment_endpoint}cryptoPayment_waiting`
+
 const TOKEN_MINT = new web3.PublicKey(contracts.SPToken.address)
-let listening: NodeJS.Timeout|null = null
+
 
 export const getCryptoPay = async (cryptoName: string, plan: string): Promise<null|{transferNumber: string, wallet: string}> => {
-	if (listening) {
-		clearTimeout(listening)
-	}
+	
 	const profiles = CoNET_Data?.profiles
 	if (!profiles) {
 		return null
@@ -62,42 +60,13 @@ export const getCryptoPay = async (cryptoName: string, plan: string): Promise<nu
 	}
 }
 
-const _waitingPay = async (wallet: string) => {
 
-	try {
-		const result = await postToEndpoint(waitingPayUrl, true, { wallet })
-		return result
-	} catch(ex) {
-		console.log("EX: ", ex)
-		return false
-	}
-}
-
-export const waitingPaymentReady = (wallet: string): Promise<any> => new Promise(async resolve => {
-	if (listening) {
-		clearTimeout(listening)
-	}
-	const status = await _waitingPay(wallet)
-	if (!status) {
-		return resolve(false)
-	}
-	if (status.status ===1) {
-		return listening = setTimeout(async () => {
-			return resolve(await waitingPaymentReady (wallet))
-		}, 15 * 1000)
-	}
-	resolve(status)
-})
 
 export const checkWallet = (wallet: string) => {
 	return ethers.isAddress(wallet)
 }
 
-export const clearWaiting = () => {
-	if (listening) {
-		clearTimeout(listening)
-	}
-}
+
 
 const airDropForSPUrl = `${apiv4_endpoint}airDropForSP`
 const SP_tokenDecimals = 6

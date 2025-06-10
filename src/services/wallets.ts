@@ -1178,8 +1178,6 @@ const scan_erc20_balance: (
   });
 
 
-
-
 const scanCONETDepin = async (walletAddr: string) => {
 	return await scan_erc20_balance(
 	  walletAddr,
@@ -1205,6 +1203,7 @@ const scanConetETH = async (walletAddr: string) => {
 const scanETH = async (walletAddr: string) => {
 	return await scan_natural_balance(walletAddr, ethProvider);
 };
+
 const ReferralsContract = new ethers.Contract(contracts.Referrals.address, contracts.Referrals.abi, conetDepinProvider)
 const getReferrals = async (key: string) => {
 
@@ -1229,6 +1228,7 @@ const getSPClubPoint = async (key: string) => {
 		return null
 	}
 }
+
 const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
   const key = profile.keyID;
 
@@ -1261,20 +1261,6 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 		name: "conetDepin",
 	  };
 	}
-
-	// if (profile.tokens?.eth) {
-	//   profile.tokens.eth.balance =
-	// 	eth === false ? "" : parseFloat(ethers.formatEther(eth)).toFixed(6);
-	// } else {
-	//   profile.tokens.eth = {
-	// 	balance:
-	// 	  eth === false ? "" : parseFloat(ethers.formatEther(eth)).toFixed(6),
-	// 	network: "ETH",
-	// 	decimal: 18,
-	// 	contract: "",
-	// 	name: "eth",
-	//   };
-	// }
 
 	if (profile.tokens?.conet_eth) {
 	  profile.tokens.conet_eth.balance =
@@ -1337,119 +1323,19 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
   return true;
 };
 
-/* const checkApprovedForAll = async (wallet: ethers.Wallet) => {
-	const passport_contract = new ethers.Contract(contracts.testPassport.address, contracts.testPassport.abi, wallet)
-	try {
-		const approved = await passport_contract.isApprovedForAll(wallet.address, contracts.distributor.address)
-		if (!approved) {
-			const tx = await passport_contract.setApprovalForAll(contracts.distributor.address, true)
-			await tx.wait()
-		}
-	} catch (ex) {
-		return false
-	}
-	return true
-}
-
-const redeemProcess = async(id: number, monthly: boolean) => {
-	if (!CoNET_Data?.profiles[0]) {
-		return null;
-	}
-	const profile = CoNET_Data.profiles[0]
-	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetProvider)
-	if (!await checkApprovedForAll(wallet)) {
-		return null
-	}
-	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
-	const RedeemCode = uuid62.v4()
-	const encrypto = await aesGcmEncrypt(RedeemCode, profile.privateKeyArmor)
-	const hash = ethers.id(encrypto)
-	try {
-		const tx = await contract_distributor._generatorCode(monthly, hash, encrypto)
-		await tx.wait()
-	} catch (ex) {
-		return null
-	}
-	return RedeemCode
-} */
-
-
-const listenersRealizationRedeem = (SC: ethers.Contract, profileKey: string): Promise<number> => new Promise(async resolve => {
-	const distributor_addr = contracts.distributor.address.toLowerCase()
-	let currentBlock = await conetDepinProvider.getBlockNumber()
-	const checkCNTPTransfer = (tR: ethers.TransactionReceipt) => {
-		for (let log of tR.logs) {
-			const LogDescription = SC.interface.parseLog(log)
-
-			if (LogDescription?.name === 'TransferSingle') {
-				const toAddress  = LogDescription.args[1]
-				if (toAddress.toLowerCase() == profileKey) {
-					const nftID = LogDescription.args[2]
-					conetDepinProvider.removeListener('block', listenBlock)
-					clearTimeout(_time)
-					return resolve (parseInt(nftID.toString()))
-				}
-			}
-		}
-	}
-
-	const listenBlock = async (block: number) => {
-		if (block > currentBlock) {
-			currentBlock = block
-			const blockTs = await conetDepinProvider.getBlock(block)
-			if (!blockTs?.transactions) {
-				return
-			}
-			console.log(`listenersRealizationRedeem ${block} has process now!`)
-			for (let tx of blockTs.transactions) {
-				const event = await conetDepinProvider.getTransactionReceipt(tx)
-
-				if ( event?.to?.toLowerCase() === distributor_addr) {
-					checkCNTPTransfer(event)
-				}
-			}
-		}
-	}
-
-	conetDepinProvider.on('block', listenBlock)
-
-	const _time = setTimeout(() => {
-		//		TimeOUT
-		// conetDepinProvider.removeListener('block', listenBlock)
-		// resolve (null)
-	}, 1000 * 180)
-})
-
-const RealizationRedeem_withSmartContract = async (profile: profile, solana: string, code: string): Promise<null|number> => {
-	const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider)
-	const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
-	try {
-		const tx = await contract_distributor.codeToClient(code, solana)
-		const nftID = await listenersRealizationRedeem(contract_distributor, profile.keyID.toLowerCase())
-		return nftID
-	} catch (ex) {
-    	console.log("EX: ", ex);
-		return null
-	}
-
-}
-
-const RealizationRedeem = async (code: string): Promise<null|number> => {
+const RealizationRedeem = async (code: string): Promise<number> => {
 	if (!CoNET_Data?.profiles?.length) {
-		return null;
+		return 0;
 	}
 	const profile = CoNET_Data?.profiles[0]
 	const solana = CoNET_Data?.profiles[1]
 	const solanaWallet = solana.keyID
 	if (!solanaWallet||!profile) {
-		return null;
+		return 0;
 	}
-	// const ethBalance = parseFloat(profile.tokens.conet_eth.balance)
-	// if (ethBalance > 0.000001) {
-	// 	return await RealizationRedeem_withSmartContract(profile, solanaWallet, code)
-	// }
 
-	const url = `${apiv4_endpoint}codeToClient`
+
+	const url = `${payment_endpoint}codeToClient`
 	const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, uuid: code })
 	const wallet = new ethers.Wallet(profile.privateKeyArmor)
 	const signMessage = await wallet.signMessage(message)
@@ -1459,16 +1345,20 @@ const RealizationRedeem = async (code: string): Promise<null|number> => {
 	try {
 		const result = await postToEndpoint(url, true, sendData)
 		if (typeof result === 'boolean'|| result === ''|| result?.error ) {
-			return null
+			return 0
 		}
-		return result.status
+		const ret = await waitingPaymentReady(profile.keyID)
+		if (ret.status) {
+			return ret.status
+		}
 	} catch(ex) {
     	console.log("EX: ", ex);
-		return null
+		
 	}
+	return 0
 }
 
-const waitingNFT = (wallet: ethers.Wallet) => new Promise(async resolve => {
+const waitingNFT = (wallet: ethers.Wallet): Promise<number> => new Promise(async resolve => {
 	const passportNFT = new ethers.Contract(contracts.PassportMainnet.address, contracts.PassportMainnet.abi, wallet)
 	const distributor_addr = contracts.distributor.address.toLowerCase()
 	let currentBlock = await conetDepinProvider.getBlockNumber()
@@ -1513,7 +1403,7 @@ const waitingNFT = (wallet: ethers.Wallet) => new Promise(async resolve => {
 	conetDepinProvider.on('block', listenning)
 	const _time = setTimeout(() => {
 		//		TimeOUT
-		resolve (null)
+		resolve (0)
 		conetDepinProvider.removeListener('block', listenning)
 		checkFreePassportProcess = 0
 	}, 1000 * 60)
@@ -1545,6 +1435,7 @@ const getFreeNFT = async (wallet: ethers.Wallet) => {
 }
 
 let checkFreePassportProcess = 0
+
 const checkFreePassport = async () => {
 	if (!CoNET_Data?.profiles?.length) {
 		checkFreePassportProcess = -1
@@ -1662,6 +1553,37 @@ const getPaypalUrl = async (price: number) => {
 	return res.data;
 }
 
+let listening: NodeJS.Timeout|null = null
+const waitingPayUrl = `${payment_endpoint}cryptoPayment_waiting`
+
+const _waitingPay = async (wallet: string) => {
+
+	try {
+		const result = await postToEndpoint(waitingPayUrl, true, { wallet })
+		return result
+	} catch(ex) {
+		console.log("EX: ", ex)
+		return false
+	}
+}
+
+const waitingPaymentReady = (_wallet: string): Promise<any> => new Promise(async resolve => {
+	if (listening) {
+		clearTimeout(listening)
+	}
+	const wallet = _wallet.toLowerCase()
+	const status = await _waitingPay(wallet)
+	if (!status) {
+		return resolve(false)
+	}
+	if (status.status ===1) {
+		return listening = setTimeout(async () => {
+			return resolve(await waitingPaymentReady (wallet))
+		}, 15 * 1000)
+	}
+	resolve(status)
+})
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -1691,5 +1613,6 @@ export {
   spRewardRequest,
   checkLocalStorageNodes,
   storageAllNodes,
-  getProfileAssets
+  getProfileAssets,
+  waitingPaymentReady
 };

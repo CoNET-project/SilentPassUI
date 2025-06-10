@@ -13,7 +13,7 @@ import {
 	payment_endpoint,
 	apiv4_endpoint
 } from "../utils/constants"
-import {waitingPaymentReady} from './subscription'
+import {waitingPaymentReady} from './wallets'
   import { ethers } from "ethers"
   import Bs58 from "bs58";
   import contracts from "../utils/contracts";

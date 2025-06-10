@@ -4,7 +4,7 @@ import "./index.css";
 import SpClubCongratsPopup from '../SpClubCongratsPopup';
 import { joinSpClub } from '../../api';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-import { getSpClubMemberId } from '../../services/wallets';
+import { getSpClubMemberId, waitingPaymentReady } from '../../services/wallets';
 
 import AirdropRewards from './assets/airdrop-rewards.png';
 import EarlyAccess from './assets/early-access.png';
@@ -18,7 +18,7 @@ import bnb_usdt from './assets/bnb_usdt_token.png'
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import QRCode from '../QRCode'
 import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg'
-import {getCryptoPay, waitingPaymentReady} from '../../services/subscription'
+import {getCryptoPay} from '../../services/subscription'
 import {ReactComponent as QuotesTx} from './assets/trx.svg'
 import { CoNET_Data } from '../../utils/globals';
 import { useTranslation } from 'react-i18next'

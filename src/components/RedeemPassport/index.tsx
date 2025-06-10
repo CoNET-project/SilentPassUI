@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./index.css"; // Import external CSS file
 import SuccessModal from './SuccessModal';
-import { RealizationRedeem, getRewordStaus } from '../../services/wallets';
+import { getRewordStaus } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg";

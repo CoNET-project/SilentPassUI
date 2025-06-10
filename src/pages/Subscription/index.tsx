@@ -88,7 +88,7 @@ export default function Subscription() {
 				const redeemCode = selectedPlan
 				const redeem = await RealizationRedeem(redeemCode)
 				setSelectedPlan('12')
-				if (redeem === null ) {
+				if (!redeem) {
 					return setStep(5)
 				}
 				

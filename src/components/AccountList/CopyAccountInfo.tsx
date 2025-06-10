@@ -31,7 +31,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
     else if (info === 'key')
       value = wallet.privateKeyArmor
     else if (info === 'words')
-      value = CoNET_Data?.mnemonicPhrase || ''
+      value = "https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')
 
     navigator.clipboard.writeText(value);
     setCopied({ address: value, info });
@@ -145,17 +145,21 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
                 <p>{t('comp-comm-RecoveryPhrase')} </p>
                 {
                   isWordsHidden ?
-                    <div style={{ filter: 'blur(3px)' }}>
-                      <span>{CoNET_Data?.mnemonicPhrase || ''}</span>
+                    <div style={{ filter: 'blur(3px)', wordBreak:'break-all' }}>
+                      <a href={"https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')} target="_blank">{"https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')}</a>
+                      <span style={{marginTop:'3px'}}>{t('comp-comm-RecoveryPhrase-info')}</span>
                     </div>
                     :
-                    <span>{CoNET_Data?.mnemonicPhrase || ''}</span>
+                    <div style={{wordBreak:'break-all'}}>
+                      <a href={"https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')} target="_blank">{"https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')}</a>
+                      <span style={{marginTop:'3px'}}>{t('comp-comm-RecoveryPhrase-info')}</span>
+                    </div>
                 }
               </div>
               <div className={styles.buttonList}>
                 <button onClick={() => handleCopy("words")}>
                   {
-                    (copied.address === CoNET_Data?.mnemonicPhrase && copied.info === "words") ? (
+                    (copied.address === ("https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')) && copied.info === "words") ? (
                       <img src="/assets/check.svg" alt="Copy icon" />
                     ) : (
                       <img src="/assets/copy-purple.svg" alt="Copy icon" />

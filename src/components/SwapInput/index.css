@@ -24,7 +24,7 @@ input::-webkit-inner-spin-button {
 }
 
 .solana.account-wrapper.active {
-  height: 24rem;
+  height: 27rem;
 }
 
 .referral-program.account-wrapper.active {
@@ -363,3 +363,11 @@ input::-webkit-inner-spin-button {
         opacity: 0.8;
     }
   }
+  .swap-confirm-btn{
+    background: #282930;
+    border-color: #282930;
+    color: #fff;
+    font-weight: 500;
+    margin-top: 0.5rem;
+  }
+  

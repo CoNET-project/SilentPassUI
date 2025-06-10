@@ -34,6 +34,9 @@ export default function ReferralProgram() {
     "rsp": 0/31,
 	"rcp": 0/31,
   })
+
+  const [pageNo, setPageNo] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   
   const nft = parseInt(profiles?.[0]?.activePassport?.nftID)
   const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour')) === '00:00:00' ? true : false
@@ -71,19 +74,41 @@ export default function ReferralProgram() {
   }
 
   const handlePreviousPage = async () => {
-    if (currentPageInvitees > 0) {
-      setCurrentPageInvitees(currentPageInvitees - 1)
-      await getRefereesPage(profiles[0], currentPageInvitees)
-      setShouldRerender(true)
+    if(pageNo>1){
+      setPageNo(pageNo-1);
     }
+    
+    // if (currentPageInvitees > 0) {
+    //   setCurrentPageInvitees(currentPageInvitees - 1)
+    //   await getRefereesPage(profiles[0], currentPageInvitees)
+    //   setShouldRerender(true)
+    // }
+  }
+  const handleNextPage = async () => {
+    if (pageNo < Math.ceil(profiles?.[0]?.spClub?.totalReferees / pageSize)) {
+      setPageNo(pageNo+1)
+    }
+    
+    // if (currentPageInvitees < Math.ceil(profiles?.[0]?.spClub?.totalReferees / 100)) {
+    //   setCurrentPageInvitees(currentPageInvitees + 1)
+    //   await getRefereesPage(profiles[0], currentPageInvitees)
+    //   setShouldRerender(true)
+    // }
   }
 
-  const handleNextPage = async () => {
-    if (currentPageInvitees < Math.ceil(profiles?.[0]?.spClub?.totalReferees / 100)) {
-      setCurrentPageInvitees(currentPageInvitees + 1)
-      await getRefereesPage(profiles[0], currentPageInvitees)
-      setShouldRerender(true)
+  const paginateArray=(array: any[])=> {
+    const totalItems = array.length;
+    const totalPages = Math.ceil(totalItems / pageSize);
+    
+    // 边界校验
+    if (pageNo < 1 || pageNo > totalPages) {
+      return [];
     }
+
+    const startIndex = (pageNo - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalItems);
+    
+    return array.slice(startIndex, endIndex);
   }
 
   useEffect(() => {
@@ -240,7 +265,7 @@ export default function ReferralProgram() {
             {profiles?.[0]?.spClub
               ?
               profiles?.[0].spClub?.totalReferees > 0 ?
-                profiles?.[0]?.spClub.referees?.map((referee: any) =>
+                paginateArray(profiles?.[0]?.spClub.referees)?.map((referee: any) =>
                   <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', gap: '8px' }}>
                     {/* <p style={{ width: 'auto', fontSize: '16px', color: '#FFFFFF', fontWeight: 400 }}>{getPassportTitle(referee?.activePassport)}</p> */}
                     <p onClick={() => showAddress(referee.walletAddress)} style={{ width: 'auto', fontSize: '16px', color: '#9FBFE5FE', fontWeight: 400, cursor: "pointer" }}>{referee?.walletAddress?.slice(0, 5) + '...' + referee?.walletAddress?.slice(-5)}</p>
@@ -250,16 +275,19 @@ export default function ReferralProgram() {
               : <Skeleton width={'100%'} height={'20px'} />}
           </div>
 
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+          {profiles?.[0].spClub?.totalReferees > 0 ? <div style={{ width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <div style={{ cursor: 'pointer' }} onClick={handlePreviousPage}>
-              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} />
+              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} style={pageNo===1?{filter: 'grayscale(100%)'}:{}} />
             </div>
-            <div>{currentPageInvitees + 1} of {Math.ceil(profiles?.[0]?.spClub?.totalReferees / 100)}</div>
+            <div>{pageNo} of {Math.ceil(profiles?.[0]?.spClub?.totalReferees / pageSize)}</div>
             <div style={{ cursor: 'pointer' }} onClick={handleNextPage}>
-              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} style={{ transform: 'rotate(180deg)' }} />
+              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} style={pageNo >= Math.ceil(profiles?.[0]?.spClub?.totalReferees / pageSize)?{filter: 'grayscale(100%)',transform: 'rotate(180deg)'}:{ transform: 'rotate(180deg)' }} />
             </div>
-          </div>
+          </div>:''}
         </div>
+
+
+
       </div>
     </div>
   )

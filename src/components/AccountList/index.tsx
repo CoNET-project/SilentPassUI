@@ -16,7 +16,8 @@ import { CoNET_Data } from '../../utils/globals';
 import { useNavigate } from 'react-router-dom';
 import SendButton from './SendButton';
 import AirdropSuccess from './SuccessModal'
-import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next';
+import ImportButton from './ImportButton';
 
 interface AccountListProps {
     showMainWallet?: boolean;
@@ -345,6 +346,10 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                             </>
                         )
                     }
+                    <>
+                        <Separator />
+                        <ImportButton />
+                    </>
                 </div>
     
             </div>

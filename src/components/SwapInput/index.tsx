@@ -13,9 +13,16 @@ import { getOracle } from '../../services/passportPurchase';
 import { refreshSolanaBalances } from '../../services/wallets'
 import { calcSpInUsd } from '../../utils/utils';
 import Skeleton from '../Skeleton';
-import {Sp2SolQuote, Sol2SpQuote, swapTokens, solanaAddr, spAddr } from '../../services/swap'
+import {Sp2SolQuote, Sol2SpQuote, solanaAddr, spAddr } from '../../services/swap'
 import SimpleLoadingRing from '../SimpleLoadingRing'
-import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next';
+
+import { Button, SpinLoading, Modal, Result } from 'antd-mobile';
+import { globalAllNodes } from "./../../utils/globals";
+import { Connection, Keypair, Commitment, VersionedTransaction,RpcResponseAndContext, SignatureResult } from "@solana/web3.js";
+import bs58 from "bs58";
+import styles from './swapInput.module.css';
+import { ethers } from "ethers";
 
 interface SwapInputProps {
     setTokenGraph: (tokenGraph: string) => void;
@@ -119,22 +126,256 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 	   return 'darkred'
     }
 
+    const tokenDecimal = (tokenAddr: string) => {
+        const solanaAddr = "So11111111111111111111111111111111111111112"
+        const spAddr = "Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump"
+        const usdcAddr = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+        const usdtAddr = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+        const solanaDecimalPlaces = 9
+        const usdtDecimalPlaces = 6
+        const usdcDecimalPlaces = 6
+        const spDecimalPlaces = 6
+        switch(tokenAddr) {
+            case usdtAddr: {
+                return usdtDecimalPlaces
+            }
+            case solanaAddr: {
+                return solanaDecimalPlaces
+            }
+            case spAddr: {
+                return spDecimalPlaces
+            }
+            case usdcAddr: {
+                return usdcDecimalPlaces
+            }
+            default: {
+                return 18
+            }
+        }
+    }
+
+    const getErrorMessage = (error: unknown): string => {
+        if (error instanceof Error) return error.message;
+        if (typeof error === 'string') return error;
+        return 'Unknown error';
+    };
+
+    async function confirmTxWithTimeout(
+        connection: Connection,
+        txid: string,
+        blockhash: string,
+        lastValidBlockHeight: number,
+        timeoutMs = 40000
+    ): Promise<RpcResponseAndContext<SignatureResult>> {
+        return await Promise.race([
+            connection.confirmTransaction({
+                signature: txid,
+                blockhash,
+                lastValidBlockHeight
+            }, "confirmed"),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("确认交易超时")), timeoutMs))
+        ]) as Promise<RpcResponseAndContext<SignatureResult>>;
+    }
+
+    const getTransaction = (tx: string, SOLANA_CONNECTION: Connection, count = 0): Promise<false|string> => new Promise( async resolve => {
+        count ++
+        const thash = await SOLANA_CONNECTION.getTransaction(tx,{ maxSupportedTransactionVersion: 0 })
+        if (!thash) {
+            if (count < 6) {
+                return setTimeout(async () => {
+                    return resolve(await getTransaction(tx, SOLANA_CONNECTION, count))
+                }, 1000 * 10 )
+            }
+            setIsRedeemProcessLoading(false);
+            Modal.alert({
+                bodyClassName:styles.failModalWrap,
+                content: <div className={styles.failModal}>
+                    <Result
+                        status='error'
+                        title={t('comp-SwapInput-tip-1')}
+                    />
+                    <div className={styles.description}>{t('comp-SwapInput-tip-3')}</div>
+                </div>,
+                confirmText:'Close',
+            })
+            return ;
+        }
+        if (thash.meta?.err) {
+            setIsRedeemProcessLoading(false);
+            Modal.alert({
+                bodyClassName:styles.failModalWrap,
+                content: <div className={styles.failModal}>
+                    <Result
+                        status='error'
+                        title={t('comp-SwapInput-tip-1')}
+                    />
+                    <div className={styles.description}>{getErrorMessage(thash.meta.err)}</div>
+                </div>,
+                confirmText:'Close',
+            })
+            return ;
+        }
+        setIsRedeemProcessLoading(false);
+        Modal.alert({
+            bodyClassName:styles.successModalWrap,
+            content: <div className={styles.successModal}>
+                <Result
+                    status='success'
+                    title={t('comp-SwapInput-tip-2')}
+                />
+                <div className={styles.description}>{t('comp-SwapInput-tip-4')}!</div>
+                <div className={styles.link}><a href={'https://solscan.io/tx/'+thash} target="_blank">{t('comp-SwapInput-tip-5')}</a></div>
+            </div>,
+            confirmText:'Close',
+        })
+        setFromAmount('0');
+        await refreshSolanaBalances();
+        return ;
+    })
+
+    const swapTokens = async (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<false|string> => new Promise(async resolve => {
+        const wallet = Keypair.fromSecretKey(bs58.decode(privateKey))
+        const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(from))
+        const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
+        const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed")
+
+        try{
+            const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&restrictIntermediateTokens=true`)).json()
+            const { swapTransaction } = await (
+                await fetch('https://quote-api.jup.ag/v6/swap', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        dynamicComputeUnitLimit: true,
+                        dynamicSlippage: true,
+                        prioritizationFeeLamports: {
+                            priorityLevelWithMaxLamports: {
+                                maxLamports: 1000000,
+                                priorityLevel: "veryHigh"
+                            }
+                        },
+                        quoteResponse,
+                        userPublicKey: wallet.publicKey.toString()
+                    })
+                })).json()
+
+            const swapTransactionBuf = Buffer.from(swapTransaction, 'base64')
+            const transaction = VersionedTransaction.deserialize(swapTransactionBuf)
+            // get the latest block hash
+            const latestBlockHash = await SOLANA_CONNECTION.getLatestBlockhash()
+            transaction.sign([wallet])
+            // Execute the transaction
+            const rawTransaction = transaction.serialize()
+            const txid = await SOLANA_CONNECTION.sendRawTransaction(rawTransaction, {
+                skipPreflight: true,
+                maxRetries: 2
+            })
+            //等待网络确认
+            // const latestBlockhash = await SOLANA_CONNECTION.getLatestBlockhash("finalized");
+            // const confirmation = await confirmTxWithTimeout(
+            //     SOLANA_CONNECTION,
+            //     txid,
+            //     latestBlockhash.blockhash,
+            //     latestBlockhash.lastValidBlockHeight,
+            //     60000 // 最长等待 30 秒
+            // );
+            // if (confirmation.value.err) {
+            //     setIsRedeemProcessLoading(false);
+            //     Modal.alert({
+            //         bodyClassName:styles.failModalWrap,
+            //         content: <div className={styles.failModal}>
+            //             <Result
+            //                 status='error'
+            //                 title={t('comp-SwapInput-tip-1')}
+            //             />
+            //             <div className={styles.description}>{getErrorMessage(confirmation.value.err)}</div>
+            //         </div>,
+            //         confirmText:'Close',
+            //     })
+            //     return ;
+            // }
+            //查询交易详情（包含 logs、错误等）
+            const result = await getTransaction (txid, SOLANA_CONNECTION)
+            return ;
+            // const txInfo = await SOLANA_CONNECTION.getTransaction(txid,{ maxSupportedTransactionVersion: 0 })
+            // if (!txInfo) {
+            //     setIsRedeemProcessLoading(false);
+            //     Modal.alert({
+            //         bodyClassName:styles.failModalWrap,
+            //         content: <div className={styles.failModal}>
+            //             <Result
+            //                 status='error'
+            //                 title={t('comp-SwapInput-tip-1')}
+            //             />
+            //             <div className={styles.description}>{t('comp-SwapInput-tip-3')}</div>
+            //         </div>,
+            //         confirmText:'Close',
+            //     })
+            //     return ;
+            // }
+            // if (txInfo.meta?.err) {
+            //     setIsRedeemProcessLoading(false);
+            //     Modal.alert({
+            //         bodyClassName:styles.failModalWrap,
+            //         content: <div className={styles.failModal}>
+            //             <Result
+            //                 status='error'
+            //                 title={t('comp-SwapInput-tip-1')}
+            //             />
+            //             <div className={styles.description}>{getErrorMessage(txInfo.meta.err)}</div>
+            //         </div>,
+            //         confirmText:'Close',
+            //     })
+            //     return ;
+            // }
+            // setIsRedeemProcessLoading(false);
+            // Modal.alert({
+            //     bodyClassName:styles.successModalWrap,
+            //     content: <div className={styles.successModal}>
+            //         <Result
+            //             status='success'
+            //             title={t('comp-SwapInput-tip-2')}
+            //         />
+            //         <div className={styles.description}>{t('comp-SwapInput-tip-4')}!</div>
+            //         <div className={styles.link}><a href={'https://solscan.io/tx/'+txid} target="_blank">{t('comp-SwapInput-tip-5')}</a></div>
+            //     </div>,
+            //     confirmText:'Close',
+            // })
+            // setFromAmount('0');
+            // await refreshSolanaBalances();
+            // return ;
+        }catch(error){
+            setIsRedeemProcessLoading(false);
+            Modal.alert({
+                bodyClassName:styles.failModalWrap,
+                content: <div className={styles.failModal}>
+                    <Result
+                        status='error'
+                        title={t('comp-SwapInput-tip-1')}
+                    />
+                    <div className={styles.description}>{getErrorMessage(error)}</div>
+                </div>,
+                confirmText:'Close',
+            })
+        }   
+    })
+
     const confirmClick = async () => {
-      	if (swapError||swapSuccess) {
-      		setSwapSuccess('')
-      		return setSwapError('')
-      	}
+      	// if (swapError||swapSuccess) {
+      	// 	setSwapSuccess('')
+      	// 	return setSwapError('')
+      	// }
         setIsRedeemProcessLoading(true)
         const from = (fromToken === 'SOL') ? solanaAddr : spAddr
         const to = (fromToken === 'SOL') ? spAddr : solanaAddr
 
         const tx = await swapTokens(from, to,profiles?.[1]?.privateKeyArmor, fromAmount)
-        setIsRedeemProcessLoading(false)
-        if (tx) {
-            await refreshSolanaBalances()
-            return setSwapSuccess(tx)
-        }
-        setSwapError('Error!')
+        // setIsRedeemProcessLoading(false)
+        // if (tx) {
+        //     await refreshSolanaBalances()
+        //     return setSwapSuccess(tx)
+        // }
+        // setSwapError('Error!')
     }
   
     const toggleTokens=() =>{
@@ -163,6 +404,17 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
     const useMax=()=>{
         let val=fromToken === 'SOL'?(profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6))
         setFromAmount(val);
+    }
+
+    const isDisabled=()=>{
+        const isZeroOrNegative=(value:any)=> {
+            // 转换为数字类型
+            const num = Number(value);
+            // 检查是否为有效数字且小于等于0
+            return !isNaN(num) && num <= 0;
+        }
+        const isEmptyValue=isZeroOrNegative(profiles?.[1]?.tokens?.sol?.balance) || isZeroOrNegative(profiles?.[1]?.tokens?.sp?.balance);
+        return !showConfirm || (fromAmount=='0') || (!fromAmount) || isEmptyValue;
     }
   
     return (
@@ -233,24 +485,15 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
                     <SPSelector option={toToken} onChange={()=>{}} />
                 </div>
             </div>
-            {
-    			swapError && 
-    				<div className="declined-description">
-    					<p>{swapError}</p>
-    				</div>
-            }
-            {
-        		swapSuccess && 
-        			<div className="success-description">
-        				<a target='_blank' href={'https://solscan.io/tx/'+swapSuccess} >Success! Click to See The Detail</a>
-        			</div>
-            }
-            {
-        		showConfirm &&
-        			<button className="redeem-button confirm" onClick={confirmClick} style={{color : swapError ? 'darkred': swapSuccess ? '#249517': ''}}>
-        				{isRedeemProcessLoading ? <SimpleLoadingRing /> : t('comp-comm-Confirm')}
-        			</button>
-            }
+            
+            {isRedeemProcessLoading?<div className={styles.loadingWrap}>
+                <SpinLoading style={{ '--size': '48px' }} />
+                <div className={styles.text}>{t('comp-comm-LoadingRing')}</div>
+            </div>:''}
+            <div style={{color:'green',margin:'5px 0 0'}}>{t('comp-SwapInput-tip-6')}</div>
+            <Button className="swap-confirm-btn" onClick={confirmClick} loading={isRedeemProcessLoading} block color='primary' size='large' disabled={isDisabled()}>
+                {t('comp-SwapInput-confirm')}
+            </Button>
             <div style={{background:"#191919", borderRadius:"8px", padding:"4px", marginTop: "2rem", marginBottom:"24px" }}>
                 <div style={{display:"flex"}}>
                     <p className="tab-selector" style={{background: tabSelector === "tokens" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('tokens')}>{t('comp-accountlist-assets')}</p>

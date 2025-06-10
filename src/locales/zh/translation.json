@@ -33,7 +33,8 @@
 	"comp-comm-copy": "复制",
 	"comp-comm-copied": "已复制",
 	"comp-comm-privatekey": "私钥",
-	"comp-comm-RecoveryPhrase": "账号恢复助记词",
+	"comp-comm-RecoveryPhrase": "备份你的专属账号信息链接",
+	"comp-comm-RecoveryPhrase-info": "这是你在 Silent Pass 的专属账号信息链接，包含你的钱包私钥及资产信息，拥有完整访问权限。请妥善备份此链接，确保你的身份与资产安全。",
 	"comp-comm-Send": "转账",
 	"comp-comm-Refresh": "刷新",
 	"comp-comm-Refreshing": "正在刷新中...",
@@ -53,6 +54,12 @@
 	"comp-comm-contactUs": "请通过Discord、Telegram或发送电子邮件至(info@silentpass.io)与我们联系",
 	"comp-comm-backToWallet": "返回",
 	"comp-comm-LoadingRing": "正在处理中...",
+	"comp-comm-import":"导入钱包",
+	"comp-comm-private-key":"私钥",
+	"comp-comm-private-warning-1":"导入钱包前请注意",
+	"comp-comm-private-warning-2":"导入新钱包后，当前钱包信息将被完全替换。 如当前钱包中仍有资产，请务必在操作前妥善备份其私钥，以便日后恢复访问。我们无法帮助找回任何未备份的钱包信息或资产。",
+	"comp-comm-import-btn":"导入",
+	"comp-comm-import-error":"私钥错误",
 
 	"comp-PassportInfoPopup-1": "Silent Pass 通证",
 	"comp-PassportInfoPopup-2": "有效期限",
@@ -100,10 +107,17 @@
 	"comp-RedeemPassport-paidMonthly": "月支付",
 	"comp-RedeemPassport-paidAnnually": "年支付",
 
-	"comp-SwapInput-pay": "出售",
+	"comp-SwapInput-pay": "支付",
 	"comp-SwapInput-Max": "全部",
-	"comp-SwapInput-Receive": "获得",
+	"comp-SwapInput-Receive": "收到",
 	"comp-SwapInput-provide": "Silent Pass团队",
+	"comp-SwapInput-tip-1": "交易失败",
+	"comp-SwapInput-tip-2": "交易成功",
+	"comp-SwapInput-tip-3": "找不到交易",
+	"comp-SwapInput-tip-4": "完成",
+	"comp-SwapInput-tip-5": "查看详情",
+	"comp-SwapInput-confirm":"立即兑换",
+	"comp-SwapInput-tip-6":"系统将根据实时汇率自动计算您可收到的数量",
 
 	"comp-TokenTab-provide": "服务提供者",
 	"comp-TokenTab-Slippage": "滑点",
@@ -139,7 +153,7 @@
 	"region_SG": "新加坡",
 	"region_CN": "中国香港",
 
-	"swap_title": "交易",
+	"swap_title": "兑换",
 
 	"Settings_Title": "设定",
 

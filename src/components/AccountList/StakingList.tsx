@@ -50,6 +50,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
         return unit ? num * multiplier[unit] : num;
     }
     const getStaking=()=>{
+        console.log(CoNET_Data,'CoNET_Data')
         return CoNET_Data?.profiles[1]?.tokens?.sp
     }
     const getStakingList=()=>{
@@ -69,7 +70,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
         const totalAmount = Number(profiles?.[1]?.tokens?.sp?.balance1 || 0);
         const lockAmount = Number(totalLocked(profiles?.[1].tokens.sp) || 0);
         const totalPrice = Number(profiles?.[1]?.tokens?.sp?.usd || 0);
-        const rawValue = (lockAmount / totalAmount) * totalPrice;
+        const rawValue = ((totalAmount - lockAmount) / totalAmount) * totalPrice;
         const decimalPlaces = (totalPrice.toString().split('.')[1] || '').length || 2;
         return totalPrice ? Number(rawValue.toFixed(decimalPlaces)) : (0.0).toFixed(2);
     }
@@ -80,7 +81,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
                 <SpToken width={20} height={20}/>
                 <div className={styles.infos}>
                     <div className={styles.infosItem}><span>{t('comp-accountlist-staking-total-assets')}</span><span>{convertStringToNumber((profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2))}</span><span>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</span></div>
-                    <div className={styles.infosItem}><span>{t('comp-accountlist-staking-total-available')}</span><span>{convertStringToNumber(totalLocked(profiles?.[1].tokens.sp).toFixed(2))}</span><span>${calcAvailablePrice()}</span></div>
+                    <div className={styles.infosItem}><span>{t('comp-accountlist-staking-total-available')}</span><span>{(convertStringToNumber((profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2)) - convertStringToNumber(totalLocked(profiles?.[1].tokens.sp).toFixed(2))).toFixed(2)}</span><span>${calcAvailablePrice()}</span></div>
                 </div>
                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
             </div>
@@ -91,7 +92,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
                         return (
                             <div className={styles.item} key={index}>
                                 <span>{index+1}.</span>
-                                <span>{convertStringToNumber(item.claimableAmount.toFixed(2))}</span>
+                                <span>{convertStringToNumber(item.lockedAmount.toFixed(2))}</span>
                                 <span>{formatDateToCustomString(item.startTime)}</span> 
                                 <span><ClockCircleFill /> {t('comp-accountlist-staking-locking')}</span>
                             </div>

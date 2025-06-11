@@ -1,3 +1,31 @@
+.item{
+    padding: 10px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    .infos{
+        display: table;
+        flex: 1;
+        border-collapse: collapse;
+        margin: 0 12px;
+        color: #989899;
+        .infosItem{
+            display: table-row;
+            span{
+                display: table-cell;
+                padding: 1px;
+                white-space: nowrap;
+                text-align: center;
+            }
+            span:first-child {
+                text-align: left;
+            }
+            span:last-child {
+                text-align: right;
+            }
+        }
+    }
+}
 .stakingList{
     display: block!important;
     border-top: 1px rgb(63, 63, 64) solid;

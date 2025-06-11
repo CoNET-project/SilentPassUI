@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
-import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock,Dialog,Toast,Input,Switch } from 'antd-mobile';
+import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock,Dialog,Toast,Input,Switch,Popover } from 'antd-mobile';
 import styles from './ruleButton.module.css';
-import { RightOutline,EditSOutline,DeleteOutline,CheckOutline } from 'antd-mobile-icons';
+import { RightOutline,EditSOutline,DeleteOutline,CheckOutline,QuestionCircleOutline } from 'antd-mobile-icons';
 import { List as VirtualizedList, AutoSizer } from 'react-virtualized'
 import _,{ debounce } from 'lodash';
 import AddItem from './AddItem';
@@ -158,7 +158,7 @@ const Filter=({visible, setVisible}:FilterProps)=> {
     const [officialList, setOfficialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
     const [regionList, setRegionList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
 	const { t, i18n } = useTranslation();
-	const { isLocalProxy, getWebFilter, setGetWebFilter, webFilterRef} = useDaemonContext()
+	const { isLocalProxy, getWebFilter, setGetWebFilter, webFilterRef} = useDaemonContext();
 
     useEffect(()=>{
         getSetting()
@@ -452,7 +452,7 @@ const Filter=({visible, setVisible}:FilterProps)=> {
                 {loading?<div className={styles.ruleLoading}>
                     <SpinLoading style={{ '--size': '32px' }} />
                 </div>:<div className={styles.ruleCont}>
-                    <NavBar back={t('back')} onBack={handleBack} right={<div className={styles.ruleSwitch}><label>{t('filter')}</label><Switch checked={getWebFilter} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} /></div>} style={{'--height': '70px'}}></NavBar>
+                    <NavBar back={t('back')} onBack={handleBack} right={<div className={styles.ruleSwitch}><label><QuestionCircleOutline className={styles.question} onClick={() => Dialog.alert({content: t('filter-tip-5')})} />{t('filter')}</label><Switch checked={getWebFilter} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} /></div>} style={{'--height': '70px'}}></NavBar>
                     {classify!=='all'?<div className={styles.hd}>
                         {getClassifyName(classify)}{classify==='special'?<AddItem getCustomSetting={getCustomSetting} />:''}
                     </div>:''}

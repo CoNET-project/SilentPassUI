@@ -8,9 +8,10 @@
     "filter-tip-2":"Current value already exists",
     "filter-tip-3":"Add new rules",
     "filter-tip-4":"Are you sure to delete?",
+    "filter-tip-5":"When enabled, selected websites will bypass VPN and use your original network route",
     "filter-placeholder-1":"Please enter domain or IP",
-    "filter":"Enable filtering",
-    "system-proxy":"System Proxy",
+    "filter":"Enable Filtering",
+    "system-proxy":"Proxy",
 
     "faq": "FAQ",
     "faq1": "What’s the Silent Pass service level?",
@@ -25,8 +26,8 @@
     "faq1-9": "Devices",
     "faq2": "(for both Proxy and VPN)",
 
-	"comp-PassportInfoPopup-1": "SP Passport",
-	"comp-PassportInfoPopup-2": "Expiration date",
+	"comp-PassportInfoPopup-1": "Active SP Passport",
+	"comp-PassportInfoPopup-2": "Time Remaining",
 
 	"comp-comm-wallet-address": "Wallet Address",
 	"comp-comm-wallet-address-1": "Wallet Address",
@@ -105,6 +106,12 @@
 	"comp-accountlist-SendButton-Amount": "Amount",
 	"comp-accountlist-SendButton-Available": "Available",
 
+	"comp-accountlist-staking-total-assets": "Total Assets",
+	"comp-accountlist-staking-total-available": "Available Balance",
+	"comp-accountlist-staking-title": "Locked Assets",
+	"comp-accountlist-staking-total-num": "Total Entries",
+	"comp-accountlist-staking-locking": "In Lock",
+
 	"comp-SPClubRewardTab-detail": "My Reward Progress",
 	"comp-SPClubRewardTab-detail-1": "Pending will be automatically released after 3 months",
 	"comp-SPClubRewardTab-1": "Daily Check-In",
@@ -138,7 +145,7 @@
 	"comp-TokenTab-Auto": "Auto",
 	"comp-TokenTab-fee": "Fee",
 
-	"comp-Rules-RuleButton-input-placeholder": "Please enter search content",
+	"comp-Rules-RuleButton-input-placeholder": "Search keywords or URLs",
 
 	"passport_unlimit": "Unlimit",
 	"passport_Freemium": "Freemium",
@@ -169,17 +176,17 @@
 	"region_SG": "Singapore",
 	"region_CN": "HongKong China",
 
-	"wallet_title": "My Account",
+	"wallet_title": "View My Passport",
 
-	"Settings_Title": "Settings",
+	"Settings_Title": "Settings Center",
 	"Settings_General": "General",
 	"Settings_Passcode": "Passcode",
-	"Settings_Passcode_on": "Turn passcode on",
-	"Settings_Passcode_change": "Change passcode",
-	"Settings_Passcode_Addon": "Add-on",
-	"Settings_Passcode_soon": "soon",
-	"Settings_Passcode_Ads": "Ads Block",
-	"Settings_Passcode_Reward": "Extra Reward",
+	"Settings_Passcode_on": "Enable Screen Lock",
+	"Settings_Passcode_change": "Change Password",
+	"Settings_Passcode_Addon": "Additional Features",
+	"Settings_Passcode_soon": "Soon",
+	"Settings_Passcode_Ads": "Ad Block",
+	"Settings_Passcode_Reward": "Reward Tasks",
 	"Settings_Passcode_WebsiteFilter": "Website Filter",
 
 	"Subscription-Header-title":"Confirm your order",

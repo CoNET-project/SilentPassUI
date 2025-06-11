@@ -8,8 +8,9 @@
     "filter-tip-2":"当前值已经存在",
     "filter-tip-3":"添加规则",
     "filter-tip-4":"确定删除?",
+    "filter-tip-5":"启用后，所选网站将不会通过 VPN，而是走原始网络线路",
     "filter-placeholder-1":"请输入域名或IP",
-    "filter":"开启过滤",
+    "filter":"启用过滤",
     "system-proxy":"系统代理",
 
     "faq": "常见问题",
@@ -62,8 +63,8 @@
 	"comp-comm-import-btn":"导入",
 	"comp-comm-import-error":"私钥错误",
 
-	"comp-PassportInfoPopup-1": "Silent Pass 通行证",
-	"comp-PassportInfoPopup-2": "有效期限",
+	"comp-PassportInfoPopup-1": "当前 SP 通行证",
+	"comp-PassportInfoPopup-2": "有效期剩余",
 
 	"comp-accountlist-main-wallet": "主钱包 (CoNET)",
 	"comp-accountlist-assets": "资产",
@@ -105,6 +106,12 @@
 	"comp-accountlist-SendButton-Amount": "代币数量",
 	"comp-accountlist-SendButton-Available": "可用的余额",
 
+	"comp-accountlist-staking-total-assets": "总资产总额",
+	"comp-accountlist-staking-total-available": "可用余额",
+	"comp-accountlist-staking-title": "锁仓中资产",
+	"comp-accountlist-staking-total-num": "总数",
+	"comp-accountlist-staking-locking": "锁仓中",
+
 	"comp-SPClubRewardTab-detail": "我的奖励进度",
 	"comp-SPClubRewardTab-detail-1": "待发放订阅积分将在3个月后自动发放,用于防止退款风险，发放后不可撤销",
 	"comp-SPClubRewardTab-1": "每日打卡",
@@ -138,7 +145,7 @@
 	"comp-TokenTab-Auto": "自动",
 	"comp-TokenTab-fee": "手续费",
 	
-	"comp-Rules-RuleButton-input-placeholder": "请输入检索内容",
+	"comp-Rules-RuleButton-input-placeholder": "输入网址或关键词，快速查找过滤项",
 
 	"passport_unlimit": "无限期",
 	"passport_Freemium": "免费卡",
@@ -170,7 +177,7 @@
 
 	"swap_title": "兑换",
 
-	"Settings_Title": "设定",
+	"Settings_Title": "设置中心",
 
 	"Subscription-Footer-transferInfo": "您的交易完成时间可能会有所不同，并且可能需要更多时间，交易哈希确认将在完成后显示。",
 
@@ -180,16 +187,16 @@
 	"Subscription-Header-progress":"交易正在进行中",
 	"Subscription-Header-progress-detail":"您的订单完成时间可能会有所不同，请耐心等待，我们会在订单完成后通知您。",
 
-	"wallet_title": "我的账号",
+	"wallet_title": "查看我的通行证",
 
-	"Settings_General": "通用",
+	"Settings_General": "通用设置",
 	"Settings_Passcode": "屏幕锁定",
-	"Settings_Passcode_on": "开启屏幕锁定",
-	"Settings_Passcode_change": "修改屏锁密码",
-	"Settings_Passcode_Addon": "附加功能",
+	"Settings_Passcode_on": "开启锁屏",
+	"Settings_Passcode_change": "修改密码",
+	"Settings_Passcode_Addon": "增强功能",
 	"Settings_Passcode_soon": "开发中",
-	"Settings_Passcode_Ads": "广告过滤",
-	"Settings_Passcode_Reward": "奖励活动",
+	"Settings_Passcode_Ads": "广告拦截",
+	"Settings_Passcode_Reward": "积分任务",
 	"Settings_Passcode_WebsiteFilter": "网站过滤",
 	
 	"Settings_Passcode_WebsiteFilter-title-special": "定制过滤",

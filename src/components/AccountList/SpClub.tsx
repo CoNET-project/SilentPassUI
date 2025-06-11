@@ -339,27 +339,27 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 				<h2>{t('comp-accountlist-SpClub-title1')} <br />{t('comp-accountlist-SpClub-title2')}</h2>
 				<p style={{ textAlign: "left" }}>{t('comp-accountlist-SpClub-detail')} </p>
 				<div className="sp-club-grid">
-				<div>
+				<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
 					<img src={AirdropRewards} />
 					<p>{t('comp-accountlist-SpClub-detail1')} </p>
 				</div>
-				<div>
+				<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
 					<img src={LoyaltyDiscounts} />
 					<p>{t('comp-accountlist-SpClub-detail2')} </p>
 				</div>
-				<div>
+				<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
 					<img src={ReferralProgram} />
 					<p>{t('comp-accountlist-SpClub-detail3')} </p>
 				</div>
-				<div>
+				<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
 					<img src={EducationHub} />
 					<p>{t('comp-accountlist-SpClub-detail4')} </p>
 				</div>
-				<div>
+				<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
 					<img src={EarlyAccess} />
 					<p>{t('comp-accountlist-SpClub-detail5')} </p>
 				</div>
-				<div>
+				<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
 					<img src={ExclusivePerks} />
 					<p>{t('comp-accountlist-SpClub-detail6')} </p>
 				</div>

@@ -19,6 +19,10 @@ import AirdropSuccess from './SuccessModal'
 import { useTranslation } from 'react-i18next';
 import ImportButton from './ImportButton';
 import StakingList from './StakingList';
+import { Button, Space } from 'antd-mobile';
+import { UndoOutline } from 'antd-mobile-icons';
+import styles from './refreshButton.module.css';
+
 
 interface AccountListProps {
     showMainWallet?: boolean;
@@ -35,7 +39,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
     const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
     const [passportToChange, setPassportToChange] = useState();
     const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
-	const { t, i18n } = useTranslation()
+	const { t, i18n } = useTranslation();
 
 	useEffect(() => {
 
@@ -110,17 +114,9 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 
         setTimeout(() => setIsRefreshingSolanaBalances(false), 2000);
     }
-
+    
     const renderRefreshButton = () => {
-        if (!profiles?.[1]?.keyID) {
-            return <p className='refresh disabled'>{ t('comp-comm-Refresh')} </p>
-        }
-
-        if (isRefreshingSolanaBalances) {
-            return <p className='refresh'>{ t('comp-comm-Refreshing')}</p>
-        }
-
-        return <p className='refresh' onClick={handleRefreshSolanaBalances}>{ t('comp-comm-Refresh')}</p>
+        return <div className={styles.btnWrap}><Button fill='none' size='large' className={styles.btn} disabled={!profiles?.[1]?.keyID} loading={isRefreshingSolanaBalances} loadingIcon={<UndoOutline className="rotatingIcon" />} onClick={handleRefreshSolanaBalances}><UndoOutline /></Button></div>
     }
 
     return (
@@ -286,19 +282,11 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
                             </div>
                             <div className="token-assets-item-val">
-                                {
-                                    simplifiedView ? (
-                                        <p>${(spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2)}</p>
-                                    ) : (
-                        
-                                       <p>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</p>
-                    
-                                    )
-                                }
+                                <p>${(spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2)}</p>
                             </div>
-                        </div>:<StakingList simplifiedView={simplifiedView} />}
+                        </div>:<StakingList simplifiedView={simplifiedView} profiles={profiles} handleRefreshSolanaBalances={handleRefreshSolanaBalances} spInUsd={spInUsd} />}
 
-                        <div className="token-assets-item">
+                        <div className="token-assets-item" style={{margin:0}}>
                             <div className="token-assets-item-lt">
                                 <div className="token-assets-item-label">
                                     <div className="token-assets-item-label-name">

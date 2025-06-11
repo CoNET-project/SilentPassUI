@@ -430,3 +430,17 @@ button.redeem-button.purchase {
 	
 	background: darkred!important;
   }
+  /* 定义旋转动画关键帧 */
+@keyframes infiniteRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 应用动画到图标 */
+.rotatingIcon {
+  animation: infiniteRotate 2s linear infinite;
+}

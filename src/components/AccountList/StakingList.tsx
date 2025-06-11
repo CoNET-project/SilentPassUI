@@ -4,13 +4,18 @@ import { ClockCircleFill } from 'antd-mobile-icons';
 import styles from './stakingList.module.css';
 import { useTranslation } from 'react-i18next';
 import _ from 'lodash';
+import SendButton from './SendButton';
 import { CoNET_Data, setCoNET_Data, globalAllNodes } from "./../../utils/globals";
+import { ReactComponent as SpToken } from './assets/sp-token.svg';
 
 interface StakingListParams {
     simplifiedView:boolean;
+    profiles:any;
+    handleRefreshSolanaBalances:any;
+    spInUsd:any;
 }
 
-const StakingList=({simplifiedView}:StakingListParams)=> {
+const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}:StakingListParams)=> {
     const { t, i18n } = useTranslation();
 
     const formatDateToCustomString=(isoString: string | Date): string => {
@@ -50,68 +55,45 @@ const StakingList=({simplifiedView}:StakingListParams)=> {
     const getStakingList=()=>{
         return getStaking()?.staking;
     }
+    const totalLocked = (token: CryptoAsset) => {
+        if (!token?.staking) {
+            return 0
+        }
+        let total = 0
+        token.staking.forEach(n => {
+            total += n.totalAmount - n.claimedAmount
+        })
+        return total
+    }
+    const calcAvailablePrice = () => {
+        const totalAmount = Number(profiles?.[1]?.tokens?.sp?.balance1 || 0);
+        const lockAmount = Number(totalLocked(profiles?.[1].tokens.sp) || 0);
+        const totalPrice = Number(profiles?.[1]?.tokens?.sp?.usd || 0);
+        const rawValue = (lockAmount / totalAmount) * totalPrice;
+        const decimalPlaces = (totalPrice.toString().split('.')[1] || '').length || 2;
+        return totalPrice ? Number(rawValue.toFixed(decimalPlaces)) : (0.0).toFixed(2);
+    }
 
     return (
         <>
-            {/*<div className="token-assets-item">
-                <div className="token-assets-item-lt">
-                    <div className="token-assets-item-label">
-                        <div className="token-assets-item-label-name">
-                            <SpToken width={20} height={20}/>
-                            {
-                                simplifiedView ? (
-                                    <div>
-                                        <p>Silent Pass</p>
-                                        <p>{profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</p>
-                                    </div>
-                                ) : (
-                                    <p>$SP</p>
-                                )
-                            }
-                        </div>
-                        {
-                            !simplifiedView &&
-                            <>
-                                <div className='asset-second-line'>
-                                    <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)}</p>
-                                    
-                                </div>
-                                {
-                                    profiles?.[1]?.tokens?.sp?.staking?.length > 0 &&
-                                    <>
-                                        <div className='asset-second-line'>
-                                            <p style={{color: "#6c4949"}}>{totalLocked(profiles[1].tokens.sp).toFixed(2)} 🔒</p>
-                                        </div>
-                                    </>
-                                }
-                            </>
-                        }
-                    </div>
-                    <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
+            <div className={styles.item}>
+                <SpToken width={20} height={20}/>
+                <div className={styles.infos}>
+                    <div className={styles.infosItem}><span>{t('comp-accountlist-staking-total-assets')}</span><span>{convertStringToNumber((profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2))}</span><span>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</span></div>
+                    <div className={styles.infosItem}><span>{t('comp-accountlist-staking-total-available')}</span><span>{convertStringToNumber(totalLocked(profiles?.[1].tokens.sp).toFixed(2))}</span><span>${calcAvailablePrice()}</span></div>
                 </div>
-                <div className="token-assets-item-val">
-                    {
-                        simplifiedView ? (
-                            <p>${(spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2)}</p>
-                        ) : (
-            
-                           <p>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</p>
-        
-                        )
-                    }
-                </div>
-            </div>*/}
-
+                <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
+            </div>
             {getStakingList()&&getStakingList()?.length?<div className={styles.stakingList}>
-                <div className={styles.hd}><span>🔒已质押资产</span><span>总数20</span></div>
+                <div className={styles.hd}><span>🔒{t('comp-accountlist-staking-title')}</span><span>{t('comp-accountlist-staking-total-num')} {getStakingList()?.length}</span></div>
                 <div className={styles.bd}>
                     {getStakingList()?.map((item,index)=>{
                         return (
                             <div className={styles.item} key={index}>
                                 <span>{index+1}.</span>
-                                <span>{convertStringToNumber(item.claimableAmount)}</span>
+                                <span>{convertStringToNumber(item.claimableAmount.toFixed(2))}</span>
                                 <span>{formatDateToCustomString(item.startTime)}</span> 
-                                <span><ClockCircleFill /> 待解锁</span>
+                                <span><ClockCircleFill /> {t('comp-accountlist-staking-locking')}</span>
                             </div>
                         )
                     })}

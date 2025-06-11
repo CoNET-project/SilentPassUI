@@ -65,7 +65,7 @@ export default function Support() {
           id: 5,
           icon: helpIcon,
           title: "Customer Service",
-          action: () => {window.open('https://vue.comm100.com/chatwindow.aspx?siteId=90007504&planId=efd822ce-7299-4fda-9fc1-252dd2f01fc5#')}
+          action: () => {window?.Comm100API?.open_chat_window?.();}
         },
       ]
     }

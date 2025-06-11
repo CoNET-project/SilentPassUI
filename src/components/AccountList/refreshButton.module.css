@@ -1,0 +1,21 @@
+.btnWrap{
+    .btn{
+        color: #5c8df8;
+        padding: 0 0 0 7px!important;
+        font-size: 22px!important;
+        :global(.adm-button-loading-wrapper > .adm-loading){
+            font-size: 12px;
+            color: #5c8df8!important;
+            opacity: 1!important;
+        }
+        :global(.adm-button-loading-wrapper > .adm-loading > svg){
+            margin-top: 0!important;
+        }
+        :global(.antd-mobile-icon){
+            margin-top: 0!important;
+        }
+    }
+    :global(.adm-button-loading){
+        opacity: 1!important;
+    }
+}

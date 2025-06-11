@@ -1,4 +1,5 @@
 .sendBtn{
+    flex: none;
     display: flex;
     flex-direction: column;
     justify-content: center!important;

@@ -1,9 +1,9 @@
 {
 	"data": {
 		"classifyList" : [
-			{"name":"Special","nameCn":"定制","value":"special","valueTag":"special"},
-			{"name":"Official Website","nameCn":"官网","value":"official","valueTag":"official"},
-			{"name":"Region","nameCn":"地区","value":"region","valueTag":"region"}
+			{"name":"Add custom filtered sites","nameCn":"自定义添加过滤地址","value":"special","valueTag":"special"},
+			{"name":"Choose common official sites","nameCn":"选择常见官网","value":"official","valueTag":"official"},
+			{"name":"Filter websites by region","nameCn":"按区域过滤常用网站","value":"region","valueTag":"region"}
 		],
 		"officialList":[
 			{

@@ -18,6 +18,7 @@ import SendButton from './SendButton';
 import AirdropSuccess from './SuccessModal'
 import { useTranslation } from 'react-i18next';
 import ImportButton from './ImportButton';
+import StakingList from './StakingList';
 
 interface AccountListProps {
     showMainWallet?: boolean;
@@ -271,44 +272,16 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                             {renderRefreshButton()}
                         </div>
                         
-                        <div className="token-assets-item">
+                        {simplifiedView?<div className="token-assets-item">
                             <div className="token-assets-item-lt">
                                 <div className="token-assets-item-label">
                                     <div className="token-assets-item-label-name">
                                         <SpToken width={20} height={20}/>
-                                        {
-                                            simplifiedView ? (
-                                                <div>
-                                                    <p>Silent Pass</p>
-                                                    <p>{profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</p>
-                                                </div>
-                                            ) : (
-                                                <p>$SP</p>
-                                            )
-                                        }
+                                        <div>
+                                            <p>Silent Pass</p>
+                                            <p>{profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</p>
+                                        </div>
                                     </div>
-                                    {
-                                        !simplifiedView &&
-										<>
-											<div className='asset-second-line'>
-                                                <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)}</p>
-												
-                                            </div>
-											{
-												profiles?.[1]?.tokens?.sp?.staking?.length > 0 &&
-												<>
-													<div className='asset-second-line'>
-														<p style={{color: "#6c4949"}}>{totalLocked(profiles[1].tokens.sp).toFixed(2)} 🔒</p>
-													</div>
-												</>
-												
-												
-											}
-											
-										</>
-                                            
-											
-                                    }
                                 </div>
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
                             </div>
@@ -323,7 +296,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                                     )
                                 }
                             </div>
-                        </div>
+                        </div>:<StakingList simplifiedView={simplifiedView} />}
 
                         <div className="token-assets-item">
                             <div className="token-assets-item-lt">

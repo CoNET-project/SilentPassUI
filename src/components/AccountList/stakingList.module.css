@@ -1,0 +1,40 @@
+.stakingList{
+    display: block!important;
+    border-top: 1px rgb(63, 63, 64) solid;
+    border-bottom: 1px rgb(63, 63, 64) solid;
+    padding: 8px 0;
+    margin: 0 0 10px;
+    .hd{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 15px;
+        font-weight: 500;
+        color: #f1f1f1;
+        padding: 0 5px 8px;
+    }
+    .bd{
+        max-height: 100px;
+        overflow: auto;
+        display: table;
+        width: 100%;
+        border-collapse: collapse;
+        color: #989899;
+        padding: 0 5px;
+        .item{
+            display: table-row;
+            span{
+                display: table-cell;
+                padding: 2px;
+                white-space: nowrap;
+                text-align: center;
+            }
+            span:first-child {
+                text-align: left;
+            }
+            span:last-child {
+                text-align: right;
+            }
+        }
+    }
+}

@@ -7,20 +7,8 @@ import bs58 from "bs58";
 import _ from 'lodash';
 import { Keypair, Connection } from "@solana/web3.js";
 import { CoNET_Data, setCoNET_Data, globalAllNodes } from "./../../utils/globals";
-import { getCurrentPassportInfoInChain } from "./../../services/wallets";
-import { getAssociatedTokenAddress, getAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { useDaemonContext } from "./../../providers/DaemonProvider";
 import { refreshSolanaBalances, storeSystemData } from './../../services/wallets';
-
-interface SendParams {
-    type: string; 
-    balance: number|string;
-    handleRefreshSolanaBalances:()=>Promise<void>;
-    usd:number;
-    wallet:any;
-    isEthers:boolean;
-}
-
 
 const ImportButton=({  })=> {
     const { setProfiles } = useDaemonContext();

@@ -24,7 +24,7 @@ input::-webkit-inner-spin-button {
 }
 
 .solana.account-wrapper.active {
-  height: 28rem;
+  height: auto;
 }
 
 .referral-program.account-wrapper.active {

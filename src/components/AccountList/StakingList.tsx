@@ -45,10 +45,27 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
         // 提取数字部分和单位
         const match = (str+'').match(/^([\d.]+)([KMBT]?)$/i);
         if (!match) return NaN;
-        const num = parseFloat(match[1]);
+        const num = parseFloat(match[1])
         const unit = match[2].toUpperCase() as keyof typeof multiplier;
         return unit ? num * multiplier[unit] : num;
     }
+    const convertNumberToString = (num: number): string => {
+        const units = [
+            { value: 1e12, symbol: 'T' },
+            { value: 1e9, symbol: 'B' },
+            { value: 1e6, symbol: 'M' },
+            { value: 1e3, symbol: 'K' }
+        ];
+        
+        const absNum = Math.abs(num);
+        for (const unit of units) {
+            if (absNum >= unit.value) {
+                return (num / unit.value).toFixed(2) + unit.symbol;
+            }
+        }
+        return num.toString();
+    }
+
     const getStaking=()=>{
         return CoNET_Data?.profiles[1]?.tokens?.sp
     }
@@ -79,8 +96,16 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
             <div className={styles.item}>
                 <SpToken width={20} height={20}/>
                 <div className={styles.infos}>
-                    <div className={styles.infosItem}><span>{t('comp-accountlist-staking-total-assets')}</span><span>{convertStringToNumber((profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2))}</span><span>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</span></div>
-                    <div className={styles.infosItem}><span>{t('comp-accountlist-staking-total-available')}</span><span>{(convertStringToNumber((profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2)) - convertStringToNumber(totalLocked(profiles?.[1].tokens.sp).toFixed(2))).toFixed(2)}</span><span>${calcAvailablePrice()}</span></div>
+                    <div className={styles.infosItem}>
+                        <span>{t('comp-accountlist-staking-total-assets')}</span>
+                        <span>{convertNumberToString( Number( (profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2) ) )}</span>
+                        <span>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</span>
+                    </div>
+                    <div className={styles.infosItem}>
+                        <span>{t('comp-accountlist-staking-total-available')}</span>
+                        <span>{convertNumberToString(Number((profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2)) - Number(totalLocked(profiles?.[1].tokens.sp).toFixed(2)) )}</span>
+                        <span>${calcAvailablePrice()}</span>
+                    </div>
                 </div>
                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
             </div>
@@ -91,7 +116,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
                         return (
                             <div className={styles.item} key={index}>
                                 <span>{index+1}.</span>
-                                <span>{convertStringToNumber(item.lockedAmount.toFixed(2))}</span>
+                                <span>{convertNumberToString(Number(item.lockedAmount.toFixed(2)))}</span>
                                 <span>{formatDateToCustomString(item.startTime)}</span> 
                                 <span><ClockCircleFill /> {t('comp-accountlist-staking-locking')}</span>
                             </div>

@@ -50,7 +50,6 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
         return unit ? num * multiplier[unit] : num;
     }
     const getStaking=()=>{
-        console.log(CoNET_Data,'CoNET_Data')
         return CoNET_Data?.profiles[1]?.tokens?.sp
     }
     const getStakingList=()=>{

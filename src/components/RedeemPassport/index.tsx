@@ -125,7 +125,7 @@ export default function RedeemPassport() {
 				<>
 					<label className="redeem-label">{t('comp-RedeemPassport-25usdRedeem')} </label>
 					<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
-						{spRewordloading ? <SimpleLoadingRing /> : t('comp-comm-Claim')}
+						{spRewordloading ? <SimpleLoadingRing /> : t('comp-RedeemPassport-RedeemNow')}
 					</button>
 					<div className="redeem-divider">
 						<div className="line"></div>
@@ -144,6 +144,7 @@ export default function RedeemPassport() {
 								isIOS ? <label className="redeem-label">Already a Subscriber?</label>
 								:  <label className="redeem-label">{t('comp-RedeemPassport-imput')} </label>
 							}
+							<p className="redeem-label">{t('comp-RedeemPassport-detail')}</p>
 							<input
 								type="text"
 								placeholder="#1234"

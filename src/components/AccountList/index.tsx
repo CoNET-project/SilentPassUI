@@ -268,7 +268,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                 <div className="info-card">
                     <div className="info-wrapper">
                         <div className='token-assets-title'>
-                            <p className='title'>{t('comp-accountlist-assets-2')} </p>
+                            <p className='title' style={{width: '90%'}}>{t('comp-accountlist-assets-2')} </p>
                             {renderRefreshButton()}
                         </div>
                         

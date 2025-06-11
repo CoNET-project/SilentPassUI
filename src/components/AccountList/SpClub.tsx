@@ -198,6 +198,9 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
       <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px"}}>
 		<div className="passport-options" style={{gap:"2px", alignSelf: "center"}}>
 			<p>
+				{t('comp-accountlist-SpClub-detail-0')}
+			</p>
+			<p>
 				{t('comp-accountlist-SpClub-detail-1')}
 			</p>
 			<p>
@@ -219,6 +222,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 			<p>
 				{t('comp-accountlist-SpClub-detail-7')}
 			</p>
+
 			<div className="redeem-divider">
 				<div className="line"></div>
 			</div>

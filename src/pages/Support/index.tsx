@@ -65,10 +65,7 @@ export default function Support() {
           id: 5,
           icon: helpIcon,
           title: "Customer Service",
-          action: () => {
-			//@ts-ignore
-			window?.Comm100API?.open_chat_window?.();
-		}
+          action: () => {window?.Comm100API?.open_chat_window?.();}
         },
       ]
     }

@@ -63,7 +63,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
                 return (num / unit.value).toFixed(2) + unit.symbol;
             }
         }
-        return num.toString();
+        return num.toFixed(2).toString();
     }
 
     const getStaking=()=>{
@@ -94,7 +94,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
 		
         const rawValue = ((totalAmount - lockAmount) / totalAmount) * totalPrice;
         const decimalPlaces = (totalPrice.toString().split('.')[1] || '').length || 2;
-        return totalPrice ? Number(rawValue.toFixed(decimalPlaces)) : (0.0).toFixed(2);
+        return totalPrice>0 ? Number(rawValue.toFixed(decimalPlaces)) : (0.0).toFixed(2);
     }
 
 	const available = () => {
@@ -124,7 +124,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
                 </div>
                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
             </div>
-            {getStakingList()&&getStakingList()?.length?<div className={styles.stakingList}>
+            {CoNET_Data&&getStakingList()&&getStakingList()?.length?<div className={styles.stakingList}>
                 <div className={styles.hd}><span>🔒{t('comp-accountlist-staking-title')}</span><span>{t('comp-accountlist-staking-total-num')} {getStakingList()?.length}</span></div>
                 <div className={styles.bd}>
                     {getStakingList()?.map((item,index)=>

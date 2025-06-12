@@ -65,6 +65,7 @@ export default function Support() {
           id: 5,
           icon: helpIcon,
           title: "Customer Service",
+		  //@ts-ignore
           action: () => {window?.Comm100API?.open_chat_window?.();}
         },
       ]

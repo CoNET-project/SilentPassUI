@@ -82,11 +82,12 @@ export default function SPClubRewardTab({ setTokenGraph, quotation, animation }:
   return (
     <div style={{width:"100%"}}>
       <div className="token-list">
-		<p style={{}}>{t('comp-SPClubRewardTab-detail')}</p>
+		<p style={{paddingBottom:"1rem"}}>{t('comp-SPClubRewardTab-detail')}</p>
 		
         {tokens.map((token, index) => (
           <TokenCard key={index} token={token} action={() => setTokenGraph(token.currency)} />
         ))}
+		<p style={{textAlign:"left", paddingTop: "1rem"}}>{t('comp-SPClubRewardTab-detail-1')}</p>
       </div>
 
       {/* <p style={{margin:"24px 0", textAlign:"left", color:"#989899", fontSize:"11px"}}>Tokens lists are generated using market data provided by various third party providers including CoinGecko, Birdeye and Jupiter. Performance is based on the prior 24 hour period. Past performance is not indicative of future performance.</p> */}

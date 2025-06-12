@@ -78,18 +78,33 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
         }
         let total = 0
         token.staking.forEach(n => {
-            total += n.totalAmount - n.claimedAmount
+			
+            total += !n ? 0 : n.totalAmount - n.claimedAmount
         })
         return total
     }
     const calcAvailablePrice = () => {
+		const _available = available()
+		if (!_available) {
+			return '0'
+		}
         const totalAmount = Number(profiles?.[1]?.tokens?.sp?.balance1 || 0);
         const lockAmount = Number(totalLocked(profiles?.[1].tokens.sp) || 0);
         const totalPrice = Number(profiles?.[1]?.tokens?.sp?.usd || 0);
+		
         const rawValue = ((totalAmount - lockAmount) / totalAmount) * totalPrice;
         const decimalPlaces = (totalPrice.toString().split('.')[1] || '').length || 2;
         return totalPrice ? Number(rawValue.toFixed(decimalPlaces)) : (0.0).toFixed(2);
     }
+
+	const available = () => {
+		const balance = profiles?.[1]?.tokens?.sp?.balance1
+		const locked = Number(totalLocked(profiles?.[1].tokens.sp).toFixed(2))
+		if (balance - locked > 0) {
+			return Number((balance - locked).toFixed(2))
+		}
+		return 0
+	}
 
     return (
         <>
@@ -103,7 +118,7 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
                     </div>
                     <div className={styles.infosItem}>
                         <span>{t('comp-accountlist-staking-total-available')}</span>
-                        <span>{convertNumberToString(Number((profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2)) - Number(totalLocked(profiles?.[1].tokens.sp).toFixed(2)) )}</span>
+                        <span>{convertNumberToString(available())}</span>
                         <span>${calcAvailablePrice()}</span>
                     </div>
                 </div>
@@ -112,16 +127,17 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
             {getStakingList()&&getStakingList()?.length?<div className={styles.stakingList}>
                 <div className={styles.hd}><span>🔒{t('comp-accountlist-staking-title')}</span><span>{t('comp-accountlist-staking-total-num')} {getStakingList()?.length}</span></div>
                 <div className={styles.bd}>
-                    {getStakingList()?.map((item,index)=>{
-                        return (
+                    {getStakingList()?.map((item,index)=>
+						item &&
+                        
                             <div className={styles.item} key={index}>
                                 <span>{index+1}.</span>
                                 <span>{convertNumberToString(Number(item.lockedAmount.toFixed(2)))}</span>
                                 <span>{formatDateToCustomString(item.startTime)}</span> 
                                 <span><ClockCircleFill /> {t('comp-accountlist-staking-locking')}</span>
                             </div>
-                        )
-                    })}
+                        
+                    )}
                 </div>
             </div> :''}
         </> 

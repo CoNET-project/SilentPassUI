@@ -301,7 +301,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 								</button>
 							</div>
 							<div id="outer">
-								<div className="inner" style={{marginRight: "1rem"}}>
+								{/* <div className="inner" style={{marginRight: "1rem"}}>
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BNB')}>
 										<img src = {bnb_token} className="button_img"/>
 									</button>
@@ -310,7 +310,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BSC USDT')}>
 										<img src = {bnb_usdt} className="button_img"/>
 									</button>
-								</div>
+								</div> */}
 								{/* <div className="inner" style={{marginRight: "1rem"}}>
 									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('TRON TRX')}>
 										<QuotesTx style={{width: '26px', height: '26px'}}/>

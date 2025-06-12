@@ -286,25 +286,25 @@ export const getBalanceFromPDA = async (solanaRPC_url: string, spToken: CryptoAs
         console.log("Now (unix):", new Date(nowTs*1000))
         console.log("Elapsed (sec):", elapsed)
         console.log("Vested so far (raw):", ethers.formatUnits(vested, SP_tokenDecimals))
-        console.log("Claimable now (raw):", )
-		if (!spToken?.staking) {
+
+		if (!VESTING_ID || !spToken.staking) {
 			spToken.staking = []
 		}
-		
-		spToken.staking[VESTING_ID] = {
-			totalAmount,
-			startTime,
-			claimedAmount,
-			releaseDuration,
-			claimableAmount,
-			lockedAmount 
+		if (lockedAmount) {
+			spToken.staking.push({
+				totalAmount,
+				startTime,
+				claimedAmount,
+				releaseDuration,
+				claimableAmount,
+				lockedAmount 
+			})
+
+			spToken.balance1 = spToken.balance1 || 0
+			spToken.balance1 +=  lockedAmount
+			spToken.balance = (spToken.balance1 >= 1_000_000) ? (spToken.balance1/1_000_000).toFixed(2) + 'M' : spToken.balance1.toFixed(2)
 		}
 
-		spToken.balance1 = spToken.balance1 || 0
-		spToken.balance1 +=  lockedAmount
-		spToken.balance = (spToken.balance1 >= 1_000_000) ? (spToken.balance1/1_000_000).toFixed(2) + 'M' : spToken.balance1.toFixed(2)
-
-        console.log(`success!`)
 		await getBalanceFromPDA(solanaRPC_url, spToken, ++VESTING_ID )
 
     } catch (ex) {

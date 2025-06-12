@@ -57,18 +57,18 @@ export default function Support() {
         // }
       ]
     },
-    {
-      id: 4,
-      heading: "Customer service",
-      items: [
-        {
-          id: 5,
-          icon: helpIcon,
-          title: "Customer Service",
-          action: () => {window?.Comm100API?.open_chat_window?.();}
-        },
-      ]
-    }
+    // {
+    //   id: 4,
+    //   heading: "Customer service",
+    //   items: [
+    //     {
+    //       id: 5,
+    //       icon: helpIcon,
+    //       title: "Customer Service",
+    //       action: () => {window?.Comm100API?.open_chat_window?.();}
+    //     },
+    //   ]
+    // }
   ]), [navigate]);
 
   return (

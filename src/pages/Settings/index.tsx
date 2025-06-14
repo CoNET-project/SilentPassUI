@@ -2,6 +2,7 @@ import ClickableItem from '../../components/ClickableItem';
 import Footer from '../../components/Footer';
 import './index.css';
 
+import helpIcon from "./assets/help.svg";
 import languageIcon from "./assets/language.svg";
 import systemProxi from './assets/applications.svg'
 
@@ -64,6 +65,19 @@ export default function Settings() {
           childrenText: t(`${i18n.language}`),
           action: () => setVisible(true)
         },
+        {
+          id: 2,
+          icon: helpIcon,
+          title: "FAQ",
+          action: () => navigate("/faq"),
+        },
+        {
+          id: 5,
+          icon: helpIcon,
+          title: "Customer Service",
+		       //@ts-ignore
+          action: () => {window?.Comm100API?.open_chat_window?.();}
+        },
         /* {
           id: 2,
           icon: applicationIcon,
@@ -79,41 +93,17 @@ export default function Settings() {
         // }
       ]
     }, {
-      heading: t('Settings_Passcode'),
-      items: [
-        {
-          id: 1,
-          icon: lockIcon,
-          title: t('Settings_Passcode_on'),
-          // action: () => navigate("/passcode/new"),
-          childrenText: t('Settings_Passcode_soon'),
-        },
-        {
-          id: 2,
-          icon: lockIcon,
-          title: t('Settings_Passcode_change'),
-          // action: () => navigate("/passcode/change"),
-          childrenText: t('Settings_Passcode_soon'),
-        }
-      ]
-    }, {
       heading: t('Settings_Passcode_Addon'),
       items: [
         {
-          id: 1,
-          icon: adsBlockIcon,
-          title: t('Settings_Passcode_Ads'),
-          childrenText: t('Settings_Passcode_soon'),
-        },
-        {
-          id: 2,
+          id: 3,
           icon: extraRewardIcon,
           title: t('Settings_Passcode_Reward'),
           childrenText: '',
 		  action: () => navigate("/wallet"),
         },
         {
-          id: 3,
+          id: 4,
           icon: splitTunnelingIcon,
           title: t('Settings_Passcode_WebsiteFilter'),
           action: () => setVisible2(true),
@@ -124,7 +114,7 @@ export default function Settings() {
     },
   ]), [visible, navigate ]);
 
-  const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'))
+  const passportTitle = t(getPassportTitle(activePassport))
 
   const handleChangeSwitch=(val:boolean)=>{
       setSwitchValue(val)

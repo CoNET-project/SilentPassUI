@@ -1,3 +1,5 @@
+// File is deprecated, moved to settings page
+
 import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
 import ClickableItem from '../../components/ClickableItem';
 import Footer from '../../components/Footer';

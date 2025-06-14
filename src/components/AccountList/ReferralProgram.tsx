@@ -240,10 +240,7 @@ export default function ReferralProgram() {
           )
         }
 
-        <Separator />
-
         <div className="info-wrapper">
-			<SPClubRewardTab quotation = {quotation} setTokenGraph={setTokenGraph} animation = {animation}/>
           {/* <div className='token-assets-title'>
             <p className='title'>Rewards</p>
           </div>

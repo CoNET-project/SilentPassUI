@@ -162,7 +162,7 @@ const Home = () => {
       vpnTimeTimeout.current = timeout;
     }
 
-    clearInterval(vpnTimeTimeout.current);
+    clearTimeout(vpnTimeTimeout.current);
 
     if (power) {
       countMinutes()
@@ -427,19 +427,11 @@ const handleTogglePower = async () => {
 						
 					}
 				</>
-
 				 	
 			  }
 			  
-			  
             </div>
 
-			<div>
-				<button onClick={() => navigate("/wallet")}>
-					<img className="bannaer" src={i18n.language === 'zh' ? bannaer_cn : bannaer} style={{width:"25rem",height: "5rem"}}></img>
-				</button>
-				
-			</div>
 
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 			  {
@@ -456,7 +448,7 @@ const handleTogglePower = async () => {
 
             {!isConnectionLoading &&
               <RegionSelector
-				
+              
                 title={allRegions?.[sRegion]?.country}
                 regionCode={allRegions?.[sRegion]?.code}
                 showArrow={!power}

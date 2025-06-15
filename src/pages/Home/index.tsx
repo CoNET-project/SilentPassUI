@@ -44,10 +44,26 @@ interface RenderButtonProps {
 
 const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, power, profile, _vpnTimeUsedInMin }: RenderButtonProps) => {
   
+    const [showConnected, setShowConnected] = useState(false);
+
+    // Show "Connected" message for 2 seconds after connection
+    useEffect(() => {
+      if (power && !isConnectionLoading) {
+        setShowConnected(true);
+        const timer = window.setTimeout(() => {
+          setShowConnected(false);
+        }, 2000); // Show for 2 seconds
+      return () => clearTimeout(timer);
+    }
+    setShowConnected(false);
+  }, [power, isConnectionLoading]);
+
+
   const state = useMemo(
     () => (isConnectionLoading ? 'connecting' : power ? 'on' : 'off'),
     [isConnectionLoading, power]
   );
+
 
     const iconSrc = isConnectionLoading
     ? '/assets/loading-ring.png'
@@ -69,6 +85,10 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
 
         {isConnectionLoading && (
           <p className="connected">Loading...</p>
+        )}
+
+         {showConnected && (
+          <p className="connected">Connected</p>
         )}
 
         {state === 'off' && errorMessage && (
@@ -403,7 +423,7 @@ const handleTogglePower = async () => {
         ) : (
           <>
             <div>
-              <img src="/assets/header-title.svg"></img>
+              <img src="/assets/header-title.svg" style={{minWidth: '150px', minHeight: '75x'}}></img>
 			  {
 				
 				!isProcessAirDrop && 

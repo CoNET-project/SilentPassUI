@@ -24,7 +24,7 @@ const PassportInfo = ({ passportInfo, selectedValue, onChange }: any) => {
             },
           }}
         />
-        <p style={{ width: 'auto', fontSize: '12px', color: '#B1B1B2', textAlign: 'left', fontWeight: 700, paddingTop: 1 }}>#{passportInfo.nftID} - {getPassportTitle(passportInfo, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'))}</p>
+        <p style={{ width: 'auto', fontSize: '12px', color: '#B1B1B2', textAlign: 'left', fontWeight: 700, paddingTop: 1 }}>#{passportInfo.nftID} - {t(getPassportTitle(passportInfo))}</p>
       </div>
       <p style={{ fontSize: '10px', color: '#B1B1B2', textAlign: 'right', fontWeight: 500, paddingBottom: 1 }}>{getExpirationDate(passportInfo, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour'))}</p>
     </div>

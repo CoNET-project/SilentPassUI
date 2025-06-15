@@ -173,8 +173,9 @@
 
 	"comp-Rules-RuleButton-input-placeholder": "Search keywords or URLs",
 
-	"passport_unlimit": "Infinite",
-	"passport_Freemium": "Freemium",
+
+	"passport_unlimit": "Unlimited",
+	"passport_Freemium": "Free Trial",
 	"passport_Guardian": "Guardian",
 	"passport_Annually": "Annually",
 	"passport_Quarter": "Quarter",
@@ -201,7 +202,7 @@
 	"region_AT": "Austria",
 	"region_AU": "Australia",
 	"region_SG": "Singapore",
-	"region_CN": "HongKong China",
+	"region_CN": "Hong Kong",
 
 	"wallet_title": "View My Passport",
 

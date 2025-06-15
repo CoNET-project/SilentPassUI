@@ -4,6 +4,18 @@ import { apiv4_endpoint, XMLHttpRequestTimeout } from "./constants";
 import contracts from "./contracts";
 import { StringDecoder } from "node:string_decoder";
 
+
+enum PassportTitle {
+  Placeholder = '...',
+  Freemium   = 'passport_Freemium',    // "Free Trial"
+  Guardian   = 'passport_Guardian',    // "Guardian"
+  Annually   = 'passport_Annually',    // "Annually"
+  Quarter    = 'passport_Quarter',     // "Quarter"
+  Monthly    = 'passport_Monthly',     // "Monthly"
+  Infinite   = 'passport_Infinite',    // "Infinite"
+  Unlimit    = 'passport_unlimit',     // "Unlimited"
+}
+
 export const customJsonStringify = (item: any) => {
   const result = JSON.stringify(
     item,
@@ -138,26 +150,28 @@ export const postToEndpoint = (url: string, post: boolean, jsonData: any): Promi
 
 export const getRemainingTime = (timestamp: number, day: string, hour: string): string => {
   const now = Math.floor(Date.now() / 1000);
-  const diff = timestamp - now;
+  let diff = timestamp - now;
+  if (diff <= 0) return `0m0s`;
 
-  if (diff <= 0) return "00:00:00";
- 
   const days = Math.floor(diff / 86400);
-  const hours = Math.floor((diff % 86400) / 3600);
-  const minutes = Math.floor((diff % 3600) / 60);
+  diff %= 86400;
+  const hours = Math.floor(diff / 3600);
+  diff %= 3600;
+  const minutes = Math.floor(diff / 60);
   const seconds = diff % 60;
 
-  if (days > 0) {
-    return `${days} ${day}${days !== 1 ? day === 'day' ? "s" : "": ""} + ${String(hours).padStart(
-      2,
-      "0"
-    )}:${String(minutes).padStart(2, "0")}${hour}`;
+  if (days >= 1) {
+    // 0d00h
+    return `${days}d ${hours}h`;
   }
 
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
-    2,
-    "0"
-  )}:${String(seconds).padStart(2, "0")}`;
+  if (hours >= 1) {
+    // 00h00m
+    return `${hours}h ${minutes}m`;
+  }
+
+  // 00m00s
+  return `00m ${seconds}s`;
 };
 
 export const isPassportValid = (expires: number | undefined) => {
@@ -210,25 +224,36 @@ export const isInfinite = (passportInfo: any) => {
 }
 
 
-export const getPassportTitle = (passportInfo: any, Freemium: string, Guardian: string, Annually: string, Quarter: string, Monthly: string, Infinite: string) => {
-	if (!passportInfo|| parseInt(passportInfo.nftID) < 100) {
-		return "..."
-	}
-	
-  if (passportInfo.expiresDays < 30 && passportInfo.expiresDays > 0){
-	return Freemium;
+// Returns the title of the passport based on the provided passportInfo
+// Must be called within in t('') when called for localization
+export const getPassportTitle = (passportInfo: any) => {
+  if (!passportInfo || parseInt(passportInfo.nftID, 10) < 100) {
+    return PassportTitle.Freemium;
   }
 
-  if (passportInfo?.expires > 32503690800000 ) {
-	return Guardian;
+  const { expires, expiresDays } = passportInfo;
+
+  if (expiresDays > 366) {
+    return PassportTitle.Infinite;
   }
-  if (passportInfo.expiresDays > 366) return Infinite
 
-  if (passportInfo.expiresDays > 100 ) return Annually
+  if (expires > 32_503_690_800_000) {  // year 3000-ish
+    return PassportTitle.Guardian;
+  }
 
-  if (passportInfo.expiresDays > 90) return Quarter
+  if (expiresDays > 100) {
+    return PassportTitle.Annually;
+  }
 
-  return Monthly;
+  if (expiresDays > 90) {
+    return PassportTitle.Quarter;
+  }
+
+  if (expiresDays > 0 && expiresDays < 30) {
+    return PassportTitle.Freemium;
+  }
+
+  return PassportTitle.Monthly;
 };
 
 export const getExpirationDate = (passportInfo: any, unlimit: string, not_used: string, day: string, hour: string) => {

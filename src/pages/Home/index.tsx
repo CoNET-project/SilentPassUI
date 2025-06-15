@@ -162,7 +162,7 @@ const Home = () => {
       vpnTimeTimeout.current = timeout;
     }
 
-    clearInterval(vpnTimeTimeout.current);
+    clearTimeout(vpnTimeTimeout.current);
 
     if (power) {
       countMinutes()
@@ -427,10 +427,8 @@ const handleTogglePower = async () => {
 						
 					}
 				</>
-
 				 	
 			  } */}
-			  
 			  
             </div>
 
@@ -456,7 +454,7 @@ const handleTogglePower = async () => {
 
             {!isConnectionLoading &&
               <RegionSelector
-				
+              
                 title={allRegions?.[sRegion]?.country}
                 regionCode={allRegions?.[sRegion]?.code}
                 showArrow={!power}

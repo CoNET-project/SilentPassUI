@@ -14,14 +14,45 @@
     "system-proxy":"Proxy",
 
     "faq": "FAQ",
-    "faq1": "What’s the Silent Pass service level?",
-    "faq1-1": "Service Levels and Benefits:",
-    "faq1-2": "(for both Proxy and VPN)",
-    "faq1-3": "Free Trial User",
+    "faq-membership": "What membership levels are available?",
+    "faq-benefits": "Silent Pass access includes both Proxy and VPN",
+	"faq-price" : "How much does Silent Pass cost?",
+	"faq-wallet" : "What’s my Silent Pass Wallet? How can I get my Silent Pass Wallet?",
+	"faq-wallet-2" : "Silent Pass Wallet are unique identity for each device. The Silent Pass Passport could be purchased within the APP, or be transferred to your wallet, then your Silent Pass service would be initiated.",
+	"faq-wallet-3" : "Please refer to <1> Tutorial URL</1> for how to get your Silent Pass wallet address.",
+	"faq-expiry": "How do I check the expiry date of my Silent Pass Service?",
+  	"faq-expiry-2": "Please refer to <1>Tutorial Video</1> for step-by-step guidance.",
+	"faq-difference": "What is the difference between Silent Pass Proxy and Silent Pass VPN?",
+	"faq-difference-2": "We offer 2 different Silent Pass services to better suit your needs.",
+    "faq-difference-3": "<0>Silent Pass Proxy</0> is the application that runs on your PC/laptop to provide VPN protection for your web browser.",
+	"faq-difference-4" : "<0>Silent Pass VPN</0> APP can be downloaded from the App Store; it runs on your mobile/MAC/other device to provide VPN protection for your entire device. It’s available for iPhone and MAC at this stage; Silent Pass Android APP coming soon.",
+	
+	"faq-support": "How can I contact Silent Pass support?",
+	"faq-support-2": "For any issues, visit the Silent Pass webpage or contact us via support@silentpass.io",
+	
+	"faq-vpn": "How can I use Silent Pass VPN?", 
+	"faq-vpn-2":  "Please refer to <0> Tutorial URL</0> for a step-by-step guide",
+
+	"faq-telegram" : "How can I use Telegram under Silent Pass VPN Protection?",
+	"faq-telegram-2": "After the Silent Pass APP has been run on your device, you need to set up your Telegram proxy settings to use the Telegram APP.",
+	"faq-telegram-3": "Run Silent Pass APP on your device.",
+	"faq-telegram-4": "Run Telegram APP on your device.",
+	"faq-telegram-5": "Change Telegram Proxy Setting: Telegram Setting => Data and Storage => Proxy.",
+	"faq-telegram-6": "Add Proxy, proxy information can be found on the Silent Pass VPN APP homepage.",
+	
+	"faq-proxy-title": "Silent Pass Proxy",
+	"faq-proxy": "How do I use Silent Pass Proxy?",
+	"faq-proxy-2": "Silent Pass Proxy can only run on your PC, laptop. It will provide privacy protection for your web browser",
+  	"faq-proxy-3": "Download and install the CoNET Daemons. Please refer to <1>Tutorial Video</1> for step-by-step guidance.",
+	"faq-proxy-4": "Set up your PC:",
+    "faq-proxy-5": "If you are using Google Chrome, please add and pin the CoNET Platform Extension in your Chrome. Please refer to <0>Tutorial Video</0> for step-by-step guidance.",
+    "faq-proxy-6": "If you are using a web browser other than Google Chrome, you need to change your PC and browser proxy settings before using Silent Pass Proxy service. Please refer to <0>Tutorial Video</0> for step-by-step guidance.",
+
+	"faq1-3": "Free Trial User",
     "faq1-4": "Free Subscription User",
     "faq1-5": "Standard User",
     "faq1-6": "Silent Pass Service",
-    "faq1-7": " (limited Trial Period)",
+    "faq1-7": " (Limited Trial Period)",
     "faq1-8": " (Daily)",
     "faq1-9": "Devices",
     "faq2": "(for both Proxy and VPN)",
@@ -46,6 +77,7 @@
 	"comp-comm-Refreshing": "Refreshing...",
 	"comp-comm-Claim": "Redeem Now",
 	"comp-comm-Confirm": "Confirm",
+
 	"comp-comm-Paywith": "Paying with",
 	"comp-comm-Balance": "Balance",
 	"comp-comm-Summary": "Summary",
@@ -186,7 +218,6 @@
 	"passport_notUsed": "Not Used",
 	"passport_day": "day",
 	"passport_hour": "h",
-	"passport_secound": "s",
 	"passport_unlimitBandweidth": "Unlimited Traffic",
 
 	"swap_title": "Swap",
@@ -225,8 +256,6 @@
 	"Settings_Passcode_WebsiteFilter-title-special": "Special Filters",
 	"Settings_Passcode_WebsiteFilter-title-official": "Official Filters",
 	"Settings_Passcode_WebsiteFilter-title-region": "Region Filters",
-
-
 
     "lang":"English",
     "language":"Language",

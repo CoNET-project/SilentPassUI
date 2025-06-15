@@ -12,6 +12,7 @@ import { useMemo } from 'react';
 import ProxyInfo from '../../components/ProxyInfo';
 import { useNavigate } from 'react-router-dom';
 import { Popup } from 'antd-mobile';
+import { useTranslation } from "react-i18next";
 
 declare global {
   interface Window {
@@ -39,11 +40,13 @@ type OptionGroups = OptionGroup[];
 
 export default function Support() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   
 
 
 
   const optionGroups = useMemo<OptionGroups>(() => ([
+    
     {
       id: 2,
       heading: "Proxy",
@@ -51,12 +54,12 @@ export default function Support() {
     }, 
     {
       id: 3,
-      heading: "About",
+      heading: t('faq'),
       items: [
         {
           id: 1,
           icon: helpIcon,
-          title: "FAQ",
+          title: t('faq'),
           action: () => navigate("/faq"),
         },
         // {

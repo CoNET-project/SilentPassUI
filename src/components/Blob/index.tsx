@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { useSpring, animated } from "react-spring";
 import blobshape from "blobshape";
+import "./index.css";
+
+const SIZE = 400;
 
 function getRandomPath() {
   return blobshape({
+    size: SIZE,
     growth: 8,
     edges: 20,
   }).path;
@@ -13,9 +17,10 @@ interface Props {
   text?: string;
   color: string;
   style: any;
+  className?: string;    
 }
 
-export default function Blob(props: Props) {
+export default function Blob({ color, style, className }: Props) {
   const [flip, set] = useState(false);
 
   const { path } = useSpring({
@@ -32,11 +37,13 @@ export default function Blob(props: Props) {
   });
 
   return (
-    <svg viewBox="0 0 500 500" width="100%" style={{
+    <svg viewBox="0 0 400 400"  
+    className={className}
+    style={{
       zIndex: "2",
-      ...props.style
+      ...style
     }}>
-      <animated.path fill={props.color} d={path} />
+      <animated.path fill={color} d={path} />
     </svg>
   );
 }

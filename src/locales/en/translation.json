@@ -84,7 +84,7 @@
 	"comp-accountlist-solanaWallet": "$SP Wallet (Solana)",
 	"comp-accountlist-Reward-title": "Reward Points",
 	"comp-accountlist-Reward-detail": "Earn points through the following actions",
-	"comp-accountlist-SpClub-title": "Join the Silent Pass Club",
+	"comp-accountlist-SpClub-title": "Join the Genesis Circle",
 	"comp-accountlist-SpClub-title1": "Join the SP Club",
 	"comp-accountlist-SpClub-title2": "Unlock Premium Benefits",
 	"comp-accountlist-SpClub-detail": "By becoming a member, you’ll unlock all exclusive features and privileges — including private browsing, governance participation, airdrop rewards, and a vibrant Web3 community experience.",
@@ -144,7 +144,7 @@
 	"comp-SPClubRewardTab-2": "Subscription",
 	"comp-SPClubRewardTab-3": "Pending Subscription",
 
-	"comp-RedeemPassport-title": "Get Silent Pass Passport",
+	"comp-RedeemPassport-title": "Silent Pass Passport",
 	"comp-RedeemPassport-RedeemNow": "Redeem Now",
 	"comp-RedeemPassport-25usdRedeem": "Hold $25 worth of $SP to check in daily and earn rewards",
 	"comp-RedeemPassport-imput": "Enter your redemption code",

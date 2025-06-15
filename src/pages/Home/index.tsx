@@ -21,6 +21,12 @@ import {airDropForSP, getirDropForSP} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
 import airdropReff from './assets/airdropReff.gif'
 import { useTranslation } from 'react-i18next'
+import { useMemo } from "react";
+import { LuCirclePower } from 'react-icons/lu';
+import type { IconBaseProps } from 'react-icons';
+
+const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
+
 
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
@@ -40,52 +46,55 @@ interface RenderButtonProps {
 }
 
 const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, power, profile, _vpnTimeUsedInMin }: RenderButtonProps) => {
-  if (isConnectionLoading)
-    return (
-      <div className="button-wrapper">
-        <BlobWrapper>
-          <button
-            className="power"
-          >
-            <img src="/assets/loading-ring.png" className="loading-spinning power-icon" alt="" />
-          </button>
-        </BlobWrapper>
+  
+    const [showConnected, setShowConnected] = useState(false);
 
-        <p className="connected" style={{ zIndex: 10 }}>Loading...</p>
-      </div>
-    )
+  // Show "Connected" message for 2 seconds after connection
+  useEffect(() => {
+    if (power && !isConnectionLoading) {
+      setShowConnected(true);
+      const timer = window.setTimeout(() => {
+        setShowConnected(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+    setShowConnected(false);
+  }, [power, isConnectionLoading]);
 
-  if (power)
-    return (
-      <div className="button-wrapper">
-        <BlobWrapper>
-          <button
-            className="power"
-            onClick={handleTogglePower}
-          >
-            <img src="/assets/power.png" className="power-icon" alt="" />
-          </button>
-        </BlobWrapper>
-      </div>
-    )
-
+  const state = useMemo(
+    () => (isConnectionLoading ? 'connecting' : power ? 'on' : 'off'),
+    [isConnectionLoading, power]
+  );
+  
   return (
-    <>
-      <div className="button-wrapper">
-        <BlobWrapper>
-          <button
-            className="power"
-            onClick={handleTogglePower}
-          >
-            <img src="/assets/not-power.png" className="power-icon" alt="" />
-          </button>
-        </BlobWrapper>
-      </div>
+    <div className="button-wrapper">
+      <BlobWrapper state={state}>
+      {/* <BlobWrapper state={'on'}> */}
 
-      {errorMessage && <span style={{ color: '#bf3b37', fontSize: '12px' }}>{errorMessage}</span>}
-    </>
-  )
-}
+        <button
+          className={power ? 'power power-on' : 'power power-off'}
+          onClick={!isConnectionLoading ? handleTogglePower : undefined}
+        >
+          {isConnectionLoading ? (
+            <img src={'/assets/loading-ring.png'} className={"power-icon loading-spinning"}alt="" />
+          ) : (power ? 
+            <PowerIcon className="power-icon power-icon-on" /> :
+            <PowerIcon className="power-icon power-icon-off" />
+          )}
+        </button>
+      </BlobWrapper>
+
+      {isConnectionLoading && <p className="connected">Loading...</p>}
+      {showConnected && <p className="connected">Connected</p>}
+      {state === 'off' && errorMessage && (
+        <p className="error-connected" style={{ color: '#bf3b37', fontSize: '12px' }}>
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  );
+};
+
 
 const SystemSettingsButton = () => {
 	const {globalProxy, setGlobalProxy } = useDaemonContext();
@@ -397,6 +406,7 @@ const handleTogglePower = async () => {
       <div className="home" style={{ overflowX: 'hidden' }}>
         {isInitialLoading ? (
           <>
+          <div style={{ display: 'absolute', flexDirection: 'column', gap: '8px' }}>
             <button
               className="power"
             >
@@ -404,15 +414,17 @@ const handleTogglePower = async () => {
               <img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
             </button>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '400px' }}>
               <p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
+              </div>
               {/* <p className="not-connected">{initPercentage}%</p> */}
             </div>
           </>
         ) : (
           <>
             <div>
-              <img src="/assets/header-title.svg"></img>
+			  
+              <img src="/assets/header-title.svg" style={{minWidth: '150px', minHeight: '75x'}}></img>
 			  {/* {
 				
 				!isProcessAirDrop && 
@@ -452,7 +464,7 @@ const handleTogglePower = async () => {
               )
             }*/}
 
-            {!isConnectionLoading &&
+            {
               <RegionSelector
               
                 title={allRegions?.[sRegion]?.country}

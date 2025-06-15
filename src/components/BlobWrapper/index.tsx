@@ -3,21 +3,20 @@ import Blob from '../Blob';
 import "./index.css";
 
 type BlobWrapperProps = {
+  state: 'off' | 'connecting' | 'on';
   children: ReactNode;
-}
+};
 
-export default function BlobWrapper({ children }: BlobWrapperProps) {
+export default function BlobWrapper({ state, children}: BlobWrapperProps) {
   return (
-    <div className="blob-wrapper">
-      <Blob
-        color="#0d111a"
-        style={{ width: "220%", opacity: .8, position: "absolute", top: "50%", left: 0, transform: "translate(-18%, -40%)" }}
-      />
-      <Blob
-        color="#07080C"
-        style={{ width: "180%", position: "absolute", top: "50%", left: 0, transform: "translate(-12%, -40%)" }}
-      />
+    <div className={`blob-wrapper ${state}`}>
+      <Blob className={"blob blob--back" }
+              color="#a2f2fb"
+        style={{}}/>
+      <Blob className={"blob blob--front"} 
+              color="#a2f2fb"
+        style={{}}/>
       {children}
     </div>
-  )
+  );
 }

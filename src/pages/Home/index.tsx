@@ -21,6 +21,9 @@ import {airDropForSP, getirDropForSP} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
 import airdropReff from './assets/airdropReff.gif'
 import { useTranslation } from 'react-i18next'
+import { FaPowerOff } from 'react-icons/fa';
+import { useMemo } from "react";
+
 
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
@@ -40,51 +43,39 @@ interface RenderButtonProps {
 }
 
 const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, power, profile, _vpnTimeUsedInMin }: RenderButtonProps) => {
-  if (isConnectionLoading)
+  
+  const state = useMemo(
+    () => (isConnectionLoading ? 'connecting' : power ? 'on' : 'off'),
+    [isConnectionLoading, power]
+  );
+
+    const iconSrc = isConnectionLoading
+    ? '/assets/loading-ring.png'
+    : power
+    ? '/assets/power.png'
+    : '/assets/not-power.png';
+
+    
     return (
       <div className="button-wrapper">
-        <BlobWrapper>
+        <BlobWrapper state={state}>
           <button
-            className="power"
+            className={power ? "power power-on" : "power power-off"}
+            onClick={!isConnectionLoading ? handleTogglePower : undefined}
           >
-            <img src="/assets/loading-ring.png" className="loading-spinning power-icon" alt="" />
+            <img src={iconSrc} className={isConnectionLoading ? "power-icon loading-spinning" : "power-icon"}alt="" />
           </button>
         </BlobWrapper>
 
-        <p className="connected" style={{ zIndex: 10 }}>Loading...</p>
-      </div>
-    )
+        {isConnectionLoading && (
+          <p className="connected">Loading...</p>
+        )}
 
-  if (power)
-    return (
-      <div className="button-wrapper">
-        <BlobWrapper>
-          <button
-            className="power"
-            onClick={handleTogglePower}
-          >
-            <img src="/assets/power.png" className="power-icon" alt="" />
-          </button>
-        </BlobWrapper>
+        {state === 'off' && errorMessage && (
+          <span className="error-text">{errorMessage}</span>
+        )}
       </div>
-    )
-
-  return (
-    <>
-      <div className="button-wrapper">
-        <BlobWrapper>
-          <button
-            className="power"
-            onClick={handleTogglePower}
-          >
-            <img src="/assets/not-power.png" className="power-icon" alt="" />
-          </button>
-        </BlobWrapper>
-      </div>
-
-      {errorMessage && <span style={{ color: '#bf3b37', fontSize: '12px' }}>{errorMessage}</span>}
-    </>
-  )
+    );
 }
 
 const SystemSettingsButton = () => {
@@ -446,7 +437,7 @@ const handleTogglePower = async () => {
               )
             }*/}
 
-            {!isConnectionLoading &&
+            {
               <RegionSelector
               
                 title={allRegions?.[sRegion]?.country}

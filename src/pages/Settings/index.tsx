@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 
 import Filter from './../../components/Rules/Filter';
 import { Switch } from 'antd-mobile';
+import ProxyInfo from '../../components/ProxyInfo';
 
 type OptionGroup = {
   heading: string;
@@ -78,6 +79,7 @@ export default function Settings() {
 		       //@ts-ignore
           action: () => {window?.Comm100API?.open_chat_window?.();}
         },
+        
         /* {
           id: 2,
           icon: applicationIcon,
@@ -111,7 +113,8 @@ export default function Settings() {
 		  
         },
       ]
-    },
+    } 
+    
   ]), [visible, navigate ]);
 
   const passportTitle = t(getPassportTitle(activePassport))
@@ -135,7 +138,7 @@ export default function Settings() {
 	  <p style={{color: '#676768', padding: '0.5rem 0'}}>Silent Pass UI v1.2.7</p>
       <div className="nft-info">
         <ActivePassportInfo />
-
+        
         <div className="buttons">
           {/* <button onClick={() => navigate("/wallet")}>{t('wallet_title')}</button> */}
           {/* <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate("/subscription")}>
@@ -147,6 +150,7 @@ export default function Settings() {
 
       <div className="options">
         {
+          
           optionGroups.map((optionGroup,index) => (
             <>
               <div className="option-group">
@@ -181,6 +185,7 @@ export default function Settings() {
             </>
           ))
         }
+        <div key={6}><ProxyInfo /></div>
       </div>
 
       <Footer />

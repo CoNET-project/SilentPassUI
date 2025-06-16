@@ -4,7 +4,7 @@ import "./index.css";
 import SpClubCongratsPopup from '../SpClubCongratsPopup';
 import { joinSpClub } from '../../api';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-import { getSpClubMemberId, waitingPaymentReady } from '../../services/wallets';
+import { getSpClubMemberId, waitingPaymentReady, changeActiveNFT } from '../../services/wallets';
 
 import AirdropRewards from './assets/airdrop-rewards.png';
 import EarlyAccess from './assets/early-access.png';
@@ -20,45 +20,54 @@ import QRCode from '../QRCode'
 import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg'
 import {getCryptoPay} from '../../services/subscription'
 import {ReactComponent as QuotesTx} from './assets/trx.svg'
-import { CoNET_Data } from '../../utils/globals';
+import { CoNET_Data } from '../../utils/globals'
 import { useTranslation } from 'react-i18next'
+import wachat from './assets/wechat.png'
+
+import { ReactComponent as AliPay } from './assets/alipay.svg'
 
 const OneDayInSeconds = 86400;
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX'
 export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.SetStateAction<boolean>>) {
-  const [isCongratsPopupOpen, setIsCongratsPopupOpen] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [memberId, setMemberId] = useState<string>('0');
-  const [referrer, setReferrer] = useState<string>('');
-  const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
-  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID, airdropProcess, airdropTokens } = useDaemonContext()
-  const [showBuyClusBlue, setShowBuyClusBlue] = useState(true)
-  const [showBuyClusloading, setShowBuyClusloading] = useState(false)
-  const [QRWallet, setQRWallet] = useState('')
-  const [updateCounter, setUpdateCounter] = useState(new Date('1970/12/1 12:0:1'))
-  const [showPrice, setShowPrice] = useState('')
-  const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT')
-  const [copied, setCopied] = useState(false)
-  const [serverAddress, setServerAddress] = useState('')
-  const { t, i18n } = useTranslation()
+	const [isCongratsPopupOpen, setIsCongratsPopupOpen] = useState<boolean>(false);
+	const [isLoading, setIsLoading] = useState<boolean>(false);
+	const [memberId, setMemberId] = useState<string>('0');
+	const [referrer, setReferrer] = useState<string>('');
+	const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
+	const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID, airdropProcess, airdropTokens } = useDaemonContext()
+	const [showBuyClusBlue, setShowBuyClusBlue] = useState(true)
+	const [showBuyClusloading, setShowBuyClusloading] = useState(false)
+	const [QRWallet, setQRWallet] = useState('')
+	const [updateCounter, setUpdateCounter] = useState(new Date('1970/12/1 12:0:1'))
+	const [showPrice, setShowPrice] = useState('')
+	const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT')
+	const [copied, setCopied] = useState(false)
+	const [serverAddress, setServerAddress] = useState('')
+	const { t, i18n } = useTranslation()
+	const [showpayment, setShowPayment] = useState(false)
+	const [showPurchase, setShowPurchase] = useState(false)
 
   	const [showError, setShowError] = useState(false)
 	const [errorMessage, setErrorMessage] = useState('The service is unavailable, please try again later.')
-  useEffect(() => {
-    const passportExpiration = profiles?.[0]?.activePassport?.expires
-    if (passportExpiration) {
-      const timeLeft = passportExpiration - Math.floor(Date.now() / 1000)
-      setPassportTimeLeft(timeLeft)
-    }
-  }, [activePassportUpdated, profiles])
 
-  useEffect(() => {
-	if (airdropProcess) {
-		setIsOpen (false)
+	useEffect(() => {
+		const passportExpiration = profiles?.[0]?.activePassport?.expires
+		if (passportExpiration) {
+		const timeLeft = passportExpiration - Math.floor(Date.now() / 1000)
+		setPassportTimeLeft(timeLeft)
+		}
+	}, [activePassportUpdated, profiles])
+
+	useEffect(() => {
+		if (airdropProcess) {
+			setIsOpen (false)
+		}
+	}, [])
+
+	const alipayClick = () => {
+		setShowPurchase(true)
 	}
-  }, [])
-
 
   const fetchMemberIdWithRetry = async (startTime = Date.now()): Promise<string | null> => {
     const _memberId = await getSpClubMemberId(profiles[0]);
@@ -147,6 +156,8 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	}
 
 	setSuccessNFTID(waiting.status)
+	changeActiveNFT(waiting.status)
+
 	setQRWallet('')
 	setServerAddress('')
 	setShowPrice('')
@@ -197,35 +208,44 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px"}}>
 		<div className="passport-options" style={{gap:"2px", alignSelf: "center"}}>
-			<p>
-				{t('comp-accountlist-SpClub-detail-0')}
-			</p>
-			<p>
-				{t('comp-accountlist-SpClub-detail-1')}
-			</p>
+			<div style={{display: 'flex', alignItems:'center'}}>
+				<CrownBadge style={{width: "60px"}}/>
+				<span style={{fontSize: 'x-large', color: 'gold', fontWeight: 'bold'}}>{t('comp-accountlist-SpClub-detail-1')}</span>
+			</div>
+		
 			<p>
 				{t('comp-accountlist-SpClub-detail-2')}
 			</p>
-			<p style={{marginTop: "1rem"}}></p>
 			<p>
-				{t('comp-accountlist-SpClub-detail-3')}
+				{t('comp-accountlist-SpClub-detail-2-1')}
 			</p>
-			<p>
-				{t('comp-accountlist-SpClub-detail-4')}
-			</p>
-			<p>
-				{t('comp-accountlist-SpClub-detail-5')}
-			</p>
-			<p>
-				{t('comp-accountlist-SpClub-detail-6')}
-			</p>
-			<p>
-				{t('comp-accountlist-SpClub-detail-7')}
-			</p>
-
-			<div className="redeem-divider">
-				<div className="line"></div>
-			</div>
+			{
+				!showPurchase &&
+				<>
+					<div style={{display: 'flex', alignItems:'center', justifyContent: 'center'}}>
+						<span>{t('comp-comm-price')}</span>
+						<span style={{color: 'gold', fontWeight: 'bold', paddingLeft: '3rem', fontSize: 'xx-large', paddingRight: '0.2rem'}}>$</span>
+						<span style={{fontSize: 'xxx-large', color: 'gold', fontWeight: 'bold'}}>31</span>
+					</div>
+					
+					<p style={{color: '#989899'}}>
+						{t('comp-accountlist-SpClub-detail-3')}
+					</p>
+					<p style={{color: '#989899'}}>
+						{t('comp-accountlist-SpClub-detail-4')}
+					</p>
+					<p style={{color: '#989899'}}>
+						{t('comp-accountlist-SpClub-detail-5')}
+					</p>
+					<p style={{color: '#989899'}}>
+						{t('comp-accountlist-SpClub-detail-6')}
+					</p>
+					<p style={{color: '#989899'}}>
+						{t('comp-accountlist-SpClub-detail-7')}
+					</p>
+				</>
+			}
+			
 		</div>
 		{
 			QRWallet &&
@@ -274,52 +294,101 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 			showBuyClusBlue && !showError &&
 				<div className="passport-options" style={{gap:"2px"}}>
 					{
-						showBuyClusloading &&
-					
-							<div className="inner" style={{marginRight: "1rem"}}>
-								<button className='redeem-button purchase'>
-									<SimpleLoadingRing />
-								</button>
-							</div>
-						
-					}
-					{
-						!showBuyClusloading &&
+						!showPurchase &&
 						<>
-							<div className="option-list" style={{marginTop: "1rem"}}>
-								<button className='option selected'>
-									<CrownBadge style={{width: "120px"}}/>
-										<div style={{display: "flex", flexDirection: "column", marginLeft: "-20px", width: "20rem"}}>
-											<span style={{textAlign: "left"}}>{t('comp-RedeemPassport-1device')}</span>
-											<span style={{textAlign: "left"}}>{t('passport_unlimit')}, {t('passport_unlimitBandweidth')}</span>
-										</div>
-									
-									<div>
-										<span>$USD</span>
-										<p>31.00</p>
-									</div>
-								</button>
-							</div>
-							<div id="outer">
-								{/* <div className="inner" style={{marginRight: "1rem"}}>
-									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BNB')}>
-										<img src = {bnb_token} className="button_img"/>
+							{
+								showBuyClusloading &&
+						
+								<div className="inner" style={{marginRight: "1rem"}}>
+									<button className='redeem-button purchase'>
+										<SimpleLoadingRing />
 									</button>
 								</div>
-								<div className="inner" style={{marginRight: "1rem"}}>
-									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BSC USDT')}>
-										<img src = {bnb_usdt} className="button_img"/>
-									</button>
-								</div> */}
-								{/* <div className="inner" style={{marginRight: "1rem"}}>
-									<button className='redeem-button purchase' onClick={() => purchaseBluePlan('TRON TRX')}>
-										<QuotesTx style={{width: '26px', height: '26px'}}/>
-									</button>
-								</div> */}
-							</div>
-						</>
+							}
+							{
+								!showBuyClusloading &&
+									<>
+										<div>
+											{
+												!showpayment &&
+												<div className="inner" style={{width: '100%'}}>
+													<button style={{width: '100%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
+														{t('comp-comm-buyNow')}
+													</button>
+												</div>
+											}
+											{
+												showpayment &&
+												<>
+													<p style={{padding: "0 0 1rem 0", fontWeight: 'bolder'}}>{t('comp-comm-payment')}</p>
+													<div className="inner" style={{width: '100%', display: 'flex', alignItems:'center'}}>
+													
+														<div style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={() => purchaseBluePlan('BNB')}>
+															<img  src={bnb_token} className="button_img"/>
+															<p style={{color: '#989899'}}>BNB</p>
+														</div>
+														<div style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={() => purchaseBluePlan('BSC USDT')}>
+															<img  src={bnb_usdt} className="button_img"/>
+															<p style={{color: '#989899'}}>BSC USDT</p>
+														</div>
+														{/* <div style={{cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems:'center', padding: '0 0.5rem'}}>
+															<QuotesTx style={{width: '26px', height: '26px'}}/>
+															<span>BSC USDT</span>
+														</div> */}
+														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick} target='_blank' href="https://cashier.alphapay.ca/commodity/details/order/5728/100001644">
+															<AliPay width="6.5rem"/>
+														</a>
+														<div style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}}>
+															<img  src={wachat} className="button_img"/>
+															<p style={{color: '#989899'}}>WeChat</p>
+														</div>
+													</div>
+												</>
+											}
+											
+											{/* <div className="inner" style={{marginRight: "1rem"}}>
+												<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BNB')}>
+													<img src = {bnb_token} className="button_img"/>
+												</button>
+											</div>
+											<div className="inner" style={{marginRight: "1rem"}}>
+												<button className='redeem-button purchase' onClick={() => purchaseBluePlan('BSC USDT')}>
+													<img src = {bnb_usdt} className="button_img"/>
+												</button>
+											</div>
+											<div className="inner" style={{marginRight: "1rem"}}>
+												<button className='redeem-button purchase' onClick={() => purchaseBluePlan('TRON TRX')}>
+													<QuotesTx style={{width: '26px', height: '26px'}}/>
+												</button>
+											</div> */}
+										</div>
+									</>
+							}
 						
+						</>
 					}
+					{
+						showPurchase &&
+							<>
+								<div className="redeem-divider">
+									<div className="line"></div>
+								</div>
+								<p style={{color: '#9fbfe5', fontWeight: 'bolder'}}>
+									{t('comp-accountlist-SpClub-showAlipayPurchase')}
+								</p>
+								<p style={{color: '#989899'}}>
+									{t('comp-accountlist-SpClub-showAlipayPurchase-1')}
+								</p>
+								<p style={{color: '#989899'}}>
+									{t('comp-accountlist-SpClub-showAlipayPurchase-2')}
+									<a style={{color: '#9fbfe5', fontWeight: 'bolder'}} onClick={() => {
+										//@ts-ignore
+										window?.Comm100API?.open_chat_window?.()
+									}}>{t('comp-comm-customerService')}</a>
+								</p>
+							</>
+					}
+
 				
 				</div>
 		}

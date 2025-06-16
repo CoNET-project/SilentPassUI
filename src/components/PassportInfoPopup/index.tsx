@@ -1,16 +1,17 @@
 import { useDaemonContext } from "../../providers/DaemonProvider";
-import { getExpirationDate, getPassportTitle } from "../../utils/utils";
+import { getExpirationDate, getPassportTitle, isInfinite } from "../../utils/utils";
 import './index.css';
 import Skeleton from "../Skeleton";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from 'react-i18next'
 
 const PassportInfoPopup = () => {
-  const { profiles, activePassport, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen } = useDaemonContext();
+  	const { profiles, activePassport, isPassportInfoPopupOpen, setIsPassportInfoPopupOpen } = useDaemonContext();
 	const { t, i18n } = useTranslation()
-  const navigate = useNavigate();
+  	const navigate = useNavigate()
+  	
 
-  const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'));
+  	const passportTitle = getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'));
 
   return isPassportInfoPopupOpen ? (
     <div className="home-popup-backdrop" onClick={() => setIsPassportInfoPopupOpen(false)}>
@@ -19,7 +20,7 @@ const PassportInfoPopup = () => {
           <div style={{ display: "flex", flexDirection: 'column', textAlign: 'start', gap: '16px' }}>
             <span>{t('comp-PassportInfoPopup-1')}</span>
             {
-              activePassport ? <p>{passportTitle}</p> : <Skeleton width="120px" height="32px" />
+              activePassport ? <p style={{color: isInfinite(activePassport) ? 'gold' : ''}}>{passportTitle}</p> : <Skeleton width="120px" height="32px" />
             }
           </div>
 

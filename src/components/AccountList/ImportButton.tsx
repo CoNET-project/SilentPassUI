@@ -60,7 +60,7 @@ const ImportButton=({  })=> {
             setCoNET_Data(tmpData);
 
             storeSystemData()
-            await refreshSolanaBalances();
+            refreshSolanaBalances();
 
             Toast.show({
                 icon: 'success',

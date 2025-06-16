@@ -40,6 +40,10 @@
   background-color: #f0b90b;
 }
 
+.circle.gold {
+  background-color: gold;
+}
+
 .miners {
   display: flex;
   align-items: center;

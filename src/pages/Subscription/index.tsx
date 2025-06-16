@@ -9,7 +9,7 @@ import FourthStep from './page-components/FourthStep';
 import './index.css';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/Global-steps/Loading';
-import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest, RealizationRedeem } from '../../services/wallets';
+import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest, RealizationRedeem, changeActiveNFT } from '../../services/wallets';
 import {getOracle, purchasePassport, postPurchasePassport} from '../../services/passportPurchase'
 import { useTranslation } from 'react-i18next'
 
@@ -75,6 +75,10 @@ export default function Subscription() {
 	setReflashQuote()
   }
 
+  const changeActiveNFTProcess = async (nft: number) => {
+	 await changeActiveNFT(nft.toString())
+  }
+
   useEffect(() => {
 	if (ffcus) {
 		return
@@ -82,7 +86,7 @@ export default function Subscription() {
 	ffcus = true
 	const processVisa = async () => {
 		switch(paymentKind) {
-			//		
+			//		redeemCode
 			case 6: {
 				setStep(3)
 				const redeemCode = selectedPlan
@@ -94,6 +98,7 @@ export default function Subscription() {
 				
 				setSuccessNFTID(redeem)
 				setPaymentKind(0)
+				await changeActiveNFTProcess(redeem)
 				return navigate('/wallet')
 			}
 			//		get SP Reword

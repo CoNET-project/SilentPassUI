@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import "./index.css";
 import { useDaemonContext } from '../../providers/DaemonProvider';
-import Skeleton from '../Skeleton';
-import { getPassportTitle } from '../../utils/utils';
+import Skeleton from '../Skeleton'
+
+import { getPassportTitle, isInfinite } from '../../utils/utils';
 import { ReactComponent as ConetToken } from './assets/conet-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import { useTranslation } from 'react-i18next'
@@ -40,7 +41,7 @@ const MiningStatus = () => {
       </div>
 
       <div className='passport-status' onClick={openPassportInfo}>
-        <div className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
+        <div className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : isInfinite(activePassport) ? 'gold' : "green"}`}></div>
         {
           profiles?.[0]?.activePassport ? <p style={{'width': 'unset'}}>{getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'))}</p> : <Skeleton width="40px" height="15px" />
         }

@@ -191,7 +191,24 @@ export const parseQueryParams = (queryString: string) => {
   }
 
   return params;
-};
+}
+
+export const isInfinite = (passportInfo: any) => {
+		if (!passportInfo|| parseInt(passportInfo.nftID) < 100) {
+		return false
+	}
+	
+	if (passportInfo.expiresDays < 30 && passportInfo.expiresDays > 0){
+		return false
+	}
+
+	if (passportInfo?.expires > 32503690800000 || passportInfo.expiresDays > 366) {
+		return true
+	}
+
+  	return false
+}
+
 
 export const getPassportTitle = (passportInfo: any, Freemium: string, Guardian: string, Annually: string, Quarter: string, Monthly: string, Infinite: string) => {
 	if (!passportInfo|| parseInt(passportInfo.nftID) < 100) {

@@ -7,6 +7,7 @@ import CodeButton from './CodeButton';
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { ethers } from 'ethers';
+import {aesGcmEncrypt} from '../../services/subscription'
 import { useTranslation } from 'react-i18next'
 import styles from './copyAccountInfo.module.css';
 
@@ -142,7 +143,8 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
         <div className={styles.copyDiv}>
           {CoNET_Data?.mnemonicPhrase ?
             <>
-              <div className={styles.copyText}>
+		
+              {/* <div className={styles.copyText}>
                 <p>{t('comp-comm-RecoveryPhrase')} </p>
                 {
                   isWordsHidden ?
@@ -172,7 +174,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
                     isWordsHidden ? <VisibilityOffIcon /> : <VisibilityOnIcon />
                   }
                 </button>
-              </div>
+              </div> */}
             </>
             : <Skeleton width='20px' height='20px' />
           }

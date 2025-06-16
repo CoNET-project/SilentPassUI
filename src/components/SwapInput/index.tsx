@@ -240,7 +240,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed")
 
         try{
-            const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&restrictIntermediateTokens=true`)).json()
+            const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json()
             const { swapTransaction } = await (
                 await fetch('https://quote-api.jup.ag/v6/swap', {
                     method: 'POST',
@@ -262,88 +262,18 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
             const swapTransactionBuf = Buffer.from(swapTransaction, 'base64')
             const transaction = VersionedTransaction.deserialize(swapTransactionBuf)
             // get the latest block hash
-            const latestBlockHash = await SOLANA_CONNECTION.getLatestBlockhash()
+            
             transaction.sign([wallet])
-            // Execute the transaction
-            const rawTransaction = transaction.serialize()
-            const txid = await SOLANA_CONNECTION.sendRawTransaction(rawTransaction, {
-                skipPreflight: true,
-                maxRetries: 2
-            })
-            //等待网络确认
-            // const latestBlockhash = await SOLANA_CONNECTION.getLatestBlockhash("finalized");
-            // const confirmation = await confirmTxWithTimeout(
-            //     SOLANA_CONNECTION,
-            //     txid,
-            //     latestBlockhash.blockhash,
-            //     latestBlockhash.lastValidBlockHeight,
-            //     60000 // 最长等待 30 秒
-            // );
-            // if (confirmation.value.err) {
-            //     setIsRedeemProcessLoading(false);
-            //     Modal.alert({
-            //         bodyClassName:styles.failModalWrap,
-            //         content: <div className={styles.failModal}>
-            //             <Result
-            //                 status='error'
-            //                 title={t('comp-SwapInput-tip-1')}
-            //             />
-            //             <div className={styles.description}>{getErrorMessage(confirmation.value.err)}</div>
-            //         </div>,
-            //         confirmText:'Close',
-            //     })
-            //     return ;
-            // }
-            //查询交易详情（包含 logs、错误等）
-            const result = await getTransaction (txid, SOLANA_CONNECTION)
+            const signature = await SOLANA_CONNECTION.sendRawTransaction(transaction.serialize())
+            
+            await SOLANA_CONNECTION.confirmTransaction({
+				signature,
+				blockhash: transaction.message.recentBlockhash,
+				lastValidBlockHeight: await SOLANA_CONNECTION.getBlockHeight()
+			}, "confirmed")
+
             return ;
-            // const txInfo = await SOLANA_CONNECTION.getTransaction(txid,{ maxSupportedTransactionVersion: 0 })
-            // if (!txInfo) {
-            //     setIsRedeemProcessLoading(false);
-            //     Modal.alert({
-            //         bodyClassName:styles.failModalWrap,
-            //         content: <div className={styles.failModal}>
-            //             <Result
-            //                 status='error'
-            //                 title={t('comp-SwapInput-tip-1')}
-            //             />
-            //             <div className={styles.description}>{t('comp-SwapInput-tip-3')}</div>
-            //         </div>,
-            //         confirmText:'Close',
-            //     })
-            //     return ;
-            // }
-            // if (txInfo.meta?.err) {
-            //     setIsRedeemProcessLoading(false);
-            //     Modal.alert({
-            //         bodyClassName:styles.failModalWrap,
-            //         content: <div className={styles.failModal}>
-            //             <Result
-            //                 status='error'
-            //                 title={t('comp-SwapInput-tip-1')}
-            //             />
-            //             <div className={styles.description}>{getErrorMessage(txInfo.meta.err)}</div>
-            //         </div>,
-            //         confirmText:'Close',
-            //     })
-            //     return ;
-            // }
-            // setIsRedeemProcessLoading(false);
-            // Modal.alert({
-            //     bodyClassName:styles.successModalWrap,
-            //     content: <div className={styles.successModal}>
-            //         <Result
-            //             status='success'
-            //             title={t('comp-SwapInput-tip-2')}
-            //         />
-            //         <div className={styles.description}>{t('comp-SwapInput-tip-4')}!</div>
-            //         <div className={styles.link}><a href={'https://solscan.io/tx/'+txid} target="_blank">{t('comp-SwapInput-tip-5')}</a></div>
-            //     </div>,
-            //     confirmText:'Close',
-            // })
-            // setFromAmount('0');
-            // await refreshSolanaBalances();
-            // return ;
+            
         }catch(error){
             setIsRedeemProcessLoading(false);
             Modal.alert({

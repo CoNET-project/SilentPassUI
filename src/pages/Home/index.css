@@ -34,6 +34,16 @@ a {
 	padding: 3rem 1rem 5rem 1rem;
   }
 
+  .initial-loading-container {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 1rem;
+	min-height: 60vh;
+	padding-top: 2rem;
+  }
+
   .stats-container {
 	width: 100%;
 	display: flex;
@@ -109,25 +119,25 @@ a {
   .power-on {
 	background-image: radial-gradient(#282930 50%, #a2f2fb 100%);
   }
-  
-  .connected    { 
+
+  .status-text {
+	color: #fdfdfd;
+	font-weight: 700;
+	margin-top: 10px;
 	position: absolute;
-	transform: translate(-20%, 70%);
+	transform: translate(-50%, 50%);
 	margin-top: 8px; 
 	font-size: 14px; 
 	z-index: 2;
-}
-
-  .not-connected,
-  .connected {
-	font-weight: 700;
-	margin-top: 10px;
-
 	text-align: center;
   }
 
-  .connected {
-	color: #fdfdfd;
+   
+  .error-text {
+ 	color: #fdfdfd;
+	font-weight: 700;
+	margin-top: 10px;
+	text-align: center;
   }
 
   .auto-btn {

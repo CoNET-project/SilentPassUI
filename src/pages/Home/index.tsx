@@ -84,11 +84,11 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
         </BlobWrapper>
 
         {isConnectionLoading && (
-          <p className="connected">Loading...</p>
+          <p className="status-text">Loading...</p>
         )}
 
          {showConnected && (
-          <p className="connected">Connected</p>
+          <p className="status-text">Connected</p>
         )}
 
         {state === 'off' && errorMessage && (
@@ -405,21 +405,18 @@ const handleTogglePower = async () => {
   return (
     <>
       <Header />
-      <div className="home" style={{ overflowX: 'hidden' }}>
+      <div className="home" style={{ overflowX: 'hidden', justifyContent: isInitialLoading ? 'center' : 'space-evenly' }}>
         {isInitialLoading ? (
-          <>
+          <div className="initial-loading-container">
             <button
               className="power"
             >
 			
               <img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
             </button>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
-              {/* <p className="not-connected">{initPercentage}%</p> */}
-            </div>
-          </>
+              {/* TODO: Fix css so it shows below button */}
+              {/* <p >Welcome to Silent Pass {initPercentage} %</p> */}
+          </div>
         ) : (
           <>
             <div>

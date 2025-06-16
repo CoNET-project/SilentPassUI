@@ -70,6 +70,12 @@
 	"comp-comm-payment":"Please select payment method",
 	"comp-comm-customerService":"Customer Service",
 
+	"comp-RedeemPassport-SuccessModal-title": "Activated Successfully!",
+	"comp-RedeemPassport-SuccessModal-NFT": "Your Passport ID: ",
+	"comp-RedeemPassport-SuccessModal-detail-1": "You now have your ",
+	"comp-RedeemPassport-SuccessModal-detail-2": "encrypted access pass.",
+	"comp-RedeemPassport-SuccessModal-detail-3": " Start exploring the open internet securely and freely.",
+
 	"comp-accountlist-main-wallet": "Main Wallet (CoNET)",
 	"comp-accountlist-solana": "Solana",
 	"comp-accountlist-assets": "Token assets",

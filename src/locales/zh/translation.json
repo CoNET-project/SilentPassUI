@@ -67,6 +67,12 @@
 	"comp-comm-payment":"请选择支付方法",
 	"comp-comm-customerService":"客服",
 
+	"comp-RedeemPassport-SuccessModal-title": "已开通成功！",
+	"comp-RedeemPassport-SuccessModal-NFT": "您的SP通行证号码是：",
+	"comp-RedeemPassport-SuccessModal-detail-1": "你已拥有专属的",
+	"comp-RedeemPassport-SuccessModal-detail-2": "加密通行证。",
+	"comp-RedeemPassport-SuccessModal-detail-3": "现在可以安全隐私、自由地访问全球互联网",
+
 	"comp-PassportInfoPopup-1": "当前SP通行证",
 	"comp-PassportInfoPopup-2": "有效期剩余",
 

@@ -12,6 +12,7 @@ import { useDaemonContext } from '../../providers/DaemonProvider'
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from 'react-i18next'
 import crown from './assets/crown_icon.gif'
+import goldBadge from './assets/GC.png'
 
 export default function Wallet() {
   const navigate = useNavigate()
@@ -27,7 +28,7 @@ export default function Wallet() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
         <h1>{t('wallet_title')}</h1>
         { profiles?.[0]?.activePassport?.nftID && (
-          hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <img src={crown} width="40rem"/> : !freePassportActive && <BlueBadge />
+          hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <img src={goldBadge} width="30rem"/> : !freePassportActive && <BlueBadge />
         )}
       </div>
 

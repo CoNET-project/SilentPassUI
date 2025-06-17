@@ -14,6 +14,8 @@ import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
 import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
 import crown from './assets/crown_icon.gif';
 import { ReactComponent as Crown } from './assets/crown.svg';
+import {ReactComponent as GC} from './assets/GC.svg'
+import gcImg from './assets/GC.png'
 import { useTranslation } from 'react-i18next'
 
 const SP_EARNED_FROM_REFERRAL = 10
@@ -157,11 +159,15 @@ export default function ReferralProgram() {
 	  }}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
-          <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive||hasCrownActive ? '#EFBF04': 'rgb(154,196,229)'}}>{t('comp-accountlist-SpClub-detail3')} {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
-		  
+			
+				
+	  	  <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive||hasCrownActive ? '#EFBF04': 'rgb(154,196,229)'}}>{t('comp-accountlist-SpClub-detail3')} {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
 		  { !freePassportActive && !expiration && (
-			hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <Crown width="3rem" /> : <BlueBadge /> )
-		  }
+				hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <GC style={{width: '1.5rem'}} />: <BlueBadge /> )
+			}
+					
+			
+          
           <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
         </div>
       </div>

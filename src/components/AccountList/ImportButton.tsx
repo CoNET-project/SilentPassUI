@@ -10,7 +10,7 @@ import { CoNET_Data, setCoNET_Data, globalAllNodes } from "./../../utils/globals
 import { useDaemonContext } from "./../../providers/DaemonProvider";
 import { refreshSolanaBalances, storeSystemData } from './../../services/wallets';
 
-const ImportButton=({  })=> {
+const ImportButton=({  }) => {
     const { setProfiles } = useDaemonContext();
     const [visible, setVisible] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -58,7 +58,7 @@ const ImportButton=({  })=> {
             tmpData.profiles[1].type = "solana";
 
             setCoNET_Data(tmpData);
-
+			setProfiles(tmpData.profiles)
             storeSystemData()
             refreshSolanaBalances();
 
@@ -66,7 +66,6 @@ const ImportButton=({  })=> {
                 icon: 'success',
             });
             setValue('');
-
             setLoading(false);
             setVisible(false);
         }

@@ -23,7 +23,7 @@ export default function RedeemPassport() {
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
   const [spRewordEnable, setSpRewordEnable] = useState(false)
   const [spRewordloading, setSpRewordloading] = useState(true)
-  const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID } = useDaemonContext();
+  const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID,  } = useDaemonContext();
   const { t, i18n } = useTranslation()
   const navigate = useNavigate();
 

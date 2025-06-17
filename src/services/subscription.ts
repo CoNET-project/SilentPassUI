@@ -311,6 +311,9 @@ export const getBalanceFromPDA = async (solanaRPC_url: string, spToken: CryptoAs
 		await getBalanceFromPDA(solanaRPC_url, spToken, ++VESTING_ID )
 
     } catch (ex) {
+		if (!VESTING_ID) {
+			spToken.staking = []
+		}
         console.log(`getBalanceFromPDA Error!`)
     }
 

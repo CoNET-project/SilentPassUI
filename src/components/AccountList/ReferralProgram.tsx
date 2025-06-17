@@ -242,24 +242,9 @@ export default function ReferralProgram() {
 
         <Separator />
 
-        <div className="info-wrapper">
+        {/* <div className="info-wrapper">
 			<SPClubRewardTab quotation = {quotation} setTokenGraph={setTokenGraph} animation = {animation}/>
-          {/* <div className='token-assets-title'>
-            <p className='title'>Rewards</p>
-          </div>
-          <div style={{ marginLeft: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <p>Invitees</p>
-            </div>
-            <p>{profiles?.[0]?.spClub?.referees?.length}</p>
-          </div>
-          <div style={{ marginLeft: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <p>$SP</p>
-            </div>
-            <p>0</p>
-          </div> */}
-        </div>
+        </div> */}
 
         <Separator />
 

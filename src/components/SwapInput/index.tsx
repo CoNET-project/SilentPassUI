@@ -11,7 +11,7 @@ import { ReactComponent as SpToken } from "./assets/sp-token.svg";
 import { ReactComponent as SolanaToken } from "./assets/solana-token.svg";
 import { getOracle } from '../../services/passportPurchase';
 import { refreshSolanaBalances } from '../../services/wallets'
-import { calcSpInUsd } from '../../utils/utils';
+import { calcSpInUsd, formatNumber, parseFormattedNumber } from '../../utils/utils';
 import Skeleton from '../Skeleton';
 import {Sp2SolQuote, Sol2SpQuote, solanaAddr, spAddr } from '../../services/swap'
 import SimpleLoadingRing from '../SimpleLoadingRing'
@@ -67,8 +67,9 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
     const [fromToken, setFromToken] = useState<'SP'|'SOL'>("SP")
     const [toToken, setToToken] = useState<'SP'|'SOL'>("SOL");
     const [fromAmount, setFromAmount] = useState('0')
+	const [lastOnChangeNumber, setLastOnChangeNumber] = useState(0)
     const [toAmount, setToAmount] = useState<string>('0.00000000')
-    const [showConfirm, setShowConfirm] = useState(false)
+    const [showConfirm, setShowConfirm] = useState(true)
     const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState(false)
     const [isQuotationLoading, setIsQuotation] = useState(true)
     const [swapError, setSwapError] = useState("")
@@ -114,7 +115,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 
     useEffect(() => {
         if (parseFloat(fromAmount) > 0) {
-            getQuote()
+            onChangeProcess()
         }
     }, [fromAmount])
 
@@ -154,6 +155,21 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         }
     }
 
+	const onChangeProcess = async () => {
+		const fromAmountNumber = parseFloat(fromAmount)
+		if (fromAmountNumber > 0 && fromAmountNumber !== lastOnChangeNumber ) {
+			setLastOnChangeNumber(fromAmountNumber)
+			const from = (fromToken === 'SOL') ? solanaAddr : spAddr
+			const to = (fromToken === 'SOL') ? spAddr : solanaAddr
+			const amount = ethers.parseUnits(fromAmount, tokenDecimal(from))
+
+			const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json()
+			const out = ethers.formatUnits(quoteResponse.outAmount, tokenDecimal(to))
+			const formated = formatNumber(out)
+			setToAmount (formated)
+		}
+	}
+
     const getErrorMessage = (error: unknown): string => {
         if (error instanceof Error) return error.message;
         if (typeof error === 'string') return error;
@@ -176,6 +192,22 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
             new Promise((_, reject) => setTimeout(() => reject(new Error("确认交易超时")), timeoutMs))
         ]) as Promise<RpcResponseAndContext<SignatureResult>>;
     }
+
+	const convertToAmountUSD = (): string => {
+		const toNum = parseFormattedNumber(toAmount)
+		
+		const total = toNum * (quotation as any)[toToken]
+		return formatNumber(total.toFixed(4))
+	}
+
+	const convertFromAmountUSD = (): string => {
+		const toNum = parseFormattedNumber(fromAmount)
+		const total = toNum * (quotation as any)[fromToken]
+		if ( isNaN(total) ) {
+			return '0'
+		}
+		return formatNumber(total.toFixed(4))
+	}
 
     const getTransaction = (tx: string, SOLANA_CONNECTION: Connection, count = 0): Promise<false|string> => new Promise( async resolve => {
         count ++
@@ -233,12 +265,12 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         return ;
     })
 
-    const swapTokens = async (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<false|string> => new Promise(async resolve => {
+    const swapTokens =  (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<false|string> => new Promise(async resolve => {
         const wallet = Keypair.fromSecretKey(bs58.decode(privateKey))
         const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(from))
         const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
         const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed")
-
+		let signature = ''
         try{
             const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json()
             const { swapTransaction } = await (
@@ -246,14 +278,9 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        dynamicComputeUnitLimit: true,
-                        dynamicSlippage: true,
-                        prioritizationFeeLamports: {
-                            priorityLevelWithMaxLamports: {
-                                maxLamports: 1000000,
-                                priorityLevel: "veryHigh"
-                            }
-                        },
+                        wrapUnwrapSOL: false,
+						dynamicComputeUnitLimit: true,
+						prioritizationFeeLamports: null,
                         quoteResponse,
                         userPublicKey: wallet.publicKey.toString()
                     })
@@ -264,17 +291,26 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
             // get the latest block hash
             
             transaction.sign([wallet])
-            const signature = await SOLANA_CONNECTION.sendRawTransaction(transaction.serialize())
+            signature = await SOLANA_CONNECTION.sendRawTransaction(transaction.serialize())
             
             await SOLANA_CONNECTION.confirmTransaction({
 				signature,
 				blockhash: transaction.message.recentBlockhash,
 				lastValidBlockHeight: await SOLANA_CONNECTION.getBlockHeight()
-			}, "confirmed")
+			}, 'confirmed')
+			return resolve(signature)
 
-            return ;
             
-        }catch(error){
+        } catch (ex: any){
+			if (signature) {
+				await new Promise(resolve=> setTimeout(() => resolve(true), 5000))
+				const status = await SOLANA_CONNECTION.getSignatureStatus(signature)
+				if (status.value && status.value.confirmationStatus === "confirmed") {
+					
+					return resolve(signature)
+				}
+			}
+			
             setIsRedeemProcessLoading(false);
             Modal.alert({
                 bodyClassName:styles.failModalWrap,
@@ -283,10 +319,12 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
                         status='error'
                         title={t('comp-SwapInput-tip-1')}
                     />
-                    <div className={styles.description}>{getErrorMessage(error)}</div>
+                    <div className={styles.description}>{getErrorMessage(ex.message)}</div>
                 </div>,
                 confirmText:'Close',
             })
+			return resolve(false)
+			
         }   
     })
 
@@ -299,12 +337,12 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         const from = (fromToken === 'SOL') ? solanaAddr : spAddr
         const to = (fromToken === 'SOL') ? spAddr : solanaAddr
 
-        const tx = await swapTokens(from, to,profiles?.[1]?.privateKeyArmor, fromAmount)
-        // setIsRedeemProcessLoading(false)
-        // if (tx) {
-        //     await refreshSolanaBalances()
-        //     return setSwapSuccess(tx)
-        // }
+        const tx = await swapTokens(from, to, profiles?.[1]?.privateKeyArmor, fromAmount)
+        setIsRedeemProcessLoading(false)
+        if (tx) {
+            await refreshSolanaBalances()
+            return setSwapSuccess(tx)
+        }
         // setSwapError('Error!')
     }
   
@@ -316,23 +354,15 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         setToAmount('0.000000')
     }
 
-    const getQuote = async () => {
-        const quote = await (fromToken === 'SOL' ?  Sol2SpQuote(fromAmount.toString()) : Sp2SolQuote(fromAmount.toString()))
-        const total = parseFloat(parseFloat(quote).toFixed(6))
-  	
-        if (total > 0) {
-  		    setToAmount(total.toFixed(6))
-  		    const ba = fromToken == 'SP' ? profiles?.[1]?.tokens?.sp?.balance1 : profiles?.[1]?.tokens?.sol.balance1
-  		    if (fromAmount < ba) {
-                setShowConfirm(true)
-  		    } else {
-                setShowConfirm(false)
-  		    }
-        }
-    }
 
     const useMax=()=>{
-        let val=fromToken === 'SOL'?(profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6))
+		const tokens = profiles?.[1]?.tokens
+		if (!tokens) {
+			return
+		}
+		const _val = fromToken === 'SOL'? (tokens?.sol?.balance1 || 0) : (tokens?.sp?.balance1 || 0)
+		const val = (parseFloat(Math.floor(_val * 1000).toFixed(4))/1000).toFixed(4)
+        // let val=fromToken === 'SOL'?(tokens?.sol?.balance1.toFixed(4)|| (0.0).toFixed(6)):(tokens?.sp?.balance1.toFixed(4) || (0.0).toFixed(6))
         setFromAmount(val);
     }
 
@@ -343,7 +373,10 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
             // 检查是否为有效数字且小于等于0
             return !isNaN(num) && num <= 0;
         }
-        const isEmptyValue=isZeroOrNegative(profiles?.[1]?.tokens?.sol?.balance) || isZeroOrNegative(profiles?.[1]?.tokens?.sp?.balance);
+		const tokens = profiles?.[1]?.tokens
+		const _fromAmount = parseFormattedNumber(fromAmount)
+
+        const isEmptyValue = isZeroOrNegative(tokens?.sol?.balance1) || isZeroOrNegative(tokens?.sp?.balance1);
         return !showConfirm || (fromAmount=='0') || (!fromAmount) || isEmptyValue;
     }
   
@@ -373,11 +406,11 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
                                             return setFromAmount(e.target.value)
                                         }
                                         setFromAmount(v.toString())
-                                        setToAmount(((v * Number((quotation as any)[fromToken])) / (quotation as any)[toToken]).toFixed(5))
+										onChangeProcess()
                                     }}
                                     placeholder="0"
                                 />
-                                <p className='box-text' style={{fontSize: '14px'}}>$ {(Number(fromAmount) * Number((quotation as any)[fromToken])).toFixed(2)}</p>
+                                <p className='box-text' style={{fontSize: '14px'}}>$ {convertFromAmountUSD()}</p>
                             </>
                         )
                     }
@@ -408,7 +441,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
                 <div style={{justifyContent:'space-between', textAlign: 'left', display: 'flex', flexDirection: 'column'}}>
                     <p className='box-text' style={{fontSize: '14px'}}>{t('comp-SwapInput-Receive')}</p>
                     <p className='box-text' style={{fontSize: '28px', lineHeight: '36px'}}>{toAmount}</p>
-                    <p className='box-text' style={{fontSize: '14px'}}>$ {( Number(toAmount) * Number((quotation as any)[toToken])).toFixed(2)}</p>
+                    <p className='box-text' style={{fontSize: '14px'}}>$ {convertToAmountUSD()}</p>
                 </div>
 
                 <div style={{justifyContent:'flex-end', textAlign: 'left', display: 'flex', flexDirection: 'column', maxWidth:"146px", gap: '8px'}}>

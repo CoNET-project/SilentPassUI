@@ -5,7 +5,7 @@ import styles from './stakingList.module.css';
 import { useTranslation } from 'react-i18next';
 import _ from 'lodash';
 import SendButton from './SendButton';
-import { CoNET_Data, setCoNET_Data, globalAllNodes } from "./../../utils/globals";
+import { CoNET_Data, globalAllNodes } from "./../../utils/globals";
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 
 interface StakingListParams {

@@ -48,6 +48,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 		}
 	}, [airdropProcessReff, airdropProcess])
 
+	
+
     const navigate = useNavigate();
 
     function toggleAccount(accountAddress: string) {

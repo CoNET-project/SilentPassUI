@@ -32,7 +32,7 @@ export default function Wallet() {
       </div>
 
       <AccountList />
-	  <RewardPoint />
+	  {/* <RewardPoint /> */}
       <div className="cta-buttons">
         {/* <div>
           <button className='disabled'>

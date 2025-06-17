@@ -280,6 +280,38 @@ export function isValidSolanaBase58PrivateKey(base58Key: string) {
   }
 }
 
+const insertCommas = (str: string): string => {
+  const [intPart, decimalPart] = str.split('.')
+  return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (decimalPart ? '.' + decimalPart : '')
+}
+
+export const parseFormattedNumber = (str: string): number => {
+  const cleanStr = str.replace(/,/g, '').trim().toUpperCase()
+  if (cleanStr.endsWith('K')) {
+    return parseFloat(cleanStr.slice(0, -1)) * 1_000
+  } else if (cleanStr.endsWith('M')) {
+    return parseFloat(cleanStr.slice(0, -1)) * 1_000_000
+  } else {
+    return parseFloat(cleanStr)
+  }
+}
+
+export const formatNumber = (_value: string): string => {
+  const value = parseFloat(_value)
+  if (value >= 1_000_000_000) {
+    const millions = value / 1_000_000
+    return insertCommas(millions.toFixed(1)) + 'M'
+  } else if (value >= 1_000_000) {
+    return (value / 1_000_000).toFixed(1) + 'M'
+  } else if (value >= 1_000) {
+    return (value / 1_000).toFixed(1) + 'K'
+  } else {
+    return value.toFixed(4)
+  }
+}
+
+
+
 export const getCONET_api_health = async () => {
   const url = `${apiv4_endpoint}health`;
   const result: any = await postToEndpoint(url, false, null);

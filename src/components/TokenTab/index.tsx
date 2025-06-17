@@ -53,16 +53,16 @@ export default function TokenTab({ setTokenGraph, tokenData, quotation }: TokenT
       "label" : "Silent Pass",
       "logo": <SpToken width={32} height={32} />,
       "priceVariation": 0.5381,
-      "amount": profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6),
-      "price": (profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(6)) * quotation["SP"],
+      "amount": profiles?.[1]?.tokens?.sp?.balance1 || (0.0).toFixed(6),
+      "price": (profiles?.[1]?.tokens?.sp?.balance1 || (0.0).toFixed(6)) * quotation["SP"],
       "currency": "$SP"
     },
     {
       "label" : "Solana",
       "logo": <SolanaToken width={32} height={32} />,
       "priceVariation": -0.002,
-      "amount": profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6),
-      "price": (profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)) * quotation["SOL"],
+      "amount": profiles?.[1]?.tokens?.sol?.balance1 || (0.0).toFixed(6),
+      "price": (profiles?.[1]?.tokens?.sol?.balance1 || (0.0).toFixed(6)) * quotation["SOL"],
       "currency": "$SOL"
     },
   ]

@@ -234,10 +234,10 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 					<p style={{color: '#989899'}}>
 						{t('comp-accountlist-SpClub-detail-4')}
 					</p>
-					{/* <p style={{color: '#989899'}}>
+					<p style={{color: '#989899'}}>
 						{t('comp-accountlist-SpClub-detail-5')}
 					</p>
-					<p style={{color: '#989899'}}>
+					{/* <p style={{color: '#989899'}}>
 						{t('comp-accountlist-SpClub-detail-6')}
 					</p>
 					<p style={{color: '#989899'}}>

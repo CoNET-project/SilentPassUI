@@ -59,6 +59,7 @@ function SPSelector({ option, onChange }: SPSelectorProps) {
     );
 }
 
+
 export default function SwapInput({ setTokenGraph }: SwapInputProps) {
     const { profiles, getAllNodes } = useDaemonContext()
     const [rotation, setRotation] = useState(0)
@@ -118,6 +119,21 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
             onChangeProcess()
         }
     }, [fromAmount])
+
+    const showSuccess=(txid:string)=>{
+        Modal.alert({
+            bodyClassName:styles.successModalWrap,
+            content: <div className={styles.successModal}>
+                <Result
+                    status='success'
+                    title={t('comp-SwapInput-tip-2')}
+                />
+                <div className={styles.description}>{t('comp-SwapInput-tip-4')}!</div>
+                <div className={styles.link}><a href={'https://solscan.io/tx/'+txid} target="_blank">{t('comp-SwapInput-tip-5')}</a></div>
+            </div>,
+            confirmText:'Close',
+        })
+    }
 
     const inputOver = () => {
 	   const ba = fromToken == 'SP' ? profiles?.[1]?.tokens?.sp?.balance1 : profiles?.[1]?.tokens?.sol.balance1
@@ -265,6 +281,8 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         return ;
     })
 
+    
+
     const swapTokens =  (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<false|string> => new Promise(async resolve => {
         const wallet = Keypair.fromSecretKey(bs58.decode(privateKey))
         const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(from))
@@ -298,6 +316,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 				blockhash: transaction.message.recentBlockhash,
 				lastValidBlockHeight: await SOLANA_CONNECTION.getBlockHeight()
 			}, 'confirmed')
+
 			return resolve(signature)
 
             
@@ -338,8 +357,10 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         const to = (fromToken === 'SOL') ? spAddr : solanaAddr
 
         const tx = await swapTokens(from, to, profiles?.[1]?.privateKeyArmor, fromAmount)
+
         setIsRedeemProcessLoading(false)
         if (tx) {
+            showSuccess(tx);
             await refreshSolanaBalances()
             return setSwapSuccess(tx)
         }

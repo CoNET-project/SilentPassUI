@@ -1,0 +1,85 @@
+.generate{
+    width: 100%;
+    .inputBox{
+        margin: 10px 0 0;
+        .generateInput{
+            background: #3f3f40;
+            border-radius: 4px;
+            padding: 8px 10px;
+            :global(.adm-input-element::-webkit-input-placeholder) {
+                color: #707171;
+            }
+            :global(.adm-input-element::placeholder) {
+                color: #707171;
+            }
+            :global(.adm-input-element) {
+                color: #fff;
+                font-size: 12px!important;
+            }
+        }
+    }
+    .operate{
+        margin: 10px 0 0;
+        display: flex;
+        justify-content: space-between;
+        .recoveryBtn{
+            background: #28292e;
+            border-color: #28292e;
+            span{
+                color: #fff!important;
+            }
+        }
+        :global(.adm-button) {
+            width:46%;
+        }
+        :global(.adm-button span) {
+            width:auto;
+        }
+        :global(.adm-button-disabled) {
+            cursor:not-allowed;
+        }
+    }
+}
+.copyText {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0 10px 0 0;
+    .link{
+        word-break: break-all;
+    }
+    .linkBlur{
+        word-break: break-all;
+        filter: blur(3px);
+    }
+}
+.buttonList {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    .edit{
+        font-size: 18px;
+        width: auto;
+        height: auto;
+        color: #bababa;
+        cursor: pointer;
+    }
+    .hidden{
+        svg{
+            margin-top: 2px;
+        }
+    }
+    img {
+        filter: grayscale(1);
+    }
+    svg {
+        width: 20px;
+        height: 20px;
+    }
+}
+.question{
+    margin: 0 0 0 3px;
+    cursor: pointer;
+    color: #ec5b56;
+    vertical-align: middle;
+}

@@ -3,7 +3,7 @@ import Separator from '../Separator';
 import { CoNET_Data } from '../../utils/globals';
 import Skeleton from '../Skeleton';
 import CodeButton from './CodeButton';
-
+import Recovery from './Recovery';
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { ethers } from 'ethers';
@@ -142,40 +142,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
         <Separator />
         <div className={styles.copyDiv}>
           {CoNET_Data?.mnemonicPhrase ?
-            <>
-		
-              {/* <div className={styles.copyText}>
-                <p>{t('comp-comm-RecoveryPhrase')} </p>
-                {
-                  isWordsHidden ?
-                    <div style={{ filter: 'blur(3px)', wordBreak:'break-all' }}>
-                      <a href={"https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')} target="_blank">{"https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')}</a>
-                      <span style={{marginTop:'3px'}}>{t('comp-comm-RecoveryPhrase-info')}</span>
-                    </div>
-                    :
-                    <div style={{wordBreak:'break-all'}}>
-                      <a href={"https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')} target="_blank">{"https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')}</a>
-                      <span style={{marginTop:'3px'}}>{t('comp-comm-RecoveryPhrase-info')}</span>
-                    </div>
-                }
-              </div>
-              <div className={styles.buttonList}>
-                <button onClick={() => handleCopy("words")}>
-                  {
-                    (copied.address === ("https://backup.silentpass.io/?words=" + (CoNET_Data?.mnemonicPhrase || '').replace(/\s+/g, '_')) && copied.info === "words") ? (
-                      <img src="/assets/check.svg" alt="Copy icon" />
-                    ) : (
-                      <img src="/assets/copy-purple.svg" alt="Copy icon" />
-                    )
-                  }
-                </button>
-                <button className={isWordsHidden ? styles.hidden : ""} onClick={() => setIsWordsHidden((prev) => !prev)}>
-                  {
-                    isWordsHidden ? <VisibilityOffIcon /> : <VisibilityOnIcon />
-                  }
-                </button>
-              </div> */}
-            </>
+            ''
             : <Skeleton width='20px' height='20px' />
           }
         </div>

@@ -1,0 +1,37 @@
+import { ReactComponent as ClapHands } from './assets/clap-hands.svg';
+import { ReactComponent as Strokes1 } from './assets/strokes-1.svg';
+import { ReactComponent as Strokes2 } from './assets/strokes-2.svg';
+
+import "./index.css"; // Use the same CSS file for styling
+
+interface SuccessModalProps {
+  onClose: () => void;
+  nftID: number;
+}
+
+export default function SuccessModal({ nftID, onClose }: SuccessModalProps) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <Strokes1 />
+          <Strokes2 />
+        </div>
+        <div className="modal-icon">
+          <ClapHands />
+        </div>
+        <div className="modal-body">
+          <h2>Silent Pass Passport</h2>
+		   <h2>Activated Successfully!</h2>
+          <p>
+            You now have your <strong>encrypted access pass.</strong> Start exploring the open internet securely and freely.
+          </p>
+          <p className="passport-id">Your Passport ID: <span>#{nftID}</span></p>
+        </div>
+        <div className="modal-footer">
+          <button className="modal-button close" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}

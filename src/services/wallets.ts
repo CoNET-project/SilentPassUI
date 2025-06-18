@@ -13,6 +13,7 @@ import {
   localDatabaseName,
   rewardWalletAddress,
   solanaRpc,
+  payment_endpoint
 } from "../utils/constants";
 import {} from './listeners'
 import contracts from "../utils/contracts";
@@ -28,6 +29,43 @@ const PouchDB = require("pouchdb").default;
 interface SolanaWallet {
   publicKey: string;
   privateKey: string;
+}
+
+const waitingPaymentStatus = async (): Promise<false|number> => {
+	if (!CoNET_Data?.profiles?.length) {
+		return false;
+	}
+	const profile = CoNET_Data?.profiles[0]
+	const solanaWallet = CoNET_Data?.profiles[1]
+	if (!solanaWallet||!profile) {
+		return false;
+	}
+
+	const url = `${payment_endpoint}payment_stripe_waiting`
+	const message = JSON.stringify({ walletAddress: profile.keyID})
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+      message, signMessage
+    }
+	let waitingPaymentStatusLoop = 0
+	const waiting = async (): Promise<false|number> => new Promise(async resolve => {
+		const result: any = await postToEndpoint(url, true, sendData)
+		
+		if (result.status < 100|| result === false) {
+			if (waitingPaymentStatusLoop > 50 ) {
+				return resolve(false)
+			}
+			return setTimeout(() => {
+				return waiting().then (jj => resolve(jj))
+			}, 10 * 1000)
+		}
+		return resolve(result.status)
+	})
+
+	const result = await waiting ()
+
+	return result
 }
 
 const initSolana = async (mnemonic: string): Promise<any> => {
@@ -300,46 +338,6 @@ const requireFreePassport = async () => {
   }
 };
 
-const getCurrentPassportInfoInChain = async (
-  walletAddress: string,
-  chain: string
-) => {
-  if (!CoNET_Data) {
-    return;
-  }
-  let provider;
-  let contractAddress;
-  let contractAbi;
-
-  if (chain === "mainnet") {
-    provider = conetDepinProvider;
-    contractAddress = contracts.distributor.address;
-    contractAbi = contracts.distributor.abi;
-  } else {
-    provider = conetProvider;
-    contractAddress = contracts.PassportCancun.address;
-    contractAbi = contracts.PassportCancun.abi;
-  }
-
-  const wallet = new ethers.Wallet(
-    CoNET_Data.profiles[0].privateKeyArmor,
-    provider
-  );
-
-  const passportContract = new ethers.Contract(
-    contractAddress,
-    contractAbi,
-    wallet
-  );
-
-  try {
-    const result = await passportContract.getCurrentPassport(walletAddress);
-    return result;
-  } catch (ex) {
-    console.log(ex);
-  }
-};
-
 const changeActiveNFT = async (chain: string, nftId: string) => {
   if (!CoNET_Data) {
     return;
@@ -432,8 +430,7 @@ const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
 
 const getCurrentPassportInfo = async (walletAddress: string) => {
   const resultMainnet = await getCurrentPassportInfoInChain(
-    walletAddress,
-    "mainnet"
+    walletAddress
   );
 
   if (resultMainnet?.nftIDs?.toString() !== "0") {
@@ -1311,6 +1308,56 @@ const checkFreePassport = async () => {
 	return true
 }
 
+const getCurrentPassportInfoInChain = async (
+  walletAddress: string
+) => {
+  if (!CoNET_Data) {
+    return;
+  }
+  let provider;
+  let contractAddress;
+  let contractAbi;
+
+
+    provider = conetDepinProvider;
+    contractAddress = contracts.distributor.address;
+    contractAbi = contracts.distributor.abi;
+
+
+  const wallet = new ethers.Wallet(
+    CoNET_Data.profiles[0].privateKeyArmor,
+    provider
+  );
+
+  const passportContract = new ethers.Contract(
+    contractAddress,
+    contractAbi,
+    wallet
+  );
+
+  try {
+    const result = await passportContract.getCurrentPassport(walletAddress);
+    return result;
+  } catch (ex) {
+    console.log(ex);
+  }
+};
+const checkLocalStorageNodes = async () => {
+	const database = PouchDB(localDatabaseName, { auto_compaction: true });
+
+	try {
+	  const doc = await database.get("nodes", { latest: true });
+	  const data = JSON.parse(Buffer.from(doc.title, "base64").toString())
+	  return data
+	} catch (ex) {
+	  return null
+	}
+}
+
+const storageAllNodes = async (allNodes: any[]) => {
+	await storageHashData('nodes', Buffer.from(JSON.stringify(allNodes)).toString('base64'))
+}
+
 export {
   createOrGetWallet,
   createGPGKey,
@@ -1331,5 +1378,9 @@ export {
   getReceivedAmounts,
   RealizationRedeem,
   checkFreePassport,
-  checkFreePassportProcess
+  checkFreePassportProcess,
+  waitingPaymentStatus,
+  getCurrentPassportInfoInChain,
+  checkLocalStorageNodes,
+  storageAllNodes
 };

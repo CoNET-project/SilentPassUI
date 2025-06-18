@@ -59,11 +59,7 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
           </button>
         </BlobWrapper>
 
-        <div className="current-mined">
-          <strong>Total time used</strong>
-          {/* <p>{formatMinutesToHHMM(parseInt(profile?.vpnTimeUsedInMin) || 0)}</p> */}
-          <p>{formatMinutesToHHMM(_vpnTimeUsedInMin)}</p>
-        </div>
+        
       </div>
     )
 
@@ -78,12 +74,6 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
             <img src="/assets/not-power.png" className="power-icon" alt="" />
           </button>
         </BlobWrapper>
-
-        <div className="current-mined">
-          <strong>Total time used</strong>
-          {/* <p>{formatMinutesToHHMM(parseInt(profile?.vpnTimeUsedInMin) || 0)}</p> */}
-          <p>{formatMinutesToHHMM(_vpnTimeUsedInMin)}</p>
-        </div>
       </div>
 
       {errorMessage && <span style={{ color: '#bf3b37', fontSize: '12px' }}>{errorMessage}</span>}
@@ -353,13 +343,13 @@ const Home = () => {
 
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 
-            <CopyProxyInfo />
+            {/* <CopyProxyInfo /> */}
 
-            {
+            {/* {
               (isDevelopment || !isSilentPassVPN) && (
                 <SystemSettingsButton />
               )
-            }
+            } */}
 
             {!isConnectionLoading &&
               <RegionSelector

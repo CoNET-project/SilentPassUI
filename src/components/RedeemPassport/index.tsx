@@ -5,6 +5,13 @@ import SuccessModal from './SuccessModal';
 import { RealizationRedeem } from '../../services/wallets';
 import SimpleLoadingRing from '../SimpleLoadingRing';
 import { Divider } from '@mui/material';
+import { useDaemonContext } from "../../providers/DaemonProvider"
+
+interface plan {
+	total: string
+	publicKey: string
+	Solana: string
+}
 
 export default function RedeemPassport() {
   const [redeemCode, setRedeemCode] = useState("");
@@ -13,10 +20,30 @@ export default function RedeemPassport() {
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
   const [successNFTID, setSuccessNFTID] = useState(0);
+  const { profiles, setSelectedPlan } = useDaemonContext()
 
-  const [selectedPlan, setSelectedPlan] = useState<'12' | '1'>('12');
+  const [selectedPlan1, setSelectedPlan1] = useState<'12' | '1'>('12');
 
-  const navigate = useNavigate();
+  const navigate = useNavigate()
+
+    const startSubscription = () => {
+	if (!profiles ||profiles.length < 2) {
+		return
+	}
+
+	const planObj: plan = {
+		publicKey: profiles[0].keyID,
+		Solana: profiles[1].keyID,
+		total: selectedPlan1
+	}
+	setSelectedPlan(selectedPlan1)
+	const base64VPNMessage = btoa(JSON.stringify(planObj));
+	
+	window?.webkit?.messageHandlers["pay"]?.postMessage(base64VPNMessage)
+	
+	navigate("/subscription")
+	
+  }
 
   async function handlePassportRedeem() {
       setIsRedeemProcessLoading(true);
@@ -46,7 +73,7 @@ export default function RedeemPassport() {
         </button>
 
         <div className="redeem-content">
-          <label className="redeem-label">Input redeem code</label>
+          {/* <label className="redeem-label">Input redeem code</label>
           <input
             type="text"
             placeholder="#1234"
@@ -62,14 +89,14 @@ export default function RedeemPassport() {
             <div className="line"></div>
             <span>or</span>
             <div className="line"></div>
-          </div>
+          </div> */}
           <div className="subscription-plans">
             <div
-              className={`plan ${selectedPlan === '12' ? 'selected' : ''}`}
-              onClick={() => setSelectedPlan('12')}
+              className={`plan ${selectedPlan1 === '12' ? 'selected' : ''}`}
+              onClick={() => setSelectedPlan1('12')}
             >
               <div className="plan-content">
-                <div className={`sub-option ${selectedPlan === '12' ? 'selected' : ''}`} />
+                <div className={`sub-option ${selectedPlan1 === '12' ? 'selected' : ''}`} />
                 <div className="plan-details">
                   <div className="plan-title">12 months plan</div>
                   <div className="plan-price">$2.71/month, billed annually</div>
@@ -80,11 +107,11 @@ export default function RedeemPassport() {
             </div>
 
             <div
-              className={`plan ${selectedPlan === '1' ? 'selected' : ''}`}
-              onClick={() => setSelectedPlan('1')}
+              className={`plan ${selectedPlan1 === '1' ? 'selected' : ''}`}
+              onClick={() => setSelectedPlan1('1')}
             >
               <div className="plan-content">
-                <div className={`sub-option ${selectedPlan === '1' ? 'selected' : ''}`} />
+                <div className={`sub-option ${selectedPlan1 === '1' ? 'selected' : ''}`} />
                 <div className="plan-details">
                   <div className="plan-title">1 month plan</div>
                   <div className="plan-price">$3.29/month</div>
@@ -98,7 +125,7 @@ export default function RedeemPassport() {
           </div>
           <div className="subscription">
             <p>7 day free, <br /> then get 12 months for $32.49</p>
-            <button onClick={() => navigate("/subscription")}>Start subscription</button>
+            <button onClick={startSubscription}>Start subscription</button>
             <div className="sub-details">
               <p>Subscription details:</p>
               <ul>

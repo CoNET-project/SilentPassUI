@@ -7,8 +7,16 @@ import { joinSpClub } from '../../api';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import { getSpClubMemberId } from '../../services/wallets';
 import { isPassportValid } from '../../utils/utils';
+import { ReactComponent as CrownBadge } from './assets/crown.svg'
+import { useNavigate } from "react-router-dom";
 
 const OneDayInSeconds = 86400;
+
+interface plan {
+	total: string
+	publicKey: string
+	Solana: string
+}
 
 export default function SpClub() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -17,8 +25,8 @@ export default function SpClub() {
   const [memberId, setMemberId] = useState<string>('0');
   const [referrer, setReferrer] = useState<string>('');
   const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
-
-  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport } = useDaemonContext();
+	const navigate = useNavigate()
+  const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, setSelectedPlan } = useDaemonContext();
 
   useEffect(() => {
     const passportExpiration = profiles?.[0]?.activePassport?.expires
@@ -62,6 +70,25 @@ export default function SpClub() {
     }
 
     setTimeout(() => setIsLoading(false), 2000)
+  }
+
+    const startSubscription = () => {
+		if (!profiles ||profiles.length < 2) {
+			return
+		}
+
+		const planObj: plan = {
+			publicKey: profiles[0].keyID,
+			Solana: profiles[1].keyID,
+			total: '3100'
+		}
+		setSelectedPlan('3100')
+		const base64VPNMessage = btoa(JSON.stringify(planObj));
+		
+		window?.webkit?.messageHandlers["pay"]?.postMessage(base64VPNMessage)
+		
+		navigate("/subscription")
+	
   }
 
   const renderCardContent = () => {
@@ -133,19 +160,63 @@ export default function SpClub() {
           <div className="name">
             <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', alignItems: 'center' }}>
               <h3>Join SP Club</h3>
-              <div
+              {/* <div
                 style={{
                   width: '12px',
                   height: '12px',
                 }}
-                className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div>
+                className={`circle ${passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "red" : "yellow" : "green"}`}></div> */}
             </div>
             <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
           </div>
         </div>
         <div className="info-card">
+			<div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px"}}>
+				<div className="passport-options" style={{gap:"2px"}}>
+					<div style={{display: 'flex', alignItems:'center'}}>
+						<CrownBadge style={{width: "60px"}}/>
+						<span style={{fontSize: 'x-large', color: 'gold', fontWeight: 'bold'}}>Genesis Circle NFT</span>
+					</div>
+					<p style={{textAlign: 'left' }}>
+						Unlock Lifetime Access to Silent Pass VPN
+					</p>
+					<p style={{textAlign: 'left'}}>
+						Your exclusive NFT Passport for unlimited private browsing.
+					</p>
+					<div style={{display: 'flex', alignItems:'center', justifyContent: 'center'}}>
+						<span style={{fontSize: 'small'}}>One-Time Payment</span>
+						<span style={{color: 'gold', fontWeight: 'bold', paddingLeft: '3rem', fontSize: 'large', paddingRight: '0.2rem'}}>$</span>
+						<span style={{fontSize: 'xx-large', color: 'gold', fontWeight: 'bold'}}>41.99</span>
+					</div>
+					<p style={{color: '#989899'}}>
+						1 Device · No Renewal · Lifetime Access
+					</p>
+					<button className='buttonPay' style={{}} onClick={startSubscription}>Start Purchase</button>
+					<p style={{padding: '0.5rem 0', textAlign: 'left' }}>
+						Purchase Information
+					</p>
+					<p style={{color: '#989899', textAlign: 'left'}}>
+						This is a one-time purchase.
+						
+					</p>
+					<p style={{color: '#989899', textAlign: 'left'}}>
+						No subscription or renewal.
+						
+					</p>
+					<p style={{color: '#989899', textAlign: 'left'}}>
+						Includes lifetime VPN access for one device.
+					</p>
+					<p style={{color: '#989899', textAlign: 'left'}}>
+						Payment will be charged to your Apple ID at confirmation.
+					</p>
+					<p style={{color: '#989899', textAlign: 'left'}}>
+						By purchasing, you agree to Apple’s Terms of Use and Privacy Policy.
+					</p>
+					
 
-          {renderCardContent()}
+				</div>
+			</div>
+          
         </div>
       </div>
 

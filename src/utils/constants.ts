@@ -12,6 +12,7 @@ const _ethRpc = [
   "https://ethereum-rpc.publicnode.com",
   "https://eth-mainnet.public.blastapi.io"
 ];
+const payment_endpoint = `https://hooks.conet.network/api/`;
 const solanaRpc = "https://solana-rpc.conet.network";
 const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
 const rewardWalletAddress = "GUq7PhyAUZko2mPhv3CupmdJKQ61LH8VyrdsRL25q7zg";
@@ -34,5 +35,6 @@ export {
   conetProvider,
   ethProvider,
   conetDepinProvider,
-  changeRPC
+  changeRPC,
+  payment_endpoint
 };

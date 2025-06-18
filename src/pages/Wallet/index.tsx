@@ -1,13 +1,25 @@
 import { useNavigate } from 'react-router-dom';
 import Footer from '../../components/Footer';
+import SuccessModal from './SuccessModal';
 import './index.css';
+import { useState, useEffect } from "react";
 import AccountList from '../../components/AccountList';
 import RedeemPassport from '../../components/RedeemPassport';
-
+import SpClub from '../../components/AccountList/SpClub'
+import { useDaemonContext } from "../../providers/DaemonProvider"
 export default function Wallet() {
-  const navigate = useNavigate();
+  const navigate = useNavigate()
+    const { successNFTID, setSuccessNFTID} = useDaemonContext();
+	const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false)
+	useEffect(() => {
+		if (successNFTID > 100) {
+			setIsSuccessModalOpen(true);
+		}
+
+	}, [successNFTID])
 
   return (
+	
     <div className="page-container">
       <h1>My Account</h1>
 
@@ -24,13 +36,13 @@ export default function Wallet() {
         <RedeemPassport />
       </div>
 
-      {/* <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>
         <SpClub />
-        <ReferralProgram />
-      </div> */}
-
-
+        {/* <ReferralProgram /> */}
+      </div>
+	
       <Footer />
+	  {isSuccessModalOpen && <SuccessModal nftID= {successNFTID} onClose={() => {setIsSuccessModalOpen(false); setSuccessNFTID(0)}} />}
     </div>
   )
 }

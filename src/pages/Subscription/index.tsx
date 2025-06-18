@@ -13,9 +13,10 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/global-steps/Loading';
 import Declined from '../../components/global-steps/Declined';
 import { Step } from '../../types/global-types';
+import {waitingPaymentStatus} from '../../services/wallets'
 
 export default function Subscription() {
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(3);
   const [price, setPriceInSp] = useState('0');
   const [gasfee, setGasfee] = useState('0');
   const [updateCounter, setUpdateCounter] = useState(0);
@@ -29,7 +30,7 @@ export default function Subscription() {
   const [sp9999, setSp9999] = useState('0');
   const [isSubmitButtonDisabled, setIsSubmitButtonDisabled] = useState(false);
 
-  const { profiles, purchasingPlan, purchasingPlanPaymentTime } = useDaemonContext();
+  const { profiles, setSuccessNFTID} = useDaemonContext();
 
   const navigate = useNavigate();
 
@@ -38,61 +39,29 @@ export default function Subscription() {
     setStep((prev) => (prev + 1 as Step));
   }
 
+  const waitResult = async () => {
+	// const result = await waitingPaymentStatus()
+	// if (!result) {
+	// 	return setStep(5)
+	// }
+	// setSuccessNFTID(result)
+	setTimeout(() => {
+		setSuccessNFTID(3344)
+		navigate('/wallet')
+		
+	}, 2000)
+	
+  }
+
+  let first = true
   useEffect(() => {
-    const interval = setInterval(() => setUpdateCounter((prev) => prev - 1), 1000);
-    return () => clearInterval(interval);
+	if (first) {
+		first = false
+		waitResult()
+	}
   }, [])
 
-  useEffect(() => {
-    const timeout = setTimeout(async () => {
-      if (isLoading) return
 
-      setUpdateCounter(updateCounter - 1)
-
-      if (updateCounter <= 0 || oracleError) {
-        setIsLoading(true)
-        const oracleData = await getOracle()
-
-        if (oracleData && oracleData.data) {
-          setOracleError(false)
-
-          setSp249(oracleData.data.sp249)
-          setSp2499(oracleData.data.sp2499)
-          setSp999(oracleData.data.sp999)
-          setSp9999(oracleData.data.sp9999)
-
-          const _spInUsd = calcSpInUsd(oracleData.data.sp9999)
-
-          setSolInUsd(parseFloat(oracleData.data.so))
-          setSpInUsd(_spInUsd)
-          setUpdateCounter(60)
-        } else {
-          setOracleError(true)
-        }
-
-        setIsLoading(false)
-      }
-    }, 1000);
-
-    return () => clearTimeout(timeout);
-  }, [updateCounter]);
-
-  useEffect(() => {
-    if (purchasingPlan === 'standard' && purchasingPlanPaymentTime === 'monthly')
-      setPriceInSp(sp249)
-    else if (purchasingPlan === 'standard' && purchasingPlanPaymentTime === 'yearly')
-      setPriceInSp(sp2499)
-    else if (purchasingPlan === 'premium' && purchasingPlanPaymentTime === 'monthly')
-      setPriceInSp(sp999)
-    else if (purchasingPlan === 'premium' && purchasingPlanPaymentTime === 'yearly')
-      setPriceInSp(sp9999)
-  }, [purchasingPlan, purchasingPlanPaymentTime, sp249, sp2499, sp999, sp9999])
-
-  const calcSpInUsd = (sp9999: string) => {
-    const sp9999Number = Number(sp9999)
-    const _spInUsd = 99.99 / sp9999Number
-    return _spInUsd
-  }
 
   async function handleButtonAction() {
     if (step === 1) {
@@ -120,18 +89,8 @@ export default function Subscription() {
   }
 
   useEffect(() => {
-    if (step === 1) {
-      const result = (!profiles?.[1]?.tokens?.sp?.balance || Number(price) > profiles?.[1]?.tokens?.sp?.balance);
-      return setIsSubmitButtonDisabled(result);
-    }
-
-    if (step === 2) {
-      const result = (!profiles?.[1]?.tokens?.sp?.balance || (Number(price) > profiles?.[1]?.tokens?.sp?.balance) || (Number(gasfee) > profiles?.[1]?.tokens?.sol?.balance));
-      return setIsSubmitButtonDisabled(result);
-    }
-
-    return setIsSubmitButtonDisabled(false);
-  }, [step, price, gasfee, profiles]);
+	
+  }, []);
 
   return (
     <div className={`page-container ${(step === 3 || step === 4 || step === 5) ? 'h-full' : ''}`}>

@@ -413,7 +413,7 @@ const handleTogglePower = async () => {
           <>
             <div>
               <img src="/assets/header-title.svg"></img>
-			  {
+			  {/* {
 				
 				!isProcessAirDrop && 
 				<>
@@ -429,17 +429,17 @@ const handleTogglePower = async () => {
 				</>
 
 				 	
-			  }
+			  } */}
 			  
 			  
             </div>
 
-			<div>
+			{/* <div>
 				<button onClick={() => navigate("/wallet")}>
 					<img className="bannaer" src={i18n.language === 'zh' ? bannaer_cn : bannaer} style={{width:"25rem",height: "5rem"}}></img>
 				</button>
 				
-			</div>
+			</div> */}
 
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 			  {

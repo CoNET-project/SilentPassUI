@@ -310,12 +310,12 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 									<>
 										<div>
 											{
-												// !showpayment &&
-												// <div className="inner" style={{width: '100%'}}>
-												// 	<button style={{width: '100%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
-												// 		{t('comp-comm-buyNow')}
-												// 	</button>
-												// </div>
+												!showpayment &&
+												<div className="inner" style={{width: '100%'}}>
+													<button style={{width: '100%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
+														{t('comp-comm-buyNow')}
+													</button>
+												</div>
 											}
 											{
 												showpayment &&

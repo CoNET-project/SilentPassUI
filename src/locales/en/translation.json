@@ -162,13 +162,14 @@
 
 	"comp-Rules-RuleButton-input-placeholder": "Search keywords or URLs",
 
-	"passport_unlimit": "Unlimit",
+	"passport_unlimit": "Infinite",
 	"passport_Freemium": "Freemium",
 	"passport_Guardian": "Guardian",
 	"passport_Annually": "Annually",
 	"passport_Quarter": "Quarter",
 	"passport_Monthly": "Monthly",
-	"passport_Infinite": "Infinite",
+	"passport_Infinite-1": "Infinite",
+	"passport_Infinite": "GENESIS CIRCLE",
 	"passport_free7days": "Free 7 Days",
 	"passport_notUsed": "Not Used",
 	"passport_day": "day",

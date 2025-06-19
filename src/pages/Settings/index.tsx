@@ -142,11 +142,12 @@ export default function Settings() {
   return (
     <div className="page-container">
       <h1>{t('Settings_Title')}</h1>
+	  <p style={{color: '#676768', padding: '0.5rem 0'}}>Silent Pass UI v1.1</p>
       <div className="nft-info">
         <ActivePassportInfo />
 
         <div className="buttons">
-          <button onClick={() => navigate("/wallet")}>{t('wallet_title')}</button>
+          {/* <button onClick={() => navigate("/wallet")}>{t('wallet_title')}</button> */}
           {/* <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate("/subscription")}>
             <img src="./assets/conet-outline-gray.svg" />
             <span>Upgrade Passport</span>

@@ -27,6 +27,7 @@ import wachat from './assets/wechat.png'
 import { ReactComponent as AliPay } from './assets/alipay.svg'
 
 const OneDayInSeconds = 86400;
+const alipayUrl = 'https://cashier.alphapay.ca/commodity/details/order/5728/100001644'
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX'
 export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.SetStateAction<boolean>>) {
@@ -67,6 +68,15 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 
 	const alipayClick = () => {
 		setShowPurchase(true)
+		if (window?.webkit) {
+			window?.webkit?.messageHandlers["openUrl"].postMessage(alipayUrl)
+		}
+		//@ts-ignore
+		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+			const base = btoa(JSON.stringify({cmd: 'openUrl', data: alipayUrl}))
+			//	@ts-ignore
+			AndroidBridge.receiveMessageFromJS(base)
+		}
 	}
 
   const fetchMemberIdWithRetry = async (startTime = Date.now()): Promise<string | null> => {
@@ -310,12 +320,12 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 									<>
 										<div>
 											{
-												// !showpayment &&
-												// <div className="inner" style={{width: '100%'}}>
-												// 	<button style={{width: '100%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
-												// 		{t('comp-comm-buyNow')}
-												// 	</button>
-												// </div>
+												!showpayment &&
+												<div className="inner" style={{width: '100%'}}>
+													<button style={{width: '100%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
+														{t('comp-comm-buyNow')}
+													</button>
+												</div>
 											}
 											{
 												showpayment &&
@@ -335,13 +345,13 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 															<QuotesTx style={{width: '26px', height: '26px'}}/>
 															<span>BSC USDT</span>
 														</div> */}
-														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick} target='_blank' href="https://cashier.alphapay.ca/commodity/details/order/5728/100001644">
+														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick} target='_blank' href={alipayUrl}>
 															<AliPay width="6.5rem"/>
 														</a>
-														<div style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}}>
+														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick} target='_blank' href={alipayUrl}>
 															<img  src={wachat} className="button_img"/>
 															<p style={{color: '#989899'}}>WeChat</p>
-														</div>
+														</a>
 													</div>
 												</>
 											}

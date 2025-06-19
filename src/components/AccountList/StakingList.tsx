@@ -109,29 +109,24 @@ const StakingList=({simplifiedView,profiles,handleRefreshSolanaBalances,spInUsd}
     return (
         <>
             <div className={styles.item}>
-                <SpToken width={20} height={20}/>
-				 <div className={styles.infos}>
-                    <div className={styles.infosItem}>
-                        <span>{t('comp-accountlist-staking-total-assets')}</span>
-                        <span>{convertNumberToString( Number( (profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2) ) )}</span>
-                        <span>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</span>
+                <div className={styles.lt}>
+                    <div className={styles.label}>
+                        <div className={styles.name}>
+                            <SpToken width={20} height={20}/>
+                            <p>$SP</p>
+                        </div>
+                        <div className={styles.balance}>
+                            <p>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)}</p>
+                        </div>
                     </div>
-                    
+                    <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
                 </div>
-                {/* <div className={styles.infos}>
-                    <div className={styles.infosItem}>
-                        <span>{t('comp-accountlist-staking-total-assets')}</span>
-                        <span>{convertNumberToString( Number( (profiles?.[1]?.tokens?.sp?.balance1 || (0.0)).toFixed(2) ) )}</span>
-                        <span>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</span>
-                    </div>
-                    <div className={styles.infosItem}>
-                        <span>{t('comp-accountlist-staking-total-available')}</span>
-                        <span>{convertNumberToString(available())}</span>
-                        <span>${calcAvailablePrice()}</span>
-                    </div>
-                </div> */}
-                <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={simplifiedView ? (spInUsd * parseFloat(profiles?.[1]?.tokens?.sp?.usd || '0')).toFixed(2) :profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={simplifiedView?(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)):(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
+                <div className={styles.val}>
+                    <p>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</p>
+                </div>
             </div>
+
+           
             {CoNET_Data&&getStakingList()&&getStakingList()?.length?<div className={styles.stakingList}>
                 <div className={styles.hd}><span>🔒{t('comp-accountlist-staking-title')}</span><span>{t('comp-accountlist-staking-total-num')} {getStakingList()?.length}</span></div>
                 <div className={styles.bd}>

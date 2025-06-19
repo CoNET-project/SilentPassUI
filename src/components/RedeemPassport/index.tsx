@@ -14,10 +14,15 @@ interface plan {
 	publicKey: string
 	Solana: string
 }
+interface RedeemPassportProps {
+  isOpen: boolean;
+  setIsOpen:React.Dispatch<React.SetStateAction<boolean>>;
+  redeemRef:React.RefObject<HTMLDivElement>;
+}
 
-export default function RedeemPassport() {
+export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPassportProps) {
   const [redeemCode, setRedeemCode] = useState("");
-  const [isOpen, setIsOpen] = useState<boolean>(false);
+  // const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
   const [anErrorOccurred, setAnErrorOccurred] = useState<boolean>(false);
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
@@ -127,7 +132,7 @@ export default function RedeemPassport() {
 					<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
 						{spRewordloading ? <SimpleLoadingRing /> : t('comp-RedeemPassport-RedeemNow')}
 					</button>
-					<div className="redeem-divider">
+					<div className="redeem-divider" ref={redeemRef}>
 						<div className="line"></div>
 						<span>or</span>
 						<div className="line"></div>

@@ -30,7 +30,7 @@ const OneDayInSeconds = 86400;
 const alipayUrl = 'https://cashier.alphapay.ca/commodity/details/order/5728/100001644'
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX'
-export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.SetStateAction<boolean>>) {
+export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.SetStateAction<boolean>>,setRedeemPassportOpenOpen:React.Dispatch<React.SetStateAction<boolean>>,redeemRef:React.RefObject<HTMLDivElement>) {
 	const [isCongratsPopupOpen, setIsCongratsPopupOpen] = useState<boolean>(false);
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [memberId, setMemberId] = useState<string>('0');
@@ -213,6 +213,19 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 
 	},[updateCounter])
 
+	const handleGoRedeem=()=>{
+		setIsOpen(false);
+		setRedeemPassportOpenOpen(true);
+		setTimeout(()=>{
+			if (redeemRef.current) {
+	      window.scrollTo({
+	        top: redeemRef.current.offsetTop,
+	        behavior: 'smooth'
+	      });
+	    }
+		},500)
+	}
+
   const renderCardContent = () => {
   	
     return (
@@ -321,10 +334,11 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 										<div>
 											{
 												!showpayment &&
-												<div className="inner" style={{width: '100%'}}>
-													<button style={{width: '100%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
+												<div className="inner" style={{width: '100%',display:'flex',justifyContent:'space-between'}}>
+													<button style={{width: '47%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
 														{t('comp-comm-buyNow')}
 													</button>
+													<button style={{width: '47%'}} className='redeem-button purchase' onClick={handleGoRedeem}>{t('comp-comm-Claim')}</button>
 												</div>
 											}
 											{

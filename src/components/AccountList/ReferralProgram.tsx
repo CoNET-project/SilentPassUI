@@ -17,6 +17,7 @@ import { ReactComponent as Crown } from './assets/crown.svg';
 import { ReactComponent as GC } from './assets/GC.svg'
 import gcImg from './assets/GC.png'
 import { useTranslation } from 'react-i18next'
+import ReferralCont from './ReferralCont';
 
 const SP_EARNED_FROM_REFERRAL = 10
 
@@ -177,82 +178,15 @@ export default function ReferralProgram() {
           (freePassportActive || expiration) &&
           <p style={{ padding: '1rem', color: 'darkred' }}>{t('comp-accountlist-Referral-onlySubscribers')}</p>
         }
-        <div style={{ padding: "1rem 1rem 0rem 1rem" }}>
-          <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>{t('comp-accountlist-Referral-copy')}</p>
-        </div>
-        <div className="copy-div">
-          <div>
-            <p>{t('comp-accountlist-Referral-detail')}</p>
-          </div>
-          {
-
-            profiles?.[0]?.keyID ?
-              <>
-                <div className="copy-text">
-                  <p>{profiles[0].keyID.substring(0, 6) + '...' + profiles[0].keyID.substring(profiles[0].keyID.length - 6)}</p>
-                </div>
-                <div className="button-list">
-                  <button onClick={() => handleCopy()}>
-                    {
-                      copied ? (
-                        <img src="/assets/check.svg" alt="Copy icon" />
-                      ) : (
-                        <img src="/assets/copy-purple.svg" alt="Copy icon" />
-                      )
-                    }
-                  </button>
-                </div>
-              </>
-              : <Skeleton width='100%' height='20px' />
-          }
-        </div>
-
-
-
-        {
-          profiles?.[0]?.referrer ? (
-            <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
-              <p>{t('comp-accountlist-Referral-Inviter')} </p>
-              {
-                <span style={{ color: '#989899' }}>{
-                  profiles[0].referrer ?
-                    profiles[0].referrer.substring(0, 6) + '...' + profiles[0].referrer.substring(profiles[0].referrer.length - 6) : ''
-
-                }
-                </span>
-              }
-            </div>
-          ) : (
-            <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
-              <p>{t('comp-accountlist-Referral-Inviter')} </p>
-              <input className={inputError ? 'wallet-address-input-error' : ''}
-                ref={inputRef}
-                type="text"
-                style={{ width: "100%", background: "#3F3F40", borderRadius: "8px", padding: "8px", color: "#989899", border: 0 }}
-                value={inviter} onChange={(e) => {
-                  setInputError(false)
-                  setInviter(e.target.value)
-                }}
-              />
-
-              <button style={{
-                marginTop: "16px", padding: "12px 0",
-                display: "flex", justifyContent: "center",
-                cursor: "pointer", width: "100%",
-                background: "#282930", borderRadius: "16px",
-                fontWeight: "bold",
-              }} onClick={handleSetInviter}>{isRedeemProcessLoading ? <SimpleLoadingRing /> : t('comp-comm-Confirm')}</button>
-            </div>
-          )
-        }
-
+        <ReferralCont />
+        
         <Separator />
 
         {/* <div className="info-wrapper">
 			<SPClubRewardTab quotation = {quotation} setTokenGraph={setTokenGraph} animation = {animation}/>
-        </div> */}
+        </div> 
 
-        <Separator />
+        <Separator />*/}
 
         <div className="info-wrapper" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
           <p>{t('comp-accountlist-Referral-Invitees')} <span style={{ color: "#9FBFE5FE" }}>{profiles?.[0].spClub?.totalReferees}</span></p>

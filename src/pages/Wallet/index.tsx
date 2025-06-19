@@ -18,10 +18,12 @@ export default function Wallet() {
   const navigate = useNavigate()
   const { profiles, isIOS } = useDaemonContext()
   const [openClub, setOpenClub] = useState(true)
+  const [redeemPassportOpen, setRedeemPassportOpenOpen] = useState<boolean>(false);
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
   const hasCrownActive = Number(profiles?.[0]?.activePassport?.expires) > 4900000000;
   const freePassportActive = profiles?.[0]?.activePassport?.nftID && Number(profiles[0].activePassport.expiresDays) <= 7;
   const { t, i18n } = useTranslation()
+  const redeemRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="page-container">
@@ -42,11 +44,11 @@ export default function Wallet() {
           </button>
           <p>*Open CoNET Platform - Redeem Silent Pass passport and transfer Silent Pass passport to Silent Pass Account (public wallet address) if user has guardian NFT or CoNETian NFT.</p>
         </div> */}
-        <RedeemPassport />
+        <RedeemPassport isOpen={redeemPassportOpen} setIsOpen={setRedeemPassportOpenOpen} redeemRef={redeemRef} />
       </div>
 	  {
 		<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '20px' }}>
-			{SpClub(openClub, setOpenClub)}
+			{SpClub(openClub, setOpenClub,setRedeemPassportOpenOpen,redeemRef)}
 			<ReferralProgram />
 		</div>
 	  }

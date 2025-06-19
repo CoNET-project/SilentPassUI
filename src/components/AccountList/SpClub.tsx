@@ -69,14 +69,15 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	const alipayClick = () => {
 		setShowPurchase(true)
 		if (window?.webkit) {
-			window?.webkit?.messageHandlers["openUrl"].postMessage(alipayUrl)
+			return window?.webkit?.messageHandlers["openUrl"].postMessage(alipayUrl)
 		}
 		//@ts-ignore
 		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
 			const base = btoa(JSON.stringify({cmd: 'openUrl', data: alipayUrl}))
 			//	@ts-ignore
-			AndroidBridge.receiveMessageFromJS(base)
+			return AndroidBridge.receiveMessageFromJS(base)
 		}
+		window.open(alipayUrl, '_blank')
 	}
 
   const fetchMemberIdWithRetry = async (startTime = Date.now()): Promise<string | null> => {
@@ -359,10 +360,10 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 															<QuotesTx style={{width: '26px', height: '26px'}}/>
 															<span>BSC USDT</span>
 														</div> */}
-														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick} target='_blank' href={alipayUrl}>
+														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick}>
 															<AliPay width="6.5rem"/>
 														</a>
-														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick} target='_blank' href={alipayUrl}>
+														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick}>
 															<img  src={wachat} className="button_img"/>
 															<p style={{color: '#989899'}}>WeChat</p>
 														</a>

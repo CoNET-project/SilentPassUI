@@ -142,7 +142,7 @@ export default function CopyAccountInfo({ wallet, showRecoveryPhrase = false, is
         <Separator />
         <div className={styles.copyDiv}>
           {CoNET_Data?.mnemonicPhrase ?
-            ''
+            <Recovery />
             : <Skeleton width='20px' height='20px' />
           }
         </div>

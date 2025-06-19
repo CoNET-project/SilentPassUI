@@ -29,6 +29,14 @@
                 color: #fff!important;
             }
         }
+        .recoveryBlockBtn{
+            width: 100%!important;
+            background: #28292e;
+            border-color: #28292e;
+            span{
+                color: #fff!important;
+            }
+        }
         :global(.adm-button) {
             width:46%;
         }

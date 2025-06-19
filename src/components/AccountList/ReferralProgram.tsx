@@ -5,7 +5,7 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../Skeleton';
 import SPClubRewardTab from '../SPClubRewardTab'
 import { ethers } from 'ethers'
-import {getirDropForSPReff} from '../../services/subscription'
+import { getirDropForSPReff } from '../../services/subscription'
 import { getPassportTitle, getExpirationDate } from '../../utils/utils';
 import { currentPageInvitees, setCurrentPageInvitees } from '../../utils/globals';
 import { getRefereesPage } from '../../services/wallets'
@@ -14,7 +14,7 @@ import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
 import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
 import crown from './assets/crown_icon.gif';
 import { ReactComponent as Crown } from './assets/crown.svg';
-import {ReactComponent as GC} from './assets/GC.svg'
+import { ReactComponent as GC } from './assets/GC.svg'
 import gcImg from './assets/GC.png'
 import { useTranslation } from 'react-i18next'
 
@@ -32,16 +32,16 @@ export default function ReferralProgram() {
   const inputRef = useRef(null);
   const { t, i18n } = useTranslation()
   const [quotation, setQuotation] = useState({
-    "rfp": 1/31,
-    "rsp": 0/31,
-	"rcp": 0/31,
+    "rfp": 1 / 31,
+    "rsp": 0 / 31,
+    "rcp": 0 / 31,
   })
 
   const [pageNo, setPageNo] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  
+
   const nft = parseInt(profiles?.[0]?.activePassport?.nftID)
-  const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour')) === '00:00:00' ? true : false
+  const expiration = nft === 0 || getExpirationDate(profiles?.[0]?.activePassport?.expires, t('passport_unlimit'), t('passport_notUsed'), t('passport_day'), t('passport_hour')) === '00:00:00' ? true : false
   const hasGuardianActive = Number(profiles?.[0]?.activePassport?.expires) > 32503690800000;
   const hasCrownActive = Number(profiles?.[0]?.activePassport?.expires) > 4900000000;
   const freePassportActive = nft > 0 && Number(profiles[0].activePassport.expiresDays) <= 7 && Number(profiles[0].activePassport.expiresDays) > 0;
@@ -51,36 +51,36 @@ export default function ReferralProgram() {
   }
 
   const showAddress = (address: string) => {
-	const link = document.createElement('a');
-	link.href = `https://mainnet.conet.network/address/${address}`
-	link.target = '_blank'
-	document.body.appendChild(link)
-	link.click()
-	document.body.removeChild(link)
+    const link = document.createElement('a');
+    link.href = `https://mainnet.conet.network/address/${address}`
+    link.target = '_blank'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
 
   const handleSetInviter = async () => {
-	setIsRedeemProcessLoading(true)
-	const result = await getirDropForSPReff (inviter)
-	setIsRedeemProcessLoading(false)
+    setIsRedeemProcessLoading(true)
+    const result = await getirDropForSPReff(inviter)
+    setIsRedeemProcessLoading(false)
 
-	if (typeof result === 'boolean') {
-		return setInputError(true)
-	}
+    if (typeof result === 'boolean') {
+      return setInputError(true)
+    }
 
-	setAirdropSuccess(true)
-	setAirdropTokens(result)
-	setIsOpen(false)
-	setAirdropProcess(true)
-	setAirdropProcessReff(false)
+    setAirdropSuccess(true)
+    setAirdropTokens(result)
+    setIsOpen(false)
+    setAirdropProcess(true)
+    setAirdropProcessReff(false)
   }
 
   const handlePreviousPage = async () => {
-    if(pageNo>1){
-      setPageNo(pageNo-1);
+    if (pageNo > 1) {
+      setPageNo(pageNo - 1);
     }
-    
+
     // if (currentPageInvitees > 0) {
     //   setCurrentPageInvitees(currentPageInvitees - 1)
     //   await getRefereesPage(profiles[0], currentPageInvitees)
@@ -89,9 +89,9 @@ export default function ReferralProgram() {
   }
   const handleNextPage = async () => {
     if (pageNo < Math.ceil(profiles?.[0]?.spClub?.totalReferees / pageSize)) {
-      setPageNo(pageNo+1)
+      setPageNo(pageNo + 1)
     }
-    
+
     // if (currentPageInvitees < Math.ceil(profiles?.[0]?.spClub?.totalReferees / 100)) {
     //   setCurrentPageInvitees(currentPageInvitees + 1)
     //   await getRefereesPage(profiles[0], currentPageInvitees)
@@ -99,10 +99,10 @@ export default function ReferralProgram() {
     // }
   }
 
-  const paginateArray=(array: any[])=> {
+  const paginateArray = (array: any[]) => {
     const totalItems = array.length;
     const totalPages = Math.ceil(totalItems / pageSize);
-    
+
     // 边界校验
     if (pageNo < 1 || pageNo > totalPages) {
       return [];
@@ -110,7 +110,7 @@ export default function ReferralProgram() {
 
     const startIndex = (pageNo - 1) * pageSize;
     const endIndex = Math.min(startIndex + pageSize, totalItems);
-    
+
     return array.slice(startIndex, endIndex);
   }
 
@@ -120,16 +120,16 @@ export default function ReferralProgram() {
     }
   }, [shouldRerender])
 
-  
+
   let first = true
   useEffect(() => {
     if (first) {
-		first = false
-        if (airdropProcessReff) {
-			setIsOpen(true)
-			//@ts-ignore
-			inputRef?.current?.focus()
-		}
+      first = false
+      if (airdropProcessReff) {
+        setIsOpen(true)
+        //@ts-ignore
+        inputRef?.current?.focus()
+      }
     }
   }, [])
 
@@ -149,90 +149,90 @@ export default function ReferralProgram() {
   return (
     <div className={`account-wrapper fit-content ${isOpen ? 'active' : ''}`}>
       <div className="account-main-card" onClick={() => {
-		if (!isOpen) {
-			setAnimation(true)
-			setTimeout(() => {
-				setAnimation(false)
-			}, 2000)
-		}
-		setIsOpen((prev) => !prev)
-	  }}>
+        if (!isOpen) {
+          setAnimation(true)
+          setTimeout(() => {
+            setAnimation(false)
+          }, 2000)
+        }
+        setIsOpen((prev) => !prev)
+      }}>
         {/* <div className="disabled account-main-card"> */}
         <div className="name">
-			
-				
-	  	  <h3 style={{color: freePassportActive||expiration ? 'rgb(96,96,96)' : hasGuardianActive||hasCrownActive ? '#EFBF04': 'rgb(154,196,229)'}}>{t('comp-accountlist-SpClub-detail3')} {(freePassportActive||expiration) && <span style={{color: 'darkred'}}>!</span>} </h3>
-		  { !freePassportActive && !expiration && (
-				hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <GC style={{width: '1.5rem'}} />: <BlueBadge /> )
-			}
-					
-			
-          
+
+
+          <h3 style={{ color: freePassportActive || expiration ? 'rgb(96,96,96)' : hasGuardianActive || hasCrownActive ? '#EFBF04' : 'rgb(154,196,229)' }}>{t('comp-accountlist-SpClub-detail3')} {(freePassportActive || expiration) && <span style={{ color: 'darkred' }}>!</span>} </h3>
+          {!freePassportActive && !expiration && (
+            hasGuardianActive ? <GoldBadge /> : hasCrownActive ? <GC style={{ width: '1.5rem' }} /> : <BlueBadge />)
+          }
+
+
+
           <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
         </div>
       </div>
 
       <div className="info-card">
-	        {
-				(freePassportActive || expiration) &&
-				<p style={{padding:'1rem', color: 'darkred'}}>{t('comp-accountlist-Referral-onlySubscribers')}</p>
-			}
-		<div style={{ padding: "1rem 1rem 0rem 1rem"}}>
+        {
+          (freePassportActive || expiration) &&
+          <p style={{ padding: '1rem', color: 'darkred' }}>{t('comp-accountlist-Referral-onlySubscribers')}</p>
+        }
+        <div style={{ padding: "1rem 1rem 0rem 1rem" }}>
           <p style={{ color: "#B1B1B2", fontSize: "12px", textAlign: "center", }}>{t('comp-accountlist-Referral-copy')}</p>
         </div>
-		<div className="copy-div">
-			<div>
-				<p>{t('comp-accountlist-Referral-detail')}</p>
-			</div>
-          {	
-			
-		  	profiles?.[0]?.keyID ?
-            <>
-              <div className="copy-text">
-                <p>{profiles[0].keyID.substring(0,6)+'...'+profiles[0].keyID.substring(profiles[0].keyID.length - 6)}</p>
-              </div>
-              <div className="button-list">
-                <button onClick={() => handleCopy()}>
-                  {
-                    copied ? (
-                      <img src="/assets/check.svg" alt="Copy icon" />
-                    ) : (
-                      <img src="/assets/copy-purple.svg" alt="Copy icon" />
-                    )
-                  }
-                </button>
-              </div>
-            </>
-            : <Skeleton width='100%' height='20px' />
+        <div className="copy-div">
+          <div>
+            <p>{t('comp-accountlist-Referral-detail')}</p>
+          </div>
+          {
+
+            profiles?.[0]?.keyID ?
+              <>
+                <div className="copy-text">
+                  <p>{profiles[0].keyID.substring(0, 6) + '...' + profiles[0].keyID.substring(profiles[0].keyID.length - 6)}</p>
+                </div>
+                <div className="button-list">
+                  <button onClick={() => handleCopy()}>
+                    {
+                      copied ? (
+                        <img src="/assets/check.svg" alt="Copy icon" />
+                      ) : (
+                        <img src="/assets/copy-purple.svg" alt="Copy icon" />
+                      )
+                    }
+                  </button>
+                </div>
+              </>
+              : <Skeleton width='100%' height='20px' />
           }
         </div>
 
-        
+
 
         {
           profiles?.[0]?.referrer ? (
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
               <p>{t('comp-accountlist-Referral-Inviter')} </p>
               {
-                  <span style={{ color: '#989899' }}>{
-						profiles[0].referrer ? 
-						profiles[0].referrer.substring(0,6)+'...'+profiles[0].referrer.substring(profiles[0].referrer.length - 6) : ''
+                <span style={{ color: '#989899' }}>{
+                  profiles[0].referrer ?
+                    profiles[0].referrer.substring(0, 6) + '...' + profiles[0].referrer.substring(profiles[0].referrer.length - 6) : ''
 
-					}
-                  </span>
+                }
+                </span>
               }
             </div>
           ) : (
             <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", alignItems: "self-start", gap: "8px", marginBottom: '16px' }}>
               <p>{t('comp-accountlist-Referral-Inviter')} </p>
-              <input className={inputError? 'wallet-address-input-error':''}
-			    ref={inputRef}
-                type="text" 
+              <input className={inputError ? 'wallet-address-input-error' : ''}
+                ref={inputRef}
+                type="text"
                 style={{ width: "100%", background: "#3F3F40", borderRadius: "8px", padding: "8px", color: "#989899", border: 0 }}
                 value={inviter} onChange={(e) => {
-					setInputError(false)
-					setInviter(e.target.value)
-				}}
+                  setInputError(false)
+                  setInviter(e.target.value)
+                }}
               />
 
               <button style={{
@@ -255,7 +255,7 @@ export default function ReferralProgram() {
         <Separator />
 
         <div className="info-wrapper" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '16px' }}>
-          <p>{t('comp-accountlist-Referral-Invitees')} <span style={{    color: "#9FBFE5FE"}}>{profiles?.[0].spClub?.totalReferees}</span></p>
+          <p>{t('comp-accountlist-Referral-Invitees')} <span style={{ color: "#9FBFE5FE" }}>{profiles?.[0].spClub?.totalReferees}</span></p>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%', paddingLeft: '16px', maxHeight: '100px', overflowY: 'auto', paddingRight: '10px' }}>
             {profiles?.[0]?.spClub
@@ -273,13 +273,13 @@ export default function ReferralProgram() {
 
           {profiles?.[0].spClub?.totalReferees > 0 ? <div style={{ width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <div style={{ cursor: 'pointer' }} onClick={handlePreviousPage}>
-              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} style={pageNo===1?{filter: 'grayscale(100%)'}:{}} />
+              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} style={pageNo === 1 ? { filter: 'grayscale(100%)' } : {}} />
             </div>
             <div>{pageNo} of {Math.ceil(profiles?.[0]?.spClub?.totalReferees / pageSize)}</div>
             <div style={{ cursor: 'pointer' }} onClick={handleNextPage}>
-              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} style={pageNo >= Math.ceil(profiles?.[0]?.spClub?.totalReferees / pageSize)?{filter: 'grayscale(100%)',transform: 'rotate(180deg)'}:{ transform: 'rotate(180deg)' }} />
+              <img src="/assets/chevron-blue.svg" alt="Back" width={16} height={16} style={pageNo >= Math.ceil(profiles?.[0]?.spClub?.totalReferees / pageSize) ? { filter: 'grayscale(100%)', transform: 'rotate(180deg)' } : { transform: 'rotate(180deg)' }} />
             </div>
-          </div>:''}
+          </div> : ''}
         </div>
 
 

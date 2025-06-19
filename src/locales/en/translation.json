@@ -127,6 +127,11 @@
 	"comp-accountlist-staking-total-num": "Total Entries",
 	"comp-accountlist-staking-locking": "In Lock",
 
+	"comp-accountlist-recovery-placeholder":"Please enter password to generate backup link",
+	"comp-accountlist-recovery-confirm":"Generate backup link",
+	"comp-accountlist-recovery-cancel":"Cancel",
+	"comp-accountlist-recovery-success":"Link generation successful",
+
 	"comp-SPClubRewardTab-detail": "My Reward Progress",
 	"comp-SPClubRewardTab-detail-1": "Pending will be automatically released after 3 months",
 	"comp-SPClubRewardTab-1": "Daily Check-In",

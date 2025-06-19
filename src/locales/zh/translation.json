@@ -127,6 +127,11 @@
 	"comp-accountlist-staking-total-num": "总数",
 	"comp-accountlist-staking-locking": "锁仓中",
 
+	"comp-accountlist-recovery-placeholder":"请输入密码生成备份链接",
+	"comp-accountlist-recovery-confirm":"生成备份链接",
+	"comp-accountlist-recovery-cancel":"取消",
+	"comp-accountlist-recovery-success":"生成链接成功",
+
 	"comp-SPClubRewardTab-detail": "我的奖励进度",
 	"comp-SPClubRewardTab-detail-1": "待发放订阅积分将在3个月后自动发放,用于防止退款风险，发放后不可撤销",
 	"comp-SPClubRewardTab-1": "每日打卡",

@@ -13,6 +13,8 @@ interface plan {
 	total: string
 	publicKey: string
 	Solana: string
+	transactionId: string
+	productId: string
 }
 
 export default function RedeemPassport() {
@@ -94,10 +96,12 @@ export default function RedeemPassport() {
 		return
 	}
 
-	const planObj:plan = {
+	const planObj: plan = {
 		publicKey: profiles[0].keyID,
 		Solana: profiles[1].keyID,
-		total: selectedPlan
+		total: selectedPlan,
+		transactionId: '',
+		productId: ''
 	}
 
 	const base64VPNMessage = btoa(JSON.stringify(planObj));

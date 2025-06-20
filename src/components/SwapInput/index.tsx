@@ -386,7 +386,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         // let val=fromToken === 'SOL'?(tokens?.sol?.balance1.toFixed(4)|| (0.0).toFixed(6)):(tokens?.sp?.balance1.toFixed(4) || (0.0).toFixed(6))
         setFromAmount(val);
     }
-
+    
     const isDisabled=()=>{
         const isZeroOrNegative=(value:any)=> {
             // 转换为数字类型
@@ -394,10 +394,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
             // 检查是否为有效数字且小于等于0
             return !isNaN(num) && num <= 0;
         }
-		const tokens = profiles?.[1]?.tokens
-		const _fromAmount = parseFormattedNumber(fromAmount)
-
-        const isEmptyValue = isZeroOrNegative(tokens?.sol?.balance1) || isZeroOrNegative(tokens?.sp?.balance1);
+        const isEmptyValue=isZeroOrNegative(profiles?.[1]?.tokens?.sol?.balance);
         return !showConfirm || (fromAmount=='0') || (!fromAmount) || isEmptyValue;
     }
   

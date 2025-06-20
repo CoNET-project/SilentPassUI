@@ -125,7 +125,8 @@ interface Region {
 	nonce: number;
 	fx168Order?: fx168_Order[];
 	upgradev2?: boolean;
-	webFilter: boolean
+	webFilter: boolean;
+	recoveryWords?:string;
   };
   
   interface passportInfoFromChain {

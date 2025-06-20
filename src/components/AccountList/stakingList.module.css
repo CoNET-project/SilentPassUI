@@ -1,28 +1,36 @@
 .item{
-    padding: 10px 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    .infos{
-        display: table;
-        flex: 1;
-        border-collapse: collapse;
-        margin: 0 12px;
-        color: #989899;
-        .infosItem{
-            display: table-row;
-            span{
-                display: table-cell;
-                padding: 1px;
-                white-space: nowrap;
-                text-align: center;
+    margin: 0 0 10px;
+    .lt{
+        display: flex;
+        align-items: center;
+        .label{
+            display: flex;
+            flex-direction: column;
+            width: 180px;
+            margin: 0 10px 0 0;
+        }
+        .name{
+            display: flex;
+            align-items: center;
+            justify-content: flex-start!important;
+            svg{
+                margin: 0 4px 0 0!important;
             }
-            span:first-child {
-                text-align: left;
-            }
-            span:last-child {
-                text-align: right;
-            }
+        }
+        .balance{
+            padding: 0 0 0 1.3rem;
+        }
+    }
+    .val{
+        height: 50px;
+        display: flex;
+        align-items: flex-start;
+        p{
+            color: #fff!important;
+            line-height: 2.6;
         }
     }
 }

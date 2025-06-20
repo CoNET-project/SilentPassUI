@@ -16,6 +16,8 @@ interface plan {
 	total: string
 	publicKey: string
 	Solana: string
+	transactionId: string
+	productId: string
 }
 
 export default function SpClub() {
@@ -80,7 +82,9 @@ export default function SpClub() {
 		const planObj: plan = {
 			publicKey: profiles[0].keyID,
 			Solana: profiles[1].keyID,
-			total: '3100'
+			total: '3100',
+			transactionId: '',
+			productId: ''
 		}
 		setSelectedPlan('3100')
 		const base64VPNMessage = btoa(JSON.stringify(planObj));

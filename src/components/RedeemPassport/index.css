@@ -399,3 +399,81 @@ span.error-warn {
 .no-free-trial {
   background-color: #9e9e9e; /* Gray for no free trial */
 }
+
+
+.passport-options {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding-top: 1rem;
+}
+
+.passport-options .option-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+
+	margin-bottom: 24px;
+}
+
+.option-list .option {
+	border: 1.5px solid transparent;
+	border-radius: 16px;
+	padding: 16px;
+
+	display: flex;
+	gap: 24px;
+	align-self: stretch;
+
+	cursor: pointer;
+}
+
+.option-list .option.selected {
+	border: 1.5px solid #9FBFE5FE;
+}
+
+.option-list .option div:first-child {
+	flex: 1;
+	
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	align-items: flex-start;
+}
+
+.option-list .option div:last-child {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	width: 30%;
+}
+
+.option-list .option span {
+	color: #989899;
+	font-size: 14px;
+}
+
+.option-list .option p {
+	font-size: 24px;
+}
+
+#outer
+{
+	display: flex;
+	width: 100%;
+}
+
+.buttonPay {
+  padding: 16px 8px;
+  width: 100%;
+  font-size: 20px;
+  font-weight: 700;
+	margin: 1rem 0;
+  background: #4E72B6;
+
+  display: flex;
+  justify-content: center;
+  border-radius: 16px;
+
+  cursor: pointer;
+}

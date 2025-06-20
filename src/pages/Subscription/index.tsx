@@ -40,16 +40,8 @@ export default function Subscription() {
   }
 
   const waitResult = async () => {
-	// const result = await waitingPaymentStatus()
-	// if (!result) {
-	// 	return setStep(5)
-	// }
-	// setSuccessNFTID(result)
-	setTimeout(() => {
-		setSuccessNFTID(3344)
-		navigate('/wallet')
-		
-	}, 2000)
+	await waitingPaymentStatus()
+	navigate('/wallet')
 	
   }
 

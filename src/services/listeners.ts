@@ -28,57 +28,77 @@ import { PublicKey } from "@solana/web3.js";
 
 let epoch = 0;
 let first = true
+let blockProcess = 0
 const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
   _setActivePassport: (profiles: freePassport) => void,
   setMiningData: (response: nodeResponse) => void
 ) => {
-  epoch = await conetProvider.getBlockNumber();
+	const profiles = CoNET_Data?.profiles;
+	const now = new Date().getTime()
+	if (!profiles||now - blockProcess < 1000 * 10) {
+		return;
+	}
+	blockProcess = now
+	
+	await conetDepinProvider.getBlockNumber();
+	checkCurrentRate(setMiningData);
+	await getProfileAssets(profiles[0], profiles[1]);
+	// await getVpnTimeUsed();
+	await getSpClubInfo(profiles[0], currentPageInvitees);
+	await getPassportsInfoForProfile(profiles[0])
+	await getReceivedAmounts(
+		profiles[1].keyID,
+		globalAllNodes
+	);
+	
+	_setProfiles(profiles);
 
-  conetProvider.on("block", async (block) => {
-    if (block === epoch + 1) {
-      epoch++;
+	if (profiles[0].activePassport) {
+		_setActivePassport(profiles[0].activePassport);
+	}
 
-      if (processingBlock === true) return;
+	await storeSystemData();
+	await setProcessingBlock(false);
+	blockProcess = now
+	conetDepinProvider.on("block", async (block) => {
+		if (block === epoch + 1) {
 
-      const profiles = CoNET_Data?.profiles;
+			epoch++;
+			
+			const profiles = CoNET_Data?.profiles;
+			const now = new Date().getTime()
+			if (!profiles||now - blockProcess < 1000 * 10) {
+				return;
+			}
 
-      if (!profiles) {
-        return;
-      }
+			blockProcess = now
+				await checkCurrentRate(setMiningData);
+				await getProfileAssets(profiles[0], profiles[1]);
+				// await getVpnTimeUsed();
+				await getSpClubInfo(profiles[0], currentPageInvitees);
+				
+				const receivedTransactions = await getReceivedAmounts(
+					profiles[1].keyID,
+					globalAllNodes
+				);
+				console.log(receivedTransactions);
+			
+				await getPassportsInfoForProfile(profiles[0]);
+			
+				if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
+					_setProfiles(CoNET_Data?.profiles);
+					if (CoNET_Data.profiles[0].activePassport)
+					_setActivePassport(CoNET_Data.profiles[0].activePassport);
+				}
 
-      setProcessingBlock(true);
+				await storeSystemData();
+				await setProcessingBlock(false);
+			blockProcess = now
+		}
+	});
 
-      if (block % 10 === 0 || first) {
-		first = false
-        checkCurrentRate(setMiningData);
-        await getProfileAssets(profiles[0], profiles[1]);
-        await getVpnTimeUsed();
-        await getSpClubInfo(profiles[0], currentPageInvitees);
-        const receivedTransactions = await getReceivedAmounts(
-          profiles[1].keyID,
-          globalAllNodes
-        );
-        console.log(receivedTransactions);
-      }
-
-      if (block % 2 === 0) {
-        await getPassportsInfoForProfile(profiles[0]);
-      }
-
-      if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
-        _setProfiles(CoNET_Data?.profiles);
-
-        if (CoNET_Data.profiles[0].activePassport)
-          _setActivePassport(CoNET_Data.profiles[0].activePassport);
-      }
-
-      storeSystemData();
-      setProcessingBlock(false);
-    }
-  });
-
-  epoch = await conetProvider.getBlockNumber();
+  epoch = await conetDepinProvider.getBlockNumber();
 };
 
 const getProfileAssets = async (profile: profile, solanaProfile: profile) => {

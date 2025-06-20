@@ -8,7 +8,7 @@ import Separator from '../../components/Separator';
 import { useMemo } from 'react';
 import ProxyInfo from '../../components/ProxyInfo';
 import { useNavigate } from 'react-router-dom';
-
+const versionNumber = 'v0.1.3'
 type OptionGroup = {
   id: number;
   heading: string;
@@ -54,7 +54,7 @@ export default function Support() {
   return (
     <div className="page-container">
       <h1>Support</h1>
-
+	<p style={{textAlign: 'left', color: 'rgb(177, 177, 178)', fontSize: '0.6rem'}}>{versionNumber}</p>
       <div className="options">
         {
           optionGroups.map((optionGroup) => optionGroup.id === 2 ? <ProxyInfo /> : (

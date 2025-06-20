@@ -108,14 +108,6 @@ export default function Settings() {
       <h1>Settings</h1>
       <div className="nft-info">
         <ActivePassportInfo />
-
-        <div className="buttons">
-          <button onClick={() => navigate("/wallet")}>My Account</button>
-          <button className='disabled'>
-            <img src="./assets/conet-outline-gray.svg" />
-            <span>Upgrade Passport</span>
-          </button>
-        </div>
       </div>
 
       <div className="options">

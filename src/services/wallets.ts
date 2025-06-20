@@ -52,8 +52,8 @@ const waitingPaymentStatus = async (): Promise<false|number> => {
 	const waiting = async (): Promise<false|number> => new Promise(async resolve => {
 		const result: any = await postToEndpoint(url, true, sendData)
 		
-		if (result.status < 100|| result === false) {
-			if (waitingPaymentStatusLoop > 50 ) {
+		if (result.status < 100  || result === false) {
+			if (++waitingPaymentStatusLoop > 50 ) {
 				return resolve(false)
 			}
 			return setTimeout(() => {

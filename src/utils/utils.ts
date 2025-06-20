@@ -130,22 +130,22 @@ export const postToEndpoint = (url: string, post: boolean, jsonData: any) => {
   });
 };
 
-export const getRemainingTime = (timestamp: number): string => {
+export const getRemainingTime = (timestamp: number, day: string, hour: string): string => {
   const now = Math.floor(Date.now() / 1000);
   const diff = timestamp - now;
 
   if (diff <= 0) return "00:00:00";
-
+ 
   const days = Math.floor(diff / 86400);
   const hours = Math.floor((diff % 86400) / 3600);
   const minutes = Math.floor((diff % 3600) / 60);
   const seconds = diff % 60;
 
   if (days > 0) {
-    return `${days} day${days !== 1 ? "s" : ""} + ${String(hours).padStart(
+    return `${days} ${day}${days !== 1 ? day === 'day' ? "s" : "": ""} + ${String(hours).padStart(
       2,
       "0"
-    )}:${String(minutes).padStart(2, "0")}h`;
+    )}:${String(minutes).padStart(2, "0")}${hour}`;
   }
 
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
@@ -185,30 +185,41 @@ export const parseQueryParams = (queryString: string) => {
   }
 
   return params;
-};
+}
 
 export const getPassportTitle = (passportInfo: any) => {
-  if (passportInfo?.expiresDays?.toString() === "7") return "Freemium";
+	if (!passportInfo|| parseInt(passportInfo.nftID) < 100) {
+		return "..."
+	}
+	
+  if (passportInfo.expiresDays < 30 && passportInfo.expiresDays > 0){
+	return 'Freemium';
+  }
 
-  if (passportInfo?.expires && passportInfo?.expires > 32503690800000)
-    return "Guardian";
+  if (passportInfo?.expires > 32503690800000 ) {
+	return 'Guardian';
+  }
+  if (passportInfo.expiresDays > 366) return 'Infinite'
 
-  if (passportInfo?.premium) return "Premium";
+  if (passportInfo.expiresDays > 100 ) return 'Annually'
 
-  return "Standard";
+  if (passportInfo.expiresDays > 90) return 'Quarter'
+
+  return 'Monthly';
 };
 
+
 export const getExpirationDate = (passportInfo: any) => {
-  if (passportInfo?.expires && passportInfo?.expires > 32503690800000) {
-    return "Unlimited";
+  if (passportInfo?.expires && passportInfo?.expires > 4900000000) {
+    return 'unlimit';
   }
 
   if (passportInfo?.expires === 0) {
-    return "Not started";
+    return 'not_used';
   }
 
   if (passportInfo?.expires)
-    return `${getRemainingTime(passportInfo?.expires)}`;
+    return `${getRemainingTime(passportInfo?.expires, 'day', 'hour')}`;
 };
 
 export const getPlanDuration = (passportInfo: any) => {

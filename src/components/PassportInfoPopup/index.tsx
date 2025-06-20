@@ -32,11 +32,6 @@ const PassportInfoPopup = () => {
         </div>
 
         <div className="home-buttons">
-          <button onClick={() => navigate('/subscription')}>
-            <img src="./assets/conet-outline-blue.svg" />
-            <span>Upgrade</span>
-          </button>
-
           <button onClick={() => setIsPassportInfoPopupOpen(false)}>Close</button>
         </div>
       </div>

@@ -95,10 +95,6 @@ export default function Support() {
           ))
         }
       </div>
-
-      
-      
-
       <Footer />
     </div>
   )

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import './index.css';
 import { Step } from '../../types/global-types';
-import Loading from '../../components/Global-steps/Loading';
-import Declined from '../../components/Global-steps/Declined';
+import Loading from '../../components/global-steps/Loading';
+import Declined from '../../components/global-steps/Declined';
 import Header from './page-components/Header';
 import PageFooter from './page-components/Footer';
 import { useNavigate } from 'react-router-dom';

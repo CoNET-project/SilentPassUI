@@ -30,13 +30,13 @@ const ReferralCont=({  })=> {
     const { profiles, setAirdropSuccess, setAirdropTokens, setAirdropProcess, setAirdropProcessReff } = useDaemonContext();
     const [inviter, setInviter] = useState('');
     const [subLoading, setSubLoading] = useState(false);
-    
     const handleSetInviter = async () => {
 		if (subLoading) {
 			return
 		}
         setSubLoading(true);
         const result = await getirDropForSPReff(inviter)
+		
         setSubLoading(false);
 
         if (typeof result === 'boolean') {

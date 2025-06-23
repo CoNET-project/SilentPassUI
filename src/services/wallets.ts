@@ -1283,17 +1283,22 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 	
 	if (referrals) {
 		if (profile.spClub && typeof profile.spClub == 'object') {
-			profile.referrer = profile.spClub.referrer = /^0x000/.test(referrals[0]) ? '' : referrals[0]
+			if (referrals[0] !== ethers.ZeroAddress) {
+				profile.referrer = profile.spClub.referrer = referrals[0]
+			}
 			profile.spClub.totalReferees = parseInt(referrals[1][0].toString())
 			profile.spClub.referees = referrals[1][1].map((n:string) => { return { walletAddress: n, activePassport: ''}})
 			
 		} else {
+			if (referrals[0] !== ethers.ZeroAddress) {
+				profile.referrer = referrals[0]
+			}
 			profile.referrer = /^0x000/.test(referrals[0]) ? '' : referrals[0]
 			profile.spClub = {
 				referees: referrals[1][1].map((n:string) => n),
 				totalReferees: parseInt(referrals[1][0].toString()),
 				memberId: '',
-				referrer: /^0x000/.test(referrals[0]) ? '' : referrals[0]
+				referrer: profile.referrer||''
 			}
 		}
 	}

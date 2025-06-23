@@ -12,7 +12,7 @@ import contracts from "../utils/contracts";
 import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
 import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
 import {ethers} from 'ethers'
-import { CoNET_Data } from "../utils/globals"
+import { CoNET_Data, setCoNET_Data } from "../utils/globals"
 import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
 import Bs58 from 'bs58'
 import {
@@ -181,7 +181,10 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 			if (airDropStatus) {
 				airDropStatus.isReadyForReferees = false
 			}
-
+			
+			CoNET_Data.profiles[0].referrer = referrer
+			setCoNET_Data(CoNET_Data)
+			
 			return result.amount
 		}
 

@@ -23,8 +23,9 @@ import {ReactComponent as QuotesTx} from './assets/trx.svg'
 import { CoNET_Data } from '../../utils/globals'
 import { useTranslation } from 'react-i18next'
 import wachat from './assets/wechat.png'
-
+import { ReactComponent as StripeIcon } from "./assets/stripe.svg"
 import { ReactComponent as AliPay } from './assets/alipay.svg'
+import { useNavigate } from 'react-router-dom';
 
 const OneDayInSeconds = 86400;
 const alipayUrl = 'https://cashier.alphapay.ca/commodity/details/order/5728/100001644'
@@ -36,7 +37,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	const [memberId, setMemberId] = useState<string>('0');
 	const [referrer, setReferrer] = useState<string>('');
 	const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
-	const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID, airdropProcess, airdropTokens } = useDaemonContext()
+	const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID, airdropProcess, airdropTokens, setPaymentKind, setSelectedPlan } = useDaemonContext()
 	const [showBuyClusBlue, setShowBuyClusBlue] = useState(true)
 	const [showBuyClusloading, setShowBuyClusloading] = useState(false)
 	const [QRWallet, setQRWallet] = useState('')
@@ -48,7 +49,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	const { t, i18n } = useTranslation()
 	const [showpayment, setShowPayment] = useState(false)
 	const [showPurchase, setShowPurchase] = useState(false)
-
+  	const navigate = useNavigate()
   	const [showError, setShowError] = useState(false)
 	const [errorMessage, setErrorMessage] = useState('The service is unavailable, please try again later.')
 
@@ -66,16 +67,23 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 		}
 	}, [])
 
+
+	const stripeClick = () => {
+		setPaymentKind(2)
+		setSelectedPlan('31')
+		navigate("/subscription");
+	}
+
 	const alipayClick = () => {
 		setShowPurchase(true)
-		if (window?.webkit) {
-			return window?.webkit?.messageHandlers["openUrl"].postMessage(alipayUrl)
+		if (window?.webkit?.messageHandlers["openUrl"]) {
+			return window?.webkit?.messageHandlers["openUrl"]?.postMessage(alipayUrl)
 		}
 		//@ts-ignore
-		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+		if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
 			const base = btoa(JSON.stringify({cmd: 'openUrl', data: alipayUrl}))
 			//	@ts-ignore
-			return AndroidBridge.receiveMessageFromJS(base)
+			return AndroidBridge?.receiveMessageFromJS(base)
 		}
 		window.open(alipayUrl, '_blank')
 	}
@@ -366,6 +374,15 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick}>
 															<img  src={wachat} className="button_img"/>
 															<p style={{color: '#989899'}}>WeChat</p>
+														</a>
+														
+														
+													</div>
+													<div className="inner" style={{width: '100%', display: 'flex', alignItems:'center', padding: '1rem 0'}}>
+														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center', width: '4.5rem'}} onClick={stripeClick}>
+															
+															<StripeIcon/>
+									
 														</a>
 													</div>
 												</>

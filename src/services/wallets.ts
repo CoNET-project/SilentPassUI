@@ -1476,14 +1476,33 @@ const checkFreePassport = async () => {
 	return true
 }
 
-const getPaymentUrl = async (price: number) => {
+const getstripePlan = (plan: string): string => {
+	switch(plan) {
+		case '1': {
+			return '329'
+		}
+		case '12': {
+			return '2749'
+		}
+		case '31': {
+			return '3410'
+		}
+		default: {
+			return ''
+		}
+	}
+}
+
+const getPaymentUrl = async (_plan: string) => {
 	if (!CoNET_Data?.profiles?.length) {
 		return null;
 	}
 	const profile = CoNET_Data?.profiles[0]
 	const solanaWallet = CoNET_Data?.profiles[1].keyID
-	if (!solanaWallet||!profile) {
-		return null;
+	const price = getstripePlan(_plan)
+
+	if (!solanaWallet||!profile||!price) {
+		return null
 	}
 
 	const url = `${payment_endpoint}payment_stripe`

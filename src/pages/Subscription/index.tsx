@@ -144,12 +144,24 @@ export default function Subscription() {
 			//		pay with Stripe
 			case 2: {
 				setStep(3)
-				const price = selectedPlan === '1' ? 299 : 2499
+				const price = selectedPlan
 				const result = await getPaymentUrl(price)
 				if (result === null || !result?.url) {
 					return setStep(5);
 				}
-				window.open(result.url, '_blank')
+
+				if (window?.webkit?.messageHandlers["openUrl"]) {
+					return window?.webkit?.messageHandlers["openUrl"]?.postMessage(result.url)
+				} else 
+				//@ts-ignore
+				if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
+					const base = btoa(JSON.stringify({cmd: 'openUrl', data: result.url}))
+					//	@ts-ignore
+					return AndroidBridge?.receiveMessageFromJS(base)
+				} else {
+					window.open(result.url, '_blank')
+				}
+				
 				const re1 = await waitingPaymentStatus()
 				if (!re1) {
 					return setStep(5);

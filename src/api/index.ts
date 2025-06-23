@@ -2,7 +2,10 @@ import axios, { AxiosResponse } from "axios";
 import { ethers } from "ethers";
 import { apiv4_endpoint } from "../utils/constants";
 import { getCONET_api_health, postToEndpoint } from "../utils/utils";
-
+// const { ipcRenderer, contextBridge } = require('electron')
+// contextBridge.exposeInMainWorld('electronAPI', {
+//   sendMessage: (data: any) => ipcRenderer.sendToHost('from-webview', data)
+// })
 // Create an Axios instance with common configurations
 const api = axios.create({
   baseURL: "http://localhost:3001", // Replace with your base API URL

@@ -35,15 +35,18 @@ const ReferralCont=({  })=> {
         setSubLoading(true);
         const result = await getirDropForSPReff(inviter)
         setSubLoading(false);
+
         if (typeof result === 'boolean') {
             Toast.show({icon: 'fail',content:t('comp-accountlist-Referral-Inviter-fail')});
             return ;
         }
 
-        setAirdropSuccess(true)
-        setAirdropTokens(result)
-        setAirdropProcess(true)
-        setAirdropProcessReff(false)
+        
+        // setAirdropTokens(result)
+        
+        // setAirdropProcessReff(false)
+		// setAirdropProcess(true)
+		// setAirdropSuccess(true)
         // Toast.show({icon: 'success',content:t('comp-accountlist-Referral-Inviter-success')});
     }
 

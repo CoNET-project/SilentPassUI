@@ -104,7 +104,7 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 	const planObj: plan = {
 		publicKey: profiles[0].keyID,
 		Solana: profiles[1].keyID,
-		total: selectedPlan,
+		total: selectedPlan === '12' ? '2': selectedPlan,
 		transactionId: '',
 		productId: ''
 	}

@@ -69,13 +69,13 @@ export default function Settings() {
         {
           id: 2,
           icon: helpIcon,
-          title: "FAQ",
+          title: t('faq'),
           action: () => navigate("/faq"),
         },
         {
           id: 5,
           icon: helpIcon,
-          title: "Customer Service",
+          title: t('customer-service'),
 		       //@ts-ignore
           action: () => {window?.Comm100API?.open_chat_window?.();}
         },

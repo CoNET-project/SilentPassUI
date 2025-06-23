@@ -12,7 +12,8 @@
     "filter-placeholder-1":"Please enter domain or IP",
     "filter":"Enable Filtering",
     "system-proxy":"Proxy",
-
+	
+	"customer-service":"Contact Support",
     "faq": "FAQ",
     "faq-membership": "What membership levels are available?",
     "faq-benefits": "Silent Pass access includes both Proxy and VPN",
@@ -256,6 +257,12 @@
 	"Settings_Passcode_WebsiteFilter-title-special": "Special Filters",
 	"Settings_Passcode_WebsiteFilter-title-official": "Official Filters",
 	"Settings_Passcode_WebsiteFilter-title-region": "Region Filters",
+
+	"proxy-header": "Proxy",
+	"proxy-button-label": "Proxy Server Information",
+	"proxy-server": "Server Address:",
+	"proxy-port": "Port:",
+	"proxy-pac": "PAC URL:",
 
     "lang":"English",
     "language":"Language",

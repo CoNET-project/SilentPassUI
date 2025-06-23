@@ -265,7 +265,7 @@ const FAQ = () => {
     <div className="page-container text-display faq">
       <BackButton to="/settings" />
 
-      <h1>{t('faq')}</h1>
+      <h1>{t("faq")}</h1>
 
       {/* What’s the Silent Pass service level and the benefits? */}
       <AnimatePresence>

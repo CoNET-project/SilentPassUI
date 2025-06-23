@@ -8,6 +8,7 @@ import sharedDevice from './assets/share_devices.png'
 
 import './index.css';
 import { useDaemonContext } from '../../providers/DaemonProvider';
+import { useTranslation } from 'react-i18next';
 
 export default function ProxyInfo() {
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
@@ -16,6 +17,8 @@ export default function ProxyInfo() {
   const [isPACCopied, setIsPACCopied] = useState<boolean>(false);
 
   const { serverIpAddress, serverPort, serverPac } = useDaemonContext();
+    const { t, i18n } = useTranslation()
+  
 
   const handleCopy = (text: string, setMethod: (val: boolean) => any) => {
     navigator.clipboard.writeText(text);
@@ -29,11 +32,11 @@ export default function ProxyInfo() {
 
   return (
     <div className="option-group">
-      <h3>Proxy</h3>
+      <h3>{t('proxy-header')}</h3>
       <div className={`option-wrapper ${isDropdownOpen ? 'open' : ''}`}>
-        <ClickableItem title='Proxy Server Infomation' icon={proxyInfoIcon} action={() => setIsDropdownOpen((prev) => !prev)} toggle={isDropdownOpen}></ClickableItem>
+        <ClickableItem title={t('proxy-button-label')} icon={proxyInfoIcon} action={() => setIsDropdownOpen((prev) => !prev)} toggle={isDropdownOpen}></ClickableItem>
         <Separator />
-        <ClickableItem title="Proxy server:" chevron={false}>
+        <ClickableItem title={t('proxy-server')} chevron={false}>
           {
             true ? (
               <button onClick={() => handleCopy(serverIpAddress, setIsProxyServerCopied)}>
@@ -52,7 +55,7 @@ export default function ProxyInfo() {
           }
         </ClickableItem>
         <Separator />
-        <ClickableItem title="Proxy Port:" chevron={false}>
+        <ClickableItem title={t('proxy-port')} chevron={false}>
           {
             true ? (
               <button onClick={() => handleCopy(serverPort, setIsProxyPortCopied)}>
@@ -71,7 +74,7 @@ export default function ProxyInfo() {
           }
         </ClickableItem>
         <Separator />
-        <ClickableItem title="PAC:" chevron={false}>
+        <ClickableItem title={t('proxy-pac')} chevron={false}>
           {
             true ? (
               <button onClick={() => handleCopy(serverPac, setIsPACCopied)}>

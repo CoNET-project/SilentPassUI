@@ -72,12 +72,12 @@ export default function Support() {
     },
     {
       id: 4,
-      heading: "Customer service",
+      heading: t('customer-service'),
       items: [
         {
           id: 5,
           icon: helpIcon,
-          title: "Customer Service",
+          title: t('customer-service'),
 		  //@ts-ignore
           action: () => {window?.Comm100API?.open_chat_window?.();}
         },

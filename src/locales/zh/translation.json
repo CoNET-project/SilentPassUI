@@ -13,6 +13,8 @@
     "filter":"启用过滤",
     "system-proxy":"系统代理",
 
+		
+	"customer-service":"联系客服",
     "faq": "常问问题",
     "faq-membership": "Silent Pass服务级别与相应的权益? ",
     "faq-benefits": "服务等级与权益 （包括Proxy和VPN）",
@@ -260,6 +262,12 @@
 	"Settings_Passcode_WebsiteFilter-title-special": "定制过滤",
 	"Settings_Passcode_WebsiteFilter-title-official": "官网过滤",
 	"Settings_Passcode_WebsiteFilter-title-region": "地区过滤",
+
+	"proxy-header": "代理",
+	"proxy-button-label": "代理服务器信息",
+	"proxy-server": "服务器地址：",
+	"proxy-port": "端口：",
+	"proxy-pac": "PAC 地址：",
 
     "lang":"中文",
     "language":"语言",

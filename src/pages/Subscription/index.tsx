@@ -150,7 +150,7 @@ export default function Subscription() {
 					return setStep(5);
 				}
 
-				if (isIOS && !isLocalProxy) {
+				if (window?.webkit?.messageHandlers && isIOS && !isLocalProxy) {
 					return window?.webkit?.messageHandlers["openUrl"]?.postMessage(result.url)
 				} else 
 				//@ts-ignore

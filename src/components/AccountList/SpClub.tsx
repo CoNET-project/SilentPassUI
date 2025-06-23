@@ -76,16 +76,18 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 
 	const alipayClick = () => {
 		setShowPurchase(true)
-		if (isIOS && !isLocalProxy ) {
+		if (window?.webkit?.messageHandlers && isIOS && !isLocalProxy ) {
 			return window?.webkit?.messageHandlers["openUrl"]?.postMessage(alipayUrl)
-		}
+		} else 
 		//@ts-ignore
 		if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
 			const base = btoa(JSON.stringify({cmd: 'openUrl', data: alipayUrl}))
 			//	@ts-ignore
 			return AndroidBridge?.receiveMessageFromJS(base)
+		} else {
+			window.open(alipayUrl, '_blank')
 		}
-		window.open(alipayUrl, '_blank')
+		
 	}
 
   const fetchMemberIdWithRetry = async (startTime = Date.now()): Promise<string | null> => {

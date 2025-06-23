@@ -36,7 +36,7 @@ export default function RedeemPassport() {
 		const planObj: plan = {
 		publicKey: profiles[0].keyID,
 		Solana: profiles[1].keyID,
-		total: selectedPlan1,
+		total: selectedPlan1 === '12' ? '2': selectedPlan1,
 		transactionId: '',
 		productId: ''
 	}

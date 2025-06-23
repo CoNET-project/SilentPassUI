@@ -260,7 +260,7 @@ const FAQ = () => {
   </div>
 	:
     <div className="page-container text-display faq">
-      <BackButton to="/support" />
+      <BackButton to="/settings" />
 
       <h1>FAQ</h1>
 

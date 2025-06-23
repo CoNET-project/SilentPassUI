@@ -7,6 +7,8 @@ import { ReactComponent as ChevronArrow } from "./assets/right-chevron.svg"
 import Switch from '../Switch';
 import ReactCountryFlag from 'react-country-flag'
 import RuleButton from './../Rules/RuleButton'
+import { useTranslation } from 'react-i18next'
+
 
 interface RegionSelectorProps {
   regionCode: string;
@@ -23,7 +25,10 @@ interface RegionSelectorProps {
 }
 
 export default function RegionSelector({ regionCode, icon, title, action, children, switchComp, isLocalServer, switchState = false, toggle = false, theme = false, showArrow = true }: RegionSelectorProps) {
+    const { t, i18n } = useTranslation()
+
   return (
+
     <div className="container-region" style={{ cursor: showArrow ? 'pointer' : 'not-allowed' }} onClick={action}>
       <div className="def">
         <div className="flag-icon-wrapper">
@@ -38,7 +43,7 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
             }}
           />
         </div>
-        {/* <p>{title}</p> */}
+        {t('region_' + regionCode)}
       </div>
 	  {
 		 isLocalServer&&

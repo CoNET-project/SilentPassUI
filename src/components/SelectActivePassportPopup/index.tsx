@@ -11,8 +11,8 @@ const SelectActivePassportPopup = ({ newPassport }: any) => {
 	const { t, i18n } = useTranslation()
   const { profiles, setActivePassport, activePassport, setIsSelectPassportPopupOpen } = useDaemonContext();
 
-  const currentPassportName = useMemo(() => getPassportTitle(activePassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite')) + ' Passport', [activePassport])
-  const newPassportName = getPassportTitle(newPassport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite')) + ' Passport';
+  const currentPassportName = useMemo(() => t(getPassportTitle(activePassport)) + ' Passport', [activePassport])
+  const newPassportName = t(getPassportTitle(newPassport)) + ' Passport';
   const newPassportExpiration = getExpirationDate(newPassport, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour'));
 
   const [isChangeLoading, setIsChangeLoading] = useState(false);

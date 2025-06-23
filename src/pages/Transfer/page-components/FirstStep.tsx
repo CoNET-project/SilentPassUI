@@ -23,7 +23,7 @@ export default function FirstStep({ to, setTo, selectedNftId, setSelectedNFtId }
             ? CoNET_Data.profiles[0].silentPassPassports?.filter((passport) => passport.nftID !== Number(CoNET_Data?.profiles[0].activePassport?.nftID)).map((passport) => (
               <div className={`passport-button ${Number(passport.nftID) === Number(selectedNftId) ? 'selected' : ''}`} onClick={() => setSelectedNFtId(String(passport.nftID))}>
                 <div className="heading" style={{ alignItems: 'center' }}>
-                  <h3>{getPassportTitle(passport, t('passport_Freemium'), t('passport_Guardian'), t('passport_Annually'),t('passport_Quarter'),t('passport_Monthly'), t('passport_Infinite'))} Passport</h3>
+                  <h3>{t(getPassportTitle(passport))} Passport</h3>
                   <p>{getPlanDuration(passport)}</p>
                 </div>
                 <div className="info" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>

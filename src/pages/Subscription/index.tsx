@@ -8,7 +8,7 @@ import FourthStep from './page-components/FourthStep';
 
 import './index.css';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-import Loading from '../../components/Global-steps/Loading';
+import Loading from '../../components/global-steps/Loading';
 import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest, RealizationRedeem, changeActiveNFT } from '../../services/wallets';
 import {getOracle, purchasePassport, postPurchasePassport} from '../../services/passportPurchase'
 import { useTranslation } from 'react-i18next'

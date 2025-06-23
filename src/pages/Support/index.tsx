@@ -1,3 +1,5 @@
+// File is deprecated, moved to settings page
+
 import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
 import ClickableItem from '../../components/ClickableItem';
 import Footer from '../../components/Footer';
@@ -11,6 +13,14 @@ import ProxyInfo from '../../components/ProxyInfo';
 import { useNavigate } from 'react-router-dom';
 import { Popup } from 'antd-mobile';
 
+declare global {
+  interface Window {
+    Comm100API?: {
+      open_chat_window?: () => void;
+      [key: string]: any; // optional, to allow more properties if needed
+    };
+  }
+}
 
 type OptionGroup = {
   id: number;

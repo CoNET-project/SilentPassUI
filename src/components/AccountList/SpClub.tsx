@@ -37,7 +37,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	const [memberId, setMemberId] = useState<string>('0');
 	const [referrer, setReferrer] = useState<string>('');
 	const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
-	const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID, airdropProcess, airdropTokens, setPaymentKind, setSelectedPlan } = useDaemonContext()
+	const { miningData, profiles, setIsPassportInfoPopupOpen, activePassportUpdated, activePassport, setSuccessNFTID, airdropProcess, airdropTokens, setPaymentKind, setSelectedPlan, isIOS, isLocalProxy } = useDaemonContext()
 	const [showBuyClusBlue, setShowBuyClusBlue] = useState(true)
 	const [showBuyClusloading, setShowBuyClusloading] = useState(false)
 	const [QRWallet, setQRWallet] = useState('')
@@ -76,7 +76,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 
 	const alipayClick = () => {
 		setShowPurchase(true)
-		if (window?.webkit?.messageHandlers["openUrl"]) {
+		if (isIOS && !isLocalProxy ) {
 			return window?.webkit?.messageHandlers["openUrl"]?.postMessage(alipayUrl)
 		}
 		//@ts-ignore

@@ -17,7 +17,7 @@ global.Buffer = require('buffer').Buffer;
 export type Step = 2 | 3 | 4 | 5;
 
 export default function Subscription() {
-  const { paymentKind, selectedPlan, setSelectedPlan,  profiles, setSuccessNFTID, setPaymentKind, getAllNodes, setAirdropProcess } = useDaemonContext();
+  const { paymentKind, selectedPlan, setSelectedPlan,  profiles, setSuccessNFTID, setPaymentKind, getAllNodes, setAirdropProcess, isIOS, isLocalProxy } = useDaemonContext();
   const { t, i18n } = useTranslation()
   const [step, setStep] = useState<Step>(2);
   const [price, setPriceInSp] = useState('0');
@@ -150,7 +150,7 @@ export default function Subscription() {
 					return setStep(5);
 				}
 
-				if (window?.webkit?.messageHandlers["openUrl"]) {
+				if (isIOS && !isLocalProxy) {
 					return window?.webkit?.messageHandlers["openUrl"]?.postMessage(result.url)
 				} else 
 				//@ts-ignore

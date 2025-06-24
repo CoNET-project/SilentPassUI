@@ -8,7 +8,7 @@ import Separator from '../../components/Separator';
 import { useMemo } from 'react';
 import ProxyInfo from '../../components/ProxyInfo';
 import { useNavigate } from 'react-router-dom';
-const versionNumber = 'v0.1.5'
+const versionNumber = 'v0.1.7'
 type OptionGroup = {
   id: number;
   heading: string;

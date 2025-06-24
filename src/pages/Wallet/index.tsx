@@ -10,10 +10,11 @@ import RedeemPassport from '../../components/RedeemPassport';
 import SpClub from '../../components/AccountList/SpClub'
 import { useDaemonContext } from "../../providers/DaemonProvider"
 import SimpleLoadingRing from '../../components/SimpleLoadingRing'
+import {waitingPaymentStatus} from '../../services/wallets'
 
 export default function Wallet() {
   const navigate = useNavigate()
-    const { successNFTID, setSuccessNFTID, activePassport} = useDaemonContext();
+    const { successNFTID, setSuccessNFTID, activePassport, profiles} = useDaemonContext();
 	const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false)
 	const [showRestorePurchases, setShowRestorePurchases] = useState (false)
 	const [isLoading, setIsLoading] = useState (false)
@@ -35,27 +36,26 @@ export default function Wallet() {
 
 	}, [activePassport])
 
-	const startRestorePurchases = () => {
-		if (!CoNET_Data || isLoading) {
+	const startRestorePurchases = async () => {
+		if (!CoNET_Data || isLoading||!profiles) {
 			return
 		}
 
 		setIsLoading(true)
 
 		if (window?.webkit?.messageHandlers) {
-			window?.webkit?.messageHandlers["RestorePurchases"]?.postMessage('')
-			
-		}
-		
-		setTimeout(() => {
+			const stringifiedVPNMessageObject = JSON.stringify({receipt: '', walletAddress: profiles[0].keyID, solanaWallet: profiles[1].keyID})
+      		const base64VPNMessage = btoa(stringifiedVPNMessageObject);
+			window?.webkit?.messageHandlers["RestorePurchases"]?.postMessage(base64VPNMessage)
+			await waitingPaymentStatus()
+			await new Promise(executor => setTimeout(() => executor(true), 5000))
 			if (CoNET_Data) {
-				
 				CoNET_Data.restorePurchases = true
 				setCoNET_Data(CoNET_Data)
 			}
-			
+			setShowRestorePurchases(false)
 			setIsLoading(false)
-		}, 6000)
+		}
 
 	}
 

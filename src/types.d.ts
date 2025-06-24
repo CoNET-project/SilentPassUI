@@ -103,6 +103,7 @@ type encrypt_keys_object = {
   nonce: number;
   fx168Order?: fx168_Order[];
   upgradev2?: boolean;
+  restorePurchases?: boolean
 };
 
 interface passportInfoFromChain {

@@ -1,0 +1,13 @@
+.item{
+    display: flex;
+    justify-content: space-between;
+    color: #B1B1B2;
+    margin: 0 0 8px;
+    :global(.adm-radio.adm-radio-checked .adm-radio-icon){
+        background-color: #5eaa75;
+        border-color: #5eaa75;
+    }
+}
+.item:last-child{
+    margin: 0;
+}

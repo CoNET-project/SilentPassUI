@@ -1,0 +1,38 @@
+.wallet{
+    padding: 42px 16px 100px;
+    width: 100%;
+    .title{
+        text-align: left;
+        margin-bottom: 16px;
+    }
+    .list{
+        margin: 20px 0 0;
+        :global(.adm-list) {
+            border-top: none;
+            border-bottom: none;
+            --border-top: none;
+            --border-bottom: none;
+        }
+        :global(.adm-list-body) {
+            background: none;
+        }
+        :global(.adm-list-item) {
+            background: #191919;
+            border-top: none;
+            border-radius: 10px;
+            margin: 0 0 15px;
+        }
+        :global(.adm-list-item-content) {
+            border-top: none;
+        }
+        :global(a.adm-list-item:active:not(.adm-list-item-disabled)::after) {
+            display: none;
+        }
+    }
+    .operateBar{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 20px 0 0;
+    }
+}

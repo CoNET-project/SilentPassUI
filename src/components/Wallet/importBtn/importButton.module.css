@@ -1,0 +1,67 @@
+.importBtn{
+    border-radius: 8px;
+    background: #18191b;
+    border-color: #18191b;  
+    font-size: 14px!important;  
+    padding: 15px 0!important;
+    margin: 20px auto 0;
+    width: 80%;
+}
+.importBtnPopup{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 480px;
+    transform: translate(-50%, 0);
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-popup-body) {
+        position: absolute;
+    }
+}
+.modalWrap{
+    .cont{
+        padding: 0 4vw;
+        .textarea{
+            background: #3a3a3a;
+            border-radius: 2vw;
+            padding: 1vw;
+            :global(.adm-text-area-element){
+                color: #fff;
+                &::placeholder {
+                    color: #888;  
+                    opacity: 1;   
+                }
+            }
+        }
+        .warning{
+            margin: 3vw 0 0;
+            color: #fff;
+            .title{
+                color: #e60404;
+                font-weight: 500;
+            }
+        }
+        .btn{
+            margin: 4vw 0 0;
+            background: #282828;
+            border-color: #282828;
+        }
+        .errorBtn{
+            margin: 4vw 0 0;
+            background: #282828;
+            border-color: #282828;
+            color: #ff0000;
+            cursor: not-allowed;
+        }
+    }
+    :global(.adm-nav-bar-title) {
+        color: #fff;
+        font-weight: 500;
+    }
+    :global(.adm-nav-bar-back){
+        color:#999;
+    }
+}

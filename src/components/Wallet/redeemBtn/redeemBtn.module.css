@@ -1,0 +1,47 @@
+.btnWrap{
+    width: 48%;
+    :global(.adm-button:not(.adm-button-default)) {
+        background: #28292e;
+        border-color: #28292e;
+        font-weight: 500;
+        padding: 10px 12px;
+    }
+    .redeem{
+        .title{
+            text-align: left;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 500;
+            line-height: 1;
+        }
+        .codeInput{
+            border: 1px #2d2d2d solid;
+            margin: 15px 0 0;
+            padding: 6px;
+            border-radius: 5px;
+            :global(.adm-input-element){
+                color: #fff;
+            }
+            :global(.adm-input-element::-webkit-input-placeholder) {
+                color: #777;
+            }
+        }
+        .apply{
+            display: flex;
+            justify-content: flex-end;
+            margin: 10px 0 0;
+            :global(.adm-button:not(.adm-button-default)) {
+                background: #3851c7;
+                border-color: #3851c7;
+                font-weight: 400;
+                padding: 5px 30px;
+                font-size: 13px;
+            }
+            
+        }
+    }
+    :global(.adm-center-popup-body) {
+        background: #1b1b1c;
+    }
+    
+}

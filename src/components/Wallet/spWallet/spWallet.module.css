@@ -1,0 +1,177 @@
+.item{
+    user-select: none;
+    display: flex;
+    align-items: center;
+    .icon{
+        background: #313131;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        svg{
+            width: 25px;
+            height: 25px;
+        }
+    }
+    .text{
+        flex: 1;
+        line-height: 1;
+        display: flex;
+        flex-direction: column;
+        text-align: left;
+        margin: 0 0 0 15px;
+        .title{
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .subTitle{
+            font-size: 12px;
+            color: #a0a0a0;
+            margin: 5px 0 0;
+        }
+    }
+}
+.popup{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 480px;
+    transform: translate(-50%, 0);
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-popup-body) {
+        position: absolute;
+    }
+}
+.modalWrap{
+    .bd{
+        .toobar{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 18px 4.2vw 0;
+            .description{
+                color: #fff;
+                font-size: 14px;
+                line-height: 1.3;
+                .icon{
+                    margin: 0 3px 0 0;
+                    color: #f1943f;
+                }
+            }
+            .btnWrap{
+                margin: 0 0 0 10px;
+                flex: none;
+                .btn{
+                    color: #5c8df8;
+                    padding: 0 0 0 7px!important;
+                    font-size: 26px!important;
+                    :global(.adm-button-loading-wrapper > .adm-loading){
+                        font-size: 12px;
+                        color: #5c8df8!important;
+                        opacity: 1!important;
+                    }
+                    :global(.adm-button-loading-wrapper > .adm-loading > svg){
+                        margin-top: 0!important;
+                    }
+                    :global(.antd-mobile-icon){
+                        margin-top: 0!important;
+                    }
+                }
+                :global(.adm-button-loading){
+                    opacity: 1!important;
+                }
+            }
+        }
+        .list{
+            padding: 10px 4.2vw 10px;
+            border-bottom: 1px rgb(63, 63, 64) solid;
+            .listItem{
+                padding: 10px 0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                .type{
+                    display: flex;
+                    align-items: center;
+                    width: 180px;
+                    flex: none;
+                    .text{
+                        margin: 0 0 0 10px;
+                        .name{
+                            color: #fff;
+                            font-size: 16px;
+                            font-weight: 500;
+                            line-height: 1;
+                        }
+                        .num{
+                            font-size: 12px;
+                            color: #898b8b;
+                            line-height: 1;
+                            margin: 6px 0 0;
+                        }
+                    }
+                    svg{
+                        width: 30px;
+                        height: 30px;
+                    }
+                }
+                .value{
+                    flex: 1;
+                    color: #898b8b;
+                    font-size: 14px;
+                }
+            }
+        }
+        .address{
+            padding: 25px 4.2vw;
+            border-bottom: 1px rgb(63, 63, 64) solid;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            .cont{
+                flex: 1;
+                label{
+                    color: #fff;
+                    font-size: 14px;
+                    font-weight: 500;
+                    line-height: 1;
+                }
+                .val{
+                    font-size: 12px;
+                    color: #676768;
+                    margin: 6px 0 0;
+                    line-height: 1;
+                }
+                .valHide{
+                    font-size: 12px;
+                    color: #676768;
+                    margin: 6px 0 0;
+                    line-height: 1;
+                    filter: blur(3px);
+                }
+            }
+            .operation{
+                flex: none;
+                display: flex;
+                align-items: center;
+                margin: 0 0 0 30px;
+            }
+        }
+    }
+    :global(.adm-nav-bar){
+        border-bottom: 1px #292d2e solid;
+    }
+    :global(.adm-nav-bar-title) {
+        color: #fff;
+        font-weight: 500;
+    }
+    :global(.adm-nav-bar-back){
+        color:#999;
+    }
+}

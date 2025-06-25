@@ -1,0 +1,24 @@
+.methodIem{
+    display: flex;
+    flex-direction: column;
+    color: #bdbdbc;
+    font-size: 14px;
+    cursor: pointer;
+    margin: 0 0 10px;
+    padding: 0 10px;
+    &:hover{
+        opacity: 0.9;
+    }
+    .img{
+        text-align: center;
+        img{
+            flex: none;
+            width: auto;
+            height: 32px;
+            margin: 0 0 3px;
+        }
+        svg{
+            height: 32px;
+        }
+    }
+}

@@ -1,0 +1,198 @@
+.sendBtn{
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center!important;
+    align-items: center;
+    background: #2a2a2a;
+    border-radius: 8px;
+    width: 50px;
+    height: 50px;
+    cursor: pointer;
+    user-select: none;
+    &:hover{
+        opacity: 0.9;
+    }
+    .sendIcon{
+        color: #a49de5;
+        font-size: 18px;
+        transform: rotate(45deg) translate(1px,-3px);
+        transform-origin: center;
+        margin: 0!important;
+    }
+    .text{
+        color: #929292;
+        width: auto;
+        font-size:10px;
+        font-weight: 500;
+        line-height: 1;
+        margin: 3px 0 0;
+    }
+}
+.sendBtnPopup{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 480px;
+    transform: translate(-50%, 0);
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-popup-body) {
+        position: absolute;
+    }
+}
+.modalWrap{
+    position: relative;
+    .loadingWrap{
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background: rgba(0,0,0,0.7);
+        color: #fff;
+        font-size: 16px;
+        .text{
+            margin: 15px 0 0;
+        }
+    }
+    .logo{
+        display: flex;
+        justify-content: center;
+        padding: 25px 0 0;
+        img{
+            width: 100px;
+        }
+    }
+    .form{
+        margin: 30px 0 0;
+        padding: 0 30px;
+        .addressInput,.amountInput{
+            border: 1px #2d2d2d solid;
+            border-radius: 3px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            :global(.adm-input-element::-webkit-input-placeholder) {
+                color: #777;
+            }
+            :global(.adm-input-element::placeholder) {
+                color: #777;
+            }
+            :global(.adm-input-element) {
+                color: #fff;
+                height: 48px;
+            }
+        }
+        .amountInput{
+            margin: 20px 0 0;
+            .unit{
+                color: #8c8c8c;
+                font-size: 16px;
+            }
+            .max{
+                margin: 0 0 0 10px;
+                background: #333;
+                border-radius: 10px;
+                color: #fff;
+                font-size: 12px;
+                font-weight: 500;
+                padding: 5px 6px;
+                line-height: 1;
+                cursor: pointer;
+                user-select: none;
+				width: 3rem;
+                &:hover{
+                    opacity: 0.8;
+                }
+            }
+        }
+        .extraInfo{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 20px 0 0;
+            color: #595959;
+            font-size: 16px;
+        }
+        .oper{
+            margin: 30px 0 0;
+            :global(.adm-button.adm-button-large) {
+                background: #28292f;
+                border-color: #28292f;
+                color: #d9d9d9;
+            }
+        }
+    }
+    :global(.adm-nav-bar-title) {
+        color: #fff;
+        font-weight: 500;
+    }
+    :global(.adm-nav-bar-back){
+        color:#999;
+    }
+}
+.successModalWrap{
+    background: #2a2a2a;
+    .successModal{
+        .description{
+            color: #f1f1f1;
+            text-align: center;
+        }
+        .link{
+            display: flex;
+            justify-content: center;
+            margin: 10px 0 0;
+            a{
+                color: #1677ff;
+                font-size: 16px;
+            }
+        }
+    }
+    :global(.adm-result) {
+        padding: 12px 12px;
+        background: transparent;
+    }
+    :global(.adm-result-success .adm-result-icon .antd-mobile-icon) {
+        color: #52ab74;
+    }
+    :global(.adm-result-title) {
+        color: #f1f1f1;
+        font-weight: 500;
+    }
+    :global(.adm-modal-footer .adm-modal-button) {
+        background: #333;
+        border: none;
+    }
+}
+.failModalWrap{
+    background: #2a2a2a;
+    .failModal{
+        .description{
+            color: #f1f1f1;
+            text-align: center;
+        }
+    }
+    :global(.adm-result) {
+        padding: 12px 12px;
+        background: transparent;
+    }
+    :global(.adm-result-success .adm-result-icon .antd-mobile-icon) {
+        color: #52ab74;
+    }
+    :global(.adm-result-title) {
+        color: #f1f1f1;
+        font-weight: 500;
+    }
+    :global(.adm-modal-footer .adm-modal-button) {
+        background: #333;
+        border: none;
+    }
+}

@@ -1,0 +1,7 @@
+.button{
+    filter:grayscale(1);
+    svg{
+        width: 17px;
+        height: 17px;
+    }
+}

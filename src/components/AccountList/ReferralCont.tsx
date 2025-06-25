@@ -30,20 +30,26 @@ const ReferralCont=({  })=> {
     const { profiles, setAirdropSuccess, setAirdropTokens, setAirdropProcess, setAirdropProcessReff } = useDaemonContext();
     const [inviter, setInviter] = useState('');
     const [subLoading, setSubLoading] = useState(false);
-    
     const handleSetInviter = async () => {
+		if (subLoading) {
+			return
+		}
         setSubLoading(true);
         const result = await getirDropForSPReff(inviter)
+		
         setSubLoading(false);
+
         if (typeof result === 'boolean') {
             Toast.show({icon: 'fail',content:t('comp-accountlist-Referral-Inviter-fail')});
             return ;
         }
 
-        setAirdropSuccess(true)
-        setAirdropTokens(result)
-        setAirdropProcess(true)
-        setAirdropProcessReff(false)
+        
+        // setAirdropTokens(result)
+        
+        // setAirdropProcessReff(false)
+		// setAirdropProcess(true)
+		// setAirdropSuccess(true)
         // Toast.show({icon: 'success',content:t('comp-accountlist-Referral-Inviter-success')});
     }
 

@@ -10,6 +10,8 @@ import { Dialog,Input,Button,Toast,Ellipsis } from 'antd-mobile';
 import {aesGcmEncrypt} from '../../services/subscription';
 import { storeSystemData } from './../../services/wallets';
 import _ from 'lodash';
+import {openWebLinkNative} from '../../api/index'
+import { useDaemonContext } from "../../providers/DaemonProvider";
 
 let copyTimeoutId: NodeJS.Timeout;
 
@@ -21,7 +23,7 @@ const Recovery=({  })=> {
     const [copied, setCopied] = useState({address: "",info: ""});
     const [password, setPassword] = useState('');
     const [recoveryLoading, setRecoveryLoading] = useState(false);
-
+	const { isIOS, isLocalProxy } = useDaemonContext();
     const handleCopy=(info: string) =>{
         let value = '';
         value = backup + (CoNET_Data?.recoveryWords || '');
@@ -33,6 +35,7 @@ const Recovery=({  })=> {
             info: '',
         }), 3000);
     }
+	
     const makeRecovery=async()=>{
         if(CoNET_Data){
             try{
@@ -72,7 +75,7 @@ const Recovery=({  })=> {
                 <div className={styles.copyText}>
                     <p>{t('comp-comm-RecoveryPhrase')}<QuestionCircleOutline className={styles.question} onClick={() => Dialog.alert({content: t('comp-comm-RecoveryPhrase-info')})} /></p>
                     <div className={isWordsHidden?styles.linkBlur:styles.link}>
-                        <a href={backup + (CoNET_Data?.recoveryWords || '')} target="_blank"><Ellipsis direction='end' rows={2} content={backup + (CoNET_Data?.recoveryWords || '')} /></a>
+                        <a onClick={() => openWebLinkNative(backup + (CoNET_Data?.recoveryWords || ''), isIOS,isLocalProxy )}><Ellipsis direction='end' rows={2} content={backup + (CoNET_Data?.recoveryWords || '')} /></a>
                     </div>
                 </div>
                 <div className={styles.buttonList}>

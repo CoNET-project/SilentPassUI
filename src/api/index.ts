@@ -90,3 +90,17 @@ export const joinSpClub = async (
 
   return false;
 };
+
+export const openWebLinkNative = async (url: string, isIOS: boolean, isLocalProxy: boolean) => {
+	if (window?.webkit?.messageHandlers && isIOS && !isLocalProxy) {
+		return window?.webkit?.messageHandlers["openUrl"]?.postMessage(url)
+	} else 
+	//@ts-ignore
+	if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
+		const base = btoa(JSON.stringify({cmd: 'openUrl', data: url}))
+		//	@ts-ignore
+		return AndroidBridge?.receiveMessageFromJS(base)
+	} else {
+		window.open(url, '_blank')
+	}
+}

@@ -342,7 +342,7 @@ export const aesGcmEncrypt = async (plaintext: string, password: string) => {
 	return btoa(ivStr+ctStr)   
 }
 
-export const aesGcmDecrypt= async (ciphertext: string, password: string) => {
+export const aesGcmDecrypt= async (ciphertext: string, password: string): Promise<string> => {
 	const pwUtf8 = new TextEncoder().encode(password)                                 // encode password as UTF-8
 	const pwHash = await crypto.subtle.digest('SHA-256', pwUtf8)                      // hash the password
 
@@ -360,8 +360,8 @@ export const aesGcmDecrypt= async (ciphertext: string, password: string) => {
 	try {
 		const plainBuffer = await crypto.subtle.decrypt(alg, key, ctUint8)            // decrypt ciphertext using key
 		const plaintext = new TextDecoder().decode(plainBuffer)                       // plaintext from ArrayBuffer
-		return plaintext                                                              // return the plaintext
+		return plaintext                                                           // return the plaintext
 	} catch (e) {
-		throw new Error('Decrypt failed')
+		return ''
 	}
 }

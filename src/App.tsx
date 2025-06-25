@@ -24,6 +24,7 @@ import Transfer from './pages/Transfer';
 import { setDefaultConfig } from 'antd-mobile';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
 import enUS from 'antd-mobile/es/locales/en-US';
+import BackupHome from './pages/BackupHome'
 import './i18n'; // 加载多语言配置
 
 import { useTranslation } from 'react-i18next';
@@ -34,28 +35,12 @@ global.Buffer = require('buffer').Buffer;
 function App() {
 	const { i18n } = useTranslation();
 
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, backupWord, setBackupWord } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
   }
 
-  const _getServerIpAddress = async () => {
-	try {
-	  const response = await getServerIpAddress();
-	  const tmpIpAddress = response.data;
-
-	  setServerIpAddress(tmpIpAddress?.ip || "");
-	  setServerPort('3002');
-	  setIsLocalProxy(true)
-	} catch (ex) {
-	  if (window?.webkit) {
-		  setIsIOS(true)
-	  }
-	  
-	  setIsLocalProxy(false)
-	}
-  }
 
   const handlePassport = async () => {
 	if (!CoNET_Data?.profiles[0]?.keyID) return
@@ -93,24 +78,16 @@ function App() {
   }
 
   const init = async () => {
-	let vpnTimeUsedInMin = 0
 
-	try {
-	  const ss = await localStorage.getItem("vpnTimeUsedInMin")
-	  if (ss) {
-		vpnTimeUsedInMin = parseInt(ss)
-	  }
-	} catch (ex) {
-
-	}
-	_vpnTimeUsedInMin.current = vpnTimeUsedInMin;
-
-	const queryParams = parseQueryParams(window.location.search);
+	const queryParams = parseQueryParams(window.location.search)
 	let secretPhrase: string | null = null;
 
 	if (window.location.search && queryParams) {
-	  secretPhrase = queryParams.get("secretPhrase");
-	  secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
+	  secretPhrase = queryParams.get("words")
+	  if (!secretPhrase) {
+		return
+	  }
+	  setBackupWord(secretPhrase)
 	}
 
 	const profiles = await createOrGetWallet(secretPhrase);
@@ -127,12 +104,12 @@ function App() {
 	  setGlobalAllNodes(allNodes)
 	  const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
 	  setRandomSolanaRPC(allNodes[randomIndex])
-	  await _getServerIpAddress()
+	  
 	  if (!CoNET_Data || !CoNET_Data?.profiles) {
 		return
 	  }
 
-	});
+	})
 	await handlePassport ()
 
   }
@@ -189,7 +166,7 @@ function App() {
           <Route path="/subscription" element={<Subscription />}></Route>
           <Route path="/transfer" element={<Transfer />}></Route>
           <Route path="/support" element={<Support />}></Route>
-          <Route path="/" element={<Home />}></Route>
+          <Route path="/" element={<BackupHome />}></Route>
         </Routes>
       </Router>
     </div>

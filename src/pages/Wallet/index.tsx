@@ -20,8 +20,9 @@ import goldBadge from './assets/GC.png'
 import crownIcon from './assets/crown_icon.gif'
 
 export default function Wallet() {
+
   const navigate = useNavigate()
-  const { profiles, isIOS } = useDaemonContext()
+  const { profiles, backupWord } = useDaemonContext()
   const [openClub, setOpenClub] = useState(true)
 
   const [redeemPassportOpen, setRedeemPassportOpenOpen] = useState<boolean>(false);
@@ -39,8 +40,14 @@ export default function Wallet() {
   const isFreePassport = !!passport?.nftID && Number(passport.expiresDays) <= 7;
 
 
+  useEffect(() => {
+	if (!backupWord) {
+		navigate('/')
+	}
+  }, [])
+
     //Renders badge based on the user's passport status
-    const renderBadge = () => {
+  const renderBadge = () => {
     if (!passport?.nftID) return null;
     if (isGuardian) return <GoldBadge className="badge" />;
     if (isCrownHolder) return <img src={crownIcon} alt="Crown" className="crown" />;
@@ -74,7 +81,7 @@ export default function Wallet() {
 	  {
 		<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '20px' }}>
 			{SpClub(openClub, setOpenClub,setRedeemPassportOpenOpen,redeemRef)}
-			<ReferralProgram />
+			{/* <ReferralProgram /> */}
 		</div>
 	  }
       <Footer />

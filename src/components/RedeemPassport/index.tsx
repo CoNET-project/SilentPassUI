@@ -131,7 +131,7 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 
         <div className="redeem-content">
 			
-				<>
+				{/* <>
 					<label className="redeem-label">{t('comp-RedeemPassport-25usdRedeem')} </label>
 					<button className={spRewordEnable ? "redeem-button confirm" : "redeem-button confirm disable" } onClick={spRewordProcess}>
 						{spRewordloading ? <SimpleLoadingRing /> : t('comp-RedeemPassport-RedeemNow')}
@@ -141,10 +141,10 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 						<span>or</span>
 						<div className="line"></div>
 					</div>
-				</>
+				</> */}
 			
 			
-			{
+			{/* {
 				!isRedeemProcessLoading &&
 				<>
 					{
@@ -175,7 +175,7 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 					
 				</>
 				
-			}
+			} */}
 
           
 		  {

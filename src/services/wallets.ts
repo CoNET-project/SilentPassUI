@@ -1638,5 +1638,6 @@ export {
   checkLocalStorageNodes,
   storageAllNodes,
   getProfileAssets,
-  waitingPaymentReady
+  waitingPaymentReady,
+  createKeyHDWallets
 };

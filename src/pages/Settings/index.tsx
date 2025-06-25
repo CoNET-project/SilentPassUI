@@ -94,25 +94,25 @@ export default function Settings() {
         //   theme: true,
         // }
       ]
-    }, {
-      heading: t('Settings_Passcode_Addon'),
-      items: [
-        {
-          id: 3,
-          icon: extraRewardIcon,
-          title: t('Settings_Passcode_Reward'),
-          childrenText: '',
-		  action: () => navigate("/wallet"),
-        },
-        {
-          id: 4,
-          icon: splitTunnelingIcon,
-          title: t('Settings_Passcode_WebsiteFilter'),
-          action: () => setVisible2(true),
-          childrenText: '',
+    // }, {
+    //   heading: t('Settings_Passcode_Addon'),
+    //   items: [
+    //     {
+    //       id: 3,
+    //       icon: extraRewardIcon,
+    //       title: t('Settings_Passcode_Reward'),
+    //       childrenText: '',
+	// 	  action: () => navigate("/wallet"),
+    //     },
+    //     // {
+    //     //   id: 4,
+    //     //   icon: splitTunnelingIcon,
+    //     //   title: t('Settings_Passcode_WebsiteFilter'),
+    //     //   action: () => setVisible2(true),
+    //     //   childrenText: '',
 		  
-        },
-      ]
+    //     // },
+    //   ]
     } 
     
   ]), [visible, navigate ]);
@@ -185,7 +185,7 @@ export default function Settings() {
             </>
           ))
         }
-        <div key={6}><ProxyInfo /></div>
+        {/* <div key={6}><ProxyInfo /></div> */}
       </div>
 
       <Footer />

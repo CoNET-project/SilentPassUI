@@ -199,7 +199,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 
                                     <Separator />
 
-                                    <CopyAccountInfo wallet={profiles?.[0]} showRecoveryPhrase={true} isEthers={true} />
+                                    <CopyAccountInfo wallet={profiles?.[0]} showRecoveryPhrase={false} isEthers={true} />
 
                                     {/* 
                                     <Separator />
@@ -337,8 +337,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                         )
                     }
                     <>
-                        <Separator />
-                        <ImportButton />
+                        {/* <Separator />
+                        <ImportButton /> */}
                     </>
                 </div>
     

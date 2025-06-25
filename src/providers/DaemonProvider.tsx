@@ -61,6 +61,8 @@ type DaemonContext = {
   switchValue: boolean;
   setSwitchValue: (val: boolean) => void;
   webFilterRef:React.MutableRefObject<boolean>;
+  backupWord: string
+  setBackupWord: (val: string) => void
 };
 
 type DaemonProps = {
@@ -128,6 +130,8 @@ const defaultContextValue: DaemonContext = {
   switchValue: true,
   setSwitchValue: () => {},
   webFilterRef:{ current: false },
+  backupWord: '',
+  setBackupWord: () => {},
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -170,6 +174,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const webFilterRef=useRef(getWebFilter);
   const [switchValue, setSwitchValue] = useState(true);
   const firstLoad = useRef(true);
+  const [backupWord, setBackupWord] = useState('')
+  
 
   useEffect(() => {
     {
@@ -210,7 +216,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
-				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, setGetWebFilter,switchValue, setSwitchValue, webFilterRef }}>,
+				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, setGetWebFilter,switchValue, setSwitchValue, webFilterRef, backupWord, setBackupWord }}>,
 
       {children}
     </Daemon.Provider>

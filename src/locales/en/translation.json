@@ -258,6 +258,11 @@
 	"Settings_Passcode_WebsiteFilter-title-official": "Official Filters",
 	"Settings_Passcode_WebsiteFilter-title-region": "Region Filters",
 
+	"backupHome-title": "Silent Pass Backup",
+	"backupHome-password-placeholder": "Password that was created by backup",
+	"backupHome-Error": "No backup data error",
+	"backupHome-password-error": "Password Error",
+
 	"proxy-header": "Proxy",
 	"proxy-button-label": "Proxy Server Information",
 	"proxy-server": "Server Address:",

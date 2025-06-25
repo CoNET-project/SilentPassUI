@@ -60,6 +60,8 @@
     "faq1-9": "终端数量",
     "faq2": "Proxy 和VPN服务",
 
+	
+
 	"comp-comm-wallet-address": "钱包地址",
 	"comp-comm-wallet-address-1": "钱包地址",
 	"comp-comm-receive": "收款",
@@ -262,6 +264,11 @@
 	"Settings_Passcode_WebsiteFilter-title-special": "定制过滤",
 	"Settings_Passcode_WebsiteFilter-title-official": "官网过滤",
 	"Settings_Passcode_WebsiteFilter-title-region": "地区过滤",
+
+	"backupHome-title": "Silent Pass 备份",
+	"backupHome-password-placeholder": "请输入创建备份的密码",
+	"backupHome-Error": "无备份数据错误",
+	"backupHome-password-error": "密码输入错误",
 
 	"proxy-header": "代理",
 	"proxy-button-label": "代理服务器信息",

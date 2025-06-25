@@ -15,7 +15,7 @@ interface plan {
 	productId: string
 }
 
-export default function RedeemPassport() {
+export default function RedeemPassport(showFree: boolean) {
   const [redeemCode, setRedeemCode] = useState("");
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
@@ -85,19 +85,31 @@ export default function RedeemPassport() {
 							<button className={`option ${selectedPlan1 === '12' ? 'selected' : ''}`} onClick={() => setSelectedPlan1('12')}>
 								
 								<div>
-									<span >Annual Plan (12 Months)</span>
-									<p>$2.71 / month / 1 Device</p>
-									<span style={{'textAlign': 'left'}}>Billed $32.49 for 12 months, then renews yearly</span>
+									<p style={{fontSize: '16px', color: '#989899'}}>Annual Plan (12 Months)</p>
+									<p style={{padding: "0.5rem 0"}}>$32.49 / year</p>
+									<p style={{fontSize: '16px', color: '#989899'}}>Billed immediately, auto-renews yearly</p>
 								</div>
 							</button>
 							<button className={`option ${selectedPlan1 === '1' ? 'selected' : ''}`} onClick={() => setSelectedPlan1('1')}>
 								
 								<div>
-									<span>Monthly Plan (1 Month)</span>
-									<p>$3.29 / month / 1 Device</p>
-									<span style={{'textAlign': 'left'}}>Billed $3.29 every month</span>
+									<p style={{fontSize: '16px', color: '#989899'}}>Monthly Plan (1 Month)</p>
+									<p style={{padding: "0.5rem 0"}}>$3.29 / month</p>
+									<p style={{fontSize: '16px', color: '#989899'}}>Billed monthly, auto-renews</p>
 								</div>
 							</button>
+							{
+								showFree && 
+								<>
+									<p>
+										You're currently on a 7-day free access period.
+									</p>
+									<p>
+										⚠️Subscribing now will start your paid plan immediately.
+									</p>
+								</>
+							}
+							
 						</div>
 						<button className="buttonPay" onClick={() => startSubscription()}>Start subscription</button>
 					</div>
@@ -105,15 +117,13 @@ export default function RedeemPassport() {
 						<div className="line"></div>
 					</div>
 					<div className="subscription">
-						<p>7 days Free Trial!</p>
-						
 						<div className="sub-details">
 						<p>Subscription details:</p>
 						<ul>
 							<li>Your Apple ID account will be charged when you start subscription.</li>
 							<li>Your subscription will automatically renew at the end of each billing period unless it is canceled at least 24 hours before the expiry date.</li>
 							<li>You can manage and cancel your subscriptions by going to your App Store account settings after purchase.</li>
-							<li>Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.</li>
+							<li>Silent Pass includes a 7-day free access period from first app launch. Subscribing during this period ends the remaining free days.</li>
 							<li>By subscribing, you agree to the <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" style={{color:"lightblue"}}>Apple’s Terms of Use</a>, and <a href="https://silentpass.io/privacy-cookies/" style={{color:"lightblue"}} target="_blank">Privacy Policy.</a></li>
 						</ul>
 						</div>

@@ -82,7 +82,9 @@ export default function Wallet() {
           </button>
           <p>*Open CoNET Platform - Redeem Silent Pass passport and transfer Silent Pass passport to Silent Pass Account (public wallet address) if user has guardian NFT or CoNETian NFT.</p>
         </div> */}
-        <RedeemPassport />
+		{
+			RedeemPassport(showRestorePurchases)
+		}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '40px' }}>

@@ -137,7 +137,7 @@ export default function Settings() {
       <h1>{t('Settings_Title')}</h1>
 	  <p style={{color: '#676768', padding: '0.5rem 0'}}>Silent Pass UI v1.3.2</p>
       <div className="nft-info">
-        <ActivePassportInfo />
+        {/* <ActivePassportInfo /> */}
         
         <div className="buttons">
           {/* <button onClick={() => navigate("/wallet")}>{t('wallet_title')}</button> */}

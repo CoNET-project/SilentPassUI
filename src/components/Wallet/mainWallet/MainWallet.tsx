@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './mainWallet.module.css';
 import { useTranslation } from 'react-i18next';
-import { List,Popup,NavBar,Empty } from 'antd-mobile';
+import { List,Popup,NavBar,Empty,Radio,SpinLoading,Toast } from 'antd-mobile';
 import { LockFill,ExclamationCircleFill } from 'antd-mobile-icons';
 import { CoNET_Data } from './../../../utils/globals';
+import { changeActiveNFT } from './../../../services/wallets';
 import { ReactComponent as ConetToken } from './../assets/conet-token.svg';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import PassportItem from './passportItem/PassportItem';
@@ -13,14 +14,15 @@ import CodeButton from './../codeButton/CodeButton';
 import CopyBtn from './../copyBtn/CopyBtn';
 import HideBtn from './../hideBtn/HideBtn';
 import Recovery from './../recovery/Recovery';
+import _ from 'lodash';
 
 const MainWallet = ({}) => {
     const { t, i18n } = useTranslation();
     const [visible, setVisible] = useState<boolean>(false);
-    const { profiles,activePassport,setIsSelectPassportPopupOpen } = useDaemonContext();
-    const [passportToChange, setPassportToChange] = useState();
+    const { profiles,activePassport,setActivePassport } = useDaemonContext();
     const [isAddressHidden, setIsAddressHidden] = useState(false);
     const [isKeyHidden, setIsKeyHidden] = useState(true);
+    const [isChangeLoading, setIsChangeLoading] = useState(false);
 
     const getAddress = (wallet: any) => {
         return ethers.getAddress(wallet?.keyID).slice(0, 7) + '...' + ethers.getAddress(wallet?.keyID).slice(-5);
@@ -33,6 +35,27 @@ const MainWallet = ({}) => {
     }
     const getWholePrivateKeyArmor = (wallet: any) => {
         return wallet?.privateKeyArmor;
+    }
+    const getNewPassport=(id: string)=>{
+        return _.find(profiles?.[0]?.silentPassPassports,(item) => String(item.nftID) === String(id));
+    }
+    const handleChangeActiveNFT=async(newPassportNftID:any)=> {
+        setIsChangeLoading(true);
+        const result = await changeActiveNFT(newPassportNftID);
+        if (!result) {
+            Toast.show({
+                icon: 'fail',
+                content: t('wallet-account-main-wallet-change-fail'),
+            })
+            return ;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 6000));
+        setIsChangeLoading(false);
+        const newItem=getNewPassport(String(newPassportNftID));
+        setActivePassport(newItem);
+    }
+    const handleChangePassport=(passport:any)=>{
+        handleChangeActiveNFT(passport);
     }
 
     return (
@@ -63,20 +86,21 @@ const MainWallet = ({}) => {
                             <div className={styles.label}>{t('wallet-account-brief-label')}</div>
                                 {
                                     (profiles?.[0]?.silentPassPassports && profiles?.[0]?.activePassport && profiles?.[0]?.silentPassPassports?.length)
-                                    ? <div className={styles.passportList}>{
-                                        [...profiles?.[0]?.silentPassPassports]
-                                        .sort((a: any, b: any) => {
-                                            const isAActive = a?.nftID === activePassport?.nftID;
-                                            const isBActive = b?.nftID === activePassport?.nftID;
-                                            return isAActive === isBActive ? 0 : isAActive ? -1 : 1;
-                                        })
-                                        .map((passport: any) => (
-                                            <PassportItem key={passport.nftID} passportInfo={passport} selectedValue={activePassport} onChange={() => {
-                                                setIsSelectPassportPopupOpen(true);
-                                                setPassportToChange(passport)
-                                            }} />
-                                        ))
-                                    }</div>: <Empty
+                                    ? <div className={styles.passportList}>
+                                        <Radio.Group value={activePassport?.nftID?.toString()} onChange={handleChangePassport}>
+                                            {
+                                                [...profiles?.[0]?.silentPassPassports]
+                                                .sort((a: any, b: any) => {
+                                                    const isAActive = String(a?.nftID) === String(activePassport?.nftID);
+                                                    const isBActive = String(b?.nftID) === String(activePassport?.nftID);
+                                                    return isAActive === isBActive ? 0 : isAActive ? -1 : 1;
+                                                })
+                                                .map((passport: any) => (
+                                                    <PassportItem key={passport.nftID} passportInfo={passport} />
+                                                ))
+                                            }
+                                        </Radio.Group>
+                                    </div>: <Empty
                                         style={{ padding: '12px 0 0' }}
                                         image={
                                             <div className={styles.empty}>
@@ -119,6 +143,7 @@ const MainWallet = ({}) => {
 
                         {CoNET_Data?.mnemonicPhrase ? <div className={styles.recovery}><Recovery /></div> : ''}
                     </div>
+                    {isChangeLoading?<div className={styles.loading}><div className={styles.spinBox}><SpinLoading /></div></div>:''}
                 </div>
             </Popup>
         </>     

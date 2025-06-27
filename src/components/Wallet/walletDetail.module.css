@@ -2,8 +2,16 @@
     padding: 42px 16px 100px;
     width: 100%;
     .title{
-        text-align: left;
         margin-bottom: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        .armBand{
+            svg{
+                width: auto;
+                height: 26px;
+            }
+        }
     }
     .list{
         margin: 20px 0 0;
@@ -35,4 +43,42 @@
         align-items: center;
         margin: 20px 0 0;
     }
+}
+.successModal{
+    .successModalCont{
+        .resInfos{
+            text-align: left;
+            .desc{
+                padding: 10px 0 0;
+                color: #e4e4e4;
+            }
+            .val{
+                margin: 10px 0 0;
+                .id{
+                    color: #fff;
+                    font-weight: 500;
+                    margin: 0 0 0 5px;
+                }
+            }
+        }
+        .operateBar{
+            .btn{
+                background: #353a41;
+                border-color: #353a41;
+                color: #a3bee0;
+                font-weight: 500;
+            }
+        }
+        :global(.adm-result){
+            background: none;
+        }
+        :global(.adm-result-title){
+            color: #fff;
+            font-weight: 500;
+        }
+    }
+    :global(.adm-center-popup-body){
+        background: #2c2c2c;
+    }
+    
 }

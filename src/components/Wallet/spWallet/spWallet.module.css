@@ -50,6 +50,8 @@
 }
 .modalWrap{
     .bd{
+        height: calc(100vh - 70px - 85px);
+        overflow: auto;
         .toobar{
             display: flex;
             justify-content: space-between;

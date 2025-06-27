@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './genesis.module.css';
 import { useTranslation } from 'react-i18next';
-import { List,Modal,SpinLoading,Toast } from 'antd-mobile';
+import { List,Modal,SpinLoading,Toast,Grid } from 'antd-mobile';
 import { LockFill,ExclamationCircleFill,LeftOutline } from 'antd-mobile-icons';
 import { CoNET_Data } from './../../../utils/globals';
 import { ReactComponent as CrownBadge } from './../assets/GC.svg';
@@ -14,14 +14,19 @@ import PayBSC from './../payBsc/PayBSC';
 import PayALI from './../payAli/PayALI';
 import PayWECHAT from './../payWechat/PayWECHAT';
 import PaySTRIPE from './../payStripe/PaySTRIPE';
+import PaySP from './../paySp/PaySP';
+import PayAPPLE from './../payApple/PayAPPLE';
 import PayModal from './../payModal/PayModal';
+import AppleModal from './../payApple/AppleModal';
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 
 const Genesis = ({}) => {
+    const navigate = useNavigate();
     const { t, i18n } = useTranslation();
-    const {profiles, setSuccessNFTID, isIOS, isLocalProxy} = useDaemonContext();
+    const {profiles, setSuccessNFTID, setSelectedPlan, setPaymentKind, isIOS, isLocalProxy} = useDaemonContext();
     const [visible, setVisible] = useState<boolean>(false);
+    const [appleVisible, setAppleVisible] = useState<boolean>(false);
     const [codeVisible, setCodeVisible] = useState(false);
     const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
     const [QRWallet, setQRWallet] = useState('');
@@ -38,10 +43,6 @@ const Genesis = ({}) => {
         const res = await getCryptoPay(token, '3100');
         setShowBuyClusloading(false);
         if (!res?.wallet||!res?.transferNumber) {
-            Toast.show({
-                icon: 'fail',
-                content: t('genesis-pay-request-error')
-            });
             return ;
         }
         setVisible(false);
@@ -52,10 +53,6 @@ const Genesis = ({}) => {
 
         const waiting = await waitingPaymentReady (res?.wallet)
         if (!waiting?.status) {
-            Toast.show({
-                icon: 'fail',
-                content: waiting?.error
-            });
             return ;
         }
         setSuccessNFTID(waiting.status)
@@ -75,8 +72,32 @@ const Genesis = ({}) => {
         } else {
             window.open(payUrl, '_blank')
         }
-        
+        Modal.show({
+            className:styles.helperModal,
+            content: (<div className={styles.helper}>
+                <div className={styles.hd}>{t('comp-accountlist-SpClub-showAlipayPurchase')}</div>
+                <div className={styles.bd}>{t('comp-accountlist-SpClub-showAlipayPurchase-1')}</div>
+                <div className={styles.ft}>
+                    {t('comp-accountlist-SpClub-showAlipayPurchase-2')}
+                    <a onClick={() => {
+                        //@ts-ignore
+                        window?.Comm100API?.open_chat_window?.()
+                    }}>{t('comp-comm-customerService')}</a>
+                </div>
+            </div>),
+            closeOnMaskClick: true,
+        })
     }
+    const stripeClick = () => {
+        setPaymentKind(2);
+        setSelectedPlan('31');
+        navigate("/subscription");
+    }
+    const SPClick = () => {
+        setPaymentKind(1);
+        setSelectedPlan('3100')
+        navigate("/subscription");
+  }
 
     return (
         <>
@@ -107,17 +128,39 @@ const Genesis = ({}) => {
                     <div className={styles.rights}>{t('genesis-charater-5')}</div>
                     <div className={styles.label}>{t('genesis-pay-ways')}</div>
                     <div className={styles.payMethods}>
-                        <PayBNB purchaseBluePlan={purchaseBluePlan} />
-                        <PayBSC purchaseBluePlan={purchaseBluePlan} />
-                        <PayALI payClick={payClick} />
-                        <PayWECHAT payClick={payClick} />
-                        <PaySTRIPE />
+                        <Grid columns={4} gap={5}>
+                            <Grid.Item>
+                                <PayBNB purchaseBluePlan={purchaseBluePlan} />
+                            </Grid.Item>
+                            <Grid.Item>
+                                <PayBSC purchaseBluePlan={purchaseBluePlan} />
+                            </Grid.Item>
+                            <Grid.Item>
+                                <PaySP payClick={SPClick} />
+                            </Grid.Item>
+                            <Grid.Item>
+                                <PayALI payClick={payClick} />
+                            </Grid.Item>
+                        </Grid>
+                        <Grid columns={4} gap={5}>
+                            <Grid.Item>
+                                <PaySTRIPE stripeClick={stripeClick} />
+                            </Grid.Item>
+                            <Grid.Item>
+                                <PayWECHAT payClick={payClick} />
+                            </Grid.Item>
+                            <Grid.Item>
+                                { !isIOS && <PayAPPLE parentVisible={visible} setParentVisible={setVisible} appleVisible={appleVisible} setAppleVisible={setAppleVisible} /> }
+                            </Grid.Item>
+                            <Grid.Item>
+                            </Grid.Item>
+                        </Grid>
                     </div>
-
                     <LeftOutline className={styles.close} onClick={() => {setVisible(false)}} />
                     {showBuyClusloading?<div className={styles.loading}><div className={styles.spinBox}><SpinLoading /></div></div>:''}
                 </div>}
             />
+            <AppleModal appleVisible={appleVisible} setAppleVisible={setAppleVisible} />
             <PayModal visible={codeVisible} setVisible={setCodeVisible} QRWallet={QRWallet} cryptoName={cryptoName} showPrice={showPrice} timeoutError={timeoutError} setTimeoutError={setTimeoutError} purchaseBluePlan={purchaseBluePlan} />
         </>     
     );

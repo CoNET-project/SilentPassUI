@@ -49,7 +49,10 @@
     }
 }
 .modalWrap{
+    position: relative;
     .bd{
+        height: calc(100vh - 70px - 85px);
+        overflow: auto;
         .description{
             color: #fff;
             font-size: 14px;
@@ -118,9 +121,28 @@
         }
         .recovery{
             padding: 25px 4.2vw;
-            border-bottom: 1px rgb(63, 63, 64) solid;
             display: flex;
             justify-content: space-between;
+            align-items: center;
+        }
+    }
+    .loading{
+        background: transparent;
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        .spinBox{
+            width: 50px;
+            height: 50px;
+            background: rgb(73 71 71);
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
             align-items: center;
         }
     }

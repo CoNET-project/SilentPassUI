@@ -15,10 +15,10 @@
             flex: none;
             width: auto;
             height: 32px;
-            margin: 0 0 3px;
         }
         svg{
             height: 32px;
+            width: auto;
         }
     }
 }

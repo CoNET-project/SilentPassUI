@@ -1,0 +1,65 @@
+.referralCont{
+    padding: 15px 0 0;
+    color: #fff;
+    .tips{
+        padding: 0 4.2vw;
+        text-align: left;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .label{
+        display: flex;
+        align-items: center;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 0 4.2vw;
+        margin: 15px 0 0;
+        .icon{
+            margin: 0 3px 0 0;
+        }
+    }
+    .val{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 12px 4.2vw 0;
+        background: #2b2b2d;
+        padding: 0 0 0 5px;
+        border-radius: 5px;
+        .address{
+            width: 60%;
+        }
+        .copyBtn{
+            color: #b8b7b6;
+            line-height: 1;
+            font-size: 13px;
+            padding: 12px;
+        }
+        .copied{
+            color: #16c516;
+            padding:12px;
+            font-size: 13px;
+            line-height: 1;
+        }
+    }
+    .form{
+        margin: 12px 0 0;
+        padding: 0 4.2vw;
+        .input{
+            background: #2b2b2d;
+            border-radius: 5px;
+            padding: 8px 5px;
+            :global(.adm-input-element) {
+                font-size: 12px;
+                color: #fff;
+            }
+        }
+        .subBtn{
+            margin: 15px 0 0;
+            background: #4E72B6;
+            border-color: #4E72B6;
+            padding: 10px 0;
+            font-weight: 500;
+        }
+    }
+}

@@ -1,0 +1,50 @@
+.appleModal{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 480px;
+    transform: translate(-50%, 0);
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-modal-content){
+        max-height: 80vh;
+    }
+    :global(.adm-modal-body){
+        max-height: 80vh;
+    }
+    .appleCont{
+        position: relative;
+        .title{
+            color: #ffd700;
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            .svg{
+                height: 20px;
+                width: auto;
+            }
+        }
+        .close{
+            position: absolute;
+            left: 0;
+            top: 0;
+            color: #999;
+            font-size: 20px;
+            cursor: pointer;
+        }
+    }
+    :global(.adm-center-popup-wrap) {
+        width: 92%;
+        max-width: 100%;
+        background: #1f1f1f;
+        border-radius: 8px;
+        position: absolute;
+    }
+    :global(.adm-center-popup-body){
+        background: #1f1f1f;
+    }
+}

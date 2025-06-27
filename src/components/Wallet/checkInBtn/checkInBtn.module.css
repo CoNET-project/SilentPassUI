@@ -1,9 +1,26 @@
 .btnWrap{
     width: 48%;
+    .warning{
+        color: #ff0000;
+        margin: 0 5px 0 0;
+    }
     :global(.adm-button:not(.adm-button-default)) {
         background: #28292e;
         border-color: #28292e;
         font-weight: 500;
         padding: 10px 12px;
+    }
+}
+.warningTipModal{
+    :global(.adm-center-popup-body){
+        background: #1f1f1f;
+    }
+    :global(.adm-auto-center-content){
+        color:#bf0c0c;
+        text-align: center;
+    }
+    :global(.adm-button){
+        background: #292929;
+        border-color: #292929;  
     }
 }

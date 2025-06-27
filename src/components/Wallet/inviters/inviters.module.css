@@ -1,0 +1,50 @@
+.inviters{
+    padding: 20px 0 0;
+    margin: 20px 0 0;
+    border-top: 1px rgb(63, 63, 64) solid;
+    .hd{
+        padding: 0 4.2vw;
+        display: flex;
+        align-items: center;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        .num{
+            color: #9FBFE5FE;
+            margin: 0 0 0 10px;
+        }
+    }
+    .bd{
+        padding: 15px 4.2vw;
+        .item{
+            color: #4777de;
+            cursor: pointer;
+            :global(.adm-ellipsis){
+               line-height: 1.8; 
+            }
+        }
+        .empty{
+            display: flex;
+            align-items: center;
+            color: #B1B1B2;
+        }
+    }
+    .ft{
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: #fff;
+        .prevBtn{
+            color: #fff;
+            transform: rotate(90deg);
+        }
+        .nextBtn{
+            color: #fff;
+            transform: rotate(270deg);
+        }
+        .showBox{
+            font-weight: 500;
+            padding: 0 10px;
+        }
+    }
+}

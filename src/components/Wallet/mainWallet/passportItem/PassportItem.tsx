@@ -5,14 +5,13 @@ import styles from './passportItem.module.css';
 import { useTranslation } from 'react-i18next';
 import { Radio } from 'antd-mobile';
 
-const PassportItem = ({ passportInfo, selectedValue, onChange }: any) => {
+const PassportItem = ({ passportInfo }: any) => {
     const { t, i18n } = useTranslation();
 
     return (
         <div className={styles.item}>
             <Radio 
-                checked={selectedValue?.nftID?.toString() === passportInfo?.nftID?.toString()}
-                onChange={onChange}
+                value={passportInfo?.nftID?.toString()}
                 style={{
                     '--icon-size': '18px',
                     '--font-size': '14px',

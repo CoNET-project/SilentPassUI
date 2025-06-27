@@ -1352,9 +1352,9 @@ const RealizationRedeem = async (code: string): Promise<number> => {
 		if (typeof result === 'boolean'|| result === ''|| result?.error ) {
 			return 0
 		}
-		const ret = await waitingPaymentReady(profile.keyID)
-		if (ret.status) {
-			return ret.status
+		const ret = await waitingPaymentStatus()
+		if (ret) {
+			return ret
 		}
 	} catch(ex) {
     	console.log("EX: ", ex);
@@ -1578,7 +1578,7 @@ const getPaypalUrl = async (price: number) => {
 }
 
 let listening: NodeJS.Timeout|null = null
-const waitingPayUrl = `${payment_endpoint}cryptoPayment_waiting`
+const waitingPayUrl = `${payment_endpoint}payment_stripe_waiting`
 
 const _waitingPay = async (wallet: string) => {
 
@@ -1591,22 +1591,6 @@ const _waitingPay = async (wallet: string) => {
 	}
 }
 
-const waitingPaymentReady = (_wallet: string): Promise<any> => new Promise(async resolve => {
-	if (listening) {
-		clearTimeout(listening)
-	}
-	const wallet = _wallet.toLowerCase()
-	const status = await _waitingPay(wallet)
-	if (!status) {
-		return resolve(false)
-	}
-	if (status.status ===1) {
-		return listening = setTimeout(async () => {
-			return resolve(await waitingPaymentReady (wallet))
-		}, 15 * 1000)
-	}
-	resolve(status)
-})
 
 export {
   createOrGetWallet,
@@ -1638,5 +1622,4 @@ export {
   checkLocalStorageNodes,
   storageAllNodes,
   getProfileAssets,
-  waitingPaymentReady
 };

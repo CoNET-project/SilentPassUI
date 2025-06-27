@@ -10,6 +10,7 @@ import { ethers } from 'ethers';
 import {globalAllNodes} from "../../utils/globals"
 import BigNumber from 'bignumber.js';
 import { useTranslation } from 'react-i18next'
+import {transferSolanaSP} from '../../services/passportPurchase'
 
 interface SendParams {
     type: string; 
@@ -120,54 +121,24 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             })
         }
     }
-    const transferSolanaSP=async(fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string)=> {
-        try {
-            setSubLoading(true);
+    const transferSolanaSP_local = async(fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string)=> {
 
-            // 解码私钥并创建 Keypair
-            const fromKeypair = Keypair.fromSecretKey(Bs58.decode(fromBase58PrivateKey));
-            
-            // 创建连接
-            const connection = new Connection(rpcUrl, "confirmed");
-
-            const SP_address = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
-            const SP_Address = new PublicKey(SP_address)
-            const to_address = new PublicKey(toPublicKeyString)
-
-            const sourceAccount = await getOrCreateAssociatedTokenAccount(
-                connection, 
-                fromKeypair,
-                SP_Address,
-                fromKeypair.publicKey
-            )
-
-            const destinationAccount = await getOrCreateAssociatedTokenAccount(
-                connection, 
-                fromKeypair,
-                SP_Address,
-                to_address
-            )
-            const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
-                microLamports: 9000
+		const tx = await transferSolanaSP(toPublicKeyString, amountSol)
+		if (tx.err) {
+			return Modal.alert({
+                bodyClassName:styles.failModalWrap,
+                content: <div className={styles.failModal}>
+                    <Result
+                        status='error'
+                        title='Send failed'
+                    />
+                    <div className={styles.description}>{tx.err}</div>
+                </div>,
+                confirmText:'Close',
             })
-            const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
-                units: 200000
-            })
-            // 构建交易
-            const transaction = new Transaction().add(modifyComputeUnits).add(addPriorityFee).add(
-                createTransferInstruction(
-                    sourceAccount.address,
-                    destinationAccount.address,
-                    fromKeypair.publicKey,
-                    amountSol * 1000000
-                )
-            );
-            const latestBlockHash = await connection.getLatestBlockhash('confirmed')
-            transaction.recentBlockhash = latestBlockHash.blockhash
-            // 发送并确认交易
-            const signature =await connection.sendTransaction(transaction, [fromKeypair])
+		}
 
-            Modal.alert({
+		return Modal.alert({
                 bodyClassName:styles.successModalWrap,
                 content: <div className={styles.successModal}>
                     <Result
@@ -175,36 +146,74 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                         title='Send successful'
                     />
                     <div className={styles.description}>{amount} {type} <br/>has been successfully sent to <Ellipsis direction='middle' content={address} /></div>
-                    <div className={styles.link}><a href={'https://solscan.io/tx/'+signature} target="_blank">View transactions</a></div>
+                    <div className={styles.link}><a href={'https://solscan.io/tx/'+ tx.success} target="_blank">View transactions</a></div>
                 </div>,
                 confirmText:'Close',
                 onConfirm:()=>{setVisible(false)}
             })
+        // try {
+        //     setSubLoading(true);
 
-            setSubLoading(false);
+        //     // 解码私钥并创建 Keypair
+        //     const fromKeypair = Keypair.fromSecretKey(Bs58.decode(fromBase58PrivateKey));
+            
+        //     // 创建连接
+        //     const connection = new Connection(rpcUrl, "confirmed");
+
+        //     const SP_address = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
+        //     const SP_Address = new PublicKey(SP_address)
+        //     const to_address = new PublicKey(toPublicKeyString)
+
+        //     const sourceAccount = await getOrCreateAssociatedTokenAccount(
+        //         connection, 
+        //         fromKeypair,
+        //         SP_Address,
+        //         fromKeypair.publicKey
+        //     )
+
+        //     const destinationAccount = await getOrCreateAssociatedTokenAccount(
+        //         connection, 
+        //         fromKeypair,
+        //         SP_Address,
+        //         to_address
+        //     )
+        //     const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+        //         microLamports: 9000
+        //     })
+        //     const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
+        //         units: 200000
+        //     })
+        //     // 构建交易
+        //     const transaction = new Transaction().add(modifyComputeUnits).add(addPriorityFee).add(
+        //         createTransferInstruction(
+        //             sourceAccount.address,
+        //             destinationAccount.address,
+        //             fromKeypair.publicKey,
+        //             amountSol * 1000000
+        //         )
+        //     );
+        //     const latestBlockHash = await connection.getLatestBlockhash('confirmed')
+        //     transaction.recentBlockhash = latestBlockHash.blockhash
+        //     // 发送并确认交易
+        //     const signature =await connection.sendTransaction(transaction, [fromKeypair])
 
 
-            setTimeout(()=>{handleRefreshSolanaBalances()},20000)
-        } catch (error) {
-            setSubLoading(false);
-            Modal.alert({
-                bodyClassName:styles.failModalWrap,
-                content: <div className={styles.failModal}>
-                    <Result
-                        status='error'
-                        title='Send failed'
-                    />
-                    <div className={styles.description}>{getErrorMessage(error)}</div>
-                </div>,
-                confirmText:'Close',
-            })
-        }
+
+        //     setSubLoading(false);
+
+
+        //     setTimeout(()=>{handleRefreshSolanaBalances()},20000)
+        // } catch (error) {
+        //     setSubLoading(false);
+
+        // }
     }
+
     const handleSend=()=>{
         const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
         const randomSolanaRPC = `https://${_node1.domain}/solana-rpc`;
         if(type=='$SP'){
-            transferSolanaSP(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
+            transferSolanaSP_local(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
         }else{
             transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
         }

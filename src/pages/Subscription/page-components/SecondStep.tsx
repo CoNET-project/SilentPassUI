@@ -21,8 +21,8 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
         <div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{selectedPlan === '12' ? t('passport_Annually') : t('passport_Monthly')}</p>
-              <p style={{ flex: 1, fontSize: '14px', fontWeight: '400', color: '#989899', whiteSpace: 'nowrap' }}>{selectedPlan === '1' ? '30' : '365'} {t('passport_day')}</p>
+              <p style={{ flex: 5, fontSize: '20px', fontWeight: '700' }}>{selectedPlan === '12' ? t('passport_Annually') : selectedPlan === '1' ? t('passport_Monthly') :t('comp-accountlist-SpClub-detail-1') }</p>
+              <p style={{ flex: 1, fontSize: '14px', fontWeight: '400', color: '#989899', whiteSpace: 'nowrap' }}>{selectedPlan === '1' ? '30' : selectedPlan === '12' ? '365': t('passport_unlimit')}  {selectedPlan !== '3100' && t('passport_day')}</p>
             </div>
             <span>{t('comp-RedeemPassport-1device')},{t('passport_unlimitBandweidth')} {price} $SP</span>
           </div>
@@ -68,7 +68,7 @@ export default function SecondStep({ price, gasfee, updateCounter, spInUsd, solI
 
         <div className="summary-table">
           <div>
-            <p>{selectedPlan === '12' ? t('passport_Annually') : t('passport_Monthly')}</p>
+            <p>{selectedPlan === '12' ? t('passport_Annually') : selectedPlan === '1' ? t('passport_Monthly'): t('comp-accountlist-SpClub-detail-1')}</p>
             <p>{price} $SP</p>
           </div>
 

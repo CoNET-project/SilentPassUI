@@ -43,8 +43,6 @@ export default function Support() {
   const { t } = useTranslation();
   
 
-
-
   const optionGroups = useMemo<OptionGroups>(() => ([
     
     {

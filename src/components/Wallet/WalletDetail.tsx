@@ -14,6 +14,7 @@ import { CheckCircleFill } from 'antd-mobile-icons';
 import { useDaemonContext } from './../../providers/DaemonProvider';
 import { getPassportTitle } from "./../../utils/utils";
 import { ReactComponent as CrownBadge } from './assets/GC.svg';
+import { ReactComponent as ArmBand } from './assets/blue-badge.svg';
 
 const WalletDetail = ({}) => {
     const { t, i18n } = useTranslation();
@@ -32,8 +33,8 @@ const WalletDetail = ({}) => {
             <h1 className={styles.title}>
                 {t('wallet-title')}
                 <div className={styles.armBand}>
-                    {getPassportTitle(activePassport) === 'passport_Monthly'?'':''}
-                    {getPassportTitle(activePassport) === 'passport_Annually'?'':''}
+                    {getPassportTitle(activePassport) === 'passport_Monthly'?<ArmBand />:''}
+                    {getPassportTitle(activePassport) === 'passport_Annually'?<ArmBand />:''}
                     {getPassportTitle(activePassport) === 'passport_Infinite'?<CrownBadge />:''}
                 </div>
             </h1>

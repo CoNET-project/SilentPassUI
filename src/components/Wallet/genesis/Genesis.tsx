@@ -8,7 +8,7 @@ import { CoNET_Data } from './../../../utils/globals';
 import { ReactComponent as CrownBadge } from './../assets/GC.svg';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import {getCryptoPay} from './../../../services/subscription';
-import { waitingPaymentReady,changeActiveNFT } from './../../../services/wallets';
+import { waitingPaymentStatus,changeActiveNFT, getSpClubMemberId } from './../../../services/wallets';
 import PayBNB from './../payBnb/PayBNB';
 import PayBSC from './../payBsc/PayBSC';
 import PayALI from './../payAli/PayALI';
@@ -51,12 +51,12 @@ const Genesis = ({}) => {
         setQRWallet(res.wallet)
         setCodeVisible(true);
 
-        const waiting = await waitingPaymentReady (res?.wallet)
-        if (!waiting?.status) {
+        const waiting = await waitingPaymentStatus ();
+        if (!waiting) {
             return ;
         }
-        setSuccessNFTID(waiting.status)
-        changeActiveNFT(waiting.status)
+        setSuccessNFTID(waiting)
+        changeActiveNFT(waiting.toFixed(0));
         setQRWallet('')
         setShowPrice('')
     }

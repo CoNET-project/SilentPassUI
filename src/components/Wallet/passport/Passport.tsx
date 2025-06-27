@@ -8,23 +8,18 @@ import { CoNET_Data } from './../../../utils/globals';
 import { ReactComponent as SpToken } from './../assets/sp-token.svg';
 import { ReactComponent as StripeIcon } from "./../assets/stripe-white.svg";
 import { ReactComponent as PaypalIcon } from "./../assets/paypal.svg";
+import { ReactComponent as ApplePay } from './../assets/Apple_Pay_logo.svg'
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import { getPassportTitle } from "./../../../utils/utils";
-
-interface plan {
-    total: string
-    publicKey: string
-    Solana: string
-    transactionId: string
-    productId: string
-}
+import ApplePayModal from './ApplePayModal';
 
 const Passport = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const [visible, setVisible] = useState<boolean>(false);
-    const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID, activePassport } = useDaemonContext();
+    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport } = useDaemonContext();
     const [payType, setPayType] = useState<number>(1);
+    const [applePayVisible, setApplePayVisible] = useState<boolean>(false);
     const options=[
         {
             label: <div className={styles.spPayBtn}>$SP</div>,
@@ -38,32 +33,26 @@ const Passport = ({}) => {
             label: <div className={styles.paypalPayBtn}><PaypalIcon /></div>,
             value: 4,
         },
+        ...(isIOS
+            ? [{
+                label: <div className={styles.applePayBtn}><ApplePay /></div>,
+                value: 999,
+              }]
+            : []
+        )
     ];
 
     const handleChange=(value: (string | number)[])=>{
         setSelectedPlan(String(value[0]));
     }
     const handlePurchase=(type: number)=> {
-        setPaymentKind(type);
-        navigate("/subscription");
-    }
-    const startSubscription = () => {
-        if (!profiles ||profiles.length < 2) {
-            return
+        if(type!==999){
+            setPaymentKind(type);
+            navigate("/subscription");
+        }else{
+            setVisible(false);
+            setApplePayVisible(true);
         }
-        const planObj: plan = {
-            publicKey: profiles[0].keyID,
-            Solana: profiles[1].keyID,
-            total: (isIOS?(selectedPlan === '12' ? '2': selectedPlan):selectedPlan),
-            transactionId: '',
-            productId: ''
-        }
-        const base64VPNMessage = btoa(JSON.stringify(planObj));
-        window?.webkit?.messageHandlers["pay"]?.postMessage(base64VPNMessage);
-        if(!isIOS){
-            setPaymentKind(3);
-        }
-        navigate("/subscription");
     }
 
     return (
@@ -88,46 +77,7 @@ const Passport = ({}) => {
                 <div className={styles.modalWrap}>
                     <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('passport-pay-title')}</NavBar>
                     <div className={styles.bd}>
-                        {isIOS?<div className={styles.iosType}>
-                            <div className={styles.title}>{t('passport-pay-plan-ios-title')}</div>
-                            <div className={styles.specs}>
-                                <CheckList value={[selectedPlan]} onChange={handleChange}>
-                                    <CheckList.Item value='12'>
-                                        <div className={styles.specItem}>
-                                            <div className={styles.name}>{t('passport-pay-plan-ios-plan-name-1')}</div>
-                                            <div className={styles.price}>$32.49 / {t('passport-pay-plan-ios-plan-unit-1')}</div>
-                                            <div className={styles.desc}>{t('passport-pay-plan-ios-plan-desc-1')}</div>
-                                        </div>
-                                    </CheckList.Item>
-                                    <CheckList.Item value='1'>
-                                        <div className={styles.specItem}>
-                                            <div className={styles.name}>{t('passport-pay-plan-ios-plan-name-2')}</div>
-                                            <div className={styles.price}>$3.29 / {t('passport-pay-plan-ios-plan-unit-2')}</div>
-                                            <div className={styles.desc}>{t('passport-pay-plan-ios-plan-desc-2')}</div>
-                                        </div>
-                                    </CheckList.Item>
-                                </CheckList>
-                            </div>
-                            {(getPassportTitle(activePassport)==='passport_Freemium' && activePassport?.expiresDays!=='0')?<>
-                                <div className={styles.tips}>{t('passport-pay-plan-ios-tips-1')}</div>
-                                <div className={styles.warning}><ExclamationTriangleOutline className={styles.icon} />{t('passport-pay-plan-ios-tips-2')}</div>
-                            </>:''}
-                            <div className={styles.subscription}>
-                                <Button className={styles.btn} block fill='solid' onClick={() => startSubscription()}>{t('passport-pay-btn')}</Button>
-                            </div>
-                            <div className={styles.extraInfo}>
-                                <div className={styles.title}>{t('passport-pay-plan-ios-extra-title')}:</div>
-                                <ul className={styles.list}>
-                                    <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-1')}</span></li>
-                                    <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-2')}</span></li>
-                                    <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-3')}</span></li>
-                                    <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-4')}</span></li>
-                                    <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-5')} <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank">{t('passport-pay-plan-ios-extra-item-6')}</a>, {t('passport-pay-plan-ios-extra-item-7')} <a href="https://silentpass.io/privacy-cookies/" target="_blank">{t('passport-pay-plan-ios-extra-item-8')}</a></span></li>
-                                </ul>
-                            </div>
-                        </div>:''}
-
-                        {!isIOS?<div className={styles.pcType}>
+                        <div className={styles.pcType}>
                             <div className={styles.title}>{t('passport-pay-plan-pc-title')}</div>
                             <div className={styles.specs}>
                                 <CheckList value={[selectedPlan]} onChange={handleChange}>
@@ -170,11 +120,12 @@ const Passport = ({}) => {
                             <div className={styles.operation}>
                                 <Button className={styles.btn} block color='primary' size='large' onClick={()=>{handlePurchase(payType)}}>{t('wallet-account-buy-btn')}</Button>
                             </div>
-                        </div>:''}
+                        </div>
 
                     </div>
                 </div>
             </Popup>
+            <ApplePayModal visible={applePayVisible} setVisible={setApplePayVisible} />
         </>     
     );
 };

@@ -6,7 +6,7 @@ import { List,Popup,NavBar,Empty,Radio,SpinLoading,Toast } from 'antd-mobile';
 import { LockFill,ExclamationCircleFill } from 'antd-mobile-icons';
 import { CoNET_Data } from './../../../utils/globals';
 import { changeActiveNFT } from './../../../services/wallets';
-import { ReactComponent as ConetToken } from './../assets/conet-token.svg';
+import { ReactComponent as ConetToken } from './../assets/main-wallet.svg';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import PassportItem from './passportItem/PassportItem';
 import { ethers } from 'ethers';

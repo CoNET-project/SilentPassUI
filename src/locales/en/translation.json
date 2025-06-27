@@ -332,6 +332,20 @@
 	"wallet-account-buy-success-desc-1":"You now have your encrypted access pass. Start exploring the open internet securely and freely.",
 	"wallet-account-buy-success-desc-2":"Your Passport ID",
 	"wallet-account-buy-success-close":"Close",
-	"wallet-account-buy-btn":"Continue"
+	"wallet-account-buy-btn":"Continue",
+	"passport-pay-plan-apple-modal-title":"Genesis Circle NFT",
+	"passport-pay-plan-apple-modal-desc-1":"Unlock Lifetime Access to Silent Pass VPN",
+	"passport-pay-plan-apple-modal-desc-2":"Your exclusive NFT Passport for unlimited private browsing.",
+	"passport-pay-plan-apple-modal-spec-label":"One-Time Payment",
+	"passport-pay-plan-apple-modal-spec-tag-1":"1 Device",
+	"passport-pay-plan-apple-modal-spec-tag-2":"No Renewal",
+	"passport-pay-plan-apple-modal-spec-tag-3":"Lifetime Access",
+	"passport-pay-plan-apple-modal-btn":"Start Purchase",
+	"passport-pay-plan-apple-modal-extra-title":"Purchase Information",
+	"passport-pay-plan-apple-modal-extra-list-1":"This is a one-time purchase.",
+	"passport-pay-plan-apple-modal-extra-list-2":"No subscription or renewal.",
+	"passport-pay-plan-apple-modal-extra-list-3":"Includes lifetime VPN access for one device.",
+	"passport-pay-plan-apple-modal-extra-list-4":"Payment will be charged to your Apple ID at confirmation.",
+	"passport-pay-plan-apple-modal-extra-list-5":"By purchasing, you agree to Apple’s Terms of Use and Privacy Policy."
 
 }

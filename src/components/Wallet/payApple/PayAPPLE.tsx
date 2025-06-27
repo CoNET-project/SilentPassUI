@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './../payBnb/payBnb.module.css';
 import { useTranslation } from 'react-i18next';
-import { ReactComponent as ApplePay } from './../assets/Apple_Pay_logo.svg'
+import { ReactComponent as ApplePay } from './../assets/Apple_Pay_logo.svg';
 import { Modal } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 

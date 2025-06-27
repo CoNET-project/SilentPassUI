@@ -337,5 +337,19 @@
 	"wallet-account-buy-success-desc-1":"您已拥有专属的加密通行证。现在可以安全隐私、自由地访问全球互联网",
 	"wallet-account-buy-success-desc-2":"您的SP通行证号码是",
 	"wallet-account-buy-success-close":"关闭",
-	"wallet-account-buy-btn":"继续"
+	"wallet-account-buy-btn":"继续",
+	"passport-pay-plan-apple-modal-title":"Genesis会员NFT",
+	"passport-pay-plan-apple-modal-desc-1":"解锁Silent Pass VPN的终身访问权限",
+	"passport-pay-plan-apple-modal-desc-2":"你的专属 NFT 通行证，畅享无限制的私人浏览体验。",
+	"passport-pay-plan-apple-modal-spec-label":"一次性付款",
+	"passport-pay-plan-apple-modal-spec-tag-1":"1 台设备",
+	"passport-pay-plan-apple-modal-spec-tag-2":"无需续费",
+	"passport-pay-plan-apple-modal-spec-tag-3":"终身使用权",
+	"passport-pay-plan-apple-modal-btn":"开始购买",
+	"passport-pay-plan-apple-modal-extra-title":"购买信息",
+	"passport-pay-plan-apple-modal-extra-list-1":"这是一次性购买",
+	"passport-pay-plan-apple-modal-extra-list-2":"无需订阅或续费",
+	"passport-pay-plan-apple-modal-extra-list-3":"包含一台设备的终身 VPN 使用权限",
+	"passport-pay-plan-apple-modal-extra-list-4":"确认后将通过你的 Apple ID 扣款",
+	"passport-pay-plan-apple-modal-extra-list-5":"购买即表示你同意 Apple 的《使用条款》和《隐私政策》"
 }

@@ -7,6 +7,7 @@ import SimpleLoadingRing from '../SimpleLoadingRing';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg";
 import { ReactComponent as PaypalIcon } from "./assets/paypal.svg";
+import { ReactComponent as ApplePay } from "./assets/Apple_Pay_logo.svg";
 import { useTranslation } from 'react-i18next'
 
 interface plan {
@@ -181,62 +182,9 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 		  {
 			!isRedeemProcessLoading &&
 			<>
-				 {
-					isIOS &&
-					<>
-						{/* <div className="redeem-divider">
-							<div className="line"></div>
-							<span>or</span>
-							<div className="line"></div>
-						</div> */}
-					<div className="passport-options">
-						<p>Unlock the full power of Silent Pass VPN with the Silent Pass Passport</p>
-						<div className="option-list">
-							
-							<button className={`option ${selectedPlan === '12' ? 'selected' : ''}`} onClick={() => handleChooseOption('12')}>
-								{/* <div>
-									<p>Annual</p>
-									<span>1 Device</span>
-									<span style={{'textAlign': 'left'}}>12 months VPN service</span>
-								</div> */}
-								<div>
-									<span >Annual Plan (12 Months)</span>
-									<p>$2.71 / month / 1 Device</p>
-									<span style={{'textAlign': 'left'}}>Billed $32.49 for 12 months, then renews yearly</span>
-								</div>
-							</button>
-							<button className={`option ${selectedPlan === '1' ? 'selected' : ''}`} onClick={() => handleChooseOption('1')}>
-								
-								<div>
-									<span>Monthly Plan (1 Month)</span>
-									<p>$3.29 / month / 1 Device</p>
-									<span style={{'textAlign': 'left'}}>Billed $3.29 every month</span>
-								</div>
-							</button>
-						</div>
-					</div>
-					<div className="redeem-divider">
-						<div className="line"></div>
-					</div>
-					<div className="subscription">
-						<p>7 days Free Trial!</p>
-						<button onClick={() => startSubscription()}>Start subscription</button>
-						<div className="sub-details">
-						<p>Subscription details:</p>
-						<ul>
-							<li>Your Apple ID account will be charged when you start subscription.</li>
-							<li>Your subscription will automatically renew at the end of each billing period unless it is canceled at least 24 hours before the expiry date.</li>
-							<li>You can manage and cancel your subscriptions by going to your App Store account settings after purchase.</li>
-							<li>Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.</li>
-							<li>By subscribing, you agree to the <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" style={{color:"lightblue"}}>Apple’s Terms of Use</a>, and <a href="https://silentpass.io/privacy-cookies/" style={{color:"lightblue"}} target="_blank">Privacy Policy.</a></li>
-						</ul>
-						</div>
-					</div>
-					</>
-				}
-				{
-					!isIOS &&
-						<>
+				
+				
+						
 
 							<div className="passport-options">
 								<p>{t('comp-RedeemPassport-choosePlan')} </p>
@@ -283,9 +231,19 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 								</div>
 								
 							</div>
+							<div style={{padding:"1rem 0"}} id="outer">
+								{
+									isIOS &&
+									<div className="inner" style={{marginTop: "-1rem"}}>
+										<button style={{backgroundColor: "dimgray"}} className="redeem-button paypal" onClick={startSubscription}>
+											<ApplePay style={{width: "3.2rem"}}/>
+										</button>
+									</div>
+								}
+							</div>
 							
-						</>
-				}
+						
+				
 			</>
 		  }
 

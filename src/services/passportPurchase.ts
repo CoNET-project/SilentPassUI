@@ -13,7 +13,7 @@ import {
 	payment_endpoint,
 	apiv4_endpoint
 } from "../utils/constants"
-import {waitingPaymentReady} from './wallets'
+import {waitingPaymentStatus} from './wallets'
   import { ethers } from "ethers"
   import Bs58 from "bs58";
   import contracts from "../utils/contracts";
@@ -21,10 +21,10 @@ import {waitingPaymentReady} from './wallets'
   import { CoNET_Data } from "../utils/globals";
   import {epoch_info_ABI} from "../utils/abis"
   import nacl from 'tweetnacl'
-  
-  const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q"
-  const spDecimalPlaces = 6;
-  
+  import {allNodes} from './mining'
+
+  import { createTransferInstruction,getOrCreateAssociatedTokenAccount, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction } from "@solana/spl-token"
+
   interface OracleData {
 	timeStamp: number;
 	data: spOracle | null;
@@ -39,7 +39,8 @@ import {waitingPaymentReady} from './wallets'
 	from: string;
 	amount: string;
   }[] = [];
-  
+const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q"
+  const spDecimalPlaces = 6;
   export const getOracle = async () => {
 	const timeStamp = new Date().getTime();
   
@@ -154,72 +155,102 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 	return completedTx;
   }
   
-  const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
-		microLamports: 9000
-	})
-	const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
-		units: 200000
-	})
+const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+	microLamports: 9000
+})
+const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
+	units: 200000
+})
 
-  export const purchasePassport = (_amount: string, allNodes: nodes_info[]): Promise<undefined|string> => new Promise(async executor => {
-	if (!CoNET_Data) {
-	   return executor(undefined)
+
+export const transferSolanaSP = async(toPublicKeyString: string, _amount: number): Promise<{err?: string, success?: string}> => {
+	if (!CoNET_Data?.profiles) {
+		return {err: 'not ready'}
 	}
-	return executor('2cCyqNKdMCHKm8htLopues7eDNze84MV4u6ta5Vh8ch82ajRoU5QHHQ2mQBqDLvMDu8jaqf165uTDMkm1dyZCkdM')
+	const amount = ethers.parseUnits(_amount.toFixed(6), spDecimalPlaces)
+	const profile = CoNET_Data.profiles[1]
+	const privateKey = profile.privateKeyArmor
+	const privatekey_array = Bs58.decode(privateKey)
+	const solana_account_keypair = Keypair.fromSecretKey(
+		privatekey_array
+	)
+	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
+	const solanaConnection = new Connection(
+		`https://${_node1.domain}/solana-rpc`,
+		"confirmed"
+	)
+	const SP_Address = new PublicKey(contracts.SPToken.address)
+	const to_address = new PublicKey(toPublicKeyString)
+	const sourceAccount = await getOrCreateAssociatedTokenAccount(
+		solanaConnection, 
+		solana_account_keypair,
+		SP_Address,
+		solana_account_keypair.publicKey
+	)
 
-    // const privateKey = CoNET_Data.profiles[1]?.privateKeyArmor
-	// const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
-	// const solanaConnection = new Connection(
-	// 	`https://${_node1.domain}/solana-rpc`,
-	// 	"confirmed"
-	// )
-	// const SPToken = new PublicKey(contracts.SPToken.address)
-	// const amount = ethers.parseUnits(_amount, spDecimalPlaces)
-	// let transactionSignature
-	// try {
+	const recipientTokenAddress = await getAssociatedTokenAddress(
+		SP_Address,
+		to_address
+	)
 
-	//   const solana_account_privatekey_array = Bs58.decode(privateKey);
-	//   const solana_account_keypair = Keypair.fromSecretKey(
-	// 	solana_account_privatekey_array
-	//   );
-  
-	//   let sourceAccount = await getOrCreateAssociatedTokenAccount(
-	// 	solanaConnection,
-	// 	solana_account_keypair,
-	// 	SPToken,
-	// 	solana_account_keypair.publicKey
-	//   );
-  
-	//   let destinationAccount = await getOrCreateAssociatedTokenAccount(
-	// 	solanaConnection,
-	// 	solana_account_keypair,
-	// 	SPToken,
-	// 	new PublicKey(sp_team)
-	//   );
-  
-	//   const transferTx = new Transaction().add(modifyComputeUnits).add(addPriorityFee)
-  
-	//   transferTx.add(
-	// 	createTransferInstruction(
-	// 	  sourceAccount.address,
-	// 	  destinationAccount.address,
-	// 	  solana_account_keypair.publicKey,
-	// 	  amount
-	// 	)
-	//   )
-  
-	//    	const latestBlockHash = await solanaConnection.getLatestBlockhash('confirmed')
-    // 	transferTx.recentBlockhash = latestBlockHash.blockhash
-  
-	//   transactionSignature = await solanaConnection.sendTransaction(transferTx, [solana_account_keypair])
-	  
-	  
-	  
-	// } catch (error: any) {
+	const transaction = new Transaction()
+
+	const accountInfo = await solanaConnection.getAccountInfo(recipientTokenAddress)
+	if (!accountInfo) {
+		transaction.add(
+			createAssociatedTokenAccountInstruction(
+				solana_account_keypair.publicKey,         // payer
+				recipientTokenAddress,    					// ATA address
+				to_address,          						// wallet owner
+				SP_Address                      			// token mint
+			)
+		)
+	}
+
+	// 构建交易
+	transaction.add(modifyComputeUnits).add(addPriorityFee).add(
+		createTransferInstruction(
+			sourceAccount.address,
+			recipientTokenAddress,
+			solana_account_keypair.publicKey,
+			amount
+		)
+	)
+	let signature
+	try {
 		
-	// }
-	// return executor(transactionSignature)
-  })
+		const latestBlockHash = await solanaConnection.getLatestBlockhash('confirmed')
+		transaction.recentBlockhash = latestBlockHash.blockhash
+		// 发送并确认交易
+		signature = await solanaConnection.sendTransaction(transaction, [solana_account_keypair])
+		return {success: signature}
+	} catch (ex: any) {
+		await setTimeout(() => new Promise(executor => executor(true)), 5000)
+		if (signature) {
+			const info = await solanaConnection.getSignatureStatus(signature)
+			if (info) {
+				return {success: signature}
+			}
+		}
+		return {err: ex.message}
+	}
+}
+
+
+export const purchasePassport = async (_amount: string): Promise<number> => {
+
+	const result = await transferSolanaSP(sp_team, parseFloat(_amount))
+
+	if (result.err||!result.success) {
+		return 0
+	}
+	const post = await postPurchasePassport(result.success)
+	if (!post) {
+		return 0
+	}
+	
+	return post
+}
   
   
   const waitingStatusChange = (_contract: ethers.Contract, profileKeyID: string) => new Promise (async (resolve, reject) => {
@@ -298,9 +329,9 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 		const status = result?.status
 		if (status) {
 			
-			const waiting = await waitingPaymentReady(profile.keyID)
-			if (waiting?.status) {
-				return waiting.status
+			const waiting = await waitingPaymentStatus()
+			if (waiting) {
+				return waiting
 			}
 			
 		}

@@ -236,16 +236,22 @@ export const transferSolanaSP = async(toPublicKeyString: string, _amount: number
 	}
 }
 
-
+let purchasePassportProcess = false
 export const purchasePassport = async (_amount: string): Promise<number> => {
-
+	if (purchasePassportProcess) {
+		return 0
+	}
+	purchasePassportProcess = true
 	const result = await transferSolanaSP(sp_team, parseFloat(_amount))
 
 	if (result.err||!result.success) {
+		purchasePassportProcess = false
 		return 0
 	}
 	const post = await postPurchasePassport(result.success)
+	purchasePassportProcess = false
 	if (!post) {
+
 		return 0
 	}
 	

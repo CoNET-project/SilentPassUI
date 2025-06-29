@@ -367,6 +367,7 @@ input::-webkit-inner-spin-button {
     background: #282930;
     border-color: #282930;
     color: #fff;
+	max-width: 370px;
     font-weight: 500;
     margin-top: 0.5rem;
   }

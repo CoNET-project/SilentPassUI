@@ -3,15 +3,16 @@
     :global(.adm-button:not(.adm-button-default)) {
         background: #28292e;
         border-color: #28292e;
-        font-weight: 500;
+        font-weight: 600;
         padding: 10px 12px;
+		font-size: 15px;
     }
     .redeem{
         .title{
             text-align: left;
             color: #fff;
-            font-size: 18px;
-            font-weight: 500;
+            font-size: 15px;
+            font-weight: 600;
             line-height: 1;
         }
         .codeInput{
@@ -43,5 +44,4 @@
     :global(.adm-center-popup-body) {
         background: #1b1b1c;
     }
-    
 }

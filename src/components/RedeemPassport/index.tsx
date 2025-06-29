@@ -31,7 +31,7 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
   const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
   const [spRewordEnable, setSpRewordEnable] = useState(false)
   const [spRewordloading, setSpRewordloading] = useState(true)
-  const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID,  } = useDaemonContext();
+  const { isIOS, profiles, selectedPlan, setSelectedPlan, successNFTID, setPaymentKind, setSuccessNFTID, isLocalProxy } = useDaemonContext();
   const { t, i18n } = useTranslation()
   const navigate = useNavigate();
 
@@ -120,7 +120,7 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 
   return (
     <>
-      <div className={`redeem-dropdown ${isOpen ? "is-open" : ""} ${isIOS ? "is-ios": ""}`}>
+      <div className={`redeem-dropdown ${isOpen ? "is-open" : ""} ${isIOS && !isLocalProxy ? "is-ios": ""}`}>
         {/* Dropdown Button */}
         <button className="redeem-header cta-button" onClick={() => setIsOpen(!isOpen)}>
           <div className="redeem-header-content">
@@ -151,7 +151,7 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 					{
 						<>
 							{
-								isIOS ? <label className="redeem-label">Already a Subscriber?</label>
+								isIOS && !isLocalProxy ? <label className="redeem-label">Already a Subscriber?</label>
 								:  <label className="redeem-label">{t('comp-RedeemPassport-imput')} </label>
 							}
 							<p className="redeem-label">{t('comp-RedeemPassport-detail')}</p>
@@ -233,7 +233,7 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 							</div>
 							<div style={{padding:"1rem 0"}} id="outer">
 								{
-									isIOS &&
+									isIOS && !isLocalProxy && 
 									<div className="inner" style={{marginTop: "-1rem"}}>
 										<button style={{backgroundColor: "dimgray"}} className="redeem-button paypal" onClick={startSubscription}>
 											<ApplePay style={{width: "3.2rem"}}/>

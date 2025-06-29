@@ -113,7 +113,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	}
 
 	  const startApplePay = () => {
-		if (!profiles ||profiles.length < 2||!isIOS) {
+		if (!profiles ||profiles.length < 2|| !isIOS) {
 			return
 		}
 
@@ -421,7 +421,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 															<StripeIcon/>
 														</a>
 														{
-															isIOS &&
+															isIOS && !isLocalProxy &&
 															<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center', width: '4.5rem'}} onClick={startApplePay}>
 																<ApplePay style={{width: "3.2rem"}}/>
 															</a>

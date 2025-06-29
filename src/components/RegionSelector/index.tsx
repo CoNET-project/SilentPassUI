@@ -22,9 +22,10 @@ interface RegionSelectorProps {
   switchComp?: boolean;
   switchState?: boolean;
   isLocalServer: boolean
+  ios: boolean
 }
 
-export default function RegionSelector({ regionCode, icon, title, action, children, switchComp, isLocalServer, switchState = false, toggle = false, theme = false, showArrow = true }: RegionSelectorProps) {
+export default function RegionSelector({ regionCode, icon, title, action, children, switchComp, isLocalServer, switchState = false, toggle = false, theme = false, showArrow = true, ios }: RegionSelectorProps) {
     const { t, i18n } = useTranslation()
 
   return (
@@ -46,19 +47,19 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
         {t('region_' + regionCode)}
       </div>
 	  {
-		 isLocalServer&&
+		 (isLocalServer||ios) &&
 			<div className="children">
 				<RuleButton />
 				{children}
 				{
-				showArrow && (
-					<div className={`chevron ${toggle ? 'rotated' : ''}`}>
-					<ChevronArrow />
-					</div>
-				)
+					showArrow && (
+						<div className={`chevron ${toggle ? 'rotated' : ''}`}>
+						<ChevronArrow />
+						</div>
+					)
 				}
 				{
-				switchComp && <Switch state={switchState} icon={theme ? (switchState ? "/assets/dark-theme-icon.svg" : "/assets/light-theme-icon.svg") : undefined} />
+					switchComp && <Switch state={switchState} icon={theme ? (switchState ? "/assets/dark-theme-icon.svg" : "/assets/light-theme-icon.svg") : undefined} />
 				}
 			</div>
 	  }

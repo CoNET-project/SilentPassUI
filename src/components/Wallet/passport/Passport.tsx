@@ -17,7 +17,7 @@ const Passport = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const [visible, setVisible] = useState<boolean>(false);
-    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport } = useDaemonContext();
+    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy } = useDaemonContext();
     const [payType, setPayType] = useState<number>(1);
     const [applePayVisible, setApplePayVisible] = useState<boolean>(false);
     const options=[
@@ -33,7 +33,7 @@ const Passport = ({}) => {
             label: <div className={styles.paypalPayBtn}><PaypalIcon /></div>,
             value: 4,
         },
-        ...(isIOS
+        ...(isIOS && !isLocalProxy
             ? [{
                 label: <div className={styles.applePayBtn}><ApplePay /></div>,
                 value: 999,

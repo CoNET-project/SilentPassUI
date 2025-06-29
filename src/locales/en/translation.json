@@ -270,8 +270,8 @@
 	"zh": "Chinese",
 
 	"wallet-title":"My Account",
-	"wallet-redeem-btn":"Redeem",
-	"wallet-checkin-btn":"Check in",
+	"wallet-redeem-btn":"Redeem Now",
+	"wallet-checkin-btn":"Daily Check in",
 	"wallet-checkin-btn-warning": "Hold $25 worth of $SP to check in daily and earn rewards",
 	"wallet-redeem-code":"Redeem Code",
 	"wallet-redeem-apply-btn":"Apply",

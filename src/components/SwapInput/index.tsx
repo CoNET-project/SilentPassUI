@@ -471,10 +471,13 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
                 <SpinLoading style={{ '--size': '48px' }} />
                 <div className={styles.text}>{t('comp-comm-LoadingRing')}</div>
             </div>:''}
-            <div style={{color:'green',margin:'5px 0 0'}}>{t('comp-SwapInput-tip-6')}</div>
-            <Button className="swap-confirm-btn" onClick={confirmClick} loading={isRedeemProcessLoading} block color='primary' size='large' disabled={isDisabled()}>
-                {t('comp-SwapInput-confirm')}
-            </Button>
+            <div style={{color:'gery',margin:'5px 0 0'}}>{t('comp-SwapInput-tip-6')}</div>
+			
+				<Button className="swap-confirm-btn" onClick={confirmClick} loading={isRedeemProcessLoading} block color='primary' size='large' disabled={isDisabled()}>
+					{t('comp-SwapInput-confirm')}
+				</Button>
+			
+            
             <div style={{background:"#191919", borderRadius:"8px", padding:"4px", marginTop: "2rem", marginBottom:"24px" }}>
                 <div style={{display:"flex"}}>
                     <p className="tab-selector" style={{background: tabSelector === "tokens" ? "#3F3F40" : "none"}} onClick={()=> setTabSelector('tokens')}>{t('comp-accountlist-assets')}</p>

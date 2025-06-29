@@ -303,21 +303,23 @@ const Filter=({visible, setVisible}:FilterProps)=> {
 				
 				//			Desktop
 			if (isLocalProxy) {
-				await sendRule(stringifiedVPNMessageObject)
+				return await sendRule(stringifiedVPNMessageObject)
 			}
 			
 			
 		
-			if (window?.webkit) {
-				//window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
 			
-			}
 			//	@ts-ignore		Android
 			if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
 				
 				const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
 				//	@ts-ignore
 				// AndroidBridge.receiveMessageFromJS(base)
+				return
+			}
+
+			if (window?.webkit) {
+				window?.webkit?.messageHandlers["rule"].postMessage(base64VPNMessage)
 				
 			}
 				

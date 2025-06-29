@@ -275,8 +275,8 @@
 	"zh": "中文",
 
 	"wallet-title":"我的账号",
-	"wallet-redeem-btn":"订阅",
-	"wallet-checkin-btn":"签到",
+	"wallet-redeem-btn":"立即兑换",
+	"wallet-checkin-btn":"每日打卡",
 	"comp-RedeemPassport-25usdRedeem": "持有 $25美元 等值的$SP 即可每日打卡领取奖励",
 	"wallet-redeem-code":"兑换码",
 	"wallet-redeem-apply-btn":"提交",

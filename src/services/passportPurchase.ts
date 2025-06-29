@@ -155,12 +155,12 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 	return completedTx;
   }
   
-const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
-	microLamports: 9000
-})
-const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
-	units: 200000
-})
+// const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+// 	microLamports: 9000
+// })
+// const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
+// 	units: 200000
+// })
 
 
 export const transferSolanaSP = async(toPublicKeyString: string, _amount: number): Promise<{err?: string, success?: string}> => {
@@ -208,7 +208,7 @@ export const transferSolanaSP = async(toPublicKeyString: string, _amount: number
 	}
 
 	// 构建交易
-	transaction.add(modifyComputeUnits).add(addPriorityFee).add(
+	transaction.add(
 		createTransferInstruction(
 			sourceAccount.address,
 			recipientTokenAddress,
@@ -223,6 +223,7 @@ export const transferSolanaSP = async(toPublicKeyString: string, _amount: number
 		transaction.recentBlockhash = latestBlockHash.blockhash
 		// 发送并确认交易
 		signature = await solanaConnection.sendTransaction(transaction, [solana_account_keypair])
+		await new Promise(executor => setTimeout(() => executor(true), 5000))
 		return {success: signature}
 	} catch (ex: any) {
 		await setTimeout(() => new Promise(executor => executor(true)), 5000)

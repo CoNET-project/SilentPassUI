@@ -29,7 +29,7 @@ const Referrals = ({}) => {
                     <div className={styles.icon}><img src={ReferralIcon} /></div>
                     <div className={styles.text}>
                         <div className={styles.title}>{t('referrals-title')}</div>
-                        <div className={styles.subTitle}>{t('referrals-extra-title')}</div>
+                        {/*<div className={styles.subTitle}>{t('referrals-extra-title')}</div>*/}
                     </div>
                 </div>
             </List.Item>

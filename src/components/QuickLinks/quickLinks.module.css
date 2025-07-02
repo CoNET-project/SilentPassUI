@@ -1,0 +1,19 @@
+.quickLinks{
+    :global(.adm-floating-bubble-button){
+        z-index: 100002;
+    }
+}
+.quickLinksPopup{
+    z-index: 100003;
+    :global(.adm-popup-body){
+        background: #1f1f1f;
+    }
+}
+.linkModal{
+    padding: 30px 4vw 20px;
+    .linkItem{
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+}

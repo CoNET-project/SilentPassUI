@@ -150,7 +150,7 @@ const Genesis = ({}) => {
                                 <PayWECHAT payClick={payClick} />
                             </Grid.Item>
                             <Grid.Item>
-                                { !isIOS &&  <PayAPPLE parentVisible={visible} setParentVisible={setVisible} appleVisible={appleVisible} setAppleVisible={setAppleVisible} /> }
+                                { isIOS &&  <PayAPPLE parentVisible={visible} setParentVisible={setVisible} appleVisible={appleVisible} setAppleVisible={setAppleVisible} /> }
                             </Grid.Item>
                             <Grid.Item>
                             </Grid.Item>

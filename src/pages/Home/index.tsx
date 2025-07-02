@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
 import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
+import QuickLinks from "../../components/QuickLinks/QuickLinks";
 import { getServerIpAddress } from "../../api"
 import bannaer from './assets/bannerv1_en.gif'
 import bannaer_cn from './assets/bannerv1_cn.gif'
@@ -477,6 +478,8 @@ const handleTogglePower = async () => {
           </>
         )}
       </div>
+
+      {/*<QuickLinks />*/}
 
       <Footer />
 

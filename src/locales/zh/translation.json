@@ -351,5 +351,15 @@
 	"passport-pay-plan-apple-modal-extra-list-2":"无需订阅或续费",
 	"passport-pay-plan-apple-modal-extra-list-3":"包含一台设备的终身 VPN 使用权限",
 	"passport-pay-plan-apple-modal-extra-list-4":"确认后将通过你的 Apple ID 扣款",
-	"passport-pay-plan-apple-modal-extra-list-5":"购买即表示你同意 Apple 的《使用条款》和《隐私政策》"
+	"passport-pay-plan-apple-modal-extra-list-5":"购买即表示你同意 Apple 的《使用条款》和《隐私政策》",
+	"wallet-receive-code-tips-1":"必须选择代币",
+	"wallet-receive-code-tips-2":"必须填写数量",
+	"wallet-receive-code-tips-3":"数量必须大于0",
+	"wallet-receive-code-title-1":"确认收款码",
+	"wallet-receive-code-title-2":"收款码",
+	"wallet-receive-code-confirm":"确认",
+	"wallet-receive-code-label-1":"代币",
+	"wallet-receive-code-label-2":"指定数量",
+	"wallet-receive-code-label-3":"数量",
+	"wallet-receive-code-address-label":"钱包地址"
 }

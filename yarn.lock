@@ -6265,6 +6265,15 @@ fraction.js@^4.3.7:
   resolved "https://registry.npmjs.org/fraction.js/-/fraction.js-4.3.7.tgz"
   integrity sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==
 
+framer-motion@^12.23.0:
+  version "12.23.0"
+  resolved "https://registry.npmmirror.com/framer-motion/-/framer-motion-12.23.0.tgz#220d5ab0ca9b3e2d10d69a5aa5f6d7badcbf328e"
+  integrity sha512-xf6NxTGAyf7zR4r2KlnhFmsRfKIbjqeBupEDBAaEtVIBJX96sAon00kMlsKButSIRwPSHjbRrAPnYdJJ9kyhbA==
+  dependencies:
+    motion-dom "^12.22.0"
+    motion-utils "^12.19.0"
+    tslib "^2.4.0"
+
 framer-motion@^12.4.7:
   version "12.4.7"
   resolved "https://registry.npmjs.org/framer-motion/-/framer-motion-12.4.7.tgz"
@@ -6692,6 +6701,11 @@ html-webpack-plugin@^5.5.0:
     lodash "^4.17.21"
     pretty-error "^4.0.0"
     tapable "^2.0.0"
+
+html5-qrcode@^2.3.8:
+  version "2.3.8"
+  resolved "https://registry.npmmirror.com/html5-qrcode/-/html5-qrcode-2.3.8.tgz#0b0cdf7a9926cfd4be530e13a51db47592adfa0d"
+  integrity sha512-jsr4vafJhwoLVEDW3n1KvPnCCXWaQfRng0/EEYk1vNcQGcG/htAdhJX0be8YyqMoSz7+hZvOZSTAepsabiuhiQ==
 
 htmlparser2@^6.1.0:
   version "6.1.0"
@@ -8510,6 +8524,13 @@ mkdirp@~0.5.1:
   dependencies:
     minimist "^1.2.6"
 
+motion-dom@^12.22.0:
+  version "12.22.0"
+  resolved "https://registry.npmmirror.com/motion-dom/-/motion-dom-12.22.0.tgz#aeb06948fa306590ece081af5a73a79476ce85e2"
+  integrity sha512-ooH7+/BPw9gOsL9VtPhEJHE2m4ltnhMlcGMhEqA0YGNhKof7jdaszvsyThXI6LVIKshJUZ9/CP6HNqQhJfV7kw==
+  dependencies:
+    motion-utils "^12.19.0"
+
 motion-dom@^12.4.5:
   version "12.4.5"
   resolved "https://registry.npmjs.org/motion-dom/-/motion-dom-12.4.5.tgz"
@@ -8521,6 +8542,11 @@ motion-utils@^12.0.0:
   version "12.0.0"
   resolved "https://registry.npmjs.org/motion-utils/-/motion-utils-12.0.0.tgz"
   integrity sha512-MNFiBKbbqnmvOjkPyOKgHUp3Q6oiokLkI1bEwm5QA28cxMZrv0CbbBGDNmhF6DIXsi1pCQBSs0dX8xjeER1tmA==
+
+motion-utils@^12.19.0:
+  version "12.19.0"
+  resolved "https://registry.npmmirror.com/motion-utils/-/motion-utils-12.19.0.tgz#a7cc102f756e97093793cac7c218533d3b27f509"
+  integrity sha512-BuFTHINYmV07pdWs6lj6aI63vr2N4dg0vR+td0rtrdpWOhBzIkEklZyLcvKBoEtwSqx8Jg06vUB5RS0xDiUybw==
 
 motion@^12.4.5:
   version "12.4.7"

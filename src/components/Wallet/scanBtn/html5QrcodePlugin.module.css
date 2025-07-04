@@ -1,0 +1,36 @@
+.scanCamera{
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background: rgba(0,0,0,1);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    .reader{
+        width: 80%;
+    }
+    .uploadBtn{
+        position: absolute;
+        bottom: 5vw;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 999999;
+        color: #fff;
+        font-size: 4vw;
+        border: 1px #f1f1f1 solid;
+    }
+    .loading{
+        width: 100%;
+        display: flex;
+        justify-content: center;
+    }
+    .closeBtn{
+        position: absolute;
+        left: 5vw;
+        top: 5vw;
+        z-index: 999999;
+        color: #fff;
+        font-size: 7vw;
+    }
+}

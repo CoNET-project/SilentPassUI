@@ -35,6 +35,85 @@
     :global(.adm-mask) {
         position: absolute;
     }
+    .codeConditions{
+        position: relative;
+        .hd{
+            line-height: 1;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 500;
+            text-align: center;
+        }
+        .bd{
+            padding: 30px 10px 0;
+            .subBtn{
+                background: #2d2e30;
+                border-color: #2d2e30;
+                color: #f1f1f1;
+            }
+            .amountInput{
+                border: 1px #2d2d2d solid;
+                border-radius: 3px;
+                height: 36px;
+                display: flex;
+                align-items: center;
+                padding: 0 6px;
+                :global(.adm-input-element::-webkit-input-placeholder) {
+                    color: #777;
+                }
+                :global(.adm-input-element::placeholder) {
+                    color: #777;
+                }
+                :global(.adm-input-element) {
+                    color: #fff;
+                    height: 36px;
+                    font-size: 13px;
+                }
+            }
+            :global(.adm-form .adm-form-footer){
+                padding: 15px 0 0;
+            }
+            :global(.adm-list-item){
+                background: transparent;
+                padding-left: 0;
+            }
+            :global(.adm-list-item-content){
+                padding-right: 0;
+                border-top: none;
+            }
+            :global(.adm-list-body){
+                background: transparent;
+                border: none;
+            }
+            :global(.adm-form-item-label){
+                color: #f1f1f1;
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+                font-weight: 500;
+            }
+            :global(.adm-switch-checkbox){
+                background: #5e5b5b;
+            }
+            :global(.adm-switch.adm-switch-checked .adm-switch-checkbox){
+                background: #0a68ec;
+            }
+            :global(.adm-switch-checkbox:before){
+                background: #4d4d4d;
+            }
+            :global(.adm-switch-handle){
+                background: #a6a6a6;
+            }
+        }
+        .close{
+            position: absolute;
+            left: 0;
+            top: 0;
+            color: #999;
+            font-size: 20px;
+            cursor: pointer;
+        }
+    }
     .codeCont{
         position: relative;
         .hd{
@@ -60,10 +139,13 @@
             }
             .label{
                 line-height: 1;
-                font-size: 14px;
-                font-weight: 500;
+                font-size: 13px;
+                font-weight: 400;
                 color: #fff;
-                margin: 8px 0 0;
+                margin: 10px 0 0;
+                .labelItem{
+                    margin: 0 10px;
+                }
             }
         }
         .ft{

@@ -1,5 +1,5 @@
-import {useState,useRef,useEffect} from 'react';
-import { Popup,NavBar,Input,Button,SpinLoading,Modal,Result,Ellipsis } from 'antd-mobile';
+import {useState,useRef,useEffect,forwardRef,useImperativeHandle} from 'react';
+import { Popup,NavBar,Input,Button,SpinLoading,Modal,Result,Ellipsis,Toast } from 'antd-mobile';
 import { LocationOutline,LeftOutline } from 'antd-mobile-icons';
 import styles from './sendButton.module.css';
 import { ReactComponent as SpToken } from './../assets/sp-token.svg';
@@ -18,16 +18,44 @@ interface SendParams {
     usd:number;
     wallet:any;
     isEthers:boolean;
+    extendref?:any;
 }
 
 
-const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers }: SendParams)=> {
+const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers,extendref=null }: SendParams)=> {
     const [visible, setVisible] = useState(false);
     const [address, setAddress] = useState('');
     const [amount, setAmount] = useState<string | undefined>();
     const [subLoading, setSubLoading] = useState(false);
     const [calcPrice, setCalcPrice] = useState('0.00');
-	const { t, i18n } = useTranslation()
+	const { t, i18n } = useTranslation();
+
+    useImperativeHandle(extendref, () => ({
+        setExternalAddress: (val: string) => {
+            setAddress(val);
+        },
+        setExternalVisible: (val: boolean) => {
+            setVisible(val);
+        },
+        setExternalAmount: (val: string) => {
+            if(Number(val) > convertStringToNumber(balance)){
+                Toast.show({
+                    icon: 'fail',
+                    content: '余额不足，已为您设置最大值'
+                });
+                setAmount(String(balance));
+                return ;
+            }
+            setAmount(val);
+        },
+    }));
+
+    useEffect(()=>{
+        if(!visible){
+            setAddress('');
+            setAmount('');
+        }
+    },[visible])
 
     const useMax=()=>{
         let price=BigNumber(usd);
@@ -210,8 +238,6 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         }
     }
 
-
-
     return (
         <>
             <div className={styles.sendBtn} onClick={() => {setVisible(true)}}>
@@ -276,4 +302,4 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
 }
 
 
-export default SendButton;
+export default forwardRef(SendButton);

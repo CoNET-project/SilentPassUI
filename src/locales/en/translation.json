@@ -346,6 +346,15 @@
 	"passport-pay-plan-apple-modal-extra-list-2":"No subscription or renewal.",
 	"passport-pay-plan-apple-modal-extra-list-3":"Includes lifetime VPN access for one device.",
 	"passport-pay-plan-apple-modal-extra-list-4":"Payment will be charged to your Apple ID at confirmation.",
-	"passport-pay-plan-apple-modal-extra-list-5":"By purchasing, you agree to Apple’s Terms of Use and Privacy Policy."
-
+	"passport-pay-plan-apple-modal-extra-list-5":"By purchasing, you agree to Apple’s Terms of Use and Privacy Policy.",
+	"wallet-receive-code-tips-1":"Token must be selected",
+	"wallet-receive-code-tips-2":"Amount is required",
+	"wallet-receive-code-tips-3":"Amount must be greater than 0",
+	"wallet-receive-code-title-1":"Confirm Payment Code",
+	"wallet-receive-code-title-2":"Payment Code",
+	"wallet-receive-code-confirm":"Confirm",
+	"wallet-receive-code-label-1":"Token",
+	"wallet-receive-code-label-2":"Need Amount",
+	"wallet-receive-code-label-3":"Amount",
+	"wallet-receive-code-address-label":"Wallet Address"
 }

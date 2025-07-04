@@ -10,10 +10,11 @@ import { ReactComponent as ConetToken } from './../assets/conet-token.svg';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import { refreshSolanaBalances, storeSystemData } from './../../../services/wallets';
 import SendButton from './../sendBtn/SendButton';
-import CodeButton from './../codeButton/CodeButton';
+import AutoCodeButton from './../codeButton/AutoCodeButton';
 import CopyBtn from './../copyBtn/CopyBtn';
 import HideBtn from './../hideBtn/HideBtn';
 import ImportButton from './../importBtn/ImportButton';
+import ScanButton from './../scanBtn/ScanButton';
 
 const SPWallet = ({}) => {
     const { t, i18n } = useTranslation();
@@ -22,6 +23,9 @@ const SPWallet = ({}) => {
     const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
     const [isAddressHidden, setIsAddressHidden] = useState(false);
     const [isKeyHidden, setIsKeyHidden] = useState(true);
+
+    const spSendRef=useRef();
+    const solSendRef=useRef();
 
     const getAddress = (wallet: any) => {
         return wallet?.keyID.slice(0, 7) + '...' + wallet?.keyID.slice(-5);
@@ -74,7 +78,7 @@ const SPWallet = ({}) => {
                 closeOnMaskClick={true}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-account-sp-wallet')} (Solana)</NavBar>
+                    <NavBar right={<ScanButton spSendRef={spSendRef} solSendRef={solSendRef} />} onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-account-sp-wallet')} (Solana)</NavBar>
                     <div className={styles.bd}>
                         <div className={styles.toobar}>
                             <div className={styles.description}><ExclamationCircleFill className={styles.icon} />{t('wallet-account-sp-wallet-desc')}</div>
@@ -91,7 +95,7 @@ const SPWallet = ({}) => {
                                     </div>
                                 </div>
                                 <div className={styles.value}>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</div>
-                                <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} />
+                                <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} extendref={spSendRef} />
                             </li>
                             <li className={styles.listItem}>
                                 <div className={styles.type}>
@@ -102,7 +106,7 @@ const SPWallet = ({}) => {
                                     </div>
                                 </div>
                                 <div className={styles.value}>${profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)}</div>
-                                <SendButton type={'$SOL'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)} balance={profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)} />
+                                <SendButton type={'$SOL'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)} balance={profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)} extendref={solSendRef} />
                             </li>
                         </ul>
 
@@ -111,7 +115,7 @@ const SPWallet = ({}) => {
                                 <label>{t('wallet-account-main-wallet-address-title')}</label>
                                 <div className={isAddressHidden?styles.valHide:styles.val}>{getAddress(profiles?.[1])}</div>
                             </div>
-                            <CodeButton copyVal={getWholeAddress(profiles?.[1])} isEthers={false} />
+                            <AutoCodeButton copyVal={getWholeAddress(profiles?.[1])} isEthers={false} />
                             <div className={styles.operation}>
                                 <CopyBtn copyVal={getWholeAddress(profiles?.[1])} />
                                 <div style={{marginLeft:12}}><HideBtn isHidden={isAddressHidden} setIsHidden={setIsAddressHidden} /></div>

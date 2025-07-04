@@ -3,6 +3,7 @@ import { Button,Modal,Toast } from "antd-mobile";
 import { ScanCodeOutline } from "antd-mobile-icons";
 import Html5QrcodePlugin from "./Html5QrcodePlugin";
 import styles from "./scanButton.module.css";
+import { useTranslation } from 'react-i18next';
 
 interface Props {
     solSendRef: any;
@@ -12,10 +13,7 @@ interface Props {
 const ScanButton = ({solSendRef,spSendRef}:Props) => {
     const [scanning, setScanning] = useState(false);
     const [loading, setLoading] = useState(false);
-
-
-    
-
+    const { t, i18n } = useTranslation();
 
     const handleGoScan=async()=>{
         setLoading(true);
@@ -24,18 +22,12 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
             await navigator.mediaDevices.getUserMedia({ video: true });
         }catch(error){
             Modal.show({
-                content: '摄像头权限被拒绝或不可用',
+                content: t('wallet-receive-code-scan-tip-1'),
                 closeOnAction: true,
                 actions: [
-                    // {
-                    //     key: 'retry',
-                    //     text: '重试',
-                    //     primary: true,
-                    //     onClick:()=>{requestCameraPermission()}
-                    // },
                     {
                         key: 'confirm',
-                        text: '确定',
+                        text: t('wallet-receive-code-confirm')
                     },
                 ]
             })
@@ -44,7 +36,6 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
         }
         setLoading(false);
         setScanning(true);
-        
     }
     const handleScanSuccess = (text: string) => {
         try{
@@ -71,12 +62,12 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
             }
             Toast.show({
                 icon: 'fail',
-                content: '无法识别扫描内容'
+                content: t('wallet-receive-code-scan-tip-2')
             });
         }catch(err){
             Toast.show({
                 icon: 'fail',
-                content: '无法识别扫描内容'
+                content: t('wallet-receive-code-scan-tip-2')
             });
         }
         setScanning(false); // 扫完自动关闭        

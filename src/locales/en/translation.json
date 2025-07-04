@@ -356,5 +356,14 @@
 	"wallet-receive-code-label-1":"Token",
 	"wallet-receive-code-label-2":"Need Amount",
 	"wallet-receive-code-label-3":"Amount",
-	"wallet-receive-code-address-label":"Wallet Address"
+	"wallet-receive-code-address-label":"Wallet Address",
+	"wallet-receive-code-scan-tip-1": "Camera permission denied or unavailable",
+	"wallet-receive-code-scan-tip-2": "Unable to recognize scan content",
+	"wallet-receive-code-scan-tip-3": "No camera device found",
+	"wallet-receive-code-scan-tip-4": "Image size cannot exceed 5MB, please select another file!",
+	"wallet-receive-code-scan-tip-5": "Failed to stop scanner",
+	"wallet-receive-code-scan-tip-6": "File scan failed",
+	"wallet-receive-code-scan-file-btn": "Choose File",
+	"wallet-send-useless-tip":"Insufficient balance. Set to maximum available."
+
 }

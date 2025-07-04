@@ -1,5 +1,5 @@
 import {useState,useRef,useEffect,forwardRef,useImperativeHandle} from 'react';
-import { Popup,NavBar,Input,Button,SpinLoading,Modal,Result,Ellipsis,Toast } from 'antd-mobile';
+import { Popup,NavBar,Input,Button,SpinLoading,Modal,Result,Ellipsis,Toast,Dialog } from 'antd-mobile';
 import { LocationOutline,LeftOutline } from 'antd-mobile-icons';
 import styles from './sendButton.module.css';
 import { ReactComponent as SpToken } from './../assets/sp-token.svg';
@@ -39,10 +39,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         },
         setExternalAmount: (val: string) => {
             if(Number(val) > convertStringToNumber(balance)){
-                Toast.show({
-                    icon: 'fail',
-                    content: '余额不足，已为您设置最大值'
-                });
+                Dialog.alert({content: t('wallet-send-useless-tip'),style:{zIndex:1006}})
                 setAmount(String(balance));
                 return ;
             }

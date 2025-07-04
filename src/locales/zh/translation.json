@@ -361,5 +361,13 @@
 	"wallet-receive-code-label-1":"代币",
 	"wallet-receive-code-label-2":"指定数量",
 	"wallet-receive-code-label-3":"数量",
-	"wallet-receive-code-address-label":"钱包地址"
+	"wallet-receive-code-address-label":"钱包地址",
+	"wallet-receive-code-scan-tip-1":"摄像头权限被拒绝或不可用",
+	"wallet-receive-code-scan-tip-2":"无法识别扫描内容",
+	"wallet-receive-code-scan-tip-3":"未找到摄像头设备",
+	"wallet-receive-code-scan-tip-4":"图片大小不能超过 5MB，请重新选择！",
+	"wallet-receive-code-scan-tip-5":"停止扫码器失败",
+	"wallet-receive-code-scan-tip-6":"文件扫码失败",
+	"wallet-receive-code-scan-file-btn":"选择文件",
+	"wallet-send-useless-tip":"余额不足，已为您设置最大值"
 }

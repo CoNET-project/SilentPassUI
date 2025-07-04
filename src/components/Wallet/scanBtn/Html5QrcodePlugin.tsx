@@ -3,6 +3,7 @@ import { Html5Qrcode, Html5QrcodeResult } from "html5-qrcode";
 import { Popup,Button,Toast,SpinLoading } from "antd-mobile";
 import { CloseCircleOutline } from 'antd-mobile-icons';
 import styles from "./html5QrcodePlugin.module.css";
+import { useTranslation } from 'react-i18next';
 
 interface Props {
     shouldStart: boolean;
@@ -15,6 +16,7 @@ interface Props {
 const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onStop}:Props) => {
     const scannerRef = useRef<Html5Qrcode | null>(null);
     const [loading, setLoading] = useState(false);
+    const { t, i18n } = useTranslation();
 
     useEffect(() => {
         if (shouldStart) {
@@ -44,7 +46,7 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
             if (!cameraId) {
                 Toast.show({
                     icon: 'fail',
-                    content: '未找到摄像头设备',
+                    content: t('wallet-receive-code-scan-tip-3')
                 });
                 onStop?.();
                 return;
@@ -63,7 +65,7 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
         } catch (err: any) {
             Toast.show({
                 icon: 'fail',
-                content: '摄像头权限被拒绝或不可用',
+                content: t('wallet-receive-code-scan-tip-1')
             });
             onStop?.();
         }
@@ -77,7 +79,7 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
         } catch (err) {
             Toast.show({
                 icon: 'fail',
-                content: '停止扫码器失败',
+                content: t('wallet-receive-code-scan-tip-5')
             });
         }
     }
@@ -88,7 +90,7 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
         if (file.size > maxSize) {
             Toast.show({
                 icon: 'fail',
-                content: '图片大小不能超过 5MB，请重新选择！',
+                content: t('wallet-receive-code-scan-tip-4')
             });
             event.target.value = ""; // 清空选择，允许重复上传
             return;
@@ -104,7 +106,7 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
         } catch (err) {
             Toast.show({
                 icon: 'fail',
-                content: '文件扫码失败',
+                content: t('wallet-receive-code-scan-tip-6')
             });
         } finally {
             event.target.value = ""; // 允许再次上传相同文件
@@ -117,7 +119,7 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
             visible={shouldStart}
             onMaskClick={() => {onStop?.()}}
             onClose={() => {onStop?.()}}
-            bodyStyle={{ height: '100vh' }}
+            bodyStyle={{ height: '100%' }}
             style={{'--z-index':'9999999'}}
             forceRender={true}
         >
@@ -130,7 +132,7 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
                     fill="outline"
                     onClick={() => document.getElementById("qr-upload")?.click()}
                 >
-                    选择文件
+                    {t('wallet-receive-code-scan-file-btn')}
                 </Button>
                 <input
                     type="file"

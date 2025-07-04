@@ -162,7 +162,7 @@ const Filter=({visible, setVisible}:FilterProps)=> {
 
     useEffect(()=>{
         getSetting()
-    },[getWebFilter]);
+    },[getWebFilter,webFilterRef.current]);
 
     const rowList: Record<string, Array<{ name: string;nameCn?: string;value: string | string[];valueTag:string;checked?:string;}>>={
         'all':classifyList,

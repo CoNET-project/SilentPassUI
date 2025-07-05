@@ -62,7 +62,8 @@
 		"start": "react-scripts start",
 		"build": "react-scripts build",
 		"test": "react-scripts test",
-		"eject": "react-scripts eject"
+		"eject": "react-scripts eject",
+		"compile-sw": "tsc -p tsconfig.worker.json"
 	},
 	"eslintConfig": {
 		"extends": [

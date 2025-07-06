@@ -34,7 +34,7 @@ global.Buffer = require('buffer').Buffer;
 function App() {
 	const { i18n } = useTranslation();
 
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS } = useDaemonContext();
+  const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])

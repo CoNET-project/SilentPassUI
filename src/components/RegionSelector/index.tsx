@@ -47,7 +47,7 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
         {t('region_' + regionCode)}
       </div>
 	  {
-		 (isLocalServer||ios) &&
+		 (isLocalServer) &&
 			<div className="children">
 				<RuleButton />
 				{children}

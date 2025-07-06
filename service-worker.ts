@@ -3,7 +3,7 @@
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 // 定義緩存的名稱和版本。更新 Service Worker 時，應該更改此版本號。
-const CACHE_NAME = 'my-app-cache-v3';
+const CACHE_NAME = 'my-app-cache-v4';
 
 // 需要特殊處理的 manifest.json 的 URL
 const MANIFEST_URL = '/manifest.json';
@@ -87,39 +87,39 @@ sw.addEventListener('fetch', (event) => {
   }
 
   // --- 對於其他請求：Cache First (Network Fallback) ---
-  event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      // 如果緩存中有匹配的資源，直接返回
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      // 否則，從網路請求
-      return fetch(request).then((networkResponse) => {
-        // 檢查是否是有效的回應
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
-        }
+//   event.respondWith(
+//     caches.match(request).then((cachedResponse) => {
+//       // 如果緩存中有匹配的資源，直接返回
+//     //   if (cachedResponse) {
+//     //     return cachedResponse;
+//     //   }
+//       // 否則，從網路請求
+//       return fetch(request).then((networkResponse) => {
+//         // 檢查是否是有效的回應
+//         if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+//           return networkResponse;
+//         }
 
-        // 複製一份回應，因為 request 和 cache 都需要使用它
-        const responseToCache = networkResponse.clone();
+//         // 複製一份回應，因為 request 和 cache 都需要使用它
+//         // const responseToCache = networkResponse.clone();
 
-        // 將新請求的結果存入緩存，並確保 Promise 鏈返回 Response
-        return caches.open(CACHE_NAME).then(cache => {
-          cache.put(request, responseToCache);
-          // 確保鏈的最後返回 networkResponse
-          return networkResponse;
-        });
-      }).catch(error => {
-        console.error('[Service Worker] Fetch failed:', error);
-        // 當網路請求失敗時，可以返回一個離線頁面或錯誤回應
-        // 為了滿足類型檢查，我們需要返回一個 Response 物件
-        // return caches.match('/offline.html'); 
-        // 或者如果沒有離線頁面，可以返回一個簡單的錯誤回應
-        return new Response("Network error happened", {
-          status: 408,
-          headers: { "Content-Type": "text/plain" },
-        });
-      });
-    })
-  );
+//         // 將新請求的結果存入緩存，並確保 Promise 鏈返回 Response
+//         return caches.open(CACHE_NAME).then(cache => {
+//           cache.put(request, responseToCache);
+//           // 確保鏈的最後返回 networkResponse
+//           return networkResponse;
+//         });
+//       }).catch(error => {
+//         console.error('[Service Worker] Fetch failed:', error);
+//         // 當網路請求失敗時，可以返回一個離線頁面或錯誤回應
+//         // 為了滿足類型檢查，我們需要返回一個 Response 物件
+//         // return caches.match('/offline.html'); 
+//         // 或者如果沒有離線頁面，可以返回一個簡單的錯誤回應
+//         return new Response("Network error happened", {
+//           status: 408,
+//           headers: { "Content-Type": "text/plain" },
+//         });
+//       });
+//     })
+//   );
 });

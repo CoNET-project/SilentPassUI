@@ -134,6 +134,8 @@ const Home = () => {
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
   const { t, i18n } = useTranslation()
   const navigate = useNavigate();
+
+
   const _getAllRegions = async () => {
 	
 	const [tmpRegions] = await
@@ -238,7 +240,7 @@ const Home = () => {
 	if (!closestRegion?.length) {
 		return
 	}
-	setIsInitialLoading(false);
+	setIsInitialLoading(false)
 	init()
   }, [closestRegion])
 
@@ -363,7 +365,7 @@ const handleTogglePower = async () => {
     }
 	const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject)
 	const base64VPNMessage = btoa(stringifiedVPNMessageObject)
-    if (window?.webkit && switchValue) {
+    if (isIOS && window?.webkit && switchValue) {
       window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
     }
 
@@ -378,13 +380,15 @@ const handleTogglePower = async () => {
 		console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
 	}
 
+	if (isLocalProxy) {
+		try {
+			await startSilentPass(startVPNMessageObject);
+		} catch (ex) {
+		// error = true
+		// setErrorMessage(GENERIC_ERROR);
+		}
+	}
 
-    try {
-      await startSilentPass(startVPNMessageObject);
-    } catch (ex) {
-      // error = true
-      // setErrorMessage(GENERIC_ERROR);
-    }
 
     setTimeout(() => {
       setIsConnectionLoading(false)

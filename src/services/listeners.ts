@@ -56,6 +56,7 @@ const listenProfileVer = async (
 	await storeSystemData();
 	await setProcessingBlock(false);
 	blockProcess = now
+	let _process = false
 	conetDepinProvider.on("block", async (block) => {
 		if (block === epoch + 1) {
 
@@ -63,11 +64,11 @@ const listenProfileVer = async (
 			
 			const profiles = CoNET_Data?.profiles;
 			const now = new Date().getTime()
-			if (!profiles||now - blockProcess < 1000 * 10) {
+			if (!profiles||now - blockProcess < 1000 * 10||_process) {
 				return;
 			}
-
-			blockProcess = now
+			_process = true
+			
 				await checkCurrentRate(setMiningData);
 				await getProfileAssets(profiles[0], profiles[1]);
 				// await getVpnTimeUsed();
@@ -82,13 +83,14 @@ const listenProfileVer = async (
 				await getPassportsInfoForProfile(profiles[0]);
 			
 				if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
-					_setProfiles(CoNET_Data?.profiles);
+					await _setProfiles(CoNET_Data?.profiles);
 					if (CoNET_Data.profiles[0].activePassport)
-					_setActivePassport(CoNET_Data.profiles[0].activePassport);
+					await _setActivePassport(CoNET_Data.profiles[0].activePassport);
 				}
 
 				await storeSystemData();
 				await setProcessingBlock(false);
+			_process = false
 			blockProcess = now
 		}
 	});

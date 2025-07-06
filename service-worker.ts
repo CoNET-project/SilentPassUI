@@ -3,7 +3,7 @@
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 // 定義緩存的名稱和版本。更新 Service Worker 時，應該更改此版本號。
-const CACHE_NAME = 'my-app-cache-v2';
+const CACHE_NAME = 'my-app-cache-v3';
 
 // 需要特殊處理的 manifest.json 的 URL
 const MANIFEST_URL = '/manifest.json';
@@ -18,7 +18,6 @@ const APP_SHELL_URLS = [
   '/manifest.json',
   '/assets/header-title.svg',
   'https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/us.svg',
-  '/api/airDropForSP',
   '/static/media/Referrals.45a4b5437d546356ff91.png',
   '/static/media/language.43d120a2e74e3c4818090a317f997652.svg',
   '/static/media/help.e84a33a3a76e89bf3daf58baf1189fe8.svg',

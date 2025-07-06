@@ -13,6 +13,7 @@ import { conetProvider } from "../utils/constants";
 import { initProfileTokens, postToEndpoint } from "../utils/utils";
 import async from "async";
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
+import nodes from '../pages/Home/assets/allnodes.json'
 
 let allNodes: nodes_info[] = [];
 let closestNodes: nodes_info[] = [];
@@ -123,9 +124,9 @@ const getAllNodes = async (
   if (!maxNodes) {
     return console.log(`getAllNodes STOP scan because scanNodes == 0`);
   }
-  allNodes = [];
+  let _allNodes:nodes_info[] = [];
   for (let i = 0; i < maxNodes; i++) {
-    allNodes.push({
+    _allNodes.push({
       region: "",
       country: "",
       ip_addr: "",
@@ -143,7 +144,7 @@ const getAllNodes = async (
   currentScanNodeNumber = 0;
   let i = 0;
   await async
-    .mapLimit(allNodes, 10, async (n: nodes_info, next: any) => {
+    .mapLimit(_allNodes, 10, async (n: nodes_info, next: any) => {
       const nodeInfo = await GuardianNodesInfoContract.getNodeInfoById(
         n.nftNumber
       );
@@ -168,13 +169,13 @@ const getAllNodes = async (
     .catch(() => {});
   maxNodes = currentScanNodeNumber - currentScanNodeNumber * 0.1;
 
-  const index = allNodes.findIndex((n) => n.nftNumber === i) + 1;
-  allNodes = allNodes.slice(0, index);
+  const index = _allNodes.findIndex((n) => n.nftNumber === i) + 1;
+  _allNodes = _allNodes.slice(0, index);
   allRegions = Array.from(country.keys());
   testClosestRegion(() => {
     // maxNodes = currentScanNodeNumber;
     const country = testRegion[0].node.country;
-    const entryRegionNodes = allNodes.filter((n) => n.country === country);
+    const entryRegionNodes = _allNodes.filter((n) => n.country === country);
     do {
       const index = Math.floor(Math.random() * entryRegionNodes.length);
       const node = entryRegionNodes[index];
@@ -183,7 +184,8 @@ const getAllNodes = async (
       }
     } while (entryNodes.length < 10);
     setClosestRegion(entryNodes);
-    callback(allNodes);
+    callback(_allNodes);
+	allNodes = _allNodes
 	storageAllNodes(allNodes)
   });
 };
@@ -200,7 +202,7 @@ const getAllRegions = (nodes: nodes_info[]) => {
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
-	allNodes = await checkLocalStorageNodes()
+	allNodes = await checkLocalStorageNodes()||nodes
 	if (allNodes) {
 		getAllRegions(allNodes)
 		return testClosestRegion(() => {

@@ -369,5 +369,6 @@
 	"wallet-receive-code-scan-tip-5":"停止扫码器失败",
 	"wallet-receive-code-scan-tip-6":"文件扫码失败",
 	"wallet-receive-code-scan-file-btn":"选择文件",
-	"wallet-send-useless-tip":"余额不足，已为您设置最大值"
+	"wallet-send-useless-tip":"余额不足，已为您设置最大值",
+	"wallet-scan-camera-tip":"摄像头启动中"
 }

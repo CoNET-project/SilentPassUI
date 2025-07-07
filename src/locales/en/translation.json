@@ -364,6 +364,7 @@
 	"wallet-receive-code-scan-tip-5": "Failed to stop scanner",
 	"wallet-receive-code-scan-tip-6": "File scan failed",
 	"wallet-receive-code-scan-file-btn": "Choose File",
-	"wallet-send-useless-tip":"Insufficient balance. Set to maximum available."
+	"wallet-send-useless-tip":"Insufficient balance. Set to maximum available.",
+	"wallet-scan-camera-tip":"Starting camera"
 
 }

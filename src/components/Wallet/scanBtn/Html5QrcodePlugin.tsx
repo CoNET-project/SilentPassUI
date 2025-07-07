@@ -42,7 +42,7 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
             scannerRef.current = qr;
 
             const devices = await Html5Qrcode.getCameras();
-            const cameraId = devices[0]?.id;
+            let cameraId = devices[0]?.id;
             if (!cameraId) {
                 Toast.show({
                     icon: 'fail',
@@ -51,9 +51,17 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
                 onStop?.();
                 return;
             }
-alert('xx')
+            // 尝试优先选后置摄像头
+            const backCamera = devices.find(device =>
+              /back|rear/i.test(device.label)
+            );
+
+            const fallbackCamera = devices[0]; // 兜底使用第一个
+
+            const preferredCamera = backCamera || fallbackCamera;
+
             await qr.start(
-                cameraId,
+                preferredCamera?.id,
                 // { facingMode: "environment" },
                 { fps, qrbox:{ width: qrbox, height: qrbox } },
                 (text, result) => {
@@ -142,7 +150,7 @@ alert('xx')
                     style={{ display: "none" }}
                     onChange={handleImageUpload}
                 />
-                {loading?<div className={styles.loading}><SpinLoading /></div>:''}
+                {loading?<div className={styles.loading}><SpinLoading /><div className={styles.loadingText}>{t('wallet-scan-camera-tip')}...</div></div>:''}
             </div>
         </Popup>
     )

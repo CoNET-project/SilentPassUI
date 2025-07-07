@@ -169,6 +169,8 @@ import { Popup, Button, Toast, SpinLoading } from 'antd-mobile';
 import { CloseCircleOutline } from 'antd-mobile-icons';
 import styles from './html5QrcodePlugin.module.css';
 import { useTranslation } from 'react-i18next';
+import VConsole from 'vconsole'
+const vConsole=new VConsole()
 
 interface Props {
     shouldStart: boolean;
@@ -206,6 +208,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
             scanLoop();
             setLoading(false);
         } catch (err) {
+            console.log(err,'errrrrrrrrrrrrrrrrrrrrr')
             Toast.show({
                 icon: 'fail',
                 content: t('wallet-receive-code-scan-tip-1')

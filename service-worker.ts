@@ -90,14 +90,11 @@ sw.addEventListener('fetch', (event) => {
 			if (cachedResponse) {
 				return cachedResponse
 			}
-			// 否則，從網路請求
-			if (checkAPP_SHELL_URLS(request)) {
-				const node = getRandomNode()
-				const _request: Request = {
-					headers: 
-				}
+			// // 否則，從網路請求
+			// if (checkAPP_SHELL_URLS(request)) {
+			// 	const node = getRandomNode()
 				
-			}
+			// }
 
 			return fetch(request).then((networkResponse) => {
 				// 檢查是否是有效的回應

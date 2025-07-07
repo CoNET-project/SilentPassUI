@@ -7,7 +7,6 @@ import Recovery from './Recovery';
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
 import { ethers } from 'ethers';
-import {aesGcmEncrypt} from '../../services/subscription'
 import { useTranslation } from 'react-i18next'
 import styles from './copyAccountInfo.module.css';
 

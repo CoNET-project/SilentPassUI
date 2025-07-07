@@ -6,12 +6,6 @@ import { joinSpClub, openWebLinkNative } from '../../api';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import { getSpClubMemberId, waitingPaymentStatus, changeActiveNFT } from '../../services/wallets';
 
-import AirdropRewards from './assets/airdrop-rewards.png';
-import EarlyAccess from './assets/early-access.png';
-import EducationHub from './assets/education-hub.png';
-import ExclusivePerks from './assets/exclusive-perks.png';
-import LoyaltyDiscounts from './assets/loyalty-discounts.png';
-import ReferralProgram from './assets/referral-program.png';
 import { ReactComponent as CrownBadge } from './assets/GC.svg'
 import bnb_token from './assets/bnb_token.png'
 import bnb_usdt from './assets/bnb_usdt_token.png'
@@ -22,15 +16,12 @@ import { ReactComponent as SOL_Token } from './assets/solana-token.svg'
 import QRCode from '../QRCode'
 import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg'
 import {getCryptoPay} from '../../services/subscription'
-import {ReactComponent as QuotesTx} from './assets/trx.svg'
-import { CoNET_Data } from '../../utils/globals'
 import { useTranslation } from 'react-i18next'
 import wachat from './assets/wechat.png'
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg"
 import { ReactComponent as AliPay } from './assets/alipay.svg'
 import { ReactComponent as ApplePay } from './assets/Apple_Pay_logo.svg'
 import { ReactComponent as EthPay } from './assets/eth-token.svg'
-import { ReactComponent as BitcoinPay } from './assets/Bitcoin.svg'
 import { useNavigate } from 'react-router-dom';
 
 const OneDayInSeconds = 86400;

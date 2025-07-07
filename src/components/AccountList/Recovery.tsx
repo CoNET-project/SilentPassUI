@@ -1,6 +1,5 @@
 import {useState,useRef,useEffect} from 'react';
 import styles from './recovery.module.css';
-import {CopyToClipboard} from 'react-copy-to-clipboard';
 import { useTranslation } from 'react-i18next'
 import { CoNET_Data,setCoNET_Data } from '../../utils/globals';
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";

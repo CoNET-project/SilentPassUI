@@ -189,10 +189,23 @@ const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
 	allNodes = await checkLocalStorageNodes()||nodes
+	const index = allNodes.findIndex(n => n.ip_addr === '74.208.234.210')
+	if (index > -1) {
+		allNodes.splice(index, 1)
+	}
 	if (allNodes) {
 		getAllRegions(allNodes)
 		return testClosestRegion( ()=> {
-			setClosestRegion(closestNodes)
+			const country = testRegion[0].node.country;
+			const entryRegionNodes = allNodes.filter((n) => n.country === country);
+			do {
+				const index = Math.floor(Math.random() * entryRegionNodes.length);
+				const node = entryRegionNodes[index];
+				if (node?.ip_addr) {
+					entryNodes.push(node);
+				}
+			} while (entryNodes.length < 10);
+			setClosestRegion(entryNodes);
 			callback(allNodes)
 			getAllNodes(setClosestRegion, () => {})
 		})

@@ -51,9 +51,10 @@ const Html5QrcodePlugin = ({shouldStart, fps=10, qrbox=250, onScanSuccess, onSto
                 onStop?.();
                 return;
             }
-
+alert('xx')
             await qr.start(
-                { facingMode: "environment" },
+                cameraId,
+                // { facingMode: "environment" },
                 { fps, qrbox:{ width: qrbox, height: qrbox } },
                 (text, result) => {
                     onScanSuccess?.(text);

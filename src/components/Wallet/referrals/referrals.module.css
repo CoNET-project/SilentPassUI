@@ -10,8 +10,12 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        svg,img{
-            width: 25px;
+        svg{
+            width: auto;
+            height: 25px;
+        }
+        img{
+            width: auto;
             height: 25px;
         }
     }

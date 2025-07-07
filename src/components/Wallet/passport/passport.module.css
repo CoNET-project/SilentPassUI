@@ -11,7 +11,7 @@
         justify-content: center;
         align-items: center;
         svg{
-            width: 25px;
+            width: auto;
             height: 25px;
         }
     }

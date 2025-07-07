@@ -1,10 +1,9 @@
 .quickLinks{
     :global(.adm-floating-bubble-button){
-        z-index: 100002;
+        z-index: 1008;
     }
 }
 .quickLinksPopup{
-    z-index: 100003;
     :global(.adm-popup-body){
         background: #1f1f1f;
     }
@@ -13,7 +12,47 @@
     padding: 30px 4vw 20px;
     .linkItem{
         display: flex;
+        flex-direction: column;
         justify-content: center;
         align-items: center;
+        .link{
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            .avatar{
+                width: 10vw;
+                height: 10vw;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                color: #f1f1f1;
+                font-weight: 600;
+                font-size: 5vw;
+                background: #97213d;
+                border-radius: 100px;
+            }
+            .name{
+                color: #c7c7c7;
+                font-size: 14px;
+                margin: 2px 0 0;
+                font-weight: 500;
+            }
+        }
+        .operBar{
+            margin: 3px 0 0;
+            .moreOper{
+                font-size: 12px;
+                background: #727272;
+                border-color: #727272;
+                padding: 2px 5px;
+                color: #d3d2d2;
+                .icon{
+                    margin: 0 0 0 2px;
+                    font-size: 10px;
+                    transform: rotate(180deg);
+                }
+            }
+        }
     }
 }

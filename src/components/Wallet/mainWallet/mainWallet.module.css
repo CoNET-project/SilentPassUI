@@ -11,8 +11,10 @@
         justify-content: center;
         align-items: center;
         svg{
-            width: 25px;
-            height: 25px;
+            width: 25px!important;
+            height: 25px!important;
+            max-width: 25px!important;
+            max-height: 25px!important;
         }
     }
     .text{

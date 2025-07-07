@@ -23,7 +23,6 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
             // 主动请求摄像头权限（必须在用户交互后触发）
             await navigator.mediaDevices.getUserMedia({ video: true });
         }catch(error){
-            console.log(error,'errorrrrrrrrrrrrrrrrrrraafsfasfsffasfas')
             Modal.show({
                 content: t('wallet-receive-code-scan-tip-1'),
                 closeOnAction: true,

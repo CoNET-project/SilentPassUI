@@ -169,8 +169,6 @@ import { Popup, Button, Toast, SpinLoading } from 'antd-mobile';
 import { CloseCircleOutline } from 'antd-mobile-icons';
 import styles from './html5QrcodePlugin.module.css';
 import { useTranslation } from 'react-i18next';
-import VConsole from 'vconsole'
-const vConsole=new VConsole()
 
 interface Props {
     shouldStart: boolean;
@@ -184,6 +182,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const animationRef = useRef<number>();
     const [loading, setLoading] = useState(false);
+    const [redirecting, setRedirecting] = useState(false);
     const { t } = useTranslation();
 
     useEffect(() => {
@@ -192,30 +191,47 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
         } else {
             stopScan();
         }
+        setRedirecting(false);
         return () => stopScan();
     }, [shouldStart]);
 
     const startScan = async () => {
-        try {
+        // try {
             setLoading(true);
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
             const video = videoRef.current;
             if (!video) return;
-
             video.srcObject = stream;
+            video.setAttribute("playsinline", true); // required to tell iOS safari we don't want fullscreen
             await video.play();
-
             scanLoop();
             setLoading(false);
-        } catch (err) {
-            console.log(err,'errrrrrrrrrrrrrrrrrrrrr')
-            Toast.show({
-                icon: 'fail',
-                content: t('wallet-receive-code-scan-tip-1')
-            });
-            onStop?.();
-            setLoading(false);
-        }
+        // } catch (err) {
+        //     console.log(err,'errrrrrrrrrrrrrrrrrrrrr')
+        //     Toast.show({
+        //         icon: 'fail',
+        //         content: t('wallet-receive-code-scan-tip-1')
+        //     });
+        //     onStop?.();
+        //     setLoading(false);
+        // }
+
+
+            // setLoading(true);
+            // navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function(stream) {
+            //   // video.srcObject = stream;
+            //   // video.setAttribute("playsinline", true); // required to tell iOS safari we don't want fullscreen
+            //   // video.play();
+            //   // requestAnimationFrame(tick);
+
+
+            //     const video = videoRef.current;
+            //     if (!video) return;
+            //     video.srcObject = stream;
+            //     video.play();
+            //     scanLoop();
+            //     setLoading(false);
+            // });
     }
     const stopScan = () => {
         animationRef.current && cancelAnimationFrame(animationRef.current);
@@ -245,6 +261,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
 
         if (code?.data) {
             stopScan();
+            setRedirecting(true);
             onScanSuccess?.(code.data);
             onStop?.();
         } else {
@@ -305,6 +322,21 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
                 </Button>
                 <video ref={videoRef} className={styles.reader} playsInline muted />
                 <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+                {loading ? (
+                    <div className={styles.loading}>
+                        <SpinLoading />
+                        <div className={styles.loadingText}>{t('wallet-scan-camera-tip')}...</div>
+                    </div>
+                ) : null}
+
+                {redirecting ? (
+                    <div className={styles.loading}>
+                        <SpinLoading />
+                        <div className={styles.loadingText}>跳转中...</div>
+                    </div>
+                ) : null}
+
                 <Button
                     className={styles.uploadBtn}
                     color='primary'
@@ -320,12 +352,6 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
                     style={{ display: 'none' }}
                     onChange={handleImageUpload}
                 />
-                {loading ? (
-                    <div className={styles.loading}>
-                        <SpinLoading />
-                        <div className={styles.loadingText}>{t('wallet-scan-camera-tip')}...</div>
-                    </div>
-                ) : null}
             </div>
         </Popup>
     )

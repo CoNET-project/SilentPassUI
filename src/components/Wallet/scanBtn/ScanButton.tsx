@@ -78,7 +78,7 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
             <Button onClick={handleGoScan} loading={loading} className={styles.scanBtn} color="primary" fill="none"><ScanCodeOutline /></Button>
             <Html5QrcodePlugin
                 shouldStart={scanning}
-                fps={10}
+                // fps={10}
                 qrbox={250}
                 onScanSuccess={handleScanSuccess}
                 onStop={() => setScanning(false)}

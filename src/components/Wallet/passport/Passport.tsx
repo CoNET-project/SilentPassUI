@@ -59,7 +59,7 @@ const Passport = ({}) => {
         <>
             <List.Item onClick={() => {setVisible(true)}}>
                 <div className={styles.item}>
-                    <div className={styles.icon}><SpToken /></div>
+                    <div className={styles.icon}><SpToken width="25" height="25" /></div>
                     <div className={styles.text}>
                         <div className={styles.title}>{t('passport-pay-title')}</div>
                         <div className={styles.subTitle}>{t('passport-pay-extra-title')}</div>

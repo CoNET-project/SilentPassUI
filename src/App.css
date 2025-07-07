@@ -52,3 +52,6 @@
   flex-direction: column;
   justify-content: space-between;
 }
+.vc-switch{
+  z-index: 999999!important;
+}

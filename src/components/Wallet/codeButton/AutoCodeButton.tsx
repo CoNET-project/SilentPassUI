@@ -149,6 +149,7 @@ const AutoCodeButton=({ copyVal,isEthers }: CopyParams)=> {
                                                                 className={styles.amountInput}
                                                                 min={0}
                                                                 type="number"
+                                                                step="any"
                                                                 placeholder={t('comp-accountlist-SendButton-Amount')}
                                                             />
                                                         </Form.Item>

@@ -12,10 +12,7 @@ import { getRefereesPage } from '../../services/wallets'
 import SimpleLoadingRing from '../SimpleLoadingRing'
 import { ReactComponent as GoldBadge } from './assets/gold-badge.svg';
 import { ReactComponent as BlueBadge } from './assets/blue-badge.svg';
-import crown from './assets/crown_icon.gif';
-import { ReactComponent as Crown } from './assets/crown.svg';
 import { ReactComponent as GC } from './assets/GC.svg'
-import gcImg from './assets/GC.png'
 import { useTranslation } from 'react-i18next'
 import ReferralCont from './ReferralCont';
 

@@ -5,8 +5,6 @@ import CopyAccountInfo from './CopyAccountInfo';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Skeleton from '../Skeleton';
 
-import { ReactComponent as ConetToken } from './assets/conet-token.svg';
-import { ReactComponent as ConetEthToken } from './assets/conet-eth-token.svg';
 import { ReactComponent as SolanaToken } from './assets/solana-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import PassportInfo from '../PassportInfo';

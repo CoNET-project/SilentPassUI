@@ -19,7 +19,7 @@ const Languages=({visible, setVisible}: LanguagesProps)=> {
     const handleBack=()=>{
         setVisible(false);
     }
-    const handleChange=(value: CheckListValue[])=>{
+    const handleChange=async (value: CheckListValue[])=>{
         type AntdLocale = {
             en: typeof enUS;
             zh: typeof zhCN;
@@ -27,7 +27,7 @@ const Languages=({visible, setVisible}: LanguagesProps)=> {
         const antdMLang: AntdLocale={en:enUS,zh:zhCN};
         let storage = window.localStorage;
         localStorage.lang=value;
-        i18n.changeLanguage(value);
+        await i18n.changeLanguage(value);
         if(value && value[0]) setDefaultConfig({locale: antdMLang[value[0] as keyof typeof antdMLang]});
         setVisible(false)
     }

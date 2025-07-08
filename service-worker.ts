@@ -1,4 +1,18 @@
 /// <reference lib="webworker" />
+ type nodes_info = {
+	country: string;
+	customs_review_total?: number;
+	ip_addr: string;
+	last_online: boolean;
+	lat?: number;
+	lon?: number;
+	outbound_total?: number;
+	region: string;
+	armoredPublicKey: string;
+	publicKeyObj?: any;
+	domain?: string;
+	nftNumber: number;
+}
 interface AssetManifest {
 	files: {
 		[key: string]: string
@@ -10,26 +24,23 @@ interface AssetManifest {
 const sw = self as unknown as ServiceWorkerGlobalScope
 
 // 定義緩存的名稱和版本。更新 Service Worker 時，應該更改此版本號。
-const CACHE_NAME = 'my-app-cache-v10'
+const CACHE_NAME = 'my-app-cache-v14'
 
-// 需要特殊處理的 manifest.json 的 URL
-const MANIFEST_URL = '/asset-manifest.json'
 
 // App Shell：應用核心靜態資源，在安裝時預先快取
 const APP_SHELL_URLS = [
 	"https://ios-test.silentpass.io/",
-	"https://ios-test.silentpass.io/",
 	"https://vpn4.silentpass.io/",
 	"https://vpn-beta.conet.network/",
 	"https://vpn9.conet.network/",
-    "/static/css/main.88cc8d9a.css",
-    "/static/js/main.5980966c.js",
+    "/static/css/main.704caabd.css",
+    "/static/js/main.704caabd.js",
 	"/favicon.ico",
 	"/assets/info.svg",
 	"/assets/silent-pass-logo-grey.png",
-	"/static/css/main.88cc8d9a.css.map",
+	"/static/css/main.704caabd.css.map",
 	"/static/js/453.a5cbc0be.chunk.js.map",
-	"/static/js/main.5980966c.js.map",
+	"/static/js/main.704caabd.js.map",
 	"/manifest.json",
 	"https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/us.svg"
 ]
@@ -81,6 +92,38 @@ const getRandomNode = (): nodes_info => {
 	return allNodes[index]
 }
 
+const forwardToNode = (req: Request) => {
+	const node = getRandomNode()
+	const _targetUrl = `https://${node.domain}/silentpass-rpc`
+	const originalUrl = new URL(req.url)
+
+	const newHeaders = new Headers()
+	req.headers.forEach((value, key) => {
+		newHeaders.append(key, value)
+	})
+	const targetUrl = `${_targetUrl}${originalUrl.pathname}${originalUrl.search}${originalUrl.hash}`
+
+	const newRequest = new Request(targetUrl, {
+		method: req.method,
+		headers: newHeaders,
+		body: req.body,
+		mode: 'cors', // 模式設定為 'cors' 以允許跨域請求
+		credentials: req.credentials,
+		cache: req.cache,
+		redirect: req.redirect,
+		referrer: req.referrer,
+		integrity: req.integrity,
+	})
+
+	console.log(`Service Worker: Routing ${req.url} -> ${targetUrl}`)
+	
+		// 4. 使用 event.respondWith() 來劫持請求並提供我們自己的回應
+	//    使用 fetch() API 發送新請求。
+
+	return fetch(newRequest)
+
+}
+
 sw.addEventListener('fetch', (event) => {
 	const { request } = event
 
@@ -90,27 +133,40 @@ sw.addEventListener('fetch', (event) => {
 			if (cachedResponse) {
 				return cachedResponse
 			}
-			// // 否則，從網路請求
-			// if (checkAPP_SHELL_URLS(request)) {
-			// 	const node = getRandomNode()
-				
-			// }
+			// 否則，從網路請求
+
+			if (checkAPP_SHELL_URLS(request)) {
+				return forwardToNode(request).then(response => {
+
+					if (!response || response.status !== 200 || response.type !== 'basic') {
+						return response
+					}
+
+					// 將收到的回應返回給原始的 client 頁面
+					// 複製一份回應，因為 request 和 cache 都需要使用它
+					const responseToCache = response.clone()
+
+					// 將新請求的結果存入緩存，並確保 Promise 鏈返回 Response
+					return caches.open(CACHE_NAME).then(cache => {
+						cache.put(request, responseToCache)
+						// 確保鏈的最後返回 networkResponse
+						return response
+					})
+				})
+				.catch(error => {
+					// 如果轉發請求失敗 (例如，網路錯誤或目標伺服器無法訪問)
+					console.error('Service Worker: Fetching from target failed:', error);
+					// 返回一個錯誤回應，這樣客戶端就能知道請求失敗了
+					return new Response(`Error fetching from the target server: ${error.message}`, {
+						status: 502, // 502 Bad Gateway 是一個合適的錯誤碼
+						statusText: 'Bad Gateway',
+					})
+				})
+
+			}
 
 			return fetch(request).then((networkResponse) => {
-				// 檢查是否是有效的回應
-				if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic'|| !checkAPP_SHELL_URLS(request)) {
-					return networkResponse
-				}
-
-				// 複製一份回應，因為 request 和 cache 都需要使用它
-				const responseToCache = networkResponse.clone()
-
-				// 將新請求的結果存入緩存，並確保 Promise 鏈返回 Response
-				return caches.open(CACHE_NAME).then(cache => {
-					cache.put(request, responseToCache)
-					// 確保鏈的最後返回 networkResponse
-					return networkResponse
-				})
+				return networkResponse
 			}).catch(error => {
 				console.error('[Service Worker] Fetch failed:', error);
 				// 當網路請求失敗時，可以返回一個離線頁面或錯誤回應

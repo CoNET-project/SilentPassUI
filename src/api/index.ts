@@ -2,6 +2,7 @@ import axios, { AxiosResponse } from "axios";
 import { ethers } from "ethers";
 import { apiv4_endpoint } from "../utils/constants";
 import { getCONET_api_health, postToEndpoint } from "../utils/utils";
+import nodes from '../pages/Home/assets/allnodes.json'
 // const { ipcRenderer, contextBridge } = require('electron')
 // contextBridge.exposeInMainWorld('electronAPI', {
 //   sendMessage: (data: any) => ipcRenderer.sendToHost('from-webview', data)
@@ -61,6 +62,13 @@ export const getServerIpAddress = async (): Promise<AxiosResponse<any>> => {
     throw error;
   }
 };
+
+export const testRequest = async () => {
+	const url = `https://${nodes[0].domain}/silentpass-rpc/`
+	axios.get(url).then (res=> {
+		const kk = res
+	})
+}
 
 export const joinSpClub = async (
   conetProfile: profile,

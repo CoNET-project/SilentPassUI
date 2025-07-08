@@ -12,7 +12,7 @@ import Footer from '../../components/Footer';
 import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
-import { startSilentPass, stopSilentPass } from "../../api";
+import { startSilentPass, stopSilentPass, testRequest } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 import QuickLinks from "../../components/QuickLinks/QuickLinks";
 import { getServerIpAddress } from "../../api"
@@ -249,6 +249,7 @@ const handleTogglePower = async () => {
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
+	const kk = await testRequest()
 	try {
 		const response = await getServerIpAddress();
         const tmpIpAddress = response.data;

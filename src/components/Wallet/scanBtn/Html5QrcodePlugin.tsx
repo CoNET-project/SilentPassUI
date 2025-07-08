@@ -37,13 +37,8 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
             if (!video) return;
             video.srcObject = stream;
-<<<<<<< HEAD
             video.setAttribute("playsinline", "true"); // required to tell iOS safari we don't want fullscreen
             video.play();
-=======
-            // video.setAttribute("playsinline"); // required to tell iOS safari we don't want fullscreen
-            await video.play();
->>>>>>> 9b99336abceb313fa0ab37ab239bafa97f87b752
             scanLoop();
             setLoading(false);
         }catch(error:any){

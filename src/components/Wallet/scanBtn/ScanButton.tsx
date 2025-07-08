@@ -4,8 +4,8 @@ import { ScanCodeOutline } from "antd-mobile-icons";
 import Html5QrcodePlugin from "./Html5QrcodePlugin";
 import styles from "./scanButton.module.css";
 import { useTranslation } from 'react-i18next';
-import VConsole from 'vconsole'
-const vConsole=new VConsole()
+// import VConsole from 'vconsole'
+// const vConsole=new VConsole()
 
 interface Props {
     solSendRef: any;

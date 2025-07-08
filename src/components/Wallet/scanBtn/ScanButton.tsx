@@ -17,9 +17,8 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
 
     const handleGoScan=async()=>{
         setLoading(true);
-        const permissionsSupported = 'permissions' in navigator && typeof navigator.permissions.query === 'function';
 
-        if (permissionsSupported) {
+        try{
             const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
 
             if (status.state === 'denied') {
@@ -40,47 +39,26 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
             setScanning(true); // 启动扫描
             setLoading(false);
             return;
+        }catch(err:any){
+            // iOS 或首次使用的 prompt 状态：必须通过 getUserMedia 触发授权
+            try{
+                await navigator.mediaDevices.getUserMedia({ video: true });
+                setScanning(true); // 启动扫描
+                setLoading(false);
+            }catch(e:any){
+                Modal.show({
+                    content: t('wallet-receive-code-scan-tip-1'),
+                    closeOnAction: true,
+                    actions: [
+                        {
+                            key: 'confirm',
+                            text: t('wallet-receive-code-confirm')
+                        },
+                    ]
+                })
+                setLoading(false);
+            }
         }
-
-        // iOS 或首次使用的 prompt 状态：必须通过 getUserMedia 触发授权
-        try{
-            await navigator.mediaDevices.getUserMedia({ video: true });
-            setScanning(true); // 启动扫描
-            setLoading(false);
-        }catch(e:any){
-            Modal.show({
-                content: t('wallet-receive-code-scan-tip-1'),
-                closeOnAction: true,
-                actions: [
-                    {
-                        key: 'confirm',
-                        text: t('wallet-receive-code-confirm')
-                    },
-                ]
-            })
-            setLoading(false);
-        }
-        
-
-        // const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
-
-        // if (status.state === 'denied') {
-        //     // 权限被拒绝
-        //     Modal.show({
-        //         content: t('wallet-receive-code-scan-tip-1'),
-        //         closeOnAction: true,
-        //         actions: [
-        //             {
-        //                 key: 'confirm',
-        //                 text: t('wallet-receive-code-confirm')
-        //             },
-        //         ]
-        //     })
-        //     setLoading(false);
-        //     return ;
-        // }
-        // setLoading(false);
-        // setScanning(true);
     }
     const handleScanSuccess = (text: string) => {
         try{

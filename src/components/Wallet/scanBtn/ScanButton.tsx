@@ -19,7 +19,7 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
         setLoading(true);
         const permissionsSupported = 'permissions' in navigator && typeof navigator.permissions.query === 'function';
 
-        if (!permissionsSupported) {
+        if (permissionsSupported) {
             const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
 
             if (status.state === 'denied') {

@@ -60,8 +60,8 @@
 		"web-vitals": "^2.1.4"
 	},
 	"scripts": {
-		"start": "react-scripts start",
-		"build": "react-scripts build",
+		"start": "craco start",
+		"build": "craco build",
 		"test": "react-scripts test",
 		"eject": "react-scripts eject",
 		"compile-sw": "tsc -p tsconfig.worker.json"
@@ -90,6 +90,9 @@
 		"@types/lodash": "^4.17.16",
 		"@types/node": "^22.9.3",
 		"@types/react-copy-to-clipboard": "^5.0.7",
-		"@types/styled-components": "^5.1.34"
+		"@types/styled-components": "^5.1.34",
+		"@craco/craco":"^7.1.0",
+		"workbox-webpack-plugin": "^7.3.0"
+
 	}
 }

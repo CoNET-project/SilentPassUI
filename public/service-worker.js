@@ -1,23 +1,36 @@
 "use strict";
 const sw = self;
 // 定義緩存的名稱和版本。更新 Service Worker 時，應該更改此版本號。
-const CACHE_NAME = 'my-app-cache-v14';
+const CACHE_NAME = 'my-app-cache-v22';
 // App Shell：應用核心靜態資源，在安裝時預先快取
 const APP_SHELL_URLS = [
     "https://ios-test.silentpass.io/",
     "https://vpn4.silentpass.io/",
     "https://vpn-beta.conet.network/",
     "https://vpn9.conet.network/",
-    "/static/css/main.704caabd.css",
-    "/static/js/main.704caabd.js",
+    "/static/css/main.8430920c.css",
+    "/static/js/main.ec2d8119.js",
     "/favicon.ico",
     "/assets/info.svg",
     "/assets/silent-pass-logo-grey.png",
-    "/static/css/main.704caabd.css.map",
+    "/static/css/main.8430920c.css.map",
     "/static/js/453.a5cbc0be.chunk.js.map",
-    "/static/js/main.704caabd.js.map",
+    "/static/js/main.ec2d8119.js.map",
     "/manifest.json",
-    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/us.svg"
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/us.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/de.svg",
+    "/assets/left.svg",
+    "/assets/header-title.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/gb.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/es.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/ca.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/jp.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/ch.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/at.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/au.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/sg.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/cn.svg",
+    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/hk.svg"
 ];
 /**
  * 安裝事件 (install)

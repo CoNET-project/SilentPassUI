@@ -17,7 +17,12 @@ const Region = () => {
     navigate("/");
   };
 
-
+  const convertCN = (code: string) => {
+	if (code === 'CN') {
+		return 'HK'
+	}
+	return code
+  }
   return (
     <div className="regions">
       <div style={{ width: '100%' }}>
@@ -40,7 +45,7 @@ const Region = () => {
                   <button style={{ margin: 0 }} onClick={() => handleRegion(index)}>
                     <div>
                       <ReactCountryFlag
-                        countryCode={region.code}
+                        countryCode={convertCN(region.code)}
                         svg
                         aria-label="United States"
                         style={{
@@ -49,7 +54,7 @@ const Region = () => {
                         }}
                       />
                       <div className="region">
-                        <p>{t(`region_${region.code}`)}</p>
+                        <p>{t(`region_${convertCN(region.code)}`)}</p>
                       </div>
                     </div>
                     <p className="status">

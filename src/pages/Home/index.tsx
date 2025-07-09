@@ -12,7 +12,7 @@ import Footer from '../../components/Footer';
 import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
-import { startSilentPass, stopSilentPass, testRequest } from "../../api";
+import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 import QuickLinks from "../../components/QuickLinks/QuickLinks";
 import { getServerIpAddress } from "../../api"
@@ -146,6 +146,7 @@ const Home = () => {
 	const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
 		const separatedRegion = region.split(".");
 		const code = separatedRegion[1];
+
 		const country = mappedCountryCodes[code];
 
 		return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
@@ -249,7 +250,6 @@ const handleTogglePower = async () => {
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
-	const kk = await testRequest()
 	try {
 		const response = await getServerIpAddress();
         const tmpIpAddress = response.data;
@@ -263,30 +263,28 @@ const handleTogglePower = async () => {
     if (power) {
 
 		//		iOS
-      if (window?.webkit) {
-        if(switchValue) window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
-        setPower(false);
-      }
+		if (isLocalProxy) {
+			//			Desktop
+			try {
+				const response = await stopSilentPass();
+				if (response.status === 200) {
+					
+				}
+			} catch (ex) { }
+		} else if (isIOS ) {
+			
+			window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+			
+		} else 
 	  	//	@ts-ignore		Android
 		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
 			
 			const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
 			//	@ts-ignore
 			AndroidBridge.receiveMessageFromJS(base)
-			setPower(false);
-		} else {
-			//	@ts-ignore
-			console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
+			
 		}
-	  
-		//			Desktop
-		try {
-			const response = await stopSilentPass();
-			if (response.status === 200) {
-			setPower(false);
-			}
-		} catch (ex) { }
-
+		setPower(false);
 		setTimeout(() => setIsConnectionLoading(false), 1000)
 		return
     }
@@ -366,38 +364,33 @@ const handleTogglePower = async () => {
     }
 	const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject)
 	const base64VPNMessage = btoa(stringifiedVPNMessageObject)
-    if (isIOS && window?.webkit && switchValue) {
-      window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
-    }
 
-	//	@ts-ignore
-	if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
-		
-		const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
-		//	@ts-ignore
-		AndroidBridge.receiveMessageFromJS(base)
-	} else {
-		//	@ts-ignore
-		console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
-	}
+
+
 
 	if (isLocalProxy) {
 		try {
 			await startSilentPass(startVPNMessageObject);
 		} catch (ex) {
-		// error = true
-		// setErrorMessage(GENERIC_ERROR);
+
+		}
+	} else {
+		if (isIOS) {
+			window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
+		} else 
+		//	@ts-ignore
+		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+			
+			const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
+			//	@ts-ignore
+			AndroidBridge.receiveMessageFromJS(base)
 		}
 	}
 
 
     setTimeout(() => {
-      setIsConnectionLoading(false)
-
-      if (!error) {
-        setPower(true);
-      }
-
+      	setIsConnectionLoading(false)
+        setPower(true)
     }, 1000)
 
     return

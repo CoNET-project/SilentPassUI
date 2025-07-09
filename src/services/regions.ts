@@ -2,6 +2,10 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { conetProvider } from "../utils/constants";
 
+interface regions {
+	code: string
+	country: string
+}
 // Get All Regions
 export const getAllRegions = async (): Promise<any> => {
   const GuardianNodesInfoV6Contract = new ethers.Contract(
@@ -11,7 +15,7 @@ export const getAllRegions = async (): Promise<any> => {
   );
 
   try {
-    const regions = await GuardianNodesInfoV6Contract.getAllRegions();
+    const regions:string[] = await GuardianNodesInfoV6Contract.getAllRegions();
     return regions;
   } catch (ex) {
     throw ex;

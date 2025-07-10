@@ -65,10 +65,7 @@ const forwardToNode = (req) => {
         headers: newHeaders,
         body: req.body,
         mode: 'cors',
-        credentials: req.credentials,
         cache: 'no-store', // 確保每次都從遠端獲取最新內容
-        redirect: req.redirect,
-        referrer: req.referrer,
     });
 
     console.log(`[SW] Forwarding request for ${req.url} to ${targetUrl}`);

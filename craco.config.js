@@ -20,9 +20,9 @@ module.exports = {
         webpackConfig.plugins.push(
           new WorkboxWebpackPlugin.InjectManifest({
             // swSrc 是您自訂的 Service Worker 原始檔案
-            swSrc: path.resolve(__dirname, 'public/service-worker.js'),
+            swSrc: path.resolve(__dirname, 'public/service-worker1.js'),
             // swDest 是輸出到 build 資料夾的檔案名稱
-            swDest: 'service-worker.js',
+            swDest: 'service-worker1.js',
             // 不要預快取 source maps
             exclude: [/\.map$/, /asset-manifest\.json$/, /LICENSE/],
           })

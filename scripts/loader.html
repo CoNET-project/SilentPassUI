@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loading Application...</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #0d0d0d;
+      color: #ffffff;
+    }
+    .loader-container {
+      width: 80%;
+      max-width: 400px;
+      text-align: center;
+    }
+    .progress-bar-container {
+      width: 100%;
+      background-color: #333;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .progress-bar {
+      width: 0%;
+      height: 20px;
+      background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+      transition: width 0.4s ease-in-out;
+      border-radius: 8px;
+    }
+    .progress-text {
+      font-size: 1rem;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div class="loader-container">
+    <div class="progress-bar-container">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+    <div id="progressText" class="progress-text">Initializing...</div>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      const updateProgress = (percentage, text) => {
+        progressBar.style.width = percentage + '%';
+        progressText.textContent = text;
+      };
+
+      window.addEventListener('load', () => {
+        updateProgress(10, 'Registering Application Controller...');
+        
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => {
+            console.log('App Controller SW registration process started.');
+
+            // 一個輔助函式，用來監聽正在安裝的 SW 的狀態
+            const trackInstalling = (worker) => {
+              if (!worker) {
+                return;
+              }
+              updateProgress(25, 'New version found, installing...');
+              worker.addEventListener('statechange', () => {
+                console.log('App Controller SW state changed to:', worker.state);
+                if (worker.state === 'installed') {
+                  // 'installed' 狀態表示所有預快取的檔案都已成功下載
+                  updateProgress(75, 'Installation complete, activating...');
+                } else if (worker.state === 'activated') {
+                  // 'activated' 狀態表示 SW 已完全準備好並控制了頁面
+                  // 這是執行重定向的正確時機
+                  updateProgress(100, 'Ready! Loading Application...');
+                  window.location.href = '/index.html';
+                }
+              });
+            };
+
+            // 如果註冊時發現一個正在安裝的 worker，就追蹤它的進度
+            if (registration.installing) {
+              trackInstalling(registration.installing);
+              return;
+            }
+
+            // 如果已經有一個活躍的 worker，表示應用已安裝，可以直接重定向
+            if (registration.active) {
+              console.log('An active App Controller SW was found. Redirecting...');
+              updateProgress(100, 'Ready! Loading Application...');
+              window.location.href = '/index.html';
+              return;
+            }
+
+            // 備用方案：監聽 'updatefound' 事件，以捕捉稍後開始的安裝過程
+            registration.addEventListener('updatefound', () => {
+              trackInstalling(registration.installing);
+            });
+          })
+          .catch(err => {
+            console.error('App Controller SW registration failed:', err);
+            updateProgress(100, 'Error: Could not start the application.');
+            progressBar.style.backgroundColor = '#e74c3c';
+          });
+      });
+    } else {
+        document.getElementById('progressText').textContent = 'Service Worker is not supported.';
+        document.getElementById('progressBar').style.width = '100%';
+        document.getElementById('progressBar').style.backgroundColor = '#e74c3c';
+    }
+  </script>
+</body>
+</html>

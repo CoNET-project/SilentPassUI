@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // --- 步驟一：定義常數與硬式編碼的初始內容 ---
 
-const CACHE_NAME = 'self-hosted-assets-v1'
+const CACHE_NAME = 'self-hosted-assets-v4'
 // 使用完整的 URL 作為快取的鍵，避免路徑混淆
 const LOADER_HTML_KEY = new URL('/loader.html', self.location.origin).href
 const SW_JS_KEY = new URL('/service-worker.js', self.location.origin).href
@@ -23,7 +23,6 @@ const initialLoaderHTML = `
       height: 100vh;
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      /* Updated background and text colors for dark mode */
       background-color: #0d0d0d;
       color: #ffffff;
     }
@@ -34,7 +33,6 @@ const initialLoaderHTML = `
     }
     .progress-bar-container {
       width: 100%;
-      /* Darker background for the progress bar container */
       background-color: #333;
       border-radius: 8px;
       overflow: hidden;
@@ -50,7 +48,6 @@ const initialLoaderHTML = `
     }
     .progress-text {
       font-size: 1rem;
-      /* Lighter color for the progress text */
       color: #ccc;
     }
   </style>
@@ -64,71 +61,69 @@ const initialLoaderHTML = `
   </div>
 
   <script>
-    // 檢查瀏覽器是否支援 Service Worker
     if ('serviceWorker' in navigator) {
-      
       const progressBar = document.getElementById('progressBar');
       const progressText = document.getElementById('progressText');
-
-      /**
-       * 更新進度條和狀態文字的輔助函式
-       * @param {number} percentage - 進度百分比 (0-100)
-       * @param {string} text - 顯示的狀態文字
-       */
       const updateProgress = (percentage, text) => {
         progressBar.style.width = percentage + '%';
         progressText.textContent = text;
       };
 
       window.addEventListener('load', () => {
-        updateProgress(10, 'Registering Service Worker...');
+        updateProgress(10, 'Registering Application Controller...');
         
+        // 註冊第二階段的、由 Workbox 生成的 Service Worker
         navigator.serviceWorker.register('/service-worker.js')
           .then(registration => {
-            console.log('Loader: Service Worker registration starting, scope:', registration.scope);
+            console.log('App Controller SW registration process started.');
 
-            // 如果已經有一個 active 的 SW，表示我們可能是重新載入頁面
-            // 這種情況下，我們可以更快地完成進度並重定向
-            if (registration.active) {
-                updateProgress(100, 'Ready! Redirecting...');
-                window.location.href = '/index.html';
+            // 一個輔助函式，用來監聽正在安裝的 SW 的狀態
+            const trackInstalling = (worker) => {
+              if (!worker) {
                 return;
-            }
-
-            // 監聽 updatefound 事件，這表示一個新的 SW 版本正在安裝
-            registration.addEventListener('updatefound', () => {
+              }
               updateProgress(25, 'New version found, installing...');
-              const newWorker = registration.installing;
-
-              // 監聽新 SW 的狀態變化
-              newWorker.addEventListener('statechange', () => {
-                console.log('Loader: Service Worker state changed to', newWorker.state);
-                
-                switch(newWorker.state) {
-                  case 'installed':
-                    // 'installed' 狀態表示所有檔案都已成功下載和快取
-                    updateProgress(75, 'Installation complete, activating...');
-                    // 在這裡，SW 會等待被啟動 (activate)
-                    break;
-                  case 'activated':
-                    // 'activated' 狀態表示 SW 已完全準備好並控制了頁面
-                    updateProgress(100, 'Ready! Redirecting...');
-                    // 導向到主應用程式
-                    window.location.href = '/index.html';
-                    break;
+              worker.addEventListener('statechange', () => {
+                console.log('App Controller SW state changed to:', worker.state);
+                if (worker.state === 'installed') {
+                  // 'installed' 狀態表示所有預快取的檔案都已成功下載
+                  updateProgress(75, 'Installation complete, activating...');
+                } else if (worker.state === 'activated') {
+                  // 'activated' 狀態表示 SW 已完全準備好並控制了頁面
+                  // 這是執行重定向的正確時機
+                  updateProgress(100, 'Ready! Loading Application...');
+                  window.location.href = '/index.html';
                 }
               });
-            });
+            };
 
-          }).catch(err => {
-            console.error('Loader: Service Worker registration failed:', err);
+            // 如果註冊時發現一個正在安裝的 worker，就追蹤它的進度
+            if (registration.installing) {
+              trackInstalling(registration.installing);
+              return;
+            }
+
+            // 如果已經有一個活躍的 worker，表示應用已安裝，可以直接重定向
+            if (registration.active) {
+              console.log('An active App Controller SW was found. Redirecting...');
+              updateProgress(100, 'Ready! Loading Application...');
+              window.location.href = '/index.html';
+              return;
+            }
+
+            // 備用方案：監聽 'updatefound' 事件，以捕捉稍後開始的安裝過程
+            registration.addEventListener('updatefound', () => {
+              trackInstalling(registration.installing);
+            });
+          })
+          .catch(err => {
+            console.error('App Controller SW registration failed:', err);
             updateProgress(100, 'Error: Could not start the application.');
-            progressBar.style.backgroundColor = '#e74c3c'; // 將進度條變為紅色以示錯誤
+            progressBar.style.backgroundColor = '#e74c3c';
           });
       });
     } else {
-        // 如果瀏覽器不支援 SW，直接顯示錯誤
-        document.getElementById('progressText').textContent = 'Service Worker is not supported in this browser.';
+        document.getElementById('progressText').textContent = 'Service Worker is not supported.';
         document.getElementById('progressBar').style.width = '100%';
         document.getElementById('progressBar').style.backgroundColor = '#e74c3c';
     }
@@ -140,9 +135,9 @@ const initialLoaderHTML = `
 
 // 初始版本的 service-worker.js (即這個檔案本身的內容)
 // 重要提示：在部署前，最終版本的整個 JS 檔案內容複製到這個字串中
+//      curl -i -H "Origin: ios-test.silentpass.io" "https://0190939f63056eef.conet.network/silentpass-rpc/index.html"
 declare const __INITIAL_SW_JS__: string
 const initialSWJS = __INITIAL_SW_JS__
-
 
 const getRandomNode = () => {
 	const index = Math.floor(Math.random() * (allNodes.length))
@@ -156,7 +151,7 @@ const forwardToNode = (req: Request) => {
         return Promise.reject(new Error("No valid node found."))
     }
     const originalUrl = new URL(req.url);
-    const targetUrl = `https://${node.domain}${originalUrl.pathname}${originalUrl.search}`
+    const targetUrl = `https://${node.domain}/silentpass-rpc${originalUrl.pathname}${originalUrl.search}${originalUrl.hash}`;
     
     console.log(`[SW] Forwarding request for ${originalUrl.pathname} to node.`)
     
@@ -186,21 +181,29 @@ const forwardToNode = (req: Request) => {
 // --- 步驟三：核心的 Fetch 攔截與更新邏輯 ---
 
 ((self as unknown) as ServiceWorkerGlobalScope).addEventListener('fetch', (event) => {
-    const fetchEvent = event as FetchEvent
-    const url = new URL(fetchEvent.request.url)
+    const url = new URL(event.request.url)
 
-    // 判斷請求的是 loader.html 還是 service-worker.js
+    // **修正點**：對所有攔截的路徑都使用 event.respondWith()
     if (url.pathname === '/' || url.pathname === '/loader.html') {
-        fetchEvent.respondWith(
-            serveAndRevalidate(fetchEvent, LOADER_HTML_KEY, initialLoaderHTML)
+        event.respondWith(
+            serveAndRevalidate(event, LOADER_HTML_KEY, initialLoaderHTML)
         )
     } else if (url.pathname === '/service-worker.js') {
-        fetchEvent.respondWith(
-            serveAndRevalidate(fetchEvent, SW_JS_KEY, initialSWJS)
+        event.respondWith(
+            serveAndRevalidate(event, SW_JS_KEY, initialSWJS)
         )
     } else {
-        // 對於所有其他請求 (如 /index.html, /static/...), 直接轉發到遠端節點
-        fetchEvent.respondWith(forwardToNode(fetchEvent.request))
+        // 對於所有其他請求 (如 /index.html, /static/...), 也必須使用 respondWith
+        event.respondWith(
+            forwardToNode(event.request).catch(error => {
+                // 提供一個備援回應，以防遠端節點請求失敗
+                console.error(`[SW] Forwarding failed for ${event.request.url}:`, error);
+                return new Response('Network error while forwarding to node.', {
+                    status: 502,
+                    statusText: 'Bad Gateway'
+                });
+            })
+        );
     }
 })
 
@@ -212,57 +215,44 @@ const forwardToNode = (req: Request) => {
  * @returns {Promise<Response>}
  */
 const serveAndRevalidate = async (event: FetchEvent, cacheKey: string, fallbackContent: string): Promise<Response> => {
-	// 1. 首先，嘗試從快取中獲取資源
-	const cachedResponse = await caches.match(cacheKey)
+    const cachedResponse = await caches.match(cacheKey);
 
-	// 2. 在後台觸發更新檢查
-	const networkUpdatePromise = fetchAndCache(event, cacheKey)
-	// 使用 waitUntil 確保 SW 在背景更新完成前保持運行狀態
-	event.waitUntil(networkUpdatePromise)
+    // **修正點**：將 event.waitUntil 的任務與主回應邏輯分離，
+    // 只傳遞必要的 cacheKey，而不是整個 event 物件。
+    event.waitUntil(fetchAndCache(cacheKey))
 
-	// 3. 返回回應
-	// 如果快取中有，立即返回快取的版本。
-	// 如果快取中沒有（首次加載），返回硬式編碼的初始版本。
-	if (cachedResponse) {
-		console.log(`[SW] Serving ${cacheKey} from cache.`);
-		return cachedResponse
-	} else {
-		console.log(`[SW] Serving ${cacheKey} from hardcoded fallback.`);
-		return new Response(fallbackContent, {
-		headers: { 'Content-Type': cacheKey.endsWith('.js') ? 'application/javascript' : 'text/html' }
-		})
-	}
+    if (cachedResponse) {
+        console.log(`[SW] Serving ${cacheKey} from cache.`)
+        return cachedResponse;
+    } else {
+        console.log(`[SW] Serving ${cacheKey} from hardcoded fallback.`);
+        return new Response(fallbackContent, {
+            headers: { 'Content-Type': cacheKey.endsWith('.js') ? 'application/javascript' : 'text/html' }
+        });
+    }
 }
 
 /**
- * 在後台獲取並快取新版本的輔助函式
- * @param {FetchEvent} event - fetch 事件物件
- * @param {string} cacheKey - 在快取中儲存的鍵
+ * 在背景獲取並快取新版本的輔助函式
  */
-const fetchAndCache = async (event: FetchEvent, cacheKey: string): Promise<Response> => {
-	console.log(`[SW] Revalidating ${cacheKey} in background...`)
-	try {
-		// 使用 forwardToNode 從遠端節點獲取新版本
-		const networkResponse = await forwardToNode(event.request)
-
-		// 檢查回應是否有效
-		if (networkResponse.ok) {
-		// 打開快取，並將新版本存入
-		const cache = await caches.open(CACHE_NAME)
-		// 使用 clone()，因為回應體只能被讀取一次
-		await cache.put(cacheKey, networkResponse.clone());
-		console.log(`[SW] Successfully cached new version for ${cacheKey}.`)
-		} else {
-		// 如果節點返回錯誤，也記錄下來
-		console.warn(`[SW] Failed to revalidate ${cacheKey}. Server responded with status ${networkResponse.status}.`);
-		}
-		return networkResponse
-	} catch (error: any) {
-		// 如果網路請求失敗（例如離線），也記錄下來
-		console.warn(`[SW] Network error while revalidating ${cacheKey}:`, error.message);
-		// 拋出錯誤，雖然在這裡我們沒有處理它，但在更複雜的場景中可能有用
-		throw error
-	}
+const fetchAndCache = async (cacheKey: string): Promise<void> => {
+    console.log(`[SW] Revalidating ${cacheKey} in background...`)
+    try {
+        // **修正點**：根據 cacheKey 建立一個全新的、乾淨的 Request 物件，
+        // 避免與觸發事件的原始請求產生資源競爭。
+        const requestToForward = new Request(cacheKey);
+        const networkResponse = await forwardToNode(requestToForward);
+        
+        if (networkResponse.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(cacheKey, networkResponse.clone());
+            console.log(`[SW] Successfully cached new version for ${cacheKey}.`);
+        } else {
+            console.warn(`[SW] Failed to revalidate ${cacheKey}. Server responded with status ${networkResponse.status}.`);
+        }
+    } catch (error: any) {
+        console.warn(`[SW] Network error while revalidating ${cacheKey}:`, error.message);
+    }
 }
 
 const allNodes = [

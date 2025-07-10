@@ -484,7 +484,7 @@ const handleTogglePower = async () => {
         )}
       </div>
 
-      {/*<QuickLinks />*/}
+      <QuickLinks />
 
       <Footer />
 

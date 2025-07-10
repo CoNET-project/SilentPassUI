@@ -61,6 +61,8 @@ type DaemonContext = {
   switchValue: boolean;
   setSwitchValue: (val: boolean) => void;
   webFilterRef:React.MutableRefObject<boolean>;
+  quickLinksShow: boolean;
+  setQuickLinksShow: (val: boolean) => void;
 };
 
 type DaemonProps = {
@@ -128,6 +130,8 @@ const defaultContextValue: DaemonContext = {
   switchValue: true,
   setSwitchValue: () => {},
   webFilterRef:{ current: false },
+  quickLinksShow: false,
+  setQuickLinksShow: () => {},
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -169,7 +173,9 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [getWebFilter, setGetWebFilter] = useState(false)
   const webFilterRef=useRef(getWebFilter);
   const [switchValue, setSwitchValue] = useState(true);
-  const firstLoad = useRef(true);
+  const [quickLinksShow, setQuickLinksShow] = useState(false);
+  const firstLoad = useRef(true); //系统代理 第一次
+  const firstLoad2 = useRef(true);  //快捷链接 第一次
 
   useEffect(() => {
     {
@@ -185,6 +191,10 @@ export function DaemonProvider({ children }: DaemonProps) {
 
     const webFilter=(storage&&storage.webFilter?JSON.parse(storage.webFilter):false);
     setGetWebFilter(webFilter);
+
+    const LOCAL_SHOW_KEY = 'silentpass_shortcut_show';
+    const isShowLinks=(storage&&storage[LOCAL_SHOW_KEY]?JSON.parse(storage[LOCAL_SHOW_KEY]):false);
+    setQuickLinksShow(isShowLinks);
   },[])
 
   useEffect(()=>{
@@ -201,6 +211,15 @@ export function DaemonProvider({ children }: DaemonProps) {
     storage.webFilter=JSON.stringify(getWebFilter);
   },[getWebFilter])
 
+  useEffect(()=>{
+    if(!firstLoad2.current){
+      const LOCAL_SHOW_KEY = 'silentpass_shortcut_show';
+      let storage = window.localStorage;
+      storage[LOCAL_SHOW_KEY]=JSON.stringify(quickLinksShow);
+    }
+    firstLoad2.current=false;
+  },[quickLinksShow])
+
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData,
@@ -210,7 +229,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
-				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, setGetWebFilter,switchValue, setSwitchValue, webFilterRef }}>
+				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow }}>
 
       {children}
     </Daemon.Provider>

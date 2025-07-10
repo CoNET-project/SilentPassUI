@@ -61,10 +61,11 @@
 	},
 	"scripts": {
 		"start": "craco start",
-		"build": "craco build",
+		"build:react": "env=production craco build",
 		"test": "react-scripts test",
 		"eject": "react-scripts eject",
-		"compile-sw": "tsc -p tsconfig.worker.json"
+		"build:loader": "node scripts/build-loader.js",
+        "build": "npm run build:react && npm run build:loader"
 	},
 	"eslintConfig": {
 		"extends": [
@@ -92,7 +93,9 @@
 		"@types/react-copy-to-clipboard": "^5.0.7",
 		"@types/styled-components": "^5.1.34",
 		"@craco/craco":"^7.1.0",
-		"workbox-webpack-plugin": "^7.3.0"
+		"workbox-webpack-plugin": "^7.3.0",
+        "@babel/parser": "^7.23.0",
+        "@babel/types": "^7.23.0"
 
 	}
 }

@@ -1,18 +1,23 @@
+// tsconfig.worker.json
 {
-  "compilerOptions": {
-    "target": "esnext", // Service Worker 通常運行在較新的環境中，可以使用較新的 ES 特性
-    "lib": ["webworker", "esnext"], // 僅包含 webworker 和 es2019 庫
-    "module": "esnext", // 模塊系統
-    "moduleResolution": "node", // 模塊解析策略
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "strict": true,
-    "noEmit": false, // 允許編譯輸出 JavaScript 文件
-    "outDir": "./public", // 將編譯後的 JS 文件輸出到 public 目錄
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true // 忽略所有聲明文件（.d.ts）中的類型檢查錯誤
-  },
-  "include": [
-    "service-worker.ts" // 只包含 Service Worker 檔案
-  ]
+    "compilerOptions": {
+        "target": "esnext",
+        "lib": ["webworker", "esnext"],
+        // IMPORTANT: Change module to "amd" to support the --outFile flag
+        "module": "amd", 
+        "moduleResolution": "node",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true
+        // Remove "noEmit" and "outDir" as we now control the output via the script
+    },
+    "include": [
+        "./loader.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "src",
+        "public",
+        "build"
+    ]
 }

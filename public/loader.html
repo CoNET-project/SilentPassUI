@@ -73,7 +73,7 @@
       window.addEventListener('load', () => {
         updateProgress(10, 'Registering Service Worker...');
         
-        navigator.serviceWorker.register('/service-worker1.js')
+        navigator.serviceWorker.register('/service-worker.js')
           .then(registration => {
             console.log('Loader: Service Worker registration starting, scope:', registration.scope);
 

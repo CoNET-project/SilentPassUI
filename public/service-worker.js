@@ -26,14 +26,7 @@ const precacheManifest = self.__WB_MANIFEST;
  */
 precacheAndRoute(precacheManifest);
 
-// --------------------------------------------------------------------------
-// --- 以下是您的自訂代理轉發邏輯 ---
-// --------------------------------------------------------------------------
 
-// 您的節點列表
-
-
-// 您的輔助函式
 const getRandomNode = () => {
     const index = Math.floor(Math.random() * (allNodes.length));
     return allNodes[index];
@@ -124,13 +117,12 @@ registerRoute(
     ({ request, url }) => {
         return precachedUrls.has(url.pathname);
     },
-    // 使用我們自訂的處理策略
+    // 使用自訂的處理策略
     forwardThenCacheFallback
 );
 
 /**
  * 對於非 React App 核心資源（例如第三方 API 請求或圖片），
- * 你可以設定其他的快取策略。
  * 例如，對圖片使用「快取優先」(CacheFirst) 策略。
  */
 registerRoute(

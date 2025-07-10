@@ -5,6 +5,7 @@ import styles from './quickLinks.module.css';
 import { useTranslation } from 'react-i18next';
 import { Action } from 'antd-mobile/es/components/action-sheet';
 import { useDaemonContext } from "../../providers/DaemonProvider";
+import LinkAvatar from './LinkAvatar';
 
 interface LinkItem {
     id: string;
@@ -16,7 +17,7 @@ const QuickLinks=({})=> {
     const { t, i18n } = useTranslation();
     const LOCAL_KEY = 'silentpass_shortcut_links';
     const [visible, setVisible] = useState(false);
-    const { quickLinksShow, setQuickLinksShow} = useDaemonContext();
+    const { quickLinksShow, setQuickLinksShow, isIOS, isLocalProxy } = useDaemonContext();
     const [links, setLinks] = useState<LinkItem[]>(() => {
         try {
             const stored = localStorage.getItem(LOCAL_KEY);
@@ -36,19 +37,6 @@ const QuickLinks=({})=> {
         { key: 'delete', text: t('quick-links-manage-delete'), onClick:() => { if(actionsheetLink) handleDelete(actionsheetLink?.id) }},
         { key: 'cancel', text: t('quick-links-manage-cancel')}
     ]
-    const COLORS = [
-      '#F6C6EA', // 柔粉紫
-      '#B5EAD7', // 绿薄荷
-      '#C7CEEA', // 淡蓝紫
-      '#FFDAC1', // 奶油橘
-      '#E2F0CB', // 淡豆绿
-      '#D5AAFF', // 柔紫
-      '#FFE0AC', // 奶茶色
-      '#A0E7E5', // 蓝绿色调
-      '#FFB5A7', // 珊瑚粉
-      '#C3FBD8', // 绿豆沙
-      '#F7D9C4'  // 浅桃奶
-    ];
 
     useEffect(() => {
         const stored = localStorage.getItem(LOCAL_KEY);
@@ -119,12 +107,16 @@ const QuickLinks=({})=> {
         setActionsheetLink(curlink);
         setManageVisible(true);
     }
-    const getAvatarColor=(title: string)=> {
-        let sum = 0;
-        for (let i = 0; i < title.length; i++) {
-            sum += title.charCodeAt(i);
+    const goLink=(url:string)=>{
+        const bridge = (window as any).AndroidBridge;
+        if (window?.webkit?.messageHandlers && isIOS && !isLocalProxy ) {
+            window?.webkit?.messageHandlers["openUrl"]?.postMessage(url)
+        } else if (bridge && typeof bridge.receiveMessageFromJS === 'function') {
+            const base = btoa(JSON.stringify({cmd: 'openUrl', data: url}))
+            bridge?.receiveMessageFromJS(base)
+        } else {
+            window.open(url, '_blank')
         }
-        return COLORS[sum % COLORS.length];
     }
 
     return (
@@ -157,19 +149,21 @@ const QuickLinks=({})=> {
                 >
                     <div className={styles.linkModal} id="linkModal">
                         {links&&links.length?<Grid columns={4} gap={8}>
-                            {links.map(link => (
-                                <Grid.Item key={link.id}>
-                                    <div className={styles.linkItem}>
-                                        <a className={styles.link} href={link.url} target="_blank" rel="noreferrer">
-                                            <div className={styles.avatar} style={{ backgroundColor: getAvatarColor(link.title) }}><span>{link.title.charAt(0).toUpperCase()}</span></div>
-                                            <div className={styles.name}><Ellipsis direction='end' content={link.title} /></div>
-                                        </a>
-                                        <div className={styles.operBar}>
-                                            <Button onClick={()=>{handleManage(link)}} className={styles.moreOper} block>{t('quick-links-manage-btn')}<SetOutline className={styles.icon} /></Button>
+                            {links.map(link => {
+                                return (
+                                    <Grid.Item key={link.id}>
+                                        <div className={styles.linkItem}>
+                                            <a className={styles.link} onClick={()=>{goLink(link.url)}} rel="noreferrer">
+                                                <LinkAvatar link={link} />
+                                                <div className={styles.name}><Ellipsis direction='end' content={link.title} /></div>
+                                            </a>
+                                            <div className={styles.operBar}>
+                                                <Button onClick={()=>{handleManage(link)}} className={styles.moreOper} block>{t('quick-links-manage-btn')}<SetOutline className={styles.icon} /></Button>
+                                            </div>
                                         </div>
-                                    </div>
-                                </Grid.Item>
-                            ))}
+                                    </Grid.Item>
+                                )
+                            })}
                             <Grid.Item>
                                 <div className={styles.linkItem}>
                                     <Button className={styles.linkItemAddBtn} shape='rounded' color='primary' fill='none' onClick={handleAdd}>

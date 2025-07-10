@@ -13,6 +13,7 @@ interface LinkItem {
 }
 
 const QuickLinks=({})=> {
+    const { t, i18n } = useTranslation();
     const LOCAL_KEY = 'silentpass_shortcut_links';
     const [visible, setVisible] = useState(false);
     const { quickLinksShow, setQuickLinksShow} = useDaemonContext();
@@ -31,9 +32,9 @@ const QuickLinks=({})=> {
     const [manageVisible, setManageVisible] = useState(false);
     const [actionsheetLink, setActionsheetLink] = useState<LinkItem | null>(null);
     const actions: Action[] = [
-        { key: 'edit', text: '修改', onClick:() => { if(actionsheetLink) handleEdit(actionsheetLink) }},
-        { key: 'delete', text: '删除', onClick:() => { if(actionsheetLink) handleDelete(actionsheetLink?.id) }},
-        { key: 'cancel', text: '取消'}
+        { key: 'edit', text: t('quick-links-manage-edit'), onClick:() => { if(actionsheetLink) handleEdit(actionsheetLink) }},
+        { key: 'delete', text: t('quick-links-manage-delete'), onClick:() => { if(actionsheetLink) handleDelete(actionsheetLink?.id) }},
+        { key: 'cancel', text: t('quick-links-manage-cancel')}
     ]
     const COLORS = [
       '#F6C6EA', // 柔粉紫
@@ -70,7 +71,7 @@ const QuickLinks=({})=> {
     }
     const handleAdd = () => {
         if (links.length >= 11) {
-            Toast.show({ content: '最多只能添加 11 个快捷链接', duration: 3000, maskStyle:{zIndex:'20005'} });
+            Toast.show({ content: t('quick-links-manage-tips-1'), duration: 3000, maskStyle:{zIndex:'20005'} });
             return;
         }
         setEditingLink(null);
@@ -81,7 +82,7 @@ const QuickLinks=({})=> {
     const handleSave = () => {
         if (!title || !url) return;
         if (!isValidUrl(url)) {
-            Toast.show({ content: '请检查链接地址,http或https开头', duration: 3000, maskStyle:{zIndex:'20005'} });
+            Toast.show({ content: t('quick-links-manage-tips-2'), duration: 3000, maskStyle:{zIndex:'20005'} });
             return;
         }
         if (editingLink) {
@@ -101,7 +102,7 @@ const QuickLinks=({})=> {
     const handleDelete = async(id: string) => {
         const result = await Dialog.confirm({
             className:styles.deleteDialog,
-            content: '确认删除吗',
+            content: t('quick-links-manage-confirm-delete'),
         })
         if (result) {
             setLinks(prev => prev.filter(item => item.id !== id));
@@ -164,7 +165,7 @@ const QuickLinks=({})=> {
                                             <div className={styles.name}><Ellipsis direction='end' content={link.title} /></div>
                                         </a>
                                         <div className={styles.operBar}>
-                                            <Button onClick={()=>{handleManage(link)}} className={styles.moreOper} block>管理<SetOutline className={styles.icon} /></Button>
+                                            <Button onClick={()=>{handleManage(link)}} className={styles.moreOper} block>{t('quick-links-manage-btn')}<SetOutline className={styles.icon} /></Button>
                                         </div>
                                     </div>
                                 </Grid.Item>
@@ -177,7 +178,7 @@ const QuickLinks=({})=> {
                                 </div>
                             </Grid.Item>
                         </Grid>:<div className={styles.empty}>
-                            <Empty description='暂无数据' />
+                            <Empty description={t('quick-links-manage-empty')} />
                             <Button className={styles.linkItemAddBtn} shape='rounded' color='primary' fill='none' onClick={handleAdd}>
                                 <AddOutline />
                             </Button>
@@ -185,7 +186,7 @@ const QuickLinks=({})=> {
                     </div>
                 </Popup>
                 <ActionSheet
-                    extra={'请选择你要对 '+ (actionsheetLink?.title) + ' 进行的操作'}
+                    extra={t('quick-links-manage-tips-3', {name:(actionsheetLink?.title)})}
                     closeOnAction={true}
                     popupClassName={styles.managePopup}
                     visible={manageVisible}
@@ -200,13 +201,13 @@ const QuickLinks=({})=> {
                     content={
                         <div className={styles.editModalCont}>
                             <Input
-                                placeholder="标题"
+                                placeholder={t('quick-links-manage-edit-title')}
                                 value={title}
                                 onChange={val => setTitle(val)}
                                 className={styles.input}
                             />
                             <Input
-                                placeholder="链接地址"
+                                placeholder={t('quick-links-manage-edit-address')}
                                 value={url}
                                 onChange={val => setUrl(val)}
                                 className={styles.input}
@@ -216,8 +217,8 @@ const QuickLinks=({})=> {
                     closeOnMaskClick
                     onClose={() => setEditVisible(false)}
                     actions={[
-                        { key: 'save', className:styles.addBtn, disabled:(!title || !url), text: editingLink ? '保存' : '添加', onClick: handleSave },
-                        { key: 'cancel', className:styles.cancelBtn, text: '取消', onClick:() => setEditVisible(false) },
+                        { key: 'save', className:styles.addBtn, disabled:(!title || !url), text: editingLink ? t('quick-links-manage-save') : t('quick-links-manage-add'), onClick: handleSave },
+                        { key: 'cancel', className:styles.cancelBtn, text: t('quick-links-manage-cancel'), onClick:() => setEditVisible(false) },
                     ]}
                 />
             </div>:''}

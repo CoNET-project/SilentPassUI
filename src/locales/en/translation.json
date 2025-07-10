@@ -365,6 +365,20 @@
 	"wallet-receive-code-scan-tip-6": "File scan failed",
 	"wallet-receive-code-scan-file-btn": "Choose File",
 	"wallet-send-useless-tip":"Insufficient balance. Set to maximum available.",
-	"wallet-scan-camera-tip":"Starting camera"
+	"wallet-scan-camera-tip":"Starting camera",
+	"quick-links":"Quick Links",
+	"quick-links-manage-edit": "Edit",
+	"quick-links-manage-delete": "Delete",
+	"quick-links-manage-cancel": "Cancel",
+	"quick-links-manage-save": "Save",
+	"quick-links-manage-add": "Add",
+	"quick-links-manage-confirm-delete": "Are you sure you want to delete?",
+	"quick-links-manage-tips-1": "You can add up to 11 quick links only.",
+	"quick-links-manage-tips-2": "Please check the link address. It should start with http or https.",
+	"quick-links-manage-tips-3": "Select an action to perform on {{name}}",
+	"quick-links-manage-btn": "Manage",
+	"quick-links-manage-empty": "No data available",
+	"quick-links-manage-edit-title": "Title",
+	"quick-links-manage-edit-address": "Link Address"
 
 }

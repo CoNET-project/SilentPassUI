@@ -1,12 +1,18 @@
 .quickLinks{
     :global(.adm-floating-bubble-button){
         z-index: 1008;
+        background: radial-gradient(circle at 40% 40%, #f9d423, #ff4e50);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
     }
 }
 .quickLinksPopup{
+    z-index: 20000!important;
     :global(.adm-popup-body){
         background: #1f1f1f;
     }
+}
+.managePopup{
+    z-index: 20001!important;
 }
 .linkModal{
     padding: 30px 4vw 20px;
@@ -15,6 +21,7 @@
         flex-direction: column;
         justify-content: center;
         align-items: center;
+        height: 23vw;
         .link{
             display: flex;
             flex-direction: column;
@@ -31,6 +38,9 @@
                 font-size: 5vw;
                 background: #97213d;
                 border-radius: 100px;
+                span{
+                    mix-blend-mode: difference;
+                }
             }
             .name{
                 color: #c7c7c7;
@@ -40,13 +50,17 @@
             }
         }
         .operBar{
-            margin: 3px 0 0;
+            margin: 5px 0 0;
+            width: 100%;
+            padding: 0 10px;
             .moreOper{
                 font-size: 12px;
                 background: #727272;
                 border-color: #727272;
                 padding: 2px 5px;
                 color: #d3d2d2;
+                line-height: 1;
+                width: 100%;
                 .icon{
                     margin: 0 0 0 2px;
                     font-size: 10px;
@@ -54,5 +68,83 @@
                 }
             }
         }
+        .linkItemAddBtn{
+            width: 10vw;
+            height: 10vw;
+            background: #d5e3fb;
+            line-height: 1;
+            justify-content: center;
+            align-items: center;
+            font-size: 5vw;
+            padding: 0;
+            color: #091e46;
+        }
     }
+    .empty{
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        .linkItemAddBtn{
+            width: 10vw;
+            height: 10vw;
+            background: #d5e3fb;
+            line-height: 1;
+            justify-content: center;
+            align-items: center;
+            font-size: 5vw;
+            padding: 0;
+            color: #091e46;
+        }
+    }
+}
+.editModal{
+    .editModalCont{
+        padding: 10px 5px 0;
+        .input{
+            background: #3a3a3a;
+            margin: 0 0 10px;
+            border-radius: 6px;
+            :global(.adm-input-element){
+                color: #fff;
+                padding: 2vw;
+                font-size: 14px;
+                &::placeholder {
+                    color: #888;  
+                    opacity: 1;   
+                }
+            }
+        }
+    }
+    .addBtn{
+        font-size: 15px;
+        color: #6a6a6a;
+        background: rgba(25,25,25,0.6);
+        padding: 1.3vw 0!important;
+    }
+    .cancelBtn{
+        font-size: 15px;
+        color: #6a6a6a;
+        background: rgba(25,25,25,0.6);
+        padding: 1.3vw 0!important;
+    }
+    :global(.adm-space-vertical > .adm-space-item){
+        margin-bottom:6px;
+    }
+    :global(.adm-center-popup-wrap){
+        width: 88%;
+        max-width: 90%;
+    }
+    :global(.adm-center-popup-body){
+        background: #2b2b2b;
+    }
+    :global(.adm-modal-content){
+        padding-bottom: 0;
+    }
+    :global(.adm-modal-footer){
+        padding: 0 17px 16px;
+    }
+}
+.deleteDialog{
+    z-index: 20009;
 }

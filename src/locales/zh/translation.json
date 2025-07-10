@@ -370,5 +370,20 @@
 	"wallet-receive-code-scan-tip-6":"文件扫码失败",
 	"wallet-receive-code-scan-file-btn":"选择文件",
 	"wallet-send-useless-tip":"余额不足，已为您设置最大值",
-	"wallet-scan-camera-tip":"摄像头启动中"
+	"wallet-scan-camera-tip":"摄像头启动中",
+	"quick-links":"快捷链接",
+	"quick-links-manage-edit":"修改",
+	"quick-links-manage-delete":"删除",
+	"quick-links-manage-cancel":"取消",
+	"quick-links-manage-save":"保存",
+	"quick-links-manage-add":"添加",
+	"quick-links-manage-confirm-delete":"确认删除吗",
+	"quick-links-manage-tips-1":"最多只能添加 11 个快捷链接",
+	"quick-links-manage-tips-2":"请检查链接地址,http或https开头",
+	"quick-links-manage-tips-3":"请选择你要对{{name}}进行的操作",
+	"quick-links-manage-btn":"管理",
+	"quick-links-manage-empty":"暂无数据",
+	"quick-links-manage-edit-title":"标题",
+	"quick-links-manage-edit-address":"链接地址"
+	
 }

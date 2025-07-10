@@ -1,9 +1,10 @@
 import {useState,useRef,useEffect} from 'react';
-import { FloatingBubble,Popup,Grid,Button,Modal,Input,Toast,Ellipsis,Popover } from 'antd-mobile';
-import { LinkOutline,AddCircleOutline,DeleteOutline, EditSOutline,DownFill } from 'antd-mobile-icons';
+import { FloatingBubble,Popup,Grid,Button,Modal,Input,Toast,Ellipsis,ActionSheet,Dialog,Empty } from 'antd-mobile';
+import { LinkOutline,AddOutline,DeleteOutline, EditSOutline,SetOutline } from 'antd-mobile-icons';
 import styles from './quickLinks.module.css';
 import { useTranslation } from 'react-i18next';
-import { Action } from 'antd-mobile/es/components/popover';
+import { Action } from 'antd-mobile/es/components/action-sheet';
+import { useDaemonContext } from "../../providers/DaemonProvider";
 
 interface LinkItem {
     id: string;
@@ -12,8 +13,10 @@ interface LinkItem {
 }
 
 const QuickLinks=({})=> {
+    const { t, i18n } = useTranslation();
     const LOCAL_KEY = 'silentpass_shortcut_links';
     const [visible, setVisible] = useState(false);
+    const { quickLinksShow, setQuickLinksShow} = useDaemonContext();
     const [links, setLinks] = useState<LinkItem[]>(() => {
         try {
             const stored = localStorage.getItem(LOCAL_KEY);
@@ -26,10 +29,26 @@ const QuickLinks=({})=> {
     const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
     const [title, setTitle] = useState('');
     const [url, setUrl] = useState('');
+    const [manageVisible, setManageVisible] = useState(false);
+    const [actionsheetLink, setActionsheetLink] = useState<LinkItem | null>(null);
     const actions: Action[] = [
-        { key: 'edit', icon: <EditSOutline />, text: '修改' },
-        { key: 'delete', icon: <DeleteOutline />, text: '删除' }
+        { key: 'edit', text: t('quick-links-manage-edit'), onClick:() => { if(actionsheetLink) handleEdit(actionsheetLink) }},
+        { key: 'delete', text: t('quick-links-manage-delete'), onClick:() => { if(actionsheetLink) handleDelete(actionsheetLink?.id) }},
+        { key: 'cancel', text: t('quick-links-manage-cancel')}
     ]
+    const COLORS = [
+      '#F6C6EA', // 柔粉紫
+      '#B5EAD7', // 绿薄荷
+      '#C7CEEA', // 淡蓝紫
+      '#FFDAC1', // 奶油橘
+      '#E2F0CB', // 淡豆绿
+      '#D5AAFF', // 柔紫
+      '#FFE0AC', // 奶茶色
+      '#A0E7E5', // 蓝绿色调
+      '#FFB5A7', // 珊瑚粉
+      '#C3FBD8', // 绿豆沙
+      '#F7D9C4'  // 浅桃奶
+    ];
 
     useEffect(() => {
         const stored = localStorage.getItem(LOCAL_KEY);
@@ -42,9 +61,17 @@ const QuickLinks=({})=> {
         localStorage.setItem(LOCAL_KEY, JSON.stringify(links));
     }, [links]);
 
+    const isValidUrl=(url: string)=> {
+        try {
+            new URL(url);
+            return true;
+        } catch (err) {
+            return false;
+        }
+    }
     const handleAdd = () => {
-        if (links.length >= 10) {
-            Toast.show({ content: '最多只能添加 10 个快捷链接', duration: 2000 });
+        if (links.length >= 11) {
+            Toast.show({ content: t('quick-links-manage-tips-1'), duration: 3000, maskStyle:{zIndex:'20005'} });
             return;
         }
         setEditingLink(null);
@@ -52,9 +79,12 @@ const QuickLinks=({})=> {
         setUrl('');
         setEditVisible(true);
     }
-
     const handleSave = () => {
         if (!title || !url) return;
+        if (!isValidUrl(url)) {
+            Toast.show({ content: t('quick-links-manage-tips-2'), duration: 3000, maskStyle:{zIndex:'20005'} });
+            return;
+        }
         if (editingLink) {
             setLinks(prev =>
                 prev.map(item =>
@@ -69,8 +99,14 @@ const QuickLinks=({})=> {
         }
         setEditVisible(false);
     }
-    const handleDelete = (id: string) => {
-        setLinks(prev => prev.filter(item => item.id !== id));
+    const handleDelete = async(id: string) => {
+        const result = await Dialog.confirm({
+            className:styles.deleteDialog,
+            content: t('quick-links-manage-confirm-delete'),
+        })
+        if (result) {
+            setLinks(prev => prev.filter(item => item.id !== id));
+        }
     }
 
     const handleEdit = (item: LinkItem) => {
@@ -79,99 +115,114 @@ const QuickLinks=({})=> {
         setUrl(item.url);
         setEditVisible(true);
     }
+    const handleManage=(curlink:LinkItem)=>{
+        setActionsheetLink(curlink);
+        setManageVisible(true);
+    }
+    const getAvatarColor=(title: string)=> {
+        let sum = 0;
+        for (let i = 0; i < title.length; i++) {
+            sum += title.charCodeAt(i);
+        }
+        return COLORS[sum % COLORS.length];
+    }
 
     return (
-        <div className={styles.quickLinks}>
-            <FloatingBubble
-                onClick={() => {setVisible(!visible)}}
-                axis='xy'
-                magnetic='x'
-                style={{
-                  '--initial-position-bottom': '124px',
-                  '--initial-position-right': '24px',
-                  '--edge-distance': '24px 24px 80px 24px',
-                }}
-            >
-                <LinkOutline fontSize={32} />
-            </FloatingBubble>
-            <Popup
-                className={styles.quickLinksPopup}
-                visible={visible}
-                showCloseButton={true}
-                onMaskClick={() => {setVisible(false)}}
-                onClose={() => {setVisible(false)}}
-                style={{zIndex:'1009'}}
-                bodyStyle={{
-                    borderTopLeftRadius: '6vw',
-                    borderTopRightRadius: '6vw',
-                    minHeight: '40vh',
-                }}
-            >
-                <div className={styles.linkModal} id="linkModal">
-                    <Grid columns={4} gap={8}>
-                        {links.map(link => (
-                            <Grid.Item key={link.id}>
-                                <div className={styles.linkItem}>
-                                    <a className={styles.link} href={link.url} target="_blank" rel="noreferrer">
-                                        <div className={styles.avatar}><span>{link.title.charAt(0).toUpperCase()}</span></div>
-                                        <div className={styles.name}><Ellipsis direction='end' content={link.title} /></div>
-                                    </a>
-                                    <div className={styles.operBar}>
-                                        <Popover.Menu
-                                            actions={actions}
-                                            placement='top'
-                                            trigger='click'
-                                            getContainer={() => {
-                                              return  document.body;
-                                            }}
-                                        >
-                                            <Button className={styles.moreOper} block>管理<DownFill className={styles.icon} /></Button>
-                                        </Popover.Menu>
-                                        {/*<Button fill="none" onClick={() => handleEdit(link)}><EditSOutline /></Button>
-                                        <Button fill="none" onClick={() => handleDelete(link.id)}><DeleteOutline /></Button>*/}
+        <>
+            {quickLinksShow?<div className={styles.quickLinks}>
+                <FloatingBubble
+                    onClick={() => {setVisible(!visible)}}
+                    axis='xy'
+                    magnetic='x'
+                    style={{
+                      '--initial-position-bottom': '124px',
+                      '--initial-position-right': '24px',
+                      '--edge-distance': '24px 24px 80px 24px',
+                    }}
+                >
+                    <LinkOutline fontSize={32} />
+                </FloatingBubble>
+                <Popup
+                    className={styles.quickLinksPopup}
+                    visible={visible}
+                    showCloseButton={true}
+                    onMaskClick={() => {setVisible(false)}}
+                    onClose={() => {setVisible(false)}}
+                    style={{zIndex:'1009'}}
+                    bodyStyle={{
+                        borderTopLeftRadius: '6vw',
+                        borderTopRightRadius: '6vw',
+                        minHeight: '40vh',
+                    }}
+                >
+                    <div className={styles.linkModal} id="linkModal">
+                        {links&&links.length?<Grid columns={4} gap={8}>
+                            {links.map(link => (
+                                <Grid.Item key={link.id}>
+                                    <div className={styles.linkItem}>
+                                        <a className={styles.link} href={link.url} target="_blank" rel="noreferrer">
+                                            <div className={styles.avatar} style={{ backgroundColor: getAvatarColor(link.title) }}><span>{link.title.charAt(0).toUpperCase()}</span></div>
+                                            <div className={styles.name}><Ellipsis direction='end' content={link.title} /></div>
+                                        </a>
+                                        <div className={styles.operBar}>
+                                            <Button onClick={()=>{handleManage(link)}} className={styles.moreOper} block>{t('quick-links-manage-btn')}<SetOutline className={styles.icon} /></Button>
+                                        </div>
                                     </div>
+                                </Grid.Item>
+                            ))}
+                            <Grid.Item>
+                                <div className={styles.linkItem}>
+                                    <Button className={styles.linkItemAddBtn} shape='rounded' color='primary' fill='none' onClick={handleAdd}>
+                                        <AddOutline />
+                                    </Button>
                                 </div>
                             </Grid.Item>
-                        ))}
-                        <Grid.Item>
-                            <div className={styles.linkItem}>
-                                <Button color='primary' fill='none' onClick={handleAdd}>
-                                    <AddCircleOutline />
-                                </Button>
-                            </div>
-                        </Grid.Item>
-                    </Grid>
-                </div>
-            </Popup>
-            <Modal
-                visible={editVisible}
-                showCloseButton
-                style={{zIndex:'1010'}}
-                content={
-                    <div>
-                        <Input
-                            placeholder="标题"
-                            value={title}
-                            onChange={val => setTitle(val)}
-                            clearable
-                        />
-                        <Input
-                            placeholder="链接地址"
-                            value={url}
-                            onChange={val => setUrl(val)}
-                            clearable
-                            style={{ marginTop: 12 }}
-                        />
+                        </Grid>:<div className={styles.empty}>
+                            <Empty description={t('quick-links-manage-empty')} />
+                            <Button className={styles.linkItemAddBtn} shape='rounded' color='primary' fill='none' onClick={handleAdd}>
+                                <AddOutline />
+                            </Button>
+                        </div>}
                     </div>
-                }
-                closeOnMaskClick
-                onClose={() => setEditVisible(false)}
-                actions={[
-                    { key: 'cancel', text: '取消' },
-                    { key: 'save', text: editingLink ? '保存' : '添加', onClick: handleSave },
-                ]}
-            />
-        </div>
+                </Popup>
+                <ActionSheet
+                    extra={t('quick-links-manage-tips-3', {name:(actionsheetLink?.title)})}
+                    closeOnAction={true}
+                    popupClassName={styles.managePopup}
+                    visible={manageVisible}
+                    actions={actions}
+                    onClose={() => setManageVisible(false)}
+                />
+                <Modal
+                    className={styles.editModal}
+                    visible={editVisible}
+                    showCloseButton={false}
+                    style={{zIndex:'20002'}}
+                    content={
+                        <div className={styles.editModalCont}>
+                            <Input
+                                placeholder={t('quick-links-manage-edit-title')}
+                                value={title}
+                                onChange={val => setTitle(val)}
+                                className={styles.input}
+                            />
+                            <Input
+                                placeholder={t('quick-links-manage-edit-address')}
+                                value={url}
+                                onChange={val => setUrl(val)}
+                                className={styles.input}
+                            />
+                        </div>
+                    }
+                    closeOnMaskClick
+                    onClose={() => setEditVisible(false)}
+                    actions={[
+                        { key: 'save', className:styles.addBtn, disabled:(!title || !url), text: editingLink ? t('quick-links-manage-save') : t('quick-links-manage-add'), onClick: handleSave },
+                        { key: 'cancel', className:styles.cancelBtn, text: t('quick-links-manage-cancel'), onClick:() => setEditVisible(false) },
+                    ]}
+                />
+            </div>:''}
+        </>
     );
 }
 

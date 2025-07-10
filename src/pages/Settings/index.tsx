@@ -43,13 +43,11 @@ export default function Settings() {
   const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [visible2, setVisible2] = useState(false);
-  const { activePassport, isLocalProxy, power,switchValue, setSwitchValue, isIOS } = useDaemonContext();
+  const { activePassport, isLocalProxy, power,switchValue, setSwitchValue, quickLinksShow, setQuickLinksShow, isIOS } = useDaemonContext();
 
 
   const navigate = useNavigate();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-
-  // const [switchValue, setSwitchValue] = useState(true);
 
   function handleChangeTheme() {
     setTheme((prev) => prev === 'light' ? 'dark' : 'light')
@@ -180,6 +178,23 @@ export default function Settings() {
 						</div>
                   	</>:''
 				  }
+          {
+            index === 1 ? 
+          <>
+            <Separator />
+            <div className="container">
+              <div className="def">
+                <div className="icon-wrapper">
+                  <img src={systemProxi} alt="Icon" />
+                </div>
+                <p>{t('quick-links')}</p>
+              </div>
+              <div className="children">
+                <Switch checked={quickLinksShow} onChange={(val:boolean)=>{setQuickLinksShow(val)}} style={{'--height': '18px','--width': '38px'}} />
+              </div>
+            </div>
+                    </>:''
+          }
                 </div>
               </div>
             </>

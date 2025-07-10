@@ -179,7 +179,8 @@ const getAllNodes = async (
 const getAllRegions = (nodes: nodes_info[]) => {
 	const country: Map<string, boolean> = new Map();
 	nodes.forEach(n => {
-		const _country = n.region.split(".")[1]
+		let _country = n.region.split(".")[1]
+		
 		country.set(_country, true)
 	})
 	allRegions = Array.from(country.keys())

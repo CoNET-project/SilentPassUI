@@ -27,7 +27,12 @@ interface RegionSelectorProps {
 
 export default function RegionSelector({ regionCode, icon, title, action, children, switchComp, isLocalServer, switchState = false, toggle = false, theme = false, showArrow = true, ios }: RegionSelectorProps) {
     const { t, i18n } = useTranslation()
-
+  const convertCN = (code: string) => {
+	if (code === 'CN') {
+		return 'HK'
+	}
+	return code
+  }
   return (
 
     <div className="container-region" style={{ cursor: showArrow ? 'pointer' : 'not-allowed' }} onClick={action}>
@@ -44,7 +49,7 @@ export default function RegionSelector({ regionCode, icon, title, action, childr
             }}
           />
         </div>
-        {t('region_' + regionCode)}
+        {t('region_' + convertCN(regionCode))}
       </div>
 	  {
 		 (isLocalServer) &&

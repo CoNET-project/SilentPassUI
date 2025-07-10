@@ -12,7 +12,7 @@ import Footer from '../../components/Footer';
 import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
-import { startSilentPass, stopSilentPass, testRequest } from "../../api";
+import { startSilentPass, stopSilentPass } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 import QuickLinks from "../../components/QuickLinks/QuickLinks";
 import { getServerIpAddress } from "../../api"
@@ -123,7 +123,7 @@ const SystemSettingsButton = () => {
 }
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, switchValue, isIOS} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin,switchValue, isLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, isIOS} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
@@ -146,6 +146,7 @@ const Home = () => {
 	const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
 		const separatedRegion = region.split(".");
 		const code = separatedRegion[1];
+
 		const country = mappedCountryCodes[code];
 
 		return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
@@ -245,48 +246,42 @@ const Home = () => {
   }, [closestRegion])
 
 const handleTogglePower = async () => {
-    setIsConnectionLoading(true)
+    
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
-	const kk = await testRequest()
-	try {
-		const response = await getServerIpAddress();
-        const tmpIpAddress = response.data;
-        setServerIpAddress(tmpIpAddress?.ip || "");
-		setIsLocalProxy(true)
-	} catch (ex) {
-		setIsLocalProxy(false)
-	}
+
 
 	
     if (power) {
+		setIsConnectionLoading(true)
 
-		//		iOS
-      if (window?.webkit) {
-        if(switchValue) window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
-        setPower(false);
-      }
+		if (isLocalProxy) {
+			//			Desktop
+			try {
+				const response = await stopSilentPass();
+				if (response.status === 200) {
+					
+				}
+			} catch (ex) { }
+			if (switchValue && window?.webkit) {
+				window?.webkit?.messageHandlers["stopVPN"].postMessage("")
+			}
+			
+		} else if (isIOS ) {
+			
+			window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+			
+		} else 
 	  	//	@ts-ignore		Android
 		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
 			
 			const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
 			//	@ts-ignore
 			AndroidBridge.receiveMessageFromJS(base)
-			setPower(false);
-		} else {
-			//	@ts-ignore
-			console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
+			
 		}
-	  
-		//			Desktop
-		try {
-			const response = await stopSilentPass();
-			if (response.status === 200) {
-			setPower(false);
-			}
-		} catch (ex) { }
-
+		setPower(false);
 		setTimeout(() => setIsConnectionLoading(false), 1000)
 		return
     }
@@ -316,14 +311,10 @@ const handleTogglePower = async () => {
       return
     }
 
-    if (sRegion === -1) {
-      selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
-      setSRegion(selectedCountryIndex);
-    } else {
-      selectedCountryIndex = sRegion
-    }
+	
 
     const allNodes = getAllNodes
+
 	if (!allNodes.length) {
 		setTimeout(() => {
 			setIsConnectionLoading(false)
@@ -331,18 +322,34 @@ const handleTogglePower = async () => {
 		  }, 1000)
 		return
 	}
+
+	setIsConnectionLoading(true)
+
+	if (sRegion === -1) {
+      selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
+      setSRegion(selectedCountryIndex);
+    } else {
+      selectedCountryIndex = sRegion
+    }
+
+	
     const exitRegion = allRegions[selectedCountryIndex].code
-    const exitNodes = allNodes.filter((n: any) => n.country === exitRegion)
+    const exitNodes = getAllNodes.filter((n: any) => {
+		const region: string = n.region
+		const regionName = region.split('.')[1]
+		return regionName === exitRegion
+	})
 
     const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
 
     const _exitNode = [exitNodes[randomExitIndex]]
 
     let _entryNodes = closestRegion
-
+	console.log(_entryNodes)
+	console.log(_exitNode)
     const entryNodes = _entryNodes.map(n => {
       return {
-        country: n.country,
+        country: '',
         ip_addr: n.ip_addr,
         region: n.region,
         armoredPublicKey: n.armoredPublicKey,
@@ -351,7 +358,7 @@ const handleTogglePower = async () => {
     })
     const exitNode = _exitNode.map(n => {
       return {
-        country: n.country,
+        country: '',
         ip_addr: n.ip_addr,
         region: n.region,
         armoredPublicKey: n.armoredPublicKey,
@@ -366,38 +373,38 @@ const handleTogglePower = async () => {
     }
 	const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject)
 	const base64VPNMessage = btoa(stringifiedVPNMessageObject)
-    if (isIOS && window?.webkit && switchValue) {
-      window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
-    }
 
-	//	@ts-ignore
-	if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
-		
-		const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
-		//	@ts-ignore
-		AndroidBridge.receiveMessageFromJS(base)
-	} else {
-		//	@ts-ignore
-		console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
-	}
 
 	if (isLocalProxy) {
+
 		try {
 			await startSilentPass(startVPNMessageObject);
 		} catch (ex) {
-		// error = true
-		// setErrorMessage(GENERIC_ERROR);
+
+		}
+
+		if (switchValue && window?.webkit) {
+			 window?.webkit?.messageHandlers["startProxy"].postMessage("")
+		}
+		
+
+	} else {
+		if (isIOS) {
+			window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
+		} else
+		//	@ts-ignore
+		if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
+			
+			const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
+			//	@ts-ignore
+			AndroidBridge.receiveMessageFromJS(base)
 		}
 	}
 
 
     setTimeout(() => {
-      setIsConnectionLoading(false)
-
-      if (!error) {
-        setPower(true);
-      }
-
+      	setIsConnectionLoading(false)
+        setPower(true)
     }, 1000)
 
     return

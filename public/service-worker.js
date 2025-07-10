@@ -1,133 +1,156 @@
-"use strict";
-const sw = self;
-// 定義緩存的名稱和版本。更新 Service Worker 時，應該更改此版本號。
-const CACHE_NAME = 'my-app-cache-v14';
-// App Shell：應用核心靜態資源，在安裝時預先快取
-const APP_SHELL_URLS = [
-    "https://ios-test.silentpass.io/",
-    "https://vpn4.silentpass.io/",
-    "https://vpn-beta.conet.network/",
-    "https://vpn9.conet.network/",
-    "/static/css/main.704caabd.css",
-    "/static/js/main.704caabd.js",
-    "/favicon.ico",
-    "/assets/info.svg",
-    "/assets/silent-pass-logo-grey.png",
-    "/static/css/main.704caabd.css.map",
-    "/static/js/453.a5cbc0be.chunk.js.map",
-    "/static/js/main.704caabd.js.map",
-    "/manifest.json",
-    "https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/us.svg"
-];
+/* eslint-disable no-restricted-globals */
+
+// 告訴 TypeScript Service Worker 的全域作用域 (self) 上存在 __WB_MANIFEST 屬性
+// 這是為了解決 "Property '__WB_MANIFEST' does not exist on type..." 的錯誤
+
+// 引入 Workbox 的核心模組
+import { clientsClaim } from 'workbox-core';
+import { precacheAndRoute } from 'workbox-precaching';
+import { registerRoute } from 'workbox-routing';
+import { CacheFirst } from 'workbox-strategies';
+
+// clientsClaim() 讓新的 Service Worker 在 activate 後立即接管頁面
+clientsClaim();
+
+// **修正點：** 將 self.__WB_MANIFEST 賦值給一個變數，確保它在程式碼中只出現一次。
+// Workbox 的 InjectManifest 插件會找到這個唯一的佔位符並將其替換為實際的檔案列表。
+const precacheManifest = self.__WB_MANIFEST;
+
+
 /**
- * 安裝事件 (install)
- * 使用 sw 取代 self，並為 event 參數提供正確的類型。
+ * 步驟一：預先快取所有 React App 的核心依賴項
+ * 這是實現離線備援的基礎。
+ * self.__WB_MANIFEST 是由 workbox-webpack-plugin 在建置時自動注入的，
+ * 它包含所有需要被快取的檔案列表 (index.html, main.js, main.css, etc.)。
+ * precacheAndRoute() 會自動處理這些檔案的下載和快取。
  */
-sw.addEventListener('install', (event) => {
-    event.waitUntil(caches.open(CACHE_NAME).then((cache) => {
-        console.log('[Service Worker] Pre-caching App Shell');
-        return cache.addAll(APP_SHELL_URLS);
-    }));
-});
-/**
- * 啟用事件 (activate)
- * 清理舊版本的緩存。
- */
-sw.addEventListener('activate', (event) => {
-    event.waitUntil(caches.keys().then((cacheNames) => {
-        return Promise.all(cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-                console.log(`[Service Worker] Clearing old cache: ${cacheName}`);
-                return caches.delete(cacheName);
-            }
-        }));
-    }).then(() => sw.clients.claim()) // 使用 sw.clients.claim()
-    );
-});
-/**
- * 攔截請求事件 (fetch)
- */
-const checkAPP_SHELL_URLS = (req) => {
-    const index = APP_SHELL_URLS.findIndex(n => req.url.endsWith(n));
-    return index > -1;
-};
+precacheAndRoute(precacheManifest);
+
+// --------------------------------------------------------------------------
+// --- 以下是您的自訂代理轉發邏輯 ---
+// --------------------------------------------------------------------------
+
+// 您的節點列表
+
+
+// 您的輔助函式
 const getRandomNode = () => {
-    const index = Math.floor(Math.random() * (allNodes.length - 1));
+    const index = Math.floor(Math.random() * (allNodes.length));
     return allNodes[index];
 };
+
+/**
+ * 代理轉發函式
+ * @param {Request} req - 原始請求
+ * @returns {Promise<Response>}
+ */
 const forwardToNode = (req) => {
     const node = getRandomNode();
-    const _targetUrl = `https://${node.domain}/silentpass-rpc`;
+    if (!node || !node.domain) {
+        // 如果沒有找到有效節點，返回一個失敗的 Promise 來觸發備援邏輯
+        return Promise.reject(new Error("No valid node found."));
+    }
+
     const originalUrl = new URL(req.url);
+    // 假設您的節點需要一個特定的路徑來處理 RPC 請求
+    const targetUrl = `https://${node.domain}/silentpass-rpc${originalUrl.pathname}${originalUrl.search}${originalUrl.hash}`;
+    
     const newHeaders = new Headers();
     req.headers.forEach((value, key) => {
         newHeaders.append(key, value);
     });
-    const targetUrl = `${_targetUrl}${originalUrl.pathname}${originalUrl.search}${originalUrl.hash}`;
+
     const newRequest = new Request(targetUrl, {
         method: req.method,
         headers: newHeaders,
         body: req.body,
         mode: 'cors',
         credentials: req.credentials,
-        cache: req.cache,
+        cache: 'no-store', // 確保每次都從遠端獲取最新內容
         redirect: req.redirect,
         referrer: req.referrer,
-        integrity: req.integrity,
     });
-    console.log(`Service Worker: Routing ${req.url} -> ${targetUrl}`);
-    // 4. 使用 event.respondWith() 來劫持請求並提供我們自己的回應
-    //    使用 fetch() API 發送新請求。
+
+    console.log(`[SW] Forwarding request for ${req.url} to ${targetUrl}`);
     return fetch(newRequest);
 };
-sw.addEventListener('fetch', (event) => {
-    const { request } = event;
-    event.respondWith(caches.match(request).then((cachedResponse) => {
-        // 如果緩存中有匹配的資源，直接返回
+
+/**
+ * 步驟二：建立一個自訂的路由處理策略
+ * 這個策略會先嘗試從遠端節點獲取資源，如果失敗，則從快取中讀取。
+ * @param {object} args - 包含 event 和 request 的物件
+ * @returns {Promise<Response>}
+ */
+const forwardThenCacheFallback = async ({ event, request }) => {
+    try {
+        // 嘗試透過 forwardToNode 從網路（遠端節點）獲取回應
+        const networkResponse = await forwardToNode(request);
+
+        // 成功獲取後，我們需要手動更新快取，以確保離線內容是最新版本
+        // 注意：Workbox 的 precache 快取有特定的名稱，但直接使用 caches.match 即可
+        // 這裡我們假設 precacheAndRoute 已經處理了快取更新，所以直接返回
+        // 為了更精確，可以手動更新快取，但會增加複雜度。
+        // 為簡化起見，我們先依賴下一次 SW 更新來刷新快取。
+        console.log(`[SW] Successfully fetched ${request.url} from node.`);
+        return networkResponse;
+
+    } catch (error) {
+        // 如果 forwardToNode 失敗（例如離線），則捕獲錯誤
+        console.warn(`[SW] Forwarding failed for ${request.url}. Falling back to cache. Error:`, error);
+
+        // 從快取中尋找匹配的資源
+        const cachedResponse = await caches.match(request);
         if (cachedResponse) {
+            // 如果在快取中找到，則返回快取的版本
             return cachedResponse;
-        }
-        // 否則，從網路請求
-        if (checkAPP_SHELL_URLS(request)) {
-            return forwardToNode(request).then(response => {
-                if (!response || response.status !== 200 || response.type !== 'basic') {
-                    return response;
-                }
-                // 將收到的回應返回給原始的 client 頁面
-                // 複製一份回應，因為 request 和 cache 都需要使用它
-                const responseToCache = response.clone();
-                // 將新請求的結果存入緩存，並確保 Promise 鏈返回 Response
-                return caches.open(CACHE_NAME).then(cache => {
-                    cache.put(request, responseToCache);
-                    // 確保鏈的最後返回 networkResponse
-                    return response;
-                });
-            })
-                .catch(error => {
-                // 如果轉發請求失敗 (例如，網路錯誤或目標伺服器無法訪問)
-                console.error('Service Worker: Fetching from target failed:', error);
-                // 返回一個錯誤回應，這樣客戶端就能知道請求失敗了
-                return new Response(`Error fetching from the target server: ${error.message}`, {
-                    status: 502,
-                    statusText: 'Bad Gateway',
-                });
+        } else {
+            // 如果連快取中都沒有（理論上不應該發生，因為 precacheAndRoute 已執行），
+            // 返回一個明確的錯誤回應。
+            return new Response(`Resource not available offline: ${request.url}`, {
+                status: 404,
+                statusText: 'Not Found'
             });
         }
-        return fetch(request).then((networkResponse) => {
-            return networkResponse;
-        }).catch(error => {
-            console.error('[Service Worker] Fetch failed:', error);
-            // 當網路請求失敗時，可以返回一個離線頁面或錯誤回應
-            // 為了滿足類型檢查，我們需要返回一個 Response 物件
-            // return caches.match('/offline.html'); 
-            // 或者如果沒有離線頁面，可以返回一個簡單的錯誤回應
-            return new Response("Network error happened", {
-                status: 408,
-                headers: { "Content-Type": "text/plain" },
-            });
-        });
-    }));
-});
+    }
+};
+
+/**
+ * 步驟三：註冊路由
+ * 將我們的自訂策略應用於所有被預快取的 React App 資源。
+ */
+// 建立一個包含所有預快取 URL 的 Set，以便快速查找
+// **修正點：** 使用我們之前定義的變數來建立 Set
+const precachedUrls = new Set(precacheManifest.map(entry => new URL(entry.url, self.location.origin).pathname));
+
+registerRoute(
+    // 匹配函式：如果請求的路徑在我們的預快取列表中，則應用此路由
+    ({ request, url }) => {
+        return precachedUrls.has(url.pathname);
+    },
+    // 使用我們自訂的處理策略
+    forwardThenCacheFallback
+);
+
+/**
+ * 對於非 React App 核心資源（例如第三方 API 請求或圖片），
+ * 你可以設定其他的快取策略。
+ * 例如，對圖片使用「快取優先」(CacheFirst) 策略。
+ */
+registerRoute(
+  ({ request }) => request.destination === 'image',
+  new CacheFirst({
+    cacheName: 'images-cache',
+  })
+);
+
+
+// --- Service Worker 生命週期事件 ---
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+})
+
 const allNodes = [
     {
         "region": "NW.DE",
@@ -4152,4 +4175,4 @@ const allNodes = [
         "nftNumber": 546,
         "domain": "C06A3D62D5925E10.conet.network"
     }
-];
+]

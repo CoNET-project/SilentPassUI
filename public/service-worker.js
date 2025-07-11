@@ -4,10 +4,11 @@
 // 這是為了解決 "Property '__WB_MANIFEST' does not exist on type..." 的錯誤
 
 // 引入 Workbox 的核心模組
+// 引入 Workbox 的核心模組
 import { clientsClaim } from 'workbox-core';
 import { precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
-import { CacheFirst } from 'workbox-strategies';
+import { CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
 
 // clientsClaim() 讓新的 Service Worker 在 activate 後立即接管頁面
 clientsClaim();
@@ -61,76 +62,81 @@ const forwardToNode = (req) => {
         cache: 'no-store', // 確保每次都從遠端獲取最新內容
     });
 
-    console.log(`[SW] Forwarding request for ${req.url} to ${targetUrl}`);
+    console.log(`[service worker] Forwarding request for ${req.url} to ${targetUrl}`);
     return fetch(newRequest);
 }
 
+
 /**
- * 步驟二：建立一個自訂的路由處理策略
- * 這個策略會先嘗試從遠端節點獲取資源，如果失敗，則從快取中讀取。
+ * 步驟二：建立一個自訂的「本地優先，後台更新」策略
  * @param {object} args - 包含 event 和 request 的物件
  * @returns {Promise<Response>}
  */
-const forwardThenCacheFallback = async ({ event, request }) => {
-    try {
-        // 嘗試透過 forwardToNode 從網路（遠端節點）獲取回應
-        const networkResponse = await forwardToNode(request);
+const staleWhileRevalidateWithNode = async ({ event, request })=> {
+    
+    // 輔助函式：在背景執行網路請求並更新快取
+    const fetchAndCache = async () => {
+        try {
+            // 透過 forwardToNode 從網路（遠端節點）獲取回應
+            const networkResponse = await forwardToNode(request.clone());
 
-        // 成功獲取後，我們需要手動更新快取，以確保離線內容是最新版本
-        // 注意：Workbox 的 precache 快取有特定的名稱，但直接使用 caches.match 即可
-        // 這裡我們假設 precacheAndRoute 已經處理了快取更新，所以直接返回
-        // 為了更精確，可以手動更新快取，但會增加複雜度。
-        // 為簡化起見，我們先依賴下一次 SW 更新來刷新快取。
-        console.log(`[SW] Successfully fetched ${request.url} from node.`);
-        return networkResponse;
-
-    } catch (error) {
-        // 如果 forwardToNode 失敗（例如離線），則捕獲錯誤
-        console.warn(`[SW] Forwarding failed for ${request.url}. Falling back to cache. Error:`, error);
-
-        // 從快取中尋找匹配的資源
-        const cachedResponse = await caches.match(request);
-        if (cachedResponse) {
-            // 如果在快取中找到，則返回快取的版本
-            return cachedResponse;
-        } else {
-            // 如果連快取中都沒有（理論上不應該發生，因為 precacheAndRoute 已執行），
-            // 返回一個明確的錯誤回應。
-            return new Response(`Resource not available offline: ${request.url}`, {
-                status: 404,
-                statusText: 'Not Found'
-            });
+            // 成功獲取後，手動更新快取
+            if (networkResponse.ok) {
+                const cache = await caches.open('precache-v2-https://vpn4.silentpass.io/'); // Workbox 快取名稱通常包含版本和作用域
+                cache.put(request, networkResponse.clone());
+            }
+            return networkResponse;
+        } catch (error) {
+            // 如果網路請求失敗，也沒關係，因為我們可能已經提供了快取版本
+            console.warn(`[SW] Background revalidation failed for ${request.url}:`, error);
+            // 返回一個錯誤，雖然在這裡我們不會使用它
+            throw error;
         }
+    };
+
+    // 嘗試從快取中獲取資源
+    const cachedResponsePromise = caches.match(request);
+    // 在背景立即啟動網路請求
+    const networkUpdatePromise = fetchAndCache();
+
+    // 使用 event.waitUntil 確保背景更新在 SW 終止前有時間完成
+    event.waitUntil(networkUpdatePromise);
+
+    // 返回結果：
+    // 1. 立即等待快取回應
+    const cachedResponse = await cachedResponsePromise;
+    if (cachedResponse) {
+        console.log(`[SW] Serving from cache: ${request.url}`);
+        return cachedResponse; // 如果快取命中，立即返回
     }
-}
+
+    // 2. 如果快取未命中（例如首次訪問），則等待網路回應
+    console.log(`[SW] Cache miss, waiting for network for: ${request.url}`);
+    return await networkUpdatePromise;
+};
 
 /**
  * 步驟三：註冊路由
  * 將我們的自訂策略應用於所有被預快取的 React App 資源。
  */
-// 建立一個包含所有預快取 URL 的 Set，以便快速查找
-// **修正點：** 使用我們之前定義的變數來建立 Set
 const precachedUrls = new Set(precacheManifest.map(entry => new URL(entry.url, self.location.origin).pathname));
 
 registerRoute(
     // 匹配函式：如果請求的路徑在我們的預快取列表中，則應用此路由
-    ({ request, url }) => {
-        return precachedUrls.has(url.pathname);
-    },
-    // 使用自訂的處理策略
-    forwardThenCacheFallback
-)
+    ({ url }) => precachedUrls.has(url.pathname),
+    // 使用我們自訂的「本地優先，後台更新」策略
+    staleWhileRevalidateWithNode
+);
 
 /**
- * 對於非 React App 核心資源（例如第三方 API 請求或圖片），
- * 例如，對圖片使用「快取優先」(CacheFirst) 策略。
+ * 對於非 React App 核心資源（例如圖片），可以使用 Workbox 內建的策略
  */
 registerRoute(
     ({ request }) => request.destination === 'image',
-    new CacheFirst({
+    new StaleWhileRevalidate({
         cacheName: 'images-cache',
     })
-)
+);
 
 
 // --- Service Worker 生命週期事件 ---
@@ -138,7 +144,7 @@ self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     }
-})
+});
 
 const allNodes = [
     {

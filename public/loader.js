@@ -2,7 +2,7 @@
 const sw = self;
 
 // 快取名稱仍然有用，但主要是為了快取 loader.html 本身或之後的動態內容
-const CACHE_NAME = 'SilentPassVPN-loader-cache-v4';
+const CACHE_NAME = 'SilentPassVPN-loader-cache-v5';
 let isActivated = false;
 // 預快取的內容大幅減少，甚至可以只快取 loader.html
 // 這裡我們假設 loader.html 就是根目錄 '/'
@@ -54,8 +54,8 @@ const forwardToNode = (req) => {
     const urlObj = new URL(req.url);
     const _targetUrl = `http://localhost:3001${urlObj.pathname}`;
     // ... 複製 headers 和 body ...
-    const newRequest = new Request(_targetUrl, {method: req.method, headers: req.headers, body: req.body, redirect: 'manual'});
-    console.log(`[SW] Forwarding ${req.url} to a node.`);
+    const newRequest = new Request(_targetUrl, {method: req.method, headers: req.headers});
+    console.log(`[Loader worker] Forwarding ${req.url} to a node.`);
     return fetch(newRequest);
 };
 

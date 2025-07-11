@@ -334,7 +334,7 @@ const handleTogglePower = async () => {
 
 	
     const exitRegion = allRegions[selectedCountryIndex].code
-    const exitNodes = getAllNodes.filter((n: any) => {
+    const exitNodes = allNodes.filter((n: any) => {
 		const region: string = n.region
 		const regionName = region.split('.')[1]
 		return regionName === exitRegion

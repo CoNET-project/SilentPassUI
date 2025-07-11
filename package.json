@@ -65,7 +65,7 @@
 		"test": "react-scripts test",
 		"eject": "react-scripts eject",
 		"build:loader": "node scripts/build-loader.js",
-        "build": "npm run build:react && npm run build:loader"
+        "build": "npm run build:react"
 	},
 	"eslintConfig": {
 		"extends": [

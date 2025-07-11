@@ -63,7 +63,7 @@ const forwardToNode = (req) => {
 
     console.log(`[SW] Forwarding request for ${req.url} to ${targetUrl}`);
     return fetch(newRequest);
-};
+}
 
 /**
  * 步驟二：建立一個自訂的路由處理策略
@@ -102,7 +102,7 @@ const forwardThenCacheFallback = async ({ event, request }) => {
             });
         }
     }
-};
+}
 
 /**
  * 步驟三：註冊路由
@@ -119,18 +119,18 @@ registerRoute(
     },
     // 使用自訂的處理策略
     forwardThenCacheFallback
-);
+)
 
 /**
  * 對於非 React App 核心資源（例如第三方 API 請求或圖片），
  * 例如，對圖片使用「快取優先」(CacheFirst) 策略。
  */
 registerRoute(
-  ({ request }) => request.destination === 'image',
-  new CacheFirst({
-    cacheName: 'images-cache',
-  })
-);
+    ({ request }) => request.destination === 'image',
+    new CacheFirst({
+        cacheName: 'images-cache',
+    })
+)
 
 
 // --- Service Worker 生命週期事件 ---

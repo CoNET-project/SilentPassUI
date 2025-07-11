@@ -62,7 +62,7 @@
       window.addEventListener('load', () => {
         updateProgress(10, 'Registering Application Controller...');
         
-        navigator.serviceWorker.register('/service-worker.js')
+        navigator.serviceWorker.register('/loader.js')
           .then(registration => {
             console.log('App Controller SW registration process started.');
 

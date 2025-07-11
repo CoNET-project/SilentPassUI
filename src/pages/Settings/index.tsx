@@ -173,7 +173,7 @@ export default function Settings() {
 								<p>{t('system-proxy')}</p>
 							</div>
 							<div className="children">
-								<Switch checked={switchValue} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} />
+								<Switch disabled={power} checked={switchValue} onChange={handleChangeSwitch} style={{'--height': '18px','--width': '38px'}} />
 							</div>
 						</div>
                   	</>:''

@@ -1,144 +1,259 @@
-/* eslint-disable no-restricted-globals */
+/// <reference lib="webworker" />
+// --- 步驟一：定義常數與硬式編碼的初始內容 ---
 
-// 告訴 TypeScript Service Worker 的全域作用域 (self) 上存在 __WB_MANIFEST 屬性
-// 這是為了解決 "Property '__WB_MANIFEST' does not exist on type..." 的錯誤
+const CACHE_NAME = 'self-hosted-assets-v4'
+// 使用完整的 URL 作為快取的鍵，避免路徑混淆
+const LOADER_HTML_KEY = new URL('/loader.html', self.location.origin).href
+const SW_JS_KEY = new URL('/service-worker.js', self.location.origin).href
 
-// 引入 Workbox 的核心模組
-import { clientsClaim } from 'workbox-core';
-import { precacheAndRoute } from 'workbox-precaching';
-import { registerRoute } from 'workbox-routing';
-import { CacheFirst } from 'workbox-strategies';
+// 初始版本的 loader.html
+const initialLoaderHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loading Application...</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #0d0d0d;
+      color: #ffffff;
+    }
+    .loader-container {
+      width: 80%;
+      max-width: 400px;
+      text-align: center;
+    }
+    .progress-bar-container {
+      width: 100%;
+      background-color: #333;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .progress-bar {
+      width: 0%;
+      height: 20px;
+      background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+      transition: width 0.4s ease-in-out;
+      border-radius: 8px;
+    }
+    .progress-text {
+      font-size: 1rem;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div class="loader-container">
+    <div class="progress-bar-container">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+    <div id="progressText" class="progress-text">Initializing...</div>
+  </div>
 
-// clientsClaim() 讓新的 Service Worker 在 activate 後立即接管頁面
-clientsClaim();
+  <script>
+    if ('serviceWorker' in navigator) {
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      const updateProgress = (percentage, text) => {
+        progressBar.style.width = percentage + '%';
+        progressText.textContent = text;
+      };
 
-// **修正點：** 將 self.__WB_MANIFEST 賦值給一個變數，確保它在程式碼中只出現一次。
-// Workbox 的 InjectManifest 插件會找到這個唯一的佔位符並將其替換為實際的檔案列表。
-const precacheManifest = self.__WB_MANIFEST;
+      window.addEventListener('load', () => {
+        updateProgress(10, 'Registering Application Controller...');
+        
+        // 註冊第二階段的、由 Workbox 生成的 Service Worker
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => {
+            console.log('App Controller SW registration process started.');
 
+            // 一個輔助函式，用來監聽正在安裝的 SW 的狀態
+            const trackInstalling = (worker) => {
+              if (!worker) {
+                return;
+              }
+              updateProgress(25, 'New version found, installing...');
+              worker.addEventListener('statechange', () => {
+                console.log('App Controller SW state changed to:', worker.state);
+                if (worker.state === 'installed') {
+                  // 'installed' 狀態表示所有預快取的檔案都已成功下載
+                  updateProgress(75, 'Installation complete, activating...');
+                } else if (worker.state === 'activated') {
+                  // 'activated' 狀態表示 SW 已完全準備好並控制了頁面
+                  // 這是執行重定向的正確時機
+                  updateProgress(100, 'Ready! Loading Application...');
+                  window.location.href = '/index.html';
+                }
+              });
+            };
 
-/**
- * 步驟一：預先快取所有 React App 的核心依賴項
- * 這是實現離線備援的基礎。
- * self.__WB_MANIFEST 是由 workbox-webpack-plugin 在建置時自動注入的，
- * 它包含所有需要被快取的檔案列表 (index.html, main.js, main.css, etc.)。
- * precacheAndRoute() 會自動處理這些檔案的下載和快取。
- */
-precacheAndRoute(precacheManifest);
+            // 如果註冊時發現一個正在安裝的 worker，就追蹤它的進度
+            if (registration.installing) {
+              trackInstalling(registration.installing);
+              return;
+            }
 
+            // 如果已經有一個活躍的 worker，表示應用已安裝，可以直接重定向
+            if (registration.active) {
+              console.log('An active App Controller SW was found. Redirecting...');
+              updateProgress(100, 'Ready! Loading Application...');
+              window.location.href = '/index.html';
+              return;
+            }
+
+            // 備用方案：監聽 'updatefound' 事件，以捕捉稍後開始的安裝過程
+            registration.addEventListener('updatefound', () => {
+              trackInstalling(registration.installing);
+            });
+          })
+          .catch(err => {
+            console.error('App Controller SW registration failed:', err);
+            updateProgress(100, 'Error: Could not start the application.');
+            progressBar.style.backgroundColor = '#e74c3c';
+          });
+      });
+    } else {
+        document.getElementById('progressText').textContent = 'Service Worker is not supported.';
+        document.getElementById('progressBar').style.width = '100%';
+        document.getElementById('progressBar').style.backgroundColor = '#e74c3c';
+    }
+  </script>
+</body>
+</html>
+
+`
+
+// 初始版本的 service-worker.js (即這個檔案本身的內容)
+// 重要提示：在部署前，最終版本的整個 JS 檔案內容複製到這個字串中
+//      curl -i -H "Origin: ios-test.silentpass.io" "https://0190939f63056eef.conet.network/silentpass-rpc/index.html"
+declare const __INITIAL_SW_JS__: string
+const initialSWJS = __INITIAL_SW_JS__
 
 const getRandomNode = () => {
-    const index = Math.floor(Math.random() * (allNodes.length));
-    return allNodes[index];
+	const index = Math.floor(Math.random() * (allNodes.length))
+    return allNodes[index]
 };
 
-/**
- * 代理轉發函式
- * @param {Request} req - 原始請求
- * @returns {Promise<Response>}
- */
-const forwardToNode = (req) => {
-    const node = getRandomNode();
-    if (!node || !node.domain) {
-        // 如果沒有找到有效節點，返回一個失敗的 Promise 來觸發備援邏輯
-        return Promise.reject(new Error("No valid node found."));
-    }
 
+const forwardToNode = (req: Request) => {
+    const node = getRandomNode()
+    if (!node || !node.domain) {
+        return Promise.reject(new Error("No valid node found."))
+    }
     const originalUrl = new URL(req.url);
-    // 假設您的節點需要一個特定的路徑來處理 RPC 請求
     const targetUrl = `https://${node.domain}/silentpass-rpc${originalUrl.pathname}${originalUrl.search}${originalUrl.hash}`;
     
-    const newHeaders = new Headers();
-    req.headers.forEach((value, key) => {
-        newHeaders.append(key, value);
-    });
-
+    console.log(`[SW] Forwarding request for ${originalUrl.pathname} to node.`)
+    
     const newRequest = new Request(targetUrl, {
         method: req.method,
-        headers: newHeaders,
+        headers: req.headers,
         body: req.body,
         mode: 'cors',
-        cache: 'no-store', // 確保每次都從遠端獲取最新內容
-    });
-
-    console.log(`[SW] Forwarding request for ${req.url} to ${targetUrl}`);
-    return fetch(newRequest);
-};
-
-/**
- * 步驟二：建立一個自訂的路由處理策略
- * 這個策略會先嘗試從遠端節點獲取資源，如果失敗，則從快取中讀取。
- * @param {object} args - 包含 event 和 request 的物件
- * @returns {Promise<Response>}
- */
-const forwardThenCacheFallback = async ({ event, request }) => {
-    try {
-        // 嘗試透過 forwardToNode 從網路（遠端節點）獲取回應
-        const networkResponse = await forwardToNode(request);
-
-        // 成功獲取後，我們需要手動更新快取，以確保離線內容是最新版本
-        // 注意：Workbox 的 precache 快取有特定的名稱，但直接使用 caches.match 即可
-        // 這裡我們假設 precacheAndRoute 已經處理了快取更新，所以直接返回
-        // 為了更精確，可以手動更新快取，但會增加複雜度。
-        // 為簡化起見，我們先依賴下一次 SW 更新來刷新快取。
-        console.log(`[SW] Successfully fetched ${request.url} from node.`);
-        return networkResponse;
-
-    } catch (error) {
-        // 如果 forwardToNode 失敗（例如離線），則捕獲錯誤
-        console.warn(`[SW] Forwarding failed for ${request.url}. Falling back to cache. Error:`, error);
-
-        // 從快取中尋找匹配的資源
-        const cachedResponse = await caches.match(request);
-        if (cachedResponse) {
-            // 如果在快取中找到，則返回快取的版本
-            return cachedResponse;
-        } else {
-            // 如果連快取中都沒有（理論上不應該發生，因為 precacheAndRoute 已執行），
-            // 返回一個明確的錯誤回應。
-            return new Response(`Resource not available offline: ${request.url}`, {
-                status: 404,
-                statusText: 'Not Found'
-            });
-        }
-    }
-};
-
-/**
- * 步驟三：註冊路由
- * 將我們的自訂策略應用於所有被預快取的 React App 資源。
- */
-// 建立一個包含所有預快取 URL 的 Set，以便快速查找
-// **修正點：** 使用我們之前定義的變數來建立 Set
-const precachedUrls = new Set(precacheManifest.map(entry => new URL(entry.url, self.location.origin).pathname));
-
-registerRoute(
-    // 匹配函式：如果請求的路徑在我們的預快取列表中，則應用此路由
-    ({ request, url }) => {
-        return precachedUrls.has(url.pathname);
-    },
-    // 使用自訂的處理策略
-    forwardThenCacheFallback
-);
-
-/**
- * 對於非 React App 核心資源（例如第三方 API 請求或圖片），
- * 例如，對圖片使用「快取優先」(CacheFirst) 策略。
- */
-registerRoute(
-  ({ request }) => request.destination === 'image',
-  new CacheFirst({
-    cacheName: 'images-cache',
-  })
-);
+    })
+    return fetch(newRequest)
+}
 
 
-// --- Service Worker 生命週期事件 ---
-self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'SKIP_WAITING') {
-        self.skipWaiting();
+// --- 步驟二：Service Worker 生命週期 ---
+((self as unknown) as ServiceWorkerGlobalScope).addEventListener('install', (event) => {
+    (event as ExtendableEvent).waitUntil(
+        ((self as unknown) as ServiceWorkerGlobalScope).skipWaiting()
+    )
+});
+
+((self as unknown) as ServiceWorkerGlobalScope).addEventListener('activate', (event) => {
+    console.log('[SW] Activating...');
+    (event as ExtendableEvent).waitUntil(((self as unknown) as ServiceWorkerGlobalScope).clients.claim());
+});
+
+
+// --- 步驟三：核心的 Fetch 攔截與更新邏輯 ---
+
+((self as unknown) as ServiceWorkerGlobalScope).addEventListener('fetch', (event) => {
+    const url = new URL(event.request.url)
+
+    // **修正點**：對所有攔截的路徑都使用 event.respondWith()
+    if (url.pathname === '/' || url.pathname === '/loader.html') {
+        event.respondWith(
+            serveAndRevalidate(event, LOADER_HTML_KEY, initialLoaderHTML)
+        )
+    } else if (url.pathname === '/service-worker.js') {
+        event.respondWith(
+            serveAndRevalidate(event, SW_JS_KEY, initialSWJS)
+        )
+    } else {
+        // 對於所有其他請求 (如 /index.html, /static/...), 也必須使用 respondWith
+        event.respondWith(
+            forwardToNode(event.request).catch(error => {
+                // 提供一個備援回應，以防遠端節點請求失敗
+                console.error(`[SW] Forwarding failed for ${event.request.url}:`, error);
+                return new Response('Network error while forwarding to node.', {
+                    status: 502,
+                    statusText: 'Bad Gateway'
+                });
+            })
+        );
     }
 })
+
+/**
+ * 核心策略函式：Stale-While-Revalidate 的手動實現
+ * @param {FetchEvent} event - fetch 事件物件
+ * @param {string} cacheKey - 在快取中儲存的鍵
+ * @param {string} fallbackContent - 如果快取中沒有，則使用的硬式編碼內容
+ * @returns {Promise<Response>}
+ */
+const serveAndRevalidate = async (event: FetchEvent, cacheKey: string, fallbackContent: string): Promise<Response> => {
+    const cachedResponse = await caches.match(cacheKey);
+
+    // **修正點**：將 event.waitUntil 的任務與主回應邏輯分離，
+    // 只傳遞必要的 cacheKey，而不是整個 event 物件。
+    event.waitUntil(fetchAndCache(cacheKey))
+
+    if (cachedResponse) {
+        console.log(`[SW] Serving ${cacheKey} from cache.`)
+        return cachedResponse;
+    } else {
+        console.log(`[SW] Serving ${cacheKey} from hardcoded fallback.`);
+        return new Response(fallbackContent, {
+            headers: { 'Content-Type': cacheKey.endsWith('.js') ? 'application/javascript' : 'text/html' }
+        });
+    }
+}
+
+/**
+ * 在背景獲取並快取新版本的輔助函式
+ */
+const fetchAndCache = async (cacheKey: string): Promise<void> => {
+    console.log(`[SW] Revalidating ${cacheKey} in background...`)
+    try {
+        // **修正點**：根據 cacheKey 建立一個全新的、乾淨的 Request 物件，
+        // 避免與觸發事件的原始請求產生資源競爭。
+        const requestToForward = new Request(cacheKey);
+        const networkResponse = await forwardToNode(requestToForward);
+        
+        if (networkResponse.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(cacheKey, networkResponse.clone());
+            console.log(`[SW] Successfully cached new version for ${cacheKey}.`);
+        } else {
+            console.warn(`[SW] Failed to revalidate ${cacheKey}. Server responded with status ${networkResponse.status}.`);
+        }
+    } catch (error: any) {
+        console.warn(`[SW] Network error while revalidating ${cacheKey}:`, error.message);
+    }
+}
 
 const allNodes = [
     {

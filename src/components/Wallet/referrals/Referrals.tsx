@@ -44,7 +44,7 @@ const Referrals = ({}) => {
                 <div className={styles.modalWrap}>
                     <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('referrals-title')}</NavBar>
                     <div className={styles.bd}>
-                        {(freePassportActive || expiration)?<div className={styles.warning}><ExclamationCircleFill className={styles.icon} />{t('referrals-extra-title')}</div>:''}
+                        {/*{(freePassportActive || expiration)?<div className={styles.warning}><ExclamationCircleFill className={styles.icon} />{t('referrals-extra-title')}</div>:''}*/}
                         <ReferralCont />
                         <Inviters />
                     </div>

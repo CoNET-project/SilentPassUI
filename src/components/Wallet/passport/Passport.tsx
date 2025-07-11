@@ -43,7 +43,7 @@ const Passport = ({}) => {
     ];
 
     const handleChange=(value: (string | number)[])=>{
-        setSelectedPlan(String(value[0]));
+        if(value.length) setSelectedPlan(String(value[0]));
     }
     const handlePurchase=(type: number)=> {
         if(type!==999){

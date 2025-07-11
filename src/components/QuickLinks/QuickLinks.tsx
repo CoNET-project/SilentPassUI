@@ -118,6 +118,9 @@ const QuickLinks=({})=> {
             window.open(url, '_blank')
         }
     }
+    const convertToLowerCaseHTTPS=(url:string) =>{
+        return url.replace(/^https?/i, 'https');
+    }
 
     return (
         <>
@@ -153,7 +156,7 @@ const QuickLinks=({})=> {
                                 return (
                                     <Grid.Item key={link.id}>
                                         <div className={styles.linkItem}>
-                                            <a className={styles.link} onClick={()=>{goLink(link.url)}} rel="noreferrer">
+                                            <a className={styles.link} onClick={()=>{goLink(convertToLowerCaseHTTPS(link.url))}} rel="noreferrer">
                                                 <LinkAvatar link={link} />
                                                 <div className={styles.name}><Ellipsis direction='end' content={link.title} /></div>
                                             </a>

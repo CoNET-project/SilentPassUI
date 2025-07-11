@@ -26,7 +26,7 @@ const ApplePayModal = ({visible,setVisible}:ApplePayModalParams) => {
     const { isIOS, profiles, selectedPlan, setSelectedPlan, activePassport, setPaymentKind } = useDaemonContext();
     
     const handleChange=(value: (string | number)[])=>{
-        setSelectedPlan(String(value[0]));
+        if(value.length) setSelectedPlan(String(value[0]));
     }
     const startSubscription = () => {
         if (!profiles ||profiles.length < 2) {
@@ -41,7 +41,7 @@ const ApplePayModal = ({visible,setVisible}:ApplePayModalParams) => {
         }
         const base64VPNMessage = btoa(JSON.stringify(planObj));
         window?.webkit?.messageHandlers["pay"]?.postMessage(base64VPNMessage);
-        if(!isIOS){
+        if(isIOS){
             setPaymentKind(3);
         }
         navigate("/subscription");

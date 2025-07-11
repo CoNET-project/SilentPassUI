@@ -2,8 +2,8 @@
 const sw = self;
 
 // 快取名稱仍然有用，但主要是為了快取 loader.html 本身或之後的動態內容
-const CACHE_NAME = 'SilentPassVPN-loader-cache-v2';
-
+const CACHE_NAME = 'SilentPassVPN-loader-cache-v4';
+let isActivated = false;
 // 預快取的內容大幅減少，甚至可以只快取 loader.html
 // 這裡我們假設 loader.html 就是根目錄 '/'
 const LOADER_URLS = ['/loader.html','loader.js']; // 或 '/'
@@ -29,7 +29,10 @@ sw.addEventListener('activate', (event) => {
                     }
                 })
             );
-        }).then(() => sw.clients.claim()) // 立即控制所有客戶端
+        }).then(() => {
+            isActivated = true;
+            sw.clients.claim();
+        }) // 立即控制所有客戶端
     );
 });
 
@@ -59,24 +62,27 @@ const forwardToNode = (req) => {
 
 // fetch 事件：攔截並轉發 React App 請求
 sw.addEventListener('fetch', (event) => {
-    const { request } = event;
+    if (isActivated) {
+        // 如果 Service Worker 已經啟動，則不執行任何攔截操作。
+        // 透過不呼叫 event.respondWith()，請求會直接傳送到網路，
+        // 如同沒有 Service Worker 一樣。
+        console.log('[Bootloader SW] Deactivated. Passing request to network:', event.request.url);
+        return;
+    }
 
-    // 如果是 React 應用程式的資源請求，則使用代理邏輯
-    if (isReactAppResource(request)) {
-        event.respondWith(
-            forwardToNode(request)
-            .catch(error => {
-                console.error('[SW] Forwarding failed:', error);
-                return new Response(`Failed to load resource from node: ${error.message}`, { status: 502 });
-            })
-        );
-    }
-    // 對於其他請求（例如 loader.html 本身），可以採用快取優先策略
-    else {
-        event.respondWith(
-            caches.match(request).then(cachedResponse => {
-                return cachedResponse || fetch(request);
-            })
-        );
-    }
+    const { request } = event;
+    
+    event.respondWith(
+        caches.match(request).then(cachedResponse => {
+            if (cachedResponse) {
+                console.log(`[SW] Serving from cache: ${request.url}`);
+                return cachedResponse;
+            }
+            if (isReactAppResource(request)) {
+                return forwardToNode(request);
+            }
+            return fetch(request);
+        })
+    );
+    
 });

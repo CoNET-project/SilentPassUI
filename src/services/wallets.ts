@@ -689,7 +689,7 @@ const refreshSolanaBalances = async (
 	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
 	reflaseSolanaBalancesProcess = true
 		
-		const solanaRPC_url = `https://${_node1.domain}/solana-rpc`;
+		let solanaRPC_url = `https://${_node1.domain}/solana-rpc`;
 		try {
 			const [sol, sp, oracle] = await Promise.all([
 			scanSolanaSol(solanaProfile.keyID, solanaRPC_url),

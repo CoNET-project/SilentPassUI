@@ -312,9 +312,10 @@ const handleTogglePower = async () => {
     }
 
 	
-
+    setIsConnectionLoading(true)
+    await getAllRegions()
     const allNodes = getAllNodes
-
+    
 	if (!allNodes.length) {
 		setTimeout(() => {
 			setIsConnectionLoading(false)
@@ -323,7 +324,7 @@ const handleTogglePower = async () => {
 		return
 	}
 
-	setIsConnectionLoading(true)
+	
 
 	if (sRegion === -1) {
       selectedCountryIndex = Math.floor(Math.random() * allRegions.length)

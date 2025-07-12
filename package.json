@@ -60,7 +60,7 @@
 		"web-vitals": "^2.1.4"
 	},
 	"scripts": {
-		"start": "craco start",
+		"start": "react-scripts start",
 		"build:react": "env=production craco build",
 		"test": "react-scripts test",
 		"eject": "react-scripts eject",

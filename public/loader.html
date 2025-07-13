@@ -66,33 +66,32 @@
           .then(registration => {
             console.log('App Controller SW registration process started.');
 
-            // 一個輔助函式，用來監聽正在安裝的 SW 的狀態
             const trackInstalling = (worker) => {
-              if (!worker) {
-                return;
-              }
-              updateProgress(25, 'New version found, installing...');
+              if (!worker) return;
+
+              // 'installing' 狀態表示正在下載資源
+              updateProgress(25, 'Caching application files...');
+              
               worker.addEventListener('statechange', () => {
                 console.log('App Controller SW state changed to:', worker.state);
                 if (worker.state === 'installed') {
-                  // 'installed' 狀態表示所有預快取的檔案都已成功下載
-                  updateProgress(75, 'Installation complete, activating...');
+                  // 'installed' 表示快取已完成
+                  updateProgress(75, 'Cache complete, activating...');
                 } else if (worker.state === 'activated') {
-                  // 'activated' 狀態表示 SW 已完全準備好並控制了頁面
-                  // 這是執行重定向的正確時機
+                  // 'activated' 表示 SW 已完全準備好，可以安全跳轉
                   updateProgress(100, 'Ready! Loading Application...');
+                  // 跳轉到由 loader SW 快取的 index.html
                   window.location.href = '/index.html';
                 }
               });
             };
 
-            // 如果註冊時發現一個正在安裝的 worker，就追蹤它的進度
             if (registration.installing) {
               trackInstalling(registration.installing);
               return;
             }
 
-            // 如果已經有一個活躍的 worker，表示應用已安裝，可以直接重定向
+            // 如果已經有一個 active 的 loader SW，表示應用已快取，可以直接跳轉
             if (registration.active) {
               console.log('An active App Controller SW was found. Redirecting...');
               updateProgress(100, 'Ready! Loading Application...');
@@ -100,7 +99,6 @@
               return;
             }
 
-            // 備用方案：監聽 'updatefound' 事件，以捕捉稍後開始的安裝過程
             registration.addEventListener('updatefound', () => {
               trackInstalling(registration.installing);
             });

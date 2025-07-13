@@ -1,88 +1,97 @@
 "use strict";
+
 const sw = self;
 
-// 快取名稱仍然有用，但主要是為了快取 loader.html 本身或之後的動態內容
-const CACHE_NAME = 'SilentPassVPN-loader-cache-v5';
-let isActivated = false;
-// 預快取的內容大幅減少，甚至可以只快取 loader.html
-// 這裡我們假設 loader.html 就是根目錄 '/'
-const LOADER_URLS = ['/loader.html','loader.js']; // 或 '/'
+// 快取名稱：為 loader 和它所承載的 App 內容定義一個清晰的名稱
+// 每次更新 REACT_APP_URLS 時，建議更改版本號以觸發 Service Worker 的更新
+const CACHE_NAME = 'react-app-loader-cache-v6';
 
-// install 事件：只快取加載器本身
+// isActivated 旗標不再需要，因為 loader 的職責很單純：要嘛從快取提供，要嘛讓網路請求通過。
+// 它不需要一個「停用」狀態。
+
+// ====================================================================================
+// TODO: 這是你需要手動配置的最重要部分！
+// 你需要將 React 應用 build 後在 `build/` 目錄下的所有關鍵檔案都列在這裡。
+// 使用 `npm run build` 或 `yarn build` 後，去 `build/` 目錄下查看確切的檔名。
+// ====================================================================================
+const REACT_APP_URLS = [
+  // 核心 HTML
+  '/index.html',
+
+  // React App 自己的 Service Worker
+  '/service-worker.js',
+
+  // 其他根目錄下的靜態資源
+  '/manifest.json',
+  '/favicon.ico',
+  // 如果有其他 logo 或圖片，也需要加入
+  // '/logo192.png',
+  // '/logo512.png',
+
+  // 主要的 JavaScript 檔案 (檔名中的 hash 會變化)
+  '/static/js/main.xxxxxxxx.js',
+  // '/static/js/787.xxxxxxxx.js', // Create React App 通常會有一個 vendors chunk
+
+  // 主要的 CSS 檔案 (檔名中的 hash 會變化)
+  '/static/css/main.yyyyyyyy.css'
+];
+// ====================================================================================
+
+
+// install 事件：下載並快取所有 React App 的資源
 sw.addEventListener('install', (event) => {
+    console.log('[Loader SW] Install event: Caching the entire React application.');
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            console.log('[Service Worker] Caching loader shell');
-            return cache.addAll(LOADER_URLS);
-        }).then(() => sw.skipWaiting()) // 強制新的 SW 立即取代舊的
+            console.log(`[Loader SW] Caching: ${REACT_APP_URLS.join(', ')}`);
+            return cache.addAll(REACT_APP_URLS);
+        }).then(() => {
+            // 強制新的 SW 立即取代舊的，並進入 activating 狀態
+            return sw.skipWaiting();
+        })
     );
 });
 
-// activate 事件：清理舊快取並立即控制頁面
+// activate 事件：清理舊版本的快取
 sw.addEventListener('activate', (event) => {
+    console.log('[Loader SW] Activate event: Cleaning up old caches and taking control.');
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames.map((cacheName) => {
+                    // 刪除所有不等於當前 CACHE_NAME 的快取
                     if (cacheName !== CACHE_NAME) {
+                        console.log(`[Loader SW] Deleting old cache: ${cacheName}`);
                         return caches.delete(cacheName);
                     }
                 })
             );
         }).then(() => {
-            isActivated = true;
-            sw.clients.claim();
-        }) // 立即控制所有客戶端
+            // 立即控制所有客戶端（頁面）
+            return sw.clients.claim();
+        })
     );
 });
 
-// --- 核心邏輯 ---
-
-// 判斷請求是否為 React App 的一部分
-const isReactAppResource = (req) => {
-    const url = new URL(req.url);
-    // 攔截對 index.html 的請求以及所有 /static/ 路徑下的 JS 和 CSS
-    return url.pathname === '/index.html' || 
-           url.pathname.startsWith('/static/') ||
-           url.pathname === '/manifest.json' ||
-           url.pathname === '/service-worker.js' ||
-           url.pathname === '/favicon.ico';
-           
-};
-
-const forwardToNode = (req) => {
-    const urlObj = new URL(req.url);
-    const _targetUrl = `http://localhost:3001${urlObj.pathname}`;
-    // ... 複製 headers 和 body ...
-    const newRequest = new Request(_targetUrl, {method: req.method, headers: req.headers});
-    console.log(`[Loader worker] Forwarding ${req.url} to a node.`);
-    return fetch(newRequest);
-};
-
-
-// fetch 事件：攔截並轉發 React App 請求
+// fetch 事件：從快取中提供 React App 的資源
 sw.addEventListener('fetch', (event) => {
-    if (isActivated) {
-        // 如果 Service Worker 已經啟動，則不執行任何攔截操作。
-        // 透過不呼叫 event.respondWith()，請求會直接傳送到網路，
-        // 如同沒有 Service Worker 一樣。
-        console.log('[Bootloader SW] Deactivated. Passing request to network:', event.request.url);
-        return;
-    }
-
     const { request } = event;
-    
+
+    // 採用「快取優先」策略 (Cache-First)
+    // 所有在 REACT_APP_URLS 列表中的請求都會被攔截並從快取返回。
+    // 對於列表之外的請求（例如 API 請求），會直接走網路。
     event.respondWith(
         caches.match(request).then(cachedResponse => {
+            // 如果快取中存在匹配的資源，直接返回它
             if (cachedResponse) {
-                console.log(`[SW] Serving from cache: ${request.url}`);
+                console.log(`[Loader SW] Serving from cache: ${request.url}`);
                 return cachedResponse;
             }
-            if (isReactAppResource(request)) {
-                return forwardToNode(request);
-            }
+            
+            // 如果快取中沒有，則發起網路請求
+            // 這對於 API calls 或其他未被快取的資源是必要的
+            console.log(`[Loader SW] Not in cache, fetching from network: ${request.url}`);
             return fetch(request);
         })
     );
-    
 });

@@ -30,8 +30,9 @@ let testRegion: ClosestRegion[] = [];
 const postToEndpointGetBody: (
   url: string,
   post: boolean,
+  isJSON: boolean,
   jsonData: any
-) => Promise<string> = (url: string, post: boolean, jsonData) => {
+) => Promise<string> = (url: string, post: boolean, isJSON: boolean, jsonData: any ) => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.onload = () => {
@@ -49,7 +50,7 @@ const postToEndpointGetBody: (
 
 	xhr.timeout = 15 * 1000
     xhr.open(post ? "POST" : "GET", url, true);
-    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    isJSON && xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
     // xhr.setRequestHeader('Connection', 'close')
 	const timeout = setTimeout(() => {
 		xhr.abort()
@@ -81,7 +82,7 @@ const testClosestRegion = async (callback: () => void) => {
 	const url = `https://${node.domain}`;
       const startTime = new Date().getTime();
 	  const test = async () => {
-		await postToEndpointGetBody(url, false, null);
+		await postToEndpointGetBody(url, false,false, null);
 		const endTime = new Date().getTime();
 		const delay = endTime - startTime;
 		testRegion.push({ node, delay })

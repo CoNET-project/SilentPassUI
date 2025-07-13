@@ -686,7 +686,7 @@ const refreshSolanaBalances = async (
 	if (!solanaProfile||reflaseSolanaBalancesProcess||!allNodes) {
 	  return false
 	}
-	let _node1 = allNodes[0]        //allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
+	let _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
 	reflaseSolanaBalancesProcess = true
 		
 		let solanaRPC_url = `https://${_node1.domain}/solana-rpc`;

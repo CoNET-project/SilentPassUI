@@ -54,52 +54,60 @@
     if ('serviceWorker' in navigator) {
       const progressBar = document.getElementById('progressBar');
       const progressText = document.getElementById('progressText');
+      
       const updateProgress = (percentage, text) => {
         progressBar.style.width = percentage + '%';
         progressText.textContent = text;
       };
 
-      window.addEventListener('load', () => {
+      // 🚩 **Corrección Principal: Usar 'controllerchange' para la redirección.**
+      // Este es el evento más fiable para saber cuándo un nuevo SW ha tomado el control.
+      let isNavigating = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (isNavigating) return;
+        isNavigating = true;
+        console.log('✅ Controller has changed. Navigating to the main application.');
+        updateProgress(100, 'Ready! Loading Application...');
+        // Usamos replace() para no guardar loader.html en el historial del navegador.
+        window.location.replace('/index.html');
+      });
+
+      // --- Lógica de registro y actualización de la UI ---
+      const registerAndTrack = () => {
         updateProgress(10, 'Registering Application Controller...');
         
         navigator.serviceWorker.register('/loader.js')
           .then(registration => {
             console.log('App Controller SW registration process started.');
 
+            // Si ya hay un controlador activo al cargar la página, podemos navegar de inmediato.
+            if (navigator.serviceWorker.controller) {
+              if (isNavigating) return;
+              isNavigating = true;
+              console.log('An active controller was found. Redirecting immediately.');
+              updateProgress(100, 'Application ready. Loading...');
+              window.location.replace('/index.html');
+              return;
+            }
+
+            // Función para seguir el progreso de la instalación para la UI.
             const trackInstalling = (worker) => {
               if (!worker) return;
-
-              // 'installing' 狀態表示正在下載資源
               updateProgress(25, 'Caching application files...');
-              
               worker.addEventListener('statechange', () => {
-                console.log('App Controller SW state changed to:', worker.state);
                 if (worker.state === 'installed') {
-                  // 'installed' 表示快取已完成
                   updateProgress(75, 'Cache complete, activating...');
-                } else if (worker.state === 'activated') {
-                  // 'activated' 表示 SW 已完全準備好，可以安全跳轉
-                  updateProgress(100, 'Ready! Loading Application...');
-                  // 跳轉到由 loader SW 快取的 index.html
-                  window.location.href = '/index.html';
+                  // La activación y redirección serán manejadas por el evento 'controllerchange'.
                 }
               });
             };
 
             if (registration.installing) {
               trackInstalling(registration.installing);
-              return;
-            }
-
-            // 如果已經有一個 active 的 loader SW，表示應用已快取，可以直接跳轉
-            if (registration.active) {
-              console.log('An active App Controller SW was found. Redirecting...');
-              updateProgress(100, 'Ready! Loading Application...');
-              window.location.href = '/index.html';
-              return;
             }
 
             registration.addEventListener('updatefound', () => {
+              console.log('A new App Controller version was found.');
               trackInstalling(registration.installing);
             });
           })
@@ -108,11 +116,15 @@
             updateProgress(100, 'Error: Could not start the application.');
             progressBar.style.backgroundColor = '#e74c3c';
           });
-      });
+      };
+
+      window.addEventListener('load', registerAndTrack);
+
     } else {
-        document.getElementById('progressText').textContent = 'Service Worker is not supported.';
-        document.getElementById('progressBar').style.width = '100%';
-        document.getElementById('progressBar').style.backgroundColor = '#e74c3c';
+      // Manejo de navegadores que no soportan Service Worker.
+      document.getElementById('progressText').textContent = 'Service Worker is not supported.';
+      document.getElementById('progressBar').style.width = '100%';
+      document.getElementById('progressBar').style.backgroundColor = '#e74c3c';
     }
   </script>
 </body>

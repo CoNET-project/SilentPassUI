@@ -5,7 +5,7 @@
 
 // 引入 Workbox 的核心模組
 // 引入 Workbox 的核心模組
-import { clientsClaim } from 'workbox-core';
+import { clientsClaim, cacheNames } from 'workbox-core';
 import { precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
@@ -77,19 +77,18 @@ const staleWhileRevalidateWithNode = async ({ event, request })=> {
     // 輔助函式：在背景執行網路請求並更新快取
     const fetchAndCache = async () => {
         try {
-            // 透過 forwardToNode 從網路（遠端節點）獲取回應
             const networkResponse = await forwardToNode(request.clone());
 
-            // 成功獲取後，手動更新快取
             if (networkResponse.ok) {
-                const cache = await caches.open('precache-v2-https://vpn4.silentpass.io/'); // Workbox 快取名稱通常包含版本和作用域
+                // --- [關鍵修正] ---
+                // 使用 Workbox 官方提供的屬性來打開正確的預存快取
+                const cache = await caches.open(cacheNames.precache); 
+                console.log(`[SW] Updating precache ('${cacheNames.precache}') for: ${request.url}`);
                 cache.put(request, networkResponse.clone());
             }
             return networkResponse;
         } catch (error) {
-            // 如果網路請求失敗，也沒關係，因為我們可能已經提供了快取版本
             console.warn(`[SW] Background revalidation failed for ${request.url}:`, error);
-            // 返回一個錯誤，雖然在這裡我們不會使用它
             throw error;
         }
     };

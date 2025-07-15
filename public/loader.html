@@ -54,71 +54,62 @@
     if ('serviceWorker' in navigator) {
       const progressBar = document.getElementById('progressBar');
       const progressText = document.getElementById('progressText');
+      let isNavigating = false;
+
+      // 統一的導航函式
+      const navigateToApp = () => {
+        if (isNavigating) return;
+        isNavigating = true;
+        console.log('✅ Service Worker is in control. Redirecting to the main application...');
+        updateProgress(100, 'Ready! Loading application...');
+        window.location.replace('/index.html');
+      };
       
       const updateProgress = (percentage, text) => {
-        progressBar.style.width = percentage + '%';
+        progressBar.style.width = `${percentage}%`;
         progressText.textContent = text;
       };
 
-      // 🚩 **Corrección Principal: Usar 'controllerchange' para la redirección.**
-      // Este es el evento más fiable para saber cuándo un nuevo SW ha tomado el control.
-      let isNavigating = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (isNavigating) return;
-        isNavigating = true;
-        console.log('✅ Controller has changed. Navigating to the main application.');
-        updateProgress(100, 'Ready! Loading Application...');
-        // Usamos replace() para no guardar loader.html en el historial del navegador.
-        window.location.replace('/index.html');
-      });
+      // --- 核心邏輯 ---
 
-      // --- Lógica de registro y actualización de la UI ---
-      const registerAndTrack = () => {
-        updateProgress(10, 'Registering Application Controller...');
-        
-        navigator.serviceWorker.register('/loader.js')
-          .then(registration => {
-            console.log('App Controller SW registration process started.');
+      // 情況一：一個新的 Service Worker 安裝並取得了控制權
+      // `controllerchange` 是最可靠的重新導向觸發點。
+      navigator.serviceWorker.addEventListener('controllerchange', navigateToApp);
 
-            // Si ya hay un controlador activo al cargar la página, podemos navegar de inmediato.
-            if (navigator.serviceWorker.controller) {
-              if (isNavigating) return;
-              isNavigating = true;
-              console.log('An active controller was found. Redirecting immediately.');
-              updateProgress(100, 'Application ready. Loading...');
-              window.location.replace('/index.html');
-              return;
-            }
+      const start = async () => {
+        try {
+          // 註冊 Service Worker。如果已有註冊，這個呼叫會返回現有的註冊物件。
+          const registration = await navigator.serviceWorker.register('/loader.js');
+          console.log('Service Worker registration initiated.');
 
-            // Función para seguir el progreso de la instalación para la UI.
-            const trackInstalling = (worker) => {
-              if (!worker) return;
-              updateProgress(25, 'Caching application files...');
-              worker.addEventListener('statechange', () => {
-                if (worker.state === 'installed') {
-                  updateProgress(75, 'Cache complete, activating...');
-                  // La activación y redirección serán manejadas por el evento 'controllerchange'.
-                }
-              });
-            };
+          // 情況二：頁面載入時，已經有一個 Service Worker 正在控制頁面
+          // 我們使用 .ready 來等待 controller 真正被附加到頁面上，避免競爭條件。
+          if (navigator.serviceWorker.controller) {
+              console.log('An active controller was found on page load.');
+              navigateToApp();
+              return; // 已找到控制器，無需監聽安裝進度
+          }
 
-            if (registration.installing) {
-              trackInstalling(registration.installing);
-            }
+          // 情況三：沒有現成的控制器，我們需要監控新 SW 的安裝進度
+          if (registration.installing) {
+            console.log('A new Service Worker is installing.');
+            updateProgress(25, 'Installing application controller...');
+            // `controllerchange` 事件會處理後續的重新導向，這裡只需更新UI。
+          }
 
-            registration.addEventListener('updatefound', () => {
-              console.log('A new App Controller version was found.');
-              trackInstalling(registration.installing);
-            });
-          })
-          .catch(err => {
-            console.error('App Controller SW registration failed:', err);
-            updateProgress(100, 'Error: Could not start the application.');
-            progressBar.style.backgroundColor = '#e74c3c';
+          registration.addEventListener('updatefound', () => {
+            console.log('A new Service Worker version has been found and is installing.');
+            updateProgress(25, 'Updating application controller...');
           });
+
+        } catch (error) {
+          console.error('Service Worker registration failed:', error);
+          updateProgress(100, 'Error: Could not start the application.');
+          progressBar.style.backgroundColor = '#e74c3c';
+        }
       };
 
-      window.addEventListener('load', registerAndTrack);
+      start();
 
     } else {
       // Manejo de navegadores que no soportan Service Worker.

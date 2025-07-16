@@ -9,7 +9,7 @@ import nodes from '../pages/Home/assets/allnodes.json'
 // })
 // Create an Axios instance with common configurations
 const api = axios.create({
-  baseURL: "http://localhost:3001", // Replace with your base API URL
+  baseURL: "http://localhost:3001/", // Replace with your base API URL
   timeout: 10000, // 10 seconds timeout
   headers: {
     "Content-Type": "application/json",
@@ -30,6 +30,7 @@ export const startSilentPass = async (
     throw error;
   }
 };
+
 
 export const stopSilentPass = async (): Promise<AxiosResponse<any>> => {
   try {

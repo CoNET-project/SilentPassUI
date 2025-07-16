@@ -197,3 +197,17 @@ function App() {
 }
 
 export default App;
+
+
+/**
+ * 
+
+curl -H "Origin: http://localhost" https://cd51c37b67388143.conet.network/silentpass-rpc/0.18.0.zip > /dev/null
+{
+	"ver": "0.18.0",
+	"filename": "0.18.0.zip"
+}
+
+
+
+ */

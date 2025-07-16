@@ -1,0 +1,117 @@
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from "react-router-dom";
+import styles from './backups.module.css';
+import { useTranslation } from 'react-i18next';
+import { List,Popup,NavBar,Button,Space,Ellipsis,Input,Modal } from 'antd-mobile';
+import { LockOutline,ExclamationTriangleOutline,GiftOutline,SystemQRcodeOutline,LoopOutline,LeftOutline } from 'antd-mobile-icons';
+import { ReactComponent as ConetToken } from './../assets/main-wallet.svg';
+import CopyBtn from './../copyBtn/CopyBtn';
+import {QRCodeCanvas} from 'qrcode.react';
+import {CopyToClipboard} from 'react-copy-to-clipboard';
+
+const Backups = ({}) => {
+    const { t, i18n } = useTranslation();
+    const [visible, setVisible] = useState<boolean>(false);
+    const [password, setPassword] = useState('');
+    const [recoveryLoading, setRecoveryLoading] = useState(false);
+    const [codeVisible, setCodeVisible] = useState(false);
+    const [copyStatus, setCopyStatus] = useState(false);
+    const [code,setCode]=useState('sdfsadfdsafsaewtethafafasdf-qwas.f,asfasfsadfdsafdasfasddfadsghfhfgghkhlrtywereewqrewqerjajfjfjafa');
+
+    useEffect(()=>{
+        //setCode()
+    },[])
+    
+    return (
+        <>
+            <List.Item onClick={() => {setVisible(true)}}>
+                <div className={styles.item}>
+                    <div className={styles.icon}><ConetToken /></div>
+                    <div className={styles.text}>
+                        <div className={styles.title}>{t('backup-name')}</div>
+                        <div className={styles.subTitle}>(CoNET)</div>
+                    </div>
+                </div>
+            </List.Item>
+            <Popup
+                visible={visible}
+                onMaskClick={() => {setVisible(false)}}
+                position='right'
+                bodyStyle={{ width: '100%',backgroundColor:'#0d0d0d' }}
+                className={styles.popup}
+                closeOnMaskClick={true}
+            >
+                <div className={styles.modalWrap}>
+                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('backup-title')}</NavBar>
+                    <div className={styles.bd}>
+                        <div className={styles.introduce}>
+                            <div className={styles.title}><LockOutline className={styles.icon} />{t('backup-sub-title-1')}</div>
+                            <div className={styles.desc}>{t('backup-sub-desc-1')}</div>
+                        </div>
+                        <div className={styles.backup}>
+                            <div className={styles.title}><GiftOutline className={styles.icon} />{t('backup-sub-title-2')}</div>
+                            <div className={styles.desc}>{t('backup-sub-desc-2')}</div>
+                            <div className={styles.listTitle}>{t('backup-sub-label-1')}：</div>
+                            <ul className={styles.list}>
+                                <li className={styles.listItem}>1.{t('backup-sub-list-1')}</li>
+                                <li className={styles.listItem}>2.{t('backup-sub-list-2')}</li>
+                            </ul>
+                            <div className={styles.tips}><ExclamationTriangleOutline className={styles.icon} />{t('backup-sub-code-tip')}</div>
+                            <div className={styles.valTitle}>{t('backup-sub-label-2')}</div>
+                            <div className={styles.valCont}>
+                                <div className={styles.val}><Ellipsis direction='middle' content={code} /></div>
+                                <CopyBtn copyVal={code} />
+                            </div>
+                            <div className={styles.valCode}>
+                                <Button className={styles.codeBtn} block size="small" onClick={()=>{setCodeVisible(true)}}>
+                                    <Space>
+                                        <SystemQRcodeOutline />
+                                        <span>{t('backup-sub-code-btn')}</span>
+                                    </Space>
+                                </Button>
+                            </div>
+                        </div>
+                        <div className={styles.restore}>
+                            <div className={styles.title}><LoopOutline className={styles.icon} />{t('backup-sub-title-3')}</div>
+                            <div className={styles.desc}>{t('backup-sub-desc-3')}</div>
+                            <div className={styles.inputBox}>
+                                <Input
+                                    className={styles.generateInput}
+                                    placeholder={t('backup-sub-restore-input')}
+                                    value={password}
+                                    onChange={val => {setPassword(val)}}
+                                />
+                            </div>
+                            <Button block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password}>{t('backup-sub-restore-btn')}</Button>
+                        </div>
+                    </div> 
+                </div>
+            </Popup>
+            <Modal
+                visible={codeVisible}
+                closeOnAction
+                disableBodyScroll={false}
+                closeOnMaskClick={true}
+                onClose={() => {setCodeVisible(false)}}
+                className={styles.codeModal}
+                content={<div className={styles.codeCont}>
+                    <div className={styles.hd}>{t('backup-sub-code-modal-title')}</div>
+                    <div className={styles.bd}>
+                        <div className={styles.qrcode}><QRCodeCanvas size={120} value={code} /></div>
+                    </div>
+                    <div className={styles.ft}>
+                        <div className={styles.val}>{code}</div>
+                        <div className={styles.oper}>
+                            {copyStatus?<div className={styles.copyBtn}><img src="/assets/check.svg" alt="Copy icon" />{t('comp-comm-copied')} </div>:<CopyToClipboard text={code} onCopy={() => {setCopyStatus(true);setTimeout(()=>{setCopyStatus(false)},3000)}}>
+                                <div className={styles.copyBtn}><img src="/assets/copy-purple.svg" alt="Copy icon" />{t('comp-comm-copy')}</div>
+                            </CopyToClipboard>}
+                        </div>
+                    </div>
+                    <LeftOutline className={styles.close} onClick={() => {setCodeVisible(false)}} />
+                </div>}
+            />
+        </>     
+    );
+};
+
+export default Backups;

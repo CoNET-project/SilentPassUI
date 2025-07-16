@@ -24,6 +24,8 @@ import bs58 from "bs58";
 import styles from './swapInput.module.css';
 import { ethers } from "ethers";
 
+import {openWebLinkNative} from './../../api';
+
 interface SwapInputProps {
     setTokenGraph: (tokenGraph: string) => void;
 }
@@ -61,7 +63,7 @@ function SPSelector({ option, onChange }: SPSelectorProps) {
 
 
 export default function SwapInput({ setTokenGraph }: SwapInputProps) {
-    const { profiles, getAllNodes } = useDaemonContext()
+    const { profiles, getAllNodes, isIOS, isLocalProxy } = useDaemonContext()
     const [rotation, setRotation] = useState(0)
     const [tabSelector, setTabSelector] = useState("tokens")
 
@@ -129,7 +131,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
                     title={t('comp-SwapInput-tip-2')}
                 />
                 <div className={styles.description}>{t('comp-SwapInput-tip-4')}!</div>
-                <div className={styles.link}><a href={'https://solscan.io/tx/'+txid} target="_blank">{t('comp-SwapInput-tip-5')}</a></div>
+                <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+txid,isIOS,isLocalProxy)}}>{t('comp-SwapInput-tip-5')}</a></div>
             </div>,
             confirmText:'Close',
         })
@@ -272,7 +274,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
                     title={t('comp-SwapInput-tip-2')}
                 />
                 <div className={styles.description}>{t('comp-SwapInput-tip-4')}!</div>
-                <div className={styles.link}><a href={'https://solscan.io/tx/'+thash} target="_blank">{t('comp-SwapInput-tip-5')}</a></div>
+                <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+thash,isIOS,isLocalProxy)}}>{t('comp-SwapInput-tip-5')}</a></div>
             </div>,
             confirmText:'Close',
         })

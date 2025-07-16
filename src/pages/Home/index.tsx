@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { useMemo } from "react";
 import { LuCirclePower } from 'react-icons/lu';
 import type { IconBaseProps } from 'react-icons';
+import {Bridge} from './../../bridge/webview-bridge';
 
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 
@@ -98,23 +99,23 @@ const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, po
 
 
 const SystemSettingsButton = () => {
-	const {globalProxy, setGlobalProxy } = useDaemonContext();
+    const {globalProxy, setGlobalProxy } = useDaemonContext();
 
   return (
     <button
       className={`system-settings-button ${globalProxy ? "checked" : ""}`}
       onClick={() => {
-		if (globalProxy) {
-			if (window?.webkit) {
-				window?.webkit?.messageHandlers["stopProxy"].postMessage("")
-			}
-			return setGlobalProxy(false)
-		}
-		if (window?.webkit) {
-			window?.webkit?.messageHandlers["startProxy"].postMessage("")
-		}
-		return setGlobalProxy(true)
-	  }}
+        if (globalProxy) {
+            if (window?.webkit) {
+                window?.webkit?.messageHandlers["stopProxy"].postMessage("")
+            }
+            return setGlobalProxy(false)
+        }
+        if (window?.webkit) {
+            window?.webkit?.messageHandlers["startProxy"].postMessage("")
+        }
+        return setGlobalProxy(true)
+      }}
     >
       <span className="circle">{globalProxy && "✔"}</span>
       Enable for System Settings
@@ -137,30 +138,30 @@ const Home = () => {
 
 
   const _getAllRegions = async () => {
-	
-	const [tmpRegions] = await
-	Promise.all([
-		getAllRegions()
-	])
+    
+    const [tmpRegions] = await
+    Promise.all([
+        getAllRegions()
+    ])
 
-	const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
-		const separatedRegion = region.split(".");
-		const code = separatedRegion[1];
+    const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
+        const separatedRegion = region.split(".");
+        const code = separatedRegion[1];
 
-		const country = mappedCountryCodes[code];
+        const country = mappedCountryCodes[code];
 
-		return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
-	}))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
+        return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
+    }))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
 
-	const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
+    const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
 
-	if (sRegion < 0) {
-		setSRegion(unitedStatesIndex)
-		setIsRandom(false);
-	}
+    if (sRegion < 0) {
+        setSRegion(unitedStatesIndex)
+        setIsRandom(false);
+    }
 
-	setAllRegions(treatedRegions);
-	
+    setAllRegions(treatedRegions);
+    
   };
 
 
@@ -183,228 +184,218 @@ const Home = () => {
   }, [power]);
 
   useEffect(() => {
-	_getAllRegions()
-	let first = 0
+    _getAllRegions()
+    let first = 0
     const listenGetAllNodes = () => {
-		
-		const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0
-		const _status = Math.round(_initpercentage)
-		const status = _status <= first ? first + 2 : _status
-		first = status
-	  if (status > 100) {
-		  setInitPercentage(98)
-	  } else {
-		  setInitPercentage(status)
-	  }
+        
+        const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0
+        const _status = Math.round(_initpercentage)
+        const status = _status <= first ? first + 2 : _status
+        first = status
+      if (status > 100) {
+          setInitPercentage(98)
+      } else {
+          setInitPercentage(status)
+      }
   
-		if (status < 99 ) {
-		  return setTimeout(() => {
-			listenGetAllNodes()
-		  }, 1000)
-		}
-	}
+        if (status < 99 ) {
+          return setTimeout(() => {
+            listenGetAllNodes()
+          }, 1000)
+        }
+    }
 
     listenGetAllNodes()
   }, [])
 
 
   const init = async () => {
-	const status = await airDropForSP()
-	if (status !== false) {
-		setIsAirDropForSP(status.isReadyForSP)
-		setIsReadyForReferees(status.isReadyForReferees)
-	}
-	
+    const status = await airDropForSP()
+    if (status !== false) {
+        setIsAirDropForSP(status.isReadyForSP)
+        setIsReadyForReferees(status.isReadyForReferees)
+    }
+    
   }
 
   const airdropProcess = async () => {
 
-	setIsProcessAirDrop(true)
-	setAirdropProcess(true)
-	if (isAirDropForSP) {
-		const kk = await getirDropForSP()
-		setIsAirDropForSP(false)
-		
-		if (typeof kk === 'number') {
-			
-			setAirdropSuccess(true)
-			setAirdropTokens(kk)
-			navigate('/wallet')
-		}
-		return
-	}
-	setAirdropProcessReff(true)
-	navigate('/wallet')
+    setIsProcessAirDrop(true)
+    setAirdropProcess(true)
+    if (isAirDropForSP) {
+        const kk = await getirDropForSP()
+        setIsAirDropForSP(false)
+        
+        if (typeof kk === 'number') {
+            
+            setAirdropSuccess(true)
+            setAirdropTokens(kk)
+            navigate('/wallet')
+        }
+        return
+    }
+    setAirdropProcessReff(true)
+    navigate('/wallet')
   }
 
   useEffect(() => {
-	if (!closestRegion?.length) {
-		return
-	}
-	setIsInitialLoading(false)
-	init()
+    if (!closestRegion?.length) {
+        return
+    }
+    setIsInitialLoading(false)
+    init()
   }, [closestRegion])
 
+
 const handleTogglePower = async () => {
-    
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
 
-
-	
     if (power) {
-		setIsConnectionLoading(true)
+        setIsConnectionLoading(true)
 
-		if (isLocalProxy) {
-			//			Desktop
-			try {
-				const response = await stopSilentPass();
-				if (response.status === 200) {
-					
-				}
-			} catch (ex) { }
-			if (switchValue && window?.webkit) {
-				window?.webkit?.messageHandlers["stopVPN"].postMessage("")
-			}
-			
-		} else if (isIOS ) {
-			
-			window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
-			
-		} else 
-	  	//	@ts-ignore		Android
-		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
-			
-			const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
-			//	@ts-ignore
-			AndroidBridge.receiveMessageFromJS(base)
-			
-		}
-		setPower(false);
-		setTimeout(() => setIsConnectionLoading(false), 1000)
-		return
+        if (isLocalProxy) {
+         //          Desktop
+         try {
+             const response = await stopSilentPass();
+             if (response.status === 200) {
+                    
+             }
+         } catch (ex) { }
+         if (switchValue) {
+            Bridge.send('stopVPN',{},(res:any)=>{});
+         }
+            
+        } else if (isIOS ) {
+            
+         window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+            
+        } else 
+            //   @ts-ignore      Android
+        if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+            
+         const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
+         //  @ts-ignore
+         AndroidBridge.receiveMessageFromJS(base)
+            
+        }
+
+        setPower(false);
+        setTimeout(() => setIsConnectionLoading(false), 1000)
+        return
     }
 
     if (!profiles?.[0]?.activePassport?.expires) {
-      setTimeout(() => {
-        setIsConnectionLoading(false)
-        setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
-      }, 1000)
-
-      return
+        setTimeout(() => {
+            setIsConnectionLoading(false)
+            setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
+        }, 1000)
+        return
     }
 
     if (!isPassportValid(profiles?.[0]?.activePassport?.expires)) {
-      setTimeout(() => {
-        setIsConnectionLoading(false)
-        setErrorMessage(PASSPORT_EXPIRED_ERROR);
-      }, 1000)
-
-      return
+        setTimeout(() => {
+            setIsConnectionLoading(false)
+            setErrorMessage(PASSPORT_EXPIRED_ERROR);
+        }, 1000)
+        return
     }
 
     const conetProfile = CoNET_Data?.profiles[0];
     const privateKey = conetProfile?.privateKeyArmor
 
     if (!privateKey) {
-      return
+        return
     }
 
-	
-    setIsConnectionLoading(true)
+    // setIsConnectionLoading(true)
     await getAllRegions()
     const allNodes = getAllNodes
     
-	if (!allNodes.length) {
-		setTimeout(() => {
-			setIsConnectionLoading(false)
-			setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
-		  }, 1000)
-		return
-	}
-
-	
-
-	if (sRegion === -1) {
-      selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
-      setSRegion(selectedCountryIndex);
-    } else {
-      selectedCountryIndex = sRegion
+    if (!allNodes.length) {
+        setTimeout(() => {
+            setIsConnectionLoading(false)
+            setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
+        }, 1000)
+        return
     }
 
-	
+    if (sRegion === -1) {
+        selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
+        setSRegion(selectedCountryIndex);
+    } else {
+        selectedCountryIndex = sRegion
+    }
+
+    
     const exitRegion = allRegions[selectedCountryIndex].code
     const exitNodes = allNodes.filter((n: any) => {
-		const region: string = n.region
-		const regionName = region.split('.')[1]
-		return regionName === exitRegion
-	})
+        const region: string = n.region
+        const regionName = region.split('.')[1]
+        return regionName === exitRegion
+    })
 
     const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
 
     const _exitNode = [exitNodes[randomExitIndex]]
 
     let _entryNodes = closestRegion
-	console.log(_entryNodes)
-	console.log(_exitNode)
+    console.log(_entryNodes)
+    console.log(_exitNode)
     const entryNodes = _entryNodes.map(n => {
-      return {
-        country: '',
-        ip_addr: n.ip_addr,
-        region: n.region,
-        armoredPublicKey: n.armoredPublicKey,
-        nftNumber: n.nftNumber.toString()
-      }
+        return {
+            country: '',
+            ip_addr: n.ip_addr,
+            region: n.region,
+            armoredPublicKey: n.armoredPublicKey,
+            nftNumber: n.nftNumber.toString()
+        }
     })
     const exitNode = _exitNode.map(n => {
-      return {
-        country: '',
-        ip_addr: n.ip_addr,
-        region: n.region,
-        armoredPublicKey: n.armoredPublicKey,
-        nftNumber: n.nftNumber.toString()
-      }
+        return {
+            country: '',
+            ip_addr: n.ip_addr,
+            region: n.region,
+            armoredPublicKey: n.armoredPublicKey,
+            nftNumber: n.nftNumber.toString()
+        }
     })
 
     const startVPNMessageObject: Native_StartVPNObj = {
-      entryNodes,
-      exitNode,
-      privateKey
+        entryNodes,
+        exitNode,
+        privateKey
     }
-	const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject)
-	const base64VPNMessage = btoa(stringifiedVPNMessageObject)
+    const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject)
+    const base64VPNMessage = btoa(stringifiedVPNMessageObject)
 
 
-	if (isLocalProxy) {
+    if (isLocalProxy) {
+     try {
+         await startSilentPass(startVPNMessageObject);
+     } catch (ex) {
 
-		try {
-			await startSilentPass(startVPNMessageObject);
-		} catch (ex) {
+     }
 
-		}
-
-		if (switchValue && window?.webkit) {
-			 window?.webkit?.messageHandlers["startProxy"].postMessage("")
-		}
-		
-
-	} else {
-		if (isIOS) {
-			window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
-		} else
-		//	@ts-ignore
-		if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
-			
-			const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
-			//	@ts-ignore
-			AndroidBridge.receiveMessageFromJS(base)
-		}
-	}
-
+     if (switchValue) {
+          Bridge.send('startVPN',{data:base64VPNMessage},(res:any)=>{});
+     }   
+    } else {
+     if (isIOS) {
+         window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
+     } else
+     //  @ts-ignore
+     if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
+            
+         const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
+         //  @ts-ignore
+         AndroidBridge.receiveMessageFromJS(base)
+     }
+    }
 
     setTimeout(() => {
-      	setIsConnectionLoading(false)
+         setIsConnectionLoading(false)
         setPower(true)
     }, 1000)
 
@@ -424,7 +415,7 @@ const handleTogglePower = async () => {
             <button
               className="power"
             >
-			
+            
               <img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
             </button>
 
@@ -437,39 +428,39 @@ const handleTogglePower = async () => {
         ) : (
           <>
             <div>
-			  
+              
               <img src="/assets/header-title.svg" style={{minWidth: '150px', minHeight: '75x'}}></img>
-			  {/* {
-				
-				!isProcessAirDrop && 
-				<>
-					{
-						isAirDropForSP &&
-							<img src={airdrop} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/> 
-					}
-					{
-						!isAirDropForSP && isReadyForReferees &&
-							<img src={airdropReff} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/>
-						
-					}
-				</>
-				 	
-			  } */}
-			  
+              {/* {
+                
+                !isProcessAirDrop && 
+                <>
+                    {
+                        isAirDropForSP &&
+                            <img src={airdrop} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/> 
+                    }
+                    {
+                        !isAirDropForSP && isReadyForReferees &&
+                            <img src={airdropReff} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/>
+                        
+                    }
+                </>
+                    
+              } */}
+              
             </div>
 
-			{/* <div>
-				<button onClick={() => navigate("/wallet")}>
-					<img className="bannaer" src={i18n.language === 'zh' ? bannaer_cn : bannaer} style={{width:"25rem",height: "5rem"}}></img>
-				</button>
-				
-			</div> */}
+            {/* <div>
+                <button onClick={() => navigate("/wallet")}>
+                    <img className="bannaer" src={i18n.language === 'zh' ? bannaer_cn : bannaer} style={{width:"25rem",height: "5rem"}}></img>
+                </button>
+                
+            </div> */}
 
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
-			  {
-				isLocalProxy &&
-				<CopyProxyInfo />
-			  }
+              {
+                isLocalProxy &&
+                <CopyProxyInfo />
+              }
             
 
             {/*{
@@ -480,11 +471,11 @@ const handleTogglePower = async () => {
 
             {
               <RegionSelector
-				ios={isIOS}
+                ios={isIOS}
                 title={allRegions?.[sRegion]?.country}
                 regionCode={allRegions?.[sRegion]?.code}
                 showArrow={!power}
-				isLocalServer={isLocalProxy}
+                isLocalServer={isLocalProxy}
                 action={() => !power && navigate("/regions")}
               />
             }

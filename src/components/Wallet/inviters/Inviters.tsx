@@ -4,10 +4,11 @@ import { Button,Ellipsis,Empty,Toast } from 'antd-mobile';
 import styles from './inviters.module.css';
 import { useTranslation } from 'react-i18next';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
+import {openWebLinkNative} from './../../../api';
 
 const Inviters=({  })=> {
     const { t, i18n } = useTranslation();
-    const { profiles, setAirdropSuccess, setAirdropTokens, setAirdropProcess, setAirdropProcessReff } = useDaemonContext();
+    const { isIOS, isLocalProxy, profiles, setAirdropSuccess, setAirdropTokens, setAirdropProcess, setAirdropProcessReff } = useDaemonContext();
     const [pageNo, setPageNo] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     
@@ -23,12 +24,7 @@ const Inviters=({  })=> {
         return array.slice(startIndex, endIndex);
     }
     const showAddress = (address: string) => {
-        const link = document.createElement('a');
-        link.href = `https://mainnet.conet.network/address/${address}`
-        link.target = '_blank'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+        openWebLinkNative(`https://mainnet.conet.network/address/${address}`,isIOS,isLocalProxy);
     }
     const list=()=>{
         return paginateArray(profiles?.[0]?.spClub?.referees);

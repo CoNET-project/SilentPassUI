@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import wechat from './../assets/wechat.png';
 
 interface payParams {
-    payClick:() => {};
+    payClick:() => void | {};
 }
 
 const PayWECHAT = ({payClick}:payParams) => {

@@ -6,6 +6,7 @@ import { Popup,CheckList,Button,NavBar } from 'antd-mobile';
 import { ExclamationTriangleOutline,RightOutline } from 'antd-mobile-icons';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import { getPassportTitle } from "./../../../utils/utils";
+import {openWebLinkNative} from './../../../api';
 
 interface ApplePayModalParams {
     visible:boolean;
@@ -23,7 +24,7 @@ interface plan {
 const ApplePayModal = ({visible,setVisible}:ApplePayModalParams) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
-    const { isIOS, profiles, selectedPlan, setSelectedPlan, activePassport, setPaymentKind } = useDaemonContext();
+    const { isIOS, isLocalProxy, profiles, selectedPlan, setSelectedPlan, activePassport, setPaymentKind } = useDaemonContext();
     
     const handleChange=(value: (string | number)[])=>{
         if(value.length) setSelectedPlan(String(value[0]));
@@ -92,7 +93,7 @@ const ApplePayModal = ({visible,setVisible}:ApplePayModalParams) => {
                             <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-2')}</span></li>
                             <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-3')}</span></li>
                             <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-4')}</span></li>
-                            <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-5')} <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank">{t('passport-pay-plan-ios-extra-item-6')}</a>, {t('passport-pay-plan-ios-extra-item-7')} <a href="https://silentpass.io/privacy-cookies/" target="_blank">{t('passport-pay-plan-ios-extra-item-8')}</a></span></li>
+                            <li><RightOutline className={styles.icon} /><span>{t('passport-pay-plan-ios-extra-item-5')} <a onClick={()=>{openWebLinkNative("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",isIOS,isLocalProxy)}}>{t('passport-pay-plan-ios-extra-item-6')}</a>, {t('passport-pay-plan-ios-extra-item-7')} <a onClick={()=>{openWebLinkNative("https://silentpass.io/privacy-cookies/",isIOS,isLocalProxy)}}>{t('passport-pay-plan-ios-extra-item-8')}</a></span></li>
                         </ul>
                     </div>
                 </div>

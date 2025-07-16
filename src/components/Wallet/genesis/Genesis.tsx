@@ -18,6 +18,7 @@ import PaySP from './../paySp/PaySP';
 import PayAPPLE from './../payApple/PayAPPLE';
 import PayModal from './../payModal/PayModal';
 import AppleModal from './../payApple/AppleModal';
+import {openWebLinkNative} from './../../../api';
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 
@@ -61,17 +62,7 @@ const Genesis = ({}) => {
         setShowPrice('')
     }
     const payClick = () => {
-        if (window?.webkit?.messageHandlers && isIOS && !isLocalProxy ) {
-            return window?.webkit?.messageHandlers["openUrl"]?.postMessage(payUrl)
-        } else 
-        //@ts-ignore
-        if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
-            const base = btoa(JSON.stringify({cmd: 'openUrl', data: payUrl}))
-            //  @ts-ignore
-            return AndroidBridge?.receiveMessageFromJS(base)
-        } else {
-            window.open(payUrl, '_blank')
-        }
+        openWebLinkNative(payUrl,isIOS,isLocalProxy);
         Modal.show({
             className:styles.helperModal,
             content: (<div className={styles.helper}>
@@ -81,12 +72,12 @@ const Genesis = ({}) => {
                     {t('comp-accountlist-SpClub-showAlipayPurchase-2')}
                     <a onClick={() => {
                         //@ts-ignore
-                        window?.Comm100API?.open_chat_window?.()
+                        openWebLinkNative('https://vue.comm100.com/chatwindow.aspx?siteId=90007504&planId=efd822ce-7299-4fda-9fc1-252dd2f01fc5#',isIOS,isLocalProxy);
                     }}>{t('comp-comm-customerService')}</a>
                 </div>
             </div>),
             closeOnMaskClick: true,
-        })
+        });
     }
     const stripeClick = () => {
         setPaymentKind(2);

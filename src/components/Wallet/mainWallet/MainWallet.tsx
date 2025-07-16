@@ -13,7 +13,7 @@ import { ethers } from 'ethers';
 import CodeButton from './../codeButton/CodeButton';
 import CopyBtn from './../copyBtn/CopyBtn';
 import HideBtn from './../hideBtn/HideBtn';
-import Recovery from './../recovery/Recovery';
+// import Recovery from './../recovery/Recovery';
 import _ from 'lodash';
 
 const MainWallet = ({}) => {
@@ -141,7 +141,7 @@ const MainWallet = ({}) => {
                             </div>
                         </div>:''}
 
-                        {CoNET_Data?.mnemonicPhrase ? <div className={styles.recovery}><Recovery /></div> : ''}
+                        {/*{CoNET_Data?.mnemonicPhrase ? <div className={styles.recovery}><Recovery /></div> : ''}*/}
                     </div>
                     {isChangeLoading?<div className={styles.loading}><div className={styles.spinBox}><SpinLoading /></div></div>:''}
                 </div>

@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import Filter from './../../components/Rules/Filter';
 import { Switch } from 'antd-mobile';
 import ProxyInfo from '../../components/ProxyInfo';
+import {openWebLinkNative} from './../../api';
 
 type OptionGroup = {
   heading: string;
@@ -75,7 +76,7 @@ export default function Settings() {
           icon: helpIcon,
           title: t('customer-service'),
 		       //@ts-ignore
-          action: () => {window?.Comm100API?.open_chat_window?.();}
+          action: () => {openWebLinkNative('https://vue.comm100.com/chatwindow.aspx?siteId=90007504&planId=efd822ce-7299-4fda-9fc1-252dd2f01fc5#',isIOS,isLocalProxy)}
         },
         
         /* {

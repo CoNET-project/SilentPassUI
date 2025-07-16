@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { apiv4_endpoint } from "../utils/constants";
 import { getCONET_api_health, postToEndpoint } from "../utils/utils";
 import nodes from '../pages/Home/assets/allnodes.json'
+import {Bridge} from './../bridge/webview-bridge';
 // const { ipcRenderer, contextBridge } = require('electron')
 // contextBridge.exposeInMainWorld('electronAPI', {
 //   sendMessage: (data: any) => ipcRenderer.sendToHost('from-webview', data)
@@ -109,7 +110,10 @@ export const openWebLinkNative = async (url: string, isIOS: boolean, isLocalProx
 		const base = btoa(JSON.stringify({cmd: 'openUrl', data: url}))
 		//	@ts-ignore
 		return AndroidBridge?.receiveMessageFromJS(base)
-	} else {
+	} 
+  if(isLocalProxy){
+    return Bridge.send('openUrl',{data:url},(res:any)=>{});
+  }else {
 		window.open(url, '_blank')
 	}
 }

@@ -10,7 +10,7 @@ import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/Global-steps/Loading';
 import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest, RealizationRedeem, changeActiveNFT } from '../../services/wallets';
 import {getOracle, purchasePassport, postPurchasePassport} from '../../services/passportPurchase'
-import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next';
 
 global.Buffer = require('buffer').Buffer;
 export type Step = 2 | 3 | 4 | 5;
@@ -150,7 +150,7 @@ export default function Subscription() {
 					if (!codeUrl) {
 						return setStep(5);
 					}
-					window.open(codeUrl, '_blank')
+					openWebLinkNative(codeUrl,isIOS,isLocalProxy)
 					const re1 = await waitingPaymentStatus()
 					if (!re1) {
 						return setStep(5);

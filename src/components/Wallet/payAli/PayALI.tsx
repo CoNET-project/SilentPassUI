@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import alipay from './../assets/alipay.png';
 
 interface payParams {
-    payClick:() => {};
+    payClick:() => void | {};
 }
 
 const PayALI = ({payClick}:payParams) => {

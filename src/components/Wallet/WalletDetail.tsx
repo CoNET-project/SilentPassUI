@@ -9,6 +9,7 @@ import SPWallet from './spWallet/SPWallet';
 import Genesis from './genesis/Genesis';
 import Referrals from './referrals/Referrals';
 import Passport from './passport/Passport';
+import Backups from './backups/Backups';
 import { List, Modal, Result, Button } from 'antd-mobile';
 import { CheckCircleFill } from 'antd-mobile-icons';
 import { useDaemonContext } from './../../providers/DaemonProvider';
@@ -42,6 +43,7 @@ const WalletDetail = ({}) => {
             <div className={styles.list}>
                 <List style={{'--active-background-color':'#343434'}}>
                     <MainWallet />
+                    <Backups />
                     <SPWallet />
                     <Genesis />
                     <Passport />

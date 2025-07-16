@@ -13,15 +13,9 @@ import ProxyInfo from '../../components/ProxyInfo';
 import { useNavigate } from 'react-router-dom';
 import { Popup } from 'antd-mobile';
 import { useTranslation } from "react-i18next";
+import { useDaemonContext } from '../../providers/DaemonProvider';
 
-declare global {
-  interface Window {
-    Comm100API?: {
-      open_chat_window?: () => void;
-      [key: string]: any; // optional, to allow more properties if needed
-    };
-  }
-}
+import {openWebLinkNative} from './../../api';
 
 type OptionGroup = {
   id: number;
@@ -41,7 +35,7 @@ type OptionGroups = OptionGroup[];
 export default function Support() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  
+  const { isLocalProxy, isIOS } = useDaemonContext();
 
   const optionGroups = useMemo<OptionGroups>(() => ([
     
@@ -77,7 +71,7 @@ export default function Support() {
           icon: helpIcon,
           title: t('customer-service'),
 		  //@ts-ignore
-          action: () => {window?.Comm100API?.open_chat_window?.();}
+          action: () => {openWebLinkNative('https://vue.comm100.com/chatwindow.aspx?siteId=90007504&planId=efd822ce-7299-4fda-9fc1-252dd2f01fc5#',isIOS,isLocalProxy)}
         },
       ]
     }

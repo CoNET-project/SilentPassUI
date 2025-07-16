@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Action } from 'antd-mobile/es/components/action-sheet';
 import { useDaemonContext } from "../../providers/DaemonProvider";
 import LinkAvatar from './LinkAvatar';
+import {openWebLinkNative} from './../../api';
 
 interface LinkItem {
     id: string;
@@ -108,15 +109,7 @@ const QuickLinks=({})=> {
         setManageVisible(true);
     }
     const goLink=(url:string)=>{
-        const bridge = (window as any).AndroidBridge;
-        if (window?.webkit?.messageHandlers && isIOS && !isLocalProxy ) {
-            window?.webkit?.messageHandlers["openUrl"]?.postMessage(url)
-        } else if (bridge && typeof bridge.receiveMessageFromJS === 'function') {
-            const base = btoa(JSON.stringify({cmd: 'openUrl', data: url}))
-            bridge?.receiveMessageFromJS(base)
-        } else {
-            window.open(url, '_blank')
-        }
+        openWebLinkNative(url,isIOS,isLocalProxy);
     }
     const convertToLowerCaseHTTPS=(url:string) =>{
         return url.replace(/^https?/i, 'https');

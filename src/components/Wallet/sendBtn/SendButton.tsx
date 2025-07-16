@@ -9,7 +9,9 @@ import Bs58 from "bs58"
 import { ethers } from 'ethers';
 import {globalAllNodes} from "../../../utils/globals"
 import BigNumber from 'bignumber.js';
-import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next';
+import {openWebLinkNative} from './../../../api';
+import { useDaemonContext } from './../../../providers/DaemonProvider';
 
 interface SendParams {
     type: string; 
@@ -23,6 +25,7 @@ interface SendParams {
 
 
 const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers,extendref=null }: SendParams)=> {
+    const { isIOS, isLocalProxy } = useDaemonContext();
     const [visible, setVisible] = useState(false);
     const [address, setAddress] = useState('');
     const [amount, setAmount] = useState<string | undefined>();
@@ -123,7 +126,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                         title='Send successful'
                     />
                     <div className={styles.description}>{amount} {type} <br/>has been successfully sent to <Ellipsis direction='middle' content={address} /></div>
-                    <div className={styles.link}><a href={'https://solscan.io/tx/'+signature} target="_blank">View transactions</a></div>
+                    <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>View transactions</a></div>
                 </div>,
                 confirmText:'Close',
                 onConfirm:()=>{setVisible(false)}
@@ -200,7 +203,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                         title='Send successful'
                     />
                     <div className={styles.description}>{amount} {type} <br/>has been successfully sent to <Ellipsis direction='middle' content={address} /></div>
-                    <div className={styles.link}><a href={'https://solscan.io/tx/'+signature} target="_blank">View transactions</a></div>
+                    <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>View transactions</a></div>
                 </div>,
                 confirmText:'Close',
                 onConfirm:()=>{setVisible(false)}

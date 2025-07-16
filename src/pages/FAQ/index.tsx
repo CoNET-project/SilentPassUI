@@ -6,6 +6,7 @@ import { useDaemonContext } from "../../providers/DaemonProvider";
 import "./index.css";
 import { useState } from "react";
 import { useTranslation, Trans } from "react-i18next";
+import {openWebLinkNative} from './../../api';
 
 const FAQ = () => {
   const [dropdownOpen, setDropdownOpen] = useState<number>(0)
@@ -117,7 +118,7 @@ const FAQ = () => {
 				transition={{ duration: 0.5 }}
 				>
 				<p>Silent Pass Wallet are unique identity for each device. The Silent Pass Passport could be purchased within the APP, or be transferred to your wallet, then your Silent Pass service would be initiated.</p>
-				<p>Please refer to <a href="https://youtube.com/shorts/O6l3r_qpqzo?feature=share" target="_blank">Tutorial Video</a> for how to get your Silent Pass wallet address.</p>
+				<p>Please refer to <a onClick={()=>{openWebLinkNative("https://youtube.com/shorts/O6l3r_qpqzo?feature=share",isIOS,isLocalProxy)}}>Tutorial Video</a> for how to get your Silent Pass wallet address.</p>
 				</motion.div>
 			}
 			</div>
@@ -150,7 +151,7 @@ const FAQ = () => {
 				exit={{ opacity: 0, y: -10 }}
 				transition={{ duration: 0.5 }}
 			>
-				<p>Please refer to <a href="https://youtu.be/0YmHHe4PEkk?feature=shared">Tutorial Video</a> for step-by-step guidance.</p>
+				<p>Please refer to <a onClick={()=>{openWebLinkNative("https://youtu.be/0YmHHe4PEkk?feature=shared",isIOS,isLocalProxy)}}>Tutorial Video</a> for step-by-step guidance.</p>
 			</motion.div>
 			}
 		</div>
@@ -215,7 +216,7 @@ const FAQ = () => {
 				exit={{ opacity: 0, y: -10 }}
 				transition={{ duration: 0.5 }}
 			>
-				<p>Please refer to <a href="https://www.youtube.com/shorts/ZhhF7_uCrZ4" target="_blank">Tutorial Video</a> for step-by-step guidance.</p>
+				<p>Please refer to <a onClick={()=>{openWebLinkNative("https://www.youtube.com/shorts/ZhhF7_uCrZ4",isIOS,isLocalProxy)}}>Tutorial Video</a> for step-by-step guidance.</p>
 			</motion.div>
 			}
 		</div>
@@ -254,7 +255,7 @@ const FAQ = () => {
 				<li>Change Telegram Proxy Setting, Telegram Setting {'=>'} Data and Storage {'=>'} Proxy</li>
 				<li>Add Proxy, Proxy information could be found in the Silent Pass VPN APP homepage</li>
 				</ol>
-				<p>Please refer to <a href="https://www.youtube.com/watch?v=15fJpywnFFM" target="_blank">Tutorial Video</a> for step-by-step guidance.</p>
+				<p>Please refer to <a onClick={()=>{openWebLinkNative("https://www.youtube.com/watch?v=15fJpywnFFM",isIOS,isLocalProxy)}}>Tutorial Video</a> for step-by-step guidance.</p>
 			</motion.div>
 			}
 		</div>
@@ -360,7 +361,7 @@ const FAQ = () => {
 					<p>
 					<Trans i18nKey="faq-wallet-3">
 						{/* unused fallback */}
-						<a href="https://youtube.com/shorts/O6l3r_qpqzo?feature=shared" target="_blank" rel="noopener noreferrer">
+						<a onClick={()=>{openWebLinkNative("https://youtube.com/shorts/O6l3r_qpqzo?feature=shared",isIOS,isLocalProxy)}}>
 							Tutorial Video
 						</a>
 					</Trans>
@@ -398,7 +399,7 @@ const FAQ = () => {
 				exit={{ opacity: 0, y: -10 }}
 				transition={{ duration: 0.5 }}
 				>
-				<p><Trans i18nKey="faq-expiry-2">{/*empty*/} <a href="https://www.youtube.com/watch?v=0YmHHe4PEkk" target="_blank" rel="noopener noreferrer">Tutorial Video</a></Trans></p>
+				<p><Trans i18nKey="faq-expiry-2">{/*empty*/} <a onClick={()=>{openWebLinkNative("https://www.youtube.com/watch?v=0YmHHe4PEkk",isIOS,isLocalProxy)}}>Tutorial Video</a></Trans></p>
 				</motion.div>
 			}
 			</div>
@@ -514,7 +515,7 @@ const FAQ = () => {
 				exit={{ opacity: 0, y: -10 }}
 				transition={{ duration: 0.5 }}
 				>
-			<p><Trans i18nKey="faq-vpn-2" components ={[<a href="https://youtube.com/shorts/ZhhF7_uCrZ4" target="_blank" rel="noopener noreferrer" />]}/></p>
+			<p><Trans i18nKey="faq-vpn-2" components ={[<a onClick={()=>{openWebLinkNative("https://youtube.com/shorts/ZhhF7_uCrZ4",isIOS,isLocalProxy)}} />]}/></p>
 				</motion.div>
 			}
 			</div>
@@ -553,7 +554,7 @@ const FAQ = () => {
 					<li>{t('faq-telegram-5')}</li>
 					<li>{t('faq-telegram-6')}</li>
 					</ol>
-				<p>Please refer to <a href="https://www.youtube.com/watch?v=15fJpywnFFM" target="_blank">Tutorial Video</a> for step-by-step guidance.</p>
+				<p>Please refer to <a onClick={()=>{openWebLinkNative("https://www.youtube.com/watch?v=15fJpywnFFM",isIOS,isLocalProxy)}}>Tutorial Video</a> for step-by-step guidance.</p>
 				</motion.div>
 			}
 			</div>
@@ -595,9 +596,7 @@ const FAQ = () => {
 					components={{
 						1: (
 						<a
-							href="https://youtu.be/Zgsy10RBBNY?si=LgA19a8E6F_Zwm5B"
-							target="_blank"
-							rel="noopener noreferrer"
+							onClick={()=>{openWebLinkNative("https://youtu.be/Zgsy10RBBNY?si=LgA19a8E6F_Zwm5B",isIOS,isLocalProxy)}}
 						/>
 						),
 					}}
@@ -606,8 +605,8 @@ const FAQ = () => {
 				<li>
 					{t('faq-proxy-4')}
 				<ul> 
-					<li> <Trans i18nKey="faq-proxy-5" components={[ <a href="https://youtu.be/EcimpQrlTg0" target="_blank" rel="noopener noreferrer"/>]}/></li>
-					<li> <Trans i18nKey="faq-proxy-6" components={[ <a href="https://youtu.be/jqjSDED8k2o" target="_blank" rel="noopener noreferrer" />]}/></li>
+					<li> <Trans i18nKey="faq-proxy-5" components={[ <a onClick={()=>{openWebLinkNative("https://youtu.be/EcimpQrlTg0",isIOS,isLocalProxy)}} />]}/></li>
+					<li> <Trans i18nKey="faq-proxy-6" components={[ <a onClick={()=>{openWebLinkNative("https://youtu.be/jqjSDED8k2o",isIOS,isLocalProxy)}} />]}/></li>
 				</ul>
 				</li>
 				</ol>

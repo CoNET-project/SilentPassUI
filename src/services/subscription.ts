@@ -7,7 +7,7 @@ import {
 	apiv4_endpoint,
 	
 } from "../utils/constants"
-
+import { refreshSolanaBalances, storeSystemData } from './wallets'
 import contracts from "../utils/contracts";
 import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
 import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
@@ -15,6 +15,8 @@ import {ethers} from 'ethers'
 import { CoNET_Data, setCoNET_Data } from "../utils/globals"
 import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
 import Bs58 from 'bs58'
+
+
 import {
   AnchorProvider,
   Program,
@@ -24,6 +26,8 @@ import {
 } from "@coral-xyz/anchor"
 
 import {allNodes} from './mining'
+
+const uuid62 = require('uuid62')
 
 interface CompatibleWallet {
 	publicKey: PublicKey;
@@ -60,7 +64,21 @@ export const getCryptoPay = async (cryptoName: string, plan: string): Promise<nu
 	}
 }
 
-
+export const initDuplicate = () => {
+	if (!CoNET_Data) {
+		return
+	}
+	if (CoNET_Data?.duplicateCode) {
+		return
+	}
+	
+	const RedeemCode = uuid62.v4()
+    const hash = ethers.solidityPackedKeccak256(['string'], [RedeemCode])
+	CoNET_Data.duplicateCode = RedeemCode
+	CoNET_Data.duplicateCodeHash = hash
+	setCoNET_Data(CoNET_Data)
+	storeSystemData()
+}
 
 export const checkWallet = (wallet: string) => {
 	return ethers.isAddress(wallet)

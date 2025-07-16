@@ -8,6 +8,7 @@ import { ReactComponent as ConetToken } from './../assets/main-wallet.svg';
 import CopyBtn from './../copyBtn/CopyBtn';
 import {QRCodeCanvas} from 'qrcode.react';
 import {CopyToClipboard} from 'react-copy-to-clipboard';
+import { CoNET_Data } from './../../../utils/globals';
 
 const Backups = ({}) => {
     const { t, i18n } = useTranslation();
@@ -16,11 +17,16 @@ const Backups = ({}) => {
     const [recoveryLoading, setRecoveryLoading] = useState(false);
     const [codeVisible, setCodeVisible] = useState(false);
     const [copyStatus, setCopyStatus] = useState(false);
-    const [code,setCode]=useState('sdfsadfdsafsaewtethafafasdf-qwas.f,asfasfsadfdsafdasfasddfadsghfhfgghkhlrtywereewqrewqerjajfjfjafa');
+    const [code,setCode]=useState('');
 
     useEffect(()=>{
-        //setCode()
-    },[])
+        if(CoNET_Data?.duplicateCode) setCode(CoNET_Data?.duplicateCode);
+    },[CoNET_Data?.duplicateCode])
+
+    //恢复
+    const handleRecovery=()=>{
+        //这里恢复按钮触发，password是填写的code,setRecoveryLoading控制loading状态
+    }
     
     return (
         <>
@@ -82,7 +88,7 @@ const Backups = ({}) => {
                                     onChange={val => {setPassword(val)}}
                                 />
                             </div>
-                            <Button block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password}>{t('backup-sub-restore-btn')}</Button>
+                            <Button onClick={handleRecovery} block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password}>{t('backup-sub-restore-btn')}</Button>
                         </div>
                     </div> 
                 </div>

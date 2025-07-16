@@ -127,6 +127,9 @@ interface Region {
 	upgradev2?: boolean;
 	webFilter: boolean;
 	recoveryWords?:string;
+	duplicateCode?: string
+	duplicateCodeHash?: string
+	duplicateAccount?:profile
   };
   
   interface passportInfoFromChain {

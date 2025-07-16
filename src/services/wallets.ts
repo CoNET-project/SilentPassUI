@@ -20,7 +20,7 @@ import {
   ethProvider
 } from "../utils/constants"
 
-import {getBalanceFromPDA} from './subscription'
+import {getBalanceFromPDA, initDuplicate} from './subscription'
 
 import contracts from "../utils/contracts";
 import { CoNET_Data, setCoNET_Data } from "../utils/globals";
@@ -119,7 +119,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 	  setCoNET_Data(data);
 	}
 
-	const tmpData = CoNET_Data;
+	const tmpData = CoNET_Data
 
 	if (
 	  tmpData &&
@@ -162,7 +162,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 	getFaucet(CoNET_Data.profiles[0]);
 
 	storeSystemData();
-
+	
 	const profiles = CoNET_Data.profiles;
 
 	return profiles;

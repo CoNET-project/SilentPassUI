@@ -1,4 +1,5 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef } from "react";
+import packageData from '../../package.json'
 
 type DaemonContext = {
   power: boolean;
@@ -46,6 +47,7 @@ type DaemonContext = {
   selectedPlan: "12" | "1" | '31'| string
   setPaymentKind: (val: number) => void
   paymentKind: number
+  version: string
 };
 
 type DaemonProps = {
@@ -98,6 +100,7 @@ const defaultContextValue: DaemonContext = {
    selectedPlan: '12',
    paymentKind: 0,
   setPaymentKind: () => {},
+  version: ''
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -108,6 +111,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [version] = useState(packageData.version)
   const [power, setPower] = useState<boolean>(false);
   const [isRandom, setIsRandom] = useState<boolean>(true);
   const [sRegion, setSRegion] = useState<number>(-1);
@@ -142,7 +146,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress, setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, isPassportInfoPopupOpen, 
-		setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, 
+		setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated, activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, version,
 		purchasingPlan, setPurchasingPlan, purchasingPlanPaymentTime, setPurchasingPlanPaymentTime, setRandomSolanaRPC, randomSolanaRPC,setSelectedPlan, selectedPlan, paymentKind, setPaymentKind, successNFTID, setSuccessNFTID  }}>
       {children}
     </Daemon.Provider>

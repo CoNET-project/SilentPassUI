@@ -12,7 +12,7 @@ import Footer from '../../components/Footer';
 import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
-import { startSilentPass, stopSilentPass } from "../../api";
+import { startSilentPass, stopSilentPass, getLocalServerVersion } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 import {checkFreePassportProcess} from '../../services/wallets'
 
@@ -95,16 +95,48 @@ const SystemSettingsButton = () => {
   )
 }
 
+/**
+ * 比较两个语义化版本号。
+ * @param oldVer 旧版本号，如 "0.18.0"
+ * @param newVer 新版本号，如 "0.18.1"
+ * @returns 如果 newVer 比 oldVer 新，则返回 true；否则返回 false。
+ */
+const isNewerVersion = (oldVer: string, newVer: string): boolean => {
+	if (!oldVer||!newVer) {
+		return false
+	}
+    const oldParts = oldVer.split('.').map(Number)
+    const newParts = newVer.split('.').map(Number)
+
+    for (let i = 0; i < oldParts.length; i++) {
+        if (newParts[i] > oldParts[i]) {
+            return true
+        }
+        if (newParts[i] < oldParts[i]) {
+            return false
+        }
+    }
+
+    return false // 如果版本号完全相同，则不是更新的版本
+}
+
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, randomSolanaRPC, setRandomSolanaRPC } = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, randomSolanaRPC, setRandomSolanaRPC, version } = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const vpnTimeTimeout = useRef<NodeJS.Timeout>();
-  
+    const [hasNewVersion, setHasNewVersion]= useState('')
 
   const navigate = useNavigate();
+  const compairVersion = async () => {
+	let remoteVer = await getLocalServerVersion()
+	if (isNewerVersion(version, remoteVer)) {
+		setHasNewVersion(remoteVer)
+	}
+		
+  }
 
 
   useEffect(() => {
@@ -174,6 +206,7 @@ const Home = () => {
     };
 
     _getAllRegions()
+	compairVersion()
   }, []);
 
   useEffect(() => {
@@ -317,7 +350,9 @@ const Home = () => {
 
   const isSilentPassVPN = VPN_URLS.some(url => window.location.href.includes(url));
   const isDevelopment = window.location.href.includes('localhost');
-
+	const refresh= () => {
+		window.location.reload()
+	}
   return (
     <>
       <Header />
@@ -340,7 +375,13 @@ const Home = () => {
             <div>
               <img src="/assets/header-title.svg"></img>
             </div>
-
+			{
+				hasNewVersion && <>
+					<a style={{textAlign:'center', color: '#97bbee', zIndex: '99999', fontWeight: '500', cursor: "pointer"}} onClick={refresh}>
+						New Software Ready. Click To Update v{hasNewVersion}
+					</a>
+				</>
+			}
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
 
             {/* <CopyProxyInfo /> */}

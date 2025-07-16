@@ -1,14 +1,14 @@
 import ClickableItem from '../../components/ClickableItem';
 import Footer from '../../components/Footer';
 import './index.css';
-
+import { useDaemonContext } from "../../providers/DaemonProvider";
 import helpIcon from "./assets/help.svg";
 
 import Separator from '../../components/Separator';
 import { useMemo } from 'react';
 import ProxyInfo from '../../components/ProxyInfo';
 import { useNavigate } from 'react-router-dom';
-const versionNumber = 'v0.1.10'
+
 type OptionGroup = {
   id: number;
   heading: string;
@@ -25,7 +25,7 @@ type OptionGroups = OptionGroup[];
 
 export default function Support() {
   const navigate = useNavigate();
-
+	  const { version } = useDaemonContext()
   const optionGroups = useMemo<OptionGroups>(() => ([
     {
       id: 2,
@@ -54,7 +54,7 @@ export default function Support() {
   return (
     <div className="page-container">
       <h1>Support</h1>
-	<p style={{textAlign: 'left', color: 'rgb(177, 177, 178)', fontSize: '0.6rem'}}>{versionNumber}</p>
+	<p style={{textAlign: 'left', color: 'rgb(177, 177, 178)', fontSize: '0.6rem'}}>{version}</p>
       <div className="options">
         {
           optionGroups.map((optionGroup) => optionGroup.id === 2 ? <ProxyInfo /> : (

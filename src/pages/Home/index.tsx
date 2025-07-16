@@ -250,7 +250,7 @@ const handleTogglePower = async () => {
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
-
+	let tempData = CoNET_Data
 
 	
     if (power) {

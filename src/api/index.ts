@@ -31,7 +31,6 @@ export const startSilentPass = async (
   }
 };
 
-
 export const stopSilentPass = async (): Promise<AxiosResponse<any>> => {
   try {
     const response = await api.get("/stopSilentPass");

@@ -7,6 +7,7 @@ import { getPassportTitle, isInfinite } from '../../utils/utils';
 import { ReactComponent as ConetToken } from './assets/conet-token.svg';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import { useTranslation } from 'react-i18next'
+import { CoNET_Data } from '../../utils/globals';
 
 const OneDayInSeconds = 86400;
 
@@ -31,6 +32,7 @@ const MiningStatus = () => {
   }, [activePassportUpdated, profiles])
 
   const openPassportInfo = () => {
+	let temp = CoNET_Data
     setIsPassportInfoPopupOpen(true)
   }
 

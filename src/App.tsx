@@ -8,6 +8,7 @@ import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
+import {initDuplicate} from './services/subscription'
 import Vip from './pages/Vip';
 import Wallet from './pages/Wallet';
 import Swap from './pages/Swap';
@@ -134,7 +135,7 @@ function App() {
 
 	});
 	await handlePassport ()
-
+	initDuplicate()
   }
 
   let first = true

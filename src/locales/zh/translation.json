@@ -204,6 +204,8 @@
 	"comp-TokenTab-Slippage": "滑点",
 	"comp-TokenTab-Auto": "自动",
 	"comp-TokenTab-fee": "手续费",
+
+	"home-newversion": "有更新版，请点击更新 v",
 	
 	"comp-Rules-RuleButton-input-placeholder": "输入网址或关键词，快速查找过滤项",
 

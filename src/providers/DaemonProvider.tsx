@@ -1,6 +1,7 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef } from "react";
-
+import packageData from '../../package.json'
 type DaemonContext = {
+  version: string
   power: boolean;
   setPower: (val: boolean) => void;
   sRegion: number;
@@ -132,6 +133,7 @@ const defaultContextValue: DaemonContext = {
   webFilterRef:{ current: false },
   quickLinksShow: false,
   setQuickLinksShow: () => {},
+  version: '1.21.1'
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -142,6 +144,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+  const [version] = useState(packageData.version)
   const [power, setPower] = useState<boolean>(false);
   const [globalProxy, setGlobalProxy] = useState(false)
   const [isRandom, setIsRandom] = useState<boolean>(true);
@@ -176,6 +179,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [quickLinksShow, setQuickLinksShow] = useState(false);
   const firstLoad = useRef(true); //系统代理 第一次
   const firstLoad2 = useRef(true);  //快捷链接 第一次
+
 
   useEffect(() => {
     {
@@ -229,7 +233,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
-				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow }}>
+				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
+				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, version }}>
 
       {children}
     </Daemon.Provider>

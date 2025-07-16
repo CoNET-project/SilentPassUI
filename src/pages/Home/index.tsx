@@ -12,7 +12,7 @@ import Footer from '../../components/Footer';
 import RegionSelector from '../../components/RegionSelector';
 import { useNavigate } from 'react-router-dom';
 import { formatMinutesToHHMM, isPassportValid } from "../../utils/utils";
-import { startSilentPass, stopSilentPass } from "../../api";
+import { startSilentPass, stopSilentPass, getLocalServerVersion } from "../../api";
 import PassportInfoPopup from "../../components/PassportInfoPopup";
 import QuickLinks from "../../components/QuickLinks/QuickLinks";
 import { getServerIpAddress } from "../../api"
@@ -123,8 +123,37 @@ const SystemSettingsButton = () => {
   )
 }
 
+const refresh= () => {
+	window.location.reload()
+}
+
+/**
+ * 比较两个语义化版本号。
+ * @param oldVer 旧版本号，如 "0.18.0"
+ * @param newVer 新版本号，如 "0.18.1"
+ * @returns 如果 newVer 比 oldVer 新，则返回 true；否则返回 false。
+ */
+const isNewerVersion = (oldVer: string, newVer: string): boolean => {
+	if (!oldVer||!newVer) {
+		return false
+	}
+    const oldParts = oldVer.split('.').map(Number)
+    const newParts = newVer.split('.').map(Number)
+
+    for (let i = 0; i < oldParts.length; i++) {
+        if (newParts[i] > oldParts[i]) {
+            return true
+        }
+        if (newParts[i] < oldParts[i]) {
+            return false
+        }
+    }
+
+    return false // 如果版本号完全相同，则不是更新的版本
+}
+
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin,switchValue, isLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, isIOS} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin,switchValue, isLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, isIOS, version} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
@@ -135,6 +164,7 @@ const Home = () => {
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
   const { t, i18n } = useTranslation()
   const navigate = useNavigate();
+  const [hasNewVersion, setHasNewVersion]= useState('')
 
 
   const _getAllRegions = async () => {
@@ -183,6 +213,14 @@ const Home = () => {
     }
   }, [power]);
 
+  const compairVersion = async () => {
+	let remoteVer = await getLocalServerVersion()
+	if (isNewerVersion(version, remoteVer)) {
+		setHasNewVersion(remoteVer)
+	}
+		
+  }
+
   useEffect(() => {
     _getAllRegions()
     let first = 0
@@ -206,6 +244,8 @@ const Home = () => {
     }
 
     listenGetAllNodes()
+	compairVersion()
+
   }, [])
 
 
@@ -427,6 +467,7 @@ const handleTogglePower = async () => {
           </>
         ) : (
           <>
+		  	
             <div>
               
               <img src="/assets/header-title.svg" style={{minWidth: '150px', minHeight: '75x'}}></img>
@@ -448,7 +489,13 @@ const handleTogglePower = async () => {
               } */}
               
             </div>
-
+			{
+				hasNewVersion && <>
+					<a style={{textAlign:'center', color: '#97bbee', zIndex: '99999', fontWeight: '500'}} onClick={refresh}>
+						{t('home-newversion')}{hasNewVersion}
+					</a>
+				</>
+			}
             {/* <div>
                 <button onClick={() => navigate("/wallet")}>
                     <img className="bannaer" src={i18n.language === 'zh' ? bannaer_cn : bannaer} style={{width:"25rem",height: "5rem"}}></img>

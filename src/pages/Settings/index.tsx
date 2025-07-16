@@ -44,7 +44,7 @@ export default function Settings() {
   const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [visible2, setVisible2] = useState(false);
-  const { activePassport, isLocalProxy, power,switchValue, setSwitchValue, quickLinksShow, setQuickLinksShow, isIOS } = useDaemonContext();
+  const { activePassport, isLocalProxy, power,switchValue, setSwitchValue, quickLinksShow, setQuickLinksShow, isIOS, version } = useDaemonContext();
 
 
   const navigate = useNavigate();
@@ -134,7 +134,7 @@ export default function Settings() {
   return (
     <div className="page-container">
       <h1>{t('Settings_Title')}</h1>
-	  <p style={{color: '#676768', padding: '0.5rem 0'}}>Silent Pass UI v1.20.0</p>
+	  <p style={{color: '#676768', padding: '0.5rem 0'}}>Silent Pass UI v{version}</p>
       <div className="nft-info">
         <ActivePassportInfo />
 

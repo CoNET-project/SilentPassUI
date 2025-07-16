@@ -32,6 +32,16 @@ export const startSilentPass = async (
   }
 };
 
+export const getLocalServerVersion = async (): Promise<string> => {
+	  try {
+    const response = await api.get("/ver")
+    return response?.data?.ver
+  } catch (error) {
+    console.error("Error starting silent pass:", error);
+    return ''
+  }
+}
+
 export const stopSilentPass = async (): Promise<AxiosResponse<any>> => {
   try {
     const response = await api.get("/stopSilentPass");

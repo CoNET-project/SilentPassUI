@@ -1,6 +1,6 @@
 {
 	"name": "silentpass-daemon",
-	"version": "2.2",
+	"version": "0.21.1",
 	"private": true,
 	"dependencies": {
 		"@coral-xyz/anchor": "0.31.1",

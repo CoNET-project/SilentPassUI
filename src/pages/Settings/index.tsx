@@ -26,6 +26,8 @@ import { Switch } from 'antd-mobile';
 import ProxyInfo from '../../components/ProxyInfo';
 import {openWebLinkNative} from './../../api';
 
+import packageJson from './../../../package.json';
+
 type OptionGroup = {
   heading: string;
   items: {
@@ -134,10 +136,10 @@ export default function Settings() {
   return (
     <div className="page-container">
       <h1>{t('Settings_Title')}</h1>
-	  <p style={{color: '#676768', padding: '0.5rem 0'}}>Silent Pass UI v{version}</p>
+
+	  <p style={{color: '#676768', padding: '0.5rem 0'}}>Silent Pass UI v{packageJson.version}</p>
       <div className="nft-info">
         <ActivePassportInfo />
-
         <div className="buttons">
           {/* <button onClick={() => navigate("/wallet")}>{t('wallet_title')}</button> */}
           {/* <button disabled={(passportTitle !== 'Annually' && passportTitle !== 'Guardian') ? false : true} onClick={() => navigate("/subscription")}>

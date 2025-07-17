@@ -349,7 +349,7 @@ const handleTogglePower = async () => {
         return
     }
 
-    // setIsConnectionLoading(true)
+    setIsConnectionLoading(true)
     await getAllRegions()
     const allNodes = getAllNodes
     

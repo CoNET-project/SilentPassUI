@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect} from 'react';
 import { Modal } from 'antd-mobile';
 import { SystemQRcodeOutline,LeftOutline } from 'antd-mobile-icons';
-import styles from './codeButton.module.css';
+import styles from './codeButton.module.scss';
 import {QRCodeCanvas} from 'qrcode.react';
 import {CopyToClipboard} from 'react-copy-to-clipboard';
 import { useTranslation } from 'react-i18next'

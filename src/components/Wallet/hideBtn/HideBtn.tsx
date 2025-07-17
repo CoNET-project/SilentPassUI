@@ -1,6 +1,6 @@
 import React,{ useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './hideBtn.module.css';
+import styles from './hideBtn.module.scss';
 import { ReactComponent as VisibilityOnIcon } from "./../assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./../assets/visibility-off.svg";
 

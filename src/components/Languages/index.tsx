@@ -1,5 +1,5 @@
 import React,{useState,useRef,useEffect,useCallback} from 'react';
-import styles from './index.module.css';
+import styles from './index.module.scss';
 import { useTranslation } from 'react-i18next';
 import { NavBar,Popup,CheckList,setDefaultConfig } from 'antd-mobile';
 import type { CheckListValue } from 'antd-mobile/es/components/check-list';

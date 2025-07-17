@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './payModal.module.css';
+import styles from './payModal.module.scss';
 import { useTranslation } from 'react-i18next';
 import { Toast,Modal,Ellipsis } from 'antd-mobile';
 import { LeftOutline,ClockCircleFill,ExclamationCircleOutline } from 'antd-mobile-icons';

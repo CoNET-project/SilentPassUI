@@ -19,7 +19,7 @@ import ImportButton from './ImportButton';
 import StakingList from './StakingList';
 import { Button, Space } from 'antd-mobile';
 import { UndoOutline } from 'antd-mobile-icons';
-import styles from './refreshButton.module.css';
+import styles from './refreshButton.module.scss';
 
 
 interface AccountListProps {

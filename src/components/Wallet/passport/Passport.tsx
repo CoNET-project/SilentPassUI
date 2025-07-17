@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './passport.module.css';
+import styles from './passport.module.scss';
 import { useTranslation } from 'react-i18next';
 import { List,Popup,NavBar,Empty,CheckList,Button,Selector } from 'antd-mobile';
 import { ExclamationTriangleOutline,RightOutline } from 'antd-mobile-icons';

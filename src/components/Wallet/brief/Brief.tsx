@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './brief.module.css';
+import styles from './brief.module.scss';
 import { useTranslation } from 'react-i18next';
 import { Button } from 'antd-mobile';
 import { getRewordStaus } from './../../../services/wallets';

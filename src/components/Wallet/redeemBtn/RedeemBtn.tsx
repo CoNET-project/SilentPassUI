@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './redeemBtn.module.css';
+import styles from './redeemBtn.module.scss';
 import { useTranslation } from 'react-i18next';
 import { Button,Modal,Input } from 'antd-mobile';
 import { useDaemonContext } from "./../../../providers/DaemonProvider";

@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect} from 'react';
 import { UserOutline,LinkOutline } from 'antd-mobile-icons';
 import { Button,Ellipsis,Input,Toast } from 'antd-mobile';
-import styles from './referralCont.module.css';
+import styles from './referralCont.module.scss';
 import { useTranslation } from 'react-i18next';
 import {CopyToClipboard} from 'react-copy-to-clipboard';
 import { useDaemonContext } from '../../providers/DaemonProvider';

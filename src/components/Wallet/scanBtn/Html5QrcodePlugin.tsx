@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { Popup, Button, Toast, SpinLoading, Modal } from 'antd-mobile';
 import { CloseCircleOutline } from 'antd-mobile-icons';
-import styles from './html5QrcodePlugin.module.css';
+import styles from './html5QrcodePlugin.module.scss';
 import { useTranslation } from 'react-i18next';
 
 interface Props {

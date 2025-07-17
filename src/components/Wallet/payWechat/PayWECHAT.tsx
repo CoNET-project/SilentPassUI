@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './../payBnb/payBnb.module.css';
+import styles from './../payBnb/payBnb.module.scss';
 import { useTranslation } from 'react-i18next';
 import wechat from './../assets/wechat.png';
 

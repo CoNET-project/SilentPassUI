@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './payBnb.module.css';
+import styles from './payBnb.module.scss';
 import { useTranslation } from 'react-i18next';
 import bnb_token from './../assets/bnb_token.png';
 

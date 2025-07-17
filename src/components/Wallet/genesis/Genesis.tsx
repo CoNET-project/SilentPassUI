@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './genesis.module.css';
+import styles from './genesis.module.scss';
 import { useTranslation } from 'react-i18next';
 import { List,Modal,SpinLoading,Toast,Grid } from 'antd-mobile';
 import { LockFill,ExclamationCircleFill,LeftOutline } from 'antd-mobile-icons';

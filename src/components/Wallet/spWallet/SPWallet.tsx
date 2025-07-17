@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './spWallet.module.css';
+import styles from './spWallet.module.scss';
 import { useTranslation } from 'react-i18next';
 import { List,Popup,NavBar,Button } from 'antd-mobile';
 import { UndoOutline,ExclamationCircleFill } from 'antd-mobile-icons';

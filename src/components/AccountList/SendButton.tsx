@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect} from 'react';
 import { Popup,NavBar,Input,Button,SpinLoading,Modal,Result,Ellipsis } from 'antd-mobile';
 import { LocationOutline,LeftOutline } from 'antd-mobile-icons';
-import styles from './sendButton.module.css';
+import styles from './sendButton.module.scss';
 import { ReactComponent as SpToken } from './assets/sp-token.svg';
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL, ComputeBudgetProgram } from "@solana/web3.js";
 import { createTransferInstruction,getOrCreateAssociatedTokenAccount } from "@solana/spl-token";

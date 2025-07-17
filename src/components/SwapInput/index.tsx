@@ -21,7 +21,7 @@ import { Button, SpinLoading, Modal, Result } from 'antd-mobile';
 import { globalAllNodes } from "./../../utils/globals";
 import { Connection, Keypair, Commitment, VersionedTransaction,RpcResponseAndContext, SignatureResult } from "@solana/web3.js";
 import bs58 from "bs58";
-import styles from './swapInput.module.css';
+import styles from './swapInput.module.scss';
 import { ethers } from "ethers";
 
 import {openWebLinkNative} from './../../api';

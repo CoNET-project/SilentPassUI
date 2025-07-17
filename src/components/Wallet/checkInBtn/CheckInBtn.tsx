@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './checkInBtn.module.css';
+import styles from './checkInBtn.module.scss';
 import { useTranslation } from 'react-i18next';
 import { Button,Modal } from 'antd-mobile';
 import { ExclamationShieldOutline } from 'antd-mobile-icons';

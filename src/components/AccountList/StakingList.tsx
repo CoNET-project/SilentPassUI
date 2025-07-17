@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect} from 'react';
 import { Popup,NavBar,Button,TextArea,Toast } from 'antd-mobile';
 import { ClockCircleFill } from 'antd-mobile-icons';
-import styles from './stakingList.module.css';
+import styles from './stakingList.module.scss';
 import { useTranslation } from 'react-i18next';
 import _ from 'lodash';
 import SendButton from './SendButton';

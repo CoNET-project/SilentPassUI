@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect} from 'react';
 import { LockFill,DownFill } from 'antd-mobile-icons';
 import { Button,Ellipsis,Empty,Toast } from 'antd-mobile';
-import styles from './inviters.module.css';
+import styles from './inviters.module.scss';
 import { useTranslation } from 'react-i18next';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import {openWebLinkNative} from './../../../api';

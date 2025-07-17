@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect} from 'react';
 import { Popup,NavBar,Button,TextArea,Toast } from 'antd-mobile';
 import { ExclamationTriangleOutline } from 'antd-mobile-icons';
-import styles from './importButton.module.css';
+import styles from './importButton.module.scss';
 import { useTranslation } from 'react-i18next';
 import bs58 from "bs58";
 import _ from 'lodash';

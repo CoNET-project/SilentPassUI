@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './backups.module.css';
+import styles from './backups.module.scss';
 import { useTranslation } from 'react-i18next';
 import { List,Popup,NavBar,Button,Space,Ellipsis,Input,Modal } from 'antd-mobile';
 import { LockOutline,ExclamationTriangleOutline,GiftOutline,SystemQRcodeOutline,LoopOutline,LeftOutline } from 'antd-mobile-icons';

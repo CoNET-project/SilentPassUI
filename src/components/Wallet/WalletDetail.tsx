@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import styles from './walletDetail.module.css';
+import styles from './walletDetail.module.scss';
 import { useTranslation } from 'react-i18next';
 import RedeemBtn from './redeemBtn/RedeemBtn';
 import CheckInBtn from './checkInBtn/CheckInBtn';

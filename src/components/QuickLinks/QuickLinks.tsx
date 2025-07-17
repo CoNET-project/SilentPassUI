@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect} from 'react';
 import { FloatingBubble,Popup,Grid,Button,Modal,Input,Toast,Ellipsis,ActionSheet,Dialog,Empty } from 'antd-mobile';
 import { LinkOutline,AddOutline,DeleteOutline, EditSOutline,SetOutline } from 'antd-mobile-icons';
-import styles from './quickLinks.module.css';
+import styles from './quickLinks.module.scss';
 import { useTranslation } from 'react-i18next';
 import { Action } from 'antd-mobile/es/components/action-sheet';
 import { useDaemonContext } from "../../providers/DaemonProvider";

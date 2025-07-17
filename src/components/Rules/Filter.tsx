@@ -1,6 +1,6 @@
 import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
 import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock,Dialog,Toast,Input,Switch,Popover } from 'antd-mobile';
-import styles from './ruleButton.module.css';
+import styles from './ruleButton.module.scss';
 import { RightOutline,EditSOutline,DeleteOutline,CheckOutline,QuestionCircleOutline } from 'antd-mobile-icons';
 import { List as VirtualizedList, AutoSizer } from 'react-virtualized'
 import _,{ debounce } from 'lodash';

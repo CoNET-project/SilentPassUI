@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './referrals.module.css';
+import styles from './referrals.module.scss';
 import { useTranslation } from 'react-i18next';
 import { List,Popup,NavBar,Empty } from 'antd-mobile';
 import { LockFill,ExclamationCircleFill } from 'antd-mobile-icons';

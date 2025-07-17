@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect} from 'react';
 import { Modal,Button,Form,Input,Toast } from 'antd-mobile';
 import { AddOutline } from 'antd-mobile-icons';
-import styles from './addItem.module.css';
+import styles from './addItem.module.scss';
 import _ from 'lodash';
 import { useTranslation } from 'react-i18next';
 

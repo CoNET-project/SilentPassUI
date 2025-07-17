@@ -1,5 +1,5 @@
 import {useState,useRef,useEffect} from 'react';
-import styles from './quickLinks.module.css';
+import styles from './quickLinks.module.scss';
 
 interface Link {
     id: string;

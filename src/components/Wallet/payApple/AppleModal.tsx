@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './appleModal.module.css';
+import styles from './appleModal.module.scss';
 import { useTranslation } from 'react-i18next';
 import { ReactComponent as CrownBadge } from './../assets/crown.svg'
 import { Modal,Button,Tag } from 'antd-mobile';

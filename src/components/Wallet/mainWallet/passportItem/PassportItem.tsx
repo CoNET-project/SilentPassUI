@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useDaemonContext } from "./../../../../providers/DaemonProvider";
 import { getExpirationDate, getPassportTitle } from "./../../../../utils/utils";
-import styles from './passportItem.module.css';
+import styles from './passportItem.module.scss';
 import { useTranslation } from 'react-i18next';
 import { Radio } from 'antd-mobile';
 

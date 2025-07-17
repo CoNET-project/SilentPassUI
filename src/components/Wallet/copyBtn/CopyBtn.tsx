@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './copyBtn.module.css';
+import styles from './copyBtn.module.scss';
 import { ReactComponent as CopyIcon } from "./../assets/copy-purple.svg";
 import { ReactComponent as CopiedIcon } from "./../assets/check.svg";
 import {CopyToClipboard} from 'react-copy-to-clipboard';

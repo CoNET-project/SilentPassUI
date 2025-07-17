@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './applePayModal.module.css';
+import styles from './applePayModal.module.scss';
 import { useTranslation } from 'react-i18next';
 import { Popup,CheckList,Button,NavBar } from 'antd-mobile';
 import { ExclamationTriangleOutline,RightOutline } from 'antd-mobile-icons';

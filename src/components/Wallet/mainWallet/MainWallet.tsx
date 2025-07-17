@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
-import styles from './mainWallet.module.css';
+import styles from './mainWallet.module.scss';
 import { useTranslation } from 'react-i18next';
 import { List,Popup,NavBar,Empty,Radio,SpinLoading,Toast } from 'antd-mobile';
 import { LockFill,ExclamationCircleFill } from 'antd-mobile-icons';

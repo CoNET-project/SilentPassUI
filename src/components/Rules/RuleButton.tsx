@@ -1,6 +1,6 @@
 import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
 import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock,Dialog,Toast,Input } from 'antd-mobile';
-import styles from './ruleButton.module.css';
+import styles from './ruleButton.module.scss';
 import { SetOutline } from 'antd-mobile-icons';
 import Filter from './Filter';
 

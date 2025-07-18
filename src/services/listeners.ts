@@ -28,120 +28,122 @@ const listenProfileVer = async (
   _setActivePassport: (profiles: freePassport) => void,
   setMiningData: (response: nodeResponse) => void
 ) => {
-	const profiles = CoNET_Data?.profiles;
-	const now = new Date().getTime()
-	if (!profiles||now - blockProcess < 1000 * 10) {
-		return;
-	}
-	blockProcess = now
-	
-	await conetDepinProvider.getBlockNumber();
-	checkCurrentRate(setMiningData);
-	await getProfileAssets(profiles[0], profiles[1]);
-	// await getVpnTimeUsed();
-	await getSpClubInfo(profiles[0], currentPageInvitees);
-	await getPassportsInfoForProfile(profiles[0])
-	// await getReceivedAmounts(
-	// 	profiles[1].keyID,
-	// 	globalAllNodes
-	// );
-	
-	_setProfiles(profiles);
+  const profiles = CoNET_Data?.profiles;
+  const now = new Date().getTime()
+  if (!profiles||now - blockProcess < 1000 * 10) {
+    return;
+  }
+  blockProcess = now
+  
+  await conetDepinProvider.getBlockNumber();
+  checkCurrentRate(setMiningData);
+  await getProfileAssets(profiles[0], profiles[1]);
+  // await getVpnTimeUsed();
+  await getSpClubInfo(profiles[0], currentPageInvitees);
+  await getPassportsInfoForProfile(profiles[0])
+  // await getReceivedAmounts(
+  //  profiles[1].keyID,
+  //  globalAllNodes
+  // );
+  
+  _setProfiles(profiles);
 
-	if (profiles[0].activePassport) {
-		_setActivePassport(profiles[0].activePassport);
-	}
+  if (profiles[0].activePassport) {
+    _setActivePassport(profiles[0].activePassport);
+  }
 
-	await storeSystemData();
-	await setProcessingBlock(false);
-	blockProcess = now
-	let _process = false
-	conetDepinProvider.on("block", async (block) => {
-		if (block === epoch + 1) {
+  await storeSystemData();
+  await setProcessingBlock(false);
+  blockProcess = now
+  let _process = false
+  conetDepinProvider.on("block", async (block) => {
+    if (block === epoch + 1) {
 
-			epoch++;
-			
-			const profiles = CoNET_Data?.profiles;
-			const now = new Date().getTime()
-			if (!profiles||now - blockProcess < 1000 * 10||_process) {
-				return;
-			}
-			_process = true
-			
-				await checkCurrentRate(setMiningData);
-				await getProfileAssets(profiles[0], profiles[1]);
-				// await getVpnTimeUsed();
-				await getSpClubInfo(profiles[0], currentPageInvitees);
-				
-				// const receivedTransactions = await getReceivedAmounts(
-				// 	profiles[1].keyID,
-				// 	globalAllNodes
-				// );
-				// console.log(receivedTransactions);
-			
-				await getPassportsInfoForProfile(profiles[0]);
-			
-				if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
-					await _setProfiles(CoNET_Data?.profiles);
-					if (CoNET_Data.profiles[0].activePassport)
-					await _setActivePassport(CoNET_Data.profiles[0].activePassport);
-				}
+      epoch++;
+      
+      const profiles = CoNET_Data?.profiles;
+      const now = new Date().getTime()
+      if (!profiles||now - blockProcess < 1000 * 10||_process) {
+        return;
+      }
+      _process = true
+      
+        await checkCurrentRate(setMiningData);
+        await getProfileAssets(profiles[0], profiles[1]);
+        // await getVpnTimeUsed();
+        await getSpClubInfo(profiles[0], currentPageInvitees);
+        
+        // const receivedTransactions = await getReceivedAmounts(
+        //  profiles[1].keyID,
+        //  globalAllNodes
+        // );
+        // console.log(receivedTransactions);
+      
+        await getPassportsInfoForProfile(profiles[0]);
+      
+        if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
+          await _setProfiles(CoNET_Data?.profiles);
+          if (CoNET_Data.profiles[0].activePassport)
+          await _setActivePassport(CoNET_Data.profiles[0].activePassport);
+        }
 
-				await storeSystemData();
-				await setProcessingBlock(false);
-			_process = false
-			blockProcess = now
-		}
-	});
+        await storeSystemData();
+        await setProcessingBlock(false);
+      _process = false
+      blockProcess = now
+    }
+  });
 
   epoch = await conetDepinProvider.getBlockNumber();
 }
 
 
 const getSOL_Balance = async () => {
-	if (!CoNET_Data?.profiles) {
-		return null
-	}
-	const profile = CoNET_Data.profiles[1]
-	const url = `http://${getRandomNode()}/solana-rpc`
-	const ownerPubkey = new PublicKey(profile.keyID)
-	const connection = new Connection(url, 'confirmed')
-	const lamports = await connection.getBalance(ownerPubkey)
-	const sol = lamports / LAMPORTS_PER_SOL
-	return sol
+  if (!CoNET_Data?.profiles) {
+    return null
+  }
+  const profile = CoNET_Data.profiles[1]
+  const url = `http://${getRandomNode()}/solana-rpc`
+  const ownerPubkey = new PublicKey(profile.keyID)
+  const connection = new Connection(url, 'confirmed')
+  const lamports = await connection.getBalance(ownerPubkey)
+  const sol = lamports / LAMPORTS_PER_SOL
+  return sol
 }
 
 
 
 const scanSolanaSol = () => {
-	return getSOL_Balance()
+  return getSOL_Balance()
 }
 
 
 const scanSolanaSp = () => {
   return getSolanaTokenBalance(contracts.SPToken.address)
 }
+
 const scanSolanaUsdt = () => {
-  return getSolanaTokenBalance("Es9vMFrzaCERo4zFnbJjZ93hFQfZz1CNwA6QQ3CDsCjE")
+  return getSolanaTokenBalance('Es9vMFrzaCERZTzYvC2GBoR1zCz6EtgihLRPkhGj7y4D')
 }
 
+
 const getSolanaTokenBalance = async (tokenAddress: string) => {
-	if (!CoNET_Data?.profiles) {
-		return null
-	}
-	const profile = CoNET_Data.profiles[1]
-	const url = `http://${getRandomNode()}/solana-rpc`
-	const connection = new Connection(url, 'confirmed')
-	const ownerPubkey = new PublicKey(profile.keyID)
-	const mintPubkey  = new PublicKey(tokenAddress)
-	const resp = await connection.getTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey })
-	if (resp.value.length === 0) {
-		console.log('getSolanaTokenBalance Error: No token account found for this mint.');
-		return null
-	}
-	const tokenAccountPubkey = resp.value[0].pubkey
-	const { value } = await connection.getTokenAccountBalance(tokenAccountPubkey)
-	return value
+  if (!CoNET_Data?.profiles) {
+    return null
+  }
+  const profile = CoNET_Data.profiles[1]
+  const url = `http://${getRandomNode()}/solana-rpc`
+  const connection = new Connection(url, 'confirmed')
+  const ownerPubkey = new PublicKey(profile.keyID)
+  const mintPubkey  = new PublicKey(tokenAddress)
+  const resp = await connection.getTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey })
+  if (resp.value.length === 0) {
+    console.log('getSolanaTokenBalance Error: No token account found for this mint.');
+    return null
+  }
+  const tokenAccountPubkey = resp.value[0].pubkey
+  const { value } = await connection.getTokenAccountBalance(tokenAccountPubkey)
+  return value
 }
 
 
@@ -166,7 +168,7 @@ const scan_spl_balance = async (
 
     const response = await fetch(solanaRPC_url, {
       method: "POST",
-	  credentials: 'omit',
+    credentials: 'omit',
       headers: {
         "Content-Type": "application/json",
       },
@@ -186,7 +188,7 @@ const scan_spl_balance = async (
         return info.tokenAmount.uiAmount; // Return balance in tokens
       }
     }
-	let ret = 0
+  let ret = 0
     return ret; // No balance found
   } catch (error) {
     console.error("Error fetching SPL balance:", error);
@@ -194,7 +196,7 @@ const scan_spl_balance = async (
   }
 };
 
-export { listenProfileVer, scanSolanaSol, scanSolanaSp,scanSolanaUsdt };
+export { listenProfileVer, scanSolanaSol, scanSolanaSp, scanSolanaUsdt };
 
 
-//		
+//    

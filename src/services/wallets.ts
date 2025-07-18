@@ -28,7 +28,7 @@ import * as Bip39 from "bip39";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { Keypair } from "@solana/web3.js";
 import Bs58 from "bs58";
-import { scanSolanaSol, scanSolanaSp } from "./listeners";
+import { scanSolanaSol, scanSolanaSp, scanSolanaUsdt } from "./listeners";
 import axios from 'axios';
 import { blast_CNTPAbi } from "./../utils/abis";
 
@@ -689,11 +689,14 @@ const refreshSolanaBalances = async (
 	let _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
 	reflaseSolanaBalancesProcess = true
 		
-		let solanaRPC_url = `https://${_node1.domain}/solana-rpc`;
+		// let solanaRPC_url = `https://${_node1.domain}/solana-rpc`;
+    let solanaRPC_url = `http://${_node1.ip_addr}/solana-rpc`;
+    // let solanaRPC_url = 'https://public-rpc.blockpi.io/http/solana'
 		try {
-			const [sol, sp, oracle] = await Promise.all([
+			const [sol, sp, usdt, oracle] = await Promise.all([
 			scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
 			scanSolanaSp(solanaProfile.keyID, solanaRPC_url),
+      scanSolanaUsdt(solanaProfile.keyID, solanaRPC_url),
 			getSPOracle(),
 			]);
 			const solPrice = parseFloat(formatEther(oracle[4]).toString())
@@ -721,7 +724,39 @@ const refreshSolanaBalances = async (
 				const sol_usd = solanaProfile.tokens.sol.balance1 * solPrice
 				solanaProfile.tokens.sol.usd = sol_usd >= 1_000_000 ? (sol_usd/1_000_000).toFixed(4) + 'M' : sol_usd.toFixed(4)
 			}
+
+
+
+
+
+      if (usdt !== false) {
+        const _usdt = parseFloat(usdt.toString())
+
+        const usdt1 = (_usdt >= 1_000_000) ? (_usdt/1_000_000).toFixed(3) + 'M' : _usdt.toFixed(5)
+        if (solanaProfile.tokens?.usdt) {
+          solanaProfile.tokens.usdt.balance = usdt1
+          solanaProfile.tokens.usdt.balance1 = _usdt
+        } else {
+          solanaProfile.tokens.usdt = {
+          balance:usdt1,
+          balance1: _usdt,
+          network: "Solana Mainnet",
+          decimal: 18,
+          contract: "",
+          name: "usdt",
+          usd: ''
+          };
+        }
+      }
+      if ( typeof solanaProfile.tokens.usdt?.balance1 === 'number') {
+        const usdt_usd = solanaProfile.tokens.usdt.balance1 * 1
+        solanaProfile.tokens.usdt.usd = usdt_usd >= 1_000_000 ? (usdt_usd/1_000_000).toFixed(4) + 'M' : usdt_usd.toFixed(4)
+      }
 			
+
+
+
+
 
 			if (sp !== false) {
 				const _sp = parseFloat(sp.toString())
@@ -759,9 +794,9 @@ const refreshSolanaBalances = async (
 					...temp.profiles[1].tokens,
 					sp: solanaProfile.tokens.sp,
 					sol: solanaProfile.tokens.sol,
+          usdt: solanaProfile.tokens.usdt
 					},
 				};
-				
 				setCoNET_Data(temp);
 			}
 	
@@ -983,7 +1018,7 @@ async function getReceivedAmounts (
     const senderPubKey = new PublicKey(rewardWalletAddress);
 	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
     const _connection1 = new Connection(
-      `https://${_node1.domain}/solana-rpc`,
+      `http://${_node1.ip_addr}/solana-rpc`,
       "confirmed"
     );
 

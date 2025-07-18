@@ -57,12 +57,23 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         }
     },[visible])
 
-    const useMax=()=>{
+    const usdRatio=()=>{
         let price=BigNumber(usd);
         let bala=BigNumber(convertStringToNumber(balance));
+        if(type === '$USDT'){
+            return new BigNumber(1).dividedBy(1);
+        }
+        return price.dividedBy(bala)
+    }
+    const useMax=()=>{
         let valBig=BigNumber(convertStringToNumber(balance));
+        let ratio=usdRatio();
         setAmount(convertStringToNumber(balance)+'');
-        setCalcPrice(price.dividedBy(bala).multipliedBy(valBig).toFixed(2));
+        if(convertStringToNumber(balance)){
+            setCalcPrice(ratio.multipliedBy(valBig).toFixed(2));
+        }else{
+            setCalcPrice('0.00');
+        }
     }
     const getErrorMessage = (error: unknown): string => {
         if (error instanceof Error) return error.message;
@@ -148,7 +159,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             })
         }
     }
-    const transferSolanaSP=async(fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string)=> {
+    const transferSolanaNotSOL=async(currencyType:string, fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string )=> {
         try {
             setSubLoading(true);
 
@@ -158,7 +169,14 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             // 创建连接
             const connection = new Connection(rpcUrl, "confirmed");
 
-            const SP_address = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
+            let SP_address='';
+            if(currencyType === '$SP' ){
+                SP_address = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump';
+            }
+            if(currencyType === '$USDT'){
+                SP_address = 'Es9vMFrzaCERo4zFnbJjZ93hFQfZz1CNwA6QQ3CDsCjE';
+            }
+            
             const SP_Address = new PublicKey(SP_address)
             const to_address = new PublicKey(toPublicKeyString)
 
@@ -231,11 +249,12 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
     const handleSend=()=>{
         const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
         const randomSolanaRPC = `https://${_node1.domain}/solana-rpc`;
-        if(type=='$SP'){
-            transferSolanaSP(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
-        }else{
-            transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
+        if(type=='$SOL'){
+            transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC);
+            return ;
         }
+        transferSolanaNotSOL(type,wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
+        
     }
 
     return (
@@ -271,15 +290,17 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                                 placeholder={t('comp-accountlist-SendButton-Amount')}
                                 value={amount}
                                 onChange={val => {
-                                    
-                                    let price=BigNumber(usd);
-                                    let bala=BigNumber(convertStringToNumber(balance));
                                     let valBig=BigNumber(val?val:0);
+                                    let ratio=usdRatio();
                                     
                                     if (/^\d*\.?\d{0,6}$/.test(val)) {
                                         setAmount(val);
                                     }
-                                    setCalcPrice(price.dividedBy(bala).multipliedBy(valBig).toFixed(2));
+                                    if(valBig){
+                                        setCalcPrice(ratio.multipliedBy(valBig).toFixed(2));
+                                    }else{
+                                        setCalcPrice('0.00');
+                                    }
                                 }}
                             />
                             <div className={styles.unit}>{type}</div>

@@ -8,9 +8,10 @@ import { useTranslation } from 'react-i18next';
 interface Props {
     solSendRef: any;
     spSendRef: any;
+    usdtSendRef: any;
 }
 
-const ScanButton = ({solSendRef,spSendRef}:Props) => {
+const ScanButton = ({solSendRef,spSendRef,usdtSendRef}:Props) => {
     const [scanning, setScanning] = useState(false);
     const [loading, setLoading] = useState(false);
     const { t, i18n } = useTranslation();
@@ -80,6 +81,16 @@ const ScanButton = ({solSendRef,spSendRef}:Props) => {
                 }
                 if(obj&&obj.amount){
                     solSendRef?.current?.setExternalAmount(String(obj.amount));
+                }
+                return ;
+            }
+            if(obj?.type==='$USDT'){
+                usdtSendRef?.current?.setExternalVisible(true);
+                if(obj&&obj.address){
+                    usdtSendRef?.current?.setExternalAddress(obj.address);
+                }
+                if(obj&&obj.amount){
+                    usdtSendRef?.current?.setExternalAmount(String(obj.amount));
                 }
                 return ;
             }

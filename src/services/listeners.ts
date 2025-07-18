@@ -145,6 +145,13 @@ const scanSolanaSp = async (walletAddr: string, solanaRPC_url: string) => {
     solanaRPC_url
   );
 };
+const scanSolanaUsdt = async (walletAddr: string, solanaRPC_url: string) => {
+  return await scan_spl_balance(
+    walletAddr,
+    "Es9vMFrzaCERo4zFnbJjZ93hFQfZz1CNwA6QQ3CDsCjE",
+    solanaRPC_url
+  );
+};
 
 
 const scan_spl_balance = async (
@@ -196,7 +203,7 @@ const scan_spl_balance = async (
   }
 };
 
-export { listenProfileVer, scanSolanaSol, scanSolanaSp };
+export { listenProfileVer, scanSolanaSol, scanSolanaSp,scanSolanaUsdt };
 
 
 //		

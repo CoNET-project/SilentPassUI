@@ -7,6 +7,7 @@ import { UndoOutline,ExclamationCircleFill } from 'antd-mobile-icons';
 import { CoNET_Data } from './../../../utils/globals';
 import { ReactComponent as SolanaToken } from './../assets/solana-token.svg';
 import { ReactComponent as ConetToken } from './../assets/conet-token.svg';
+import { ReactComponent as UsdtToken } from './../assets/usdt-token.svg';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import { refreshSolanaBalances, storeSystemData } from './../../../services/wallets';
 import SendButton from './../sendBtn/SendButton';
@@ -26,6 +27,7 @@ const SPWallet = ({}) => {
 
     const spSendRef=useRef();
     const solSendRef=useRef();
+    const usdtSendRef=useRef();
 
     const getAddress = (wallet: any) => {
         return wallet?.keyID.slice(0, 7) + '...' + wallet?.keyID.slice(-5);
@@ -78,7 +80,7 @@ const SPWallet = ({}) => {
                 closeOnMaskClick={true}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar right={<ScanButton spSendRef={spSendRef} solSendRef={solSendRef} />} onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-account-sp-wallet')} (Solana)</NavBar>
+                    <NavBar right={<ScanButton spSendRef={spSendRef} solSendRef={solSendRef} usdtSendRef={usdtSendRef} />} onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-account-sp-wallet')} (Solana)</NavBar>
                     <div className={styles.bd}>
                         <div className={styles.toobar}>
                             <div className={styles.description}><ExclamationCircleFill className={styles.icon} />{t('wallet-account-sp-wallet-desc')}</div>
@@ -108,6 +110,17 @@ const SPWallet = ({}) => {
                                 <div className={styles.value}>${profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)}</div>
                                 <SendButton type={'$SOL'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)} balance={profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)} extendref={solSendRef} />
                             </li>
+                            {profiles?.[1]?.tokens?.usdt?<li className={styles.listItem}>
+                                <div className={styles.type}>
+                                    <UsdtToken />
+                                    <div className={styles.text}>
+                                        <div className={styles.name}>$USDT</div>
+                                        <div className={styles.num}>{profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(6)}</div>
+                                    </div>
+                                </div>
+                                <div className={styles.value}>${profiles?.[1]?.tokens?.usdt?.usd || (0.0).toFixed(2)}</div>
+                                <SendButton type={'$USDT'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.usdt?.usd || (0.0).toFixed(2)} balance={profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(6)} extendref={usdtSendRef} />
+                            </li>:''}
                         </ul>
 
                         {profiles?.[1]?.keyID ?<div className={styles.address}>

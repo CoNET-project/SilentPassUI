@@ -96,8 +96,8 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         const fetchData = async () => {
             try {
                 const oracleData = await getOracle();
-                const nodes = getAllNodes
-                const index = Math.floor(Math.random() * (nodes.length - 1))
+                // const nodes = getAllNodes
+                // const index = Math.floor(Math.random() * (nodes.length - 1))
                 //await refreshSolanaBalances(nodes[index])
                 if (!oracleData?.data) throw new Error("Unable to obtain oracle data");
 
@@ -379,7 +379,8 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 
 
     const useMax=()=>{
-		const tokens = profiles?.[1]?.tokens
+		const tokens = profiles?.[1]?.tokens;
+        console.log(tokens,'tokens')
 		if (!tokens) {
 			return
 		}

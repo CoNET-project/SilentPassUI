@@ -30,6 +30,10 @@ const AutoCodeButton=({ copyVal,isEthers }: CopyParams)=> {
         {
             label: '$SOL',
             value: '$SOL',
+        },
+        {
+            label: '$USDT',
+            value: '$USDT',
         }
     ]
 
@@ -112,7 +116,7 @@ const AutoCodeButton=({ copyVal,isEthers }: CopyParams)=> {
                                             '--border-radius': '8px',
                                             '--border': 'solid #797979 1px',
                                             '--checked-border': 'solid #4487f7 1px',
-                                            '--padding': '2px 16px',
+                                            '--padding': '2px 12px',
                                             '--color': 'transparent',
                                             '--checked-color': '#122541',
                                             '--text-color':'#797979',

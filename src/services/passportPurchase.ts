@@ -41,44 +41,43 @@ import {waitingPaymentStatus} from './wallets'
   }[] = [];
 const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q"
   const spDecimalPlaces = 6;
-  export const getOracle = async () => {
-	const timeStamp = new Date().getTime();
+  	export const getOracle = async () => {
+		const timeStamp = new Date().getTime();
   
-	if (oracleData && timeStamp - oracleData.timeStamp > 1000 * 60) {
-	  const SP_Oracle_SC_reaonly = new ethers.Contract(
-		contracts.SpOracle.address,
-		contracts.SpOracle.abi,
-		conetDepinProvider
-	  );
+		if (oracleData && timeStamp - oracleData.timeStamp > 1000 * 60) {
+	  		const SP_Oracle_SC_reaonly = new ethers.Contract(
+				contracts.SpOracle.address,
+				contracts.SpOracle.abi,
+				conetDepinProvider
+	  		);
   
-	  try {
-		const [_sp249, _sp999, _sp2499, _sp9999, _so] =
-		  await SP_Oracle_SC_reaonly.getQuote();
-		const sp249 = ethers.formatEther(_sp249).split('.')[0]
-		const sp999 = ethers.formatEther(_sp999).split('.')[0];
-		const sp2499 = ethers.formatEther(_sp2499).split('.')[0];
-		const sp9999 = ethers.formatEther(_sp9999).split('.')[0];
-		const so = ethers.formatEther(_so);
+	  		try {
+				const [_sp249, _sp999, _sp2499, _sp9999, _so] = await SP_Oracle_SC_reaonly.getQuote();
+				const sp249 = ethers.formatEther(_sp249).split('.')[0]
+				const sp999 = ethers.formatEther(_sp999).split('.')[0];
+				const sp2499 = ethers.formatEther(_sp2499).split('.')[0];
+				const sp9999 = ethers.formatEther(_sp9999).split('.')[0];
+				const so = ethers.formatEther(_so);
   
-		oracleData = {
-		  timeStamp,
-		  data: {
-			sp249,
-			sp999,
-			sp2499,
-			sp9999,
-			so,
-		  },
-		};
+				oracleData = {
+		  			timeStamp,
+		  			data: {
+						sp249,
+						sp999,
+						sp2499,
+						sp9999,
+						so,
+		  			},
+				};
+  
+				return oracleData;
+	  		} catch (ex: any) {
+				console.log(`getOracle Error ${ex.message}`);
+	  		}
+		}
   
 		return oracleData;
-	  } catch (ex: any) {
-		console.log(`getOracle Error ${ex.message}`);
-	  }
-	}
-  
-	return oracleData;
-  };
+  	};
   
   const checkPrice = async (_amount: string) => {
 	await getOracle();

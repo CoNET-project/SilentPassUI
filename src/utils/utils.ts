@@ -83,6 +83,13 @@ export const initProfileTokens = () => {
       contract: contracts.SPToken.address,
       name: "sp",
     },
+    usdt: {
+      balance: "0",
+      network: "Solana Mainnet",
+      decimal: 18,
+      contract: "",
+      name: "usdt",
+    },
   };
   return ret;
 };

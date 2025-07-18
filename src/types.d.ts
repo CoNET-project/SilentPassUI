@@ -52,6 +52,7 @@ interface Region {
 	eth: CryptoAsset;
 	sol: CryptoAsset;
 	sp: CryptoAsset;
+	usdt: CryptoAsset;
   }
   
   interface freePassport {

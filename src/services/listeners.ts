@@ -123,7 +123,7 @@ const scanSolanaSp = () => {
 }
 
 const scanSolanaUsdt = () => {
-  return getSolanaTokenBalance('Es9vMFrzaCERZTzYvC2GBoR1zCz6EtgihLRPkhGj7y4D')
+  return getSolanaTokenBalance('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
 }
 
 

@@ -1,16 +1,14 @@
-import { ethers } from "ethers";
-import { blast_CNTPAbi } from "./../utils/abis";
 import {
   conetDepinProvider,
-} from "../utils/constants";
+} from "../utils/constants"
 import {
   CoNET_Data,
   currentPageInvitees,
   globalAllNodes,
   setProcessingBlock,
 } from "../utils/globals";
-import contracts from "../utils/contracts";
-import { initProfileTokens } from "../utils/utils";
+import contracts from "../utils/contracts"
+import {getRandomNode} from './mining'
 import { checkCurrentRate } from "../services/passportPurchase";
 import {
   getPassportsInfoForProfile,
@@ -18,12 +16,13 @@ import {
   getSpClubInfo,
   getVpnTimeUsed,
   storeSystemData,
-  getProfileAssets
+  getProfileAssets,
 } from "./wallets";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Connection } from "@solana/web3.js";
 
 let epoch = 0;
 let blockProcess = 0
+const LAMPORTS_PER_SOL = 9
 const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
   _setActivePassport: (profiles: freePassport) => void,
@@ -42,10 +41,10 @@ const listenProfileVer = async (
 	// await getVpnTimeUsed();
 	await getSpClubInfo(profiles[0], currentPageInvitees);
 	await getPassportsInfoForProfile(profiles[0])
-	await getReceivedAmounts(
-		profiles[1].keyID,
-		globalAllNodes
-	);
+	// await getReceivedAmounts(
+	// 	profiles[1].keyID,
+	// 	globalAllNodes
+	// );
 	
 	_setProfiles(profiles);
 
@@ -74,11 +73,11 @@ const listenProfileVer = async (
 				// await getVpnTimeUsed();
 				await getSpClubInfo(profiles[0], currentPageInvitees);
 				
-				const receivedTransactions = await getReceivedAmounts(
-					profiles[1].keyID,
-					globalAllNodes
-				);
-				console.log(receivedTransactions);
+				// const receivedTransactions = await getReceivedAmounts(
+				// 	profiles[1].keyID,
+				// 	globalAllNodes
+				// );
+				// console.log(receivedTransactions);
 			
 				await getPassportsInfoForProfile(profiles[0]);
 			
@@ -96,62 +95,54 @@ const listenProfileVer = async (
 	});
 
   epoch = await conetDepinProvider.getBlockNumber();
-};
+}
 
 
-const scanSolanaSol = async (walletAddr: string, randomSolanaRPC: string) => {
-  try {
-    // Validate wallet address format
-    if (!PublicKey.isOnCurve(walletAddr)) {
-      throw new Error("Invalid wallet address format");
-    }
+const getSOL_Balance = async () => {
+	if (!CoNET_Data?.profiles) {
+		return null
+	}
+	const profile = CoNET_Data.profiles[1]
+	const url = `http://${getRandomNode}/solana-rpc`
+	const ownerPubkey = new PublicKey(profile.keyID)
+	const connection = new Connection(url, 'confirmed')
+	const lamports = await connection.getBalance(ownerPubkey)
+	const sol = lamports / LAMPORTS_PER_SOL
+	return sol
+}
 
-    const payload = {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "getBalance",
-      params: [walletAddr],
-    };
 
-    const response = await fetch(randomSolanaRPC, {
-      method: "POST",
-	  credentials: 'omit',
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
+const scanSolanaSol = () => {
+	return getSOL_Balance()
+}
 
-    const data = await response.json();
-    if (data.result) {
-      return data.result.value / 1_000_000_000; // Convert lamports to SOL
-    } else {
-      throw new Error("No balance found");
-    }
-  } catch (error) {
-    console.error("Error fetching balance $SOL:", error);
-    return false;
-  }
-};
 
-const scanSolanaSp = async (walletAddr: string, solanaRPC_url: string) => {
-  return await scan_spl_balance(
-    walletAddr,
-    contracts.SPToken.address,
-    solanaRPC_url
-  );
-};
-const scanSolanaUsdt = async (walletAddr: string, solanaRPC_url: string) => {
-  return await scan_spl_balance(
-    walletAddr,
-    "Es9vMFrzaCERo4zFnbJjZ93hFQfZz1CNwA6QQ3CDsCjE",
-    solanaRPC_url
-  );
-};
+const scanSolanaSp = () => {
+  return getSolanaTokenBalance(contracts.SPToken.address)
+}
+const scanSolanaUsdt = () => {
+  return getSolanaTokenBalance("Es9vMFrzaCERo4zFnbJjZ93hFQfZz1CNwA6QQ3CDsCjE")
+}
+
+const getSolanaTokenBalance = async (tokenAddress: string) => {
+	if (!CoNET_Data?.profiles) {
+		return null
+	}
+	const profile = CoNET_Data.profiles[1]
+	const url = `http://${getRandomNode}/solana-rpc`
+	const connection = new Connection(url, 'confirmed')
+	const ownerPubkey = new PublicKey(profile.keyID)
+	const mintPubkey  = new PublicKey(tokenAddress)
+	const resp = await connection.getTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey })
+	if (resp.value.length === 0) {
+		console.log('getSolanaTokenBalance Error: No token account found for this mint.');
+		return null
+	}
+	const tokenAccountPubkey = resp.value[0].pubkey
+	const { value } = await connection.getTokenAccountBalance(tokenAccountPubkey)
+	return value
+}
 
 
 const scan_spl_balance = async (

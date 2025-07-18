@@ -689,9 +689,7 @@ const refreshSolanaBalances = async (
 	let _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
 	reflaseSolanaBalancesProcess = true
 		
-		// let solanaRPC_url = `https://${_node1.domain}/solana-rpc`;
-    let solanaRPC_url = `http://${_node1.ip_addr}/solana-rpc`;
-    // let solanaRPC_url = 'https://public-rpc.blockpi.io/http/solana'
+		let solanaRPC_url = `https://${_node1.domain}/solana-rpc`;
 		try {
 			const [sol, sp, usdt, oracle] = await Promise.all([
 			scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
@@ -1018,7 +1016,7 @@ async function getReceivedAmounts (
     const senderPubKey = new PublicKey(rewardWalletAddress);
 	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
     const _connection1 = new Connection(
-      `http://${_node1.ip_addr}/solana-rpc`,
+      `https://${_node1.domain}/solana-rpc`,
       "confirmed"
     );
 

@@ -361,6 +361,11 @@ const encrypt_Message = async (
   return await encrypt(encryptObj);
 };
 
+const getRandomNode = () => {
+	const index = Math.floor(Math.random()*allNodes.length)
+	return allNodes[index].ip_addr
+}
+
 const postToEndpointSSE = (
   url: string,
   post: boolean,
@@ -432,5 +437,6 @@ export {
   allNodes,
   maxNodes,
   currentScanNodeNumber,
-  getAllNodesV2
+  getAllNodesV2,
+  getRandomNode
 };

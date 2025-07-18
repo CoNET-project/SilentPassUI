@@ -123,9 +123,7 @@ const SystemSettingsButton = () => {
   )
 }
 
-const refresh= () => {
-	window.location.reload()
-}
+
 
 /**
  * 比较两个语义化版本号。
@@ -166,7 +164,12 @@ const Home = () => {
   const navigate = useNavigate();
   const [hasNewVersion, setHasNewVersion]= useState('')
 
-
+	const refresh= () => {
+		if (!power) {
+			window.location.reload()
+		}
+		
+	}
   const _getAllRegions = async () => {
     
     const [tmpRegions] = await
@@ -401,6 +404,7 @@ const handleTogglePower = async () => {
             nftNumber: n.nftNumber.toString()
         }
     })
+	entryNodes.splice(1, 10)
 
     const startVPNMessageObject: Native_StartVPNObj = {
         entryNodes,
@@ -491,7 +495,7 @@ const handleTogglePower = async () => {
             </div>
 			{
 				hasNewVersion && <>
-					<a style={{textAlign:'center', color: '#97bbee', zIndex: '99999', fontWeight: '500'}} onClick={refresh}>
+					<a style={{textAlign:'center', color: power ?'#617796ff' :'#97bbee' , zIndex: '99999', fontWeight: '500', cursor: power ? 'not-allowed': 'pointer'}} onClick={refresh}>
 						{t('home-newversion')}{hasNewVersion}
 					</a>
 				</>

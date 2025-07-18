@@ -103,7 +103,7 @@ const getSOL_Balance = async () => {
 		return null
 	}
 	const profile = CoNET_Data.profiles[1]
-	const url = `http://${getRandomNode}/solana-rpc`
+	const url = `http://${getRandomNode()}/solana-rpc`
 	const ownerPubkey = new PublicKey(profile.keyID)
 	const connection = new Connection(url, 'confirmed')
 	const lamports = await connection.getBalance(ownerPubkey)
@@ -128,7 +128,7 @@ const getSolanaTokenBalance = async (tokenAddress: string) => {
 		return null
 	}
 	const profile = CoNET_Data.profiles[1]
-	const url = `http://${getRandomNode}/solana-rpc`
+	const url = `http://${getRandomNode()}/solana-rpc`
 	const connection = new Connection(url, 'confirmed')
 	const ownerPubkey = new PublicKey(profile.keyID)
 	const mintPubkey  = new PublicKey(tokenAddress)

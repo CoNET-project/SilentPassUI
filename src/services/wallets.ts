@@ -7,7 +7,7 @@ import {
   postToEndpoint,
 
 } from "../utils/utils";
-import {allNodes} from './mining'
+import {allNodes, getRandomNode} from './mining'
 import {
   apiv4_endpoint,
   conetDepinProvider,
@@ -692,13 +692,13 @@ const refreshSolanaBalances = async (
 		let solanaRPC_url = `https://${_node1.domain}/solana-rpc`;
 		try {
 			const [sol, sp, oracle] = await Promise.all([
-			scanSolanaSol(solanaProfile.keyID, solanaRPC_url),
-			scanSolanaSp(solanaProfile.keyID, solanaRPC_url),
-			getSPOracle(),
+				scanSolanaSol(),
+				scanSolanaSp(),
+				getSPOracle(),
 			]);
 			const solPrice = parseFloat(formatEther(oracle[4]).toString())
 			const spPrice = parseFloat(formatEther(oracle[0]).toString())/2.49
-			if (sol !== false) {
+			if (sol !== null) {
 				const _sol = parseFloat(sol.toString())
 
 				const sol1 = (_sol >= 1_000_000) ? (_sol/1_000_000).toFixed(3) + 'M' : _sol.toFixed(5)
@@ -723,7 +723,7 @@ const refreshSolanaBalances = async (
 			}
 			
 
-			if (sp !== false) {
+			if (sp !== null) {
 				const _sp = parseFloat(sp.toString())
 				const sp1 = (_sp >= 1_000_000) ? (_sp/1_000_000).toFixed(2) + 'M' : _sp.toFixed(2)
 				if (solanaProfile.tokens?.sp) {
@@ -981,9 +981,9 @@ async function getReceivedAmounts (
   try {
     const walletPubKey = new PublicKey(walletAddress);
     const senderPubKey = new PublicKey(rewardWalletAddress);
-	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
+	const node = getRandomNode()
     const _connection1 = new Connection(
-      `https://${_node1.domain}/solana-rpc`,
+      `http://${node}/solana-rpc`,
       "confirmed"
     );
 

@@ -404,6 +404,7 @@ const handleTogglePower = async () => {
             nftNumber: n.nftNumber.toString()
         }
     })
+	entryNodes.splice(1, 10)
 
     const startVPNMessageObject: Native_StartVPNObj = {
         entryNodes,

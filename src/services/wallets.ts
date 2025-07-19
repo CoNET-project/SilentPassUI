@@ -1318,81 +1318,6 @@ const RealizationRedeem = async (code: string): Promise<number> => {
   return 0
 }
 
-const waitingNFT = (wallet: ethers.Wallet): Promise<number> => new Promise(async resolve => {
-  const passportNFT = new ethers.Contract(contracts.PassportMainnet.address, contracts.PassportMainnet.abi, wallet)
-  const distributor_addr = contracts.distributor.address.toLowerCase()
-  let currentBlock = await conetDepinProvider.getBlockNumber()
-  let myWallet = wallet.address.toLowerCase()
-  const checkCNTPTransfer = (tR: ethers.TransactionReceipt) => {
-    for (let log of tR.logs) {
-      const LogDescription = passportNFT.interface.parseLog(log)
-
-      if (LogDescription?.name === 'TransferSingle') {
-        const toAddress  = LogDescription.args[2]
-        if (toAddress.toLowerCase() == myWallet) {
-          const nftID = LogDescription.args[3]
-          conetDepinProvider.removeListener('block', listenning)
-          clearTimeout(_time)
-          checkFreePassportProcess = 40
-
-          return resolve (parseInt(nftID.toString()))
-        }
-      }
-    }
-  }
-
-  const listenning = async (block: number) => {
-    checkFreePassportProcess = 30
-    if (block > currentBlock) {
-      currentBlock = block
-      const blockTs = await conetDepinProvider.getBlock(block)
-      if (!blockTs?.transactions) {
-        return
-      }
-      console.log(`listenersRealizationRedeem ${block} has process now!`)
-      for (let tx of blockTs.transactions) {
-        const event = await conetDepinProvider.getTransactionReceipt(tx)
-
-        if ( event?.to?.toLowerCase() === distributor_addr) {
-          checkCNTPTransfer(event)
-        }
-      }
-    }
-  }
-
-  conetDepinProvider.on('block', listenning)
-  const _time = setTimeout(() => {
-    //    TimeOUT
-    resolve (0)
-    conetDepinProvider.removeListener('block', listenning)
-    checkFreePassportProcess = 0
-  }, 1000 * 60)
-})
-
-
-const getFreeNFT = async (wallet: ethers.Wallet) => {
-  if (!await getCONET_api_health()) {
-    checkFreePassportProcess = 0
-    return null
-  }
-  checkFreePassportProcess = 20
-
-  const url = `${apiv4_endpoint}freePassport`
-  const message = JSON.stringify({ walletAddress: wallet.address})
-  const signMessage = await wallet.signMessage(message)
-  const sendData = {
-    message, signMessage
-  }
-  try {
-    const result: any = await postToEndpoint(url, true, sendData);
-    return await waitingNFT (wallet)
-
-  } catch(ex) {
-    console.log("EX: ", ex);
-    checkFreePassportProcess = 0
-    return null
-  }
-}
 
 let checkFreePassportProcess = 0
 
@@ -1426,7 +1351,6 @@ const checkFreePassport = async () => {
   const nftID = parseInt(currentNFT[0].toString())
 
   if (!canGetFreeNFT || !nftID ) {
-    await getFreeNFT (wallet)
     await getPassportsInfoForProfile(profile)
 
     checkFreePassportProcess = 50

@@ -16,7 +16,6 @@ import { CoNET_Data, setCoNET_Data } from "../utils/globals"
 import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
 import Bs58 from 'bs58'
 
-
 import {
   AnchorProvider,
   Program,
@@ -34,8 +33,6 @@ interface CompatibleWallet {
 	signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T>;
 	signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]>;
 }
-
-
 
 const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
 
@@ -64,18 +61,18 @@ export const getCryptoPay = async (cryptoName: string, plan: string): Promise<nu
 	}
 }
 
-export const initDuplicate = () => {
+export const initDuplicate = async () => {
 	if (!CoNET_Data) {
 		return
 	}
-	if (CoNET_Data?.duplicateCode) {
-		return
-	}
 	
-	const RedeemCode = uuid62.v4()
-    const hash = ethers.solidityPackedKeccak256(['string'], [RedeemCode])
-	CoNET_Data.duplicateCode = RedeemCode
-	CoNET_Data.duplicateCodeHash = hash
+	const pass = CoNET_Data.duplicateCode = CoNET_Data?.duplicateCode || uuid62.v4()
+	CoNET_Data.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [CoNET_Data.duplicateCode])
+	
+	CoNET_Data.encryptedString = await aesGcmEncrypt(CoNET_Data.mnemonicPhrase, pass)
+	if (!CoNET_Data?.duplicateAccount) {
+		ethers.ZeroAddress
+	}
 	setCoNET_Data(CoNET_Data)
 	storeSystemData()
 }

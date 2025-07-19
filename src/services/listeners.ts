@@ -112,7 +112,6 @@ const getSOL_Balance = async () => {
 }
 
 
-
 const scanSolanaSol = () => {
   return getSOL_Balance()
 }

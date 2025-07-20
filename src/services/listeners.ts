@@ -5,6 +5,7 @@ import {
   CoNET_Data,
   currentPageInvitees,
   globalAllNodes,
+  setCoNET_Data,
   setProcessingBlock,
 } from "../utils/globals";
 import contracts from "../utils/contracts"
@@ -24,13 +25,17 @@ let epoch = 0;
 let blockProcess = 0
 const LAMPORTS_PER_SOL = 9
 const listenProfileVer = async (
-  _setProfiles: (profiles: profile[]) => void,
-  _setActivePassport: (profiles: freePassport) => void,
-  setMiningData: (response: nodeResponse) => void
+	_setProfiles: (profiles: profile[]) => void,
+	_setActivePassport: (profiles: freePassport) => void,
+	setMiningData: (response: nodeResponse) => void
 ) => {
-  const profiles = CoNET_Data?.profiles;
+  const temp = CoNET_Data
+  const profiles = temp?.profiles
+  if (!CoNET_Data || !profiles) {
+	return
+  }
   const now = new Date().getTime()
-  if (!profiles||now - blockProcess < 1000 * 10) {
+  if (now - blockProcess < 1000 * 10) {
     return;
   }
   blockProcess = now
@@ -41,17 +46,14 @@ const listenProfileVer = async (
   // await getVpnTimeUsed();
   await getSpClubInfo(profiles[0], currentPageInvitees);
   await getPassportsInfoForProfile(profiles[0])
-  // await getReceivedAmounts(
-  //  profiles[1].keyID,
-  //  globalAllNodes
-  // );
-  
+
   _setProfiles(profiles);
 
   if (profiles[0].activePassport) {
     _setActivePassport(profiles[0].activePassport);
   }
-
+  
+  setCoNET_Data(temp)
   await storeSystemData();
   await setProcessingBlock(false);
   blockProcess = now

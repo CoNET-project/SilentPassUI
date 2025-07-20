@@ -3,12 +3,11 @@ import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfoInChain, tryToRequireFreePassport, checkFreePassport } from "./services/wallets";
+import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "./services/wallets";
 import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
-import { listenProfileVer } from "./services/listeners";
-import {initDuplicate} from './services/subscription'
+import { listenProfileVer } from "./services/listeners"
 import Vip from './pages/Vip';
 import Wallet from './pages/Wallet';
 import Swap from './pages/Swap';
@@ -35,7 +34,7 @@ global.Buffer = require('buffer').Buffer;
 function App() {
 	const { i18n } = useTranslation();
 
-  const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS } = useDaemonContext();
+  const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
@@ -57,18 +56,23 @@ function App() {
 	  setIsLocalProxy(false)
 	}
   }
-
+  let handlePassportProcess = false
   const handlePassport = async () => {
+
 	if (!CoNET_Data?.profiles[0]?.keyID) return
+	if (handlePassportProcess) {
+		return
+	}
+	handlePassportProcess = true
 
-	const info = await getCurrentPassportInfoInChain(CoNET_Data?.profiles[0]?.keyID);
-
+	const info = await getCurrentPassportInfoInChain()
+     
 	const tmpData = CoNET_Data;
 
 	if (!tmpData) {
 	  return;
 	}
-
+	if (tmpData.duplicateAccount)
 	tmpData.profiles[0] = {
 	  ...tmpData?.profiles[0],
 	  activePassport: {
@@ -80,47 +84,40 @@ function App() {
 	};
 
 	const activeNFTNumber = tmpData.profiles[0].activePassport||0
-	if (tmpData.profiles[0].activePassport?.expiresDays !== '7')
-	  tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
+	if (tmpData.profiles[0].activePassport?.expiresDays !== '7') {
+		tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
+	}
+	  
 
 	setActivePassport(tmpData.profiles[0].activePassport);
 
 	setCoNET_Data(tmpData);
+	setDuplicateAccount(tmpData.duplicateAccount)
 
 	if (!CoNET_Data) return;
-
+	
 	setProfiles(CoNET_Data?.profiles);
 	setActivePassportUpdated(true);
+	handlePassportProcess = false
+	listenProfileVer(setProfiles, setActivePassport, setMiningData)
   }
 
   const init = async () => {
-	let vpnTimeUsedInMin = 0
 
-	try {
-	  const ss = await localStorage.getItem("vpnTimeUsedInMin")
-	  if (ss) {
-		vpnTimeUsedInMin = parseInt(ss)
-	  }
-	} catch (ex) {
-
-	}
-	_vpnTimeUsedInMin.current = vpnTimeUsedInMin;
 
 	const queryParams = parseQueryParams(window.location.search);
 	let secretPhrase: string | null = null;
 
 	if (window.location.search && queryParams) {
-	  secretPhrase = queryParams.get("secretPhrase");
-	  secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
+		secretPhrase = queryParams.get("secretPhrase");
+		secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
 	}
 
 	const profiles = await createOrGetWallet(secretPhrase);
 	setProfiles(profiles)
 
-	listenProfileVer(setProfiles, setActivePassport, setMiningData);
 
 	checkCurrentRate(setMiningData)
-	checkFreePassport()
 
 	getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
 	  setSOlanaRPC(allNodes)
@@ -133,9 +130,8 @@ function App() {
 		return
 	  }
 
-	});
+	})
 	await handlePassport ()
-	initDuplicate()
   }
 
   let first = true

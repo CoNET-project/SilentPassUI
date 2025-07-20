@@ -34,8 +34,8 @@ import { blast_CNTPAbi } from "./../utils/abis";
 
 const SPOracleSmartContract = new ethers.Contract(contracts.SpOracle.address, contracts.SpOracle.abi, conetDepinProvider)
 const PouchDB = require("pouchdb").default;
-const initSolana = async (mnemonic: string): Promise<any> => {
-  if (!Bip39.validateMnemonic(mnemonic)) return false;
+export const initSolana = async (mnemonic: string): Promise<{publicKey: string, privateKey: string}|null> => {
+  if (!Bip39.validateMnemonic(mnemonic)) return null;
 
   const seed = (await Bip39.mnemonicToSeed(mnemonic)).slice(0, 32);
   const keypair = Keypair.fromSeed(new Uint8Array(seed));
@@ -68,21 +68,21 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     if (!acc) return;
 
     const profile: profile = {
-    tokens: initProfileTokens(),
-    publicKeyArmor: acc.publicKey,
-    keyID: acc.address,
-    isPrimary: true,
-    referrer: null,
-    isNode: false,
-    pgpKey: {
-      privateKeyArmor: key.privateKey,
-      publicKeyArmor: key.publicKey,
-    },
-    privateKeyArmor: acc.signingKey.privateKey,
-    hdPath: acc.path,
-    index: acc.index,
-    type: "ethereum",
-    webFilter: true
+		tokens: initProfileTokens(),
+		publicKeyArmor: acc.publicKey,
+		keyID: acc.address,
+		isPrimary: true,
+		referrer: null,
+		isNode: false,
+		pgpKey: {
+			privateKeyArmor: key.privateKey,
+			publicKeyArmor: key.publicKey,
+		},
+		privateKeyArmor: acc.signingKey.privateKey,
+		hdPath: acc.path,
+		index: acc.index,
+		type: "ethereum",
+		webFilter: true
     };
 
     const data: any = {
@@ -94,72 +94,71 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     };
 
     if (acc?.mnemonic?.phrase) {
-    const result = await initSolana(acc?.mnemonic?.phrase);
+		const result = await initSolana(acc?.mnemonic?.phrase);
+		const profile2: profile = {
+		tokens: initProfileTokens(),
+		publicKeyArmor: "",
+		keyID: result?.publicKey || "",
+		isPrimary: true,
+		referrer: null,
+		isNode: false,
+		pgpKey: {
+		privateKeyArmor: key.privateKey,
+		publicKeyArmor: key.publicKey,
+		},
+		privateKeyArmor: result?.privateKey || "",
+		hdPath: null,
+		index: 0,
+		type: "solana"
+		}
 
-    const profile2: profile = {
-      tokens: initProfileTokens(),
-      publicKeyArmor: "",
-      keyID: result?.publicKey || "",
-      isPrimary: true,
-      referrer: null,
-      isNode: false,
-      pgpKey: {
-      privateKeyArmor: key.privateKey,
-      publicKeyArmor: key.publicKey,
-      },
-      privateKeyArmor: result?.privateKey || "",
-      hdPath: null,
-      index: 0,
-      type: "solana"
-    };
-
-    data.profiles.push(profile2);
+		data.profiles.push(profile2);
     }
-
-    setCoNET_Data(data);
+	
+    setCoNET_Data(data)
   }
 
   const tmpData = CoNET_Data
-
+  if (!tmpData) {
+	return
+  }
+  const result = await initSolana(tmpData?.mnemonicPhrase);
   if (
     tmpData &&
-    (tmpData?.profiles.length < 2 ||
+    (tmpData?.profiles.length < 2 || 
     tmpData?.profiles[1]?.type !== "solana" ||!isValidSolanaPublicKey(tmpData?.profiles[1]?.keyID) ||
-    !isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor))
+    !isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor) || (result && result.publicKey !== tmpData.profiles[1].keyID))
   ) {
-    const result = await initSolana(tmpData?.mnemonicPhrase);
 
     const key = await createGPGKey("", "", "");
 
     const profile2: profile = {
-    tokens: initProfileTokens(),
-    publicKeyArmor: "",
-    keyID: result?.publicKey || "",
-    isPrimary: true,
-    referrer: null,
-    isNode: false,
-    pgpKey: {
-      privateKeyArmor: key.privateKey,
-      publicKeyArmor: key.publicKey,
-    },
-    privateKeyArmor: result?.privateKey || "",
-    hdPath: null,
-    index: 0,
-    type: "solana"
+		tokens: initProfileTokens(),
+		publicKeyArmor: "",
+		keyID: result?.publicKey || "",
+		isPrimary: true,
+		referrer: null,
+		isNode: false,
+		pgpKey: {
+			privateKeyArmor: key.privateKey,
+			publicKeyArmor: key.publicKey,
+		},
+		privateKeyArmor: result?.privateKey || "",
+		hdPath: null,
+		index: 0,
+		type: "solana"
     };
 
     tmpData.profiles[1] = profile2;
   }
 
-  tmpData?.profiles.forEach(async (n: profile) => {
-    n.tokens.cCNTP.unlocked = false;
-  });
+  if (!tmpData.duplicateAccount) {
+	  await initDuplicate(tmpData)
+  }
 
   setCoNET_Data(tmpData);
 
   if (!CoNET_Data) return;
-
-  getFaucet(CoNET_Data.profiles[0]);
 
   storeSystemData();
   
@@ -297,64 +296,54 @@ const storageAllNodes = async (allNodes: any[]) => {
   await storageHashData('nodes', Buffer.from(JSON.stringify(allNodes)).toString('base64'))
 }
 
-const requireFreePassport = async () => {
-  if (!CoNET_Data) {
-    return;
-  }
+const getAllPassports = async(profile: profile) => {
 
-  const wallet = new ethers.Wallet(
-    CoNET_Data.profiles[0].privateKeyArmor,
-    conetProvider
-  );
-
-  const freePassportContract = new ethers.Contract(
-    contracts.PassportCancun.address,
-    contracts.PassportCancun.abi,
-    wallet
-  );
-
-  try {
-    const tx = await freePassportContract.getFreePassport();
-    console.log(`success hash = ${tx.hash}`);
-  } catch (ex) {
-    console.log(ex);
-  }
-};
-
-const getCurrentPassportInfoInChain = async (
-  walletAddress: string
-) => {
-  if (!CoNET_Data) {
-    return;
-  }
-  let provider;
-  let contractAddress;
-  let contractAbi;
-
-
-    provider = conetDepinProvider;
-    contractAddress = contracts.distributor.address;
-    contractAbi = contracts.distributor.abi;
-
-
-  const wallet = new ethers.Wallet(
-    CoNET_Data.profiles[0].privateKeyArmor,
-    provider
-  );
+  const key = profile.keyID
+  const provider = conetDepinProvider;
+  const contractAddress = contracts.Duplicate.address;
+  const contractAbi = contracts.Duplicate.abi;
 
   const passportContract = new ethers.Contract(
     contractAddress,
     contractAbi,
-    wallet
-  );
+    provider
+  )
+  try {
+    const result = await passportContract.getUserInfo(key)
+    return result
+  } catch (ex) {
+    console.log(ex)
+  }
+
+}
+
+const getCurrentPassportInfoInChain = async () => {
+  if (!CoNET_Data||!CoNET_Data?.profiles) {
+    return;
+  }
+
+  let provider
+  let contractAddress
+  let contractAbi
+  const key = CoNET_Data.profiles[0].keyID
+
+    provider = conetDepinProvider;
+    contractAddress = contracts.Duplicate.address
+    contractAbi = contracts.Duplicate.abi
+
+  const passportContract = new ethers.Contract(
+    contractAddress,
+    contractAbi,
+    provider
+  )
 
   try {
-    const result = await passportContract.getCurrentPassport(walletAddress);
-    return result;
+    const result = await passportContract.getCurrentPassport(key)
+    return result
   } catch (ex) {
-    console.log(ex);
+    console.log(ex)
   }
-};
+}
 
 const activeNFTUrl = `${payment_endpoint}activeNFT`
 
@@ -372,7 +361,7 @@ const changeActiveNFT = async (nftId: string) => {
       message, signMessage
     }
 
-  const result = await postToEndpoint(activeNFTUrl, true, sendData)
+  postToEndpoint(activeNFTUrl, true, sendData)
   
   await getPassportsInfoForProfile(CoNET_Data.profiles[0])
     return true
@@ -434,15 +423,6 @@ const estimateChangeNFTGasFee = async (chain: string, nftId: string) => {
   }
 };
 
-
-const tryToRequireFreePassport = async () => {
-  if (!CoNET_Data) {
-    return;
-  }
-
-    await requireFreePassport();
-
-};
 
 const calculateTransferNftGas = async (toAddr: string, nftId: string) => {
   if (!CoNET_Data) {
@@ -569,58 +549,37 @@ const getVpnTimeUsed = async () => {
 
 const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
 //   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
-  const tmpMainnetPassports = await getPassportsInfo(profile, "mainnet");
 
-  const _currentPassport = await getCurrentPassportInfoInChain(profile.keyID);
-
-  profile = {
-    ...profile,
-    activePassport: {
-      nftID: _currentPassport[0].toString(),
-      expires: _currentPassport[1].toString(),
-      expiresDays: _currentPassport[2].toString(),
-      premium: _currentPassport[3].toString(),
-    },
-  };
-
-  const cancunPassports: passportInfo[] = [];
+  const tmpMainnetPassports = await getAllPassports(profile)
   const mainnetPassports: passportInfo[] = [];
 
-//   for (let i = 0; i < tmpCancunPassports?.nftIDs?.length; i++) {
-//     cancunPassports.push({
-//       walletAddress: profile.keyID,
-//       nftID: parseInt(tmpCancunPassports.nftIDs[i].toString()),
-//       expires: parseInt(tmpCancunPassports.expires[i].toString()),
-//       expiresDays: parseInt(tmpCancunPassports.expiresDays[i].toString()),
-//       premium: tmpCancunPassports.premium[i],
-//       network: "Conet Holesky",
-//     });
-//   }
    const nowTime = new Date().getTime()
-  for (let i = 0; i < tmpMainnetPassports?.nftIDs?.length; i++) {
-    const expires = new Date (parseInt(tmpMainnetPassports.expires[i].toString()+'000')).getTime()
-  if (expires > 0 && expires <= nowTime) {
-    continue
-  }
+  for (let i = 0; i < tmpMainnetPassports[0].length; i++) {
+    const expires = new Date (parseInt(tmpMainnetPassports[1][i].toString()+'000')).getTime()
+	if (expires > 0 && expires <= nowTime) {
+		continue
+	}
 
     mainnetPassports.push({
       walletAddress: profile.keyID,
-      nftID: parseInt(tmpMainnetPassports.nftIDs[i].toString()),
-      expires: parseInt(tmpMainnetPassports.expires[i].toString()),
-      expiresDays: parseInt(tmpMainnetPassports.expiresDays[i].toString()),
-      premium: tmpMainnetPassports.premium[i],
+      nftID: parseInt(tmpMainnetPassports[0][i]),
+      expires: parseInt(tmpMainnetPassports[1][i].toString()),
+      expiresDays: parseInt(tmpMainnetPassports[2][i].toString()),
+      premium: tmpMainnetPassports[3][i],
       network: "CONET DePIN",
     });
   }
 
-  let allPassports = cancunPassports.concat(mainnetPassports);
+  let allPassports: passportInfo[] = JSON.parse(JSON.stringify(mainnetPassports))
 
-  if (profile.activePassport?.expiresDays !== "7")
-    allPassports = allPassports?.filter(
-      (passport) => passport.expiresDays !== 7
-    );
+  if (profile?.activePassport && profile.activePassport?.expiresDays !== "7") {
+	    allPassports = allPassports?.filter(
+			(passport) => passport.expiresDays !== 7
+		)
+  }
 
-  allPassports = allPassports.filter((passport) => passport.nftID !== 0);
+
+  allPassports = allPassports.filter((passport) => passport.nftID !== 0)
 
   allPassports?.sort((a, b) => {
     return a.nftID - b.nftID;
@@ -634,49 +593,11 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
     return;
   }
 
-  temp.profiles[0] = profile;
+  temp.profiles[0] = profile
 
   setCoNET_Data(temp);
 };
 
-const getPassportsInfo = async (
-  profile: profile,
-  chain: string
-): Promise<passportInfoFromChain> => {
-  let provider;
-  let contractAddress;
-  let contractAbi;
-
-  if (chain === "mainnet") {
-    provider = conetDepinProvider;
-    contractAddress = contracts.distributor.address;
-    contractAbi = contracts.distributor.abi;
-  } else {
-    provider = conetProvider;
-    contractAddress = contracts.PassportCancun.address;
-    contractAbi = contracts.PassportCancun.abi;
-  }
-
-  const wallet = new ethers.Wallet(profile.privateKeyArmor, provider);
-  const passportContract = new ethers.Contract(
-    contractAddress,
-    contractAbi,
-    wallet
-  );
-
-  try {
-    const tx = await passportContract.getUserInfo(wallet.address);
-    return tx;
-  } catch (ex) {
-    console.log(ex);
-    return {
-      nftIDs: [],
-      expires: [],
-      expiresDays: [],
-      premium: [],
-    };
-  }
-};
 
 let reflaseSolanaBalancesProcess = false
 const refreshSolanaBalances = async (
@@ -865,7 +786,7 @@ const getSpClubInfo = async (profile: profile, currentPageInvitees: number) => {
 
       // Use map to handle async operations
       const refereePromises = validReferees.map(async (referee: string) => {
-        const _activePassport = await getCurrentPassportInfoInChain(referee);
+        const _activePassport = await getCurrentPassportInfoInChain();
 
         const activePassport = {
           nftID: _activePassport?.nftIDs?.toString(),
@@ -939,7 +860,7 @@ const getRefereesPage = async (
 
     // Use map to handle async operations
     const refereePromises = validReferees.map(async (referee: string) => {
-      const _activePassport = await getCurrentPassportInfoInChain(referee);
+      const _activePassport = await getCurrentPassportInfoInChain();
 
       const activePassport = {
         nftID: _activePassport?.nftIDs?.toString(),
@@ -1319,47 +1240,6 @@ const RealizationRedeem = async (code: string): Promise<number> => {
 }
 
 
-let checkFreePassportProcess = 0
-
-const checkFreePassport = async () => {
-  if (!CoNET_Data?.profiles?.length) {
-    checkFreePassportProcess = -1
-    return null;
-  }
-  if (checkFreePassportProcess > 0) {
-    return
-  }
-  checkFreePassportProcess = 10
-  const profile = CoNET_Data?.profiles[0]
-
-  const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider)
-  const contract_distributor = new ethers.Contract(contracts.distributor.address, contracts.distributor.abi, wallet)
-  let canGetFreeNFT: boolean
-  let currentNFT
-  try {
-    [canGetFreeNFT, currentNFT] = await
-    Promise.all ([
-      contract_distributor._freeUserOwnerShip(wallet.address),
-      contract_distributor.getCurrentPassport(wallet.address)
-    ])
-
-  } catch (ex) {
-    checkFreePassportProcess = 0
-    return null
-  }
-
-  const nftID = parseInt(currentNFT[0].toString())
-
-  if (!canGetFreeNFT || !nftID ) {
-    await getPassportsInfoForProfile(profile)
-
-    checkFreePassportProcess = 50
-    return true
-  }
-  checkFreePassportProcess = 50
-  return true
-}
-
 const getstripePlan = (plan: string): string => {
   switch(plan) {
     case '1': {
@@ -1474,8 +1354,6 @@ const _waitingPay = async (wallet: string) => {
 export {
   createOrGetWallet,
   createGPGKey,
-  requireFreePassport,
-  tryToRequireFreePassport,
   getCurrentPassportInfoInChain,
   changeActiveNFT,
   estimateChangeNFTGasFee,
@@ -1490,8 +1368,6 @@ export {
   getRefereesPage,
   getReceivedAmounts,
   RealizationRedeem,
-  checkFreePassport,
-  checkFreePassportProcess,
   getPaymentUrl,
   waitingPaymentStatus,
   getSPOracle,
@@ -1500,5 +1376,6 @@ export {
   spRewardRequest,
   checkLocalStorageNodes,
   storageAllNodes,
+  getAllPassports,
   getProfileAssets,
 };

@@ -8,8 +8,10 @@ import { ReactComponent as ConetToken } from './../assets/main-wallet.svg';
 import CopyBtn from './../copyBtn/CopyBtn';
 import {QRCodeCanvas} from 'qrcode.react';
 import {CopyToClipboard} from 'react-copy-to-clipboard';
-import { CoNET_Data } from './../../../utils/globals';
-
+import { CoNET_Data, setCoNET_Data } from './../../../utils/globals';
+import {restoreAccount } from '../../../services/subscription'
+import { useDaemonContext } from "../../../providers/DaemonProvider";
+import { getCurrentPassportInfoInChain, storeSystemData } from "../../../services/wallets";
 const Backups = ({}) => {
     const { t, i18n } = useTranslation();
     const [visible, setVisible] = useState<boolean>(false);
@@ -18,14 +20,72 @@ const Backups = ({}) => {
     const [codeVisible, setCodeVisible] = useState(false);
     const [copyStatus, setCopyStatus] = useState(false);
     const [code,setCode]=useState('');
-
+	const [inputError, setInputError] = useState(false);
+	const {setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, setProfiles } = useDaemonContext();
     useEffect(()=>{
         if(CoNET_Data?.duplicateCode) setCode(CoNET_Data?.duplicateCode);
     },[CoNET_Data?.duplicateCode])
 
+	const handlePassport = async () => {
+		const tmpData = CoNET_Data
+
+		if (!tmpData||tmpData?.profiles[0]?.keyID) {
+			return;
+		}
+		
+		await setProfiles(tmpData.profiles)
+
+		const info = await getCurrentPassportInfoInChain()
+		
+		
+
+		
+		if (tmpData.duplicateAccount)
+		tmpData.profiles[0] = {
+		...tmpData?.profiles[0],
+		activePassport: {
+			nftID: info[0].toString(),
+			expires: info[1].toString(),
+			expiresDays: info[2].toString(),
+			premium: info[3]
+		},
+		};
+
+		const activeNFTNumber = tmpData.profiles[0].activePassport||0
+		if (tmpData.profiles[0].activePassport?.expiresDays !== '7') {
+			tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
+		}
+		
+
+		await setActivePassport(tmpData.profiles[0].activePassport);
+
+		await setCoNET_Data(tmpData);
+
+		await setDuplicateAccount(tmpData.duplicateAccount)
+		await storeSystemData()
+
+	}
     //恢复
-    const handleRecovery=()=>{
+    const handleRecovery=async ()=>{
+
         //这里恢复按钮触发，password是填写的code,setRecoveryLoading控制loading状态
+		setInputError(false)
+		if (!CoNET_Data || password === CoNET_Data?.duplicateCode) {
+			return setInputError(true)
+		}
+
+		setRecoveryLoading(true)
+		const kkk = await restoreAccount (password, CoNET_Data)
+		
+
+		if (!kkk) {
+			setRecoveryLoading(false)
+			return setInputError(true)
+		}
+		
+		await handlePassport()
+		setRecoveryLoading(false)
+		
     }
     
     return (
@@ -82,13 +142,19 @@ const Backups = ({}) => {
                             <div className={styles.desc}>{t('backup-sub-desc-3')}</div>
                             <div className={styles.inputBox}>
                                 <Input
-                                    className={styles.generateInput}
+                                    className={inputError ? styles.generateInputError :styles.generateInput}
+									style={{color: inputError ? 'red': 'unset'}}
                                     placeholder={t('backup-sub-restore-input')}
                                     value={password}
-                                    onChange={val => {setPassword(val)}}
+									disabled={recoveryLoading}
+                                    onChange={val => {
+										setInputError(false)
+										setPassword(val)
+									}}
                                 />
                             </div>
                             <Button onClick={handleRecovery} block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password}>{t('backup-sub-restore-btn')}</Button>
+
                         </div>
                     </div> 
                 </div>

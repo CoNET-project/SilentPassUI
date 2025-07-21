@@ -1,36 +1,14 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from "react";
 import Footer from '../../components/Footer';
-import './index.css';
-import SwapInput from '../../components/SwapInput';
-import { useState } from 'react';
-import BackButton from '../../components/BackButton';
-import TokenGraph from '../../components/TokenGraph';
-import { useTranslation } from 'react-i18next'
+import Swap from '../../components/Swap/Swap';
 
-export default function Swap() {
-  const [tokenGraph, setTokenGraph] = useState('');
-  const navigate = useNavigate();
-  const { t, i18n } = useTranslation()
+const Wallet = ({}) => {
+    return (
+        <>
+            <Swap />
+            <Footer />
+        </>
+    )
+};
 
-  return (
-    <div className="page-container">
-      {
-        !tokenGraph
-          ? (
-            <>
-              <h1>{t('swap_title')}</h1>
-              <SwapInput setTokenGraph={setTokenGraph} />
-            </>
-          ) : (
-            <>
-              <BackButton action={() => setTokenGraph('')} />
-
-              <TokenGraph token={tokenGraph} />
-            </>
-          )
-      }
-
-      <Footer />
-    </div>
-  )
-}
+export default Wallet;

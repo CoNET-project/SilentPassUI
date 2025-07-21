@@ -1,0 +1,120 @@
+.swapBox{
+    position:relative;
+    .swapItem{
+        background:#191919;
+        border-radius:12px;
+        padding:12px 15px;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin:0 0 10px;
+        .view{
+            flex:1;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            .label{
+                color:#666;
+                font-size: 14px;
+                font-weight: 500;
+                line-height: 1;
+                margin:0 0 6px;
+            }
+            .price{
+                color:#666;
+                font-size: 12px;
+                line-height: 1;
+                margin:6px 0 0;
+            }
+            .input{
+                color:#fff;
+                :global(.adm-input-element){
+                    color:#fff;
+                    font-weight: 500;
+                    font-size:22px;
+                }
+            }
+            input[type="number"]::-webkit-outer-spin-button,
+            input[type="number"]::-webkit-inner-spin-button {
+              -webkit-appearance: none;
+              margin: 0;
+            }
+            input[type="number"] {
+              -moz-appearance: textfield;
+            }
+        }
+        .operation{
+            flex:none;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+            align-items:center;
+            margin:0 0 0 10px;
+            .type{
+                display:flex;
+                align-items:center;
+                color:#fff;
+                font-size:16px;
+                background:#3b3b3c;
+                border-radius:30px;
+                padding:3px 10px 3px 7px;
+                cursor:pointer;
+                user-select:none;
+                .icon{
+                    width:28px;
+                    height:28px;
+                    margin:0 8px 0 0;
+                }
+                .arrow{
+                    font-size: 14px;
+                    margin:0 0 0 5px;
+                }
+            }
+            .allBtn{
+                font-size: 11px;
+                color:#fff;
+                background: #333;
+                border-radius: 10px;
+                padding:3px 7px;
+                margin:5px 0 0;
+                cursor: pointer;
+            }
+        }
+    }
+    .swapBtnWrap{
+        position:absolute;
+        left:50%;
+        top:50%;
+        margin:-18px 0 0 -18px;
+    }
+    .swapBtn{
+        background: #a5bfe2;
+        width:36px;
+        height:36px;
+        border-radius: 50%;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        cursor:pointer;
+        svg{
+            width:20px;
+            height:20px;
+        }
+    }
+}
+.swapTip{
+    display: flex;
+    justify-content: center;
+    font-size: 12px;
+    color:#fff;
+    line-height: 1;
+    margin:10px 0 0;
+}
+.confirmBtn{
+    margin:12px 0 0;
+    background: #282930;
+    border-color: #282930;
+    color: #fff;
+    font-weight:500;
+    font-size:16px;
+}

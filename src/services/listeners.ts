@@ -26,14 +26,14 @@ let epoch = 0;
 let blockProcess = 0
 const LAMPORTS_PER_SOL = 9
 const listenProfileVer = async (
-	_setProfiles: (profiles: profile[]) => void,
-	_setActivePassport: (profiles: freePassport) => void,
-	setMiningData: (response: nodeResponse) => void
+  _setProfiles: (profiles: profile[]) => void,
+  _setActivePassport: (profiles: freePassport) => void,
+  setMiningData: (response: nodeResponse) => void
 ) => {
   const temp = CoNET_Data
   const profiles = temp?.profiles
   if (!CoNET_Data || !profiles) {
-	return
+  return
   }
   const now = new Date().getTime()
   if (now - blockProcess < 1000 * 10) {
@@ -150,7 +150,7 @@ const getSolanaTokenBalance = async (programId: string): Promise<number> => {
    const balanceInfo = await connection.getTokenAccountBalance(tokenAccountPubkey)
    const amount = balanceInfo.value.uiAmount
    if (!amount) {
-	return 0
+  return 0
    }
    return amount
 }

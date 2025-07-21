@@ -39,7 +39,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
     const [amount, setAmount] = useState<string | undefined>();
     const [subLoading, setSubLoading] = useState(false);
     const [calcPrice, setCalcPrice] = useState('0.00');
-	const { t, i18n } = useTranslation();
+    const { t, i18n } = useTranslation();
 
     useImperativeHandle(extendref, () => ({
         setExternalAddress: (val: string) => {
@@ -74,36 +74,36 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         return price.dividedBy(bala)
     }
 
-	const gettNumeric = (token: string) => {
-		switch (token) {
-			case Solana_USDT:
-			case Solana_SP: {
-				return 6
-			}
-			case Solana_SOL: {
-				return 9
-			}
+    const gettNumeric = (token: string) => {
+        switch (token) {
+            case Solana_USDT:
+            case Solana_SP: {
+                return 6
+            }
+            case Solana_SOL: {
+                return 9
+            }
 
-			default: {
-				return 0
-			}
-		}
-	}
+            default: {
+                return 0
+            }
+        }
+    }
 
-	const getTypeToAddr = (type: string) => {
-		switch (type) {
-			case '$USDT': {
-				return Solana_USDT
-			}
-			case '$SP': {
-				return Solana_SP
-			}
-			default: {
-				return ''
-			}
-			
-		}
-	}
+    const getTypeToAddr = (type: string) => {
+        switch (type) {
+            case '$USDT': {
+                return Solana_USDT
+            }
+            case '$SP': {
+                return Solana_SP
+            }
+            default: {
+                return ''
+            }
+            
+        }
+    }
 
     const useMax=()=>{
         let valBig=BigNumber(convertStringToNumber(balance));
@@ -203,160 +203,160 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
 
 
 
-	const transferSolanaNotSOL = async (
-	currencyType: string,
-	fromBase58PrivateKey: string,
-	toPublicKeyString: string,
-	amountSol: number,
-	rpcUrl: string
-	) => {
-	try {
-		setSubLoading(true);
+    const transferSolanaNotSOL = async (
+    currencyType: string,
+    fromBase58PrivateKey: string,
+    toPublicKeyString: string,
+    amountSol: number,
+    rpcUrl: string
+    ) => {
+    try {
+        setSubLoading(true);
 
-		// —— 1. 初始化 Keypair 和 Connection ——
-		const fromKeypair = Keypair.fromSecretKey(
-		Bs58.decode(fromBase58PrivateKey)
-		);
-		const connection = new Connection(rpcUrl, {
-		commitment: "confirmed",
-		wsEndpoint: "", // 禁用 websocket
-		});
+        // —— 1. 初始化 Keypair 和 Connection ——
+        const fromKeypair = Keypair.fromSecretKey(
+        Bs58.decode(fromBase58PrivateKey)
+        );
+        const connection = new Connection(rpcUrl, {
+        commitment: "confirmed",
+        wsEndpoint: "", // 禁用 websocket
+        });
 
-		// —— 2. 组装 SPL Token 转账交易 ——
-		const SP_address = getTypeToAddr(currencyType);
-		const mintAddress = new PublicKey(SP_address);
-		const recipient = new PublicKey(toPublicKeyString);
+        // —— 2. 组装 SPL Token 转账交易 ——
+        const SP_address = getTypeToAddr(currencyType);
+        const mintAddress = new PublicKey(SP_address);
+        const recipient = new PublicKey(toPublicKeyString);
 
-		// 2a. 计算 ATA
-		const fromATA = await getAssociatedTokenAddress(
-		mintAddress,
-		fromKeypair.publicKey
-		);
-		const toATA = await getAssociatedTokenAddress(mintAddress, recipient);
+        // 2a. 计算 ATA
+        const fromATA = await getAssociatedTokenAddress(
+        mintAddress,
+        fromKeypair.publicKey
+        );
+        const toATA = await getAssociatedTokenAddress(mintAddress, recipient);
 
-		const tx = new Transaction();
+        const tx = new Transaction();
 
-		// 2b. 如果接收方 ATA 不存在，就先创建
-		if (!(await connection.getAccountInfo(toATA))) {
-		tx.add(
-			createAssociatedTokenAccountInstruction(
-			fromKeypair.publicKey,
-			toATA,
-			recipient,
-			mintAddress
-			)
-		);
-		}
+        // 2b. 如果接收方 ATA 不存在，就先创建
+        if (!(await connection.getAccountInfo(toATA))) {
+        tx.add(
+            createAssociatedTokenAccountInstruction(
+            fromKeypair.publicKey,
+            toATA,
+            recipient,
+            mintAddress
+            )
+        );
+        }
 
-		// 2c. 取 mint decimals 并添加 transfer 指令
-		const mintInfo = await getMint(connection, mintAddress);
-		const decimals = mintInfo.decimals;
-		const rawAmount = BigInt(amountSol * 10 ** decimals);
+        // 2c. 取 mint decimals 并添加 transfer 指令
+        const mintInfo = await getMint(connection, mintAddress);
+        const decimals = mintInfo.decimals;
+        const rawAmount = BigInt(amountSol * 10 ** decimals);
 
-		tx.add(
-		createTransferCheckedInstruction(
-			fromATA,
-			mintAddress,
-			toATA,
-			fromKeypair.publicKey,
-			rawAmount,
-			decimals
-		)
-		);
+        tx.add(
+        createTransferCheckedInstruction(
+            fromATA,
+            mintAddress,
+            toATA,
+            fromKeypair.publicKey,
+            rawAmount,
+            decimals
+        )
+        );
 
-		// —— 3. 获取最新 blockhash/height 并签名 —— 
-		const latest = await connection.getLatestBlockhash("confirmed");
-		tx.recentBlockhash = latest.blockhash;
-		// v1.14+ 交易还需要 lastValidBlockHeight
-		// @ts-ignore
-		tx.lastValidBlockHeight = latest.lastValidBlockHeight;
-		tx.feePayer = fromKeypair.publicKey;
-		tx.sign(fromKeypair);
+        // —— 3. 获取最新 blockhash/height 并签名 —— 
+        const latest = await connection.getLatestBlockhash("confirmed");
+        tx.recentBlockhash = latest.blockhash;
+        // v1.14+ 交易还需要 lastValidBlockHeight
+        // @ts-ignore
+        tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+        tx.feePayer = fromKeypair.publicKey;
+        tx.sign(fromKeypair);
 
-		// —— 4. sendRawTransaction —— 
-		const rawTx = tx.serialize();
-		const signature = await connection.sendRawTransaction(rawTx, {
-		skipPreflight: false,
-		preflightCommitment: "confirmed",
-		});
-		console.log("发送 tx signature:", signature);
+        // —— 4. sendRawTransaction —— 
+        const rawTx = tx.serialize();
+        const signature = await connection.sendRawTransaction(rawTx, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+        });
+        console.log("发送 tx signature:", signature);
 
-		// —— 5. 轮询确认 —— 
-		const timeout = 30_000;    // 最长等 30s
-		const interval = 2_000;    // 每 2s 查一次
-		const start = Date.now();
+        // —— 5. 轮询确认 —— 
+        const timeout = 30_000;    // 最长等 30s
+        const interval = 2_000;    // 每 2s 查一次
+        const start = Date.now();
 
-		const handleCheck = async () => {
-		const resp = await connection.getSignatureStatuses([signature]);
-		const status = resp.value[0];
-		if (
-			status &&
-			(status.confirmationStatus === "confirmed" ||
-			status.confirmationStatus === "finalized")
-		) {
-			clearInterval(timer);
-			console.log("✅ 交易已确认", status);
-			// 这里可以做后续 UI 更新
-			handleRefreshSolanaBalances();
-		} else if (Date.now() - start > timeout) {
-			clearInterval(timer);
-			console.warn("⚠️ 签名确认超时，当前状态：", status);
-		}
-		};
+        const handleCheck = async () => {
+        const resp = await connection.getSignatureStatuses([signature]);
+        const status = resp.value[0];
+        if (
+            status &&
+            (status.confirmationStatus === "confirmed" ||
+            status.confirmationStatus === "finalized")
+        ) {
+            clearInterval(timer);
+            console.log("✅ 交易已确认", status);
+            // 这里可以做后续 UI 更新
+            handleRefreshSolanaBalances();
+        } else if (Date.now() - start > timeout) {
+            clearInterval(timer);
+            console.warn("⚠️ 签名确认超时，当前状态：", status);
+        }
+        };
 
-		const timer = setInterval(handleCheck, interval);
-		// 也可以立刻检查一次
-		handleCheck();
+        const timer = setInterval(handleCheck, interval);
+        // 也可以立刻检查一次
+        handleCheck();
 
-		// —— 6. 弹窗提示用户 tx 已发出 —— 
-		Modal.alert({
-		bodyClassName: styles.successModalWrap,
-		content: (
-			<div className={styles.successModal}>
-			<Result status="success" title="Transaction sent" />
-			<div className={styles.description}>
-				{amountSol} {currencyType}
-				<br />
-				has been sent to{" "}
-				<Ellipsis direction="middle" content={toPublicKeyString} />
-			</div>
-			<div className={styles.link}>
-				<a
-				onClick={() => {
-					openWebLinkNative(
-					"https://solscan.io/tx/" + signature,
-					isIOS,
-					isLocalProxy
-					);
-				}}
-				>
-				View on Solscan
-				</a>
-			</div>
-			</div>
-		),
-		confirmText: "Close",
-		onConfirm: () => {
-			setVisible(false);
-			setSubLoading(false);
-		},
-		});
-	} catch (error) {
-		setSubLoading(false);
-		Modal.alert({
-		bodyClassName: styles.failModalWrap,
-		content: (
-			<div className={styles.failModal}>
-			<Result status="error" title="Send failed" />
-			<div className={styles.description}>
-				{getErrorMessage(error)}
-			</div>
-			</div>
-		),
-		confirmText: "Close",
-		});
-	}
-	};
+        // —— 6. 弹窗提示用户 tx 已发出 —— 
+        Modal.alert({
+        bodyClassName: styles.successModalWrap,
+        content: (
+            <div className={styles.successModal}>
+            <Result status="success" title="Transaction sent" />
+            <div className={styles.description}>
+                {amountSol} {currencyType}
+                <br />
+                has been sent to{" "}
+                <Ellipsis direction="middle" content={toPublicKeyString} />
+            </div>
+            <div className={styles.link}>
+                <a
+                onClick={() => {
+                    openWebLinkNative(
+                    "https://solscan.io/tx/" + signature,
+                    isIOS,
+                    isLocalProxy
+                    );
+                }}
+                >
+                View on Solscan
+                </a>
+            </div>
+            </div>
+        ),
+        confirmText: "Close",
+        onConfirm: () => {
+            setVisible(false);
+            setSubLoading(false);
+        },
+        });
+    } catch (error) {
+        setSubLoading(false);
+        Modal.alert({
+        bodyClassName: styles.failModalWrap,
+        content: (
+            <div className={styles.failModal}>
+            <Result status="error" title="Send failed" />
+            <div className={styles.description}>
+                {getErrorMessage(error)}
+            </div>
+            </div>
+        ),
+        confirmText: "Close",
+        });
+    }
+    };
 
     const handleSend=()=>{
         const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
@@ -435,4 +435,4 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
 }
 
 
-export default forwardRef(SendButton);
+export default SendButton;

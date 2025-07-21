@@ -130,6 +130,14 @@
                 color: #d9d9d9;
             }
         }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        input[type="number"] {
+          -moz-appearance: textfield;
+        }
     }
     :global(.adm-nav-bar-title) {
         color: #fff;

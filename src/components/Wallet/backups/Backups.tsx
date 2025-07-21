@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './backups.module.scss';
 import { useTranslation } from 'react-i18next';
-import { List,Popup,NavBar,Button,Space,Ellipsis,Input,Modal } from 'antd-mobile';
+import { List,Popup,NavBar,Button,Space,Ellipsis,Input,Modal,Result } from 'antd-mobile';
 import { LockOutline,ExclamationTriangleOutline,GiftOutline,SystemQRcodeOutline,LoopOutline,LeftOutline } from 'antd-mobile-icons';
 import { ReactComponent as ConetToken } from './../assets/main-wallet.svg';
 import CopyBtn from './../copyBtn/CopyBtn';
@@ -22,70 +22,67 @@ const Backups = ({}) => {
     const [code,setCode]=useState('');
 	const [inputError, setInputError] = useState(false);
 	const {setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, setProfiles } = useDaemonContext();
+    
     useEffect(()=>{
         if(CoNET_Data?.duplicateCode) setCode(CoNET_Data?.duplicateCode);
     },[CoNET_Data?.duplicateCode])
 
 	const handlePassport = async () => {
 		const tmpData = CoNET_Data
-
 		if (!tmpData||tmpData?.profiles[0]?.keyID) {
 			return;
 		}
-		
 		await setProfiles(tmpData.profiles)
 
 		const info = await getCurrentPassportInfoInChain()
-		
-		
-
-		
 		if (tmpData.duplicateAccount)
-		tmpData.profiles[0] = {
-		...tmpData?.profiles[0],
-		activePassport: {
-			nftID: info[0].toString(),
-			expires: info[1].toString(),
-			expiresDays: info[2].toString(),
-			premium: info[3]
-		},
-		};
+    		tmpData.profiles[0] = {
+    		...tmpData?.profiles[0],
+    		activePassport: {
+    			nftID: info[0].toString(),
+    			expires: info[1].toString(),
+    			expiresDays: info[2].toString(),
+    			premium: info[3]
+    		}
+		}
 
 		const activeNFTNumber = tmpData.profiles[0].activePassport||0
 		if (tmpData.profiles[0].activePassport?.expiresDays !== '7') {
 			tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
 		}
-		
 
 		await setActivePassport(tmpData.profiles[0].activePassport);
-
 		await setCoNET_Data(tmpData);
-
-		await setDuplicateAccount(tmpData.duplicateAccount)
-		await storeSystemData()
+		await setDuplicateAccount(tmpData.duplicateAccount);
+		await storeSystemData();
 
 	}
     //恢复
     const handleRecovery=async ()=>{
-
         //这里恢复按钮触发，password是填写的code,setRecoveryLoading控制loading状态
 		setInputError(false)
 		if (!CoNET_Data || password === CoNET_Data?.duplicateCode) {
 			return setInputError(true)
 		}
-
 		setRecoveryLoading(true)
 		const kkk = await restoreAccount (password, CoNET_Data)
 		
-
 		if (!kkk) {
 			setRecoveryLoading(false)
 			return setInputError(true)
 		}
-		
-		await handlePassport()
-		setRecoveryLoading(false)
-		
+		await handlePassport();
+        Modal.alert({
+            bodyClassName:styles.successModalWrap,
+            content: <div className={styles.successModal}>
+                <Result
+                    status='success'
+                    title={t('backup-sub-restore-successful')}
+                />
+            </div>,
+            confirmText:'Close',
+        });
+		setRecoveryLoading(false);
     }
     
     return (
@@ -154,7 +151,6 @@ const Backups = ({}) => {
                                 />
                             </div>
                             <Button onClick={handleRecovery} block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password}>{t('backup-sub-restore-btn')}</Button>
-
                         </div>
                     </div> 
                 </div>

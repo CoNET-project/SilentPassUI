@@ -12,6 +12,7 @@ import BigNumber from 'bignumber.js';
 import { useTranslation } from 'react-i18next';
 import {openWebLinkNative} from './../../../api';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
+import {getRandomNode} from './../../../services/mining'
 
 interface SendParams {
     type: string; 
@@ -208,8 +209,8 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                     amountSol * 1000000
                 )
             );
-            const latestBlockHash = await connection.getLatestBlockhash('confirmed')
-            transaction.recentBlockhash = latestBlockHash.blockhash
+            // const latestBlockHash = await connection.getLatestBlockhash('confirmed')
+            // transaction.recentBlockhash = latestBlockHash.blockhash
             // 发送并确认交易
             const signature =await connection.sendTransaction(transaction, [fromKeypair])
 
@@ -248,7 +249,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
     }
     const handleSend=()=>{
         const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
-        const randomSolanaRPC = `https://${_node1.domain}/solana-rpc`;
+        const randomSolanaRPC = `http://${getRandomNode()}/solana-rpc`;
         if(type=='$SOL'){
             transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC);
             return ;

@@ -315,3 +315,21 @@
         background: #1f1f1f;
     }
 }
+.successModalWrap{
+    background: #2a2a2a;
+    :global(.adm-result) {
+        padding: 12px 12px;
+        background: transparent;
+    }
+    :global(.adm-result-success .adm-result-icon .antd-mobile-icon) {
+        color: #52ab74;
+    }
+    :global(.adm-result-title) {
+        color: #f1f1f1;
+        font-weight: 500;
+    }
+    :global(.adm-modal-footer .adm-modal-button) {
+        background: #333;
+        border: none;
+    }
+}

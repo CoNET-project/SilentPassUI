@@ -15,8 +15,8 @@ const SwapBox = ({}) => {
     const [options, setOptions] = useState(['SP','SOL','USDT']);
     const [fromToken, setFromToken] = useState();
     const [toToken, setToToken] = useState();
-    const [fromAmount, setFromAmount] = useState('0')
-    const [toAmount, setToAmount] = useState('0.00000000')
+    const [fromAmount, setFromAmount] = useState('0');
+    const [toAmount, setToAmount] = useState('0.000000');
 
     const handleSwap=()=>{
 
@@ -28,7 +28,25 @@ const SwapBox = ({}) => {
                 <div className={styles.swapItem}>
                     <div className={styles.view}>
                         <label className={styles.label}>{t('swap-asset-pay')}</label>
-                        <Input className={styles.input} clearable type="number" step='0.01' />
+                        <Input 
+                            className={styles.input} 
+                            placeholder="0" 
+                            value={fromAmount} 
+                            clearable 
+                            type="number" 
+                            step='0.01' 
+                            onChange={(val) => {
+                                const v = Number(val);
+                                if (!/^\d*(\.\d{0,6})?$/i.test(val)) {
+                                    return setFromAmount(fromAmount)
+                                }
+                                if (v <=0 ) {
+                                    return setFromAmount(val)
+                                }
+                                setFromAmount(v.toString())
+                                // onChangeProcess()
+                            }}
+                        />
                         <div className={styles.price}>$ 0.0000</div>
                     </div>
                     <div className={styles.operation}>
@@ -39,7 +57,7 @@ const SwapBox = ({}) => {
                 <div className={styles.swapItem}>
                     <div className={styles.view}>
                         <label className={styles.label}>{t('swap-asset-Receive')}</label>
-                        <Input className={styles.input} clearable type="number" step='0.01' />
+                        <Input className={styles.input} placeholder="0" value={toAmount} clearable type="number" step='0.01' />
                         <div className={styles.price}>$ 0.0000</div>
                     </div>
                     <div className={styles.operation}>

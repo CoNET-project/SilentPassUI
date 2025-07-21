@@ -398,6 +398,7 @@
 	"backup-sub-restore-input":"Please enter your backup code",
 	"backup-sub-restore-btn":"Restore My Account",
 	"backup-sub-code-modal-title":"Backup QR Code",
+	"backup-sub-restore-successful":"Account restored successfully！",
 	"swap-asset-title":"Token assets",
 	"swap-asset-pay": "You Pay",
 	"swap-asset-Max": "Max",

@@ -202,87 +202,87 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
 
 
 
-    const transferSolanaNotSOL=async(currencyType:string, fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string )=> {
-        try {
-            setSubLoading(true);
+    // const transferSolanaNotSOL=async(currencyType:string, fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string )=> {
+    //     try {
+    //         setSubLoading(true);
 
-            // 解码私钥并创建 Keypair
-            const fromKeypair = Keypair.fromSecretKey(Bs58.decode(fromBase58PrivateKey));
+    //         // 解码私钥并创建 Keypair
+    //         const fromKeypair = Keypair.fromSecretKey(Bs58.decode(fromBase58PrivateKey));
             
-            // 创建连接
-            const connection = new Connection(rpcUrl, "confirmed");
+    //         // 创建连接
+    //         const connection = new Connection(rpcUrl, "confirmed");
 
-            const SP_address = getTypeToAddr(currencyType)
-            const mintAddress = new PublicKey(SP_address)
-            const transaction = new Transaction()
-            const to_address = new PublicKey(toPublicKeyString)
-            const fromATA = await getAssociatedTokenAddress(mintAddress, fromKeypair.publicKey);
-            const toATA = await getAssociatedTokenAddress(mintAddress, to_address)
-            const toAccountInfo = await connection.getAccountInfo(toATA)
-            if (!toAccountInfo) {
-                transaction.add(
-                    createAssociatedTokenAccountInstruction(
-                        fromKeypair.publicKey, // payer
-                        toATA,                 // ata
-                        to_address,           // owner of ata
-                        mintAddress            // mint
-                    )
-                )
-            }
-            const decimals = gettNumeric(SP_address)
-            const rawAmount = amountSol * 10 ** decimals
-            transaction.add(
-                createTransferCheckedInstruction(
-                    fromATA,                // 源 ATA
-                    mintAddress,           // mint
-                    toATA,                 // 目标 ATA
-                    fromKeypair.publicKey, // 授权者
-                    rawAmount,             // 原始数量（整数）
-                    decimals               // 小数位数
-                )
-            )
+    //         const SP_address = getTypeToAddr(currencyType)
+    //         const mintAddress = new PublicKey(SP_address)
+    //         const transaction = new Transaction()
+    //         const to_address = new PublicKey(toPublicKeyString)
+    //         const fromATA = await getAssociatedTokenAddress(mintAddress, fromKeypair.publicKey);
+    //         const toATA = await getAssociatedTokenAddress(mintAddress, to_address)
+    //         const toAccountInfo = await connection.getAccountInfo(toATA)
+    //         if (!toAccountInfo) {
+    //             transaction.add(
+    //                 createAssociatedTokenAccountInstruction(
+    //                     fromKeypair.publicKey, // payer
+    //                     toATA,                 // ata
+    //                     to_address,           // owner of ata
+    //                     mintAddress            // mint
+    //                 )
+    //             )
+    //         }
+    //         const decimals = gettNumeric(SP_address)
+    //         const rawAmount = amountSol * 10 ** decimals
+    //         transaction.add(
+    //             createTransferCheckedInstruction(
+    //                 fromATA,                // 源 ATA
+    //                 mintAddress,           // mint
+    //                 toATA,                 // 目标 ATA
+    //                 fromKeypair.publicKey, // 授权者
+    //                 rawAmount,             // 原始数量（整数）
+    //                 decimals               // 小数位数
+    //             )
+    //         )
             
-            // 6. 签名并发送
-            const signature = await sendAndConfirmRawTransaction(
-                connection,
-                transaction,
-                [fromKeypair],
-                { commitment: "confirmed" }
-            )
+    //         // 6. 签名并发送
+    //         const signature = await sendAndConfirmRawTransaction(
+    //             connection,
+    //             transaction,
+    //             [fromKeypair],
+    //             { commitment: "confirmed" }
+    //         )
 
-            Modal.alert({
-                bodyClassName:styles.successModalWrap,
-                content: <div className={styles.successModal}>
-                    <Result
-                        status='success'
-                        title='Send successful'
-                    />
-                    <div className={styles.description}>{amount} {type} <br/>has been successfully sent to <Ellipsis direction='middle' content={address} /></div>
-                    <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>View transactions</a></div>
-                </div>,
-                confirmText:'Close',
-                onConfirm:()=>{setVisible(false)}
-            })
+    //         Modal.alert({
+    //             bodyClassName:styles.successModalWrap,
+    //             content: <div className={styles.successModal}>
+    //                 <Result
+    //                     status='success'
+    //                     title='Send successful'
+    //                 />
+    //                 <div className={styles.description}>{amount} {type} <br/>has been successfully sent to <Ellipsis direction='middle' content={address} /></div>
+    //                 <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>View transactions</a></div>
+    //             </div>,
+    //             confirmText:'Close',
+    //             onConfirm:()=>{setVisible(false)}
+    //         })
 
-            setSubLoading(false);
+    //         setSubLoading(false);
 
 
-            setTimeout(()=>{handleRefreshSolanaBalances()},20000)
-        } catch (error) {
-            setSubLoading(false);
-            Modal.alert({
-                bodyClassName:styles.failModalWrap,
-                content: <div className={styles.failModal}>
-                    <Result
-                        status='error'
-                        title='Send failed'
-                    />
-                    <div className={styles.description}>{getErrorMessage(error)}</div>
-                </div>,
-                confirmText:'Close',
-            })
-        }
-    }
+    //         setTimeout(()=>{handleRefreshSolanaBalances()},20000)
+    //     } catch (error) {
+    //         setSubLoading(false);
+    //         Modal.alert({
+    //             bodyClassName:styles.failModalWrap,
+    //             content: <div className={styles.failModal}>
+    //                 <Result
+    //                     status='error'
+    //                     title='Send failed'
+    //                 />
+    //                 <div className={styles.description}>{getErrorMessage(error)}</div>
+    //             </div>,
+    //             confirmText:'Close',
+    //         })
+    //     }
+    // }
 
     const handleSend=()=>{
         const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
@@ -291,7 +291,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC);
             return ;
         }
-        transferSolanaNotSOL(type,wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
+        // transferSolanaNotSOL(type,wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
         
     }
 

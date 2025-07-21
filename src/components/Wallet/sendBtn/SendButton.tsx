@@ -17,7 +17,8 @@ import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
-  TOKEN_PROGRAM_ID
+  TOKEN_PROGRAM_ID,
+  getMint,
 } from "@solana/spl-token"
 
 interface SendParams {
@@ -202,96 +203,169 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
 
 
 
-    // const transferSolanaNotSOL=async(currencyType:string, fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string )=> {
-    //     try {
-    //         setSubLoading(true);
+    const transferSolanaNotSOL = async (
+    currencyType: string,
+    fromBase58PrivateKey: string,
+    toPublicKeyString: string,
+    amountSol: number,
+    rpcUrl: string
+    ) => {
+    try {
+        setSubLoading(true);
 
-    //         // 解码私钥并创建 Keypair
-    //         const fromKeypair = Keypair.fromSecretKey(Bs58.decode(fromBase58PrivateKey));
-            
-    //         // 创建连接
-    //         const connection = new Connection(rpcUrl, "confirmed");
+        // —— 1. 初始化 Keypair 和 Connection ——
+        const fromKeypair = Keypair.fromSecretKey(
+        Bs58.decode(fromBase58PrivateKey)
+        );
+        const connection = new Connection(rpcUrl, {
+        commitment: "confirmed",
+        wsEndpoint: "", // 禁用 websocket
+        });
 
-    //         const SP_address = getTypeToAddr(currencyType)
-    //         const mintAddress = new PublicKey(SP_address)
-    //         const transaction = new Transaction()
-    //         const to_address = new PublicKey(toPublicKeyString)
-    //         const fromATA = await getAssociatedTokenAddress(mintAddress, fromKeypair.publicKey);
-    //         const toATA = await getAssociatedTokenAddress(mintAddress, to_address)
-    //         const toAccountInfo = await connection.getAccountInfo(toATA)
-    //         if (!toAccountInfo) {
-    //             transaction.add(
-    //                 createAssociatedTokenAccountInstruction(
-    //                     fromKeypair.publicKey, // payer
-    //                     toATA,                 // ata
-    //                     to_address,           // owner of ata
-    //                     mintAddress            // mint
-    //                 )
-    //             )
-    //         }
-    //         const decimals = gettNumeric(SP_address)
-    //         const rawAmount = amountSol * 10 ** decimals
-    //         transaction.add(
-    //             createTransferCheckedInstruction(
-    //                 fromATA,                // 源 ATA
-    //                 mintAddress,           // mint
-    //                 toATA,                 // 目标 ATA
-    //                 fromKeypair.publicKey, // 授权者
-    //                 rawAmount,             // 原始数量（整数）
-    //                 decimals               // 小数位数
-    //             )
-    //         )
-            
-    //         // 6. 签名并发送
-    //         const signature = await sendAndConfirmRawTransaction(
-    //             connection,
-    //             transaction,
-    //             [fromKeypair],
-    //             { commitment: "confirmed" }
-    //         )
+        // —— 2. 组装 SPL Token 转账交易 ——
+        const SP_address = getTypeToAddr(currencyType);
+        const mintAddress = new PublicKey(SP_address);
+        const recipient = new PublicKey(toPublicKeyString);
 
-    //         Modal.alert({
-    //             bodyClassName:styles.successModalWrap,
-    //             content: <div className={styles.successModal}>
-    //                 <Result
-    //                     status='success'
-    //                     title='Send successful'
-    //                 />
-    //                 <div className={styles.description}>{amount} {type} <br/>has been successfully sent to <Ellipsis direction='middle' content={address} /></div>
-    //                 <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>View transactions</a></div>
-    //             </div>,
-    //             confirmText:'Close',
-    //             onConfirm:()=>{setVisible(false)}
-    //         })
+        // 2a. 计算 ATA
+        const fromATA = await getAssociatedTokenAddress(
+        mintAddress,
+        fromKeypair.publicKey
+        );
+        const toATA = await getAssociatedTokenAddress(mintAddress, recipient);
 
-    //         setSubLoading(false);
+        const tx = new Transaction();
 
+        // 2b. 如果接收方 ATA 不存在，就先创建
+        if (!(await connection.getAccountInfo(toATA))) {
+        tx.add(
+            createAssociatedTokenAccountInstruction(
+            fromKeypair.publicKey,
+            toATA,
+            recipient,
+            mintAddress
+            )
+        );
+        }
 
-    //         setTimeout(()=>{handleRefreshSolanaBalances()},20000)
-    //     } catch (error) {
-    //         setSubLoading(false);
-    //         Modal.alert({
-    //             bodyClassName:styles.failModalWrap,
-    //             content: <div className={styles.failModal}>
-    //                 <Result
-    //                     status='error'
-    //                     title='Send failed'
-    //                 />
-    //                 <div className={styles.description}>{getErrorMessage(error)}</div>
-    //             </div>,
-    //             confirmText:'Close',
-    //         })
-    //     }
-    // }
+        // 2c. 取 mint decimals 并添加 transfer 指令
+        const mintInfo = await getMint(connection, mintAddress);
+        const decimals = mintInfo.decimals;
+        const rawAmount = BigInt(amountSol * 10 ** decimals);
+
+        tx.add(
+        createTransferCheckedInstruction(
+            fromATA,
+            mintAddress,
+            toATA,
+            fromKeypair.publicKey,
+            rawAmount,
+            decimals
+        )
+        );
+
+        // —— 3. 获取最新 blockhash/height 并签名 —— 
+        const latest = await connection.getLatestBlockhash("confirmed");
+        tx.recentBlockhash = latest.blockhash;
+        // v1.14+ 交易还需要 lastValidBlockHeight
+        // @ts-ignore
+        tx.lastValidBlockHeight = latest.lastValidBlockHeight;
+        tx.feePayer = fromKeypair.publicKey;
+        tx.sign(fromKeypair);
+
+        // —— 4. sendRawTransaction —— 
+        const rawTx = tx.serialize();
+        const signature = await connection.sendRawTransaction(rawTx, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+        });
+        console.log("发送 tx signature:", signature);
+
+        // —— 5. 轮询确认 —— 
+        const timeout = 30_000;    // 最长等 30s
+        const interval = 2_000;    // 每 2s 查一次
+        const start = Date.now();
+
+        const handleCheck = async () => {
+        const resp = await connection.getSignatureStatuses([signature]);
+        const status = resp.value[0];
+        if (
+            status &&
+            (status.confirmationStatus === "confirmed" ||
+            status.confirmationStatus === "finalized")
+        ) {
+            clearInterval(timer);
+            console.log("✅ 交易已确认", status);
+            // 这里可以做后续 UI 更新
+            handleRefreshSolanaBalances();
+        } else if (Date.now() - start > timeout) {
+            clearInterval(timer);
+            console.warn("⚠️ 签名确认超时，当前状态：", status);
+        }
+        };
+
+        const timer = setInterval(handleCheck, interval);
+        // 也可以立刻检查一次
+        handleCheck();
+
+        // —— 6. 弹窗提示用户 tx 已发出 —— 
+        Modal.alert({
+        bodyClassName: styles.successModalWrap,
+        content: (
+            <div className={styles.successModal}>
+            <Result status="success" title="Transaction sent" />
+            <div className={styles.description}>
+                {amountSol} {currencyType}
+                <br />
+                has been sent to{" "}
+                <Ellipsis direction="middle" content={toPublicKeyString} />
+            </div>
+            <div className={styles.link}>
+                <a
+                onClick={() => {
+                    openWebLinkNative(
+                    "https://solscan.io/tx/" + signature,
+                    isIOS,
+                    isLocalProxy
+                    );
+                }}
+                >
+                View on Solscan
+                </a>
+            </div>
+            </div>
+        ),
+        confirmText: "Close",
+        onConfirm: () => {
+            setVisible(false);
+            setSubLoading(false);
+        },
+        });
+    } catch (error) {
+        setSubLoading(false);
+        Modal.alert({
+        bodyClassName: styles.failModalWrap,
+        content: (
+            <div className={styles.failModal}>
+            <Result status="error" title="Send failed" />
+            <div className={styles.description}>
+                {getErrorMessage(error)}
+            </div>
+            </div>
+        ),
+        confirmText: "Close",
+        });
+    }
+    };
 
     const handleSend=()=>{
         const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
-        const randomSolanaRPC = `http://${_node1.ip_addr}/solana-rpc`
+        const randomSolanaRPC = `http://${_node1.ip_addr}:80/solana-rpc`
         if(type=='$SOL'){
             transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC);
             return ;
         }
-        // transferSolanaNotSOL(type,wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
+        transferSolanaNotSOL(type,wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC)
         
     }
 

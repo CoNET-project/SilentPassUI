@@ -129,43 +129,30 @@ const scanSolanaUsdt = () => {
 }
 
 
-const getSolanaTokenBalance = async (programId: string): Promise<string|null> => {
+const getSolanaTokenBalance = async (programId: string): Promise<number> => {
   if (!CoNET_Data?.profiles) {
-    return null
+    return 0
   }
   const profile = CoNET_Data.profiles[1]
-  const solanaWallet = profile.keyID
-  const payload = {
-  jsonrpc: "2.0",
-  id: 1,
-  method: "getTokenAccountsByOwner",
-  params: [
+  const solanaWallet = new PublicKey(profile.keyID)
+  const url = `http://${getRandomNode()}/solana-rpc`
+  const connection = new Connection(url, "confirmed")
+  const mintPubkey = new PublicKey(programId)
+  // 4. 获取这个 mint 下，属于 ownerPubkey 的所有 token 账户
+  const resp = await connection.getTokenAccountsByOwner(
     solanaWallet,
-    { programId, },
-    { encoding: "jsonParsed" },
-  ],
+    { mint: mintPubkey }
+  )
+  if (resp.value.length === 0) {
+    return 0
   }
-    let baseURL = `http://${getRandomNode()}/solana-rpc`
-  const api = axios.create({
-    baseURL, 
-    timeout: 30000, // 10 seconds timeout
-    headers: {
-      "Content-Type": "application/json",
-    },
-    data: payload
-  })
-  try {
-    const {data} = await api.post('', payload)
-    if (data.error) {
-      return null
-    }
-
-    const balance = data
-    return balance
-  } catch (ex) {
-    return null
-  }
-  
+   const tokenAccountPubkey = resp.value[0].pubkey
+   const balanceInfo = await connection.getTokenAccountBalance(tokenAccountPubkey)
+   const amount = balanceInfo.value.uiAmount
+   if (!amount) {
+  return 0
+   }
+   return amount
 }
 
 

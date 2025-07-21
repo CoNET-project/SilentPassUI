@@ -19,7 +19,7 @@ import _ from 'lodash';
 const MainWallet = ({}) => {
     const { t, i18n } = useTranslation();
     const [visible, setVisible] = useState<boolean>(false);
-    const { profiles,activePassport,setActivePassport } = useDaemonContext();
+    const { profiles,activePassport,setActivePassport,duplicateAccount } = useDaemonContext();
     const [isAddressHidden, setIsAddressHidden] = useState(false);
     const [isKeyHidden, setIsKeyHidden] = useState(true);
     const [isChangeLoading, setIsChangeLoading] = useState(false);
@@ -118,19 +118,19 @@ const MainWallet = ({}) => {
                                 }
                         </div>
 
-                        {profiles?.[0]?.keyID ?<div className={styles.address}>
+                        {duplicateAccount?.keyID ?<div className={styles.address}>
                             <div className={styles.cont}>
                                 <label>{t('wallet-account-main-wallet-address-title')}</label>
-                                <div className={isAddressHidden?styles.valHide:styles.val}>{getAddress(profiles?.[0])}</div>
+                                <div className={isAddressHidden?styles.valHide:styles.val}>{getAddress(duplicateAccount)}</div>
                             </div>
-                            <CodeButton copyVal={getWholeAddress(profiles?.[0])} isEthers={true} />
+                            <CodeButton copyVal={getWholeAddress(duplicateAccount)} isEthers={true} />
                             <div className={styles.operation}>
-                                <CopyBtn copyVal={getWholeAddress(profiles?.[0])} />
+                                <CopyBtn copyVal={getWholeAddress(duplicateAccount)} />
                                 <div style={{marginLeft:12}}><HideBtn isHidden={isAddressHidden} setIsHidden={setIsAddressHidden} /></div>
                             </div>
                         </div>:''}
 
-                        {profiles?.[0]?.privateKeyArmor ?<div className={styles.address}>
+                        {/* {profiles?.[0]?.privateKeyArmor ?<div className={styles.address}>
                             <div className={styles.cont}>
                                 <label>{t('wallet-account-main-wallet-privitekey-title')}</label>
                                 <div className={isKeyHidden?styles.valHide:styles.val}>{getPrivateKeyArmor(profiles?.[0])}</div>
@@ -139,7 +139,7 @@ const MainWallet = ({}) => {
                                 <CopyBtn copyVal={getWholePrivateKeyArmor(profiles?.[0])} />
                                 <div style={{marginLeft:12}}><HideBtn isHidden={isKeyHidden} setIsHidden={setIsKeyHidden} /></div>
                             </div>
-                        </div>:''}
+                        </div>:''} */}
 
                         {/*{CoNET_Data?.mnemonicPhrase ? <div className={styles.recovery}><Recovery /></div> : ''}*/}
                     </div>

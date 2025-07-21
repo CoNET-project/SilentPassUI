@@ -31,7 +31,7 @@ interface AccountListProps {
 
 export default function AccountList({ showMainWallet = true, simplifiedView = false, spInUsd = 0, solInUsd = 0 }: AccountListProps) {
     const [openAccountList, setOpenAccountList] = useState<string[]>([]);
-    const { profiles, activePassport, setProfiles, randomSolanaRPC, getAllNodes, isIOS, airdropProcess, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, airdropSuccess, setAirdropProcess, setAirdropSuccess, airdropTokens, airdropProcessReff } = useDaemonContext();
+    const { profiles, activePassport, setProfiles, duplicateAccount, airdropProcess, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, airdropSuccess, setAirdropProcess, setAirdropSuccess, airdropTokens, airdropProcessReff } = useDaemonContext();
 
     const [mainAccountAddressCopied, setMainAccountAddressCopied] = useState(false);
     const [solanaAccountAddressCopied, setSolanaAccountAddressCopied] = useState(false);
@@ -62,7 +62,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
         e.preventDefault();
 
         if (account === 'main') {
-            navigator.clipboard.writeText(profiles?.[0]?.keyID);
+            navigator.clipboard.writeText(duplicateAccount?.keyID);
             setMainAccountAddressCopied(true);
         }
 
@@ -122,8 +122,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
     return (
         <div className="account-list">
             {showMainWallet &&
-                <div className={`account-wrapper ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes(profiles?.[0]?.keyID) ? 'active' : ''}`}>
-                    <div className="account-main-card" onClick={() => toggleAccount(profiles?.[0]?.keyID)}>
+                <div className={`account-wrapper ${simplifiedView ? 'simplified' : ''} ${openAccountList.includes(duplicateAccount?.keyID) ? 'active' : ''}`}>
+                    <div className="account-main-card" onClick={() => toggleAccount(duplicateAccount.keyID)}>
                         <div className="name">
                             <h3>{t('comp-accountlist-main-wallet')}</h3>
                             <img height='16px' width='16px' className="chevron" src="./assets/right-chevron.svg" />
@@ -132,8 +132,8 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                             simplifiedView && (
                                 <div className="copy">
                                     {
-                                        profiles?.[0].keyID ? (
-                                          <p>{profiles?.[0]?.keyID?.slice(0, 5)}...{profiles?.[0]?.keyID?.slice(-5)}</p>
+                                        duplicateAccount.keyID ? (
+                                          <p>{duplicateAccount.slice(0, 5)}...{duplicateAccount.keyID?.slice(-5)}</p>
                                         ) : (
                                           <Skeleton width="100%" height="20px" />
                                         )
@@ -197,7 +197,7 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
 
                                     <Separator />
 
-                                    <CopyAccountInfo wallet={profiles?.[0]} showRecoveryPhrase={true} isEthers={true} />
+                                    <CopyAccountInfo wallet={duplicateAccount} showRecoveryPhrase={true} isEthers={true} />
 
                                     {/* 
                                     <Separator />

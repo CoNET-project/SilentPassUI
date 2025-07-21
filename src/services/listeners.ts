@@ -5,6 +5,7 @@ import {
   CoNET_Data,
   currentPageInvitees,
   globalAllNodes,
+  setCoNET_Data,
   setProcessingBlock,
 } from "../utils/globals";
 import contracts from "../utils/contracts"
@@ -19,6 +20,7 @@ import {
   getProfileAssets,
 } from "./wallets";
 import { PublicKey, Connection } from "@solana/web3.js";
+import axios, { AxiosResponse } from "axios"
 
 let epoch = 0;
 let blockProcess = 0
@@ -28,9 +30,13 @@ const listenProfileVer = async (
   _setActivePassport: (profiles: freePassport) => void,
   setMiningData: (response: nodeResponse) => void
 ) => {
-  const profiles = CoNET_Data?.profiles;
+  const temp = CoNET_Data
+  const profiles = temp?.profiles
+  if (!CoNET_Data || !profiles) {
+  return
+  }
   const now = new Date().getTime()
-  if (!profiles||now - blockProcess < 1000 * 10) {
+  if (now - blockProcess < 1000 * 10) {
     return;
   }
   blockProcess = now
@@ -41,17 +47,14 @@ const listenProfileVer = async (
   // await getVpnTimeUsed();
   await getSpClubInfo(profiles[0], currentPageInvitees);
   await getPassportsInfoForProfile(profiles[0])
-  // await getReceivedAmounts(
-  //  profiles[1].keyID,
-  //  globalAllNodes
-  // );
-  
+
   _setProfiles(profiles);
 
   if (profiles[0].activePassport) {
     _setActivePassport(profiles[0].activePassport);
   }
-
+  
+  setCoNET_Data(temp)
   await storeSystemData();
   await setProcessingBlock(false);
   blockProcess = now
@@ -107,10 +110,9 @@ const getSOL_Balance = async () => {
   const ownerPubkey = new PublicKey(profile.keyID)
   const connection = new Connection(url, 'confirmed')
   const lamports = await connection.getBalance(ownerPubkey)
-  const sol = lamports / LAMPORTS_PER_SOL
+  const sol = lamports / 10 ** LAMPORTS_PER_SOL
   return sol
 }
-
 
 
 const scanSolanaSol = () => {
@@ -127,26 +129,40 @@ const scanSolanaUsdt = () => {
 }
 
 
-const getSolanaTokenBalance = async (tokenAddress: string) => {
+const getSolanaTokenBalance = async (programId: string): Promise<string|null> => {
   if (!CoNET_Data?.profiles) {
     return null
   }
   const profile = CoNET_Data.profiles[1]
-  const url = `http://${getRandomNode()}/solana-rpc`
-  const connection = new Connection(url, 'confirmed')
-  const ownerPubkey = new PublicKey(profile.keyID)
-  const mintPubkey  = new PublicKey(tokenAddress)
-  try{
-    const resp = await connection.getTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey })
-    if (resp.value.length === 0) {
-      console.log('getSolanaTokenBalance Error: No token account found for this mint.');
+  const solanaWallet = profile.keyID
+  const payload = {
+  jsonrpc: "2.0",
+  id: 1,
+  method: "getTokenAccountsByOwner",
+  params: [
+    solanaWallet,
+    { programId, },
+    { encoding: "jsonParsed" },
+  ],
+  }
+    let baseURL = `http://${getRandomNode()}/solana-rpc`
+  const api = axios.create({
+    baseURL, 
+    timeout: 30000, // 10 seconds timeout
+    headers: {
+      "Content-Type": "application/json",
+    },
+    data: payload
+  })
+  try {
+    const {data} = await api.post('', payload)
+    if (data.error) {
       return null
     }
-    const tokenAccountPubkey = resp.value[0].pubkey
-    const { value } = await connection.getTokenAccountBalance(tokenAccountPubkey)
-    return value
-  }catch(err){
-    console.log(err,'err')
+
+    const balance = data
+    return balance
+  } catch (ex) {
     return null
   }
   

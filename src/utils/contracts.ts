@@ -13,7 +13,8 @@ import {
 	SpClubAbi,
 	SpReword,
 	ReferralsV3,
-	SpClubPoint
+	SpClubPoint,
+	Duplicate
   } from "./abis";
   
   const contracts = {
@@ -71,10 +72,6 @@ import {
 	  abi: PurchasePassportAbi,
 	  network: "CONET Holesky",
 	},
-	distributor: {
-	  address: '0x40d64D88A86D6efb721042225B812379dc97bc89',
-	  abi: Distributor
-	},
 	SpClub: {
 	  address: "0xe1949263B338D8c1eD7d4CbDE2026eb82DB78D3a",
 	  abi: SpClubAbi,
@@ -94,7 +91,14 @@ import {
 		address: '0x9D27BEdb1d093F38726F60551CfefaD83fA838a2',
 		abi: SpClubPoint,
 		network: 'CONET DePIN'
+	},
+	Duplicate: {
+		address: '0xb8777d4b0e1c07dF073fAf75a5F42D9e29BfD0F5',
+		network: 'CONET DePIN',
+		abi: Duplicate
 	}
+
+
   };
   
   export default contracts;

@@ -5,6 +5,7 @@ import Skeleton from '../Skeleton';
 import { useTranslation } from 'react-i18next'
 import { ReactComponent as VisibilityOnIcon } from "./assets/visibility-on.svg";
 import { ReactComponent as VisibilityOffIcon } from "./assets/visibility-off.svg";
+import {ethers} from 'ethers'
 
 let copyTimeoutId: NodeJS.Timeout;
 
@@ -18,6 +19,7 @@ export default function CopyAccountInfo({ wallet }: any) {
   const [isKeyHidden, setIsKeyHidden] = useState(true);
   const [isWordsHidden, setIsWordsHidden] = useState(true);
   const { t, i18n } = useTranslation()
+  const [isEthAddress] =  useState(ethers.isAddress(wallet.keyID))
   function handleCopy(info: string) {
     let value = '';
 
@@ -78,7 +80,7 @@ export default function CopyAccountInfo({ wallet }: any) {
       </div>
       <Separator />
       <div className="copy-div">
-        {wallet?.privateKeyArmor ?
+        {!isEthAddress ?
           <>
             <div className="copy-text">
               <p>{t('comp-comm-privatekey')} </p>

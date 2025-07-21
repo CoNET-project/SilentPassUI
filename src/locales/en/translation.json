@@ -397,6 +397,12 @@
 	"backup-sub-code-btn":"View QR Code",
 	"backup-sub-restore-input":"Please enter your backup code",
 	"backup-sub-restore-btn":"Restore My Account",
-	"backup-sub-code-modal-title":"Backup QR Code"
+	"backup-sub-code-modal-title":"Backup QR Code",
+	"swap-asset-title":"Token assets",
+	"swap-asset-pay": "You Pay",
+	"swap-asset-Max": "Max",
+	"swap-asset-Receive": "You Receive",
+	"swap-asset-confirm":"Swap Now",
+	"swap-asset-tip":"The Approximate conversion rate based on quotes received"
 
 }

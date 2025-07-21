@@ -116,11 +116,11 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
 
             // 构建交易
             const transaction = new Transaction().add(
-              SystemProgram.transfer({
-                fromPubkey: fromKeypair.publicKey,
-                toPubkey: new PublicKey(toPublicKeyString),
-                lamports: amountSol * LAMPORTS_PER_SOL, // 转换为 lamports 
-              })
+                SystemProgram.transfer({
+                    fromPubkey: fromKeypair.publicKey,
+                    toPubkey: new PublicKey(toPublicKeyString),
+                    lamports: amountSol * LAMPORTS_PER_SOL, // 转换为 lamports 
+                })
             );
 
             const latestBlockHash = await connection.getLatestBlockhash('confirmed')
@@ -323,4 +323,4 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
 }
 
 
-export default forwardRef(SendButton);
+export default SendButton;

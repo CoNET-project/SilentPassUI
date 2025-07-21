@@ -6,7 +6,7 @@ import { List,Popup,NavBar,Button } from 'antd-mobile';
 import { UndoOutline,ExclamationCircleFill } from 'antd-mobile-icons';
 import { CoNET_Data } from './../../../utils/globals';
 import { ReactComponent as SolanaToken } from './../assets/solana-token.svg';
-import { ReactComponent as ConetToken } from './../assets/conet-token.svg';
+import { ReactComponent as ConetToken } from './../assets/sp-token.svg';
 import { ReactComponent as UsdtToken } from './../assets/usdt-token.svg';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import { refreshSolanaBalances, storeSystemData } from './../../../services/wallets';

@@ -403,6 +403,12 @@
 	"backup-sub-code-btn":"查看二维码",
 	"backup-sub-restore-input":"请输入备份码",
 	"backup-sub-restore-btn":"恢复我的账号",
-	"backup-sub-code-modal-title":"备份二维码"
+	"backup-sub-code-modal-title":"备份二维码",
+	"swap-asset-title":"资产",
+	"swap-asset-pay": "支付",
+	"swap-asset-Max": "全部",
+	"swap-asset-Receive": "收到",
+	"swap-asset-confirm":"立即兑换",
+	"swap-asset-tip":"系统将根据实时汇率自动计算您可收到的数量"
 	
 }

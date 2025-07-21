@@ -123,7 +123,7 @@ const scanSolanaSp = () => {
 }
 
 const scanSolanaUsdt = () => {
-  return getSolanaTokenBalance('Es9vMFrzaCERZTzYvC2GBoR1zCz6EtgihLRPkhGj7y4D')
+  return getSolanaTokenBalance('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
 }
 
 
@@ -136,14 +136,20 @@ const getSolanaTokenBalance = async (tokenAddress: string) => {
   const connection = new Connection(url, 'confirmed')
   const ownerPubkey = new PublicKey(profile.keyID)
   const mintPubkey  = new PublicKey(tokenAddress)
-  const resp = await connection.getTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey })
-  if (resp.value.length === 0) {
-    console.log('getSolanaTokenBalance Error: No token account found for this mint.');
+  try{
+    const resp = await connection.getTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey })
+    if (resp.value.length === 0) {
+      console.log('getSolanaTokenBalance Error: No token account found for this mint.');
+      return null
+    }
+    const tokenAccountPubkey = resp.value[0].pubkey
+    const { value } = await connection.getTokenAccountBalance(tokenAccountPubkey)
+    return value
+  }catch(err){
+    console.log(err,'err')
     return null
   }
-  const tokenAccountPubkey = resp.value[0].pubkey
-  const { value } = await connection.getTokenAccountBalance(tokenAccountPubkey)
-  return value
+  
 }
 
 

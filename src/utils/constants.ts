@@ -21,9 +21,13 @@ const stripe_pay_monthly = 'https://buy.stripe.com/test_9AQ16b6Du82p0Ja9AG?clien
 const stripe_pay_Annual ='https://buy.stripe.com/test_eVa2af5zqdmJ2Ri14b?client_reference_id='
 const SilentPassOfficial = 'A8Vk2LsNqKktabs4xPY4YUmYxBoDqcTdxY5em4EQm8v1'
 
+
 const conetProvider = new ethers.JsonRpcProvider(conetRpc);
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());
 const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);
+const Solana_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+const Solana_SOL = 'So11111111111111111111111111111111111111112'
+const Solana_SP = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
 
 const changeRPC = () => {
 	ethProvider = new ethers.JsonRpcProvider(ethRpc());
@@ -43,5 +47,8 @@ export {
   stripe_pay_monthly,
   stripe_pay_Annual,
   payment_endpoint,
-  paypal_endpoint
+  paypal_endpoint,
+  Solana_USDT,
+  Solana_SOL,
+  Solana_SP
 };

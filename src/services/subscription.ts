@@ -1,7 +1,7 @@
 import {
 	postToEndpoint, initProfileTokens
 } from "../utils/utils";
-
+import axios, { AxiosResponse } from "axios"
 import {
 	payment_endpoint,
 	apiv4_endpoint,
@@ -118,10 +118,37 @@ export const restoreAccount = async (passcode: string, temp: encrypt_keys_object
 		temp.profiles[1].keyID = solanaWallet.publicKey
 		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
 		setCoNET_Data(temp)
-		
+
 	}
 	return true
 
+}
+
+const gettNumeric = (token: string) => {
+	switch (token) {
+		default: {
+			return 6
+		}
+		case 'So11111111111111111111111111111111111111112': {
+			return 9
+		}
+		
+	}
+}
+
+export const getPrice = async (inputMint: string, outputMint: string, _amount: number): Promise<string> => {
+	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(inputMint))
+	const slippageBps = 250 // 0.5% slippage
+	const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}`
+	try {
+        const quoteResponse = await axios.get(quoteUrl)
+        const quote = quoteResponse.data
+        const price = ethers.formatUnits(quote.otherAmountThreshold, gettNumeric(outputMint))
+        return price
+    } catch (ex) {
+
+    }
+    return ''
 }
 
 
@@ -172,8 +199,6 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 export const checkWallet = (wallet: string) => {
 	return ethers.isAddress(wallet)
 }
-
-
 
 const airDropForSPUrl = `${apiv4_endpoint}airDropForSP`
 const SP_tokenDecimals = 6

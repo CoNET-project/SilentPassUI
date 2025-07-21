@@ -3,7 +3,7 @@ import { Popup,NavBar,Input,Button,SpinLoading,Modal,Result,Ellipsis,Toast,Dialo
 import { LocationOutline,LeftOutline } from 'antd-mobile-icons';
 import styles from './sendButton.module.scss';
 import { ReactComponent as SpToken } from './../assets/sp-token.svg';
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL, ComputeBudgetProgram } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL, ComputeBudgetProgram, sendAndConfirmRawTransaction } from "@solana/web3.js";
 import { createTransferInstruction,getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import Bs58 from "bs58"
 import { ethers } from 'ethers';
@@ -12,6 +12,13 @@ import BigNumber from 'bignumber.js';
 import { useTranslation } from 'react-i18next';
 import {openWebLinkNative} from './../../../api';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
+import {Solana_SOL, Solana_SP, Solana_USDT} from "../../../utils/constants"
+import {
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createTransferCheckedInstruction,
+  TOKEN_PROGRAM_ID
+} from "@solana/spl-token"
 
 interface SendParams {
     type: string; 
@@ -65,6 +72,38 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         }
         return price.dividedBy(bala)
     }
+
+	const gettNumeric = (token: string) => {
+		switch (token) {
+			case Solana_USDT:
+			case Solana_SP: {
+				return 6
+			}
+			case Solana_SOL: {
+				return 9
+			}
+
+			default: {
+				return 0
+			}
+		}
+	}
+
+	const getTypeToAddr = (type: string) => {
+		switch (type) {
+			case '$USDT': {
+				return Solana_USDT
+			}
+			case '$SP': {
+				return Solana_SP
+			}
+			default: {
+				return ''
+			}
+			
+		}
+	}
+
     const useMax=()=>{
         let valBig=BigNumber(convertStringToNumber(balance));
         let ratio=usdRatio();
@@ -119,7 +158,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
               SystemProgram.transfer({
                 fromPubkey: fromKeypair.publicKey,
                 toPubkey: new PublicKey(toPublicKeyString),
-                lamports: amountSol * LAMPORTS_PER_SOL, // 转换为 lamports 
+                lamports: amountSol * 10 ** 9, // 转换为 lamports 
               })
             );
 
@@ -159,6 +198,10 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             })
         }
     }
+
+
+
+
     const transferSolanaNotSOL=async(currencyType:string, fromBase58PrivateKey: string, toPublicKeyString: string, amountSol: number, rpcUrl: string )=> {
         try {
             setSubLoading(true);
@@ -169,49 +212,43 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             // 创建连接
             const connection = new Connection(rpcUrl, "confirmed");
 
-            let SP_address='';
-            if(currencyType === '$SP' ){
-                SP_address = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump';
-            }
-            if(currencyType === '$USDT'){
-                SP_address = 'Es9vMFrzaCERo4zFnbJjZ93hFQfZz1CNwA6QQ3CDsCjE';
-            }
-            
-            const SP_Address = new PublicKey(SP_address)
+        	const SP_address = getTypeToAddr(currencyType)
+			const mintAddress = new PublicKey(SP_address)
+			const transaction = new Transaction()
             const to_address = new PublicKey(toPublicKeyString)
-
-            const sourceAccount = await getOrCreateAssociatedTokenAccount(
-                connection, 
-                fromKeypair,
-                SP_Address,
-                fromKeypair.publicKey
-            )
-
-            const destinationAccount = await getOrCreateAssociatedTokenAccount(
-                connection, 
-                fromKeypair,
-                SP_Address,
-                to_address
-            )
-            const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
-                microLamports: 9000
-            })
-            const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
-                units: 200000
-            })
-            // 构建交易
-            const transaction = new Transaction().add(modifyComputeUnits).add(addPriorityFee).add(
-                createTransferInstruction(
-                    sourceAccount.address,
-                    destinationAccount.address,
-                    fromKeypair.publicKey,
-                    amountSol * 1000000
-                )
-            );
-            const latestBlockHash = await connection.getLatestBlockhash('confirmed')
-            transaction.recentBlockhash = latestBlockHash.blockhash
-            // 发送并确认交易
-            const signature =await connection.sendTransaction(transaction, [fromKeypair])
+			const fromATA = await getAssociatedTokenAddress(mintAddress, fromKeypair.publicKey);
+			const toATA = await getAssociatedTokenAddress(mintAddress, to_address)
+			const toAccountInfo = await connection.getAccountInfo(toATA)
+			if (!toAccountInfo) {
+				transaction.add(
+					createAssociatedTokenAccountInstruction(
+						fromKeypair.publicKey, // payer
+						toATA,                 // ata
+						to_address,           // owner of ata
+						mintAddress            // mint
+					)
+				)
+			}
+			const decimals = gettNumeric(SP_address)
+			const rawAmount = amountSol * 10 ** decimals
+			transaction.add(
+				createTransferCheckedInstruction(
+					fromATA, 				// 源 ATA
+					mintAddress,           // mint
+					toATA,                 // 目标 ATA
+					fromKeypair.publicKey, // 授权者
+					rawAmount,             // 原始数量（整数）
+					decimals               // 小数位数
+				)
+			)
+            
+            // 6. 签名并发送
+			const signature = await sendAndConfirmRawTransaction(
+				connection,
+				transaction,
+				[fromKeypair],
+				{ commitment: "confirmed" }
+			)
 
             Modal.alert({
                 bodyClassName:styles.successModalWrap,
@@ -246,9 +283,10 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             })
         }
     }
+
     const handleSend=()=>{
         const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
-        const randomSolanaRPC = `https://${_node1.domain}/solana-rpc`;
+        const randomSolanaRPC = `http://${_node1.ip_addr}/solana-rpc`
         if(type=='$SOL'){
             transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC);
             return ;

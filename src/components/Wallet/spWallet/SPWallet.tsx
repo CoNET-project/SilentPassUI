@@ -146,7 +146,7 @@ const SPWallet = ({}) => {
                             </div>
                         </div>:''}
 
-                        <ImportButton />
+                        {/* <ImportButton /> */}
                     </div> 
                 </div>
             </Popup>

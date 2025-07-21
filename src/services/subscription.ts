@@ -296,9 +296,13 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 
 	  const profile = CoNET_Data.profiles[0]
 	  const solanaWallet = CoNET_Data.profiles[1].keyID
-
+	  const mainWallet = profile.keyID.toLowerCase()
+	  const referrerLow = referrer.toLowerCase()
+	  if (mainWallet === referrerLow || referrerLow === CoNET_Data.duplicateAccount?.keyID.toLocaleUpperCase() ) {
+			return false
+	  }
 	  try {
-		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, referrer })
+		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, referrer})
 		const wallet = new ethers.Wallet(profile.privateKeyArmor)
 		const signMessage = await wallet.signMessage(message)
 		const sendData = {

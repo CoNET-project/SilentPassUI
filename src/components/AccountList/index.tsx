@@ -334,10 +334,10 @@ export default function AccountList({ showMainWallet = true, simplifiedView = fa
                             </>
                         )
                     }
-                    <>
+                    {/* <>
                         <Separator />
                         <ImportButton />
-                    </>
+                    </> */}
                 </div>
     
             </div>

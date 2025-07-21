@@ -20,6 +20,7 @@ import {
   getProfileAssets,
 } from "./wallets";
 import { PublicKey, Connection } from "@solana/web3.js";
+import axios, { AxiosResponse } from "axios"
 
 let epoch = 0;
 let blockProcess = 0
@@ -109,7 +110,7 @@ const getSOL_Balance = async () => {
   const ownerPubkey = new PublicKey(profile.keyID)
   const connection = new Connection(url, 'confirmed')
   const lamports = await connection.getBalance(ownerPubkey)
-  const sol = lamports / LAMPORTS_PER_SOL
+  const sol = lamports / 10 ** LAMPORTS_PER_SOL
   return sol
 }
 
@@ -128,23 +129,43 @@ const scanSolanaUsdt = () => {
 }
 
 
-const getSolanaTokenBalance = async (tokenAddress: string) => {
+const getSolanaTokenBalance = async (programId: string): Promise<string|null> => {
   if (!CoNET_Data?.profiles) {
     return null
   }
   const profile = CoNET_Data.profiles[1]
-  const url = `http://${getRandomNode()}/solana-rpc`
-  const connection = new Connection(url, 'confirmed')
-  const ownerPubkey = new PublicKey(profile.keyID)
-  const mintPubkey  = new PublicKey(tokenAddress)
-  const resp = await connection.getTokenAccountsByOwner(ownerPubkey, { mint: mintPubkey })
-  if (resp.value.length === 0) {
-    console.log('getSolanaTokenBalance Error: No token account found for this mint.');
-    return null
+  const solanaWallet = profile.keyID
+  const payload = {
+	jsonrpc: "2.0",
+	id: 1,
+	method: "getTokenAccountsByOwner",
+	params: [
+		solanaWallet,
+		{ programId, },
+		{ encoding: "jsonParsed" },
+	],
   }
-  const tokenAccountPubkey = resp.value[0].pubkey
-  const { value } = await connection.getTokenAccountBalance(tokenAccountPubkey)
-  return value
+    let baseURL = `http://${getRandomNode()}/solana-rpc`
+	const api = axios.create({
+		baseURL, 
+		timeout: 30000, // 10 seconds timeout
+		headers: {
+			"Content-Type": "application/json",
+		},
+		data: payload
+	})
+	try {
+		const {data} = await api.post('', payload)
+		if (data.error) {
+			return null
+		}
+
+		const balance = data
+		return balance
+	} catch (ex) {
+		return null
+	}
+	
 }
 
 

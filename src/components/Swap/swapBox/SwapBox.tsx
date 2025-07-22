@@ -7,7 +7,7 @@ import { ReactComponent as SolanaToken } from './../assets/solana-token.svg';
 import { ReactComponent as ConetToken } from './../assets/sp-token.svg';
 import { ReactComponent as UsdtToken } from './../assets/usdt-token.svg';
 import { ReactComponent as SwapBtn } from './../assets/swap-icon-black.svg';
-import { Input,Button } from 'antd-mobile';
+import { Input,Button,Popup,Empty } from 'antd-mobile';
 import { DownOutline } from 'antd-mobile-icons';
 import * as motion from "motion/react-client";
 import { getPrice } from './../../../services/subscription';
@@ -22,23 +22,28 @@ const SwapBox = ({}) => {
     const [fromAmount, setFromAmount] = useState('0');
     const [toAmount, setToAmount] = useState('0');
     const latestRequestId = useRef(0);
+    const [visible, setVisible] = useState(false);
+    const [showIsPay, setShowIsPay] = useState(true);
 
     const handleSwap=()=>{
-
+        // setFromToken(toToken);
+        // setToToken(fromToken);
+        // setFromAmount(toAmount);
+        // setToAmount(fromAmount);
     }
-    const renderTag=(type:string)=>{
+    const renderTag=(type:string,showName:boolean=true)=>{
         switch(type) {
             case 'SP':
-                return <><ConetToken className={styles.icon} />SP</>;
+                return <><ConetToken className={styles.icon} />{showName?'SP':''}</>;
                 break;
             case 'SOL':
-                return <><SolanaToken className={styles.icon} />SOL</>;
+                return <><SolanaToken className={styles.icon} />{showName?'SOL':''}</>;
                 break;
             case 'USDT':
-                return <><UsdtToken className={styles.icon} />USDT</>;
+                return <><UsdtToken className={styles.icon} />{showName?'USDT':''}</>;
                 break;
             default:
-                return <><ConetToken className={styles.icon} />SP</>;
+                return <><ConetToken className={styles.icon} />{showName?'SP':''}</>;
         }
     }
     const useMax=()=>{
@@ -85,6 +90,12 @@ const SwapBox = ({}) => {
         }
     }
     const calcRelativeValue = async (inputType: string, outputType: string, amount: number, resType:string) => {
+        const safeTruncateTo6Decimals=(strNum:string) =>{
+            if (!/^[-+]?\d*(\.\d*)?$/.test(strNum)) return '0'; // 防止非法字符串
+            return strNum.replace(/^(-?\d+)(\.\d{0,6})?.*$/, (_, intPart, decimalPart) => {
+                return intPart + (decimalPart || '');
+            });
+        }
         const getMintAddr=(type:string)=>{
             switch(type) {
                 case 'SP':
@@ -104,14 +115,15 @@ const SwapBox = ({}) => {
         const inputMint=getMintAddr(inputType);
         const outputMint=getMintAddr(outputType);
         if(Number(amount)){
+            //需修改 
             const resultVal = await getPrice(inputMint,outputMint,amount);
             // 只有最新的一次请求才能设置结果
             if (requestId === latestRequestId.current && resultVal) {
                 if(resType == 'receive'){
-                    setToAmount(resultVal);
+                    setToAmount(safeTruncateTo6Decimals(resultVal));
                 }
                 if(resType == 'pay'){
-                    setFromAmount(resultVal);
+                    setFromAmount(safeTruncateTo6Decimals(resultVal));
                 }
             }
         }else{
@@ -122,6 +134,80 @@ const SwapBox = ({}) => {
                 setFromAmount('0');
             }
         }
+    }
+    const calcName=(type:string)=>{
+        switch(type) {
+            case 'SP':
+                return 'Silent Pass';
+                break;
+            case 'SOL':
+                return 'Solana';
+                break;
+            case 'USDT':
+                return 'USDT';
+                break;
+            default:
+                return '--';
+        }
+    }
+    const calcBalance=(type:string)=>{
+        switch(type) {
+            case 'SP':
+                return <>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)} SP</>;
+                break;
+            case 'SOL':
+                return <>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(2)} SOL</>;
+                break;
+            case 'USDT':
+                return <>{profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(2)} USDT</>;
+                break;
+            default:
+                return '--';
+        }
+    }
+    const calcPrice=(type:string,showUnit:boolean=true)=>{
+        switch(type) {
+            case 'SP':
+                return showUnit?<>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</>:(profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2));
+                break;
+            case 'SOL':
+                return showUnit?<>${profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)}</>:(profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2));
+                break;
+            case 'USDT':
+                return showUnit?<>${profiles?.[1]?.tokens?.usdt?.usd || (0.0).toFixed(2)}</>:(profiles?.[1]?.tokens?.usdt?.usd || (0.0).toFixed(2));
+                break;
+            default:
+                return '--';
+        }
+    }
+    const generateOptions=()=>{
+        if(showIsPay){
+            return options.filter(item => Number(calcPrice(item,false)) !== 0);
+        }else{
+            return options;
+        }
+    }
+    const handleSelect=(item:any)=>{
+        if(showIsPay){
+            if(fromToken !== item){
+                if(toToken === item){
+                    handleSwap();
+                }else{
+                    setFromToken(item);
+                    calcRelativeValue(item,toToken,Number(fromAmount),'receive');
+                }
+            }
+        }else{
+            if(toToken !== item){
+                if(fromToken === item){
+                    handleSwap();
+                }else{
+                    setToToken(item);
+                    calcRelativeValue(item,fromToken,Number(toAmount),'pay');
+                }
+            }
+        }
+        setVisible(false);
     }
 
     return (
@@ -155,7 +241,7 @@ const SwapBox = ({}) => {
                         </div>
                     </div>
                     <div className={styles.operation}>
-                        <div className={styles.type}>{renderTag(fromToken)}<DownOutline className={styles.arrow} /></div>
+                        <div className={styles.type} onClick={()=>{setShowIsPay(true);setVisible(true)}}>{renderTag(fromToken)}<DownOutline className={styles.arrow} /></div>
                         <div className={styles.allBtn} onClick={useMax}>{t('swap-asset-Max')}</div>
                     </div>
                 </div>
@@ -187,7 +273,7 @@ const SwapBox = ({}) => {
                         </div>
                     </div>
                     <div className={styles.operation}>
-                        <div className={styles.type}>{renderTag(toToken)}<DownOutline className={styles.arrow} /></div>
+                        <div className={styles.type} onClick={()=>{setShowIsPay(false);setVisible(true)}}>{renderTag(toToken)}<DownOutline className={styles.arrow} /></div>
                     </div>
                 </div>
                 <motion.button
@@ -201,6 +287,41 @@ const SwapBox = ({}) => {
             </div>
             <div className={styles.swapTip}>{t('swap-asset-tip')}</div>
             <Button className={styles.confirmBtn} block color='primary' size='large'>{t('swap-asset-confirm')}</Button>
+            <Popup
+                visible={visible}
+                onMaskClick={() => {setVisible(false)}}
+                onClose={() => {setVisible(false)}}
+                bodyStyle={{
+                    borderTopLeftRadius: '5vw',
+                    borderTopRightRadius: '5vw',
+                    minHeight: '40vh',
+                    overflow:'hidden'
+                }}
+            >
+                <div className={styles.selectWrap}>
+                    {generateOptions().length?<div className={styles.selectList}>
+                        {generateOptions().map((item,index)=>{
+                            return (
+                                <div className={styles.item} key={index} onClick={()=>{handleSelect(item)}}>
+                                    <div className={styles.itemInfo}>
+                                        {renderTag(item,false)}
+                                        <div className={styles.label}>
+                                            <div className={styles.name}>{calcName(item)}</div>
+                                            <div className={styles.balance}>{calcBalance(item)}</div>
+                                        </div>
+                                    </div>
+                                    <div className={styles.itemPrice}>{calcPrice(item)}</div>
+                                </div>
+                            )
+                        })}
+                    </div>:<Empty
+                        style={{ padding: '30px 0' }}
+                        imageStyle={{ width: 128 }}
+                        description={t('swap-asset-select-empty')}
+                    />}
+                    <Button className={styles.closeBtn} onClick={()=>{setVisible(false)}} block color='primary' size='large'>{t('swap-asset-select-close')}</Button>
+                </div>
+            </Popup>
         </>
     );
 };

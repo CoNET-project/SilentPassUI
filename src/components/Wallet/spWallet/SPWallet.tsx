@@ -92,7 +92,7 @@ const SPWallet = ({}) => {
                                 <div className={styles.type}>
                                     <ConetToken />
                                     <div className={styles.text}>
-                                        <div className={styles.name}>$SP</div>
+                                        <div className={styles.name}>SP</div>
                                         <div className={styles.num}>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)}</div>
                                     </div>
                                 </div>
@@ -103,7 +103,7 @@ const SPWallet = ({}) => {
                                 <div className={styles.type}>
                                     <SolanaToken />
                                     <div className={styles.text}>
-                                        <div className={styles.name}>$SOL</div>
+                                        <div className={styles.name}>SOL</div>
                                         <div className={styles.num}>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</div>
                                     </div>
                                 </div>
@@ -114,7 +114,7 @@ const SPWallet = ({}) => {
                                 <div className={styles.type}>
                                     <UsdtToken />
                                     <div className={styles.text}>
-                                        <div className={styles.name}>$USDT</div>
+                                        <div className={styles.name}>USDT</div>
                                         <div className={styles.num}>{profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(6)}</div>
                                     </div>
                                 </div>

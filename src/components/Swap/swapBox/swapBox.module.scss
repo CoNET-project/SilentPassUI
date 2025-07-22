@@ -118,3 +118,59 @@
     font-weight:500;
     font-size:16px;
 }
+.selectWrap{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    padding:20px 4.3vw 100px;
+    background:#1f1f1f;
+    .selectList{
+        .item{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            background: #333;
+            border-radius: 10px;
+            padding:10px;
+            margin:0 0 10px;
+            cursor:pointer;
+            user-select:none;
+            &:last-child{
+                margin:0;
+            }
+            .itemInfo{
+                display:flex;
+                align-items:center;
+                .icon{
+                    width:40px;
+                    height:40px;
+                    margin:0 8px 0 0;
+                }
+                .label{
+                    .name{
+                        color:#fff;
+                        font-size: 15px;
+                        margin:0 0 6px;
+                    }
+                    .balance{
+                        color:#8d8d8d;
+                        font-size: 14px;
+                    }
+                }
+            }
+            .itemPrice{
+                color:#fff;
+                font-size: 14px;
+            }
+        } 
+    }
+    .closeBtn{
+        background: #333;
+        border-radius: 15px;
+        border-color: #333;
+        font-weight: 500;
+        margin:30px 0 0;
+    }
+}
+

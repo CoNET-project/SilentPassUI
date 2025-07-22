@@ -404,6 +404,8 @@
 	"swap-asset-Max": "Max",
 	"swap-asset-Receive": "You Receive",
 	"swap-asset-confirm":"Swap Now",
-	"swap-asset-tip":"The Approximate conversion rate based on quotes received"
+	"swap-asset-tip":"The Approximate conversion rate based on quotes received",
+	"swap-asset-select-close":"Close",
+	"swap-asset-select-empty":"No options available"
 
 }

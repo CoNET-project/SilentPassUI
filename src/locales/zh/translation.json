@@ -410,6 +410,8 @@
 	"swap-asset-Max": "全部",
 	"swap-asset-Receive": "收到",
 	"swap-asset-confirm":"立即兑换",
-	"swap-asset-tip":"系统将根据实时汇率自动计算您可收到的数量"
+	"swap-asset-tip":"系统将根据实时汇率自动计算您可收到的数量",
+	"swap-asset-select-close":"关闭",
+	"swap-asset-select-empty":"暂无可选数据"
 	
 }

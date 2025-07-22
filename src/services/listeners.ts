@@ -19,7 +19,8 @@ import {
   storeSystemData,
   getProfileAssets,
 } from "./wallets";
-import { PublicKey, Connection } from "@solana/web3.js";
+import { PublicKey, Connection } from "@solana/web3.js"
+import {initDuplicate} from './subscription'
 import axios, { AxiosResponse } from "axios"
 
 let epoch = 0;
@@ -66,11 +67,12 @@ const listenProfileVer = async (
       
       const profiles = CoNET_Data?.profiles;
       const now = new Date().getTime()
+	  
       if (!profiles||now - blockProcess < 1000 * 10||_process) {
         return;
       }
       _process = true
-      
+	  
         await checkCurrentRate(setMiningData);
         await getProfileAssets(profiles[0], profiles[1]);
         // await getVpnTimeUsed();
@@ -89,7 +91,12 @@ const listenProfileVer = async (
           if (CoNET_Data.profiles[0].activePassport)
           await _setActivePassport(CoNET_Data.profiles[0].activePassport);
         }
-
+		if (CoNET_Data) {
+			const temp = await initDuplicate(CoNET_Data)
+			if (!temp) {
+				await new Promise(n => setTimeout(() => n(true),10000))
+			}
+		}
         await storeSystemData();
         await setProcessingBlock(false);
       _process = false

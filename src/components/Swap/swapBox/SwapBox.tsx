@@ -24,12 +24,12 @@ const SwapBox = ({}) => {
     const latestRequestId = useRef(0);
     const [visible, setVisible] = useState(false);
     const [showIsPay, setShowIsPay] = useState(true);
+    const [errorInfo, setErrorInfo] = useState('');
 
     const handleSwap=()=>{
-        // setFromToken(toToken);
-        // setToToken(fromToken);
-        // setFromAmount(toAmount);
-        // setToAmount(fromAmount);
+        setFromToken(toToken);
+        setToToken(fromToken);
+        calcRelativeValue(toToken,fromToken,Number(fromAmount),'receive');
     }
     const renderTag=(type:string,showName:boolean=true)=>{
         switch(type) {
@@ -118,12 +118,23 @@ const SwapBox = ({}) => {
             //需修改 
             const resultVal = await getPrice(inputMint,outputMint,amount);
             // 只有最新的一次请求才能设置结果
-            if (requestId === latestRequestId.current && resultVal) {
-                if(resType == 'receive'){
-                    setToAmount(safeTruncateTo6Decimals(resultVal));
-                }
-                if(resType == 'pay'){
-                    setFromAmount(safeTruncateTo6Decimals(resultVal));
+            if (requestId === latestRequestId.current) {
+                if(resultVal){
+                    if(resType == 'receive'){
+                        setToAmount(safeTruncateTo6Decimals(resultVal));
+                    }
+                    if(resType == 'pay'){
+                        setFromAmount(safeTruncateTo6Decimals(resultVal));
+                    }
+                }else{
+                    if(resType == 'receive'){
+                        setToAmount('0');
+                        setErrorInfo('Pay值无效');
+                    }
+                    if(resType == 'pay'){
+                        setFromAmount('0');
+                        setErrorInfo('Receive值无效');
+                    }
                 }
             }
         }else{
@@ -150,16 +161,16 @@ const SwapBox = ({}) => {
                 return '--';
         }
     }
-    const calcBalance=(type:string)=>{
+    const calcBalance=(type:string,showUnit:boolean=true)=>{
         switch(type) {
             case 'SP':
-                return <>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)} SP</>;
+                return showUnit?<>{profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2)} SP</>:(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2));
                 break;
             case 'SOL':
-                return <>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(2)} SOL</>;
+                return showUnit?<>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(2)} SOL</>:(profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(2));
                 break;
             case 'USDT':
-                return <>{profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(2)} USDT</>;
+                return showUnit?<>{profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(2)} USDT</>:(profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(2));
                 break;
             default:
                 return '--';
@@ -191,7 +202,10 @@ const SwapBox = ({}) => {
         if(showIsPay){
             if(fromToken !== item){
                 if(toToken === item){
-                    handleSwap();
+                    // handleSwap();
+                    setFromToken(toToken);
+                    setToToken(fromToken);
+                    calcRelativeValue(toToken,fromToken,Number(fromAmount),'receive');
                 }else{
                     setFromToken(item);
                     calcRelativeValue(item,toToken,Number(fromAmount),'receive');
@@ -200,7 +214,10 @@ const SwapBox = ({}) => {
         }else{
             if(toToken !== item){
                 if(fromToken === item){
-                    handleSwap();
+                    // handleSwap();
+                    setFromToken(toToken);
+                    setToToken(fromToken);
+                    calcRelativeValue(item,fromToken,Number(toAmount),'pay');
                 }else{
                     setToToken(item);
                     calcRelativeValue(item,fromToken,Number(toAmount),'pay');
@@ -208,6 +225,13 @@ const SwapBox = ({}) => {
             }
         }
         setVisible(false);
+    }
+    const isDisabled=()=>{
+        if(Number(calcBalance(fromToken,false)) < Number(fromAmount)){
+            // setErrorInfo('余额不足');
+            return true;
+        }
+        return !toAmount || !fromAmount || toAmount=='0' || fromAmount=='0';
     }
 
     return (
@@ -286,7 +310,7 @@ const SwapBox = ({}) => {
                 </motion.button>
             </div>
             <div className={styles.swapTip}>{t('swap-asset-tip')}</div>
-            <Button className={styles.confirmBtn} block color='primary' size='large'>{t('swap-asset-confirm')}</Button>
+            <Button className={styles.confirmBtn} disabled={isDisabled()} block color='primary' size='large'>{t('swap-asset-confirm')}</Button>
             <Popup
                 visible={visible}
                 onMaskClick={() => {setVisible(false)}}

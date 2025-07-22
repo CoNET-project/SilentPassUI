@@ -146,7 +146,7 @@ export const getPrice = async (inputMint: string, outputMint: string, _amount: n
         const price = ethers.formatUnits(quote.otherAmountThreshold, gettNumeric(outputMint))
         return price
     } catch (ex) {
-
+    	
     }
     return ''
 }

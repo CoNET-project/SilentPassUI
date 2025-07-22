@@ -149,20 +149,18 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		type: "solana"
     };
 
-    tmpData.profiles[1] = profile2;
+    tmpData.profiles[1] = profile2
   }
 
-  if (!tmpData.duplicateAccount) {
-	  await initDuplicate(tmpData)
-  }
 
-  setCoNET_Data(tmpData);
-
-  if (!CoNET_Data) return;
-
-  storeSystemData();
+  await initDuplicate(tmpData)
   
-  const profiles = CoNET_Data.profiles;
+
+  setCoNET_Data(tmpData)
+
+  storeSystemData()
+  
+  const profiles = tmpData.profiles
 
   return profiles
 }

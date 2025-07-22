@@ -93,12 +93,10 @@ import {
 		network: 'CONET DePIN'
 	},
 	Duplicate: {
-		address: '0xb8777d4b0e1c07dF073fAf75a5F42D9e29BfD0F5',
+		address: '0x5f758d675F588a124d7b44c62a8EC8FfA5d01463',
 		network: 'CONET DePIN',
 		abi: Duplicate
 	}
-
-
   };
   
   export default contracts;

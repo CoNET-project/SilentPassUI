@@ -400,6 +400,10 @@
 	"backup-sub-list-2":"扫码保存（可生成二维码，方便通过扫码快速存储和恢复）",
 	"backup-sub-code-tip":"请妥善保存此备份码，一旦选失将无法找回资产。切勿与他人分享！",
 	"backup-sub-label-2":"您的备份码",
+	"backup-sub-create-code-password":"请输入密码初始化备份码",
+	"backup-sub-create-code-password-button":"始化备份码",
+	"backup-sub-create-code-password-error":"服务不可用，请稍后再试",
+	"backup-sub-init-password":"请输入初始化备份码时设定的密码",
 	"backup-sub-code-btn":"查看二维码",
 	"backup-sub-restore-input":"请输入备份码",
 	"backup-sub-restore-btn":"恢复我的账户",
@@ -413,5 +417,6 @@
 	"swap-asset-tip":"系统将根据实时汇率自动计算您可收到的数量",
 	"swap-asset-select-close":"关闭",
 	"swap-asset-select-empty":"暂无可选数据"
+	
 	
 }

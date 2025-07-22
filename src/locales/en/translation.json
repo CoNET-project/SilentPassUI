@@ -399,6 +399,10 @@
 	"backup-sub-restore-btn":"Restore My Account",
 	"backup-sub-code-modal-title":"Backup QR Code",
 	"backup-sub-restore-successful":"Account restored successfully！",
+	"backup-sub-create-code-password":"Please enter password to initialize code",
+	"backup-sub-create-code-password-button":"initialize backup code",
+	"backup-sub-create-code-password-error":"The service is unavailable, please try again later",
+	"backup-sub-init-password":"Please enter the password when initialize code",
 	"swap-asset-title":"Token assets",
 	"swap-asset-pay": "You Pay",
 	"swap-asset-Max": "Max",
@@ -407,5 +411,7 @@
 	"swap-asset-tip":"The Approximate conversion rate based on quotes received",
 	"swap-asset-select-close":"Close",
 	"swap-asset-select-empty":"No options available"
+
+
 
 }

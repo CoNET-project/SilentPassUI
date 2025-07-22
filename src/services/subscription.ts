@@ -7,7 +7,7 @@ import {
 	apiv4_endpoint,
 	conetDepinProvider
 } from "../utils/constants"
-import { refreshSolanaBalances, initSolana, storeSystemData } from './wallets'
+import { refreshSolanaBalances, initSolana, storeSystemData, createOrGetWallet } from './wallets'
 import contracts from "../utils/contracts";
 import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
 import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
@@ -32,6 +32,8 @@ import {
 import {allNodes,} from './mining'
 
 const uuid62 = require('uuid62')
+const duplicate = contracts.Duplicate
+const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi, conetDepinProvider)
 
 interface CompatibleWallet {
 	publicKey: PublicKey;
@@ -67,8 +69,7 @@ export const getCryptoPay = async (cryptoName: string, plan: string): Promise<nu
 }
 
 const getEncryptoData = async (restoreCode: string): Promise<string> => {
-	const duplicate = contracts.Duplicate
-	const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi, conetDepinProvider)
+
 	try {
 		const ret = await duplicate_readOnly.getEncryptoString(restoreCode)
 		return ret
@@ -125,7 +126,7 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
 		//		reset duplicateCode
 		temp.duplicateCode = temp.duplicatePassword = ''
-		
+		temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
 		setCoNET_Data(temp)
 		storeSystemData()
 		setProfiles(temp.profiles)
@@ -191,16 +192,27 @@ export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _
 	
 }
 
+const getDuplicateOwnership = async(duplicateAccount: string, keyID: string): Promise<boolean|null> => {
+	try {
+		const owner = await duplicate_readOnly.duplicateList(keyID)
+		if (owner === ethers.ZeroAddress || duplicateAccount.toLowerCase() !== owner.toLowerCase()) {
+			return false
+		}
+		return true
+	} catch (ex) {
+		return null
+	}
+
+}
 
 const duplicateAPI = `${apiv4_endpoint}duplicate`
-export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object> => {
+export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
 	
 	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
 	temp.duplicateCode = temp._duplicateCode
 	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp.duplicateCode])
-	const mnemonicPhrase = temp.mnemonicPhrase
-	// const encryptoText = temp.encryptedString = await aesGcmEncrypt(mnemonicPhrase, pass)
-	// const keyword = await aesGcmDecrypt(encryptoText, pass)
+	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+
 
 	if (!temp?.duplicateAccount) {
 		const profiles = temp.profiles
@@ -229,6 +241,14 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 			hdPath: null
 		}
 		
+	} else {
+		const keyID = temp.profiles[0].keyID
+		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
+		if (duplicateStatus === false) {
+			await createOrGetWallet(null, true)
+			
+			return null
+		}
 	}
 
 	if (!temp?.duplicatePassword) {
@@ -249,7 +269,7 @@ export const initializeDuplicateCode = async (passcode: string): Promise<boolean
 	
 	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
 	
-	const mnemonicPhrase = temp.mnemonicPhrase
+	const mnemonicPhrase = temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
 	const pass = passCode + passcode
 	const encryptoText = temp.encryptedString = await aesGcmEncrypt(mnemonicPhrase, pass)
 	const keyword = await aesGcmDecrypt(encryptoText, pass)

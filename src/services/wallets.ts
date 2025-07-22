@@ -55,10 +55,10 @@ const isValidSolanaPublicKey = (publicKey: string) => {
   return true
 }
 
-const createOrGetWallet = async (secretPhrase: string | null) => {
+const createOrGetWallet = async (secretPhrase: string | null, initAccount = false) => {
   await checkStorage();
 
-  if (secretPhrase) setCoNET_Data(null);
+  if (secretPhrase|| initAccount ) setCoNET_Data(null);
 
   if (!CoNET_Data || !CoNET_Data?.profiles) {
     const acc = createKeyHDWallets(secretPhrase);
@@ -118,7 +118,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     setCoNET_Data(data)
   }
 
-  const tmpData = CoNET_Data
+  let tmpData = CoNET_Data
   if (!tmpData) {
 	return
   }
@@ -153,12 +153,18 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
   }
 
 
-  await initDuplicate(tmpData)
+  tmpData = await initDuplicate(tmpData)
   
+  await setCoNET_Data(tmpData)
 
-  setCoNET_Data(tmpData)
+  await storeSystemData()
 
-  storeSystemData()
+  if (tmpData === null) {
+	return setTimeout(() => {
+		return window.location.reload()
+	}, 5000)
+	
+  }
   
   const profiles = tmpData.profiles
 
@@ -237,7 +243,16 @@ export const storeSystemData = async () => {
   } catch (ex) {
     console.log(`storeSystemData storageHashData Error!`, ex);
   }
-};
+}
+
+export const deleteSystemData = async () => {
+
+	
+	
+
+	
+}
+
 
 const storageHashData = async (docId: string, data: string) => {
   const database = PouchDB(localDatabaseName, { auto_compaction: true });
@@ -262,7 +277,7 @@ const storageHashData = async (docId: string, data: string) => {
       console.log(`get doc storageHashData Error!`, ex);
     }
   }
-};
+}
 
 const checkStorage = async () => {
   const database = PouchDB(localDatabaseName, { auto_compaction: true });

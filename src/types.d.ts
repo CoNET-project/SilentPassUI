@@ -131,6 +131,7 @@ interface Region {
 	duplicateCode?: string
 	duplicateCodeHash?: string
 	duplicatePassword?: string
+	duplicateMnemonicPhrase?: string
 	duplicateAccount?:profile
 	_duplicateCode?:string
   };

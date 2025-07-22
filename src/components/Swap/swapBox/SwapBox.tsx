@@ -116,7 +116,7 @@ const SwapBox = ({}) => {
         const outputMint=getMintAddr(outputType);
         if(Number(amount)){
             //需修改 
-            const resultVal = await getPriceFromUp2Down(inputMint,outputMint,amount);
+            const resultVal = await (resType == 'receive'?getPriceFromUp2Down(inputMint,outputMint,amount):getPriceFromDown2Up(inputMint,outputMint,amount));
             // 只有最新的一次请求才能设置结果
             if (requestId === latestRequestId.current) {
                 if(resultVal){
@@ -220,7 +220,7 @@ const SwapBox = ({}) => {
                     calcRelativeValue(item,fromToken,Number(toAmount),'pay');
                 }else{
                     setToToken(item);
-                    calcRelativeValue(item,fromToken,Number(toAmount),'pay');
+                    calcRelativeValue(fromToken,item,Number(toAmount),'pay');
                 }
             }
         }

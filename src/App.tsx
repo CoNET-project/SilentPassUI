@@ -87,7 +87,6 @@ function App() {
 	if (tmpData.profiles[0].activePassport?.expiresDays !== '7') {
 		tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
 	}
-	  
 
 	setActivePassport(tmpData.profiles[0].activePassport);
 
@@ -110,12 +109,11 @@ function App() {
 
 	if (window.location.search && queryParams) {
 		secretPhrase = queryParams.get("secretPhrase");
-		secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
+		secretPhrase = secretPhrase ? secretPhrase.replace(/\-/g, " ") : null;
 	}
 
 	const profiles = await createOrGetWallet(secretPhrase);
 	setProfiles(profiles)
-
 
 	checkCurrentRate(setMiningData)
 

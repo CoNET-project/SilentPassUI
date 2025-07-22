@@ -27,6 +27,7 @@ const Languages=({visible, setVisible}: LanguagesProps)=> {
         const antdMLang: AntdLocale={en:enUS,zh:zhCN};
         let storage = window.localStorage;
         localStorage.lang=value;
+		//@ts-ignore
         await i18n.changeLanguage(value);
         if(value && value[0]) setDefaultConfig({locale: antdMLang[value[0] as keyof typeof antdMLang]});
         setVisible(false)

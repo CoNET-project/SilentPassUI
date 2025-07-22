@@ -164,8 +164,8 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
   
   const profiles = CoNET_Data.profiles;
 
-  return profiles;
-};
+  return profiles
+}
 
 const createKeyHDWallets = (secretPhrase: string | null) => {
   try {

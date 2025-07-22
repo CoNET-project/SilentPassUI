@@ -15,6 +15,11 @@ import {ethers} from 'ethers'
 import { CoNET_Data, setCoNET_Data } from "../utils/globals"
 import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
 import Bs58 from 'bs58'
+import {
+  createJupiterApiClient,
+  QuoteGetRequest,
+  QuoteResponse
+} from "@jup-ag/api"
 
 import {
   AnchorProvider,
@@ -136,19 +141,49 @@ const gettNumeric = (token: string) => {
 	}
 }
 
-export const getPrice = async (inputMint: string, outputMint: string, _amount: number): Promise<string> => {
-	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(inputMint))
+export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
+	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(upMint))
 	const slippageBps = 250 // 0.5% slippage
-	const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}`
+	const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
 	try {
         const quoteResponse = await axios.get(quoteUrl)
         const quote = quoteResponse.data
-        const price = ethers.formatUnits(quote.otherAmountThreshold, gettNumeric(outputMint))
+        const price = ethers.formatUnits(quote.otherAmountThreshold, gettNumeric(downputMint))
         return price
     } catch (ex) {
     	
     }
     return ''
+}
+
+export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
+	const amount = parseInt(ethers.parseUnits(_amount.toString(), gettNumeric(downputMint)).toString())
+	const slippageBps = 250 
+	// 1. 初始化客户端（默认指向 https://quote-api.jup.ag/v6）
+	const jupiterApi = createJupiterApiClient({
+		basePath: "https://quote-api.jup.ag/v6"
+	})
+
+	// 2. 构造请求
+	const quoteRequest: QuoteGetRequest = {
+		inputMint: upMint,  
+		outputMint: downputMint, 
+		amount,
+		slippageBps,
+		swapMode: "ExactOut"            // 关键：ExactOut 模式
+	}
+	try {
+		const response: QuoteResponse | null = await jupiterApi.quoteGet(quoteRequest)
+		if (!response) {
+			return ''
+		}
+		const upMint_price = ethers.formatUnits(response.otherAmountThreshold, gettNumeric(upMint))
+		return upMint_price
+	} catch (ex) {
+		return ''
+	}
+	
+	
 }
 
 
@@ -190,6 +225,9 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 			hdPath: null
 		}
 		
+	} else {
+		//		check duplicateAccount ownership
+
 	}
 
 	return temp

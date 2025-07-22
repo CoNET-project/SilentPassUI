@@ -10,7 +10,7 @@ import { ReactComponent as SwapBtn } from './../assets/swap-icon-black.svg';
 import { Input,Button,Popup,Empty } from 'antd-mobile';
 import { DownOutline } from 'antd-mobile-icons';
 import * as motion from "motion/react-client";
-import { getPrice } from './../../../services/subscription';
+import { getPriceFromDown2Up, getPriceFromUp2Down } from './../../../services/subscription';
 
 const SwapBox = ({}) => {
     const { t, i18n } = useTranslation();
@@ -116,7 +116,7 @@ const SwapBox = ({}) => {
         const outputMint=getMintAddr(outputType);
         if(Number(amount)){
             //需修改 
-            const resultVal = await getPrice(inputMint,outputMint,amount);
+            const resultVal = await getPriceFromUp2Down(inputMint,outputMint,amount);
             // 只有最新的一次请求才能设置结果
             if (requestId === latestRequestId.current) {
                 if(resultVal){

@@ -73,9 +73,9 @@ const ImportButton=({  }) => {
 
     return (
         <>
-            <Button block color='primary' size='large' className={styles.importBtn} onClick={()=>{setVisible(true)}}>
+            {/* <Button block color='primary' size='large' className={styles.importBtn} onClick={()=>{setVisible(true)}}>
                 {t('comp-comm-import')}
-            </Button>
+            </Button> */}
             <Popup
                 visible={visible}
                 onMaskClick={() => {setVisible(false)}}
@@ -85,14 +85,15 @@ const ImportButton=({  }) => {
                 closeOnMaskClick={true}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('comp-comm-import')}</NavBar>
+                    {/* <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('comp-comm-import')}</NavBar> */}
                     <div className={styles.cont}>
                         <TextArea value={value} onChange={handleChange} className={styles.textarea} placeholder={t('comp-comm-private-key')} rows={5} />
                         <div className={styles.warning}>
                             <div className={styles.title}><ExclamationTriangleOutline style={{marginRight:3}} />{t('comp-comm-private-warning-1')}</div>
                             {t('comp-comm-private-warning-2')}
                         </div>
-                        <Button className={isRightKey?styles.btn:styles.errorBtn} onClick={goImport} loading={loading} block color='primary' disabled={!value} size='large'>{isRightKey?t('comp-comm-import-btn'):t('comp-comm-import-error')}</Button>
+
+                        {/* <Button className={isRightKey?styles.btn:styles.errorBtn} onClick={goImport} loading={loading} block color='primary' disabled={!value} size='large'>{isRightKey?t('comp-comm-import-btn'):t('comp-comm-import-error')}</Button> */}
                     </div>
                 </div>
             </Popup>

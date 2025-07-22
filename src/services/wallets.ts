@@ -1081,8 +1081,11 @@ const scanETH = async (walletAddr: string) => {
 };
 
 const ReferralsContract = new ethers.Contract(contracts.Referrals.address, contracts.Referrals.abi, conetDepinProvider)
-const getReferrals = async (key: string) => {
-
+const getReferrals = async () => {
+  if (!CoNET_Data||!CoNET_Data?.duplicateAccount) {
+	return null
+  }
+  const key = CoNET_Data?.duplicateAccount.keyID
   try {
     const ret = await
     Promise.all ([
@@ -1116,7 +1119,7 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
   const [conetDepin, conet_eth, referrals, points, ] = await Promise.all([
     scanCONETDepin(key),
     scanConetETH(key),
-    getReferrals(key),
+    getReferrals(),
     getSPClubPoint(key)
   ]);
 

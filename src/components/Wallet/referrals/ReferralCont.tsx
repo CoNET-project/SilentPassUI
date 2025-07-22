@@ -27,7 +27,7 @@ const CopyBtn=({text}:CopyBtnParams)=>{
 
 const ReferralCont=({  })=> {
     const { t, i18n } = useTranslation();
-    const { profiles, setAirdropSuccess, setAirdropTokens, setAirdropProcess, setAirdropProcessReff } = useDaemonContext();
+    const { profiles, setAirdropSuccess, setAirdropTokens, setAirdropProcess, setAirdropProcessReff, duplicateAccount } = useDaemonContext();
     const [inviter, setInviter] = useState('');
     const [subLoading, setSubLoading] = useState(false);
     const handleSetInviter = async () => {
@@ -52,8 +52,8 @@ const ReferralCont=({  })=> {
                 <UserOutline className={styles.icon} /> {t('comp-accountlist-Referral-detail')}
             </div>
             {profiles?.[0]?.keyID ?<div className={styles.val}>
-                <div className={styles.address}><Ellipsis direction='middle' content={profiles[0].keyID} /></div>
-                <CopyBtn text={profiles[0].keyID} />
+                <div className={styles.address}><Ellipsis direction='middle' content={duplicateAccount.keyID} /></div>
+                <CopyBtn text={duplicateAccount.keyID} />
             </div>:''}
             <div className={styles.label}>
                 <LinkOutline className={styles.icon} /> {t('comp-accountlist-Referral-Inviter')}

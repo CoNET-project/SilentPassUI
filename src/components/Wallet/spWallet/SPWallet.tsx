@@ -145,8 +145,8 @@ const SPWallet = ({}) => {
                                 <div style={{marginLeft:12}}><HideBtn isHidden={isKeyHidden} setIsHidden={setIsKeyHidden} /></div>
                             </div>
                         </div>:''}
+                        {/* <ImportButton /> */}
 
-                        {/*<ImportButton />*/}
                     </div> 
                 </div>
             </Popup>

@@ -130,11 +130,13 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
 		//		reset duplicateCode
 		temp.duplicateCode = temp.duplicatePassword = ''
-		temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
-		setCoNET_Data(temp)
-		storeSystemData()
-		setProfiles(temp.profiles)
+		temp.mnemonicPhrase = temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
+
+		await setCoNET_Data(temp)
+		await storeSystemData()
+		await setProfiles(temp.profiles)
 	}
+
 	setTimeout(() => {
 		changeStopProcess(false)
 	}, 15000)
@@ -294,8 +296,8 @@ export const initializeDuplicateCode = async (passcode: string): Promise<boolean
 	}
 	temp.duplicateCode = temp._duplicateCode
 	temp.duplicatePassword = passcode
-	setCoNET_Data(temp)
-  	storeSystemData()
+	await setCoNET_Data(temp)
+  	await storeSystemData()
 	return true
 }
 

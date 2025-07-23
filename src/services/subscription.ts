@@ -29,7 +29,9 @@ import {
   Wallet
 } from "@coral-xyz/anchor"
 
-import {allNodes,} from './mining'
+import {allNodes} from './mining'
+
+import {changeStopProcess} from './listeners'
 
 const uuid62 = require('uuid62')
 const duplicate = contracts.Duplicate
@@ -99,9 +101,10 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	} catch (ex) {
 		return false
 	}
-	
+	changeStopProcess(true)
 	const solanaWallet = await initSolana(restoreMnemonicPhrase)
 	if (!solanaWallet) {
+		changeStopProcess(false)
 		return false
 	}
 
@@ -117,6 +120,7 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	const result = await postToEndpoint(restoreAPI, true, sendData)
 	if (!result|| !result?.status) {
 		console.log(`initDuplicate Error!`, result?.error)
+		changeStopProcess(false)
 		return false
 	}
 
@@ -131,6 +135,10 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 		storeSystemData()
 		setProfiles(temp.profiles)
 	}
+	setTimeout(() => {
+		changeStopProcess(false)
+	}, 15000)
+	
 	return true
 
 }

@@ -245,14 +245,6 @@ export const storeSystemData = async () => {
   }
 }
 
-export const deleteSystemData = async () => {
-
-	
-	
-
-	
-}
-
 
 const storageHashData = async (docId: string, data: string) => {
   const database = PouchDB(localDatabaseName, { auto_compaction: true });

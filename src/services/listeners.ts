@@ -25,6 +25,12 @@ import axios, { AxiosResponse } from "axios"
 
 let epoch = 0;
 let blockProcess = 0
+let _process = false
+let _stopProcess = false
+
+const changeStopProcess = (status: boolean) => {
+	_process = status
+}
 const LAMPORTS_PER_SOL = 9
 const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
@@ -40,8 +46,11 @@ const listenProfileVer = async (
   if (now - blockProcess < 1000 * 10) {
     return;
   }
+
+
   blockProcess = now
   
+
   await conetDepinProvider.getBlockNumber();
   checkCurrentRate(setMiningData);
   await getProfileAssets(profiles[0], profiles[1]);
@@ -59,13 +68,21 @@ const listenProfileVer = async (
   await storeSystemData();
   await setProcessingBlock(false);
   blockProcess = now
-  let _process = false
+
+
+
+
   conetDepinProvider.on("block", async (block) => {
+
     if (block === epoch + 1) {
 
       epoch++;
-      
-      const profiles = CoNET_Data?.profiles;
+
+      if (_stopProcess) {
+		return
+	  }
+
+      const profiles = CoNET_Data?.profiles
       const now = new Date().getTime()
 	  
       if (!profiles||now - blockProcess < 1000 * 10||_process) {
@@ -86,17 +103,16 @@ const listenProfileVer = async (
       
         await getPassportsInfoForProfile(profiles[0]);
       
-        if (CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
+        if (CoNET_Data && CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
           await _setProfiles(CoNET_Data?.profiles);
           if (CoNET_Data.profiles[0].activePassport)
           await _setActivePassport(CoNET_Data.profiles[0].activePassport);
-        }
-		if (CoNET_Data) {
 			const temp = await initDuplicate(CoNET_Data)
 			if (!temp) {
 				await new Promise(n => setTimeout(() => n(true),10000))
 			}
-		}
+        }
+		
         await storeSystemData();
         await setProcessingBlock(false);
       _process = false
@@ -212,7 +228,7 @@ const scan_spl_balance = async (
   }
 };
 
-export { listenProfileVer, scanSolanaSol, scanSolanaSp, scanSolanaUsdt };
+export { listenProfileVer, scanSolanaSol, scanSolanaSp, scanSolanaUsdt, changeStopProcess };
 
 
 //    

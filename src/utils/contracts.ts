@@ -93,7 +93,7 @@ import {
 		network: 'CONET DePIN'
 	},
 	Duplicate: {
-		address: '0x5f758d675F588a124d7b44c62a8EC8FfA5d01463',
+		address: '0x87A70eD480a2b904c607Ee68e6C3f8c54D58FB08',
 		network: 'CONET DePIN',
 		abi: Duplicate
 	}

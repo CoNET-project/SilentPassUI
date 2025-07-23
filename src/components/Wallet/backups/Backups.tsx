@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './backups.module.scss';
 import { useTranslation } from 'react-i18next';
-import { List,Popup,NavBar,Button,Space,Ellipsis,Input,Modal,Result } from 'antd-mobile';
+import { List,Popup,NavBar,Button,Space,Ellipsis,Input,Modal,Result,Toast } from 'antd-mobile';
 import { LockOutline,ExclamationTriangleOutline,GiftOutline,SystemQRcodeOutline,LoopOutline,LeftOutline } from 'antd-mobile-icons';
 import { ReactComponent as ConetToken } from './../assets/main-wallet.svg';
 import CopyBtn from './../copyBtn/CopyBtn';
@@ -12,18 +12,23 @@ import { CoNET_Data, setCoNET_Data } from './../../../utils/globals';
 import {restoreAccount, initializeDuplicateCode} from '../../../services/subscription'
 import { useDaemonContext } from "../../../providers/DaemonProvider";
 import { getCurrentPassportInfoInChain, storeSystemData } from "../../../services/wallets";
+
 const Backups = ({}) => {
     const { t, i18n } = useTranslation();
     const [visible, setVisible] = useState<boolean>(false);
-    const [password, setPassword] = useState('');
+    const [code,setCode]=useState('');	//备份码
+    const [password, setPassword] = useState('');	//恢复填写 backup code
+    const [initCode, setInitCode] = useState('');	//恢复填写 init code
     const [recoveryLoading, setRecoveryLoading] = useState(false);
-    const [codeVisible, setCodeVisible] = useState(false);
+    const [inputError, setInputError] = useState(false);
+    const [codeVisible, setCodeVisible] = useState(false);	//二维码弹框
     const [copyStatus, setCopyStatus] = useState(false);
-    const [code,setCode]=useState('');
-	const [codeInputError, setCodeInputError] = useState(false)
-	const [code_password, setCode_Password] = useState('')
-	const [inputError, setInputError] = useState(false);
-	const [codePasswordLoading, setCodePasswordLoading] = useState(false);
+    const [customInitCode, setCustomInitCode] = useState('');	//设置密码
+	const [codeInputError, setCodeInputError] = useState(false);
+	const [customInitCodeLoading, setCustomInitCodeLoading] = useState(false);
+	const [backupCodeShow, setBackupCodeShow] = useState(false);
+	const [lookCode, setLookCode] = useState('');	//查看备份码密码
+	const [lookCodeError, setLookCodeError] = useState(false);
 	const {setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, setProfiles } = useDaemonContext();
     
     useEffect(()=>{
@@ -32,19 +37,16 @@ const Backups = ({}) => {
 
     //恢复
     const handleRecovery=async ()=>{
-        //这里恢复按钮触发，password是填写的code,setRecoveryLoading控制loading状态
-		setInputError(false)
-		if (!CoNET_Data || password === CoNET_Data?.duplicateCode||!code_password||!password) {
-			return setInputError(true)
+		setInputError(false);
+		if (!CoNET_Data || password === CoNET_Data?.duplicateCode||!initCode||!password) {
+			return setInputError(true);
 		}
-		setRecoveryLoading(true)
-		const kkk = await restoreAccount (password, code_password, CoNET_Data, setProfiles)
-		
+		setRecoveryLoading(true);
+		const kkk = await restoreAccount (password, initCode, CoNET_Data, setProfiles);
 		if (!kkk) {
-			setRecoveryLoading(false)
-			return setInputError(true)
+			setRecoveryLoading(false);
+			return setInputError(true);
 		}
-		
         Modal.alert({
             bodyClassName:styles.successModalWrap,
             content: <div className={styles.successModal}>
@@ -57,16 +59,30 @@ const Backups = ({}) => {
         });
 		setRecoveryLoading(false);
     }
-
-	const initialize_code = async () => {
-		setCodePasswordLoading(true)
-		setCodeInputError(false)
-		const result = await initializeDuplicateCode(code_password)
-		setCodePasswordLoading(false)
+	const initializeCode = async () => {
+		setCustomInitCodeLoading(true);
+		setCodeInputError(false);
+		const result = await initializeDuplicateCode(customInitCode);
+		setCustomInitCodeLoading(false);
 		if (!result) {
+			Toast.show({
+                icon: 'fail',
+                content: t('backup-sub-create-code-password-error')
+            });
 			return setCodeInputError (true)
 		}
-		setCode_Password('')
+		setCustomInitCode('')
+	}
+	const verifyInitCodeToShow=()=>{
+		if(lookCode === CoNET_Data?.duplicatePassword){
+			setBackupCodeShow(true);
+		}else{
+			Toast.show({
+                icon: 'fail',
+                content: '请检查输入的密码'
+            });
+			setLookCodeError(true);
+		}
 	}
     
     return (
@@ -104,8 +120,8 @@ const Backups = ({}) => {
                                 <li className={styles.listItem}>2.{t('backup-sub-list-2')}</li>
                             </ul>
                             <div className={styles.tips}><ExclamationTriangleOutline className={styles.icon} />{t('backup-sub-code-tip')}</div>
-							{
-								code && <>
+							{code && <>
+								{backupCodeShow?<>
 									<div className={styles.valTitle}>{t('backup-sub-label-2')}</div>
 									<div className={styles.valCont}>
 										<div className={styles.val}><Ellipsis direction='middle' content={code} /></div>
@@ -119,14 +135,42 @@ const Backups = ({}) => {
 											</Space>
 										</Button>
 									</div>
-								</> 
-								
-							}
-                            
+								</>:<div className={styles.verifyBox}>
+									<div className={styles.inputBox}>
+										<Input
+											className={lookCodeError ? styles.generateInputError :styles.generateInput}
+											style={{color: codeInputError ? 'red': 'unset'}}
+											placeholder="请输入初始化备份码时设定的密码"
+											value={lookCode}
+											onChange={val => {
+												setLookCodeError(false)
+												setLookCode(val)
+											}}
+										/>
+									</div>
+									<Button onClick={verifyInitCodeToShow} block className={styles.showBtn} color='primary' disabled={!lookCode}>查看备份码</Button>
+								</div>}
+							</>}
+                            {!code && <>
+	                            <div className={styles.initBox}>
+	                            	<div className={styles.inputBox}>
+										<Input
+											className={codeInputError ? styles.generateInputError :styles.generateInput}
+											style={{color: codeInputError ? 'red': 'unset'}}
+											placeholder={t('backup-sub-create-code-password')}
+											value={customInitCode}
+											disabled={customInitCodeLoading}
+											onChange={val => {
+												setCodeInputError(false)
+												setCustomInitCode(val)
+											}}
+										/>
+									</div>
+									<Button onClick={initializeCode} block className={styles.initBtn} loading={customInitCodeLoading} color='primary' disabled={!customInitCode}>{t('backup-sub-create-code-password-button')}</Button>
+	                            </div>
+                        	</>}
                         </div>
-
-
-						{
+						{/*{
 							//				生成备份码
 							!code &&
 							<div className={styles.restore}>
@@ -149,7 +193,7 @@ const Backups = ({}) => {
 								</div>
 								<Button onClick={initialize_code} block className={styles.recoveryBtn} loading={codePasswordLoading} color='primary' disabled={!code_password}>{t('backup-sub-create-code-password-button')}</Button>
 							</div>
-						}
+						}*/}
                         <div className={styles.restore}>
                             <div className={styles.title}><LoopOutline className={styles.icon} />{t('backup-sub-title-3')}</div>
                             <div className={styles.desc}>{t('backup-sub-desc-3')}</div>
@@ -158,11 +202,11 @@ const Backups = ({}) => {
 									className={inputError ? styles.generateInputError :styles.generateInput}
 									style={{color: inputError ? 'red': 'unset'}}
 									placeholder={t('backup-sub-init-password')}
-									value={code_password}
-									disabled={codePasswordLoading}
+									value={initCode}
+									disabled={recoveryLoading}
 									onChange={val => {
 										setInputError(false)
-										setCode_Password(val)
+										setInitCode(val)
 									}}
 								/>
 							</div>
@@ -179,7 +223,7 @@ const Backups = ({}) => {
 									}}
                                 />
                             </div>
-                            <Button onClick={handleRecovery} block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password||!code_password}>{t('backup-sub-restore-btn')}</Button>
+                            <Button onClick={handleRecovery} block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password||!initCode}>{t('backup-sub-restore-btn')}</Button>
                         </div>
                     </div> 
                 </div>

@@ -2,17 +2,20 @@ import {useState,useRef,useEffect,forwardRef,useImperativeHandle} from 'react';
 import { Popup,NavBar,Input,Button,SpinLoading,Modal,Result,Ellipsis,Toast,Dialog } from 'antd-mobile';
 import { LocationOutline,LeftOutline } from 'antd-mobile-icons';
 import styles from './sendButton.module.scss';
-import { ReactComponent as SpToken } from './../assets/sp-token.svg';
+import { ReactComponent as SolanaToken } from './../assets/solana-token.svg';
+import { ReactComponent as ConetToken } from './../assets/sp-token.svg';
+import { ReactComponent as UsdtToken } from './../assets/usdt-token.svg';
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL, ComputeBudgetProgram, sendAndConfirmRawTransaction } from "@solana/web3.js";
 import { createTransferInstruction,getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
-import Bs58 from "bs58"
+import Bs58 from "bs58";
 import { ethers } from 'ethers';
-import {globalAllNodes} from "../../../utils/globals"
+import {globalAllNodes} from "../../../utils/globals";
 import BigNumber from 'bignumber.js';
 import { useTranslation } from 'react-i18next';
 import {openWebLinkNative} from './../../../api';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
-import {Solana_SOL, Solana_SP, Solana_USDT} from "../../../utils/constants"
+import {Solana_SOL, Solana_SP, Solana_USDT} from "../../../utils/constants";
+import {  getPriceFromUp2Down } from './../../../services/subscription';
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
@@ -25,14 +28,14 @@ interface SendParams {
     type: string; 
     balance: number|string;
     handleRefreshSolanaBalances:()=>Promise<void>;
-    usd:number;
+    usd?:number;
     wallet:any;
     isEthers:boolean;
     extendref?:any;
 }
 
 
-const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers,extendref=null }: SendParams)=> {
+const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd=0,isEthers,extendref=null }: SendParams)=> {
     const { isIOS, isLocalProxy } = useDaemonContext();
     const [visible, setVisible] = useState(false);
     const [address, setAddress] = useState('');
@@ -40,6 +43,8 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
     const [subLoading, setSubLoading] = useState(false);
     const [calcPrice, setCalcPrice] = useState('0.00');
     const { t, i18n } = useTranslation();
+    const [sp2usdRatio, setSp2usdRatio] = useState(0);
+    const [sol2usdRatio, setSol2usdRatio] = useState(0);
 
     useImperativeHandle(extendref, () => ({
         setExternalAddress: (val: string) => {
@@ -65,13 +70,64 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         }
     },[visible])
 
-    const usdRatio=()=>{
-        let price=BigNumber(usd);
-        let bala=BigNumber(convertStringToNumber(balance));
-        if(type === '$USDT'){
-            return new BigNumber(1).dividedBy(1);
+    useEffect(()=>{
+        getRatio();
+    },[])
+
+    const removeDollarPrefix = (str:string) => str.startsWith('$') ? str.slice(1) : str;
+    const getMintAddr=(type:string)=>{
+        switch(type) {
+            case 'SP':
+                return 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump';
+                break;
+            case 'SOL':
+                return 'So11111111111111111111111111111111111111112';
+                break;
+            case 'USDT':
+                return 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+                break;
+            case 'USDC':
+                return 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+                break;
+            default:
+                return '';
         }
-        return price.dividedBy(bala)
+    }
+    const getRatio=async()=>{
+        const SPRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SP'),100);
+        const SOLRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SOL'),100);
+        setSp2usdRatio(SPRatio?(BigNumber(100).dividedBy(BigNumber(SPRatio)).toNumber()):0);
+        setSol2usdRatio(SOLRatio?(BigNumber(100).dividedBy(BigNumber(SOLRatio)).toNumber()):0);
+    }
+    const usdRatio=()=>{
+        switch(removeDollarPrefix(type)) {
+            case 'SP':
+                return sp2usdRatio;
+                break;
+            case 'SOL':
+                return sol2usdRatio;
+                break;
+            case 'USDT':
+                return new BigNumber(1).dividedBy(1);
+                break;
+            default:
+                return '0';
+        }
+    }
+    const renderTag=(type:string)=>{
+        switch(type) {
+            case 'SP':
+                return <ConetToken />;
+                break;
+            case 'SOL':
+                return <SolanaToken />;
+                break;
+            case 'USDT':
+                return <UsdtToken />;
+                break;
+            default:
+                return <ConetToken />;
+        }
     }
 
     const gettNumeric = (token: string) => {
@@ -110,7 +166,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
         let ratio=usdRatio();
         setAmount(convertStringToNumber(balance)+'');
         if(convertStringToNumber(balance)){
-            setCalcPrice(ratio.multipliedBy(valBig).toFixed(2));
+            setCalcPrice(BigNumber(ratio).multipliedBy(valBig).toFixed(2));
         }else{
             setCalcPrice('0.00');
         }
@@ -385,7 +441,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
             >
                 <div className={styles.modalWrap}>
                     <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('comp-accountlist-SendButton')} {type}</NavBar>
-                    <div className={styles.logo}><SpToken width={100} height={100}/></div>
+                    <div className={styles.logo}>{renderTag(removeDollarPrefix(type))}</div>
                     <div className={styles.form}>
                         <div className={styles.addressInput}>
                             <Input
@@ -409,7 +465,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd,isEthers
                                         setAmount(val);
                                     }
                                     if(valBig){
-                                        setCalcPrice(ratio.multipliedBy(valBig).toFixed(2));
+                                        setCalcPrice(BigNumber(ratio).multipliedBy(valBig).toFixed(2));
                                     }else{
                                         setCalcPrice('0.00');
                                     }

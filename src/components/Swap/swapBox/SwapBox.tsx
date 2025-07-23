@@ -34,12 +34,18 @@ const SwapBox = ({}) => {
     const [showIsPay, setShowIsPay] = useState(true);
     const [errorInfo, setErrorInfo] = useState('');
     const [submitLoading, setSubmitLoading] = useState(false);
+    const [sp2usdRatio, setSp2usdRatio] = useState(0);
+    const [sol2usdRatio, setSol2usdRatio] = useState(0);
 
     useEffect(()=>{
         if(Number(calcBalance(fromToken,false)) < Number(fromAmount)){
             setErrorInfo(t('swap-asset-insufficient'));
         }
     },[fromToken,fromAmount])
+
+    useEffect(()=>{
+        getRatio();
+    },[])
 
     const handleSwap=()=>{
         setFromToken(toToken);
@@ -69,33 +75,19 @@ const SwapBox = ({}) => {
         setFromAmount(val);
         calcRelativeValue(fromToken,toToken,Number(val),'receive');
     }
-    const convertStringToNumber=(str:string|number): number => {
-        const multiplier: Record<'K'|'M'|'B'|'T', number> = {
-            'K': 1e3,   // 千
-            'M': 1e6,   // 百万
-            'B': 1e9,   // 十亿
-            'T': 1e12   // 万亿
-        };
-
-        // 提取数字部分和单位
-        const match = (str+'').match(/^([\d.]+)([KMBT]?)$/i);
-        if (!match) return NaN;
-
-        const num = parseFloat(match[1]);
-        const unit = match[2].toUpperCase() as keyof typeof multiplier;
-
-        return unit ? num * multiplier[unit] : num;
+    const getRatio=async()=>{
+        const SPRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SP'),100);
+        const SOLRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SOL'),100);
+        setSp2usdRatio(SPRatio?(BigNumber(100).dividedBy(BigNumber(SPRatio)).toNumber()):0);
+        setSol2usdRatio(SOLRatio?(BigNumber(100).dividedBy(BigNumber(SOLRatio)).toNumber()):0);
     }
     const usdRatio=(type:string)=>{
-        let target;
         switch(type) {
             case 'SP':
-                target=profiles?.[1]?.tokens?.sp;
-                return BigNumber(target?.usd).dividedBy(BigNumber(convertStringToNumber(target?.balance)));
+                return sp2usdRatio;
                 break;
             case 'SOL':
-                target=profiles?.[1]?.tokens?.sol;
-                return BigNumber(target?.usd).dividedBy(BigNumber(convertStringToNumber(target?.balance)));
+                return sol2usdRatio;
                 break;
             case 'USDT':
                 return new BigNumber(1).dividedBy(1);

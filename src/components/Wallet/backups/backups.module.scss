@@ -141,6 +141,94 @@
                     padding: 5px 0!important;
                 }
             }
+            .verifyBox{
+                .inputBox{
+                    margin: 12px 0 0;
+                    .generateInput{
+                        background: #3f3f40;
+                        border-radius: 4px;
+                        padding: 8px 10px;
+                        :global(.adm-input-element::-webkit-input-placeholder) {
+                            color: #707171;
+                        }
+                        :global(.adm-input-element::placeholder) {
+                            color: #707171;
+                        }
+                        :global(.adm-input-element) {
+                            color: #fff;
+                            font-size: 12px!important;
+                        }
+                    }
+                    .generateInputError{
+                        background: #3f3f40;
+                        border-radius: 4px;
+                        padding: 8px 10px;
+                        :global(.adm-input-element::-webkit-input-placeholder) {
+                            color: #707171;
+                        }
+                        :global(.adm-input-element::placeholder) {
+                            color: #707171;
+                        }
+                        :global(.adm-input-element) {
+                            color: #dc6f6f;
+                            font-size: 12px!important;
+                        }
+                    }
+                }
+                .showBtn{
+                    background: #28292e;
+                    border-color: #28292e;
+                    margin: 8px 0 0;
+                    span{
+                        color: #fff!important;
+                        font-size: 14px;
+                    }
+                }
+            }
+            .initBox{
+                .inputBox{
+                    margin: 12px 0 0;
+                    .generateInput{
+                        background: #3f3f40;
+                        border-radius: 4px;
+                        padding: 8px 10px;
+                        :global(.adm-input-element::-webkit-input-placeholder) {
+                            color: #707171;
+                        }
+                        :global(.adm-input-element::placeholder) {
+                            color: #707171;
+                        }
+                        :global(.adm-input-element) {
+                            color: #fff;
+                            font-size: 12px!important;
+                        }
+                    }
+                    .generateInputError{
+                        background: #3f3f40;
+                        border-radius: 4px;
+                        padding: 8px 10px;
+                        :global(.adm-input-element::-webkit-input-placeholder) {
+                            color: #707171;
+                        }
+                        :global(.adm-input-element::placeholder) {
+                            color: #707171;
+                        }
+                        :global(.adm-input-element) {
+                            color: #dc6f6f;
+                            font-size: 12px!important;
+                        }
+                    }
+                }
+                .initBtn{
+                    background: #28292e;
+                    border-color: #28292e;
+                    margin: 8px 0 0;
+                    span{
+                        color: #fff!important;
+                        font-size: 14px;
+                    }
+                }
+            }
         }
         .restore{
             border-top: 1px rgb(63, 63, 64) solid;

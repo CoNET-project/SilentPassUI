@@ -173,9 +173,9 @@ export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _
 }
 
 export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
-	const amount = parseInt(ethers.parseUnits(_amount.toString(), gettNumeric(downputMint)).toString())
+	const amount = parseInt(ethers.parseUnits(_amount.toString(), gettNumeric(upMint)).toString())
 	const slippageBps = 250 
-	const quoteUrl = `http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
+	const quoteUrl = `http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${downputMint}&outputMint=${upMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
 	try {
         const quoteResponse = await axios.get(quoteUrl)
         const quote = quoteResponse.data

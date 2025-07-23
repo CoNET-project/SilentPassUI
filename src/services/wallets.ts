@@ -1117,96 +1117,97 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
   const key = profile.keyID;
 
   if (key) {
-  if (!profile.tokens) {
-    profile.tokens = initProfileTokens();
-  }
+	if (!profile.tokens) {
+		profile.tokens = initProfileTokens();
+	}
 
-  const [conetDepin, conet_eth, referrals, points, ] = await Promise.all([
-    scanCONETDepin(key),
-    scanConetETH(key),
-    getReferrals(),
-    getSPClubPoint(key)
-  ]);
+	const [conetDepin, conet_eth, referrals, points, ] = await Promise.all([
+		scanCONETDepin(key),
+		scanConetETH(key),
+		getReferrals(),
+		getSPClubPoint(key)
+	]);
 
-  if (profile.tokens?.conetDepin) {
-    profile.tokens.conetDepin.balance =
-    conetDepin === false
-      ? ""
-      : parseFloat(ethers.formatEther(conetDepin)).toFixed(6);
-  } else {
-    profile.tokens.conetDepin = {
-    balance:
-      conetDepin === false
-      ? ""
-      : parseFloat(ethers.formatEther(conetDepin)).toFixed(6),
-    network: "CONET DePIN",
-    decimal: 18,
-    contract: "",
-    name: "conetDepin",
-    };
-  }
+	if (profile.tokens?.conetDepin) {
+		profile.tokens.conetDepin.balance =
+		conetDepin === false
+		? ""
+		: parseFloat(ethers.formatEther(conetDepin)).toFixed(6);
+	} else {
+		profile.tokens.conetDepin = {
+		balance:
+		conetDepin === false
+		? ""
+		: parseFloat(ethers.formatEther(conetDepin)).toFixed(6),
+		network: "CONET DePIN",
+		decimal: 18,
+		contract: "",
+		name: "conetDepin",
+		};
+	}
 
-  if (profile.tokens?.conet_eth) {
-    profile.tokens.conet_eth.balance =
-    conet_eth === false
-      ? ""
-      : parseFloat(ethers.formatEther(conet_eth)).toFixed(6);
-  } else {
-    profile.tokens.conet_eth = {
-    balance:
-      conet_eth === false
-      ? ""
-      : parseFloat(ethers.formatEther(conet_eth)).toFixed(6),
-    network: "CONET DePIN",
-    decimal: 18,
-    contract: "",
-    name: "conet_eth",
-    };
-  }
+	if (profile.tokens?.conet_eth) {
+		profile.tokens.conet_eth.balance =
+		conet_eth === false
+		? ""
+		: parseFloat(ethers.formatEther(conet_eth)).toFixed(6);
+	} else {
+		profile.tokens.conet_eth = {
+		balance:
+		conet_eth === false
+		? ""
+		: parseFloat(ethers.formatEther(conet_eth)).toFixed(6),
+		network: "CONET DePIN",
+		decimal: 18,
+		contract: "",
+		name: "conet_eth",
+		};
+	}
 
-  
-  if (referrals) {
-    if (profile.spClub && typeof profile.spClub == 'object') {
-      if (referrals[0] !== ethers.ZeroAddress) {
-        profile.referrer = profile.spClub.referrer = referrals[0]
-      }
-      profile.spClub.totalReferees = parseInt(referrals[1][0].toString())
-      profile.spClub.referees = referrals[1][1].map((n:string) => { return { walletAddress: n, activePassport: ''}})
-      
-    } else {
-      if (referrals[0] !== ethers.ZeroAddress) {
-        profile.referrer = referrals[0]
-      }
-      profile.referrer = /^0x000/.test(referrals[0]) ? '' : referrals[0]
-      profile.spClub = {
-        referees: referrals[1][1].map((n:string) => n),
-        totalReferees: parseInt(referrals[1][0].toString()),
-        memberId: '',
-        referrer: profile.referrer||''
-      }
-    }
-  }
-  
-  
-  profile.SpClubPoints = {
-    SPHolderPoint: points ? parseInt(points[0].toString()):0,
-    RefferentSPHolderPoint: points ? parseInt(points[1].toString()):0,
-    SubscriptionPoint: points ? parseInt(points[2].toString()):0,
-    RefferentSubscriptionPoint: points ? parseInt(points[3].toString()):0,
-    ClaimableSubscriptionPoint: points ? parseInt(points[4].toString()):0,
-    ClaimableRefferentSubscriptionPoint: points ? parseInt(points[5].toString()):0
-  }
-  
-  const temp = CoNET_Data;
+	
+	if (referrals) {
+		if (profile.spClub && typeof profile.spClub == 'object') {
+		if (referrals[0] !== ethers.ZeroAddress) {
+			profile.referrer = profile.spClub.referrer = referrals[0]
+		}
+		profile.spClub.totalReferees = parseInt(referrals[1][0].toString())
+		profile.spClub.referees = referrals[1][1].map((n:string) => { return { walletAddress: n, activePassport: ''}})
+		
+		} else {
+		if (referrals[0] !== ethers.ZeroAddress) {
+			profile.referrer = referrals[0]
+		}
+		profile.referrer = /^0x000/.test(referrals[0]) ? '' : referrals[0]
+		profile.spClub = {
+			referees: referrals[1][1].map((n:string) => n),
+			totalReferees: parseInt(referrals[1][0].toString()),
+			memberId: '',
+			referrer: profile.referrer||''
+		}
+		}
+	}
+	
+	
+	profile.SpClubPoints = {
+		SPHolderPoint: points ? parseInt(points[0].toString()):0,
+		RefferentSPHolderPoint: points ? parseInt(points[1].toString()):0,
+		SubscriptionPoint: points ? parseInt(points[2].toString()):0,
+		RefferentSubscriptionPoint: points ? parseInt(points[3].toString()):0,
+		ClaimableSubscriptionPoint: points ? parseInt(points[4].toString()):0,
+		ClaimableRefferentSubscriptionPoint: points ? parseInt(points[5].toString()):0
+	}
+	
+	const temp = CoNET_Data;
 
-  if (!temp) {
-    return false;
-  }
+	if (!temp) {
+		return false;
+	}
 
-  temp.profiles[0] = profile;
-  temp.profiles[1] = solanaProfile;
+	temp.profiles[0] = profile;
+	temp.profiles[1] = solanaProfile;
+	
 
-  setCoNET_Data(temp);
+	setCoNET_Data(temp);
   }
 
   return true;

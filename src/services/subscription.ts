@@ -29,7 +29,7 @@ import {
   Wallet
 } from "@coral-xyz/anchor"
 
-import {allNodes} from './mining'
+import {allNodes, getRandomNode} from './mining'
 
 import {changeStopProcess} from './listeners'
 
@@ -160,11 +160,11 @@ const gettNumeric = (token: string) => {
 export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
 	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(upMint))
 	const slippageBps = 250 // 0.5% slippage
-	const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
+	const quoteUrl = `http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
 	try {
         const quoteResponse = await axios.get(quoteUrl)
         const quote = quoteResponse.data
-        const price = ethers.formatUnits(quote.otherAmountThreshold, gettNumeric(downputMint))
+        const price = ethers.formatUnits(quote.outAmount, gettNumeric(downputMint))
         return price
     } catch (ex) {
     	
@@ -175,30 +175,16 @@ export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _
 export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
 	const amount = parseInt(ethers.parseUnits(_amount.toString(), gettNumeric(downputMint)).toString())
 	const slippageBps = 250 
-	// 1. 初始化客户端（默认指向 https://quote-api.jup.ag/v6）
-	const jupiterApi = createJupiterApiClient({
-		basePath: "https://quote-api.jup.ag/v6"
-	})
-
-	// 2. 构造请求
-	const quoteRequest: QuoteGetRequest = {
-		inputMint: upMint,  
-		outputMint: downputMint, 
-		amount,
-		slippageBps,
-		swapMode: "ExactOut"            // 关键：ExactOut 模式
-	}
+	const quoteUrl = `http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
 	try {
-		const response: QuoteResponse | null = await jupiterApi.quoteGet(quoteRequest)
-		if (!response) {
-			return ''
-		}
-		const upMint_price = ethers.formatUnits(response.otherAmountThreshold, gettNumeric(upMint))
-		return upMint_price
-	} catch (ex) {
-		return ''
-	}
-	
+        const quoteResponse = await axios.get(quoteUrl)
+        const quote = quoteResponse.data
+        const price = ethers.formatUnits(quote.inAmount, gettNumeric(downputMint))
+        return price
+    } catch (ex) {
+    	
+    }
+    return ''
 	
 }
 
@@ -219,7 +205,6 @@ const duplicateAPI = `${apiv4_endpoint}duplicate`
 export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
 	
 	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
-	temp.duplicateCode = temp._duplicateCode
 	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp.duplicateCode])
 	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
 
@@ -288,12 +273,16 @@ export const initializeDuplicateCode = async (passcode: string): Promise<boolean
 	const sendData = {
 		message, signMessage
 	}
-
-	const result = await postToEndpoint(duplicatePasscodeAPI, true, sendData)
-	if (!result|| !result?.status) {
-		console.log(`initDuplicate Error!`, result?.error)
+	try {
+		const result = await postToEndpoint(duplicatePasscodeAPI, true, sendData)
+		if (!result|| !result?.status) {
+			console.log(`initDuplicate Error!`, result?.error)
+			return false
+		}
+	} catch (ex) {
 		return false
 	}
+
 	temp.duplicateCode = temp._duplicateCode
 	temp.duplicatePassword = passcode
 	await setCoNET_Data(temp)

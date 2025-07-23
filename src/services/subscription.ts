@@ -205,7 +205,7 @@ const duplicateAPI = `${apiv4_endpoint}duplicate`
 export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
 	
 	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
-	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp.duplicateCode])
+	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp._duplicateCode])
 	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
 
 

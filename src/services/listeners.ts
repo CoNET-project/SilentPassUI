@@ -65,7 +65,10 @@ const listenProfileVer = async (
   }
   
   setCoNET_Data(temp)
-  await storeSystemData();
+  if (!_stopProcess) {
+	 await storeSystemData();
+  }
+ 
   await setProcessingBlock(false);
   blockProcess = now
 
@@ -112,8 +115,10 @@ const listenProfileVer = async (
 				await new Promise(n => setTimeout(() => n(true),10000))
 			}
         }
-		
-        await storeSystemData();
+		if (!_stopProcess) {
+			await storeSystemData();
+		}
+        
         await setProcessingBlock(false);
       _process = false
       blockProcess = now

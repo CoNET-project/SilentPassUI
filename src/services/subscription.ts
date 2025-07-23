@@ -205,7 +205,6 @@ const duplicateAPI = `${apiv4_endpoint}duplicate`
 export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
 	
 	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
-	temp.duplicateCode = temp._duplicateCode
 	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp.duplicateCode])
 	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
 
@@ -274,12 +273,16 @@ export const initializeDuplicateCode = async (passcode: string): Promise<boolean
 	const sendData = {
 		message, signMessage
 	}
-
-	const result = await postToEndpoint(duplicatePasscodeAPI, true, sendData)
-	if (!result|| !result?.status) {
-		console.log(`initDuplicate Error!`, result?.error)
+	try {
+		const result = await postToEndpoint(duplicatePasscodeAPI, true, sendData)
+		if (!result|| !result?.status) {
+			console.log(`initDuplicate Error!`, result?.error)
+			return false
+		}
+	} catch (ex) {
 		return false
 	}
+
 	temp.duplicateCode = temp._duplicateCode
 	temp.duplicatePassword = passcode
 	await setCoNET_Data(temp)

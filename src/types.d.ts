@@ -130,7 +130,10 @@ interface Region {
 	recoveryWords?:string;
 	duplicateCode?: string
 	duplicateCodeHash?: string
+	duplicatePassword?: string
+	duplicateMnemonicPhrase?: string
 	duplicateAccount?:profile
+	_duplicateCode?:string
   };
   
   interface passportInfoFromChain {

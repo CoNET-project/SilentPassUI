@@ -7,7 +7,7 @@ import {
 	apiv4_endpoint,
 	conetDepinProvider
 } from "../utils/constants"
-import { refreshSolanaBalances, initSolana } from './wallets'
+import { refreshSolanaBalances, initSolana, storeSystemData, createOrGetWallet } from './wallets'
 import contracts from "../utils/contracts";
 import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
 import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
@@ -31,7 +31,11 @@ import {
 
 import {allNodes} from './mining'
 
+import {changeStopProcess} from './listeners'
+
 const uuid62 = require('uuid62')
+const duplicate = contracts.Duplicate
+const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi, conetDepinProvider)
 
 interface CompatibleWallet {
 	publicKey: PublicKey;
@@ -67,7 +71,7 @@ export const getCryptoPay = async (cryptoName: string, plan: string): Promise<nu
 }
 
 const getEncryptoData = async (restoreCode: string): Promise<string> => {
-	const duplicate_readOnly = new ethers.Contract(contracts.Duplicate.address, contracts.Duplicate.abi, conetDepinProvider)
+
 	try {
 		const ret = await duplicate_readOnly.getEncryptoString(restoreCode)
 		return ret
@@ -78,7 +82,7 @@ const getEncryptoData = async (restoreCode: string): Promise<string> => {
 
 const restoreAPI = `${apiv4_endpoint}restore`
 
-export const restoreAccount = async (passcode: string, temp: encrypt_keys_object): Promise<boolean> => {
+export const restoreAccount = async (passcode: string, password: string, temp: encrypt_keys_object, setProfiles: (profiles: any) => void): Promise<boolean> => {
 	if (!temp || !temp?.duplicateAccount) {
 		return false
 	}
@@ -88,7 +92,7 @@ export const restoreAccount = async (passcode: string, temp: encrypt_keys_object
 	}
 	let restoreMnemonicPhrase = ''
 	try {
-		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode)
+		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode+password)
 		if (!restoreMnemonicPhrase) {
 			return false
 		}
@@ -97,9 +101,10 @@ export const restoreAccount = async (passcode: string, temp: encrypt_keys_object
 	} catch (ex) {
 		return false
 	}
-	
+	changeStopProcess(true)
 	const solanaWallet = await initSolana(restoreMnemonicPhrase)
 	if (!solanaWallet) {
+		changeStopProcess(false)
 		return false
 	}
 
@@ -115,6 +120,7 @@ export const restoreAccount = async (passcode: string, temp: encrypt_keys_object
 	const result = await postToEndpoint(restoreAPI, true, sendData)
 	if (!result|| !result?.status) {
 		console.log(`initDuplicate Error!`, result?.error)
+		changeStopProcess(false)
 		return false
 	}
 
@@ -122,9 +128,19 @@ export const restoreAccount = async (passcode: string, temp: encrypt_keys_object
 		temp.duplicateAccount.keyID = result.status
 		temp.profiles[1].keyID = solanaWallet.publicKey
 		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
-		setCoNET_Data(temp)
+		//		reset duplicateCode
+		temp.duplicateCode = temp.duplicatePassword = ''
+		temp.mnemonicPhrase = temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
 
+		await setCoNET_Data(temp)
+		await storeSystemData()
+		await setProfiles(temp.profiles)
 	}
+
+	setTimeout(() => {
+		changeStopProcess(false)
+	}, 15000)
+	
 	return true
 
 }
@@ -186,21 +202,31 @@ export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _
 	
 }
 
+const getDuplicateOwnership = async(duplicateAccount: string, keyID: string): Promise<boolean|null> => {
+	try {
+		const owner = await duplicate_readOnly.duplicateList(keyID)
+		if (owner === ethers.ZeroAddress || duplicateAccount.toLowerCase() !== owner.toLowerCase()) {
+			return false
+		}
+		return true
+	} catch (ex) {
+		return null
+	}
+
+}
 
 const duplicateAPI = `${apiv4_endpoint}duplicate`
-export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object> => {
-
+export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
 	
-	const pass = temp.duplicateCode = temp?.duplicateCode || uuid62.v4()
+	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
+	temp.duplicateCode = temp._duplicateCode
 	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp.duplicateCode])
-	const mnemonicPhrase = temp.mnemonicPhrase
-	const encryptoText = temp.encryptedString = await aesGcmEncrypt(mnemonicPhrase, pass)
-	const keyword = await aesGcmDecrypt(encryptoText, pass)
-	console.log(`keyword`, keyword)
+	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+
 
 	if (!temp?.duplicateAccount) {
 		const profiles = temp.profiles
-		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: temp.encryptedString})
+		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: ''})
 		const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
 		const signMessage = await wallet.signMessage(message)
 		const sendData = {
@@ -226,12 +252,53 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 		}
 		
 	} else {
-		//		check duplicateAccount ownership
+		const keyID = temp.profiles[0].keyID
+		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
+		if (duplicateStatus === false) {
+			await createOrGetWallet(null, true)
+			
+			return null
+		}
+	}
 
+	if (!temp?.duplicatePassword) {
+		temp.duplicateCode = ''
 	}
 
 	return temp
 
+}
+const duplicatePasscodeAPI = `${apiv4_endpoint}duplicatePasscode`
+export const initializeDuplicateCode = async (passcode: string): Promise<boolean> => {
+	if (!CoNET_Data) {
+		return false
+	}
+	const temp = CoNET_Data
+	const passCode = temp._duplicateCode
+	const profiles = temp.profiles
+	
+	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+	
+	const mnemonicPhrase = temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+	const pass = passCode + passcode
+	const encryptoText = temp.encryptedString = await aesGcmEncrypt(mnemonicPhrase, pass)
+	const keyword = await aesGcmDecrypt(encryptoText, pass)
+	const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: encryptoText})
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+		message, signMessage
+	}
+
+	const result = await postToEndpoint(duplicatePasscodeAPI, true, sendData)
+	if (!result|| !result?.status) {
+		console.log(`initDuplicate Error!`, result?.error)
+		return false
+	}
+	temp.duplicateCode = temp._duplicateCode
+	temp.duplicatePassword = passcode
+	await setCoNET_Data(temp)
+  	await storeSystemData()
+	return true
 }
 
 export const checkWallet = (wallet: string) => {

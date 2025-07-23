@@ -55,10 +55,10 @@ const isValidSolanaPublicKey = (publicKey: string) => {
   return true
 }
 
-const createOrGetWallet = async (secretPhrase: string | null) => {
+const createOrGetWallet = async (secretPhrase: string | null, initAccount = false) => {
   await checkStorage();
 
-  if (secretPhrase) setCoNET_Data(null);
+  if (secretPhrase|| initAccount ) setCoNET_Data(null);
 
   if (!CoNET_Data || !CoNET_Data?.profiles) {
     const acc = createKeyHDWallets(secretPhrase);
@@ -118,7 +118,7 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
     setCoNET_Data(data)
   }
 
-  const tmpData = CoNET_Data
+  let tmpData = CoNET_Data
   if (!tmpData) {
 	return
   }
@@ -149,20 +149,24 @@ const createOrGetWallet = async (secretPhrase: string | null) => {
 		type: "solana"
     };
 
-    tmpData.profiles[1] = profile2;
+    tmpData.profiles[1] = profile2
   }
 
-  if (!tmpData.duplicateAccount) {
-	  await initDuplicate(tmpData)
-  }
 
-  setCoNET_Data(tmpData);
-
-  if (!CoNET_Data) return;
-
-  storeSystemData();
+  tmpData = await initDuplicate(tmpData)
   
-  const profiles = CoNET_Data.profiles;
+  await setCoNET_Data(tmpData)
+
+  await storeSystemData()
+
+  if (tmpData === null) {
+	return setTimeout(() => {
+		return window.location.reload()
+	}, 5000)
+	
+  }
+  
+  const profiles = tmpData.profiles
 
   return profiles
 }
@@ -239,7 +243,8 @@ export const storeSystemData = async () => {
   } catch (ex) {
     console.log(`storeSystemData storageHashData Error!`, ex);
   }
-};
+}
+
 
 const storageHashData = async (docId: string, data: string) => {
   const database = PouchDB(localDatabaseName, { auto_compaction: true });
@@ -264,7 +269,7 @@ const storageHashData = async (docId: string, data: string) => {
       console.log(`get doc storageHashData Error!`, ex);
     }
   }
-};
+}
 
 const checkStorage = async () => {
   const database = PouchDB(localDatabaseName, { auto_compaction: true });

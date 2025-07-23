@@ -5939,6 +5939,24 @@ export const Duplicate = [
     {
         "inputs": [
             {
+                "internalType": "bytes32",
+                "name": "_hash",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "string",
+                "name": "_encryptoString",
+                "type": "string"
+            }
+        ],
+        "name": "changeEncryptoString",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "to",
                 "type": "address"

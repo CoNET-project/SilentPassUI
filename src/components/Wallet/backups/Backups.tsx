@@ -9,7 +9,7 @@ import CopyBtn from './../copyBtn/CopyBtn';
 import {QRCodeCanvas} from 'qrcode.react';
 import {CopyToClipboard} from 'react-copy-to-clipboard';
 import { CoNET_Data, setCoNET_Data } from './../../../utils/globals';
-import {restoreAccount } from '../../../services/subscription'
+import {restoreAccount, initializeDuplicateCode} from '../../../services/subscription'
 import { useDaemonContext } from "../../../providers/DaemonProvider";
 import { getCurrentPassportInfoInChain, storeSystemData } from "../../../services/wallets";
 const Backups = ({}) => {
@@ -20,58 +20,31 @@ const Backups = ({}) => {
     const [codeVisible, setCodeVisible] = useState(false);
     const [copyStatus, setCopyStatus] = useState(false);
     const [code,setCode]=useState('');
+	const [codeInputError, setCodeInputError] = useState(false)
+	const [code_password, setCode_Password] = useState('')
 	const [inputError, setInputError] = useState(false);
+	const [codePasswordLoading, setCodePasswordLoading] = useState(false);
 	const {setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, setProfiles } = useDaemonContext();
     
     useEffect(()=>{
         if(CoNET_Data?.duplicateCode) setCode(CoNET_Data?.duplicateCode);
     },[CoNET_Data?.duplicateCode])
 
-	const handlePassport = async () => {
-		const tmpData = CoNET_Data
-		if (!tmpData||tmpData?.profiles[0]?.keyID) {
-			return;
-		}
-		await setProfiles(tmpData.profiles)
-
-		const info = await getCurrentPassportInfoInChain()
-		if (tmpData.duplicateAccount)
-    		tmpData.profiles[0] = {
-    		...tmpData?.profiles[0],
-    		activePassport: {
-    			nftID: info[0].toString(),
-    			expires: info[1].toString(),
-    			expiresDays: info[2].toString(),
-    			premium: info[3]
-    		}
-		}
-
-		const activeNFTNumber = tmpData.profiles[0].activePassport||0
-		if (tmpData.profiles[0].activePassport?.expiresDays !== '7') {
-			tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
-		}
-
-		await setActivePassport(tmpData.profiles[0].activePassport);
-		await setCoNET_Data(tmpData);
-		await setDuplicateAccount(tmpData.duplicateAccount);
-		await storeSystemData();
-
-	}
     //恢复
     const handleRecovery=async ()=>{
         //这里恢复按钮触发，password是填写的code,setRecoveryLoading控制loading状态
 		setInputError(false)
-		if (!CoNET_Data || password === CoNET_Data?.duplicateCode) {
+		if (!CoNET_Data || password === CoNET_Data?.duplicateCode||!code_password||!password) {
 			return setInputError(true)
 		}
 		setRecoveryLoading(true)
-		const kkk = await restoreAccount (password, CoNET_Data)
+		const kkk = await restoreAccount (password, code_password, CoNET_Data, setProfiles)
 		
 		if (!kkk) {
 			setRecoveryLoading(false)
 			return setInputError(true)
 		}
-		await handlePassport();
+		
         Modal.alert({
             bodyClassName:styles.successModalWrap,
             content: <div className={styles.successModal}>
@@ -84,6 +57,17 @@ const Backups = ({}) => {
         });
 		setRecoveryLoading(false);
     }
+
+	const initialize_code = async () => {
+		setCodePasswordLoading(true)
+		setCodeInputError(false)
+		const result = await initializeDuplicateCode(code_password)
+		setCodePasswordLoading(false)
+		if (!result) {
+			return setCodeInputError (true)
+		}
+		setCode_Password('')
+	}
     
     return (
         <>
@@ -120,23 +104,68 @@ const Backups = ({}) => {
                                 <li className={styles.listItem}>2.{t('backup-sub-list-2')}</li>
                             </ul>
                             <div className={styles.tips}><ExclamationTriangleOutline className={styles.icon} />{t('backup-sub-code-tip')}</div>
-                            <div className={styles.valTitle}>{t('backup-sub-label-2')}</div>
-                            <div className={styles.valCont}>
-                                <div className={styles.val}><Ellipsis direction='middle' content={code} /></div>
-                                <CopyBtn copyVal={code} />
-                            </div>
-                            <div className={styles.valCode}>
-                                <Button className={styles.codeBtn} block size="small" onClick={()=>{setCodeVisible(true)}}>
-                                    <Space>
-                                        <SystemQRcodeOutline />
-                                        <span>{t('backup-sub-code-btn')}</span>
-                                    </Space>
-                                </Button>
-                            </div>
+							{
+								code && <>
+									<div className={styles.valTitle}>{t('backup-sub-label-2')}</div>
+									<div className={styles.valCont}>
+										<div className={styles.val}><Ellipsis direction='middle' content={code} /></div>
+										<CopyBtn copyVal={code} />
+									</div>
+									<div className={styles.valCode}>
+										<Button className={styles.codeBtn} block size="small" onClick={()=>{setCodeVisible(true)}}>
+											<Space>
+												<SystemQRcodeOutline />
+												<span>{t('backup-sub-code-btn')}</span>
+											</Space>
+										</Button>
+									</div>
+								</> 
+								
+							}
+                            
                         </div>
+
+
+						{
+							//				生成备份码
+							!code &&
+							<div className={styles.restore}>
+								{ codeInputError &&
+									<div className={styles.desc} style={{color: "red"}}>{t('backup-sub-create-code-password-error')}</div>
+								}
+								
+								<div className={styles.inputBox}>
+									<Input
+										className={codeInputError ? styles.generateInputError :styles.generateInput}
+										style={{color: codeInputError ? 'red': 'unset'}}
+										placeholder={t('backup-sub-create-code-password')}
+										value={code_password}
+										disabled={codePasswordLoading}
+										onChange={val => {
+											setCodeInputError(false)
+											setCode_Password(val)
+										}}
+									/>
+								</div>
+								<Button onClick={initialize_code} block className={styles.recoveryBtn} loading={codePasswordLoading} color='primary' disabled={!code_password}>{t('backup-sub-create-code-password-button')}</Button>
+							</div>
+						}
                         <div className={styles.restore}>
                             <div className={styles.title}><LoopOutline className={styles.icon} />{t('backup-sub-title-3')}</div>
                             <div className={styles.desc}>{t('backup-sub-desc-3')}</div>
+							<div className={styles.inputBox}>
+								<Input
+									className={inputError ? styles.generateInputError :styles.generateInput}
+									style={{color: inputError ? 'red': 'unset'}}
+									placeholder={t('backup-sub-init-password')}
+									value={code_password}
+									disabled={codePasswordLoading}
+									onChange={val => {
+										setInputError(false)
+										setCode_Password(val)
+									}}
+								/>
+							</div>
                             <div className={styles.inputBox}>
                                 <Input
                                     className={inputError ? styles.generateInputError :styles.generateInput}
@@ -150,7 +179,7 @@ const Backups = ({}) => {
 									}}
                                 />
                             </div>
-                            <Button onClick={handleRecovery} block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password}>{t('backup-sub-restore-btn')}</Button>
+                            <Button onClick={handleRecovery} block className={styles.recoveryBtn} loading={recoveryLoading} color='primary' disabled={!password||!code_password}>{t('backup-sub-restore-btn')}</Button>
                         </div>
                     </div> 
                 </div>

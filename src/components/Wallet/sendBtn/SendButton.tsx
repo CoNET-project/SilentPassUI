@@ -16,6 +16,7 @@ import {openWebLinkNative} from './../../../api';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import {Solana_SOL, Solana_SP, Solana_USDT} from "../../../utils/constants";
 import {  getPriceFromUp2Down } from './../../../services/subscription';
+import { allNodes } from './../../../services/mining';
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
@@ -71,8 +72,10 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd=0,isEthe
     },[visible])
 
     useEffect(()=>{
-        getRatio();
-    },[])
+        if(allNodes&&allNodes.length){
+            getRatio();
+        }
+    },[allNodes])
 
     const removeDollarPrefix = (str:string) => str.startsWith('$') ? str.slice(1) : str;
     const getMintAddr=(type:string)=>{

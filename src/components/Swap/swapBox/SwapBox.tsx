@@ -11,7 +11,7 @@ import { Input,Button,Popup,Empty,Modal,Result,Skeleton,SpinLoading } from 'antd
 import { DownOutline } from 'antd-mobile-icons';
 import * as motion from "motion/react-client";
 import { getPriceFromDown2Up, getPriceFromUp2Down } from './../../../services/subscription';
-import {getRandomNode} from './../../../services/mining';
+import {getRandomNode,allNodes} from './../../../services/mining';
 import { refreshSolanaBalances } from './../../../services/wallets';
 import {openWebLinkNative} from './../../../api';
 import { Connection, Keypair, Commitment, VersionedTransaction,RpcResponseAndContext, SignatureResult } from "@solana/web3.js";
@@ -44,8 +44,10 @@ const SwapBox = ({}) => {
     },[fromToken,fromAmount])
 
     useEffect(()=>{
-        getRatio();
-    },[])
+        if(allNodes&&allNodes.length){
+            getRatio();
+        }
+    },[allNodes])
 
     const handleSwap=()=>{
         setFromToken(toToken);

@@ -7,24 +7,39 @@ import { ReactComponent as SolanaToken } from './../assets/solana-token.svg';
 import { ReactComponent as ConetToken } from './../assets/sp-token.svg';
 import { ReactComponent as UsdtToken } from './../assets/usdt-token.svg';
 import { ReactComponent as SwapBtn } from './../assets/swap-icon-black.svg';
-import { Input,Button,Popup,Empty } from 'antd-mobile';
+import { Input,Button,Popup,Empty,Modal,Result,Skeleton,SpinLoading } from 'antd-mobile';
 import { DownOutline } from 'antd-mobile-icons';
 import * as motion from "motion/react-client";
 import { getPriceFromDown2Up, getPriceFromUp2Down } from './../../../services/subscription';
+import {getRandomNode} from './../../../services/mining';
+import { refreshSolanaBalances } from './../../../services/wallets';
+import {openWebLinkNative} from './../../../api';
+import { Connection, Keypair, Commitment, VersionedTransaction,RpcResponseAndContext, SignatureResult } from "@solana/web3.js";
+import bs58 from "bs58";
+import { ethers } from "ethers";
 
 const SwapBox = ({}) => {
     const { t, i18n } = useTranslation();
-    const { profiles } = useDaemonContext();
+    const { profiles, isIOS, isLocalProxy } = useDaemonContext();
     const [rotation, setRotation] = useState(0);
     const [options, setOptions] = useState(['SP','SOL','USDT']);
     const [fromToken, setFromToken] = useState('SP');
     const [toToken, setToToken] = useState('SOL');
     const [fromAmount, setFromAmount] = useState('0');
     const [toAmount, setToAmount] = useState('0');
+    const [fromAmountLoading, setFromAmountLoading] = useState(false);
+    const [toAmountLoading, setToAmountLoading] = useState(false);
     const latestRequestId = useRef(0);
     const [visible, setVisible] = useState(false);
     const [showIsPay, setShowIsPay] = useState(true);
     const [errorInfo, setErrorInfo] = useState('');
+    const [submitLoading, setSubmitLoading] = useState(false);
+
+    useEffect(()=>{
+        if(Number(calcBalance(fromToken,false)) < Number(fromAmount)){
+            setErrorInfo(t('swap-asset-insufficient'));
+        }
+    },[fromToken,fromAmount])
 
     const handleSwap=()=>{
         setFromToken(toToken);
@@ -89,6 +104,24 @@ const SwapBox = ({}) => {
                 return '0';
         }
     }
+    const getMintAddr=(type:string)=>{
+        switch(type) {
+            case 'SP':
+                return 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump';
+                break;
+            case 'SOL':
+                return 'So11111111111111111111111111111111111111112';
+                break;
+            case 'USDT':
+                return 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+                break;
+            case 'USDC':
+                return 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+                break;
+            default:
+                return '';
+        }
+    }
     const calcRelativeValue = async (inputType: string, outputType: string, amount: number, resType:string) => {
         const safeTruncateTo6Decimals=(strNum:string) =>{
             if (!/^[-+]?\d*(\.\d*)?$/.test(strNum)) return '0'; // 防止非法字符串
@@ -96,26 +129,11 @@ const SwapBox = ({}) => {
                 return intPart + (decimalPart || '');
             });
         }
-        const getMintAddr=(type:string)=>{
-            switch(type) {
-                case 'SP':
-                    return 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump';
-                    break;
-                case 'SOL':
-                    return 'So11111111111111111111111111111111111111112';
-                    break;
-                case 'USDT':
-                    return 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
-                    break;
-                default:
-                    return '';
-            }
-        }
         const requestId = ++latestRequestId.current; // 标记本次请求
         const inputMint=getMintAddr(inputType);
         const outputMint=getMintAddr(outputType);
         if(Number(amount)){
-            //需修改 
+            if(resType == 'receive'){setToAmountLoading(true)}else{setFromAmountLoading(true)}
             const resultVal = await (resType == 'receive'?getPriceFromUp2Down(inputMint,outputMint,amount):getPriceFromDown2Up(inputMint,outputMint,amount));
             // 只有最新的一次请求才能设置结果
             if (requestId === latestRequestId.current) {
@@ -129,20 +147,23 @@ const SwapBox = ({}) => {
                 }else{
                     if(resType == 'receive'){
                         setToAmount('0');
-                        setErrorInfo('Pay值无效');
+                        setErrorInfo(t('swap-asset-pay-invalid'));
                     }
                     if(resType == 'pay'){
                         setFromAmount('0');
-                        setErrorInfo('Receive值无效');
+                        setErrorInfo(t('swap-asset-receive-invalid'));
                     }
                 }
+                if(resType == 'receive'){setToAmountLoading(false)}else{setFromAmountLoading(false)}
             }
         }else{
             if(resType == 'receive'){
                 setToAmount('0');
+                setToAmountLoading(false);
             }
             if(resType == 'pay'){
                 setFromAmount('0');
+                setFromAmountLoading(false);
             }
         }
     }
@@ -202,7 +223,6 @@ const SwapBox = ({}) => {
         if(showIsPay){
             if(fromToken !== item){
                 if(toToken === item){
-                    // handleSwap();
                     setFromToken(toToken);
                     setToToken(fromToken);
                     calcRelativeValue(toToken,fromToken,Number(fromAmount),'receive');
@@ -214,7 +234,6 @@ const SwapBox = ({}) => {
         }else{
             if(toToken !== item){
                 if(fromToken === item){
-                    // handleSwap();
                     setFromToken(toToken);
                     setToToken(fromToken);
                     calcRelativeValue(item,fromToken,Number(toAmount),'pay');
@@ -228,10 +247,110 @@ const SwapBox = ({}) => {
     }
     const isDisabled=()=>{
         if(Number(calcBalance(fromToken,false)) < Number(fromAmount)){
-            // setErrorInfo('余额不足');
             return true;
         }
         return !toAmount || !fromAmount || toAmount=='0' || fromAmount=='0';
+    }
+    const showSuccess=(txid:any)=>{
+        Modal.alert({
+            bodyClassName:styles.successModalWrap,
+            content: <div className={styles.successModal}>
+                <Result
+                    status='success'
+                    title={t('comp-SwapInput-tip-2')}
+                />
+                <div className={styles.description}>{t('comp-SwapInput-tip-4')}!</div>
+                <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+txid,isIOS,isLocalProxy)}}>{t('comp-SwapInput-tip-5')}</a></div>
+            </div>,
+            confirmText:'Close',
+        })
+    }
+    const showFail=(err:any)=>{
+        Modal.alert({
+            bodyClassName:styles.failModalWrap,
+            content: (<div className={styles.failModal}>
+                <Result
+                    status='error'
+                    title={t('comp-SwapInput-tip-1')}
+                />
+                <div className={styles.description}>{getErrorMessage(err)}</div>
+            </div>),
+            confirmText:'Close',
+        })
+    }
+    const getErrorMessage = (error: unknown): string => {
+        if (error instanceof Error) return error.message;
+        if (typeof error === 'string') return error;
+        return 'Unknown error';
+    };
+    const tokenDecimal = (type:string) => {
+        switch(type) {
+            case 'SP':
+                return 6;
+                break;
+            case 'SOL':
+                return 9;
+                break;
+            case 'USDT':
+                return 6;
+                break;
+            case 'USDC':
+                return 6;
+                break;
+            default:
+                return 18;
+        }
+    }
+    const swapTokens =  (from: string, to: string, privateKey: string, fromEthAmount: string) => new Promise(async resolve => {
+        const wallet = Keypair.fromSecretKey(bs58.decode(privateKey));
+        const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(fromToken));
+        const SOLANA_CONNECTION = new Connection(`http://${getRandomNode()}/solana-rpc`, "confirmed");
+        let signature = '';
+        try{
+            const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json();
+            const { swapTransaction } = await (
+                await fetch('https://quote-api.jup.ag/v6/swap', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        wrapUnwrapSOL: false,
+                        dynamicComputeUnitLimit: true,
+                        prioritizationFeeLamports: null,
+                        quoteResponse,
+                        userPublicKey: wallet.publicKey.toString()
+                    })
+                })).json();
+            const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
+            const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+            // get the latest block hash
+            transaction.sign([wallet]);
+            signature = await SOLANA_CONNECTION.sendRawTransaction(transaction.serialize());
+            await SOLANA_CONNECTION.confirmTransaction({
+                signature,
+                blockhash: transaction.message.recentBlockhash,
+                lastValidBlockHeight: await SOLANA_CONNECTION.getBlockHeight()
+            }, 'confirmed');
+            return resolve(signature);
+        } catch (ex: any){
+            if (signature) {
+                const status = await SOLANA_CONNECTION.getSignatureStatus(signature);
+                if (status.value && status.value.confirmationStatus === "confirmed") {
+                    return resolve(signature);
+                }
+            }
+            setSubmitLoading(false);
+            showFail(ex.message);
+            return resolve(false);
+        }   
+    });
+    const handleSubmit=async()=>{
+        setSubmitLoading(true);
+        const tx = await swapTokens(getMintAddr(fromToken), getMintAddr(toToken), profiles?.[1]?.privateKeyArmor, fromAmount);
+        setSubmitLoading(false);
+        if (tx) {
+            showSuccess(tx);
+            refreshSolanaBalances();
+        }
     }
 
     return (
@@ -240,21 +359,24 @@ const SwapBox = ({}) => {
                 <div className={styles.swapItem}>
                     <div className={styles.view}>
                         <label className={styles.label}>{t('swap-asset-pay')}</label>
-                        <Input 
-                            className={styles.input} 
-                            placeholder="0" 
-                            value={fromAmount} 
-                            clearable 
-                            type="number" 
-                            step='0.01' 
-                            onChange={(val) => {
-                                const v = Number(val);
-                                if (!/^\d*(\.\d{0,6})?$/i.test(val)) {return setFromAmount(fromAmount)}
-                                if (v <0 ) {return setFromAmount(val)}
-                                setFromAmount(v.toString())
-                                calcRelativeValue(fromToken,toToken,v,'receive');
-                            }}
-                        />
+                        <div className={styles.inputWrap}>
+                            <Input 
+                                className={styles.input} 
+                                placeholder="0" 
+                                value={fromAmount} 
+                                clearable 
+                                type="number" 
+                                step='0.01' 
+                                onChange={(val) => {
+                                    const v = Number(val);
+                                    if (!/^\d*(\.\d{0,6})?$/i.test(val)) {return setFromAmount(fromAmount)}
+                                    if (v <0 ) {return setFromAmount(val)}
+                                    setFromAmount(v.toString())
+                                    calcRelativeValue(fromToken,toToken,v,'receive');
+                                }}
+                            />
+                            {fromAmountLoading?<div className={styles.skeletonWrap}><Skeleton animated className={styles.skeleton} /></div>:''}
+                        </div>
                         <div className={styles.price}>
                             ${
                                 new BigNumber(usdRatio(fromToken))
@@ -272,21 +394,24 @@ const SwapBox = ({}) => {
                 <div className={styles.swapItem}>
                     <div className={styles.view}>
                         <label className={styles.label}>{t('swap-asset-Receive')}</label>
-                        <Input 
-                            className={styles.input} 
-                            placeholder="0" 
-                            value={toAmount} 
-                            clearable 
-                            type="number" 
-                            step='0.01' 
-                            onChange={(val) => {
-                                const v = Number(val);
-                                if (!/^\d*(\.\d{0,6})?$/i.test(val)) {return setToAmount(toAmount)}
-                                if (v <0 ) {return setToAmount(val)}
-                                setToAmount(v.toString())
-                                calcRelativeValue(toToken,fromToken,v,'pay');
-                            }}
-                        />
+                        <div className={styles.inputWrap}>
+                            <Input 
+                                className={styles.input} 
+                                placeholder="0" 
+                                value={toAmount} 
+                                clearable 
+                                type="number" 
+                                step='0.01' 
+                                onChange={(val) => {
+                                    const v = Number(val);
+                                    if (!/^\d*(\.\d{0,6})?$/i.test(val)) {return setToAmount(toAmount)}
+                                    if (v <0 ) {return setToAmount(val)}
+                                    setToAmount(v.toString())
+                                    calcRelativeValue(toToken,fromToken,v,'pay');
+                                }}
+                            />
+                            {toAmountLoading?<div className={styles.skeletonWrap}><Skeleton animated className={styles.skeleton} /></div>:''}
+                        </div>
                         <div className={styles.price}>
                             ${
                                 new BigNumber(usdRatio(toToken))
@@ -310,7 +435,11 @@ const SwapBox = ({}) => {
                 </motion.button>
             </div>
             <div className={styles.swapTip}>{t('swap-asset-tip')}</div>
-            <Button className={styles.confirmBtn} disabled={isDisabled()} block color='primary' size='large'>{t('swap-asset-confirm')}</Button>
+            <Button onClick={handleSubmit} className={(isDisabled() && !(toAmount=='0' && fromAmount=='0'))?styles.confirmBtnError:styles.confirmBtn} disabled={isDisabled() || fromAmountLoading || toAmountLoading} loading={submitLoading} block color='primary' size='large'>{(isDisabled() && !(toAmount=='0' && fromAmount=='0'))?errorInfo:t('swap-asset-confirm')}</Button>
+            {submitLoading?<div className={styles.loadingWrap}>
+                <SpinLoading color="#f1f1f1" style={{ '--size': '48px' }} />
+                <div className={styles.text}>{t('comp-comm-LoadingRing')}</div>
+            </div>:''}
             <Popup
                 visible={visible}
                 onMaskClick={() => {setVisible(false)}}

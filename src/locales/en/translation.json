@@ -406,6 +406,9 @@
 	"swap-asset-confirm":"Swap Now",
 	"swap-asset-tip":"The Approximate conversion rate based on quotes received",
 	"swap-asset-select-close":"Close",
-	"swap-asset-select-empty":"No options available"
+	"swap-asset-select-empty":"No options available",
+	"swap-asset-insufficient":"Insufficient Balance",
+	"swap-asset-pay-invalid":"Invalid payment amount",
+	"swap-asset-receive-invalid":"Invalid Received Value"
 
 }

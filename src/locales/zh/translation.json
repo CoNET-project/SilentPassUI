@@ -412,6 +412,9 @@
 	"swap-asset-confirm":"立即兑换",
 	"swap-asset-tip":"系统将根据实时汇率自动计算您可收到的数量",
 	"swap-asset-select-close":"关闭",
-	"swap-asset-select-empty":"暂无可选数据"
+	"swap-asset-select-empty":"暂无可选数据",
+	"swap-asset-insufficient":"余额不足",
+	"swap-asset-pay-invalid":"支付值无效",
+	"swap-asset-receive-invalid":"收到值无效"
 	
 }

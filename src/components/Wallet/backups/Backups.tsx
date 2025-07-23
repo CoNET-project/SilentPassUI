@@ -79,7 +79,7 @@ const Backups = ({}) => {
 		}else{
 			Toast.show({
                 icon: 'fail',
-                content: '请检查输入的密码'
+                content: t('backup-sub-look-code-tip')
             });
 			setLookCodeError(true);
 		}
@@ -140,7 +140,7 @@ const Backups = ({}) => {
 										<Input
 											className={lookCodeError ? styles.generateInputError :styles.generateInput}
 											style={{color: codeInputError ? 'red': 'unset'}}
-											placeholder="请输入初始化备份码时设定的密码"
+											placeholder={t('backup-sub-init-password')}
 											value={lookCode}
 											onChange={val => {
 												setLookCodeError(false)
@@ -148,7 +148,7 @@ const Backups = ({}) => {
 											}}
 										/>
 									</div>
-									<Button onClick={verifyInitCodeToShow} block className={styles.showBtn} color='primary' disabled={!lookCode}>查看备份码</Button>
+									<Button onClick={verifyInitCodeToShow} block className={styles.showBtn} color='primary' disabled={!lookCode}>{t('backup-sub-look-code-btn')}</Button>
 								</div>}
 							</>}
                             {!code && <>
@@ -170,30 +170,6 @@ const Backups = ({}) => {
 	                            </div>
                         	</>}
                         </div>
-						{/*{
-							//				生成备份码
-							!code &&
-							<div className={styles.restore}>
-								{ codeInputError &&
-									<div className={styles.desc} style={{color: "red"}}>{t('backup-sub-create-code-password-error')}</div>
-								}
-								
-								<div className={styles.inputBox}>
-									<Input
-										className={codeInputError ? styles.generateInputError :styles.generateInput}
-										style={{color: codeInputError ? 'red': 'unset'}}
-										placeholder={t('backup-sub-create-code-password')}
-										value={code_password}
-										disabled={codePasswordLoading}
-										onChange={val => {
-											setCodeInputError(false)
-											setCode_Password(val)
-										}}
-									/>
-								</div>
-								<Button onClick={initialize_code} block className={styles.recoveryBtn} loading={codePasswordLoading} color='primary' disabled={!code_password}>{t('backup-sub-create-code-password-button')}</Button>
-							</div>
-						}*/}
                         <div className={styles.restore}>
                             <div className={styles.title}><LoopOutline className={styles.icon} />{t('backup-sub-title-3')}</div>
                             <div className={styles.desc}>{t('backup-sub-desc-3')}</div>

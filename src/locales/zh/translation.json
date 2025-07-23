@@ -409,6 +409,8 @@
 	"backup-sub-restore-btn":"恢复我的账户",
 	"backup-sub-code-modal-title":"备份二维码",
 	"backup-sub-restore-successful":"恢复账户成功！",
+	"backup-sub-look-code-tip":"请检查输入的密码",
+	"backup-sub-look-code-btn":"查看备份码",
 	"swap-asset-title":"资产",
 	"swap-asset-pay": "支付",
 	"swap-asset-Max": "全部",

@@ -399,6 +399,8 @@
 	"backup-sub-restore-btn":"Restore My Account",
 	"backup-sub-code-modal-title":"Backup QR Code",
 	"backup-sub-restore-successful":"Account restored successfully！",
+	"backup-sub-look-code-tip":"Please check the password you entered",
+	"backup-sub-look-code-btn":"View Backup Code",
 	"backup-sub-create-code-password":"Please enter password to initialize code",
 	"backup-sub-create-code-password-button":"initialize backup code",
 	"backup-sub-create-code-password-error":"The service is unavailable, please try again later",

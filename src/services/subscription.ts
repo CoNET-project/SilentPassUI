@@ -179,7 +179,7 @@ export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _
 	try {
         const quoteResponse = await axios.get(quoteUrl)
         const quote = quoteResponse.data
-        const price = ethers.formatUnits(quote.inAmount, gettNumeric(downputMint))
+        const price = ethers.formatUnits(quote.otherAmountThreshold, gettNumeric(downputMint))
         return price
     } catch (ex) {
     	

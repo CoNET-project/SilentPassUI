@@ -362,11 +362,27 @@ const SwapBox = ({}) => {
                                 type="number" 
                                 step='0.01' 
                                 onChange={(val) => {
-                                    const v = Number(val);
-                                    if (!/^\d*(\.\d{0,6})?$/i.test(val)) {return setFromAmount(fromAmount)}
-                                    if (v <0 ) {return setFromAmount(val)}
-                                    setFromAmount(v.toString())
-                                    calcRelativeValue(fromToken,toToken,v,'receive');
+                                    // 只要输入符合小数点后6位以内的规则，就接受
+                                    if (/^\d*(\.\d{0,6})?$/.test(val)) {
+                                        setFromAmount(val);
+                                        const num = Number(val);
+                                        // 如果不是空字符串并且是有效数值，再计算
+                                        if (val !== '' && !isNaN(num)) {
+                                            calcRelativeValue(fromToken, toToken, num, 'receive');
+                                        }
+                                    }
+                                }}
+                                onBlur={() => {
+                                    if (fromAmount === '') return;
+                                    // 去掉前导 0，但保留合法格式
+                                    let formatted = fromAmount.replace(/^0+(?=\d)/, ''); // 去掉非小数的前导0
+                                    if (/^\./.test(formatted)) {
+                                        formatted = '0' + formatted; // 处理 .5 -> 0.5
+                                    }
+                                    if (formatted.endsWith('.')) {
+                                        formatted = formatted.slice(0, -1); // 去掉末尾小数点
+                                    }
+                                    setFromAmount(formatted);
                                 }}
                             />
                             {fromAmountLoading?<div className={styles.skeletonWrap}><Skeleton animated className={styles.skeleton} /></div>:''}
@@ -397,11 +413,26 @@ const SwapBox = ({}) => {
                                 type="number" 
                                 step='0.01' 
                                 onChange={(val) => {
-                                    const v = Number(val);
-                                    if (!/^\d*(\.\d{0,6})?$/i.test(val)) {return setToAmount(toAmount)}
-                                    if (v <0 ) {return setToAmount(val)}
-                                    setToAmount(v.toString())
-                                    calcRelativeValue(toToken,fromToken,v,'pay');
+                                    if (/^\d*(\.\d{0,6})?$/.test(val)) {
+                                        setToAmount(val);
+                                        const num = Number(val);
+                                        // 如果不是空字符串并且是有效数值，再计算
+                                        if (val !== '' && !isNaN(num)) {
+                                            calcRelativeValue(toToken,fromToken,num,'pay');
+                                        }
+                                    }
+                                }}
+                                onBlur={() => {
+                                    if (toAmount === '') return;
+                                    // 去掉前导 0，但保留合法格式
+                                    let formatted = toAmount.replace(/^0+(?=\d)/, ''); // 去掉非小数的前导0
+                                    if (/^\./.test(formatted)) {
+                                        formatted = '0' + formatted; // 处理 .5 -> 0.5
+                                    }
+                                    if (formatted.endsWith('.')) {
+                                        formatted = formatted.slice(0, -1); // 去掉末尾小数点
+                                    }
+                                    setToAmount(formatted);
                                 }}
                             />
                             {toAmountLoading?<div className={styles.skeletonWrap}><Skeleton animated className={styles.skeleton} /></div>:''}

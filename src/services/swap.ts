@@ -22,14 +22,11 @@ import {
 	postToEndpoint,
   
 } from "../utils/utils"
+import {allNodes, getRandomNode} from './mining'
 import {
-  SilentPassOfficial
+  SilentPassOfficial, Solana_SOL, Solana_SP, Solana_USDT
 } from "../utils/constants";
 
-export const solanaAddr = "So11111111111111111111111111111111111111112"
-export const spAddr = "Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump"
-const usdcAddr = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-const usdtAddr = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
 const solanaDecimalPlaces = 9
 const usdtDecimalPlaces = 6
 const usdcDecimalPlaces = 6
@@ -38,17 +35,14 @@ const jupiterQuoteApi = createJupiterApiClient()
 
 const tokenDecimal = (tokenAddr: string) => {
 	switch(tokenAddr) {
-		case usdtAddr: {
+		case Solana_USDT: {
 			return usdtDecimalPlaces
 		}
-		case solanaAddr: {
+		case Solana_SOL: {
 			return solanaDecimalPlaces
 		}
-		case spAddr: {
+		case Solana_SP: {
 			return spDecimalPlaces
-		}
-		case usdcAddr: {
-			return usdcDecimalPlaces
 		}
 		default: {
 			return 18
@@ -70,52 +64,114 @@ const getTokenQuote = async (from: string, to: string, fromEthAmount: string) =>
 	return price_sp
 }
 
+type RpcResult<T> = { jsonrpc: string; result: T; id: number; error?: never };
+type RpcError = { jsonrpc: string; error: { code: number; message: string }; id: number; result?: never };
+function isRpcError<T>(data: RpcResult<T> | RpcError): data is RpcError {
+  return "error" in data && data.error !== undefined;
+}
 
+// 轮询签名状态
+async function pollSignature(
+  connection: Connection,
+  signature: string,
+  interval = 2000,
+  timeout = 30_000
+): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const resp = await connection.getSignatureStatuses([signature]);
+	console.log(` pollSignature resp`,resp.value[0])
+    const status = resp.value[0]?.confirmationStatus;
+    if (status === "confirmed" || status === "finalized") {
+      console.log("✅ 交易已确认", signature, status);
+      return true;
+    }
 
-export const swapTokens = async (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<false|string> => new Promise(async resolve => {
-	const wallet = Keypair.fromSecretKey(bs58.decode(privateKey))
-	const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(from))
-	const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
-	const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed")
-	const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&restrictIntermediateTokens=true`)).json()
-	const { swapTransaction } = await (
-		await fetch('https://quote-api.jup.ag/v6/swap', {
-			method: 'POST',
-			headers: {'Content-Type': 'application/json'},
-			body: JSON.stringify({
-                dynamicComputeUnitLimit: true,
-                dynamicSlippage: true,
-                prioritizationFeeLamports: {
-                    priorityLevelWithMaxLamports: {
-                        maxLamports: 1000000,
-                        priorityLevel: "veryHigh"
-                    }
-                },
-				// quoteResponse from /quote api
-				quoteResponse,
-				// user public key to be used for the swap
-				userPublicKey: wallet.publicKey.toString()
-				// auto wrap and unwrap SOL. default is true
-				// wrapAndUnwrapSol: true,
-				// Optional, use if you want to charge a fee.  feeBps must have been passed in /quote API.
-				// feeAccount: "fee_account_public_key"
-			})
-		})).json()
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  console.warn("⚠️ 签名确认超时", signature);
+  return false;
+}
 
-	const swapTransactionBuf = Buffer.from(swapTransaction, 'base64')
-	const transaction = VersionedTransaction.deserialize(swapTransactionBuf)
-	// get the latest block hash
-	const latestBlockHash = await SOLANA_CONNECTION.getLatestBlockhash()
-	transaction.sign([wallet])
-	// Execute the transaction
-	const rawTransaction = transaction.serialize()
-	const txid = await SOLANA_CONNECTION.sendRawTransaction(rawTransaction, {
-		skipPreflight: true,
-		maxRetries: 2
-	})
-	const result = await getTransaction (txid, SOLANA_CONNECTION)
-	resolve (result)
-})
+export const swapTokens = async (
+  fromMint: string,
+  toMint: string,
+  privateKey: string,
+  amountRaw: string
+): Promise<false | string> => {
+  // 用你的 HTTP RPC 节点
+  const rpcUrl = `http://${getRandomNode()}/solana-rpc`;
+  // **显式禁用** WebSocket
+  const connection = new Connection(rpcUrl, {
+    commitment: "confirmed",
+    wsEndpoint: ""
+  });
+
+  try {
+    // 1. 构造 Jupiter 的 quote & swapPayload
+    const wallet = Keypair.fromSecretKey(bs58.decode(privateKey));
+
+    const quoteRes = await fetch(
+      `http://${getRandomNode()}/jup_ag/v6/quote?` +
+        `inputMint=${fromMint}` +
+        `&outputMint=${toMint}` +
+        `&amount=${amountRaw}` +
+        `&restrictIntermediateTokens=true`
+    );
+    const quoteResponse = await quoteRes.json();
+
+    const swapRes = await fetch(
+      `http://${getRandomNode()}/jup_ag/v6/swap`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dynamicComputeUnitLimit: true,
+          dynamicSlippage: true,
+          prioritizationFeeLamports: {
+            priorityLevelWithMaxLamports: {
+              maxLamports: 1_000_000,
+              priorityLevel: "veryHigh"
+            }
+          },
+          quoteResponse,
+          userPublicKey: wallet.publicKey.toString()
+        })
+      }
+    );
+    const { swapTransaction } = await swapRes.json();
+
+    // 2. 反序列化并签名
+    const tx = VersionedTransaction.deserialize(
+      Buffer.from(swapTransaction, "base64")
+    );
+    tx.sign([wallet]);
+
+    // 3. 拉最新 blockhash + lastValidBlockHeight
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed");
+
+    // @ts-ignore
+    tx.message.recentBlockhash = blockhash;
+    // @ts-ignore
+    tx.message.lastValidBlockHeight = lastValidBlockHeight;
+
+    // 4. sendRawTransaction
+    const rawTx = tx.serialize();
+    const txid = await connection.sendRawTransaction(rawTx, {
+      skipPreflight: false,
+      preflightCommitment: "confirmed"
+    });
+    console.log("🔍 已发送 txid =", txid);
+
+    // 5. 轮询确认
+    const ok = await pollSignature(connection, txid);
+    return ok ? txid : false;
+  } catch (err) {
+    console.error("swapTokens error:", err);
+    return false;
+  }
+}
 
 const getTransaction = (tx: string, SOLANA_CONNECTION: Connection, count = 0): Promise<false|string> => new Promise( async resolve => {
     count ++
@@ -135,11 +191,11 @@ const getTransaction = (tx: string, SOLANA_CONNECTION: Connection, count = 0): P
 })
 
 export const Sp2SolQuote = async (amount: string) => {
-	return await getTokenQuote(spAddr, solanaAddr, amount)
+	return await getTokenQuote(Solana_SP, Solana_SOL, amount)
 }
 
 export const Sol2SpQuote = async (amount: string) => {
-	return await getTokenQuote(solanaAddr, spAddr, amount)
+	return await getTokenQuote(Solana_SOL, Solana_SP, amount)
 	// const tx = await swapTokens(solanaAddr, spAddr, privateKey, amount, solanaRPC)
 }
 

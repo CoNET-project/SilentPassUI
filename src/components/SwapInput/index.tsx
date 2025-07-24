@@ -13,10 +13,13 @@ import { getOracle } from '../../services/passportPurchase';
 import { refreshSolanaBalances } from '../../services/wallets'
 import { calcSpInUsd, formatNumber, parseFormattedNumber } from '../../utils/utils';
 import Skeleton from '../Skeleton';
-import {Sp2SolQuote, Sol2SpQuote, solanaAddr, spAddr } from '../../services/swap'
+import {allNodes, getRandomNode} from '../../services/mining'
+import {swapTokens} from '../../services/swap'
 import SimpleLoadingRing from '../SimpleLoadingRing'
 import { useTranslation } from 'react-i18next';
-
+import {
+  SilentPassOfficial, Solana_SOL, Solana_SP, Solana_USDT
+} from "../../utils/constants"
 import { Button, SpinLoading, Modal, Result } from 'antd-mobile';
 import { globalAllNodes } from "./../../utils/globals";
 import { Connection, Keypair, Commitment, VersionedTransaction,RpcResponseAndContext, SignatureResult } from "@solana/web3.js";
@@ -146,26 +149,20 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
     }
 
     const tokenDecimal = (tokenAddr: string) => {
-        const solanaAddr = "So11111111111111111111111111111111111111112"
-        const spAddr = "Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump"
-        const usdcAddr = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-        const usdtAddr = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+
         const solanaDecimalPlaces = 9
         const usdtDecimalPlaces = 6
         const usdcDecimalPlaces = 6
         const spDecimalPlaces = 6
         switch(tokenAddr) {
-            case usdtAddr: {
+            case Solana_USDT: {
                 return usdtDecimalPlaces
             }
-            case solanaAddr: {
+            case  Solana_SOL: {
                 return solanaDecimalPlaces
             }
-            case spAddr: {
+            case Solana_SP: {
                 return spDecimalPlaces
-            }
-            case usdcAddr: {
-                return usdcDecimalPlaces
             }
             default: {
                 return 18
@@ -177,11 +174,11 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 		const fromAmountNumber = parseFloat(fromAmount)
 		if (fromAmountNumber > 0 && fromAmountNumber !== lastOnChangeNumber ) {
 			setLastOnChangeNumber(fromAmountNumber)
-			const from = (fromToken === 'SOL') ? solanaAddr : spAddr
-			const to = (fromToken === 'SOL') ? spAddr : solanaAddr
+			const from = (fromToken === 'SOL') ? Solana_SOL : Solana_SP
+			const to = (fromToken === 'SOL') ? Solana_SP : Solana_SOL
 			const amount = ethers.parseUnits(fromAmount, tokenDecimal(from))
 
-			const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json()
+			const quoteResponse = await (await fetch(`http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json()
 			const out = ethers.formatUnits(quoteResponse.outAmount, tokenDecimal(to))
 			const formated = formatNumber(out)
 			setToAmount (formated)
@@ -285,69 +282,71 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
 
     
 
-    const swapTokens =  (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<false|string> => new Promise(async resolve => {
-        const wallet = Keypair.fromSecretKey(bs58.decode(privateKey))
-        const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(from))
-        const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
-        const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed")
-		let signature = ''
-        try{
-            const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json()
-            const { swapTransaction } = await (
-                await fetch('https://quote-api.jup.ag/v6/swap', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        wrapUnwrapSOL: false,
-						dynamicComputeUnitLimit: true,
-						prioritizationFeeLamports: null,
-                        quoteResponse,
-                        userPublicKey: wallet.publicKey.toString()
-                    })
-                })).json()
+    // const swapTokens =  (from: string, to: string, privateKey: string, fromEthAmount: string): Promise<false|string> => new Promise(async resolve => {
+    //     const wallet = Keypair.fromSecretKey(bs58.decode(privateKey))
+    //     const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(from))
 
-            const swapTransactionBuf = Buffer.from(swapTransaction, 'base64')
-            const transaction = VersionedTransaction.deserialize(swapTransactionBuf)
-            // get the latest block hash
-            
-            transaction.sign([wallet])
-            signature = await SOLANA_CONNECTION.sendRawTransaction(transaction.serialize())
-            
-            await SOLANA_CONNECTION.confirmTransaction({
-				signature,
-				blockhash: transaction.message.recentBlockhash,
-				lastValidBlockHeight: await SOLANA_CONNECTION.getBlockHeight()
-			}, 'confirmed')
+    //     const SOLANA_CONNECTION = new Connection(`https://${_node1.domain}/solana-rpc`, "confirmed")
 
-			return resolve(signature)
+	// 	let signature = ''
+    //     try{
+    //         const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json()
+    //         const { swapTransaction } = await (
+    //             await fetch('https://quote-api.jup.ag/v6/swap', {
+    //                 method: 'POST',
+    //                 headers: {'Content-Type': 'application/json'},
+    //                 body: JSON.stringify({
+    //                     wrapUnwrapSOL: false,
+	// 					dynamicComputeUnitLimit: true,
+	// 					prioritizationFeeLamports: null,
+    //                     quoteResponse,
+    //                     userPublicKey: wallet.publicKey.toString()
+    //                 })
+    //             })).json()
+
+    //         const swapTransactionBuf = Buffer.from(swapTransaction, 'base64')
+    //         const transaction = VersionedTransaction.deserialize(swapTransactionBuf)
+    //         // get the latest block hash
+            
+    //         transaction.sign([wallet])
+    //         signature = await SOLANA_CONNECTION.sendRawTransaction(transaction.serialize())
+            
+    //         await SOLANA_CONNECTION.confirmTransaction({
+	// 			signature,
+	// 			blockhash: transaction.message.recentBlockhash,
+	// 			lastValidBlockHeight: await SOLANA_CONNECTION.getBlockHeight()
+	// 		}, 'confirmed')
+
+	// 		return resolve(signature)
 
             
-        } catch (ex: any){
-			if (signature) {
-				await new Promise(resolve=> setTimeout(() => resolve(true), 5000))
-				const status = await SOLANA_CONNECTION.getSignatureStatus(signature)
-				if (status.value && status.value.confirmationStatus === "confirmed") {
+    //     } catch (ex: any){
+	// 		if (signature) {
+	// 			await new Promise(resolve=> setTimeout(() => resolve(true), 5000))
+	// 			const status = await SOLANA_CONNECTION.getSignatureStatus(signature)
+	// 			if (status.value && status.value.confirmationStatus === "confirmed") {
 					
-					return resolve(signature)
-				}
-			}
+	// 				return resolve(signature)
+	// 			}
+	// 		}
 			
-            setIsRedeemProcessLoading(false);
-            Modal.alert({
-                bodyClassName:styles.failModalWrap,
-                content: <div className={styles.failModal}>
-                    <Result
-                        status='error'
-                        title={t('comp-SwapInput-tip-1')}
-                    />
-                    <div className={styles.description}>{getErrorMessage(ex.message)}</div>
-                </div>,
-                confirmText:'Close',
-            })
-			return resolve(false)
+    //         setIsRedeemProcessLoading(false);
+    //         Modal.alert({
+    //             bodyClassName:styles.failModalWrap,
+    //             content: <div className={styles.failModal}>
+    //                 <Result
+    //                     status='error'
+    //                     title={t('comp-SwapInput-tip-1')}
+    //                 />
+    //                 <div className={styles.description}>{getErrorMessage(ex.message)}</div>
+    //             </div>,
+    //             confirmText:'Close',
+    //         })
+	// 		return resolve(false)
 			
-        }   
-    })
+    //     }   
+    // })
+
 
     const confirmClick = async () => {
       	// if (swapError||swapSuccess) {
@@ -355,8 +354,8 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
       	// 	return setSwapError('')
       	// }
         setIsRedeemProcessLoading(true)
-        const from = (fromToken === 'SOL') ? solanaAddr : spAddr
-        const to = (fromToken === 'SOL') ? spAddr : solanaAddr
+        const from = (fromToken === 'SOL') ? Solana_SOL : Solana_SP
+        const to = (fromToken === 'SOL') ? Solana_SP : Solana_SOL
 
         const tx = await swapTokens(from, to, profiles?.[1]?.privateKeyArmor, fromAmount)
 

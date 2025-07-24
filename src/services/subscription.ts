@@ -15,11 +15,6 @@ import {ethers} from 'ethers'
 import { CoNET_Data, setCoNET_Data } from "../utils/globals"
 import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
 import Bs58 from 'bs58'
-import {
-  createJupiterApiClient,
-  QuoteGetRequest,
-  QuoteResponse
-} from "@jup-ag/api"
 
 import {
   AnchorProvider,
@@ -156,6 +151,8 @@ const gettNumeric = (token: string) => {
 		
 	}
 }
+
+
 
 export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
 	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(upMint))

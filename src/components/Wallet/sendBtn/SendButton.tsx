@@ -16,7 +16,7 @@ import {openWebLinkNative} from './../../../api';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import {Solana_SOL, Solana_SP, Solana_USDT} from "../../../utils/constants";
 import {  getPriceFromUp2Down } from './../../../services/subscription';
-import { allNodes } from './../../../services/mining';
+import { allNodes, getRandomNode } from './../../../services/mining';
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
@@ -418,8 +418,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd=0,isEthe
     };
 
     const handleSend=()=>{
-        const _node1 = globalAllNodes[Math.floor(Math.random() * (globalAllNodes.length - 1))]
-        const randomSolanaRPC = `http://${_node1.ip_addr}:80/solana-rpc`
+        const randomSolanaRPC = `http://${getRandomNode()}/solana-rpc`
         if(type=='$SOL'){
             transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC);
             return ;

@@ -14,7 +14,7 @@ export default function CopyProxyInfo({ }: CopyProxyInfoProps) {
   const [isProxyPortCopied, setIsProxyPortCopied] = useState<boolean>(false);
   const [isPACCopied, setIsPACCopied] = useState<boolean>(false);
 
-  const { serverIpAddress, serverPort, serverPac } = useDaemonContext();
+  const { serverPort, serverPac } = useDaemonContext();
 
   const handleCopy = (text: string, setMethod: (val: boolean) => any) => {
     navigator.clipboard.writeText(text);
@@ -35,22 +35,7 @@ export default function CopyProxyInfo({ }: CopyProxyInfoProps) {
       <hr />
       <div className="wallet-info">
         <p>Server:</p>
-        {
-          true ? (
-            <button onClick={() => handleCopy(serverIpAddress, setIsProxyServerCopied)}>
-              <p>{serverIpAddress}</p>
-              {
-                isProxyServerCopied ? (
-                  <img src="/assets/check.svg" alt="Copy icon" />
-                ) : (
-                  <img src="/assets/copy-purple.svg" alt="Copy icon" />
-                )
-              }
-            </button>
-          ) : (
-            <Skeleton width="100px" height="24px" />
-          )
-        }
+
       </div>
 
       <div className="wallet-info">

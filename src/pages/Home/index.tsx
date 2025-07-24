@@ -122,7 +122,7 @@ const SystemSettingsButton = () => {
 }
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, switchValue} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, switchValue} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
@@ -246,14 +246,6 @@ const handleTogglePower = async () => {
     let error = false;
     setErrorMessage('');
     let selectedCountryIndex = -1
-	try {
-		const response = await getServerIpAddress();
-        const tmpIpAddress = response.data;
-        setServerIpAddress(tmpIpAddress?.ip || "");
-		setIsLocalProxy(true)
-	} catch (ex) {
-		setIsLocalProxy(false)
-	}
 
 	
     if (power) {

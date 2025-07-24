@@ -16,7 +16,7 @@ export default function ProxyInfo() {
   const [isProxyPortCopied, setIsProxyPortCopied] = useState<boolean>(false);
   const [isPACCopied, setIsPACCopied] = useState<boolean>(false);
 
-  const { serverIpAddress, serverPort, serverPac } = useDaemonContext();
+  const { serverPort, serverPac } = useDaemonContext();
     const { t, i18n } = useTranslation()
   
 
@@ -37,22 +37,7 @@ export default function ProxyInfo() {
         <ClickableItem title={t('proxy-button-label')} icon={proxyInfoIcon} action={() => setIsDropdownOpen((prev) => !prev)} toggle={isDropdownOpen}></ClickableItem>
         <Separator />
         <ClickableItem title={t('proxy-server')} chevron={false}>
-          {
-            true ? (
-              <button onClick={() => handleCopy(serverIpAddress, setIsProxyServerCopied)}>
-                <p>{serverIpAddress}</p>
-                {
-                  isProxyServerCopied ? (
-                    <img src="/assets/check.svg" alt="Copy icon" />
-                  ) : (
-                    <img src="/assets/copy-purple.svg" alt="Copy icon" />
-                  )
-                }
-              </button>
-            ) : (
-              <Skeleton width="100px" height="24px" />
-            )
-          }
+          
         </ClickableItem>
         <Separator />
         <ClickableItem title={t('proxy-port')} chevron={false}>

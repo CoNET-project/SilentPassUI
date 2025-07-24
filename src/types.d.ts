@@ -52,6 +52,7 @@ interface Region {
 	eth: CryptoAsset;
 	sol: CryptoAsset;
 	sp: CryptoAsset;
+	usdt: CryptoAsset;
   }
   
   interface freePassport {
@@ -127,6 +128,12 @@ interface Region {
 	upgradev2?: boolean;
 	webFilter: boolean;
 	recoveryWords?:string;
+	duplicateCode?: string
+	duplicateCodeHash?: string
+	duplicatePassword?: string
+	duplicateMnemonicPhrase?: string
+	duplicateAccount?:profile
+	_duplicateCode?:string
   };
   
   interface passportInfoFromChain {

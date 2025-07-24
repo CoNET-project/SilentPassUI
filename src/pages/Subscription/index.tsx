@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {ethers} from 'ethers'
 import Header from './page-components/Header';
 import PageFooter from './page-components/Footer';
 import SecondStep from './page-components/SecondStep';
 import FourthStep from './page-components/FourthStep';
-
+import { openWebLinkNative} from '../../api/index'
 import './index.css';
 import { useDaemonContext } from '../../providers/DaemonProvider';
 import Loading from '../../components/Global-steps/Loading';
 import { getPaymentUrl, waitingPaymentStatus, getPaypalUrl, spRewardRequest, RealizationRedeem, changeActiveNFT } from '../../services/wallets';
 import {getOracle, purchasePassport, postPurchasePassport} from '../../services/passportPurchase'
-import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next';
 
 global.Buffer = require('buffer').Buffer;
 export type Step = 2 | 3 | 4 | 5;
@@ -50,20 +49,48 @@ export default function Subscription() {
   }
   let ffcus = false
 
-  const getSolanaQuote = async () => {
+  const getPlan = async () => {
 	const quote = await getOracle()
 	if (quote?.data) {
 		const data = quote.data
-		if (selectedPlan === '1') {
-			setPriceInSp(data.sp249)
-		} else {
-			setPriceInSp(data.sp2499)
+		let ret = 0
+		switch(selectedPlan) {
+			case '1': {
+				setPriceInSp(data.sp249)
+				ret = 2.49/parseFloat(data.sp249)
+				
+				break
+			}
+			case '12': {
+				setPriceInSp(data.sp2499)
+				ret = 24.99/parseFloat(data.sp2499)
+				break
+			}
+			case '3100': {
+				const price = 31*parseFloat(data.sp2499)/24.99
+				setPriceInSp(price.toFixed(2))
+				ret = 31/price
+				
+				break
+			}
+			default: {
+				setPriceInSp('0')
+				ret = 0
+			}
 		}
-		( selectedPlan === '1') ? setSpInUsd(2.49/parseFloat(data.sp249)) : setSpInUsd(24.99/parseFloat(data.sp2499))
 		setSolInUsd(parseFloat(data.so))
 		setGasfee('0.00007999')
+		setSpInUsd(ret)
+		return ret
 	}
 	
+  }
+
+  const getSolanaQuote = async () => {
+	const spPrice = await getPlan()
+	if (!spPrice) {
+		return 
+	}
 	if (profiles && profiles?.length) {
 		const profile: profile = profiles[1]
 		const _spBalance= profile.tokens.sp.balance||'0'
@@ -78,12 +105,6 @@ export default function Subscription() {
   const changeActiveNFTProcess = async (nft: number) => {
 	 await changeActiveNFT(nft.toString())
   }
-
-  useEffect(() => {
-	if (ffcus) {
-		return
-	}
-	ffcus = true
 	const processVisa = async () => {
 		switch(paymentKind) {
 			//		redeemCode
@@ -129,7 +150,7 @@ export default function Subscription() {
 					if (!codeUrl) {
 						return setStep(5);
 					}
-					window.open(codeUrl, '_blank')
+					openWebLinkNative(codeUrl,isIOS,isLocalProxy)
 					const re1 = await waitingPaymentStatus()
 					if (!re1) {
 						return setStep(5);
@@ -150,17 +171,7 @@ export default function Subscription() {
 					return setStep(5);
 				}
 
-				if (window?.webkit?.messageHandlers && isIOS && !isLocalProxy) {
-					return window?.webkit?.messageHandlers["openUrl"]?.postMessage(result.url)
-				} else 
-				//@ts-ignore
-				if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
-					const base = btoa(JSON.stringify({cmd: 'openUrl', data: result.url}))
-					//	@ts-ignore
-					return AndroidBridge?.receiveMessageFromJS(base)
-				} else {
-					window.open(result.url, '_blank')
-				}
+				openWebLinkNative(result.url, isIOS, isLocalProxy)
 				
 				const re1 = await waitingPaymentStatus()
 				if (!re1) {
@@ -173,6 +184,7 @@ export default function Subscription() {
 			//		Apple Pay
 			case 3: {
 				setStep(3)
+
 				const re1 = await waitingPaymentStatus()
 				if (!re1) {
 					return setStep(5);
@@ -191,7 +203,11 @@ export default function Subscription() {
 			
 		}
 	}
-	
+  useEffect(() => {
+	if (ffcus) {
+		return
+	}
+	ffcus = true
 	processVisa()
   }, [])
 
@@ -218,9 +234,7 @@ const declined = () =>  {
 					{txHash}
 				</p>
 			</>
-			
 		  }
-		  
           <p style={{wordBreak: 'break-word'}}>{t('comp-comm-contactUs')}</p>
         </div>
       </div>
@@ -238,19 +252,12 @@ const declined = () =>  {
 		setAirdropProcess(false)
       try {
         nextStep()
-		const tx = await purchasePassport(price, getAllNodes)
+		const tx = await purchasePassport(price)
 		if (!tx) {
 			return setStep(5)
 		}
 		
-		setTxHash(tx)
-		
-		
-		const status = await postPurchasePassport(tx)
-		if (!status) {
-			return setStep(5)
-		}
-		setSuccessNFTID(status)
+		setSuccessNFTID(tx)
 		return navigate("/wallet")
 		
       } catch (error) {

@@ -3,7 +3,7 @@ import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfoInChain, tryToRequireFreePassport, checkFreePassport } from "./services/wallets";
+import { createOrGetWallet, getCurrentPassportInfoInChain } from "./services/wallets";
 import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
@@ -18,7 +18,6 @@ import Support from './pages/Support';
 import FAQ from './pages/FAQ';
 import ConfigDevice from './pages/ConfigDevice';
 import Passcode from './pages/Passcode';
-import { getServerIpAddress } from "./api";
 import { parseQueryParams } from "./utils/utils";
 import Transfer from './pages/Transfer';
 import { setDefaultConfig } from 'antd-mobile';
@@ -35,7 +34,7 @@ global.Buffer = require('buffer').Buffer;
 function App() {
 	const { i18n } = useTranslation();
 
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, backupWord, setBackupWord } = useDaemonContext();
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, backupWord, setBackupWord } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
@@ -45,7 +44,7 @@ function App() {
   const handlePassport = async () => {
 	if (!CoNET_Data?.profiles[0]?.keyID) return
 
-	const info = await getCurrentPassportInfoInChain(CoNET_Data?.profiles[0]?.keyID);
+	const info = await getCurrentPassportInfoInChain();
 
 	const tmpData = CoNET_Data;
 
@@ -96,7 +95,6 @@ function App() {
 	listenProfileVer(setProfiles, setActivePassport, setMiningData);
 
 	checkCurrentRate(setMiningData)
-	checkFreePassport()
 
 	getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
 	  setSOlanaRPC(allNodes)

@@ -1,13 +1,13 @@
 import {
-	postToEndpoint,
+	postToEndpoint, initProfileTokens
 } from "../utils/utils";
-
+import axios, { AxiosResponse } from "axios"
 import {
 	payment_endpoint,
 	apiv4_endpoint,
-	
+	conetDepinProvider
 } from "../utils/constants"
-
+import { refreshSolanaBalances, initSolana, storeSystemData, createOrGetWallet } from './wallets'
 import contracts from "../utils/contracts";
 import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
 import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
@@ -16,6 +16,12 @@ import { CoNET_Data, setCoNET_Data } from "../utils/globals"
 import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
 import Bs58 from 'bs58'
 import {
+  createJupiterApiClient,
+  QuoteGetRequest,
+  QuoteResponse
+} from "@jup-ag/api"
+
+import {
   AnchorProvider,
   Program,
   BN,
@@ -23,15 +29,19 @@ import {
   Wallet
 } from "@coral-xyz/anchor"
 
-import {allNodes} from './mining'
+import {allNodes, getRandomNode} from './mining'
+
+import {changeStopProcess} from './listeners'
+
+const uuid62 = require('uuid62')
+const duplicate = contracts.Duplicate
+const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi, conetDepinProvider)
 
 interface CompatibleWallet {
 	publicKey: PublicKey;
 	signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T>;
 	signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]>;
 }
-
-
 
 const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
 
@@ -60,13 +70,229 @@ export const getCryptoPay = async (cryptoName: string, plan: string): Promise<nu
 	}
 }
 
+const getEncryptoData = async (restoreCode: string): Promise<string> => {
 
+	try {
+		const ret = await duplicate_readOnly.getEncryptoString(restoreCode)
+		return ret
+	} catch (ex) {
+		return ''
+	}
+}
+
+const restoreAPI = `${apiv4_endpoint}restore`
+
+export const restoreAccount = async (passcode: string, password: string, temp: encrypt_keys_object, setProfiles: (profiles: any) => void): Promise<boolean> => {
+	if (!temp || !temp?.duplicateAccount) {
+		return false
+	}
+	const restoreEncryptoText = await getEncryptoData(passcode)
+	if (!restoreEncryptoText) {
+		return false
+	}
+	let restoreMnemonicPhrase = ''
+	try {
+		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode+password)
+		if (!restoreMnemonicPhrase) {
+			return false
+		}
+		
+		
+	} catch (ex) {
+		return false
+	}
+	changeStopProcess(true)
+	const solanaWallet = await initSolana(restoreMnemonicPhrase)
+	if (!solanaWallet) {
+		changeStopProcess(false)
+		return false
+	}
+
+
+	const profiles = temp.profiles
+	const message = JSON.stringify({ walletAddress: profiles[0].keyID, uuid: temp.duplicateCodeHash, data: temp.encryptedString, hash:passcode })
+	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+		message, signMessage
+	}
+	
+	const result = await postToEndpoint(restoreAPI, true, sendData)
+	if (!result|| !result?.status) {
+		console.log(`initDuplicate Error!`, result?.error)
+		changeStopProcess(false)
+		return false
+	}
+
+	if (ethers.isAddress(result.status)) {
+		temp.duplicateAccount.keyID = result.status
+		temp.profiles[1].keyID = solanaWallet.publicKey
+		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
+		//		reset duplicateCode
+		temp.duplicateCode = temp.duplicatePassword = ''
+		temp.mnemonicPhrase = temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
+
+		await setCoNET_Data(temp)
+		await storeSystemData()
+		await setProfiles(temp.profiles)
+	}
+
+	setTimeout(() => {
+		changeStopProcess(false)
+	}, 15000)
+	
+	return true
+
+}
+
+const gettNumeric = (token: string) => {
+	switch (token) {
+		default: {
+			return 6
+		}
+		case 'So11111111111111111111111111111111111111112': {
+			return 9
+		}
+		
+	}
+}
+
+export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
+	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(upMint))
+	const slippageBps = 250 // 0.5% slippage
+	const quoteUrl = `https://${getRandomNode()}/jup_ag/v6/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
+	try {
+        const quoteResponse = await axios.get(quoteUrl)
+        const quote = quoteResponse.data
+        const price = ethers.formatUnits(quote.outAmount, gettNumeric(downputMint))
+        return price
+    } catch (ex) {
+    	
+    }
+    return ''
+}
+
+export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
+	const amount = parseInt(ethers.parseUnits(_amount.toString(), gettNumeric(upMint)).toString())
+	const slippageBps = 250 
+	const quoteUrl = `https://${getRandomNode()}/jup_ag/v6/quote?inputMint=${downputMint}&outputMint=${upMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
+	try {
+        const quoteResponse = await axios.get(quoteUrl)
+        const quote = quoteResponse.data
+        const price = ethers.formatUnits(quote.otherAmountThreshold, gettNumeric(downputMint))
+        return price
+    } catch (ex) {
+    	
+    }
+    return ''
+	
+}
+
+const getDuplicateOwnership = async(duplicateAccount: string, keyID: string): Promise<boolean|null> => {
+	try {
+		const owner = await duplicate_readOnly.duplicateList(keyID)
+		if (owner === ethers.ZeroAddress || duplicateAccount.toLowerCase() !== owner.toLowerCase()) {
+			return false
+		}
+		return true
+	} catch (ex) {
+		return null
+	}
+
+}
+
+const duplicateAPI = `${apiv4_endpoint}duplicate`
+export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
+	
+	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
+	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp._duplicateCode])
+	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+
+
+	if (!temp?.duplicateAccount) {
+		const profiles = temp.profiles
+		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: ''})
+		const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+		const signMessage = await wallet.signMessage(message)
+		const sendData = {
+		  	message, signMessage
+		}
+	
+		const result = await postToEndpoint(duplicateAPI, true, sendData)
+		if (!result|| !result?.status) {
+			console.log(`initDuplicate Error!`, result?.error)
+			return temp
+		}
+		console.log(`initDuplicate success!`, result?.status)
+
+		temp.duplicateAccount = {
+			privateKeyArmor: profiles[0].privateKeyArmor,
+			tokens: initProfileTokens(),
+			publicKeyArmor: '',
+			referrer: '',
+			keyID: result.status,
+			isNode: false,
+			index: 0,
+			hdPath: null
+		}
+		
+	} else {
+		const keyID = temp.profiles[0].keyID
+		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
+		if (duplicateStatus === false) {
+			await createOrGetWallet(null, true)
+			
+			return null
+		}
+	}
+
+	if (!temp?.duplicatePassword) {
+		temp.duplicateCode = ''
+	}
+
+	return temp
+
+}
+const duplicatePasscodeAPI = `${apiv4_endpoint}duplicatePasscode`
+export const initializeDuplicateCode = async (passcode: string): Promise<boolean> => {
+	if (!CoNET_Data) {
+		return false
+	}
+	const temp = CoNET_Data
+	const passCode = temp._duplicateCode
+	const profiles = temp.profiles
+	
+	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+	
+	const mnemonicPhrase = temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+	const pass = passCode + passcode
+	const encryptoText = temp.encryptedString = await aesGcmEncrypt(mnemonicPhrase, pass)
+	const keyword = await aesGcmDecrypt(encryptoText, pass)
+	const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: encryptoText})
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+		message, signMessage
+	}
+	try {
+		const result = await postToEndpoint(duplicatePasscodeAPI, true, sendData)
+		if (!result|| !result?.status) {
+			console.log(`initDuplicate Error!`, result?.error)
+			return false
+		}
+	} catch (ex) {
+		return false
+	}
+
+	temp.duplicateCode = temp._duplicateCode
+	temp.duplicatePassword = passcode
+	await setCoNET_Data(temp)
+  	await storeSystemData()
+	return true
+}
 
 export const checkWallet = (wallet: string) => {
 	return ethers.isAddress(wallet)
 }
-
-
 
 const airDropForSPUrl = `${apiv4_endpoint}airDropForSP`
 const SP_tokenDecimals = 6
@@ -164,9 +390,13 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 
 	  const profile = CoNET_Data.profiles[0]
 	  const solanaWallet = CoNET_Data.profiles[1].keyID
-
+	  const mainWallet = profile.keyID.toLowerCase()
+	  const referrerLow = referrer.toLowerCase()
+	  if (mainWallet === referrerLow || referrerLow === CoNET_Data.duplicateAccount?.keyID.toLocaleUpperCase() ) {
+			return false
+	  }
 	  try {
-		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, referrer })
+		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, referrer})
 		const wallet = new ethers.Wallet(profile.privateKeyArmor)
 		const signMessage = await wallet.signMessage(message)
 		const sendData = {
@@ -342,7 +572,7 @@ export const aesGcmEncrypt = async (plaintext: string, password: string) => {
 	return btoa(ivStr+ctStr)   
 }
 
-export const aesGcmDecrypt= async (ciphertext: string, password: string): Promise<string> => {
+export const aesGcmDecrypt= async (ciphertext: string, password: string) => {
 	const pwUtf8 = new TextEncoder().encode(password)                                 // encode password as UTF-8
 	const pwHash = await crypto.subtle.digest('SHA-256', pwUtf8)                      // hash the password
 
@@ -360,8 +590,8 @@ export const aesGcmDecrypt= async (ciphertext: string, password: string): Promis
 	try {
 		const plainBuffer = await crypto.subtle.decrypt(alg, key, ctUint8)            // decrypt ciphertext using key
 		const plaintext = new TextDecoder().decode(plainBuffer)                       // plaintext from ArrayBuffer
-		return plaintext                                                           // return the plaintext
+		return plaintext                                                              // return the plaintext
 	} catch (e) {
-		return ''
+		throw new Error('Decrypt failed')
 	}
 }

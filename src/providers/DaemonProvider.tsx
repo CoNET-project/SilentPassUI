@@ -19,8 +19,7 @@ type DaemonContext = {
   setIsMiningUp: (val: boolean) => void;
   setaAllNodes: (data: nodes_info[]) => void
   getAllNodes: nodes_info[]
-  serverIpAddress: string
-  setServerIpAddress: (ip: string) => void
+
   serverPort: string
   setServerPort: (port: string) => void
   serverPac: string
@@ -88,8 +87,6 @@ const defaultContextValue: DaemonContext = {
   setIsMiningUp: () => { },
   setaAllNodes: () => { },
   getAllNodes: [],
-  serverIpAddress: "127.0.0.1",
-  setServerIpAddress: () => { },
   serverPort: "8888",
   setServerPort: () => { },
   serverPac: "",
@@ -152,7 +149,6 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [profiles, setProfiles] = useState<any>(null);
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [getAllNodes, setaAllNodes] = useState<nodes_info[]>([]);
-  const [serverIpAddress, setServerIpAddress] = useState<string>(defaultContextValue.serverIpAddress);
   const [serverPort, setServerPort] = useState<string>(defaultContextValue.serverPort);
   const [serverPac, setServerPac] = useState<string>("");
   const _vpnTimeUsedInMin = useRef<number>(0);
@@ -176,13 +172,6 @@ export function DaemonProvider({ children }: DaemonProps) {
   const firstLoad = useRef(true);
   const [backupWord, setBackupWord] = useState('')
   
-
-  useEffect(() => {
-    {
-      const pac = `http://${serverIpAddress}:${serverPort}/pac`
-      setServerPac(pac)
-    }
-  }, [serverIpAddress, serverPort])
 
   useEffect(()=>{
     let storage = window.localStorage;
@@ -210,8 +199,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData,
-				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,
-				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin,
+				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes,
+				 serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,

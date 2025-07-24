@@ -2,29 +2,26 @@ import { useEffect, useState } from 'react';
 
 import "./index.css";
 import SpClubCongratsPopup from '../SpClubCongratsPopup';
-import { joinSpClub } from '../../api';
+import { joinSpClub, openWebLinkNative } from '../../api';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-import { getSpClubMemberId, waitingPaymentReady, changeActiveNFT } from '../../services/wallets';
+import { getSpClubMemberId, waitingPaymentStatus, changeActiveNFT } from '../../services/wallets';
 
-import AirdropRewards from './assets/airdrop-rewards.png';
-import EarlyAccess from './assets/early-access.png';
-import EducationHub from './assets/education-hub.png';
-import ExclusivePerks from './assets/exclusive-perks.png';
-import LoyaltyDiscounts from './assets/loyalty-discounts.png';
-import ReferralProgram from './assets/referral-program.png';
 import { ReactComponent as CrownBadge } from './assets/GC.svg'
 import bnb_token from './assets/bnb_token.png'
 import bnb_usdt from './assets/bnb_usdt_token.png'
+import bitCoin from './assets/Bitcoin.png'
 import SimpleLoadingRing from '../SimpleLoadingRing';
+import { ReactComponent as SQ_Token } from './assets/sp-token.svg'
+import { ReactComponent as SOL_Token } from './assets/solana-token.svg'
 import QRCode from '../QRCode'
 import { ReactComponent as QuotesIcon } from './assets/quotes-icon.svg'
 import {getCryptoPay} from '../../services/subscription'
-import {ReactComponent as QuotesTx} from './assets/trx.svg'
-import { CoNET_Data } from '../../utils/globals'
 import { useTranslation } from 'react-i18next'
 import wachat from './assets/wechat.png'
 import { ReactComponent as StripeIcon } from "./assets/stripe.svg"
 import { ReactComponent as AliPay } from './assets/alipay.svg'
+import { ReactComponent as ApplePay } from './assets/Apple_Pay_logo.svg'
+import { ReactComponent as EthPay } from './assets/eth-token.svg'
 import { useNavigate } from 'react-router-dom';
 
 const OneDayInSeconds = 86400;
@@ -76,18 +73,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 
 	const alipayClick = () => {
 		setShowPurchase(true)
-		if (window?.webkit?.messageHandlers && isIOS && !isLocalProxy ) {
-			return window?.webkit?.messageHandlers["openUrl"]?.postMessage(alipayUrl)
-		} else 
-		//@ts-ignore
-		if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
-			const base = btoa(JSON.stringify({cmd: 'openUrl', data: alipayUrl}))
-			//	@ts-ignore
-			return AndroidBridge?.receiveMessageFromJS(base)
-		} else {
-			window.open(alipayUrl, '_blank')
-		}
-		
+		openWebLinkNative(alipayUrl, isIOS, isLocalProxy)
 	}
 
   const fetchMemberIdWithRetry = async (startTime = Date.now()): Promise<string | null> => {
@@ -115,6 +101,27 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 		setTimeout(() => {
 			setCopied(false)
 		}, 3000)
+	}
+
+	  const startApplePay = () => {
+		if (!profiles ||profiles.length < 2|| !isIOS) {
+			return
+		}
+
+		const planObj = {
+			publicKey: profiles[0].keyID,
+			Solana: profiles[1].keyID,
+			total: '3100',
+			transactionId: '',
+			productId: ''
+		}
+
+		const base64VPNMessage = btoa(JSON.stringify(planObj));
+		
+		window?.webkit?.messageHandlers["pay"]?.postMessage(base64VPNMessage)
+		setPaymentKind(3);
+		navigate("/subscription");
+		
 	}
 
   const handleJoinClub = async () => {
@@ -152,7 +159,11 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	return setShowError(true)
   }
 
-  
+  const purchaseBySP = () => {
+		setPaymentKind(1);
+		setSelectedPlan('3100')
+		navigate("/subscription");
+  }
 
   const purchaseBluePlan = async (token: cryptoName) => {
 	const profile: profile = profiles[0]
@@ -170,14 +181,14 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	setServerAddress(kkk.wallet)
 	setShowPrice(kkk?.transferNumber)
 	setQRWallet(kkk.wallet)
-	const waiting = await waitingPaymentReady (kkk?.wallet)
-	if (!waiting?.status) {
-		showErrorMessage(waiting?.error)
+	const waiting = await waitingPaymentStatus ()
+	if (!waiting) {
+		showErrorMessage(`Error`)
 		return
 	}
 
-	setSuccessNFTID(waiting.status)
-	changeActiveNFT(waiting.status)
+	setSuccessNFTID(waiting)
+	changeActiveNFT(waiting.toFixed(0))
 
 	setQRWallet('')
 	setServerAddress('')
@@ -346,10 +357,10 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 											{
 												!showpayment &&
 												<div className="inner" style={{width: '100%',display:'flex',justifyContent:'space-between'}}>
-													<button style={{width: '100%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
+													<button style={{width: '47%'}} className='redeem-button purchase' onClick={() => setShowPayment(true)} >
 														{t('comp-comm-buyNow')}
 													</button>
-													{/* <button style={{width: '47%'}} className='redeem-button purchase' onClick={handleGoRedeem}>{t('comp-comm-Claim')}</button> */}
+													<button style={{width: '47%'}} className='redeem-button purchase' onClick={handleGoRedeem}>{t('comp-comm-Claim')}</button>
 												</div>
 											}
 											{
@@ -366,10 +377,30 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 															<img  src={bnb_usdt} className="button_img"/>
 															<p style={{color: '#989899'}}>BSC USDT</p>
 														</div>
+														<a style={{cursor: 'pointer', padding: '0 0.5rem',display: 'flex',flexDirection: 'column',alignItems: 'center', textAlign: 'center', width:'3rem'}} onClick={purchaseBySP}>
+															<SQ_Token width="1.8rem" height="1.8rem"/>
+															<p style={{color: '#989899',  textAlign: 'center'}}>SP</p>
+														</a>
+														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center', width:'3rem',display: 'flex',flexDirection: 'column',alignItems: 'center'}}>
+															<SOL_Token width="1.8rem" height="1.8rem" style={{marginTop: '-0.2rem'}}/>
+															<p style={{color: '#989899',  textAlign: 'center'}}>Sol</p>
+														</a>
+														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center', width:'3rem',display: 'flex',flexDirection: 'column',alignItems: 'center'}}>
+															<EthPay width="1.8rem" height="1.6rem" style={{marginTop: '-0.1rem'}}/>
+															<p style={{color: '#989899',  alignItems: 'flex-end'}}>ETH</p>
+														</a>
+														<div style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}}>
+															<img  src={bitCoin} className="button_img"/>
+															
+														</div>
 														{/* <div style={{cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems:'center', padding: '0 0.5rem'}}>
 															<QuotesTx style={{width: '26px', height: '26px'}}/>
 															<span>BSC USDT</span>
 														</div> */}
+														
+													</div>
+													<div className="inner" style={{width: '100%', display: 'flex', alignItems:'center', padding: '1rem 0'}}>
+														
 														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center'}} onClick={alipayClick}>
 															<AliPay width="6.5rem"/>
 														</a>
@@ -377,15 +408,15 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 															<img  src={wachat} className="button_img"/>
 															<p style={{color: '#989899'}}>WeChat</p>
 														</a>
-														
-														
-													</div>
-													<div className="inner" style={{width: '100%', display: 'flex', alignItems:'center', padding: '1rem 0'}}>
 														<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center', width: '4.5rem'}} onClick={stripeClick}>
-															
 															<StripeIcon/>
-									
 														</a>
+														{
+															isIOS && !isLocalProxy &&
+															<a style={{cursor: 'pointer', padding: '0 0.5rem', textAlign: 'center', width: '4.5rem'}} onClick={startApplePay}>
+																<ApplePay style={{width: "3.2rem"}}/>
+															</a>
+														}
 													</div>
 												</>
 											}

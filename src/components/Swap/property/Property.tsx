@@ -60,7 +60,7 @@ const Property = ({}) => {
                             <div className={styles.amount}>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</div>
                         </div>
                     </li>
-                    {/*{profiles?.[1]?.tokens?.usdt?<li className={styles.listItem} onClick={()=>{handleGoChart('USDT')}}>
+                    {profiles?.[1]?.tokens?.usdt?<li className={styles.listItem}>
                         <div className={styles.type}>
                             <div className={styles.icon}><UsdtToken /></div>
                             <div className={styles.name}>USDT</div>
@@ -69,7 +69,7 @@ const Property = ({}) => {
                             <div className={styles.price}>${profiles?.[1]?.tokens?.usdt?.usd || (0.0).toFixed(2)}</div>
                             <div className={styles.amount}>{profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(6)}</div>
                         </div>
-                    </li>:''}*/}
+                    </li>:''}
                 </ul>
             </div>
             <Popup

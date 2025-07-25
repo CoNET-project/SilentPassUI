@@ -13,9 +13,8 @@ import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
 import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
 import {ethers} from 'ethers'
 import { CoNET_Data, setCoNET_Data } from "../utils/globals"
-import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
+import { PublicKey, Transaction, VersionedTransaction, Keypair, Connection, SendTransactionError} from '@solana/web3.js'
 import Bs58 from 'bs58'
-
 import {
   AnchorProvider,
   Program,
@@ -591,4 +590,128 @@ export const aesGcmDecrypt= async (ciphertext: string, password: string) => {
 	} catch (e) {
 		throw new Error('Decrypt failed')
 	}
+}
+
+// 轮询签名状态
+async function pollSignature(
+  connection: Connection,
+  signature: string,
+  interval = 2000,
+  timeout = 30_000
+): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const resp = await connection.getSignatureStatuses([signature]);
+	console.log(` pollSignature resp`,resp.value[0])
+    const status = resp.value[0]?.confirmationStatus;
+    if (status === "confirmed" || status === "finalized") {
+      console.log("✅ 交易已确认", signature, status);
+      return true;
+    }
+
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  console.warn("⚠️ 签名确认超时", signature);
+  return false;
+}
+
+export const swapTokens = async (
+  fromMint: string,
+  toMint: string,
+  privateKey: string,
+  amountRaw: string
+): Promise<false | string> => {
+  // 用你的 HTTP RPC 节点
+  const rpcUrl = `http://${getRandomNode()}/solana-rpc`;
+  // **显式禁用** WebSocket
+  const connection = new Connection(rpcUrl, {
+    commitment: "confirmed",
+    wsEndpoint: ""
+  });
+
+  const amount = ethers.parseUnits(amountRaw, gettNumeric(fromMint))
+
+  try {
+    // 1. 构造 Jupiter 的 quote & swapPayload
+    const wallet = Keypair.fromSecretKey(Bs58.decode(privateKey));
+	const url = `http://${getRandomNode()}/jup_ag/v6/quote?` +
+        `inputMint=${fromMint}` +
+        `&outputMint=${toMint}` +
+        `&amount=${amount}` +
+        `&restrictIntermediateTokens=true`
+    const quoteRes = await fetch(url)
+    const quoteResponse = await quoteRes.json();
+
+    const swapRes = await fetch(
+      `http://${getRandomNode()}/jup_ag/v6/swap`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dynamicComputeUnitLimit: true,
+          dynamicSlippage: true,
+          prioritizationFeeLamports: {
+            priorityLevelWithMaxLamports: {
+              maxLamports: 1_000_000,
+              priorityLevel: "veryHigh"
+            }
+          },
+          quoteResponse,
+          userPublicKey: wallet.publicKey.toString()
+        })
+      }
+    );
+	
+    const { swapTransaction } = await swapRes.json();
+
+    // 2. 反序列化
+	const tx = VersionedTransaction.deserialize(
+	Buffer.from(swapTransaction, "base64")
+	);
+
+	// 3. 拿最新 blockhash + lastValidBlockHeight
+	const latest = await connection.getLatestBlockhash("confirmed");
+	tx.message.recentBlockhash      = latest.blockhash;
+	// @ts-ignore
+	tx.message.lastValidBlockHeight = latest.lastValidBlockHeight;
+
+	// 4. 签名 —— 必须在设置 blockhash/height 后做
+	tx.sign([wallet]);
+
+	// 5. 模拟一下，排查逻辑错误
+	const sim = await connection.simulateTransaction(tx);
+	if (sim.value.err) {
+	console.error("⚠️ simulateTransaction failed:", sim.value.err);
+	console.error("logs:", sim.value.logs);
+	return false;
+	}
+
+	// 6. 真正发送
+	const rawTx = tx.serialize();
+	let txid: string;
+
+    // 5. 真正发
+    txid = await connection.sendRawTransaction(rawTx, {
+      skipPreflight: false,
+      preflightCommitment: "confirmed"
+    })
+
+	  console.log("🔍 已发送 txid =", txid)
+
+	// 6. 轮询确认
+	const ok = await pollSignature(connection, txid)
+	return ok ? txid : false
+
+  } catch (err: any) {
+    // 捕获 SendTransactionError
+    if (err instanceof SendTransactionError) {
+      // 调用 getLogs() 拿到完整的仿真日志
+      const logs = await err.getLogs(connection)
+      console.error("❌ SendTransactionError 仿真日志:\n", logs.join("\n"));
+    } else {
+      console.error("❌ sendRawTransaction 其他错误:", err);
+    }
+    return false
+  }
+
 }

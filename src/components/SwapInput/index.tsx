@@ -14,7 +14,7 @@ import { refreshSolanaBalances } from '../../services/wallets'
 import { calcSpInUsd, formatNumber, parseFormattedNumber } from '../../utils/utils';
 import Skeleton from '../Skeleton';
 import {allNodes, getRandomNode} from '../../services/mining'
-import {swapTokens} from '../../services/swap'
+import {swapTokens} from '../../services/subscription'
 import SimpleLoadingRing from '../SimpleLoadingRing'
 import { useTranslation } from 'react-i18next';
 import {

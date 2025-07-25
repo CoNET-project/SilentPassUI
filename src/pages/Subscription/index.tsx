@@ -125,14 +125,11 @@ export default function Subscription() {
 			//		get SP Reword
 			case 5: {
 				setStep(3)
-				const result = await spRewardRequest ()
-				if (result < 0) {
+				const re1 = await spRewardRequest ()
+				if (re1 < 0) {
 					return setStep(5)
 				}
-				const re1 = await waitingPaymentStatus()
-				if (re1 === false) {
-					return setStep(5)
-				}
+				
 				setSuccessNFTID(re1)
 				setPaymentKind(0)
 				return navigate('/wallet')

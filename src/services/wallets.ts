@@ -550,7 +550,7 @@ const getVpnTimeUsed = async () => {
   const temp = CoNET_Data;
   temp.profiles[0] = profile;
   setCoNET_Data(temp);
-};
+}
 
 const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
 //   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
@@ -601,7 +601,7 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
   temp.profiles[0] = profile
 
   setCoNET_Data(temp);
-};
+}
 
 
 let reflaseSolanaBalancesProcess = false
@@ -888,7 +888,7 @@ const getRefereesPage = async (
 
   temp.profiles[0] = profile;
   setCoNET_Data(temp);
-};
+}
 
 const getSpClubMemberId = async (profile: profile) => {
   const wallet = new ethers.Wallet(profile.privateKeyArmor, conetDepinProvider);
@@ -924,7 +924,7 @@ const getSpClubMemberId = async (profile: profile) => {
   setCoNET_Data(temp);
 
   return profile.spClub.memberId;
-};
+}
 
 async function getReceivedAmounts (
   walletAddress: string,
@@ -1031,11 +1031,16 @@ const spRewardRequest = async (): Promise<number> => {
   if (result === false) {
     return -1
   }
-  await getPassportsInfoForProfile(CoNET_Data.profiles[0])
 
-  return ret
+  const nft = await waitingPaymentStatus()
+  if (!nft) {
+	return -1
+  }
+  return nft
 
 }
+
+
 const scan_erc20_balance: (
   walletAddr: string,
   address: string,
@@ -1056,7 +1061,7 @@ const scan_erc20_balance: (
     console.log(`scan_erc20_balance Error!`);
     return resolve(false);
   }
-  });
+})
 
 
 const scanCONETDepin = async (walletAddr: string) => {
@@ -1211,7 +1216,7 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
   }
 
   return true;
-};
+}
 
 const RealizationRedeem = async (code: string): Promise<number> => {
   if (!CoNET_Data?.profiles?.length) {

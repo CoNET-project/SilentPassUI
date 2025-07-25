@@ -10,7 +10,7 @@ import { ReactComponent as SwapBtn } from './../assets/swap-icon-black.svg';
 import { Input,Button,Popup,Empty,Modal,Result,Skeleton,SpinLoading } from 'antd-mobile';
 import { DownOutline } from 'antd-mobile-icons';
 import * as motion from "motion/react-client";
-import { getPriceFromDown2Up, getPriceFromUp2Down } from './../../../services/subscription';
+import { getPriceFromDown2Up, getPriceFromUp2Down, swapTokens } from './../../../services/subscription';
 import {getRandomNode,allNodes} from './../../../services/mining';
 import { refreshSolanaBalances } from './../../../services/wallets';
 import {openWebLinkNative} from './../../../api';
@@ -245,6 +245,8 @@ const SwapBox = ({}) => {
         }
         return !toAmount || !fromAmount || toAmount=='0' || fromAmount=='0';
     }
+
+	
     const showSuccess=(txid:any)=>{
         Modal.alert({
             bodyClassName:styles.successModalWrap,
@@ -295,48 +297,48 @@ const SwapBox = ({}) => {
                 return 18;
         }
     }
-    const swapTokens =  (from: string, to: string, privateKey: string, fromEthAmount: string) => new Promise(async resolve => {
-        const wallet = Keypair.fromSecretKey(bs58.decode(privateKey));
-        const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(fromToken));
-        const SOLANA_CONNECTION = new Connection(`http://${getRandomNode()}/solana-rpc`, "confirmed");
-        let signature = '';
-        try{
-            const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json();
-            const { swapTransaction } = await (
-                await fetch('https://quote-api.jup.ag/v6/swap', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        wrapUnwrapSOL: false,
-                        dynamicComputeUnitLimit: true,
-                        prioritizationFeeLamports: null,
-                        quoteResponse,
-                        userPublicKey: wallet.publicKey.toString()
-                    })
-                })).json();
-            const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
-            const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
-            // get the latest block hash
-            transaction.sign([wallet]);
-            signature = await SOLANA_CONNECTION.sendRawTransaction(transaction.serialize());
-            await SOLANA_CONNECTION.confirmTransaction({
-                signature,
-                blockhash: transaction.message.recentBlockhash,
-                lastValidBlockHeight: await SOLANA_CONNECTION.getBlockHeight()
-            }, 'confirmed');
-            return resolve(signature);
-        } catch (ex: any){
-            if (signature) {
-                const status = await SOLANA_CONNECTION.getSignatureStatus(signature);
-                if (status.value && status.value.confirmationStatus === "confirmed") {
-                    return resolve(signature);
-                }
-            }
-            setSubmitLoading(false);
-            showFail(ex.message);
-            return resolve(false);
-        }   
-    });
+    // const swapTokens =  (from: string, to: string, privateKey: string, fromEthAmount: string) => new Promise(async resolve => {
+    //     const wallet = Keypair.fromSecretKey(bs58.decode(privateKey));
+    //     const amount = ethers.parseUnits(fromEthAmount, tokenDecimal(fromToken));
+    //     const SOLANA_CONNECTION = new Connection(`http://${getRandomNode()}/solana-rpc`, "confirmed");
+    //     let signature = '';
+    //     try{
+    //         const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${from}&outputMint=${to}&amount=${amount}&slippageBps=250`)).json();
+    //         const { swapTransaction } = await (
+    //             await fetch('https://quote-api.jup.ag/v6/swap', {
+    //                 method: 'POST',
+    //                 headers: {'Content-Type': 'application/json'},
+    //                 body: JSON.stringify({
+    //                     wrapUnwrapSOL: false,
+    //                     dynamicComputeUnitLimit: true,
+    //                     prioritizationFeeLamports: null,
+    //                     quoteResponse,
+    //                     userPublicKey: wallet.publicKey.toString()
+    //                 })
+    //             })).json();
+    //         const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
+    //         const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+    //         // get the latest block hash
+    //         transaction.sign([wallet]);
+    //         signature = await SOLANA_CONNECTION.sendRawTransaction(transaction.serialize());
+    //         await SOLANA_CONNECTION.confirmTransaction({
+    //             signature,
+    //             blockhash: transaction.message.recentBlockhash,
+    //             lastValidBlockHeight: await SOLANA_CONNECTION.getBlockHeight()
+    //         }, 'confirmed');
+    //         return resolve(signature);
+    //     } catch (ex: any){
+    //         if (signature) {
+    //             const status = await SOLANA_CONNECTION.getSignatureStatus(signature);
+    //             if (status.value && status.value.confirmationStatus === "confirmed") {
+    //                 return resolve(signature);
+    //             }
+    //         }
+    //         setSubmitLoading(false);
+    //         showFail(ex.message);
+    //         return resolve(false);
+    //     }   
+    // });
     const handleSubmit=async()=>{
         setSubmitLoading(true);
         const tx = await swapTokens(getMintAddr(fromToken), getMintAddr(toToken), profiles?.[1]?.privateKeyArmor, fromAmount);

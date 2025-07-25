@@ -619,7 +619,8 @@ export const swapTokens = async (
   fromMint: string,
   toMint: string,
   privateKey: string,
-  amountRaw: string
+  amountRaw: string,
+  showFail: (err:any)=> void
 ): Promise<false | string> => {
   // 用你的 HTTP RPC 节点
   const rpcUrl = `http://${getRandomNode()}/solana-rpc`;
@@ -711,6 +712,7 @@ export const swapTokens = async (
     } else {
       console.error("❌ sendRawTransaction 其他错误:", err);
     }
+    showFail(err.message);
     return false
   }
 

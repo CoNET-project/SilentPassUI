@@ -373,6 +373,7 @@
 	"wallet-receive-code-scan-file-btn":"选择文件",
 	"wallet-send-useless-tip":"余额不足，已为您设置最大值",
 	"wallet-scan-camera-tip":"摄像头启动中",
+	"wallet-redeem-btn-title":"免费获取Silent Pass通行证",
 	"quick-links":"快捷链接",
 	"quick-links-manage-edit":"修改",
 	"quick-links-manage-delete":"删除",

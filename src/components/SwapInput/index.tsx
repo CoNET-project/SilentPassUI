@@ -357,7 +357,7 @@ export default function SwapInput({ setTokenGraph }: SwapInputProps) {
         const from = (fromToken === 'SOL') ? Solana_SOL : Solana_SP
         const to = (fromToken === 'SOL') ? Solana_SP : Solana_SOL
 
-        const tx = await swapTokens(from, to, profiles?.[1]?.privateKeyArmor, fromAmount)
+        const tx = await swapTokens(from, to, profiles?.[1]?.privateKeyArmor, fromAmount, ()=>{})
 
         setIsRedeemProcessLoading(false)
         if (tx) {

@@ -367,6 +367,7 @@
 	"wallet-receive-code-scan-file-btn": "Choose File",
 	"wallet-send-useless-tip":"Insufficient balance. Set to maximum available.",
 	"wallet-scan-camera-tip":"Starting camera",
+	"wallet-redeem-btn-title":"Get a Silent Pass for Free",
 	"quick-links":"Quick Links",
 	"quick-links-manage-edit": "Edit",
 	"quick-links-manage-delete": "Delete",

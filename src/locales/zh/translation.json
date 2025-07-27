@@ -180,7 +180,18 @@
 
 	"comp-RedeemPassport-title": "获取 Silent Pass 通行证",
 	"comp-RedeemPassport-RedeemNow": "立即领取",
+	"comp-RedeemPassport-alreadyRedeem": "今日已领取",
 	"wallet-checkin-btn-warning": "持有 $25美元 等值的$SP 即可每日打卡领取奖励",
+	"wallet-checkin-remind": "余额提醒",
+	"wallet-checkin-remind-detail": "⚠️ 如在有效期内转出 $SP，导致余额低于 $25，Silent Pass 通行证将立即失效，访问权限将被撤销",
+	"wallet-checkin-remind-detail-1": "若余额不足，可通过信用卡或 USDT 一次性充值等值 $25 美元的 $SP",
+	"wallet-checkin-deposit-detail-1": "充值包价格USD 28.6，包含 24.99美元的$SP，和价值 1美元的SOL代币",
+	"wallet-checkin-info1": "持有至少$25美元等值的$SP代币",
+	"wallet-checkin-info2": "可开启持币打卡，并获得24小时Silent Pass使用权限",
+	"wallet-checkin-deposit-btn":"立即充值",
+
+	"wallet-checkin-charge-title1": "若余额不足，可通过信用卡或USDT一次性充值 $25 美元等值的 $SP.",
+	"wallet-checkin-charge-title2": "⏳ 持有至少 $25 美元等值的 $SP",
 	"comp-RedeemPassport-imput": "请输入您获得的兑换码",
 	"comp-RedeemPassport-detail": "您可在官网或认证的第三方平台购买兑换码，或使用官方发放的体验码领取SP通行证和奖励",
 	"comp-RedeemPassport-choosePlan": "请选择计划",
@@ -278,7 +289,7 @@
 
 	"wallet-title":"我的账号",
 	"wallet-redeem-btn":"立即兑换",
-	"wallet-checkin-btn":"每日打卡",
+	"wallet-checkin-btn":"持币打卡",
 	"comp-RedeemPassport-25usdRedeem": "持有 $25美元 等值的$SP 即可每日打卡领取奖励",
 	"wallet-redeem-code":"兑换码",
 	"wallet-redeem-apply-btn":"提交",
@@ -373,7 +384,7 @@
 	"wallet-receive-code-scan-file-btn":"选择文件",
 	"wallet-send-useless-tip":"余额不足，已为您设置最大值",
 	"wallet-scan-camera-tip":"摄像头启动中",
-	"wallet-redeem-btn-title":"免费获取Silent Pass通行证",
+	"wallet-redeem-btn-title":"持币获取Silent Pass通行证",
 	"quick-links":"快捷链接",
 	"quick-links-manage-edit":"修改",
 	"quick-links-manage-delete":"删除",
@@ -412,6 +423,9 @@
 	"backup-sub-restore-successful":"恢复账户成功！",
 	"backup-sub-look-code-tip":"请检查输入的密码",
 	"backup-sub-look-code-btn":"查看备份码",
+
+	"checkIn-":"",
+
 	"swap-asset-title":"资产",
 	"swap-asset-pay": "支付",
 	"swap-asset-Max": "全部",

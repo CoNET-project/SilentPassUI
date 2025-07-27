@@ -47,8 +47,8 @@ type DaemonContext = {
   setPaymentKind: (val: number) => void
   successNFTID: number,
   setSuccessNFTID: (val: number) => void
-  selectedPlan: "12" | "1" | string
-  setSelectedPlan: (val: "12" | "1"| string ) => void
+  selectedPlan: "12" | "1" |'3' | string
+  setSelectedPlan: (val: "12" | "1" |'3'| string ) => void
   airdropProcess: boolean,
   setAirdropProcess: (val: boolean) => void
   setAirdropSuccess: (val: boolean) => void

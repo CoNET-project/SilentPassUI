@@ -29,10 +29,10 @@ const Passport = ({}) => {
             label: <div className={styles.stripePayBtn}><StripeIcon /></div>,
             value: 2,
         },
-        {
-            label: <div className={styles.paypalPayBtn}><PaypalIcon /></div>,
-            value: 4,
-        },
+        // {
+        //     label: <div className={styles.paypalPayBtn}><PaypalIcon /></div>,
+        //     value: 4,
+        // },
         ...(isIOS && !isLocalProxy
             ? [{
                 label: <div className={styles.applePayBtn}><ApplePay /></div>,
@@ -103,7 +103,7 @@ const Passport = ({}) => {
                             </>:''}
                             <div className={styles.selector}>
                                 <Selector
-                                    columns={3}
+                                    columns={options.length}
                                     options={options}
                                     value={[payType]}
                                     onChange={v => {

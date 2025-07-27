@@ -43,8 +43,49 @@
         height: calc(100vh - 70px - 85px);
         overflow: auto;
         //内容部分样式开始
-
-
+		.introduce{
+			padding: 4vw 4.3vw;
+			text-align: center;
+			border-top: 1px rgb(63, 63, 64) solid;
+			.title{
+				color: #fff;
+				font-size: 16px;
+				font-weight: 500;
+				.icon{
+					margin: 0 4px 0 0;
+				}
+			}
+			.desc{
+				font-size: 13px;
+				color: #f1f1f1;
+				line-height: 1.5;
+				margin:8px 0 0 ;
+				line-height: 1.5;
+			}
+			.operation{
+				margin: 20px 0 0;
+				.btn{
+					border-radius: 8px;
+					background: #292929;
+					border-color: #292929;  
+					font-size: 18px!important;  
+					font-weight: 500;
+					padding: 12px 0!important;
+				}
+				.stripePayBtn,.paypalPayBtn,.applePayBtn{
+                    min-height: 28px;
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    svg{
+                        height: 20px;
+                        width: auto;
+                    }
+                }
+			}
+			
+		}
 
         //内容部分样式结束
     }

@@ -1,15 +1,29 @@
-import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from "react-router-dom";
-import styles from './checkInBtn.module.scss';
-import { useTranslation } from 'react-i18next';
-import { Button,Modal,Popup,NavBar } from 'antd-mobile';
-import { ExclamationShieldOutline } from 'antd-mobile-icons';
-import { getRewordStaus } from './../../../services/wallets';
-import { useDaemonContext } from "./../../../providers/DaemonProvider";
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from "react-router-dom"
+import styles from './checkInBtn.module.scss'
+import { useTranslation } from 'react-i18next'
+import { Button,Modal,Popup,NavBar, Grid } from 'antd-mobile'
+import { ExclamationShieldOutline } from 'antd-mobile-icons'
+import { getRewordStaus } from './../../../services/wallets'
+import { useDaemonContext } from "./../../../providers/DaemonProvider"
+import { CoNET_Data } from '../../../utils/globals'
+import { getOracle } from '../../../services/passportPurchase'
+import PaySTRIPE from '../payStripe/PaySTRIPE'
+import PayBNB from './../payBnb/PayBNB'
+import PayBSC from './../payBsc/PayBSC';
+import { ReactComponent as StripeIcon } from "./../assets/stripe-white.svg"
+
+type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 
 const CheckInBtn = ({}) => {
     const { t, i18n } = useTranslation();
-    const [visible, setVisible] = useState<boolean>(false);
+    const [visible, setVisible] = useState<boolean>(false)
+	const [disabled, setDisabled] = useState<boolean>(true)
+	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
+	const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy } = useDaemonContext()
+	 const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
+	const navigate = useNavigate()
+
     // const navigate = useNavigate();
     // const { setPaymentKind } = useDaemonContext();
     // const [disabled, setDisabled] = useState(false);
@@ -22,33 +36,53 @@ const CheckInBtn = ({}) => {
     //         firstRef.current = false;
     //     }
     // }, []);
+	const stripeClick= async () => {
 
-    // const getReword = async() => {
-    //     setLoading(true)
-    //     const status = await getRewordStaus();
-    //     if (status === true) {
-    //         setDisabled (!status)
-    //     } else {
-    //         setDisabled (true)
-    //     }
-    //     setLoading(false)
-    // }
-    // const spRewordProcess = () => {
-    //     if (disabled) {
-    //         Modal.alert({
-    //             className:styles.warningTipModal,
-    //             content: t('wallet-checkin-btn-warning'),
-    //             closeOnMaskClick: true
-    //         });
-    //         return ;
-    //     }
-    //     setLoading(true);
-    //     setPaymentKind(5);
-    //     navigate("/subscription")
-    //     setLoading(false);
-    // }
-    const goCheck=()=>{
-        setVisible(true);
+	}
+
+	const checkBalance = async () => {
+		const status = await getRewordStaus()
+		if (status === null) {
+			return
+		}
+		if (status === false) {
+			return setTodayCheckIN(true)
+		}
+		return setDisabled(false)
+
+	}
+	useEffect(()=> {
+		checkBalance()
+	})
+
+	const stripePay = () => {
+		setSelectedPlan('3')
+		setPaymentKind(2)
+		navigate("/subscription")
+	}
+
+    const spRewordProcess = () => {
+        if (disabled) {
+            Modal.alert({
+                className:styles.warningTipModal,
+                content: t('wallet-checkin-btn-warning'),
+                closeOnMaskClick: true
+            })
+            return
+        }
+
+        setPaymentKind(5)
+        navigate("/subscription")
+
+    }
+    const goCheck=() => {
+        setVisible(true)
+    }
+
+	const purchaseBluePlan = async (token: cryptoName) => {
+        const profile: profile = profiles[0];
+        const agentWallet = profile.referrer||''
+		
     }
 
     return (
@@ -67,12 +101,54 @@ const CheckInBtn = ({}) => {
                 <div className={styles.modalWrap}>
                     <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-redeem-btn-title')}</NavBar>
                     <div className={styles.bd}>
+						<div className={styles.introduce}>
+							<div className={styles.title}>
+								
+								{t('wallet-checkin-info1')}
+								
+							</div>
+							<div className={styles.title}>
+								
+								{t('wallet-checkin-info2')}
+								
+							</div>
+							<div className={styles.operation}>
+								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'comp-RedeemPassport-RedeemNow')}</Button>
+							</div>
+						</div>
+						<div className={styles.introduce}>
+							<div className={styles.title}>
+								{t('wallet-checkin-remind')}
+							</div>
+							<div className={styles.desc}>
+								{t('wallet-checkin-remind-detail')}
+							</div>
+							<div className={styles.desc}>
+								{t('wallet-checkin-remind-detail-1')}
+							</div>
 
-                    
-
-
+						</div>
+						<div className={styles.introduce}>
+							<div className={styles.title}>
+								{t('wallet-checkin-deposit-btn')}
+							</div>
+							<div className={styles.desc}>
+								{t('wallet-checkin-deposit-detail-1')}
+							</div>
+							<Grid columns={4} gap={5} style={{paddingTop: '2rem'}}>
+								<Grid.Item>
+									 <PaySTRIPE stripeClick={stripePay} />
+								</Grid.Item>
+								<Grid.Item>
+									 <PayBSC purchaseBluePlan={purchaseBluePlan} />
+								</Grid.Item>
+							</Grid>
+							
+						</div>
                     
                     </div>
+					
+					
                 </div>
             </Popup>
         </>

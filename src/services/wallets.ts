@@ -976,7 +976,7 @@ const getSPOracle = async () => {
   }
 }
 
-const getRewordStaus = async(): Promise<boolean> => {
+const getRewordStaus = async(): Promise<boolean|null> => {
   const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)
 
   
@@ -985,10 +985,12 @@ const getRewordStaus = async(): Promise<boolean> => {
   if (!profiles || profiles.length < 2 ) {
     return false
   }
+  const wallet = profiles[0].keyID
+  const duWallet = CoNET_Data?.duplicateAccount?.keyID
   try {
     const [ quote, status ] = await Promise.all ([
       getSPOracle(),
-      contract_SpReward.isReadyReword(profiles[0].keyID, profiles[1].keyID),
+      contract_SpReward.isReadyReword(duWallet, profiles[1].keyID),
       refreshSolanaBalances()
       
     ])
@@ -999,11 +1001,11 @@ const getRewordStaus = async(): Promise<boolean> => {
     const SPBalance = profiles[1].tokens?.sp?.balance1
     //    balance < price && (initBalance === 0 || initBalance > 0 && initBalance > balance)
     if (SPBalance === undefined ||  SPBalance < spReworkBalance && (initBalance === 0 || initBalance > 0 && initBalance > SPBalance)) {
-      return false
+      	return null
     }
     return status[0]
   } catch (ex) {
-    return false
+    return null
   }
   
 }
@@ -1262,6 +1264,9 @@ const getstripePlan = (plan: string): string => {
     case '12': {
       return '2749'
     }
+	case '3': {
+		return '2860'
+	}
     case '31': {
       return '3410'
     }
@@ -1289,7 +1294,7 @@ const getPaymentUrl = async (_plan: string) => {
   const signMessage = await wallet.signMessage(message)
   const sendData = {
       message, signMessage
-    }
+  }
   const result = await postToEndpoint(url, true, sendData)
   return result
 }
@@ -1392,4 +1397,4 @@ export {
   storageAllNodes,
   getAllPassports,
   getProfileAssets,
-};
+}

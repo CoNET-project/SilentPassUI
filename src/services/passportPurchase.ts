@@ -336,9 +336,14 @@ export const purchasePassport = async (_amount: string): Promise<number> => {
 		if (status) {
 			
 			const waiting = await waitingPaymentStatus()
-			if (waiting) {
+			if (waiting === false) {
 				return waiting
 			}
+			const waitingNum = parseInt(waiting)
+			if (isNaN(waitingNum)) {
+				return false
+			}
+			return waitingNum
 			
 		}
 		

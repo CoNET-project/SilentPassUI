@@ -117,7 +117,7 @@ export default function Subscription() {
 					return setStep(5)
 				}
 				
-				setSuccessNFTID(redeem)
+				setSuccessNFTID(redeem.toString())
 				setPaymentKind(0)
 				await changeActiveNFTProcess(redeem)
 				return navigate('/wallet')
@@ -130,7 +130,7 @@ export default function Subscription() {
 					return setStep(5)
 				}
 				
-				setSuccessNFTID(re1)
+				setSuccessNFTID(re1.toString())
 				setPaymentKind(0)
 				return navigate('/wallet')
 				
@@ -169,7 +169,7 @@ export default function Subscription() {
 				}
 
 				openWebLinkNative(result.url, isIOS, isLocalProxy)
-				
+
 				///					Stripe充值
 
 				if (selectedPlan === '3') {
@@ -181,6 +181,7 @@ export default function Subscription() {
 				if (!re1) {
 					return setStep(5);
 				}
+				
 				setSuccessNFTID(re1)
 				setPaymentKind(0)
 				return navigate('/wallet')
@@ -261,7 +262,7 @@ const declined = () =>  {
 			return setStep(5)
 		}
 		
-		setSuccessNFTID(tx)
+		setSuccessNFTID(tx.toString())
 		return navigate("/wallet")
 		
       } catch (error) {

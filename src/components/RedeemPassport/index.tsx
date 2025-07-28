@@ -67,7 +67,8 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
 	}, [])
 
 	useEffect(() => {
-		if (successNFTID > 100) {
+		const successNFTID_num = parseInt(successNFTID)
+		if (successNFTID_num > 100) {
 			setIsSuccessModalOpen(true);
       		setRedeemCode('')
 		}
@@ -252,7 +253,7 @@ export default function RedeemPassport({isOpen, setIsOpen, redeemRef}:RedeemPass
       </div>
 
       {/* Success Modal */}
-      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID} onClose={() => {setIsSuccessModalOpen(false); setSuccessNFTID(0)}} />}
+      {isSuccessModalOpen && <SuccessModal nftID= {successNFTID} onClose={() => {setIsSuccessModalOpen(false); setSuccessNFTID('0')}} />}
     </>
   );
 }

@@ -24,8 +24,9 @@ const WalletDetail = ({}) => {
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
 
     useEffect(() => {
-        if (successNFTID > 100) {
-            setIsSuccessModalOpen(true);
+		const successNFTIDNum = parseInt(successNFTID)
+        if (successNFTIDNum > 100) {
+            setIsSuccessModalOpen(true)
         }
     }, [successNFTID])
 
@@ -69,7 +70,7 @@ const WalletDetail = ({}) => {
                         }
                         icon={<CheckCircleFill />}
                     />
-                    <div className={styles.operateBar}><Button className={styles.btn} block color='primary' size='large' onClick={()=>{setIsSuccessModalOpen(false);setSuccessNFTID(0)}}>{t('wallet-account-buy-success-close')}</Button></div>
+                    <div className={styles.operateBar}><Button className={styles.btn} block color='primary' size='large' onClick={()=>{setIsSuccessModalOpen(false);setSuccessNFTID('0')}}>{t('wallet-account-buy-success-close')}</Button></div>
                 </div>}
             />
         </div>

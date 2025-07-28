@@ -7,7 +7,7 @@ import "./index.css"; // Use the same CSS file for styling
 
 interface SuccessModalProps {
   onClose: () => void;
-  nftID: number;
+  nftID: number|string;
 }
 
 export default function SuccessModal({ nftID, onClose }: SuccessModalProps) {

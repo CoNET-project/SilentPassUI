@@ -12,6 +12,7 @@ import {getCryptoPay} from './../../../services/subscription'
 import PaySTRIPE from '../payStripe/PaySTRIPE'
 import PayBNB from './../payBnb/PayBNB'
 import PayBSC from './../payBsc/PayBSC';
+import PayModal from './../payModal/PayModal';
 import { ReactComponent as StripeIcon } from "./../assets/stripe-white.svg"
 import { waitingPaymentStatus  } from './../../../services/wallets'
 
@@ -23,7 +24,13 @@ const CheckInBtn = ({}) => {
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
 	const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy } = useDaemonContext()
-	 const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
+	const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
+
+    const [codeVisible, setCodeVisible] = useState(false);
+    const [QRWallet, setQRWallet] = useState('');
+    const [showPrice, setShowPrice] = useState('');
+    const [timeoutError, setTimeoutError] = useState(false);
+
 	const navigate = useNavigate()
 
     // const navigate = useNavigate();
@@ -80,9 +87,19 @@ const CheckInBtn = ({}) => {
 
 	const purchaseBluePlan = async (token: cryptoName) => {
         
-		const res = await getCryptoPay(token, '2860')
+		// const res = await getCryptoPay(token, '2860')
+
+        showQrModal(12,'asfasfasfasfafafa')
+
+
 		
-		const waiting = await waitingPaymentStatus ()
+		// const waiting = await waitingPaymentStatus ()
+    }
+    const showQrModal=(price,qrVal)=>{
+        setTimeoutError(false);
+        setShowPrice(price);
+        setQRWallet(qrVal);
+        setCodeVisible(true);
     }
 
     return (
@@ -154,6 +171,7 @@ const CheckInBtn = ({}) => {
 					
                 </div>
             </Popup>
+            <PayModal visible={codeVisible} setVisible={setCodeVisible} QRWallet={QRWallet} cryptoName={cryptoName} showPrice={showPrice} timeoutError={timeoutError} setTimeoutError={setTimeoutError} purchaseBluePlan={purchaseBluePlan} />
         </>
     );
 };

@@ -17,9 +17,12 @@ const CopyBtn = ({ copyVal }: CopyParams) => {
         setAddress(copyVal)
     },[copyVal])
 
+    const handleCopy=(copiedText:any)=>{
+        navigator.clipboard.writeText(copiedText);
+    }
     return (
         <button className={styles.button}>
-            {copyStatus?<CopiedIcon />:<CopyToClipboard text={address} onCopy={() => {setCopyStatus(true);setTimeout(()=>{setCopyStatus(false)},3000)}}><CopyIcon /></CopyToClipboard>}
+            {copyStatus?<CopiedIcon />:<CopyToClipboard text={address} onCopy={(text) => {handleCopy(text);setCopyStatus(true);setTimeout(()=>{setCopyStatus(false)},3000)}}><CopyIcon /></CopyToClipboard>}
         </button>
     );
 };

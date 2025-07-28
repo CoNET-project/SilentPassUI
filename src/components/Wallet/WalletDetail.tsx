@@ -16,17 +16,34 @@ import { useDaemonContext } from './../../providers/DaemonProvider';
 import { getPassportTitle } from "./../../utils/utils";
 import { ReactComponent as CrownBadge } from './assets/GC.svg';
 import { ReactComponent as ArmBand } from './assets/blue-badge.svg';
+import {openWebLinkNative} from './../../api';
 
 const WalletDetail = ({}) => {
     const { t, i18n } = useTranslation();
-    const { successNFTID, setSuccessNFTID, activePassport } = useDaemonContext();
+    const { successNFTID, setSuccessNFTID, activePassport, isIOS, isLocalProxy } = useDaemonContext();
     const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
 
     useEffect(() => {
-		const successNFTIDNum = parseInt(successNFTID)
-        if (successNFTIDNum > 100) {
-            setIsSuccessModalOpen(true)
+        if (!isNaN(Number(successNFTID))) {
+            const successNFTIDNum = parseInt(successNFTID)
+            if (successNFTIDNum > 100) {
+                setIsSuccessModalOpen(true)
+            }
+        }else{
+            if(successNFTID.length > 4){
+                Modal.alert({
+                    bodyClassName:styles.successModalWrap,
+                    content: <div className={styles.successModal}>
+                        <Result
+                            status='success'
+                            title='Send successful'
+                        />
+                        <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+successNFTID,isIOS,isLocalProxy)}}>View transactions</a></div>
+                    </div>,
+                    confirmText:'Close',
+                })
+            }
         }
     }, [successNFTID])
 

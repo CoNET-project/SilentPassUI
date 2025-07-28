@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from "react-router-dom"
 import styles from './checkInBtn.module.scss'
 import { useTranslation } from 'react-i18next'
-import { Button,Modal,Popup,NavBar, Grid } from 'antd-mobile'
+import { Button,Modal,Popup,NavBar, Grid, Result, Ellipsis } from 'antd-mobile'
 import { ExclamationShieldOutline } from 'antd-mobile-icons'
 import { getRewordStaus } from './../../../services/wallets'
 import { useDaemonContext } from "./../../../providers/DaemonProvider"
@@ -15,6 +15,7 @@ import PayBSC from './../payBsc/PayBSC';
 import PayModal from './../payModal/PayModal';
 import { ReactComponent as StripeIcon } from "./../assets/stripe-white.svg"
 import { waitingPaymentStatus  } from './../../../services/wallets'
+import {openWebLinkNative} from './../../../api';
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 
@@ -23,7 +24,7 @@ const CheckInBtn = ({}) => {
     const [visible, setVisible] = useState<boolean>(false)
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
-	const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy } = useDaemonContext()
+	const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy, setSuccessNFTID } = useDaemonContext()
 	const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
 
     const [codeVisible, setCodeVisible] = useState(false);
@@ -89,17 +90,34 @@ const CheckInBtn = ({}) => {
         
 		// const res = await getCryptoPay(token, '2860')
 
-        showQrModal(12,'asfasfasfasfafafa')
+        // showQrModal(12,'asfasfasfasfafafa',token)
 
 
 		
 		// const waiting = await waitingPaymentStatus ()
+        // showSuccess('testtest string')
+        
     }
-    const showQrModal=(price,qrVal)=>{
+    const showQrModal=(price:any,qrVal:string,token: cryptoName)=>{
+        setCryptoName(token);
         setTimeoutError(false);
         setShowPrice(price);
         setQRWallet(qrVal);
         setCodeVisible(true);
+    }
+    const showSuccess=(signature:string)=>{
+        setCodeVisible(false);
+        Modal.alert({
+            bodyClassName:styles.successModalWrap,
+            content: <div className={styles.successModal}>
+                <Result
+                    status='success'
+                    title='Send successful'
+                />
+                <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>View transactions</a></div>
+            </div>,
+            confirmText:'Close',
+        })
     }
 
     return (
@@ -118,54 +136,63 @@ const CheckInBtn = ({}) => {
                 <div className={styles.modalWrap}>
                     <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-redeem-btn-title')}</NavBar>
                     <div className={styles.bd}>
-						<div className={styles.introduce}>
+						<div className={styles.take}>
 							<div className={styles.title}>
-								
-								{t('wallet-checkin-info1')}
-								
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info1')}
 							</div>
 							<div className={styles.title}>
-								
-								{t('wallet-checkin-info2')}
-								
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info2')}
 							</div>
 							<div className={styles.operation}>
 								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'comp-RedeemPassport-RedeemNow')}</Button>
 							</div>
 						</div>
-						<div className={styles.introduce}>
+						<div className={styles.warning}>
 							<div className={styles.title}>
 								{t('wallet-checkin-remind')}
 							</div>
 							<div className={styles.desc}>
 								{t('wallet-checkin-remind-detail')}
 							</div>
-							<div className={styles.desc}>
-								{t('wallet-checkin-remind-detail-1')}
-							</div>
-
 						</div>
 						<div className={styles.introduce}>
 							<div className={styles.title}>
-								{t('wallet-checkin-deposit-btn')}
+								{t('wallet-checkin-deposit-title')}
 							</div>
 							<div className={styles.desc}>
-								{t('wallet-checkin-deposit-detail-1')}
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-1')}
 							</div>
-							<Grid columns={4} gap={5} style={{paddingTop: '2rem'}}>
-								<Grid.Item>
-									 <PaySTRIPE stripeClick={stripePay} />
-								</Grid.Item>
-								<Grid.Item>
-									 <PayBNB purchaseBluePlan={purchaseBluePlan} />
-								</Grid.Item>
-								<Grid.Item>
-									 <PayBSC purchaseBluePlan={purchaseBluePlan} />
-								</Grid.Item>
-							</Grid>
-							
+                            <div className={styles.desc}>
+                                <ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-2')}
+                            </div>
+                            <div className={styles.descItem}>
+                                {t('wallet-checkin-deposit-detail-3')}
+                            </div>
+                            <div className={styles.descItem}>
+                                {t('wallet-checkin-deposit-detail-4')}
+                            </div>
+                            <div className={styles.descItem}>
+                                {t('wallet-checkin-deposit-detail-5')}
+                            </div>
 						</div>
-                    
+                        <div className={styles.introduce}>
+                            <div className={styles.title}>
+                                {t('wallet-checkin-deposit-btn')}
+                            </div>
+                            <div className={styles.payways}>
+                                <Grid columns={3} gap={5}>
+                                    <Grid.Item>
+                                         <PaySTRIPE stripeClick={stripePay} />
+                                    </Grid.Item>
+                                    <Grid.Item>
+                                         <PayBNB purchaseBluePlan={purchaseBluePlan} />
+                                    </Grid.Item>
+                                    <Grid.Item>
+                                         <PayBSC purchaseBluePlan={purchaseBluePlan} />
+                                    </Grid.Item>
+                                </Grid>
+                            </div>
+                        </div>
                     </div>
 					
 					

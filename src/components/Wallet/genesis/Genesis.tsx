@@ -140,7 +140,7 @@ const Genesis = ({}) => {
                                 <PayALI payClick={payClick} />
                             </Grid.Item> */}
                         </Grid>
-                        <Grid columns={4} gap={5}>
+                        <Grid columns={3} gap={5}>
                             <Grid.Item>
                                 <PaySTRIPE stripeClick={stripeClick} />
                             </Grid.Item>
@@ -150,8 +150,7 @@ const Genesis = ({}) => {
                             <Grid.Item>
                                 { isIOS &&  <PayAPPLE parentVisible={visible} setParentVisible={setVisible} appleVisible={appleVisible} setAppleVisible={setAppleVisible} /> }
                             </Grid.Item>
-                            <Grid.Item>
-                            </Grid.Item>
+   
                         </Grid>
                     </div>
                     <LeftOutline className={styles.close} onClick={() => {setVisible(false)}} />

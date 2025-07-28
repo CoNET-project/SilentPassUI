@@ -185,7 +185,7 @@
 	"wallet-checkin-remind": "余额提醒",
 	"wallet-checkin-remind-detail": "⚠️ 如在有效期内转出 $SP，导致余额低于 $25，Silent Pass 通行证将立即失效，访问权限将被撤销",
 	"wallet-checkin-remind-detail-1": "若余额不足，可通过信用卡或 USDT 一次性充值等值 $25 美元的 $SP",
-	"wallet-checkin-deposit-detail-1": "充值包价格USD 28.6，包含 24.99美元的$SP，和价值 1美元的SOL代币",
+	"wallet-checkin-deposit-detail-1": "充值包价格USD 28.6，包含 25美元的$SP，和价值 1美元的SOL代币",
 	"wallet-checkin-info1": "持有至少$25美元等值的$SP代币",
 	"wallet-checkin-info2": "可开启持币打卡，并获得24小时Silent Pass使用权限",
 	"wallet-checkin-deposit-btn":"立即充值",

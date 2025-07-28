@@ -8,10 +8,12 @@ import { getRewordStaus } from './../../../services/wallets'
 import { useDaemonContext } from "./../../../providers/DaemonProvider"
 import { CoNET_Data } from '../../../utils/globals'
 import { getOracle } from '../../../services/passportPurchase'
+import {getCryptoPay} from './../../../services/subscription'
 import PaySTRIPE from '../payStripe/PaySTRIPE'
 import PayBNB from './../payBnb/PayBNB'
 import PayBSC from './../payBsc/PayBSC';
 import { ReactComponent as StripeIcon } from "./../assets/stripe-white.svg"
+import { waitingPaymentStatus  } from './../../../services/wallets'
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 
@@ -36,9 +38,6 @@ const CheckInBtn = ({}) => {
     //         firstRef.current = false;
     //     }
     // }, []);
-	const stripeClick= async () => {
-
-	}
 
 	const checkBalance = async () => {
 		const status = await getRewordStaus()
@@ -80,9 +79,10 @@ const CheckInBtn = ({}) => {
     }
 
 	const purchaseBluePlan = async (token: cryptoName) => {
-        const profile: profile = profiles[0];
-        const agentWallet = profile.referrer||''
+        
+		const res = await getCryptoPay(token, '2860')
 		
+		const waiting = await waitingPaymentStatus ()
     }
 
     return (
@@ -138,6 +138,9 @@ const CheckInBtn = ({}) => {
 							<Grid columns={4} gap={5} style={{paddingTop: '2rem'}}>
 								<Grid.Item>
 									 <PaySTRIPE stripeClick={stripePay} />
+								</Grid.Item>
+								<Grid.Item>
+									 <PayBNB purchaseBluePlan={purchaseBluePlan} />
 								</Grid.Item>
 								<Grid.Item>
 									 <PayBSC purchaseBluePlan={purchaseBluePlan} />

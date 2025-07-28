@@ -1300,7 +1300,7 @@ const getPaymentUrl = async (_plan: string) => {
 }
 
 
-const waitingPaymentStatus = async (): Promise<false|number> => {
+const waitingPaymentStatus = async (): Promise<false|string> => {
   if (!CoNET_Data?.profiles?.length) {
     return false;
   }

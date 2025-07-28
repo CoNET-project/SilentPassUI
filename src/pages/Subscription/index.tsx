@@ -169,11 +169,12 @@ export default function Subscription() {
 				}
 
 				openWebLinkNative(result.url, isIOS, isLocalProxy)
+				
 				///					Stripe充值
 
 				if (selectedPlan === '3') {
 					const re1 = await waitingPaymentStatus()
-					
+
 				}
 
 				const re1 = await waitingPaymentStatus()

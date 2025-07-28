@@ -53,15 +53,21 @@ const Genesis = ({}) => {
         setCodeVisible(true);
 
         const waiting = await waitingPaymentStatus ();
-        if (!waiting) {
-            return ;
+        if (waiting === false) {
+            return 
         }
+		const waitingNum = parseInt(waiting)
+		if (isNaN(waitingNum)) {
+			return
+		}
+
         setSuccessNFTID(waiting)
-        changeActiveNFT(waiting.toFixed(0));
+		
+        changeActiveNFT(waiting)
         setQRWallet('')
         setShowPrice('')
     }
-	
+
     const payClick = () => {
         openWebLinkNative(payUrl,isIOS,isLocalProxy);
         Modal.show({

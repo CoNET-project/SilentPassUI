@@ -45,8 +45,8 @@ type DaemonContext = {
   setGlobalProxy: (val: boolean)=> void
   paymentKind: number,
   setPaymentKind: (val: number) => void
-  successNFTID: number,
-  setSuccessNFTID: (val: number) => void
+  successNFTID: string,
+  setSuccessNFTID: (val: string) => void
   selectedPlan: "12" | "1" |'3' | string
   setSelectedPlan: (val: "12" | "1" |'3'| string ) => void
   airdropProcess: boolean,
@@ -116,7 +116,7 @@ const defaultContextValue: DaemonContext = {
   setGlobalProxy: () => {},
   paymentKind: 0,
   setPaymentKind: () => {},
-  successNFTID: 0,
+  successNFTID: '0',
   setSuccessNFTID: () => {},
   selectedPlan: "12",
   setSelectedPlan: () => {},
@@ -171,7 +171,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [isIOS, setIsIOS] = useState(false);
   const [isLocalProxy, setIsLocalProxy] = useState(false);
   const [paymentKind, setPaymentKind] = useState(0)
-  const [successNFTID, setSuccessNFTID] = useState(0)
+  const [successNFTID, setSuccessNFTID] = useState('0')
   const [selectedPlan, setSelectedPlan] = useState< '12' | '1' | string >('12');
   const [airdropProcess, setAirdropProcess] = useState(false)
   const [airdropSuccess, setAirdropSuccess] = useState(false)

@@ -1035,10 +1035,14 @@ const spRewardRequest = async (): Promise<number> => {
   }
 
   const nft = await waitingPaymentStatus()
-  if (!nft) {
+  if (nft === false ) {
 	return -1
   }
-  return nft
+  const nftNum = parseInt(nft)
+  if (isNaN(nftNum)) {
+	return -1
+  }
+  return nftNum
 
 }
 
@@ -1245,9 +1249,15 @@ const RealizationRedeem = async (code: string): Promise<number> => {
       return 0
     }
     const ret = await waitingPaymentStatus()
-    if (ret) {
-      return ret
+    
+    if (ret === false ) {
+      return 0
     }
+	const retNUm = parseInt(ret)
+	if (isNaN(retNUm)) {
+		return 0
+	}
+	return retNUm
   } catch(ex) {
       console.log("EX: ", ex);
     
@@ -1334,7 +1344,7 @@ const waitingPaymentStatus = async (): Promise<false|string> => {
 
   const result = await waiting ()
 
-  return result
+  return result.toString()
 }
 
 const getPaypalUrl = async (price: number) => {

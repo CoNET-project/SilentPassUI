@@ -188,7 +188,7 @@ export default function SpClub(isOpen: boolean, setIsOpen: React.Dispatch<React.
 	}
 
 	setSuccessNFTID(waiting)
-	changeActiveNFT(waiting.toFixed(0))
+	changeActiveNFT(waiting)
 
 	setQRWallet('')
 	setServerAddress('')

@@ -17,10 +17,12 @@ import {openWebLinkNative} from './../../../api';
 import { Connection, Keypair, Commitment, VersionedTransaction,RpcResponseAndContext, SignatureResult } from "@solana/web3.js";
 import bs58 from "bs58";
 import { ethers } from "ethers";
+import { useHistoryManager } from './../../Wallet/history/useHistoryManager';
 
 const SwapBox = ({}) => {
     const { t, i18n } = useTranslation();
     const { profiles, isIOS, isLocalProxy } = useDaemonContext();
+    const { addRecord, editRecord } = useHistoryManager();
     const [rotation, setRotation] = useState(0);
     const [options, setOptions] = useState(['SP','SOL','USDT']);
     const [fromToken, setFromToken] = useState('SP');

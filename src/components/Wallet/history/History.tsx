@@ -82,7 +82,7 @@ const History = ({}) => {
             {history && history.length > 0 ?<div className={styles.list}>
                 {history.map((item,index)=>{
                     return (
-                        <div className={styles.listItem} onClick={()=>{handleClick(item?.hash)}}>
+                        <div key={index} className={styles.listItem} onClick={()=>{handleClick(item?.hash)}}>
                             <div className={styles.icon}>
                                 {getIcon(item)}
                             </div>

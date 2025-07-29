@@ -103,16 +103,19 @@ function App() {
 
   const init = async () => {
 
-
 	const queryParams = parseQueryParams(window.location.search);
 	let secretPhrase: string | null = null;
-
+	let ChannelPartners = ''
+	let referrals = ''
 	if (window.location.search && queryParams) {
+
 		secretPhrase = queryParams.get("secretPhrase");
+		ChannelPartners = queryParams.get("ChannelPartners")
+		referrals = queryParams.get("referrals")
 		secretPhrase = secretPhrase ? secretPhrase.replace(/\-/g, " ") : null;
 	}
 
-	const profiles = await createOrGetWallet(secretPhrase);
+	const profiles = await createOrGetWallet(secretPhrase, false, referrals, ChannelPartners);
 	setProfiles(profiles)
 
 	checkCurrentRate(setMiningData)

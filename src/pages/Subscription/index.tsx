@@ -10,8 +10,8 @@ import FourthStep from './page-components/FourthStep';
 import './index.css';
 import { getOracle, purchasePassport } from '../../services/passportPurchase';
 import { useDaemonContext } from '../../providers/DaemonProvider';
-import Loading from '../../components/global-steps/Loading';
-import Declined from '../../components/global-steps/Declined';
+import Loading from '../../components/Global-steps/Loading';
+import Declined from '../../components/Global-steps/Declined';
 import { Step } from '../../types/global-types';
 
 export default function Subscription() {

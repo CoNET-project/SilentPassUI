@@ -15,6 +15,7 @@ import AutoCodeButton from './../codeButton/AutoCodeButton';
 import CopyBtn from './../copyBtn/CopyBtn';
 import HideBtn from './../hideBtn/HideBtn';
 // import ImportButton from './../importBtn/ImportButton';
+import History from './../history/History';
 import ScanButton from './../scanBtn/ScanButton';
 
 const SPWallet = ({}) => {
@@ -146,7 +147,7 @@ const SPWallet = ({}) => {
                             </div>
                         </div>:''}
                         {/* <ImportButton /> */}
-
+                        <History />
                     </div> 
                 </div>
             </Popup>

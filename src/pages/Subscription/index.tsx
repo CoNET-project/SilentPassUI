@@ -58,7 +58,6 @@ export default function Subscription() {
 			case '1': {
 				setPriceInSp(data.sp249)
 				ret = 2.49/parseFloat(data.sp249)
-				
 				break
 			}
 			case '12': {

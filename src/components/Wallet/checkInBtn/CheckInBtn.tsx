@@ -88,14 +88,19 @@ const CheckInBtn = ({}) => {
 
 	const purchaseBluePlan = async (token: cryptoName) => {
         
-		// const res = await getCryptoPay(token, '2860')
-
-        // showQrModal(12,'asfasfasfasfafafa',token)
-
-
+		const res = await getCryptoPay(token, '2860')
+		if (!res) {
+			return 
+		}
+        showQrModal(res.transferNumber,res.wallet,token)
 		
-		// const waiting = await waitingPaymentStatus ()
-        // showSuccess('testtest string')
+		const waiting = await waitingPaymentStatus ()
+		setCodeVisible(false)
+
+		if (!waiting) {
+			return
+		}
+        showSuccess(waiting)
         
     }
     const showQrModal=(price:any,qrVal:string,token: cryptoName)=>{
@@ -105,6 +110,7 @@ const CheckInBtn = ({}) => {
         setQRWallet(qrVal);
         setCodeVisible(true);
     }
+
     const showSuccess=(signature:string)=>{
         setCodeVisible(false);
         Modal.alert({
@@ -112,11 +118,14 @@ const CheckInBtn = ({}) => {
             content: <div className={styles.successModal}>
                 <Result
                     status='success'
-                    title='Send successful'
+                    title={t('wallet-checkin-deposit-success-title')}
                 />
-                <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>View transactions</a></div>
+				<div className={styles.description}>
+					{t('wallet-checkin-deposit-success-detail')}
+				</div>
+                <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>{t('wallet-checkin-deposit-success-link')}</a></div>
             </div>,
-            confirmText:'Close',
+            confirmText:t('wallet-account-buy-success-close'),
         })
     }
 
@@ -134,7 +143,7 @@ const CheckInBtn = ({}) => {
                 closeOnMaskClick={true}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-redeem-btn-title')}</NavBar>
+                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-checkin-btn-title')}</NavBar>
                     <div className={styles.bd}>
 						<div className={styles.take}>
 							<div className={styles.title}>
@@ -144,7 +153,7 @@ const CheckInBtn = ({}) => {
 								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info2')}
 							</div>
 							<div className={styles.operation}>
-								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'comp-RedeemPassport-RedeemNow')}</Button>
+								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'wallet-checkin-betton-title')}</Button>
 							</div>
 						</div>
 						<div className={styles.warning}>
@@ -157,7 +166,7 @@ const CheckInBtn = ({}) => {
 						</div>
 						<div className={styles.introduce}>
 							<div className={styles.title}>
-								{t('wallet-checkin-deposit-title')}
+								{t('wallet-checkin-deposit-btn')}
 							</div>
 							<div className={styles.desc}>
 								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-1')}

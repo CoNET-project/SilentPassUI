@@ -134,6 +134,8 @@ interface Region {
 	duplicateMnemonicPhrase?: string
 	duplicateAccount?:profile
 	_duplicateCode?:string
+	ChannelPartners?: string
+	referrals?: string
   };
   
   interface passportInfoFromChain {

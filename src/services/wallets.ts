@@ -55,7 +55,7 @@ const isValidSolanaPublicKey = (publicKey: string) => {
   return true
 }
 
-const createOrGetWallet = async (secretPhrase: string | null, initAccount = false) => {
+const createOrGetWallet = async (secretPhrase: string | null, initAccount = false, referrals = '', ChannelPartners = '' ) => {
   await checkStorage();
 
   if (secretPhrase|| initAccount ) setCoNET_Data(null);
@@ -118,10 +118,18 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
     setCoNET_Data(data)
   }
 
-  let tmpData = CoNET_Data
-  if (!tmpData) {
-	return
-  }
+
+
+	let tmpData = CoNET_Data
+	if (!tmpData) {
+		return
+	}
+
+
+
+  	tmpData.ChannelPartners = ChannelPartners
+	tmpData.referrals = referrals
+
   const result = await initSolana(tmpData?.mnemonicPhrase);
   if (
     tmpData &&

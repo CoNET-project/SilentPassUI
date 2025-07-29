@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './payBnb.module.scss';
 import { useTranslation } from 'react-i18next';
-import bnb_token from './../assets/bnb_token.png';
+import { ReactComponent as BNBIcon } from "./../assets/bnb_token.svg";
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 
@@ -15,7 +15,7 @@ const PayBNB = ({purchaseBluePlan}:paybnbParams) => {
     
     return (
         <div className={styles.methodIem} onClick={() => purchaseBluePlan('BNB')}>
-            <div className={styles.img}><img src={bnb_token} /></div>
+            <div className={styles.img}><BNBIcon /></div>
             <label>BNB</label>
         </div>    
     );

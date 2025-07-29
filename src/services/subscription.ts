@@ -642,8 +642,6 @@ export const swapTokens = async (
         `&restrictIntermediateTokens=true`
     const quoteRes = await fetch(url)
     const quoteResponse = await quoteRes.json();
-    console.log(quoteResponse,'quoteResponse') 
-    return false;
 
     const swapRes = await fetch(
       `http://${getRandomNode()}/jup_ag/v6/swap`,

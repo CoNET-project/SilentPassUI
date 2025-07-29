@@ -447,7 +447,17 @@
 	"swap-asset-select-empty":"暂无可选数据",
 	"swap-asset-insufficient":"余额不足",
 	"swap-asset-pay-invalid":"支付值无效",
-	"swap-asset-receive-invalid":"收到值无效"
+	"swap-asset-receive-invalid":"收到值无效",
+
+	"transaction-history-title":"最近交易记录",
+	"transaction-history-empty":"暂无数据",
+	"transaction-history-swap-fail":"兑换失败",
+	"transaction-history-swap-ing":"兑换中",
+	"transaction-history-swap-success":"已兑换",
+	"transaction-history-send-fail":"发送失败",
+	"transaction-history-send-ing":"发送中",
+	"transaction-history-send-success":"已发送",
+	"transaction-history-send-to":"到"
 	
 	
 }

@@ -1,0 +1,36 @@
+.payWays{
+    text-align: center;
+}
+.successModalWrap{
+    background: #2a2a2a;
+    .successModal{
+        .description{
+            color: #f1f1f1;
+            text-align: center;
+        }
+        .link{
+            display: flex;
+            justify-content: center;
+            margin: 10px 0 0;
+            a{
+                color: #1677ff;
+                font-size: 16px;
+            }
+        }
+    }
+    :global(.adm-result) {
+        padding: 12px 12px;
+        background: transparent;
+    }
+    :global(.adm-result-success .adm-result-icon .antd-mobile-icon) {
+        color: #52ab74;
+    }
+    :global(.adm-result-title) {
+        color: #f1f1f1;
+        font-weight: 500;
+    }
+    :global(.adm-modal-footer .adm-modal-button) {
+        background: #333;
+        border: none;
+    }
+}

@@ -17,6 +17,7 @@ import HideBtn from './../hideBtn/HideBtn';
 // import ImportButton from './../importBtn/ImportButton';
 import History from './../history/History';
 import ScanButton from './../scanBtn/ScanButton';
+import PayWays from './payWays';
 
 const SPWallet = ({}) => {
     const { t, i18n } = useTranslation();
@@ -123,6 +124,13 @@ const SPWallet = ({}) => {
                                 <SendButton type={'$USDT'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.usdt?.usd || (0.0).toFixed(2)} balance={profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(6)} extendref={usdtSendRef} />
                             </li>:''}
                         </ul>
+
+                        <div className={styles.payWaysWrap}>
+                            <div className={styles.title}>
+                                {t('wallet-checkin-deposit-btn')}
+                            </div>
+                            <PayWays />
+                        </div>
 
                         {profiles?.[1]?.keyID ?<div className={styles.address}>
                             <div className={styles.cont}>

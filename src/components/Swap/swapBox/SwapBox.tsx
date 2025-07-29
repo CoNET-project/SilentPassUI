@@ -301,11 +301,27 @@ const SwapBox = ({}) => {
     }
     const handleSubmit=async()=>{
         setSubmitLoading(true);
+        
         const tx = await swapTokens(getMintAddr(fromToken), getMintAddr(toToken), profiles?.[1]?.privateKeyArmor, fromAmount, showFail);
         setSubmitLoading(false);
         if (tx) {
             showSuccess(tx);
             refreshSolanaBalances();
+
+            //添加历史记录
+            const currentKey=Date.now().toString();
+            addRecord({
+                operation: 'swap',
+                status: 'success',
+                fromType: fromToken,
+                toType: toToken,
+                fromVal: fromAmount.toString(),
+                toVal: toAmount.toString(),
+                fromAddress: profiles?.[1]?.keyID,
+                toAddress: profiles?.[1]?.keyID,
+                hash: tx,
+                key: currentKey
+            });
         }
     }
 

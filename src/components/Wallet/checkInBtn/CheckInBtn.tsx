@@ -8,44 +8,15 @@ import { getRewordStaus } from './../../../services/wallets'
 import { useDaemonContext } from "./../../../providers/DaemonProvider"
 import { CoNET_Data } from '../../../utils/globals'
 import { getOracle } from '../../../services/passportPurchase'
-import {getCryptoPay} from './../../../services/subscription'
-import PaySTRIPE from '../payStripe/PaySTRIPE'
-import PayBNB from './../payBnb/PayBNB'
-import PayBSC from './../payBsc/PayBSC';
-import PayModal from './../payModal/PayModal';
-import { ReactComponent as StripeIcon } from "./../assets/stripe-white.svg"
-import { waitingPaymentStatus  } from './../../../services/wallets'
-import {openWebLinkNative} from './../../../api';
-
-type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
+import PayWays from './../spWallet/payWays';
 
 const CheckInBtn = ({}) => {
     const { t, i18n } = useTranslation();
     const [visible, setVisible] = useState<boolean>(false)
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
-	const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy, setSuccessNFTID } = useDaemonContext()
-	const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
-
-    const [codeVisible, setCodeVisible] = useState(false);
-    const [QRWallet, setQRWallet] = useState('');
-    const [showPrice, setShowPrice] = useState('');
-    const [timeoutError, setTimeoutError] = useState(false);
-
+	const { setPaymentKind } = useDaemonContext()
 	const navigate = useNavigate()
-
-    // const navigate = useNavigate();
-    // const { setPaymentKind } = useDaemonContext();
-    // const [disabled, setDisabled] = useState(false);
-    // const [loading, setLoading] = useState(true);
-    // const firstRef=useRef(true);
-
-    // useEffect(() => {
-    //     if (firstRef && firstRef.current) {
-    //         getReword();
-    //         firstRef.current = false;
-    //     }
-    // }, []);
 
 	const checkBalance = async () => {
 		const status = await getRewordStaus()
@@ -61,12 +32,6 @@ const CheckInBtn = ({}) => {
 	useEffect(()=> {
 		checkBalance()
 	})
-
-	const stripePay = () => {
-		setSelectedPlan('3')
-		setPaymentKind(2)
-		navigate("/subscription")
-	}
 
     const spRewordProcess = () => {
         if (disabled) {
@@ -84,49 +49,6 @@ const CheckInBtn = ({}) => {
     }
     const goCheck=() => {
         setVisible(true)
-    }
-
-	const purchaseBluePlan = async (token: cryptoName) => {
-        
-		const res = await getCryptoPay(token, '2860')
-		if (!res) {
-			return 
-		}
-        showQrModal(res.transferNumber,res.wallet,token)
-		
-		const waiting = await waitingPaymentStatus ()
-		setCodeVisible(false)
-
-		if (!waiting) {
-			return
-		}
-        showSuccess(waiting)
-        
-    }
-    const showQrModal=(price:any,qrVal:string,token: cryptoName)=>{
-        setCryptoName(token);
-        setTimeoutError(false);
-        setShowPrice(price);
-        setQRWallet(qrVal);
-        setCodeVisible(true);
-    }
-
-    const showSuccess=(signature:string)=>{
-        setCodeVisible(false);
-        Modal.alert({
-            bodyClassName:styles.successModalWrap,
-            content: <div className={styles.successModal}>
-                <Result
-                    status='success'
-                    title={t('wallet-checkin-deposit-success-title')}
-                />
-				<div className={styles.description}>
-					{t('wallet-checkin-deposit-success-detail')}
-				</div>
-                <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>{t('wallet-checkin-deposit-success-link')}</a></div>
-            </div>,
-            confirmText:t('wallet-account-buy-success-close'),
-        })
     }
 
     return (
@@ -188,26 +110,13 @@ const CheckInBtn = ({}) => {
                             <div className={styles.title}>
                                 {t('wallet-checkin-deposit-btn')}
                             </div>
-                            <div className={styles.payways}>
-                                <Grid columns={3} gap={5}>
-                                    <Grid.Item>
-                                         <PaySTRIPE stripeClick={stripePay} />
-                                    </Grid.Item>
-                                    <Grid.Item>
-                                         <PayBNB purchaseBluePlan={purchaseBluePlan} />
-                                    </Grid.Item>
-                                    <Grid.Item>
-                                         <PayBSC purchaseBluePlan={purchaseBluePlan} />
-                                    </Grid.Item>
-                                </Grid>
-                            </div>
+                            <div style={{marginTop:'5px'}}><PayWays /></div>
                         </div>
                     </div>
 					
 					
                 </div>
             </Popup>
-            <PayModal visible={codeVisible} setVisible={setCodeVisible} QRWallet={QRWallet} cryptoName={cryptoName} showPrice={showPrice} timeoutError={timeoutError} setTimeoutError={setTimeoutError} purchaseBluePlan={purchaseBluePlan} />
         </>
     );
 };

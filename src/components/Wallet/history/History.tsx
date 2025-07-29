@@ -13,6 +13,7 @@ import { useHistoryManager } from './useHistoryManager';
 
 const History = ({}) => {
     const { isIOS, isLocalProxy } = useDaemonContext();
+    const { t, i18n } = useTranslation();
     const { history, addRecord, editRecord, deleteRecord, clearRecords } = useHistoryManager();
 
     const renderTag=(type:string,showName:boolean=true)=>{
@@ -49,18 +50,18 @@ const History = ({}) => {
     }
     const getType=(item:any)=>{
         if(item.operation === 'swap'){
-            return item.status === 'failed'?'兑换失败':(item.status === 'loading'?'兑换中...':'已兑换')
+            return item.status === 'failed'?t('transaction-history-swap-fail'):(item.status === 'loading'?t('transaction-history-swap-ing')+'...':t('transaction-history-swap-success'))
         }
         if(item.operation === 'send'){
-            return item.status === 'failed'?'发送失败':(item.status === 'loading'?'发送中...':'已发送')
+            return item.status === 'failed'?t('transaction-history-send-fail'):(item.status === 'loading'?t('transaction-history-send-ing')+'...':t('transaction-history-send-success'))
         }
     }
     const getVal=(item:any,type:string)=>{
         if(item.operation === 'swap'){
-            return type=='from' ? <span className={styles.green}>{'+' + item.toVal + item.toType}</span> : ('-' + item.fromVal + item.fromType);
+            return type=='from' ? <span className={styles.green}>{'+' + item.toVal + ' ' + item.toType}</span> : ('-' + item.fromVal + ' ' + item.fromType);
         }
         if(item.operation === 'send'){
-            return type=='from' ? <span className={styles.green}>{'+' + item.toVal + item.toType}</span> : '';
+            return type=='from' ? <span className={styles.green}>{'+' + item.toVal + ' ' + item.toType}</span> : '';
         }
     }
     const getDesc=(item:any)=>{
@@ -68,7 +69,7 @@ const History = ({}) => {
             return 'Jupiter';
         }
         if(item.operation === 'send'){
-            return <>到 <Ellipsis direction='middle' content={item.toAddress} className={styles.address} /></>;
+            return <>{t('transaction-history-send-to')} <Ellipsis direction='middle' content={item.toAddress} className={styles.address} /></>;
         }
     }
     const handleClick=(signature:string)=>{
@@ -77,7 +78,7 @@ const History = ({}) => {
 
     return (
         <div className={styles.history}>
-            <div className={styles.title}><ClockCircleFill className={styles.icon} />最近交易记录</div>
+            <div className={styles.title}><ClockCircleFill className={styles.icon} />{t('transaction-history-title')}</div>
             
             {history && history.length > 0 ?<div className={styles.list}>
                 {history.map((item,index)=>{
@@ -101,7 +102,7 @@ const History = ({}) => {
                     )
                 })}
             </div>:<div className={styles.empty}>
-                <Empty description='暂无数据' />
+                <Empty description={t('transaction-history-empty')} />
             </div>}
         </div>    
     );

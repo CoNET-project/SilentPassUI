@@ -44,9 +44,8 @@ const Languages=({visible, setVisible}: LanguagesProps)=> {
             className={styles.languagePopup}
         >
             <div className={styles.languageCont}>
-                <NavBar back={t('back')} onBack={handleBack} style={{'--height': '70px'}}></NavBar>
+                <NavBar onBack={handleBack} style={{'--height': '70px'}}>{t('language')}</NavBar>
                 <div className={styles.languageMain}>
-                    <h1 className={styles.title}>{t('language')}</h1>
                     <div className={styles.list}>
                         <CheckList value={[i18n.language]} onChange={handleChange}>
                             {languageList.map((item, index) => (

@@ -1,0 +1,22 @@
+.passport{
+    background: #191919;
+    border-radius: 10px;
+    padding:4vw 6vw;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    .item{
+        .label{
+            color:#818181;
+            font-size: 13px;
+            line-height: 1;
+        }
+        .val{
+            color:#fff;
+            font-size: 16px;
+            line-height: 1;
+            font-weight: 500;
+            margin:10px 0 0;
+        }
+    }
+}

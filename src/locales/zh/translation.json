@@ -457,7 +457,9 @@
 	"transaction-history-send-fail":"发送失败",
 	"transaction-history-send-ing":"发送中",
 	"transaction-history-send-success":"已发送",
-	"transaction-history-send-to":"到"
+	"transaction-history-send-to":"到",
+
+	"setting-current-version":"当前版本"
 	
 	
 }

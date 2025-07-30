@@ -446,6 +446,8 @@
 	"transaction-history-send-fail": "Send Failed",
 	"transaction-history-send-ing": "Sending",
 	"transaction-history-send-success": "Sent",
-	"transaction-history-send-to": "To"
+	"transaction-history-send-to": "To",
+
+	"setting-current-version":"Current version"
 
 }

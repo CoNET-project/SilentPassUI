@@ -1,0 +1,85 @@
+.general{
+    margin:10px 0 0;
+    text-align:left;
+    .icon{
+        background: #a3bee0;
+        padding:2px;
+        border-radius: 3px;
+        color:#5472b1;
+        font-size: 13px;
+        line-height: 1;
+    }
+    :global(.adm-list-header){
+        color:#fff;
+        font-size: 15px;
+        font-weight: 500;
+        padding-left:0;
+    }
+    :global(.adm-list){
+        background: transparent;
+    }
+    :global(.adm-list-body){
+        background: #191919;
+        border-radius: 10px;
+        border-top:none;
+        border-bottom:none;
+        overflow: hidden;
+    }
+    :global(.adm-list-item){
+        background: transparent;
+        padding-left:0;
+    }
+    :global(.adm-list-item-content){
+        border-top:0.5px #3f3f40 solid;
+    }
+    :global(a.adm-list-item:active:not(.adm-list-item-disabled)::after){
+        border-bottom: 0.5px #3f3f40 solid;
+    }
+    :global(.adm-list-item-content){
+        padding-left: 12px;
+    }
+    :global(.adm-list-item-content-prefix){
+        display: flex;
+        align-items: center;
+    }
+    :global(.adm-list-item-content-main){
+        font-size: 13px;
+    }
+    :global(.adm-list-item-content-extra){
+        font-size: 13px;
+    }
+    :global(.adm-center-popup-wrap){
+        max-width: 100%;
+    }
+}
+.proxyInfoModal{
+    width:80vw;
+    background:#323232;
+    :global(.adm-modal-title){
+        font-size: 16px;
+    }
+    .proxyInfoList{
+        color:#fff;
+        padding:5px 8px 0px;
+        .item{
+            display: flex;
+            align-items: center;
+            justify-content:space-between;
+            margin:18px 0 0;
+            .label{
+                font-size: 13px;
+                font-weight: 500;
+                color:#f1f1f1;
+            }
+            .val{
+                font-size: 13px;
+                display: flex;
+                align-items: center;
+                span{
+                    margin:0 12px 0 0;
+                    color:#bababa;
+                }
+            }
+        }
+    }
+}

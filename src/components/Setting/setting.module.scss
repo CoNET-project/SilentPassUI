@@ -1,0 +1,18 @@
+.setting{
+    padding: 42px 16px 100px;
+    width: 100%;
+    user-select:none;
+    .title{
+        margin-bottom: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    } 
+    .version{
+        margin:0 0 10px;
+        :global(.adm-notice-bar){
+            font-size: 13px;
+            border-radius: 10px;
+        }
+    }
+}

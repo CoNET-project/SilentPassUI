@@ -15,12 +15,6 @@
 .languageCont{
     .languageMain{
         padding: 0 4vw;
-        .title{
-            color: #fff;
-            font-size: 26px;
-            font-weight: 500;
-            line-height: 1;
-        }
         .list{
             margin: 20px 0 0;
             border-radius: 4px;
@@ -46,7 +40,14 @@
             }
         }
     }
-    :global(.adm-nav-bar-back) {
-        color: #a4bee0;
+    :global(.adm-nav-bar){
+        border-bottom: 1px #292d2e solid;
+    }
+    :global(.adm-nav-bar-title) {
+        color: #fff;
+        font-weight: 500;
+    }
+    :global(.adm-nav-bar-back){
+        color:#999;
     }
 }

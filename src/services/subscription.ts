@@ -88,38 +88,18 @@ const tryTest = async (address: string, code: string) => {
 	}
 }
 export const restoreAccount = async (passcode: string, password: string, temp: encrypt_keys_object, setProfiles: (profiles: any) => void): Promise<boolean> => {
-	if (!temp || !temp?.duplicateAccount) {
+	if (!temp || !temp?.duplicateAccount||!temp?.profiles) {
 		return false
 	}
 
+	const profiles = temp.profiles
 
-	const restoreEncryptoText = await getEncryptoData(passcode)
-	if (!restoreEncryptoText) {
-		return false
-	}
-	let restoreMnemonicPhrase = ''
-	try {
-		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode+password)
-		if (!restoreMnemonicPhrase) {
-			return false
-		}
-		
-		
-	} catch (ex) {
-		return false
-	}
-	changeStopProcess(true)
-	const solanaWallet = await initSolana(restoreMnemonicPhrase)
-	if (!solanaWallet) {
-		changeStopProcess(false)
-		return false
-	}
-	
-	const finish = async (duplicateAddress : string) => {
+
+	const finish = async (duplicateAddress : string, solanaWallet: {publicKey: string, privateKey: string} ) => {
 		if (!temp || !temp?.duplicateAccount) {
 			return false
 		}
-
+		changeStopProcess(true)
 		temp.duplicateAccount.keyID = duplicateAddress
 		temp.profiles[1].keyID = solanaWallet.publicKey
 		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
@@ -135,22 +115,67 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 		}, 15000)
 	}
 
-	const profiles = temp.profiles
 
 	const ret = await tryTest(profiles[0].keyID, passcode)
 
-	//		already backuped
+		//		already backuped
 	if (ret && ret.isCode === false ) {
 		const duplicateAddress = ret.duplicateAddress.toLowerCase()
 		if ( duplicateAddress !== ethers.ZeroAddress && temp.duplicateAccount.keyID.toLowerCase() !== duplicateAddress) {
-			await finish(ret.duplicateAddress)
-			return true
+			if (temp?.duplicateCode) {
+				let solanaWallet
+				const restoreEncryptoText = await getEncryptoData(temp.duplicateCode)
+				if (!restoreEncryptoText) {
+					return false
+				}
+				
+				try {
+					const restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, temp.duplicateCode + temp.duplicatePassword)
+					if (!restoreMnemonicPhrase) {
+						return false
+					}
+
+					solanaWallet = await initSolana(restoreMnemonicPhrase)
+					
+				} catch (ex) {
+					return false
+				}
+				if (!solanaWallet) {
+					return false
+				}
+				
+				await finish(ret.duplicateAddress, solanaWallet)
+				return true
+			}
 		}
 		return false
 	}
 
+	const restoreEncryptoText = await getEncryptoData(passcode)
+	if (!restoreEncryptoText) {
+		return false
+	}
 
-	const message = JSON.stringify({ walletAddress: profiles[0].keyID, uuid: temp.duplicateCodeHash, data: temp.encryptedString, hash:passcode })
+	let restoreMnemonicPhrase = ''
+	try {
+		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode + password)
+		if (!restoreMnemonicPhrase) {
+			return false
+		}
+		
+		
+	} catch (ex) {
+		return false
+	}
+	const solanaWallet = await initSolana(restoreMnemonicPhrase)
+	if (!solanaWallet || !temp?.duplicateCode) {
+		return false
+	}
+
+	const pass = temp.duplicateCode
+	temp.encryptedString = await aesGcmEncrypt(restoreMnemonicPhrase, pass)
+
+	const message = JSON.stringify({ walletAddress: profiles[0].keyID, uuid: temp.duplicateCodeHash, data: temp.encryptedString, hash: passcode })
 	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
 	const signMessage = await wallet.signMessage(message)
 	const sendData = {
@@ -165,7 +190,7 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	}
 
 	if (ethers.isAddress(result.status)) {
-		await finish (result.status)
+		await finish (result.status, solanaWallet)
 	}
 	
 	return true
@@ -283,6 +308,7 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 
 }
 const duplicatePasscodeAPI = `${apiv4_endpoint}duplicatePasscode`
+
 export const initializeDuplicateCode = async (passcode: string): Promise<boolean> => {
 	if (!CoNET_Data) {
 		return false

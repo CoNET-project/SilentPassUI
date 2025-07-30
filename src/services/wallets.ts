@@ -34,6 +34,7 @@ import { blast_CNTPAbi } from "./../utils/abis";
 
 const SPOracleSmartContract = new ethers.Contract(contracts.SpOracle.address, contracts.SpOracle.abi, conetDepinProvider)
 const PouchDB = require("pouchdb").default;
+
 export const initSolana = async (mnemonic: string): Promise<{publicKey: string, privateKey: string}|null> => {
   if (!Bip39.validateMnemonic(mnemonic)) return null;
 

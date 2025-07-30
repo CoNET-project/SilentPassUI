@@ -76,10 +76,23 @@ const getEncryptoData = async (restoreCode: string): Promise<string> => {
 
 const restoreAPI = `${apiv4_endpoint}restore`
 
+const tryTest = async (address: string, code: string) => {
+	try {
+		const [isCode, duplicateAddress] = await Promise.all([
+			duplicate_readOnly.isRestore(code),
+			duplicate_readOnly.duplicateList(address)
+		])
+		return ({isCode, duplicateAddress})
+	} catch (ex) {
+		return null
+	}
+}
 export const restoreAccount = async (passcode: string, password: string, temp: encrypt_keys_object, setProfiles: (profiles: any) => void): Promise<boolean> => {
 	if (!temp || !temp?.duplicateAccount) {
 		return false
 	}
+
+
 	const restoreEncryptoText = await getEncryptoData(passcode)
 	if (!restoreEncryptoText) {
 		return false
@@ -101,9 +114,42 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 		changeStopProcess(false)
 		return false
 	}
+	
+	const finish = async (duplicateAddress : string) => {
+		if (!temp || !temp?.duplicateAccount) {
+			return false
+		}
 
+		temp.duplicateAccount.keyID = duplicateAddress
+		temp.profiles[1].keyID = solanaWallet.publicKey
+		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
+		//		reset duplicateCode
+		temp.duplicateCode = temp.duplicatePassword = ''
+		temp.mnemonicPhrase = temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
+
+		await setCoNET_Data(temp)
+		await storeSystemData()
+		await setProfiles(temp.profiles)
+		setTimeout(() => {
+			changeStopProcess(false)
+		}, 15000)
+	}
 
 	const profiles = temp.profiles
+
+	const ret = await tryTest(profiles[0].keyID, passcode)
+
+	//		already backuped
+	if (ret && ret.isCode === false ) {
+		const duplicateAddress = ret.duplicateAddress.toLowerCase()
+		if ( duplicateAddress !== ethers.ZeroAddress && temp.duplicateAccount.keyID.toLowerCase() !== duplicateAddress) {
+			await finish(ret.duplicateAddress)
+			return true
+		}
+		return false
+	}
+
+
 	const message = JSON.stringify({ walletAddress: profiles[0].keyID, uuid: temp.duplicateCodeHash, data: temp.encryptedString, hash:passcode })
 	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
 	const signMessage = await wallet.signMessage(message)
@@ -119,21 +165,8 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	}
 
 	if (ethers.isAddress(result.status)) {
-		temp.duplicateAccount.keyID = result.status
-		temp.profiles[1].keyID = solanaWallet.publicKey
-		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
-		//		reset duplicateCode
-		temp.duplicateCode = temp.duplicatePassword = ''
-		temp.mnemonicPhrase = temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
-
-		await setCoNET_Data(temp)
-		await storeSystemData()
-		await setProfiles(temp.profiles)
+		await finish (result.status)
 	}
-
-	setTimeout(() => {
-		changeStopProcess(false)
-	}, 15000)
 	
 	return true
 

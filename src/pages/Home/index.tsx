@@ -18,7 +18,7 @@ import QuickLinks from "../../components/QuickLinks/QuickLinks";
 import { getServerIpAddress } from "../../api"
 import bannaer from './assets/bannerv1_en.gif'
 import bannaer_cn from './assets/bannerv1_cn.gif'
-import {airDropForSP, getirDropForSP} from '../../services/subscription'
+import {airDropForSP} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
 import airdropReff from './assets/airdropReff.gif'
 import { useTranslation } from 'react-i18next'
@@ -261,25 +261,7 @@ const Home = () => {
     
   }
 
-  const airdropProcess = async () => {
 
-    setIsProcessAirDrop(true)
-    setAirdropProcess(true)
-    if (isAirDropForSP) {
-        const kk = await getirDropForSP()
-        setIsAirDropForSP(false)
-        
-        if (typeof kk === 'number') {
-            
-            setAirdropSuccess(true)
-            setAirdropTokens(kk)
-            navigate('/wallet')
-        }
-        return
-    }
-    setAirdropProcessReff(true)
-    navigate('/wallet')
-  }
 
   useEffect(() => {
     if (!closestRegion?.length) {

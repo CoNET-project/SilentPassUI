@@ -157,6 +157,9 @@ const Home = () => {
 	}))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
   };
 
+  const iOSDownload = () => {
+	window.open (`https://apps.apple.com/us/app/silent-pass-vpn/id6740261324`)
+  }
 
   useEffect(() => {
 	if (!closestRegion?.length) {
@@ -217,7 +220,7 @@ const Home = () => {
 				<div style={{paddingTop: '2rem', }}>
 					<img src={phoneImg} style={{width: '47.7vw'}}></img>
 				</div>
-				<div style={{paddingTop: '2rem'}}>
+				<div style={{paddingTop: '2rem'}} onClick={iOSDownload}>
 					<IOSDownloadButton />
 				</div>
 				<div style={{paddingTop: '2rem'}}>

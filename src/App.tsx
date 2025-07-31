@@ -48,7 +48,7 @@ function App() {
 		referrals = queryParams.get("referrals")
 	}
 
-	const profiles = await createOrGetWallet(secretPhrase);
+	const profiles = await createOrGetWallet(secretPhrase, false, referrals, ChannelPartners);
 	setProfiles(profiles)
 
 	getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {

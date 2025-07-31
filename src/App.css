@@ -1,6 +1,5 @@
 .App {
   width: 100%;
-  max-width: 380px;
   margin: 0 auto;
   margin-top: -1.2rem;
   display: flex;
@@ -9,6 +8,8 @@
   height: 100vh;
   text-align: center;
   color: white;
+background-image: url('pages/Home/assets/bg-Download.png');
+background-size: cover;
 }
 
 .header {

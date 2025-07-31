@@ -1,19 +1,19 @@
 import {
-	postToEndpoint,
+	postToEndpoint, initProfileTokens
 } from "../utils/utils";
-
+import axios, { AxiosResponse } from "axios"
 import {
 	payment_endpoint,
 	apiv4_endpoint,
-	
+	conetDepinProvider
 } from "../utils/constants"
-
+import { refreshSolanaBalances, initSolana, storeSystemData, createOrGetWallet } from './wallets'
 import contracts from "../utils/contracts";
 import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
 import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
 import {ethers} from 'ethers'
-import { CoNET_Data } from "../utils/globals"
-import { PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js'
+import { CoNET_Data, setCoNET_Data } from "../utils/globals"
+import { PublicKey, Transaction, VersionedTransaction, Keypair, Connection, SendTransactionError} from '@solana/web3.js'
 import Bs58 from 'bs58'
 import {
   AnchorProvider,
@@ -23,15 +23,19 @@ import {
   Wallet
 } from "@coral-xyz/anchor"
 
-import {allNodes} from './mining'
+import {allNodes, getRandomNode} from './mining'
+
+import {changeStopProcess} from './listeners'
+
+const uuid62 = require('uuid62')
+const duplicate = contracts.Duplicate
+const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi, conetDepinProvider)
 
 interface CompatibleWallet {
 	publicKey: PublicKey;
 	signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T>;
 	signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]>;
 }
-
-
 
 const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
 
@@ -60,13 +64,290 @@ export const getCryptoPay = async (cryptoName: string, plan: string): Promise<nu
 	}
 }
 
+const getEncryptoData = async (restoreCode: string): Promise<string> => {
 
+	try {
+		const ret = await duplicate_readOnly.getEncryptoString(restoreCode)
+		return ret
+	} catch (ex) {
+		return ''
+	}
+}
+
+const restoreAPI = `${apiv4_endpoint}restore`
+
+const tryTest = async (address: string, code: string) => {
+	try {
+		const [isCode, duplicateAddress] = await Promise.all([
+			duplicate_readOnly.isRestore(code),
+			duplicate_readOnly.duplicateList(address)
+		])
+		return ({isCode, duplicateAddress})
+	} catch (ex) {
+		return null
+	}
+}
+export const restoreAccount = async (passcode: string, password: string, temp: encrypt_keys_object, setProfiles: (profiles: any) => void): Promise<boolean> => {
+	if (!temp || !temp?.duplicateAccount||!temp?.profiles) {
+		return false
+	}
+
+	const profiles = temp.profiles
+
+
+	const finish = async (duplicateAddress : string, solanaWallet: {publicKey: string, privateKey: string} ) => {
+		if (!temp || !temp?.duplicateAccount) {
+			return false
+		}
+		changeStopProcess(true)
+		temp.duplicateAccount.keyID = duplicateAddress
+		temp.profiles[1].keyID = solanaWallet.publicKey
+		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
+		//		reset duplicateCode
+		temp.duplicateCode = temp.duplicatePassword = ''
+		temp.mnemonicPhrase = temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
+
+		await setCoNET_Data(temp)
+		await storeSystemData()
+		await setProfiles(temp.profiles)
+		setTimeout(() => {
+			changeStopProcess(false)
+		}, 15000)
+	}
+
+
+	const ret = await tryTest(profiles[0].keyID, passcode)
+
+		//		already backuped
+	if (ret && ret.isCode === false ) {
+		const duplicateAddress = ret.duplicateAddress.toLowerCase()
+		if ( duplicateAddress !== ethers.ZeroAddress && temp.duplicateAccount.keyID.toLowerCase() !== duplicateAddress) {
+			if (temp?.duplicateCode) {
+				let solanaWallet
+				const restoreEncryptoText = await getEncryptoData(temp.duplicateCode)
+				if (!restoreEncryptoText) {
+					return false
+				}
+				
+				try {
+					const restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, temp.duplicateCode + temp.duplicatePassword)
+					if (!restoreMnemonicPhrase) {
+						return false
+					}
+
+					solanaWallet = await initSolana(restoreMnemonicPhrase)
+					
+				} catch (ex) {
+					return false
+				}
+				if (!solanaWallet) {
+					return false
+				}
+				
+				await finish(ret.duplicateAddress, solanaWallet)
+				return true
+			}
+		}
+		return false
+	}
+
+	const restoreEncryptoText = await getEncryptoData(passcode)
+	if (!restoreEncryptoText) {
+		return false
+	}
+
+	let restoreMnemonicPhrase = ''
+	try {
+		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode + password)
+		if (!restoreMnemonicPhrase) {
+			return false
+		}
+		
+		
+	} catch (ex) {
+		return false
+	}
+	const solanaWallet = await initSolana(restoreMnemonicPhrase)
+	if (!solanaWallet || !temp?.duplicateCode) {
+		return false
+	}
+
+	const pass = temp.duplicateCode
+	temp.encryptedString = await aesGcmEncrypt(restoreMnemonicPhrase, pass)
+
+	const message = JSON.stringify({ walletAddress: profiles[0].keyID, uuid: temp.duplicateCodeHash, data: temp.encryptedString, hash: passcode })
+	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+		message, signMessage
+	}
+	
+	const result = await postToEndpoint(restoreAPI, true, sendData)
+	if (!result|| !result?.status) {
+		console.log(`initDuplicate Error!`, result?.error)
+		changeStopProcess(false)
+		return false
+	}
+
+	if (ethers.isAddress(result.status)) {
+		await finish (result.status, solanaWallet)
+	}
+	
+	return true
+
+}
+
+const gettNumeric = (token: string) => {
+	switch (token) {
+		default: {
+			return 6
+		}
+		case 'So11111111111111111111111111111111111111112': {
+			return 9
+		}
+		
+	}
+}
+
+
+
+export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
+	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(upMint))
+	const slippageBps = 250 // 0.5% slippage
+	const quoteUrl = `http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
+	try {
+        const quoteResponse = await axios.get(quoteUrl)
+        const quote = quoteResponse.data
+        const price = ethers.formatUnits(quote.outAmount, gettNumeric(downputMint))
+        return price
+    } catch (ex) {
+    	
+    }
+    return ''
+}
+
+export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
+	const amount = parseInt(ethers.parseUnits(_amount.toString(), gettNumeric(upMint)).toString())
+	const slippageBps = 250 
+	const quoteUrl = `http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${downputMint}&outputMint=${upMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
+	try {
+        const quoteResponse = await axios.get(quoteUrl)
+        const quote = quoteResponse.data
+        const price = ethers.formatUnits(quote.otherAmountThreshold, gettNumeric(downputMint))
+        return price
+    } catch (ex) {
+    	
+    }
+    return ''
+	
+}
+
+const getDuplicateOwnership = async(duplicateAccount: string, keyID: string): Promise<boolean|null> => {
+	try {
+		const owner = await duplicate_readOnly.duplicateList(keyID)
+		if (owner === ethers.ZeroAddress || duplicateAccount.toLowerCase() !== owner.toLowerCase()) {
+			return false
+		}
+		return true
+	} catch (ex) {
+		return null
+	}
+
+}
+
+const duplicateAPI = `${apiv4_endpoint}duplicate`
+export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
+	
+	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
+	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp._duplicateCode])
+	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+
+
+	if (!temp?.duplicateAccount) {
+		const profiles = temp.profiles
+		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: ''})
+		const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+		const signMessage = await wallet.signMessage(message)
+		const sendData = {
+		  	message, signMessage
+		}
+	
+		const result = await postToEndpoint(duplicateAPI, true, sendData)
+		if (!result|| !result?.status) {
+			console.log(`initDuplicate Error!`, result?.error)
+			return temp
+		}
+		console.log(`initDuplicate success!`, result?.status)
+
+		temp.duplicateAccount = {
+			privateKeyArmor: profiles[0].privateKeyArmor,
+			tokens: initProfileTokens(),
+			publicKeyArmor: '',
+			referrer: '',
+			keyID: result.status,
+			isNode: false,
+			index: 0,
+			hdPath: null
+		}
+		
+	} else {
+		const keyID = temp.profiles[0].keyID
+		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
+		if (duplicateStatus === false) {
+			await createOrGetWallet(null, true)
+			
+			return null
+		}
+	}
+
+	if (!temp?.duplicatePassword) {
+		temp.duplicateCode = ''
+	}
+
+	return temp
+
+}
+const duplicatePasscodeAPI = `${apiv4_endpoint}duplicatePasscode`
+
+export const initializeDuplicateCode = async (passcode: string): Promise<boolean> => {
+	if (!CoNET_Data) {
+		return false
+	}
+	const temp = CoNET_Data
+	const passCode = temp._duplicateCode
+	const profiles = temp.profiles
+	
+	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+	
+	const mnemonicPhrase = temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+	const pass = passCode + passcode
+	const encryptoText = temp.encryptedString = await aesGcmEncrypt(mnemonicPhrase, pass)
+	const keyword = await aesGcmDecrypt(encryptoText, pass)
+	const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: encryptoText})
+	const signMessage = await wallet.signMessage(message)
+	const sendData = {
+		message, signMessage
+	}
+	try {
+		const result = await postToEndpoint(duplicatePasscodeAPI, true, sendData)
+		if (!result|| !result?.status) {
+			console.log(`initDuplicate Error!`, result?.error)
+			return false
+		}
+	} catch (ex) {
+		return false
+	}
+
+	temp.duplicateCode = temp._duplicateCode
+	temp.duplicatePassword = passcode
+	await setCoNET_Data(temp)
+  	await storeSystemData()
+	return true
+}
 
 export const checkWallet = (wallet: string) => {
 	return ethers.isAddress(wallet)
 }
-
-
 
 const airDropForSPUrl = `${apiv4_endpoint}airDropForSP`
 const SP_tokenDecimals = 6
@@ -164,9 +445,13 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 
 	  const profile = CoNET_Data.profiles[0]
 	  const solanaWallet = CoNET_Data.profiles[1].keyID
-
+	  const mainWallet = profile.keyID.toLowerCase()
+	  const referrerLow = referrer.toLowerCase()
+	  if (mainWallet === referrerLow || referrerLow === CoNET_Data.duplicateAccount?.keyID.toLocaleUpperCase() ) {
+			return false
+	  }
 	  try {
-		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, referrer })
+		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, referrer})
 		const wallet = new ethers.Wallet(profile.privateKeyArmor)
 		const signMessage = await wallet.signMessage(message)
 		const sendData = {
@@ -181,7 +466,10 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 			if (airDropStatus) {
 				airDropStatus.isReadyForReferees = false
 			}
-
+			
+			CoNET_Data.profiles[0].referrer = referrer
+			setCoNET_Data(CoNET_Data)
+			
 			return result.amount
 		}
 
@@ -361,4 +649,130 @@ export const aesGcmDecrypt= async (ciphertext: string, password: string) => {
 	} catch (e) {
 		throw new Error('Decrypt failed')
 	}
+}
+
+// 轮询签名状态
+async function pollSignature(
+  connection: Connection,
+  signature: string,
+  interval = 2000,
+  timeout = 30_000
+): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const resp = await connection.getSignatureStatuses([signature]);
+	console.log(` pollSignature resp`,resp.value[0])
+    const status = resp.value[0]?.confirmationStatus;
+    if (status === "confirmed" || status === "finalized") {
+      console.log("✅ 交易已确认", signature, status);
+      return true;
+    }
+
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  console.warn("⚠️ 签名确认超时", signature);
+  return false;
+}
+
+export const swapTokens = async (
+  fromMint: string,
+  toMint: string,
+  privateKey: string,
+  amountRaw: string,
+  showFail: (err:any)=> void
+): Promise<false | string> => {
+  // 用你的 HTTP RPC 节点
+  const rpcUrl = `http://${getRandomNode()}/solana-rpc`;
+  // **显式禁用** WebSocket
+  const connection = new Connection(rpcUrl, {
+    commitment: "confirmed",
+    wsEndpoint: ""
+  });
+
+  const amount = ethers.parseUnits(amountRaw, gettNumeric(fromMint))
+
+  try {
+    // 1. 构造 Jupiter 的 quote & swapPayload
+    const wallet = Keypair.fromSecretKey(Bs58.decode(privateKey));
+	const url = `http://${getRandomNode()}/jup_ag/v6/quote?` +
+        `inputMint=${fromMint}` +
+        `&outputMint=${toMint}` +
+        `&amount=${amount}` +
+        `&restrictIntermediateTokens=true`
+    const quoteRes = await fetch(url)
+    const quoteResponse = await quoteRes.json();
+
+    const swapRes = await fetch(
+      `http://${getRandomNode()}/jup_ag/v6/swap`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dynamicComputeUnitLimit: true,
+          dynamicSlippage: true,
+          prioritizationFeeLamports: {
+            priorityLevelWithMaxLamports: {
+              maxLamports: 1_000_000,
+              priorityLevel: "veryHigh"
+            }
+          },
+          quoteResponse,
+          userPublicKey: wallet.publicKey.toString()
+        })
+      }
+    );
+	
+    const { swapTransaction } = await swapRes.json();
+
+    // 2. 反序列化
+	const tx = VersionedTransaction.deserialize(
+	Buffer.from(swapTransaction, "base64")
+	);
+
+	// 3. 拿最新 blockhash + lastValidBlockHeight
+	const latest = await connection.getLatestBlockhash("confirmed");
+	tx.message.recentBlockhash      = latest.blockhash;
+	// @ts-ignore
+	tx.message.lastValidBlockHeight = latest.lastValidBlockHeight;
+
+	// 4. 签名 —— 必须在设置 blockhash/height 后做
+	tx.sign([wallet]);
+
+	// 5. 模拟一下，排查逻辑错误
+	const sim = await connection.simulateTransaction(tx);
+	if (sim.value.err) {
+	console.error("⚠️ simulateTransaction failed:", sim.value.err);
+	console.error("logs:", sim.value.logs);
+	return false;
+	}
+
+	// 6. 真正发送
+	const rawTx = tx.serialize();
+	let txid: string;
+
+    // 5. 真正发
+    txid = await connection.sendRawTransaction(rawTx, {
+      skipPreflight: false,
+      preflightCommitment: "confirmed"
+    })
+
+	  console.log("🔍 已发送 txid =", txid)
+
+	// 6. 轮询确认
+	const ok = await pollSignature(connection, txid)
+	return ok ? txid : false
+
+  } catch (err: any) {
+    // 捕获 SendTransactionError
+    if (err instanceof SendTransactionError) {
+      // 调用 getLogs() 拿到完整的仿真日志
+      const logs = await err.getLogs(connection)
+      console.error("❌ SendTransactionError 仿真日志:\n", logs.join("\n"));
+    } else {
+      console.error("❌ sendRawTransaction 其他错误:", err);
+    }
+    showFail(err.message);
+    return false
+  }
+
 }

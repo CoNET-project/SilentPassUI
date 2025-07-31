@@ -13,7 +13,6 @@ import {
 	payment_endpoint,
 	apiv4_endpoint
 } from "../utils/constants"
-import {waitingPaymentReady} from './wallets'
   import { ethers } from "ethers"
   import Bs58 from "bs58";
   import contracts from "../utils/contracts";
@@ -268,49 +267,6 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 
   const purchasePassportBySP = `${payment_endpoint}purchasePassportBySP`
 
-
-  export const postPurchasePassport = async (hash: string): Promise<number|false> => {
-
-	  if (!CoNET_Data?.profiles) {
-		return false
-	  }
-  
-	  const profile = CoNET_Data.profiles[0]
-	  const solanaWallet = CoNET_Data.profiles[1].keyID
-	  const encodedMessage = new TextEncoder().encode(profile.keyID.toLowerCase())
-	  const privateKey = CoNET_Data.profiles[1]?.privateKeyArmor
-	  const solana_account_privatekey_array = Bs58.decode(privateKey)
-	  const solana_account_keypair = Keypair.fromSecretKey(
-		 solana_account_privatekey_array
-	  )
-
-	  const _data = nacl.sign.detached(encodedMessage, solana_account_keypair.secretKey)
-	  const data = Bs58.encode(_data)
-	  try {
-		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet, hash, data })
-		const wallet = new ethers.Wallet(profile.privateKeyArmor)
-		const signMessage = await wallet.signMessage(message)
-		const sendData = {
-		  message, signMessage
-		}
-	
-		const result = await postToEndpoint(purchasePassportBySP, true, sendData)
-		const status = result?.status
-		if (status) {
-			
-			const waiting = await waitingPaymentReady(profile.keyID)
-			if (waiting?.status) {
-				return waiting.status
-			}
-			
-		}
-		
-		return false
-	  } catch (ex) {
-		console.log(ex)
-		return false
-	  }
-  }
   
 //   const checkts = async (solanaTx: string) => {
 // 	//		from: J3qsMcDnE1fSmWLd1WssMBE5wX77kyLpyUxckf73w9Cs

@@ -52,6 +52,7 @@ interface Region {
 	eth: CryptoAsset;
 	sol: CryptoAsset;
 	sp: CryptoAsset;
+	usdt: CryptoAsset;
   }
   
   interface freePassport {
@@ -80,6 +81,8 @@ interface Region {
 	referrer: string | null | undefined;
 	spClub?: SpClub;
 	SpClubPoints?: SpClubPoints
+	spChannel?:SpClub
+
 	data?: any;
 	type?: keyPairType;
 	nodeID?: number;
@@ -94,6 +97,22 @@ interface Region {
   interface SpClubReferees {
 	walletAddress: string;
 	activePassport: string//freePassport;
+  }
+
+  interface spChannelPoints {
+	totalChannelPartnersNewUser: number
+	totalChannelPartnersRedeem: number
+	totalChannelPartnersSubscription: number
+	totalChannelPartnersGenesis: number
+	totalChannelPartnersDailyUser: number
+	totalChannelPartnersBandwidth: number
+	totalChannelPartnersDownloadLink: number
+	bandwidthChannelPartners: number
+	subscriptionChannelPartners: number
+	genesisChannelPartners: number
+	newUserChannelPartners: number
+	redeemChannelPartners: number
+	downloadhannelPartners: number
   }
 
   interface SpClubPoints {
@@ -127,6 +146,14 @@ interface Region {
 	upgradev2?: boolean;
 	webFilter: boolean;
 	recoveryWords?:string;
+	duplicateCode?: string
+	duplicateCodeHash?: string
+	duplicatePassword?: string
+	duplicateMnemonicPhrase?: string
+	duplicateAccount?:profile
+	_duplicateCode?:string
+	ChannelPartners?: string
+	referrals?: string
   };
   
   interface passportInfoFromChain {

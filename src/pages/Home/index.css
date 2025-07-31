@@ -34,6 +34,12 @@ a {
 	padding: 3rem 1rem 5rem 1rem;
   }
 
+  .homeMain {
+	display: flex;
+	flex-direction: column;
+	padding: 2rem 0;
+  }
+
   .stats-container {
 	width: 100%;
 	display: flex;
@@ -58,7 +64,8 @@ a {
   }
 
   h1 span {
-	color: #003cff;
+	color: #fafafa;
+	font-size: 1.5rem;
   }
 
   .title {

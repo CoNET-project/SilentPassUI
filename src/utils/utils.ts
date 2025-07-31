@@ -2,7 +2,6 @@ import bs58 from "bs58"
 import { Keypair } from "@solana/web3.js";
 import { apiv4_endpoint, XMLHttpRequestTimeout } from "./constants";
 import contracts from "./contracts";
-import { StringDecoder } from "node:string_decoder";
 
 
 enum PassportTitle {
@@ -83,6 +82,13 @@ export const initProfileTokens = () => {
       decimal: 18,
       contract: contracts.SPToken.address,
       name: "sp",
+    },
+    usdt: {
+      balance: "0",
+      network: "Solana Mainnet",
+      decimal: 18,
+      contract: "",
+      name: "usdt",
     },
   };
   return ret;

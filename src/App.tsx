@@ -3,7 +3,7 @@ import "./App.css";
 import { HashRouter as Router, Route, Routes } from "react-router-dom";
 import { Home, Region } from "./pages";
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfoInChain, tryToRequireFreePassport, checkFreePassport } from "./services/wallets";
+import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "./services/wallets";
 import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
@@ -13,7 +13,6 @@ import Wallet from './pages/Wallet';
 import Swap from './pages/Swap';
 import Settings from './pages/Settings';
 import Applications from './pages/Applications';
-import Subscription from './pages/Subscription';
 import Support from './pages/Support';
 import FAQ from './pages/FAQ';
 import ConfigDevice from './pages/ConfigDevice';
@@ -28,6 +27,10 @@ import './i18n'; // 加载多语言配置
 
 import { useTranslation } from 'react-i18next';
 
+type AntdLocale = {
+	en: typeof enUS;
+	zh: typeof zhCN;
+}
 
 global.Buffer = require('buffer').Buffer;
 
@@ -57,69 +60,27 @@ function App() {
 	}
   }
 
-  const handlePassport = async () => {
-	if (!CoNET_Data?.profiles[0]?.keyID) return
-
-	const info = await getCurrentPassportInfoInChain(CoNET_Data?.profiles[0]?.keyID);
-
-	const tmpData = CoNET_Data;
-
-	if (!tmpData) {
-	  return;
-	}
-
-	tmpData.profiles[0] = {
-	  ...tmpData?.profiles[0],
-	  activePassport: {
-		nftID: info[0].toString(),
-		expires: info[1].toString(),
-		expiresDays: info[2].toString(),
-		premium: info[3]
-	  },
-	};
-
-	const activeNFTNumber = tmpData.profiles[0].activePassport||0
-	if (tmpData.profiles[0].activePassport?.expiresDays !== '7')
-	  tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
-
-	setActivePassport(tmpData.profiles[0].activePassport);
-
-	setCoNET_Data(tmpData);
-
-	if (!CoNET_Data) return;
-
-	setProfiles(CoNET_Data?.profiles);
-	setActivePassportUpdated(true);
-  }
 
   const init = async () => {
 	let vpnTimeUsedInMin = 0
 
-	try {
-	  const ss = await localStorage.getItem("vpnTimeUsedInMin")
-	  if (ss) {
-		vpnTimeUsedInMin = parseInt(ss)
-	  }
-	} catch (ex) {
-
-	}
 	_vpnTimeUsedInMin.current = vpnTimeUsedInMin;
 
 	const queryParams = parseQueryParams(window.location.search);
 	let secretPhrase: string | null = null;
-
+	let ChannelPartners = ''
+	let referrals = ''
 	if (window.location.search && queryParams) {
-	  secretPhrase = queryParams.get("secretPhrase");
-	  secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
+	  	secretPhrase = queryParams.get("secretPhrase");
+	  	secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
+	  	secretPhrase = queryParams.get("secretPhrase");
+		ChannelPartners = queryParams.get("ChannelPartners")
+		referrals = queryParams.get("referrals")
 	}
 
 	const profiles = await createOrGetWallet(secretPhrase);
 	setProfiles(profiles)
 
-	listenProfileVer(setProfiles, setActivePassport, setMiningData);
-
-	checkCurrentRate(setMiningData)
-	checkFreePassport()
 
 	getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
 	  setSOlanaRPC(allNodes)
@@ -132,8 +93,7 @@ function App() {
 		return
 	  }
 
-	});
-	await handlePassport ()
+	})
 
   }
 
@@ -146,30 +106,27 @@ function App() {
   }, [])
 
   useEffect(() => {
-  		setDefaultConfig({
-			locale: enUS,
-		})
-  		type AntdLocale = {
-			  en: typeof enUS;
-			  zh: typeof zhCN;
-			}
-  		let storage = window.localStorage;
-  		let lang='en';
-  		const antdMLang: AntdLocale={en:enUS,zh:zhCN};
-  		if(localStorage && localStorage.lang){
-  			lang=localStorage.lang;
-  		} else {
-			//@ts-ignore
-			const userLang = navigator.language || navigator.userLanguage;
-			if (/^zh/.test(userLang)) {
-				lang='zh'
-			}
+	setDefaultConfig({
+		locale: zhCN,
+	})
+
+	let storage = window.localStorage;
+	let lang='zh';
+	const antdMLang: AntdLocale={en:enUS,zh:zhCN};
+	if(localStorage && localStorage.lang){
+		lang=localStorage.lang;
+	} else {
+		//@ts-ignore
+		const userLang = navigator.language || navigator.userLanguage;
+		if (/^zh/.test(userLang)) {
+			lang='zh'
 		}
-  		setDefaultConfig({
-			locale: antdMLang[lang as keyof typeof antdMLang],
-		})
-		i18n.changeLanguage(lang);
-		localStorage.lang=lang;
+	}
+	setDefaultConfig({
+		locale: antdMLang[lang as keyof typeof antdMLang],
+	})
+	i18n.changeLanguage(lang);
+	localStorage.lang=lang;
   },[])
 
   return (
@@ -186,7 +143,6 @@ function App() {
           <Route path="/passcode/new" element={<Passcode new />}></Route>
           <Route path="/passcode/change" element={<Passcode />}></Route>
           <Route path="/applications" element={<Applications />}></Route>
-          <Route path="/subscription" element={<Subscription />}></Route>
           <Route path="/transfer" element={<Transfer />}></Route>
           <Route path="/support" element={<Support />}></Route>
           <Route path="/" element={<Home />}></Route>

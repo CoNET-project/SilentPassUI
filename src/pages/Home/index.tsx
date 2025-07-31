@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { useMemo } from "react";
 import { LuCirclePower } from 'react-icons/lu';
 import type { IconBaseProps } from 'react-icons';
-
+import phoneImg from './assets/phone3.png'
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 
 
@@ -402,85 +402,62 @@ const handleTogglePower = async () => {
 
   return (
     <>
-      <Header />
-      <div className="home" style={{ overflowX: 'hidden' }}>
-        {isInitialLoading ? (
-          <>
-          <div style={{ display: 'absolute', flexDirection: 'column', gap: '8px' }}>
-            <button
-              className="power"
-            >
-			
-              <img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
-            </button>
+      
+        {isInitialLoading &&
+			<div className='home' style={{ overflowX: 'hidden' }}>
+				<div style={{ display: 'absolute', flexDirection: 'column', gap: '8px' }}>
+					<button
+					className="power"
+					>
+					
+					<img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
+					</button>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '400px' }}>
-              <p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
-              </div>
-              {/* <p className="not-connected">{initPercentage}%</p> */}
-            </div>
-          </>
-        ) : (
-          <>
-            <div>
-			  
-              <img src="/assets/header-title.svg" style={{minWidth: '150px', minHeight: '75x'}}></img>
-			  {/* {
-				
-				!isProcessAirDrop && 
-				<>
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '400px' }}>
+					<p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
+					</div>
+					{/* <p className="not-connected">{initPercentage}%</p> */}
+				</div>
+			</div>
+        }
+		{
+			!isInitialLoading &&
+			<div className='homeMain'>
+				<div>
+					<img src="/assets/header-title.svg"></img>
+				</div>
+				<h1 style={{paddingTop: '2rem'}}>
+					<span>
+						{
+							t('download_page_title')
+						}
+					</span>
+					
+					
+				</h1>
+				<h1 style={{paddingTop: '2rem', fontSize:'2.5rem'}}>
 					{
-						isAirDropForSP &&
-							<img src={airdrop} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/> 
+						t('download_page_title-1')
 					}
-					{
-						!isAirDropForSP && isReadyForReferees &&
-							<img src={airdropReff} style={{height:"4rem", cursor: "pointer"}} onClick={airdropProcess}/>
-						
-					}
-				</>
-				 	
-			  } */}
-			  
-            </div>
-
-			{/* <div>
-				<button onClick={() => navigate("/wallet")}>
-					<img className="bannaer" src={i18n.language === 'zh' ? bannaer_cn : bannaer} style={{width:"25rem",height: "5rem"}}></img>
-				</button>
+					
+				</h1>
+				<h1 style={{paddingTop: '2rem'}}>
+					<span>
+						{
+							t('download_page_title-2')
+						}
+					</span>
+					
+					
+				</h1>
+				<div style={{paddingTop: '2rem'}}>
+					<img src={phoneImg} style={{minWidth: '150px', minHeight: '75x',}}></img>
+				</div>
 				
-			</div> */}
-
-            <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
-			  {
-				isLocalProxy &&
-				<CopyProxyInfo />
-			  }
-            
-
-            {/*{
-              isLocalProxy && power && (
-                <SystemSettingsButton />
-              )
-            }*/}
-
-            {
-              <RegionSelector
-              
-                title={allRegions?.[sRegion]?.country}
-                regionCode={allRegions?.[sRegion]?.code}
-                showArrow={!power}
-				isLocalServer={isLocalProxy}
-                action={() => !power && navigate("/regions")}
-              />
-            }
-          </>
-        )}
-      </div>
-
-      <Footer />
-
-      <PassportInfoPopup />
+			</div>
+		}
+		
+	  	
     </>
   );
 };

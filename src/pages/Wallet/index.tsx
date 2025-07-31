@@ -6,7 +6,6 @@ import AccountList from '../../components/AccountList';
 import ActivePassportInfo from '../../components/ActivePassportInfo';
 import Footer from '../../components/Footer';
 import './index.css';
-import SpClub from '../../components/AccountList/SpClub';
 import ReferralProgram from '../../components/AccountList/ReferralProgram';
 import RedeemPassport from '../../components/RedeemPassport';
 import RewardPoint from '../../components/AccountList/RewardPoint'
@@ -73,7 +72,6 @@ export default function Wallet() {
       </div>
 	  {
 		<div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '20px' }}>
-			{SpClub(openClub, setOpenClub,setRedeemPassportOpenOpen,redeemRef)}
 			<ReferralProgram />
 		</div>
 	  }

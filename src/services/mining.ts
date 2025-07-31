@@ -13,6 +13,7 @@ import { conetProvider } from "../utils/constants";
 import { initProfileTokens, postToEndpoint } from "../utils/utils";
 import async from "async";
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
+import nodes from '../pages/Home/assets/allnodes.json'
 
 let allNodes: nodes_info[] = [];
 let closestNodes: nodes_info[] = [];
@@ -29,14 +30,14 @@ let testRegion: ClosestRegion[] = [];
 const postToEndpointGetBody: (
   url: string,
   post: boolean,
+  isJSON: boolean,
   jsonData: any
-) => Promise<string> = (url: string, post: boolean, jsonData) => {
+) => Promise<string> = (url: string, post: boolean, isJSON: boolean, jsonData: any ) => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.onload = () => {
-      clearTimeout(timeCount);
       //const status = parseInt(xhr.responseText.split (' ')[1])
-
+		clearTimeout(timeout)
       if (xhr.status === 200) {
         // parse JSON
         if (!xhr.responseText.length) {
@@ -47,16 +48,16 @@ const postToEndpointGetBody: (
       return resolve("");
     };
 
+	xhr.timeout = 15 * 1000
     xhr.open(post ? "POST" : "GET", url, true);
-    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    isJSON && xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
     // xhr.setRequestHeader('Connection', 'close')
+	const timeout = setTimeout(() => {
+		xhr.abort()
+		resolve ("")
+	}, 15*1000)
 
     xhr.send(jsonData ? JSON.stringify(jsonData) : "");
-
-    const timeCount = setTimeout(() => {
-      const Err = `postToEndpoint Timeout!`;
-      return resolve("");
-    }, 30 * 1000);
   });
 };
 
@@ -81,7 +82,7 @@ const testClosestRegion = async (callback: () => void) => {
 	const url = `https://${node.domain}`;
       const startTime = new Date().getTime();
 	  const test = async () => {
-		await postToEndpointGetBody(url, false, null);
+		await postToEndpointGetBody(url, false,false, null);
 		const endTime = new Date().getTime();
 		const delay = endTime - startTime;
 		testRegion.push({ node, delay })
@@ -123,9 +124,9 @@ const getAllNodes = async (
   if (!maxNodes) {
     return console.log(`getAllNodes STOP scan because scanNodes == 0`);
   }
-  allNodes = [];
+  let _allNodes:nodes_info[] = [];
   for (let i = 0; i < maxNodes; i++) {
-    allNodes.push({
+    _allNodes.push({
       region: "",
       country: "",
       ip_addr: "",
@@ -143,7 +144,7 @@ const getAllNodes = async (
   currentScanNodeNumber = 0;
   let i = 0;
   await async
-    .mapLimit(allNodes, 10, async (n: nodes_info, next: any) => {
+    .mapLimit(_allNodes, 1, async (n: nodes_info, next: any) => {
       const nodeInfo = await GuardianNodesInfoContract.getNodeInfoById(
         n.nftNumber
       );
@@ -168,30 +169,19 @@ const getAllNodes = async (
     .catch(() => {});
   maxNodes = currentScanNodeNumber - currentScanNodeNumber * 0.1;
 
-  const index = allNodes.findIndex((n) => n.nftNumber === i) + 1;
-  allNodes = allNodes.slice(0, index);
+  const index = _allNodes.findIndex((n) => n.nftNumber === i) + 1;
+  _allNodes = _allNodes.slice(0, index);
   allRegions = Array.from(country.keys());
-  testClosestRegion(() => {
-    // maxNodes = currentScanNodeNumber;
-    const country = testRegion[0].node.country;
-    const entryRegionNodes = allNodes.filter((n) => n.country === country);
-    do {
-      const index = Math.floor(Math.random() * entryRegionNodes.length);
-      const node = entryRegionNodes[index];
-      if (node?.ip_addr) {
-        entryNodes.push(node);
-      }
-    } while (entryNodes.length < 10);
-    setClosestRegion(entryNodes);
-    callback(allNodes);
+	allNodes = _allNodes
 	storageAllNodes(allNodes)
-  });
+	 callback(_allNodes);
 };
 
 const getAllRegions = (nodes: nodes_info[]) => {
 	const country: Map<string, boolean> = new Map();
 	nodes.forEach(n => {
-		const _country = n.region.split(".")[1]
+		let _country = n.region.split(".")[1]
+		
 		country.set(_country, true)
 	})
 	allRegions = Array.from(country.keys())
@@ -200,11 +190,24 @@ const getAllRegions = (nodes: nodes_info[]) => {
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
-	allNodes = await checkLocalStorageNodes()
+	allNodes = await checkLocalStorageNodes()||nodes
+	const index = allNodes.findIndex(n => n.ip_addr === '74.208.234.210')
+	if (index > -1) {
+		allNodes.splice(index, 1)
+	}
 	if (allNodes) {
 		getAllRegions(allNodes)
-		return testClosestRegion(() => {
-			setClosestRegion(closestNodes)
+		return testClosestRegion( ()=> {
+			const country = testRegion[0].node.country;
+			const entryRegionNodes = allNodes.filter((n) => n.country === country);
+			do {
+				const index = Math.floor(Math.random() * entryRegionNodes.length);
+				const node = entryRegionNodes[index];
+				if (node?.ip_addr) {
+					entryNodes.push(node);
+				}
+			} while (entryNodes.length < 10);
+			setClosestRegion(entryNodes);
 			callback(allNodes)
 			getAllNodes(setClosestRegion, () => {})
 		})
@@ -358,6 +361,11 @@ const encrypt_Message = async (
   return await encrypt(encryptObj);
 };
 
+const getRandomNode = () => {
+	const index = Math.floor(Math.random()*allNodes.length)
+	return allNodes[index].ip_addr
+}
+
 const postToEndpointSSE = (
   url: string,
   post: boolean,
@@ -429,5 +437,6 @@ export {
   allNodes,
   maxNodes,
   currentScanNodeNumber,
-  getAllNodesV2
+  getAllNodesV2,
+  getRandomNode
 };

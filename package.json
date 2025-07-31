@@ -57,7 +57,11 @@
 		"tweetnacl": "^1.0.3",
 		"typescript": "^5.8.3",
 		"uuid62": "^1.0.2",
-		"web-vitals": "^2.1.4"
+		"web-vitals": "^2.1.4",
+		"@fortawesome/fontawesome-svg-core": "^7.0.0",
+		"@fortawesome/react-fontawesome": "^0.2.3",
+		"@fortawesome/free-brands-svg-icons": "^7.0.0",
+		"@fortawesome/free-solid-svg-icons": "^7.0.0"
 	},
 	"scripts": {
 		"start": "react-scripts start",

@@ -8,8 +8,8 @@
   height: 100vh;
   text-align: center;
   color: white;
-background-image: url('pages/Home/assets/bg-Download.png');
-background-size: cover;
+	background-image: url('pages/Home/assets/bg-Download.png');
+	background-size: 100% 100%;
 }
 
 .header {

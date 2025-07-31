@@ -7,16 +7,7 @@ import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } fro
 import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
-import { listenProfileVer } from "./services/listeners";
-import Vip from './pages/Vip';
-import Wallet from './pages/Wallet';
-import Swap from './pages/Swap';
-import Settings from './pages/Settings';
-import Applications from './pages/Applications';
-import Support from './pages/Support';
-import FAQ from './pages/FAQ';
-import ConfigDevice from './pages/ConfigDevice';
-import Passcode from './pages/Passcode';
+
 import { getServerIpAddress } from "./api";
 import { parseQueryParams } from "./utils/utils";
 import Transfer from './pages/Transfer';
@@ -37,33 +28,12 @@ global.Buffer = require('buffer').Buffer;
 function App() {
 	const { i18n } = useTranslation();
 
-  const { setProfiles, setMiningData, allRegions, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS } = useDaemonContext();
-  const setSOlanaRPC = (allNodes: nodes_info[]) => {
-    const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
-    setRandomSolanaRPC(allNodes[randomIndex])
-  }
-
-  const _getServerIpAddress = async () => {
-	try {
-	  const response = await getServerIpAddress();
-	  const tmpIpAddress = response.data;
-
-	  setServerIpAddress(tmpIpAddress?.ip || "");
-	  setServerPort('3002');
-	  setIsLocalProxy(true)
-	} catch (ex) {
-	  if (window?.webkit) {
-		  setIsIOS(true)
-	  }
-	  
-	  setIsLocalProxy(false)
-	}
-  }
+  const { setProfiles, setMiningData, allRegions, setClosestRegion, _vpnTimeUsedInMin} = useDaemonContext();
 
 
   const init = async () => {
 	let vpnTimeUsedInMin = 0
-
+	
 	_vpnTimeUsedInMin.current = vpnTimeUsedInMin;
 
 	const queryParams = parseQueryParams(window.location.search);
@@ -81,18 +51,8 @@ function App() {
 	const profiles = await createOrGetWallet(secretPhrase);
 	setProfiles(profiles)
 
-
 	getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
-	  setSOlanaRPC(allNodes)
-	  setaAllNodes(allNodes)
-	  setGlobalAllNodes(allNodes)
-	  const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
-	  setRandomSolanaRPC(allNodes[randomIndex])
-	  await _getServerIpAddress()
-	  if (!CoNET_Data || !CoNET_Data?.profiles) {
-		return
-	  }
-
+		console.log(`kkkkk`)
 	})
 
   }
@@ -133,18 +93,6 @@ function App() {
     <div className="App">
       <Router>
         <Routes>
-          <Route path="/regions" element={<Region />}></Route>
-          <Route path="/faq" element={<FAQ />}></Route>
-          <Route path="/config-device" element={<ConfigDevice />}></Route>
-          <Route path="/vip" element={<Vip />}></Route>
-          <Route path="/wallet" element={<Wallet />}></Route>
-          <Route path="/swap" element={<Swap />}></Route>
-          <Route path="/settings" element={<Settings />}></Route>
-          <Route path="/passcode/new" element={<Passcode new />}></Route>
-          <Route path="/passcode/change" element={<Passcode />}></Route>
-          <Route path="/applications" element={<Applications />}></Route>
-          <Route path="/transfer" element={<Transfer />}></Route>
-          <Route path="/support" element={<Support />}></Route>
           <Route path="/" element={<Home />}></Route>
         </Routes>
       </Router>

@@ -64,7 +64,7 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
   if (!CoNET_Data || !CoNET_Data?.profiles) {
     const acc = createKeyHDWallets(secretPhrase);
 
-    const key = await createGPGKey("", "", "");
+
 
     if (!acc) return;
 
@@ -76,8 +76,8 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
 		referrer: null,
 		isNode: false,
 		pgpKey: {
-			privateKeyArmor: key.privateKey,
-			publicKeyArmor: key.publicKey,
+			privateKeyArmor: '',
+			publicKeyArmor: '',
 		},
 		privateKeyArmor: acc.signingKey.privateKey,
 		hdPath: acc.path,
@@ -87,11 +87,11 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
     };
 
     const data: any = {
-    mnemonicPhrase: acc?.mnemonic?.phrase,
-    profiles: [profile],
-    isReady: true,
-    ver: 0,
-    nonce: 0,
+		mnemonicPhrase: acc?.mnemonic?.phrase,
+		profiles: [profile],
+		isReady: true,
+		ver: 0,
+		nonce: 0,
     };
 
     if (acc?.mnemonic?.phrase) {
@@ -104,8 +104,8 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
 		referrer: null,
 		isNode: false,
 		pgpKey: {
-		privateKeyArmor: key.privateKey,
-		publicKeyArmor: key.publicKey,
+			privateKeyArmor: '',
+			publicKeyArmor: ''
 		},
 		privateKeyArmor: result?.privateKey || "",
 		hdPath: null,
@@ -130,39 +130,6 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
 
   	tmpData.ChannelPartners = ChannelPartners
 	tmpData.referrals = referrals
-
-  const result = await initSolana(tmpData?.mnemonicPhrase);
-  if (
-    tmpData &&
-    (tmpData?.profiles.length < 2 || 
-    tmpData?.profiles[1]?.type !== "solana" ||!isValidSolanaPublicKey(tmpData?.profiles[1]?.keyID) ||
-    !isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor) || (result && result.publicKey !== tmpData.profiles[1].keyID))
-  ) {
-
-    const key = await createGPGKey("", "", "");
-
-    const profile2: profile = {
-		tokens: initProfileTokens(),
-		publicKeyArmor: "",
-		keyID: result?.publicKey || "",
-		isPrimary: true,
-		referrer: null,
-		isNode: false,
-		pgpKey: {
-			privateKeyArmor: key.privateKey,
-			publicKeyArmor: key.publicKey,
-		},
-		privateKeyArmor: result?.privateKey || "",
-		hdPath: null,
-		index: 0,
-		type: "solana"
-    };
-
-    tmpData.profiles[1] = profile2
-  }
-
-
-  tmpData = await initDuplicate(tmpData)
   
   await setCoNET_Data(tmpData)
 
@@ -236,8 +203,8 @@ const getFaucet: (profile: profile) => Promise<boolean | any> = async (
     }
     setTimeout(() => {
       return resolve(true);
-    }, 1000);
-  });
+    }, 1000)
+  })
 
 export const storeSystemData = async () => {
   if (!CoNET_Data) {

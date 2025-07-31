@@ -209,11 +209,10 @@ const getAllNodesV2 = async (
 			} while (entryNodes.length < 10);
 			setClosestRegion(entryNodes);
 			callback(allNodes)
-			getAllNodes(setClosestRegion, () => {})
+			
 		})
 		
 	}
-	getAllNodes(setClosestRegion, callback)
 }
 
 
@@ -233,52 +232,6 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
-let startMiningV2Process = false;
-
-const ceateMininngValidator = async (
-  currentProfile: profile,
-  node: nodes_info,
-  requestData: any = null
-) => {
-  if (!currentProfile || !currentProfile.pgpKey || !node.armoredPublicKey) {
-    console.log(
-      `currentProfile?.pgpKey[${currentProfile?.pgpKey}]|| !SaaSnode?.armoredPublicKey[${node?.armoredPublicKey}] Error`
-    );
-    return null;
-  }
-  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString(
-    "base64"
-  );
-
-  const command: SICommandObj = {
-    command: "mining_validator",
-    algorithm: "aes-256-cbc",
-    Securitykey: key,
-    requestData,
-    walletAddress: currentProfile.keyID.toLowerCase(),
-  };
-
-  const message = JSON.stringify(command);
-  const wallet = new ethers.Wallet(currentProfile.privateKeyArmor);
-  const signMessage = await wallet.signMessage(message);
-  let privateKeyObj = null;
-
-  try {
-    privateKeyObj = await makePrivateKeyObj(
-      currentProfile.pgpKey.privateKeyArmor
-    );
-  } catch (ex) {
-    return console.log(ex);
-  }
-
-  const encryptedCommand = await encrypt_Message(
-    privateKeyObj,
-    node.armoredPublicKey,
-    { message, signMessage }
-  );
-  command.requestData = [encryptedCommand, "", key];
-  return command;
-};
 
 const makePrivateKeyObj = async (privateArmor: string, password = "") => {
   if (!privateArmor) {
@@ -298,52 +251,6 @@ const makePrivateKeyObj = async (privateArmor: string, password = "") => {
   return privateKey;
 };
 
-const createConnectCmd = async (
-  currentProfile: profile,
-  node: nodes_info,
-  requestData: any = null
-) => {
-  if (!currentProfile || !currentProfile.pgpKey || !node.armoredPublicKey) {
-    console.log(
-      `currentProfile?.pgpKey[${currentProfile?.pgpKey}]|| !SaaSnode?.armoredPublicKey[${node?.armoredPublicKey}] Error`
-    );
-    return null;
-  }
-
-  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString(
-    "base64"
-  );
-  const command: SICommandObj = {
-    command: "mining",
-    algorithm: "aes-256-cbc",
-    Securitykey: key,
-    requestData,
-    walletAddress: currentProfile.keyID.toLowerCase(),
-  };
-
-  console.log(`mining`);
-  const message = JSON.stringify(command);
-  const wallet = new ethers.Wallet(currentProfile.privateKeyArmor);
-  const signMessage = await wallet.signMessage(message);
-
-  let privateKeyObj = null;
-
-  try {
-    privateKeyObj = await makePrivateKeyObj(
-      currentProfile.pgpKey.privateKeyArmor
-    );
-  } catch (ex) {
-    return console.log(ex);
-  }
-
-  const encryptedCommand = await encrypt_Message(
-    privateKeyObj,
-    node.armoredPublicKey,
-    { message, signMessage }
-  );
-  command.requestData = [encryptedCommand, "", key];
-  return command;
-};
 
 const encrypt_Message = async (
   privatePgpObj: any,

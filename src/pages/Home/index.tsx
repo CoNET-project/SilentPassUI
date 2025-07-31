@@ -24,7 +24,12 @@ import { useTranslation } from 'react-i18next'
 import { useMemo } from "react";
 import { LuCirclePower } from 'react-icons/lu';
 import type { IconBaseProps } from 'react-icons';
-import phoneImg from './assets/phone3.png'
+import phoneImg from './assets/android.png'
+import styled from 'styled-components'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faApple, faAndroid } from '@fortawesome/free-brands-svg-icons';
+import { faHeadset } from '@fortawesome/free-solid-svg-icons';
+
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 
 
@@ -45,94 +50,97 @@ interface RenderButtonProps {
   handleTogglePower: () => void;
 }
 
-const RenderButton = ({ errorMessage, handleTogglePower, isConnectionLoading, power, profile, _vpnTimeUsedInMin }: RenderButtonProps) => {
-  
-    const [showConnected, setShowConnected] = useState(false);
+// --- 基礎按鈕樣式 (共用) ---
+const BaseButton = styled.button`
+  padding: 12px 24px;
+  font-size: 18px;
+  font-weight: bold;
+  border-radius: 50px;
+  border-width: 2px;
+  border-style: solid;
+  cursor: pointer;
+  background: transparent;
+  width:100%;
 
-  // Show "Connected" message for 2 seconds after connection
-  useEffect(() => {
-    if (power && !isConnectionLoading) {
-      setShowConnected(true);
-      const timer = window.setTimeout(() => {
-        setShowConnected(false);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-    setShowConnected(false);
-  }, [power, isConnectionLoading]);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 
-  const state = useMemo(
-    () => (isConnectionLoading ? 'connecting' : power ? 'on' : 'off'),
-    [isConnectionLoading, power]
-  );
-  
-  return (
-    <div className="button-wrapper">
-      <BlobWrapper state={state}>
-      {/* <BlobWrapper state={'on'}> */}
+`;
 
-        <button
-          className={power ? 'power power-on' : 'power power-off'}
-          onClick={!isConnectionLoading ? handleTogglePower : undefined}
-        >
-          {isConnectionLoading ? (
-            <img src={'/assets/loading-ring.png'} className={"power-icon loading-spinning"}alt="" />
-          ) : (power ? 
-            <PowerIcon className="power-icon power-icon-on" /> :
-            <PowerIcon className="power-icon power-icon-off" />
-          )}
-        </button>
-      </BlobWrapper>
+// --- iOS 按鈕樣式 ---
+const IOSStyledButton = styled(BaseButton)`
+  border-color: #FFFFFF;
+  color: #FFFFFF;
 
-      {isConnectionLoading && <p className="connected">Loading...</p>}
-      {showConnected && <p className="connected">Connected</p>}
-      {state === 'off' && errorMessage && (
-        <p className="error-connected" style={{ color: '#bf3b37', fontSize: '12px' }}>
-          {errorMessage}
-        </p>
-      )}
-    </div>
-  );
-};
+  &:hover {
+    background-color: #FFFFFF;
+    color: #000;
+  }
+`;
 
+// --- Android 按鈕樣式 ---
+const AndroidStyledButton = styled(BaseButton)`
+  border-color: #3DDC84;
+  color: #3DDC84;
 
-const SystemSettingsButton = () => {
-	const {globalProxy, setGlobalProxy } = useDaemonContext();
+  &:hover {
+    background-color: #3DDC84;
+    color: white;
+  }
+`
+// --- 客服按鈕樣式 (新) ---
+const CustomerServiceButton = styled(BaseButton)`
+	/* 使用中性灰色系，作為次要操作按鈕 */
+	border-color: #888;
+	color: #888;
+	font-size: 16px; /* 可以讓文字稍微小一點，以區分主次 */
 
-  return (
-    <button
-      className={`system-settings-button ${globalProxy ? "checked" : ""}`}
-      onClick={() => {
-		if (globalProxy) {
-			if (window?.webkit) {
-				window?.webkit?.messageHandlers["stopProxy"].postMessage("")
-			}
-			return setGlobalProxy(false)
-		}
-		if (window?.webkit) {
-			window?.webkit?.messageHandlers["startProxy"].postMessage("")
-		}
-		return setGlobalProxy(true)
-	  }}
-    >
-      <span className="circle">{globalProxy && "✔"}</span>
-      Enable for System Settings
-    </button>
-  )
-}
+	&:hover {
+		background-color: #888;
+		color: white;
+  }
+`;
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin, isLocalProxy, setIsLocalProxy, setServerIpAddress, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, switchValue} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
-  const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false)
   const [initPercentage, setInitPercentage] = useState<number>(0);
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const vpnTimeTimeout = useRef<NodeJS.Timeout>();
-  const [isAirDropForSP, setIsAirDropForSP] = useState(false)
-  const [isReadyForReferees, setIsReadyForReferees] = useState(false)
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
   const { t, i18n } = useTranslation()
-  const navigate = useNavigate();
+
+	// 2. 建立包含圖示和文字的 React 元件
+	const IOSDownloadButton = () => {
+		return (
+			<IOSStyledButton>
+				{/* Font Awesome 圖示 */}
+				<FontAwesomeIcon icon={faApple} size="lg" />
+				
+				{/* 文字 */}
+				<span>{t('download_page_ios')}</span>
+			</IOSStyledButton>
+		);
+	};
+
+	const AndroidDownloadButton = () => {
+		return (
+			<AndroidStyledButton>
+				<FontAwesomeIcon icon={faAndroid} size="lg" />
+				<span>{t('download_page_android')}</span>
+			</AndroidStyledButton>
+		);
+	};
+
+	// --- 客服按鈕樣式 (新) ---
+	const ContactSupportButton = () => (
+		<CustomerServiceButton>
+			<FontAwesomeIcon icon={faHeadset} />
+			<span>無法下載？聯繫客服</span>
+		</CustomerServiceButton>
+	);
+
+
   const _getAllRegions = async () => {
 	
 	const [tmpRegions] = await
@@ -147,258 +155,16 @@ const Home = () => {
 
 		return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
 	}))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
-
-	const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
-
-	if (sRegion < 0) {
-		setSRegion(unitedStatesIndex)
-		setIsRandom(false);
-	}
-
-	setAllRegions(treatedRegions);
-	
   };
 
-
-  useEffect(() => {
-    const countMinutes = () => {
-      const timeout = setTimeout(() => {
-        _vpnTimeUsedInMin.current = (_vpnTimeUsedInMin.current) + 1;
-        localStorage.setItem("vpnTimeUsedInMin", (_vpnTimeUsedInMin.current).toString());
-        countMinutes();
-      }, 60000)
-
-      vpnTimeTimeout.current = timeout;
-    }
-
-    clearTimeout(vpnTimeTimeout.current);
-
-    if (power) {
-      countMinutes()
-    }
-  }, [power]);
-
-  useEffect(() => {
-	_getAllRegions()
-	let first = 0
-    const listenGetAllNodes = () => {
-		
-		const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0
-		const _status = Math.round(_initpercentage)
-		const status = _status <= first ? first + 2 : _status
-		first = status
-	  if (status > 100) {
-		  setInitPercentage(98)
-	  } else {
-		  setInitPercentage(status)
-	  }
-  
-		if (status < 99 ) {
-		  return setTimeout(() => {
-			listenGetAllNodes()
-		  }, 1000)
-		}
-	}
-
-    listenGetAllNodes()
-  }, [])
-
-
-  const init = async () => {
-	const status = await airDropForSP()
-	if (status !== false) {
-		setIsAirDropForSP(status.isReadyForSP)
-		setIsReadyForReferees(status.isReadyForReferees)
-	}
-	
-  }
-
-  const airdropProcess = async () => {
-
-	setIsProcessAirDrop(true)
-	setAirdropProcess(true)
-	if (isAirDropForSP) {
-		const kk = await getirDropForSP()
-		setIsAirDropForSP(false)
-		
-		if (typeof kk === 'number') {
-			
-			setAirdropSuccess(true)
-			setAirdropTokens(kk)
-			navigate('/wallet')
-		}
-		return
-	}
-	setAirdropProcessReff(true)
-	navigate('/wallet')
-  }
 
   useEffect(() => {
 	if (!closestRegion?.length) {
 		return
 	}
 	setIsInitialLoading(false);
-	init()
   }, [closestRegion])
 
-const handleTogglePower = async () => {
-    setIsConnectionLoading(true)
-    let error = false;
-    setErrorMessage('');
-    let selectedCountryIndex = -1
-	try {
-		const response = await getServerIpAddress();
-        const tmpIpAddress = response.data;
-        setServerIpAddress(tmpIpAddress?.ip || "");
-		setIsLocalProxy(true)
-	} catch (ex) {
-		setIsLocalProxy(false)
-	}
-
-	
-    if (power) {
-
-		//		iOS
-      if (window?.webkit) {
-        if(switchValue) window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
-        setPower(false);
-      }
-	  	//	@ts-ignore		Android
-		if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
-			
-			const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
-			//	@ts-ignore
-			AndroidBridge.receiveMessageFromJS(base)
-			setPower(false);
-		} else {
-			//	@ts-ignore
-			console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
-		}
-	  
-		//			Desktop
-		try {
-			const response = await stopSilentPass();
-			if (response.status === 200) {
-			setPower(false);
-			}
-		} catch (ex) { }
-
-		setTimeout(() => setIsConnectionLoading(false), 1000)
-		return
-    }
-
-    if (!profiles?.[0]?.activePassport?.expires) {
-      setTimeout(() => {
-        setIsConnectionLoading(false)
-        setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
-      }, 1000)
-
-      return
-    }
-
-    if (!isPassportValid(profiles?.[0]?.activePassport?.expires)) {
-      setTimeout(() => {
-        setIsConnectionLoading(false)
-        setErrorMessage(PASSPORT_EXPIRED_ERROR);
-      }, 1000)
-
-      return
-    }
-
-    const conetProfile = CoNET_Data?.profiles[0];
-    const privateKey = conetProfile?.privateKeyArmor
-
-    if (!privateKey) {
-      return
-    }
-
-    if (sRegion === -1) {
-      selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
-      setSRegion(selectedCountryIndex);
-    } else {
-      selectedCountryIndex = sRegion
-    }
-
-    const allNodes = getAllNodes
-	if (!allNodes.length) {
-		setTimeout(() => {
-			setIsConnectionLoading(false)
-			setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
-		  }, 1000)
-		return
-	}
-    const exitRegion = allRegions[selectedCountryIndex].code
-    const exitNodes = allNodes.filter((n: any) => n.country === exitRegion)
-
-    const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
-
-    const _exitNode = [exitNodes[randomExitIndex]]
-
-    let _entryNodes = closestRegion
-
-    const entryNodes = _entryNodes.map(n => {
-      return {
-        country: n.country,
-        ip_addr: n.ip_addr,
-        region: n.region,
-        armoredPublicKey: n.armoredPublicKey,
-        nftNumber: n.nftNumber.toString()
-      }
-    })
-    const exitNode = _exitNode.map(n => {
-      return {
-        country: n.country,
-        ip_addr: n.ip_addr,
-        region: n.region,
-        armoredPublicKey: n.armoredPublicKey,
-        nftNumber: n.nftNumber.toString()
-      }
-    })
-
-    const startVPNMessageObject: Native_StartVPNObj = {
-      entryNodes,
-      exitNode,
-      privateKey
-    }
-	const stringifiedVPNMessageObject = JSON.stringify(startVPNMessageObject)
-	const base64VPNMessage = btoa(stringifiedVPNMessageObject)
-    if (window?.webkit && switchValue) {
-      window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
-    }
-
-	//	@ts-ignore
-	if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
-		
-		const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
-		//	@ts-ignore
-		AndroidBridge.receiveMessageFromJS(base)
-	} else {
-		//	@ts-ignore
-		console.log(`window.AndroidBridge Error! typeof window.AndroidBridge = ${typeof window?.AndroidBridge}`)
-	}
-
-
-    try {
-      await startSilentPass(startVPNMessageObject);
-    } catch (ex) {
-      // error = true
-      // setErrorMessage(GENERIC_ERROR);
-    }
-
-    setTimeout(() => {
-      setIsConnectionLoading(false)
-
-      if (!error) {
-        setPower(true);
-      }
-
-    }, 1000)
-
-    return
-};
-  
-  const isSilentPassVPN = VPN_URLS.some(url => window.location.href.includes(url));
-  const isDevelopment = window.location.href.includes('localhost');
 
   return (
     <>
@@ -407,14 +173,14 @@ const handleTogglePower = async () => {
 			<div className='home' style={{ overflowX: 'hidden' }}>
 				<div style={{ display: 'absolute', flexDirection: 'column', gap: '8px' }}>
 					<button
-					className="power"
+						className="power"
 					>
 					
 					<img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
 					</button>
 
 					<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '400px' }}>
-					<p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
+						<p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
 					</div>
 					{/* <p className="not-connected">{initPercentage}%</p> */}
 				</div>
@@ -423,10 +189,10 @@ const handleTogglePower = async () => {
 		{
 			!isInitialLoading &&
 			<div className='homeMain'>
-				<div>
+				<div style={{height: '0.5rem'}}>
 					<img src="/assets/header-title.svg"></img>
 				</div>
-				<h1 style={{paddingTop: '2rem'}}>
+				<h1 style={{paddingTop: '3rem'}}>
 					<span>
 						{
 							t('download_page_title')
@@ -435,25 +201,31 @@ const handleTogglePower = async () => {
 					
 					
 				</h1>
-				<h1 style={{paddingTop: '2rem', fontSize:'2.5rem'}}>
+				<h1 style={{paddingTop: '1.5rem', fontSize:'2.5rem'}}>
 					{
 						t('download_page_title-1')
 					}
-					
 				</h1>
-				<h1 style={{paddingTop: '2rem'}}>
+				<h1 style={{paddingTop: '1.5rem'}}>
 					<span>
 						{
 							t('download_page_title-2')
 						}
 					</span>
 					
-					
 				</h1>
-				<div style={{paddingTop: '2rem'}}>
-					<img src={phoneImg} style={{minWidth: '150px', minHeight: '75x',}}></img>
+				<div style={{paddingTop: '2rem', }}>
+					<img src={phoneImg} style={{width: '47.7vw'}}></img>
 				</div>
-				
+				<div style={{paddingTop: '2rem'}}>
+					<IOSDownloadButton />
+				</div>
+				<div style={{paddingTop: '2rem'}}>
+					<AndroidDownloadButton />
+				</div>
+				<div style={{paddingTop: '2rem'}}>
+					<ContactSupportButton />
+				</div>
 			</div>
 		}
 		

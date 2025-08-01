@@ -18,7 +18,7 @@ import QuickLinks from "../../components/QuickLinks/QuickLinks";
 import { getServerIpAddress } from "../../api"
 import bannaer from './assets/bannerv1_en.gif'
 import bannaer_cn from './assets/bannerv1_cn.gif'
-import {airDropForSP} from '../../services/subscription'
+
 import airdrop from './assets/airdrop_swing_SP.gif'
 import airdropReff from './assets/airdropReff.gif'
 import { useTranslation } from 'react-i18next'
@@ -219,6 +219,7 @@ const Home = () => {
 let isRunning = false
 
 const checkcompairVersionTime = 1000 * 60 * 5
+
 const compairVersion = async () => {
   if (isRunning) return
   isRunning = true
@@ -262,23 +263,13 @@ const compairVersion = async () => {
   }, [])
 
 
-  const init = async () => {
-    const status = await airDropForSP()
-    if (status !== false) {
-        setIsAirDropForSP(status.isReadyForSP)
-        setIsReadyForReferees(status.isReadyForReferees)
-    }
-    
-  }
-
-
 
   useEffect(() => {
     if (!closestRegion?.length) {
         return
     }
     setIsInitialLoading(false)
-    init()
+
   }, [closestRegion])
 
 

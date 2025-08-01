@@ -356,76 +356,12 @@ const PROGRAM_ID = new web3.PublicKey(anchor_linear_vesting_del.address)
 
 
 let airDropStatus: null | airDropStatus = null
-export const airDropForSP = async (): Promise<airDropStatus|false> => {
-	if (airDropStatus !== null) {
-		return airDropStatus
-	}
-	  if (!CoNET_Data?.profiles || airDropForSPProcess) {
 
-		return false
-	  }
-
-
-	  airDropForSPProcess = true
-	  const profile = CoNET_Data.profiles[0]
-	  const solanaWallet = CoNET_Data.profiles[1].keyID
-	  try {
-		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet})
-		const wallet = new ethers.Wallet(profile.privateKeyArmor)
-		const signMessage = await wallet.signMessage(message)
-		const sendData = {
-		  message, signMessage
-		}
-	
-		const result = await postToEndpoint(airDropForSPUrl, true, sendData)
-		const status = result?.status
-		if (status) {
-			airDropStatus = status
-			return status
-		}
-		
-		return false
-	  } catch (ex) {
-		console.log(ex)
-		return false
-	  }
-}
 
 const getAirDropForSPUrl = `${payment_endpoint}getAirDropForSP`
 
 let getAirDropForSPProcess = false
 
-
-export const getirDropForSP = async (): Promise<boolean|number> => {
-	  if (!CoNET_Data?.profiles || getAirDropForSPProcess || airDropForSPProcess === false) {
-		return false
-	  }
-
-	  const profile = CoNET_Data.profiles[0]
-	  const solanaWallet = CoNET_Data.profiles[1].keyID
-	  try {
-		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet})
-		const wallet = new ethers.Wallet(profile.privateKeyArmor)
-		const signMessage = await wallet.signMessage(message)
-		const sendData = {
-		  message, signMessage
-		}
-	
-		const result = await postToEndpoint(getAirDropForSPUrl, true, sendData)
-		if (airDropStatus) {
-			airDropStatus.isReadyForSP = false
-		}
-
-		if (result?.amount) {
-			return result.amount
-		}
-		
-		return false
-	  } catch (ex) {
-		console.log(ex)
-		return false
-	  }
-}
 
 let getirDropForSPReffProcess = false
 const getAirDropForSPReffUrl = `${payment_endpoint}getAirDropForSPReff`
@@ -462,10 +398,6 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 		
 		getirDropForSPReffProcess = false
 		if (result?.status) {
-
-			if (airDropStatus) {
-				airDropStatus.isReadyForReferees = false
-			}
 			
 			CoNET_Data.profiles[0].referrer = referrer
 			setCoNET_Data(CoNET_Data)

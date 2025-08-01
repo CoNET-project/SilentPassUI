@@ -216,13 +216,23 @@ const Home = () => {
     }
   }, [power]);
 
-  const compairVersion = async () => {
-	let remoteVer = await getLocalServerVersion()
-	if (isNewerVersion(version, remoteVer)) {
-		setHasNewVersion(remoteVer)
-	}
-		
+let isRunning = false
+
+const checkcompairVersionTime = 1000 * 60 * 5
+const compairVersion = async () => {
+  if (isRunning) return
+  isRunning = true
+
+  let remoteVer = await getLocalServerVersion()
+  if (isNewerVersion(version, remoteVer)) {
+      setHasNewVersion(remoteVer)
   }
+
+  setTimeout(() => {
+      isRunning = false
+      compairVersion()
+  }, checkcompairVersionTime)
+}
 
   useEffect(() => {
     _getAllRegions()

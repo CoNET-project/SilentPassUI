@@ -122,15 +122,15 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	if (ret && ret.isCode === false ) {
 		const duplicateAddress = ret.duplicateAddress.toLowerCase()
 		if ( duplicateAddress !== ethers.ZeroAddress && temp.duplicateAccount.keyID.toLowerCase() !== duplicateAddress) {
-			if (temp?.duplicateCode) {
+			if (temp?._duplicateCode) {
 				let solanaWallet
-				const restoreEncryptoText = await getEncryptoData(temp.duplicateCode)
+				const restoreEncryptoText = await getEncryptoData(temp._duplicateCode)
 				if (!restoreEncryptoText) {
 					return false
 				}
 				
 				try {
-					const restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, temp.duplicateCode + temp.duplicatePassword)
+					const restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, temp._duplicateCode + temp.duplicatePassword)
 					if (!restoreMnemonicPhrase) {
 						return false
 					}
@@ -168,11 +168,11 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 		return false
 	}
 	const solanaWallet = await initSolana(restoreMnemonicPhrase)
-	if (!solanaWallet || !temp?.duplicateCode) {
+	if (!solanaWallet || !temp?._duplicateCode) {
 		return false
 	}
 
-	const pass = temp.duplicateCode
+	const pass = temp._duplicateCode
 	temp.encryptedString = await aesGcmEncrypt(restoreMnemonicPhrase, pass)
 
 	const message = JSON.stringify({ walletAddress: profiles[0].keyID, uuid: temp.duplicateCodeHash, data: temp.encryptedString, hash: passcode })

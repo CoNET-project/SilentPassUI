@@ -265,7 +265,7 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 
 	if (!temp?.duplicateAccount) {
 		const profiles = temp.profiles
-		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: ''})
+		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: '', channelPartners: temp.ChannelPartners})
 		const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
 		const signMessage = await wallet.signMessage(message)
 		const sendData = {

@@ -52,6 +52,9 @@ a {
 
   .loading-spinning {
 	animation: spinAnimation 2s linear infinite;
+	position: absolute;
+	top: 49.4px;
+	left: 49.4px;
   }
 
   @keyframes spinAnimation {
@@ -454,4 +457,32 @@ a {
 
 .bannaer{
 	cursor: pointer;
+	a{
+		color:#1677ff !important;
+	}
+}
+.downloadLinks{
+	width: 100%;
+	font-weight: 400;
+	font-size: 3.2vw;
+	display: flex;
+	justify-content: space-around;
+	align-items: center;
+}
+.videoBtnsContainer{
+	margin-top: 3.9vw;
+	padding-bottom: 6vw;
+	width: 100%;
+	font-weight: 400;
+	font-size: 3.2vw;
+	display: flex;
+	justify-content: space-around;
+	align-items: center;
+}
+.videoBtn{
+	cursor: pointer;
+}
+.videoContainer{
+    width: 100vw;
+    height: 80vh;
 }

@@ -29,9 +29,10 @@ import styled from 'styled-components'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faApple, faAndroid } from '@fortawesome/free-brands-svg-icons';
 import { faHeadset } from '@fortawesome/free-solid-svg-icons';
+import { Popup } from 'antd-mobile';
 
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
-
+declare var TCPlayer: any;
 
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
@@ -110,6 +111,20 @@ const Home = () => {
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
   const { t, i18n } = useTranslation()
 
+	const [appId] = useState('1360684569')
+	const [winVideo] = useState({fileID:'1397757909729444876',psign:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6MTM2MDY4NDU2OSwiZmlsZUlkIjoiMTM5Nzc1NzkwOTcyOTQ0NDg3NiIsImN1cnJlbnRUaW1lU3RhbXAiOjE3NTE3ODY2OTAsImNvbnRlbnRJbmZvIjp7ImF1ZGlvVmlkZW9UeXBlIjoiUmF3QWRhcHRpdmUiLCJyYXdBZGFwdGl2ZURlZmluaXRpb24iOjEwLCJpbWFnZVNwcml0ZURlZmluaXRpb24iOjEwfSwidXJsQWNjZXNzSW5mbyI6eyJkb21haW4iOiIxMzYwNjg0NTY5LnZvZC1xY2xvdWQuY29tIiwic2NoZW1lIjoiSFRUUFMifX0.tSs0rx1BwrvGprbnH6uI8IUVqPQe1Kr9AvwuxbXnPbs'})
+	const [iosVideo] = useState({fileID:'5145403693511802507',psign:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6MTM2MDY4NDU2OSwiZmlsZUlkIjoiNTE0NTQwMzY5MzUxMTgwMjUwNyIsImN1cnJlbnRUaW1lU3RhbXAiOjE3NTM5Mzk2NjMsImNvbnRlbnRJbmZvIjp7ImF1ZGlvVmlkZW9UeXBlIjoiUmF3QWRhcHRpdmUiLCJyYXdBZGFwdGl2ZURlZmluaXRpb24iOjEwLCJpbWFnZVNwcml0ZURlZmluaXRpb24iOjEwfSwidXJsQWNjZXNzSW5mbyI6eyJkb21haW4iOiIxMzYwNjg0NTY5LnZvZC1xY2xvdWQuY29tIiwic2NoZW1lIjoiSFRUUFMifX0.vNIjphJdTXriRQ_qh2eQMKwhAk0JDMUTWt8KecLlo1o'})
+	const [macOSVideo] = useState({fileID:'1397757909729719037',psign:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6MTM2MDY4NDU2OSwiZmlsZUlkIjoiMTM5Nzc1NzkwOTcyOTcxOTAzNyIsImN1cnJlbnRUaW1lU3RhbXAiOjE3NTE3ODY4MzAsImNvbnRlbnRJbmZvIjp7ImF1ZGlvVmlkZW9UeXBlIjoiUmF3QWRhcHRpdmUiLCJyYXdBZGFwdGl2ZURlZmluaXRpb24iOjEwLCJpbWFnZVNwcml0ZURlZmluaXRpb24iOjEwfSwidXJsQWNjZXNzSW5mbyI6eyJkb21haW4iOiIxMzYwNjg0NTY5LnZvZC1xY2xvdWQuY29tIiwic2NoZW1lIjoiSFRUUFMifX0.O0YBe1TFTKcqjgwmnXwXhqgojmJgVhoxiCaOXRkK_JA'})
+	const [androidVideo] = useState({fileID:'1397757909729661224',psign:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6MTM2MDY4NDU2OSwiZmlsZUlkIjoiMTM5Nzc1NzkwOTcyOTY2MTIyNCIsImN1cnJlbnRUaW1lU3RhbXAiOjE3NTE3ODY0OTgsImNvbnRlbnRJbmZvIjp7ImF1ZGlvVmlkZW9UeXBlIjoiUmF3QWRhcHRpdmUiLCJyYXdBZGFwdGl2ZURlZmluaXRpb24iOjEwLCJpbWFnZVNwcml0ZURlZmluaXRpb24iOjEwfSwidXJsQWNjZXNzSW5mbyI6eyJkb21haW4iOiIxMzYwNjg0NTY5LnZvZC1xY2xvdWQuY29tIiwic2NoZW1lIjoiSFRUUFMifX0._OK2c_wV7BUPv2bb28xnEub5GR3lScArSJpxB39t5Kc'})
+	const [tcWin,setTcWin]=useState(null)
+	const [visibleVideoWin,setVisibleVideoWin]=useState(false)
+	const [tcIos,setTcIos]=useState(null)
+	const [visibleVideoIos,setVisibleVideoIos]=useState(false)
+	const [tcMacOS,setTcMacOS]=useState(null)
+    const [visibleVideoMacOS,setVisibleVideoMacOS]=useState(false)
+	const [tcAndroid,setTcAndroid]=useState(null)
+    const [visibleVideoAndroid,setVisibleVideoAndroid]=useState(false)
+
 	// 2. 建立包含圖示和文字的 React 元件
 	const IOSDownloadButton = () => {
 		return (
@@ -168,6 +183,62 @@ const Home = () => {
 	setIsInitialLoading(false);
   }, [closestRegion])
 
+
+	const playWinVideo=() => {
+		if(tcWin==null){
+			const tc = TCPlayer('videoIdWin',{
+				appID: appId,
+				fileID: winVideo.fileID,
+				psign: winVideo.psign,
+			});
+			tc.play()
+			setTcWin(tc)
+		}else{
+			tcWin.play()
+		}
+	}
+
+	const playIosVideo=() => {
+		if(tcIos==null){
+			const tc = TCPlayer('videoIdIos',{
+				appID: appId,
+				fileID: iosVideo.fileID,
+				psign: iosVideo.psign,
+			});
+			tc.play()
+			setTcIos(tc)
+		}else{
+			tcIos.play()
+		}
+	}
+
+	const playMacOSVideo=() => {
+		if(tcMacOS==null){
+			const tc = TCPlayer('videoIdMacOS',{
+				appID: appId,
+				fileID: macOSVideo.fileID,
+				psign: macOSVideo.psign,
+			});
+			tc.play()
+			setTcMacOS(tc)
+		}else{
+			tcMacOS.play()
+		}
+	}
+	
+	const playAndroidVideo=() => {
+		if(tcAndroid==null){
+			const tc = TCPlayer('videoIdAndroid',{
+				appID: appId,
+				fileID: androidVideo.fileID,
+				psign: androidVideo.psign,
+			});
+			tc.play()
+			setTcAndroid(tc)
+		}else{
+			tcAndroid.play()
+		}
+	}
 
   return (
     <>
@@ -232,7 +303,79 @@ const Home = () => {
 			</div>
 		}
 		
-	  	
+		<div className='downloadLinks'>
+			<div><a href='/'>windows下载</a></div>
+			<div><a href='/'>mac for Intel下载</a></div>
+			<div><a href='/'>mac for M下载</a></div>
+		</div>
+
+		<div className='videoBtnsContainer'>
+			<div onClick={()=>{setVisibleVideoWin(true)}} className='videoBtn'>windows安装教程</div>
+			<div onClick={()=>{setVisibleVideoIos(true)}} className='videoBtn'>ios安装教程</div>
+			<div onClick={()=>{setVisibleVideoMacOS(true)}} className='videoBtn'>MacOS安装教程</div>
+			<div onClick={()=>{setVisibleVideoAndroid(true)}} className='videoBtn'>android安装教程</div>
+		</div>
+
+
+		<Popup
+			showCloseButton={true}
+			visible={visibleVideoWin}
+			onMaskClick={() => {setVisibleVideoWin(false);if(tcWin)tcWin.pause()}}
+			onClose={() => {setVisibleVideoWin(false);if(tcWin)tcWin.pause()}}
+			position='bottom'
+			bodyStyle={{ height: '80vh' }}
+			afterShow={playWinVideo}
+			className={'popupContainer'}
+		>
+			<div className={'videoContainer'}>
+				<video id='videoIdWin' style={{height:'100%',width:'100%'}} preload="auto" playsInline={true} webkit-playsinline="true" x5-playsinline="true"></video>
+			</div>
+		</Popup>
+
+		<Popup
+			showCloseButton={true}
+			visible={visibleVideoIos}
+			onMaskClick={() => {setVisibleVideoIos(false);if(tcIos)tcIos.pause()}}
+			onClose={() => {setVisibleVideoIos(false);if(tcIos)tcIos.pause()}}
+			position='bottom'
+			bodyStyle={{ height: '80vh' }}
+			afterShow={playIosVideo}
+			className={'popupContainer'}
+		>
+			<div className={'videoContainer'}>
+				<video id='videoIdIos' style={{height:'100%',width:'100%'}} preload="auto" playsInline={true} webkit-playsinline="true" x5-playsinline="true"></video>
+			</div>
+		</Popup>
+
+		<Popup
+			showCloseButton={true}
+			visible={visibleVideoMacOS}
+			onMaskClick={() => {setVisibleVideoMacOS(false);if(tcMacOS)tcMacOS.pause()}}
+			onClose={() => {setVisibleVideoMacOS(false);if(tcMacOS)tcMacOS.pause()}}
+			position='bottom'
+			bodyStyle={{ height: '80vh' }}
+			afterShow={playMacOSVideo}
+			className={'popupContainer'}
+		>
+			<div className={'videoContainer'}>
+				<video id='videoIdMacOS' style={{height:'100%',width:'100%'}} preload="auto" playsInline={true} webkit-playsinline="true" x5-playsinline="true"></video>
+			</div>
+		</Popup>
+
+		<Popup
+			showCloseButton={true}
+			visible={visibleVideoAndroid}
+			onMaskClick={() => {setVisibleVideoAndroid(false);if(tcAndroid)tcAndroid.pause()}}
+			onClose={() => {setVisibleVideoAndroid(false);if(tcAndroid)tcAndroid.pause()}}
+			position='bottom'
+			bodyStyle={{ height: '80vh' }}
+			afterShow={playAndroidVideo}
+			className={'popupContainer'}
+		>
+			<div className={'videoContainer'}>
+				<video id='videoIdAndroid' style={{height:'100%',width:'100%'}} preload="auto" playsInline={true} webkit-playsinline="true" x5-playsinline="true"></video>
+			</div>
+		</Popup>
     </>
   );
 };

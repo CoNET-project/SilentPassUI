@@ -17,7 +17,7 @@ import PassportInfoPopup from "../../components/PassportInfoPopup";
 import { getServerIpAddress } from "../../api"
 import bannaer from './assets/bannerv1_en.gif'
 import bannaer_cn from './assets/bannerv1_cn.gif'
-import {airDropForSP, getirDropForSP} from '../../services/subscription'
+import {airDropForSP, getirDropForSP, downloadLinkPost} from '../../services/subscription'
 import airdrop from './assets/airdrop_swing_SP.gif'
 import airdropReff from './assets/airdropReff.gif'
 import { useTranslation } from 'react-i18next'
@@ -25,7 +25,7 @@ import { useMemo } from "react";
 import { LuCirclePower } from 'react-icons/lu';
 import type { IconBaseProps } from 'react-icons';
 import phoneImg from './assets/android.png'
-import { getRandomNodeDomain} from '../../services/mining'
+import { getRandomNodeDomain, getRandomNode} from '../../services/mining'
 import styled from 'styled-components'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faApple, faAndroid } from '@fortawesome/free-brands-svg-icons';
@@ -106,7 +106,7 @@ const CustomerServiceButton = styled(BaseButton)`
 `;
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, channelPartners} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, channelPartners, showReferralsInput} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
@@ -176,7 +176,9 @@ const Home = () => {
   };
 
   const iOSDownload = () => {
+	const node = getRandomNode()
 	window.open (`https://apps.apple.com/us/app/silent-pass-vpn/id6740261324`)
+	downloadLinkPost('iOS', channelPartners, showReferralsInput, node.country)
   }
 
   useEffect(() => {
@@ -188,23 +190,34 @@ const Home = () => {
 
 
   	const androidDownload = () => {
-		const downloadLink = channelPartners ? `https://${getRandomNodeDomain()}/download/${channelPartners}/Android.apk`: `https://${getRandomNodeDomain()}/download/Android.apk`
+		const node = getRandomNode()
+		const downloadLink = channelPartners ? `https://${node.domain}/download/${channelPartners}/Android.apk`: `https://${node.domain}/download/Android.apk`
+		
 		window.open (downloadLink)
+		downloadLinkPost('Android.apk', channelPartners, showReferralsInput, node.country)
 	}
 
 	const winDownload = () => {
-		const downloadLink = channelPartners ? `https://${getRandomNodeDomain()}/download/${channelPartners}/SilentPassProxy.exe`: `https://${getRandomNodeDomain()}/download/SilentPassProxy.exe`
+		const node = getRandomNode()
+		const downloadLink = channelPartners ? `https://${node.domain}/download/${channelPartners}/SilentPassProxy.exe`: `https://${node.domain}/download/SilentPassProxy.exe`
+		
 		window.open (downloadLink)
+		downloadLinkPost('SilentPassProxy.exe', channelPartners, showReferralsInput, node.country)
 	}
 
 	const macMDownload = () => {
-		const downloadLink = channelPartners ? `https://${getRandomNodeDomain()}/download/${channelPartners}/SilentPassProxyMacOS-M-cpu.dmg`: `https://${getRandomNodeDomain()}/download/SilentPassProxyMacOS-M-cpu.dmg`
+		const node = getRandomNode()
+		const downloadLink = channelPartners ? `https://${node.domain}/download/${channelPartners}/SilentPassProxyMacOS-M-cpu.dmg`: `https://${node.domain}/download/SilentPassProxyMacOS-M-cpu.dmg`
+		
 		window.open (downloadLink)
+		downloadLinkPost('SilentPassProxyMacOS-M-cpu.dmg', channelPartners, showReferralsInput, node.country)
 	}
 
 	const macDownload = () => {
-		const downloadLink = channelPartners ? `https://${getRandomNodeDomain()}/download/${channelPartners}/SilentPassProxyMacOS-Inter-cpu.dmg`: `https://${getRandomNodeDomain()}/download/SilentPassProxyMacOS-Inter-cpu.dmg`
+		const node = getRandomNode()
+		const downloadLink = channelPartners ? `https://${node.domain}/download/${channelPartners}/SilentPassProxyMacOS-Inter-cpu.dmg`: `https://${node.domain}/download/SilentPassProxyMacOS-Inter-cpu.dmg`
 		window.open (downloadLink)
+		downloadLinkPost('SilentPassProxyMacOS-Inter-cpu.dmg', channelPartners, showReferralsInput, node.country)
 	}
 
 	const playWinVideo=() => {

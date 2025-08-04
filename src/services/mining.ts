@@ -268,12 +268,22 @@ const encrypt_Message = async (
   return await encrypt(encryptObj);
 };
 
-const getRandomNode = () => {
-	const index = Math.floor(Math.random()*allNodes.length)
+const getRandomNodeIpaddress = () => {
+	const region = testRegion[0].node.country
+	const subNodes = allNodes.filter(n => n.country === region)
+	const index = Math.floor(Math.random()*subNodes.length)
 	return allNodes[index].ip_addr
 }
 
+const getRandomNode = () => {
+	const region = testRegion[0].node.country
+	const subNodes = allNodes.filter(n => n.country === region)
+	const index = Math.floor(Math.random()*subNodes.length)
+	return subNodes[index]
+}
+
 const getRandomNodeDomain = () => {
+
 	const index = Math.floor(Math.random()*allNodes.length)
 	return allNodes[index].domain
 }
@@ -351,5 +361,6 @@ export {
   currentScanNodeNumber,
   getAllNodesV2,
   getRandomNode,
-  getRandomNodeDomain
+  getRandomNodeDomain,
+  testRegion
 };

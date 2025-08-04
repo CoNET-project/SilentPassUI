@@ -64,7 +64,7 @@ const { setProfiles, setMiningData, allRegions, setClosestRegion, _vpnTimeUsedIn
 
 			//		referrals setup
 			if (referrals) {
-				setShowReferralsInput(true)
+				setShowReferralsInput(referrals)
 			}
 		
 		}

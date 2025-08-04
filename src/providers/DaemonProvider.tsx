@@ -63,8 +63,8 @@ type DaemonContext = {
   webFilterRef:React.MutableRefObject<boolean>;
   channelPartners: string,
   setChannelPartners: (val: string) => void,
-  showReferralsInput: boolean,
-  setShowReferralsInput: (val: boolean) => void
+  showReferralsInput: string,
+  setShowReferralsInput: (val: string) => void
 };
 
 type DaemonProps = {
@@ -134,7 +134,7 @@ const defaultContextValue: DaemonContext = {
   webFilterRef:{ current: false },
   channelPartners: '',
   setChannelPartners: () => {},
-  showReferralsInput: false,
+  showReferralsInput: '',
   setShowReferralsInput: () => {}
 };
 
@@ -179,7 +179,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const webFilterRef=useRef(getWebFilter);
   const [switchValue, setSwitchValue] = useState(true);
   const firstLoad = useRef(true);
-    const [showReferralsInput, setShowReferralsInput] = useState(false);
+    const [showReferralsInput, setShowReferralsInput] = useState('');
 
   useEffect(() => {
     {

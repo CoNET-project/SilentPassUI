@@ -239,6 +239,10 @@
 	"download_page_windows_download": "windows下载",
 	"download_page_windows_MacOS_M": "苹果系统 M 系列下载",
 	"download_page_windows_MacOS": "苹果系统下载",
+	"download_page_windows_Guide": "windows安装教程",
+	"download_page_ios_Guide": "iOS 安装教程",
+	"download_page_MacOS_Guide": "MacOS安装教程",
+	"download_page_Android_Guide": "安卓安装教程",
 
     "lang":"中文",
     "language":"语言",

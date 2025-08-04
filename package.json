@@ -89,6 +89,7 @@
 			"last 1 safari version"
 		]
 	},
+	"homepage": "/download/",
 	"devDependencies": {
 		"@babel/parser": "^7.23.0",
 		"@babel/types": "^7.23.0",

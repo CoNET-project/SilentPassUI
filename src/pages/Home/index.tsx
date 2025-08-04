@@ -273,7 +273,7 @@ const Home = () => {
 						className="power"
 					>
 					
-					<img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
+					<img className="loading-spinning" src={process.env.PUBLIC_URL + "/assets/silent-pass-logo-grey.png"} style={{ width: '85px', height: '85px' }} alt="" />
 					</button>
 
 					<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '400px' }}>
@@ -287,7 +287,7 @@ const Home = () => {
 			!isInitialLoading &&
 			<div className='homeMain'>
 				<div style={{height: '0.5rem'}}>
-					<img src="/assets/header-title.svg"></img>
+					<img src={process.env.PUBLIC_URL + "/assets/header-title.svg"}></img>
 				</div>
 				<h1 style={{paddingTop: '3rem'}}>
 					<span>
@@ -333,10 +333,10 @@ const Home = () => {
 		</div>
 
 		<div className='videoBtnsContainer'>
-			<div onClick={()=>{setVisibleVideoWin(true)}} className='videoBtn'>windows安装教程</div>
-			<div onClick={()=>{setVisibleVideoIos(true)}} className='videoBtn'>ios安装教程</div>
-			<div onClick={()=>{setVisibleVideoMacOS(true)}} className='videoBtn'>MacOS安装教程</div>
-			<div onClick={()=>{setVisibleVideoAndroid(true)}} className='videoBtn'>android安装教程</div>
+			<div onClick={()=>{setVisibleVideoWin(true)}} className='videoBtn'>{t('download_page_windows_Guide')}</div>
+			<div onClick={()=>{setVisibleVideoIos(true)}} className='videoBtn'>{t('download_page_ios_Guide')}</div>
+			<div onClick={()=>{setVisibleVideoMacOS(true)}} className='videoBtn'>{t('download_page_MacOS_Guide')}</div>
+			<div onClick={()=>{setVisibleVideoAndroid(true)}} className='videoBtn'>{t('download_page_Android_Guide')}</div>
 		</div>
 
 

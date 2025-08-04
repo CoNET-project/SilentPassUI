@@ -64,6 +64,6 @@ const Wallet = ({}) => {
             <Footer />
         </>
     )
-};
+}
 
 export default Wallet

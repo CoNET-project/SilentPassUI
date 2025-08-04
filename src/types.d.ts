@@ -81,6 +81,8 @@ interface Region {
 	referrer: string | null | undefined;
 	spClub?: SpClub;
 	SpClubPoints?: SpClubPoints
+	spChannel?:SpClub
+
 	data?: any;
 	type?: keyPairType;
 	nodeID?: number;
@@ -95,6 +97,22 @@ interface Region {
   interface SpClubReferees {
 	walletAddress: string;
 	activePassport: string//freePassport;
+  }
+
+  interface spChannelPoints {
+	totalChannelPartnersNewUser: number
+	totalChannelPartnersRedeem: number
+	totalChannelPartnersSubscription: number
+	totalChannelPartnersGenesis: number
+	totalChannelPartnersDailyUser: number
+	totalChannelPartnersBandwidth: number
+	totalChannelPartnersDownloadLink: number
+	bandwidthChannelPartners: number
+	subscriptionChannelPartners: number
+	genesisChannelPartners: number
+	newUserChannelPartners: number
+	redeemChannelPartners: number
+	downloadhannelPartners: number
   }
 
   interface SpClubPoints {

@@ -29,7 +29,7 @@ global.Buffer = require('buffer').Buffer;
 function App() {
 	const { i18n } = useTranslation();
 
-  const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, _vpnTimeUsedInMin, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount } = useDaemonContext();
+  const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount,  } = useDaemonContext();
   const setSOlanaRPC = (allNodes: nodes_info[]) => {
     const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
     setRandomSolanaRPC(allNodes[randomIndex])
@@ -51,6 +51,7 @@ function App() {
 	  setIsLocalProxy(false)
 	}
   }
+  
   let handlePassportProcess = false
   const handlePassport = async () => {
 
@@ -108,6 +109,9 @@ function App() {
 		ChannelPartners = queryParams.get("ChannelPartners")
 		referrals = queryParams.get("referrals")
 		secretPhrase = secretPhrase ? secretPhrase.replace(/\-/g, " ") : null;
+		if (referrals) {
+			setShowReferralsInput(true)
+		}
 	}
 
 	const profiles = await createOrGetWallet(secretPhrase, false, referrals, ChannelPartners);
@@ -149,8 +153,8 @@ function App() {
   		let storage = window.localStorage;
   		let lang='en';
   		const antdMLang: AntdLocale={en:enUS,zh:zhCN};
-  		if(localStorage && localStorage.lang){
-  			lang=localStorage.lang;
+  		if(storage && storage.lang){
+  			lang=storage.lang;
   		} else {
 			//@ts-ignore
 			const userLang = navigator.language || navigator.userLanguage;

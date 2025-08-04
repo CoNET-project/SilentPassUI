@@ -42,7 +42,7 @@ const Referrals = ({}) => {
                 closeOnMaskClick={true}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('referrals-title')}</NavBar>
+                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('referrals-title-panel-title')}</NavBar>
                     <div className={styles.bd}>
                         {/*{(freePassportActive || expiration)?<div className={styles.warning}><ExclamationCircleFill className={styles.icon} />{t('referrals-extra-title')}</div>:''}*/}
                         <ReferralCont />

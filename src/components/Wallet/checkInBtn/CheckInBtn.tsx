@@ -16,13 +16,14 @@ const CheckInBtn = ({}) => {
     const [visible, setVisible] = useState<boolean>(false)
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
+	const [insufficientBalance, setInsufficientBalance] = useState<boolean>(false)
 	const { setPaymentKind } = useDaemonContext()
 	const navigate = useNavigate()
 
 	const checkBalance = async () => {
 		const status = await getRewordStaus()
 		if (status === null) {
-			return
+			return setInsufficientBalance(true)
 		}
 		if (status === false) {
 			return setTodayCheckIN(true)
@@ -75,8 +76,14 @@ const CheckInBtn = ({}) => {
 							<div className={styles.title}>
 								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info2')}
 							</div>
+							<div className={styles.title}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info3')}
+							</div>
+							<div className={styles.title}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info4')}
+							</div>
 							<div className={styles.operation}>
-								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'wallet-checkin-betton-title')}</Button>
+								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(insufficientBalance ? 'swap-asset-insufficient' : todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'wallet-checkin-betton-title')}</Button>
 							</div>
 						</div>
 						<div className={styles.warning}>
@@ -87,7 +94,35 @@ const CheckInBtn = ({}) => {
 								{t('wallet-checkin-remind-detail')}
 							</div>
 						</div>
-                        <div className={styles.payways}><PayWays defaultVisible={true} /></div>
+                        
+
+                        <div className={styles.introduce}>
+							<div className={styles.title}>
+								{t('wallet-checkin-deposit-btn')}
+							</div>
+							<div className={styles.desc}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-1')}
+							</div>
+                            <div className={styles.desc}>
+                                <ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-2')}
+                            </div>
+                            <div className={styles.descItem}>
+                                {t('wallet-checkin-deposit-detail-3')}
+                            </div>
+                            <div className={styles.descItem}>
+                                {t('wallet-checkin-deposit-detail-4')}
+                            </div>
+                            <div className={styles.descItem}>
+                                {t('wallet-checkin-deposit-detail-5')}
+                            </div>
+						</div>
+                        <div className={styles.introduce}>
+                            <div className={styles.payways}><PayWays defaultVisible={true} /></div>
+							<div className={styles.desc}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-btn-pay-detail')}
+							</div>
+                        </div>
+
                     </div>
 					
 					

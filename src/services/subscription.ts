@@ -76,17 +76,89 @@ const getEncryptoData = async (restoreCode: string): Promise<string> => {
 
 const restoreAPI = `${apiv4_endpoint}restore`
 
+const tryTest = async (address: string, code: string) => {
+	try {
+		const [isCode, duplicateAddress] = await Promise.all([
+			duplicate_readOnly.isRestore(code),
+			duplicate_readOnly.duplicateList(address)
+		])
+		return ({isCode, duplicateAddress})
+	} catch (ex) {
+		return null
+	}
+}
 export const restoreAccount = async (passcode: string, password: string, temp: encrypt_keys_object, setProfiles: (profiles: any) => void): Promise<boolean> => {
-	if (!temp || !temp?.duplicateAccount) {
+	if (!temp || !temp?.duplicateAccount||!temp?.profiles) {
 		return false
 	}
+
+	const profiles = temp.profiles
+
+
+	const finish = async (duplicateAddress : string, solanaWallet: {publicKey: string, privateKey: string} ) => {
+		if (!temp || !temp?.duplicateAccount) {
+			return false
+		}
+		changeStopProcess(true)
+		temp.duplicateAccount.keyID = duplicateAddress
+		temp.profiles[1].keyID = solanaWallet.publicKey
+		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
+		//		reset duplicateCode
+		temp.duplicateCode = temp.duplicatePassword = ''
+		temp.mnemonicPhrase = temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
+
+		await setCoNET_Data(temp)
+		await storeSystemData()
+		await setProfiles(temp.profiles)
+		setTimeout(() => {
+			changeStopProcess(false)
+		}, 15000)
+	}
+
+
+	const ret = await tryTest(profiles[0].keyID, passcode)
+
+		//		already backuped
+	if (ret && ret.isCode === false ) {
+		const duplicateAddress = ret.duplicateAddress.toLowerCase()
+		if ( duplicateAddress !== ethers.ZeroAddress && temp.duplicateAccount.keyID.toLowerCase() !== duplicateAddress) {
+			if (temp?._duplicateCode) {
+				let solanaWallet
+				const restoreEncryptoText = await getEncryptoData(temp._duplicateCode)
+				if (!restoreEncryptoText) {
+					return false
+				}
+				
+				try {
+					const restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, temp._duplicateCode + temp.duplicatePassword)
+					if (!restoreMnemonicPhrase) {
+						return false
+					}
+
+					solanaWallet = await initSolana(restoreMnemonicPhrase)
+					
+				} catch (ex) {
+					return false
+				}
+				if (!solanaWallet) {
+					return false
+				}
+				
+				await finish(ret.duplicateAddress, solanaWallet)
+				return true
+			}
+		}
+		return false
+	}
+
 	const restoreEncryptoText = await getEncryptoData(passcode)
 	if (!restoreEncryptoText) {
 		return false
 	}
+
 	let restoreMnemonicPhrase = ''
 	try {
-		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode+password)
+		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode + password)
 		if (!restoreMnemonicPhrase) {
 			return false
 		}
@@ -95,16 +167,15 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	} catch (ex) {
 		return false
 	}
-	changeStopProcess(true)
 	const solanaWallet = await initSolana(restoreMnemonicPhrase)
-	if (!solanaWallet) {
-		changeStopProcess(false)
+	if (!solanaWallet || !temp?._duplicateCode) {
 		return false
 	}
 
+	const pass = temp._duplicateCode
+	temp.encryptedString = await aesGcmEncrypt(restoreMnemonicPhrase, pass)
 
-	const profiles = temp.profiles
-	const message = JSON.stringify({ walletAddress: profiles[0].keyID, uuid: temp.duplicateCodeHash, data: temp.encryptedString, hash:passcode })
+	const message = JSON.stringify({ walletAddress: profiles[0].keyID, uuid: temp.duplicateCodeHash, data: temp.encryptedString, hash: passcode })
 	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
 	const signMessage = await wallet.signMessage(message)
 	const sendData = {
@@ -119,21 +190,8 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	}
 
 	if (ethers.isAddress(result.status)) {
-		temp.duplicateAccount.keyID = result.status
-		temp.profiles[1].keyID = solanaWallet.publicKey
-		temp.profiles[1].privateKeyArmor = solanaWallet.privateKey
-		//		reset duplicateCode
-		temp.duplicateCode = temp.duplicatePassword = ''
-		temp.mnemonicPhrase = temp.duplicateMnemonicPhrase = restoreMnemonicPhrase
-
-		await setCoNET_Data(temp)
-		await storeSystemData()
-		await setProfiles(temp.profiles)
+		await finish (result.status, solanaWallet)
 	}
-
-	setTimeout(() => {
-		changeStopProcess(false)
-	}, 15000)
 	
 	return true
 
@@ -207,7 +265,7 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 
 	if (!temp?.duplicateAccount) {
 		const profiles = temp.profiles
-		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: ''})
+		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: '', channelPartners: temp.ChannelPartners})
 		const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
 		const signMessage = await wallet.signMessage(message)
 		const sendData = {
@@ -250,6 +308,7 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 
 }
 const duplicatePasscodeAPI = `${apiv4_endpoint}duplicatePasscode`
+
 export const initializeDuplicateCode = async (passcode: string): Promise<boolean> => {
 	if (!CoNET_Data) {
 		return false
@@ -297,76 +356,12 @@ const PROGRAM_ID = new web3.PublicKey(anchor_linear_vesting_del.address)
 
 
 let airDropStatus: null | airDropStatus = null
-export const airDropForSP = async (): Promise<airDropStatus|false> => {
-	if (airDropStatus !== null) {
-		return airDropStatus
-	}
-	  if (!CoNET_Data?.profiles || airDropForSPProcess) {
 
-		return false
-	  }
-
-
-	  airDropForSPProcess = true
-	  const profile = CoNET_Data.profiles[0]
-	  const solanaWallet = CoNET_Data.profiles[1].keyID
-	  try {
-		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet})
-		const wallet = new ethers.Wallet(profile.privateKeyArmor)
-		const signMessage = await wallet.signMessage(message)
-		const sendData = {
-		  message, signMessage
-		}
-	
-		const result = await postToEndpoint(airDropForSPUrl, true, sendData)
-		const status = result?.status
-		if (status) {
-			airDropStatus = status
-			return status
-		}
-		
-		return false
-	  } catch (ex) {
-		console.log(ex)
-		return false
-	  }
-}
 
 const getAirDropForSPUrl = `${payment_endpoint}getAirDropForSP`
 
 let getAirDropForSPProcess = false
 
-
-export const getirDropForSP = async (): Promise<boolean|number> => {
-	  if (!CoNET_Data?.profiles || getAirDropForSPProcess || airDropForSPProcess === false) {
-		return false
-	  }
-
-	  const profile = CoNET_Data.profiles[0]
-	  const solanaWallet = CoNET_Data.profiles[1].keyID
-	  try {
-		const message = JSON.stringify({ walletAddress: profile.keyID, solanaWallet})
-		const wallet = new ethers.Wallet(profile.privateKeyArmor)
-		const signMessage = await wallet.signMessage(message)
-		const sendData = {
-		  message, signMessage
-		}
-	
-		const result = await postToEndpoint(getAirDropForSPUrl, true, sendData)
-		if (airDropStatus) {
-			airDropStatus.isReadyForSP = false
-		}
-
-		if (result?.amount) {
-			return result.amount
-		}
-		
-		return false
-	  } catch (ex) {
-		console.log(ex)
-		return false
-	  }
-}
 
 let getirDropForSPReffProcess = false
 const getAirDropForSPReffUrl = `${payment_endpoint}getAirDropForSPReff`
@@ -403,10 +398,6 @@ export const getirDropForSPReff = async (referrer: string): Promise<boolean|numb
 		
 		getirDropForSPReffProcess = false
 		if (result?.status) {
-
-			if (airDropStatus) {
-				airDropStatus.isReadyForReferees = false
-			}
 			
 			CoNET_Data.profiles[0].referrer = referrer
 			setCoNET_Data(CoNET_Data)

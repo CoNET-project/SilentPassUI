@@ -34,7 +34,7 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
     const spSendRef=useRef();
     const solSendRef=useRef();
     const usdtSendRef=useRef();
-console.log(profiles,'profiles')
+
     const getAddress = (wallet: any) => {
         return wallet?.keyID.slice(0, 7) + '...' + wallet?.keyID.slice(-5);
     }

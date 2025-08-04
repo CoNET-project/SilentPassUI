@@ -34,6 +34,7 @@ import { blast_CNTPAbi } from "./../utils/abis";
 
 const SPOracleSmartContract = new ethers.Contract(contracts.SpOracle.address, contracts.SpOracle.abi, conetDepinProvider)
 const PouchDB = require("pouchdb").default;
+
 export const initSolana = async (mnemonic: string): Promise<{publicKey: string, privateKey: string}|null> => {
   if (!Bip39.validateMnemonic(mnemonic)) return null;
 
@@ -987,8 +988,6 @@ const getSPOracle = async () => {
 const getRewordStaus = async(): Promise<boolean|null> => {
   const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)
 
-  
-
   const profiles = CoNET_Data?.profiles
   if (!profiles || profiles.length < 2 ) {
     return false
@@ -1011,6 +1010,7 @@ const getRewordStaus = async(): Promise<boolean|null> => {
     if (SPBalance === undefined ||  SPBalance < spReworkBalance && (initBalance === 0 || initBalance > 0 && initBalance > SPBalance)) {
       	return null
     }
+	
     return status[0]
   } catch (ex) {
     return null
@@ -1105,6 +1105,7 @@ const scanETH = async (walletAddr: string) => {
 };
 
 const ReferralsContract = new ethers.Contract(contracts.Referrals.address, contracts.Referrals.abi, conetDepinProvider)
+
 const getReferrals = async () => {
   if (!CoNET_Data||!CoNET_Data?.duplicateAccount) {
 	return null
@@ -1185,24 +1186,33 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 
 	
 	if (referrals) {
+
 		if (profile.spClub && typeof profile.spClub == 'object') {
-		if (referrals[0] !== ethers.ZeroAddress) {
-			profile.referrer = profile.spClub.referrer = referrals[0]
-		}
-		profile.spClub.totalReferees = parseInt(referrals[1][0].toString())
-		profile.spClub.referees = referrals[1][1].map((n:string) => { return { walletAddress: n, activePassport: ''}})
 		
+			if (referrals[0] !== ethers.ZeroAddress) {
+				profile.referrer = profile.spClub.referrer = referrals[0]
+			} else {
+				profile.referrer = profile.spClub.referrer = ''
+			}
+
+			profile.spClub.totalReferees = parseInt(referrals[1][0].toString())
+			profile.spClub.referees = referrals[1][1].map((n:string) => { return { walletAddress: n, activePassport: ''}})
+			
 		} else {
-		if (referrals[0] !== ethers.ZeroAddress) {
-			profile.referrer = referrals[0]
-		}
-		profile.referrer = /^0x000/.test(referrals[0]) ? '' : referrals[0]
-		profile.spClub = {
-			referees: referrals[1][1].map((n:string) => n),
-			totalReferees: parseInt(referrals[1][0].toString()),
-			memberId: '',
-			referrer: profile.referrer||''
-		}
+
+			if (referrals[0] !== ethers.ZeroAddress) {
+				profile.referrer = referrals[0]
+			} else {
+				profile.referrer = ''
+			}
+
+			
+			profile.spClub = {
+				referees: referrals[1][1].map((n:string) => n),
+				totalReferees: parseInt(referrals[1][0].toString()),
+				memberId: '',
+				referrer: profile.referrer||''
+			}
 		}
 	}
 	

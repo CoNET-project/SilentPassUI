@@ -1,0 +1,10 @@
+.newVersion{
+    position: fixed;
+    top:60px;
+    left:4.2vw;
+    right:4.2vw;
+    :global(.adm-notice-bar){
+        height:30px;
+        font-size: 13px;
+    }
+}

@@ -12,6 +12,8 @@ import { ReactComponent as SupportIconBlue } from "./assets/support-icon-blue.sv
 import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg"
 import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg"
 
+import Subscription from '@/components/Subscription/Subscription'
+
 export default function Menu() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,7 +36,7 @@ export default function Menu() {
         {location.pathname === "/settings" ? <SettingsIconBlue /> : <SettingsIconGrey />}
         {/*<p>Settings</p>*/}
       </button>
- 
+      <Subscription />
     </div>
   )
 }

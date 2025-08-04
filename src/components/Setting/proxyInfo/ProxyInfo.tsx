@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { List,Modal } from 'antd-mobile';
 import { BarsOutlined } from '@ant-design/icons';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
-import CopyBtn from './../../Wallet/copyBtn/CopyBtn';
+import CopyBtn from '@/components/Wallet/copyBtn/CopyBtn';
 
 const ProxyInfo = ({}) => {
     const { t, i18n } = useTranslation();

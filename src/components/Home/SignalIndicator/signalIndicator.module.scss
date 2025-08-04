@@ -1,0 +1,15 @@
+.signalIndicator {
+    display: flex;
+    gap: 4px;
+    align-items: flex-end;
+    .bar {
+        width: 5px;
+        background-color: #2e2e2e;
+        transition: background-color 0.3s;
+    }
+    .active {
+        background-color: #61f7f9;
+    }
+}
+
+

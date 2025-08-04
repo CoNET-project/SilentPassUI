@@ -1,5 +1,5 @@
 .setting{
-    padding: 42px 16px 100px;
+    padding: 16px 16px 100px;
     width: 100%;
     user-select:none;
     .title{
@@ -7,6 +7,8 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
+        font-size:26px;
+        font-weight:600;
     } 
     .version{
         margin:0 0 10px;

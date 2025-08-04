@@ -1,0 +1,74 @@
+.proxyInfo{
+    width:66vw;
+    margin:0 auto;
+    user-select:none;
+    .proxyInfoBar{
+        display:flex;
+        align-items:center;
+        font-size:13px;
+        color:#fff;
+        .icon{
+            margin:-4px 10px 0 0;
+        }
+        svg{
+            width: auto;
+            height:25px;
+        }
+    }
+    .proxyInfoList{
+        padding:6px 10px;
+        .item{
+            display: flex;
+            align-items: center;
+            justify-content:space-between;
+            height:30px;
+            .label{
+                font-size: 13px;
+                font-weight: 500;
+            }
+            .val{
+                display: flex;
+                align-items: center;
+                font-size: 13px;
+                .text{
+                    margin:0 15px 0 0;
+                }
+            }
+        }
+    }
+    :global(.adm-dropdown){
+        background: #191919;
+        border-radius: 8px;
+    }
+    :global(.adm-dropdown-open){
+        border-radius: 8px 8px 0 0;
+    }
+    :global(.adm-dropdown-item-title){
+        width:100%;
+        justify-content: space-between;
+        padding:8px 12px;
+    }
+    :global(.adm-dropdown-item .adm-dropdown-item-title-arrow){
+        font-size: 20px;
+    }
+    :global(.adm-dropdown .adm-dropdown-nav){
+        border-bottom:none;
+    }
+    :global(.adm-dropdown-popup){
+        width: 66vw;
+        right: 17vw;
+        bottom: 0;
+        left: 17vw;
+        height:102px;
+    }
+    :global(.adm-dropdown-popup .adm-dropdown-popup-mask){
+        display: none;
+    }
+    :global(.adm-popup-body){
+        background: transparent;
+    }
+    :global(.adm-dropdown-item-content){
+        background: #202020;
+        border-radius: 0 0 8px 8px;
+    }
+}

@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './spWallet.module.scss';
 import { useTranslation } from 'react-i18next';
-import { List,Popup,NavBar,Button } from 'antd-mobile';
-import { UndoOutline,ExclamationCircleFill } from 'antd-mobile-icons';
+import { List,Popup,NavBar,Button,Grid } from 'antd-mobile';
+import { UndoOutline,ExclamationCircleFill,HandPayCircleOutline } from 'antd-mobile-icons';
 import { CoNET_Data } from './../../../utils/globals';
 import { ReactComponent as SolanaToken } from './../assets/solana-token.svg';
 import { ReactComponent as ConetToken } from './../assets/sp-token.svg';
@@ -14,12 +14,16 @@ import SendButton from './../sendBtn/SendButton';
 import AutoCodeButton from './../codeButton/AutoCodeButton';
 import CopyBtn from './../copyBtn/CopyBtn';
 import HideBtn from './../hideBtn/HideBtn';
-// import ImportButton from './../importBtn/ImportButton';
 import History from './../history/History';
 import ScanButton from './../scanBtn/ScanButton';
 import PayWays from './payWays';
 
-const SPWallet = ({}) => {
+interface params {
+    stakeVisible: boolean;
+    setStakeVisible: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
     const { t, i18n } = useTranslation();
     const [visible, setVisible] = useState<boolean>(false);
     const { profiles, setProfiles, setAirdropSuccess, setAirdropProcess } = useDaemonContext();
@@ -30,7 +34,7 @@ const SPWallet = ({}) => {
     const spSendRef=useRef();
     const solSendRef=useRef();
     const usdtSendRef=useRef();
-
+console.log(profiles,'profiles')
     const getAddress = (wallet: any) => {
         return wallet?.keyID.slice(0, 7) + '...' + wallet?.keyID.slice(-5);
     }
@@ -61,6 +65,23 @@ const SPWallet = ({}) => {
         }
         setTimeout(() => setIsRefreshingSolanaBalances(false), 2000);
     }
+    const convertNumberToString = (numval: number): string => {
+        const num = Number(numval);
+        const units = [
+            { value: 1e12, symbol: 'T' },
+            { value: 1e9, symbol: 'B' },
+            { value: 1e6, symbol: 'M' },
+            { value: 1e3, symbol: 'K' }
+        ];
+        
+        const absNum = Math.abs(num);
+        for (const unit of units) {
+            if (absNum >= unit.value) {
+                return (num / unit.value).toFixed(2) + unit.symbol;
+            }
+        }
+        return num.toFixed(2).toString();
+    }
 
     return (
         <>
@@ -90,7 +111,7 @@ const SPWallet = ({}) => {
                         </div>
 
                         <ul className={styles.list}>
-                            <li className={styles.listItem}>
+                            {/*<li className={styles.listItem}>
                                 <div className={styles.type}>
                                     <ConetToken />
                                     <div className={styles.text}>
@@ -100,13 +121,36 @@ const SPWallet = ({}) => {
                                 </div>
                                 <div className={styles.value}>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</div>
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} extendref={spSendRef} />
+                            </li>*/}
+                            <li className={styles.listItemSp}>
+                                <div className={styles.type}>
+                                    <ConetToken />
+                                    <div className={styles.text}>
+                                        <div className={styles.name}>SP</div>
+                                    </div>
+                                </div>
+                                <div className={styles.assetsInfo}>
+                                    <Grid columns={2} gap={[5,1]}>
+                                        <Grid.Item>总资产</Grid.Item>
+                                        <Grid.Item>可用余额</Grid.Item>
+                                        <Grid.Item>{convertNumberToString(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))}</Grid.Item>
+                                        <Grid.Item>1.18k</Grid.Item>
+                                        <Grid.Item>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</Grid.Item>
+                                        <Grid.Item>$0.8766</Grid.Item>
+                                    </Grid>
+                                </div>
+                                <div className={styles.stakeBtn} onClick={() => {setStakeVisible(true)}}>
+                                    <HandPayCircleOutline className={styles.icon} />
+                                    <span className={styles.text}>{t('stake-title')}</span>
+                                </div>
+                                <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} extendref={spSendRef} />
                             </li>
                             <li className={styles.listItem}>
                                 <div className={styles.type}>
                                     <SolanaToken />
                                     <div className={styles.text}>
                                         <div className={styles.name}>SOL</div>
-                                        <div className={styles.num}>{profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6)}</div>
+                                        <div className={styles.num}>{convertNumberToString(profiles?.[1]?.tokens?.sol?.balance || (0.0).toFixed(6))}</div>
                                     </div>
                                 </div>
                                 <div className={styles.value}>${profiles?.[1]?.tokens?.sol?.usd || (0.0).toFixed(2)}</div>
@@ -117,7 +161,7 @@ const SPWallet = ({}) => {
                                     <UsdtToken />
                                     <div className={styles.text}>
                                         <div className={styles.name}>USDT</div>
-                                        <div className={styles.num}>{profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(6)}</div>
+                                        <div className={styles.num}>{convertNumberToString(profiles?.[1]?.tokens?.usdt?.balance || (0.0).toFixed(6))}</div>
                                     </div>
                                 </div>
                                 <div className={styles.value}>${profiles?.[1]?.tokens?.usdt?.usd || (0.0).toFixed(2)}</div>
@@ -126,10 +170,7 @@ const SPWallet = ({}) => {
                         </ul>
 
                         <div className={styles.payWaysWrap}>
-                            <div className={styles.title}>
-                                {t('wallet-checkin-deposit-btn')}
-                            </div>
-                            <PayWays />
+                            <PayWays defaultVisible={false} />
                         </div>
 
                         {profiles?.[1]?.keyID ?<div className={styles.address}>
@@ -154,7 +195,6 @@ const SPWallet = ({}) => {
                                 <div style={{marginLeft:12}}><HideBtn isHidden={isKeyHidden} setIsHidden={setIsKeyHidden} /></div>
                             </div>
                         </div>:''}
-                        {/* <ImportButton /> */}
                         <History />
                     </div> 
                 </div>

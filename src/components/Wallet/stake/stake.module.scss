@@ -1,0 +1,140 @@
+.popup{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 480px;
+    transform: translate(-50%, 0);
+    z-index:1007;
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-popup-body) {
+        position: absolute;
+    }
+}
+.modalWrap{
+    .bd{
+        height: calc(100vh - 70px - 85px);
+        overflow: auto;
+        .totalInfo{
+            background: #191919;
+            border-radius: 10px;
+            padding: 4vw 6vw;
+            margin:5vw auto 0;
+            width:91.6vw;
+            .totalInfoItem{
+                display:flex;
+                justify-content: space-between;
+                align-items: center;
+                margin:0 0 6px;
+                .label{
+                    color:#818181;
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                .val{
+                    color:#f1f1f1;
+                    font-size: 14px;
+                }
+            }
+            .stakeBox{
+                margin:15px 0 0;
+                .oper{
+                    :global(.adm-button.adm-button-primary) {
+                        background: #363636;
+                        border-color: #363636;
+                        color: #d9d9d9;
+                        font-size: 15px;
+                    }
+                }
+                .stakeBoxList{
+                    margin:10px 0 0;
+                    .stakeBoxListItem{
+                        list-style-type: none;
+                        color:#f1943f;
+                        font-size: 12px;
+                        .icon{
+                            margin:0 3px 0 0;
+                        }
+                    }
+                }
+            }
+        }
+        .history{
+            padding: 4vw 4.2vw;
+            border-bottom: 0.5px rgb(63, 63, 64) solid;
+            .title{
+                font-size: 16px;
+                color:#fff;
+                font-weight: 500;
+                line-height:1;
+                .icon{
+                    margin:0 3px 0 0;
+                }
+            }
+            .historyList{
+                .gridbox{
+                    text-align: center;
+                    margin:15px 0 0;
+                    color:#f1f1f1;
+                    font-size: 12px;
+                    .hd{
+                        font-weight: 500;
+                    }
+                }
+                .empty{
+                    font-size: 12px;
+                    :global{
+                        .adm-empty-image-container .adm-empty-image{
+                            width:50px;
+                        }
+                        .adm-empty-description{
+                            font-size: 12px;
+                        }
+                    }
+                }
+            }
+        }
+        .stakeInfos{
+            padding: 4vw 4.2vw;
+            border-bottom: 0.5px rgb(63, 63, 64) solid;
+            .title{
+                font-size: 16px;
+                color:#fff;
+                font-weight: 500;
+                line-height:1;
+                .icon{
+                    margin:0 3px 0 0;
+                }
+            }
+            .stakeInfosList{
+                margin:4vw 0 0;
+                .stakeInfosListItem{
+                    list-style-type:none;
+                    color:#c5c5c5;
+                    margin:0 0 5px;
+                    .icon{
+                        margin:0 3px 0 0;
+                    }
+                    &:last-child{
+                        margin:0;
+                    }
+                }
+            }
+        }
+        .payWaysWrap{
+            padding:0 4.2vw;
+        }
+    }
+    :global(.adm-nav-bar){
+        border-bottom: 1px #292d2e solid;
+    }
+    :global(.adm-nav-bar-title) {
+        color: #fff;
+        font-weight: 500;
+    }
+    :global(.adm-nav-bar-back){
+        color:#999;
+    }
+}

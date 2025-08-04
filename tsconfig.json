@@ -21,7 +21,11 @@
 		"resolveJsonModule": true,
 		"isolatedModules": true,
 		"noEmit": true,
-		"jsx": "react-jsx"
+		"jsx": "react-jsx",
+		"baseUrl": ".",
+	    "paths": {
+	      "@/*": ["src/*"]
+	    }
 	},
 	"include": [
 		"src",
@@ -29,6 +33,6 @@
 	],
 	"exclude": [
 		"node_modules",
-		"loader.ts" // <--- 在这里添加这一行！
+		"loader.ts" 
 	]
 }

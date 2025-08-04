@@ -7,11 +7,13 @@ import { GlobalOutlined,CustomerServiceOutlined,QuestionCircleOutlined,ApiOutlin
 import Languages from './../../Languages';
 import {openWebLinkNative} from './../../../api';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
+import Faq from './../faq/Faq';
 
 const GeneralSetting = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const [visible, setVisible] = useState(false);
+    const [faqVisible, setFaqVisible] = useState(false);
     const { isLocalProxy, isIOS, power, switchValue, setSwitchValue } = useDaemonContext();
 
     const handleChangeSwitch=(val:boolean)=>{
@@ -40,7 +42,7 @@ const GeneralSetting = ({}) => {
                     </List.Item>
                     <List.Item 
                         prefix={<span className={styles.icon}><QuestionCircleOutlined /></span>} 
-                        onClick={() => {navigate("/faq")}}
+                        onClick={() => {setFaqVisible(true)}}
                     >
                         {t('faq')}
                     </List.Item>
@@ -60,6 +62,7 @@ const GeneralSetting = ({}) => {
                 </List>
             </div>
             <Languages visible={visible} setVisible={setVisible} />
+            <Faq visible={faqVisible} setVisible={setFaqVisible} />
         </>
     );
 };

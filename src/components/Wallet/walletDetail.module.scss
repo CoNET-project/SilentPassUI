@@ -1,11 +1,13 @@
 .wallet{
-    padding: 42px 16px 100px;
+    padding: 16px 16px 100px;
     width: 100%;
     .title{
         margin-bottom: 16px;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        font-size:26px;
+        font-weight:600;
         .armBand{
             svg{
                 width: auto;
@@ -42,6 +44,16 @@
         justify-content: space-between;
         align-items: center;
         margin: 20px 0 0;
+        .stakeBtn{
+            width: 31%;
+            :global(.adm-button:not(.adm-button-default)) {
+                background: #28292e;
+                border-color: #28292e;
+                font-weight: 600;
+                padding: 10px 2px;
+                font-size: 14px;
+            }
+        }
     }
 }
 .successModal{

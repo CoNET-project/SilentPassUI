@@ -9,6 +9,7 @@ import { useDaemonContext } from "./../../../providers/DaemonProvider"
 import { CoNET_Data } from '../../../utils/globals'
 import { getOracle } from '../../../services/passportPurchase'
 import PayWays from './../spWallet/payWays';
+import { ExclamationCircleOutlined } from '@ant-design/icons';
 
 const CheckInBtn = ({}) => {
     const { t, i18n } = useTranslation();
@@ -80,38 +81,13 @@ const CheckInBtn = ({}) => {
 						</div>
 						<div className={styles.warning}>
 							<div className={styles.title}>
-								{t('wallet-checkin-remind')}
+								<ExclamationCircleOutlined style={{marginRight:3}} />{t('wallet-checkin-remind')}
 							</div>
 							<div className={styles.desc}>
 								{t('wallet-checkin-remind-detail')}
 							</div>
 						</div>
-						<div className={styles.introduce}>
-							<div className={styles.title}>
-								{t('wallet-checkin-deposit-btn')}
-							</div>
-							<div className={styles.desc}>
-								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-1')}
-							</div>
-                            <div className={styles.desc}>
-                                <ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-2')}
-                            </div>
-                            <div className={styles.descItem}>
-                                {t('wallet-checkin-deposit-detail-3')}
-                            </div>
-                            <div className={styles.descItem}>
-                                {t('wallet-checkin-deposit-detail-4')}
-                            </div>
-                            <div className={styles.descItem}>
-                                {t('wallet-checkin-deposit-detail-5')}
-                            </div>
-						</div>
-                        <div className={styles.introduce}>
-                            <div className={styles.title}>
-                                {t('wallet-checkin-deposit-btn')}
-                            </div>
-                            <div style={{marginTop:'5px'}}><PayWays /></div>
-                        </div>
+                        <div className={styles.payways}><PayWays defaultVisible={true} /></div>
                     </div>
 					
 					

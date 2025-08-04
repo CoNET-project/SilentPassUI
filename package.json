@@ -61,12 +61,12 @@
 		"web-vitals": "^2.1.4"
 	},
 	"scripts": {
-		"start": "react-scripts start",
-		"build:react": "env=production react-scripts build",
-		"test": "react-scripts test",
-		"eject": "react-scripts eject",
-		"build:loader": "node scripts/build-loader.js",
-		"build": "npm run build:react"
+	  	"start": "craco start",
+	  	"build:react": "env=production craco build",
+	  	"test": "craco test",
+	  	"eject": "react-scripts eject",  
+	  	"build:loader": "node scripts/build-loader.js",
+	  	"build": "npm run build:react"
 	},
 	"eslintConfig": {
 		"extends": [

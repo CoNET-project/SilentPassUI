@@ -26,14 +26,14 @@
   	"faq-expiry-2": "请参考<1>操作指南视频</1>",
 	"faq-difference": "Silent Pass Proxy 和 Silent Pass VPN 有什么区别？",
 	"faq-difference-2": "我们提供两种不同的 Silent Pass 服务，以更好地满足您的需求。",
-	"faq-difference-3": "<0>Silent Pass Proxy</0> 是一款运行在您的电脑/笔记本上的应用程序，为您的网页浏览器提供 VPN 保护。",
-	"faq-difference-4": "<0>Silent Pass VPN</0> 是一款可从 App Store 下载的应用程序，运行在您的手机/MAC/其他设备上，为整个设备提供 VPN 保护。目前支持 iPhone 和 MAC；Silent Pass Android 版本即将推出",
+	"faq-difference-3": "<1>Silent Pass Proxy</1> 是一款运行在您的电脑/笔记本上的应用程序，为您的网页浏览器提供 VPN 保护。",
+	"faq-difference-4": "<1>Silent Pass VPN</1> 是一款可从 App Store 下载的应用程序，运行在您的手机/MAC/其他设备上，为整个设备提供 VPN 保护。目前支持 iPhone 和 MAC；Silent Pass Android 版本即将推出",
 	
 	"faq-support": "我该如何联系 Silent Pass 客服？",
 	"faq-support-2": "如有任何问题，请访问 Silent Pass 官网或通过 support@silentpass.io 与我们联系。",
 	
 	"faq-vpn": "如何使用Silent Pass VPN?", 
-	"faq-vpn-2":  "请参考<0>操作指南视频</0>",
+	"faq-vpn-2":  "请参考<1>操作指南视频</1>",
 
 	"faq-telegram" : "如何在Silent Pass VPN保护下使用Telegram?",
 	"faq-telegram-2": "当您的终端上运行Silent Pass VPN后, 需要对您使用的Telegram APP 代理服务器进行设置.",
@@ -41,16 +41,18 @@
 	"faq-telegram-4": "在您的终端上运行 Telegram",
 	"faq-telegram-5": "对Telegram 代理服务器进行设置 Setting => Data and Storage => Proxy",
 	"faq-telegram-6": "添加代理服务器, 代理服务器设置信息可以在Silent Pass VPN 首页查看",
+	"faq-telegram-7":"请参阅<1>教程视频</1>获取逐步指导",
+
 	
 	"faq-proxy-title": "Silent Pass Proxy",
 	"faq-proxy": "如何使用Silent Pass Proxy? ",
     "faq-proxy-2": "Silent Pass Proxy 仅可在您的电脑或笔记本上运行，它将为您的网页浏览器提供隐私保护。",
-    "faq-proxy-3": "Download and install the CoNET Daemons. Please refer to <1>Tutorial Video</1> for step-by-step guidance.",
-	"faq-proxy-4": "Set up your PC:",
-    "faq-proxy-5": "If you are using Google Chrome, please add and pin the CoNET Platform Extension in your Chrome. Please refer to <0>Tutorial Video</0> for step-by-step guidance.",
-    "faq-proxy-6": "If you are using a web browser other than Google Chrome, you need to change your PC and browser proxy settings before using Silent Pass Proxy service. Please refer to <0>Tutorial Video</0> for step-by-step guidance.",
+    "faq-proxy-3": "下载并安装 CoNET Daemons。请参考<1>操作指南视频</1>获取逐步指导。",
+  	"faq-proxy-4": "设置您的电脑：",
+  	"faq-proxy-5": "如果您使用的是 Google Chrome，请在 Chrome 中添加并固定 CoNET Platform 扩展。请参考<1>操作指南视频</1>获取逐步指导。",
+  	"faq-proxy-6": "如果您使用的不是 Google Chrome 浏览器，在使用 Silent Pass 代理服务前，需要更改您的电脑和浏览器的代理设置。请参考<1>操作指南视频</1>获取逐步指导。",
 
-	
+
 	"faq1-3": "试用用户",
     "faq1-4": "免费用户",
     "faq1-5": "普通用户",
@@ -459,7 +461,7 @@
 	"transaction-history-send-success":"已发送",
 	"transaction-history-send-to":"到",
 
-	"setting-current-version":"当前版本"
+	"setting-current-version":"当前版本",
 	
-	
+	"stake-title":"质押"
 }

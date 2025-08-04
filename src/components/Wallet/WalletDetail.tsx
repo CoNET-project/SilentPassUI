@@ -1,28 +1,30 @@
 import { useState, useRef, useEffect } from 'react';
-import styles from './walletDetail.module.scss';
 import { useTranslation } from 'react-i18next';
-import RedeemBtn from './redeemBtn/RedeemBtn';
-import CheckInBtn from './checkInBtn/CheckInBtn';
-import Brief from './brief/Brief';
-import MainWallet from './mainWallet/MainWallet';
-import SPWallet from './spWallet/SPWallet';
-import Genesis from './genesis/Genesis';
-import Referrals from './referrals/Referrals';
-import Passport from './passport/Passport';
-import Backups from './backups/Backups';
+import styles from '@/components/Wallet/walletDetail.module.scss';
+import RedeemBtn from '@/components/Wallet/redeemBtn/RedeemBtn';
+import CheckInBtn from '@/components/Wallet/checkInBtn/CheckInBtn';
+import Brief from '@/components/Wallet/brief/Brief';
+import MainWallet from '@/components/Wallet/mainWallet/MainWallet';
+import SPWallet from '@/components/Wallet/spWallet/SPWallet';
+import Genesis from '@/components/Wallet/genesis/Genesis';
+import Referrals from '@/components/Wallet/referrals/Referrals';
+import Passport from '@/components/Wallet/passport/Passport';
+import Backups from '@/components/Wallet/backups/Backups';
+import Stake from '@/components/Wallet/stake/Stake';
 import { List, Modal, Result, Button } from 'antd-mobile';
 import { CheckCircleFill } from 'antd-mobile-icons';
-import { useDaemonContext } from './../../providers/DaemonProvider';
-import { getPassportTitle } from "./../../utils/utils";
-import { ReactComponent as CrownBadge } from './assets/GC.svg';
-import { ReactComponent as ArmBand } from './assets/blue-badge.svg';
-import {openWebLinkNative} from './../../api';
+import { useDaemonContext } from '@/providers/DaemonProvider';
+import { getPassportTitle } from "@/utils/utils";
+import { ReactComponent as CrownBadge } from '@/components/Wallet/assets/GC.svg';
+import { ReactComponent as ArmBand } from '@/components/Wallet/assets/blue-badge.svg';
+import {openWebLinkNative} from '@/api';
 
 const WalletDetail = ({}) => {
     const { t, i18n } = useTranslation();
     const { successNFTID, setSuccessNFTID, activePassport, isIOS, isLocalProxy } = useDaemonContext();
     const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
+    const [stakeVisible, setStakeVisible] = useState<boolean>(false);
 
     useEffect(() => {
         if (!isNaN(Number(successNFTID))) {
@@ -62,7 +64,7 @@ const WalletDetail = ({}) => {
                 <List style={{'--active-background-color':'#343434'}}>
                     <MainWallet />
                     <Backups />
-                    <SPWallet />
+                    <SPWallet stakeVisible={stakeVisible} setStakeVisible={setStakeVisible} />
                     <Genesis />
                     <Passport />
                     <Referrals />
@@ -71,6 +73,9 @@ const WalletDetail = ({}) => {
             <div className={styles.operateBar}>
                 <RedeemBtn isRedeemProcessLoading={isRedeemProcessLoading} setIsRedeemProcessLoading={setIsRedeemProcessLoading} />
                 <CheckInBtn />
+                <div className={styles.stakeBtn}>
+                    <Button onClick={()=>{setStakeVisible(true)}} block color='primary' fill='solid'>{t('stake-title')}</Button>
+                </div>
             </div>
             <Modal
                 className={styles.successModal}
@@ -90,6 +95,7 @@ const WalletDetail = ({}) => {
                     <div className={styles.operateBar}><Button className={styles.btn} block color='primary' size='large' onClick={()=>{setIsSuccessModalOpen(false);setSuccessNFTID('0')}}>{t('wallet-account-buy-success-close')}</Button></div>
                 </div>}
             />
+            <Stake visible={stakeVisible} setVisible={setStakeVisible} />
         </div>
     );
 };

@@ -1,5 +1,55 @@
 .payWays{
-    text-align: center;
+    text-align: left;
+    user-select:none;
+    .desc{
+        color:#c5c5c5;
+        font-size:13px;
+        .icon{
+            margin:0 3px 0 0;
+        }
+    }
+    .descItem{
+        color:#c5c5c5;
+        font-size:13px;
+        text-indent: 16px;
+    }
+    .payList{
+        text-align: center;
+        margin:20px 0 0;
+    }
+    :global(.adm-list){
+        --active-background-color:transparent;
+    }
+    :global(.adm-list-body){
+        background: transparent;
+    }
+    :global(.adm-list-item){
+        background: transparent;
+        padding-left:0;
+    }
+    :global(.adm-list-default .adm-list-body){
+        border-top: none;
+        border-bottom:none;
+    }
+    :global(.adm-list-item-content){
+        border-top: none;
+        padding-right:0;
+    }
+    :global(.adm-collapse-panel-header .adm-list-item-content-main){
+        padding:4vw 0;
+        color:#fff;
+        font-weight: 500;
+        font-size: 16px;
+    }
+    :global(a.adm-list-item:active:not(.adm-list-item-disabled)::after){
+        display: none;
+    }
+    :global(.adm-list-item-content-main){
+        padding: 0
+    }
+    :global(.adm-collapse-arrow-active){
+        transform:rotate(-90deg);
+    }
 }
 .successModalWrap{
     background: #2a2a2a;
@@ -32,5 +82,25 @@
     :global(.adm-modal-footer .adm-modal-button) {
         background: #333;
         border: none;
+    }
+}
+.loading{
+    background: transparent;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    .spinBox{
+        width: 50px;
+        height: 50px;
+        background: rgb(73 71 71);
+        border-radius: 10px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
 }

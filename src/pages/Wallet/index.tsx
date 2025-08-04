@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import Footer from '../../components/Footer';
-import WalletDetail from '../../components/Wallet/WalletDetail'
-import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "../../utils/globals"
-import { useDaemonContext } from "../../providers/DaemonProvider"
-import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "../../services/wallets"
-import { listenProfileVer } from "../../services/listeners"
+import WalletDetail from '../../components/Wallet/WalletDetail';
+import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "../../utils/globals";
+import { useDaemonContext } from "../../providers/DaemonProvider";
+import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "../../services/wallets";
+import { listenProfileVer } from "../../services/listeners";
+
 const Wallet = ({}) => {
 	const { setProfiles, setMiningData, setActivePassportUpdated, setActivePassport, setDuplicateAccount } = useDaemonContext();
 	
@@ -22,17 +23,17 @@ const Wallet = ({}) => {
 		const tmpData = CoNET_Data;
 
 		if (!tmpData) {
-		return;
+			return;
 		}
 		if (tmpData.duplicateAccount)
 		tmpData.profiles[0] = {
-		...tmpData?.profiles[0],
-		activePassport: {
-			nftID: info[0].toString(),
-			expires: info[1].toString(),
-			expiresDays: info[2].toString(),
-			premium: info[3]
-		},
+			...tmpData?.profiles[0],
+			activePassport: {
+				nftID: info[0].toString(),
+				expires: info[1].toString(),
+				expiresDays: info[2].toString(),
+				premium: info[3]
+			},
 		};
 
 		const activeNFTNumber = tmpData.profiles[0].activePassport||0
@@ -51,10 +52,12 @@ const Wallet = ({}) => {
 		setActivePassportUpdated(true);
 		handlePassportProcess = false
 		listenProfileVer(setProfiles, setActivePassport, setMiningData)
-  }
+  	}
+
 	useEffect(() => {
 		handlePassport()
 	}, [])
+
     return (
         <>
             <WalletDetail />

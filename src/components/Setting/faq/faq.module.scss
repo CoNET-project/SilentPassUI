@@ -1,0 +1,98 @@
+.popup{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 480px;
+    transform: translate(-50%, 0);
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-popup-body) {
+        position: absolute;
+    }
+}
+.modalWrap{
+    .bd{
+        height: calc(100vh - 70px - 85px);
+        overflow: auto;
+        padding:0 4.2vw 20px;
+        user-select:none;
+        .title{
+            color:#a3bee0;
+            font-size: 17px;
+            font-weight: 600;
+            margin:30px 0 0;
+        }
+        .subTitle{
+            color:#a3bee0;
+            font-size: 14px;
+            font-weight: 400;
+            margin:10px 0 0;
+        }
+        .text{
+            margin:0 0 5px;
+            a{
+                color:#4777de;
+                margin:0 2px;
+                &:hover{
+                    opacity: 0.8;
+                }
+            }
+        }
+        .img{
+            svg,img{
+                width:100%;
+                height:auto;
+            }
+        }
+        .list{
+            padding:0 0 0 1em;
+        }
+        .bold{
+            color:#f1f1f1;
+            font-weight: 500;
+        }
+        :global(.adm-collapse){
+            margin:10px 0 0;
+        }
+        :global(.adm-list-body){
+            background: transparent;
+            border-top: none;
+            border-bottom: 0.5px #3f3f40 solid;
+        }
+        :global(.adm-list-item){
+            background: transparent;
+            padding-left:0;
+        }
+        :global(.adm-list-item-content){
+            padding-right: 0;
+            border-top:0.5px #3f3f40 solid;
+        }
+        :global(a.adm-list-item:active:not(.adm-list-item-disabled)){
+            background: transparent;
+        }
+        :global(a.adm-list-item:active:not(.adm-list-item-disabled)::after){
+            border-bottom: none;
+        }
+        :global(.adm-collapse-panel-header .adm-list-item-content-main){
+            color:#f1f1f1;
+            font-weight: 500;
+            font-size: 14px;
+            padding:12px 0;
+        }
+        :global(.adm-list-item-content-main){
+            padding:5px 0;
+        }
+    }
+    :global(.adm-nav-bar){
+        border-bottom: 1px #292d2e solid;
+    }
+    :global(.adm-nav-bar-title) {
+        color: #fff;
+        font-weight: 500;
+    }
+    :global(.adm-nav-bar-back){
+        color:#999;
+    }
+}

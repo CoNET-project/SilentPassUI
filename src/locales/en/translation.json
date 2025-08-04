@@ -25,14 +25,14 @@
   	"faq-expiry-2": "Please refer to <1>Tutorial Video</1> for step-by-step guidance.",
 	"faq-difference": "What is the difference between Silent Pass Proxy and Silent Pass VPN?",
 	"faq-difference-2": "We offer 2 different Silent Pass services to better suit your needs.",
-    "faq-difference-3": "<0>Silent Pass Proxy</0> is the application that runs on your PC/laptop to provide VPN protection for your web browser.",
-	"faq-difference-4" : "<0>Silent Pass VPN</0> APP can be downloaded from the App Store; it runs on your mobile/MAC/other device to provide VPN protection for your entire device. It’s available for iPhone and MAC at this stage; Silent Pass Android APP coming soon.",
+    "faq-difference-3": "<1>Silent Pass Proxy</1> is the application that runs on your PC/laptop to provide VPN protection for your web browser.",
+	"faq-difference-4" : "<1>Silent Pass VPN</1> APP can be downloaded from the App Store; it runs on your mobile/MAC/other device to provide VPN protection for your entire device. It’s available for iPhone and MAC at this stage; Silent Pass Android APP coming soon.",
 	
 	"faq-support": "How can I contact Silent Pass support?",
 	"faq-support-2": "For any issues, visit the Silent Pass webpage or contact us via support@silentpass.io",
 	
 	"faq-vpn": "How can I use Silent Pass VPN?", 
-	"faq-vpn-2":  "Please refer to <0> Tutorial URL</0> for a step-by-step guide",
+	"faq-vpn-2":  "Please refer to <1> Tutorial URL</1> for a step-by-step guide",
 
 	"faq-telegram" : "How can I use Telegram under Silent Pass VPN Protection?",
 	"faq-telegram-2": "After the Silent Pass APP has been run on your device, you need to set up your Telegram proxy settings to use the Telegram APP.",
@@ -40,14 +40,15 @@
 	"faq-telegram-4": "Run Telegram APP on your device.",
 	"faq-telegram-5": "Change Telegram Proxy Setting: Telegram Setting => Data and Storage => Proxy.",
 	"faq-telegram-6": "Add Proxy, proxy information can be found on the Silent Pass VPN APP homepage.",
+	"faq-telegram-7":"Please refer to <1>Tutorial Video</1> for step-by-step guidance.",
 	
 	"faq-proxy-title": "Silent Pass Proxy",
 	"faq-proxy": "How do I use Silent Pass Proxy?",
 	"faq-proxy-2": "Silent Pass Proxy can only run on your PC, laptop. It will provide privacy protection for your web browser",
   	"faq-proxy-3": "Download and install the CoNET Daemons. Please refer to <1>Tutorial Video</1> for step-by-step guidance.",
 	"faq-proxy-4": "Set up your PC:",
-    "faq-proxy-5": "If you are using Google Chrome, please add and pin the CoNET Platform Extension in your Chrome. Please refer to <0>Tutorial Video</0> for step-by-step guidance.",
-    "faq-proxy-6": "If you are using a web browser other than Google Chrome, you need to change your PC and browser proxy settings before using Silent Pass Proxy service. Please refer to <0>Tutorial Video</0> for step-by-step guidance.",
+    "faq-proxy-5": "If you are using Google Chrome, please add and pin the CoNET Platform Extension in your Chrome. Please refer to <1>Tutorial Video</1> for step-by-step guidance.",
+    "faq-proxy-6": "If you are using a web browser other than Google Chrome, you need to change your PC and browser proxy settings before using Silent Pass Proxy service. Please refer to <1>Tutorial Video</1> for step-by-step guidance.",
 
 	"faq1-3": "Free Trial User",
     "faq1-4": "Free Subscription User",
@@ -448,6 +449,8 @@
 	"transaction-history-send-success": "Sent",
 	"transaction-history-send-to": "To",
 
-	"setting-current-version":"Current version"
+	"setting-current-version":"Current version",
+
+	"stake-title":"Stake"
 
 }

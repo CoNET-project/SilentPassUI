@@ -7,6 +7,8 @@ import {
 	apiv4_endpoint,
 	conetDepinProvider
 } from "../utils/constants"
+
+
 import { refreshSolanaBalances, initSolana, storeSystemData, createOrGetWallet } from './wallets'
 import contracts from "../utils/contracts";
 import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
@@ -41,6 +43,16 @@ const getCryptoPayUrl = `${payment_endpoint}cryptoPay`
 
 const TOKEN_MINT = new web3.PublicKey(contracts.SPToken.address)
 
+const ChannelPartnersDB_readonly = new ethers.Contract(contracts.ChannelPartnersDB.address, contracts.ChannelPartnersDB.abi, conetDepinProvider)
+export const getChannelPartners = async (channelPartnersAddr: string): Promise<boolean|null> => {
+	try {
+		const isChannelPartners = await ChannelPartnersDB_readonly.isChannelPartner(channelPartnersAddr)
+		return isChannelPartners
+	} catch (ex) {
+		
+	}
+	return null
+}
 
 export const getCryptoPay = async (cryptoName: string, plan: string): Promise<null|{transferNumber: string, wallet: string}> => {
 	

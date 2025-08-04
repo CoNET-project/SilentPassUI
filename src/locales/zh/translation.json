@@ -235,6 +235,10 @@
 	"download_page_title-2": "点击即可保护隐私",
 	"download_page_ios": "苹果手机下载",
 	"download_page_android": "安卓手机下载",
+	"download_page_support": "无法下载·联系客服",
+	"download_page_windows_download": "windows下载",
+	"download_page_windows_MacOS_M": "苹果系统 M 系列下载",
+	"download_page_windows_MacOS": "苹果系统下载",
 
     "lang":"中文",
     "language":"语言",

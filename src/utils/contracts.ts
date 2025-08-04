@@ -13,7 +13,8 @@ import {
 	SpReword,
 	ReferralsV3,
 	SpClubPoint,
-	Duplicate
+	Duplicate,
+	ChannelPartnersDB
   } from "./abis";
   
   const contracts = {
@@ -95,6 +96,11 @@ import {
 		address: '0x87A70eD480a2b904c607Ee68e6C3f8c54D58FB08',
 		network: 'CONET DePIN',
 		abi: Duplicate
+	},
+	ChannelPartnersDB: {
+		address: '0xaAce2790b86e9c52fe7f793fd83B812dBfb530a6',
+		network: 'CONET DePIN',
+		abi: ChannelPartnersDB
 	}
   };
   

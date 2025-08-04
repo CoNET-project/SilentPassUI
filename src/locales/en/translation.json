@@ -231,6 +231,10 @@
 	"download_page_title-2": "Click to protect your privacy",
 	"download_page_ios": "iOS Download",
 	"download_page_android": "Android Download",
+	"download_page_support": "Contact Customer Service",
+	"download_page_windows_download": "Windows Download",
+	"download_page_windows_MacOS_M": "Mac OS M series Download",
+	"download_page_windows_MacOS": "Mac OS Download",
 
     "lang":"English",
     "language":"Language",

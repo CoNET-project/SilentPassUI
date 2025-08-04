@@ -25,6 +25,7 @@ import { useMemo } from "react";
 import { LuCirclePower } from 'react-icons/lu';
 import type { IconBaseProps } from 'react-icons';
 import phoneImg from './assets/android.png'
+import { getRandomNodeDomain} from '../../services/mining'
 import styled from 'styled-components'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faApple, faAndroid } from '@fortawesome/free-brands-svg-icons';
@@ -105,7 +106,7 @@ const CustomerServiceButton = styled(BaseButton)`
 `;
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, channelPartners} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
@@ -151,11 +152,13 @@ const Home = () => {
 	const ContactSupportButton = () => (
 		<CustomerServiceButton>
 			<FontAwesomeIcon icon={faHeadset} />
-			<span>無法下載？聯繫客服</span>
+			<span>{t('download_page_support')}</span>
 		</CustomerServiceButton>
 	);
 
-
+  const supportClick = () => {
+		window.open (`https://vue.comm100.com/chatwindow.aspx?siteId=90007504&planId=efd822ce-7299-4fda-9fc1-252dd2f01fc5#`)
+  }
   const _getAllRegions = async () => {
 	
 	const [tmpRegions] = await
@@ -183,6 +186,26 @@ const Home = () => {
 	setIsInitialLoading(false);
   }, [closestRegion])
 
+
+  	const androidDownload = () => {
+		const downloadLink = channelPartners ? `https://${getRandomNodeDomain()}/download/${channelPartners}/Android.apk`: `https://${getRandomNodeDomain()}/download/Android.apk`
+		window.open (downloadLink)
+	}
+
+	const winDownload = () => {
+		const downloadLink = channelPartners ? `https://${getRandomNodeDomain()}/download/${channelPartners}/SilentPassProxy.exe`: `https://${getRandomNodeDomain()}/download/SilentPassProxy.exe`
+		window.open (downloadLink)
+	}
+
+	const macMDownload = () => {
+		const downloadLink = channelPartners ? `https://${getRandomNodeDomain()}/download/${channelPartners}/SilentPassProxyMacOS-M-cpu.dmg`: `https://${getRandomNodeDomain()}/download/SilentPassProxyMacOS-M-cpu.dmg`
+		window.open (downloadLink)
+	}
+
+	const macDownload = () => {
+		const downloadLink = channelPartners ? `https://${getRandomNodeDomain()}/download/${channelPartners}/SilentPassProxyMacOS-Inter-cpu.dmg`: `https://${getRandomNodeDomain()}/download/SilentPassProxyMacOS-Inter-cpu.dmg`
+		window.open (downloadLink)
+	}
 
 	const playWinVideo=() => {
 		if(tcWin==null){
@@ -294,19 +317,19 @@ const Home = () => {
 				<div style={{paddingTop: '2rem'}} onClick={iOSDownload}>
 					<IOSDownloadButton />
 				</div>
-				<div style={{paddingTop: '2rem'}}>
+				<div style={{paddingTop: '2rem'}} onClick={androidDownload}>
 					<AndroidDownloadButton />
 				</div>
-				<div style={{paddingTop: '2rem'}}>
+				<div style={{paddingTop: '2rem'}} onClick={supportClick}>
 					<ContactSupportButton />
 				</div>
 			</div>
 		}
 		
 		<div className='downloadLinks'>
-			<div><a href='/'>windows下载</a></div>
-			<div><a href='/'>mac for Intel下载</a></div>
-			<div><a href='/'>mac for M下载</a></div>
+			<div><a onClick={winDownload}>{t('download_page_windows_download')}</a></div>
+			<div><a onClick={macDownload}>{t('download_page_windows_MacOS')}</a></div>
+			<div><a onClick={macMDownload}>{t('download_page_windows_MacOS_M')}</a></div>
 		</div>
 
 		<div className='videoBtnsContainer'>

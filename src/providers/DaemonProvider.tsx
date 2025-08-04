@@ -61,6 +61,10 @@ type DaemonContext = {
   switchValue: boolean;
   setSwitchValue: (val: boolean) => void;
   webFilterRef:React.MutableRefObject<boolean>;
+  channelPartners: string,
+  setChannelPartners: (val: string) => void,
+  showReferralsInput: boolean,
+  setShowReferralsInput: (val: boolean) => void
 };
 
 type DaemonProps = {
@@ -128,6 +132,10 @@ const defaultContextValue: DaemonContext = {
   switchValue: true,
   setSwitchValue: () => {},
   webFilterRef:{ current: false },
+  channelPartners: '',
+  setChannelPartners: () => {},
+  showReferralsInput: false,
+  setShowReferralsInput: () => {}
 };
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -167,9 +175,11 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [airdropTokens, setAirdropTokens] = useState(0)
   const [airdropProcessReff, setAirdropProcessReff] = useState(false)
   const [getWebFilter, setGetWebFilter] = useState(false)
+  const [channelPartners, setChannelPartners] = useState('')
   const webFilterRef=useRef(getWebFilter);
   const [switchValue, setSwitchValue] = useState(true);
   const firstLoad = useRef(true);
+    const [showReferralsInput, setShowReferralsInput] = useState(false);
 
   useEffect(() => {
     {
@@ -208,8 +218,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
-				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
-				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
+				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,showReferralsInput, setShowReferralsInput,
+				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess, channelPartners, setChannelPartners,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, setGetWebFilter,switchValue, setSwitchValue, webFilterRef }}>,
 
       {children}

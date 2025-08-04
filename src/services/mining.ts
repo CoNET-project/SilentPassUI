@@ -273,6 +273,11 @@ const getRandomNode = () => {
 	return allNodes[index].ip_addr
 }
 
+const getRandomNodeDomain = () => {
+	const index = Math.floor(Math.random()*allNodes.length)
+	return allNodes[index].domain
+}
+
 const postToEndpointSSE = (
   url: string,
   post: boolean,
@@ -345,5 +350,6 @@ export {
   maxNodes,
   currentScanNodeNumber,
   getAllNodesV2,
-  getRandomNode
+  getRandomNode,
+  getRandomNodeDomain
 };

@@ -1,3 +1,5 @@
+
+
 .referralCont{
     padding: 15px 0 0;
     color: #fff;
@@ -7,6 +9,35 @@
         font-size: 14px;
         font-weight: 500;
     }
+	.collapseDiv {
+		padding: 0 2.7vw;
+
+		// 内容为白色
+		.transparentPanel :global(.adm-list-item:not(.adm-collapse-panel-header) .adm-list-item-content-main) {
+			color: #fff !important;
+		}
+
+		// header 为蓝色
+		.transparentPanel :global(.adm-collapse-panel-header .adm-list-item-content-main) {
+			color: #9fbfe5fe !important;
+		}
+
+		// 背景透明等其它样式
+		.transparentPanel :global(.adm-list-body),
+		.transparentPanel :global(.adm-list-body-inner),
+		.transparentPanel :global(.adm-list-item),
+		.transparentPanel :global(.adm-list-item-content-main),
+		.transparentPanel :global(.adm-list-item-content),
+		.transparentPanel :global(.adm-list) {
+			background: transparent !important;
+			box-shadow: none !important;
+			border: none !important;
+			font-size: 14px;
+			width: 100%;
+		}
+	}
+	
+
     .label{
         display: flex;
         align-items: center;
@@ -18,6 +49,17 @@
             margin: 0 3px 0 0;
         }
     }
+	.detail{
+		display: flex;
+        align-items: center;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 0 4.2vw;
+        margin: 15px 0 0;
+        .icon{
+            margin: 0 3px 0 0;
+        }
+	}
     .val{
         display: flex;
         justify-content: space-between;

@@ -154,6 +154,7 @@ const SPWallet = ({}) => {
                                 <div style={{marginLeft:12}}><HideBtn isHidden={isKeyHidden} setIsHidden={setIsKeyHidden} /></div>
                             </div>
                         </div>:''}
+						
                         {/* <ImportButton /> */}
                         <History />
                     </div> 

@@ -66,6 +66,8 @@ type DaemonContext = {
   setQuickLinksShow: (val: boolean) => void;
   duplicateAccount: any
   setDuplicateAccount: (profile: any) => void
+  showReferralsInput: boolean,
+  setShowReferralsInput: (val: boolean) => void
 };
 
 type DaemonProps = {
@@ -137,7 +139,9 @@ const defaultContextValue: DaemonContext = {
   setQuickLinksShow: () => {},
   version: '1.21.1',
   duplicateAccount: null,
-  setDuplicateAccount: () => {}
+  setDuplicateAccount: () => {},
+  showReferralsInput: false,
+  setShowReferralsInput: () => {}
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -181,6 +185,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const webFilterRef=useRef(getWebFilter);
   const [switchValue, setSwitchValue] = useState(true);
   const [quickLinksShow, setQuickLinksShow] = useState(false);
+  const [showReferralsInput, setShowReferralsInput] = useState(false);
   const firstLoad = useRef(true); //系统代理 第一次
   const firstLoad2 = useRef(true);  //快捷链接 第一次
   const [duplicateAccount, setDuplicateAccount] = useState(null)
@@ -235,7 +240,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
-				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen,
+				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 

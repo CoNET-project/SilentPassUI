@@ -988,8 +988,6 @@ const getSPOracle = async () => {
 const getRewordStaus = async(): Promise<boolean|null> => {
   const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)
 
-  
-
   const profiles = CoNET_Data?.profiles
   if (!profiles || profiles.length < 2 ) {
     return false
@@ -1012,6 +1010,7 @@ const getRewordStaus = async(): Promise<boolean|null> => {
     if (SPBalance === undefined ||  SPBalance < spReworkBalance && (initBalance === 0 || initBalance > 0 && initBalance > SPBalance)) {
       	return null
     }
+	
     return status[0]
   } catch (ex) {
     return null

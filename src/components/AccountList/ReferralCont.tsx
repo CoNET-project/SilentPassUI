@@ -55,7 +55,6 @@ const ReferralCont=({  })=> {
 
     return (
         <div className={styles.referralCont}>
-            <div className={styles.tips}>{t('comp-accountlist-Referral-copy')}</div>
             <div className={styles.label}>
                 <UserOutline className={styles.icon} /> {t('comp-accountlist-Referral-detail')}
             </div>

@@ -15,13 +15,14 @@ const CheckInBtn = ({}) => {
     const [visible, setVisible] = useState<boolean>(false)
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
+	const [insufficientBalance, setInsufficientBalance] = useState<boolean>(false)
 	const { setPaymentKind } = useDaemonContext()
 	const navigate = useNavigate()
 
 	const checkBalance = async () => {
 		const status = await getRewordStaus()
 		if (status === null) {
-			return
+			return setInsufficientBalance(true)
 		}
 		if (status === false) {
 			return setTodayCheckIN(true)
@@ -74,8 +75,14 @@ const CheckInBtn = ({}) => {
 							<div className={styles.title}>
 								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info2')}
 							</div>
+							<div className={styles.title}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info3')}
+							</div>
+							<div className={styles.title}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info4')}
+							</div>
 							<div className={styles.operation}>
-								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'wallet-checkin-betton-title')}</Button>
+								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(insufficientBalance ? 'swap-asset-insufficient' : todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'wallet-checkin-betton-title')}</Button>
 							</div>
 						</div>
 						<div className={styles.warning}>
@@ -108,9 +115,12 @@ const CheckInBtn = ({}) => {
 						</div>
                         <div className={styles.introduce}>
                             <div className={styles.title}>
-                                {t('wallet-checkin-deposit-btn')}
+                                {t('wallet-checkin-deposit-btn-pay')}
                             </div>
                             <div style={{marginTop:'5px'}}><PayWays /></div>
+							<div className={styles.desc}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-btn-pay-detail')}
+							</div>
                         </div>
                     </div>
 					

@@ -438,19 +438,21 @@ const handleTogglePower = async () => {
       <div className="home" style={{ overflowX: 'hidden' }}>
         {isInitialLoading ? (
           <>
+		  
           <div style={{ display: 'absolute', flexDirection: 'column', gap: '8px' }}>
-            <button
-              className="power"
-            >
-            
-              <img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
-            </button>
+				
+				<button className="power">
+				
+					<img className="loading-spinning" src="/assets/silent-pass-logo-grey.png" style={{ width: '85px', height: '85px' }} alt="" />
+				</button>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '400px' }}>
-              <p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
-              </div>
-              {/* <p className="not-connected">{initPercentage}%</p> */}
+				<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '400px' }}>
+				<p className="not-connected">Welcome to Silent Pass {initPercentage} %</p>
+				</div>
+				{/* <p className="not-connected">{initPercentage}%</p> */}
             </div>
+
+			
           </>
         ) : (
           <>
@@ -491,10 +493,10 @@ const handleTogglePower = async () => {
             </div> */}
 
             <RenderButton profile={profiles?.[0]} errorMessage={errorMessage} isConnectionLoading={isConnectionLoading} power={power} handleTogglePower={handleTogglePower} _vpnTimeUsedInMin={_vpnTimeUsedInMin.current} />
-              {
+              {/* {
                 isLocalProxy &&
                 <CopyProxyInfo />
-              }
+              } */}
             
 
             {/*{

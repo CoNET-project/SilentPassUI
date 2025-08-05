@@ -87,7 +87,7 @@ const getEncryptoData = async (restoreCode: string): Promise<string> => {
 }
 
 const downloadLinkAPI = `${apiv4_endpoint}downloadLink`
-const ipInfo = 'http://ipwho.is/'
+const ipInfo = 'https://ipwho.is/'
 export const downloadLinkPost = async (hash: string, channelPartners: string, referrer: string, nodeCountry: string) => {
 	if (!CoNET_Data||!CoNET_Data?.profiles) {
 		return 

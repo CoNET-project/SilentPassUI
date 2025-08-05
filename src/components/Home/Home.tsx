@@ -11,8 +11,7 @@ import { mappedCountryCodes } from "@/utils/regions";
 
 const Home = ({}) => {
     const { t, i18n } = useTranslation();
-    const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin,switchValue, isLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, isIOS, version} = useDaemonContext();
-    const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+    const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin,switchValue, isLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, isIOS, version, isInitialLoading, setIsInitialLoading} = useDaemonContext();
     const [initPercentage, setInitPercentage] = useState<number>(0);
     const vpnTimeTimeout = useRef<NodeJS.Timeout>();
 

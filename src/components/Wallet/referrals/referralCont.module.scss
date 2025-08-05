@@ -9,35 +9,6 @@
         font-size: 14px;
         font-weight: 500;
     }
-	.collapseDiv {
-		padding: 0 2.7vw;
-
-		// 内容为白色
-		.transparentPanel :global(.adm-list-item:not(.adm-collapse-panel-header) .adm-list-item-content-main) {
-			color: #fff !important;
-		}
-
-		// header 为蓝色
-		.transparentPanel :global(.adm-collapse-panel-header .adm-list-item-content-main) {
-			color: #9fbfe5fe !important;
-		}
-
-		// 背景透明等其它样式
-		.transparentPanel :global(.adm-list-body),
-		.transparentPanel :global(.adm-list-body-inner),
-		.transparentPanel :global(.adm-list-item),
-		.transparentPanel :global(.adm-list-item-content-main),
-		.transparentPanel :global(.adm-list-item-content),
-		.transparentPanel :global(.adm-list) {
-			background: transparent !important;
-			box-shadow: none !important;
-			border: none !important;
-			font-size: 14px;
-			width: 100%;
-		}
-	}
-	
-
     .label{
         display: flex;
         align-items: center;
@@ -69,15 +40,18 @@
         padding: 0 0 0 5px;
         border-radius: 5px;
         .address{
-            width: 60%;
+            flex:1;
+            margin:0 20px 0 0;
         }
         .copyBtn{
+            flex:none;
             color: #b8b7b6;
             line-height: 1;
             font-size: 13px;
             padding: 12px;
         }
         .copied{
+            flex:none;
             color: #16c516;
             padding:12px;
             font-size: 13px;

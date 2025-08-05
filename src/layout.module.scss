@@ -1,0 +1,29 @@
+.app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    max-width: 600px;
+    min-width:320px;
+    margin:0 auto;
+}
+.body {
+    flex: 1;
+    height:calc(100vh - 50px);
+    overflow: auto;
+}
+.bottom {
+    flex: 0;
+    background: #0d0d0d;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.2);
+    svg{
+        width:30px;
+        height:30px;
+    }
+    :global(.adm-tab-bar-item-icon){
+        font-size: 30px;
+        height:30px;
+    }
+    :global(.adm-tab-bar-item){
+        padding:10px 8px;
+    }
+}

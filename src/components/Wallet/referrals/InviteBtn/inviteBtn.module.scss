@@ -1,0 +1,70 @@
+.inviteBtn{
+    flex:none;
+    color: #b8b7b6;
+    line-height: 1;
+    font-size: 13px;
+    padding: 12px;
+}
+.inviteInfoModal{
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 600px;
+    transform: translate(-50%, 0);
+    .InviteText{
+        color:#fff;
+        .label{
+            text-align: center;
+            font-size: 14px;
+            color:#fff;
+            font-weight: 500;
+            margin:0 0 10px;
+        }
+        .detail{
+            color:#f1f1f1;
+            font-size: 12px;
+            margin:0 0 8px;
+            word-wrap: break-word;
+        }
+        .oper{
+            margin:18px 0 0;
+            display:flex;
+            justify-content: space-between;
+            .cancelBtn{
+                flex:1;
+                margin:0 15px 0 0;
+                padding:5px 0;
+                border-color:#55565b;
+                color:#55565b;
+            }
+            .copyBtn{
+                flex:1;
+                padding:5px 0;
+                border-color:#55565b;
+                background:#55565b;
+                color:#b8b7b6;
+            }
+        }
+    }
+    :global(.adm-mask) {
+        position: absolute;
+    }
+    :global(.adm-modal-content){
+        max-height: 80vh;
+    }
+    :global(.adm-modal-body){
+        max-height: 80vh;
+    }
+    :global(.adm-center-popup-wrap) {
+        width: 90%;
+        max-width: 100%;
+        background: #1f1f1f;
+        border-radius: 12px;
+        position: absolute;
+        overflow: hidden;
+    }
+    :global(.adm-center-popup-body){
+        background: #1f1f1f;
+    }
+}

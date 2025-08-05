@@ -24,7 +24,7 @@ interface plan {
 const ApplePayModal = ({visible,setVisible}:ApplePayModalParams) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
-    const { isIOS, isLocalProxy, profiles, selectedPlan, setSelectedPlan, activePassport, setPaymentKind } = useDaemonContext();
+    const { isIOS, isLocalProxy, profiles, selectedPlan, setSelectedPlan, activePassport, setPaymentKind, setSubscriptionVisible } = useDaemonContext();
     
     const handleChange=(value: (string | number)[])=>{
         if(value.length) setSelectedPlan(String(value[0]));
@@ -45,7 +45,7 @@ const ApplePayModal = ({visible,setVisible}:ApplePayModalParams) => {
         if(isIOS){
             setPaymentKind(3);
         }
-        navigate("/subscription");
+        setSubscriptionVisible(true);
     }
 
     return (

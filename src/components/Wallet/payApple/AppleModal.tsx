@@ -21,7 +21,7 @@ interface modalParams {
 }
 
 const AppleModal = ({appleVisible,setAppleVisible}:modalParams) => {
-    const {profiles,setSelectedPlan,setPaymentKind,isIOS} = useDaemonContext();
+    const {profiles,setSelectedPlan,setPaymentKind,isIOS,setSubscriptionVisible} = useDaemonContext();
     const navigate = useNavigate();
     const { t, i18n } = useTranslation();
 
@@ -39,7 +39,7 @@ const AppleModal = ({appleVisible,setAppleVisible}:modalParams) => {
         const base64VPNMessage = btoa(JSON.stringify(planObj));
         window?.webkit?.messageHandlers["pay"]?.postMessage(base64VPNMessage)
         setPaymentKind(3);
-        navigate("/subscription");
+        setSubscriptionVisible(true);
     }
 
     return (

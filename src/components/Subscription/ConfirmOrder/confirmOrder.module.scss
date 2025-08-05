@@ -1,0 +1,86 @@
+.confirmOrder{
+    padding:20px 4.2vw;
+    .title{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 13px;
+        font-weight: 500;
+        .icon{
+            margin:0 3px 0 0;
+        }
+    }
+    .goodsInfo{
+        background: #262626;
+        border-radius: 13px;
+        padding:15px 15px;
+        margin:8px 0 20px;
+        .spec{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin:0 0 12px;
+            color:#989899;
+            .specName{
+                font-size: 20px;
+                font-weight: 600;
+                color:#fff;
+            }
+        }
+        .extra{
+            font-size: 12px;
+            color:#989899;
+        }
+    }
+    .payList{
+        margin:8px 0 20px;
+        .payItem{
+            background: #262626;
+            border-radius: 13px;
+            padding:6px 15px;
+            margin:0 0 10px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            .lt{
+                display: flex;
+                align-items: center;
+            }
+            .icon{
+                width:30px;
+                height:30px;
+                margin:0 10px 0 0;
+            }
+        }
+    }
+    .aboutInfo{
+        margin:8px 0 0;
+        background: #262626;
+        border-radius: 13px;
+        padding:8px 15px;
+        .item{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding:8px 0;
+            font-size: 12px;
+        }
+        .total{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding:8px 0;
+            font-size: 12px;
+            font-weight: 500;
+            border-top:0.5px rgb(63, 63, 64) solid;
+        }
+    }
+    .oper{
+        margin:20px 0 0;
+        :global(.adm-button.adm-button-large){
+            background: #484848;
+            border-color: #484848;
+            border-radius: 12px;
+        }
+    }
+}

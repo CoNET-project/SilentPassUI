@@ -25,7 +25,7 @@ type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 const Genesis = ({}) => {
     const navigate = useNavigate();
     const { t, i18n } = useTranslation();
-    const {profiles, setSuccessNFTID, setSelectedPlan, setPaymentKind, isIOS, isLocalProxy} = useDaemonContext();
+    const {profiles, setSuccessNFTID, setSelectedPlan, setPaymentKind, isIOS, isLocalProxy, setSubscriptionVisible} = useDaemonContext();
     const [visible, setVisible] = useState<boolean>(false);
     const [appleVisible, setAppleVisible] = useState<boolean>(false);
     const [codeVisible, setCodeVisible] = useState(false);
@@ -89,12 +89,12 @@ const Genesis = ({}) => {
     const stripeClick = () => {
         setPaymentKind(2);
         setSelectedPlan('31');
-        navigate("/subscription");
+        setSubscriptionVisible(true);
     }
     const SPClick = () => {
         setPaymentKind(1);
         setSelectedPlan('3100')
-        navigate("/subscription");
+        setSubscriptionVisible(true);
   }
 
     return (

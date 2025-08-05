@@ -23,7 +23,7 @@ type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 const PayWays = ({defaultVisible}:params) => {
     const { t, i18n } = useTranslation();
     const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
-    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, isLocalProxy, setSuccessNFTID } = useDaemonContext();
+    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, isLocalProxy, setSuccessNFTID, setSubscriptionVisible } = useDaemonContext();
     const [codeVisible, setCodeVisible] = useState(false);
     const [QRWallet, setQRWallet] = useState('');
     const [showPrice, setShowPrice] = useState('');
@@ -34,7 +34,7 @@ const PayWays = ({defaultVisible}:params) => {
     const stripePay = () => {
         setSelectedPlan('3')
         setPaymentKind(2)
-        navigate("/subscription")
+        setSubscriptionVisible(true)
     }
 
     const purchaseBluePlan = async (token: cryptoName) => {

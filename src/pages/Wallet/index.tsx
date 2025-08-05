@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import Footer from '../../components/Footer';
 import WalletDetail from '../../components/Wallet/WalletDetail';
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "../../utils/globals";
 import { useDaemonContext } from "../../providers/DaemonProvider";
@@ -61,7 +60,6 @@ const Wallet = ({}) => {
     return (
         <>
             <WalletDetail />
-            <Footer />
         </>
     )
 }

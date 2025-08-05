@@ -39,7 +39,7 @@
     top: 0;
     bottom: 0;
     width: 100%;
-    max-width: 480px;
+    max-width: 600px;
     transform: translate(-50%, 0);
     :global(.adm-mask) {
         position: absolute;
@@ -101,6 +101,7 @@
         }
         .payMethods{
             margin: 20px 0 0;
+            text-align: center;
         }
         .close{
             position: absolute;

@@ -6,11 +6,11 @@ import { InformationCircleOutline } from 'antd-mobile-icons';
 import { NoticeBar,Space,Toast } from 'antd-mobile';
 import { startSilentPass, stopSilentPass, getLocalServerVersion } from "@/api";
 import { useDaemonContext } from "@/providers/DaemonProvider";
-
+import {Bridge} from '@/bridge/webview-bridge'
 const NewVersion = ({}) => {
     const { t, i18n } = useTranslation();
     const [hasNewVersion, setHasNewVersion]= useState('');
-    const {power,version} = useDaemonContext();
+    const {power,version, isLocalProxy, isIOS} = useDaemonContext();
 
     useEffect(() => {
         compairVersion();
@@ -45,12 +45,25 @@ const NewVersion = ({}) => {
         }
         return false // 如果版本号完全相同，则不是更新的版本
     }
-    const refresh= () => {
-        if (!power) {
-            window.location.reload();
-        }else{
-            Toast.show({content: '请先点击按钮关闭代理'});
-        }
+    const refresh= async () => {
+        // if (!power) {
+        //     window.location.reload();
+        // }else{
+        //     Toast.show({content: '请先点击按钮关闭代理'});
+        // }
+		if (isLocalProxy) {
+			//          Desktop
+			
+			await Bridge.send('stopVPN',{},(res:any)=>{});
+			window.location.reload();
+		} else if (isIOS ) {
+			window?.webkit?.messageHandlers["updateVPNUI"].postMessage(null)
+			//  @ts-ignore
+		} else if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
+			const base = btoa(JSON.stringify({cmd: 'updateVPNUI', data: ""}))
+			//  @ts-ignore
+			AndroidBridge.receiveMessageFromJS(base)
+		}
     }
 
     return (

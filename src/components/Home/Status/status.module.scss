@@ -1,22 +1,68 @@
 .statusModal{
     color:#fff;
     .statusCont{
-        
+        padding:5px 10px;
+        color:#fff;
+        .overdue{
+            .title{
+                text-align: center;
+                font-size: 16px;
+                font-weight: 600;
+                color:#b3261e;
+            }
+            .desc{
+                line-height: 1.5;
+                font-size: 13px;
+                margin:8px 0 0;
+            }
+        }
+        .ing{
+            .title{
+                text-align: center;
+                font-size: 16px;
+                font-weight: 600;
+                color:#05a21e;
+            }
+            .desc{
+                line-height: 1.5;
+                font-size: 13px;
+                margin:8px 0 0;
+            }
+        }
+        .list{
+            dt{
+                font-size: 13px;
+                font-weight: 500;
+                margin:10px 0 0;
+            }
+            dd{
+                font-size: 13px;
+                margin:5px 0 0;
+                line-height: 1.5;
+                color:#f1f1f1;
+            }
+        }
+        .oper{
+            margin:15px 0 0;
+            .closeBtn{
+                font-size: 15px;
+                background: #282930;
+                border:none;
+                border-radius: 10px;
+                font-weight: 500;
+                padding:8px 0;
+            }
+        }
+    }
+    :global(.adm-modal-body){
+        max-height: 86vh;
     }
     :global(.adm-center-popup-body){
         background: #232323;
         border-radius: 14px;
     }
     :global(.adm-center-popup-wrap){
-        width:80vw;
-        max-width: 80vw;
-    }
-    :global(.adm-modal-footer .adm-modal-button){
-        font-size: 15px;
-        background: #282930;
-        border:none;
-        border-radius: 10px;
-        font-weight: 500;
-        padding:8px 0;
+        width:88vw;
+        max-width: 88vw;
     }
 }

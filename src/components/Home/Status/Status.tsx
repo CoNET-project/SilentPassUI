@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import styles from '@/components/Home/Status/status.module.scss';
 import { useDaemonContext } from "@/providers/DaemonProvider";
-import { Modal } from 'antd-mobile';
+import { Modal,Button } from 'antd-mobile';
 
 const Status = ({}) => {
     const { t, i18n } = useTranslation();
@@ -28,8 +28,64 @@ const Status = ({}) => {
             className={styles.statusModal}
             content={<div className={styles.statusCont}>
                 {passportTimeLeft <= 0?<div className={styles.overdue}>
-                    <div className={styles.title}>⏳ Silent Pass 通行证已过期</div>
-                </div>:<>进行中</>}
+                    <div className={styles.title}>{t('status-overdue-title')}</div>
+                    <div className={styles.desc}>
+                        <p>{t('status-overdue-des-1')}</p>
+                        <p>{t('status-overdue-des-2')}</p>
+                    </div>
+                    <dl className={styles.list}>
+                        <dt>{t('status-list-title-1')}</dt>    
+                        <dd>
+                            <p>{t('status-list-des-1')}</p>
+                            <p>{t('status-list-des-2')}</p>
+                        </dd> 
+                        <dt>{t('status-list-title-2')}</dt>    
+                        <dd>
+                            <p>{t('status-list-des-3')}</p>
+                            <p>{t('status-list-des-4')}</p>
+                        </dd> 
+                        <dt>{t('status-list-title-3')}</dt>    
+                        <dd>
+                            <p>{t('status-list-des-5')}</p>
+                            <p>{t('status-list-des-6')}</p>
+                        </dd> 
+                        <dt>{t('status-list-title-4')}</dt>    
+                        <dd>
+                            <p>{t('status-list-des-7')}</p>
+                            <p>{t('status-list-des-8')}</p>
+                        </dd>           
+                    </dl>
+                    <div className={styles.oper}><Button className={styles.closeBtn} onClick={()=>{setStatusVisible(false)}} block color='primary' size='middle'>关闭</Button></div>
+                </div>:<div className={styles.ing}>
+                    <div className={styles.title}>{t('status-ing-title')}</div>
+                    <div className={styles.desc}>
+                        <p>{t('status-ing-des-1')}</p>
+                        <p>{t('status-ing-des-2')}</p>
+                    </div>
+                    <dl className={styles.list}>
+                        <dt>{t('status-list-title-1')}</dt>    
+                        <dd>
+                            <p>{t('status-list-des-1')}</p>
+                            <p>{t('status-list-des-2')}</p>
+                        </dd> 
+                        <dt>{t('status-list-title-2')}</dt>    
+                        <dd>
+                            <p>{t('status-list-des-3')}</p>
+                            <p>{t('status-list-des-4')}</p>
+                        </dd> 
+                        <dt>{t('status-list-title-3')}</dt>    
+                        <dd>
+                            <p>{t('status-list-des-5')}</p>
+                            <p>{t('status-list-des-6')}</p>
+                        </dd> 
+                        <dt>{t('status-list-title-4')}</dt>    
+                        <dd>
+                            <p>{t('status-list-des-7')}</p>
+                            <p>{t('status-list-des-8')}</p>
+                        </dd>           
+                    </dl>
+                    <div className={styles.oper}><Button className={styles.closeBtn} onClick={()=>{setStatusVisible(false)}} block color='primary' size='middle'>关闭</Button></div>
+                </div>}
             </div>}
         />
     );

@@ -28,20 +28,6 @@ const Header = ({}) => {
     }
     const handleShowStatus=()=>{
         setStatusVisible(true);
-        // Modal.alert({
-        //     className:styles.statusModal,
-        //     closeOnMaskClick:true,
-        //     content: (<div className={styles.statusInfo}>
-        //         <div className={styles.passport}>
-        //             <label className={styles.label}>{t('comp-PassportInfoPopup-1')}</label>
-        //             <div className={styles.val} style={{color: isInfinite(activePassport) ? '#cd7f32' : ''}}>{profiles?.[0]?.activePassport ? <>{t(getPassportTitle(activePassport))}</> : '--'}</div>
-        //         </div>
-        //         <div className={styles.passport}>
-        //             <label className={styles.label}>{t('comp-PassportInfoPopup-2')}</label>
-        //             <div className={styles.val}>{profiles?.[0]?.activePassport?.expires ?<>{getExpirationDate(activePassport, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour'))}</>: '--'}</div>
-        //         </div>
-        //     </div>)
-        // })
     }
 
     return (

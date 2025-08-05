@@ -474,6 +474,25 @@
 	"subscription-transaction-success":"The transaction was successful",
 	"subscription-transaction-passport":"Silent Pass Passport",
 	"subscription-transaction-gas":"GAS fee",
-	"subscription-transaction-total":"Total"
+	"subscription-transaction-total":"Total",
+
+	"status-overdue-title":"⏳ Your Silent Pass Has Expired",
+	"status-overdue-des-1":"Your access is no longer active.",
+	"status-overdue-des-2":"Please choose one of the following ways to regain access:",
+	"status-ing-title":"🟢 Silent Pass is Active",
+	"status-ing-des-1":"Your access is currently active. No action needed — enjoy open, secure internet freely.",
+	"status-ing-des-2":"Meanwhile, explore more ways to extend or permanently unlock your access:",
+	"status-list-title-1":"🪙 Free Access · Tap to Activate Anytime",
+	"status-list-title-2":"🎟️ Invite Code Bonus",
+	"status-list-title-3":"🔐 Subscribe · Seamless Unlimited Access",
+	"status-list-title-4":"👑 Lifetime Access · Become a GENESIS Member",
+	"status-list-des-1":"Hold at least $25 USD worth of $SP and tap Check-In at any time to activate a 24-hour access pass",
+	"status-list-des-2":" → Unlimited total check-ins, with at least 24 hours between each",
+	"status-list-des-3":"Enter a friend’s invite code to get 3 days of free access",
+	"status-list-des-4":" → One-time use only, available to new users",
+	"status-list-des-5":"Choose a monthly or yearly plan to enjoy uninterrupted access — no check-in needed",
+	"status-list-des-6":" → Supports credit card, Apple Pay, $SP and more",
+	"status-list-des-7":"One-time purchase of a GENESIS CIRCLE NFT unlocks lifetime Silent Pass access",
+	"status-list-des-8":" → Includes on-chain identity, $SP rewards, and governance rights"
 
 }

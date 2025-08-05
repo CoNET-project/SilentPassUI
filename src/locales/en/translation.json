@@ -464,6 +464,16 @@
 
 	"setting-current-version":"Current version",
 
-	"stake-title":"Stake"
+	"stake-title":"Stake",
+
+	"invite-copy-success": "Copied",
+	"invite-copy-failed": "Copy failed, please copy manually",
+	"invite-copy-confirm-btn": "Copy",
+	"invite-copy-cancel-btn": "Cancel",
+
+	"subscription-transaction-success":"The transaction was successful",
+	"subscription-transaction-passport":"Silent Pass Passport",
+	"subscription-transaction-gas":"GAS fee",
+	"subscription-transaction-total":"Total"
 
 }

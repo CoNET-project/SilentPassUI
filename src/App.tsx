@@ -1,19 +1,25 @@
 import { useEffect } from "react";
-// import "./App.css";
 import "./reset.scss";
 import "./default.scss";
-import { HashRouter as Router, Route, Routes } from "react-router-dom";
+import styles from './layout.module.scss';
+import {
+  Route,
+  Routes,
+  useNavigate,
+  useLocation,
+  MemoryRouter as Router,
+} from 'react-router-dom'
 import { useDaemonContext } from "./providers/DaemonProvider";
 import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "./services/wallets";
 import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners"
+import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import Wallet from './pages/Wallet';
 import Swap from './pages/Swap';
 import Settings from './pages/Settings';
-import Subscription from './pages/Subscription';
 import { getServerIpAddress } from "./api";
 import { parseQueryParams } from "./utils/utils";
 import { setDefaultConfig } from 'antd-mobile';
@@ -25,6 +31,8 @@ import { useTranslation } from 'react-i18next';
 
 
 global.Buffer = require('buffer').Buffer;
+
+
 
 function App() {
 	const { i18n } = useTranslation();
@@ -169,19 +177,23 @@ function App() {
 		localStorage.lang=lang;
   },[])
 
-  return (
-    <div className="App">
-      <Router>
-        <Routes>
-          <Route path="/wallet" element={<Wallet />}></Route>
-          <Route path="/swap" element={<Swap />}></Route>
-          <Route path="/settings" element={<Settings />}></Route>
-          <Route path="/subscription" element={<Subscription />}></Route>
-          <Route path="/" element={<Home />}></Route>
-        </Routes>
-      </Router>
-    </div>
-  );
+  	return (
+		<Router initialEntries={['/']}>
+		    <div className={styles.app}>
+		      <div className={styles.body}>
+		        <Routes>
+		          <Route path="/" element={<Home />} />
+		          <Route path="/wallet" element={<Wallet />} />
+		          <Route path="/swap" element={<Swap />} />
+		          <Route path="/settings" element={<Settings />} />
+		        </Routes>
+		      </div>
+		      <div className={styles.bottom}>
+		        <Footer />
+		      </div>
+		    </div>
+		 </Router>
+  	);
 }
 
 export default App;

@@ -1,5 +1,6 @@
 .region{
-    width:86vw;
+    width:86%;
+    max-width:600px;
     margin:0 auto;
     user-select:none;
     background: #191919;
@@ -36,7 +37,7 @@
     top: 0;
     bottom: 0;
     width: 100%;
-    max-width: 480px;
+    max-width: 600px;
     transform: translate(-50%, 0);
     :global(.adm-mask) {
         position: absolute;
@@ -47,7 +48,7 @@
 }
 .modalWrap{
     .bd{
-        height: calc(100vh - 70px - 85px);
+        height: calc(100vh - 70px);
         overflow: auto;
         .item{
             width:90vw;

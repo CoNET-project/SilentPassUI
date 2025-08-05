@@ -1,0 +1,50 @@
+.success{
+    padding:20px 4.2vw;
+    .icon{
+        margin:0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        svg{
+            width:50px;
+            height:50px;
+        }
+    }
+    .result{
+        text-align: center;
+        font-size:20px;
+        color:#a3bee0;
+        font-weight: 600;
+        margin:25px 0 0;
+    }
+    .aboutInfo{
+        margin:15px 0 0;
+        background: #262626;
+        border-radius: 13px;
+        padding:8px 15px;
+        .item{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding:8px 0;
+            font-size: 12px;
+        }
+        .total{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding:8px 0;
+            font-size: 12px;
+            font-weight: 500;
+            border-top:0.5px rgb(63, 63, 64) solid;
+        }
+    }
+    .oper{
+        margin:20px 0 0;
+        :global(.adm-button.adm-button-large){
+            background: #484848;
+            border-color: #484848;
+            border-radius: 12px;
+        }
+    }
+}

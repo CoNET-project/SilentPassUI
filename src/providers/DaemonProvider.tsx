@@ -67,7 +67,11 @@ type DaemonContext = {
   duplicateAccount: any
   setDuplicateAccount: (profile: any) => void
   showReferralsInput: boolean,
-  setShowReferralsInput: (val: boolean) => void
+  setShowReferralsInput: (val: boolean) => void;
+  subscriptionVisible: boolean;
+  setSubscriptionVisible: (val: boolean) => void;
+  isInitialLoading: boolean;
+  setIsInitialLoading: (val: boolean) => void;
 };
 
 type DaemonProps = {
@@ -141,7 +145,11 @@ const defaultContextValue: DaemonContext = {
   duplicateAccount: null,
   setDuplicateAccount: () => {},
   showReferralsInput: false,
-  setShowReferralsInput: () => {}
+  setShowReferralsInput: () => {},
+  subscriptionVisible: false,
+  setSubscriptionVisible: () => {},
+  isInitialLoading: true,
+  setIsInitialLoading: () => {}
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -189,7 +197,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const firstLoad = useRef(true); //系统代理 第一次
   const firstLoad2 = useRef(true);  //快捷链接 第一次
   const [duplicateAccount, setDuplicateAccount] = useState(null)
-
+  const [subscriptionVisible, setSubscriptionVisible] = useState<boolean>(false);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
 
   useEffect(() => {
     {
@@ -244,7 +253,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
-				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, version, duplicateAccount, setDuplicateAccount }}>
+				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, version, duplicateAccount, 
+        setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading }}>
 
       {children}
     </Daemon.Provider>

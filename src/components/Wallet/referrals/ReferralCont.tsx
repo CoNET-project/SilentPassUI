@@ -4,10 +4,10 @@ import { Button,Ellipsis,Input,Toast } from 'antd-mobile';
 import styles from './referralCont.module.scss';
 import { useTranslation } from 'react-i18next';
 import {CopyToClipboard} from 'react-copy-to-clipboard';
-import { useDaemonContext } from './../../../providers/DaemonProvider';
-import { getirDropForSPReff } from './../../../services/subscription';
-import { Collapse } from 'antd-mobile'
-import {allNodes, getRandomNodeDomain} from '../../../services/mining'
+import { useDaemonContext } from '@/providers/DaemonProvider';
+import { getirDropForSPReff } from '@/services/subscription';
+import InviteBtn from './InviteBtn/InviteBtn';
+
 interface CopyBtnParams {
     text:string;
 }
@@ -31,6 +31,7 @@ const ReferralCont=({  })=> {
     const { profiles, setAirdropSuccess, setAirdropTokens, setAirdropProcess, setAirdropProcessReff, duplicateAccount, getAllNodes } = useDaemonContext();
     const [inviter, setInviter] = useState('');
     const [subLoading, setSubLoading] = useState(false);
+
     const handleSetInviter = async () => {
 		if (subLoading) {
 			return
@@ -46,10 +47,6 @@ const ReferralCont=({  })=> {
         }
     }
 
-	const randomNode = () => {
-		return getRandomNodeDomain()
-	}
-
     return (
         <div className={styles.referralCont}>
             <div className={styles.label}>
@@ -57,36 +54,9 @@ const ReferralCont=({  })=> {
             </div>
             {profiles?.[0]?.keyID ?<div className={styles.val}>
                 <div className={styles.address}><Ellipsis direction='middle' content={duplicateAccount.keyID} /></div>
+                <InviteBtn />
                 <CopyBtn text={duplicateAccount.keyID} />
             </div>:''}
-			<div className={styles.collapseDiv}>
-				<Collapse className={styles.transparentPanel}>
-					<Collapse.Panel key="1" title={t('referrals-title-panel-ReferralCont')}>
-						<div className={styles.label}>
-							{t('comp-accountlist-Referral-contant-title')}
-						</div>
-						<div className={styles.detail}>
-							{t('comp-accountlist-Referral-contant-detail1')}
-						</div>
-						<div className={styles.detail}>
-							{t('comp-accountlist-Referral-contant-detail2')}https://{getRandomNodeDomain()}/download/?referrals={duplicateAccount.keyID}&language={i18n.language}
-						</div>
-						<div className={styles.detail}>
-							{t('comp-accountlist-Referral-contant-detail3')}<Ellipsis direction='middle' content={duplicateAccount.keyID} />
-						</div>
-						<div className={styles.detail}>
-							
-						</div>
-						<div className={styles.detail}>
-							{t('comp-accountlist-Referral-contant-detail4')}
-						</div>
-						<div className={styles.detail}>
-							{t('comp-accountlist-Referral-contant-detail5')}
-						</div>
-					</Collapse.Panel>
-				</Collapse>
-			</div>
-			
             <div className={styles.label}>
                 <LinkOutline className={styles.icon} /> {t('comp-accountlist-Referral-Inviter')}
             </div>

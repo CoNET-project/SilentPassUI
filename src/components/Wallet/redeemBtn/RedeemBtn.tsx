@@ -13,7 +13,7 @@ interface RedeemBtnProps {
 
 const RedeemBtn = ({isRedeemProcessLoading, setIsRedeemProcessLoading}:RedeemBtnProps) => {
     const { t, i18n } = useTranslation();
-    const { setSelectedPlan,setPaymentKind } = useDaemonContext();
+    const { setSelectedPlan,setPaymentKind, setSubscriptionVisible } = useDaemonContext();
     const navigate = useNavigate();
     const [redeemCode, setRedeemCode] = useState("");
     const [visible, setVisible] = useState(false);
@@ -22,7 +22,7 @@ const RedeemBtn = ({isRedeemProcessLoading, setIsRedeemProcessLoading}:RedeemBtn
         setPaymentKind(6);
         setSelectedPlan(redeemCode);
         setIsRedeemProcessLoading(true);
-        navigate("/subscription");
+        setSubscriptionVisible(true);
     }
     const handleRedeem=()=>{
         setVisible(true);

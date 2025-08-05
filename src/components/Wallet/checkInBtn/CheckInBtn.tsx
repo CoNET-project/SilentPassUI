@@ -17,7 +17,7 @@ const CheckInBtn = ({}) => {
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
 	const [insufficientBalance, setInsufficientBalance] = useState<boolean>(false)
-	const { setPaymentKind } = useDaemonContext()
+	const { setPaymentKind, setSubscriptionVisible } = useDaemonContext()
 	const navigate = useNavigate()
 
 	const checkBalance = async () => {
@@ -46,7 +46,7 @@ const CheckInBtn = ({}) => {
         }
 
         setPaymentKind(5)
-        navigate("/subscription")
+        setSubscriptionVisible(true)
 
     }
     const goCheck=() => {

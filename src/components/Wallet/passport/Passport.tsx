@@ -17,7 +17,7 @@ const Passport = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const [visible, setVisible] = useState<boolean>(false);
-    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy } = useDaemonContext();
+    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy, setSubscriptionVisible } = useDaemonContext();
     const [payType, setPayType] = useState<number>(1);
     const [applePayVisible, setApplePayVisible] = useState<boolean>(false);
     const options=[
@@ -48,7 +48,7 @@ const Passport = ({}) => {
     const handlePurchase=(type: number)=> {
         if(type!==999){
             setPaymentKind(type);
-            navigate("/subscription");
+            setSubscriptionVisible(true);
         }else{
             setVisible(false);
             setApplePayVisible(true);

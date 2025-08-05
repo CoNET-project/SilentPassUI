@@ -3,7 +3,7 @@
     top: 0;
     bottom: 0;
     width: 100%;
-    max-width: 480px;
+    max-width: 600px;
     transform: translate(-50%, 0);
     z-index:1007;
     :global(.adm-mask) {
@@ -15,7 +15,7 @@
 }
 .modalWrap{
     .bd{
-        height: calc(100vh - 70px - 85px);
+        height: calc(100vh - 70px);
         overflow: auto;
         
 

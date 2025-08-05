@@ -27,7 +27,9 @@ const Status = ({}) => {
             onClose={() => {setStatusVisible(false)}}
             className={styles.statusModal}
             content={<div className={styles.statusCont}>
-                {passportTimeLeft <= 0?<>已过期</>:<>进行中</>}
+                {passportTimeLeft <= 0?<div className={styles.overdue}>
+                    <div className={styles.title}>⏳ Silent Pass 通行证已过期</div>
+                </div>:<>进行中</>}
             </div>}
         />
     );

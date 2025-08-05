@@ -185,7 +185,7 @@ const Home = () => {
 	if (!closestRegion?.length) {
 		return
 	}
-	setIsInitialLoading(false);
+	// setIsInitialLoading(false);
   }, [closestRegion])
 
 

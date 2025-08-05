@@ -26,7 +26,6 @@ import { setDefaultConfig } from 'antd-mobile';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
 import enUS from 'antd-mobile/es/locales/en-US';
 import './i18n'; // 加载多语言配置
-
 import { useTranslation } from 'react-i18next';
 
 
@@ -36,121 +35,120 @@ global.Buffer = require('buffer').Buffer;
 
 function App() {
 	const { i18n } = useTranslation();
+  	const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount,  } = useDaemonContext();
+  	
+  	const setSOlanaRPC = (allNodes: nodes_info[]) => {
+    	const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
+    	setRandomSolanaRPC(allNodes[randomIndex])
+ 	}
 
-  const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount,  } = useDaemonContext();
-  const setSOlanaRPC = (allNodes: nodes_info[]) => {
-    const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
-    setRandomSolanaRPC(allNodes[randomIndex])
-  }
+  	const _getServerIpAddress = async () => {
+		try {
+		  	const response = await getServerIpAddress();
+		  	const tmpIpAddress = response.data;
 
-  const _getServerIpAddress = async () => {
-	try {
-	  const response = await getServerIpAddress();
-	  const tmpIpAddress = response.data;
-
-	  setServerIpAddress(tmpIpAddress?.ip || "");
-	  setServerPort('3002');
-	  setIsLocalProxy(true)
-	} catch (ex) {
-	  if (window?.webkit) {
-		  setIsIOS(true)
-	  }
-	  
-	  setIsLocalProxy(false)
-	}
-  }
-  
-  let handlePassportProcess = false
-  const handlePassport = async () => {
-
-	if (!CoNET_Data?.profiles[0]?.keyID) return
-	if (handlePassportProcess) {
-		return
-	}
-	handlePassportProcess = true
-
-	const info = await getCurrentPassportInfoInChain()
-     
-	const tmpData = CoNET_Data;
-
-	if (!tmpData) {
-	  return;
-	}
-	if (tmpData.duplicateAccount)
-	tmpData.profiles[0] = {
-	  ...tmpData?.profiles[0],
-	  activePassport: {
-		nftID: info[0].toString(),
-		expires: info[1].toString(),
-		expiresDays: info[2].toString(),
-		premium: info[3]
-	  },
-	};
-
-	const activeNFTNumber = tmpData.profiles[0].activePassport||0
-	if (tmpData.profiles[0].activePassport?.expiresDays !== '7') {
-		tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
-	}
-
-	setActivePassport(tmpData.profiles[0].activePassport);
-
-	setCoNET_Data(tmpData);
-	setDuplicateAccount(tmpData.duplicateAccount)
-
-	if (!CoNET_Data) return;
-	
-	setProfiles(CoNET_Data?.profiles);
-	setActivePassportUpdated(true);
-	handlePassportProcess = false
-	listenProfileVer(setProfiles, setActivePassport, setMiningData)
-  }
-
-  const init = async () => {
-
-	const queryParams = parseQueryParams(window.location.search);
-	let secretPhrase: string | null = null;
-	let ChannelPartners = ''
-	let referrals = ''
-	if (window.location.search && queryParams) {
-
-		secretPhrase = queryParams.get("secretPhrase");
-		ChannelPartners = queryParams.get("ChannelPartners")
-		referrals = queryParams.get("referrals")
-		secretPhrase = secretPhrase ? secretPhrase.replace(/\-/g, " ") : null;
-		if (referrals) {
-			setShowReferralsInput(true)
+		  	setServerIpAddress(tmpIpAddress?.ip || "");
+		  	setServerPort('3002');
+		  	setIsLocalProxy(true)
+		} catch (ex) {
+		  	if (window?.webkit) {
+			  	setIsIOS(true)
+		  	}
+		  	setIsLocalProxy(false)
 		}
-	}
+  	}
+  
+  	let handlePassportProcess = false
+  	const handlePassport = async () => {
 
-	const profiles = await createOrGetWallet(secretPhrase, false, referrals, ChannelPartners);
-	setProfiles(profiles)
+		if (!CoNET_Data?.profiles[0]?.keyID) return
+		if (handlePassportProcess) {
+			return
+		}
+		handlePassportProcess = true
 
-	checkCurrentRate(setMiningData)
+		const info = await getCurrentPassportInfoInChain()
+     
+		const tmpData = CoNET_Data;
 
-	getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
-	  setSOlanaRPC(allNodes)
-	  setaAllNodes(allNodes)
-	  setGlobalAllNodes(allNodes)
-	  const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
-	  setRandomSolanaRPC(allNodes[randomIndex])
-	  await _getServerIpAddress()
-	  if (!CoNET_Data || !CoNET_Data?.profiles) {
-		return
-	  }
+		if (!tmpData) {
+	  		return;
+		}
+		if (tmpData.duplicateAccount)
+		tmpData.profiles[0] = {
+	  		...tmpData?.profiles[0],
+	  		activePassport: {
+				nftID: info[0].toString(),
+				expires: info[1].toString(),
+				expiresDays: info[2].toString(),
+				premium: info[3]
+	  		},
+		};
 
-	})
-	await handlePassport ()
-  }
+		const activeNFTNumber = tmpData.profiles[0].activePassport||0
+		if (tmpData.profiles[0].activePassport?.expiresDays !== '7') {
+			tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
+		}
 
-  let first = true
-  useEffect(() => {
-	if (first) {
-		first = false
-		init()
-	}
-  }, [])
+		setActivePassport(tmpData.profiles[0].activePassport);
 
-  useEffect(() => {
+		setCoNET_Data(tmpData);
+		setDuplicateAccount(tmpData.duplicateAccount)
+
+		if (!CoNET_Data) return;
+	
+		setProfiles(CoNET_Data?.profiles);
+		setActivePassportUpdated(true);
+		handlePassportProcess = false
+		listenProfileVer(setProfiles, setActivePassport, setMiningData)
+  	}
+
+  	const init = async () => {
+
+		const queryParams = parseQueryParams(window.location.search);
+		let secretPhrase: string | null = null;
+		let ChannelPartners = ''
+		let referrals = ''
+		if (window.location.search && queryParams) {
+
+			secretPhrase = queryParams.get("secretPhrase");
+			ChannelPartners = queryParams.get("ChannelPartners")
+			referrals = queryParams.get("referrals")
+			secretPhrase = secretPhrase ? secretPhrase.replace(/\-/g, " ") : null;
+			if (referrals) {
+				setShowReferralsInput(true)
+			}
+		}
+
+		const profiles = await createOrGetWallet(secretPhrase, false, referrals, ChannelPartners);
+		setProfiles(profiles)
+
+		checkCurrentRate(setMiningData)
+
+		getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
+	  		setSOlanaRPC(allNodes)
+	  		setaAllNodes(allNodes)
+	  		setGlobalAllNodes(allNodes)
+	  		const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
+	  		setRandomSolanaRPC(allNodes[randomIndex])
+	  		await _getServerIpAddress()
+	  		if (!CoNET_Data || !CoNET_Data?.profiles) {
+				return
+	  		}
+
+		})
+		await handlePassport ()
+  	}
+
+  	let first = true
+  	useEffect(() => {
+		if (first) {
+			first = false
+			init()
+		}
+  	}, [])
+
+  	useEffect(() => {
   		setDefaultConfig({
 			locale: enUS,
 		})
@@ -175,24 +173,24 @@ function App() {
 		})
 		i18n.changeLanguage(lang);
 		localStorage.lang=lang;
-  },[])
+  	},[])
 
   	return (
 		<Router initialEntries={['/']}>
 		    <div className={styles.app}>
-		      <div className={styles.body}>
-		        <Routes>
-		          <Route path="/" element={<Home />} />
-		          <Route path="/wallet" element={<Wallet />} />
-		          <Route path="/swap" element={<Swap />} />
-		          <Route path="/settings" element={<Settings />} />
-		        </Routes>
-		      </div>
-		      <div className={styles.bottom}>
-		        <Footer />
-		      </div>
+		      	<div className={styles.body}>
+		        	<Routes>
+		          		<Route path="/" element={<Home />} />
+		          		<Route path="/wallet" element={<Wallet />} />
+		          		<Route path="/swap" element={<Swap />} />
+		          		<Route path="/settings" element={<Settings />} />
+		        	</Routes>
+		      	</div>
+		      	<div className={styles.bottom}>
+		        	<Footer />
+		      	</div>
 		    </div>
-		 </Router>
+		</Router>
   	);
 }
 

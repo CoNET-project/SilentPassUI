@@ -3,6 +3,7 @@ body {
   width: 100%;
   background: #0D0D0D;
   color:#fff!important;
+  padding-top: env(safe-area-inset-top);
   -webkit-font-smoothing: antialiased;
   font-family: 'Microsoft Yahei', 'PingFang SC', 'Avenir', 'Segoe UI', 'Hiragino Sans GB', STHeiti, 'Microsoft Sans Serif', 'WenQuanYi Micro Hei', sans-serif;
 }

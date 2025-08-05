@@ -9,6 +9,7 @@ import {Bridge} from '@/bridge/webview-bridge';
 import { isPassportValid } from "@/utils/utils";
 import { CoNET_Data } from '@/utils/globals';
 import { getAllRegions } from "@/services/regions";
+import BlobWrapper from '@/components/Home/BlobWrapper';
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
@@ -164,19 +165,25 @@ const RenderButton = ({}) => {
 
         return ;
     };
+    const state = useMemo(
+        () => (isConnectionLoading ? 'connecting' : power ? 'on' : 'off'),
+        [isConnectionLoading, power]
+    );
 
     return (
         <div className={styles.renderButton}>
-            <div
-                className={power ? `${styles.power} ${styles.powerOn}` : `${styles.power} ${styles.powerOff}`}
-                onClick={!isConnectionLoading ? handleTogglePower : undefined}
-            >
-                {isConnectionLoading ? (
-                    <LoadingRing className={ `${styles.powerIcon} ${styles.loadingSpinning}`} />
-                ) : (
-                    power ?<PowerIcon className={ `${styles.powerIcon} ${styles.powerIconOn}`} /> :<PowerIcon className={ `${styles.powerIcon} ${styles.powerIconOff}`} />
-                )}
-            </div>
+            <BlobWrapper state={state}>
+                <div
+                    className={power ? `${styles.power} ${styles.powerOn}` : `${styles.power} ${styles.powerOff}`}
+                    onClick={!isConnectionLoading ? handleTogglePower : undefined}
+                >
+                    {isConnectionLoading ? (
+                        <LoadingRing className={ `${styles.powerIcon} ${styles.loadingSpinning}`} />
+                    ) : (
+                        power ?<PowerIcon className={ `${styles.powerIcon} ${styles.powerIconOn}`} /> :<PowerIcon className={ `${styles.powerIcon} ${styles.powerIconOff}`} />
+                    )}
+                </div>
+            </BlobWrapper>
             {isConnectionLoading && <div className={styles.loadingText}>Loading...</div>}
             {showConnected && <div className={styles.connected}>Connected</div>}
             {!isConnectionLoading && !power && errorMessage && (<div className={styles.errorConnected}>{errorMessage}</div>)}

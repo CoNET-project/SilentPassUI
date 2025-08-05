@@ -14,6 +14,7 @@ import { ReactComponent as SettingsIconGrey } from "./assets/settings-icon-grey.
 import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg"
 import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg"
 import { TabBar } from 'antd-mobile';
+import Subscription from '@/components/Subscription/Subscription';
 
 const Footer = ({}) => {
     const navigate = useNavigate()
@@ -48,11 +49,14 @@ const Footer = ({}) => {
     ]
     
     return (
-        <TabBar safeArea activeKey={pathname} onChange={value => setRouteActive(value)}>
-            {tabs.map(item => (
-                <TabBar.Item key={item.key} icon={item.icon} />
-            ))}
-        </TabBar>
+        <>
+            <TabBar safeArea activeKey={pathname} onChange={value => setRouteActive(value)}>
+                {tabs.map(item => (
+                    <TabBar.Item key={item.key} icon={item.icon} />
+                ))}
+            </TabBar>
+            <Subscription />
+        </>
     )
 };
 

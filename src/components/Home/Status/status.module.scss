@@ -1,0 +1,22 @@
+.statusModal{
+    color:#fff;
+    .statusCont{
+        
+    }
+    :global(.adm-center-popup-body){
+        background: #232323;
+        border-radius: 14px;
+    }
+    :global(.adm-center-popup-wrap){
+        width:80vw;
+        max-width: 80vw;
+    }
+    :global(.adm-modal-footer .adm-modal-button){
+        font-size: 15px;
+        background: #282930;
+        border:none;
+        border-radius: 10px;
+        font-weight: 500;
+        padding:8px 0;
+    }
+}

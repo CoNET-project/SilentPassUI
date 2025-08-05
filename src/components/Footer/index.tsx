@@ -1,20 +1,15 @@
-import {
-  Route,
-  Routes,
-  useNavigate,
-  useLocation,
-  MemoryRouter as Router,
-} from 'react-router-dom'
-import { ReactComponent as HomeIconGrey } from "./assets/home-icon-grey.svg"
-import { ReactComponent as HomeBlueIcon } from "./assets/home-icon-blue.svg"
-import { ReactComponent as WalletIconGrey } from "./assets/wallet-icon-grey.svg"
-import { ReactComponent as WalletBlueIcon } from "./assets/wallet-icon-blue.svg"
-import { ReactComponent as SettingsIconBlue } from "./assets/settings-icon-blue.svg"
-import { ReactComponent as SettingsIconGrey } from "./assets/settings-icon-grey.svg"
-import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg"
-import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg"
+import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
+import { ReactComponent as HomeIconGrey } from "./assets/home-icon-grey.svg";
+import { ReactComponent as HomeBlueIcon } from "./assets/home-icon-blue.svg";
+import { ReactComponent as WalletIconGrey } from "./assets/wallet-icon-grey.svg";
+import { ReactComponent as WalletBlueIcon } from "./assets/wallet-icon-blue.svg";
+import { ReactComponent as SettingsIconBlue } from "./assets/settings-icon-blue.svg";
+import { ReactComponent as SettingsIconGrey } from "./assets/settings-icon-grey.svg";
+import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
+import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg";
 import { TabBar } from 'antd-mobile';
 import Subscription from '@/components/Subscription/Subscription';
+import Status from '@/components/Home/Status/Status';
 
 const Footer = ({}) => {
     const navigate = useNavigate()
@@ -56,6 +51,7 @@ const Footer = ({}) => {
                 ))}
             </TabBar>
             <Subscription />
+            <Status />
         </>
     )
 };

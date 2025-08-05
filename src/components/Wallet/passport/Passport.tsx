@@ -118,7 +118,7 @@ const Passport = ({}) => {
                                 />
                             </div>
                             <div className={styles.operation}>
-                                <Button className={styles.btn} block color='primary' size='large' onClick={()=>{handlePurchase(payType)}}>{t('wallet-account-buy-btn')}</Button>
+                                <Button className={styles.btn} block color='primary' size='large' disabled={!['1','12'].includes(selectedPlan)} onClick={()=>{handlePurchase(payType)}}>{t('wallet-account-buy-btn')}</Button>
                             </div>
                         </div>
 

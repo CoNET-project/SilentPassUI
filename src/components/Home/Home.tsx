@@ -7,7 +7,7 @@ import Content from '@/components/Home/Content/Content';
 import { useDaemonContext } from "@/providers/DaemonProvider";
 import { getAllRegions } from "@/services/regions";
 import { maxNodes, currentScanNodeNumber } from '@/services/mining';
-import { mappedCountryCodes } from "@/utils/regions";
+import { mappedCountryCodes } from "@/utils/regions"; 
 
 const Home = ({}) => {
     const { t, i18n } = useTranslation();

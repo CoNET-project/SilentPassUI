@@ -12,7 +12,7 @@ import { Modal } from 'antd-mobile';
 const Header = ({}) => {
     const OneDayInSeconds = 86400;
     const { t, i18n } = useTranslation();
-    const { miningData, profiles, activePassportUpdated, activePassport } = useDaemonContext();
+    const { miningData, profiles, activePassportUpdated, activePassport, setStatusVisible } = useDaemonContext();
     const [passportTimeLeft, setPassportTimeLeft] = useState<number>(0);
 
     useEffect(() => {
@@ -27,20 +27,21 @@ const Header = ({}) => {
         return passportTimeLeft < OneDayInSeconds ? passportTimeLeft <= 0 ? "#b3261e" : "#f0b90b" : isInfinite(activePassport) ? '#cd7f32' : "#05a21e"
     }
     const handleShowStatus=()=>{
-        Modal.alert({
-            className:styles.statusModal,
-            closeOnMaskClick:true,
-            content: (<div className={styles.statusInfo}>
-                <div className={styles.passport}>
-                    <label className={styles.label}>{t('comp-PassportInfoPopup-1')}</label>
-                    <div className={styles.val} style={{color: isInfinite(activePassport) ? '#cd7f32' : ''}}>{profiles?.[0]?.activePassport ? <>{t(getPassportTitle(activePassport))}</> : '--'}</div>
-                </div>
-                <div className={styles.passport}>
-                    <label className={styles.label}>{t('comp-PassportInfoPopup-2')}</label>
-                    <div className={styles.val}>{profiles?.[0]?.activePassport?.expires ?<>{getExpirationDate(activePassport, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour'))}</>: '--'}</div>
-                </div>
-            </div>)
-        })
+        setStatusVisible(true);
+        // Modal.alert({
+        //     className:styles.statusModal,
+        //     closeOnMaskClick:true,
+        //     content: (<div className={styles.statusInfo}>
+        //         <div className={styles.passport}>
+        //             <label className={styles.label}>{t('comp-PassportInfoPopup-1')}</label>
+        //             <div className={styles.val} style={{color: isInfinite(activePassport) ? '#cd7f32' : ''}}>{profiles?.[0]?.activePassport ? <>{t(getPassportTitle(activePassport))}</> : '--'}</div>
+        //         </div>
+        //         <div className={styles.passport}>
+        //             <label className={styles.label}>{t('comp-PassportInfoPopup-2')}</label>
+        //             <div className={styles.val}>{profiles?.[0]?.activePassport?.expires ?<>{getExpirationDate(activePassport, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour'))}</>: '--'}</div>
+        //         </div>
+        //     </div>)
+        // })
     }
 
     return (

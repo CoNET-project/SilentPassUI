@@ -12,14 +12,16 @@ import { ReactComponent as HeadTitle } from '@/components/Home/assets/header-tit
 const Content = ({}) => {
 
     return (
+        <>
         <div className={styles.content}>
             <div className={styles.banner}><HeadTitle /></div>
             <RenderButton />
             {/*<ProxyInfo />*/}
             <Region />
             <NewVersion />
-            <QuickLinks />
-        </div>    
+        </div>  
+        <QuickLinks />
+        </>  
     );
 };
 

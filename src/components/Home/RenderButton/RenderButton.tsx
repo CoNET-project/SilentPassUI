@@ -19,7 +19,7 @@ const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few se
 const RenderButton = ({}) => {
     const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false);
     const [showConnected, setShowConnected] = useState(false);
-    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion } = useDaemonContext();
+    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible } = useDaemonContext();
     const [errorMessage, setErrorMessage] = useState<string>('');
 
     useEffect(() => {
@@ -62,6 +62,7 @@ const RenderButton = ({}) => {
             setTimeout(() => {
                 setIsConnectionLoading(false)
                 setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
+                setStatusVisible(true);
             }, 1000)
             return
         }
@@ -70,6 +71,7 @@ const RenderButton = ({}) => {
             setTimeout(() => {
                 setIsConnectionLoading(false)
                 setErrorMessage(PASSPORT_EXPIRED_ERROR);
+                setStatusVisible(true);
             }, 1000)
             return
         }
@@ -89,6 +91,7 @@ const RenderButton = ({}) => {
             setTimeout(() => {
                 setIsConnectionLoading(false)
                 setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
+                setStatusVisible(true);
             }, 1000)
             return
         }
@@ -186,7 +189,7 @@ const RenderButton = ({}) => {
             </BlobWrapper>
             {isConnectionLoading && <div className={styles.loadingText}>Loading...</div>}
             {showConnected && <div className={styles.connected}>Connected</div>}
-            {!isConnectionLoading && !power && errorMessage && (<div className={styles.errorConnected}>{errorMessage}</div>)}
+            {/*{!isConnectionLoading && !power && errorMessage && (<div className={styles.errorConnected}>{errorMessage}</div>)}*/}
         </div>
     );
 };

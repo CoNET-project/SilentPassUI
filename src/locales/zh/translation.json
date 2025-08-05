@@ -488,5 +488,24 @@
 	"subscription-transaction-success":"交易成功",
 	"subscription-transaction-passport":"Silent Pass 通行证",
 	"subscription-transaction-gas":"网络费用",
-	"subscription-transaction-total":"合计"
+	"subscription-transaction-total":"合计",
+
+	"status-overdue-title":"⏳ Silent Pass 通行证已过期",
+	"status-overdue-des-1":"您的访问权限已失效。",
+	"status-overdue-des-2":"请选择以下任意方式恢复使用：",
+	"status-ing-title":"🟢 Silent Pass 通行证正在使用中",
+	"status-ing-des-1":"您的访问权限有效，已畅通连接，无需额外操作。",
+	"status-ing-des-2":"同时，您还可以探索以下方式，灵活延长或永久解锁访问权限：",
+	"status-list-title-1":"🪙 免费解锁 · 随时打卡",
+	"status-list-title-2":"🎟️ 邀请码专属福利",
+	"status-list-title-3":"🔐 升级订阅 · 免打卡畅享",
+	"status-list-title-4":"👑 永久解锁 · 成为 GENESIS 会员",
+	"status-list-des-1":"持有 $25 等值的 $SP，在任意时刻点击打卡，即可立即获得 24 小时通行证",
+	"status-list-des-2":" → 不限打卡次数，但每次之间需间隔至少 24 小时",
+	"status-list-des-3":"输入好友的邀请码，立即解锁 3 天免费通行证 ",
+	"status-list-des-4":" → 每位新用户限用一次",
+	"status-list-des-5":"选择月度或年度套餐，持续访问无需打卡",
+	"status-list-des-6":" → 支持信用卡、Apple Pay、$SP等多种支付方式",
+	"status-list-des-7":"一次性购买 GENESIS CIRCLE NFT，即可终身无限使用 Silent Pass",
+	"status-list-des-8":" → 独享链上身份 + $SP 激励 + 治理权利 + 永久通行权"
 }

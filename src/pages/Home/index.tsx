@@ -31,6 +31,10 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faApple, faAndroid } from '@fortawesome/free-brands-svg-icons';
 import { faHeadset } from '@fortawesome/free-solid-svg-icons';
 import { Popup } from 'antd-mobile';
+import ios from './assets/ios.png';
+import android2 from './assets/android2.png';
+import logo from './assets/logo.png';
+import Footer2 from '../../components/Footer/Foot2';
 
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 declare var TCPlayer: any;
@@ -285,8 +289,7 @@ const Home = () => {
 					<button
 						className="power"
 					>
-					
-					<img className="loading-spinning" src={process.env.PUBLIC_URL + "/assets/silent-pass-logo-grey.png"} style={{ width: '85px', height: '85px' }} alt="" />
+						<img className="loading-spinning" src={process.env.PUBLIC_URL + "/assets/silent-pass-logo-grey.png"} style={{ width: '85px', height: '85px' }} alt="" />
 					</button>
 
 					<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '400px' }}>
@@ -298,6 +301,14 @@ const Home = () => {
         }
 		{
 			!isInitialLoading &&
+			<>
+			<div className="topLine1">
+				<img className="logo" src={logo} alt="logo" />
+				<div className="txt">全球首创Web3无痕上网</div>
+			</div>
+			<div className="topLine2">无需账号 · 畅游全球</div>
+			<div className="topLine3">点击即可保护隐私</div>
+
 			<div className='homeMain'>
 				<div style={{height: '0.5rem'}}>
 					<img src={process.env.PUBLIC_URL + "/assets/header-title.svg"}></img>
@@ -337,20 +348,35 @@ const Home = () => {
 					<ContactSupportButton />
 				</div>
 			</div>
+
+			<div className="bigBtn">
+				<img className="iosIcon" alt="ios" src={ios} />
+				<div className='bigBtnTxt'>ios下载</div>
+			</div>
+			<div className="bigBtn">
+				<img className="iosIcon" alt="android" src={android2} />
+				<div className='bigBtnTxt'>android下载</div>
+			</div>
+			<div className="bigBtn" style={{marginBottom:'4vw'}}>
+				<div className='bigBtnTxt'>无法下载，联系客服</div>
+			</div>
+
+			<div className='downloadLinks'>
+				<div><a onClick={winDownload}>{t('download_page_windows_download')}</a></div>
+				<div><a onClick={macDownload}>{t('download_page_windows_MacOS')}</a></div>
+				<div><a onClick={macMDownload}>{t('download_page_windows_MacOS_M')}</a></div>
+			</div>
+
+			<div className='videoBtnsContainer'>
+				<div onClick={()=>{setVisibleVideoWin(true)}} className='videoBtn'>{t('download_page_windows_Guide')}</div>
+				<div onClick={()=>{setVisibleVideoIos(true)}} className='videoBtn'>{t('download_page_ios_Guide')}</div>
+				<div onClick={()=>{setVisibleVideoMacOS(true)}} className='videoBtn'>{t('download_page_MacOS_Guide')}</div>
+				<div onClick={()=>{setVisibleVideoAndroid(true)}} className='videoBtn'>{t('download_page_Android_Guide')}</div>
+			</div>
+			</>
 		}
 		
-		<div className='downloadLinks'>
-			<div><a onClick={winDownload}>{t('download_page_windows_download')}</a></div>
-			<div><a onClick={macDownload}>{t('download_page_windows_MacOS')}</a></div>
-			<div><a onClick={macMDownload}>{t('download_page_windows_MacOS_M')}</a></div>
-		</div>
-
-		<div className='videoBtnsContainer'>
-			<div onClick={()=>{setVisibleVideoWin(true)}} className='videoBtn'>{t('download_page_windows_Guide')}</div>
-			<div onClick={()=>{setVisibleVideoIos(true)}} className='videoBtn'>{t('download_page_ios_Guide')}</div>
-			<div onClick={()=>{setVisibleVideoMacOS(true)}} className='videoBtn'>{t('download_page_MacOS_Guide')}</div>
-			<div onClick={()=>{setVisibleVideoAndroid(true)}} className='videoBtn'>{t('download_page_Android_Guide')}</div>
-		</div>
+		<Footer2 />
 
 
 		<Popup

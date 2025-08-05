@@ -210,7 +210,6 @@ const gettNumeric = (token: string) => {
 }
 
 
-
 export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
 	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(upMint))
 	const slippageBps = 250 // 0.5% slippage

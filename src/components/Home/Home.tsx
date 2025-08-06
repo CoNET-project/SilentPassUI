@@ -64,6 +64,7 @@ const Home = ({}) => {
             }, 1000)
         }
     }
+	
     const _getAllRegions = async () => {
         const [tmpRegions] = await Promise.all([getAllRegions()]);
         const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {

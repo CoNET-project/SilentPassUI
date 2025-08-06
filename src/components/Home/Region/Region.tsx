@@ -62,7 +62,7 @@ const Region = ({}) => {
                     <div className={styles.bd}>
                         {allRegions.map((region, index) => {
                             return (
-                                <div className={styles.item} key={index} onClick={() => handleRegion(index)}>
+                                <div className={allRegions?.[sRegion]?.code===region.code ? `${styles.item} ${styles.itemOn}` :styles.item} key={index} onClick={() => handleRegion(index)}>
                                     <div className={styles.country}>
                                         <ReactCountryFlag
                                             countryCode={convertCN(region.code)}

@@ -71,6 +71,10 @@
                 }
             }
         }
+        .itemOn{
+            border:1px #61f7f9 solid;
+            background: #61f7f926;
+        }
     }
     :global(.adm-nav-bar-title) {
         color: #fff;

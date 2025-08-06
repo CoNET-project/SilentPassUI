@@ -107,7 +107,7 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                     <div className={styles.bd}>
                         <div className={styles.toobar}>
                             <div className={styles.description}><ExclamationCircleFill className={styles.icon} />{t('wallet-account-sp-wallet-desc')}</div>
-                            <div className={styles.btnWrap}><Button fill='none' size='large' className={styles.btn} disabled={!profiles?.[1]?.keyID} loading={isRefreshingSolanaBalances} loadingIcon={<UndoOutline className="rotatingIcon" />} onClick={handleRefreshSolanaBalances}><UndoOutline /></Button></div>
+                            <div className={styles.btnWrap}><Button fill='none' size='large' className={styles.btn} disabled={!profiles?.[1]?.keyID} loading={isRefreshingSolanaBalances} loadingIcon={<UndoOutline className={styles.rotatingIcon} />} onClick={handleRefreshSolanaBalances}><UndoOutline /></Button></div>
                         </div>
 
                         <ul className={styles.list}>

@@ -7,7 +7,7 @@ import { ReactComponent as ConetToken } from '@/components/Home/assets/conet-tok
 import { ReactComponent as SpToken } from '@/components/Home/assets/sp-token.svg';
 import { getPassportTitle, isInfinite, getExpirationDate } from '@/utils/utils';
 import { InformationCircleOutline } from 'antd-mobile-icons';
-import { Modal } from 'antd-mobile';
+import { Modal,Skeleton } from 'antd-mobile';
 
 const Header = ({}) => {
     const OneDayInSeconds = 86400;
@@ -33,15 +33,15 @@ const Header = ({}) => {
     return (
         <div className={styles.header}>
             <div className={styles.onlineNum}>
-                <ConetToken /> {miningData?.online ? miningData.online : '--'}
+                <ConetToken /> {miningData?.online ? miningData.online : <Skeleton animated className={styles.customSkeleton} />}
             </div>
             <div className={styles.status} onClick={handleShowStatus}>
                 <div className={styles.dot} style={{background:getColor()}}></div>
-                {profiles?.[0]?.activePassport ? <>{t(getPassportTitle(activePassport))}</> : '--'}
+                {profiles?.[0]?.activePassport ? <>{t(getPassportTitle(activePassport))}</> : <Skeleton animated className={styles.customSkeleton} />}
                 <InformationCircleOutline className={styles.icon} />
             </div>
             <div className={styles.totalUsers}>
-                <SpToken />{miningData?.totalUsers ? miningData.totalUsers : '--'}
+                <SpToken />{miningData?.totalUsers ? miningData.totalUsers : <Skeleton animated className={styles.customSkeleton} />}
             </div>
         </div>    
     );

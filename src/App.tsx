@@ -26,7 +26,21 @@ import { useTranslation } from 'react-i18next';
 global.Buffer = require('buffer').Buffer;
 
 
+function RouteChangeListener() {
+  const location = useLocation();
 
+  useEffect(() => {
+    // 每当 location.pathname 变化时，这个 effect 就会重新运行
+    console.log(`✅ 路由已成功更改为: ${location.pathname}`);
+    
+    // 你可以在这里执行其他操作，比如发送页面浏览分析事件
+    // analytics.pageview(location.pathname);
+
+  }, [location]); // 关键：将 location 对象作为依赖项
+
+  // 这个组件本身不渲染任何 UI
+  return null
+}
 function App() {
 	const { i18n } = useTranslation();
   	const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount,  } = useDaemonContext();

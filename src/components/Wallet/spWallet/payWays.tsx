@@ -10,7 +10,7 @@ import { Grid, Result, Modal, Collapse, SpinLoading } from 'antd-mobile';
 import { ExclamationShieldOutline,RightOutline } from 'antd-mobile-icons';
 import { useDaemonContext } from "./../../../providers/DaemonProvider";
 import {getCryptoPay} from './../../../services/subscription';
-import { waitingPaymentStatus  } from './../../../services/wallets';
+import { waitingPaymentStatus, cleanCurrentWaitingTimeout } from './../../../services/wallets';
 import {openWebLinkNative} from './../../../api';
 import { BankOutlined } from '@ant-design/icons';
 
@@ -32,6 +32,7 @@ const PayWays = ({defaultVisible}:params) => {
     const navigate = useNavigate();
 
     const stripePay = () => {
+
         setSelectedPlan('3')
         setPaymentKind(2)
         setSubscriptionVisible(true)
@@ -52,6 +53,7 @@ const PayWays = ({defaultVisible}:params) => {
         }
         showSuccess(waiting)
     }
+	
     const showQrModal=(price:any,qrVal:string,token: cryptoName)=>{
         setCryptoName(token);
         setTimeoutError(false);

@@ -1348,10 +1348,35 @@ const getPaymentUrl = async (_plan: string) => {
 }
 
 
+let currentWaitingTimeout: NodeJS.Timeout
+
+const waiting = async (url: string, waitingPaymentStatusLoop: number, sendData: any): Promise<false|number> => new Promise(async resolve => {
+	const result = await postToEndpoint(url, true, sendData)
+	
+	if (result.status < 100|| result === false) {
+		if (++waitingPaymentStatusLoop > 50 ) {
+			
+			return resolve(false)
+		}
+			
+		return currentWaitingTimeout = setTimeout(() => {
+			return waiting(url, waitingPaymentStatusLoop, sendData).then (jj => resolve(jj))
+		}, 10 * 1000)
+	
+	}
+	return resolve(result.status)
+})
+
+
+  const cleanCurrentWaitingTimeout = () => {
+	clearTimeout(currentWaitingTimeout)
+  }
 const waitingPaymentStatus = async (): Promise<false|string> => {
+	cleanCurrentWaitingTimeout()
   if (!CoNET_Data?.profiles?.length) {
     return false;
   }
+
   const profile = CoNET_Data?.profiles[0]
   const solanaWallet = CoNET_Data?.profiles[1]
   if (!solanaWallet||!profile) {
@@ -1365,22 +1390,9 @@ const waitingPaymentStatus = async (): Promise<false|string> => {
   const sendData = {
       message, signMessage
     }
-  let waitingPaymentStatusLoop = 0
-  const waiting = async (): Promise<false|number> => new Promise(async resolve => {
-    const result = await postToEndpoint(url, true, sendData)
-    
-    if (result.status < 100|| result === false) {
-      if (waitingPaymentStatusLoop > 50 ) {
-        return resolve(false)
-      }
-      return setTimeout(() => {
-        return waiting().then (jj => resolve(jj))
-      }, 10 * 1000)
-    }
-    return resolve(result.status)
-  })
 
-  const result = await waiting ()
+
+  const result = await waiting (url, 0, sendData)
 
   return result.toString()
 }
@@ -1445,4 +1457,5 @@ export {
   storageAllNodes,
   getAllPassports,
   getProfileAssets,
+  cleanCurrentWaitingTimeout
 }

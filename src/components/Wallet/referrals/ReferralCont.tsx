@@ -57,7 +57,7 @@ const ReferralCont=({  })=> {
                 <InviteBtn />
                 <CopyBtn text={duplicateAccount.keyID} />
             </div>:''}
-            <div className={styles.label}>
+            <div className={styles.label1}>
                 <LinkOutline className={styles.icon} /> {t('comp-accountlist-Referral-Inviter')}
             </div>
             {profiles?.[0]?.referrer ?<div className={styles.val}>

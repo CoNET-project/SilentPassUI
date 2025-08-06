@@ -27,7 +27,7 @@
                 display:flex;
                 justify-content: space-between;
                 align-items: center;
-                margin:0 0 6px;
+                margin:0 0 10px;
                 .label{
                     color:#818181;
                     font-size: 14px;
@@ -41,23 +41,14 @@
             .stakeBox{
                 margin:15px 0 0;
                 .oper{
+                    display:flex;
+                    align-items:center;
+                    justify-content:space-between;
                     :global(.adm-button.adm-button-primary) {
                         background: #363636;
                         border-color: #363636;
                         color: #d9d9d9;
                         font-size: 15px;
-                    }
-                }
-                .stakeBoxList{
-                    margin:10px 0 0;
-                    .stakeBoxListItem{
-                        list-style-type: none;
-                        color:#f1943f;
-                        font-size: 12px;
-                        margin:0 0 6px;
-                        .icon{
-                            margin:0 3px 0 0;
-                        }
                     }
                 }
             }
@@ -115,6 +106,7 @@
                     list-style-type:none;
                     color:#c5c5c5;
                     margin:0 0 5px;
+                    line-height:1.4;
                     .icon{
                         margin:0 3px 0 0;
                     }
@@ -122,6 +114,39 @@
                         margin:0;
                     }
                 }
+            }
+            :global(.adm-list){
+                --active-background-color:transparent;
+            }
+            :global(.adm-list-body){
+                background: transparent;
+            }
+            :global(.adm-list-item){
+                background: transparent;
+                padding-left:0;
+            }
+            :global(.adm-list-default .adm-list-body){
+                border-top: none;
+                border-bottom:none;
+            }
+            :global(.adm-list-item-content){
+                border-top: none;
+                padding-right:0;
+            }
+            :global(.adm-collapse-panel-header .adm-list-item-content-main){
+                padding:4vw 0;
+                color:#fff;
+                font-weight: 500;
+                font-size: 16px;
+            }
+            :global(a.adm-list-item:active:not(.adm-list-item-disabled)::after){
+                display: none;
+            }
+            :global(.adm-list-item-content-main){
+                padding: 0
+            }
+            :global(.adm-collapse-arrow-active){
+                transform:rotate(-90deg);
             }
         }
         .payWaysWrap{

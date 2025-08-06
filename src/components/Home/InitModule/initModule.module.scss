@@ -30,10 +30,15 @@
     }
     .loading{
         animation: spinAnimation 2s linear infinite;
-        transform-origin: center;
+        transform-origin: 41px 40px;
+        width:84px;
+        height:84px;
+        display:flex;
+        justify-content:center;
+        align-items:center;
         svg{
-            width:85px;
-            height:85px;
+            width:84px;
+            height:84px;
         }
     }
     @keyframes spinAnimation {

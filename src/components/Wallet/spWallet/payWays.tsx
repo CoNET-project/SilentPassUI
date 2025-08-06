@@ -36,7 +36,6 @@ const PayWays = ({defaultVisible}:params) => {
         setPaymentKind(2)
         setSubscriptionVisible(true)
     }
-
     const purchaseBluePlan = async (token: cryptoName) => {
         setShowBuyClusloading(true);
         const res = await getCryptoPay(token, '2860')

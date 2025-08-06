@@ -6,7 +6,8 @@ import { InformationCircleOutline } from 'antd-mobile-icons';
 import { NoticeBar,Space,Toast } from 'antd-mobile';
 import { startSilentPass, stopSilentPass, getLocalServerVersion } from "@/api";
 import { useDaemonContext } from "@/providers/DaemonProvider";
-import {Bridge} from '@/bridge/webview-bridge'
+import {Bridge} from '@/bridge/webview-bridge';
+
 const NewVersion = ({}) => {
     const { t, i18n } = useTranslation();
     const [hasNewVersion, setHasNewVersion]= useState('');
@@ -14,7 +15,7 @@ const NewVersion = ({}) => {
 
 
     useEffect(() => {
-        // compairVersionNew();
+        compairVersionNew();
     }, [])
 
 	let isRunning = false

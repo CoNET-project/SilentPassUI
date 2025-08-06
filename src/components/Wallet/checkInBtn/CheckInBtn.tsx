@@ -82,6 +82,9 @@ const CheckInBtn = ({}) => {
 							<div className={styles.title}>
 								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info4')}
 							</div>
+							<div className={styles.title}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info5')}
+							</div>
 							<div className={styles.operation}>
 								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(insufficientBalance ? 'swap-asset-insufficient' : todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'wallet-checkin-betton-title')}</Button>
 							</div>
@@ -96,9 +99,9 @@ const CheckInBtn = ({}) => {
 						</div>
                         <div className={styles.introduce}>
                             <div className={styles.payways}><PayWays defaultVisible={true} /></div>
-							<div className={styles.desc}>
+							{/* <div className={styles.desc}>
 								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-btn-pay-detail')}
-							</div>
+							</div> */}
                         </div>
 
                     </div>

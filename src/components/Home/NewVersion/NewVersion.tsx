@@ -12,16 +12,30 @@ const NewVersion = ({}) => {
     const [hasNewVersion, setHasNewVersion]= useState('');
     const {power,version, isLocalProxy, isIOS} = useDaemonContext();
 
+
     useEffect(() => {
-        compairVersion();
+        // compairVersionNew();
     }, [])
 
-    const compairVersion = async () => {
-        let remoteVer = await getLocalServerVersion()
-        if (isNewerVersion(version, remoteVer)) {
-            setHasNewVersion(remoteVer)
-        }
-    }
+	let isRunning = false
+
+	const checkcompairVersionTime = 1000 * 60
+
+	const compairVersionNew = async () => {
+		if (isRunning) return
+		isRunning = true
+
+		let remoteVer = await getLocalServerVersion()
+		if (isNewerVersion(version, remoteVer)) {
+			setHasNewVersion(remoteVer)
+		}
+
+		setTimeout(() => {
+			isRunning = false
+			compairVersionNew()
+		}, checkcompairVersionTime)
+	}
+
     /**
      * 比较两个语义化版本号。
      * @param oldVer 旧版本号，如 "0.18.0"

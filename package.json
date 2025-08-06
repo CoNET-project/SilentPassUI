@@ -51,6 +51,7 @@
 		"react-router-dom": "^6.27.0",
 		"react-scripts": "5.0.1",
 		"react-spring": "^9.7.4",
+		"react-transition-group": "^4.4.5",
 		"react-virtualized": "^9.22.6",
 		"sass": "^1.89.2",
 		"stream-http": "^3.2.0",
@@ -61,12 +62,12 @@
 		"web-vitals": "^2.1.4"
 	},
 	"scripts": {
-	  	"start": "craco start",
-	  	"build:react": "env=production craco build",
-	  	"test": "craco test",
-	  	"eject": "react-scripts eject",  
-	  	"build:loader": "node scripts/build-loader.js",
-	  	"build": "npm run build:react"
+		"start": "craco start",
+		"build:react": "env=production craco build",
+		"test": "craco test",
+		"eject": "react-scripts eject",
+		"build:loader": "node scripts/build-loader.js",
+		"build": "npm run build:react"
 	},
 	"eslintConfig": {
 		"extends": [

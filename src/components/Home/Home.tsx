@@ -8,6 +8,8 @@ import { useDaemonContext } from "@/providers/DaemonProvider";
 import { getAllRegions } from "@/services/regions";
 import { maxNodes, currentScanNodeNumber } from '@/services/mining';
 import { mappedCountryCodes } from "@/utils/regions"; 
+import { CSSTransition, SwitchTransition } from 'react-transition-group';
+import QuickLinks from "@/components/QuickLinks/QuickLinks";
 
 const Home = ({}) => {
     const { t, i18n } = useTranslation();
@@ -83,13 +85,28 @@ const Home = ({}) => {
     return (
         <div className={styles.home}>
             <Header />
-            <div className={styles.bd}>
-                {isInitialLoading?<>
-                    <InitModule initPercentage={initPercentageRef.current} />
-                </>:<>
-                    <Content />
-                </>}
-            </div>
+            <SwitchTransition mode="out-in">
+                <CSSTransition
+                    key={isInitialLoading ? 'init' : 'content'}
+                    timeout={200}
+                    classNames={{
+                        enter: styles.fadeEnter,
+                        enterActive: styles.fadeEnterActive,
+                        exit: styles.fadeExit,
+                        exitActive: styles.fadeExitActive,
+                    }}
+                    unmountOnExit
+                >
+                    <div className={styles.bd}>
+                        {isInitialLoading?<>
+                            <InitModule initPercentage={initPercentageRef.current} />
+                        </>:<>
+                            <Content />
+                        </>}
+                    </div>
+                </CSSTransition>
+            </SwitchTransition>
+            {!isInitialLoading?<QuickLinks />:''}
         </div>
     );
 };

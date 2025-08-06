@@ -6,11 +6,10 @@ import { ReactComponent as SPLoading } from '@/components/Home/assets/silent-pas
 
 interface params {
     initPercentage: number;
-    setInitPercentage: React.Dispatch<React.SetStateAction<number>>;
 }
 
-const InitModule = ({initPercentage,setInitPercentage}:params) => {
-    
+const InitModule = ({initPercentage}:params) => {
+    console.log(initPercentage,'initPercentage')
     return (
         <div className={styles.initModule}>
             <div className={styles.round}>

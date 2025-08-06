@@ -57,6 +57,8 @@
                 color: #c5c5c5;
                 font-size: 13px;
                 font-weight: 400;
+                margin:0 0 5px;
+                line-height:1.2;
                 .icon{
                     margin: 0 4px 0 0;
                 }
@@ -94,17 +96,6 @@
             padding: 0 4.3vw;
             text-align: left;
         }
-		.introduce{
-			padding: 0 4.3vw;
-            text-align: left;
-			.desc{
-                font-size: 13px;
-                color: #c5c5c5;
-                line-height: 1.5;
-                margin:8px 0 0 ;
-                line-height: 1.5;
-            }
-		}
     }
     :global(.adm-nav-bar){
         border-bottom: 1px #292d2e solid;

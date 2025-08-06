@@ -9,7 +9,7 @@ interface params {
 }
 
 const InitModule = ({initPercentage}:params) => {
-    console.log(initPercentage,'initPercentage')
+
     return (
         <div className={styles.initModule}>
             <div className={styles.round}>

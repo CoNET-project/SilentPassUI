@@ -11,7 +11,6 @@ import {CopyToClipboard} from 'react-copy-to-clipboard';
 import { CoNET_Data, setCoNET_Data } from './../../../utils/globals';
 import {restoreAccount, initializeDuplicateCode} from '../../../services/subscription'
 import { useDaemonContext } from "../../../providers/DaemonProvider"
-import { getCurrentPassportInfoInChain, storeSystemData } from "../../../services/wallets"
 
 const Backups = ({}) => {
     const { t, i18n } = useTranslation();

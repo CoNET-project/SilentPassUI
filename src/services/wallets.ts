@@ -353,10 +353,20 @@ const getCurrentPassportInfoInChain = async () => {
 
   try {
     const result = await passportContract.getCurrentPassport(key)
-    return result
+	const nftNum = parseInt(result[0].toString())
+	if (nftNum) {
+		return {
+			nftIDs: nftNum.toString(),
+			expires: result[1].toString(),
+			expiresDays: result[2].toString(),
+			premium: result[3]
+		}
+	}
+    
   } catch (ex) {
     console.log(ex)
   }
+  return null
 }
 
 const activeNFTUrl = `${payment_endpoint}activeNFT`
@@ -592,6 +602,14 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
 // 		)
 //   }
 
+  const _activePassport = await getCurrentPassportInfoInChain();
+  
+	const info = _activePassport ? {
+		nftID: _activePassport?.nftIDs?.toString(),
+		expires: _activePassport?.expires?.toString(),
+		expiresDays: _activePassport?.expiresDays?.toString(),
+		premium: _activePassport?.premium,
+	} : null
 
   allPassports = allPassports.filter((passport) => passport.nftID !== 0)
 
@@ -600,6 +618,8 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
   });
 
   profile.silentPassPassports = allPassports;
+
+  profile.activePassport = info||profile.activePassport
 
   const temp = CoNET_Data;
 

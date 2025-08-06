@@ -586,11 +586,11 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
 
   let allPassports: passportInfo[] = JSON.parse(JSON.stringify(mainnetPassports))
 
-  if (profile?.activePassport && profile.activePassport?.expiresDays !== "7") {
-	    allPassports = allPassports?.filter(
-			(passport) => passport.expiresDays !== 7
-		)
-  }
+//   if (profile?.activePassport && profile.activePassport?.expiresDays !== "7") {
+// 	    allPassports = allPassports?.filter(
+// 			(passport) => passport.expiresDays !== 7
+// 		)
+//   }
 
 
   allPassports = allPassports.filter((passport) => passport.nftID !== 0)

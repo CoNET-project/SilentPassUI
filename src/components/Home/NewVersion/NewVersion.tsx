@@ -14,7 +14,7 @@ const NewVersion = ({}) => {
 
 
     useEffect(() => {
-        // compairVersionNew();
+        compairVersionNew();
     }, [])
 
 	let isRunning = false

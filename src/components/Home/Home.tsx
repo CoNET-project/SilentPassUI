@@ -12,9 +12,9 @@ import { mappedCountryCodes } from "@/utils/regions";
 const Home = ({}) => {
     const { t, i18n } = useTranslation();
     const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin,switchValue, isLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, isIOS, version, isInitialLoading, setIsInitialLoading} = useDaemonContext();
-    const [initPercentage, setInitPercentage] = useState<number>(0);
     const vpnTimeTimeout = useRef<NodeJS.Timeout>();
     const initPercentageRef=useRef(0);
+    let first = 0;
 
     useEffect(() => {
         if (!closestRegion?.length) {
@@ -45,19 +45,15 @@ const Home = ({}) => {
         }
     }, [power]);
 
-
+    
     const listenGetAllNodes = () => {
-        let first = 0;
         const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0;
         const _status = Math.round(_initpercentage);
         const status = _status <= first ? first + 2 : _status;
         first = status;
-        console.log(status,'status')
         if (status > 100) {
-            // setInitPercentage(98);
             initPercentageRef.current=98;
         } else {
-            // setInitPercentage(status);
             initPercentageRef.current=status;
         }
         if (status < 99 ) {

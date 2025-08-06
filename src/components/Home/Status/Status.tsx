@@ -55,7 +55,7 @@ const Status = ({}) => {
                             <p>{t('status-list-des-8')}</p>
                         </dd>           
                     </dl>
-                    <div className={styles.oper}><Button className={styles.closeBtn} onClick={()=>{setStatusVisible(false)}} block color='primary' size='middle'>关闭</Button></div>
+                    <div className={styles.oper}><Button className={styles.closeBtn} onClick={()=>{setStatusVisible(false)}} block color='primary' size='middle'>{t('swap-asset-select-close')}</Button></div>
                 </div>:<div className={styles.ing}>
                     <div className={styles.title}>{t('status-ing-title')}</div>
                     <div className={styles.desc}>
@@ -84,7 +84,7 @@ const Status = ({}) => {
                             <p>{t('status-list-des-8')}</p>
                         </dd>           
                     </dl>
-                    <div className={styles.oper}><Button className={styles.closeBtn} onClick={()=>{setStatusVisible(false)}} block color='primary' size='middle'>关闭</Button></div>
+                    <div className={styles.oper}><Button className={styles.closeBtn} onClick={()=>{setStatusVisible(false)}} block color='primary' size='middle'>{t('swap-asset-select-close')}</Button></div>
                 </div>}
             </div>}
         />

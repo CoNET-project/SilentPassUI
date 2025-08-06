@@ -85,7 +85,7 @@ const PayWays = ({defaultVisible}:params) => {
                     defaultActiveKey={defaultVisible?['1']:[]}
                     arrow={<RightOutline />}
                 >
-                    <Collapse.Panel key='1' title={<><BankOutlined style={{marginRight:3}} />立即充值</>}>
+                    <Collapse.Panel key='1' title={<><BankOutlined style={{marginRight:3}} />{t('wallet-checkin-deposit-btn')}</>}>
                         <div className={styles.desc}>
                             <ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-1')}
                         </div>

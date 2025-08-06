@@ -89,30 +89,16 @@
             }
         }
         .stakeInfos{
-            padding: 4vw 4.2vw;
+            padding: 0 4.2vw;
             border-bottom: 0.5px rgb(63, 63, 64) solid;
-            .title{
-                font-size: 16px;
-                color:#fff;
-                font-weight: 500;
-                line-height:1;
-                .icon{
-                    margin:0 3px 0 0;
-                }
+            .icon{
+                margin:0 3px 0 0;
             }
             .stakeInfosList{
-                margin:4vw 0 0;
+                padding:0 0 4vw;
                 .stakeInfosListItem{
-                    list-style-type:none;
                     color:#c5c5c5;
-                    margin:0 0 5px;
-                    line-height:1.4;
-                    .icon{
-                        margin:0 3px 0 0;
-                    }
-                    &:last-child{
-                        margin:0;
-                    }
+                    font-size:13px;
                 }
             }
             :global(.adm-list){

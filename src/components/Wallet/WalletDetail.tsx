@@ -21,7 +21,7 @@ import {openWebLinkNative} from '@/api';
 
 const WalletDetail = ({}) => {
     const { t, i18n } = useTranslation();
-    const { successNFTID, setSuccessNFTID, activePassport, isIOS, isLocalProxy } = useDaemonContext();
+    const { successNFTID, setSuccessNFTID, activePassport, isIOS, isLocalProxy, setSubscriptionVisible } = useDaemonContext();
     const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
     const [stakeVisible, setStakeVisible] = useState<boolean>(false);
@@ -30,7 +30,8 @@ const WalletDetail = ({}) => {
         if (!isNaN(Number(successNFTID))) {
             const successNFTIDNum = parseInt(successNFTID)
             if (successNFTIDNum > 100) {
-                setIsSuccessModalOpen(true)
+                setIsSuccessModalOpen(true);
+                setSubscriptionVisible(false);
             }
         }else{
             if(successNFTID.length > 4){

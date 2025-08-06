@@ -130,19 +130,19 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                                     </div>
                                 </div>
                                 <div className={styles.assetsInfo}>
-                                    <Grid columns={2} gap={[5,1]}>
-                                        <Grid.Item>总资产</Grid.Item>
-                                        <Grid.Item>可用余额</Grid.Item>
+                                    <Grid columns={1} gap={[5,1]}>
+                                        {/* <Grid.Item>总资产</Grid.Item> */}
+                                        {/* <Grid.Item>可用余额</Grid.Item> */}
                                         <Grid.Item>{convertNumberToString(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))}</Grid.Item>
-                                        <Grid.Item>1.18k</Grid.Item>
+                                        {/* <Grid.Item>1.18k</Grid.Item>
                                         <Grid.Item>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</Grid.Item>
-                                        <Grid.Item>$0.8766</Grid.Item>
+                                        <Grid.Item>$0.8766</Grid.Item> */}
                                     </Grid>
                                 </div>
-                                <div className={styles.stakeBtn} onClick={() => {setStakeVisible(true)}}>
+                                {/* <div className={styles.stakeBtn} onClick={() => {setStakeVisible(true)}}>
                                     <HandPayCircleOutline className={styles.icon} />
                                     <span className={styles.text}>{t('stake-title')}</span>
-                                </div>
+                                </div> */}
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} extendref={spSendRef} />
                             </li>
                             <li className={styles.listItem}>

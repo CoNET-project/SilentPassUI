@@ -126,7 +126,7 @@ const Genesis = ({}) => {
                     <div className={styles.rights}>{t('genesis-charater-5')}</div>
                     <div className={styles.label}>{t('genesis-pay-ways')}</div>
                     <div className={styles.payMethods}>
-                        <Grid columns={3} gap={5}>
+                        <Grid columns={4} gap={5}>
                             <Grid.Item>
                                 <PayBNB purchaseBluePlan={purchaseBluePlan} />
                             </Grid.Item>
@@ -136,9 +136,9 @@ const Genesis = ({}) => {
                             <Grid.Item>
                                 <PaySP payClick={SPClick} />
                             </Grid.Item>
-                            {/* <Grid.Item>
+                            <Grid.Item>
                                 <PayALI payClick={payClick} />
-                            </Grid.Item> */}
+                            </Grid.Item>
                         </Grid>
                         <Grid columns={3} gap={5}>
                             <Grid.Item>

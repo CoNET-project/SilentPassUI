@@ -94,6 +94,17 @@
             padding: 0 4.3vw;
             text-align: left;
         }
+		.introduce{
+			padding: 0 4.3vw;
+            text-align: left;
+			.desc{
+                font-size: 13px;
+                color: #c5c5c5;
+                line-height: 1.5;
+                margin:8px 0 0 ;
+                line-height: 1.5;
+            }
+		}
     }
     :global(.adm-nav-bar){
         border-bottom: 1px #292d2e solid;
@@ -106,6 +117,8 @@
         color:#999;
     }
 }
+
+
 .successModalWrap{
     background: #2a2a2a;
     .successModal{
@@ -139,3 +152,4 @@
         border: none;
     }
 }
+

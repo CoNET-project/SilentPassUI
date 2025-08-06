@@ -74,7 +74,9 @@ const WalletDetail = ({}) => {
                 <RedeemBtn isRedeemProcessLoading={isRedeemProcessLoading} setIsRedeemProcessLoading={setIsRedeemProcessLoading} />
                 <CheckInBtn />
                 <div className={styles.stakeBtn}>
-                    <Button onClick={()=>{setStakeVisible(true)}} block color='primary' fill='solid'>{t('stake-title')}</Button>
+                    <Button onClick={()=>{
+						// setStakeVisible(true)
+					}} disabled block color='primary' fill='solid'>{t('stake-title')}</Button>
                 </div>
             </div>
             <Modal

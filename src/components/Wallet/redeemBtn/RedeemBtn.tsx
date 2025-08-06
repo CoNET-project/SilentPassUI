@@ -17,13 +17,23 @@ const RedeemBtn = ({isRedeemProcessLoading, setIsRedeemProcessLoading}:RedeemBtn
     const navigate = useNavigate();
     const [redeemCode, setRedeemCode] = useState("");
     const [visible, setVisible] = useState(false);
+	const [redeemProcess, setRedeemProcess] = useState(false);
 
     const handlePassportRedeem=async()=> {
         setPaymentKind(6);
         setSelectedPlan(redeemCode);
         setIsRedeemProcessLoading(true);
         setSubscriptionVisible(true);
+		setRedeemProcess(true)
     }
+
+	useEffect (() => {
+		if (redeemProcess) {
+			setVisible(false)
+			setRedeemCode('')
+		}
+	}, [redeemProcess])
+
     const handleRedeem=()=>{
         setVisible(true);
     }

@@ -82,6 +82,9 @@ const CheckInBtn = ({}) => {
 							<div className={styles.title}>
 								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info4')}
 							</div>
+							<div className={styles.title}>
+								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-info5')}
+							</div>
 							<div className={styles.operation}>
 								<Button className={styles.btn} block color='primary' size='large' onClick={spRewordProcess}  disabled={disabled}>{t(insufficientBalance ? 'swap-asset-insufficient' : todayCheckIN ? 'comp-RedeemPassport-alreadyRedeem': 'wallet-checkin-betton-title')}</Button>
 							</div>
@@ -94,33 +97,11 @@ const CheckInBtn = ({}) => {
 								{t('wallet-checkin-remind-detail')}
 							</div>
 						</div>
-                        
-
-                        <div className={styles.introduce}>
-							<div className={styles.title}>
-								{t('wallet-checkin-deposit-btn')}
-							</div>
-							<div className={styles.desc}>
-								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-1')}
-							</div>
-                            <div className={styles.desc}>
-                                <ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-detail-2')}
-                            </div>
-                            <div className={styles.descItem}>
-                                {t('wallet-checkin-deposit-detail-3')}
-                            </div>
-                            <div className={styles.descItem}>
-                                {t('wallet-checkin-deposit-detail-4')}
-                            </div>
-                            <div className={styles.descItem}>
-                                {t('wallet-checkin-deposit-detail-5')}
-                            </div>
-						</div>
                         <div className={styles.introduce}>
                             <div className={styles.payways}><PayWays defaultVisible={true} /></div>
-							<div className={styles.desc}>
+							{/* <div className={styles.desc}>
 								<ExclamationShieldOutline className={styles.icon} />{t('wallet-checkin-deposit-btn-pay-detail')}
-							</div>
+							</div> */}
                         </div>
 
                     </div>

@@ -2,19 +2,13 @@ import { useEffect } from "react";
 import "./reset.scss";
 import "./default.scss";
 import styles from './layout.module.scss';
-import {
-  Route,
-  Routes,
-  useNavigate,
-  useLocation,
-  MemoryRouter as Router,
-} from 'react-router-dom'
+import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider";
 import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "./services/wallets";
 import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
-import { listenProfileVer } from "./services/listeners"
+import { listenProfileVer } from "./services/listeners";
 import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import Wallet from './pages/Wallet';

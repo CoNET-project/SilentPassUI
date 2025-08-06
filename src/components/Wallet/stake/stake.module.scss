@@ -22,7 +22,7 @@
             border-radius: 10px;
             padding: 4vw 6vw;
             margin:5vw auto 0;
-            width:91.6vw;
+            width:91.6%;
             .totalInfoItem{
                 display:flex;
                 justify-content: space-between;
@@ -54,6 +54,7 @@
                         list-style-type: none;
                         color:#f1943f;
                         font-size: 12px;
+                        margin:0 0 6px;
                         .icon{
                             margin:0 3px 0 0;
                         }

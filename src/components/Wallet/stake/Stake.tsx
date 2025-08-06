@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Popup,NavBar,Button,Empty,Grid } from 'antd-mobile';
 import PayWays from './../spWallet/payWays';
 import { PushpinOutlined } from '@ant-design/icons';
+import { useDaemonContext } from "@/providers/DaemonProvider";
 import { ExclamationShieldOutline,ClockCircleOutline } from 'antd-mobile-icons';
 
 interface stakeParams {
@@ -13,6 +14,9 @@ interface stakeParams {
 
 const Stake = ({visible,setVisible}:stakeParams) => {
     const { t, i18n } = useTranslation();
+    const { profiles } = useDaemonContext();
+
+    console.log(profiles,'profiles')
 
     return (
         <Popup

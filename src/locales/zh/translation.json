@@ -143,7 +143,7 @@
 	"comp-accountlist-SpClub-detail-8": "升级为会员，即可解锁所有专属功能与权益，畅享安全上网、治理参与、空投返利及社区互动等多重体验",
 	"comp-accountlist-SpClub-detail-9": "空投奖励/专属折扣/推荐返利/学习中心/新品抢先体验/会员福利",
 	"comp-accountlist-Referral-onlySubscribers": "只有成为SP会员才可获得推荐积分",
-	"comp-accountlist-Referral-detail": "我的邀请码 / 地址",
+	"comp-accountlist-Referral-detail": "我的邀请码",
 	"comp-accountlist-Referral-contant-title": "邀请短信",
 	"comp-accountlist-Referral-contant-detail1": "Silent Pass —— 去中心化隐私协议，畅行无界互联网，无需注册，无监控追踪，一键连接，隐私与数据完全由你掌控。",
 	
@@ -156,7 +156,7 @@
 	"comp-accountlist-SpClub-showAlipayPurchase-2": "有任何问题，请联系 ",
 
 	"comp-accountlist-Referral-copy": "复制下方内容，邀请好友即可获得 $SP 奖励",
-	"comp-accountlist-Referral-Inviter": "邀请人邀请码 / 地址",
+	"comp-accountlist-Referral-Inviter": "填写好友邀请码，免费解锁3天 Silent Pass 通行证",
 	"comp-accountlist-Referral-Inviter-placeholder":"请输入您收到的邀请码 / 地址",
 	"comp-accountlist-Referral-Inviter-confirm":"确认绑定",
 	"comp-accountlist-Referral-copy-text":"复制",

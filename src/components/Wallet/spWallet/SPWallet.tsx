@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import styles from './spWallet.module.scss';
 import { useTranslation } from 'react-i18next';
 import { List,Popup,NavBar,Button,Grid } from 'antd-mobile';
-import { UndoOutline,ExclamationCircleFill,HandPayCircleOutline } from 'antd-mobile-icons';
+import { UndoOutline,ExclamationCircleFill,HandPayCircleOutline,LockOutline } from 'antd-mobile-icons';
 import { CoNET_Data } from './../../../utils/globals';
 import { ReactComponent as SolanaToken } from './../assets/solana-token.svg';
 import { ReactComponent as ConetToken } from './../assets/sp-token.svg';
@@ -111,7 +111,7 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                         </div>
 
                         <ul className={styles.list}>
-                            <li className={styles.listItem}>
+                            {/*<li className={styles.listItem}>
                                 <div className={styles.type}>
                                     <ConetToken />
                                     <div className={styles.text}>
@@ -121,8 +121,8 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                                 </div>
                                 <div className={styles.value}>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</div>
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} extendref={spSendRef} />
-                            </li>
-                            {/*<li className={styles.listItemSp}>
+                            </li>*/}
+                            <li className={styles.listItemSp}>
                                 <div className={styles.type}>
                                     <ConetToken />
                                     <div className={styles.text}>
@@ -130,13 +130,12 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                                     </div>
                                 </div>
                                 <div className={styles.assetsInfo}>
-                                    <Grid columns={1} gap={[5,1]}>
-                                        <Grid.Item>总资产</Grid.Item>
-                                        <Grid.Item>可用余额</Grid.Item>
+                                    <Grid columns={2} gap={[1,7]}>
                                         <Grid.Item>{convertNumberToString(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))}</Grid.Item>
-                                        <Grid.Item>1.18k</Grid.Item>
                                         <Grid.Item>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</Grid.Item>
-                                        <Grid.Item>$0.8766</Grid.Item>
+
+                                        <Grid.Item><LockOutline />1.18k</Grid.Item>
+                                        <Grid.Item><LockOutline />$0.8766</Grid.Item>
                                     </Grid>
                                 </div>
                                 <div className={styles.stakeBtn} onClick={() => {setStakeVisible(true)}}>
@@ -144,7 +143,7 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                                     <span className={styles.text}>{t('stake-title')}</span>
                                 </div>
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} extendref={spSendRef} />
-                            </li>*/}
+                            </li>
                             <li className={styles.listItem}>
                                 <div className={styles.type}>
                                     <SolanaToken />

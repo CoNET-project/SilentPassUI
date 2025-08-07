@@ -12,8 +12,9 @@
     :global(.adm-list-header){
         color:#fff;
         font-size: 15px;
-        font-weight: 500;
-        padding-left:0;
+        font-weight: 600;
+        padding-left:5px;
+        margin:0 0 5px;
     }
     :global(.adm-list){
         background: transparent;
@@ -44,6 +45,7 @@
     }
     :global(.adm-list-item-content-main){
         font-size: 13px;
+        padding:15px 0;
     }
     :global(.adm-list-item-content-extra){
         font-size: 13px;

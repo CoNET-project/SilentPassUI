@@ -45,16 +45,20 @@ const PayWays = ({defaultVisible}:params) => {
         }
         setShowBuyClusloading(false);
         showQrModal(res.transferNumber,res.wallet,token)
-        
-        const waiting = await waitingPaymentStatus ()
-        setCodeVisible(false)
 
-		setCheckinBalanceUP(!checkinBalanceUP)
+        const waiting = await waitingPaymentStatus ()
+		if (!waiting) {
+			return
+		}
+
+		showSuccess(waiting)
+		setCodeVisible(false)
 		
-        if (!waiting) {
-            return
-        }
-        showSuccess(waiting)
+		//		刷新每日打卡按钮状态，以适应新的变化
+		setTimeout(() => {
+			setCheckinBalanceUP(!checkinBalanceUP)
+		}, 5000)
+        
     }
 	
     const showQrModal=(price:any,qrVal:string,token: cryptoName)=>{

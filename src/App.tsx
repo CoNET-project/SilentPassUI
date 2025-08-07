@@ -43,7 +43,7 @@ function RouteChangeListener() {
 }
 function App() {
 	const { i18n } = useTranslation();
-  	const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount,  } = useDaemonContext();
+  	const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, setCheckinBalanceUP } = useDaemonContext();
   	
   	const setSOlanaRPC = (allNodes: nodes_info[]) => {
     	const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))

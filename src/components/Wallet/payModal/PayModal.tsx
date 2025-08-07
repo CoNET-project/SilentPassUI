@@ -7,6 +7,7 @@ import { LeftOutline,ClockCircleFill,ExclamationCircleOutline } from 'antd-mobil
 import QRCode from './../../QRCode';
 import CopyBtn from './../copyBtn/CopyBtn';
 import Countdown from 'react-countdown';
+import { cleanCurrentWaitingTimeout} from '../../../services/wallets'
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 
@@ -26,9 +27,11 @@ const PayModal = ({visible,setVisible,QRWallet, cryptoName, showPrice, timeoutEr
     const [countTime, setCountTime] = useState(Date.now() + 3600000);
 
     useEffect(()=>{
+		cleanCurrentWaitingTimeout()
         if(visible){
             setCountTime(Date.now() + 3600000);
-        }else{
+        } else {
+			
             setCountTime(Date.now());
         }
     },[visible])

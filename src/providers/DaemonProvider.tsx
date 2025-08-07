@@ -74,6 +74,9 @@ type DaemonContext = {
   setIsInitialLoading: (val: boolean) => void;
   statusVisible: boolean,
   setStatusVisible: (val: boolean) => void;
+  checkinBalanceUP: boolean,
+  setCheckinBalanceUP: (val: boolean) => void;
+
 };
 
 type DaemonProps = {
@@ -153,7 +156,9 @@ const defaultContextValue: DaemonContext = {
   isInitialLoading: true,
   setIsInitialLoading: () => {},
   statusVisible: true,
-  setStatusVisible: () => {}
+  setStatusVisible: () => {},
+  checkinBalanceUP: false,
+  setCheckinBalanceUP: (val: boolean) => {}
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -204,6 +209,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [subscriptionVisible, setSubscriptionVisible] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [statusVisible, setStatusVisible] = useState<boolean>(false);
+  const [checkinBalanceUP, setCheckinBalanceUP] = useState<boolean>(false);
 
   useEffect(() => {
     {
@@ -258,7 +264,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
-				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, version, duplicateAccount, 
+				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, version, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
         setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible }}>
 
       {children}

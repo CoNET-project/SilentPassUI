@@ -10,7 +10,7 @@ import { Grid, Result, Modal, Collapse, SpinLoading } from 'antd-mobile';
 import { ExclamationShieldOutline,RightOutline } from 'antd-mobile-icons';
 import { useDaemonContext } from "./../../../providers/DaemonProvider";
 import {getCryptoPay} from './../../../services/subscription';
-import { waitingPaymentStatus  } from './../../../services/wallets';
+import { waitingPaymentStatus, cleanCurrentWaitingTimeout } from './../../../services/wallets';
 import {openWebLinkNative} from './../../../api';
 import { BankOutlined } from '@ant-design/icons';
 
@@ -23,7 +23,7 @@ type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 const PayWays = ({defaultVisible}:params) => {
     const { t, i18n } = useTranslation();
     const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
-    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, isLocalProxy, setSuccessNFTID, setSubscriptionVisible } = useDaemonContext();
+    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, isLocalProxy, setSuccessNFTID, setSubscriptionVisible, setCheckinBalanceUP, checkinBalanceUP } = useDaemonContext();
     const [codeVisible, setCodeVisible] = useState(false);
     const [QRWallet, setQRWallet] = useState('');
     const [showPrice, setShowPrice] = useState('');
@@ -32,6 +32,7 @@ const PayWays = ({defaultVisible}:params) => {
     const navigate = useNavigate();
 
     const stripePay = () => {
+
         setSelectedPlan('3')
         setPaymentKind(2)
         setSubscriptionVisible(true)
@@ -44,14 +45,22 @@ const PayWays = ({defaultVisible}:params) => {
         }
         setShowBuyClusloading(false);
         showQrModal(res.transferNumber,res.wallet,token)
-        
+
         const waiting = await waitingPaymentStatus ()
-        setCodeVisible(false)
-        if (!waiting) {
-            return
-        }
-        showSuccess(waiting)
+		if (!waiting) {
+			return
+		}
+
+		showSuccess(waiting)
+		setCodeVisible(false)
+		
+		//		刷新每日打卡按钮状态，以适应新的变化
+		setTimeout(() => {
+			setCheckinBalanceUP(!checkinBalanceUP)
+		}, 5000)
+        
     }
+	
     const showQrModal=(price:any,qrVal:string,token: cryptoName)=>{
         setCryptoName(token);
         setTimeoutError(false);
@@ -74,7 +83,7 @@ const PayWays = ({defaultVisible}:params) => {
                 </div>
                 <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>{t('wallet-checkin-deposit-success-link')}</a></div>
             </div>,
-            confirmText:t('wallet-account-buy-success-close'),
+            confirmText:t('wallet-account-buy-success-close')
         })
     }
 

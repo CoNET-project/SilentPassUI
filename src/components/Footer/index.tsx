@@ -7,6 +7,7 @@ import { ReactComponent as SettingsIconBlue } from "./assets/settings-icon-blue.
 import { ReactComponent as SettingsIconGrey } from "./assets/settings-icon-grey.svg";
 import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
 import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg";
+import { cleanCurrentWaitingTimeout } from './../../services/wallets'
 import { TabBar } from 'antd-mobile';
 import Subscription from '@/components/Subscription/Subscription';
 import Status from '@/components/Home/Status/Status';
@@ -18,6 +19,7 @@ const Footer = ({}) => {
 
     const setRouteActive = (value: string) => {
         navigate(value)
+		cleanCurrentWaitingTimeout()
     }
 
     const tabs = [

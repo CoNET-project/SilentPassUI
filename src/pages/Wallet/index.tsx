@@ -24,21 +24,19 @@ const Wallet = ({}) => {
 		if (!tmpData) {
 			return;
 		}
-		if (tmpData.duplicateAccount)
-		tmpData.profiles[0] = {
-			...tmpData?.profiles[0],
-			activePassport: {
-				nftID: info[0].toString(),
-				expires: info[1].toString(),
-				expiresDays: info[2].toString(),
-				premium: info[3]
-			},
-		};
 
-		const activeNFTNumber = tmpData.profiles[0].activePassport||0
-		if (tmpData.profiles[0].activePassport?.expiresDays !== '7') {
-			tmpData.profiles[0].silentPassPassports = tmpData.profiles[0].silentPassPassports?.filter(passport => passport.expiresDays !== 7 || passport.nftID === activeNFTNumber)
+		if (info && tmpData.duplicateAccount) {
+			tmpData.profiles[0] = {
+				...tmpData?.profiles[0],
+				activePassport: {
+					nftID: info.nftIDs,
+					expires: info.expires,
+					expiresDays: info.expiresDays,
+					premium: info.premium
+				},
+			};
 		}
+
 
 		setActivePassport(tmpData.profiles[0].activePassport);
 

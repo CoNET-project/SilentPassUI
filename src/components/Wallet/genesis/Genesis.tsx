@@ -8,7 +8,7 @@ import { CoNET_Data } from './../../../utils/globals';
 import { ReactComponent as CrownBadge } from './../assets/GC.svg';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import {getCryptoPay} from './../../../services/subscription';
-import { waitingPaymentStatus,changeActiveNFT, getSpClubMemberId } from './../../../services/wallets';
+import { waitingPaymentStatus,changeActiveNFT, getSpClubMemberId, cleanCurrentWaitingTimeout } from './../../../services/wallets';
 import PayBNB from './../payBnb/PayBNB';
 import PayBSC from './../payBsc/PayBSC';
 import PayALI from './../payAli/PayALI';
@@ -21,6 +21,8 @@ import AppleModal from './../payApple/AppleModal';
 import {openWebLinkNative} from './../../../api';
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
+
+
 
 const Genesis = ({}) => {
     const navigate = useNavigate();
@@ -36,6 +38,16 @@ const Genesis = ({}) => {
     const [timeoutError, setTimeoutError] = useState(false);
     const [payUrl, setPayUrl] = useState('https://cashier.alphapay.ca/commodity/details/order/5728/100001644');
 
+	
+
+	const successCleanup = async (nft: string) => {
+		setSuccessNFTID(nft)
+		await changeActiveNFT(nft)
+		setQRWallet('')
+		setShowPrice('')
+		setVisible(false)
+		setCodeVisible(false)
+	}
     const purchaseBluePlan = async (token: cryptoName) => {
         const profile: profile = profiles[0];
         const agentWallet = profile.referrer||'';
@@ -52,20 +64,18 @@ const Genesis = ({}) => {
         setQRWallet(res.wallet)
         setCodeVisible(true);
 
-        const waiting = await waitingPaymentStatus ();
-        if (waiting === false) {
+		const waiting = await waitingPaymentStatus()
+		if (waiting === false) {
             return 
         }
 		const waitingNum = parseInt(waiting)
 		if (isNaN(waitingNum)) {
 			return
 		}
-
-        setSuccessNFTID(waiting)
 		
-        changeActiveNFT(waiting)
-        setQRWallet('')
-        setShowPrice('')
+		await successCleanup(waiting)
+
+        
     }
 
     const payClick = () => {
@@ -86,6 +96,7 @@ const Genesis = ({}) => {
             closeOnMaskClick: true,
         });
     }
+
     const stripeClick = () => {
         setPaymentKind(2);
         setSelectedPlan('31');
@@ -99,7 +110,9 @@ const Genesis = ({}) => {
 
     return (
         <>
-            <List.Item onClick={() => {setVisible(true)}}>
+            <List.Item onClick={() => {
+				setVisible(true)}
+				}>
                 <div className={styles.item}>
                     <div className={styles.icon}><CrownBadge /></div>
                     <div className={styles.text}>

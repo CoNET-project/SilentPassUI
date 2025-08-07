@@ -28,7 +28,7 @@ const NewVersion = ({}) => {
 
 		let remoteVer = await getLocalServerVersion()
 		if (isNewerVersion(version, remoteVer)) {
-			setHasNewVersion(remoteVer)
+			return setHasNewVersion(remoteVer)
 		}
 
 		setTimeout(() => {

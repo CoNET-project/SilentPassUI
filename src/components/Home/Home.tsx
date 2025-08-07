@@ -16,6 +16,7 @@ const Home = ({}) => {
     const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin,switchValue, isLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, isIOS, version, isInitialLoading, setIsInitialLoading} = useDaemonContext();
     const vpnTimeTimeout = useRef<NodeJS.Timeout>();
     const initPercentageRef=useRef(0);
+	const [globalCount, setGlobalCount] = useState(2)
     let first = 0;
 
     useEffect(() => {
@@ -53,6 +54,8 @@ const Home = ({}) => {
         const _status = Math.round(_initpercentage);
         const status = _status <= first ? first + 2 : _status;
         first = status;
+		setGlobalCount(status)
+
         if (status > 100) {
             initPercentageRef.current=98;
         } else {
@@ -100,7 +103,7 @@ const Home = ({}) => {
                 >
                     <div className={styles.bd}>
                         {isInitialLoading?<>
-                            <InitModule initPercentage={initPercentageRef.current} />
+                            <InitModule initPercentage={globalCount} />
                         </>:<>
                             <Content />
                         </>}

@@ -74,7 +74,6 @@ const listenProfileVer = async (
 
 
 
-
   conetDepinProvider.on("block", async (block) => {
 
     if (block === epoch + 1) {

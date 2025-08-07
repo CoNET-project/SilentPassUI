@@ -353,10 +353,20 @@ const getCurrentPassportInfoInChain = async () => {
 
   try {
     const result = await passportContract.getCurrentPassport(key)
-    return result
+	const nftNum = parseInt(result[0].toString())
+	if (nftNum) {
+		return {
+			nftIDs: nftNum.toString(),
+			expires: result[1].toString(),
+			expiresDays: result[2].toString(),
+			premium: result[3]
+		}
+	}
+    
   } catch (ex) {
     console.log(ex)
   }
+  return null
 }
 
 const activeNFTUrl = `${payment_endpoint}activeNFT`
@@ -592,6 +602,14 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
 // 		)
 //   }
 
+  const _activePassport = await getCurrentPassportInfoInChain();
+  
+	const info = _activePassport ? {
+		nftID: _activePassport?.nftIDs?.toString(),
+		expires: _activePassport?.expires?.toString(),
+		expiresDays: _activePassport?.expiresDays?.toString(),
+		premium: _activePassport?.premium,
+	} : null
 
   allPassports = allPassports.filter((passport) => passport.nftID !== 0)
 
@@ -600,6 +618,8 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
   });
 
   profile.silentPassPassports = allPassports;
+
+  profile.activePassport = info||profile.activePassport
 
   const temp = CoNET_Data;
 
@@ -1007,7 +1027,7 @@ const getRewordStaus = async(): Promise<boolean|null> => {
     const spReworkBalance = parseInt(price.toString())
     const SPBalance = profiles[1].tokens?.sp?.balance1
     //    balance < price && (initBalance === 0 || initBalance > 0 && initBalance > balance)
-    if (SPBalance === undefined ||  SPBalance < spReworkBalance && (initBalance === 0 || initBalance > 0 && initBalance > SPBalance)) {
+    if (SPBalance === undefined ||  SPBalance < (spReworkBalance * .95) && (initBalance === 0 || initBalance > 0 && initBalance > SPBalance)) {
       	return null
     }
 	
@@ -1328,10 +1348,35 @@ const getPaymentUrl = async (_plan: string) => {
 }
 
 
+let currentWaitingTimeout: NodeJS.Timeout
+
+const waiting = async (url: string, waitingPaymentStatusLoop: number, sendData: any): Promise<false|number> => new Promise(async resolve => {
+	const result = await postToEndpoint(url, true, sendData)
+	
+	if (result.status < 100|| result === false) {
+		if (++waitingPaymentStatusLoop > 50 ) {
+			
+			return resolve(false)
+		}
+			
+		return currentWaitingTimeout = setTimeout(() => {
+			return waiting(url, waitingPaymentStatusLoop, sendData).then (jj => resolve(jj))
+		}, 10 * 1000)
+	
+	}
+	return resolve(result.status)
+})
+
+
+  const cleanCurrentWaitingTimeout = () => {
+	clearTimeout(currentWaitingTimeout)
+  }
 const waitingPaymentStatus = async (): Promise<false|string> => {
+	cleanCurrentWaitingTimeout()
   if (!CoNET_Data?.profiles?.length) {
     return false;
   }
+
   const profile = CoNET_Data?.profiles[0]
   const solanaWallet = CoNET_Data?.profiles[1]
   if (!solanaWallet||!profile) {
@@ -1345,22 +1390,9 @@ const waitingPaymentStatus = async (): Promise<false|string> => {
   const sendData = {
       message, signMessage
     }
-  let waitingPaymentStatusLoop = 0
-  const waiting = async (): Promise<false|number> => new Promise(async resolve => {
-    const result = await postToEndpoint(url, true, sendData)
-    
-    if (result.status < 100|| result === false) {
-      if (waitingPaymentStatusLoop > 50 ) {
-        return resolve(false)
-      }
-      return setTimeout(() => {
-        return waiting().then (jj => resolve(jj))
-      }, 10 * 1000)
-    }
-    return resolve(result.status)
-  })
 
-  const result = await waiting ()
+
+  const result = await waiting (url, 0, sendData)
 
   return result.toString()
 }
@@ -1425,4 +1457,5 @@ export {
   storageAllNodes,
   getAllPassports,
   getProfileAssets,
+  cleanCurrentWaitingTimeout
 }

@@ -23,7 +23,7 @@ type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 const PayWays = ({defaultVisible}:params) => {
     const { t, i18n } = useTranslation();
     const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
-    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, isLocalProxy, setSuccessNFTID, setSubscriptionVisible } = useDaemonContext();
+    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, isLocalProxy, setSuccessNFTID, setSubscriptionVisible, setCheckinBalanceUP, checkinBalanceUP } = useDaemonContext();
     const [codeVisible, setCodeVisible] = useState(false);
     const [QRWallet, setQRWallet] = useState('');
     const [showPrice, setShowPrice] = useState('');
@@ -48,6 +48,9 @@ const PayWays = ({defaultVisible}:params) => {
         
         const waiting = await waitingPaymentStatus ()
         setCodeVisible(false)
+
+		setCheckinBalanceUP(!checkinBalanceUP)
+		
         if (!waiting) {
             return
         }
@@ -76,7 +79,7 @@ const PayWays = ({defaultVisible}:params) => {
                 </div>
                 <div className={styles.link}><a onClick={()=>{openWebLinkNative('https://solscan.io/tx/'+signature,isIOS,isLocalProxy)}}>{t('wallet-checkin-deposit-success-link')}</a></div>
             </div>,
-            confirmText:t('wallet-account-buy-success-close'),
+            confirmText:t('wallet-account-buy-success-close')
         })
     }
 

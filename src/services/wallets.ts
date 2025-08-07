@@ -1027,7 +1027,7 @@ const getRewordStaus = async(): Promise<boolean|null> => {
     const spReworkBalance = parseInt(price.toString())
     const SPBalance = profiles[1].tokens?.sp?.balance1
     //    balance < price && (initBalance === 0 || initBalance > 0 && initBalance > balance)
-    if (SPBalance === undefined ||  SPBalance < spReworkBalance && (initBalance === 0 || initBalance > 0 && initBalance > SPBalance)) {
+    if (SPBalance === undefined ||  SPBalance < (spReworkBalance * .95) && (initBalance === 0 || initBalance > 0 && initBalance > SPBalance)) {
       	return null
     }
 	

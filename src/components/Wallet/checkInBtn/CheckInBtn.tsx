@@ -17,7 +17,7 @@ const CheckInBtn = ({}) => {
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
 	const [insufficientBalance, setInsufficientBalance] = useState<boolean>(false)
-	const { setPaymentKind, setSubscriptionVisible } = useDaemonContext()
+	const { setPaymentKind, setSubscriptionVisible, checkinBalanceUP} = useDaemonContext()
 	const navigate = useNavigate()
 
 	const checkBalance = async () => {
@@ -33,7 +33,7 @@ const CheckInBtn = ({}) => {
 	}
 	useEffect(()=> {
 		checkBalance()
-	})
+	}, [checkinBalanceUP])
 
     const spRewordProcess = () => {
         if (disabled) {
@@ -49,7 +49,7 @@ const CheckInBtn = ({}) => {
         setSubscriptionVisible(true)
 
     }
-    const goCheck=() => {
+    const goCheck = () => {
         setVisible(true)
     }
 

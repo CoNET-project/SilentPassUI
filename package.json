@@ -1,6 +1,6 @@
 {
 	"name": "silentpass-daemon",
-	"version": "0.28.2",
+	"version": "0.28.4",
 	"private": true,
 	"dependencies": {
 		"@ant-design/icons": "^6.0.0",

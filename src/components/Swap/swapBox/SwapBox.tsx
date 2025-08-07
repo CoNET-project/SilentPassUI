@@ -10,13 +10,11 @@ import { ReactComponent as SwapBtn } from './../assets/swap-icon-black.svg';
 import { Input,Button,Popup,Empty,Modal,Result,Skeleton,SpinLoading } from 'antd-mobile';
 import { DownOutline } from 'antd-mobile-icons';
 import * as motion from "motion/react-client";
-import { getPriceFromDown2Up, getPriceFromUp2Down, swapTokens } from './../../../services/subscription';
+import { getPriceFromDown2Up, getPriceFromUp2Down, swapTokens, } from './../../../services/subscription';
 import {getRandomNode,allNodes} from './../../../services/mining';
 import { refreshSolanaBalances } from './../../../services/wallets';
-import {openWebLinkNative} from './../../../api';
-import { Connection, Keypair, Commitment, VersionedTransaction,RpcResponseAndContext, SignatureResult } from "@solana/web3.js";
-import bs58 from "bs58";
-import { ethers } from "ethers";
+import {openWebLinkNative} from './../../../api'
+
 import { useHistoryManager } from './../../Wallet/history/useHistoryManager';
 
 const SwapBox = ({}) => {
@@ -39,7 +37,7 @@ const SwapBox = ({}) => {
     const [sp2usdRatio, setSp2usdRatio] = useState(0);
     const [sol2usdRatio, setSol2usdRatio] = useState(0);
 
-    useEffect(()=>{
+    useEffect(()=> {
         if(Number(calcBalance(fromToken,false)) < Number(fromAmount)){
             setErrorInfo(t('swap-asset-insufficient'));
         }

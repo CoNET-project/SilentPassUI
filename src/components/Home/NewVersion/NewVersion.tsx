@@ -60,6 +60,7 @@ const NewVersion = ({}) => {
         }
         return false // 如果版本号完全相同，则不是更新的版本
     }
+	
     const refresh= async () => {
         // if (!power) {
         //     window.location.reload();

@@ -13,8 +13,9 @@
     }
 }
 .modalWrap{
+    height:100%;
     .bd{
-        height: calc(100vh - 70px);
+        height: calc(100% - 70px);
         overflow: auto;
         padding:0 4.2vw 20px;
         user-select:none;

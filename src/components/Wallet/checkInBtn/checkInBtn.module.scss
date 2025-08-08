@@ -40,8 +40,9 @@
     }
 }
 .modalWrap{
+    height:100%;
     .bd{
-        height: calc(100vh - 70px);
+        height: calc(100% - 70px);
         overflow: auto;
         .take{
             padding: 4vw 4.3vw;

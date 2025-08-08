@@ -51,8 +51,9 @@
     }
 }
 .modalWrap{
+    height:100%;
     .bd{
-        height: calc(100vh - 70px);
+        height: calc(100% - 70px);
         overflow: auto;
         .pcType{
             padding: 20px 4.2vw;

@@ -111,7 +111,7 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                         </div>
 
                         <ul className={styles.list}>
-                            {/*<li className={styles.listItem}>
+                            <li className={styles.listItem}>
                                 <div className={styles.type}>
                                     <ConetToken />
                                     <div className={styles.text}>
@@ -121,8 +121,8 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                                 </div>
                                 <div className={styles.value}>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</div>
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} extendref={spSendRef} />
-                            </li>*/}
-                            <li className={styles.listItemSp}>
+                            </li>
+                            {/*<li className={styles.listItemSp}>
                                 <div className={styles.type}>
                                     <ConetToken />
                                     <div className={styles.text}>
@@ -143,7 +143,7 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                                     <span className={styles.text}>{t('stake-title')}</span>
                                 </div>
                                 <SendButton type={'$SP'} wallet={profiles?.[1]} isEthers={false} handleRefreshSolanaBalances={handleRefreshSolanaBalances} usd={profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)} balance={(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))} extendref={spSendRef} />
-                            </li>
+                            </li>*/}
                             <li className={styles.listItem}>
                                 <div className={styles.type}>
                                     <SolanaToken />

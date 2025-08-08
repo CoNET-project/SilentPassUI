@@ -1,5 +1,6 @@
 .app {
-    height: 100vh;
+    height: 100%;
+    padding-top: env(safe-area-inset-top);
     display: flex;
     flex-direction: column;
     max-width: 600px;
@@ -8,7 +9,7 @@
 }
 .body {
     flex: 1;
-    height:calc(100vh - 50px);
+    height:calc(100% - 50px);
     overflow: auto;
 }
 .bottom {

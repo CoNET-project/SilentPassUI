@@ -47,7 +47,7 @@
             }
         }
         .list{
-            padding:0 0 0 1em;
+            padding:0 0 0 0;
         }
         .bold{
             color:#f1f1f1;
@@ -79,10 +79,10 @@
             color:#f1f1f1;
             font-weight: 500;
             font-size: 14px;
-            padding:12px 0;
+            padding:20px 0;
         }
         :global(.adm-list-item-content-main){
-            padding:5px 0;
+            padding:15px 0;
         }
     }
     :global(.adm-nav-bar){

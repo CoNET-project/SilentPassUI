@@ -526,6 +526,8 @@ a {
 	align-items: center;
 	width: 80vw;
 	height: 12.5vw;
+	cursor: pointer;
+	padding: 1rem;
 }
 .iosIcon{
 	width: 3.6vw;

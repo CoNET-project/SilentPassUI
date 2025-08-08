@@ -35,6 +35,8 @@ import ios from './assets/ios.png';
 import android2 from './assets/android2.png';
 import logo from './assets/logo.png';
 import Footer2 from '../../components/Footer/Foot2';
+import { parseQueryParams } from "../../utils/utils";
+import {getChannelPartners} from '../../services/subscription'
 
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 declare var TCPlayer: any;
@@ -110,7 +112,7 @@ const CustomerServiceButton = styled(BaseButton)`
 `;
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, channelPartners, showReferralsInput} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
@@ -129,7 +131,37 @@ const Home = () => {
     const [visibleVideoMacOS,setVisibleVideoMacOS]=useState(false)
 	const [tcAndroid,setTcAndroid]=useState(null)
     const [visibleVideoAndroid,setVisibleVideoAndroid]=useState(false)
+	const [channelPartners, setChannelPartners] = useState('')
+	const [showReferralsInput, setShowReferralsInput] = useState('')
 
+
+	const getParament = async () => {
+		const queryParams = parseQueryParams(window.location.search);
+		let secretPhrase = '', _channelPartners = '', referrals = ''
+		if (window.location.search && queryParams) {
+			secretPhrase = queryParams.get("secretPhrase");
+			secretPhrase = secretPhrase ? secretPhrase.replaceAll("-", " ") : null;
+			secretPhrase = queryParams.get("secretPhrase");
+			_channelPartners = queryParams.get("ChannelPartners")
+			referrals = queryParams.get("referrals")
+
+
+			
+			//		channelPartners setup
+			if (_channelPartners) {
+				const ischannelPartners = await getChannelPartners(_channelPartners)
+				if (ischannelPartners) {
+					setChannelPartners(_channelPartners)
+				}
+			}
+
+			//		referrals setup
+			if (referrals) {
+				setShowReferralsInput(referrals)
+			}
+		
+		}
+	}
 	// 2. 建立包含圖示和文字的 React 元件
 	const IOSDownloadButton = () => {
 		return (
@@ -189,9 +221,13 @@ const Home = () => {
 	if (!closestRegion?.length) {
 		return
 	}
-	// setIsInitialLoading(false);
+	setIsInitialLoading(false);
   }, [closestRegion])
 
+    useEffect(() => {
+	getParament()
+	
+  }, [])
 
   	const androidDownload = () => {
 		const node = getRandomNode()
@@ -304,61 +340,33 @@ const Home = () => {
 			<>
 			<div className="topLine1">
 				<img className="logo" src={logo} alt="logo" />
-				<div className="txt">全球首创Web3无痕上网</div>
+				<div className="txt">{t('download_page_title')}</div>
 			</div>
-			<div className="topLine2">无需账号 · 畅游全球</div>
-			<div className="topLine3">点击即可保护隐私</div>
+			<div className="topLine2">{t('download_page_title-1')}</div>
+			<div className="topLine3">{t('download_page_title-2')}</div>
 
 			<div className='homeMain'>
-				<div style={{height: '0.5rem'}}>
-					<img src={process.env.PUBLIC_URL + "/assets/header-title.svg"}></img>
-				</div>
-				<h1 style={{paddingTop: '3rem'}}>
-					<span>
-						{
-							t('download_page_title')
-						}
-					</span>
-					
-					
-				</h1>
-				<h1 style={{paddingTop: '1.5rem', fontSize:'2.5rem'}}>
-					{
-						t('download_page_title-1')
-					}
-				</h1>
-				<h1 style={{paddingTop: '1.5rem'}}>
-					<span>
-						{
-							t('download_page_title-2')
-						}
-					</span>
-					
-				</h1>
+				
+				
+				
+				
 				<div style={{paddingTop: '2rem', }}>
 					<img src={phoneImg} style={{width: '47.7vw'}}></img>
 				</div>
-				<div style={{paddingTop: '2rem'}} onClick={iOSDownload}>
-					<IOSDownloadButton />
-				</div>
-				<div style={{paddingTop: '2rem'}} onClick={androidDownload}>
-					<AndroidDownloadButton />
-				</div>
-				<div style={{paddingTop: '2rem'}} onClick={supportClick}>
-					<ContactSupportButton />
-				</div>
+				
 			</div>
 
-			<div className="bigBtn">
+			<div className="bigBtn" onClick={iOSDownload}>
 				<img className="iosIcon" alt="ios" src={ios} />
-				<div className='bigBtnTxt'>ios下载</div>
+				<div className='bigBtnTxt'>{t('download_page_ios')}</div>
 			</div>
-			<div className="bigBtn">
+
+			<div className="bigBtn" onClick={androidDownload}>
 				<img className="iosIcon" alt="android" src={android2} />
-				<div className='bigBtnTxt'>android下载</div>
+				<div className='bigBtnTxt'>{t('download_page_android')}</div>
 			</div>
-			<div className="bigBtn" style={{marginBottom:'4vw'}}>
-				<div className='bigBtnTxt'>无法下载，联系客服</div>
+			<div className="bigBtn" style={{marginBottom:'4vw'}} onClick={supportClick}>
+				<div className='bigBtnTxt'>{t('download_page_support')}</div>
 			</div>
 
 			<div className='downloadLinks'>

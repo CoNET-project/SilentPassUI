@@ -33,7 +33,7 @@ const Stake = ({visible,setVisible}:stakeParams) => {
         }
         return num.toFixed(2).toString();
     }
-    
+
     return (
         <Popup
             visible={visible}
@@ -70,20 +70,24 @@ const Stake = ({visible,setVisible}:stakeParams) => {
                         <div className={styles.title}><ClockCircleOutline className={styles.icon} />{t('stake-modal-extra-title-1')}</div>
                         <div className={styles.historyList}>
                             <div className={styles.gridbox}>
-                                <Grid columns={3} gap={8}>
+                                <Grid columns={4} gap={8}>
                                     <Grid.Item><span className={styles.hd}>{t('stake-modal-history-th-1')}</span></Grid.Item>
                                     <Grid.Item><span className={styles.hd}>{t('stake-modal-history-th-2')}</span></Grid.Item>
+                                    <Grid.Item><span className={styles.hd}>可领取奖励</span></Grid.Item>
                                     <Grid.Item><span className={styles.hd}>{t('stake-modal-history-th-3')}</span></Grid.Item>
 
                                     <Grid.Item>2025-07-01</Grid.Item>
                                     <Grid.Item>12312412 SP</Grid.Item>
-                                    <Grid.Item><LockOutline />Locked</Grid.Item>
-
-                                    <Grid.Item>2025-07-01</Grid.Item>
                                     <Grid.Item>12312412 SP</Grid.Item>
                                     <Grid.Item><LockOutline />Locked</Grid.Item>
 
                                     <Grid.Item>2025-07-01</Grid.Item>
+                                    <Grid.Item>12312412 SP</Grid.Item>
+                                    <Grid.Item>12312412 SP</Grid.Item>
+                                    <Grid.Item><LockOutline />Locked</Grid.Item>
+
+                                    <Grid.Item>2025-07-01</Grid.Item>
+                                    <Grid.Item>12312412 SP</Grid.Item>
                                     <Grid.Item>12312412 SP</Grid.Item>
                                     <Grid.Item><LockOutline />Locked</Grid.Item>
                                 </Grid>

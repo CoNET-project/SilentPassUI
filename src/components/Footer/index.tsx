@@ -9,10 +9,13 @@ import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
 import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg";
 import { cleanCurrentWaitingTimeout } from './../../services/wallets'
 import { TabBar } from 'antd-mobile';
+import { useTranslation } from 'react-i18next';
 import Subscription from '@/components/Subscription/Subscription';
 import Status from '@/components/Home/Status/Status';
+import styles from '@/components/Footer/footer.module.scss';
 
 const Footer = ({}) => {
+    const { t, i18n } = useTranslation();
     const navigate = useNavigate()
     const location = useLocation()
     const { pathname } = location
@@ -25,36 +28,36 @@ const Footer = ({}) => {
     const tabs = [
         {
             key: '/',
-            title: '首页',
+            title: t('footer-nav-1'),
             icon: (pathname=='/'?<HomeBlueIcon />:<HomeIconGrey />),
         },
         {
             key: '/wallet',
-            title: '钱包',
+            title: t('footer-nav-2'),
             icon: (pathname=='/wallet'?<WalletBlueIcon />:<WalletIconGrey />),
         },
         {
             key: '/swap',
-            title: '兑换',
+            title: t('footer-nav-3'),
             icon: (pathname=='/swap'?<SwapBlueIcon />:<SwapIconGrey />),
         },
         {
             key: '/settings',
-            title: '设置',
+            title: t('footer-nav-4'),
             icon: (pathname=='/settings'?<SettingsIconBlue />:<SettingsIconGrey />),
         },
     ]
     
     return (
-        <>
+        <div className={styles.footer}>
             <TabBar safeArea activeKey={pathname} onChange={value => setRouteActive(value)}>
                 {tabs.map(item => (
-                    <TabBar.Item key={item.key} icon={item.icon} />
+                    <TabBar.Item key={item.key} icon={item.icon} title={item.title} />
                 ))}
             </TabBar>
             <Subscription />
             <Status />
-        </>
+        </div>
     )
 };
 

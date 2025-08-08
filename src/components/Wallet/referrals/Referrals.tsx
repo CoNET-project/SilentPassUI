@@ -9,7 +9,7 @@ import { useDaemonContext } from './../../../providers/DaemonProvider';
 import { getExpirationDate } from './../../../utils/utils';
 import ReferralCont from './ReferralCont';
 import Inviters from './../inviters/Inviters';
-import ReferralIcon from './../assets/Referrals.png';
+import { ReactComponent as ReferralIcon } from './../assets/Referrals.svg';
 
 const Referrals = ({}) => {
     const { t, i18n } = useTranslation();
@@ -26,10 +26,9 @@ const Referrals = ({}) => {
         <>
             <List.Item onClick={() => {setVisible(true)}}>
                 <div className={styles.item}>
-                    <div className={styles.icon}><img src={ReferralIcon} width="25" height="25" /></div>
+                    <div className={styles.icon}><ReferralIcon /></div>
                     <div className={styles.text}>
                         <div className={styles.title}>{t('referrals-title')}</div>
-                        {/*<div className={styles.subTitle}>{t('referrals-extra-title')}</div>*/}
                     </div>
                 </div>
             </List.Item>

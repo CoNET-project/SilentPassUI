@@ -520,6 +520,11 @@
 	"status-list-des-5":"Choose a monthly or yearly plan to enjoy uninterrupted access — no check-in needed",
 	"status-list-des-6":" → Supports credit card, Apple Pay, $SP and more",
 	"status-list-des-7":"One-time purchase of a GENESIS CIRCLE NFT unlocks lifetime Silent Pass access",
-	"status-list-des-8":" → Includes on-chain identity, $SP rewards, and governance rights"
+	"status-list-des-8":" → Includes on-chain identity, $SP rewards, and governance rights",
+
+	"footer-nav-1":"Home",
+	"footer-nav-2":"Account",
+	"footer-nav-3":"Swap",
+	"footer-nav-4":"Settings"
 
 }

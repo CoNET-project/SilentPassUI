@@ -534,5 +534,10 @@
 	"status-list-des-5":"选择月度或年度套餐，持续访问无需打卡",
 	"status-list-des-6":" → 支持信用卡、Apple Pay、$SP等多种支付方式",
 	"status-list-des-7":"一次性购买 GENESIS CIRCLE NFT，即可终身无限使用 Silent Pass",
-	"status-list-des-8":" → 独享链上身份 + $SP 激励 + 治理权利 + 永久通行权"
+	"status-list-des-8":" → 独享链上身份 + $SP 激励 + 治理权利 + 永久通行权",
+
+	"footer-nav-1":"主页",
+	"footer-nav-2":"账号",
+	"footer-nav-3":"兑换",
+	"footer-nav-4":"设置"
 }

@@ -14,14 +14,11 @@ import Stake from '@/components/Wallet/stake/Stake';
 import { List, Modal, Result, Button } from 'antd-mobile';
 import { CheckCircleFill } from 'antd-mobile-icons';
 import { useDaemonContext } from '@/providers/DaemonProvider';
-import { getPassportTitle } from "@/utils/utils";
-import { ReactComponent as CrownBadge } from '@/components/Wallet/assets/GC.svg';
-import { ReactComponent as ArmBand } from '@/components/Wallet/assets/blue-badge.svg';
 import {openWebLinkNative} from '@/api';
 
 const WalletDetail = ({}) => {
     const { t, i18n } = useTranslation();
-    const { successNFTID, setSuccessNFTID, activePassport, isIOS, isLocalProxy, setSubscriptionVisible } = useDaemonContext();
+    const { successNFTID, setSuccessNFTID, isIOS, isLocalProxy, setSubscriptionVisible } = useDaemonContext();
     const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
     const [stakeVisible, setStakeVisible] = useState<boolean>(false);
@@ -52,14 +49,6 @@ const WalletDetail = ({}) => {
 
     return (
         <div className={styles.wallet}>
-            <h1 className={styles.title}>
-                {t('wallet-title')}
-                <div className={styles.armBand}>
-                    {getPassportTitle(activePassport) === 'passport_Monthly'?<ArmBand />:''}
-                    {getPassportTitle(activePassport) === 'passport_Annually'?<ArmBand />:''}
-                    {getPassportTitle(activePassport) === 'passport_Infinite'?<CrownBadge />:''}
-                </div>
-            </h1>
             <Brief />
             <div className={styles.list}>
                 <List style={{'--active-background-color':'#343434'}}>

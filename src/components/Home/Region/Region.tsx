@@ -14,6 +14,9 @@ const Region = ({}) => {
     const { power, isLocalProxy, allRegions, sRegion, setIsRandom, setSRegion } = useDaemonContext();
     const [visible, setVisible] = useState<boolean>(false);
 
+    const isWindows = () => {
+        return navigator.userAgent.indexOf('Windows') !== -1;
+    }
     const convertCN = (code: string) => {
         if (code === 'CN') {
             return 'HK'
@@ -37,10 +40,10 @@ const Region = ({}) => {
             <div className={`${styles.region} ${power ? styles.regionDisabled : ''}`} onClick={handleGoSelect}>
                 <div className={styles.country}>
                     <ReactCountryFlag
-                        countryCode={allRegions?.[sRegion]?.code}
-                        svg
+                        countryCode={convertCN(allRegions?.[sRegion]?.code)}
+                        svg={isWindows()?true:false}
                         aria-label="United States"
-                        style={{width:'30px',height:'30px'}}
+                        style={{width:'30px',height:'30px',fontSize:'30px'}}
                     />
                     <div className={styles.countryName}>{t('region_' + convertCN(allRegions?.[sRegion]?.code))}</div>
                 </div>
@@ -66,9 +69,9 @@ const Region = ({}) => {
                                     <div className={styles.country}>
                                         <ReactCountryFlag
                                             countryCode={convertCN(region.code)}
-                                            svg
+                                            svg={isWindows()?true:false}
                                             aria-label="United States"
-                                            style={{width:'30px',height:'30px'}}
+                                            style={{width:'30px',height:'30px',fontSize:'30px'}}
                                         />
                                         <div className={styles.countryName}>{t(`region_${convertCN(region.code)}`)}</div>
                                     </div>

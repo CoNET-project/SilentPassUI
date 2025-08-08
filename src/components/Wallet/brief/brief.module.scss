@@ -1,9 +1,36 @@
 .briefWrap{
+    display: flex;
+    align-items: center;
     text-align: left;
     color: #fff;
     font-size: 13px;
     line-height: 1.6;
     font-weight: 500;
+    padding:20px 16px;
+    border-radius:14px;
+    background: linear-gradient(90deg, rgba(109,100,170,0.18), rgba(109,121,160,0.12));
+    border: 0.5px solid rgba(255,255,255,0.04);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    .iconBox{
+        background: #333340;
+        border-radius: 8px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding:5px 8px;
+        margin:0 15px 0 0;
+        .icon{
+            color:#a7a7ab;
+            font-size: 30px;
+        }
+        .armBand{
+            line-height:1;
+            svg{
+                width: auto;
+                height: 30px;
+            }
+        }
+    }
     label{
         color: #a0a0a0;
         font-weight: 400;

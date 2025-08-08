@@ -13,7 +13,6 @@ const Setting = ({}) => {
     
     return (
         <div className={styles.setting}>
-            <h1 className={styles.title}>{t('Settings_Title')}</h1>
             <div className={styles.version}>
                 <NoticeBar
                     color='default'

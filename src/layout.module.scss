@@ -15,16 +15,5 @@
 .bottom {
     flex: 0;
     background: #0d0d0d;
-    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.2);
-    svg{
-        width:30px;
-        height:30px;
-    }
-    :global(.adm-tab-bar-item-icon){
-        font-size: 30px;
-        height:30px;
-    }
-    :global(.adm-tab-bar-item){
-        padding:10px 8px;
-    }
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.4);
 }

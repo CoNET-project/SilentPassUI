@@ -10,7 +10,6 @@ const Swap = ({}) => {
     
     return (
         <div className={styles.swap}>
-            <h1 className={styles.title}>{t('swap_title')}</h1>
             <SwapBox />
             <Property />
             <Supplier />

@@ -97,10 +97,9 @@ const Passport = ({}) => {
                                     </CheckList.Item>
                                 </CheckList>
                             </div>
-                            {(getPassportTitle(activePassport)==='passport_Freemium' && activePassport?.expiresDays!=='0')?<>
-                                <div className={styles.tips}>{t('passport-pay-plan-ios-tips-1')}</div>
-                                <div className={styles.warning}><ExclamationTriangleOutline className={styles.icon} />{t('passport-pay-plan-ios-tips-2')}</div>
-                            </>:''}
+                            
+                            <div className={styles.warning}><ExclamationTriangleOutline className={styles.icon} />{t('passport-pay-plan-ios-tips-2')}</div>
+                            
                             <div className={styles.selector}>
                                 <Selector
                                     columns={options.length}

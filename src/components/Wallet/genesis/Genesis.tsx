@@ -117,7 +117,7 @@ const Genesis = ({}) => {
                     <div className={styles.icon}><CrownBadge /></div>
                     <div className={styles.text}>
                         <div className={styles.title}>{t('genesis-title')}</div>
-                        <div className={styles.subTitle}>$31</div>
+                        <div className={styles.subTitle}>$31, {t('genesis-charater-1')}</div>
                     </div>
                 </div>
             </List.Item>

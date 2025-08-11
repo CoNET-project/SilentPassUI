@@ -9,7 +9,7 @@ import {
   readPrivateKey,
 } from "openpgp";
 import contracts from "../utils/contracts";
-import { conetProvider } from "../utils/constants";
+import { conetDepinProvider } from "../utils/constants";
 import { initProfileTokens, postToEndpoint } from "../utils/utils";
 import async from "async";
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
@@ -80,12 +80,12 @@ const testClosestRegion = async (callback: () => void) => {
 
   async.each(allRegions, (item, _callback) => {
 	const node = getRandomNodeFromRegion(item)
-	const url = `https://${node.domain}`;
-      const startTime = new Date().getTime();
+	const url = `http://${node.ip_addr}`
+      const startTime = new Date().getTime()
 	  const test = async () => {
-		await postToEndpointGetBody(url, false,false, null);
-		const endTime = new Date().getTime();
-		const delay = endTime - startTime;
+		await postToEndpointGetBody(url, false,false, null)
+		const endTime = new Date().getTime()
+		const delay = endTime - startTime
 		testRegion.push({ node, delay })
 		_callback(new Error(''))
 	  }
@@ -111,72 +111,49 @@ const getAllNodes = async (
   getAllNodesProcess = true;
 
   const GuardianNodesContract = new ethers.Contract(
-    contracts.ConetGuardianNodesV6.address,
-    contracts.ConetGuardianNodesV6.abi,
-    conetProvider
-  );
-  maxNodes = 0;
-  try {
-    const _maxNodes: BigInt = await GuardianNodesContract.currentNodeID();
-    maxNodes = parseInt(_maxNodes.toString());
-  } catch (ex) {
-    return console.log(`getAllNodes currentNodeID Error`, ex);
-  }
-  if (!maxNodes) {
-    return console.log(`getAllNodes STOP scan because scanNodes == 0`);
-  }
-  let _allNodes:nodes_info[] = [];
-  for (let i = 0; i < maxNodes; i++) {
-    _allNodes.push({
-      region: "",
-      country: "",
-      ip_addr: "",
-      armoredPublicKey: "",
-      last_online: false,
-      nftNumber: 100 + i,
-    });
-  }
-  const GuardianNodesInfoContract = new ethers.Contract(
     contracts.GuardianNodesInfoV6.address,
     contracts.GuardianNodesInfoV6.abi,
-    conetProvider
-  );
-  const country: Map<string, boolean> = new Map();
-  currentScanNodeNumber = 0;
-  let i = 0;
-  await async
-    .mapLimit(_allNodes, 1, async (n: nodes_info, next: any) => {
-      const nodeInfo = await GuardianNodesInfoContract.getNodeInfoById(
-        n.nftNumber
-      );
-      if (nodeInfo?.pgp) {
-        i = n.nftNumber;
-        currentScanNodeNumber++;
-        n.region = nodeInfo.regionName;
-        const _country = n.region.split(".")[1];
-        country.set(_country, true);
-        n.ip_addr = nodeInfo.ipaddress;
-        n.country = _country;
-        n.armoredPublicKey = Buffer.from(nodeInfo.pgp, "base64").toString();
-        const pgpKey1 = await readKey({
-          armoredKey: n.armoredPublicKey,
-        });
-        n.domain =
-          pgpKey1.getKeyIDs()[1].toHex().toUpperCase() + ".conet.network";
-        return;
-      }
-      throw new Error(`Ended`);
-    })
-    .catch(() => {});
-  maxNodes = currentScanNodeNumber - currentScanNodeNumber * 0.1;
+    conetDepinProvider
+  )
+  let _nodes
+  try {
+    _nodes = await GuardianNodesContract.getAllNodes(0, 1000)
+  } catch (ex) {
+	callback([])
+    return console.log(`getAllNodes currentNodeID Error`, ex)
+  }
 
-  const index = _allNodes.findIndex((n) => n.nftNumber === i) + 1;
-  _allNodes = _allNodes.slice(0, index);
-  allRegions = Array.from(country.keys());
+
+  const _allNodes:nodes_info[] = []
+  const _countryArray: Map<string, boolean> = new Map()
+  for (let i = 0; i < _nodes.length; i ++) {
+	const node = _nodes[i]
+	const id = parseInt(node[0].toString())
+	const pgpString: string = Buffer.from( node[1], 'base64').toString()
+	const domain: string = node[2]
+	const ipAddr: string = node[3]
+	const region: string = node[4]
+	const country_item = region.split('.')[1]
+	const itemNode: nodes_info = {
+		country: country_item,
+		ip_addr: ipAddr,
+		armoredPublicKey: pgpString,
+		domain: domain,
+		last_online: true,
+		nftNumber: id,
+		region
+	}
+	_countryArray.set(country_item, true)
+	_allNodes.push(itemNode)
+  }
+
+
+
+  	allRegions = Array.from(_countryArray.keys())
 	allNodes = _allNodes
-	storageAllNodes(allNodes)
-	 callback(_allNodes);
-};
+	await storageAllNodes(allNodes)
+	callback(_allNodes)
+}
 
 const getAllRegions = (nodes: nodes_info[]) => {
 	const country: Map<string, boolean> = new Map();
@@ -196,7 +173,7 @@ const getAllNodesV2 = async (
 	if (index > -1) {
 		allNodes.splice(index, 1)
 	}
-	if (allNodes) {
+	if (allNodes?.length) {
 		getAllRegions(allNodes)
 		return testClosestRegion( ()=> {
 			const country = testRegion[0].node.country;

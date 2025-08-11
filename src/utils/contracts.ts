@@ -19,14 +19,9 @@ import {
   
   const contracts = {
 	GuardianNodesInfoV6: {
-	  address: "0x88cBCc093344F2e1A6c2790A537574949D711E9d",
+	  address: "0x2DF3302d0c9aC19BE01Ee08ce3DDA841BdcF6F03",
 	  abi: GuardianNodesInfoV6Abi,
-	  network: "CONET Holesky",
-	},
-	ConetGuardianNodesV6: {
-	  address: "0x312c96DbcCF9aa277999b3a11b7ea6956DdF5c61",
-	  abi: ConetGuardianNodesV6,
-	  network: "CONET Holesky",
+	  network: "CONET DePIN",
 	},
 	ClaimableConetPoint: {
 	  address: "0x6C7C575010F86A311673432319299F3D68e4b522",

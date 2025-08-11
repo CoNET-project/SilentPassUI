@@ -35,13 +35,18 @@ const ReferralCont=({  })=> {
     const handleSetInviter = async () => {
         setSubLoading(true);
         const result = await getirDropForSPReff(inviter)
-		Toast.show({icon: 'success'});
+		
         setSubLoading(false);
 
         if (typeof result === 'boolean') {
             Toast.show({icon: 'fail',content:t('comp-accountlist-Referral-Inviter-fail')});
             return ;
         }
+        Toast.show({icon: 'success'});
+
+		setTimeout(() => {
+			setSubLoading(false);
+		}, 1000 * 10)
     }
 
     return (

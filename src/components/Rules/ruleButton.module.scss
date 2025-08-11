@@ -48,6 +48,9 @@
         :global(.adm-switch-checkbox){
             background: #d4d4d4;
         }
+        :global(.adm-switch.adm-switch-checked .adm-switch-checkbox){
+            background: #1677ff;
+        }
     } 
     .hd{
         display: flex;

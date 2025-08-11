@@ -479,6 +479,7 @@
 	"stake-modal-history-th-1":"Date",
 	"stake-modal-history-th-2":"Stake Amount",
 	"stake-modal-history-th-3":"Status",
+	"stake-modal-history-th-4":"Rewards",
 	"stake-modal-extra-desc-1":"Each stake must be exactly $25 worth of $SP",
 	"stake-modal-extra-desc-2":"Max 4 stakes per wallet/GENESIS, total not exceeding $100",
 	"stake-modal-extra-desc-3":"Each stake is locked for 12 months, cannot be withdrawn early",

@@ -494,6 +494,7 @@
 	"stake-modal-history-th-1":"日期",
 	"stake-modal-history-th-2":"数量",
 	"stake-modal-history-th-3":"状态",
+	"stake-modal-history-th-4":"可领取奖励",
 	"stake-modal-extra-desc-1":"每笔质押需等值 $25 美元 的 $SP",
 	"stake-modal-extra-desc-2":"每个账号最多质押 4 笔 / 总额 $100 美元",
 	"stake-modal-extra-desc-3":"每笔质押锁仓周期为 12 个月，期间不可提前取出本金",

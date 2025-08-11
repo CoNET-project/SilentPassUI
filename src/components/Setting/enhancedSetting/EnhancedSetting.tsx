@@ -3,15 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import styles from './../generalSetting/generalSetting.module.scss';
 import { useTranslation } from 'react-i18next';
 import { List,Switch } from 'antd-mobile';
-import { FilterOutlined,LinkOutlined,GiftOutlined } from '@ant-design/icons';
+import { FilterOutlined,LinkOutlined,GiftOutlined,SyncOutlined } from '@ant-design/icons';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
-import Filter from './../../Rules/Filter';
 
 const EnhancedSetting = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
-    const [visible, setVisible] = useState(false);
-    const { quickLinksShow, setQuickLinksShow } = useDaemonContext();
+    const { quickLinksShow, setQuickLinksShow, setRuleVisible } = useDaemonContext();
 
     return (
         <>
@@ -25,7 +23,7 @@ const EnhancedSetting = ({}) => {
                     </List.Item>
                     <List.Item 
                         prefix={<span className={styles.icon}><FilterOutlined /></span>} 
-                        onClick={() => {setVisible(true)}}
+                        onClick={() => {setRuleVisible(true)}}
                     >
                         {t('Settings_Passcode_WebsiteFilter')}
                     </List.Item>
@@ -37,7 +35,6 @@ const EnhancedSetting = ({}) => {
                     </List.Item>
                 </List>
             </div>
-            <Filter visible={visible} setVisible={setVisible} />
         </>
     );
 };

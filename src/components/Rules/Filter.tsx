@@ -1,4 +1,4 @@
-import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
+import {useState,useRef,useEffect,useCallback,CSSProperties,Dispatch, SetStateAction} from 'react';
 import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock,Dialog,Toast,Input,Switch,Popover } from 'antd-mobile';
 import styles from './ruleButton.module.scss';
 import { RightOutline,EditSOutline,DeleteOutline,CheckOutline,QuestionCircleOutline } from 'antd-mobile-icons';
@@ -30,7 +30,7 @@ type ProxyData = {
 };
 interface FilterProps {
     visible: boolean;
-    setVisible: React.Dispatch<React.SetStateAction<boolean>>;
+    setVisible: Dispatch<SetStateAction<boolean>>;
 }
 
 const SpecialItem=({item,index,key,style,getCustomSetting}: {item:any;index: number;key: string;style: CSSProperties;getCustomSetting:() => void;})=>{

@@ -134,8 +134,8 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                                         <Grid.Item>{convertNumberToString(profiles?.[1]?.tokens?.sp?.balance || (0.0).toFixed(2))}</Grid.Item>
                                         <Grid.Item>${profiles?.[1]?.tokens?.sp?.usd || (0.0).toFixed(2)}</Grid.Item>
 
-                                        <Grid.Item><LockOutline />1.18k</Grid.Item>
-                                        <Grid.Item><LockOutline />$0.8766</Grid.Item>
+                                        <Grid.Item><span className={styles.locked}><LockOutline className={styles.icon} />1.18k</span></Grid.Item>
+                                        <Grid.Item><span className={styles.locked}><LockOutline className={styles.icon} />$0.8766</span></Grid.Item>
                                     </Grid>
                                 </div>
                                 <div className={styles.stakeBtn} onClick={() => {setStakeVisible(true)}}>

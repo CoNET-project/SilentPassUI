@@ -13,11 +13,14 @@ import { useTranslation } from 'react-i18next';
 import Subscription from '@/components/Subscription/Subscription';
 import Status from '@/components/Home/Status/Status';
 import styles from '@/components/Footer/footer.module.scss';
+import { useDaemonContext } from "@/providers/DaemonProvider";
+import Filter from '@/components/Rules/Filter';
 
 const Footer = ({}) => {
     const { t, i18n } = useTranslation();
-    const navigate = useNavigate()
-    const location = useLocation()
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { ruleVisible, setRuleVisible } = useDaemonContext();
     const { pathname } = location
 
     const setRouteActive = (value: string) => {
@@ -57,6 +60,7 @@ const Footer = ({}) => {
             </TabBar>
             <Subscription />
             <Status />
+            <Filter visible={ruleVisible} setVisible={setRuleVisible} />
         </div>
     )
 };

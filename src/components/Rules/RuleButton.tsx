@@ -2,18 +2,17 @@ import {useState,useRef,useEffect,useCallback,CSSProperties} from 'react';
 import { Popup,NavBar,List,SearchBar,Ellipsis,Checkbox,SpinLoading,ErrorBlock,Dialog,Toast,Input } from 'antd-mobile';
 import styles from './ruleButton.module.scss';
 import { SetOutline } from 'antd-mobile-icons';
-import Filter from './Filter';
+import { useDaemonContext } from '@/providers/DaemonProvider';
 
 const RuleButton=({})=> {
-    const [visible, setVisible] = useState(false);
+    const { setRuleVisible } = useDaemonContext();
     
     return (
         <>
-            <div className={styles.ruleBtn} onClick={(e) => {e.preventDefault();e.stopPropagation();setVisible(true)}}>
+            <div className={styles.ruleBtn} onClick={(e) => {e.preventDefault();e.stopPropagation();setRuleVisible(true)}}>
                 <SetOutline />
             </div>
             
-            <Filter visible={visible} setVisible={setVisible} />
         </>
     );
 }

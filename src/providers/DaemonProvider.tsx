@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 type DaemonContext = {
   version: string
@@ -76,7 +76,8 @@ type DaemonContext = {
   setStatusVisible: (val: boolean) => void;
   checkinBalanceUP: boolean,
   setCheckinBalanceUP: (val: boolean) => void;
-
+  ruleVisible: boolean,
+  setRuleVisible: Dispatch<SetStateAction<boolean>>;
 };
 
 type DaemonProps = {
@@ -158,7 +159,9 @@ const defaultContextValue: DaemonContext = {
   statusVisible: true,
   setStatusVisible: () => {},
   checkinBalanceUP: false,
-  setCheckinBalanceUP: (val: boolean) => {}
+  setCheckinBalanceUP: (val: boolean) => {},
+  ruleVisible: false,
+  setRuleVisible: () => {}
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -205,11 +208,13 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [showReferralsInput, setShowReferralsInput] = useState(false);
   const firstLoad = useRef(true); //系统代理 第一次
   const firstLoad2 = useRef(true);  //快捷链接 第一次
+  const firstLoad3 = useRef(true);  //过滤开启 第一次
   const [duplicateAccount, setDuplicateAccount] = useState(null)
   const [subscriptionVisible, setSubscriptionVisible] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [statusVisible, setStatusVisible] = useState<boolean>(false);
   const [checkinBalanceUP, setCheckinBalanceUP] = useState<boolean>(false);
+  const [ruleVisible, setRuleVisible] = useState<boolean>(false);
 
   useEffect(() => {
     {
@@ -240,9 +245,12 @@ export function DaemonProvider({ children }: DaemonProps) {
   },[switchValue])
 
   useEffect(()=>{
-    let storage = window.localStorage;
-    webFilterRef.current=getWebFilter;
-    storage.webFilter=JSON.stringify(getWebFilter);
+    if(!firstLoad3.current){
+      let storage = window.localStorage;
+      webFilterRef.current=getWebFilter;
+      storage.webFilter=JSON.stringify(getWebFilter);
+    }
+    firstLoad3.current=false;
   },[getWebFilter])
 
   useEffect(()=>{
@@ -265,7 +273,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, version, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
-        setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible }}>
+        setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible, setRuleVisible }}>
 
       {children}
     </Daemon.Provider>

@@ -73,7 +73,7 @@ const Stake = ({visible,setVisible}:stakeParams) => {
                                 <Grid columns={4} gap={8}>
                                     <Grid.Item><span className={styles.hd}>{t('stake-modal-history-th-1')}</span></Grid.Item>
                                     <Grid.Item><span className={styles.hd}>{t('stake-modal-history-th-2')}</span></Grid.Item>
-                                    <Grid.Item><span className={styles.hd}>可领取奖励</span></Grid.Item>
+                                    <Grid.Item><span className={styles.hd}>{t('stake-modal-history-th-4')}</span></Grid.Item>
                                     <Grid.Item><span className={styles.hd}>{t('stake-modal-history-th-3')}</span></Grid.Item>
 
                                     <Grid.Item>2025-07-01</Grid.Item>

@@ -11,11 +11,11 @@ const Status = ({}) => {
 
     useEffect(() => {
         const passportExpiration = profiles?.[0]?.activePassport?.expires
-        if (passportExpiration) {
+        if (passportExpiration != null) {   // null 和 undefined 会跳过，但 0 会进入
             const timeLeft = passportExpiration - Math.floor(Date.now() / 1000)
             setPassportTimeLeft(timeLeft)
         }
-    }, [activePassportUpdated, profiles]);
+    }, [activePassportUpdated, profiles?.[0]?.activePassport?.expires]);
 
     return (
         <Modal

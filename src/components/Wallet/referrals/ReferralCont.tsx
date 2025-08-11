@@ -33,12 +33,9 @@ const ReferralCont=({  })=> {
     const [subLoading, setSubLoading] = useState(false);
 
     const handleSetInviter = async () => {
-		if (subLoading) {
-			return
-		}
         setSubLoading(true);
         const result = await getirDropForSPReff(inviter)
-		
+		Toast.show({icon: 'success'});
         setSubLoading(false);
 
         if (typeof result === 'boolean') {

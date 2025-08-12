@@ -1281,7 +1281,8 @@
 			{
 				"name":"京东",
 				"value":[
-					"360buyimg.com"
+					"360buyimg.com",
+					"jd.com"
 				],
 				"valueTag":"京东",
 				"checked":"true"

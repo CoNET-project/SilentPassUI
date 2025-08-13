@@ -1,7 +1,7 @@
 type CallbackFunction = (response: any) => void;
 
 interface BridgeMessage {
-  	event: string;
+  	event?: string;
   	data?: any;
   	callbackId?: string;
   	response?: any;
@@ -40,7 +40,7 @@ export const Bridge = {
 	    const messageStr = JSON.stringify(message);
 	    makeSend(messageStr);
   	},
-  	receive(rawMessage: string): void {
+  	receive(rawMessage: string, normalReceiveToDo?: (message: BridgeMessage, makeSend: any) => void): void {
     	if (typeof rawMessage !== "string") return;
 
     	let message: BridgeMessage;
@@ -58,17 +58,9 @@ export const Bridge = {
         		cb(message.response);
         		delete callbacks[message.callbackId];
       		}
-    	} else {	// 正常收到事件
-      		if (message.event === "native_event") {
-        		// 做一些事情后如果有回调就回复
-        		if (message.callbackId) {
-          			const response = {
-            			callbackId: message.callbackId,
-            			response: { success: true, base: "999ddd" },
-          			};
-          			makeSend(JSON.stringify(response));
-        		}
-      		}
+    	} else {	
+    		// 正常收到事件
+    		if(normalReceiveToDo){normalReceiveToDo(message,makeSend)}
     	}
   	}
 }

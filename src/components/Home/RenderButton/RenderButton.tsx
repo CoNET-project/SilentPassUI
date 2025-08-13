@@ -37,9 +37,8 @@ const RenderButton = ({}) => {
         let error = false;
         setErrorMessage('');
         let selectedCountryIndex = -1
-
+        setIsConnectionLoading(true);
         if (power) {
-            setIsConnectionLoading(true)
             if (isLocalProxy) {
                 //          Desktop
                 const response = await stopSilentPass();
@@ -83,7 +82,6 @@ const RenderButton = ({}) => {
             return
         }
 
-        setIsConnectionLoading(true)
         await getAllRegions()
         const allNodes = getAllNodes
         
@@ -162,7 +160,7 @@ const RenderButton = ({}) => {
             }
         }
         setTimeout(() => {
-             setIsConnectionLoading(false)
+            setIsConnectionLoading(false)
             setPower(true)
         }, 1000)
 

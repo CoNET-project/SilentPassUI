@@ -53,14 +53,14 @@ const WalletDetail = ({}) => {
             <div className={styles.list}>
                 <List style={{'--active-background-color':'#343434'}}>
                     <MainWallet />
-                    <Backups />
+                    {/*<Backups />*/}
                     <SPWallet stakeVisible={stakeVisible} setStakeVisible={setStakeVisible} />
                     <Genesis />
                     <Passport />
                     <Referrals />
                 </List>
             </div>
-            <div className={styles.operateBar}>
+            {/*<div className={styles.operateBar}>
                 <RedeemBtn isRedeemProcessLoading={isRedeemProcessLoading} setIsRedeemProcessLoading={setIsRedeemProcessLoading} />
                 <CheckInBtn />
                 <div className={styles.stakeBtn}>
@@ -68,7 +68,7 @@ const WalletDetail = ({}) => {
 						// setStakeVisible(true)
 					}} disabled block color='primary' fill='solid'>{t('stake-title')}</Button>
                 </div>
-            </div>
+            </div>*/}
             <Modal
                 className={styles.successModal}
                 visible={isSuccessModalOpen}

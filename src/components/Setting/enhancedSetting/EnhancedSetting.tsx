@@ -21,12 +21,12 @@ const EnhancedSetting = ({}) => {
                     >
                         {t('Settings_Passcode_Reward')}
                     </List.Item>
-                    <List.Item 
+                    {/*<List.Item 
                         prefix={<span className={styles.icon}><FilterOutlined /></span>} 
                         onClick={() => {setRuleVisible(true)}}
                     >
                         {t('Settings_Passcode_WebsiteFilter')}
-                    </List.Item>
+                    </List.Item>*/}
                     <List.Item 
                         prefix={<span className={styles.icon}><LinkOutlined /></span>} 
                         extra={<Switch checked={quickLinksShow} onChange={(val:boolean)=>{setQuickLinksShow(val)}} style={{'--height': '18px','--width': '38px'}} />}

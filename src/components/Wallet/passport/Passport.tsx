@@ -21,25 +21,29 @@ const Passport = ({}) => {
     const [payType, setPayType] = useState<number>(1);
     const [applePayVisible, setApplePayVisible] = useState<boolean>(false);
     const options=[
-        {
-            label: <div className={styles.spPayBtn}>$SP</div>,
-            value: 1,
-        },
-        {
-            label: <div className={styles.stripePayBtn}><StripeIcon /></div>,
-            value: 2,
-        },
+        // {
+        //     label: <div className={styles.spPayBtn}>$SP</div>,
+        //     value: 1,
+        // },
+        // {
+        //     label: <div className={styles.stripePayBtn}><StripeIcon /></div>,
+        //     value: 2,
+        // },
         // {
         //     label: <div className={styles.paypalPayBtn}><PaypalIcon /></div>,
         //     value: 4,
         // },
-        ...(isIOS && !isLocalProxy
-            ? [{
-                label: <div className={styles.applePayBtn}><ApplePay /></div>,
-                value: 999,
-              }]
-            : []
-        )
+        // ...(isIOS && !isLocalProxy
+        //     ? [{
+        //         label: <div className={styles.applePayBtn}><ApplePay /></div>,
+        //         value: 999,
+        //       }]
+        //     : []
+        // )
+        {
+            label: <div className={styles.applePayBtn}><ApplePay /></div>,
+            value: 999,
+        }
     ];
 
     const handleChange=(value: (string | number)[])=>{

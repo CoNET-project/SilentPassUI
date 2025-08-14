@@ -168,10 +168,10 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
                             </li>:''}
                         </ul>
 
-                        <div className={styles.payWaysWrap}>
+                        {/*<div className={styles.payWaysWrap}>
                             <PayWays defaultVisible={false} />
                         </div>
-
+*/}
                         {profiles?.[1]?.keyID ?<div className={styles.address}>
                             <div className={styles.cont}>
                                 <label>{t('wallet-account-main-wallet-address-title')}</label>

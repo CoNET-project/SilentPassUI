@@ -243,7 +243,7 @@
 	"comp-TokenTab-Auto": "自动",
 	"comp-TokenTab-fee": "手续费",
 
-	"home-newversion": "软件更新，请点击此处，更新至v",
+	"home-newversion": "发现新版本，立即更新至 v",
 	
 	"comp-Rules-RuleButton-input-placeholder": "输入网址或关键词，快速查找过滤项",
 
@@ -540,6 +540,6 @@
 
 	"footer-nav-1":"主页",
 	"footer-nav-2":"账号",
-	"footer-nav-3":"兑换",
+	"footer-nav-3":"交易所",
 	"footer-nav-4":"设置"
 }

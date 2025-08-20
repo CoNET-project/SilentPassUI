@@ -2,39 +2,27 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from '@/components/Home/NewVersion/newVersion.module.scss';
 import { useTranslation } from 'react-i18next';
-import { InformationCircleOutline } from 'antd-mobile-icons';
-import { NoticeBar,Space,Toast } from 'antd-mobile';
+import { Space,Toast } from 'antd-mobile';
 import { startSilentPass, stopSilentPass, getLocalServerVersion } from "@/api";
 import { useDaemonContext } from "@/providers/DaemonProvider";
-import {Bridge} from '@/bridge/webview-bridge';
 
 const NewVersion = ({}) => {
     const { t, i18n } = useTranslation();
-    const [hasNewVersion, setHasNewVersion]= useState('');
-    const {power,version, isLocalProxy, isIOS} = useDaemonContext();
-
+    const {power,version, hasNewVersion, setHasNewVersion} = useDaemonContext();
 
     useEffect(() => {
         compairVersionNew();
     }, [])
 
-	let isRunning = false
-
-	const checkcompairVersionTime = 1000 * 60
-
 	const compairVersionNew = async () => {
-		if (isRunning) return
-		isRunning = true
-
-		let remoteVer = await getLocalServerVersion()
+		let remoteVer = await getLocalServerVersion();
 		if (isNewerVersion(version, remoteVer)) {
 			return setHasNewVersion(remoteVer)
 		}
 
 		setTimeout(() => {
-			isRunning = false
 			compairVersionNew()
-		}, checkcompairVersionTime)
+		}, 1000 * 60)
 	}
 
     /**
@@ -61,36 +49,8 @@ const NewVersion = ({}) => {
         return false // 如果版本号完全相同，则不是更新的版本
     }
 	
-    const refresh= async () => {
-        // if (!power) {
-        //     window.location.reload();
-        // }else{
-        //     Toast.show({content: '请先点击按钮关闭代理'});
-        // }
-		if (isLocalProxy) {
-			//          Desktop
-			
-			await Bridge.send('stopVPN',{},(res:any)=>{});
-			window.location.reload();
-		} else if (isIOS ) {
-			window?.webkit?.messageHandlers["updateVPNUI"].postMessage(null)
-			//  @ts-ignore
-		} else if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
-			const base = btoa(JSON.stringify({cmd: 'updateVPNUI', data: ""}))
-			//  @ts-ignore
-			AndroidBridge.receiveMessageFromJS(base)
-		}
-    }
-
     return (
-        <div className={styles.newVersion}>
-            {hasNewVersion && <NoticeBar
-                closeable
-                shape='rounded'
-                content={<div onClick={refresh} style={{cursor:'pointer'}}>{t('home-newversion')}{hasNewVersion}</div>}
-                color='alert'
-            />}
-        </div>    
+        <></>  
     );
 };
 

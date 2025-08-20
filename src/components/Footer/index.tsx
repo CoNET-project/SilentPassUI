@@ -17,7 +17,7 @@ import styles from '@/components/Footer/footer.module.scss';
 import { useDaemonContext } from "@/providers/DaemonProvider";
 import Filter from '@/components/Rules/Filter';
 import {Bridge} from '@/bridge/webview-bridge';
-
+import NewVersion from "@/components/Home/NewVersion/NewVersion";
 
 interface BridgeMessage {
     event?: string;
@@ -30,7 +30,7 @@ const Footer = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const location = useLocation();
-    const { ruleVisible, setRuleVisible, setPower } = useDaemonContext();
+    const { ruleVisible, setRuleVisible, setPower, hasNewVersion, setHasNewVersion } = useDaemonContext();
     const { pathname } = location;
 
 
@@ -77,6 +77,7 @@ const Footer = ({}) => {
             key: '/settings',
             title: t('footer-nav-4'),
             icon: (pathname=='/settings'?<SettingsIconBlue />:<SettingsIconGrey />),
+            badge: (hasNewVersion?'1':'0')
         },
     ]
     
@@ -84,9 +85,10 @@ const Footer = ({}) => {
         <div className={styles.footer}>
             <TabBar safeArea activeKey={pathname} onChange={value => setRouteActive(value)}>
                 {tabs.map(item => (
-                    <TabBar.Item key={item.key} icon={item.icon} title={item.title} />
+                    <TabBar.Item key={item.key} icon={item.icon} title={item.title} badge={item.badge} />
                 ))}
             </TabBar>
+            <NewVersion />
             <Subscription />
             <Status />
             <Filter visible={ruleVisible} setVisible={setRuleVisible} />

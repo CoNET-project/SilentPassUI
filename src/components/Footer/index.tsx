@@ -77,7 +77,7 @@ const Footer = ({}) => {
             key: '/settings',
             title: t('footer-nav-4'),
             icon: (pathname=='/settings'?<SettingsIconBlue />:<SettingsIconGrey />),
-            badge: (hasNewVersion?'1':'0')
+            ...(hasNewVersion ? { badge: '1' } : {}),
         },
     ]
     

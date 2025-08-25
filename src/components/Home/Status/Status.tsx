@@ -15,7 +15,7 @@ const Status = ({}) => {
             const timeLeft = passportExpiration - Math.floor(Date.now() / 1000)
             setPassportTimeLeft(timeLeft)
         }
-    }, [activePassportUpdated, profiles?.[0]?.activePassport?.expires]);
+    }, [activePassportUpdated,profiles, profiles?.[0]?.activePassport?.expires]);
 
     return (
         <Modal

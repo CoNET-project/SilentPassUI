@@ -77,10 +77,10 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
         const absNum = Math.abs(num);
         for (const unit of units) {
             if (absNum >= unit.value) {
-                return (num / unit.value).toFixed(2) + unit.symbol;
+                return (num / unit.value).toFixed(4) + unit.symbol;
             }
         }
-        return num.toFixed(2).toString();
+        return num.toFixed(4).toString();
     }
 
     return (

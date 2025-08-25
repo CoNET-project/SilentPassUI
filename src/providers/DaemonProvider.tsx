@@ -78,6 +78,8 @@ type DaemonContext = {
   setCheckinBalanceUP: (val: boolean) => void;
   ruleVisible: boolean,
   setRuleVisible: Dispatch<SetStateAction<boolean>>;
+  hasNewVersion: boolean|string,
+  setHasNewVersion: Dispatch<SetStateAction<boolean|string>>;
 };
 
 type DaemonProps = {
@@ -161,7 +163,9 @@ const defaultContextValue: DaemonContext = {
   checkinBalanceUP: false,
   setCheckinBalanceUP: (val: boolean) => {},
   ruleVisible: false,
-  setRuleVisible: () => {}
+  setRuleVisible: () => {},
+  hasNewVersion: false,
+  setHasNewVersion: () => {}
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -215,6 +219,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [statusVisible, setStatusVisible] = useState<boolean>(false);
   const [checkinBalanceUP, setCheckinBalanceUP] = useState<boolean>(false);
   const [ruleVisible, setRuleVisible] = useState<boolean>(false);
+  const [hasNewVersion, setHasNewVersion] = useState<boolean|string>(false);
 
   useEffect(() => {
     {
@@ -273,7 +278,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, version, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
-        setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible, setRuleVisible }}>
+        setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible, setRuleVisible,hasNewVersion, setHasNewVersion }}>
 
       {children}
     </Daemon.Provider>

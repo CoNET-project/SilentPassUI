@@ -9,6 +9,7 @@ import { ReactComponent as SpToken } from './../assets/sp-token.svg';
 import { ReactComponent as StripeIcon } from "./../assets/stripe-white.svg";
 import { ReactComponent as PaypalIcon } from "./../assets/paypal.svg";
 import { ReactComponent as ApplePay } from './../assets/Apple_Pay_logo.svg'
+import { ReactComponent as Apple } from './../assets/appleRestore.svg';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import { getPassportTitle } from "./../../../utils/utils";
 import ApplePayModal from './ApplePayModal';
@@ -33,13 +34,10 @@ const Passport = ({}) => {
         //     label: <div className={styles.paypalPayBtn}><PaypalIcon /></div>,
         //     value: 4,
         // },
-        // ...(isIOS && !isLocalProxy
-        //     ? [{
-        //         label: <div className={styles.applePayBtn}><ApplePay /></div>,
-        //         value: 999,
-        //       }]
-        //     : []
-        // )
+        {
+            label: <div className={styles.applePayBtn}><Apple /></div>,
+            value: 111,
+        },
         {
             label: <div className={styles.applePayBtn}><ApplePay /></div>,
             value: 999,
@@ -50,9 +48,9 @@ const Passport = ({}) => {
         if(value.length) setSelectedPlan(String(value[0]));
     }
     const handlePurchase=(type: number)=> {
-        if(type!==999){
-            setPaymentKind(type);
-            setSubscriptionVisible(true);
+        if(type==111){
+            //restore代码
+
         }else{
             setVisible(false);
             setApplePayVisible(true);
@@ -88,14 +86,14 @@ const Passport = ({}) => {
                                     <CheckList.Item value='1'>
                                         <div className={styles.specItem}>
                                             <div className={styles.name}>{t('passport-pay-plan-pc-plan-unit-1')}</div>
-                                            <div className={styles.price}>$USD 2.99 {t('passport-pay-plan-pc-plan-name-1')}</div>
+                                            <div className={styles.price}>$USD 3.29 {t('passport-pay-plan-pc-plan-name-1')}</div>
                                             <div className={styles.desc}>{t('passport-pay-plan-pc-plan-desc')}</div>
                                         </div>
                                     </CheckList.Item>
                                     <CheckList.Item value='12'>
                                         <div className={styles.specItem}>
                                             <div className={styles.name}>{t('passport-pay-plan-pc-plan-unit-2')}</div>
-                                            <div className={styles.price}>$USD 24.99 {t('passport-pay-plan-pc-plan-name-2')}</div>
+                                            <div className={styles.price}>$USD 32.49 {t('passport-pay-plan-pc-plan-name-2')}</div>
                                             <div className={styles.desc}>{t('passport-pay-plan-pc-plan-desc')}</div>
                                         </div>
                                     </CheckList.Item>

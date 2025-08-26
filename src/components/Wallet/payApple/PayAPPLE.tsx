@@ -24,7 +24,6 @@ const PayAPPLE = ({parentVisible,setParentVisible,appleVisible,setAppleVisible}:
         <>
             <div className={styles.methodIem} onClick={handleClick}>
                 <div className={styles.img}><ApplePay /></div>
-                <label>APPLE</label>
             </div>
         </>  
     );

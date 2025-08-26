@@ -19,6 +19,7 @@ import PayAPPLE from './../payApple/PayAPPLE';
 import PayModal from './../payModal/PayModal';
 import AppleModal from './../payApple/AppleModal';
 import {openWebLinkNative} from './../../../api';
+import { ReactComponent as Apple } from './../assets/appleRestore.svg';
 
 type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 
@@ -117,7 +118,7 @@ const Genesis = ({}) => {
                     <div className={styles.icon}><CrownBadge /></div>
                     <div className={styles.text}>
                         <div className={styles.title}>{t('genesis-title')}</div>
-                        <div className={styles.subTitle}>$31, {t('genesis-charater-1')}</div>
+                        <div className={styles.subTitle}>$41.99, {t('genesis-charater-1')}</div>
                     </div>
                 </div>
             </List.Item>
@@ -133,7 +134,7 @@ const Genesis = ({}) => {
                     <div className={styles.character}>{t('genesis-charater-1')}</div>
                     <div className={styles.character}>{t('genesis-charater-2')}</div>
                     <div className={styles.icon}><CrownBadge /></div>
-                    <div className={styles.price}>$31</div>
+                    <div className={styles.price}>$41.99</div>
                     <div className={styles.rights}>{t('genesis-charater-3')}</div>
                     <div className={styles.rights}>{t('genesis-charater-4')}</div>
                     <div className={styles.rights}>{t('genesis-charater-5')}</div>
@@ -152,20 +153,19 @@ const Genesis = ({}) => {
                             <Grid.Item>
                                 <PayALI payClick={payClick} />
                             </Grid.Item>
-                        </Grid>
-                        <Grid columns={3} gap={5}>
-                            <Grid.Item>
+                        </Grid>*/}
+                        <Grid columns={2} gap={5}>
+                            {/*<Grid.Item>
                                 <PaySTRIPE stripeClick={stripeClick} />
                             </Grid.Item>
                             <Grid.Item>
                                 <PayWECHAT payClick={payClick} />
-                            </Grid.Item>
+                            </Grid.Item>*/}
                             <Grid.Item>
-                                { isIOS &&  <PayAPPLE parentVisible={visible} setParentVisible={setVisible} appleVisible={appleVisible} setAppleVisible={setAppleVisible} /> }
+                                <div className={styles.methodIem}>
+                                    <div className={styles.img}><Apple /></div>
+                                </div>
                             </Grid.Item>
-   
-                        </Grid>*/}
-                        <Grid columns={1} gap={5}>
                             <Grid.Item>
                                 <PayAPPLE parentVisible={visible} setParentVisible={setVisible} appleVisible={appleVisible} setAppleVisible={setAppleVisible} />
                             </Grid.Item>

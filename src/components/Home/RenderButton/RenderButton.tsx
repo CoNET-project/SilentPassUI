@@ -25,10 +25,7 @@ const RenderButton = ({}) => {
     useEffect(() => {
         if (power && !isConnectionLoading) {
             setShowConnected(true);
-            const timer = window.setTimeout(() => {
-                setShowConnected(false);
-            }, 2000);
-            return () => clearTimeout(timer);
+            return ;
         }
         setShowConnected(false);
     }, [power, isConnectionLoading]);
@@ -53,8 +50,8 @@ const RenderButton = ({}) => {
                 //  @ts-ignore
                 AndroidBridge.receiveMessageFromJS(base)
             }
-            setPower(false);
-            setTimeout(() => setIsConnectionLoading(false), 1000)
+            
+            setTimeout(() => {setIsConnectionLoading(false);setPower(false);}, 2000)
             return ;
         }
         if (!profiles?.[0]?.activePassport?.expires) {
@@ -185,9 +182,8 @@ const RenderButton = ({}) => {
                     )}
                 </div>
             </BlobWrapper>
-            {isConnectionLoading && <div className={styles.loadingText}>Loading...</div>}
+            {isConnectionLoading && <div className={styles.loadingText}>{power?'Disconnecting...':'Loading...'}</div>}
             {showConnected && <div className={styles.connected}>Connected</div>}
-            {/*{!isConnectionLoading && !power && errorMessage && (<div className={styles.errorConnected}>{errorMessage}</div>)}*/}
         </div>
     );
 };

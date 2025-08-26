@@ -53,7 +53,7 @@ const WalletDetail = ({}) => {
             <div className={styles.list}>
                 <List style={{'--active-background-color':'#343434'}}>
                     <MainWallet />
-                    {/*<Backups />*/}
+                    <Backups />
                     <SPWallet stakeVisible={stakeVisible} setStakeVisible={setStakeVisible} />
                     <Genesis />
                     <Passport />

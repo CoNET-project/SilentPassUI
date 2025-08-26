@@ -240,7 +240,7 @@
 
 	"comp-Rules-RuleButton-input-placeholder": "Search keywords or URLs",
 
-	"home-newversion": "Software Update, Please Click here, Update to v",
+	"home-newversion": "New version available, update now to v",
 
 	"passport_unlimit": "Unlimited",
 	"passport_Freemium": "Free Trial",
@@ -320,7 +320,7 @@
 	"wallet-account-main-wallet-privitekey-title": "Private Key (Keep Secure)",
 	"wallet-account-main-wallet-change-fail":"更换SP Passport失败",
 	"wallet-account-sp-wallet":"$SP Wallet",
-	"wallet-account-sp-wallet-desc":"This wallet is on the Solana chain and is used to manage your $SP assets, including staking, claiming rewards, and transfers.",
+	"wallet-account-sp-wallet-desc":"This wallet is on the Solana chain and is used to manage your $SP assets, including claiming rewards, and transfers.",
 	"genesis-title":"Genesis Circle",
 	"genesis-charater-1": "One-time purchase, lifetime access",
 	"genesis-charater-2": "Limited to 10,000 worldwide",

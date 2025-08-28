@@ -48,13 +48,24 @@ const Passport = ({}) => {
         if(value.length) setSelectedPlan(String(value[0]));
     }
     const handlePurchase=(type: number)=> {
-        if(type==111){
-            //restore代码
+        if( type == 111){
 
-        }else{
-            setVisible(false);
-            setApplePayVisible(true);
-        }
+			const planObj = {
+				publicKey: profiles[0].keyID,
+				Solana: profiles[1].keyID
+			}
+
+			const base64VPNMessage = btoa(JSON.stringify(planObj));
+			window?.webkit?.messageHandlers["restorePurchases"]?.postMessage(base64VPNMessage);
+
+			setPaymentKind(3)
+			setSubscriptionVisible(true);
+			return
+		} 
+
+		setVisible(false);
+		setApplePayVisible(true);
+        
     }
 
     return (

@@ -526,6 +526,8 @@
 	"footer-nav-1":"Home",
 	"footer-nav-2":"Account",
 	"footer-nav-3":"Swap",
-	"footer-nav-4":"Settings"
+	"footer-nav-4":"Settings",
+
+	"checkUpdate":"Check for updates"
 
 }

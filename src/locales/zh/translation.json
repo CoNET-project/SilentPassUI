@@ -541,5 +541,7 @@
 	"footer-nav-1":"主页",
 	"footer-nav-2":"账号",
 	"footer-nav-3":"交易所",
-	"footer-nav-4":"设置"
+	"footer-nav-4":"设置",
+
+	"checkUpdate":"检查更新"
 }

@@ -126,10 +126,6 @@ function App() {
 	  		const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
 	  		setRandomSolanaRPC(allNodes[randomIndex])
 	  		await _getServerIpAddress()
-	  		if (!CoNET_Data || !CoNET_Data?.profiles) {
-				return
-	  		}
-
 		})
 		await handlePassport ()
   	}

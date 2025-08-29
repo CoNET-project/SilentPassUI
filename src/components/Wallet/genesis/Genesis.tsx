@@ -112,8 +112,9 @@ const Genesis = ({}) => {
     return (
         <>
             <List.Item onClick={() => {
-				setVisible(true)}
-				}>
+					// setVisible(true)
+					setAppleVisible(true)
+				}}>
                 <div className={styles.item}>
                     <div className={styles.icon}><CrownBadge /></div>
                     <div className={styles.text}>

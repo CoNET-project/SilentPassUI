@@ -363,6 +363,7 @@
 	"passport-pay-plan-ios-plan-desc-2":"按月计费，自动续订",
 	"passport-pay-plan-ios-tips-1":"您目前处于免费访问期",
 	"passport-pay-plan-ios-tips-2":"现在订阅立即开始您的付费计划",
+	"apple_restore_Purchases": "恢复已购项目",
 	"passport-pay-plan-ios-extra-title":"订阅详细信息",
 	"passport-pay-plan-ios-extra-item-1":"当您开始订阅时，您的Apple ID帐户将被收取费用",
 	"passport-pay-plan-ios-extra-item-2":"您的订阅将在每个计费期结束时自动续订，除非在到期日前至少24小时取消",

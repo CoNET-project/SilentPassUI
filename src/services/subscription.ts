@@ -99,6 +99,7 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 		if (!temp || !temp?.duplicateAccount) {
 			return false
 		}
+
 		changeStopProcess(true)
 		temp.duplicateAccount.keyID = duplicateAddress
 		temp.profiles[1].keyID = solanaWallet.publicKey
@@ -118,8 +119,9 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 
 	const ret = await tryTest(profiles[0].keyID, passcode)
 
-		//		already backuped
+		//		already backuped？
 	if (ret && ret.isCode === false ) {
+		//		检查是否为恢复中的失败
 		const duplicateAddress = ret.duplicateAddress.toLowerCase()
 		if ( duplicateAddress !== ethers.ZeroAddress && temp.duplicateAccount.keyID.toLowerCase() !== duplicateAddress) {
 			if (temp?._duplicateCode) {
@@ -157,6 +159,7 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	}
 
 	let restoreMnemonicPhrase = ''
+	
 	try {
 		restoreMnemonicPhrase = await aesGcmDecrypt(restoreEncryptoText, passcode + password)
 		if (!restoreMnemonicPhrase) {
@@ -167,6 +170,7 @@ export const restoreAccount = async (passcode: string, password: string, temp: e
 	} catch (ex) {
 		return false
 	}
+
 	const solanaWallet = await initSolana(restoreMnemonicPhrase)
 	if (!solanaWallet || !temp?._duplicateCode) {
 		return false

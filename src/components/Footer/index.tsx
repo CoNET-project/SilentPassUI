@@ -68,11 +68,11 @@ const Footer = ({}) => {
             title: t('footer-nav-2'),
             icon: (pathname=='/wallet'?<WalletBlueIcon />:<WalletIconGrey />),
         },
-        {
-            key: '/swap',
-            title: t('footer-nav-3'),
-            icon: (pathname=='/swap'?<SwapBlueIcon />:<SwapIconGrey />),
-        },
+        // {
+        //     key: '/swap',
+        //     title: t('footer-nav-3'),
+        //     icon: (pathname=='/swap'?<SwapBlueIcon />:<SwapIconGrey />),
+        // },
         {
             key: '/settings',
             title: t('footer-nav-4'),

@@ -113,9 +113,12 @@ const testClosestRegion = async (callback: () => void) => {
 }
 
 const getAllNodes = async (
-  setClosestRegion: (entryNodes: nodes_info[]) => void,
   callback: (allnodes: nodes_info[]) => void
 ) => {
+	if (nodes)  {
+		allNodes = nodes
+		callback(nodes)
+	}
   if (getAllNodesProcess) {
     return
   }
@@ -184,7 +187,7 @@ const getAllRegions = (nodes: nodes_info[]) => {
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
-	allNodes = await checkLocalStorageNodes()||nodes
+	allNodes = await checkLocalStorageNodes() || nodes
 	const index = allNodes.findIndex(n => n.ip_addr === '74.208.234.210')
 	if (index > -1) {
 		allNodes.splice(index, 1)
@@ -192,7 +195,6 @@ const getAllNodesV2 = async (
 	if (allNodes?.length) {
 		getAllRegions(allNodes)
 		return testClosestRegion( ()=> {
-
 			const country = testRegion[0].node.country;
 			const entryRegionNodes = allNodes.filter((n) => n.country === country);
 			do {
@@ -201,14 +203,29 @@ const getAllNodesV2 = async (
 				if (node?.ip_addr) {
 					entryNodes.push(node);
 				}
-			} while (entryNodes.length < 20);
+			} while (entryNodes.length < 10);
 			setClosestRegion(entryNodes);
 			callback(allNodes)
-			getAllNodes(setClosestRegion, () => {})
+			getAllNodes(() => {})
 		})
 		
 	}
-	getAllNodes(setClosestRegion, callback)
+
+	getAllNodes(() => {
+		return testClosestRegion( ()=> {
+			const country = testRegion[0].node.country;
+			const entryRegionNodes = allNodes.filter((n) => n.country === country);
+			do {
+				const index = Math.floor(Math.random() * entryRegionNodes.length);
+				const node = entryRegionNodes[index];
+				if (node?.ip_addr) {
+					entryNodes.push(node);
+				}
+			} while (entryNodes.length < 10);
+			setClosestRegion(entryNodes)
+			callback(allNodes)
+		})
+	})
 }
 
 

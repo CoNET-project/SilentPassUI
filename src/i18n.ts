@@ -5,6 +5,7 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 // 导入翻译资源（手动或动态导入）
 import translationEn from './locales/en/translation.json';
 import translationZh from './locales/zh/translation.json';
+import translationJp from './locales/jp/translation.json';
 
 // 定义资源类型
 const resources = {
@@ -14,6 +15,9 @@ const resources = {
     zh: {
         translation: translationZh,
     },
+    jp: {
+        translation: translationJp,
+    }
 } as const;
 
 i18n

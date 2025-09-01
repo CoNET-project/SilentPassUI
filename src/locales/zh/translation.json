@@ -313,6 +313,7 @@
     "language":"语言",
 	"en": "英文",
 	"zh": "中文",
+	"jp": "日文",
 
 	"wallet-title":"我的账号",
 	"wallet-redeem-btn":"立即兑换",
@@ -541,5 +542,8 @@
 	"footer-nav-1":"主页",
 	"footer-nav-2":"账号",
 	"footer-nav-3":"交易所",
-	"footer-nav-4":"设置"
+	"footer-nav-4":"设置",
+
+	"checkUpdate":"检查更新",
+	"hasNoUpdate":"当前已是最新版本"
 }

@@ -5,13 +5,14 @@ import { NavBar,Popup,CheckList,setDefaultConfig } from 'antd-mobile';
 import type { CheckListValue } from 'antd-mobile/es/components/check-list';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
 import enUS from 'antd-mobile/es/locales/en-US';
+import jaJP from 'antd-mobile/es/locales/ja-JP';
 
 interface LanguagesProps {
     visible: boolean;
     setVisible: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-const languageList = [{name:"English",value:'en'},{name:"中文",value:'zh'}];
+const languageList = [{name:"English",value:'en'},{name:"中文",value:'zh'},{name:"日本語",value:'jp'}];
 
 const Languages=({visible, setVisible}: LanguagesProps)=> {
     const { t,i18n } = useTranslation();
@@ -23,8 +24,9 @@ const Languages=({visible, setVisible}: LanguagesProps)=> {
         type AntdLocale = {
             en: typeof enUS;
             zh: typeof zhCN;
+            jp: typeof jaJP;
         }
-        const antdMLang: AntdLocale={en:enUS,zh:zhCN};
+        const antdMLang: AntdLocale={en:enUS,zh:zhCN,jp:jaJP};
         let storage = window.localStorage;
         localStorage.lang=value;
 		//@ts-ignore

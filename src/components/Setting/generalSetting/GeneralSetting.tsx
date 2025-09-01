@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './generalSetting.module.scss';
 import { useTranslation } from 'react-i18next';
-import { List,Switch,Badge,Dialog } from 'antd-mobile';
+import { List,Switch,Badge,Dialog, Toast } from 'antd-mobile';
 import { GlobalOutlined,CustomerServiceOutlined,QuestionCircleOutlined,ApiOutlined,CloudSyncOutlined } from '@ant-design/icons';
 import Languages from './../../Languages';
 import {openWebLinkNative,getLocalServerVersion} from '@/api';
@@ -38,10 +38,14 @@ const GeneralSetting = ({}) => {
                 closeOnAction: true,
                 actions: [
                     [
-                        {key: 'cancel',text: '取消'},
-                        {key: 'confirm',text: '确认',onClick:()=>{refresh()}}
+                        {key: 'cancel',text: t('cancel')},
+                        {key: 'confirm',text: t('confirm'),onClick:()=>{refresh()}}
                     ],
                 ],
+            })
+        }else{
+            Toast.show({
+                content: t('hasNoUpdate')
             })
         }
     }
@@ -118,7 +122,7 @@ const GeneralSetting = ({}) => {
                         prefix={<span className={styles.icon}><CloudSyncOutlined /></span>} 
                         onClick={() => {compairVersionNew()}}
                     >
-                        检查更新 {hasNewVersion?<Badge content='1'></Badge>:''}
+                        {t('checkUpdate')} {hasNewVersion?<Badge content='1'></Badge>:''}
                     </List.Item>
                 </List>
             </div>

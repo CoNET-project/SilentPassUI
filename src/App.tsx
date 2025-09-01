@@ -161,7 +161,9 @@ function App() {
 			//@ts-ignore
 			const userLang = navigator.language || navigator.userLanguage;
 			if (/^zh/.test(userLang)) {
-				lang='zh'
+				lang='zh';
+			}else if (/^ja/.test(userLang)) {
+			  	lang = 'ja';
 			}
 		}
   		setDefaultConfig({

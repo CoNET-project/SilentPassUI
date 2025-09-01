@@ -17,12 +17,7 @@ const Region = ({}) => {
     const isWindows = () => {
         return navigator.userAgent.indexOf('Windows') !== -1;
     }
-    const convertCN = (code: string) => {
-        if (code === 'CN') {
-            return 'HK'
-        }
-        return code
-    }
+
     const handleRegion = (code: number) => {
         if (code === -1) setIsRandom(true);
         else setIsRandom(false);
@@ -40,12 +35,12 @@ const Region = ({}) => {
             <div className={`${styles.region} ${power ? styles.regionDisabled : ''}`} onClick={handleGoSelect}>
                 <div className={styles.country}>
                     <ReactCountryFlag
-                        countryCode={convertCN(allRegions?.[sRegion]?.code)}
+                        countryCode={allRegions?.[sRegion]?.code}
                         svg={isWindows()?true:false}
                         aria-label="United States"
                         style={{width:'30px',height:'30px',fontSize:'30px'}}
                     />
-                    <div className={styles.countryName}>{t('region_' + convertCN(allRegions?.[sRegion]?.code))}</div>
+                    <div className={styles.countryName}>{t('region_' + allRegions?.[sRegion]?.code)}</div>
                 </div>
                 <div className={styles.extraInfo}>
                     {isLocalProxy && <RuleButton />}
@@ -68,12 +63,12 @@ const Region = ({}) => {
                                 <div className={allRegions?.[sRegion]?.code===region.code ? `${styles.item} ${styles.itemOn}` :styles.item} key={index} onClick={() => handleRegion(index)}>
                                     <div className={styles.country}>
                                         <ReactCountryFlag
-                                            countryCode={convertCN(region.code)}
+                                            countryCode={region.code}
                                             svg={isWindows()?true:false}
                                             aria-label="United States"
                                             style={{width:'30px',height:'30px',fontSize:'30px'}}
                                         />
-                                        <div className={styles.countryName}>{t(`region_${convertCN(region.code)}`)}</div>
+                                        <div className={styles.countryName}>{t(`region_${region.code}`)}</div>
                                     </div>
                                     <div className={styles.status}>
                                         <SignalIndicator level={4} />

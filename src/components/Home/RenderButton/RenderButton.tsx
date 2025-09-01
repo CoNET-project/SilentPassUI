@@ -100,15 +100,9 @@ const RenderButton = ({}) => {
 
         
         const exitRegion = allRegions[selectedCountryIndex].code
-        const exitNodes = allNodes.filter((n: any) => {
-            const region: string = n.region
-            const regionName = region.split('.')[1]
-            return regionName === exitRegion
-        })
 
-        const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
 
-        const _exitNode = [exitNodes[randomExitIndex]]
+        
 
         let _entryNodes = closestRegion
 
@@ -121,6 +115,25 @@ const RenderButton = ({}) => {
                 nftNumber: n.nftNumber.toString()
             }
         })
+
+		
+		const exitNodes = allNodes.filter((n: nodes_info) => {
+            const region: string = n.region
+			
+            const regionName = /HK/i.test(exitRegion) ? region.split('.')[0] : region.split('.')[1]
+			if (exitRegion === 'CN' && region === 'HK.CN') {
+				return false
+			}
+			const index = entryNodes.findIndex(_n => _n.ip_addr === n.ip_addr)
+			if (index > -1) {
+				return false
+			}
+            return regionName === exitRegion
+        })
+
+		const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
+
+        const _exitNode = [exitNodes[randomExitIndex]]
 
         const exitNode = _exitNode.map(n => {
             return {

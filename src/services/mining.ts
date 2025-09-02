@@ -88,7 +88,7 @@ const testClosestRegion = async (callback: () => void) => {
 		const endTime = new Date().getTime()
 		const delay = endTime - startTime
 		
-		if (/DE|ES|GB|US/.test(region)) {
+		if (/DE|ES|GB|US/i.test(region)) {
 			testRegion.push({ node, delay })
 		}
 		if (testRegion.length > 2 && !error) {
@@ -203,8 +203,9 @@ const getAllNodesV2 = async (
 				if (node?.ip_addr) {
 					entryNodes.push(node);
 				}
-			} while (entryNodes.length < 10);
-			setClosestRegion(entryNodes);
+			} while (entryNodes.length < 20)
+
+			setClosestRegion(entryNodes)
 			callback(allNodes)
 			getAllNodes(() => {})
 		})

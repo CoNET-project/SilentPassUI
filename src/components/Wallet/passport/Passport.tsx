@@ -100,6 +100,7 @@ const Passport = ({}) => {
                             
                             <div className={styles.warning}><ExclamationTriangleOutline className={styles.icon} />{t('passport-pay-plan-ios-tips-2')}</div>
                             
+							
                             <div className={styles.selector}>
                                 <Selector
                                     columns={options.length}

@@ -35,11 +35,11 @@ const Passport = ({}) => {
         //     value: 4,
         // },
         {
-            label: <div className={styles.applePayBtn}><Apple /></div>,
+            label: <div className={styles.applePayBtn}>{t('apple_restore_Purchases')}</div>,
             value: 111,
         },
         {
-            label: <div className={styles.applePayBtn}><ApplePay /></div>,
+            label: <div className={styles.applePayBtn}>{t('passport-pay-plan-apple-modal-btn')}</div>,
             value: 999,
         }
     ];
@@ -70,7 +70,10 @@ const Passport = ({}) => {
 
     return (
         <>
-            <List.Item onClick={() => {setVisible(true)}}>
+            <List.Item onClick={() => {
+					setVisible(false);
+					setApplePayVisible(true);
+				}}>
                 <div className={styles.item}>
                     <div className={styles.icon}><SpToken width="25" height="25" /></div>
                     <div className={styles.text}>

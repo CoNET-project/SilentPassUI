@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './applePayModal.module.scss';
 import { useTranslation } from 'react-i18next';
-import { Popup,CheckList,Button,NavBar } from 'antd-mobile';
+import { Popup,CheckList,Button,NavBar, Grid } from 'antd-mobile';
 import { ExclamationTriangleOutline,RightOutline } from 'antd-mobile-icons';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import { getPassportTitle } from "./../../../utils/utils";
@@ -48,6 +48,25 @@ const ApplePayModal = ({visible,setVisible}:ApplePayModalParams) => {
         setSubscriptionVisible(true);
     }
 
+	const handlePurchase=()=> {
+        if (!profiles ||profiles.length < 2) {
+            return
+        }
+
+		const planObj = {
+			publicKey: profiles[0].keyID,
+			Solana: profiles[1].keyID
+		}
+
+		const base64VPNMessage = btoa(JSON.stringify(planObj));
+		window?.webkit?.messageHandlers["restorePurchases"]?.postMessage(base64VPNMessage);
+
+		setPaymentKind(3)
+		setSubscriptionVisible(true);
+		
+        
+    }
+
     return (
         <Popup
             visible={visible}
@@ -83,9 +102,19 @@ const ApplePayModal = ({visible,setVisible}:ApplePayModalParams) => {
                         <div className={styles.tips}>{t('passport-pay-plan-ios-tips-1')}</div>
                         <div className={styles.warning}><ExclamationTriangleOutline className={styles.icon} />{t('passport-pay-plan-ios-tips-2')}</div>
                     </>:''}
-                    <div className={styles.subscription}>
-                        <Button className={styles.btn} block fill='solid' onClick={() => startSubscription()}>{t('passport-pay-btn')}</Button>
-                    </div>
+					<Grid columns={2} gap={5}>
+						<Grid.Item>
+							<div className={styles.subscription}>
+								<Button className={styles.btn} block fill='solid' onClick={handlePurchase}>{t('apple_restore_Purchases')}</Button>
+							</div>
+						</Grid.Item>
+						<Grid.Item>
+							<div className={styles.subscription}>
+								<Button className={styles.btn} block fill='solid' onClick={startSubscription}>{t('passport-pay-btn')}</Button>
+							</div>
+						</Grid.Item>
+					</Grid>
+                    
                     <div className={styles.extraInfo}>
                         <div className={styles.title}>{t('passport-pay-plan-ios-extra-title')}:</div>
                         <ul className={styles.list}>

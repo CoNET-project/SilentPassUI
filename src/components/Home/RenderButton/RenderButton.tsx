@@ -19,7 +19,7 @@ const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few se
 const RenderButton = ({}) => {
     const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false);
     const [showConnected, setShowConnected] = useState(false);
-    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible } = useDaemonContext();
+    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible, privacyMode } = useDaemonContext();
     const [errorMessage, setErrorMessage] = useState<string>('');
 
     useEffect(() => {
@@ -100,19 +100,9 @@ const RenderButton = ({}) => {
 
         
         const exitRegion = allRegions[selectedCountryIndex].code
-        const exitNodes = allNodes.filter((n: any) => {
-            const region: string = n.region
-            const regionName = region.split('.')[1]
-            return regionName === exitRegion
-        })
+		let _entryNodes = privacyMode ? [] : closestRegion
 
-        const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
-
-        const _exitNode = [exitNodes[randomExitIndex]]
-
-        let _entryNodes = closestRegion
-
-        const entryNodes = _entryNodes.map(n => {
+		const entryNodes = _entryNodes.map(n => {
             return {
                 country: '',
                 ip_addr: n.ip_addr,
@@ -121,6 +111,32 @@ const RenderButton = ({}) => {
                 nftNumber: n.nftNumber.toString()
             }
         })
+
+        const exitNodes = allNodes.filter((n: any) => {
+            const region: string = n.region
+			
+            const regionName = /HK/i.test(exitRegion) ? region.split('.')[0] : region.split('.')[1]
+			if (exitRegion === 'CN' && region === 'HK.CN') {
+				return false
+			}
+			const index = entryNodes.findIndex(_n => _n.ip_addr === n.ip_addr)
+			if (index > -1) {
+				return false
+			}
+            return regionName === exitRegion
+        })
+
+		while (exitNodes.length > 20) {
+			exitNodes.splice(Math.floor(Math.random() * exitNodes.length), 1);
+		}
+
+        const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
+
+        const _exitNode = privacyMode ? [exitNodes[randomExitIndex]] : exitNodes
+
+
+
+
 
         const exitNode = _exitNode.map(n => {
             return {
@@ -133,7 +149,7 @@ const RenderButton = ({}) => {
         })
 
         const startVPNMessageObject: Native_StartVPNObj = {
-            entryNodes,
+            entryNodes: privacyMode ? entryNodes : [],
             exitNode,
             privateKey
         }

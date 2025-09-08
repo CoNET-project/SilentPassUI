@@ -274,6 +274,7 @@
 	"region_AU": "澳大利亚",
 	"region_SG": "新加坡",
 	"region_HK": "中国香港",
+	"region_CN": "中国",
 
 	"swap_title": "兑换",
 
@@ -298,7 +299,6 @@
 	"Settings_Passcode_Ads": "广告拦截",
 	"Settings_Passcode_Reward": "积分任务",
 	"Settings_Passcode_WebsiteFilter": "网站过滤",
-	"Settings_softwareUpdate": "软件更新",
 	
 	"Settings_Passcode_WebsiteFilter-title-special": "定制过滤",
 	"Settings_Passcode_WebsiteFilter-title-official": "官网过滤",
@@ -316,6 +316,9 @@
 	"zh": "中文",
 	"jp": "日文",
 
+	"privacy-first": "隐私优先",
+	"speed-first": "速度优先",
+
 	"wallet-title":"我的账号",
 	"wallet-redeem-btn":"立即兑换",
 	"wallet-checkin-btn":"继续免费试用",
@@ -332,7 +335,7 @@
 	"wallet-account-main-wallet-privitekey-title": "私钥（请妥善保管）",
 	"wallet-account-main-wallet-change-fail":"Switching SP Passport failed",
 	"wallet-account-sp-wallet":"$SP钱包",
-	"wallet-account-sp-wallet-desc":"该钱包部署于 Solana 链上，用于管理您的 $SP 资产，包括领取奖励与转账等功能",
+	"wallet-account-sp-wallet-desc":"该钱包部署于 Solana 链上，用于管理您的 $SP 资产，包括质押、领取奖励与转账等功能",
 	"genesis-title":"Genesis 会员",
 
 	"genesis-charater-1": "一次购买，终身使用",
@@ -364,7 +367,6 @@
 	"passport-pay-plan-ios-plan-desc-2":"按月计费，自动续订",
 	"passport-pay-plan-ios-tips-1":"您目前处于免费访问期",
 	"passport-pay-plan-ios-tips-2":"现在订阅立即开始您的付费计划",
-	"apple_restore_Purchases": "恢复已购项目",
 	"passport-pay-plan-ios-extra-title":"订阅详细信息",
 	"passport-pay-plan-ios-extra-item-1":"当您开始订阅时，您的Apple ID帐户将被收取费用",
 	"passport-pay-plan-ios-extra-item-2":"您的订阅将在每个计费期结束时自动续订，除非在到期日前至少24小时取消",

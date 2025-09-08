@@ -6,12 +6,15 @@ import { useTranslation } from 'react-i18next';
 import Region from "@/components/Home/Region/Region";
 import RenderButton from "@/components/Home/RenderButton/RenderButton";
 import { ReactComponent as HeadTitle } from '@/components/Home/assets/header-title.svg';
+import Private from './Private';
+
 
 const Content = ({}) => {
 
     return (
         <div className={styles.content}>
             <div className={styles.banner}><HeadTitle /></div>
+			<Private />
             <RenderButton />
             {/*<ProxyInfo />*/}
             <Region />

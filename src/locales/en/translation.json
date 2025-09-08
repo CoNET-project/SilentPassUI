@@ -270,6 +270,7 @@
 	"region_AU": "Australia",
 	"region_SG": "Singapore",
 	"region_HK": "Hong Kong",
+	"region_CN": "China",
 
 	"wallet_title": "View My Passport",
 
@@ -283,7 +284,6 @@
 	"Settings_Passcode_Ads": "Ad Block",
 	"Settings_Passcode_Reward": "Reward Tasks",
 	"Settings_Passcode_WebsiteFilter": "Website Filter",
-	"Settings_softwareUpdate": "Software Update",
 
 	"Subscription-Header-title":"Confirm your order",
 	"Subscription-Header-progress":"Transaction in progress",
@@ -322,7 +322,7 @@
 	"wallet-account-main-wallet-privitekey-title": "Private Key (Keep Secure)",
 	"wallet-account-main-wallet-change-fail":"更换SP Passport失败",
 	"wallet-account-sp-wallet":"$SP Wallet",
-	"wallet-account-sp-wallet-desc":"This wallet is on the Solana chain and is used to manage your $SP assets, including claiming rewards, and transfers.",
+	"wallet-account-sp-wallet-desc":"This wallet is on the Solana chain and is used to manage your $SP assets, including staking, claiming rewards, and transfers.",
 	"genesis-title":"Genesis Circle",
 	"genesis-charater-1": "One-time purchase, lifetime access",
 	"genesis-charater-2": "Limited to 10,000 worldwide",
@@ -386,6 +386,10 @@
 	"passport-pay-plan-apple-modal-extra-list-3":"Includes lifetime VPN access for one device.",
 	"passport-pay-plan-apple-modal-extra-list-4":"Payment will be charged to your Apple ID at confirmation.",
 	"passport-pay-plan-apple-modal-extra-list-5":"By purchasing, you agree to Apple’s Terms of Use and Privacy Policy.",
+
+	"privacy-first": "Privacy First",
+	"speed-first": "Speed First",
+
 	"wallet-receive-code-tips-1":"Token must be selected",
 	"wallet-receive-code-tips-2":"Amount is required",
 	"wallet-receive-code-tips-3":"Amount must be greater than 0",
@@ -420,7 +424,6 @@
 	"quick-links-manage-edit-title": "Title",
 	"quick-links-manage-edit-address": "Link Address",
 	"backup-name":"Backup & Restore",
-	"apple_restore_Purchases": "Restore Purchases",
 	"backup-title":"Wallet Backup & Restore",
 	"backup-sub-title-1":"Backup & Restore",
 	"backup-sub-title-2":"Backup Your Account",

@@ -39,6 +39,7 @@ const postToEndpointGetBody: (
       //const status = parseInt(xhr.responseText.split (' ')[1])
 		clearTimeout(timeout)
       if (xhr.status === 200) {
+		
         // parse JSON
         if (!xhr.responseText.length) {
           return resolve("");
@@ -75,35 +76,46 @@ const getRandomNodeFromRegion: (region: string) => nodes_info = (
 };
 
 
+
 const testClosestRegion = async (callback: () => void) => {
   testRegion = [];
-
-  async.each(allRegions, (item, _callback) => {
-	const node = getRandomNodeFromRegion(item)
-	const url = `http://${node.ip_addr}`
-      const startTime = new Date().getTime()
-	  const test = async () => {
-		await postToEndpointGetBody(url, false,false, null)
+  let error = false
+   const testSpeed = (region: string) => new Promise(async (executor: (value: unknown) => void, reject: (reason?: any) => void) => {
+		const node = getRandomNodeFromRegion(region)
+		const url = `http://${node.ip_addr}`
+		const startTime = new Date().getTime()
+		await postToEndpoint(url, false, false)
 		const endTime = new Date().getTime()
 		const delay = endTime - startTime
-		testRegion.push({ node, delay })
-		_callback(new Error(''))
-	  }
-      test()
-      
-  }).then (() => {
-	testRegion.forEach(n => closestNodes.push(n.node))
-	// callback()
-  }).catch (ex=> {
-	testRegion.forEach(n => closestNodes.push(n.node))
-	callback()
-  })
-};
+		
+		if (/DE|ES|GB|US/i.test(region)) {
+			testRegion.push({ node, delay })
+		}
+		if (testRegion.length > 2 && !error) {
+			error = true
+			reject(new Error('success'))
+		}
+		
+	})
+
+	const processPool: any[] = []
+
+	allRegions.forEach(n => {
+		processPool.push(testSpeed(n))
+	})
+
+	Promise.all(processPool).then(() => {
+		let uu = 0
+	}).catch((ex) => {
+		callback()
+	})
+	
+}
 
 const getAllNodes = async (
   callback: (allnodes: nodes_info[]) => void
 ) => {
-	if (nodes) {
+	if (nodes)  {
 		allNodes = nodes
 		callback(nodes)
 	}
@@ -136,7 +148,10 @@ const getAllNodes = async (
 	const domain: string = node[2]
 	const ipAddr: string = node[3]
 	const region: string = node[4]
-	const country_item = region.split('.')[1]
+	let country_item = region.split('.')[1]
+	if (/zh/i.test(region.split('.')[0])) {
+		country_item = 'zh'
+	}
 	const itemNode: nodes_info = {
 		country: country_item,
 		ip_addr: ipAddr,
@@ -146,6 +161,7 @@ const getAllNodes = async (
 		nftNumber: id,
 		region
 	}
+
 	_countryArray.set(country_item, true)
 	_allNodes.push(itemNode)
   }
@@ -187,8 +203,9 @@ const getAllNodesV2 = async (
 				if (node?.ip_addr) {
 					entryNodes.push(node);
 				}
-			} while (entryNodes.length < 10);
-			setClosestRegion(entryNodes);
+			} while (entryNodes.length < 20)
+
+			setClosestRegion(entryNodes)
 			callback(allNodes)
 			getAllNodes(() => {})
 		})

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './generalSetting.module.scss';
 import { useTranslation } from 'react-i18next';
-import { List,Switch,Badge,Dialog } from 'antd-mobile';
+import { List,Switch,Badge,Dialog, Toast } from 'antd-mobile';
 import { GlobalOutlined,CustomerServiceOutlined,QuestionCircleOutlined,ApiOutlined,CloudSyncOutlined } from '@ant-design/icons';
 import Languages from './../../Languages';
 import {openWebLinkNative,getLocalServerVersion} from '@/api';
@@ -100,6 +100,10 @@ const GeneralSetting = ({}) => {
                         {key: 'confirm',text: t('confirm'),onClick:()=>{refresh()}}
                     ],
                 ],
+            })
+        }else{
+            Toast.show({
+                content: t('hasNoUpdate')
             })
         }
     }

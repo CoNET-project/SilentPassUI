@@ -19,6 +19,7 @@ import { parseQueryParams } from "./utils/utils";
 import { setDefaultConfig } from 'antd-mobile';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
 import enUS from 'antd-mobile/es/locales/en-US';
+import jaJP from 'antd-mobile/es/locales/ja-JP';
 import './i18n'; // 加载多语言配置
 import { useTranslation } from 'react-i18next';
 
@@ -145,10 +146,11 @@ function App() {
   		type AntdLocale = {
 			  en: typeof enUS;
 			  zh: typeof zhCN;
+			  jp: typeof jaJP;
 			}
   		let storage = window.localStorage;
   		let lang='en';
-  		const antdMLang: AntdLocale={en:enUS,zh:zhCN};
+  		const antdMLang: AntdLocale={en:enUS,zh:zhCN,jp:jaJP};
   		if(storage && storage.lang){
   			lang=storage.lang;
   		} else {
@@ -156,6 +158,8 @@ function App() {
 			const userLang = navigator.language || navigator.userLanguage;
 			if (/^zh/.test(userLang)) {
 				lang='zh'
+			}else if (/^ja/.test(userLang)) {
+			  	lang = 'ja';
 			}
 		}
   		setDefaultConfig({

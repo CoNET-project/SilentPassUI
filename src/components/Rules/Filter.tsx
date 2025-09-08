@@ -23,7 +23,7 @@ interface ListItem {
     value: string | string[];
 }
 type ProxyData = {
-  classifyList: { name: string; nameCn: string; value: string; valueTag: string }[];
+  classifyList: { name: string; nameCn: string; nameJp:string; value: string; valueTag: string }[];
   officialList: { name: string; value: string[]; valueTag: string; checked: string }[];
   regionList: { name: string; value: string; valueTag: string; checked: string }[];
   specialList?: { name: string; value: string | string[]; valueTag: string; checked: string }[]; // 补上这一行
@@ -153,7 +153,7 @@ const Filter=({visible, setVisible}:FilterProps)=> {
     const [proxySet, setProxySet] = useState<ProxySet>({});
     const proxySetRef= useRef<ProxySet>({});
     const [classify, setClassify] = useState('all');
-    const [classifyList, setClassifyList] = useState<Array<{ name: string;nameCn: string;value: string | string[];valueTag:string}>>([]);
+    const [classifyList, setClassifyList] = useState<Array<{ name: string;nameCn: string; nameJp:string; value: string | string[];valueTag:string}>>([]);
     const [specialList, setSpecialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
     const [officialList, setOfficialList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
     const [regionList, setRegionList] = useState<Array<{ name: string;value: string | string[];valueTag:string;checked:string;}>>([]);
@@ -164,7 +164,7 @@ const Filter=({visible, setVisible}:FilterProps)=> {
         getSetting()
     },[getWebFilter,webFilterRef.current]);
 
-    const rowList: Record<string, Array<{ name: string;nameCn?: string;value: string | string[];valueTag:string;checked?:string;}>>={
+    const rowList: Record<string, Array<{ name: string;nameCn?: string; nameJp?: string; value: string | string[];valueTag:string;checked?:string;}>>={
         'all':classifyList,
         'special':(specialList?specialList:[]),
         'official':(officialList?officialList:[]),
@@ -183,7 +183,7 @@ const Filter=({visible, setVisible}:FilterProps)=> {
                         setClassify(item.valueTag)
                     }}
                 >
-                    {i18n.language==='en'?item.name:item.nameCn}<RightOutline />
+                    <Ellipsis direction='end' content={i18n.language==='en'?item.name:(i18n.language==='cn'?item.nameCn:item.nameJp) || ''} /><RightOutline />
                 </List.Item>
             )
         }else if(classify==='special'){

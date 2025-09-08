@@ -304,6 +304,7 @@
     "language":"Language",
 	"en": "English",
 	"zh": "Chinese",
+	"jp": "Japanese",
 
 	"wallet-title":"My Account",
 	"wallet-redeem-btn":"Redeem Now",
@@ -530,6 +531,7 @@
 	"footer-nav-3":"Swap",
 	"footer-nav-4":"Settings",
 
-	"checkUpdate":"Check for updates"
+	"checkUpdate":"Check for updates",
+	"hasNoUpdate":"Already the latest version"
 
 }

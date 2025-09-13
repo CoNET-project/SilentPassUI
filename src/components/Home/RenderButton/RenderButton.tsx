@@ -19,7 +19,7 @@ const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few se
 const RenderButton = ({}) => {
     const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false);
     const [showConnected, setShowConnected] = useState(false);
-    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible, privacyMode } = useDaemonContext();
+    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible } = useDaemonContext();
     const [errorMessage, setErrorMessage] = useState<string>('');
 
     useEffect(() => {
@@ -100,7 +100,13 @@ const RenderButton = ({}) => {
 
         
         const exitRegion = allRegions[selectedCountryIndex].code
-		let _entryNodes = privacyMode ? [] : closestRegion
+		let _entryNodes =  closestRegion
+
+		// const randomEntryIndex = Math.floor(Math.random() * (_entryNodes.length - 1))
+		// const randomEntryIndex2 = Math.floor(Math.random() * (_entryNodes.length - 1))
+
+		// _entryNodes = [_entryNodes[randomEntryIndex], _entryNodes[randomEntryIndex2]]
+
 
 		const entryNodes = _entryNodes.map(n => {
             return {
@@ -111,6 +117,9 @@ const RenderButton = ({}) => {
                 nftNumber: n.nftNumber.toString()
             }
         })
+
+
+
 
         const exitNodes = allNodes.filter((n: any) => {
             const region: string = n.region
@@ -126,13 +135,11 @@ const RenderButton = ({}) => {
             return regionName === exitRegion
         })
 
-		while (exitNodes.length > 20) {
-			exitNodes.splice(Math.floor(Math.random() * exitNodes.length), 1);
-		}
 
-        const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
+        const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1))
+		const randomExitIndex1 = Math.floor(Math.random() * (exitNodes.length - 1))
 
-        const _exitNode = privacyMode ? [exitNodes[randomExitIndex]] : exitNodes
+        const _exitNode = [	exitNodes[randomExitIndex1]	]
 
 
 
@@ -149,7 +156,7 @@ const RenderButton = ({}) => {
         })
 
         const startVPNMessageObject: Native_StartVPNObj = {
-            entryNodes: privacyMode ? entryNodes : [],
+            entryNodes: entryNodes,
             exitNode,
             privateKey
         }

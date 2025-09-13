@@ -293,7 +293,8 @@
     "Settings_Passcode_Ads": "広告ブロック",
     "Settings_Passcode_Reward": "ポイントミッション",
     "Settings_Passcode_WebsiteFilter": "ウェブサイトフィルター",
-    
+	"Settings_softwareUpdate": "ソフトウェアアップデート",
+
     "Settings_Passcode_WebsiteFilter-title-special": "カスタムフィルター",
     "Settings_Passcode_WebsiteFilter-title-official": "公式フィルター",
     "Settings_Passcode_WebsiteFilter-title-region": "地域フィルター",

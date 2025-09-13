@@ -80,6 +80,8 @@ type DaemonContext = {
   setRuleVisible: Dispatch<SetStateAction<boolean>>;
   hasNewVersion: boolean|string,
   setHasNewVersion: Dispatch<SetStateAction<boolean|string>>;
+  setPrivacyMode: (val: boolean) => void;
+  privacyMode: boolean;
 };
 
 type DaemonProps = {
@@ -165,7 +167,9 @@ const defaultContextValue: DaemonContext = {
   ruleVisible: false,
   setRuleVisible: () => {},
   hasNewVersion: false,
-  setHasNewVersion: () => {}
+  setHasNewVersion: () => {},
+  setPrivacyMode: () => {},
+  privacyMode: false,
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -220,6 +224,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [checkinBalanceUP, setCheckinBalanceUP] = useState<boolean>(false);
   const [ruleVisible, setRuleVisible] = useState<boolean>(false);
   const [hasNewVersion, setHasNewVersion] = useState<boolean|string>(false);
+  const [privacyMode, setPrivacyMode] = useState<boolean>(false);
 
   useEffect(() => {
     {
@@ -268,17 +273,17 @@ export function DaemonProvider({ children }: DaemonProps) {
   },[quickLinksShow])
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions,
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData,
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,
-				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin,
+				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
-				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, version, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
-        setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible, setRuleVisible,hasNewVersion, setHasNewVersion }}>
+				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
+        	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 
       {children}
     </Daemon.Provider>

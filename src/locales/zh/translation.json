@@ -316,6 +316,9 @@
 	"zh": "中文",
 	"jp": "日文",
 
+	"privacy-first": "隐私优先",
+	"speed-first": "速度优先",
+
 	"wallet-title":"我的账号",
 	"wallet-redeem-btn":"立即兑换",
 	"wallet-checkin-btn":"继续免费试用",

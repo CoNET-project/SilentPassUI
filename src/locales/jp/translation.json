@@ -310,6 +310,9 @@
     "zh": "中国語",
     "jp": "日本語",
 
+	"privacy-first": "プライバシー優先",
+	"speed-first": "スピード優先",
+
 	"wallet-title": "私のアカウント",
     "wallet-redeem-btn": "今すぐ交換",
     "wallet-checkin-btn": "体験続行",

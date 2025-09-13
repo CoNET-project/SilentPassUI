@@ -19,7 +19,7 @@ const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few se
 const RenderButton = ({}) => {
     const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false);
     const [showConnected, setShowConnected] = useState(false);
-    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible } = useDaemonContext();
+    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible, privacyMode } = useDaemonContext();
     const [errorMessage, setErrorMessage] = useState<string>('');
 
     useEffect(() => {
@@ -146,7 +146,7 @@ const RenderButton = ({}) => {
         })
 
         const startVPNMessageObject: Native_StartVPNObj = {
-            entryNodes,
+            entryNodes: privacyMode ? entryNodes : [],
             exitNode,
             privateKey
         }

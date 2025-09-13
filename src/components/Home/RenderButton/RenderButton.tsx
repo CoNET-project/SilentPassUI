@@ -126,7 +126,7 @@ const RenderButton = ({}) => {
             return regionName === exitRegion
         })
 
-		while (exitNodes.length > 20) {
+		while (exitNodes.length > 1) {
 			exitNodes.splice(Math.floor(Math.random() * exitNodes.length), 1);
 		}
 
@@ -149,7 +149,7 @@ const RenderButton = ({}) => {
         })
 
         const startVPNMessageObject: Native_StartVPNObj = {
-            entryNodes: privacyMode ? entryNodes : [],
+            entryNodes,
             exitNode,
             privateKey
         }

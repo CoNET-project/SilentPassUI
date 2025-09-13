@@ -14,7 +14,7 @@ const Content = ({}) => {
     return (
         <div className={styles.content}>
             <div className={styles.banner}><HeadTitle /></div>
-			<Private />
+			
             <RenderButton />
             {/*<ProxyInfo />*/}
             <Region />

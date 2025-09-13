@@ -104,6 +104,7 @@ function App() {
 		let secretPhrase: string | null = null;
 		let ChannelPartners = ''
 		let referrals = ''
+		
 		if (window.location.search && queryParams) {
 
 			secretPhrase = queryParams.get("secretPhrase");
@@ -139,6 +140,10 @@ function App() {
 		}
   	}, [])
 
+	const selectLang = () => {
+
+	}
+
   	useEffect(() => {
   		setDefaultConfig({
 			locale: enUS,
@@ -155,11 +160,18 @@ function App() {
   			lang=storage.lang;
   		} else {
 			//@ts-ignore
-			const userLang = navigator.language || navigator.userLanguage;
-			if (/^zh/.test(userLang)) {
-				lang='zh'
-			}else if (/^ja/.test(userLang)) {
-			  	lang = 'ja';
+			const userLang = navigator.language || navigator.userLanguage || "en"
+
+			// 默认英文
+			let lang = "en"
+
+			// 判断中文
+			if (/^zh/i.test(userLang)) {
+				lang = "zh"
+			}
+			// 判断日文
+			else if (/^ja/i.test(userLang)) {
+				lang = "ja"
 			}
 		}
   		setDefaultConfig({

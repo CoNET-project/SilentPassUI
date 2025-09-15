@@ -146,7 +146,7 @@ const RenderButton = ({}) => {
         })
 
         const startVPNMessageObject: Native_StartVPNObj = {
-            entryNodes: privacyMode ? entryNodes : [],
+            entryNodes,
             exitNode,
             privateKey
         }

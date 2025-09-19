@@ -10,6 +10,10 @@ import { isPassportValid } from "@/utils/utils";
 import { CoNET_Data } from '@/utils/globals';
 import { getAllRegions } from "@/services/regions";
 import BlobWrapper from '@/components/Home/BlobWrapper';
+import { getAllNodesV2 } from "../../../services/mining";
+import { startVPN, StartVPNFromUI, stopVPN } from "../../../api"
+
+
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
@@ -19,7 +23,7 @@ const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few se
 const RenderButton = ({}) => {
     const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false);
     const [showConnected, setShowConnected] = useState(false);
-    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible } = useDaemonContext();
+    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible, setClosestRegion } = useDaemonContext();
     const [errorMessage, setErrorMessage] = useState<string>('');
 
     useEffect(() => {
@@ -35,6 +39,8 @@ const RenderButton = ({}) => {
         setErrorMessage('');
         let selectedCountryIndex = -1
         setIsConnectionLoading(true);
+
+
         if (power) {
             if (isLocalProxy) {
                 //          Desktop
@@ -42,8 +48,9 @@ const RenderButton = ({}) => {
                 if (switchValue) {
                     Bridge.send('stopVPN',{},(res:any)=>{});
                 }
-            } else if (isIOS ) {
-                window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+            } else if (isIOS) {
+				await stopVPN()
+                //window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
                 //  @ts-ignore
             } else if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
                 const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
@@ -54,6 +61,13 @@ const RenderButton = ({}) => {
             setTimeout(() => {setIsConnectionLoading(false);setPower(false);}, 2000)
             return ;
         }
+
+		if (!closestRegion?.length) {
+			return getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
+				handleTogglePower()
+			})
+		}
+
         if (!profiles?.[0]?.activePassport?.expires) {
             setTimeout(() => {
                 setIsConnectionLoading(false)
@@ -128,6 +142,7 @@ const RenderButton = ({}) => {
 			if (exitRegion === 'CN' && region === 'HK.CN') {
 				return false
 			}
+
 			const index = entryNodes.findIndex(_n => _n.ip_addr === n.ip_addr)
 			if (index > -1) {
 				return false
@@ -174,7 +189,8 @@ const RenderButton = ({}) => {
             }   
         } else {
             if (isIOS) {
-                window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
+				await startVPN(startVPNMessageObject)
+                //window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
                 //  @ts-ignore
             } else if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
                 const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))
@@ -189,6 +205,7 @@ const RenderButton = ({}) => {
 
         return ;
     };
+
     const state = useMemo(
         () => (isConnectionLoading ? 'connecting' : power ? 'on' : 'off'),
         [isConnectionLoading, power]

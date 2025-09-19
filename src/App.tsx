@@ -27,10 +27,9 @@ import { useTranslation } from 'react-i18next';
 global.Buffer = require('buffer').Buffer;
 
 
-
 function App() {
 	const { i18n } = useTranslation();
-  	const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, setCheckinBalanceUP } = useDaemonContext();
+  	const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, power } = useDaemonContext();
   	
   	const setSOlanaRPC = (allNodes: nodes_info[]) => {
     	const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
@@ -54,6 +53,7 @@ function App() {
   	}
   
   	let handlePassportProcess = false
+	
   	const handlePassport = async () => {
 
 		if (!CoNET_Data?.profiles[0]?.keyID) return
@@ -120,7 +120,7 @@ function App() {
 		setProfiles(profiles)
 
 		checkCurrentRate(setMiningData)
-
+		
 		getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
 	  		setSOlanaRPC(allNodes)
 	  		setaAllNodes(allNodes)
@@ -140,9 +140,6 @@ function App() {
 		}
   	}, [])
 
-	const selectLang = () => {
-
-	}
 
   	useEffect(() => {
   		setDefaultConfig({

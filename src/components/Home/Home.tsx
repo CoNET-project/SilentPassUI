@@ -10,6 +10,7 @@ import { maxNodes, currentScanNodeNumber } from '@/services/mining';
 import { mappedCountryCodes } from "@/utils/regions"; 
 import { CSSTransition, SwitchTransition } from 'react-transition-group';
 import QuickLinks from "@/components/QuickLinks/QuickLinks";
+import {getLocalServerVPN} from "../../api"
 
 const Home = ({}) => {
     const { t, i18n } = useTranslation();
@@ -20,17 +21,26 @@ const Home = ({}) => {
     let first = 0;
 
     useEffect(() => {
+
+		if (power) {
+			return setIsInitialLoading(false)
+		}
         if (!closestRegion?.length) {
             return
         }
-        setIsInitialLoading(false);
-    }, [closestRegion])
+
+        setIsInitialLoading(false)
+    }, [closestRegion, power])
 
     useEffect(() => {
         _getAllRegions();
         listenGetAllNodes();
-    }, [])
 
+    }, [])
+	
+	const getLocalVPN = async () => {
+
+	}
     useEffect(() => {
         const countMinutes = () => {
             const timeout = setTimeout(() => {
@@ -49,13 +59,13 @@ const Home = ({}) => {
     }, [power]);
 
     
-    const listenGetAllNodes = () => {
+    const listenGetAllNodes = async () => {
         const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0;
         const _status = Math.round(_initpercentage);
         const status = _status <= first ? first + 2 : _status;
         first = status;
 		setGlobalCount(status)
-
+		
         if (status > 100) {
             initPercentageRef.current=98;
         } else {
@@ -70,6 +80,10 @@ const Home = ({}) => {
 	
     const _getAllRegions = async () => {
         const [tmpRegions] = await Promise.all([getAllRegions()]);
+		const kkk = await getLocalServerVPN()
+		if (kkk) {
+			setPower(true)
+		}
         const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
             const separatedRegion = region.split(".");
 			let code = separatedRegion[1];

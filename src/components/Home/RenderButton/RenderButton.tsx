@@ -10,7 +10,10 @@ import { isPassportValid } from "@/utils/utils";
 import { CoNET_Data } from '@/utils/globals';
 import { getAllRegions } from "@/services/regions";
 import BlobWrapper from '@/components/Home/BlobWrapper';
+import { startVPN, stopVPN } from "../../../api"
+
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
+
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
@@ -44,6 +47,7 @@ const RenderButton = ({}) => {
                 }
             } else if (isIOS ) {
                 window?.webkit?.messageHandlers["stopVPN"].postMessage(null)
+				await stopVPN()
                 //  @ts-ignore
             } else if (window.AndroidBridge && AndroidBridge.receiveMessageFromJS) {
                 const base = btoa(JSON.stringify({cmd: 'stopVPN', data: ""}))
@@ -162,6 +166,7 @@ const RenderButton = ({}) => {
         } else {
             if (isIOS) {
                 window?.webkit?.messageHandlers["startVPN"].postMessage(base64VPNMessage)
+				await startVPN(startVPNMessageObject)
                 //  @ts-ignore
             } else if (window?.AndroidBridge && AndroidBridge?.receiveMessageFromJS) {
                 const base = btoa(JSON.stringify({cmd: 'startVPN', data: base64VPNMessage}))

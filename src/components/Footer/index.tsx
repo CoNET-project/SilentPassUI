@@ -18,6 +18,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider";
 import Filter from '@/components/Rules/Filter';
 import {Bridge} from '@/bridge/webview-bridge';
 import NewVersion from "@/components/Home/NewVersion/NewVersion";
+import {getVPNStatus} from "../../api"
 
 interface BridgeMessage {
     event?: string;
@@ -30,15 +31,23 @@ const Footer = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const location = useLocation();
-    const { ruleVisible, setRuleVisible, setPower, hasNewVersion, setHasNewVersion } = useDaemonContext();
+    const { ruleVisible, setRuleVisible, setPower, hasNewVersion, setHasNewVersion, setIsIOS } = useDaemonContext();
     const { pathname } = location;
 
 
     useEffect(()=>{
         // 监听 Electron 或 Native 的回传
         window.addEventListener('message', (e) => {
-            Bridge.receive(e.data,makeListener);
-        });
+            Bridge.receive(e.data,makeListener)
+        })
+				// 页面重新获得焦点/从后台回前台时，自动同步一次 VPN 状态
+		window.addEventListener("visibilitychange", async () => {
+			if (document.visibilityState === "visible") {
+				const status = await getVPNStatus()
+				setPower(status)
+				setIsIOS(true)
+			}
+		})
     },[])
 
     const makeListener=(message:BridgeMessage,makeSend:any)=>{

@@ -180,7 +180,6 @@ const getAllNodes = async (
   }
 
 
-
   	allRegions = Array.from(_countryArray.keys())
 	allNodes = _allNodes
 	await storageAllNodes(allNodes)
@@ -202,10 +201,7 @@ const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
 	allNodes = await checkLocalStorageNodes() || nodes
-	const index = allNodes.findIndex(n => n.ip_addr === '74.208.234.210')
-	if (index > -1) {
-		allNodes.splice(index, 1)
-	}
+	
 	if (allNodes?.length) {
 		getAllRegions(allNodes)
 		return testClosestRegion( ()=> {

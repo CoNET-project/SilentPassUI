@@ -9,6 +9,7 @@ import {openWebLinkNative,getLocalServerVersion} from '@/api';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import Faq from './../faq/Faq';
 import {Bridge} from '@/bridge/webview-bridge';
+import Airdrop from '../airdrop/airdrop';
 
 const GeneralSetting = ({}) => {
     const { t, i18n } = useTranslation();
@@ -128,6 +129,7 @@ const GeneralSetting = ({}) => {
             </div>
             <Languages visible={visible} setVisible={setVisible} />
             <Faq visible={faqVisible} setVisible={setFaqVisible} />
+            
         </>
     );
 };

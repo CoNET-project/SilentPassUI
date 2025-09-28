@@ -5,11 +5,14 @@ import { useTranslation } from 'react-i18next';
 import { List,Switch } from 'antd-mobile';
 import { FilterOutlined,LinkOutlined,GiftOutlined,SyncOutlined } from '@ant-design/icons';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
-
+import Airdrop from '../airdrop/airdrop'
+import CoNET_Dashboard from '../CoNET_Dashboard/CoNETDashboard'
 const EnhancedSetting = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const { quickLinksShow, setQuickLinksShow, setRuleVisible } = useDaemonContext();
+    const [airdropVisible, setAirdropVisible] = useState(false);
+    const [CoNET_DashboardVisible, setCoNET_DashboardVisible] = useState(false);
 
     return (
         <>
@@ -17,7 +20,13 @@ const EnhancedSetting = ({}) => {
                 <List header={t('Settings_Passcode_Addon')} style={{'--active-background-color':'#323131'}}>
                     <List.Item 
                         prefix={<span className={styles.icon}><GiftOutlined /></span>} 
-                        onClick={() => {navigate("/wallet")}}
+                        onClick={() => setCoNET_DashboardVisible(true)}
+                    >
+                        {t('Settings_Passcode_CoNET_Dashboard')}
+                    </List.Item>
+                    <List.Item 
+                        prefix={<span className={styles.icon}><GiftOutlined /></span>} 
+                        onClick={() => setAirdropVisible(true)}
                     >
                         {t('Settings_Passcode_Reward')}
                     </List.Item>
@@ -35,6 +44,8 @@ const EnhancedSetting = ({}) => {
                     </List.Item>
                 </List>
             </div>
+            <Airdrop visible={airdropVisible} setVisible={setAirdropVisible} />
+            <CoNET_Dashboard visible={CoNET_DashboardVisible} setVisible={setCoNET_DashboardVisible} />
         </>
     );
 };

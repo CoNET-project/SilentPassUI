@@ -1,5 +1,6 @@
 {
 	"compilerOptions": {
+		
 		"types": [
 			"node"
 		],
@@ -22,9 +23,9 @@
 		"isolatedModules": true,
 		"noEmit": true,
 		"jsx": "react-jsx",
-		"baseUrl": ".",
+		"baseUrl": "src",
 	    "paths": {
-	      "@/*": ["src/*"]
+	      "@/*": ["*"]
 	    }
 	},
 	"include": [

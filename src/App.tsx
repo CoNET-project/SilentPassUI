@@ -184,9 +184,6 @@ function App() {
 		          		<Route path="/settings" element={<Settings />} />
 		        	</Routes>
 		      	</div>
-		      	<div className={styles.bottom}>
-		        	<Footer />
-		      	</div>
 		    </div>
 		</Router>
   	);

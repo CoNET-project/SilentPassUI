@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -15,7 +15,9 @@ import {
   Pie,
   Cell,
 } from "recharts";
-
+import { conetDepinProvider } from "../../../utils/constants";
+import {getGB_info, getGB_hoistory} from '../../../services/CoNET'
+import {ethers} from 'ethers'
 // ------------------------------
 // CoNET Network Dashboard (Web)
 // Single-file React component you can drop into your website.
@@ -70,11 +72,8 @@ const demoAggregates = {
 };
 
 const regions = [
-  { region: "NA", nodes: 420, traffic: 38 },
-  { region: "EU", nodes: 360, traffic: 31 },
-  { region: "APAC", nodes: 295, traffic: 22 },
-  { region: "LATAM", nodes: 110, traffic: 6 },
-  { region: "MEA", nodes: 75, traffic: 3 },
+  { region: "Silent Pass VPN", nodes: 360, traffic: 31 },
+
 ];
 
 const apps = [
@@ -96,6 +95,10 @@ const topNodes = Array.from({ length: 8 }).map((_, i) => ({
 
 const COLORS = ["#4f46e5", "#22c55e", "#06b6d4", "#f59e0b", "#ef4444", "#8b5cf6"]; // Tailwind-ish palette
 
+
+
+
+
 export default function CoNETDashboard() {
   // Filters & state
   const [range, setRange] = useState<"24h" | "7d" | "14d" | "30d">("14d");
@@ -103,13 +106,85 @@ export default function CoNETDashboard() {
   const [language, setLanguage] = useState<"en" | "zh">("zh");
   const [autorefresh, setAuto] = useState(true);
   const [tick, setTick] = useState(0);
+  const [] = useState(0.0);
+
+  const [block, setBlock] = useState(0);
+  const [blockProcess, setBlockProcess] = useState(false);
+
+  const [today24Hours, setToday24Hours] = useState(0.0);
+  const [yestoday24Hours, setYestoday24Hours] = useState(0.0);
+
+  const [monthly, setMonthly] = useState(0.0);
+  const [yearly, setYearly] = useState(0.0);
+  const [totally, setTotally] = useState(0.0);
+  const [historyGB, setHistoryGB] = useState<number[]>([]);
+
+  const [bpi, setBpi] = useState(0.01034);
 
   // Simulate live refresh (replace with SSE/WebSocket)
+
   useEffect(() => {
     if (!autorefresh) return;
     const t = setInterval(() => setTick((x) => x + 1), 8000);
     return () => clearInterval(t);
   }, [autorefresh]);
+
+    useEffect( () => {
+		getNetworkInfo()
+		
+        conetDepinProvider.on ('block', block => {
+            setBlock(block)
+        })
+    }, []);
+
+    const getNetworkInfo = async () => {
+        if (blockProcess) {
+            return
+        }
+        setBlockProcess(true)
+
+
+
+        const [todayTotalIssued, yestodayTotalIssued, monthlyTotalIssued, lastMonthlyTotalIssued, yearlyTotalIssued, totalIssued] = await getGB_info()
+        if (!todayTotalIssued||!yestodayTotalIssued||!monthlyTotalIssued) {
+            setBlockProcess(false)
+            return 
+        }
+
+
+
+        
+        const t24 = parseFloat(ethers.formatUnits(todayTotalIssued, 'gwei'))
+        const y24 = parseFloat(ethers.formatUnits(yestodayTotalIssued, 'gwei'))
+        const tmonthly = parseFloat(ethers.formatUnits(monthlyTotalIssued, 'gwei'))
+        const tyeayly = parseFloat(ethers.formatUnits(yearlyTotalIssued||BigInt(0), 'gwei'))
+        const total = parseFloat(ethers.formatUnits(totalIssued||BigInt(0), 'gwei'))
+        setToday24Hours(t24)
+        setYestoday24Hours(y24)
+        setMonthly(tmonthly)
+        setTotally(total)
+        setYearly(tyeayly)
+
+		if (!historyGB.length) {
+			const kk = await getGB_hoistory()
+			if (!kk.length) {
+				return
+			}
+			const kk1 = kk.map(n => parseFloat(ethers.formatUnits(n||BigInt(0), 'gwei')))
+			kk1.unshift(y24)
+			kk1.unshift(t24)
+			setHistoryGB(kk1.reverse())
+
+		}
+		setBlockProcess(false)
+    }
+    
+    useEffect(() => {
+        getNetworkInfo()
+        
+    }, [block]);
+
+
 
   // Derived KPIs (mocked from demoSeries)
   const kpis = useMemo(() => {
@@ -141,25 +216,27 @@ export default function CoNETDashboard() {
     const onlineConcurrent = demoAggregates.onlineConcurrent;
     const activeDevices = demoAggregates.activeDevices;
 
+
     return { gb24h, gbDelta, bpi, burnK, nodes, mtdGB, ytdGB, totalGB, totalBurnK, peakGB, peakLabel, usersMAU, wallets30d, onlineConcurrent, activeDevices };
   }, [tick]);
 
   // i18n strings
   const t = (key: string) => {
     const zh: Record<string, string> = {
-      title: "CoNET 全网指标看板",
+      title: "CoNET 全网指标",
       sub: "基于真实用量（GB）、QoS 与清分闭环的公开指标",
       range: "时间范围",
       region: "区域",
+      app: "应用程序",
       language: "语言",
       refresh: "自动刷新",
-      kpi_gb: "近24小时 真实用量（T）",
+      kpi_gb: "近24小时用量（G）",
       kpi_bpi: "BPI（$/GB）",
       kpi_nodes: "活跃节点",
       kpi_burn: "近24小时 销毁（k $CONET）",
-      kpi_mtd: "本月累计用量（T）",
-      kpi_ytd: "今年累计用量（T）",
-      kpi_total: "至今累计用量（T）",
+      kpi_mtd: "本月累计用量（G）",
+      kpi_ytd: "今年累计用量（G）",
+      kpi_total: "至今累计用量（G）",
       kpi_users: "月活用户（MAU）",
       kpi_wallets: "近30日唯一钱包",
       kpi_online: "当前在线用户",
@@ -187,15 +264,16 @@ export default function CoNETDashboard() {
       sub: "Public metrics powered by real usage (GB), QoS & clearing loop",
       range: "Range",
       region: "Region",
+      app: "Application",
       language: "Language",
       refresh: "Auto‑refresh",
-      kpi_gb: "Last 24h Usage (T)",
+      kpi_gb: "Last 24h Usage (G)",
       kpi_bpi: "BPI ($/GB)",
       kpi_nodes: "Active Nodes",
       kpi_burn: "Last 24h Burn (k $CONET)",
-      kpi_mtd: "MTD Usage (T)",
-      kpi_ytd: "YTD Usage (T)",
-      kpi_total: "Total Usage (T)",
+      kpi_mtd: "MTD Usage (G)",
+      kpi_ytd: "YTD Usage (G)",
+      kpi_total: "Total Usage (G)",
       kpi_users: "Monthly Active Users",
       kpi_wallets: "Unique Wallets (30d)",
       kpi_online: "Online Users (now)",
@@ -222,7 +300,12 @@ export default function CoNETDashboard() {
   };
 
   // Filtered data (region filter is just a demo here)
-  const series = demoSeries;
+
+  const series = demoSeries.map((n, index) => {
+
+	 return {date: n.date, gb: historyGB[index]||0, label: n.label, bpi: 0.0104, burn: n.burn}
+  })
+
 
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-100">
@@ -231,7 +314,7 @@ export default function CoNETDashboard() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">{t("title")}</h1>
-            <p className="text-slate-400 text-sm">{t("sub")}</p>
+            {/* <p className="text-slate-400 text-sm">{t("sub")}</p> */}
           </div>
           <div className="flex items-center gap-3">
             <label className="hidden md:flex items-center gap-2 text-sm text-slate-300">
@@ -244,7 +327,7 @@ export default function CoNETDashboard() {
               </select>
             </label>
             <label className="hidden md:flex items-center gap-2 text-sm text-slate-300">
-              {t("region")}
+              {t("app")}
               <select className="bg-slate-800/80 border border-slate-700 rounded-lg px-2 py-1" value={region} onChange={(e) => setRegion(e.target.value)}>
                 <option value="ALL">{t("filter_all")}</option>
                 {regions.map((r) => (
@@ -270,17 +353,17 @@ export default function CoNETDashboard() {
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* KPIs */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPI label={t("kpi_gb")} value={nf.format(Math.max(0, kpis.gb24h / 1000))} suffix="T" trend={kpis.gbDelta} />
-          <KPI label={t("kpi_bpi")} value={kpis.bpi.toFixed(4)} prefix="$" />
+          <KPI label={t("kpi_gb")} value={today24Hours} suffix="G" trend={(today24Hours - yestoday24Hours) / Math.max(yestoday24Hours || 1, 1e-9)} decimals={6}/>
+          <KPI label={t("kpi_bpi")} value={bpi.toFixed(4)} prefix="$" />
           <KPI label={t("kpi_nodes")} value={nf.format(kpis.nodes)} />
           <KPI label={t("kpi_burn")} value={nf.format(kpis.burnK)} suffix="k" />
         </section>
 
         {/* Aggregate KPIs */}
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <KPI label={t("kpi_mtd")} value={(kpis.mtdGB / 1000).toFixed(2)} suffix="T" />
-          <KPI label={t("kpi_ytd")} value={(kpis.ytdGB / 1000).toFixed(2)} suffix="T" />
-          <KPI label={t("kpi_total")} value={(kpis.totalGB / 1000).toFixed(2)} suffix="T" />
+          <KPI label={t("kpi_mtd")} value={monthly} suffix="G" decimals={2}/>
+          <KPI label={t("kpi_ytd")} value={yearly} suffix="G" decimals={2} />
+          <KPI label={t("kpi_total")} value={totally} suffix="G" decimals={2} />
         </section>
 
         {/* User & Wallet KPIs */}
@@ -481,22 +564,101 @@ function CardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   );
 }
 
-function KPI({ label, value, prefix = "", suffix = "", trend }: { label: string; value: string | number; prefix?: string; suffix?: string; trend?: number }) {
-  const isUp = (trend ?? 0) >= 0;
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-3">
-      <div className="text-slate-400 text-xs">{label}</div>
-      <div className="mt-1 flex items-end justify-between">
-        <div className="text-2xl font-semibold">{prefix}{value}{suffix}</div>
-        {trend !== undefined && (
-          <span className={`text-xs px-2 py-0.5 rounded-full ${isUp ? "bg-emerald-900/40 text-emerald-300" : "bg-rose-900/40 text-rose-300"}`}>
-            {isUp ? "▲" : "▼"} {Math.abs(trend) > 3 ? trend.toFixed(0) : (trend * 100).toFixed(1)}%
-          </span>
+function KPI({ label, value, prefix = "", suffix = "", trend, decimals = 3 }: { label: string; value: string | number; prefix?: string; suffix?: string; trend?: number; decimals?: number }) {
+    const isUp = (trend ?? 0) >= 0;
+
+
+    const parseNumericValue = (v: string | number): number => {
+		if (typeof v === "number") return v;
+		if (typeof v === "string") {
+			const matched = v.match(/([0-9.]+)\s*([a-zA-Z]*)/);
+			if (!matched) return 0;
+			const num = parseFloat(matched[1]);
+			const unit = matched[2]?.toUpperCase();
+			const multiplier = unit === "T" ? 1e12 : unit === "G" || unit === "GB" ? 1e9 : unit === "M" || unit === "MB" ? 1e6 : 1;
+			return isNaN(num) ? 0 : num * multiplier;
+		}
+		return 0;
+    };
+
+
+    const formatValueWithUnit = (v: number): string => {
+		if (typeof v !== "number" || !isFinite(v)) return "-";
+		const abs = Math.abs(v);
+		if (abs >= 1e12) return (v / 1e12).toFixed(Math.min(decimals, 3)).replace(/\.0+$/, '') + "T";
+		if (abs >= 1e9) return (v / 1e9).toFixed(Math.min(decimals, 3)).replace(/\.0+$/, '') + "G";
+		if (abs >= 1e6) return (v / 1e6).toFixed(Math.min(decimals, 3)).replace(/\.0+$/, '') + "M";
+		return v.toLocaleString(undefined, { maximumFractionDigits: decimals, minimumFractionDigits: Math.min(decimals, 3) });
+    };
+
+
+    const [animatedValue, setAnimatedValue] = useState<number>(() => parseNumericValue(value));
+    const prevValueRef = useRef<number>(animatedValue);
+
+
+    useEffect(() => {
+		const endValue = parseNumericValue(value);
+		const startValue = prevValueRef.current;
+
+
+		if (!isFinite(endValue)) return;
+
+
+		const duration = 500;
+		const startTime = performance.now();
+		let frame: number;
+
+
+		const animate = (now: number) => {
+			const elapsed = now - startTime;
+			const progress = Math.min(1, elapsed / duration);
+			const eased = 1 - Math.pow(1 - progress, 3);
+			const current = startValue + (endValue - startValue) * eased;
+			setAnimatedValue(current);
+
+
+			if (progress < 1) {
+				frame = requestAnimationFrame(animate);
+			} else {
+				prevValueRef.current = endValue;
+				setAnimatedValue(endValue);
+			}
+		};
+
+
+		frame = requestAnimationFrame(animate);
+		return () => cancelAnimationFrame(frame);
+    }, [value]);
+
+
+    const displayValue = useMemo(() => {
+		try {
+			return formatValueWithUnit(animatedValue);
+		} catch {
+			return "-";
+		}
+    }, [animatedValue, decimals]);
+
+
+    return (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+        <div className="text-slate-400 text-xs">{label}</div>
+        <div className="mt-1 flex items-end justify-between">
+        <div className="text-2xl font-semibold">{prefix}{displayValue}{suffix}</div>
+        {typeof trend === "number" && isFinite(trend) && (
+        <span
+        className={`text-xs px-2 py-0.5 rounded-full ${
+        isUp ? "bg-emerald-900/40 text-emerald-300" : "bg-rose-900/40 text-rose-300"
+        }`}
+        >
+        {isUp ? "▲" : "▼"} {Math.abs(trend) > 3 ? trend.toFixed(0) : (trend * 100).toFixed(1)}%
+        </span>
         )}
-      </div>
-    </div>
-  );
+        </div>
+        </div>
+    );
 }
+
 
 function Badge({ label, value }: { label: string; value: string }) {
   return (

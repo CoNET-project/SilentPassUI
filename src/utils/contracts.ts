@@ -14,7 +14,9 @@ import {
 	SpReword,
 	ReferralsV3,
 	SpClubPoint,
-	Duplicate
+	Duplicate,
+    CoNET_GB_Total,
+    CoNET_GB
   } from "./abis";
   
   const contracts = {
@@ -91,7 +93,18 @@ import {
 		address: '0x87A70eD480a2b904c607Ee68e6C3f8c54D58FB08',
 		network: 'CONET DePIN',
 		abi: Duplicate
-	}
+	},
+
+    CoNET_GB: {
+        address: '0x84aAD9aD5BbdDfC0cCcb6A599DFadaEFaF6B497E',
+        network: 'CONET DePIN',
+        abi: CoNET_GB
+    },
+    CoNET_GBTotal: {
+        address: '0x866c4521797dd49d22B7566DF5D8c37E6B2b59bF',
+        network: 'CONET DePIN',
+        abi: CoNET_GB_Total
+    },
   };
   
   export default contracts;

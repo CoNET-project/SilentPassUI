@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Home from '../../components/Home/Home';
+import Home from '../../components/Setting/CoNET_Dashboard/index'
 
 const HomePage = ({}) => {
 
@@ -8,7 +8,6 @@ const HomePage = ({}) => {
             <Home />
         </>
     )
-};
-
+}
 export default HomePage
 

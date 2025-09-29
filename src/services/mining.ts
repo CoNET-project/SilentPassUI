@@ -112,31 +112,44 @@ const testClosestRegion = async (callback: () => void) => {
 	
 }
 
+const _getAllNodes = (): Promise<any[]> => new Promise ( async executor => {
+	const GuardianNodesContract = new ethers.Contract(
+		contracts.GuardianNodesInfoV6.address,
+		contracts.GuardianNodesInfoV6.abi,
+		conetDepinProvider
+	)
+	let i = 0
+	let nodes: any [] = []
+	let loop = true
+	const length = 400
+	do {
+		try {
+			const _nodes: any[] = await GuardianNodesContract.getAllNodes(i, i + 400)
+			nodes = [...nodes, ..._nodes]
+			if (_nodes.length < 400) {
+				loop = false
+			}
+			i += length
+		} catch (ex) {
+			loop = false
+		}
+
+	} while (loop)
+
+	return executor(nodes)
+	
+})
+
 const getAllNodes = async (
   callback: (allnodes: nodes_info[]) => void
 ) => {
-	if (nodes)  {
-		allNodes = nodes
-		callback(nodes)
-	}
+
   if (getAllNodesProcess) {
     return
   }
+  getAllNodesProcess = true
 
-  getAllNodesProcess = true;
-
-  const GuardianNodesContract = new ethers.Contract(
-    contracts.GuardianNodesInfoV6.address,
-    contracts.GuardianNodesInfoV6.abi,
-    conetDepinProvider
-  )
-  let _nodes
-  try {
-    _nodes = await GuardianNodesContract.getAllNodes(0, 1000)
-  } catch (ex) {
-	callback([])
-    return console.log(`getAllNodes currentNodeID Error`, ex)
-  }
+  const _nodes = await _getAllNodes()
 
 
   const _allNodes:nodes_info[] = []
@@ -171,6 +184,7 @@ const getAllNodes = async (
   	allRegions = Array.from(_countryArray.keys())
 	allNodes = _allNodes
 	await storageAllNodes(allNodes)
+	getAllNodesProcess = false
 	callback(_allNodes)
 }
 

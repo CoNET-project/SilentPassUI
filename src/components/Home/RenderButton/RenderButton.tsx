@@ -10,7 +10,7 @@ import { isPassportValid } from "@/utils/utils";
 import { CoNET_Data } from '@/utils/globals';
 import { getAllRegions } from "@/services/regions";
 import BlobWrapper from '@/components/Home/BlobWrapper';
-import { getAllNodesV2 } from "../../../services/mining";
+import { testNode, exitNodes} from '../../../services/mining'
 import { startVPN, StartVPNFromUI, stopVPN } from "../../../api"
 
 
@@ -62,13 +62,7 @@ const RenderButton = ({}) => {
             return ;
         }
 
-		if (!closestRegion?.length) {
-			return getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
-				handleTogglePower()
-			})
-		}
-
-        if (!profiles?.[0]?.activePassport?.expires) {
+		if (!profiles?.[0]?.activePassport?.expires) {
             setTimeout(() => {
                 setIsConnectionLoading(false)
                 setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
@@ -94,16 +88,7 @@ const RenderButton = ({}) => {
         }
 
         await getAllRegions()
-        const allNodes = getAllNodes
-        
-        if (!allNodes.length) {
-            setTimeout(() => {
-                setIsConnectionLoading(false)
-                setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
-                setStatusVisible(true);
-            }, 1000)
-            return
-        }
+
 
         if (sRegion === -1) {
             selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
@@ -114,15 +99,34 @@ const RenderButton = ({}) => {
 
         
         const exitRegion = allRegions[selectedCountryIndex].code
-		let _entryNodes =  closestRegion
+		let waiting = 0
+		let _entryNodes
 
-		// const randomEntryIndex = Math.floor(Math.random() * (_entryNodes.length - 1))
-		// const randomEntryIndex2 = Math.floor(Math.random() * (_entryNodes.length - 1))
+		do {
+			_entryNodes = closestRegion
+			waiting ++
+			await new Promise(executor => setTimeout(() => executor(true), 1000))
+		} while (_entryNodes.length < 10 && waiting < 10)
+        
 
-		// _entryNodes = [_entryNodes[randomEntryIndex], _entryNodes[randomEntryIndex2]]
+		const testAllNodeProcess = _entryNodes.map(async (n, index) => {
+			const isWorking = await testNode(n)
+			if (!isWorking) {
+				_entryNodes.splice(index, 1)
+			}
+		})
+
+		await Promise.all (testAllNodeProcess)
 
 
-		const entryNodes = _entryNodes.map(n => {
+		_entryNodes.forEach(async (n, index) => {
+			const kk = await testNode(n)
+			if (!kk) {
+				_entryNodes.splice(index, 1)
+			}
+		})
+
+        const entryNodes = _entryNodes.map(n => {
             return {
                 country: '',
                 ip_addr: n.ip_addr,
@@ -134,34 +138,20 @@ const RenderButton = ({}) => {
 
 
 
+		
+		const _exitNodes = exitNodes(exitRegion)
 
-        const exitNodes = allNodes.filter((n: any) => {
-            const region: string = n.region
-			
-            const regionName = /HK/i.test(exitRegion) ? region.split('.')[0] : region.split('.')[1]
-			if (exitRegion === 'CN' && region === 'HK.CN') {
-				return false
+        let _exitNode = []
+		do {
+			const randomExitIndex = Math.floor(Math.random() * (_exitNodes.length))
+			const node = _exitNodes[randomExitIndex]
+			const isWorking = await testNode(node)
+			if (isWorking) {
+				_exitNode.push(node)
 			}
 
-			const index = entryNodes.findIndex(_n => _n.ip_addr === n.ip_addr)
-			if (index > -1) {
-				return false
-			}
-            return regionName === exitRegion
-        })
-
-		while (exitNodes.length > 20) {
-			exitNodes.splice(Math.floor(Math.random() * exitNodes.length), 1);
-		}
-
-        const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1))
-		const randomExitIndex1 = Math.floor(Math.random() * (exitNodes.length - 1))
-
-        const _exitNode = [	exitNodes[randomExitIndex1]	]
-
-
-
-
+		} while(_exitNode.length == 0)
+		
 
         const exitNode = _exitNode.map(n => {
             return {

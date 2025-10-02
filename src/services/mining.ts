@@ -14,7 +14,7 @@ import { initProfileTokens, postToEndpoint } from "../utils/utils";
 import async from "async";
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
 import nodes from '../pages/Home/assets/allnodes.json'
-
+import {mapLimit} from 'async'
 let allNodes: nodes_info[] = [];
 let closestNodes: nodes_info[] = [];
 let allRegions: string[] = [];
@@ -73,44 +73,99 @@ const getRandomNodeFromRegion: (region: string) => nodes_info = (
   }
 
   return node
-};
+}
 
+const deleteNodeFromList = (node: nodes_info) => {
+	const index = allNodes.findIndex(n => n.ip_addr === node.ip_addr)
+	if (index > -1 ) {
+		allNodes.splice(index, 1)
+	}
+	
+}
 
+export const testNode = (node: nodes_info): Promise<boolean> => new Promise (async executor => {
+	try {
+		const url = `http://${node.ip_addr}`
+		await postToEndpoint(url, false, false, 1000)
+		// 只有在“计入结果”的时候才判断是否够数
+		executor(true)
+	} catch (e) {
+		// 失败再次测试
+		deleteNodeFromList(node)
+		executor(false)
+	}
+})
+
+const testSpeed = (region: string) =>
+	new Promise<void>(async (resolve, reject) => {
+		const node = getRandomNodeFromRegion(region);
+		try {
+			
+			const url = `http://${node.ip_addr}`
+			const startTime = Date.now()
+
+			// 这里建议加超时（可选）：await fetchWithTimeout(...)
+			await postToEndpoint(url, false, false, 1000)
+
+			const delay = Date.now() - startTime
+			
+			testRegion.push({ node, delay })
+			// 只有在“计入结果”的时候才判断是否够数
+			resolve(); // 别忘了正常完结
+		} catch (e) {
+			// 失败再次测试
+			deleteNodeFromList(node)
+			resolve(await testSpeed(region))
+		}
+	})
 
 const testClosestRegion = async (callback: () => void) => {
-  testRegion = [];
-  let error = false
-   const testSpeed = (region: string) => new Promise(async (executor: (value: unknown) => void, reject: (reason?: any) => void) => {
-		const node = getRandomNodeFromRegion(region)
-		const url = `http://${node.ip_addr}`
-		const startTime = new Date().getTime()
-		await postToEndpoint(url, false, false)
-		const endTime = new Date().getTime()
-		const delay = endTime - startTime
-		
-		if (/DE|ES|GB|US/i.test(region)) {
-			testRegion.push({ node, delay })
-		}
-		if (testRegion.length > 2 && !error) {
-			error = true
-			reject(new Error('success'))
-		}
-		
-	})
+
 
 	const processPool: any[] = []
-
+	let didCallBack = false
 	allRegions.forEach(n => {
-		processPool.push(testSpeed(n))
+		if (/DE|ES|GB|US/i.test(n)) {
+			processPool.push(testSpeed(n))
+		}
+		
 	})
 
-	Promise.all(processPool).then(() => {
-		let uu = 0
-	}).catch((ex) => {
-		callback()
+	
+	await Promise.all(processPool).finally(() => {
+		if (!didCallBack) {
+			callback()
+		}
+		
+		
+	}).catch(ex => {
+		if (testRegion.length && !didCallBack) {
+			didCallBack = true
+			callback()
+		}
 	})
 	
 }
+
+		
+export const exitNodes = (exitRegion: string) => {
+	const exitNodes = allNodes.filter((n: nodes_info) => {
+		const region: string = n.region
+		
+		const regionName = /HK/i.test(exitRegion) ? region.split('.')[0] : region.split('.')[1]
+		if (exitRegion === 'CN' && region === 'HK.CN') {
+			return false
+		}
+		const index = entryNodes.findIndex(_n => _n.ip_addr === n.ip_addr)
+		if (index > -1) {
+			return false
+		}
+		return regionName === exitRegion
+	})
+	return exitNodes
+}
+
+
 
 const _getAllNodes = (): Promise<any[]> => new Promise ( async executor => {
 	const GuardianNodesContract = new ethers.Contract(
@@ -141,7 +196,7 @@ const _getAllNodes = (): Promise<any[]> => new Promise ( async executor => {
 })
 
 const getAllNodes = async (
-  callback: (allnodes: nodes_info[]) => void
+  	callback: (allnodes: nodes_info[]) => void
 ) => {
 
   if (getAllNodesProcess) {
@@ -198,47 +253,65 @@ const getAllRegions = (nodes: nodes_info[]) => {
 	allRegions = Array.from(country.keys())
 }
 
+const getEntryNodes = (country: string, setClosestRegion: (entryNodes: nodes_info[]) => void) => {
+	const entryRegionNodes = allNodes.filter((n) => n.country === country);
+	const closeNodes: nodes_info[] = []
+	mapLimit(entryRegionNodes, 10, async (n, next ) => {
+		
+		const test = await testNode(n)
+		if (test) {
+			closeNodes.push(n)
+			setClosestRegion(closeNodes)
+		}
+	}).finally(() => {
+		console.log(closeNodes)
+	})
+}
+
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
-	allNodes = await checkLocalStorageNodes() || nodes
+	allNodes = nodes
 	const index = allNodes.findIndex(n => n.ip_addr === '74.208.234.210')
 	if (index > -1) {
 		allNodes.splice(index, 1)
 	}
+
 	if (allNodes?.length) {
 		getAllRegions(allNodes)
-		return testClosestRegion( ()=> {
+		return testClosestRegion( async ()=> {
 			const country = testRegion[0].node.country;
-			const entryRegionNodes = allNodes.filter((n) => n.country === country);
-			do {
-				const index = Math.floor(Math.random() * entryRegionNodes.length);
-				const node = entryRegionNodes[index];
-				if (node?.ip_addr) {
-					entryNodes.push(node);
-				}
-			} while (entryNodes.length < 20)
-
-			setClosestRegion(entryNodes)
+			
 			callback(allNodes)
-			getAllNodes(() => {})
+			getEntryNodes(country, setClosestRegion)
+
+			
+			getAllNodes(() => {
+				return testClosestRegion(async ()=> {
+					const country = testRegion[0].node.country;
+					getEntryNodes(country, setClosestRegion)
+					
+				})
+			})
 		})
 		
 	}
 
 	getAllNodes(() => {
-		return testClosestRegion( ()=> {
+		return testClosestRegion(async ()=> {
 			const country = testRegion[0].node.country;
-			const entryRegionNodes = allNodes.filter((n) => n.country === country);
-			do {
-				const index = Math.floor(Math.random() * entryRegionNodes.length);
-				const node = entryRegionNodes[index];
-				if (node?.ip_addr) {
-					entryNodes.push(node);
-				}
-			} while (entryNodes.length < 10);
-			setClosestRegion(entryNodes)
+			
 			callback(allNodes)
+			getEntryNodes(country, setClosestRegion)
+			
+			getAllNodes(() => {
+				return testClosestRegion(async ()=> {
+					const country = testRegion[0].node.country;
+					getEntryNodes(country, setClosestRegion)
+					
+				})
+			})
+		
 		})
 	})
 }

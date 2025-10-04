@@ -101,9 +101,10 @@ export const postToEndpoint = async <T = any> (
   timeoutMs = typeof XMLHttpRequestTimeout === "number" ? XMLHttpRequestTimeout : 15000
 ): Promise<"" | boolean | T> => {
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  
 
   try {
+	const timer = setTimeout(() => ac.abort('TimeoutError'), timeoutMs);
     const res = await fetch(url, {
       method: post ? "POST" : "GET",
       headers:
@@ -112,13 +113,18 @@ export const postToEndpoint = async <T = any> (
           : undefined,
       body: post ? (jsonData ? JSON.stringify(jsonData) : "") : undefined,
       signal: ac.signal,
+	  // 防线 A：禁用重定向与缓存，避免被门户/代理“成功”掉
+		redirect: "manual",
+		cache: "no-store",
+		// credentials 依需求选择；很多门户依赖 Cookie，这里可隔离
+		credentials: "omit",
     });
 
     // 200 → resolve(false)
     if (res.status < 200 || res.status >= 300) {
       return false;
     }
-
+	clearTimeout(timer);
     const text = await res.text();
     if (!text.length) {
       return "";
@@ -139,8 +145,6 @@ export const postToEndpoint = async <T = any> (
   } catch (err) {
     // AbortError/网络错误 → reject
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

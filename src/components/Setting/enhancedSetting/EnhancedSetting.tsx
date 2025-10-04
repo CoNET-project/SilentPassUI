@@ -19,6 +19,12 @@ const EnhancedSetting = ({}) => {
                         prefix={<span className={styles.icon}><GiftOutlined /></span>} 
                         onClick={() => {navigate("/wallet")}}
                     >
+                        {t('Settings_Passcode_CONET_Dashboard')}
+                    </List.Item>
+					<List.Item 
+                        prefix={<span className={styles.icon}><GiftOutlined /></span>} 
+                        onClick={() => {navigate("/wallet")}}
+                    >
                         {t('Settings_Passcode_Reward')}
                     </List.Item>
                     <List.Item 

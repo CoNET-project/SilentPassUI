@@ -44,10 +44,14 @@ const Footer = ({}) => {
 		window.addEventListener("visibilitychange", async () => {
 			if (document.visibilityState === "visible") {
 				const status = await getVPNStatus()
-				setPower(status)
-				setIsIOS(true)
+				if (typeof status === 'boolean') {
+					setPower(status)
+					setIsIOS(true)
+				}
 			}
 		})
+
+
     },[])
 
     const makeListener=(message:BridgeMessage,makeSend:any)=>{

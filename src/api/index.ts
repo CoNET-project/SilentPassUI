@@ -119,7 +119,7 @@ export const startSilentPass = async (
 
 
 // 查询状态：GET /iOSVPN，服务端回 { vpn: boolean }
-export async function getVPNStatus(): Promise<boolean> {
+export async function getVPNStatus(): Promise<boolean|null> {
 	try {
 		const resp = await fetchJson<{ vpn: boolean }>(`${API_BASE}/iOSVPN`, undefined, 5000);
 		// 广播状态给前端 UI
@@ -127,7 +127,7 @@ export async function getVPNStatus(): Promise<boolean> {
 		return !!resp.vpn;
 	} catch {
 		window.dispatchEvent(new CustomEvent("vpn:status", { detail: false }));
-		return false;
+		return null
 	}
 }
 

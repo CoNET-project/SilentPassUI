@@ -1,6 +1,6 @@
 {
 	"name": "silentpass-daemon",
-	"version": "0.35.0",
+	"version": "0.36.6",
 	"private": true,
 	"dependencies": {
 		"@ant-design/icons": "^6.0.0",
@@ -87,6 +87,7 @@
 			"last 1 safari version"
 		]
 	},
+	
 	"devDependencies": {
 		"@babel/parser": "^7.23.0",
 		"@babel/types": "^7.23.0",

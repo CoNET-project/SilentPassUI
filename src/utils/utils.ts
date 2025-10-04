@@ -94,65 +94,59 @@ export const initProfileTokens = () => {
   return ret;
 };
 
-export const postToEndpoint = (url: string, post: boolean, jsonData: any): Promise<""|boolean|any> => {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = () => {
-      clearTimeout(timeCount);
+export const postToEndpoint = async <T = any> (
+  url: string,
+  post: boolean,
+  jsonData?: any,
+  timeoutMs = typeof XMLHttpRequestTimeout === "number" ? XMLHttpRequestTimeout : 15000
+): Promise<"" | boolean | T> => {
+  const ac = new AbortController();
+  
 
-      if (xhr.status === 200) {
-        if (!xhr.responseText.length) {
-          return resolve("");
-        }
+  try {
+	const timer = setTimeout(() => ac.abort('TimeoutError'), timeoutMs);
+    const res = await fetch(url, {
+      method: post ? "POST" : "GET",
+      headers:
+        post && jsonData !== undefined
+          ? { "Content-Type": "application/json;charset=UTF-8" }
+          : undefined,
+      body: post ? (jsonData ? JSON.stringify(jsonData) : "") : undefined,
+      signal: ac.signal,
+	  // 防线 A：禁用重定向与缓存，避免被门户/代理“成功”掉
+		redirect: "manual",
+		cache: "no-store",
+		// credentials 依需求选择；很多门户依赖 Cookie，这里可隔离
+		credentials: "omit",
+    });
 
-        let ret;
+    // 200 → resolve(false)
+    if (res.status < 200 || res.status >= 300) {
+      return false;
+    }
+	clearTimeout(timer);
+    const text = await res.text();
+    if (!text.length) {
+      return "";
+    }
 
-        try {
-          ret = JSON.parse(xhr.responseText);
-        } catch (ex) {
-          if (post) {
-            return resolve("");
-          }
+    // 优先依据 Content-Type
+    const ct = (res.headers.get("Content-Type") || "").toLowerCase();
+    if (ct.includes("application/json") || ct.includes("+json")) {
+      return JSON.parse(text) as T;
+    }
 
-          return resolve(true);
-        }
-
-        return resolve(ret);
-      }
-
-      console.log(
-        `postToEndpoint [${url}] xhr.status [${
-          xhr.status === 200
-        }] !== 200 Error`
-      );
-
-      return resolve(false);
-    };
-
-    // xhr.onerror = (err) => {
-    //   console.log(`xhr.onerror`, err);
-    //   clearTimeout(timeCount);
-    //   return reject(err);
-    // }
-
-
-	xhr.onabort = ev => {
-		console.log(`ev`)
-		reject(ev)
-	}
-	xhr.onerror = err => {
-		reject (err)
-	}
-	xhr.open(post ? "POST" : "GET", url, true)
-	xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-	xhr.send(jsonData ? JSON.stringify(jsonData) : "")
-    const timeCount = setTimeout(() => {
-      const Err = `Timeout!`;
-      console.log(`postToEndpoint ${url} Timeout Error`, Err);
-      reject(new Error(Err));
-    }, XMLHttpRequestTimeout);
-  });
-};
+    // 回落：尝试 JSON 解析；失败时保持原规则（POST→""，GET→true）
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return (post ? "" : true) as any;
+    }
+  } catch (err) {
+    // AbortError/网络错误 → reject
+    throw err;
+  }
+}
 
 export const getRemainingTime = (timestamp: number, day: string, hour: string): string => {
   const now = Math.floor(Date.now() / 1000);

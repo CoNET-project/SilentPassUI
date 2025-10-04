@@ -25,7 +25,7 @@ import { useMemo } from "react";
 import { LuCirclePower } from 'react-icons/lu';
 import type { IconBaseProps } from 'react-icons';
 import phoneImg from './assets/android.png'
-import { getRandomNodeDomain, getRandomNode} from '../../services/mining'
+import { getRandomNode} from '../../services/mining'
 import styled from 'styled-components'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faApple, faAndroid } from '@fortawesome/free-brands-svg-icons';
@@ -112,7 +112,7 @@ const CustomerServiceButton = styled(BaseButton)`
 `;
 
 const Home = () => {
-  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion} = useDaemonContext();
+  const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin} = useDaemonContext();
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [initPercentage, setInitPercentage] = useState<number>(0);
   const [isProcessAirDrop, setIsProcessAirDrop] = useState(false)
@@ -217,21 +217,15 @@ const Home = () => {
 	downloadLinkPost('iOS', channelPartners, showReferralsInput, node.country)
   }
 
-  useEffect(() => {
-	if (!closestRegion?.length) {
-		return
-	}
-	setIsInitialLoading(false);
-  }, [closestRegion])
 
-    useEffect(() => {
+  useEffect(() => {
 	getParament()
-	
+	setIsInitialLoading(false)
   }, [])
 
   	const androidDownload = () => {
 		const node = getRandomNode()
-		const downloadLink = channelPartners ? `https://${node.domain}/download/${channelPartners}/Android.apk`: `https://${node.domain}/download/Android.apk`
+		const downloadLink = channelPartners ? `/download/${channelPartners}/SilentPassVPN.apk`: `/download/SilentPassVPN.apk`
 		
 		window.open (downloadLink)
 		downloadLinkPost('Android.apk', channelPartners, showReferralsInput, node.country)
@@ -239,23 +233,16 @@ const Home = () => {
 
 	const winDownload = () => {
 		const node = getRandomNode()
-		const downloadLink = channelPartners ? `https://${node.domain}/download/${channelPartners}/SilentPassProxy.exe`: `https://${node.domain}/download/SilentPassProxy.exe`
+		const downloadLink = channelPartners ? `/download/${channelPartners}/SilentPassVPN.exe`: `/download/SilentPassVPN.exe`
 		
 		window.open (downloadLink)
 		downloadLinkPost('SilentPassProxy.exe', channelPartners, showReferralsInput, node.country)
 	}
 
-	const macMDownload = () => {
-		const node = getRandomNode()
-		const downloadLink = channelPartners ? `https://${node.domain}/download/${channelPartners}/SilentPassProxyMacOS-M-cpu.dmg`: `https://${node.domain}/download/SilentPassProxyMacOS-M-cpu.dmg`
-		
-		window.open (downloadLink)
-		downloadLinkPost('SilentPassProxyMacOS-M-cpu.dmg', channelPartners, showReferralsInput, node.country)
-	}
 
 	const macDownload = () => {
 		const node = getRandomNode()
-		const downloadLink = channelPartners ? `https://${node.domain}/download/${channelPartners}/SilentPassProxyMacOS-Inter-cpu.dmg`: `https://${node.domain}/download/SilentPassProxyMacOS-Inter-cpu.dmg`
+		const downloadLink = channelPartners ? `/download/${channelPartners}/SilentPassVPN.dmg`: `/download/SilentPassVPN.dmg`
 		window.open (downloadLink)
 		downloadLinkPost('SilentPassProxyMacOS-Inter-cpu.dmg', channelPartners, showReferralsInput, node.country)
 	}
@@ -372,7 +359,6 @@ const Home = () => {
 			<div className='downloadLinks'>
 				<div><a onClick={winDownload}>{t('download_page_windows_download')}</a></div>
 				<div><a onClick={macDownload}>{t('download_page_windows_MacOS')}</a></div>
-				<div><a onClick={macMDownload}>{t('download_page_windows_MacOS_M')}</a></div>
 			</div>
 
 			<div className='videoBtnsContainer'>

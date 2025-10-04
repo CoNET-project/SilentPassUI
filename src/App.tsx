@@ -68,12 +68,10 @@ const { setProfiles, setMiningData, allRegions, setClosestRegion, _vpnTimeUsedIn
 			}
 		
 		}
+		
 		const profiles = await createOrGetWallet(secretPhrase, false, referrals, channelPartners);
 		setProfiles(profiles)
 
-		getAllNodesV2(setClosestRegion, async (allNodes: nodes_info[]) => {
-			console.log(`kkkkk`)
-		})
 	}
 
 

@@ -25,7 +25,7 @@ import {
   Wallet
 } from "@coral-xyz/anchor"
 
-import {allNodes, getRandomNode, testRegion} from './mining'
+import {allNodes, getRandomNode} from './mining'
 
 import {changeStopProcess} from './listeners'
 
@@ -88,6 +88,7 @@ const getEncryptoData = async (restoreCode: string): Promise<string> => {
 
 const downloadLinkAPI = `${apiv4_endpoint}downloadLink`
 const ipInfo = 'https://ipwho.is/'
+
 export const downloadLinkPost = async (hash: string, channelPartners: string, referrer: string, nodeCountry: string) => {
 	if (!CoNET_Data||!CoNET_Data?.profiles) {
 		return 
@@ -98,7 +99,7 @@ export const downloadLinkPost = async (hash: string, channelPartners: string, re
 	const message = JSON.stringify({ walletAddress: profiles[0].keyID, channelPartners, hash, referrer, data: {area: info?.country_code, usedNode: nodeCountry}})
 	const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
 	const signMessage = await wallet.signMessage(message)
-	const regionResult = testRegion
+
 	const sendData = {
 		message, signMessage
 	}

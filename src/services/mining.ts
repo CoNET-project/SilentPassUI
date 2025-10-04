@@ -9,12 +9,12 @@ import {
   readPrivateKey,
 } from "openpgp";
 import contracts from "../utils/contracts";
-import { conetProvider } from "../utils/constants";
+import { conetDepinProvider } from "../utils/constants";
 import { initProfileTokens, postToEndpoint } from "../utils/utils";
 import async from "async";
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
 import nodes from '../pages/Home/assets/allnodes.json'
-
+import {mapLimit} from 'async'
 let allNodes: nodes_info[] = [];
 let closestNodes: nodes_info[] = [];
 let allRegions: string[] = [];
@@ -39,6 +39,7 @@ const postToEndpointGetBody: (
       //const status = parseInt(xhr.responseText.split (' ')[1])
 		clearTimeout(timeout)
       if (xhr.status === 200) {
+		
         // parse JSON
         if (!xhr.responseText.length) {
           return resolve("");
@@ -72,110 +73,172 @@ const getRandomNodeFromRegion: (region: string) => nodes_info = (
   }
 
   return node
-};
+}
+
+const deleteNodeFromList = (node: nodes_info) => {
+	const index = allNodes.findIndex(n => n.ip_addr === node.ip_addr)
+	if (index > -1 ) {
+		allNodes.splice(index, 1)
+	}
+	
+}
+
+export const testNode = (node: nodes_info): Promise<boolean> => new Promise (async executor => {
+	try {
+		const url = `http://${node.ip_addr}`
+		await postToEndpoint(url, false, false, 1000)
+		// 只有在“计入结果”的时候才判断是否够数
+		executor(true)
+	} catch (e) {
+		// 失败再次测试
+		deleteNodeFromList(node)
+		executor(false)
+	}
+})
+
+const testSpeed = (region: string) =>
+	new Promise<void>(async (resolve, reject) => {
+		const node = getRandomNodeFromRegion(region);
+		try {
+			
+			const url = `http://${node.ip_addr}`
+			const startTime = Date.now()
+
+			// 这里建议加超时（可选）：await fetchWithTimeout(...)
+			await postToEndpoint(url, false, false, 1000)
+
+			const delay = Date.now() - startTime
+			
+			testRegion.push({ node, delay })
+			// 只有在“计入结果”的时候才判断是否够数
+			resolve(); // 别忘了正常完结
+		} catch (e) {
+			// 失败再次测试
+			deleteNodeFromList(node)
+			resolve(await testSpeed(region))
+		}
+	})
 
 const testClosestRegion = async (callback: () => void) => {
-  testRegion = [];
 
-  async.each(allRegions, (item, _callback) => {
-	const node = getRandomNodeFromRegion(item)
-	const url = `https://${node.domain}`;
-      const startTime = new Date().getTime();
-	  const test = async () => {
-		await postToEndpointGetBody(url, false,false, null);
-		const endTime = new Date().getTime();
-		const delay = endTime - startTime;
-		testRegion.push({ node, delay })
-		_callback(new Error(''))
-	  }
-      test()
-      
-  }).then (() => {
-	testRegion.forEach(n => closestNodes.push(n.node))
-	// callback()
-  }).catch (ex=> {
-	testRegion.forEach(n => closestNodes.push(n.node))
-	callback()
-  })
-};
+
+	const processPool: any[] = []
+	let didCallBack = false
+	allRegions.forEach(n => {
+		if (/DE|ES|GB|US/i.test(n)) {
+			processPool.push(testSpeed(n))
+		}
+		
+	})
+
+	
+	await Promise.all(processPool).finally(() => {
+		if (!didCallBack) {
+			callback()
+		}
+		
+		
+	}).catch(ex => {
+		if (testRegion.length && !didCallBack) {
+			didCallBack = true
+			callback()
+		}
+	})
+	
+}
+		
+export const exitNodes = (exitRegion: string) => {
+	const exitNodes = allNodes.filter((n: nodes_info) => {
+		const region: string = n.region
+		
+		const regionName = /HK/i.test(exitRegion) ? region.split('.')[0] : region.split('.')[1]
+		if (exitRegion === 'CN' && region === 'HK.CN') {
+			return false
+		}
+		const index = entryNodes.findIndex(_n => _n.ip_addr === n.ip_addr)
+		if (index > -1) {
+			return false
+		}
+		return regionName === exitRegion
+	})
+	return exitNodes
+}
+
+const _getAllNodes = (): Promise<any[]> => new Promise ( async executor => {
+	const GuardianNodesContract = new ethers.Contract(
+		contracts.GuardianNodesInfoV6.address,
+		contracts.GuardianNodesInfoV6.abi,
+		conetDepinProvider
+	)
+	let i = 0
+	let nodes: any [] = []
+	let loop = true
+	const length = 400
+	do {
+		try {
+			const _nodes: any[] = await GuardianNodesContract.getAllNodes(i, i + 400)
+			nodes = [...nodes, ..._nodes]
+			if (_nodes.length < 400) {
+				loop = false
+			}
+			i += length
+		} catch (ex) {
+			loop = false
+		}
+
+	} while (loop)
+
+	return executor(nodes)
+	
+})
 
 const getAllNodes = async (
-  setClosestRegion: (entryNodes: nodes_info[]) => void,
-  callback: (allnodes: nodes_info[]) => void
+  	callback: (allnodes: nodes_info[]) => void
 ) => {
+
   if (getAllNodesProcess) {
     return
   }
+  getAllNodesProcess = true
 
-  getAllNodesProcess = true;
+  const _nodes = await _getAllNodes()
 
-  const GuardianNodesContract = new ethers.Contract(
-    contracts.ConetGuardianNodesV6.address,
-    contracts.ConetGuardianNodesV6.abi,
-    conetProvider
-  );
-  maxNodes = 0;
-  try {
-    const _maxNodes: BigInt = await GuardianNodesContract.currentNodeID();
-    maxNodes = parseInt(_maxNodes.toString());
-  } catch (ex) {
-    return console.log(`getAllNodes currentNodeID Error`, ex);
-  }
-  if (!maxNodes) {
-    return console.log(`getAllNodes STOP scan because scanNodes == 0`);
-  }
-  let _allNodes:nodes_info[] = [];
-  for (let i = 0; i < maxNodes; i++) {
-    _allNodes.push({
-      region: "",
-      country: "",
-      ip_addr: "",
-      armoredPublicKey: "",
-      last_online: false,
-      nftNumber: 100 + i,
-    });
-  }
-  const GuardianNodesInfoContract = new ethers.Contract(
-    contracts.GuardianNodesInfoV6.address,
-    contracts.GuardianNodesInfoV6.abi,
-    conetProvider
-  );
-  const country: Map<string, boolean> = new Map();
-  currentScanNodeNumber = 0;
-  let i = 0;
-  await async
-    .mapLimit(_allNodes, 1, async (n: nodes_info, next: any) => {
-      const nodeInfo = await GuardianNodesInfoContract.getNodeInfoById(
-        n.nftNumber
-      );
-      if (nodeInfo?.pgp) {
-        i = n.nftNumber;
-        currentScanNodeNumber++;
-        n.region = nodeInfo.regionName;
-        const _country = n.region.split(".")[1];
-        country.set(_country, true);
-        n.ip_addr = nodeInfo.ipaddress;
-        n.country = _country;
-        n.armoredPublicKey = Buffer.from(nodeInfo.pgp, "base64").toString();
-        const pgpKey1 = await readKey({
-          armoredKey: n.armoredPublicKey,
-        });
-        n.domain =
-          pgpKey1.getKeyIDs()[1].toHex().toUpperCase() + ".conet.network";
-        return;
-      }
-      throw new Error(`Ended`);
-    })
-    .catch(() => {});
-  maxNodes = currentScanNodeNumber - currentScanNodeNumber * 0.1;
 
-  const index = _allNodes.findIndex((n) => n.nftNumber === i) + 1;
-  _allNodes = _allNodes.slice(0, index);
-  allRegions = Array.from(country.keys());
+  const _allNodes:nodes_info[] = []
+  const _countryArray: Map<string, boolean> = new Map()
+  for (let i = 0; i < _nodes.length; i ++) {
+	const node = _nodes[i]
+	const id = parseInt(node[0].toString())
+	const pgpString: string = Buffer.from( node[1], 'base64').toString()
+	const domain: string = node[2]
+	const ipAddr: string = node[3]
+	const region: string = node[4]
+	let country_item = region.split('.')[1]
+	if (/zh/i.test(region.split('.')[0])) {
+		country_item = 'zh'
+	}
+	const itemNode: nodes_info = {
+		country: country_item,
+		ip_addr: ipAddr,
+		armoredPublicKey: pgpString,
+		domain: domain,
+		last_online: true,
+		nftNumber: id,
+		region
+	}
+
+	_countryArray.set(country_item, true)
+	_allNodes.push(itemNode)
+  }
+
+
+
+  	allRegions = Array.from(_countryArray.keys())
 	allNodes = _allNodes
-	storageAllNodes(allNodes)
-	 callback(_allNodes);
-};
+	await storageAllNodes(allNodes)
+	getAllNodesProcess = false
+	callback(_allNodes)
+}
 
 const getAllRegions = (nodes: nodes_info[]) => {
 	const country: Map<string, boolean> = new Map();
@@ -187,32 +250,68 @@ const getAllRegions = (nodes: nodes_info[]) => {
 	allRegions = Array.from(country.keys())
 }
 
+const closeNodes: nodes_info[] = []
+
+const getEntryNodes = (country: string, setClosestRegion: (entryNodes: nodes_info[]) => void) => {
+	const entryRegionNodes = allNodes.filter((n) => n.country === country);
+	mapLimit(entryRegionNodes, 10, async (n, next ) => {
+		
+		const test = await testNode(n)
+		if (test) {
+			closeNodes.push(n)
+			setClosestRegion(closeNodes)
+		}
+	}).finally(() => {
+		console.log(closeNodes)
+	})
+}
+
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
-	allNodes = await checkLocalStorageNodes()||nodes
+	allNodes = nodes
 	const index = allNodes.findIndex(n => n.ip_addr === '74.208.234.210')
 	if (index > -1) {
 		allNodes.splice(index, 1)
 	}
-	if (allNodes) {
+
+	if (allNodes?.length) {
 		getAllRegions(allNodes)
-		return testClosestRegion( ()=> {
+		return testClosestRegion( async ()=> {
 			const country = testRegion[0].node.country;
-			const entryRegionNodes = allNodes.filter((n) => n.country === country);
-			do {
-				const index = Math.floor(Math.random() * entryRegionNodes.length);
-				const node = entryRegionNodes[index];
-				if (node?.ip_addr) {
-					entryNodes.push(node);
-				}
-			} while (entryNodes.length < 10);
-			setClosestRegion(entryNodes);
-			callback(allNodes)
 			
+			callback(allNodes)
+			getEntryNodes(country, setClosestRegion)
+
+			
+			getAllNodes(() => {
+				return testClosestRegion(async ()=> {
+					const country = testRegion[0].node.country;
+					getEntryNodes(country, setClosestRegion)
+					
+				})
+			})
 		})
 		
 	}
+
+	getAllNodes(() => {
+		return testClosestRegion(async ()=> {
+			const country = testRegion[0].node.country;
+			
+			callback(allNodes)
+			getEntryNodes(country, setClosestRegion)
+			
+			getAllNodes(() => {
+				return testClosestRegion(async ()=> {
+					const country = testRegion[0].node.country;
+					getEntryNodes(country, setClosestRegion)
+					
+				})
+			})
+		
+		})
+	})
 }
 
 
@@ -232,6 +331,52 @@ const createGPGKey = async (passwd: string, name: string, email: string) => {
   return await generateKey(option);
 };
 
+let startMiningV2Process = false;
+
+const ceateMininngValidator = async (
+  currentProfile: profile,
+  node: nodes_info,
+  requestData: any = null
+) => {
+  if (!currentProfile || !currentProfile.pgpKey || !node.armoredPublicKey) {
+    console.log(
+      `currentProfile?.pgpKey[${currentProfile?.pgpKey}]|| !SaaSnode?.armoredPublicKey[${node?.armoredPublicKey}] Error`
+    );
+    return null;
+  }
+  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString(
+    "base64"
+  );
+
+  const command: SICommandObj = {
+    command: "mining_validator",
+    algorithm: "aes-256-cbc",
+    Securitykey: key,
+    requestData,
+    walletAddress: currentProfile.keyID.toLowerCase(),
+  };
+
+  const message = JSON.stringify(command);
+  const wallet = new ethers.Wallet(currentProfile.privateKeyArmor);
+  const signMessage = await wallet.signMessage(message);
+  let privateKeyObj = null;
+
+  try {
+    privateKeyObj = await makePrivateKeyObj(
+      currentProfile.pgpKey.privateKeyArmor
+    );
+  } catch (ex) {
+    return console.log(ex);
+  }
+
+  const encryptedCommand = await encrypt_Message(
+    privateKeyObj,
+    node.armoredPublicKey,
+    { message, signMessage }
+  );
+  command.requestData = [encryptedCommand, "", key];
+  return command;
+};
 
 const makePrivateKeyObj = async (privateArmor: string, password = "") => {
   if (!privateArmor) {
@@ -251,6 +396,52 @@ const makePrivateKeyObj = async (privateArmor: string, password = "") => {
   return privateKey;
 };
 
+const createConnectCmd = async (
+  currentProfile: profile,
+  node: nodes_info,
+  requestData: any = null
+) => {
+  if (!currentProfile || !currentProfile.pgpKey || !node.armoredPublicKey) {
+    console.log(
+      `currentProfile?.pgpKey[${currentProfile?.pgpKey}]|| !SaaSnode?.armoredPublicKey[${node?.armoredPublicKey}] Error`
+    );
+    return null;
+  }
+
+  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString(
+    "base64"
+  );
+  const command: SICommandObj = {
+    command: "mining",
+    algorithm: "aes-256-cbc",
+    Securitykey: key,
+    requestData,
+    walletAddress: currentProfile.keyID.toLowerCase(),
+  };
+
+  console.log(`mining`);
+  const message = JSON.stringify(command);
+  const wallet = new ethers.Wallet(currentProfile.privateKeyArmor);
+  const signMessage = await wallet.signMessage(message);
+
+  let privateKeyObj = null;
+
+  try {
+    privateKeyObj = await makePrivateKeyObj(
+      currentProfile.pgpKey.privateKeyArmor
+    );
+  } catch (ex) {
+    return console.log(ex);
+  }
+
+  const encryptedCommand = await encrypt_Message(
+    privateKeyObj,
+    node.armoredPublicKey,
+    { message, signMessage }
+  );
+  command.requestData = [encryptedCommand, "", key];
+  return command;
+};
 
 const encrypt_Message = async (
   privatePgpObj: any,
@@ -268,24 +459,14 @@ const encrypt_Message = async (
   return await encrypt(encryptObj);
 };
 
-const getRandomNodeIpaddress = () => {
-	const region = testRegion[0].node.country
-	const subNodes = allNodes.filter(n => n.country === region)
-	const index = Math.floor(Math.random()*subNodes.length)
-	return allNodes[index].ip_addr
-}
-
 const getRandomNode = () => {
-	const region = testRegion[0].node.country
-	const subNodes = allNodes.filter(n => n.country === region)
-	const index = Math.floor(Math.random()*subNodes.length)
-	return subNodes[index]
+	const index = Math.floor(Math.random()*closeNodes.length)
+	return closeNodes[index]
 }
 
 const getRandomNodeDomain = () => {
-
-	const index = Math.floor(Math.random()*allNodes.length)
-	return allNodes[index].domain
+	const index = Math.floor(Math.random()*closeNodes.length)
+	return closeNodes[index].domain
 }
 
 const postToEndpointSSE = (
@@ -361,6 +542,5 @@ export {
   currentScanNodeNumber,
   getAllNodesV2,
   getRandomNode,
-  getRandomNodeDomain,
-  testRegion
+  getRandomNodeDomain
 };

@@ -146,7 +146,6 @@ const testClosestRegion = async (callback: () => void) => {
 	})
 	
 }
-
 		
 export const exitNodes = (exitRegion: string) => {
 	const exitNodes = allNodes.filter((n: nodes_info) => {
@@ -164,8 +163,6 @@ export const exitNodes = (exitRegion: string) => {
 	})
 	return exitNodes
 }
-
-
 
 const _getAllNodes = (): Promise<any[]> => new Promise ( async executor => {
 	const GuardianNodesContract = new ethers.Contract(

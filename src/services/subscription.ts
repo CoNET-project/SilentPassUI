@@ -213,7 +213,7 @@ const gettNumeric = (token: string) => {
 export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
 	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(upMint))
 	const slippageBps = 250 // 0.5% slippage
-	const quoteUrl = `http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
+	const quoteUrl = `http://${getRandomNode()}/jup_ag/swap/v1/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
 	try {
         const quoteResponse = await axios.get(quoteUrl)
         const quote = quoteResponse.data
@@ -225,10 +225,11 @@ export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _
     return ''
 }
 
+
 export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
 	const amount = parseInt(ethers.parseUnits(_amount.toString(), gettNumeric(upMint)).toString())
 	const slippageBps = 250 
-	const quoteUrl = `http://${getRandomNode()}/jup_ag/v6/quote?inputMint=${downputMint}&outputMint=${upMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
+	const quoteUrl = `http://${getRandomNode()}/jup_ag/swap/v1/quote?inputMint=${downputMint}&outputMint=${upMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
 	try {
         const quoteResponse = await axios.get(quoteUrl)
         const quote = quoteResponse.data
@@ -625,7 +626,7 @@ export const swapTokens = async (
   try {
     // 1. 构造 Jupiter 的 quote & swapPayload
     const wallet = Keypair.fromSecretKey(Bs58.decode(privateKey));
-	const url = `http://${getRandomNode()}/jup_ag/v6/quote?` +
+	const url = `http://${getRandomNode()}/jup_ag/swap/v1/quote?` +
         `inputMint=${fromMint}` +
         `&outputMint=${toMint}` +
         `&amount=${amount}` +
@@ -634,7 +635,7 @@ export const swapTokens = async (
     const quoteResponse = await quoteRes.json();
 
     const swapRes = await fetch(
-      `http://${getRandomNode()}/jup_ag/v6/swap`,
+      `http://${getRandomNode()}/jup_ag/swap/v1/swap`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

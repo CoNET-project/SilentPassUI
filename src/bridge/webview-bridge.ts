@@ -40,7 +40,11 @@ export const Bridge = {
 	    const messageStr = JSON.stringify(message);
 	    makeSend(messageStr);
   	},
+
   	receive(rawMessage: string, normalReceiveToDo?: (message: BridgeMessage, makeSend: any) => void): void {
+
+		console.log(`NativeToJavaScript Bridge got event ${rawMessage}`)
+
     	if (typeof rawMessage !== "string") return;
 
     	let message: BridgeMessage;
@@ -51,6 +55,8 @@ export const Bridge = {
       		return;
     	}
 
+		console.log(`NativeToJavaScript Bridge got event ${message}`)
+
     	if (message.callbackId && message.response !== undefined) {	// 处理回调响应
       		// Handle response callback
       		const cb = callbacks[message.callbackId];
@@ -58,12 +64,15 @@ export const Bridge = {
         		cb(message.response);
         		delete callbacks[message.callbackId];
       		}
-    	} else {	
+    	} else {
     		// 正常收到事件
-    		if(normalReceiveToDo){normalReceiveToDo(message,makeSend)}
+    		if(normalReceiveToDo){normalReceiveToDo(message, makeSend)}
     	}
   	}
 }
+
+
+
 
 // 监听 Electron 或 Native 的回传
 window.addEventListener('message', (e: MessageEvent) => {

@@ -99,7 +99,7 @@ const Home = ({}) => {
             <SwitchTransition mode="out-in">
                 <CSSTransition
                     key={isInitialLoading ? 'init' : 'content'}
-                    timeout={200}
+                    timeout={100}
                     classNames={{
                         enter: styles.fadeEnter,
                         enterActive: styles.fadeEnterActive,

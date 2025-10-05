@@ -119,15 +119,28 @@ export const startSilentPass = async (
 
 
 // 查询状态：GET /iOSVPN，服务端回 { vpn: boolean }
-export async function getVPNStatus(): Promise<boolean> {
+export async function getiOSVPNStatus(): Promise<boolean|null> {
 	try {
 		const resp = await fetchJson<{ vpn: boolean }>(`${API_BASE}/iOSVPN`, undefined, 5000);
 		// 广播状态给前端 UI
-		window.dispatchEvent(new CustomEvent("vpn:status", { detail: resp.vpn }));
+			window.dispatchEvent(new CustomEvent("vpn:status", { detail: resp.vpn }));
 		return !!resp.vpn;
 	} catch {
 		window.dispatchEvent(new CustomEvent("vpn:status", { detail: false }));
-		return false;
+		return null;
+	}
+}
+
+// 查询状态：GET /iOSVPN，服务端回 { vpn: boolean }
+export async function getAndroidVPNStatus(): Promise<boolean|null> {
+	try {
+		const resp = await fetchJson<{ vpn: boolean }>(`http://127.0.0.1:8888/androidVPN`, undefined, 5000);
+		// 广播状态给前端 UI
+		window.dispatchEvent(new CustomEvent("vpn:status", { detail: resp.vpn }));
+		return true;
+	} catch {
+		window.dispatchEvent(new CustomEvent("vpn:status", { detail: false }));
+		return null;
 	}
 }
 

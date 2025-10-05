@@ -7,7 +7,7 @@ import {
   postToEndpoint,
 
 } from "../utils/utils";
-import {allNodes, getRandomNode} from './mining'
+import {closeNodes, getRandomNode} from './mining'
 import {
   apiv4_endpoint,
   conetDepinProvider,
@@ -638,10 +638,12 @@ const refreshSolanaBalances = async (
 ) => {
   const solanaProfile = CoNET_Data?.profiles[1];
 
-  if (!solanaProfile||reflaseSolanaBalancesProcess||!allNodes) {
+  if (!solanaProfile||reflaseSolanaBalancesProcess) {
     return false
   }
-  let _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
+
+  const node = getRandomNode()
+  
   reflaseSolanaBalancesProcess = true
     try {
       const [sol, sp, usdt, oracle] = await Promise.all([

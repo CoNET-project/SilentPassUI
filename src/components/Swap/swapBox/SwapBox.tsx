@@ -123,6 +123,7 @@ const SwapBox = ({}) => {
                 return intPart + (decimalPart || '');
             });
         }
+		
         const requestId = ++latestRequestId.current; // 标记本次请求
         const inputMint=getMintAddr(inputType);
         const outputMint=getMintAddr(outputType);

@@ -10,7 +10,8 @@ import { isPassportValid } from "@/utils/utils";
 import { CoNET_Data } from '@/utils/globals';
 import { getAllRegions } from "@/services/regions";
 import BlobWrapper from '@/components/Home/BlobWrapper';
-import { startVPN, stopVPN } from "../../../api"
+import { testNode, exitNodes} from '../../../services/mining'
+import { startVPN, stopVPN, getAndroidVPNStatus } from "../../../api"
 
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 
@@ -18,6 +19,7 @@ const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
 const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
+
 
 const RenderButton = ({}) => {
     const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false);
@@ -32,7 +34,20 @@ const RenderButton = ({}) => {
         }
         setShowConnected(false);
     }, [power, isConnectionLoading]);
+	const status = async () => {
 
+
+		const android = await getAndroidVPNStatus()
+		if (android) {
+			setPower(true)
+		}
+	}
+
+	useEffect(()=>{
+		// 监听 Electron 或 Native 的回传
+		status()
+
+	},[])
     const handleTogglePower = async () => {
         let error = false;
         setErrorMessage('');
@@ -58,7 +73,8 @@ const RenderButton = ({}) => {
             setTimeout(() => {setIsConnectionLoading(false);setPower(false);}, 2000)
             return ;
         }
-        if (!profiles?.[0]?.activePassport?.expires) {
+
+		if (!profiles?.[0]?.activePassport?.expires) {
             setTimeout(() => {
                 setIsConnectionLoading(false)
                 setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
@@ -84,16 +100,7 @@ const RenderButton = ({}) => {
         }
 
         await getAllRegions()
-        const allNodes = getAllNodes
-        
-        if (!allNodes.length) {
-            setTimeout(() => {
-                setIsConnectionLoading(false)
-                setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
-                setStatusVisible(true);
-            }, 1000)
-            return
-        }
+
 
         if (sRegion === -1) {
             selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
@@ -104,11 +111,32 @@ const RenderButton = ({}) => {
 
         
         const exitRegion = allRegions[selectedCountryIndex].code
+		let waiting = 0
+		let _entryNodes
 
-
+		do {
+			_entryNodes = closestRegion
+			waiting ++
+			await new Promise(executor => setTimeout(() => executor(true), 1000))
+		} while (_entryNodes.length < 10 && waiting < 10)
         
 
-        let _entryNodes = closestRegion
+		const testAllNodeProcess = _entryNodes.map(async (n, index) => {
+			const isWorking = await testNode(n)
+			if (!isWorking) {
+				_entryNodes.splice(index, 1)
+			}
+		})
+
+		await Promise.all (testAllNodeProcess)
+
+
+		_entryNodes.forEach(async (n, index) => {
+			const kk = await testNode(n)
+			if (!kk) {
+				_entryNodes.splice(index, 1)
+			}
+		})
 
         const entryNodes = _entryNodes.map(n => {
             return {
@@ -120,24 +148,22 @@ const RenderButton = ({}) => {
             }
         })
 
+
+
 		
-		const exitNodes = allNodes.filter((n: nodes_info) => {
-            const region: string = n.region
-			
-            const regionName = /HK/i.test(exitRegion) ? region.split('.')[0] : region.split('.')[1]
-			if (exitRegion === 'CN' && region === 'HK.CN') {
-				return false
-			}
-			const index = entryNodes.findIndex(_n => _n.ip_addr === n.ip_addr)
-			if (index > -1) {
-				return false
-			}
-            return regionName === exitRegion
-        })
+		const _exitNodes = exitNodes(exitRegion)
 
-		const randomExitIndex = Math.floor(Math.random() * (exitNodes.length - 1));
+        let _exitNode = []
+		do {
+			const randomExitIndex = Math.floor(Math.random() * (_exitNodes.length))
+			const node = _exitNodes[randomExitIndex]
+			const isWorking = await testNode(node)
+			if (isWorking) {
+				_exitNode.push(node)
+			}
 
-        const _exitNode = [exitNodes[randomExitIndex]]
+		} while(_exitNode.length == 0)
+		
 
         const exitNode = _exitNode.map(n => {
             return {

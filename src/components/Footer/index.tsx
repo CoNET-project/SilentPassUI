@@ -18,7 +18,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider";
 import Filter from '@/components/Rules/Filter';
 import {Bridge} from '@/bridge/webview-bridge';
 import NewVersion from "@/components/Home/NewVersion/NewVersion";
-import {getVPNStatus} from "../../api"
+import { getiOSVPNStatus, getAndroidVPNStatus} from "../../api"
 
 interface BridgeMessage {
     event?: string;
@@ -26,6 +26,8 @@ interface BridgeMessage {
     callbackId?: string;
     response?: any;
 }
+
+
 
 const Footer = ({}) => {
     const { t, i18n } = useTranslation();
@@ -35,22 +37,41 @@ const Footer = ({}) => {
     const { pathname } = location;
 
 
-    useEffect(()=>{
-        // 监听 Electron 或 Native 的回传
-        window.addEventListener('message', (e) => {
-            Bridge.receive(e.data,makeListener)
+	const status = async () => {
+		window.addEventListener('message', (e) => {
+            Bridge.receive(e.data, makeListener)
         })
 				// 页面重新获得焦点/从后台回前台时，自动同步一次 VPN 状态
 		window.addEventListener("visibilitychange", async () => {
-			if (document.visibilityState === "visible") {
-				const status = await getVPNStatus()
-				setPower(status)
+			const [iOS, android]= await Promise.all([
+				getiOSVPNStatus(),
+				getAndroidVPNStatus()
+			])
+			
+			if (typeof iOS == 'boolean') {
+				setPower(iOS)
 				setIsIOS(true)
+			} else if (typeof android === 'boolean') {
+				setPower(android)
 			}
+			
 		})
+		const android = await getAndroidVPNStatus()
+		if (android) {
+			setPower(true)
+		}
+	}
+    useEffect(()=>{
+        // 监听 Electron 或 Native 的回传
+        status()
+
     },[])
 
-    const makeListener=(message:BridgeMessage,makeSend:any)=>{
+    const makeListener=(message: BridgeMessage, makeSend:any)=>{
+
+		console.log(`makeListener got message`, message)
+
+
         if (message.event === 'native_VPNStatus') {
             if(message?.data?.VPNStatus===1){
                 setPower(false);

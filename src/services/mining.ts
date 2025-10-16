@@ -10,7 +10,7 @@ import {
 } from "openpgp";
 import contracts from "../utils/contracts";
 import { conetDepinProvider } from "../utils/constants";
-import { initProfileTokens, postToEndpoint } from "../utils/utils";
+import { initProfileTokens, postToEndpoint, findAsync } from "../utils/utils";
 import async from "async";
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
 import nodes from '../pages/Home/assets/allnodes.json'
@@ -25,41 +25,9 @@ let getAllNodesProcess = false;
 let entryNodes: nodes_info[] = [];
 let currentScanNodeNumber = 0;
 let maxNodes = 0;
-let testRegion: ClosestRegion[] = [];
-const postToEndpointGetBody: (
-  url: string,
-  post: boolean,
-  isJSON: boolean,
-  jsonData: any
-) => Promise<string> = (url: string, post: boolean, isJSON: boolean, jsonData: any ) => {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = () => {
-      //const status = parseInt(xhr.responseText.split (' ')[1])
-		clearTimeout(timeout)
-      if (xhr.status === 200) {
-		
-        // parse JSON
-        if (!xhr.responseText.length) {
-          return resolve("");
-        }
-        return resolve(xhr.responseText);
-      }
-      return resolve("");
-    };
+let testRegion: ClosestRegion[] = []
 
-	xhr.timeout = 15 * 1000
-    xhr.open(post ? "POST" : "GET", url, true);
-    isJSON && xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-    // xhr.setRequestHeader('Connection', 'close')
-	const timeout = setTimeout(() => {
-		xhr.abort()
-		resolve ("")
-	}, 15*1000)
 
-    xhr.send(jsonData ? JSON.stringify(jsonData) : "");
-  });
-};
 
 const getRandomNodeFromRegion: (region: string) => nodes_info = (
   region: string
@@ -82,70 +50,105 @@ const deleteNodeFromList = (node: nodes_info) => {
 	
 }
 
-export const testNode = (node: nodes_info): Promise<boolean> => new Promise (async executor => {
-	try {
-		const url = `http://${node.ip_addr}`
-		await postToEndpoint(url, false, false, 1000)
-		// 只有在“计入结果”的时候才判断是否够数
-		executor(true)
-	} catch (e) {
-		// 失败再次测试
-		deleteNodeFromList(node)
-		executor(false)
-	}
-})
 
-const testSpeed = (region: string) =>
-	new Promise<void>(async (resolve, reject) => {
-		const node = getRandomNodeFromRegion(region);
-		try {
-			
-			const url = `http://${node.ip_addr}`
-			const startTime = Date.now()
+const isAbortError = (e: unknown) =>
+  e instanceof DOMException && e.name === 'AbortError';
 
-			// 这里建议加超时（可选）：await fetchWithTimeout(...)
-			await postToEndpoint(url, false, false, 1000)
-
-			const delay = Date.now() - startTime
-			
-			testRegion.push({ node, delay })
-			// 只有在“计入结果”的时候才判断是否够数
-			resolve(); // 别忘了正常完结
-		} catch (e) {
-			// 失败再次测试
-			deleteNodeFromList(node)
-			resolve(await testSpeed(region))
-		}
-	})
-
-const testClosestRegion = async (callback: () => void) => {
-
-
-	const processPool: any[] = []
-	let didCallBack = false
-	allRegions.forEach(n => {
-		if (/DE|ES|GB|US/i.test(n)) {
-			processPool.push(testSpeed(n))
-		}
-		
-	})
-
-	
-	await Promise.all(processPool).finally(() => {
-		if (!didCallBack) {
-			callback()
-		}
-		
-		
-	}).catch(ex => {
-		if (testRegion.length && !didCallBack) {
-			didCallBack = true
-			callback()
-		}
-	})
-	
+export async function testNode(
+  node: nodes_info,
+  signal?: AbortSignal,
+  timeoutMs = 1000
+): Promise<boolean> {
+  try {
+    const url = `http://${node.ip_addr}`;
+    await postToEndpoint(url, false, undefined, timeoutMs, signal ? { signal } : undefined);
+    return true;
+  } catch (e) {
+    if (isAbortError(e)) throw e;     // 由上层并发调度来处理早停
+    deleteNodeFromList(node);         // 真实失败 → 剔除
+    return false;
+  }
 }
-		
+
+type SpeedSample = { region: string; node: nodes_info; delay: number };
+
+/**
+ * 单次测速（不递归），成功返回样本；失败返回 null。
+ * - 会在失败时 deleteNodeFromList(node)
+ * - 支持 AbortSignal 早停
+ */
+async function testSpeedOnce(
+  region: string,
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+): Promise<SpeedSample | null> {
+  const node = getRandomNodeFromRegion(region);
+  if (!node) return null;
+
+  try {
+    const url = `http://${node.ip_addr}`;
+    const start = Date.now();
+    await postToEndpoint(url, false, undefined, opts?.timeoutMs ?? 1000, opts?.signal ? { signal: opts.signal } : undefined);
+    const delay = Date.now() - start;
+    return { region, node, delay };
+  } catch (e) {
+    if (isAbortError(e)) throw e; // 外层并发池会捕获
+    deleteNodeFromList(node);     // 坏节点剔除
+    return null;
+  }
+}
+
+
+
+const testClosestRegion = async (
+  opts?: {
+    timeoutMs?: number;   // 单次请求超时，默认 1000ms
+    maxAttempts?: number; // 每个地区最多尝试次数，默认 3
+  }
+): Promise<SpeedSample | null> => {
+  const timeoutMs   = opts?.timeoutMs   ?? 1000;
+  const maxAttempts = opts?.maxAttempts ?? 3;
+
+  // 仅保留目标地区
+  const pickedRegions = allRegions.filter(r => /^(DE|ES|GB|US)$/i.test(r));
+  if (pickedRegions.length === 0) {
+    return null;
+  }
+
+  // 一个全局 AbortController：一旦某个地区成功，其它全部中止
+  const ac = new AbortController();
+
+  // 把“每个地区多次尝试，直到成功或用尽次数”封装成一个 Promise；
+  // 为了配合 Promise.any：若最终仍未成功，抛一个错误，让 any 跳过它。
+  const regionTasks = pickedRegions.map(region => (async () => {
+    let attempts = 0;
+    while (attempts < maxAttempts && !ac.signal.aborted) {
+      attempts++;
+      const sample = await testSpeedOnce(region, { signal: ac.signal, timeoutMs });
+      if (sample) return sample;           // 成功
+      // 失败则继续循环尝试下一个随机节点
+    }
+    throw new Error(`region ${region} failed`); // 让 Promise.any 忽略此地区
+  })());
+
+  let winner: SpeedSample | null = null;
+
+  try {
+    // 谁先成功就先返回
+    winner = await Promise.any(regionTasks);
+    // 立即早停其他在途请求
+    ac.abort(new DOMException("Found winner", "AbortError"));
+  } catch {
+    // 所有地区都失败
+    winner = null;
+  } finally {
+    // 确保回调一定被调用
+    
+  }
+
+  return winner;
+};
+
+
 export const exitNodes = (exitRegion: string) => {
 	const exitNodes = allNodes.filter((n: nodes_info) => {
 		const region: string = n.region
@@ -251,70 +254,130 @@ const getAllRegions = (nodes: nodes_info[]) => {
 
 const closeNodes: nodes_info[] = []
 
-const getEntryNodes = (country: string, setClosestRegion: (entryNodes: nodes_info[]) => void) => {
-	const entryRegionNodes = allNodes.filter((n) => n.country === country);
-	
-	mapLimit(entryRegionNodes, 10, async (n, next ) => {
-		
-		const test = await testNode(n)
-		if (test) {
-			closeNodes.push(n)
 
-			if (closeNodes.length === 1) {
-				setClosestRegion(closeNodes)
-			}
-			
-		}
-	}).finally(() => {
-		setClosestRegion(closeNodes)
-	})
+export async function getEntryNodes(
+  allNodes: readonly nodes_info[],
+  want = 20,
+  concurrency = 10,
+  shuffle = true
+): Promise<nodes_info[]> {
+  if (want <= 0 || allNodes.length === 0) return [];
+
+  const items = shuffle ? [...allNodes].sort(() => Math.random() - 0.5) : [...allNodes];
+  let next = 0;
+  const picked: nodes_info[] = [];
+  const seen = new Set<string>();
+  let stopped = false;
+
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  const runOne = async () => {
+    while (true) {
+      if (stopped) return;
+      const i = next++;
+      if (i >= items.length) return;
+
+      const node = items[i];
+
+      if (picked.length >= want) {
+        stopped = true;
+        controller.abort();
+        return;
+      }
+
+      try {
+        const ok = await testNode(node, signal);
+        if (stopped) continue;
+
+        if (ok && !seen.has(node.ip_addr)) {
+          seen.add(node.ip_addr);
+          picked.push(node);
+          if (picked.length >= want) {
+            stopped = true;
+            controller.abort();
+            return;
+          }
+        }
+      } catch (e) {
+        // 被中止就退出当前 worker
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+      }
+    }
+  };
+
+  await Promise.allSettled(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => runOne())
+  );
+
+  return picked.slice(0, want);
+}
+
+const nodeRegion = (n: nodes_info) => (n.region ?? n.region ?? "").toString().toUpperCase();
+
+// 小工具：打乱（Fisher-Yates）
+function shuffleInPlace<T>(arr: T[]) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+const afterALlNodes = async (setClosestRegion: (entryNodes: nodes_info[]) => void, callback: (_allnodes: nodes_info[]) => void) => {
+	await Promise.resolve(getAllRegions(allNodes));
+
+  // 2) 测最快地区（允许不传 callback）
+  const winner = await testClosestRegion();
+
+  // 3) 通知上层拿到“当前全量节点”（按你的原逻辑在测速后调用）
+  try { callback(allNodes); } catch {}
+
+  // 如果测速没有赢家，就直接按全量 nodes 走
+  if (!winner) {
+    // 直接抽 20 个
+    const entryNodes = await getEntryNodes(allNodes, 20, 10, true);
+    setClosestRegion(entryNodes);
+    // 若需要刷新全量 nodes（按你原本的占位）
+    Promise.resolve(getAllNodes(() => {}));
+    return;
+  }
+
+  // 4) 有赢家：把赢家地区的节点放到前面（内部仍会 shuffle，避免顺序偏差）
+  const winRegion = winner.region.toUpperCase();
+
+  const preferred: nodes_info[] = [];
+  const others: nodes_info[] = [];
+
+  for (const n of allNodes) {
+    (nodeRegion(n) === winRegion ? preferred : others).push(n);
+  }
+
+  // 先对两个组各自打乱，再拼接，确保“赢家地区优先 + 整体随机”
+  shuffleInPlace(preferred);
+  shuffleInPlace(others);
+  const prioritized = preferred.concat(others);
+
+  // 5) 在优先序列下并发挑 20 个
+  const entryNodes = await getEntryNodes(prioritized, 20, 10, /*shuffle*/ false);
+  setClosestRegion(entryNodes);
+
+  // 6) 可选：再做一次全量节点的异步刷新（保持你原来的占位写法）
+  Promise.resolve(getAllNodes(() => {}));
+
 }
 
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
 	allNodes = nodes
-	const index = allNodes.findIndex(n => n.ip_addr === '74.208.234.210')
-	if (index > -1) {
-		allNodes.splice(index, 1)
-	}
 
 	if (allNodes?.length) {
-		getAllRegions(allNodes)
-		return testClosestRegion( async ()=> {
-			const country = testRegion[0].node.country;
-			
-			callback(allNodes)
-			getEntryNodes(country, setClosestRegion)
-
-			
-			getAllNodes(() => {
-				return testClosestRegion(async ()=> {
-					const country = testRegion[0].node.country;
-					getEntryNodes(country, setClosestRegion)
-					
-				})
-			})
-		})
-		
+		return afterALlNodes(setClosestRegion, callback)
 	}
 
 	getAllNodes(() => {
-		return testClosestRegion(async ()=> {
-			const country = testRegion[0].node.country;
-			
-			callback(allNodes)
-			getEntryNodes(country, setClosestRegion)
-			
-			getAllNodes(() => {
-				return testClosestRegion(async ()=> {
-					const country = testRegion[0].node.country;
-					getEntryNodes(country, setClosestRegion)
-					
-				})
-			})
-		
-		})
+		afterALlNodes(setClosestRegion, callback)
 	})
 }
 

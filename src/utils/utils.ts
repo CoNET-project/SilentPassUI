@@ -94,17 +94,51 @@ export const initProfileTokens = () => {
   return ret;
 };
 
-export const postToEndpoint = async <T = any> (
+export const postToEndpoint = async <T = any>(
   url: string,
   post: boolean,
   jsonData?: any,
-  timeoutMs = typeof XMLHttpRequestTimeout === "number" ? XMLHttpRequestTimeout : 15000
+  timeoutMs = typeof XMLHttpRequestTimeout === "number" ? XMLHttpRequestTimeout : 15000,
+  opts?: { signal?: AbortSignal }            // 可选：外部取消
 ): Promise<"" | boolean | T> => {
   const ac = new AbortController();
-  
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let onAbort: (() => void) | null = null;
+
+  const cleanup = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (onAbort && opts?.signal) {
+      opts.signal.removeEventListener("abort", onAbort);
+      onAbort = null;
+    }
+  };
 
   try {
-	const timer = setTimeout(() => ac.abort('TimeoutError'), timeoutMs);
+    // A) 内部超时
+    timer = setTimeout(() => {
+      try {
+        // 统一抛出 AbortError；部分环境会把 reason 透传到异常里
+        ac.abort(new DOMException("Timeout", "TimeoutError"));
+      } catch {
+        ac.abort("TimeoutError" as any);
+      }
+    }, timeoutMs);
+
+    // B) 外部 signal 联动
+    if (opts?.signal) {
+      if (opts.signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      onAbort = () => {
+        try {
+          ac.abort((opts.signal as any).reason ?? new DOMException("Aborted", "AbortError"));
+        } catch {
+          ac.abort();
+        }
+      };
+      opts.signal.addEventListener("abort", onAbort, { once: true });
+    }
+
     const res = await fetch(url, {
       method: post ? "POST" : "GET",
       headers:
@@ -113,18 +147,18 @@ export const postToEndpoint = async <T = any> (
           : undefined,
       body: post ? (jsonData ? JSON.stringify(jsonData) : "") : undefined,
       signal: ac.signal,
-	  // 防线 A：禁用重定向与缓存，避免被门户/代理“成功”掉
-		redirect: "manual",
-		cache: "no-store",
-		// credentials 依需求选择；很多门户依赖 Cookie，这里可隔离
-		credentials: "omit",
+      // 防线 A：禁用重定向与缓存，避免被门户/代理“成功”掉
+      redirect: "manual",
+      cache: "no-store",
+      // 依需求选择；很多门户依赖 Cookie，这里可隔离
+      credentials: "omit",
     });
 
-    // 200 → resolve(false)
+    // 非 2xx → false
     if (res.status < 200 || res.status >= 300) {
       return false;
     }
-	clearTimeout(timer);
+
     const text = await res.text();
     if (!text.length) {
       return "";
@@ -143,10 +177,13 @@ export const postToEndpoint = async <T = any> (
       return (post ? "" : true) as any;
     }
   } catch (err) {
-    // AbortError/网络错误 → reject
+    // 包含 AbortError/网络错误等 → 交由上层处理
     throw err;
+  } finally {
+    cleanup();
   }
-}
+};
+
 
 export const getRemainingTime = (timestamp: number, day: string, hour: string): string => {
   const now = Math.floor(Date.now() / 1000);
@@ -345,3 +382,57 @@ export const getCONET_api_health = async () => {
   }
   return false;
 };
+
+
+type FindResult<R> = { index: number; value: R } | null;
+
+export async function findAsync<T, R>(
+  items: readonly T[],
+  worker: (item: T, ctx: { index: number; signal: AbortSignal }) => Promise<R | undefined>,
+  opts?: { concurrency?: number }
+): Promise<FindResult<R>> {
+  const concurrency = Math.max(1, opts?.concurrency ?? 4);
+  if (items.length === 0) return null;
+
+  let next = 0;
+  let found: FindResult<R> = null;
+  let stopped = false;
+
+  // 所有 worker 共享一个 AbortController，用于全局早停
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  // 跑一个工作单元
+  const runOne = async () => {
+    while (!stopped) {
+      const i = next++;
+      if (i >= items.length) return; // 没活了
+
+      try {
+        const maybe = await worker(items[i], { index: i, signal });
+        if (maybe !== undefined && !stopped) {
+          found = { index: i, value: maybe };
+          stopped = true;
+          controller.abort();       // 通知其它在途任务终止
+          return;
+        }
+      } catch (err) {
+        // 被 abort 时，很多 I/O 会抛 AbortError，这里静默即可
+        // 你也可以按需记录非 Abort 的错误
+        if (!(err instanceof Error && (err as any).name === 'AbortError')) {
+          // console.debug('worker error @', i, err);
+        }
+        if (stopped) return;
+      }
+    }
+  };
+
+  // 启动有上限的 worker 池
+  const runners: Promise<void>[] = [];
+  for (let k = 0; k < Math.min(concurrency, items.length); k++) {
+    runners.push(runOne());
+  }
+  await Promise.allSettled(runners); // 等全部收尾（或被早停）
+
+  return found;
+}

@@ -99,7 +99,7 @@ const RenderButton = ({}) => {
             return
         }
 
-        await getAllRegions()
+        // await getAllRegions()
 
 
         if (sRegion === -1) {
@@ -112,31 +112,9 @@ const RenderButton = ({}) => {
         
         const exitRegion = allRegions[selectedCountryIndex].code
 		let waiting = 0
-		let _entryNodes
+		let _entryNodes = closestRegion
 
-		do {
-			_entryNodes = closestRegion
-			waiting ++
-			await new Promise(executor => setTimeout(() => executor(true), 1000))
-		} while (_entryNodes.length < 10 && waiting < 10)
-        
-
-		const testAllNodeProcess = _entryNodes.map(async (n, index) => {
-			const isWorking = await testNode(n)
-			if (!isWorking) {
-				_entryNodes.splice(index, 1)
-			}
-		})
-
-		await Promise.all (testAllNodeProcess)
-
-
-		_entryNodes.forEach(async (n, index) => {
-			const kk = await testNode(n)
-			if (!kk) {
-				_entryNodes.splice(index, 1)
-			}
-		})
+		// })
 
         const entryNodes = _entryNodes.map(n => {
             return {

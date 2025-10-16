@@ -551,5 +551,9 @@
 	"footer-nav-4":"设置",
 
 	"checkUpdate":"检查更新",
-	"hasNoUpdate":"当前已是最新版本"
+	"hasNoUpdate":"当前已是最新版本",
+
+	"WAIT_PASSPORT_LOAD_ERROR": "正在加载、请等待几秒钟后重试",
+	"PASSPORT_EXPIRED_ERROR": "Silent Pass 通行证已过期",
+	"SYSTEM_ERROR": "Silent Pass VPN 启动错误，请退出再尝试打开Silent Pass VPN"
 }

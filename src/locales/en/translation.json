@@ -537,6 +537,10 @@
 	"footer-nav-4":"Settings",
 
 	"checkUpdate":"Check for updates",
-	"hasNoUpdate":"Already the latest version"
+	"hasNoUpdate":"Already the latest version",
+
+	"WAIT_PASSPORT_LOAD_ERROR": "Passport info is loading. Please wait a few seconds and try again.",
+	"PASSPORT_EXPIRED_ERROR": "Passport has expired. Please renew your passport and try again",
+	"SYSTEM_ERROR": "Silent Pass VPN error! Please relaunch Silent Pass VPN to try again"
 
 }

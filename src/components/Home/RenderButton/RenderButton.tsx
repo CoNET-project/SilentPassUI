@@ -11,21 +11,21 @@ import { CoNET_Data } from '@/utils/globals';
 import { getAllRegions } from "@/services/regions";
 import BlobWrapper from '@/components/Home/BlobWrapper';
 import { testNode, exitNodes} from '../../../services/mining'
-import { startVPN, StartVPNFromUI, stopVPN } from "../../../api"
-
+import { startVPN, StartVPNFromUI, stopVPN, getVPNStatus } from "../../../api"
+import { useTranslation } from 'react-i18next'
 
 const PowerIcon = LuCirclePower  as React.ComponentType<IconBaseProps>;
 
 const GENERIC_ERROR = 'Error Starting Silent Pass. Please try using our iOS App or our desktop Proxy program.';
 const PASSPORT_EXPIRED_ERROR = 'Passport has expired. Please renew your passport and try again.';
-const WAIT_PASSPORT_LOAD_ERROR = 'Passport info is loading. Please wait a few seconds and try again.';
+
 
 const RenderButton = ({}) => {
     const [isConnectionLoading, setIsConnectionLoading] = useState<boolean>(false);
     const [showConnected, setShowConnected] = useState(false);
-    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible, setClosestRegion } = useDaemonContext();
+    const { power, setPower, isLocalProxy, switchValue, isIOS, profiles, getAllNodes, sRegion, setSRegion, setAllRegions, allRegions, closestRegion, setStatusVisible, setClosestRegion,setIsIOS } = useDaemonContext();
     const [errorMessage, setErrorMessage] = useState<string>('');
-
+	const { t, i18n } = useTranslation();
     useEffect(() => {
         if (power && !isConnectionLoading) {
             setShowConnected(true);
@@ -39,7 +39,11 @@ const RenderButton = ({}) => {
         setErrorMessage('');
         let selectedCountryIndex = -1
         setIsConnectionLoading(true);
-
+		const vpnStatus = await getVPNStatus()
+		if (vpnStatus && typeof vpnStatus?.vpn === 'boolean') {
+			setPower(vpnStatus.vpn)
+			setIsIOS(true)
+		}
 
         if (power) {
             if (isLocalProxy) {
@@ -62,11 +66,12 @@ const RenderButton = ({}) => {
             return ;
         }
 
+
 		if (!profiles?.[0]?.activePassport?.expires) {
             setTimeout(() => {
                 setIsConnectionLoading(false)
-                setErrorMessage(WAIT_PASSPORT_LOAD_ERROR);
-                setStatusVisible(true);
+                setErrorMessage(t('WAIT_PASSPORT_LOAD_ERROR'))
+                setStatusVisible(true)
             }, 1000)
             return
         }
@@ -74,22 +79,26 @@ const RenderButton = ({}) => {
         if (!isPassportValid(profiles?.[0]?.activePassport?.expires)) {
             setTimeout(() => {
                 setIsConnectionLoading(false)
-                setErrorMessage(PASSPORT_EXPIRED_ERROR);
+                setErrorMessage(t('PASSPORT_EXPIRED_ERROR'))
                 setStatusVisible(true);
             }, 1000)
             return
         }
 
+
         const conetProfile = CoNET_Data?.profiles[0];
         const privateKey = conetProfile?.privateKeyArmor
 
         if (!privateKey) {
+			setTimeout(() => {
+                setIsConnectionLoading(false)
+                setErrorMessage(t('SYSTEM_ERROR'))
+                setStatusVisible(true)
+            }, 1000)
             return
         }
 
-        await getAllRegions()
-
-
+		
         if (sRegion === -1) {
             selectedCountryIndex = Math.floor(Math.random() * allRegions.length)
             setSRegion(selectedCountryIndex);
@@ -105,7 +114,11 @@ const RenderButton = ({}) => {
 		do {
 			_entryNodes = closestRegion
 			waiting ++
+
+		
 			await new Promise(executor => setTimeout(() => executor(true), 1000))
+
+
 		} while (_entryNodes.length < 10 && waiting < 10)
         
 
@@ -136,9 +149,6 @@ const RenderButton = ({}) => {
             }
         })
 
-
-
-		
 		const _exitNodes = exitNodes(exitRegion)
 
         let _exitNode = []
@@ -193,13 +203,13 @@ const RenderButton = ({}) => {
             setPower(true)
         }, 1000)
 
-        return ;
-    };
+        return
+    }
 
     const state = useMemo(
         () => (isConnectionLoading ? 'connecting' : power ? 'on' : 'off'),
         [isConnectionLoading, power]
-    );
+    )
 
     return (
         <div className={styles.renderButton}>

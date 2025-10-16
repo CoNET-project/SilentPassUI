@@ -44,9 +44,12 @@ const Footer = ({}) => {
 		// 页面重新获得焦点/从后台回前台时，自动同步一次 VPN 状态
 		window.addEventListener("visibilitychange", async () => {
 			if (document.visibilityState === "visible") {
-				const status = await getVPNStatus();
-				setPower(status)
-				setIsIOS(true)
+				const status = await getVPNStatus()
+				if (status && typeof status?.vpn === 'boolean') {
+					setPower(status.vpn)
+					setIsIOS(true)
+				}
+				
 			}
 		});
     },[])

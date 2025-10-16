@@ -16,8 +16,8 @@ export const getAllRegions = async (): Promise<any> => {
 
   try {
     const regions:string[] = await GuardianNodesInfoV6Contract.getAllRegions();
-    return regions;
+    return regions
   } catch (ex) {
-    throw ex;
+    throw ex
   }
-};
+}

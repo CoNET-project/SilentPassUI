@@ -545,5 +545,8 @@
     "footer-nav-4": "設定",
 
     "checkUpdate": "更新を確認",
-    "hasNoUpdate":"すでに最新バージョンです"
+    "hasNoUpdate":"すでに最新バージョンです",
+	"WAIT_PASSPORT_LOAD_ERROR": "情報を読み込んでいます、しばらくもう一度お試しください",
+	"PASSPORT_EXPIRED_ERROR": " Silent Passパスポートの有効期限が切れました",
+	"SYSTEM_ERROR": "Silent Pass VPN エラー、再起動してからもう一回お試しください"
 }

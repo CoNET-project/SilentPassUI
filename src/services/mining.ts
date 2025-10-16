@@ -15,6 +15,8 @@ import async from "async";
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
 import nodes from '../pages/Home/assets/allnodes.json'
 import {mapLimit} from 'async'
+import { getIpv6, getVPNStatus} from '../api/index'
+
 let allNodes: nodes_info[] = [];
 let closestNodes: nodes_info[] = [];
 let allRegions: string[] = [];
@@ -96,16 +98,19 @@ export const testNode = (node: nodes_info): Promise<boolean> => new Promise (asy
 	}
 })
 
+
 const testSpeed = (region: string) =>
 	new Promise<void>(async (resolve, reject) => {
+		const network = await getVPNStatus()
+		getVPNStatus
 		const node = getRandomNodeFromRegion(region);
 		try {
 			
-			const url = `http://${node.ip_addr}`
+			const url = `http://${window.NAT64_PREFIX ? node.domain + '.conet.network' : node.ip_addr }`
 			const startTime = Date.now()
 
 			// 这里建议加超时（可选）：await fetchWithTimeout(...)
-			await postToEndpoint(url, false, false, 1000)
+			await postToEndpoint(url, false, false, 5000)
 
 			const delay = Date.now() - startTime
 			
@@ -163,6 +168,8 @@ export const exitNodes = (exitRegion: string) => {
 	})
 	return exitNodes
 }
+
+
 
 const _getAllNodes = (): Promise<any[]> => new Promise ( async executor => {
 	const GuardianNodesContract = new ethers.Contract(
@@ -265,15 +272,26 @@ const getEntryNodes = (country: string, setClosestRegion: (entryNodes: nodes_inf
 	})
 }
 
+declare global {
+  interface Window {
+    /** NAT64 /96 前缀文本，例如 "64:ff9b:1234:5678::"；没有则空或 undefined */
+    NAT64_PREFIX?: string
+  }
+}
+
+
+window.NAT64_PREFIX = window.NAT64_PREFIX || "";  // 为空表示没有 NAT64
+
+let ipv6 = null
+
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
 	callback: (_allnodes: nodes_info[]) => void) => {
-	allNodes = nodes
-	const index = allNodes.findIndex(n => n.ip_addr === '74.208.234.210')
-	if (index > -1) {
-		allNodes.splice(index, 1)
-	}
 
+	allNodes = nodes
+	window.NAT64_PREFIX = await getIpv6()
+
+	
 	if (allNodes?.length) {
 		getAllRegions(allNodes)
 		return testClosestRegion( async ()=> {

@@ -17,6 +17,14 @@ interface Region {
 	  privateKeyObj: any;
 	};
   }
+
+
+declare global {
+  interface Window {
+    /** NAT64 /96 前缀文本，例如 "64:ff9b:1234:5678::"；没有则空或 undefined */
+    NAT64_PREFIX?: string
+  }
+}
   
   type pgpKeyPair = {
 	privateKeyArmor: string;
@@ -68,7 +76,8 @@ interface Region {
 	publicKey: string;
 	privateKey: string;
   }
-  
+
+
   interface profile extends keyPair {
 	isPrimary?: boolean;
 	pgpKey?: pgpKeyPair;

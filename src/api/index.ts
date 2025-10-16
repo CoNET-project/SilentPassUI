@@ -21,6 +21,15 @@ export interface StartVPNFromUI {
 	exitNode: Native_node[];
 }
 
+export const getIpv6 = async ():Promise<string> => {
+	try {
+		const resp = await fetchJson<{ ipv6: string }>(`${API_BASE}/ipv6`)
+		return resp.ipv6
+	} catch (e) {
+		return ''
+	}
+}
+
 // 工具：带超时的 fetch + JSON
 async function fetchJson<T>(
 	url: string,
@@ -31,18 +40,20 @@ async function fetchJson<T>(
 	const id = setTimeout(() => ctrl.abort(), timeoutMs);
 	try {
 		const res = await fetch(url, {
-		...init,
-		headers: {
-			"Content-Type": "application/json",
-			...(init?.headers || {}),
-		},
-		signal: ctrl.signal,
-		cache: "no-store",
-		});
+			...init,
+			headers: {
+				"Content-Type": "application/json",
+				...(init?.headers || {}),
+			},
+			signal: ctrl.signal,
+			cache: "no-store",
+		})
+
 		const data = (await res.json()) as T
 		if (!res.ok) {
-		throw new Error(`HTTP ${res.status}`)
+			throw new Error(`HTTP ${res.status}`)
 		}
+
 		return data
 	} finally {
 		clearTimeout(id)
@@ -54,7 +65,7 @@ export async function startVPN(payload: StartVPNFromUI): Promise<boolean> {
   // 通知 UI：开始
 	window.dispatchEvent(
 		new CustomEvent("vpn:start:request", { detail: payload })
-	);
+	)
 
 	try {
 		const resp = await fetchJson<{ ok: boolean }>(`${API_BASE}/startVPN`, {
@@ -94,40 +105,41 @@ export async function stopVPN(): Promise<boolean> {
 
 
 const api = axios.create({
-  baseURL: "http://localhost:3001/", // Replace with your base API URL
-  timeout: 10000, // 10 seconds timeout
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+	baseURL: "http://localhost:3001/", // Replace with your base API URL
+	timeout: 10000, // 10 seconds timeout
+	headers: {
+		"Content-Type": "application/json",
+	},
+})
+
 
 // Start Silent Pass
 export const startSilentPass = async (
-  vpnInfo: Native_StartVPNObj
+  	vpnInfo: Native_StartVPNObj
 ): Promise<AxiosResponse<any>> => {
-  try {
-    const response = await api.post("/startSilentPass", {
-      vpnInfo: vpnInfo,
-    });
-    return response;
-  } catch (error) {
-    console.error("Error starting silent pass:", error);
-    throw error;
-  }
-};
+	try {
+		const response = await api.post("/startSilentPass", {
+			vpnInfo: vpnInfo,
+		})
+		return response;
+	} catch (error) {
+		console.error("Error starting silent pass:", error);
+		throw error;
+	}
+}
 
 
 
 // 查询状态：GET /iOSVPN，服务端回 { vpn: boolean }
-export async function getVPNStatus(): Promise<boolean> {
+export async function getVPNStatus(): Promise<{vpn: boolean, networkStatus: boolean}|false> {
 	try {
-		const resp = await fetchJson<{ vpn: boolean }>(`${API_BASE}/iOSVPN`, undefined, 5000);
+		const resp = await fetchJson<{vpn: boolean, networkStatus: boolean}>(`${API_BASE}/iOSVPN`, undefined, 1000)
 		// 广播状态给前端 UI
-		window.dispatchEvent(new CustomEvent("vpn:status", { detail: resp.vpn }));
-		return !!resp.vpn;
+		window.dispatchEvent(new CustomEvent("vpn:status", { detail: resp.vpn }))
+		return resp
 	} catch {
-		window.dispatchEvent(new CustomEvent("vpn:status", { detail: false }));
-		return false;
+		window.dispatchEvent(new CustomEvent("vpn:status", { detail: false }))
+		return false
 	}
 }
 

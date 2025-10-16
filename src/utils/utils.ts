@@ -104,8 +104,11 @@ export const postToEndpoint = async <T = any> (
   
 
   try {
-	const timer = setTimeout(() => ac.abort('TimeoutError'), timeoutMs);
-    const res = await fetch(url, {
+	const timer = setTimeout(() => ac.abort('TimeoutError'), timeoutMs)
+
+	const nat64Url = withNat64IfIPv4(url);
+
+    const res = await fetch(nat64Url, {
       method: post ? "POST" : "GET",
       headers:
         post && jsonData !== undefined
@@ -147,6 +150,40 @@ export const postToEndpoint = async <T = any> (
     throw err;
   }
 }
+
+// —— 工具：判断是否是 IPv4 字面量（0-255）——
+const isIPv4Literal = (h: string) => {
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false;
+  for (let i = 1; i <= 4; i++) {
+    const n = Number(m[i]);
+    if (n < 0 || n > 255) return false;
+  }
+  return true;
+}
+
+// —— 工具：若需要则把 URL 的 hostname 从 IPv4 改为 NAT64 IPv6 ——
+// 说明：URL.hostname 期待*不带中括号*的 IPv6；toString() 会自动加 []
+const withNat64IfIPv4 = (inputUrl: string): string => {
+  try {
+    const u = new URL(inputUrl);
+    const host = u.hostname;
+    const prefix = (window as any).NAT64_PREFIX as string | undefined; // 若已做全局声明可去掉 `as any`
+
+    if (prefix && prefix.trim() && isIPv4Literal(host)) {
+      let p = prefix.trim();
+      if (!p.endsWith(":")) p += ":"; // 兼容 "64:ff9b::" 与 "64:ff9b"
+      // 简单容错：若没有 "::" 也不强制处理，很多前缀实际都是 /96 且以 "::" 结尾
+      const v6 = `${p}${host}`;       // 例："64:ff9b::216.225.201.70"
+      u.hostname = v6;                // 不要加中括号
+      return u.toString();            // 例："http://[64:ff9b::216.225.201.70]:8080/path?x=1"
+    }
+    return inputUrl;
+  } catch {
+    return inputUrl; // 非法 URL 就保持原样
+  }
+};
+
 
 export const getRemainingTime = (timestamp: number, day: string, hour: string): string => {
   const now = Math.floor(Date.now() / 1000);

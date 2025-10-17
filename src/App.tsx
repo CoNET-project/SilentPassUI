@@ -10,7 +10,7 @@ import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
 import { listenProfileVer } from "./services/listeners";
 import Footer from "@/components/Footer";
-import Home from "./pages/Home";
+import Home from "./pages/Dashboard";
 import Wallet from './pages/Wallet';
 import Swap from './pages/Swap';
 import Settings from './pages/Settings';

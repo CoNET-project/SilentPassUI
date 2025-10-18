@@ -26,7 +26,7 @@ interface params {
 const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
     const { t, i18n } = useTranslation();
     const [visible, setVisible] = useState<boolean>(false);
-    const { profiles, setProfiles, setAirdropSuccess, setAirdropProcess } = useDaemonContext();
+    const { profiles, setProfiles, setAirdropSuccess, setAirdropProcess, closestRegion } = useDaemonContext();
     const [isRefreshingSolanaBalances, setIsRefreshingSolanaBalances] = useState(false);
     const [isAddressHidden, setIsAddressHidden] = useState(false);
     const [isKeyHidden, setIsKeyHidden] = useState(true);
@@ -47,12 +47,26 @@ const SPWallet = ({stakeVisible,setStakeVisible}:params) => {
     const getWholePrivateKeyArmor = (wallet: any) => {
         return wallet?.privateKeyArmor;
     }
+
+
+	const getRandomNode = () => {
+		if (closestRegion.length === 0) {
+			return null
+		}
+		const index = Math.floor(Math.random()*closestRegion.length)
+		return closestRegion[index];
+	}
+
     const handleRefreshSolanaBalances=async()=>{
+		const node = getRandomNode()
+		if (!node) {
+			return
+		}
         setAirdropSuccess(false)
         setAirdropProcess(false)
         setIsRefreshingSolanaBalances(true);
         try {
-            await refreshSolanaBalances()
+            await refreshSolanaBalances(node)
             storeSystemData()
             const tmpData = CoNET_Data;
             if (!tmpData) {

@@ -7,19 +7,22 @@ import { ReactComponent as SolanaToken } from './../assets/solana-token.svg';
 import { ReactComponent as ConetToken } from './../assets/sp-token.svg';
 import { ReactComponent as UsdtToken } from './../assets/usdt-token.svg';
 import { ReactComponent as SwapBtn } from './../assets/swap-icon-black.svg';
-import { Input,Button,Popup,Empty,Modal,Result,Skeleton,SpinLoading } from 'antd-mobile';
-import { DownOutline } from 'antd-mobile-icons';
-import * as motion from "motion/react-client";
-import { getPriceFromDown2Up, getPriceFromUp2Down, swapTokens, } from './../../../services/subscription';
-import {getRandomNode,allNodes} from './../../../services/mining';
-import { refreshSolanaBalances } from './../../../services/wallets';
+import { Input,Button,Popup,Empty,Modal,Result,Skeleton,SpinLoading } from 'antd-mobile'
+import { DownOutline } from 'antd-mobile-icons'
+import * as motion from "motion/react-client"
+import { getPriceFromDown2Up, getPriceFromUp2Down, swapTokens, } from './../../../services/subscription'
+
+import { refreshSolanaBalances } from './../../../services/wallets'
 import {openWebLinkNative} from './../../../api'
 
 import { useHistoryManager } from './../../Wallet/history/useHistoryManager';
 
+
+
+
 const SwapBox = ({}) => {
     const { t, i18n } = useTranslation();
-    const { profiles, isIOS, isLocalProxy } = useDaemonContext();
+    const { profiles, isIOS, isLocalProxy, closestRegion } = useDaemonContext();
     const { addRecord, editRecord } = useHistoryManager();
     const [rotation, setRotation] = useState(0);
     const [options, setOptions] = useState(['SP','SOL','USDT']);
@@ -41,13 +44,18 @@ const SwapBox = ({}) => {
         if(Number(calcBalance(fromToken,false)) < Number(fromAmount)){
             setErrorInfo(t('swap-asset-insufficient'));
         }
-    },[fromToken,fromAmount])
+    },[fromToken, fromAmount])
 
     useEffect(()=>{
-        if(allNodes&&allNodes.length){
-            getRatio();
-        }
-    },[allNodes])
+        
+        getRatio()
+        
+    },[])
+
+	const getRandomNode = () => {
+		const index = Math.floor(Math.random()*closestRegion.length)
+		return closestRegion[index]
+	}
 
     const handleSwap=()=>{
         setFromToken(toToken);
@@ -78,8 +86,12 @@ const SwapBox = ({}) => {
         calcRelativeValue(fromToken,toToken,Number(val),'receive');
     }
     const getRatio=async()=>{
-        const SPRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SP'),100);
-        const SOLRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SOL'),100);
+		const node = getRandomNode()
+		if (!node) {
+			return
+		}
+        const SPRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SP'),100, node);
+        const SOLRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SOL'),100, node);
         setSp2usdRatio(SPRatio?(BigNumber(100).dividedBy(BigNumber(SPRatio)).toNumber()):0);
         setSol2usdRatio(SOLRatio?(BigNumber(100).dividedBy(BigNumber(SOLRatio)).toNumber()):0);
     }
@@ -123,13 +135,16 @@ const SwapBox = ({}) => {
                 return intPart + (decimalPart || '');
             });
         }
-		
+		const node = getRandomNode()
+		if (!node) {
+			return
+		}
         const requestId = ++latestRequestId.current; // 标记本次请求
         const inputMint=getMintAddr(inputType);
         const outputMint=getMintAddr(outputType);
         if(Number(amount)){
             if(resType == 'receive'){setToAmountLoading(true)}else{setFromAmountLoading(true)}
-            const resultVal = await (resType == 'receive'?getPriceFromUp2Down(inputMint,outputMint,amount):getPriceFromDown2Up(inputMint,outputMint,amount));
+            const resultVal = await (resType == 'receive'?getPriceFromUp2Down(inputMint,outputMint,amount, node):getPriceFromDown2Up(inputMint,outputMint,amount, node));
             // 只有最新的一次请求才能设置结果
             if (requestId === latestRequestId.current) {
                 if(resultVal){
@@ -300,12 +315,12 @@ const SwapBox = ({}) => {
     }
     const handleSubmit=async()=>{
         setSubmitLoading(true);
-        
-        const tx = await swapTokens(getMintAddr(fromToken), getMintAddr(toToken), profiles?.[1]?.privateKeyArmor, fromAmount, showFail);
+        const node = getRandomNode()
+        const tx = await swapTokens(getMintAddr(fromToken), getMintAddr(toToken), profiles?.[1]?.privateKeyArmor, fromAmount, showFail, node);
         setSubmitLoading(false);
         if (tx) {
             showSuccess(tx);
-            refreshSolanaBalances();
+            refreshSolanaBalances(node);
 
             //添加历史记录
             const currentKey=Date.now().toString();

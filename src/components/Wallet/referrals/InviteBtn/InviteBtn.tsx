@@ -2,18 +2,26 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import styles from './inviteBtn.module.scss';
 import { useTranslation } from 'react-i18next';
-import { Button,Modal,Ellipsis,Toast } from 'antd-mobile';
-import {getRandomNodeDomain} from '@/services/mining';
+import { Button,Modal,Ellipsis,Toast } from 'antd-mobile'
 import { useDaemonContext } from '@/providers/DaemonProvider';
 
 const InviteBtn = ({}) => {
     const { t, i18n } = useTranslation();
-    const { duplicateAccount } = useDaemonContext();
+    const { duplicateAccount, closestRegion } = useDaemonContext();
     const [visible, setVisible] = useState(false);
 
     const handleShowInviteInfo=()=>{
         setVisible(true);
     }
+
+	const getRandomNodeDomain = () => {
+		if (closestRegion.length === 0) {
+			return 'www.silentpass.io'
+		}
+		const index = Math.floor(Math.random()*closestRegion.length)
+		return closestRegion[index].domain + '.conet.network';
+	}
+
     const fallbackCopy = () => {
         const content = document.getElementById("contentToCopy");
         if (!content) {

@@ -11,12 +11,20 @@ import { useDaemonContext } from "./../../../providers/DaemonProvider";
 import { refreshSolanaBalances, storeSystemData } from './../../../services/wallets';
 
 const ImportButton=({  }) => {
-    const { setProfiles } = useDaemonContext();
+    const { setProfiles, closestRegion } = useDaemonContext();
     const [visible, setVisible] = useState(false);
     const [loading, setLoading] = useState(false);
     const [isRightKey, setIsRightKey] = useState(true);
     const [value, setValue] = useState('');
 	const { t, i18n } = useTranslation();
+
+	const getRandomNode = () => {
+		if (closestRegion.length === 0) {
+			return null
+		}
+		const index = Math.floor(Math.random()*closestRegion.length)
+		return closestRegion[index];
+	}
 
     const checkValue=(input: string)=>{
         try{
@@ -60,7 +68,11 @@ const ImportButton=({  }) => {
             setCoNET_Data(tmpData);
 			setProfiles(tmpData.profiles)
             storeSystemData()
-            refreshSolanaBalances();
+			const node = getRandomNode()
+			if (node) {
+				refreshSolanaBalances(node);
+			}
+            
 
             Toast.show({
                 icon: 'success',

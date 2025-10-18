@@ -17,7 +17,7 @@ const CheckInBtn = ({}) => {
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
 	const [insufficientBalance, setInsufficientBalance] = useState<boolean>(false)
-	const { setPaymentKind, setSubscriptionVisible, checkinBalanceUP} = useDaemonContext()
+	const { setPaymentKind, setSubscriptionVisible, closestRegion} = useDaemonContext()
 	const navigate = useNavigate()
 
 	let process = false
@@ -28,12 +28,22 @@ const CheckInBtn = ({}) => {
 			checkBalance ()
 		}, 1000 * 15)
 	}
+
+
+	const getRandomNode = () => {
+		if (closestRegion.length === 0) {
+			return null
+		}
+		const index = Math.floor(Math.random()*closestRegion.length)
+		return closestRegion[index];
+	}
 	const checkBalance = async () => {
-		if (process) {
+		const node = getRandomNode()
+		if (process||!node) {
 			return
 		}
 		process = true
-		const status = await getRewordStaus()
+		const status = await getRewordStaus(node)
 
 		if (status === null) {
 			replaceBalance()

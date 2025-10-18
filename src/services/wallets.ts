@@ -6,8 +6,7 @@ import {
   isValidSolanaBase58PrivateKey,
   postToEndpoint,
 
-} from "../utils/utils";
-import {closeNodes, getRandomNode} from './mining'
+} from "../utils/utils"
 import {
   apiv4_endpoint,
   conetDepinProvider,
@@ -634,22 +633,21 @@ const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
 
 
 let reflaseSolanaBalancesProcess = false
-const refreshSolanaBalances = async (
-) => {
+const refreshSolanaBalances = async (node: nodes_info) => {
   const solanaProfile = CoNET_Data?.profiles[1];
 
   if (!solanaProfile||reflaseSolanaBalancesProcess) {
     return false
   }
 
-  const node = getRandomNode()
+  
   
   reflaseSolanaBalancesProcess = true
     try {
       const [sol, sp, usdt, oracle] = await Promise.all([
-        scanSolanaSol(),
-        scanSolanaSp(),
-        scanSolanaUsdt(),
+        scanSolanaSol(node),
+        scanSolanaSp(node),
+        scanSolanaUsdt(node),
         getSPOracle(),
       ]);
       const solPrice = parseFloat(formatEther(oracle[4]).toString())
@@ -959,14 +957,14 @@ const getSpClubMemberId = async (profile: profile) => {
 
 async function getReceivedAmounts (
   walletAddress: string,
-  allNodes: nodes_info[]
+  node: nodes_info
 ) {
   try {
     const walletPubKey = new PublicKey(walletAddress);
     const senderPubKey = new PublicKey(rewardWalletAddress);
-  const node = getRandomNode()
+
     const _connection1 = new Connection(
-      `http://${node}/solana-rpc`,
+      `http://${node.ip_addr}/solana-rpc`,
       "confirmed"
     );
 
@@ -1007,7 +1005,7 @@ const getSPOracle = async () => {
   }
 }
 
-const getRewordStaus = async(): Promise<boolean|null> => {
+const getRewordStaus = async(node: nodes_info): Promise<boolean|null> => {
   const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)
 
   const profiles = CoNET_Data?.profiles
@@ -1020,7 +1018,7 @@ const getRewordStaus = async(): Promise<boolean|null> => {
     const [ quote, status ] = await Promise.all ([
       getSPOracle(),
       contract_SpReward.isReadyReword(duWallet, profiles[1].keyID),
-      refreshSolanaBalances()
+      refreshSolanaBalances(node)
       
     ])
 

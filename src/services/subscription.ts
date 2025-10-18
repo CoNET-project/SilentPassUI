@@ -23,7 +23,6 @@ import {
   Wallet
 } from "@coral-xyz/anchor"
 
-import {allNodes, getRandomNode} from './mining'
 
 import {changeStopProcess} from './listeners'
 
@@ -210,10 +209,10 @@ const gettNumeric = (token: string) => {
 }
 
 
-export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
+export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _amount: number, node: nodes_info): Promise<string> => {
 	const amount = ethers.parseUnits(_amount.toString(), gettNumeric(upMint))
 	const slippageBps = 250 // 0.5% slippage
-	const quoteUrl = `http://${getRandomNode()}/jup_ag/swap/v1/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
+	const quoteUrl = `http://${node.ip_addr}/jup_ag/swap/v1/quote?inputMint=${upMint}&outputMint=${downputMint}&amount=${amount}&slippageBps=${slippageBps}`
 	try {
         const quoteResponse = await axios.get(quoteUrl)
         const quote = quoteResponse.data
@@ -226,10 +225,10 @@ export const getPriceFromUp2Down = async (upMint: string, downputMint: string, _
 }
 
 
-export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _amount: number): Promise<string> => {
+export const getPriceFromDown2Up = async (upMint: string, downputMint: string, _amount: number, node: nodes_info): Promise<string> => {
 	const amount = parseInt(ethers.parseUnits(_amount.toString(), gettNumeric(upMint)).toString())
 	const slippageBps = 250 
-	const quoteUrl = `http://${getRandomNode()}/jup_ag/swap/v1/quote?inputMint=${downputMint}&outputMint=${upMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
+	const quoteUrl = `http://${node.ip_addr}/jup_ag/swap/v1/quote?inputMint=${downputMint}&outputMint=${upMint}&amount=${amount}&slippageBps=${slippageBps}&swapMode=ExactOut`
 	try {
         const quoteResponse = await axios.get(quoteUrl)
         const quote = quoteResponse.data
@@ -421,8 +420,8 @@ interface CompatibleWallet {
   payer: web3.Keypair
 }
 
-export const getBalanceFromPDA = async (solanaRPC_url: string, spToken: CryptoAsset, VESTING_ID = 0) => {
-    if (!CoNET_Data?.profiles||!allNodes) {
+export const getBalanceFromPDA = async (solanaRPC_url: string, spToken: CryptoAsset, VESTING_ID = 0, node: nodes_info) => {
+    if (!CoNET_Data?.profiles) {
 		return
 	}
 	
@@ -528,7 +527,7 @@ export const getBalanceFromPDA = async (solanaRPC_url: string, spToken: CryptoAs
 			spToken.balance = (spToken.balance1 >= 1_000_000) ? (spToken.balance1/1_000_000).toFixed(2) + 'M' : spToken.balance1.toFixed(2)
 		}
 
-		await getBalanceFromPDA(solanaRPC_url, spToken, ++VESTING_ID )
+		await getBalanceFromPDA(solanaRPC_url, spToken, ++VESTING_ID, node)
 
     } catch (ex) {
 		if (!VESTING_ID) {
@@ -611,10 +610,11 @@ export const swapTokens = async (
   toMint: string,
   privateKey: string,
   amountRaw: string,
-  showFail: (err:any)=> void
+  showFail: (err:any)=> void,
+  node: nodes_info
 ): Promise<false | string> => {
   // 用你的 HTTP RPC 节点
-  const rpcUrl = `http://${getRandomNode()}/solana-rpc`;
+  const rpcUrl = `http://${node.ip_addr}/solana-rpc`
   // **显式禁用** WebSocket
   const connection = new Connection(rpcUrl, {
     commitment: "confirmed",
@@ -626,7 +626,7 @@ export const swapTokens = async (
   try {
     // 1. 构造 Jupiter 的 quote & swapPayload
     const wallet = Keypair.fromSecretKey(Bs58.decode(privateKey));
-	const url = `http://${getRandomNode()}/jup_ag/swap/v1/quote?` +
+	const url = `http://${node.ip_addr}/jup_ag/swap/v1/quote?` +
         `inputMint=${fromMint}` +
         `&outputMint=${toMint}` +
         `&amount=${amount}` +
@@ -635,7 +635,7 @@ export const swapTokens = async (
     const quoteResponse = await quoteRes.json();
 
     const swapRes = await fetch(
-      `http://${getRandomNode()}/jup_ag/swap/v1/swap`,
+      `http://${node.ip_addr}/jup_ag/swap/v1/swap`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

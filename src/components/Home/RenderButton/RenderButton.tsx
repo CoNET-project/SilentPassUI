@@ -129,7 +129,7 @@ const RenderButton = ({}) => {
 
 
 		
-		const _exitNodes = exitNodes(exitRegion)
+		const _exitNodes = exitNodes(exitRegion, _entryNodes)
 
         let _exitNode = []
 		do {

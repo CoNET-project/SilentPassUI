@@ -22,7 +22,7 @@ import {
 	postToEndpoint,
   
 } from "../utils/utils"
-import {allNodes, getRandomNode} from './mining'
+
 import {
   SilentPassOfficial, Solana_SOL, Solana_SP, Solana_USDT
 } from "../utils/constants";

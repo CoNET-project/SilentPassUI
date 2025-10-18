@@ -9,13 +9,10 @@ import {
   setProcessingBlock,
 } from "../utils/globals";
 import contracts from "../utils/contracts"
-import {getRandomNode} from './mining'
 import { checkCurrentRate } from "../services/passportPurchase";
 import {
   getPassportsInfoForProfile,
-  getReceivedAmounts,
   getSpClubInfo,
-  getVpnTimeUsed,
   storeSystemData,
   getProfileAssets,
 } from "./wallets";
@@ -128,12 +125,12 @@ const listenProfileVer = async (
 }
 
 
-const getSOL_Balance = async () => {
+const getSOL_Balance = async (node: nodes_info) => {
   if (!CoNET_Data?.profiles) {
     return null
   }
   const profile = CoNET_Data.profiles[1]
-  const url = `http://${getRandomNode()}/solana-rpc`
+  const url = `http://${node.ip_addr}/solana-rpc`
   const ownerPubkey = new PublicKey(profile.keyID)
   const connection = new Connection(url, 'confirmed')
   const lamports = await connection.getBalance(ownerPubkey)
@@ -142,27 +139,27 @@ const getSOL_Balance = async () => {
 }
 
 
-const scanSolanaSol = () => {
-  return getSOL_Balance()
+const scanSolanaSol = (node: nodes_info) => {
+  return getSOL_Balance(node)
 }
 
 
-const scanSolanaSp = () => {
-  return getSolanaTokenBalance(contracts.SPToken.address)
+const scanSolanaSp = (node: nodes_info) => {
+  return getSolanaTokenBalance(contracts.SPToken.address, node)
 }
 
-const scanSolanaUsdt = () => {
-  return getSolanaTokenBalance('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')
+const scanSolanaUsdt = (node: nodes_info) => {
+  return getSolanaTokenBalance('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', node)
 }
 
 
-const getSolanaTokenBalance = async (programId: string): Promise<number> => {
+const getSolanaTokenBalance = async (programId: string, node: nodes_info): Promise<number> => {
   if (!CoNET_Data?.profiles) {
     return 0
   }
   const profile = CoNET_Data.profiles[1]
   const solanaWallet = new PublicKey(profile.keyID)
-  const url = `http://${getRandomNode()}/solana-rpc`
+  const url = `http://${node.ip_addr}/solana-rpc`
   const connection = new Connection(url, "confirmed")
   const mintPubkey = new PublicKey(programId)
   // 4. 获取这个 mint 下，属于 ownerPubkey 的所有 token 账户

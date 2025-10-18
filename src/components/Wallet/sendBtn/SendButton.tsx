@@ -15,8 +15,7 @@ import { useTranslation } from 'react-i18next';
 import {openWebLinkNative} from './../../../api';
 import { useDaemonContext } from './../../../providers/DaemonProvider';
 import {Solana_SOL, Solana_SP, Solana_USDT} from "../../../utils/constants";
-import {  getPriceFromUp2Down } from './../../../services/subscription';
-import { allNodes, getRandomNode } from './../../../services/mining';
+import {  getPriceFromUp2Down } from './../../../services/subscription'
 import {getAssociatedTokenAddress,createAssociatedTokenAccountInstruction,createTransferCheckedInstruction,TOKEN_PROGRAM_ID,getMint} from "@solana/spl-token";
 import { useHistoryManager } from './../history/useHistoryManager';
 
@@ -33,7 +32,7 @@ interface SendParams {
 
 const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd=0,isEthers,extendref=null }: SendParams)=> {
     const { addRecord, editRecord } = useHistoryManager();
-    const { isIOS, isLocalProxy, profiles } = useDaemonContext();
+    const { isIOS, isLocalProxy, profiles, closestRegion } = useDaemonContext();
     const [visible, setVisible] = useState(false);
     const [address, setAddress] = useState('');
     const [amount, setAmount] = useState<string | undefined>();
@@ -68,10 +67,10 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd=0,isEthe
     },[visible])
 
     useEffect(()=>{
-        if(allNodes&&allNodes.length){
+        
             getRatio();
-        }
-    },[allNodes])
+        
+    },[])
 
     const removeDollarPrefix = (str:string) => str.startsWith('$') ? str.slice(1) : str;
     const getMintAddr=(type:string)=>{
@@ -92,9 +91,23 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd=0,isEthe
                 return '';
         }
     }
+
+	const getRandomNode = () => {
+		if (closestRegion.length === 0) {
+			return null
+		}
+		const index = Math.floor(Math.random()*closestRegion.length)
+		return closestRegion[index];
+	}
+
+
     const getRatio=async()=>{
-        const SPRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SP'),100);
-        const SOLRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SOL'),100);
+		const node = getRandomNode()
+		if (!node) {
+			return;
+		}
+        const SPRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SP'),100, node);
+        const SOLRatio = await getPriceFromUp2Down(getMintAddr('USDT'),getMintAddr('SOL'),100, node);
         setSp2usdRatio(SPRatio?(BigNumber(100).dividedBy(BigNumber(SPRatio)).toNumber()):0);
         setSol2usdRatio(SOLRatio?(BigNumber(100).dividedBy(BigNumber(SOLRatio)).toNumber()):0);
     }

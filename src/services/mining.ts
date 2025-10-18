@@ -7,25 +7,22 @@ import {
   generateKey,
   readKey,
   readPrivateKey,
-} from "openpgp";
+} from "openpgp"
 import contracts from "../utils/contracts";
 import { conetDepinProvider } from "../utils/constants";
 import { initProfileTokens, postToEndpoint, findAsync } from "../utils/utils";
-import async from "async";
+import {  } from "../providers/DaemonProvider"
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
 import nodes from '../pages/Home/assets/allnodes.json'
-import {mapLimit} from 'async'
-let allNodes: nodes_info[] = [];
-let allRegions: string[] = [];
-let cCNTPcurrentTotal = 0;
 
-let epoch = 0;
-let getAllNodesProcess = false;
+let allNodes: nodes_info[] = []
+let allRegions: string[] = []
 
-let entryNodes: nodes_info[] = [];
-let currentScanNodeNumber = 0;
-let maxNodes = 0;
-let testRegion: ClosestRegion[] = []
+let getAllNodesProcess = false
+
+
+let currentScanNodeNumber = 0
+let maxNodes = 0
 
 
 
@@ -149,7 +146,7 @@ const testClosestRegion = async (
 };
 
 
-export const exitNodes = (exitRegion: string) => {
+export const exitNodes = (exitRegion: string, entryNodes: nodes_info[]) => {
 	const exitNodes = allNodes.filter((n: nodes_info) => {
 		const region: string = n.region
 		
@@ -252,8 +249,6 @@ const getAllRegions = (nodes: nodes_info[]) => {
 	allRegions = Array.from(country.keys())
 }
 
-const closeNodes: nodes_info[] = []
-
 
 export async function getEntryNodes(
   allNodes: readonly nodes_info[],
@@ -336,8 +331,8 @@ const afterALlNodes = async (setClosestRegion: (entryNodes: nodes_info[]) => voi
   // 如果测速没有赢家，就直接按全量 nodes 走
   if (!winner) {
     // 直接抽 20 个
-    const entryNodes = await getEntryNodes(allNodes, 20, 10, true);
-    setClosestRegion(entryNodes);
+    const _entryNodes = await getEntryNodes(allNodes, 20, 10, true);
+    setClosestRegion(_entryNodes)
     // 若需要刷新全量 nodes（按你原本的占位）
     Promise.resolve(getAllNodes(() => {}));
     return;
@@ -359,11 +354,11 @@ const afterALlNodes = async (setClosestRegion: (entryNodes: nodes_info[]) => voi
   const prioritized = preferred.concat(others);
 
   // 5) 在优先序列下并发挑 20 个
-  const entryNodes = await getEntryNodes(prioritized, 20, 10, /*shuffle*/ false);
-  setClosestRegion(entryNodes);
+  const _entryNodes = await getEntryNodes(prioritized, 20, 10, /*shuffle*/ false)
+  setClosestRegion(_entryNodes)
 
   // 6) 可选：再做一次全量节点的异步刷新（保持你原来的占位写法）
-  Promise.resolve(getAllNodes(() => {}));
+  Promise.resolve(getAllNodes(() => {}))
 
 }
 
@@ -524,90 +519,14 @@ const encrypt_Message = async (
     config: { preferredCompressionAlgorithm: enums.compression.zlib }, // compress the data with zlib
   };
   return await encrypt(encryptObj);
-};
-
-const getRandomNode = () => {
-	const index = Math.floor(Math.random()*closeNodes.length)
-	return closeNodes[index].ip_addr
 }
 
-const getRandomNodeDomain = () => {
-	const index = Math.floor(Math.random()*closeNodes.length)
-	return closeNodes[index].domain
-}
-
-const postToEndpointSSE = (
-  url: string,
-  post: boolean,
-  jsonData: any,
-  CallBack: (err: any, data: string) => void
-) => {
-  const xhr = new XMLHttpRequest();
-
-  let chunk = 0;
-  xhr.onprogress = async (e) => {
-    const data = await xhr.responseText;
-    clearTimeout(timeCount);
-    if (e.eventPhase < 2) {
-      return console.log(
-        `xhr.status = ${xhr.status} e.eventPhase [${e.eventPhase}]`,
-        data
-      );
-    }
-
-    if (xhr.status === 401) {
-      return CallBack("Err_Multiple_IP", "");
-    }
-    if (xhr.status === 402) {
-      return CallBack("Err_Existed", "");
-    }
-    if (xhr.status !== 200) {
-      return CallBack("FAILURE", "");
-    }
-
-    const currentData = data.substring(chunk);
-    const responseText = data.split("\r\n\r\n");
-    chunk = data.length;
-    CallBack(null, currentData);
-  };
-
-  xhr.upload.onabort = () => {
-    console.log(`xhr.upload.onabort`);
-  };
-
-  xhr.upload.onerror = (err) => {
-    clearTimeout(timeCount);
-    // CallBack('NOT_INTERNET', '')
-    console.log(`xhr.upload.onerror`, err);
-  };
-
-  xhr.onerror = (err) => {
-    console.log(`xhr.onerror`, err);
-    clearTimeout(timeCount);
-    CallBack("NOT_INTERNET", "");
-  };
-
-  const timeCount = setTimeout(() => {
-    const Err = `postToEndpoint Timeout!`;
-    console.log(`postToEndpoint Error`, Err);
-    CallBack("TIMEOUT", "");
-  }, 1000 * 45);
-
-  xhr.open(post ? "POST" : "GET", url, true);
-  xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-  xhr.send(typeof jsonData !== "string" ? JSON.stringify(jsonData) : jsonData);
-
-  return xhr;
-};
 
 export {
   getAllNodes,
   testClosestRegion,
-  closeNodes,
   allNodes,
   maxNodes,
   currentScanNodeNumber,
-  getAllNodesV2,
-  getRandomNode,
-  getRandomNodeDomain
+  getAllNodesV2
 };

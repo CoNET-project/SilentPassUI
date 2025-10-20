@@ -26,7 +26,8 @@ const Brief = ({}) => {
             </div>
             <div className={styles.briefCont}>
                 <div className={styles.type}><label>{t('wallet-account-brief-label')}：</label>{t(getPassportTitle(activePassport))}</div>
-                <div className={styles.time}><label>{t('wallet-account-brief-remain')}：</label>
+                {/* <div className={styles.time}><label>{t('wallet-account-brief-remain')}:</label> */}
+				<div className={styles.time}><label></label>
                     {
                         profiles?.[0]?.activePassport?.expires ?
                             <p>{getExpirationDate(activePassport, t('passport_unlimit'),t('passport_notUsed'), t('passport_day'),t('passport_hour'))}</p>

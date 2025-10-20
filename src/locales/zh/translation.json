@@ -319,6 +319,8 @@
 	"privacy-first": "隐私优先",
 	"speed-first": "速度优先",
 
+	"GB-Credit-title":"GB信用",
+
 	"wallet-title":"我的账号",
 	"wallet-redeem-btn":"立即兑换",
 	"wallet-checkin-btn":"继续免费试用",
@@ -326,8 +328,8 @@
 	"wallet-redeem-code":"兑换码",
 	"wallet-redeem-apply-btn":"提交",
 	"wallet-redeem-placeholder":"请输入兑换码",
-	"wallet-account-brief-label": "当前SP通行证",
-	"wallet-account-brief-remain": "有效期剩余",
+	"wallet-account-brief-label": "当前计划",
+	"wallet-account-brief-remain": "剩余",
 	"wallet-account-main-wallet":"主钱包",
 	"wallet-account-main-wallet-desc": "该钱包基于CoNET网络，用于接收您的通行证 NFT、积分与链上身份凭证",
 	"wallet-account-main-wallet-passport-empty":"没有通行证",

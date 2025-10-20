@@ -14,7 +14,9 @@ import {
 	SpReword,
 	ReferralsV3,
 	SpClubPoint,
-	Duplicate
+	Duplicate,
+	sGB,
+	sGB_Dashboard
   } from "./abis";
   
   const contracts = {
@@ -91,8 +93,21 @@ import {
 		address: '0x87A70eD480a2b904c607Ee68e6C3f8c54D58FB08',
 		network: 'CONET DePIN',
 		abi: Duplicate
+	},
+	sGB: {
+		address: '0x84aAD9aD5BbdDfC0cCcb6A599DFadaEFaF6B497E',
+		network: 'CONET DePIN',
+		abi: sGB
+	},
+	sGB_Dashboard: {
+		address: '0x4b505F5Cf4926Da7375Ed7FB82f7111266908497',
+		network: 'CONET DePIN',
+		abi: sGB_Dashboard
 	}
   };
   
   export default contracts;
   
+
+  // Example usage:	3298414		0x4b505F5Cf4926Da7375Ed7FB82f7111266908497	
+  // 	3291544		0x866c4521797dd49d22B7566DF5D8c37E6B2b59bF		getDashboard 	getDaylyHistory

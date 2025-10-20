@@ -1,6 +1,18 @@
 .wallet{
     padding: 26px 16px 20px;
     width: 100%;
+
+	.briefRow {
+		display: flex;
+		justify-content: space-between;
+		align-items: stretch;
+		gap: 12px;
+
+		// 让每个 Brief 平分宽度
+		& > :global(.briefWrap) {
+			flex: 1;
+		}
+	}
     .title{
         margin-bottom: 16px;
         display: flex;

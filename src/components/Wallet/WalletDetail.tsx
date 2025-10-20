@@ -11,6 +11,7 @@ import Referrals from '@/components/Wallet/referrals/Referrals';
 import Passport from '@/components/Wallet/passport/Passport';
 import Backups from '@/components/Wallet/backups/Backups';
 import Stake from '@/components/Wallet/stake/Stake';
+import GBButton from '@/components/Wallet/GBAirdrop/';
 import { List, Modal, Result, Button } from 'antd-mobile';
 import { CheckCircleFill } from 'antd-mobile-icons';
 import { useDaemonContext } from '@/providers/DaemonProvider';
@@ -49,7 +50,11 @@ const WalletDetail = ({}) => {
 
     return (
         <div className={styles.wallet}>
-            <Brief />
+			<div className={styles.briefRow}>
+				<Brief />
+				<GBButton />
+			</div>
+
             <div className={styles.list}>
                 <List style={{'--active-background-color':'#343434'}}>
                     <MainWallet />

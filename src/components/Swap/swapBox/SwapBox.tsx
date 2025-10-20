@@ -47,10 +47,10 @@ const SwapBox = ({}) => {
     },[fromToken, fromAmount])
 
     useEffect(()=>{
-        
-        getRatio()
-        
-    },[])
+        if(closestRegion?.length) {
+			getRatio()
+		}
+    },[closestRegion])
 
 	const getRandomNode = () => {
 		const index = Math.floor(Math.random()*closestRegion.length)

@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-
+import contracts from './contracts'
 const localDatabaseName = "conet";
 const apiv3_endpoint = `https://apiv3.conet.network/api/`;
 const apiv4_endpoint = `https://apiv4.conet.network/api/`;
@@ -29,9 +29,26 @@ const Solana_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
 const Solana_SOL = 'So11111111111111111111111111111111111111112'
 const Solana_SP = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
 
+
+const sGB_ReadOnly = new ethers.Contract(
+	contracts.sGB.address,
+	contracts.sGB.abi,
+	conetDepinProvider
+)
+
+const sGB_Dashboard_ReadOnly = new ethers.Contract(
+	contracts.sGB_Dashboard.address,
+	contracts.sGB_Dashboard.abi,
+	conetDepinProvider
+)
+
+
+
 const changeRPC = () => {
 	ethProvider = new ethers.JsonRpcProvider(ethRpc());
 }
+
+
 export {
   localDatabaseName,
   XMLHttpRequestTimeout,
@@ -50,5 +67,7 @@ export {
   paypal_endpoint,
   Solana_USDT,
   Solana_SOL,
-  Solana_SP
+  Solana_SP,
+  sGB_ReadOnly,
+  sGB_Dashboard_ReadOnly
 };

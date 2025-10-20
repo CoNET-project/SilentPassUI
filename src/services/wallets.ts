@@ -16,7 +16,9 @@ import {
   payment_endpoint,
   paypal_endpoint,
   changeRPC,
-  ethProvider
+  ethProvider,
+  sGB_ReadOnly,
+
 } from "../utils/constants"
 
 import {getBalanceFromPDA, initDuplicate} from './subscription'
@@ -1153,6 +1155,12 @@ const getSPClubPoint = async (key: string) => {
   }
 }
 
+const get_sGB = async (walletAddr: string) => {
+  return 
+}
+
+
+
 const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
   const key = profile.keyID;
 
@@ -1161,7 +1169,7 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 		profile.tokens = initProfileTokens();
 	}
 
-	const [conetDepin, conet_eth, referrals, points, ] = await Promise.all([
+	const [conetDepin, conet_eth, referrals, points] = await Promise.all([
 		scanCONETDepin(key),
 		scanConetETH(key),
 		getReferrals(),

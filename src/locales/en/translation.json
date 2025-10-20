@@ -62,6 +62,8 @@
 	"comp-PassportInfoPopup-1": "Active SP Passport",
 	"comp-PassportInfoPopup-2": "Time Remaining",
 
+	"GB-Credit-title":"GB Credit",
+
 	"comp-comm-wallet-address": "Wallet Address",
 	"comp-comm-wallet-address-1": "Wallet Address",
 	"comp-comm-receive": "Receive",
@@ -313,7 +315,7 @@
 	"wallet-redeem-code":"Redeem Code",
 	"wallet-redeem-apply-btn":"Apply",
 	"wallet-redeem-placeholder":"Enter code",
-	"wallet-account-brief-label": "Active SP Passport",
+	"wallet-account-brief-label": "Passport",
 	"wallet-account-brief-remain": "Time Remaining",
 	"wallet-account-main-wallet":"Main Wallet",
 	"wallet-account-main-wallet-desc": "This wallet is on the CoNET chain and is used to receive your SP Passport NFT, reward points, and on-chain identity credentials.",

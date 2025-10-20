@@ -449,7 +449,7 @@ const SendButton=({ type,wallet,balance,handleRefreshSolanaBalances,usd=0,isEthe
     };
 
     const handleSend=()=>{
-        const randomSolanaRPC = `http://${getRandomNode()}/solana-rpc`
+        const randomSolanaRPC = `http://${getRandomNode()?.ip_addr}/solana-rpc`
         if(type=='$SOL'){
             transferSolanaSOL(wallet?.privateKeyArmor,address,(amount?Number(amount):0),randomSolanaRPC);
             return ;

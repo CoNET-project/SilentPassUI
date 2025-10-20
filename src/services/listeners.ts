@@ -1,5 +1,6 @@
 import {
   conetDepinProvider,
+  sGB_ReadOnly
 } from "../utils/constants"
 import {
   CoNET_Data,
@@ -7,6 +8,7 @@ import {
   globalAllNodes,
   setCoNET_Data,
   setProcessingBlock,
+  
 } from "../utils/globals";
 import contracts from "../utils/contracts"
 import { checkCurrentRate } from "../services/passportPurchase";
@@ -50,7 +52,7 @@ const listenProfileVer = async (
 
   await conetDepinProvider.getBlockNumber();
   checkCurrentRate(setMiningData);
-  await getProfileAssets(profiles[0], profiles[1]);
+  await getProfileAssets(CoNET_Data)
   // await getVpnTimeUsed();
   await getSpClubInfo(profiles[0], currentPageInvitees);
   await getPassportsInfoForProfile(profiles[0])
@@ -75,22 +77,22 @@ const listenProfileVer = async (
 
     if (block === epoch + 1) {
 
-      epoch++;
+		epoch++;
 
-      if (_stopProcess) {
-		return
-	  }
+		if (_stopProcess|| !CoNET_Data) {
+			return
+		}
 
-      const profiles = CoNET_Data?.profiles
-      const now = new Date().getTime()
-	  
-      if (!profiles||now - blockProcess < 1000 * 10||_process) {
-        return;
-      }
-      _process = true
+		const profiles = CoNET_Data?.profiles
+		const now = new Date().getTime()
+		
+		if (!profiles||now - blockProcess < 1000 * 10||_process) {
+			return;
+		}
+		_process = true
 	  
         await checkCurrentRate(setMiningData);
-        await getProfileAssets(profiles[0], profiles[1]);
+        await getProfileAssets(CoNET_Data);
         // await getVpnTimeUsed();
         await getSpClubInfo(profiles[0], currentPageInvitees);
         
@@ -103,25 +105,25 @@ const listenProfileVer = async (
         await getPassportsInfoForProfile(profiles[0]);
       
         if (CoNET_Data && CoNET_Data?.profiles && CoNET_Data?.profiles.length > 0) {
-          await _setProfiles(CoNET_Data?.profiles);
-          if (CoNET_Data.profiles[0].activePassport)
-          await _setActivePassport(CoNET_Data.profiles[0].activePassport);
+			await _setProfiles(CoNET_Data?.profiles)
+			if (CoNET_Data.profiles[0].activePassport)
+			await _setActivePassport(CoNET_Data.profiles[0].activePassport)
 			const temp = await initDuplicate(CoNET_Data)
 			if (!temp) {
 				await new Promise(n => setTimeout(() => n(true),10000))
 			}
         }
 		if (!_stopProcess) {
-			await storeSystemData();
+			await storeSystemData()
 		}
         
-        await setProcessingBlock(false);
-      _process = false
-      blockProcess = now
+        await setProcessingBlock(false)
+		_process = false
+		blockProcess = now
     }
-  });
+	})
 
-  epoch = await conetDepinProvider.getBlockNumber();
+	epoch = await conetDepinProvider.getBlockNumber()
 }
 
 

@@ -19,7 +19,7 @@ import _ from 'lodash';
 const MainWallet = ({}) => {
     const { t, i18n } = useTranslation();
     const [visible, setVisible] = useState<boolean>(false);
-    const { profiles,activePassport,setActivePassport,duplicateAccount } = useDaemonContext();
+    const { profiles, activePassport,setActivePassport,duplicateAccount } = useDaemonContext();
     const [isAddressHidden, setIsAddressHidden] = useState(false);
     const [isKeyHidden, setIsKeyHidden] = useState(true);
     const [isChangeLoading, setIsChangeLoading] = useState(false);

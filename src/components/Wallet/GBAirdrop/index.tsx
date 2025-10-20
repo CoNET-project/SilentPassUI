@@ -10,6 +10,8 @@ import styles from './GBAirdrop.module.scss'
 import { Button as AntdButton, Modal, Popup,NavBar, Grid, Result, Ellipsis } from 'antd-mobile'
 import { Button } from "@/components/ui/button";
 import { useTranslation } from 'react-i18next'
+import { useDaemonContext } from './../../../providers/DaemonProvider';
+
 /**
  * Silent Pass · Phase-1 Airdrop 任务页（iOS 小屏适配 · 中文）
  * - 移动优先（375–428px 宽度友好）
@@ -20,8 +22,9 @@ import { useTranslation } from 'react-i18next'
 type AccessTier = 'free' | 'checkin' | 'monthly' | 'yearly';
 
 export default function AirdropTaskIOS() {
-	 const { t, i18n } = useTranslation();
-	    const [visible, setVisible] = useState<boolean>(false)
+	const { t, i18n } = useTranslation();
+	 const { profiles } = useDaemonContext();
+	const [visible, setVisible] = useState<boolean>(false)
   // ===== Mock 状态（演示用） =====
   // 仅发积分期：不显示具体代币，改为“参考示例”
   // 奖励池未披露：不展示示例每加权值
@@ -58,7 +61,7 @@ export default function AirdropTaskIOS() {
   return (
 	<>
 		<div className={styles.btnWrap}>
-			<AntdButton onClick={goCheck} block color='primary' fill='solid'>GB</AntdButton>
+			<AntdButton onClick={goCheck} block color='primary' fill='solid'>{profiles?.[0]?.tokens?.sGB?.balance} GB</AntdButton>
 		</div>
 		<Popup
 			visible={visible}

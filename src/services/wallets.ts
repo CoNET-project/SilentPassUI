@@ -98,20 +98,20 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
     if (acc?.mnemonic?.phrase) {
 		const result = await initSolana(acc?.mnemonic?.phrase);
 		const profile2: profile = {
-		tokens: initProfileTokens(),
-		publicKeyArmor: "",
-		keyID: result?.publicKey || "",
-		isPrimary: true,
-		referrer: null,
-		isNode: false,
-		pgpKey: {
-		privateKeyArmor: key.privateKey,
-		publicKeyArmor: key.publicKey,
-		},
-		privateKeyArmor: result?.privateKey || "",
-		hdPath: null,
-		index: 0,
-		type: "solana"
+			tokens: initProfileTokens(),
+			publicKeyArmor: "",
+			keyID: result?.publicKey || "",
+			isPrimary: true,
+			referrer: null,
+			isNode: false,
+			pgpKey: {
+				privateKeyArmor: key.privateKey,
+				publicKeyArmor: key.publicKey,
+			},
+			privateKeyArmor: result?.privateKey || "",
+			hdPath: null,
+			index: 0,
+			type: "solana"
 		}
 
 		data.profiles.push(profile2);
@@ -134,10 +134,10 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
 
   const result = await initSolana(tmpData?.mnemonicPhrase);
   if (
-    tmpData &&
-    (tmpData?.profiles.length < 2 || 
-    tmpData?.profiles[1]?.type !== "solana" ||!isValidSolanaPublicKey(tmpData?.profiles[1]?.keyID) ||
-    !isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor) || (result && result.publicKey !== tmpData.profiles[1].keyID))
+		tmpData &&
+		(tmpData?.profiles.length < 2 || 
+		tmpData?.profiles[1]?.type !== "solana" ||!isValidSolanaPublicKey(tmpData?.profiles[1]?.keyID) ||
+		!isValidSolanaBase58PrivateKey(tmpData?.profiles[1]?.privateKeyArmor) || (result && result.publicKey !== tmpData.profiles[1].keyID))
   ) {
 
     const key = await createGPGKey("", "", "");
@@ -1155,26 +1155,51 @@ const getSPClubPoint = async (key: string) => {
   }
 }
 
-const get_sGB = async (walletAddr: string) => {
-  return 
+const get_sGB = async (duplicateAccount: string) => {
+  return sGB_ReadOnly.balanceOf(duplicateAccount, 0)
 }
 
 
 
-const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
-  const key = profile.keyID;
+const getProfileAssets = async (CoNETData : encrypt_keys_object) => {
+  	const profile = CoNETData?.profiles[0]
+  	const solanaProfile = CoNETData?.profiles[1]
+	const duplicateAccount = CoNETData?.duplicateAccount?.keyID
+  	const key = profile.keyID;
+	if (!profile || !solanaProfile || !duplicateAccount) {
+		return false;
+	}
 
-  if (key) {
+  
 	if (!profile.tokens) {
 		profile.tokens = initProfileTokens();
 	}
 
-	const [conetDepin, conet_eth, referrals, points] = await Promise.all([
+	const [conetDepin, conet_eth, referrals, points, sGB] = await Promise.all([
 		scanCONETDepin(key),
 		scanConetETH(key),
 		getReferrals(),
-		getSPClubPoint(key)
-	]);
+		getSPClubPoint(key),
+		get_sGB(duplicateAccount)
+	])
+
+	if (profile.tokens?.sGB) {
+		profile.tokens.sGB.balance =
+		sGB === false
+		? ""
+		: parseFloat(ethers.formatEther(sGB)).toFixed(6);
+	} else {
+		profile.tokens.sGB = {
+			balance:
+			sGB === false
+			? ""
+			: parseFloat(ethers.formatUnits( sGB.toString(), 9)).toFixed(6),
+			network: "CONET DePIN",
+			decimal: 9,
+			contract: contracts.sGB.address,
+			name: "sGB",
+		};
+	}
 
 	if (profile.tokens?.conetDepin) {
 		profile.tokens.conetDepin.balance =
@@ -1183,14 +1208,14 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 		: parseFloat(ethers.formatEther(conetDepin)).toFixed(6);
 	} else {
 		profile.tokens.conetDepin = {
-		balance:
-		conetDepin === false
-		? ""
-		: parseFloat(ethers.formatEther(conetDepin)).toFixed(6),
-		network: "CONET DePIN",
-		decimal: 18,
-		contract: "",
-		name: "conetDepin",
+			balance:
+			conetDepin === false
+			? ""
+			: parseFloat(ethers.formatEther(conetDepin)).toFixed(6),
+			network: "CONET DePIN",
+			decimal: 18,
+			contract: "",
+			name: "conetDepin",
 		};
 	}
 
@@ -1265,7 +1290,7 @@ const getProfileAssets = async (profile: profile, solanaProfile: profile) => {
 	
 
 	setCoNET_Data(temp);
-  }
+  
 
   return true;
 }

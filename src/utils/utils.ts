@@ -76,6 +76,13 @@ export const initProfileTokens = () => {
       contract: "",
       name: "sol",
     },
+	sGB: {
+      balance: "0",
+      network: "CONET DePIN",
+      decimal: 9,
+      contract: contracts.sGB.address,
+      name: "sGB",
+    },
     sp: {
       balance: "0",
       network: "Solana Mainnet",

@@ -294,7 +294,6 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
 		if (duplicateStatus === false) {
 			await createOrGetWallet(null, true)
-			
 			return null
 		}
 	}

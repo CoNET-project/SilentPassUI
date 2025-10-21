@@ -1187,13 +1187,13 @@ const getProfileAssets = async (CoNETData : encrypt_keys_object) => {
 		profile.tokens.sGB.balance =
 		sGB === false
 		? ""
-		: parseFloat(ethers.formatEther(sGB)).toFixed(6);
+		: parseFloat(ethers.formatUnits( sGB.toString(), 9)).toFixed(4);
 	} else {
 		profile.tokens.sGB = {
 			balance:
 			sGB === false
 			? ""
-			: parseFloat(ethers.formatUnits( sGB.toString(), 9)).toFixed(6),
+			: parseFloat(ethers.formatUnits( sGB.toString(), 9)).toFixed(4),
 			network: "CONET DePIN",
 			decimal: 9,
 			contract: contracts.sGB.address,

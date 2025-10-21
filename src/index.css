@@ -1,4 +1,17 @@
 @tailwind base;
+
+/* 在 base 之后立即覆盖 Tailwind 对 SVG 的重置 */
+@layer base {
+  svg {
+    display: inline !important;
+    vertical-align: baseline !important;
+  }
+  
+  img {
+    display: inline !important;
+  }
+}
+
 @tailwind components;
 @tailwind utilities;
 
@@ -22,4 +35,3 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
 }
-

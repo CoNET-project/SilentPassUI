@@ -43,7 +43,7 @@ export const Bridge = {
 
   	receive(rawMessage: string, normalReceiveToDo?: (message: BridgeMessage, makeSend: any) => void): void {
 
-		console.log(`NativeToJavaScript Bridge got event ${rawMessage}`)
+		
 
     	if (typeof rawMessage !== "string") return;
 
@@ -51,7 +51,7 @@ export const Bridge = {
     	try {
       		message = JSON.parse(rawMessage);
     	} catch (e) {
-      		console.warn("Failed to parse message", e);
+      		//console.warn("Failed to parse message", e);
       		return;
     	}
 

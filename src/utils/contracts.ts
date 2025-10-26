@@ -105,6 +105,7 @@ import {
         network: 'CONET DePIN',
         abi: CoNET_GB_Total
     },
+
   };
   
   export default contracts;

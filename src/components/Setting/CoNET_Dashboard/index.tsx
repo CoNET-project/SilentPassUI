@@ -17,6 +17,9 @@ import {
 } from "recharts";
 import { conetDepinProvider } from "../../../utils/constants";
 import {getGB_info, getGB_hoistory} from '../../../services/CoNET'
+import { useDaemonContext } from "../../../providers/DaemonProvider"
+import {checkCurrentRate} from '../../../services/passportPurchase'
+
 import {ethers} from 'ethers'
 // ------------------------------
 // CoNET Network Dashboard (Web)
@@ -96,17 +99,15 @@ const topNodes = Array.from({ length: 8 }).map((_, i) => ({
 const COLORS = ["#4f46e5", "#22c55e", "#06b6d4", "#f59e0b", "#ef4444", "#8b5cf6"]; // Tailwind-ish palette
 
 
-
-
-
 export default function CoNETDashboard() {
   // Filters & state
+  const {setMiningData, miningData}  = useDaemonContext()
   const [range, setRange] = useState<"24h" | "7d" | "14d" | "30d">("14d");
   const [region, setRegion] = useState<string>("ALL");
   const [language, setLanguage] = useState<"en" | "zh">("zh");
   const [autorefresh, setAuto] = useState(true);
   const [tick, setTick] = useState(0);
-  const [] = useState(0.0);
+  const [activeNodes, setActiveNodes] = useState(0.0);
 
   const [block, setBlock] = useState(0);
   const [blockProcess, setBlockProcess] = useState(false);
@@ -120,6 +121,11 @@ export default function CoNETDashboard() {
   const [historyGB, setHistoryGB] = useState<number[]>([]);
 
   const [bpi, setBpi] = useState(0.01034);
+  const [burnConet, setBurnConet] = useState(0);
+
+  const [onlineConcurrent, setOnlineConcurrent] = useState(0);
+  const [activeWallets, setActiveWallets] = useState(0);
+  const [total_burn, setTotal_burn] = useState(0);
 
   // Simulate live refresh (replace with SSE/WebSocket)
 
@@ -134,6 +140,7 @@ export default function CoNETDashboard() {
 		
         conetDepinProvider.on ('block', block => {
             setBlock(block)
+
         })
     }, []);
 
@@ -145,7 +152,12 @@ export default function CoNETDashboard() {
 
 
 
-        const [todayTotalIssued, yestodayTotalIssued, monthlyTotalIssued, lastMonthlyTotalIssued, yearlyTotalIssued, totalIssued] = await getGB_info()
+        const [[todayTotalIssued, yestodayTotalIssued, monthlyTotalIssued, lastMonthlyTotalIssued, yearlyTotalIssued, totalIssued],] = await Promise.all([
+			getGB_info(),
+			checkCurrentRate(setMiningData)
+		]);
+		
+		
         if (!todayTotalIssued||!yestodayTotalIssued||!monthlyTotalIssued) {
             setBlockProcess(false)
             return 
@@ -159,11 +171,16 @@ export default function CoNETDashboard() {
         const tmonthly = parseFloat(ethers.formatUnits(monthlyTotalIssued, 'gwei'))
         const tyeayly = parseFloat(ethers.formatUnits(yearlyTotalIssued||BigInt(0), 'gwei'))
         const total = parseFloat(ethers.formatUnits(totalIssued||BigInt(0), 'gwei'))
+
+		setActiveNodes(569)
         setToday24Hours(t24)
         setYestoday24Hours(y24)
         setMonthly(tmonthly)
         setTotally(total)
         setYearly(tyeayly)
+		setOnlineConcurrent(12)
+		setActiveWallets(155)
+		setTotal_burn(0)
 
 		if (!historyGB.length) {
 			const kk = await getGB_hoistory()
@@ -181,7 +198,6 @@ export default function CoNETDashboard() {
     
     useEffect(() => {
         getNetworkInfo()
-        
     }, [block]);
 
 
@@ -353,34 +369,13 @@ export default function CoNETDashboard() {
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* KPIs */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPI label={t("kpi_gb")} value={today24Hours} suffix="G" trend={(today24Hours - yestoday24Hours) / Math.max(yestoday24Hours || 1, 1e-9)} decimals={6}/>
+          <KPI label={t("kpi_gb")} value={today24Hours} suffix="G" trend={(today24Hours - yestoday24Hours) / Math.max(yestoday24Hours || 1, 1e-9)} decimals={2}/>
           <KPI label={t("kpi_bpi")} value={bpi.toFixed(4)} prefix="$" />
-          <KPI label={t("kpi_nodes")} value={nf.format(kpis.nodes)} />
-          <KPI label={t("kpi_burn")} value={nf.format(kpis.burnK)} suffix="k" />
+          <KPI label={t("kpi_nodes")} value={miningData?.online} decimals={0}/>
+          <KPI label={t("kpi_burn")} value={burnConet} suffix="k" decimals={2}/>
         </section>
 
-        {/* Aggregate KPIs */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <KPI label={t("kpi_mtd")} value={monthly} suffix="G" decimals={2}/>
-          <KPI label={t("kpi_ytd")} value={yearly} suffix="G" decimals={2} />
-          <KPI label={t("kpi_total")} value={totally} suffix="G" decimals={2} />
-        </section>
-
-        {/* User & Wallet KPIs */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPI label={t("kpi_users")} value={nf.format(kpis.usersMAU)} />
-          <KPI label={t("kpi_wallets")} value={nf.format(kpis.wallets30d)} />
-          <KPI label={t("kpi_online")} value={nf.format(kpis.onlineConcurrent)} />
-          <KPI label={t("kpi_devices")} value={nf.format(kpis.activeDevices)} />
-        </section>
-
-        {/* Badges */}
-        <section className="flex flex-wrap items-center gap-3">
-          <Badge label={t("badge_total_burn")} value={`${nf.format(kpis.totalBurnK)}k $CONET`} />
-          <Badge label={t("badge_peak")} value={`${(kpis.peakGB / 1000).toFixed(2)}T @ ${kpis.peakLabel}`} />
-        </section>
-
-        {/* Charts Row 1: Usage + BPI */}
+		        {/* Charts Row 1: Usage + BPI */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card className="lg:col-span-2">
             <CardHeader title={t("chart_gb")} subtitle="GB/day across the network" />
@@ -409,7 +404,7 @@ export default function CoNETDashboard() {
                   </defs>
                   <CartesianGrid stroke="#0f172a" strokeDasharray="3 3" />
                   <XAxis dataKey="label" tick={{ fill: "#94a3b8" }} tickLine={false} axisLine={{ stroke: "#1f2937" }} />
-                  <YAxis tick={{ fill: "#94a3b8" }} axisLine={{ stroke: "#1f2937" }} domain={[0.008, 0.02]} />
+                  <YAxis tick={{ fill: "#94a3b8" }} axisLine={{ stroke: "#1f2937" }} domain={[0.008, 0.012]} />
                   <Tooltip contentStyle={{ background: "#0b1220", border: "1px solid #1f2937", color: "#e2e8f0" }} />
                   <Area type="monotone" dataKey="bpi" stroke="#06b6d4" fill="url(#g1)" strokeWidth={2} />
                 </AreaChart>
@@ -417,6 +412,29 @@ export default function CoNETDashboard() {
             </div>
           </Card>
         </section>
+
+        {/* Aggregate KPIs */}
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <KPI label={t("kpi_mtd")} value={monthly} suffix="G" decimals={2}/>
+          <KPI label={t("kpi_ytd")} value={yearly} suffix="G" decimals={2} />
+          <KPI label={t("kpi_total")} value={totally} suffix="G" decimals={2} />
+        </section>
+
+        {/* User & Wallet KPIs */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPI label={t("kpi_users")} value={nf.format(kpis.usersMAU)} decimals={0}/>
+          <KPI label={t("kpi_wallets")} value={activeWallets} decimals={0}/>
+          <KPI label={t("kpi_online")} value={miningData?.totalUsers}  decimals={0}/>
+          {/* <KPI label={t("kpi_devices")} value={nf.format(kpis.activeDevices)} decimals={0}/> */}
+        </section>
+
+        {/* Badges */}
+        <section className="flex flex-wrap items-center gap-3">
+          <Badge label={t("badge_total_burn")} value={`${total_burn}k $CONET`} />
+          <Badge label={t("badge_peak")} value={`${(kpis.peakGB / 1000).toFixed(2)}T @ ${kpis.peakLabel}`} />
+        </section>
+
+
 
         {/* Charts Row 1.5: Online (60m) + Retention */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">

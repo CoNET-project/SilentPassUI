@@ -45,7 +45,9 @@ function App() {
 		  	setServerIpAddress(tmpIpAddress?.ip || "");
 		  	setServerPort('3002');
 		  	setIsLocalProxy(true)
+			
 		} catch (ex) {
+			setIsIOS(true)
 		  	if (window?.webkit) {
 			  	setIsIOS(true)
 		  	}

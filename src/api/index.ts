@@ -111,7 +111,7 @@ export const startSilentPass = async (
     });
     return response;
   } catch (error) {
-    console.error("Error starting silent pass:", error);
+    //console.error("Error starting silent pass:", error);
     throw error;
   }
 };
@@ -150,7 +150,7 @@ export const getLocalServerVersion = async (): Promise<string> => {
     const response = await api.get("/ver")
     return response?.data?.ver
   } catch (error) {
-    console.error("Error starting silent pass:", error);
+    //console.error("Error starting silent pass:", error);
     return ''
   }
 }
@@ -160,7 +160,7 @@ export const getLocalServerVPN = async (): Promise<string> => {
     const response = await api.get("/iOSVPN")
     return response?.data?.vpn
   } catch (error) {
-    console.error("Error starting silent pass:", error);
+    //console.error("Error starting silent pass:", error);
     return ''
   }
 }

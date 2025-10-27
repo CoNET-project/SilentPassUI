@@ -15,6 +15,7 @@ export type InfraItem = {
   title: string;
   desc: string;
   href: string;
+  href1?: string,
   color?: string;
 };
 
@@ -57,25 +58,26 @@ const Home = ({
 
 		items = [
 		{
-		id: "lm",
-		title: t('home-first-infra3'),
-		desc: t('home-first-infra1-detail3'),
-		href: "/dashboard/layerminus",
-		color: "#13592c",
+			id: "lm",
+			title: t('home-first-infra3'),
+			desc: t('home-first-infra1-detail3'),
+			href: "/",
+			color: "#13592c",
 		},
 		{
-		id: "nodes",
-		title: t('home-first-infra1'),
-		desc: t('home-first-infra1-detail1'),
-		href: "/ConetDashboard",
-		color: "#223c5b",
+			id: "nodes",
+			title: t('home-first-infra1'),
+			desc: t('home-first-infra1-detail1'),
+			href: "/conet",
+			href1: "https://conet.network",
+			color: "#223c5b",
 		},
 		{
-		id: "settlement",
-		title: t('home-first-infra2'),
-		desc: t('home-first-infra1-detail2'),
-		href: "/dashboard/settlement",
-		color: "#634107",
+			id: "settlement",
+			title: t('home-first-infra2'),
+			desc: t('home-first-infra1-detail2'),
+			href: "https://mainnet.conet.network",
+			color: "#634107",
 		},
 	]
 
@@ -160,7 +162,7 @@ const Home = ({
 
 				return (
 				<g key={s.id}>
-					<a href={s.href} aria-label={`${s.title}：${s.desc}`}>
+					<a href={s.href} target="_blank" aria-label={`${s.title}：${s.desc}`}>
 					<motion.path
 						className="pointer-events-auto"
 						d={pathD}
@@ -231,13 +233,23 @@ const Home = ({
 			</div>
 		</div>
 			
-		<div className="mt-10 max-w-sm hidden lg:block">
+		<div className="mt-10 max-w-sm">
 			<ul className="space-y-3">
 			{segments1.map((s) => (
 				<li key={`legend-${s.id}`} className="flex items-start gap-3">
 				<span className="mt-1 w-3 h-3 rounded-sm" style={{ backgroundColor: s.color || "#64748b" }} />
 				<div>
-					<a href={s.href} className="font-medium hover:underline text-white">{s.title}</a>
+					{
+						s?.href1?.length &&
+						<a href={s.href1} className="font-medium hover:underline text-white" target="_blank">{s.title}</a>
+					}
+					{
+						!s?.href1 &&
+						<div className="font-medium text-white">
+							{s.title}
+						</div>
+					}
+					
 					<div className="text-sm text-gray-400">{s.desc}</div>
 				</div>
 				</li>

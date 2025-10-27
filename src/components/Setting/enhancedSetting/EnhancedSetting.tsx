@@ -16,12 +16,6 @@ const EnhancedSetting = ({}) => {
             <div className={styles.general}>
                 <List header={t('Settings_Passcode_Addon')} style={{'--active-background-color':'#323131'}}>
                     <List.Item 
-                        prefix={<span className={styles.icon}><GiftOutlined /></span>} 
-                        onClick={() => {setAirdropVisible(true)}}
-                    >
-                        {t('Settings_Passcode_Reward')}
-                    </List.Item>
-                    <List.Item 
                         prefix={<span className={styles.icon}><FilterOutlined /></span>} 
                         onClick={() => {setRuleVisible(true)}}
                     >

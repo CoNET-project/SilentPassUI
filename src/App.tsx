@@ -47,7 +47,7 @@ function App() {
 		  	setIsLocalProxy(true)
 			
 		} catch (ex) {
-			setIsIOS(true)
+			
 		  	if (window?.webkit) {
 			  	setIsIOS(true)
 		  	}

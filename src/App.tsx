@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import "./reset.scss";
 import "./default.scss";
 import styles from './layout.module.scss';
-import {Route,Routes,useNavigate,useLocation,BrowserRouter as Router} from 'react-router-dom';
+import {Route,Routes,useNavigate,useLocation,HashRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider";
 import ConetDashboard from "./components/Setting/CoNET_Dashboard/index";
 import Home from "./pages/Home/index";
@@ -66,7 +66,7 @@ function App() {
   	},[])
 
   	return (
-		<Router>
+		<Router basename="/">
 	      <div className={styles.app}>
 	        <div className={styles.body}>
 	          <Routes>

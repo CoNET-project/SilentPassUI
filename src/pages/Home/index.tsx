@@ -68,7 +68,7 @@ const Home = ({
 			id: "nodes",
 			title: t('home-first-infra1'),
 			desc: t('home-first-infra1-detail1'),
-			href: "/conet",
+			href: "/#/conet",
 			href1: "https://conet.network",
 			color: "#223c5b",
 		},

@@ -536,6 +536,19 @@
 	"footer-nav-4":"Settings",
 
 	"checkUpdate":"Check for updates",
-	"hasNoUpdate":"Already the latest version"
+	"hasNoUpdate":"Already the latest version",
+
+	"home-first-infra1":"The NEW Internet",
+	"home-first-infra2":"New Ethereum",
+	"home-first-infra3":"New Layer2",
+
+	"home-first-infra1-detail1":"A freedom and privacy-secure peer-to-peer high-speed communication network",
+	"home-first-infra1-detail2":"A Ethereum built on the new Internet",
+	"home-first-infra1-detail3":"Built on the new Internet, featuring low gas fees, multi-chain high-speed parallel processing, and decentralized atomic chain technology",
+
+	"home-title-1":"The CoNET Project",
+	"home-title-2":"Three Core Infrastructures"
+
+
 
 }

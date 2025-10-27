@@ -4,8 +4,8 @@ import "./default.scss";
 import styles from './layout.module.scss';
 import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider";
-import Home from "./components/Setting/CoNET_Dashboard";
-
+import ConetDashboard from "./components/Setting/CoNET_Dashboard/index";
+import Home from "./pages/Home/index";
 import { setDefaultConfig } from 'antd-mobile';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
 import enUS from 'antd-mobile/es/locales/en-US';
@@ -70,7 +70,8 @@ function App() {
 		    <div className={styles.app}>
 		      	<div className={styles.body}>
 		        	<Routes>
-		          		<Route path="/" element={<Home />} />
+						<Route path="/" element={<Home />} />
+		          		<Route path="/conet" element={<ConetDashboard />} />
 		        	</Routes>
 		      	</div>
 		    </div>

@@ -550,5 +550,16 @@
 	"footer-nav-4":"设置",
 
 	"checkUpdate":"检查更新",
-	"hasNoUpdate":"当前已是最新版本"
+	"hasNoUpdate":"当前已是最新版本",
+
+	"home-first-infra1":"新互联网",
+	"home-first-infra2":"抗审查新以太坊",
+	"home-first-infra3":"新Layer2",
+
+	"home-first-infra1-detail1":"隐私，安全和通讯自由的去中心化点对点高速网络",
+	"home-first-infra1-detail2":"架构在新互联网之上的抗审查以太坊",
+	"home-first-infra1-detail3":"架构在新互联网之上，低GAS费，多链高速并行处理，去中心化原子链技术",
+
+	"home-title-1":"CoNET 项目",
+	"home-title-2":"三大基础设施"
 }

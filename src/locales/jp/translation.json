@@ -544,5 +544,16 @@
     "footer-nav-4": "設定",
 
     "checkUpdate": "更新を確認",
-    "hasNoUpdate":"すでに最新バージョンです"
+    "hasNoUpdate":"すでに最新バージョンです",
+
+	"home-first-infra1":"新しいインターネット",
+	"home-first-infra2":"新しいイーサリアム",
+	"home-first-infra3":"新しいレイヤー2",
+
+	"home-first-infra1-detail1":"プライバシー・安全性・通信の自由を実現する分散型高速P2Pネットワーク",
+	"home-first-infra1-detail2":"新しいインターネット上に構築された検閲に強いイーサリアム",
+	"home-first-infra1-detail3":"新しいインターネット上に構築された、低ガス費・マルチチェーン高速並列処理・分散型アトミックチェーン技術",
+
+	"home-title-1":"CoNET プロジェクト",
+	"home-title-2":"三つの基盤インフラ"
 }

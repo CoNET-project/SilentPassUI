@@ -48,7 +48,7 @@ const Wallet = ({}) => {
 		setProfiles(CoNET_Data?.profiles);
 		setActivePassportUpdated(true);
 		handlePassportProcess = false
-		listenProfileVer(setProfiles, setActivePassport, setMiningData)
+		// listenProfileVer(setProfiles, setActivePassport, setMiningData, )
   	}
 
 	useEffect(() => {

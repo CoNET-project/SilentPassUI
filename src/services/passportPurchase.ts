@@ -162,6 +162,8 @@ export const checkCurrentRate = async (setMiningData: (response: nodeResponse) =
 // })
 
 
+
+
 export const transferSolanaSP = async(toPublicKeyString: string, _amount: number): Promise<{err?: string, success?: string}> => {
 	if (!CoNET_Data?.profiles) {
 		return {err: 'not ready'}

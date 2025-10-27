@@ -30,7 +30,7 @@ global.Buffer = require('buffer').Buffer;
 
 function App() {
 	const { i18n } = useTranslation();
-  	const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, setCheckinBalanceUP } = useDaemonContext();
+  	const { setProfiles, setMiningData, setClosestRegion, setaAllNodes, setServerIpAddress, setServerPort, setShowReferralsInput, setActivePassportUpdated, setActivePassport, setRandomSolanaRPC, setIsLocalProxy, setIsIOS, setDuplicateAccount, setCheckinBalanceUP, setCurrentBlock } = useDaemonContext();
   	
   	const setSOlanaRPC = (allNodes: nodes_info[]) => {
     	const randomIndex = Math.floor(Math.random() * (allNodes.length - 1))
@@ -97,7 +97,7 @@ function App() {
 		setProfiles(CoNET_Data?.profiles);
 		setActivePassportUpdated(true);
 		handlePassportProcess = false
-		listenProfileVer(setProfiles, setActivePassport, setMiningData)
+		listenProfileVer(setProfiles, setActivePassport, setMiningData, setCurrentBlock)
   	}
 
   	const init = async () => {

@@ -13,7 +13,11 @@ interface AirdropTaskContParams {
 
 const AirdropTaskCont = ({setRuleVisible}:AirdropTaskContParams) => {
     const { t, i18n } = useTranslation();
-
+	const { successNFTID, setSuccessNFTID, isIOS, isLocalProxy, setSubscriptionVisible, profiles, airdropVisible, setAirdropVisible, currentBlock} = useDaemonContext()
+	
+	useEffect(() => {
+		
+  	}, [currentBlock])
 
     return (
         <>

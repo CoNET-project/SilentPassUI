@@ -8,22 +8,42 @@ import Addition from './addition';
 
 const Mine = ({}) => {
     const { t, i18n } = useTranslation();
-    const { referralsVisible, setReferralsVisible, setPassportVisible, setCheckInVisible, setGenesisVisible, setSelectedPlan } = useDaemonContext();
+    const { referralsVisible, setReferralsVisible, setPassportVisible, setCheckInVisible, setGenesisVisible, setSelectedPlan, profiles, currentBlock } = useDaemonContext();
+
+	const [thisWeekGB, setThisWeekGB] = useState('')
+	const [thisWeekGBpercentage, setThisWeekGBpercentage] = useState(0)
+	const [totalGB, setTotalGB] = useState('')
+	const [maxTotalBG, setMaxTotalBG] = useState('')
+
+
+
+	useEffect(() => {
+		const airdrop: IAirdrop = profiles[0]?.airdropEvent
+		if (airdrop) {
+			setThisWeekGB(parseFloat(airdrop.currentWeekGB).toFixed(2))
+			setThisWeekGBpercentage(parseFloat(thisWeekGB)/15)
+			setTotalGB(parseFloat(airdrop.totalUserGB).toFixed(2))
+			setMaxTotalBG(parseFloat(airdrop.maxGB).toFixed(0))
+		}
+
+
+
+  	}, [currentBlock])
 
     return (
         <div className={styles.mine}>
             <div className={styles.flow}>
                 <div className={styles.partFlow}>
                     <label className={styles.label}>{t('integral-airdrop-flow-1')} GB</label>
-                    <div className={styles.val}>5.8 GB</div>
-                    <div className={styles.progressBar}><ProgressBar percent={80} /></div>
-                    <div className={styles.extra}>{t('integral-airdrop-flow-3')} 15 · {t('integral-airdrop-flow-4')} 9.2 GB</div>
+                    <div className={styles.val}>{thisWeekGB} GB</div>
+                    <div className={styles.progressBar}><ProgressBar percent={thisWeekGBpercentage} /></div>
+                    <div className={styles.extra}>{t('integral-airdrop-flow-3')} 15 · {t('integral-airdrop-flow-4')} {15-parseFloat(thisWeekGB)} GB</div>
                 </div>
                 <div className={styles.partFlow}>
                     <label className={styles.label}>{t('integral-airdrop-flow-2')} GB</label>
-                    <div className={styles.val}>5.8 GB</div>
-                    <div className={styles.progressBar}><ProgressBar percent={60} /></div>
-                    <div className={styles.extra}>{t('integral-airdrop-flow-3')} 15 · {t('integral-airdrop-flow-4')} 9.2 GB</div>
+                    <div className={styles.val}>{totalGB} GB</div>
+                    <div className={styles.progressBar}><ProgressBar percent={parseFloat(totalGB)/parseFloat(maxTotalBG)} /></div>
+                    <div className={styles.extra}>{t('integral-airdrop-flow-3')} {maxTotalBG} · {t('integral-airdrop-flow-4')} {maxTotalBG} GB</div>
                 </div>
             </div>
             <Addition />

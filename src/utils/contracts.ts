@@ -16,7 +16,8 @@ import {
 	SpClubPoint,
 	Duplicate,
 	sGB,
-	sGB_Dashboard
+	sGB_Dashboard,
+	SGB_Airdrop
   } from "./abis";
   
   const contracts = {
@@ -103,6 +104,11 @@ import {
 		address: '0x4b505F5Cf4926Da7375Ed7FB82f7111266908497',
 		network: 'CONET DePIN',
 		abi: sGB_Dashboard
+	},
+	SGB_Airdrop: {
+		address: '0xeB25c4c7946d90029C8333e8e670D5Cd26E5D834',
+		network: 'CONET DePIN',
+		abi: SGB_Airdrop
 	}
   };
   

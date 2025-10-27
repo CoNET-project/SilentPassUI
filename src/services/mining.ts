@@ -54,7 +54,7 @@ const isAbortError = (e: unknown) =>
 export async function testNode(
   node: nodes_info,
   signal?: AbortSignal,
-  timeoutMs = 1000
+  timeoutMs = 3000
 ): Promise<boolean> {
   try {
     const url = `http://${node.ip_addr}`;

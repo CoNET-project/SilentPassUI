@@ -236,6 +236,7 @@ const Subscription = ({}) => {
             bodyStyle={{ width: '100%',backgroundColor:'#0d0d0d' }}
             className={styles.popup}
             closeOnMaskClick={true}
+            style={{zIndex:1300}}
         >
             <div className={styles.modalWrap}>
                 <NavBar onBack={() => {setSubscriptionVisible(false)}} style={{'--height': '70px'}}>{showTitle()}</NavBar>

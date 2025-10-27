@@ -99,7 +99,13 @@ const Passport = ({}) => {
                             </div>
                             
                             <div className={styles.warning}><ExclamationTriangleOutline className={styles.icon} />{t('passport-pay-plan-ios-tips-2')}</div>
-                            
+                            {
+								isIOS && 
+									<div className={styles.operation}>
+										<Button className={styles.spPayBtn} block color='primary' size='large' disabled={!['1','12'].includes(selectedPlan)} onClick={()=>{handlePurchase(payType)}}>{t('apple_restore_Purchases')}</Button>
+									</div>
+								
+							}
 							
                             <div className={styles.selector}>
                                 <Selector

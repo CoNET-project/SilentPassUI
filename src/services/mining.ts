@@ -253,7 +253,7 @@ const getAllRegions = (nodes: nodes_info[]) => {
 export async function getEntryNodes(
   allNodes: readonly nodes_info[],
   want = 20,
-  concurrency = 10,
+  concurrency = 20,
   shuffle = true
 ): Promise<nodes_info[]> {
   if (want <= 0 || allNodes.length === 0) return [];
@@ -308,7 +308,11 @@ export async function getEntryNodes(
   return picked.slice(0, want);
 }
 
-const nodeRegion = (n: nodes_info) => (n.region ?? n.region ?? "").toString().toUpperCase();
+const nodeRegion = (n: nodes_info) => {
+
+	const kk = n.country
+	return kk
+}
 
 // 小工具：打乱（Fisher-Yates）
 function shuffleInPlace<T>(arr: T[]) {
@@ -319,8 +323,15 @@ function shuffleInPlace<T>(arr: T[]) {
   return arr;
 }
 
+let afterALlNodesProcess = false
+
 const afterALlNodes = async (setClosestRegion: (entryNodes: nodes_info[]) => void, callback: (_allnodes: nodes_info[]) => void) => {
-	await Promise.resolve(getAllRegions(allNodes));
+
+	  if (afterALlNodesProcess) {
+			return
+	  }
+	  	afterALlNodesProcess = true
+		await Promise.resolve(getAllRegions(allNodes));
 
   // 2) 测最快地区（允许不传 callback）
   const winner = await testClosestRegion();
@@ -331,10 +342,11 @@ const afterALlNodes = async (setClosestRegion: (entryNodes: nodes_info[]) => voi
   // 如果测速没有赢家，就直接按全量 nodes 走
   if (!winner) {
     // 直接抽 20 个
-    const _entryNodes = await getEntryNodes(allNodes, 20, 10, true);
+    const _entryNodes = await getEntryNodes(allNodes, 20, 20, true);
     setClosestRegion(_entryNodes)
     // 若需要刷新全量 nodes（按你原本的占位）
-    Promise.resolve(getAllNodes(() => {}));
+    await Promise.resolve(getAllNodes(() => {}));
+	afterALlNodesProcess = false
     return;
   }
 
@@ -354,12 +366,12 @@ const afterALlNodes = async (setClosestRegion: (entryNodes: nodes_info[]) => voi
   const prioritized = preferred.concat(others);
 
   // 5) 在优先序列下并发挑 20 个
-  const _entryNodes = await getEntryNodes(prioritized, 20, 10, /*shuffle*/ false)
+  const _entryNodes = await getEntryNodes(prioritized, 20, 20, /*shuffle*/ false)
   setClosestRegion(_entryNodes)
 
   // 6) 可选：再做一次全量节点的异步刷新（保持你原来的占位写法）
   Promise.resolve(getAllNodes(() => {}))
-
+  afterALlNodesProcess = false
 }
 
 const getAllNodesV2 = async (

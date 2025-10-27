@@ -34,7 +34,7 @@ const Footer = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const location = useLocation();
-    const { ruleVisible, setRuleVisible, setPower, hasNewVersion, setHasNewVersion, setIsIOS } = useDaemonContext();
+    const { ruleVisible, setRuleVisible, setPower, hasNewVersion, setHasNewVersion, setIsIOS, isIOS } = useDaemonContext();
     const { pathname } = location;
 
 

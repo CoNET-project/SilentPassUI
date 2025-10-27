@@ -175,7 +175,7 @@ export const transferSolanaSP = async(toPublicKeyString: string, _amount: number
 	)
 	const _node1 = allNodes[Math.floor(Math.random() * (allNodes.length - 1))];
 	const solanaConnection = new Connection(
-		`https://${_node1.domain}/solana-rpc`,
+		`https://${_node1.domain}.conet.network/solana-rpc`,
 		"confirmed"
 	)
 	const SP_Address = new PublicKey(contracts.SPToken.address)

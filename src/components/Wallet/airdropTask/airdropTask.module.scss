@@ -53,11 +53,11 @@
         box-shadow: 0 4px 5px rgba(125, 125, 125, 0.3);
         .bottomLeft{
             .label{
-                font-size: 3.7vw;
+                font-size: 14px;
                 color:#e1e1e1;
             }
             .val{
-                font-size: 4vw;
+                font-size: 16px;
                 font-weight: 500;
                 color:#fff;
                 margin:2vw 0 0;
@@ -107,7 +107,7 @@
     .ruleBox{
         .hd{
             text-align: center;
-            font-size: 4.8vw;
+            font-size: 18px;
             font-weight: 500;
             color:#fff;
             padding:6vw 0 4vw;
@@ -120,11 +120,11 @@
             .item{
                 padding:1.6vw 0;
                 .name{
-                    font-size: 4vw;
+                    font-size: 14px;
                     font-weight: 500;
                 }
                 .desc{
-                    font-size: 3.7vw;
+                    font-size: 12px;
                     margin:1vw 0 0;
                     color:#ebebeb;
                     .descList{
@@ -162,12 +162,12 @@
                 }
                 :global(.adm-collapse-panel-header .adm-list-item-content-main){
                     font-weight: 500;
-                    font-size: 4vw;
+                    font-size: 14px;
                     padding:0;
                 }
                 :global(.adm-list-item-content-main){
                     padding:1vw 0;
-                    font-size: 3.7vw;
+                    font-size: 12px;
                     color:#ebebeb;
                 }
                 :global(a.adm-list-item:active:not(.adm-list-item-disabled)::after){

@@ -13,11 +13,10 @@ import { ExclamationCircleOutlined } from '@ant-design/icons';
 
 const CheckInBtn = ({}) => {
     const { t, i18n } = useTranslation();
-    const [visible, setVisible] = useState<boolean>(false)
 	const [disabled, setDisabled] = useState<boolean>(true)
 	const [todayCheckIN, setTodayCheckIN] = useState<boolean>(false)
 	const [insufficientBalance, setInsufficientBalance] = useState<boolean>(false)
-	const { setPaymentKind, setSubscriptionVisible, closestRegion} = useDaemonContext()
+	const { setPaymentKind, setSubscriptionVisible, closestRegion, checkInVisible, setCheckInVisible} = useDaemonContext();
 	const navigate = useNavigate()
 
 	let process = false
@@ -83,7 +82,7 @@ const CheckInBtn = ({}) => {
 
     }
     const goCheck = () => {
-        setVisible(true)
+        setCheckInVisible(true)
     }
 
     return (
@@ -92,15 +91,16 @@ const CheckInBtn = ({}) => {
                 <Button onClick={goCheck} block color='primary' fill='solid'>{t('wallet-checkin-btn')}</Button>
             </div>
             <Popup
-                visible={visible}
-                onMaskClick={() => {setVisible(false)}}
+                visible={checkInVisible}
+                onMaskClick={() => {setCheckInVisible(false)}}
                 position='right'
                 bodyStyle={{ width: '100%',backgroundColor:'#0d0d0d' }}
                 className={styles.popup}
                 closeOnMaskClick={true}
+                style={{zIndex:'1100'}}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('wallet-checkin-btn-title')}</NavBar>
+                    <NavBar onBack={() => {setCheckInVisible(false)}} style={{'--height': '70px'}}>{t('wallet-checkin-btn-title')}</NavBar>
                     <div className={styles.bd}>
 						<div className={styles.take}>
 							<div className={styles.title}>

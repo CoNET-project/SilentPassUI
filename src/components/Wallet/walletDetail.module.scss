@@ -1,17 +1,22 @@
 .wallet{
     padding: 26px 16px 20px;
     width: 100%;
-
-	.briefRow {
+	.briefWrap {
 		display: flex;
 		justify-content: space-between;
-		align-items: stretch;
-		gap: 12px;
-
-		// 让每个 Brief 平分宽度
-		& > :global(.briefWrap) {
-			flex: 1;
-		}
+        .flowVal{
+            display: flex;
+            align-items: center;
+            flex:none;
+            padding:0 3vw;
+            margin:0 0 0 3vw;
+            white-space: nowrap;
+            font-size: 3.7vw;
+            border-radius:14px;
+            background: linear-gradient(90deg, rgba(109,100,170,0.18), rgba(109,121,160,0.12));
+            border: 0.5px solid rgba(255,255,255,0.04);
+            box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+        }
 	}
     .title{
         margin-bottom: 16px;

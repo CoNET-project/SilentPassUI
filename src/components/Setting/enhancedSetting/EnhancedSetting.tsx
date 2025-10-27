@@ -9,7 +9,7 @@ import { useDaemonContext } from './../../../providers/DaemonProvider';
 const EnhancedSetting = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
-    const { quickLinksShow, setQuickLinksShow, setRuleVisible } = useDaemonContext();
+    const { quickLinksShow, setQuickLinksShow, setRuleVisible, airdropVisible, setAirdropVisible } = useDaemonContext();
 
     return (
         <>
@@ -17,7 +17,7 @@ const EnhancedSetting = ({}) => {
                 <List header={t('Settings_Passcode_Addon')} style={{'--active-background-color':'#323131'}}>
                     <List.Item 
                         prefix={<span className={styles.icon}><GiftOutlined /></span>} 
-                        onClick={() => {navigate("/wallet")}}
+                        onClick={() => {setAirdropVisible(true)}}
                     >
                         {t('Settings_Passcode_Reward')}
                     </List.Item>

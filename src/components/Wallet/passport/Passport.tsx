@@ -16,8 +16,7 @@ import ApplePayModal from './ApplePayModal';
 const Passport = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
-    const [visible, setVisible] = useState<boolean>(false);
-    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy, setSubscriptionVisible } = useDaemonContext();
+    const { isIOS, profiles, selectedPlan, setSelectedPlan, setPaymentKind, activePassport, isLocalProxy, setSubscriptionVisible, passportVisible, setPassportVisible } = useDaemonContext();
     const [payType, setPayType] = useState<number>(1);
     const [applePayVisible, setApplePayVisible] = useState<boolean>(false);
     const options=[
@@ -50,14 +49,14 @@ const Passport = ({}) => {
             setPaymentKind(type);
             setSubscriptionVisible(true);
         }else{
-            setVisible(false);
+            setPassportVisible(false);
             setApplePayVisible(true);
         }
     }
 
     return (
         <>
-            <List.Item onClick={() => {setVisible(true)}}>
+            <List.Item onClick={() => {setPassportVisible(true)}}>
                 <div className={styles.item}>
                     <div className={styles.icon}><SpToken width="25" height="25" /></div>
                     <div className={styles.text}>
@@ -67,15 +66,16 @@ const Passport = ({}) => {
                 </div>
             </List.Item>
             <Popup
-                visible={visible}
-                onMaskClick={() => {setVisible(false)}}
+                visible={passportVisible}
+                onMaskClick={() => {setPassportVisible(false)}}
                 position='right'
                 bodyStyle={{ width: '100%',backgroundColor:'#0d0d0d' }}
                 className={styles.popup}
                 closeOnMaskClick={true}
+                style={{zIndex:'1100'}}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('passport-pay-title')}</NavBar>
+                    <NavBar onBack={() => {setPassportVisible(false)}} style={{'--height': '70px'}}>{t('passport-pay-title')}</NavBar>
                     <div className={styles.bd}>
                         <div className={styles.pcType}>
                             <div className={styles.title}>{t('passport-pay-plan-pc-title')}</div>

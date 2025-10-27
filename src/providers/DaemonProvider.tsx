@@ -70,6 +70,16 @@ type DaemonContext = {
   setShowReferralsInput: (val: boolean) => void;
   subscriptionVisible: boolean;
   setSubscriptionVisible: (val: boolean) => void;
+  airdropVisible: boolean;
+  setAirdropVisible: (val: boolean) => void;
+  referralsVisible: boolean;
+  setReferralsVisible: (val: boolean) => void;
+  passportVisible: boolean;
+  setPassportVisible: (val: boolean) => void;
+  checkInVisible: boolean;
+  setCheckInVisible: (val: boolean) => void;
+  genesisVisible: boolean;
+  setGenesisVisible: Dispatch<SetStateAction<boolean>>;
   isInitialLoading: boolean;
   setIsInitialLoading: (val: boolean) => void;
   statusVisible: boolean,
@@ -158,6 +168,16 @@ const defaultContextValue: DaemonContext = {
   setShowReferralsInput: () => {},
   subscriptionVisible: false,
   setSubscriptionVisible: () => {},
+  airdropVisible: false,
+  setAirdropVisible: () => {},
+  referralsVisible: false,
+  setReferralsVisible: () => {},
+  passportVisible: false,
+  setPassportVisible: () => {},
+  checkInVisible: false,
+  setCheckInVisible: () => {},
+  genesisVisible: false,
+  setGenesisVisible: () => {},
   isInitialLoading: true,
   setIsInitialLoading: () => {},
   statusVisible: true,
@@ -219,6 +239,11 @@ export function DaemonProvider({ children }: DaemonProps) {
   const firstLoad3 = useRef(true);  //过滤开启 第一次
   const [duplicateAccount, setDuplicateAccount] = useState(null)
   const [subscriptionVisible, setSubscriptionVisible] = useState<boolean>(false);
+  const [airdropVisible, setAirdropVisible] = useState<boolean>(false);
+  const [referralsVisible, setReferralsVisible] = useState<boolean>(false);
+  const [passportVisible, setPassportVisible] = useState<boolean>(false);
+  const [checkInVisible, setCheckInVisible] = useState<boolean>(false);
+  const [genesisVisible, setGenesisVisible] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [statusVisible, setStatusVisible] = useState<boolean>(false);
   const [checkinBalanceUP, setCheckinBalanceUP] = useState<boolean>(false);
@@ -283,7 +308,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
-        	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
+        	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 
       {children}
     </Daemon.Provider>

@@ -16,6 +16,7 @@ import Status from '@/components/Home/Status/Status';
 import styles from '@/components/Footer/footer.module.scss';
 import { useDaemonContext } from "@/providers/DaemonProvider";
 import Filter from '@/components/Rules/Filter';
+import AirdropTask from '@/components/Wallet/airdropTask/AirdropTask';
 import {Bridge} from '@/bridge/webview-bridge';
 import NewVersion from "@/components/Home/NewVersion/NewVersion";
 import { getiOSVPNStatus, getAndroidVPNStatus} from "../../api"
@@ -122,6 +123,7 @@ const Footer = ({}) => {
             <Subscription />
             <Status />
             <Filter visible={ruleVisible} setVisible={setRuleVisible} />
+            <AirdropTask />
         </div>
     )
 };

@@ -15,7 +15,7 @@ const InitModule = ({initPercentage}:params) => {
             <div className={styles.round}>
                 <div className={styles.loading}><SPLoading /></div>
             </div>
-            <div className={styles.progress}>Welcome to Silent Pass {initPercentage} %</div>
+            <div className={styles.progress}>Welcome to Silent Pass {initPercentage<=100?initPercentage:'100'} %</div>
         </div>    
     );
 };

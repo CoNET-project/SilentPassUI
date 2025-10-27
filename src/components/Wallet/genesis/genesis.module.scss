@@ -41,6 +41,7 @@
     width: 100%;
     max-width: 600px;
     transform: translate(-50%, 0);
+    z-index:1100;
     :global(.adm-mask) {
         position: absolute;
     }

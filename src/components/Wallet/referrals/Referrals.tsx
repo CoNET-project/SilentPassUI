@@ -13,8 +13,7 @@ import { ReactComponent as ReferralIcon } from './../assets/Referrals.svg';
 
 const Referrals = ({}) => {
     const { t, i18n } = useTranslation();
-    const [visible, setVisible] = useState<boolean>(false);
-    const { profiles,activePassport,setIsSelectPassportPopupOpen } = useDaemonContext();
+    const { profiles,activePassport,setIsSelectPassportPopupOpen,referralsVisible, setReferralsVisible } = useDaemonContext();
 
     
     const nft = parseInt(profiles?.[0]?.activePassport?.nftID)
@@ -24,7 +23,7 @@ const Referrals = ({}) => {
 
     return (
         <>
-            <List.Item onClick={() => {setVisible(true)}}>
+            <List.Item onClick={() => {setReferralsVisible(true)}}>
                 <div className={styles.item}>
                     <div className={styles.icon}><ReferralIcon /></div>
                     <div className={styles.text}>
@@ -33,15 +32,16 @@ const Referrals = ({}) => {
                 </div>
             </List.Item>
             <Popup
-                visible={visible}
-                onMaskClick={() => {setVisible(false)}}
+                visible={referralsVisible}
+                onMaskClick={() => {setReferralsVisible(false)}}
                 position='right'
                 bodyStyle={{ width: '100%',backgroundColor:'#0d0d0d' }}
                 className={styles.popup}
                 closeOnMaskClick={true}
+                style={{zIndex:'1100'}}
             >
                 <div className={styles.modalWrap}>
-                    <NavBar onBack={() => {setVisible(false)}} style={{'--height': '70px'}}>{t('referrals-title-panel-title')}</NavBar>
+                    <NavBar onBack={() => {setReferralsVisible(false)}} style={{'--height': '70px'}}>{t('referrals-title-panel-title')}</NavBar>
                     <div className={styles.bd}>
                         {/*{(freePassportActive || expiration)?<div className={styles.warning}><ExclamationCircleFill className={styles.icon} />{t('referrals-extra-title')}</div>:''}*/}
                         <ReferralCont />

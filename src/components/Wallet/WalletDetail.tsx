@@ -4,6 +4,7 @@ import styles from '@/components/Wallet/walletDetail.module.scss';
 import RedeemBtn from '@/components/Wallet/redeemBtn/RedeemBtn';
 import CheckInBtn from '@/components/Wallet/checkInBtn/CheckInBtn';
 import Brief from '@/components/Wallet/brief/Brief';
+import Integral from '@/components/Wallet/integral/Integral';
 import MainWallet from '@/components/Wallet/mainWallet/MainWallet';
 import SPWallet from '@/components/Wallet/spWallet/SPWallet';
 import Genesis from '@/components/Wallet/genesis/Genesis';
@@ -11,7 +12,6 @@ import Referrals from '@/components/Wallet/referrals/Referrals';
 import Passport from '@/components/Wallet/passport/Passport';
 import Backups from '@/components/Wallet/backups/Backups';
 import Stake from '@/components/Wallet/stake/Stake';
-import GBButton from '@/components/Wallet/GBAirdrop/';
 import { List, Modal, Result, Button } from 'antd-mobile';
 import { CheckCircleFill } from 'antd-mobile-icons';
 import { useDaemonContext } from '@/providers/DaemonProvider';
@@ -19,7 +19,7 @@ import {openWebLinkNative} from '@/api';
 
 const WalletDetail = ({}) => {
     const { t, i18n } = useTranslation();
-    const { successNFTID, setSuccessNFTID, isIOS, isLocalProxy, setSubscriptionVisible } = useDaemonContext();
+    const { successNFTID, setSuccessNFTID, isIOS, isLocalProxy, setSubscriptionVisible, profiles, airdropVisible, setAirdropVisible } = useDaemonContext();
     const [isRedeemProcessLoading, setIsRedeemProcessLoading] = useState<boolean>(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState<boolean>(false);
     const [stakeVisible, setStakeVisible] = useState<boolean>(false);
@@ -50,13 +50,14 @@ const WalletDetail = ({}) => {
 
     return (
         <div className={styles.wallet}>
-			<div className={styles.briefRow}>
+			<div className={styles.briefWrap}>
 				<Brief />
-				<GBButton />
+				<div className={styles.flowVal} onClick={()=>{setAirdropVisible(true)}}>{profiles?.[0]?.tokens?.sGB?.balance} GB</div>
 			</div>
 
             <div className={styles.list}>
                 <List style={{'--active-background-color':'#343434'}}>
+                    <Integral />
                     <MainWallet />
                     <Backups />
                     <SPWallet stakeVisible={stakeVisible} setStakeVisible={setStakeVisible} />

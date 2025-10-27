@@ -27,8 +27,7 @@ type cryptoName = 'BNB' | 'BSC USDT' | 'TRON TRX';
 const Genesis = ({}) => {
     const navigate = useNavigate();
     const { t, i18n } = useTranslation();
-    const {profiles, setSuccessNFTID, setSelectedPlan, setPaymentKind, isIOS, isLocalProxy, setSubscriptionVisible} = useDaemonContext();
-    const [visible, setVisible] = useState<boolean>(false);
+    const {profiles, setSuccessNFTID, setSelectedPlan, setPaymentKind, isIOS, isLocalProxy, setSubscriptionVisible, genesisVisible, setGenesisVisible} = useDaemonContext();
     const [appleVisible, setAppleVisible] = useState<boolean>(false);
     const [codeVisible, setCodeVisible] = useState(false);
     const [cryptoName, setCryptoName] = useState<cryptoName>('BSC USDT');
@@ -45,7 +44,7 @@ const Genesis = ({}) => {
 		await changeActiveNFT(nft)
 		setQRWallet('')
 		setShowPrice('')
-		setVisible(false)
+		setGenesisVisible(false)
 		setCodeVisible(false)
 	}
     const purchaseBluePlan = async (token: cryptoName) => {
@@ -58,7 +57,7 @@ const Genesis = ({}) => {
         if (!res?.wallet||!res?.transferNumber) {
             return ;
         }
-        setVisible(false);
+        setGenesisVisible(false);
         setTimeoutError(false);
         setShowPrice(res?.transferNumber)
         setQRWallet(res.wallet)
@@ -111,7 +110,7 @@ const Genesis = ({}) => {
     return (
         <>
             <List.Item onClick={() => {
-				setVisible(true)}
+				setGenesisVisible(true)}
 				}>
                 <div className={styles.item}>
                     <div className={styles.icon}><CrownBadge /></div>
@@ -122,11 +121,11 @@ const Genesis = ({}) => {
                 </div>
             </List.Item>
             <Modal
-                visible={visible}
+                visible={genesisVisible}
                 closeOnAction
                 disableBodyScroll={false}
                 closeOnMaskClick={true}
-                onClose={() => {setVisible(false)}}
+                onClose={() => {setGenesisVisible(false)}}
                 className={styles.genesisModal}
                 content={<div className={styles.genesisCont}>
                     <div className={styles.hd}>{t('genesis-title')}</div>
@@ -161,12 +160,12 @@ const Genesis = ({}) => {
                                 <PayWECHAT payClick={payClick} />
                             </Grid.Item>
                             <Grid.Item>
-                                { isIOS &&  <PayAPPLE parentVisible={visible} setParentVisible={setVisible} appleVisible={appleVisible} setAppleVisible={setAppleVisible} /> }
+                                { isIOS &&  <PayAPPLE parentVisible={genesisVisible} setParentVisible={setGenesisVisible} appleVisible={appleVisible} setAppleVisible={setAppleVisible} /> }
                             </Grid.Item>
    
                         </Grid>
                     </div>
-                    <LeftOutline className={styles.close} onClick={() => {setVisible(false)}} />
+                    <LeftOutline className={styles.close} onClick={() => {setGenesisVisible(false)}} />
                     {showBuyClusloading?<div className={styles.loading}><div className={styles.spinBox}><SpinLoading /></div></div>:''}
                 </div>}
             />

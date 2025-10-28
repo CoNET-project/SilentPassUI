@@ -17,6 +17,7 @@ const AirdropTaskCont = ({setRuleVisible}:AirdropTaskContParams) => {
 	const [isGenesis, setIsGenesis] = useState(false)
 	const [subscription, setSubscription] = useState(0)
 	const [currectThreshold, setCurrectThreshold] = useState('')
+	const [endTimestamp, setEndTimestamp] = useState(new Date())
 
 	useEffect(() => {
 		const airdrop: IAirdrop = profiles[0]?.airdropEvent
@@ -29,6 +30,7 @@ const AirdropTaskCont = ({setRuleVisible}:AirdropTaskContParams) => {
 			threshold = threshold /100
 			// const threshold = parseFloat((airdrop.currectThreshold/100).toFixed(2))
 			setCurrectThreshold(threshold.toFixed(2))
+			setEndTimestamp(airdrop.stopTimestamp)
 
 		}
   	}, [currentBlock])
@@ -47,7 +49,7 @@ const AirdropTaskCont = ({setRuleVisible}:AirdropTaskContParams) => {
                         <span>Soft-cap 100,000 GB</span>
                     </div>
                 </div>
-                <div className={styles.progressFt}>{t('integral-airdrop-progress-3')}：{t('integral-airdrop-progress-4')}（{t('integral-airdrop-progress-5')}：2025-07-16 18:00 PT）</div>
+                <div className={styles.progressFt}>{t('integral-airdrop-progress-3')}：{t('integral-airdrop-progress-4')}（{t('integral-airdrop-progress-5')}：{endTimestamp.toLocaleDateString()}）</div>
             </div>
             
             <div className={styles.waysList}>

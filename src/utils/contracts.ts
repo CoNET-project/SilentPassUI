@@ -106,7 +106,7 @@ import {
 		abi: sGB_Dashboard
 	},
 	SGB_Airdrop: {
-		address: '0x5cd4F5354dE20c4d8fF7F483B8cb2737EE49Fd3f',
+		address: '0xC598e72a553a36898bAF2EeF2C444B9f07D31Ea0',
 		network: 'CONET DePIN',
 		abi: SGB_Airdrop
 	}

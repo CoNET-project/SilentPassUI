@@ -27,6 +27,8 @@ const Mine = ({}) => {
 	const [currentThresholdGB, setCurrentThresholdGB] = useState('')
 	const [totalThresholdGB, setTotalThresholdGB] = useState('')
 
+	const [endTimestamp, setEndTimestamp] = useState(new Date())
+
 
 	useEffect(() => {
 		const airdrop: IAirdrop = profiles[0]?.airdropEvent
@@ -56,6 +58,8 @@ const Mine = ({}) => {
 
 			setCurrentThresholdGB(cGB.toFixed(2))
 			setTotalThresholdGB(tGB.toFixed(2))
+
+			setEndTimestamp(airdrop.stopTimestamp)
 
 		}
 
@@ -149,11 +153,11 @@ const Mine = ({}) => {
                     <label className={styles.label}>{t('integral-airdrop-total-1')}（{t('integral-airdrop-total-2')}）</label>
                     <div className={styles.val}>{currentThresholdGB}</div>
                 </div>
-                <div className={styles.warning}>{t('integral-airdrop-progress-3')}：{t('integral-airdrop-progress-4')}（{t('integral-airdrop-progress-5')}：2025-07-16 18:00 PT）</div>
+                <div className={styles.warning}>{t('integral-airdrop-progress-3')}：{t('integral-airdrop-progress-4')}（{t('integral-airdrop-progress-5')}：{endTimestamp.toLocaleDateString()}）</div>
                 <div className={styles.bd}>
                     <div className={styles.item}>
                         <label className={styles.label}>{t('integral-airdrop-addition-info-1')}</label>
-                        <div className={styles.val}>18.00 {t('integral-airdrop-total-2')}</div>
+                        <div className={styles.val}>{totalThresholdGB} {t('integral-airdrop-total-2')}</div>
                     </div>
                     <div className={styles.item}>
                         <label className={styles.label}>{t('integral-airdrop-addition-info-2')}</label>

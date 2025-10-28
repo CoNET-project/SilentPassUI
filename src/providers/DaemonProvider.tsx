@@ -92,6 +92,8 @@ type DaemonContext = {
   setHasNewVersion: Dispatch<SetStateAction<boolean|string>>;
   setPrivacyMode: (val: boolean) => void;
   privacyMode: boolean;
+  currentBlock: number
+  setCurrentBlock: (val: number) => void
 };
 
 type DaemonProps = {
@@ -190,6 +192,8 @@ const defaultContextValue: DaemonContext = {
   setHasNewVersion: () => {},
   setPrivacyMode: () => {},
   privacyMode: false,
+  currentBlock: 0,
+  setCurrentBlock: () => {}
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -250,6 +254,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [ruleVisible, setRuleVisible] = useState<boolean>(false);
   const [hasNewVersion, setHasNewVersion] = useState<boolean|string>(false);
   const [privacyMode, setPrivacyMode] = useState<boolean>(false);
+  const [currentBlock,setCurrentBlock] = useState(0)
 
   useEffect(() => {
     {
@@ -299,7 +304,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version,
-				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData,
+				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,

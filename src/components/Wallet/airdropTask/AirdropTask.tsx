@@ -8,9 +8,24 @@ import AirdropTaskCont from './AirdropTaskCont';
 
 const AirdropTask = ({}) => {
     const { t, i18n } = useTranslation();
-    const { airdropVisible, setAirdropVisible } = useDaemonContext();
-    const [ruleVisible, setRuleVisible] = useState<boolean>(false);
-    
+    const { airdropVisible, setAirdropVisible, profiles, currentBlock } = useDaemonContext();
+    const [ruleVisible, setRuleVisible] = useState<boolean>(false)
+	const [totalThresholdGB, setTotalThresholdGB] = useState('')
+
+    useEffect(() => {
+		
+		const airdrop: IAirdrop = profiles?.[0]?.airdropEvent
+
+		if (airdrop) {
+			const tGB = parseFloat(airdrop.currectThresholdGB)
+			setTotalThresholdGB(tGB.toFixed(2))
+
+		}
+
+
+
+  	}, [currentBlock])
+
     const showRuleBox=()=>{
         setRuleVisible(true);
     }
@@ -34,7 +49,7 @@ const AirdropTask = ({}) => {
                     <div className={styles.bottom}>
                         <div className={styles.bottomLeft}>
                             <label className={styles.label}>{t('integral-airdrop-total-1')}</label>
-                            <div className={styles.val}>39.93 {t('integral-airdrop-total-2')}</div>
+                            <div className={styles.val}>{totalThresholdGB} {t('integral-airdrop-total-2')}</div>
                         </div>
                         <div className={styles.bottomRight}>
                             <Button size='mini' color='primary' className={styles.ruleBtnWrap} onClick={showRuleBox}><div className={styles.ruleBtn}><ExclamationCircleOutline className={styles.icon} />{t('integral-list-title-rule')}</div></Button>

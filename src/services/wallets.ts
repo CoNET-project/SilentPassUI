@@ -18,6 +18,7 @@ import {
   changeRPC,
   ethProvider,
   sGB_ReadOnly,
+  sGB_AirdropReadonly
 
 } from "../utils/constants"
 
@@ -1007,6 +1008,40 @@ const getSPOracle = async () => {
   }
 }
 
+
+const getGB_Airdrop = async (CoNET_Data: encrypt_keys_object) => {
+	const duWallet = CoNET_Data?.duplicateAccount?.keyID
+	if (!duWallet) {
+		return
+	}
+	try {
+		const _airdrop  = await sGB_AirdropReadonly.getAllInfo(duWallet)
+		const airdrop: IAirdrop = {
+			isNewUser: _airdrop.isNewUser,
+			isGenesis: _airdrop.isGenesis,
+			stopTimestamp: new Date(parseInt(_airdrop.stopTimestamp.toString())*1000),
+			maxGB: ethers.formatUnits(_airdrop.maxGB, 'gwei'),
+			currentWeekGB: ethers.formatUnits(_airdrop.currentWeekGB, 'gwei'),
+			totalUserGB: ethers.formatUnits(_airdrop.totalUserGB, 'gwei'),
+			currectPassport: parseInt(_airdrop.currectPassport),
+			currectThreshold: parseInt(_airdrop.currectThreshold),
+			currectThresholdGB: ethers.formatUnits(_airdrop.currectThresholdGB, 'gwei'),
+			totalThresholdGB: ethers.formatUnits(_airdrop.totalThresholdGB, 'gwei')
+
+		}
+
+		if (_airdrop.startTimestamp > 0) {
+			airdrop.startTimestamp = new Date(parseInt(_airdrop.startTimestamp.toString())*1000)
+		}
+		console.log(airdrop)
+		CoNET_Data.profiles[0].airdropEvent = airdrop
+
+	} catch (ex) {
+		return
+	}
+	
+}
+
 const getRewordStaus = async(node: nodes_info): Promise<boolean|null> => {
   const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)
 
@@ -1180,7 +1215,8 @@ const getProfileAssets = async (CoNETData : encrypt_keys_object) => {
 		scanConetETH(key),
 		getReferrals(),
 		getSPClubPoint(key),
-		get_sGB(duplicateAccount)
+		get_sGB(duplicateAccount),
+		getGB_Airdrop(CoNETData)
 	])
 
 	if (profile.tokens?.sGB) {

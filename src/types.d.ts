@@ -24,6 +24,8 @@ interface Region {
 	publicKeyObj?: any;
 	privateKeyObj?: any;
   };
+
+
   interface Staking {
 	totalAmount: number
 	claimedAmount: number
@@ -83,7 +85,7 @@ interface Region {
 	spClub?: SpClub;
 	SpClubPoints?: SpClubPoints
 	spChannel?:SpClub
-
+	airdropEvent?: IAirdrop
 	data?: any;
 	type?: keyPairType;
 	nodeID?: number;
@@ -248,6 +250,21 @@ interface Region {
 	  };
 	};
   }
+
+
+type IAirdrop = {
+	isNewUser: boolean
+	isGenesis: boolean
+	startTimestamp?: Date
+	stopTimestamp: Date
+	maxGB: string
+	currentWeekGB: string
+	totalUserGB: string
+	currectPassport: number
+	currectThreshold: number
+	currectThresholdGB: string
+	totalThresholdGB: string
+}
   
   type Native_node = {
 	country: string;

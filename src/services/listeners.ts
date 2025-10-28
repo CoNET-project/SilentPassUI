@@ -34,12 +34,13 @@ const LAMPORTS_PER_SOL = 9
 const listenProfileVer = async (
   _setProfiles: (profiles: profile[]) => void,
   _setActivePassport: (profiles: freePassport) => void,
-  setMiningData: (response: nodeResponse) => void
+  setMiningData: (response: nodeResponse) => void,
+  setCurrentBlock: (block: number) => void
 ) => {
   const temp = CoNET_Data
   const profiles = temp?.profiles
   if (!CoNET_Data || !profiles) {
-  return
+  	return
   }
   const now = new Date().getTime()
   if (now - blockProcess < 1000 * 10) {
@@ -50,7 +51,7 @@ const listenProfileVer = async (
   blockProcess = now
   
 
-  await conetDepinProvider.getBlockNumber();
+  const block = await conetDepinProvider.getBlockNumber();
   checkCurrentRate(setMiningData);
   await getProfileAssets(CoNET_Data)
   // await getVpnTimeUsed();
@@ -70,7 +71,7 @@ const listenProfileVer = async (
  
   await setProcessingBlock(false);
   blockProcess = now
-
+  setCurrentBlock(block)
 
 
   conetDepinProvider.on("block", async (block) => {
@@ -118,6 +119,7 @@ const listenProfileVer = async (
 		}
         
         await setProcessingBlock(false)
+		setCurrentBlock(block)
 		_process = false
 		blockProcess = now
     }

@@ -42,6 +42,12 @@ const sGB_Dashboard_ReadOnly = new ethers.Contract(
 	conetDepinProvider
 )
 
+const sGB_AirdropReadonly = new ethers.Contract(
+	contracts.SGB_Airdrop.address,
+	contracts.SGB_Airdrop.abi,
+	conetDepinProvider
+)
+
 
 
 const changeRPC = () => {
@@ -69,5 +75,6 @@ export {
   Solana_SOL,
   Solana_SP,
   sGB_ReadOnly,
-  sGB_Dashboard_ReadOnly
+  sGB_Dashboard_ReadOnly,
+  sGB_AirdropReadonly
 };

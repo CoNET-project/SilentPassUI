@@ -13,7 +13,25 @@ interface AirdropTaskContParams {
 
 const AirdropTaskCont = ({setRuleVisible}:AirdropTaskContParams) => {
     const { t, i18n } = useTranslation();
+	const { successNFTID, setSuccessNFTID, isIOS, isLocalProxy, setSubscriptionVisible, profiles, airdropVisible, setAirdropVisible, currentBlock} = useDaemonContext()
+	const [isGenesis, setIsGenesis] = useState(false)
+	const [subscription, setSubscription] = useState(0)
+	const [currectThreshold, setCurrectThreshold] = useState('')
 
+	useEffect(() => {
+		const airdrop: IAirdrop = profiles[0]?.airdropEvent
+		if (airdrop) {
+			setSubscription(airdrop.currectPassport)
+			if (airdrop.isGenesis) {
+				setIsGenesis(true)
+			}
+			let threshold = airdrop.currectThreshold > 200 ? 200 : airdrop.currectThreshold
+			threshold = threshold /100
+			// const threshold = parseFloat((airdrop.currectThreshold/100).toFixed(2))
+			setCurrectThreshold(threshold.toFixed(2))
+
+		}
+  	}, [currentBlock])
 
     return (
         <>
@@ -35,12 +53,20 @@ const AirdropTaskCont = ({setRuleVisible}:AirdropTaskContParams) => {
             <div className={styles.waysList}>
                 <div className={styles.waysBox}>
                     <Space wrap>
-                        <Tag round color='#49494a'>{t('integral-airdrop-way-1')}×1.00</Tag>
-                        <Tag round color='#49494a'>Genesis×1.55</Tag>
-                        <Tag round color='#49494a'>{t('integral-airdrop-way-2')}×1.15</Tag>
+						{
+							subscription &&
+							<Tag round color='#347858'>{t('integral-airdrop-way-1')}×1.00</Tag>
+						}
+                        
+						{
+							isGenesis &&
+							<Tag round color='#347858'>Genesis×1.55</Tag>
+						}
+                        
+                        <Tag round color='#347858'>{t('integral-airdrop-way-2')}×1.15</Tag>
                     </Space>
                 </div>
-                <div className={styles.waysTotal}>{t('integral-airdrop-way-3')} ≤ 2.00×</div>
+                <div className={styles.waysTotal}>{t('integral-airdrop-way-3')} ≤ {currectThreshold}×</div>
             </div>
 
             <div className={styles.tabWrap}>

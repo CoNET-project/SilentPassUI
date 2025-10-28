@@ -1025,7 +1025,8 @@ const getGB_Airdrop = async (CoNET_Data: encrypt_keys_object) => {
 			totalUserGB: ethers.formatUnits(_airdrop.totalUserGB, 'gwei'),
 			currectPassport: parseInt(_airdrop.currectPassport),
 			currectThreshold: parseInt(_airdrop.currectThreshold),
-			currectThresholdGB: ethers.formatUnits(_airdrop.currectThresholdGB, 'gwei')
+			currectThresholdGB: ethers.formatUnits(_airdrop.currectThresholdGB, 'gwei'),
+			totalThresholdGB: ethers.formatUnits(_airdrop.totalThresholdGB, 'gwei')
 
 		}
 

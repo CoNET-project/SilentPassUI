@@ -263,6 +263,7 @@ type IAirdrop = {
 	currectPassport: number
 	currectThreshold: number
 	currectThresholdGB: string
+	totalThresholdGB: string
 }
   
   type Native_node = {

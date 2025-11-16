@@ -1,21 +1,71 @@
-.footer{
-    svg{
-        width:25px;
-        height:25px;
-    }
-    :global(.adm-tab-bar-item-icon){
-        font-size: 25px;
-        height:25px;
-    }
-    :global(.adm-tab-bar-item){
-        padding:10px 8px;
-    }
-    :global(.adm-tab-bar-item-title){
-        margin-top:1px;
-        font-size: 11px;
-        color:#989899;
-    }
-    :global(.adm-tab-bar-item-active .adm-tab-bar-item-title){
-        color:#a3bee0;
-    }
+.footer {
+	position: relative;
+	background-color: var(--tabbar-bg);      // ✅ 跟随主题
+	border-top: 1px solid var(--tabbar-border);
+
+	// 覆盖 antd-mobile TabBar 自带背景
+	:global(.adm-tab-bar) {
+		background-color: transparent;
+		box-shadow: none;
+	}
+
+	svg {
+		width: 25px;
+		height: 25px;
+	}
+
+	:global(.adm-tab-bar-item-icon) {
+		font-size: 25px;
+		height: 25px;
+	}
+
+	:global(.adm-tab-bar-item) {
+		padding: 10px 8px;
+	}
+
+	:global(.adm-tab-bar-item-title) {
+		margin-top: 1px;
+		font-size: 11px;
+		color: var(--footer-icon);            // ✅ 用变量
+	}
+
+	:global(.adm-tab-bar-item-active .adm-tab-bar-item-title) {
+		color: var(--footer-icon-active);     // ✅ 用变量
+	}
+}
+
+/* 中间悬浮的 B logo */
+.payCenterLogo {
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%) translateY(-1.3rem);
+	bottom: 0.5rem;
+	z-index: 20;
+
+	width: 4rem;
+	height: 4rem;
+	border-radius: 50%;
+	background: var(--tabbar-bg);
+
+	display: flex;
+	align-items: center;
+	justify-content: center;
+
+	cursor: pointer;
+	pointer-events: auto;
+
+	/* ✨ 加强版阴影：上轻下重，浮在 TabBar 上面 */
+	box-shadow:
+		0px -6px 18px rgba(0, 0, 0, 0.12),
+		0px 6px 22px rgba(0, 0, 0, 0.20),
+		0px 12px 34px rgba(0, 0, 0, 0.08);
+
+	transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+	&:active {
+		transform: translateX(-50%) translateY(-1rem) scale(0.95);
+		box-shadow:
+		0px -4px 12px rgba(0, 0, 0, 0.15),
+		0px 4px 18px rgba(0, 0, 0, 0.22);
+	}
 }

@@ -157,6 +157,10 @@ interface Region {
 	_duplicateCode?:string
 	ChannelPartners?: string
 	referrals?: string
+	beamio: {
+		accountName: string
+		image: string
+	}
   };
   
   interface passportInfoFromChain {

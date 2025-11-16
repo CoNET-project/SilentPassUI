@@ -1,29 +1,109 @@
+//	default.scss
+
+/* ================================
+   全局主题变量（默认 Light）
+   ================================ */
+:root {
+	--app-bg: #f8f8f8;
+	--app-text: #111;
+	--tabbar-bg: #ffffff;
+	--tabbar-border: #e2e2e2;
+
+	--footer-icon: #989899;
+	--footer-icon-active: #2b5ea8;
+
+	--scrollbar-thumb: rgba(0, 0, 0, 0.2);
+	--scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+	 --settings-list-bg: #ffffff;
+	--settings-list-text: #333333;
+	--settings-list-header: #999999;
+	--settings-list-active-bg: #f2f3f7;
+	--settings-icon-color: #666666;
+	--setting-bg: #f5f5f5;
+	--setting-text: #222;
+	--setting-notice-bg: #ffffff;
+	--setting-notice-text: #444;
+}
+
+/* ================================
+   Dark 模式
+   ================================ */
+:root.theme-dark {
+	--app-bg: #0D0D0D;
+	--app-text: #ffffff;
+	--tabbar-bg: #050608;
+	--tabbar-border: #262b3a;
+
+	--footer-icon: #989899;
+	--footer-icon-active: #a3bee0;
+
+	--scrollbar-thumb: rgba(255, 255, 255, 0.08);
+	--scrollbar-thumb-hover: rgba(255, 255, 255, 0.15);
+
+	--settings-list-bg: #151515;
+	--settings-list-text: #f5f5f5;
+	--settings-list-header: #aaaaaa;
+	--settings-list-active-bg: #323131;
+	--settings-icon-color: #e0e0e0;
+	--setting-bg: #050608;
+	--setting-text: #f5f5f5;
+	--setting-notice-bg: #191919;
+	--setting-notice-text: #dddddd;
+}
+/* ================================
+   Light 模式
+   ================================ */
+:root.theme-light {
+	--app-bg: #f8f8f8;
+	--app-text: #111111;
+	--tabbar-bg: #ffffff;
+	--tabbar-border: #e2e2e2;
+
+	--footer-icon: #666666;
+	--footer-icon-active: #2b5ea8;
+
+	--scrollbar-thumb: rgba(0, 0, 0, 0.2);
+	--scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+
+	--settings-list-bg: #ffffff;
+	--settings-list-text: #333333;
+	--settings-list-header: #999999;
+	--settings-list-active-bg: #f2f3f7;
+	--settings-icon-color: #666666;
+	--setting-bg: #f5f5f5;
+	--setting-text: #222;
+	--setting-notice-bg: #ffffff;
+	--setting-notice-text: #444;
+}
+
+/* ================================
+   全局背景 & 字体
+   ================================ */
 html,
 body {
   width: 100%;
-  height:100%;
-  background: #0D0D0D;
-  color:#fff!important;
+  height: 100%;
+  background: var(--app-bg);
+  color: var(--app-text) !important;
   -webkit-font-smoothing: antialiased;
-  font-family: 'Microsoft Yahei', 'PingFang SC', 'Avenir', 'Segoe UI', 'Hiragino Sans GB', STHeiti, 'Microsoft Sans Serif', 'WenQuanYi Micro Hei', sans-serif;
+  font-family: 'Microsoft Yahei', 'PingFang SC', 'Avenir', 'Segoe UI',
+               'Hiragino Sans GB', STHeiti, 'Microsoft Sans Serif',
+               'WenQuanYi Micro Hei', sans-serif;
 }
-/* 滚动条整体宽度 */
+
+/* ================================
+   Scrollbar 样式
+   ================================ */
 ::-webkit-scrollbar {
   width: 6px;
 }
-
-/* 滚动条轨道 */
 ::-webkit-scrollbar-track {
-  background-color: transparent; /* 完全透明，不做视觉干扰 */
+  background-color: transparent;
 }
-
-/* 滚动条滑块 */
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08); /* 半透明浅灰，低存在感 */
+  background: var(--scrollbar-thumb);
   border-radius: 6px;
 }
-
-/* hover 时略微增加不透明度，提高可见性 */
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--scrollbar-thumb-hover);
 }

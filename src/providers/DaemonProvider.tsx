@@ -1,6 +1,8 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 type DaemonContext = {
+	darkModle: boolean
+	setDarkModle: (val: boolean) => void
   version: string
   power: boolean;
   setPower: (val: boolean) => void;
@@ -101,6 +103,8 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	darkModle: false,
+	setDarkModle: () => {},
   power: false,
   setPower: () => { },
   sRegion: -1,
@@ -204,6 +208,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [darkModle, setDarkModle] = useState<boolean>(false)
   const [version] = useState(packageData.version)
   const [power, setPower] = useState<boolean>(false);
   const [globalProxy, setGlobalProxy] = useState(false)
@@ -305,7 +310,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,
-				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,
+				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle,
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,

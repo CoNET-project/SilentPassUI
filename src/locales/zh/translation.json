@@ -550,9 +550,16 @@
 	"footer-nav-2":"账号",
 	"footer-nav-3":"交易所",
 	"footer-nav-4":"设置",
+	"footer-nav-5":"浏览器",
+	"footer-nav-6":"付款/收款",
 
 	"checkUpdate":"检查更新",
 	"hasNoUpdate":"当前已是最新版本",
+
+	"Dark-Mode": "深色模式",
+	"Light-Mode": "浅色模式",
+	"setting-display": "显示设定",
+
 
 	"integral-bar-name": "积分任务",
 	"integral-list-title-1": "Airdrop 任务",

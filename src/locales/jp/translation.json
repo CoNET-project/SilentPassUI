@@ -480,6 +480,10 @@
     "transaction-history-send-success": "送信済み",
     "transaction-history-send-to": "宛先",
 
+	"Dark-Mode": "ダークモード",
+	"Light-Mode": "ライトモード",
+	"setting-display": "表示設定",
+
     "setting-current-version": "現在のバージョン",
 
     "stake-title": "ステーキング",
@@ -544,6 +548,8 @@
     "footer-nav-2": "アカウント",
     "footer-nav-3": "取引所",
     "footer-nav-4": "設定",
+	"footer-nav-5":"ブラウザー",
+	"footer-nav-6":"支払/請求",
 
     "checkUpdate": "更新を確認",
     "hasNoUpdate":"すでに最新バージョンです",

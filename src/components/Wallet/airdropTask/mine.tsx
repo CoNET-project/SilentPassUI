@@ -29,9 +29,18 @@ const Mine = ({}) => {
 
 	const [endTimestamp, setEndTimestamp] = useState(new Date())
 
+	const [isReferrer, setIsReferrer] = useState(false)
+
 
 	useEffect(() => {
-		const airdrop: IAirdrop = profiles[0]?.airdropEvent
+		const profie = profiles?.[0]
+		if (!profie) {
+			return 
+		}
+
+		setIsReferrer(profie?.referrer ? true : false)
+		const airdrop: IAirdrop = profie?.airdropEvent
+		
 		if (airdrop) {
 			const thsWeek = parseFloat(airdrop.currentWeekGB)
 			const thisWeekMax = 15
@@ -89,9 +98,14 @@ const Mine = ({}) => {
                 <div className={styles.hd}><KeyOutline className={styles.icon} />{t('integral-airdrop-addition-friend-1')}</div>
                 <div className={styles.bd}>
                     <div className={styles.desc}>{t('integral-airdrop-addition-friend-2')}</div>
+					
                     <div className={styles.oper}>
-                        <a className={styles.btn} onClick={()=>{setReferralsVisible(true)}}>{t('integral-airdrop-addition-friend-3')}</a>
-                        {/*<a className={styles.done}>{t('integral-airdrop-addition-friend-5')}</a>*/}
+                        {
+							isReferrer ? <a className={styles.done}>{t('integral-airdrop-addition-friend-5')}</a>
+								: <a className={styles.btn} onClick={()=>{setReferralsVisible(true)}}>{t('integral-airdrop-addition-friend-3')}</a>
+
+						}
+                        
                     </div>
                 </div>
                 <div className={styles.tips}>{t('integral-airdrop-addition-friend-4')}</div>

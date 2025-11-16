@@ -6,6 +6,8 @@ import { ReactComponent as WalletIconGrey } from "./assets/wallet-icon-grey.svg"
 import { ReactComponent as WalletBlueIcon } from "./assets/wallet-icon-blue.svg";
 import { ReactComponent as SettingsIconBlue } from "./assets/settings-icon-blue.svg";
 import { ReactComponent as SettingsIconGrey } from "./assets/settings-icon-grey.svg";
+import { ReactComponent as BrowserBlueIcon } from "./assets/browser-icon-blue.svg";
+import { ReactComponent as BrowserGreyIcon } from "./assets/browser-icon-grey.svg";
 import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
 import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg";
 import { cleanCurrentWaitingTimeout } from './../../services/wallets'
@@ -20,7 +22,8 @@ import AirdropTask from '@/components/Wallet/airdropTask/AirdropTask';
 import {Bridge} from '@/bridge/webview-bridge';
 import NewVersion from "@/components/Home/NewVersion/NewVersion";
 import { getiOSVPNStatus, getAndroidVPNStatus} from "../../api"
-
+import { ReactComponent as BLogo } from './assets/B-icon.svg'
+import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
 interface BridgeMessage {
     event?: string;
     data?: any;
@@ -34,7 +37,7 @@ const Footer = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const location = useLocation();
-    const { ruleVisible, setRuleVisible, setPower, hasNewVersion, setHasNewVersion, setIsIOS, isIOS } = useDaemonContext();
+    const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle} = useDaemonContext();
     const { pathname } = location;
 
 
@@ -42,26 +45,26 @@ const Footer = ({}) => {
 		window.addEventListener('message', (e) => {
             Bridge.receive(e.data, makeListener)
         })
-				// 页面重新获得焦点/从后台回前台时，自动同步一次 VPN 状态
+				
 		window.addEventListener("visibilitychange", async () => {
-			const [iOS, android]= await Promise.all([
-				getiOSVPNStatus(),
-				getAndroidVPNStatus()
-			])
 			
-			if (typeof iOS == 'boolean') {
-				setPower(iOS)
-				setIsIOS(true)
-			} else if (typeof android === 'boolean') {
-				setPower(android)
-			}
 			
 		})
-		const android = await getAndroidVPNStatus()
-		if (android) {
-			setPower(true)
-		}
+		
 	}
+
+	useEffect(() => {
+		const root = document.documentElement; // <html>
+
+		if (darkModle) {
+			root.classList.add('theme-dark');
+			root.classList.remove('theme-light');
+		} else {
+			root.classList.add('theme-light');
+			root.classList.remove('theme-dark');
+		}
+	}, [darkModle])
+
     useEffect(()=>{
         // 监听 Electron 或 Native 的回传
         status()
@@ -96,18 +99,23 @@ const Footer = ({}) => {
         },
         {
             key: '/wallet',
-            title: t('footer-nav-2'),
+            title: t('comp-comm-Send'),
             icon: (pathname=='/wallet'?<WalletBlueIcon />:<WalletIconGrey />),
         },
         {
-            key: '/swap',
-            title: t('footer-nav-3'),
-            icon: (pathname=='/swap'?<SwapBlueIcon />:<SwapIconGrey />),
+            key: '/pay',
+            title: t('footer-nav-6'),
+			icon: <div style={{ width: '2rem', height: '2rem' }} />,
+        },
+        {
+            key: '/Browser',
+            title: t('footer-nav-5'),
+            icon: (pathname=='/swap'?<BrowserBlueIcon />:<BrowserGreyIcon />),
         },
         {
             key: '/settings',
-            title: t('footer-nav-4'),
-            icon: (pathname=='/settings'?<SettingsIconBlue />:<SettingsIconGrey />),
+            title: t('footer-nav-2'),
+            icon: (pathname=='/settings'?<WalletBlueIcon />:<WalletIconGrey />),
             ...(hasNewVersion ? { badge: '1' } : {}),
         },
     ]
@@ -119,6 +127,12 @@ const Footer = ({}) => {
                     <TabBar.Item key={item.key} icon={item.icon} title={item.title} badge={item.badge} />
                 ))}
             </TabBar>
+
+			 {/* 悬浮在 TabBar 上方的 BLogo */}
+			<div className={styles.payCenterLogo} onClick={() => setRouteActive('/pay')}>
+				{darkModle ? <BLogo style={{ width: '4rem', height: '4rem' }} /> : <BLogoLight style={{ width: '4rem', height: '4rem' }} />}
+			</div>
+
             <NewVersion />
             <Subscription />
             <Status />

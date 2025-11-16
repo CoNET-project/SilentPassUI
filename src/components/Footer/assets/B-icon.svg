@@ -1,0 +1,45 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+    <!-- 圆形主体的光泽黑渐变 -->
+    <radialGradient id="glossyBlack" cx="30%" cy="25%" r="75%">
+      <stop offset="0%" stop-color="#333333"></stop>
+      <stop offset="35%" stop-color="#151515"></stop>
+      <stop offset="70%" stop-color="#050505"></stop>
+      <stop offset="100%" stop-color="#000000"></stop>
+    </radialGradient>
+
+    <!-- 高光渐变 -->
+    <radialGradient id="highlightGrad" cx="0%" cy="0%" r="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.8"></stop>
+      <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0.25"></stop>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"></stop>
+    </radialGradient>
+
+    <!-- 蓝色动态渐变 -->
+    <linearGradient id="beamio-B-anim" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0031CC"></stop>
+      <stop offset="50%" stop-color="#4C8DFF">
+        <animate attributeName="offset" values="0;1;0" dur="2.2s" repeatCount="indefinite"></animate>
+      </stop>
+      <stop offset="100%" stop-color="#0031CC"></stop>
+    </linearGradient>
+
+    <clipPath id="circleClip">
+      <circle cx="60" cy="60" r="56"></circle>
+    </clipPath>
+  </defs>
+
+  <!-- 黑色光泽圆形 -->
+  <circle cx="60" cy="60" r="56" fill="url(#glossyBlack)"></circle>
+
+  <!-- 左上高光 -->
+  <g clip-path="url(#circleClip)">
+    <ellipse cx="34" cy="20" rx="32" ry="18" fill="url(#highlightGrad)"></ellipse>
+  </g>
+
+  <!-- 斜体 Bold 蓝色 B（右偏5px → 左调3px = 总偏移 +2） -->
+  <text x="56" y="82" text-anchor="middle" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif" font-size="72" font-weight="700" font-style="italic" letter-spacing="0.02em" fill="url(#beamio-B-anim)">
+    B
+  </text>
+</svg>

@@ -1,53 +1,118 @@
-.languagePopup{
-    left: 50%;
-    top: 0;
-    bottom: 0;
-    width: 100%;
-    max-width: 600px;
-    transform: translate(-50%, 0);
-    :global(.adm-mask) {
-        position: absolute;
-    }
-    :global(.adm-popup-body) {
-        position: absolute;
-    }
+.languagePopup {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 600px;
+  transform: translate(-50%, 0);
+
+  :global(.adm-mask) {
+    position: absolute;
+  }
+
+  :global(.adm-popup-body) {
+    position: absolute;
+    /* 默认按 dark 模式来，light 模式在下面覆盖 */
+    background-color: #0d0d0d;
+  }
 }
-.languageCont{
-    .languageMain{
-        padding: 0 4vw;
-        .list{
-            margin: 20px 0 0;
-            border-radius: 4px;
-            overflow: hidden;
-            :global(.adm-list-body) {
-                background-color: #191919;
-                border-top: none;
-                border-bottom: none;
-            }
-            :global(.adm-list-item) {
-                background-color: #191919;
-                padding-left: 0;
-            }
-            :global(.adm-list-item-content) {
-                border-top:1px rgb(63, 63, 64) solid;
-                padding-left: var(--padding-left);
-            }
-            :global(.adm-list-item-content-main) {
-                color: #fff;
-            }
-            :global(.adm-check-list-item-extra) {
-                color: #fff;
-            }
+
+.languageCont {
+  .languageMain {
+    padding: 0 4vw;
+
+    .list {
+      margin: 20px 0 0;
+      border-radius: 4px;
+      overflow: hidden;
+
+      :global(.adm-list-body) {
+        background-color: #191919;
+        border-top: none;
+        border-bottom: none;
+      }
+
+      :global(.adm-list-item) {
+        background-color: #191919;
+        padding-left: 0;
+      }
+
+      :global(.adm-list-item-content) {
+        border-top: 1px rgb(63, 63, 64) solid;
+        padding-left: var(--padding-left);
+      }
+
+      :global(.adm-list-item-content-main) {
+        color: #ffffff;
+      }
+
+      :global(.adm-check-list-item-extra) {
+        color: #ffffff;
+      }
+    }
+  }
+
+  :global(.adm-nav-bar) {
+    border-bottom: 1px #292d2e solid;
+  }
+
+  :global(.adm-nav-bar-title) {
+    color: #ffffff;
+    font-weight: 500;
+  }
+
+  :global(.adm-nav-bar-back) {
+    color: #999999;
+  }
+}
+
+/* =========================
+   Light 模式覆盖（html 上有 theme-light）
+   ========================= */
+:global(html.theme-light) {
+  .languagePopup {
+    :global(.adm-popup-body) {
+      background-color: #f5f5f5;
+    }
+  }
+
+  .languageCont {
+    .languageMain {
+      .list {
+        :global(.adm-list-body) {
+          background-color: #ffffff;
         }
+
+        :global(.adm-list-item) {
+          background-color: #ffffff;
+        }
+
+        :global(.adm-list-item-content) {
+          border-top: 1px #e5e5e5 solid;
+        }
+
+        :global(.adm-list-item-content-main) {
+          color: #222222;
+        }
+
+        :global(.adm-check-list-item-extra) {
+          /* 选中勾勾的颜色，可以稍微用主色调 */
+          color: #2b5ea8;
+        }
+      }
     }
-    :global(.adm-nav-bar){
-        border-bottom: 1px #292d2e solid;
+
+    :global(.adm-nav-bar) {
+      border-bottom: 1px #e5e5e5 solid;
+      background-color: transparent;
     }
+
     :global(.adm-nav-bar-title) {
-        color: #fff;
-        font-weight: 500;
+      color: #222222;
     }
-    :global(.adm-nav-bar-back){
-        color:#999;
+
+    :global(.adm-nav-bar-back) {
+      color: #666666;
     }
+  }
 }

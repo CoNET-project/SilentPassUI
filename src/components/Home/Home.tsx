@@ -19,105 +19,15 @@ const Home = ({}) => {
 	const [globalCount, setGlobalCount] = useState(2)
     let first = 0;
 
-    useEffect(() => {
-        if (!closestRegion?.length) {
-            return
-        }
-        setIsInitialLoading(false);
-    }, [closestRegion])
 
     useEffect(() => {
-        _getAllRegions();
-        listenGetAllNodes();
     }, [])
 
-    useEffect(() => {
-        const countMinutes = () => {
-            const timeout = setTimeout(() => {
-                _vpnTimeUsedInMin.current = (_vpnTimeUsedInMin.current) + 1;
-                localStorage.setItem("vpnTimeUsedInMin", (_vpnTimeUsedInMin.current).toString());
-                countMinutes();
-            }, 60000)
-            vpnTimeTimeout.current = timeout;
-        }
-
-        clearTimeout(vpnTimeTimeout.current);
-
-        if (power) {
-            countMinutes()
-        }
-    }, [power]);
-
-    
-    const listenGetAllNodes = () => {
-        const _initpercentage = maxNodes ? currentScanNodeNumber * 100 / (maxNodes+200) : 0;
-        const _status = Math.round(_initpercentage);
-        const status = _status <= first ? first + 2 : _status;
-        first = status;
-		setGlobalCount(status)
-
-        if (status > 100) {
-            initPercentageRef.current=98;
-        } else {
-            initPercentageRef.current=status;
-        }
-        if (status < 99 ) {
-            return setTimeout(() => {
-                listenGetAllNodes()
-            }, 1000)
-        }
-    }
-	
-    const _getAllRegions = async () => {
-        const [tmpRegions] = await Promise.all([getAllRegions()]);
-        const treatedRegions = Array.from(new Set(tmpRegions.map((region: string) => {
-            const separatedRegion = region.split(".");
-			let code = separatedRegion[1];
-			if (separatedRegion[0] === 'HK') {
-				code = 'HK'
-			} else if (separatedRegion[0] === 'ZH' && separatedRegion[1] !== 'CH') {
-				code = 'CN'
-			}
-            
-
-            const country = mappedCountryCodes[code];
-            return JSON.stringify({ code, country }); // Convert the object to a string for Set comparison
-        }))).map((regionStr: any) => JSON.parse(regionStr)); // Convert the string back to an object
-
-        const unitedStatesIndex = treatedRegions.findIndex((region: any) => region.code === 'US')
-        if (sRegion < 0) {
-            setSRegion(unitedStatesIndex)
-            setIsRandom(false);
-        }
-        setAllRegions(treatedRegions);
-    }
 
 
     return (
         <div className={styles.home}>
-            <Header />
-            <SwitchTransition mode="out-in">
-                <CSSTransition
-                    key={isInitialLoading ? 'init' : 'content'}
-                    timeout={100}
-                    classNames={{
-                        enter: styles.fadeEnter,
-                        enterActive: styles.fadeEnterActive,
-                        exit: styles.fadeExit,
-                        exitActive: styles.fadeExitActive,
-                    }}
-                    unmountOnExit
-                >
-                    <div className={styles.bd}>
-                        {isInitialLoading?<>
-                            <InitModule initPercentage={globalCount} />
-                        </>:<>
-                            <Content />
-                        </>}
-                    </div>
-                </CSSTransition>
-            </SwitchTransition>
-            {!isInitialLoading?<QuickLinks />:''}
+           
         </div>
     );
 };

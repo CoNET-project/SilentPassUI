@@ -1,0 +1,33 @@
+<svg width="260" height="80" viewBox="0 0 260 80"
+     xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink">
+
+  <defs>
+    <!-- 动态渐变：中间一条亮带在文字上滑动 -->
+    <linearGradient id="beamio-anim" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0031CC" />     <!-- 深一点的 Base 蓝 -->
+      <stop id="beamio-glow" offset="50%" stop-color="#4C8DFF" /> <!-- 亮带 -->
+      <stop offset="100%" stop-color="#0031CC" />
+    </linearGradient>
+
+    <!-- 让中间的亮带在 0%→100% 之间移动 -->
+    <animate xlink:href="#beamio-glow"
+             attributeName="offset"
+             from="0%" to="100%"
+             dur="2.2s"
+             repeatCount="indefinite" />
+  </defs>
+
+  <!-- 背景可选：如果你想透明，就把这一行注释掉 -->
+  <!-- <rect x="0" y="0" width="260" height="80" fill="#020617" /> -->
+
+  <!-- Beamio 文字 -->
+  <text x="10" y="50"
+        font-family="system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
+        font-size="36"
+        font-weight="600"
+        letter-spacing="0.06em"
+        fill="url(#beamio-anim)">
+    Beamio
+  </text>
+</svg>

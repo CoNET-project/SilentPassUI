@@ -1,20 +1,491 @@
-.setting{
-    padding: 26px 16px 20px;
-    width: 100%;
-    user-select:none;
-    .title{
-        margin-bottom: 16px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size:26px;
-        font-weight:600;
-    } 
-    .version{
-        margin:0 0 10px;
-        :global(.adm-notice-bar){
-            font-size: 13px;
-            border-radius: 10px;
-        }
+//		// @/components/setting.module.scss
+
+
+/* Setting 整体背景，跟随主题变量 */
+.setting {
+	flex: 1;
+	padding: 12px 16px 24px;  /* 底部 padding 改小一点 */
+	background-color: var(--setting-bg);
+	color: var(--setting-text);
+}
+
+/* 顶部版本条 */
+.version {
+  margin-bottom: 12px;
+
+  :global(.adm-notice-bar) {
+    --background-color: var(--setting-notice-bg);
+    --text-color: var(--setting-notice-text);
+
+    border-radius: 999px;
+    padding-inline: 12px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+  }
+}
+
+/* ============ 主题切换区域 ============ */
+.themeSwitch {
+  margin-bottom: 12px;
+
+  /* 外层 List 容器透明，只让内部 body 吃背景色 */
+  :global(.adm-list) {
+    background: transparent;
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+  }
+
+  /* header 文本颜色使用 settings 变量 */
+  :global(.adm-list-header) {
+    color: var(--settings-list-header);
+    font-size: 13px;
+    font-weight: 600;
+    padding-left: 5px;
+    margin: 0 0 5px;
+  }
+
+  /* 真正的卡片背景 */
+  :global(.adm-list-body) {
+    background-color: var(--settings-list-bg);
+    border-radius: 16px;
+    border-top: none;
+    border-bottom: none;
+    overflow: hidden;
+  }
+
+  :global(.adm-list-item) {
+    background: transparent;
+    padding-left: 0;
+  }
+
+  :global(.adm-list-item-content) {
+    border-top: 0.5px solid var(--settings-list-divider, #3f3f40);
+    padding-left: 12px;
+  }
+
+  :global(.adm-list-item-content-main) {
+    color: var(--settings-list-text);
+    font-size: 13px;
+    padding: 16px 0;
+  }
+
+  :global(.adm-list-item-content-extra) {
+    color: var(--settings-list-text);
+    font-size: 13px;
+  }
+}
+
+/* 让深浅模式可以微调分割线颜色（可选） */
+:global(html.theme-dark) {
+  .themeSwitch {
+    :global(.adm-list-item-content) {
+      border-top-color: #3f3f40;
     }
+  }
+}
+
+:global(html.theme-light) {
+  .themeSwitch {
+    :global(.adm-list-item-content) {
+      border-top-color: #e5e5e5;
+    }
+  }
+}
+
+
+/* 使用真正的大圆来形成弧形背景 */
+.headerCircle {
+	position: absolute;
+	top: -45rem;   /* 调整以控制弧形露出程度 */
+	left: 53%;
+	transform: translateX(-50%);
+	width: 80rem;  /* 大圆宽度：越大弧线越平滑 */
+	height: 900px;
+	background: #0052ff; /* 蓝色 */
+	border-radius: 50%;
+	z-index: 1;
+	pointer-events: none; 
+}
+
+.settingWrapper {
+  width: 100%;
+  background: transparent;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 右上角圆形按钮容器 */
+.headerActions {
+	position: absolute;
+	top: 38px;
+	right: 24px;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+
+	/* 确保放在最上层，让按钮能获得鼠标事件 */
+	z-index: 3;
+	pointer-events: auto;
+}
+
+/* 单个圆形按钮 */
+.headerBtn {
+	width: 38px;
+	height: 38px;
+	border-radius: 50%;
+	background: #ffffff;
+	box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;     /* 游标样式 */
+}
+
+.headerBtnIcon {
+  font-size: 18px;
+  line-height: 1;
+  color: #4a4a4a;
+}
+
+/* 中间圆形头像 */
+.avatarBubble {
+	position: absolute;
+	top: 120px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 4;
+	width: 92px;
+	height: 92px;
+	background: #ffffff;
+	border-radius: 50%;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 600;
+	font-size: 26px;
+	color: #555555;
+
+	cursor: pointer;          /* ✅ 表示可点击 */
+	overflow: hidden;         /* ✅ 头像图片超出时裁剪成圆形 */
+	transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.avatarBubble:hover {
+	transform: translateX(-50%) translateY(-2px);
+ 	 box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+}
+
+.avatarImage {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+	object-fit: cover;
+	display: block;
+}
+
+.avatarText {
+	position: relative;
+	z-index: 2;
+}
+
+/* 右下角 QR 小标记 */
+.qrIcon {
+	position: absolute;
+	right: 8px;
+	bottom: 6px;
+	font-size: 16px;
+	opacity: 0.9;
+	color: #555555;
+}
+
+/* 主体内容区 */
+.contentArea {
+	position: relative;
+	z-index: 1;
+	margin-top: 15rem;   /* 只留够绕过头像的空间，视口不够高就会自然往下长 */
+	padding: 16px 20px 24px;
+	// max-height: calc(100vh - 220px); /* 视口高度减去头像区 + padding 的高度 */
+  	overflow-y: auto;
+}
+
+/* ================= Avatar 编辑面板（右侧滑入） ================= */
+
+.avatarEditorPanel {
+  height: 100%;
+  padding: 16px 16px 20px;
+  box-sizing: border-box;
+
+  /* iOS 卡片感：浅灰+大圆角 */
+  background: rgba(248, 248, 248, 0.98);
+  border-radius: 24px 0 0 24px;
+  box-shadow: -4px 0 18px rgba(0, 0, 0, 0.12);
+
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 头部：标题 + 关闭按钮 */
+.avatarEditorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.avatarEditorTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111111;
+}
+
+.avatarEditorClose {
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  font-size: 16px;
+  cursor: pointer;
+  color: #555;
+}
+
+/* 头像预览：保持为圆形，略带阴影 */
+.avatarEditorPreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.avatarEditorImage {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+/* 表单字段容器 */
+.avatarEditorField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+/* Label 文本 */
+.avatarEditorLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666666;
+}
+
+/* 文本输入框：轻微圆角 + 内边距，iOS 风格 */
+.avatarEditorInput {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #e3e3e3;
+  padding: 8px 10px;
+  font-size: 14px;
+  outline: none;
+  background: #ffffff;
+  color: #111111;
+  box-sizing: border-box;
+}
+.avatarEditorUploadBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition:
+    transform 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    background 0.15s ease-out,
+    color 0.15s ease-out;
+}
+
+.avatarEditorUploadBtn:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.avatarEditorUploadBtn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.avatarEditorInput::placeholder {
+  color: #b0b0b0;
+}
+
+.avatarEditorInput:focus {
+  border-color: #0052ff;
+  box-shadow: 0 0 0 2px rgba(0, 82, 255, 0.12);
+}
+
+/* 文件选择：默认的 file input 很丑，用一个按钮包起来或简单处理 */
+.avatarEditorFileInput {
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+/* 底部按钮区域：左右排列，稍微贴底一点 */
+.avatarEditorActions {
+  margin-top: auto;
+  padding-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+/* Cancel / Save 按钮：pill 样式，接近 iOS */
+.avatarEditorCancel,
+.avatarEditorSave {
+  flex: 1;
+  height: 36px;
+  border-radius: 999px;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* 文件名小字 */
+.avatarEditorFileName {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 2px;
+  padding-left: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 左侧：灰色取消 */
+.avatarEditorCancel {
+  background: #f2f2f2;
+  color: #555555;
+}
+
+/* 右侧：主按钮蓝色 */
+.avatarEditorSave {
+  background: #0052ff;
+  color: #ffffff;
+  box-shadow: 0 3px 10px rgba(0, 82, 255, 0.35);
+}
+
+/* hover / active 效果（桌面浏览器友好一些） */
+.avatarEditorCancel:hover {
+  background: #e6e6e6;
+}
+
+.avatarEditorSave:hover {
+  background: #0144d0;
+}
+
+/* Dark 模式适配 */
+:global(html.theme-dark) {
+  .avatarEditorPanel {
+    background: rgba(10, 10, 12, 0.98);
+    box-shadow: -4px 0 18px rgba(0, 0, 0, 0.7);
+  }
+
+  .avatarEditorTitle {
+    color: #f5f5f5;
+  }
+
+  .avatarEditorClose {
+    color: #aaaaaa;
+  }
+
+  .avatarEditorLabel {
+    color: #bbbbbb;
+  }
+
+  .avatarEditorInput {
+    background: #151515;
+    border-color: #333333;
+    color: #f5f5f5;
+  }
+
+  .avatarEditorInput::placeholder {
+    color: #666666;
+  }
+
+  .avatarEditorFileInput {
+    background: #151515;
+    border-color: #444444;
+    color: #bbbbbb;
+  }
+
+  .avatarEditorCancel {
+    background: #252525;
+    color: #dddddd;
+  }
+
+  .avatarEditorSave {
+    background: #3b82f6;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.8);
+  }
+}
+
+.darkBtn {
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* 浅色模式下的上传按钮外观（跟你截图很像的大白胶囊） */
+.lightBtn {
+  background: #f9f9f9;
+  border: 1px solid #e5e5e5;
+  color: #444;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+
+  &:hover {
+    background: #ffffff;
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  }
+}
+
+.avatarName {
+	position: absolute;
+	/* 头像 top: 120px，高度 92px，这里放在正下方稍微留一点间距 */
+	top: 120px + 92px + 8px;     // 如果不支持计算，你可以直接写 220px
+	top: 220px;
+
+	left: 50%;
+	transform: translateX(-50%);
+
+	z-index: 4;
+
+	font-size: 16px;
+	font-weight: 600;
+	color: #111827;              // 或者 var(--setting-text)
 }

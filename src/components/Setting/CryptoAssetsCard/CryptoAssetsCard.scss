@@ -1,0 +1,184 @@
+/* ============================
+   CryptoAssetsCard  主容器
+   ============================ */
+.cryptoAssetsCard {
+  padding: 20px 20px 22px;
+  margin-top: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* 顶部行 */
+.walletRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+/* 灰色地址 pill（默认 = light 模式） */
+.walletTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease;
+  font-size: 14px;
+  color: #111;              /* ✅ light 模式下用深色文字 */
+}
+
+.walletTag:active {
+  opacity: 0.7;
+}
+
+.walletAddr {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+}
+
+/* lucide-react copy icon */
+.walletCopyIcon {
+  width: 16px;
+  height: 16px;
+  stroke: #555;             /* light 模式下深灰 */
+  flex-shrink: 0;
+}
+
+/* 🔑 key 按钮（默认 = light 模式） */
+.keyBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: none;
+  background: #f3f4f6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.keyBtn:active {
+  opacity: 0.7;
+}
+
+/* ============================
+   Dark 模式下的覆盖样式
+   假设 body 上会有 .dark class
+   ============================ */
+
+body.dark .walletTag {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f9fafb;                  /* ✅ 文字变亮 */
+}
+
+body.dark .walletCopyIcon {
+  stroke: #e5e7eb;                 /* ✅ copy icon 线条变浅 */
+}
+
+body.dark .keyBtn {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 大余额数字 */
+.cryptoAssetsTotal {
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 700;
+  margin-bottom: 14px;
+  color: #000;                      /* light 默认黑字 */
+}
+
+body.dark .cryptoAssetsTotal {
+  color: #ffffff;                   /* ✅ dark 模式变白字 */
+}
+
+/* 标题 */
+.cryptoAssetsSectionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2563eb;
+  display: inline-block;
+  padding-bottom: 3px;
+  border-bottom: 2px solid #2563eb;
+  margin-bottom: 12px;
+}
+
+/* 资产行 */
+.cryptoAssetRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.cryptoAssetLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 组合图标容器 */
+.cryptoAssetIcon {
+  position: relative;
+  width: 44px;
+  height: 44px;
+}
+
+.usdcIcon {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+}
+
+.baseBadge {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  bottom: -2px;
+  right: -2px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+
+/* Token 文本 */
+.cryptoAssetText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cryptoAssetName {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cryptoAssetSub {
+  font-size: 14px;
+  color: #16a34a;
+}
+
+.cryptoAssetRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.cryptoAssetFiat {
+  font-size: 16px;
+  font-weight: 600;
+  /* 在暗色背景上也能看清，一般父容器会是白字 */
+}
+
+.cryptoAssetToken {
+  font-size: 14px;
+  opacity: 0.6;
+}

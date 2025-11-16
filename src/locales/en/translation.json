@@ -533,12 +533,18 @@
 	"status-list-des-8":" → Includes on-chain identity, $SP rewards, and governance rights",
 
 	"footer-nav-1":"Home",
-	"footer-nav-2":"Account",
+	"footer-nav-2":"Me",
 	"footer-nav-3":"Swap",
 	"footer-nav-4":"Settings",
+	"footer-nav-5":"Browser",
+	"footer-nav-6":"Pay/Request",
 
 	"checkUpdate":"Check for updates",
 	"hasNoUpdate":"Already the latest version",
+
+	"Dark-Mode": "Dark Mode",
+	"Light-Mode": "Light Mode",
+	"setting-display": "Display Settings",
 
 	"integral-bar-name": "Reward Tasks",
 	"integral-list-title-1": "Airdrop Tasks",

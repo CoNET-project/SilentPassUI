@@ -1,6 +1,6 @@
 {
 	"name": "silentpass-daemon",
-	"version": "0.39.6",
+	"version": "0.39.7",
 	"private": true,
 	"dependencies": {
 		"@ant-design/icons": "^6.0.0",
@@ -11,6 +11,8 @@
 		"@mui/material": "^7.0.2",
 		"@noble/ed25519": "^2.2.3",
 		"@noble/hashes": "^1.8.0",
+		"@radix-ui/react-dialog": "^1.0.20",
+		"@radix-ui/react-tabs": "^1.0.15",
 		"@scure/bip32": "^1.6.2",
 		"@solana-developers/helpers": "^2.8.1",
 		"@solana/spl-token": "^0.4.13",
@@ -37,6 +39,7 @@
 		"i18next-browser-languagedetector": "^8.2.0",
 		"jsqr": "^1.4.0",
 		"lodash": "^4.17.21",
+		"lucide-react": "^0.346.0",
 		"motion": "^12.23.7",
 		"openpgp": "6.2.0",
 		"pouchdb": "^9.0.0",
@@ -59,10 +62,7 @@
 		"tweetnacl": "^1.0.3",
 		"typescript": "^5.8.3",
 		"uuid62": "^1.0.2",
-		"web-vitals": "^2.1.4",
-		"lucide-react": "^0.346.0",
-		"@radix-ui/react-dialog": "^1.0.20",
-		"@radix-ui/react-tabs": "^1.0.15"
+		"web-vitals": "^2.1.4"
 	},
 	"scripts": {
 		"start": "craco start",
@@ -100,5 +100,6 @@
 		"@types/node": "^22.9.3",
 		"@types/react-copy-to-clipboard": "^5.0.7",
 		"@types/styled-components": "^5.1.34"
-	}
+	},
+	"packageManager": "yarn@4.3.0+sha512.1606bef7c84bc7d83b8576063de2fd08f7d69f9939015bed800f9585a002390268ecc777e9feeba7e26e9556aef6beaad4806968db2182ab5dd3e955ab3b9a0b"
 }

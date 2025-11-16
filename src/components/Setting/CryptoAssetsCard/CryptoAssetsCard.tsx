@@ -6,7 +6,7 @@ import { Toast } from 'antd-mobile'
 import { Copy } from 'lucide-react'   // ← 新增
 import usdcIcon from '../../assets/usdc.png'
 import baseIcon from '../../assets/base-logo.png'
-
+import {getBalance} from '@/services/beamio'
 
 type CryptoAssetsCardProps = {
   fiatAmount: string
@@ -15,42 +15,50 @@ type CryptoAssetsCardProps = {
   subtitle?: string
   onKeyClick?: () => void
 }
+type balance= {
+	usdc: string
+	eth: string
+	oracle: {
+		bnb: string
+		eth: string
+		usdc: string
+	}
+}
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
-  fiatAmount,
   tokenAmount,
   tokenSymbol = 'USDC',
   subtitle = 'Free to send',
   onKeyClick,
 }) => {
   const [address, setAddress] = useState('')
+  const [usdcAmount, setUsdcAmount] = useState(0)
+  const [fiatAmount, setFiatAmount] = useState(0)
 
   useEffect(() => {
     const tempData = CoNET_Data
     if (tempData?.profiles?.length) {
       setAddress(tempData.profiles[0].keyID)
+	  getBa()
     }
   }, [])
 
   	const getBa = async () => {
-		// if (!address) return
-		// const _ba = await getBalance(address)
-		// if (!_ba || !_ba.balance) return
-		// const ba: balance = _ba.balance
-		// const eth = Number(ba.eth)
-		// const ethUsd = eth * Number(ba.oracle.eth)
-		// setEthUsd(ethUsd)
-		// setEthAmount(eth)
+		if (!address) return
+		const _ba = await getBalance(address)
+		if (!_ba || !_ba.balance) return
+		const ba: balance = _ba.balance
+		const eth = Number(ba.eth)
+		const ethUsd = eth * Number(ba.oracle.eth)
 
-		// const usdc = Number(ba.usdc)
-		// setUsdcAmount(usdc)
-		// const usdcUsd = usdc * Number(ba.oracle.usdc)
-		// setUsdcUsd(usdcUsd)
-		// const total = ethUsd + usdcUsd
+		const usdc = Number(ba.usdc)
+		setUsdcAmount(usdc)
+		const usdcUsd = usdc * Number(ba.oracle.usdc)
+		setFiatAmount(usdcUsd)
+		const total = ethUsd + usdcUsd
 
-		// setTotalUsd(total)
 	}
 
   // ⛳ 点击复制地址

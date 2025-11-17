@@ -15,28 +15,19 @@ type CryptoAssetsCardProps = {
   subtitle?: string
   onKeyClick?: () => void
 }
-type balance= {
-	usdc: string
-	eth: string
-	oracle: {
-		bnb: string
-		eth: string
-		usdc: string
-	}
-}
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
   tokenAmount,
-  tokenSymbol = 'USDC',
+  
   subtitle = 'Free to send',
   onKeyClick,
 }) => {
   const [address, setAddress] = useState('')
   const [usdcAmount, setUsdcAmount] = useState(0)
   const [fiatAmount, setFiatAmount] = useState(0)
-
+	const tokenSymbol = 'USDC'
   useEffect(() => {
     const tempData = CoNET_Data
     if (tempData?.profiles?.length) {
@@ -48,8 +39,8 @@ const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
   	const getBa = async () => {
 		if (!address) return
 		const _ba = await getBalance(address)
-		if (!_ba || !_ba.balance) return
-		const ba: balance = _ba.balance
+		if (!_ba) return
+		const ba = _ba
 		const eth = Number(ba.eth)
 		const ethUsd = eth * Number(ba.oracle.eth)
 

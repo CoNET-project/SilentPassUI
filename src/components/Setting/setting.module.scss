@@ -253,19 +253,35 @@
 
 /* 头像预览：保持为圆形，略带阴影 */
 .avatarEditorPreview {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 4px;
-  margin-bottom: 8px;
+	display: flex;
+	justify-content: center;
 }
 
 .avatarEditorImage {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;   /* ← 变成圆形 */
   object-fit: cover;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.avatarWrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.avatarDeleteButton {
+  background: #dbd9d920;  // 淡红背景（可改）
+  color: #696868;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 12px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: 0.15s ease;
+
+  &:hover {
+    background: #d5d3d330;
+  }
 }
 
 /* 表单字段容器 */
@@ -488,4 +504,154 @@
 	font-size: 16px;
 	font-weight: 600;
 	color: #111827;              // 或者 var(--setting-text)
+}
+
+/* 删除按钮叠加在右下角 */
+.avatarDeleteBadge {
+  position: absolute;
+  right: -4px;
+  bottom: 0px;
+
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+
+  background: white;
+  color: #797979;
+  
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  box-shadow: 0 0 6px rgba(0,0,0,0.15);
+  transition: 0.15s ease;
+
+  &:hover {
+    background: #bebebe;
+    color: white;
+  }
+}
+
+/* =============== PrivateKey 样式 =============== */
+
+.privateKeyWarning {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #666666;
+  margin-bottom: 10px;
+}
+
+.privateKeyBox {
+  position: relative;
+  border-radius: 18px;
+  border: 1px solid #e3e3e3;
+  padding: 12px 12px 16px;
+  background: #ffffff;
+  min-height: 120px;
+  margin-bottom: 14px;
+  box-sizing: border-box;
+}
+
+.privateKeyText {
+  position: relative;
+  z-index: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  color: #111111;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 遮罩层 */
+.privateKeyMask {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.privateKeyMaskBlur {
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* 眼睛按钮 */
+.privateKeyToggle {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: none;
+  background: #f3f3f4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background 0.15s ease-out,
+    transform 0.15s ease-out,
+    box-shadow 0.15s ease-out;
+}
+
+.privateKeyToggle:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.privateKeyToggleIcon {
+  width: 16px;
+  height: 16px;
+  color: #3b82f6;
+}
+
+/* Copy 按钮内部布局 */
+.privateKeyCopyContent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.privateKeyCopyIcon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Dark 模式覆盖 */
+:global(html.theme-dark) {
+  .privateKeyWarning {
+    color: #bbbbbb;
+  }
+
+  .privateKeyBox {
+    background: #151515;
+    border-color: #333333;
+  }
+
+  .privateKeyText {
+    color: #f5f5f5;
+  }
+
+  .privateKeyMaskBlur {
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .privateKeyToggle {
+    background: #262626;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+  }
+
+  .privateKeyToggle:hover {
+    background: #303030;
+  }
 }

@@ -10,30 +10,22 @@ import { Popup, Toast } from 'antd-mobile'
 import { MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { storeSystemData } from '../../services/wallets'
-import CryptoAssetsCard from './CryptoAssetsCard/CryptoAssetsCard'   // ✅ 新增
+import CryptoAssetsCard from './CryptoAssetsCard/CryptoAssetsCard'
+import Privatekey from './PrivateKey/PrivateKey'
 
 const Setting = ({}) => {
   const { t } = useTranslation()
   const { darkModle, setDarkModle, setProfiles } = useDaemonContext()
 
-  // 这里先写死，之后你可以用真实钱包数据替换
-  const walletAddress = '0x775C...Acdd'
   const usdcFiat = '$0.39'
   const usdcAmount = '0.39 USDC'
 
-  // ✅ 用 state 保存当前头像的 seed
   const [avatarSeed, setAvatarSeed] = useState('NY')
-
-  // ✅ 头像名称
   const [avatarName, setAvatarName] = useState('')
-
-  // ✅ 本次会话中新上传的头像预览（objectURL）
   const [avatarFileUrl, setAvatarFileUrl] = useState<string | null>(null)
-
-  // ✅ 已持久化的头像（dataURL 或 URL），用于跨重启显示
   const [avatarImageData, setAvatarImageData] = useState<string | null>(null)
 
-  // ✅ 控制右侧滑入表单是否显示
+  const [privatekeyVisible, setPrivatekeyVisible] = useState(false)
   const [avatarEditorVisible, setAvatarEditorVisible] = useState(false)
   const [avatarFileName, setAvatarFileName] = useState<string>('')
 
@@ -43,10 +35,8 @@ const Setting = ({}) => {
 
   const displayName = avatarName || 'Beamio'
 
-  // 当前实际显示的头像：本地新上传 > 持久化图片 > DiceBear
   const currentAvatarSrc = avatarFileUrl || avatarImageData || avatarUrl
 
-  // 启动时，从 CoNET_Data.beamio 恢复
   useEffect(() => {
     const beamio = CoNET_Data?.beamio
     if (!beamio) return
@@ -61,7 +51,6 @@ const Setting = ({}) => {
     }
   }, [])
 
-  // 处理从手机/电脑选择图片
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -77,17 +66,12 @@ const Setting = ({}) => {
     reader.onloadend = () => {
       const dataUrl = reader.result as string
       setAvatarImageData(dataUrl)
-      storageSetup(dataUrl)
-
-      Toast.show({
-        content: 'Avatar updated',
-        duration: 1500,
-      })
+      storageSetup()
     }
     reader.readAsDataURL(file)
   }
 
-  const storageSetup = (imageOverride?: string) => {
+  const storageSetup = () => {
     const tmpData = CoNET_Data
     if (!tmpData) {
       return
@@ -101,11 +85,18 @@ const Setting = ({}) => {
     }
 
     tmpData.beamio.accountName = avatarName
-    tmpData.beamio.image = imageOverride ?? currentAvatarSrc
+    tmpData.beamio.image = avatarImageData || currentAvatarSrc
 
     setCoNET_Data(tmpData)
     setProfiles(CoNET_Data?.profiles)
     storeSystemData()
+  }
+
+  const getPrivatekey = (): string => {
+    const profile = CoNET_Data?.profiles?.[0]
+    if (!profile || !profile?.privateKeyArmor) return ''
+    const ret = profile.privateKeyArmor
+    return ret
   }
 
   useEffect(() => {
@@ -121,6 +112,28 @@ const Setting = ({}) => {
       duration: 1500,
     })
     setAvatarEditorVisible(false)
+  }
+
+  const showPrivateKeyPopup = () => {
+    return (
+      <Popup
+        position="right"
+        visible={privatekeyVisible}
+        onMaskClick={() => setPrivatekeyVisible(false)}
+        bodyStyle={{
+          width: '80vw',
+          maxWidth: 360,
+          padding: 0,
+          boxSizing: 'border-box',
+          background: 'transparent',
+        }}
+      >
+        <Privatekey
+          privateKey={getPrivatekey()}
+          onClose={() => setPrivatekeyVisible(false)}
+        />
+      </Popup>
+    )
   }
 
   return (
@@ -141,10 +154,12 @@ const Setting = ({}) => {
           </span>
         </button>
 
+        {/* ✅ 点击设置按钮，打开私钥 Popup */}
         <button
           type="button"
           className={styles.headerBtn}
           aria-label="Settings"
+          onClick={() => setPrivatekeyVisible(true)}
         >
           <span className={styles.headerBtnIcon}>
             <SettingsIconBlue />
@@ -164,26 +179,23 @@ const Setting = ({}) => {
         />
       </div>
 
-	  {/* ✅ 头像下方显示名称 */}
+      {/* 头像下方显示名称 */}
       <div className={styles.avatarName}>
         @{displayName}
       </div>
 
       {/* 主体内容区域（白色 body） */}
       <div className={styles.contentArea}>
-        {/* ✅ 独立的 CryptoAssetsCard 控件 */}
         <CryptoAssetsCard
           fiatAmount={usdcFiat}
           tokenAmount={usdcAmount}
           tokenSymbol="USDC"
           subtitle="Free to send"
           onKeyClick={() => {
-            // TODO: 打开 key 管理页面
             console.log('key clicked')
           }}
         />
-
-        {/* 这里继续放原来的 Setting 内容 */}
+        {/* 其他 Setting 内容 */}
       </div>
 
       {/* 右侧滑入的头像编辑表单 */}
@@ -202,7 +214,7 @@ const Setting = ({}) => {
         <div className={styles.avatarEditorPanel}>
           <div className={styles.avatarEditorHeader}>
             <h3 className={styles.avatarEditorTitle}>
-              Account settings
+              Beamioer settings
             </h3>
             <button
               type="button"
@@ -214,16 +226,28 @@ const Setting = ({}) => {
           </div>
 
           <div className={styles.avatarEditorPreview}>
-            <img
-              src={currentAvatarSrc}
-              alt="Avatar preview"
-              className={styles.avatarEditorImage}
-            />
+            <div className={styles.avatarWrapper}>
+              <img
+                src={currentAvatarSrc}
+                alt="Avatar preview"
+                className={styles.avatarEditorImage}
+              />
+
+              {currentAvatarSrc?.startsWith('data:image') && (
+                <button
+                  type="button"
+                  onClick={() => setAvatarImageData('')}
+                  className={styles.avatarDeleteBadge}
+                >
+                  <span className="font-bold text-lg leading-none">×</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className={styles.avatarEditorField}>
             <label className={styles.avatarEditorLabel}>
-              Account name
+              Beamioer name
             </label>
             <input
               type="text"
@@ -239,9 +263,11 @@ const Setting = ({}) => {
               Choose from photos
             </label>
 
-            <label className={`${styles.avatarEditorUploadBtn} ${
-					darkModle ? styles.darkBtn : styles.lightBtn
-				}`}>
+            <label
+              className={`${styles.avatarEditorUploadBtn} ${
+                darkModle ? styles.darkBtn : styles.lightBtn
+              }`}
+            >
               Choose photo
               <input
                 id="avatarFileInput"
@@ -278,6 +304,9 @@ const Setting = ({}) => {
           </div>
         </div>
       </Popup>
+
+      {/* ✅ 私钥 Popup：始终挂在根组件下，由 privatekeyVisible 控制显示 */}
+      {showPrivateKeyPopup()}
     </div>
   )
 }

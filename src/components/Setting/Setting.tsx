@@ -51,6 +51,8 @@ const Setting = ({}) => {
     }
   }, [])
 
+
+
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -187,10 +189,6 @@ const Setting = ({}) => {
       {/* 主体内容区域（白色 body） */}
       <div className={styles.contentArea}>
         <CryptoAssetsCard
-          fiatAmount={usdcFiat}
-          tokenAmount={usdcAmount}
-          tokenSymbol="USDC"
-          subtitle="Free to send"
           onKeyClick={() => {
             console.log('key clicked')
           }}

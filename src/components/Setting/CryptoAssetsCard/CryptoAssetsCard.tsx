@@ -9,32 +9,34 @@ import baseIcon from '../../assets/base-logo.png'
 import {getBalance} from '@/services/beamio'
 
 type CryptoAssetsCardProps = {
-  fiatAmount: string
-  tokenAmount: string
-  tokenSymbol?: string
-  subtitle?: string
+
   onKeyClick?: () => void
 }
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
-  tokenAmount,
-  
-  subtitle = 'Free to send',
   onKeyClick,
 }) => {
   const [address, setAddress] = useState('')
   const [usdcAmount, setUsdcAmount] = useState(0)
   const [fiatAmount, setFiatAmount] = useState(0)
+	const [usdcToUSDAmount, setUsdcToUSDAmount] = useState(0)
+
+	const subtitle = 'Free to send'
+
 	const tokenSymbol = 'USDC'
   useEffect(() => {
     const tempData = CoNET_Data
     if (tempData?.profiles?.length) {
       setAddress(tempData.profiles[0].keyID)
-	  getBa()
+	  
     }
   }, [])
+
+useEffect(() => {
+    getBa()
+  }, [address])
 
   	const getBa = async () => {
 		if (!address) return
@@ -48,7 +50,9 @@ const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
 		setUsdcAmount(usdc)
 		const usdcUsd = usdc * Number(ba.oracle.usdc)
 		setFiatAmount(usdcUsd)
+
 		const total = ethUsd + usdcUsd
+		setUsdcToUSDAmount(usdcUsd)
 
 	}
 
@@ -93,7 +97,7 @@ const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
 
       {/* 金额 */}
       <div className="cryptoAssetsTotal">
-        {fiatAmount}
+        $ {fiatAmount.toFixed(2)}
       </div>
 
       {/* 标题 */}
@@ -119,8 +123,8 @@ const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
         </div>
 
         <div className="cryptoAssetRight">
-          <div className="cryptoAssetFiat">{fiatAmount}</div>
-          <div className="cryptoAssetToken">{tokenAmount}</div>
+          <div className="cryptoAssetFiat"> $ {fiatAmount}</div>
+          <div className="cryptoAssetToken"> {usdcToUSDAmount} USDC</div>
         </div>
       </div>
     </div>

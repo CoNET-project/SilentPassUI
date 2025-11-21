@@ -1,4 +1,16 @@
-.scanBtn{
-    color: #fff;
-    font-size: 22px;
+.scanBtn {
+  font-size: 22px;
+  background: var(--scan-btn-bg);
+  color: var(--scan-btn-icon);
+
+  &:active {
+    opacity: 0.7;
+  }
+
+  svg {
+    width: 1.6rem;
+    height: 1.6rem;
+    fill: currentColor;
+    stroke: currentColor;
+  }
 }

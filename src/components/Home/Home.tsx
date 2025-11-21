@@ -1,35 +1,60 @@
-import { useState, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import styles from '@/components/Home/home.module.scss';
-import Header from '@/components/Home/Header/Header';
-import InitModule from '@/components/Home/InitModule/InitModule';
-import Content from '@/components/Home/Content/Content';
-import { useDaemonContext } from "@/providers/DaemonProvider";
-import { getAllRegions } from "@/services/regions";
-import { maxNodes, currentScanNodeNumber } from '@/services/mining';
-import { mappedCountryCodes } from "@/utils/regions"; 
-import { CSSTransition, SwitchTransition } from 'react-transition-group';
-import QuickLinks from "@/components/QuickLinks/QuickLinks";
+// Home.tsx
 
+import { useTranslation } from 'react-i18next'
+import styles from '@/components/Home/home.module.scss'
+import { useDaemonContext } from '@/providers/DaemonProvider'
+import ScanBtn from '@/components/Wallet/scanBtn/ScanButtonForB'
 const Home = ({}) => {
-    const { t, i18n } = useTranslation();
-    const { power, setPower, profiles, sRegion, setSRegion, setAllRegions, allRegions, setIsRandom, getAllNodes, closestRegion, _vpnTimeUsedInMin,switchValue, isLocalProxy, setAirdropProcess, setAirdropSuccess, setAirdropTokens, setAirdropProcessReff, isIOS, version, isInitialLoading, setIsInitialLoading} = useDaemonContext();
-    const vpnTimeTimeout = useRef<NodeJS.Timeout>();
-    const initPercentageRef=useRef(0);
-	const [globalCount, setGlobalCount] = useState(2)
-    let first = 0;
 
 
-    useEffect(() => {
-    }, [])
+  return (
+    <div className={styles.home}>
+      {/* 透明背景容器 */}
+      <div className="flex-1 
+                      pt-5 px-5 pb-24 
+                      overflow-y-auto bg-transparent">
 
+        {/* Search + QR row */}
+        <div className="flex items-center gap-3 mb-4">
 
+          {/* 搜索框：透明背景 */}
+          <div className="flex items-center flex-1 h-11 
+                          rounded-full 
+                          bg-transparent 
+                          border border-slate-300/40 
+                          px-3">
+            <span className="ml-2 text-[13px] text-slate-500">
+              Find a person, @handle, or business
+            </span>
+          </div>
 
-    return (
-        <div className={styles.home}>
-           
+          {/* Search 按钮：透明背景 */}
+          <ScanBtn />
         </div>
-    );
-};
 
-export default Home;
+        {/* Recent Activity */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-700">
+              Recent activity
+            </span>
+            <button className="text-xs text-slate-400">
+              Filter
+            </button>
+          </div>
+
+          {/* 卡片：透明背景 + 虚线边框 */}
+          <div className="rounded-xl border border-dashed 
+                          border-slate-300/50
+                          px-3 py-3 
+                          text-[11px] 
+                          text-slate-400">
+            No activity yet. Your payments and requests will appear here.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default Home

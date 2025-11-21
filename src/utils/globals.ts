@@ -9,7 +9,7 @@ const setCoNET_Data = (data: encrypt_keys_object | null) => {
 
 const setProcessingBlock = (value: boolean) => {
   processingBlock = value;
-};
+}
 
 const setCurrentPageInvitees = (value: number) => {
   currentPageInvitees = value;

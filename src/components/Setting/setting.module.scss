@@ -1,12 +1,60 @@
-//		// @/components/setting.module.scss
+/* =========================
+   1. 全局主题变量（Light / Dark）
+   ========================= */
 
+:global(:root),
+:global(html.theme-light) {
+  /* Setting 主背景 & 文本 */
+  --setting-bg: #f5f5f5;
+  --setting-text: #111111;
+
+  /* 顶部 NoticeBar */
+  --setting-notice-bg: #ffffff;
+  --setting-notice-text: #111111;
+
+  /* 主题切换 List 卡片 */
+  --settings-list-header: #6b7280;
+  --settings-list-bg: #ffffff;
+  --settings-list-text: #111827;
+
+  /* Avatar 名称 */
+  --setting-avatar-name: #111827;
+}
+
+:global(html.dark),
+:global(html.theme-dark) {
+  --setting-bg: #050505;
+  --setting-text: #e5e7eb;
+
+  --setting-notice-bg: #111827;
+  --setting-notice-text: #e5e7eb;
+
+  --settings-list-header: #9ca3af;
+  --settings-list-bg: #111827;
+  --settings-list-text: #e5e7eb;
+
+  --setting-avatar-name: #e5e7eb;
+}
+
+/* =========================
+   2. Setting 外层容器
+   ========================= */
+
+.settingWrapper {
+  width: 100%;
+  background: transparent;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
 /* Setting 整体背景，跟随主题变量 */
 .setting {
-	flex: 1;
-	padding: 12px 16px 24px;  /* 底部 padding 改小一点 */
-	background-color: var(--setting-bg);
-	color: var(--setting-text);
+  flex: 1;
+  padding: 12px 16px 24px; /* 底部 padding 改小一点 */
+  background-color: var(--setting-bg);
+  color: var(--setting-text);
 }
 
 /* 顶部版本条 */
@@ -16,7 +64,6 @@
   :global(.adm-notice-bar) {
     --background-color: var(--setting-notice-bg);
     --text-color: var(--setting-notice-text);
-
     border-radius: 999px;
     padding-inline: 12px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
@@ -91,55 +138,43 @@
   }
 }
 
-
 /* 使用真正的大圆来形成弧形背景 */
 .headerCircle {
-	position: absolute;
-	top: -45rem;   /* 调整以控制弧形露出程度 */
-	left: 53%;
-	transform: translateX(-50%);
-	width: 80rem;  /* 大圆宽度：越大弧线越平滑 */
-	height: 900px;
-	background: #0052ff; /* 蓝色 */
-	border-radius: 50%;
-	z-index: 1;
-	pointer-events: none; 
-}
-
-.settingWrapper {
-  width: 100%;
-  background: transparent;
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  position: absolute;
+  top: -45rem; /* 调整以控制弧形露出程度 */
+  left: 53%;
+  transform: translateX(-50%);
+  width: 80rem; /* 大圆宽度：越大弧线越平滑 */
+  height: 900px;
+  background: #0052ff; /* 蓝色 */
+  border-radius: 50%;
+  z-index: 1;
+  pointer-events: none;
 }
 
 /* 右上角圆形按钮容器 */
 .headerActions {
-	position: absolute;
-	top: 38px;
-	right: 24px;
-	display: flex;
-	align-items: center;
-	gap: 14px;
-
-	/* 确保放在最上层，让按钮能获得鼠标事件 */
-	z-index: 3;
-	pointer-events: auto;
+  position: absolute;
+  top: 38px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  z-index: 3;
+  pointer-events: auto;
 }
 
 /* 单个圆形按钮 */
 .headerBtn {
-	width: 38px;
-	height: 38px;
-	border-radius: 50%;
-	background: #ffffff;
-	box-shadow: 0 3px 8px rgba(0,0,0,0.18);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;     /* 游标样式 */
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
 .headerBtnIcon {
@@ -150,64 +185,65 @@
 
 /* 中间圆形头像 */
 .avatarBubble {
-	position: absolute;
-	top: 120px;
-	left: 50%;
-	transform: translateX(-50%);
-	z-index: 4;
-	width: 92px;
-	height: 92px;
-	background: #ffffff;
-	border-radius: 50%;
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-weight: 600;
-	font-size: 26px;
-	color: #555555;
+  position: absolute;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  width: 92px;
+  height: 92px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 26px;
+  color: #555555;
 
-	cursor: pointer;          /* ✅ 表示可点击 */
-	overflow: hidden;         /* ✅ 头像图片超出时裁剪成圆形 */
-	transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    transform 0.15s ease-out,
+    box-shadow 0.15s ease-out;
 }
 
 .avatarBubble:hover {
-	transform: translateX(-50%) translateY(-2px);
- 	 box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
 }
 
 .avatarImage {
-	width: 100%;
-	height: 100%;
-	border-radius: 50%;
-	object-fit: cover;
-	display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
 }
 
 .avatarText {
-	position: relative;
-	z-index: 2;
+  position: relative;
+  z-index: 2;
 }
 
 /* 右下角 QR 小标记 */
 .qrIcon {
-	position: absolute;
-	right: 8px;
-	bottom: 6px;
-	font-size: 16px;
-	opacity: 0.9;
-	color: #555555;
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font-size: 16px;
+  opacity: 0.9;
+  color: #555555;
 }
 
 /* 主体内容区 */
 .contentArea {
-	position: relative;
-	z-index: 1;
-	margin-top: 15rem;   /* 只留够绕过头像的空间，视口不够高就会自然往下长 */
-	padding: 16px 20px 24px;
-	// max-height: calc(100vh - 220px); /* 视口高度减去头像区 + padding 的高度 */
-  	overflow-y: auto;
+  position: relative;
+  z-index: 1;
+  margin-top: 15rem; /* 绕过头像区域 */
+  padding: 16px 20px 24px;
+  overflow-y: auto;
 }
 
 /* ================= Avatar 编辑面板（右侧滑入） ================= */
@@ -253,14 +289,14 @@
 
 /* 头像预览：保持为圆形，略带阴影 */
 .avatarEditorPreview {
-	display: flex;
-	justify-content: center;
+  display: flex;
+  justify-content: center;
 }
 
 .avatarEditorImage {
   width: 120px;
   height: 120px;
-  border-radius: 50%;   /* ← 变成圆形 */
+  border-radius: 50%;
   object-fit: cover;
 }
 
@@ -270,7 +306,7 @@
 }
 
 .avatarDeleteButton {
-  background: #dbd9d920;  // 淡红背景（可改）
+  background: #dbd9d920;
   color: #696868;
   border: none;
   padding: 6px 14px;
@@ -299,7 +335,7 @@
   color: #666666;
 }
 
-/* 文本输入框：轻微圆角 + 内边距，iOS 风格 */
+/* 文本输入框 */
 .avatarEditorInput {
   width: 100%;
   border-radius: 12px;
@@ -311,6 +347,17 @@
   color: #111111;
   box-sizing: border-box;
 }
+
+.avatarEditorInput::placeholder {
+  color: #b0b0b0;
+}
+
+.avatarEditorInput:focus {
+  border-color: #0052ff;
+  box-shadow: 0 0 0 2px rgba(0, 82, 255, 0.12);
+}
+
+/* 上传按钮 */
 .avatarEditorUploadBtn {
   position: relative;
   display: inline-flex;
@@ -340,21 +387,12 @@
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
-.avatarEditorInput::placeholder {
-  color: #b0b0b0;
-}
-
-.avatarEditorInput:focus {
-  border-color: #0052ff;
-  box-shadow: 0 0 0 2px rgba(0, 82, 255, 0.12);
-}
-
-/* 文件选择：默认的 file input 很丑，用一个按钮包起来或简单处理 */
+/* 隐藏原生 file input */
 .avatarEditorFileInput {
-	position: absolute;
-	inset: 0;
-	opacity: 0;
-	cursor: pointer;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 /* 底部按钮区域：左右排列，稍微贴底一点 */
@@ -365,7 +403,7 @@
   gap: 8px;
 }
 
-/* Cancel / Save 按钮：pill 样式，接近 iOS */
+/* Cancel / Save 按钮 */
 .avatarEditorCancel,
 .avatarEditorSave {
   flex: 1;
@@ -401,7 +439,6 @@
   box-shadow: 0 3px 10px rgba(0, 82, 255, 0.35);
 }
 
-/* hover / active 效果（桌面浏览器友好一些） */
 .avatarEditorCancel:hover {
   background: #e6e6e6;
 }
@@ -410,7 +447,7 @@
   background: #0144d0;
 }
 
-/* Dark 模式适配 */
+/* Dark 模式适配 - Avatar 编辑面板 */
 :global(html.theme-dark) {
   .avatarEditorPanel {
     background: rgba(10, 10, 12, 0.98);
@@ -439,12 +476,6 @@
     color: #666666;
   }
 
-  .avatarEditorFileInput {
-    background: #151515;
-    border-color: #444444;
-    color: #bbbbbb;
-  }
-
   .avatarEditorCancel {
     background: #252525;
     color: #dddddd;
@@ -454,10 +485,37 @@
     background: #3b82f6;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.8);
   }
+
+  .privateKeyBox {
+    background: #151515;
+    border-color: #333333;
+  }
+
+  .privateKeyText {
+    color: #f5f5f5;
+  }
+
+  .privateKeyWarning {
+    color: #bbbbbb;
+  }
+
+  .privateKeyMaskBlur {
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .privateKeyToggle {
+    background: #262626;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+  }
+
+  .privateKeyToggle:hover {
+    background: #303030;
+  }
 }
 
+/* 上传按钮的主题变体 */
 .darkBtn {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.28);
   color: #ffffff;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
@@ -473,7 +531,6 @@
   }
 }
 
-/* 浅色模式下的上传按钮外观（跟你截图很像的大白胶囊） */
 .lightBtn {
   background: #f9f9f9;
   border: 1px solid #e5e5e5;
@@ -490,20 +547,18 @@
   }
 }
 
+/* 头像下方名称（跟随主题变量） */
 .avatarName {
-	position: absolute;
-	/* 头像 top: 120px，高度 92px，这里放在正下方稍微留一点间距 */
-	top: 120px + 92px + 8px;     // 如果不支持计算，你可以直接写 220px
-	top: 220px;
+  position: absolute;
+  /* 头像 top: 120px，高度 92px，这里放在正下方稍微留一点间距 */
+  top: 220px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
 
-	left: 50%;
-	transform: translateX(-50%);
-
-	z-index: 4;
-
-	font-size: 16px;
-	font-weight: 600;
-	color: #111827;              // 或者 var(--setting-text)
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--setting-avatar-name);
 }
 
 /* 删除按钮叠加在右下角 */
@@ -518,14 +573,13 @@
 
   background: white;
   color: #797979;
-  
 
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 
-  box-shadow: 0 0 6px rgba(0,0,0,0.15);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.15);
   transition: 0.15s ease;
 
   &:hover {
@@ -558,7 +612,7 @@
   position: relative;
   z-index: 1;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+    'Liberation Mono', 'Courier New', monospace;
   font-size: 13px;
   color: #111111;
   white-space: pre-wrap;
@@ -625,33 +679,4 @@
 .privateKeyCopyIcon {
   width: 16px;
   height: 16px;
-}
-
-/* Dark 模式覆盖 */
-:global(html.theme-dark) {
-  .privateKeyWarning {
-    color: #bbbbbb;
-  }
-
-  .privateKeyBox {
-    background: #151515;
-    border-color: #333333;
-  }
-
-  .privateKeyText {
-    color: #f5f5f5;
-  }
-
-  .privateKeyMaskBlur {
-    background: rgba(0, 0, 0, 0.55);
-  }
-
-  .privateKeyToggle {
-    background: #262626;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
-  }
-
-  .privateKeyToggle:hover {
-    background: #303030;
-  }
 }

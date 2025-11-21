@@ -17,8 +17,6 @@ const Setting = ({}) => {
   const { t } = useTranslation()
   const { darkModle, setDarkModle, setProfiles } = useDaemonContext()
 
-  const usdcFiat = '$0.39'
-  const usdcAmount = '0.39 USDC'
 
   const [avatarSeed, setAvatarSeed] = useState('NY')
   const [avatarName, setAvatarName] = useState('')
@@ -30,14 +28,17 @@ const Setting = ({}) => {
   const [avatarFileName, setAvatarFileName] = useState<string>('')
 
   const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
-    avatarSeed
+    	avatarSeed
   )}`
 
   const displayName = avatarName || 'Beamio'
 
-  const currentAvatarSrc = avatarFileUrl || avatarImageData || avatarUrl
+  const currentAvatarSrc = avatarImageData || avatarFileUrl || avatarUrl
 
   useEffect(() => {
+	if (!currentAvatarSrc) {
+		return
+	}
     const beamio = CoNET_Data?.beamio
     if (!beamio) return
 
@@ -45,11 +46,17 @@ const Setting = ({}) => {
       setAvatarName(beamio.accountName)
       setAvatarSeed(beamio.accountName)
     }
+	setDarkModle(beamio.darkTheme)
+
 
     if (beamio.image) {
       setAvatarImageData(beamio.image)
     }
   }, [])
+
+  useEffect(() => {
+    storageSetup()
+  }, [darkModle, currentAvatarSrc ])
 
 
 
@@ -68,26 +75,20 @@ const Setting = ({}) => {
     reader.onloadend = () => {
       const dataUrl = reader.result as string
       setAvatarImageData(dataUrl)
-      storageSetup()
     }
     reader.readAsDataURL(file)
   }
 
   const storageSetup = () => {
     const tmpData = CoNET_Data
-    if (!tmpData) {
+    if (!tmpData || !avatarName) {
       return
     }
 
-    if (!tmpData.beamio) {
-      tmpData.beamio = {
-        accountName: '',
-        image: ''
-      }
-    }
-
-    tmpData.beamio.accountName = avatarName
-    tmpData.beamio.image = avatarImageData || currentAvatarSrc
+	const beamio = tmpData.beamio
+	beamio.accountName= avatarName
+	beamio.image = avatarImageData || currentAvatarSrc
+	beamio.darkTheme = darkModle
 
     setCoNET_Data(tmpData)
     setProfiles(CoNET_Data?.profiles)
@@ -95,10 +96,10 @@ const Setting = ({}) => {
   }
 
   const getPrivatekey = (): string => {
-    const profile = CoNET_Data?.profiles?.[0]
-    if (!profile || !profile?.privateKeyArmor) return ''
-    const ret = profile.privateKeyArmor
-    return ret
+		const profile = CoNET_Data?.profiles?.[0]
+		if (!profile || !profile?.privateKeyArmor) return ''
+		const ret = profile.privateKeyArmor.replace(/^0x/i, '')
+		return ret
   }
 
   useEffect(() => {
@@ -108,7 +109,7 @@ const Setting = ({}) => {
   }, [avatarName])
 
   const handleSaveAvatar = () => {
-    storageSetup()
+
     Toast.show({
       content: 'Avatar settings saved',
       duration: 1500,
@@ -212,7 +213,7 @@ const Setting = ({}) => {
         <div className={styles.avatarEditorPanel}>
           <div className={styles.avatarEditorHeader}>
             <h3 className={styles.avatarEditorTitle}>
-              Beamioer settings
+              Beamio settings
             </h3>
             <button
               type="button"
@@ -231,21 +232,25 @@ const Setting = ({}) => {
                 className={styles.avatarEditorImage}
               />
 
-              {currentAvatarSrc?.startsWith('data:image') && (
-                <button
-                  type="button"
-                  onClick={() => setAvatarImageData('')}
-                  className={styles.avatarDeleteBadge}
-                >
-                  <span className="font-bold text-lg leading-none">×</span>
-                </button>
-              )}
+              {avatarImageData?.startsWith('data:image') && (
+				<button
+					type="button"
+					onClick={() => {
+						setAvatarImageData(null)
+						setAvatarFileUrl(null)
+						setAvatarFileName('')
+					}}
+					className={styles.avatarDeleteBadge}
+				>
+					<span className="font-bold text-lg leading-none">×</span>
+				</button>
+				)}
             </div>
           </div>
 
           <div className={styles.avatarEditorField}>
             <label className={styles.avatarEditorLabel}>
-              Beamioer name
+              Beamio name
             </label>
             <input
               type="text"
@@ -276,12 +281,6 @@ const Setting = ({}) => {
                 className={styles.avatarEditorFileInput}
               />
             </label>
-
-            {avatarFileName && (
-              <div className={styles.avatarEditorFileName}>
-                {avatarFileName}
-              </div>
-            )}
           </div>
 
           <div className={styles.avatarEditorActions}>

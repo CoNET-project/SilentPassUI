@@ -134,6 +134,13 @@ interface Region {
 	totalReferees: number;
 
   }
+
+  type beamio = {
+		accountName: string
+		image: string
+		darkTheme: boolean
+		isFaucet: boolean
+  }
   
   type encrypt_keys_object = {
 	profiles: profile[];
@@ -157,11 +164,8 @@ interface Region {
 	_duplicateCode?:string
 	ChannelPartners?: string
 	referrals?: string
-	beamio: {
-		accountName: string
-		image: string
-	}
-  };
+	beamio: beamio
+  }
   
   interface passportInfoFromChain {
 	nftIDs: BigInt[];

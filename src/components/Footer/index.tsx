@@ -1,11 +1,13 @@
+//		Footer/index.tsx
+
 import { useEffect } from 'react';
 import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
 import { ReactComponent as HomeIconGrey } from "./assets/home-icon-grey.svg";
 import { ReactComponent as HomeBlueIcon } from "./assets/home-icon-blue.svg";
-import { ReactComponent as WalletIconGrey } from "./assets/wallet-icon-grey.svg";
+import { ReactComponent as SendIconGrey } from "./assets/send-icon-grey.svg";
+import { ReactComponent as SendBlueIcon } from "./assets/send-icon-blue.svg";
 import { ReactComponent as WalletBlueIcon } from "./assets/wallet-icon-blue.svg";
-import { ReactComponent as SettingsIconBlue } from "./assets/settings-icon-blue.svg";
-import { ReactComponent as SettingsIconGrey } from "./assets/settings-icon-grey.svg";
+import { ReactComponent as WalletIconGrey } from "./assets/wallet-icon-grey.svg";
 import { ReactComponent as BrowserBlueIcon } from "./assets/browser-icon-blue.svg";
 import { ReactComponent as BrowserGreyIcon } from "./assets/browser-icon-grey.svg";
 import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
@@ -24,6 +26,8 @@ import NewVersion from "@/components/Home/NewVersion/NewVersion";
 import { getiOSVPNStatus, getAndroidVPNStatus} from "../../api"
 import { ReactComponent as BLogo } from './assets/B-icon.svg'
 import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
+import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
+
 interface BridgeMessage {
     event?: string;
     data?: any;
@@ -47,11 +51,24 @@ const Footer = ({}) => {
         })
 				
 		window.addEventListener("visibilitychange", async () => {
-			
-			
 		})
 		
 	}
+
+useEffect(() => {
+  	const root = document.documentElement // <html>
+
+	if (darkModle) {
+		// 你的自定义暗色主题
+		root.classList.add('dark')
+		root.classList.add('theme-dark')
+		root.classList.remove('theme-light')
+	} else {
+		root.classList.remove('dark')
+		root.classList.remove('theme-dark')
+		root.classList.add('theme-light')
+	}
+}, [darkModle])
 
 	useEffect(() => {
 		const root = document.documentElement; // <html>
@@ -98,9 +115,9 @@ const Footer = ({}) => {
             icon: (pathname=='/'?<HomeBlueIcon />:<HomeIconGrey />),
         },
         {
-            key: '/wallet',
+            key: '/Send',
             title: t('comp-comm-Send'),
-            icon: (pathname=='/wallet'?<WalletBlueIcon />:<WalletIconGrey />),
+            icon: (pathname=='/Send'?<SendBlueIcon />:<SendIconGrey />),
         },
         {
             key: '/pay',
@@ -110,7 +127,7 @@ const Footer = ({}) => {
         {
             key: '/Browser',
             title: t('footer-nav-5'),
-            icon: (pathname=='/swap'?<BrowserBlueIcon />:<BrowserGreyIcon />),
+            icon: (pathname=='/Browser'?<BrowserBlueIcon />:<BrowserGreyIcon />),
         },
         {
             key: '/settings',

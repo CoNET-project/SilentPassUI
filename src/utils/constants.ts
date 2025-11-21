@@ -42,9 +42,9 @@ const sGB_Dashboard_ReadOnly = new ethers.Contract(
 	conetDepinProvider
 )
 
-const sGB_AirdropReadonly = new ethers.Contract(
-	contracts.SGB_Airdrop.address,
-	contracts.SGB_Airdrop.abi,
+const beamioConet = new ethers.Contract(
+	contracts.beamioConet.address,
+	contracts.beamioConet.abi,
 	conetDepinProvider
 )
 
@@ -76,5 +76,5 @@ export {
   Solana_SP,
   sGB_ReadOnly,
   sGB_Dashboard_ReadOnly,
-  sGB_AirdropReadonly
+  beamioConet
 };

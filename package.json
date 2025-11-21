@@ -2,6 +2,7 @@
 	"name": "silentpass-daemon",
 	"version": "0.39.7",
 	"private": true,
+	"homepage": "/app",
 	"dependencies": {
 		"@ant-design/icons": "^6.0.0",
 		"@coral-xyz/anchor": "0.31.1",

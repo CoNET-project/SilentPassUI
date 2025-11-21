@@ -14,6 +14,8 @@ type CryptoAssetsCardProps = {
 }
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
+const formatMoney = (n: number) =>
+		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
   onKeyClick,
@@ -26,33 +28,36 @@ const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
 	const subtitle = 'Free to send'
 
 	const tokenSymbol = 'USDC'
+
   useEffect(() => {
     const tempData = CoNET_Data
     if (tempData?.profiles?.length) {
       setAddress(tempData.profiles[0].keyID)
-	  
     }
   }, [])
 
-useEffect(() => {
-    getBa()
-  }, [address])
+	useEffect(() => {
+		getBa()
+	}, [address])
 
   	const getBa = async () => {
 		if (!address) return
 		const _ba = await getBalance(address)
 		if (!_ba) return
 		const ba = _ba
-		const eth = Number(ba.eth)
-		const ethUsd = eth * Number(ba.oracle.eth)
+		// const eth = Number(ba.oracle.eth)
+		// const ethUsd = eth * Number(ba.oracle.eth)
 
 		const usdc = Number(ba.usdc)
 		setUsdcAmount(usdc)
-		const usdcUsd = usdc * Number(ba.oracle.usdc)
+		const usdcUsd = usdc * Number(ba.oracle.eth.usdc)
+		
 		setFiatAmount(usdcUsd)
+		
+		
 
-		const total = ethUsd + usdcUsd
-		setUsdcToUSDAmount(usdcUsd)
+		// const total = ethUsd + usdcUsd
+		setUsdcToUSDAmount(usdc)
 
 	}
 
@@ -97,7 +102,7 @@ useEffect(() => {
 
       {/* 金额 */}
       <div className="cryptoAssetsTotal">
-        $ {fiatAmount.toFixed(2)}
+        $ {formatMoney(fiatAmount)}
       </div>
 
       {/* 标题 */}
@@ -123,8 +128,8 @@ useEffect(() => {
         </div>
 
         <div className="cryptoAssetRight">
-          <div className="cryptoAssetFiat"> $ {fiatAmount}</div>
-          <div className="cryptoAssetToken"> {usdcToUSDAmount} USDC</div>
+          <div className="cryptoAssetFiat"> $ {formatMoney(fiatAmount)}</div>
+          <div className="cryptoAssetToken"> {formatMoney(usdcToUSDAmount)} USDC</div>
         </div>
       </div>
     </div>

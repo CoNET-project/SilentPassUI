@@ -1,17 +1,23 @@
-.home{
-    margin:0;
+.home {
+    margin: 0;
     padding: 26px 4.2vw 0;
     width: 100%;
-    height:100%;
-    overflow:auto;
-    display:flex;
+    height: 100%;
+    overflow: auto;
+    display: flex;
     flex-direction: column;
-    .bd{
-        flex:1;
+
+    /* ✅ 完全透明背景，不再使用主题变量 */
+    background: transparent;
+    color: inherit; // 或者你想固定：color: #000;
+
+    .bd {
+        flex: 1;
         will-change: opacity, transform;
     }
 }
-/* 进入动画 */
+
+/* ===== 动画 ===== */
 .fadeEnter {
     opacity: 0;
 }
@@ -19,12 +25,10 @@
     opacity: 1;
     transition: opacity 500ms ease, transform 500ms ease;
 }
-/* 离开动画 */
 .fadeExit {
     opacity: 1;
     transform: scale(1) translateY(0);
 }
-
 .fadeExitActive {
     opacity: 0;
     transition: opacity 400ms ease, transform 400ms ease;

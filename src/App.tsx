@@ -3,35 +3,31 @@
 import { useEffect } from "react";
 import "./default.scss";
 import styles from './layout.module.scss';
-import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
-import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "./services/wallets";
-import { getAllNodesV2 } from "./services/mining";
-import { checkCurrentRate } from "./services/passportPurchase";
-import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";
-import { listenProfileVer } from "./services/listeners";
+import {Route,Routes,MemoryRouter as Router} from 'react-router-dom';
+import { useDaemonContext } from "./providers/DaemonProvider"
+import { createOrGetWallet} from "./services/wallets";
+import { CoNET_Data, setCoNET_Data } from "./utils/globals";
 import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import Send from './pages/Send/Send'
 import Pay from './pages/Pay'
 import Settings from './pages/Settings'
-import Wallet from './pages/Wallet'
 import Browser from './pages/Browser'
-import { getServerIpAddress } from "./api";
-import { parseQueryParams } from "./utils/utils";
 import { setDefaultConfig } from 'antd-mobile';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
 import enUS from 'antd-mobile/es/locales/en-US';
 import jaJP from 'antd-mobile/es/locales/ja-JP';
 import './i18n'; // 加载多语言配置
 import { useTranslation } from 'react-i18next';
+import {getFaucet} from '@/services/beamio'
+import { storeSystemData } from '@/services/wallets'
 
 
 global.Buffer = require('buffer').Buffer;
 
 function App() {
 	const { i18n } = useTranslation();
-  	const { darkModle, setDarkModle, setProfiles } = useDaemonContext();
+  	const { darkModle, setDarkModle, setProfiles, profiles } = useDaemonContext();
  
   	let handlePassportProcess = false
 	let secretPhrase: string | null = null;
@@ -41,6 +37,28 @@ function App() {
   	const init = async () => {
 		const profiles = await createOrGetWallet(secretPhrase, false, referrals, ChannelPartners)
 		setProfiles(profiles)
+
+		const temp = CoNET_Data
+		if (!temp || !profiles ) {
+			return
+		}
+		const profile = temp.profiles[0]
+
+
+		const bo = temp?.beamio
+
+		setDarkModle(bo.darkTheme)
+		if (!bo.isFaucet && profile?.keyID) {
+			const res = await getFaucet(profile?.keyID)
+			if (res) {
+				bo.isFaucet = true
+				setCoNET_Data(temp)
+				await storeSystemData()
+
+			}
+		}
+
+		console.log (temp)
   	}
 
   	let first = true
@@ -50,6 +68,15 @@ function App() {
 			init()
 		}
   	}, [])
+
+	useEffect(() => {
+	const root = document.documentElement
+	if (darkModle) {
+		root.classList.add('dark')
+	} else {
+		root.classList.remove('dark')
+	}
+	}, [darkModle])
 
   	useEffect(() => {
   		setDefaultConfig({

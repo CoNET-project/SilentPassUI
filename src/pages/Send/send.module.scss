@@ -1,0 +1,112 @@
+/* 单个圆形按钮 */
+.headerBtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.headerBtnIcon {
+  font-size: 18px;
+  line-height: 1;
+  color: #4a4a4a;
+}
+
+.home {
+  margin: 0;
+  padding: 26px 4.2vw 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+
+  /* ✅ 完全透明背景，不再使用主题变量 */
+  background: transparent;
+  color: inherit; // 或者你想固定：color: #000;
+
+  .bd {
+    flex: 1;
+    will-change: opacity, transform;
+  }
+}
+
+.sendCryptoAssetsTotal {
+  font-size: 12px;
+  line-height: 1.1;
+  font-weight: 700;
+  margin-bottom: 0;
+  color: #000;
+}
+
+html.dark .sendCryptoAssetsTotal,
+html.theme-dark .sendCryptoAssetsTotal {
+  color: #ffffff;
+}
+
+.qrCard canvas + img {
+  display: none !important;
+}
+
+/* =========================
+   串行动画：5 个乒乓球依次弹跳
+   ========================= */
+
+/* 一个周期 2.5s，每个点有 0.5s 在“活跃”阶段 */
+@keyframes pingPongDot {
+  /* 静止在地面 */
+  0%,
+  20%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+    opacity: 0.6;
+  }
+
+  /* 轻微下压（落地） */
+  4% {
+    transform: translateY(2px) scale(1.2, 0.8);
+    opacity: 0.9;
+  }
+
+  /* 弹到最高点 */
+  10% {
+    transform: translateY(-10px) scale(1, 1);
+    opacity: 1;
+  }
+
+  /* 落回地面，略带一点回弹 */
+  16% {
+    transform: translateY(0) scale(0.96, 1.04);
+    opacity: 0.8;
+  }
+}
+
+/* 外层容器，放在按钮里居中用 */
+.loadingDots {
+  display: flex;
+  gap: 6px;
+  height: 16px;
+  align-items: flex-end;
+}
+
+/* 单个乒乓球 */
+.loadingDot {
+  width: 8px;
+  height: 8px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  opacity: 0.5;
+  animation: pingPongDot 2.5s infinite ease-out;
+}
+
+/* ✅ 串行关键：每个点延迟 0.5s，刚好 2.5 / 5 */
+.loadingDot:nth-child(1) { animation-delay: 0s; }
+.loadingDot:nth-child(2) { animation-delay: 0.5s; }
+.loadingDot:nth-child(3) { animation-delay: 1s; }
+.loadingDot:nth-child(4) { animation-delay: 1.5s; }
+.loadingDot:nth-child(5) { animation-delay: 2s; }

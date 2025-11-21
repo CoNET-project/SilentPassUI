@@ -29,7 +29,7 @@
   user-select: none;
   transition: opacity 0.15s ease;
   font-size: 14px;
-  color: #111;              /* ✅ light 模式下用深色文字 */
+  color: #111; /* light 模式下用深色文字 */
 }
 
 .walletTag:active {
@@ -46,7 +46,7 @@
 .walletCopyIcon {
   width: 16px;
   height: 16px;
-  stroke: #555;             /* light 模式下深灰 */
+  stroke: #555; /* light 模式下深灰 */
   flex-shrink: 0;
 }
 
@@ -68,35 +68,13 @@
   opacity: 0.7;
 }
 
-/* ============================
-   Dark 模式下的覆盖样式
-   假设 body 上会有 .dark class
-   ============================ */
-
-body.dark .walletTag {
-  background: rgba(255, 255, 255, 0.12);
-  color: #f9fafb;                  /* ✅ 文字变亮 */
-}
-
-body.dark .walletCopyIcon {
-  stroke: #e5e7eb;                 /* ✅ copy icon 线条变浅 */
-}
-
-body.dark .keyBtn {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-/* 大余额数字 */
+/* 大余额数字（默认是黑色） */
 .cryptoAssetsTotal {
   font-size: 32px;
   line-height: 1.15;
   font-weight: 700;
   margin-bottom: 14px;
-  color: #000;                      /* light 默认黑字 */
-}
-
-body.dark .cryptoAssetsTotal {
-  color: #ffffff;                   /* ✅ dark 模式变白字 */
+  color: #000;
 }
 
 /* 标题 */
@@ -175,10 +153,53 @@ body.dark .cryptoAssetsTotal {
 .cryptoAssetFiat {
   font-size: 16px;
   font-weight: 600;
-  /* 在暗色背景上也能看清，一般父容器会是白字 */
 }
 
 .cryptoAssetToken {
   font-size: 14px;
   opacity: 0.6;
+}
+
+/* ============================
+   Dark 模式覆盖
+   注意：dark 加在 <html> 上
+   ============================ */
+
+html.dark .walletTag,
+html.theme-dark .walletTag {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f9fafb;
+}
+
+html.dark .walletCopyIcon,
+html.theme-dark .walletCopyIcon {
+  stroke: #e5e7eb;
+}
+
+html.dark .keyBtn,
+html.theme-dark .keyBtn {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ✅ 这里是你关心的：余额文字变白 */
+html.dark .cryptoAssetsTotal,
+html.theme-dark .cryptoAssetsTotal {
+  color: #ffffff;
+}
+
+/* 其他小细节也顺便调亮一点 */
+html.dark .cryptoAssetsSectionTitle,
+html.theme-dark .cryptoAssetsSectionTitle {
+  color: #60a5fa;
+  border-bottom-color: #60a5fa;
+}
+
+html.dark .cryptoAssetSub,
+html.theme-dark .cryptoAssetSub {
+  color: #4ade80;
+}
+
+html.dark .cryptoAssetToken,
+html.theme-dark .cryptoAssetToken {
+  opacity: 0.7;
 }

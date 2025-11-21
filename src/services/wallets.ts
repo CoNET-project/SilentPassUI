@@ -18,7 +18,6 @@ import {
   changeRPC,
   ethProvider,
   sGB_ReadOnly,
-  sGB_AirdropReadonly
 
 } from "../utils/constants"
 
@@ -59,49 +58,21 @@ const isValidSolanaPublicKey = (publicKey: string) => {
 }
 
 const createOrGetWallet = async (secretPhrase: string | null, initAccount = false, referrals = '', ChannelPartners = '' ) => {
-  await checkStorage();
+  await checkStorage()
 
-  if (secretPhrase|| initAccount ) setCoNET_Data(null);
+  if (secretPhrase|| initAccount ) setCoNET_Data(null)
 
   if (!CoNET_Data || !CoNET_Data?.profiles) {
-    const acc = createKeyHDWallets(secretPhrase);
+		const acc = createKeyHDWallets(secretPhrase);
 
-    const key = await createGPGKey("", "", "");
+		const key = await createGPGKey("", "", "");
 
-    if (!acc) return;
+		if (!acc) return null
 
-    const profile: profile = {
-		tokens: initProfileTokens(),
-		publicKeyArmor: acc.publicKey,
-		keyID: acc.address,
-		isPrimary: true,
-		referrer: null,
-		isNode: false,
-		pgpKey: {
-			privateKeyArmor: key.privateKey,
-			publicKeyArmor: key.publicKey,
-		},
-		privateKeyArmor: acc.signingKey.privateKey,
-		hdPath: acc.path,
-		index: acc.index,
-		type: "ethereum",
-		webFilter: true
-    };
-
-    const data: any = {
-    mnemonicPhrase: acc?.mnemonic?.phrase,
-    profiles: [profile],
-    isReady: true,
-    ver: 0,
-    nonce: 0,
-    };
-
-    if (acc?.mnemonic?.phrase) {
-		const result = await initSolana(acc?.mnemonic?.phrase);
-		const profile2: profile = {
+		const profile: profile = {
 			tokens: initProfileTokens(),
-			publicKeyArmor: "",
-			keyID: result?.publicKey || "",
+			publicKeyArmor: acc.publicKey,
+			keyID: acc.address,
 			isPrimary: true,
 			referrer: null,
 			isNode: false,
@@ -109,23 +80,60 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
 				privateKeyArmor: key.privateKey,
 				publicKeyArmor: key.publicKey,
 			},
-			privateKeyArmor: result?.privateKey || "",
-			hdPath: null,
-			index: 0,
-			type: "solana"
+			privateKeyArmor: acc.signingKey.privateKey,
+			hdPath: acc.path,
+			index: acc.index,
+			type: "ethereum",
+			webFilter: true
+		};
+
+		const data: any = {
+			mnemonicPhrase: acc?.mnemonic?.phrase,
+			profiles: [profile],
+			isReady: true,
+			ver: 0,
+			nonce: 0,
+		};
+
+		if (acc?.mnemonic?.phrase) {
+			const result = await initSolana(acc?.mnemonic?.phrase);
+			const profile2: profile = {
+				tokens: initProfileTokens(),
+				publicKeyArmor: "",
+				keyID: result?.publicKey || "",
+				isPrimary: true,
+				referrer: null,
+				isNode: false,
+				pgpKey: {
+					privateKeyArmor: key.privateKey,
+					publicKeyArmor: key.publicKey,
+				},
+				privateKeyArmor: result?.privateKey || "",
+				hdPath: null,
+				index: 0,
+				type: "solana"
+			}
+
+			data.profiles.push(profile2);
 		}
 
-		data.profiles.push(profile2);
-    }
-	
-    setCoNET_Data(data)
-  }
+		if (!data?.beamio) {
+			const beamio: beamio = {
+				image: '',
+				accountName: '',
+				isFaucet: false,
+				darkTheme: false
+			}
+		}
+		
+		setCoNET_Data(data)
+	}
 
 
 
 	let tmpData = CoNET_Data
 	if (!tmpData) {
-		return
+		return null
 	}
 
 
@@ -171,10 +179,10 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
   await storeSystemData()
 
   if (tmpData === null) {
-	return setTimeout(() => {
-		return window.location.reload()
-	}, 5000)
-	
+		setTimeout(() => {
+			return window.location.reload()
+		}, 5000)
+	return null
   }
   
   const profiles = tmpData.profiles
@@ -1009,39 +1017,6 @@ const getSPOracle = async () => {
 }
 
 
-const getGB_Airdrop = async (CoNET_Data: encrypt_keys_object) => {
-	const duWallet = CoNET_Data?.duplicateAccount?.keyID
-	if (!duWallet) {
-		return
-	}
-	try {
-		const _airdrop  = await sGB_AirdropReadonly.getAllInfo(duWallet)
-		const airdrop: IAirdrop = {
-			isNewUser: _airdrop.isNewUser,
-			isGenesis: _airdrop.isGenesis,
-			stopTimestamp: new Date(parseInt(_airdrop.stopTimestamp.toString())*1000),
-			maxGB: ethers.formatUnits(_airdrop.maxGB, 'gwei'),
-			currentWeekGB: ethers.formatUnits(_airdrop.currentWeekGB, 'gwei'),
-			totalUserGB: ethers.formatUnits(_airdrop.totalUserGB, 'gwei'),
-			currectPassport: parseInt(_airdrop.currectPassport),
-			currectThreshold: parseInt(_airdrop.currectThreshold),
-			currectThresholdGB: ethers.formatUnits(_airdrop.currectThresholdGB, 'gwei'),
-			totalThresholdGB: ethers.formatUnits(_airdrop.totalThresholdGB, 'gwei')
-
-		}
-
-		if (_airdrop.startTimestamp > 0) {
-			airdrop.startTimestamp = new Date(parseInt(_airdrop.startTimestamp.toString())*1000)
-		}
-		console.log(airdrop)
-		CoNET_Data.profiles[0].airdropEvent = airdrop
-
-	} catch (ex) {
-		return
-	}
-	
-}
-
 const getRewordStaus = async(node: nodes_info): Promise<boolean|null> => {
   const contract_SpReward = new ethers.Contract(contracts.SpReword.address, contracts.SpReword.abi, conetDepinProvider)
 
@@ -1215,8 +1190,7 @@ const getProfileAssets = async (CoNETData : encrypt_keys_object) => {
 		scanConetETH(key),
 		getReferrals(),
 		getSPClubPoint(key),
-		get_sGB(duplicateAccount),
-		getGB_Airdrop(CoNETData)
+		get_sGB(duplicateAccount)
 	])
 
 	if (profile.tokens?.sGB) {

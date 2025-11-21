@@ -8,7 +8,7 @@
   }
   
   img {
-    display: inline !important;
+    /* display: inline !important; */
   }
 }
 
@@ -34,4 +34,22 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
+}
+:root,
+.theme-light {
+  --app-bg: #ffffff;
+  --app-text: #000000;
+  --footer-bg: #f8f8f8;
+  --footer-text: #111827;
+  --scan-btn-icon: #000000;
+}
+
+/* Dark 主题变量 */
+.dark,
+.theme-dark {
+  --app-bg: #050505;
+  --app-text: #f9fafb;
+  --footer-bg: #050505;
+  --footer-text: #e5e7eb;
+  --scan-btn-icon: #ffffff;
 }

@@ -12,6 +12,10 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from "ethers"
 import send_icon from "@/components/assets/send-icon.svg"
 import receive_icon from "@/components/assets/receive-icon.svg"
+import {HistoryFilterTabs, HistoryFilter} from './HistoryFilterTabs'
+
+
+import {formatAmountReadable, formatWithThousands, generateCODE, getBalance} from '@/services/beamio'
 
 type Payed = {
   payTimestamp: number
@@ -27,20 +31,43 @@ type TransferHistork = {
   to: string
   hash: string
   from: string
+  note: string
+  status: 'Completed'|'Pending'
+  type: 'Receive'|'Send'
+  pendingKind: 'Request'|'Check'|'Transfer'
 }
 
-type HistoryTableProps = {
-	balance: number
+type LinksHistory = {
+	to: string
+    successAuthorizationHash: string
+    chianID: bigint
+    erc3009Address: string
+    node: string
+    amount: bigint
+    decimals: bigint
+    issueTimestamp: bigint
+    payHash: string
+    payTimestamp: string
+    from: string
+    payAmount: string
 }
+
+
+
+type HistoryTableProps = {
+}
+
+
 
 const fmtAddr = (a = "") => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 
 type Transfer = {
-  to: string
-  timestamp: bigint
-  from: string
-  amount: string
-  finisedHash: string
+	to: string
+	timestamp: bigint
+	from: string
+	amount: string
+	finisedHash: string
+	note: string
 }
 
 const formatTime = (ts: number) => {
@@ -52,37 +79,85 @@ const formatTime = (ts: number) => {
 
 // 用 forwardRef 包装
 export const SendHistoryTable = (
-  ({balance}:HistoryTableProps) => {
+  () => {
     const [items, setItems] = useState<TransferHistork[]>([])
     const [myAddress, setMyAddress] = useState("")
-    const { profiles } = useDaemonContext()
+    const {profiles, setUsdcbalance, usdcbalance } = useDaemonContext()
+
+	const [activeFilter, setActiveFilter] = useState<HistoryFilter>('all')
+	const [loading, setLoading] = useState(false)
+	const [loadingFilter, setLoadingFilter] = useState<HistoryFilter | null>(null)
 
     const isSend = (item: TransferHistork) => {
       if (!myAddress) return false
       return item.from.toLowerCase() === myAddress
     }
 
+	useEffect(() => {
+		getTransferNewitems(null)
+	}, [])
+	
+	const [filter, setFilter] = useState<HistoryFilter>('all')
+	const getTransferNewitems = async (next: HistoryFilter|null) => {
 
-
-	const getNewitems = async () => {
-		    if (!profiles?.length) return
+		if (!profiles?.length) return
 		const profile: any = profiles[0]   // 这里用你实际的 profile 类型替换 any
 		const address = profile.keyID
-		console.log(`getAllHistory called, balance = ${balance}`)
-		setMyAddress(address.toLowerCase())
+		console.log(`getAllHistory called, balance = ${usdcbalance}`)
+		
+		const myAddr = address.toLowerCase()
+		setMyAddress(myAddr)
 		try {
-			const [, _links] = await beamioConet.getTransferHistory(address, 0, 100)
-			const links: Transfer[] = _links
+			const [ _transfer, _links ] = await Promise.all([
+				beamioConet.getTransferHistory(address, 0, 100),
+				beamioConet.getLinksHistory(address, 0, 100),
+			])
+			
+			const transfer: Transfer[] = _transfer[1]
+			const links: LinksHistory[] = _links[1]
 
-			const mapped: TransferHistork[] = links.map(n => ({
+			const mappedTransfer: TransferHistork[] = transfer.map(n => ({
 				date: Number(n.timestamp * BigInt(1000)),
 				amount: Number(ethers.formatUnits(n.amount, 6)),
 				to: n.to,
 				hash: n.finisedHash,
 				from: n.from,
+				note: n.note,
+				status: 'Completed',
+				type: myAddr === n.to.toLowerCase() ? 'Receive' : 'Send',
+				pendingKind: 'Transfer'
 			}))
 
-			setItems(mapped.reverse())
+			const mappedLinkss: TransferHistork[] = links.map(n => ({
+				date: Number(n.issueTimestamp * BigInt(1000)),
+				amount: Number(ethers.formatUnits(n.amount, 6)),
+				to: n.to,
+				hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
+				from: n.from,
+				note: n.node,
+				status: (n.successAuthorizationHash.startsWith('0x00') ? 'Pending' : 'Completed'),
+				type: 'Receive',
+				pendingKind: 'Request'
+			}))
+
+
+			let alldatas = [...mappedTransfer, ...mappedLinkss]
+			let filtered = [...mappedTransfer, ...mappedLinkss]
+
+			if (next === 'send') {
+				filtered = alldatas.filter(tx => tx.type === 'Send')
+			} else if (next === 'receive') {
+				filtered = alldatas.filter(tx => tx.type === 'Receive')
+			} else if (next === 'pending') {
+				filtered = alldatas.filter(tx => tx.status === 'Pending')
+			}
+			// filter === 'all' 时，filtered 保持 mapped
+			setItems([])  // 清掉旧的
+
+			setTimeout(() => {
+				setItems(filtered.reverse())  // 下一帧插入新的
+			}, 0)
+
 		} catch (ex: any) {
 			console.log(ex.message)
 		}
@@ -90,19 +165,27 @@ export const SendHistoryTable = (
 
     // ⭐ 用 useCallback，这样 refresh 一直是同一个函数
 
+		const handleFilterChange = async (next: HistoryFilter) => {
+			setActiveFilter(next)
+			setLoading(true)
+			setLoadingFilter(next)
+			setFilter(next)
+			try {
+				await getTransferNewitems(next)
+				
+			} finally {
+				setLoading(false)
+				setLoadingFilter(null)
+			}
+		}
 
-    // 初始化时拉一次
-    useEffect(() => {
-    	setTimeout(() => {
-			getNewitems()
-		}, 4000)
-    }, [balance])
+
 
     return (
       <div
         className="
 			w-full h-full                     /* ⭐ 吃掉父容器高度 */
-			rounded-2xl border border-slate-200/70 dark:border-white/10
+			
 			bg-transparent
 			text-sm
 			flex flex-col                      /* ⭐ 内部继续用 flex */
@@ -110,102 +193,164 @@ export const SendHistoryTable = (
 			overflow-hidden
       "
       >
+		{/* Filter row */}
+
+        {/* Content */}
+        
+          {/* Header */}
+				<div className="flex items-center justify-between mb-3">
+					<div className="flex flex-col">
+						<span className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+						Beamio
+						</span>
+						<h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+						Payments
+						</h1>
+					</div>
+
+					<div className="text-right">
+						<p className="text-[12px] font-medium text-slate-900 dark:text-slate-100">
+						USDC {formatWithThousands(usdcbalance)}
+						</p>
+						<p className="text-[11px] text-slate-500 dark:text-slate-400">
+						Available on Base
+						</p>
+					</div>
+				</div>
+
+			
+			<HistoryFilterTabs active={filter} onChange={handleFilterChange} loading={loading} loadingFilter={loadingFilter}/>
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <table className="min-w-full text-xs">
-            <thead className="border-b border-slate-200/70 dark:border-white/10 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur">
-              <tr className="text-slate-500 dark:text-slate-400">
-                <th className="text-left font-normal px-3 py-2">Transaction</th>
-                <th className="text-right font-normal px-3 py-2">Value</th>
-                <th className="text-center font-normal px-3 py-2">Account</th>
-                <th className="text-right font-normal px-3 py-2">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="px-3 py-4 text-center text-slate-400 dark:text-slate-500"
-                  >
-                    No history yet
-                  </td>
-                </tr>
-              )}
+			<div
+			className="
+				flex-1 
+				backdrop-blur-md
+				px-2 py-3 flex flex-col gap-1.5 mb-6
+				overflow-y-auto
+			"
+			>
+				{/* Header row inside card */}
+				<div
+					className="
+					flex items-center px-2 pb-1 text-[10px]
+					text-slate-500 dark:text-slate-400
+					border-b border-slate-100/80 dark:border-white/10
+					mb-1
+					"
+				>
+					<div className="w-20">Type</div>
+					<div className="flex-1">Account</div>
+					<div className="w-16 text-right">Value</div>
+				</div>
 
-              {items.map((item, idx) => {
-                const isPaid = !!item.hash
-                const txUrl = isPaid ? `https://basescan.org/tx/${item.hash}` : undefined
+						{
+							items.map((tx) => {
+								const hasHash = !!tx.hash
 
-                return (
-                  <tr
-                    key={idx}
-                    role={txUrl ? "button" : undefined}
-                    onClick={() => {
-                      if (!txUrl) return
-                      window.open(txUrl, "_blank", "noopener,noreferrer")
-                    }}
-                    className={`
-                      group
-                      border-t border-slate-100/80 dark:border-white/5
-                      hover:bg-slate-50/70 dark:hover:bg-white/5
-                      transition
-                      ${txUrl ? "cursor-pointer" : "cursor-default"}
-                    `}
-                  >
-                    {/* 第一列：Tag pill / icon 自己看需要是否加回 */}
-                    <td className="px-3 py-1 align-middle text-left w-0">
-                      <div className="flex items-center gap-2">
-                        {/* 如果之后要把 icon 打开，把注释去掉 */}
-                        {/* <img
-                          src={isSend(item) ? send_icon : receive_icon}
-                          alt=""
-                          className="w-5 h-5 opacity-90 dark:opacity-90 transform transition-transform duration-150 group-hover:scale-105"
-                        /> */}
+								const baseRowClass =
+									"block flex items-center px-2 py-2 text-[11px] border-b border-slate-200 dark:border-slate-800 transition"
 
-                        <span
-                          className={`
-                            text-[10px] font-medium px-2 py-0.5 rounded-full
-                            ${
-                              isSend(item)
-                                ? "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300"
-                                : "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300"
-                            }
-                          `}
-                        >
-                          {isSend(item) ? "Send" : "Receive"}
-                        </span>
-                      </div>
-                    </td>
+								const clickableClass = hasHash
+									? " cursor-pointer hover:bg-slate-100/70 dark:hover:bg-white/5"
+									: " cursor-default opacity-70" // 没有 hash 时，不能点，略微灰掉
 
-                    {/* 金额 */}
-                    <td className="px-3 py-1 align-middle text-right">
-                      <div className="text-[11px] font-medium text-slate-900 dark:text-slate-50">
-                        {isSend(item)
-                          ? "- " + item.amount.toFixed(2)
-                          : item.amount.toFixed(2)}
-                      </div>
-                    </td>
+								const rowContent = (
+								<>
+									{/* Type pill */}
+									<div className="w-20">
+										<span
+											className={[
+											"inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
+											"backdrop-blur-md border border-white/20",
+											tx.status === "Pending"
+												? "bg-amber-200/60 text-amber-800 dark:bg-amber-700/40 dark:text-amber-200"
+												: tx.type === "Send"
+												? "bg-slate-300/40 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
+												: "bg-emerald-300/35 text-emerald-700 dark:bg-emerald-700/40 dark:text-emerald-200",
+											].join(" ")}
+										>
+											{
+												tx.status === "Pending"
+												? "Pending"
+												: tx.type === "Send"
+												? "Send"
+												: "Receive"
+											}
+										</span>
+									</div>
 
-                    {/* 地址 */}
-                    <td className="px-3 py-1 align-middle text-center">
-                      <div className="text-[11px] text-slate-700 dark:text-slate-100 truncate max-w-[140px]">
-                        {fmtAddr(item.to)}
-                      </div>
-                    </td>
+									{/* Account + note + status */}
+									<div className="flex-1 flex flex-col">
+										<span className="font-mono text-slate-800 dark:text-slate-100">
+											{fmtAddr(tx.type === "Receive" ? tx.from : tx.to)}
+										</span>
 
-                    {/* 时间 */}
-                    <td className="px-3 py-1 align-middle text-right">
-                      <div className="text-[11px] text-slate-700 dark:text-slate-100">
-                        {formatTime(item.date)}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+										{tx.note && (
+											<span className="text-[10px] text-slate-500 dark:text-slate-400">
+											{tx.note}
+											</span>
+										)}
+
+										{tx.status === "Pending" && (
+											<span className="text-[10px] text-amber-600 dark:text-amber-300 flex items-center gap-1">
+												<span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-300" />
+												{tx.pendingKind === "Request" && "Pending · Request link"}
+												{tx.pendingKind === "Check" && "Pending · Check code"}
+												{!tx.pendingKind && "Pending"}
+											</span>
+										)}
+
+										<span className="text-[10px] text-slate-400 dark:text-slate-500">
+											{formatTime(tx.date)}
+										</span>
+									</div>
+
+									{/* Amount */}
+									<div className="w-16 text-right text-[11px] font-medium">
+									<span
+										className={
+										tx.status === "Pending"
+											? "text-slate-500 dark:text-slate-400"
+											: tx.type === "Send"
+											? "text-slate-900 dark:text-slate-100"
+											: "text-emerald-700 dark:text-emerald-300"
+										}
+									>
+										{tx.amount}
+									</span>
+									</div>
+								</>
+								)
+
+								// 有 hash：<a>，打开 BaseScan
+								if (hasHash) {
+									return (
+										<a
+											key={tx.hash}
+											href={`https://basescan.org/tx/${tx.hash}`}
+											target="_blank"
+											rel="noreferrer"
+											className={baseRowClass + clickableClass}
+										>
+											{rowContent}
+										</a>
+									)
+								}
+
+								// 没有 hash：<div>，只能看，不能点
+								return (
+									<div
+										key={`${tx.date}-${tx.from}-${tx.to}`}
+										className={baseRowClass + clickableClass}
+									>
+										{rowContent}
+									</div>
+								)
+							})
+						}
+						</div>
+					</div>
+				</div>
     )
   }
 )

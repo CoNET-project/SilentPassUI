@@ -96,6 +96,10 @@ type DaemonContext = {
   privacyMode: boolean;
   currentBlock: number
   setCurrentBlock: (val: number) => void
+  beamio: beamio|null
+  setBeamio : (val:beamio|null) => void
+  usdcbalance : number
+  setUsdcbalance: (val: number) => void
 };
 
 type DaemonProps = {
@@ -184,7 +188,7 @@ const defaultContextValue: DaemonContext = {
   setCheckInVisible: () => {},
   genesisVisible: false,
   setGenesisVisible: () => {},
-  isInitialLoading: true,
+  isInitialLoading: false,
   setIsInitialLoading: () => {},
   statusVisible: true,
   setStatusVisible: () => {},
@@ -197,7 +201,11 @@ const defaultContextValue: DaemonContext = {
   setPrivacyMode: () => {},
   privacyMode: false,
   currentBlock: 0,
-  setCurrentBlock: () => {}
+  setCurrentBlock: () => {},
+  setBeamio: () => {},
+	beamio: null,
+	usdcbalance: 0,
+	setUsdcbalance: () => {}
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -253,13 +261,16 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [passportVisible, setPassportVisible] = useState<boolean>(false);
   const [checkInVisible, setCheckInVisible] = useState<boolean>(false);
   const [genesisVisible, setGenesisVisible] = useState<boolean>(false);
-  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(false);
   const [statusVisible, setStatusVisible] = useState<boolean>(false);
   const [checkinBalanceUP, setCheckinBalanceUP] = useState<boolean>(false);
   const [ruleVisible, setRuleVisible] = useState<boolean>(false);
   const [hasNewVersion, setHasNewVersion] = useState<boolean|string>(false);
   const [privacyMode, setPrivacyMode] = useState<boolean>(false);
   const [currentBlock,setCurrentBlock] = useState(0)
+  const [beamio, setBeamio] = useState<beamio|null>(null)
+  const [usdcbalance, setUsdcbalance] = useState(0)
+
 
   useEffect(() => {
     {
@@ -312,9 +323,9 @@ export function DaemonProvider({ children }: DaemonProps) {
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle,
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode,
-				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,
+				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,
-				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,
+				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,

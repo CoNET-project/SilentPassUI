@@ -14,10 +14,12 @@ type LinkHistork = {
   issueTimestamp: number
   amount: number
   note: string
+  hash: string
   payed: null | Payed
 }
 
 type HistoryTableProps = {
+	itemClock: (item: LinkHistork) => void
 }
 
 
@@ -49,7 +51,8 @@ const formatTime = (ts: number) => {
 	return d.toLocaleString()
 }
 
-export const LinkHistoryTable: React.FC<HistoryTableProps> = () => {
+
+export const LinkHistoryTable: React.FC<HistoryTableProps> = ({itemClock}: HistoryTableProps) => {
   const [items, setItems] = useState<LinkHistork[]>([])
   const { profiles } = useDaemonContext()
 
@@ -67,6 +70,7 @@ export const LinkHistoryTable: React.FC<HistoryTableProps> = () => {
 			amount: Number(ethers.formatUnits(n.amount, 6)),
 			note: n.node,
 			payed: null,
+			hash: n.payHash
       }))
 
       setItems(mapped.reverse())
@@ -80,19 +84,36 @@ export const LinkHistoryTable: React.FC<HistoryTableProps> = () => {
   }, [])
 
   return (
-    <div
-      className="
-        w-full rounded-2xl border border-slate-200/70 dark:border-white/10
-        bg-transparent
-        text-sm
-        overflow-hidden
-        flex flex-col
-        min-h-0
-      "
-    >
-
-      {/* 吃掉剩余空间的滚动区 */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+		<div
+			className="
+				w-full h-full                     /* ⭐ 吃掉父容器高度 */
+				rounded-2xl border border-slate-200/70 dark:border-white/10
+				bg-transparent
+				text-sm
+				flex flex-col                      /* ⭐ 内部继续用 flex */
+				min-h-0                            /* ⭐ 允许被压缩，否则 iOS 会硬撑 */
+				overflow-hidden
+		"
+		>
+			{/* Filter row */}
+          <div className="mb-2 flex items-center justify-between text-[10px]">
+            <div className="flex items-center gap-1">
+              <button className="px-2 py-1 rounded-full bg-slate-900 text-white font-medium">
+                All
+              </button>
+              <button className="px-2 py-1 rounded-full bg-white text-slate-600 border border-slate-200">
+                Send
+              </button>
+              <button className="px-2 py-1 rounded-full bg-white text-slate-600 border border-slate-200">
+                Receive
+              </button>
+              <button className="px-2 py-1 rounded-full bg-white text-slate-600 border border-slate-200">
+                Pending
+              </button>
+            </div>
+            <button className="text-slate-400">Sort · Newest</button>
+          </div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
         <table className="min-w-full text-xs">
           <thead className="border-b border-slate-200/70 dark:border-white/10 sticky top-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur">
             <tr className="text-slate-500 dark:text-slate-400">
@@ -118,14 +139,16 @@ export const LinkHistoryTable: React.FC<HistoryTableProps> = () => {
               const isPaid = !!item.payed
 
               return (
-                <tr
-                  key={idx}
-                  className="
-                    border-t border-slate-100/80 dark:border-white/5
-                    hover:bg-slate-50/70 dark:hover:bg-white/5
-                    transition
-                  "
-                >
+					<tr
+						key={idx}
+						onClick={() => itemClock(item)}        // ← 点击整行触发
+						className="
+							border-t border-slate-100/80 dark:border-white/5
+							hover:bg-slate-50/70 dark:hover:bg-white/5
+							transition
+							cursor-pointer                      // ← 鼠标手型
+					"
+					>
                   <td className="px-3 py-2 align-middle">
                     <div className="text-[11px] text-slate-700 dark:text-slate-100">
                       {formatTime(item.issueTimestamp)}

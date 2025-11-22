@@ -43,11 +43,11 @@ type gasData = {
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
-type Step = "amount" | "recipient" | "confirm" | "success" | "sign";
+type Step = "amount" | "recipient" | "confirm" | "success" | "sign"| "x402Sign"
 
 const Send = ({}) => {
 	  
-	  const { darkModle, setDarkModle, setProfiles } = useDaemonContext()
+	  const { darkModle, setDarkModle, setProfiles, setUsdcbalance } = useDaemonContext()
 		const [showReceive, setShowReceive] = useState(false);
 		const [amount, setAmount] = useState(0)
 		const [preInput, setPreInput] = useState('')
@@ -122,7 +122,7 @@ const Send = ({}) => {
 		setProcessing(true)
 		
 		
-		const params = new URLSearchParams({amount:amount.toFixed(2), toAddress: addr }).toString()
+		const params = new URLSearchParams({amount:amount.toFixed(2), toAddress: addr}).toString()
 		const path = `/api/BeamioTransfer?${params}`
 		const requestEndpoint = endpoint + path
 		setRequestEndpoint(requestEndpoint)
@@ -161,7 +161,7 @@ const Send = ({}) => {
 			}
 			//const urlObj = new URL(url)
 				setProcessing(false)
-			setStep('sign')
+			setStep('x402Sign')
 
 			
 		} catch (ex) {
@@ -184,7 +184,7 @@ const Send = ({}) => {
 		const usdc = Number(ba.usdc)
 		setUsdcAmount(usdc)
 		const usdcUsd = usdc * Number(ba.oracle.eth.usdc)
-
+		setUsdcbalance(usdc)
 		const total = ethUsd + usdcUsd
 		setUsdcToUSDAmount(usdcUsd)
 
@@ -266,7 +266,6 @@ const Send = ({}) => {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				
 				return setProcessError('RPC Error!')
 			}
 			return final(body)
@@ -294,259 +293,24 @@ const Send = ({}) => {
   return (
     
       <div className={styles.home}>
-        {step === "amount" && (
-          <>
-			{/* Top amount area */}
 			<div className="px-5 pt-6 flex flex-col gap-2">
-				{/* Top right QR */}
-				<div className="flex items-start">
-					<button
-							type="button"
+				<button
+					type="button"
 							className={styles.headerBtn}
 							aria-label="Toggle theme"
 							onClick={() => setDarkModle(!darkModle)}
-					>
-						<span className={styles.headerBtnIcon}>
-							{darkModle ? <LightDrakMode /> : <LightDrakModeBlue />}
-						</span>
-					</button>
-					 {/* Top right QR */}
-					<div className="ml-auto inline-flex">
-						<ScanBtn />
-					</div>
-
-				</div>
-
-				{/* Amount display */}
-				{
-					!showReceive && (
-						<div>
-						<div className="flex flex-col w-full">
-							<div className="flex items-center gap-3 mb-1 w-full overflow-hidden">
-								
-								{/* 左侧 input column */}
-								<div className="flex-1 flex flex-col min-w-0">
-									<input
-										type="text"
-										inputMode="decimal"
-										value={preInput}
-										onChange={e => {
-											setError("")
-											setPreInput(e.target.value)
-										}}
-										onBlur={handleBlur}
-										className={`
-											bg-transparent
-											outline-none
-											text-5xl font-semibold tracking-tight text-right w-full
-											border rounded-xl
-											px-4 py-2
-											min-w-0
-											${error ? "border-red-500" : "border-transparent"}
-										`}
-										placeholder={primaryUnitLabel}
-									/>
-
-									{error && (
-										<div className="text-right text-sm text-red-500 mt-1 pr-1">
-										{error}
-										</div>
-									)}
-								</div>
-
-								{/* Max 按钮 —— 不允许扩张 container */}
-								<button
-									className="
-										flex-none px-3 py-2 rounded-full text-sm font-medium
-										bg-blue-600 text-white border-blue-700/30
-										dark:bg-blue-500 dark:text-white dark:border-blue-400/30
-										shadow-sm
-									"
-									onClick={() => {
-										setPreInput(usdcAmount.toFixed(2))
-										setError("")
-										handleBlur()
-									}}
-								>
-									Max
-								</button>
-							</div>
-						</div>
-					</div>
-					)
-				}
-
+				>
+					<span className={styles.headerBtnIcon}>
+						{darkModle ? <LightDrakMode /> : <LightDrakModeBlue />}
+					</span>
+				</button>
 			</div>
-
-			{/* Token row */}
-			{
-				!showReceive && (
-					<div className="px-5">
-						<div className="flex items-center justify-between py-3 border-t border-b border-white/5">
-							<div className="flex items-center gap-3">
-								<div className="cryptoAssetIcon">
-									<img src={usdcIcon} alt="USDC" className="usdcIcon" />
-									<img src={baseIcon} alt="Base" className="baseBadge" />
-								</div>
-								<div>
-									<div className="text-sm font-medium">USDC</div>
-								</div>
-							</div>
-							<div className="flex items-center justify-end gap-3 text-right">
-							{/* 左：Available（垂直居中） */}
-							<span className="text-sm font-medium text-slate-500 flex items-center">
-								Available
-							</span>
-
-							{/* 右：两行数值 */}
-							<div className="flex flex-col items-end leading-tight">
-								{/* 🔥 数字加大一号 → text-lg */}
-								<div className="text-lg font-semibold">
-								{formatWithThousands(usdcAmount)}
-								</div>
-
-								{/* 下方 USD 金额淡一点 */}
-								<div className="text-sm opacity-70">
-								${formatMoney(usdcToUSDAmount)}
-								</div>
-							</div>
-							</div>
-							
-						</div>
-					</div>
-				)
-			}
-			
-
-			{/* Actions only (no keypad) */}
-			
-			<div className="px-5 flex flex-col relative">	{/*  */}
-				
-				
-				{/* Receive overlay */}
-				{	
-					showReceive ? <ReceiveOverlay onClose={() => setShowReceive(false)} address={myAddress} />
-					: <div className="mt-6 flex items-center gap-3">
-						<div className="flex-1">
-							<AppButton variant="secondary" fullWidth onClick={() => setShowReceive(true)}>
-							Receive
-							</AppButton>
-						</div>
-
-						<div className="flex-1">
-							<AppButton variant="primary" fullWidth onClick={() => {
-							if (handleBlur()) setStep('recipient')
-							}}>
-								Send
-							</AppButton>
-						</div>
-					</div>
-				}
-				
-
-			</div>
-			{
-				!showReceive && 
-				<div className="flex-1 min-h-0 flex flex-col px-4 pb-4">
-					{/* 你原来这层 */}
-					<div className="flex-1 min-h-0 mt-6">
-						<SendHistoryTable balance={usdcAmount} />
-					</div>
-				</div>
-			}
-			
-          </>
-        )}
-
-        {step === "recipient" && (
-          <div>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
-              <button
-                className="text-2xl leading-none pr-2"
-                onClick={() => setStep("amount")}
-              >
-               {'<'}
-              </button>
-              <span className="text-lg font-medium">Choose recipient</span>
-            </div>
-
-            {/* Send to input */}
-            <SendToInput loadingError={processError} sendAction={(address) => {
-				
-				processSend(address)
-				
-			}} />
-
-          </div>
-        )}
-
-        {step === "success" && (
-					<div className="flex-1 px-5 pt-6 pb-8 flex flex-col items-center justify-center
-							bg-transparent text-inherit">
-
-				{/* 蓝色圆圈 ✔ */}
-				<div className="w-20 h-20 rounded-full
-								bg-blue-600 text-white
-								flex items-center justify-center mb-6">
-					<span className="text-3xl">✔</span>
-				</div>
-
-				{/* 成功文字 */}
-				<div className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-					Successfully sent
-				</div>
-
-				{/* 金额 */}
-				<div className="text-2xl font-semibold text-blue-600 dark:text-blue-400 mb-2">
-					{formattedUsd} USDC
-				</div>
-
-				{/* 提示 */}
-				<div className="text-xs text-slate-500 dark:text-slate-400 mb-10">
-					This takes a few seconds
-				</div>
-
-				{/* 按钮组 */}
-				<div className="w-full space-y-3">
-
-					{/* 完成按钮 */}
-					<button
-						className="w-full h-11 rounded-full
-								bg-blue-600 text-white
-								text-sm font-medium"
-						onClick={() => {
-							setStep('amount')
-							setAmount(0)
-							setShowAmount('0.00')
-						}}
-					>
-						Done
-					</button>
-
-					{/* 查看交易按钮 */}
-					<button
-						className="
-							w-full h-11 rounded-full
-							bg-black/5 text-slate-700
-							dark:bg-white/10 dark:text-slate-100
-							text-sm
-						"
-						onClick={() => {
-							window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
-						}}
-					>
-						View transactions
-					</button>
+			<div className="flex-1 min-h-0 flex flex-col px-4 pb-4">
+				{/* 你原来这层 */}
+				<div className="flex-1 min-h-0 mt-6">
+					<SendHistoryTable />
 				</div>
 			</div>
-        )}
-
-		{step === "sign" && (
-			<ConformSignInfo originUrl='https://beamio.app' messageData={messageData} processError={processError} processing={processing} />
-			
-		)}
-
       </div>
    
   );

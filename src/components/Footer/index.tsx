@@ -22,7 +22,6 @@ import { useDaemonContext } from "@/providers/DaemonProvider";
 import Filter from '@/components/Rules/Filter';
 import AirdropTask from '@/components/Wallet/airdropTask/AirdropTask';
 import {Bridge} from '@/bridge/webview-bridge';
-import NewVersion from "@/components/Home/NewVersion/NewVersion";
 import { getiOSVPNStatus, getAndroidVPNStatus} from "../../api"
 import { ReactComponent as BLogo } from './assets/B-icon.svg'
 import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
@@ -150,13 +149,12 @@ useEffect(() => {
 				{darkModle ? <BLogo style={{ width: '4rem', height: '4rem' }} /> : <BLogoLight style={{ width: '4rem', height: '4rem' }} />}
 			</div>
 
-            <NewVersion />
             <Subscription />
             <Status />
             <Filter visible={ruleVisible} setVisible={setRuleVisible} />
             <AirdropTask />
         </div>
     )
-};
+}
 
 export default Footer

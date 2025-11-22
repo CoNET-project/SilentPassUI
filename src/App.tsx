@@ -27,7 +27,7 @@ global.Buffer = require('buffer').Buffer;
 
 function App() {
 	const { i18n } = useTranslation();
-  	const { darkModle, setDarkModle, setProfiles, profiles } = useDaemonContext();
+  	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading, setBeamio } = useDaemonContext();
  
   	let handlePassportProcess = false
 	let secretPhrase: string | null = null;
@@ -35,6 +35,7 @@ function App() {
 	let referrals = ''
 
   	const init = async () => {
+		console.log(isInitialLoading)
 		const profiles = await createOrGetWallet(secretPhrase, false, referrals, ChannelPartners)
 		setProfiles(profiles)
 
@@ -42,21 +43,35 @@ function App() {
 		if (!temp || !profiles ) {
 			return
 		}
+
 		const profile = temp.profiles[0]
 
 
-		const bo = temp?.beamio
-
+		let bo: beamio = temp?.beamio
+		if (!bo) {
+			bo = {
+				accountName: '',
+				image: '',
+				darkTheme: false,
+				isFaucet: false
+			}
+			temp.beamio = bo
+		}
 		setDarkModle(bo.darkTheme)
+		setBeamio (bo)
 		if (!bo.isFaucet && profile?.keyID) {
 			const res = await getFaucet(profile?.keyID)
 			if (res) {
 				bo.isFaucet = true
+				setIsInitialLoading(true)
 				setCoNET_Data(temp)
 				await storeSystemData()
 
 			}
+		} else {
+			setIsInitialLoading(false)
 		}
+		
 
 		console.log (temp)
   	}

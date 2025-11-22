@@ -76,7 +76,7 @@
 	"comp-comm-privatekey": "Private Key (Keep Secure)",
 	"comp-comm-RecoveryPhrase": "Backup Your Account Info Link",
 	"comp-comm-RecoveryPhrase-info": "This is your exclusive Silent Pass account info link, containing your wallet private key and associated asset data.Please back it up securely — once lost or leaked, it cannot be recovered.",
-	"comp-comm-Send": "Send",
+	"comp-comm-Send": "Transactions",
 	"comp-comm-Refresh": "Refresh",
 	"comp-comm-Refreshing": "Refreshing...",
 	"comp-comm-Claim": "Redeem Now",

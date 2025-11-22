@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react"
+import { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle, memo } from "react"
 // import {formatAmountReadable, generateCODE, formatWithThousands, getBalance} from '../util/utils'
 
 import HumanReadableAmount from './HumanReadableAmount'
@@ -8,14 +8,13 @@ import cashcodeIcon from '@/components/assets/32x32.svg'
 import base_ex from '@/components/assets/base-ex.svg'
 import {ethers} from 'ethers'
 import {ConformSignInfo} from '../Send/conformX402Sign'
-import {formatAmountReadable, formatWithThousands, generateCODE} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, generateCODE, getBalance} from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
 import { CoNET_Data } from "@/utils/globals"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import ReceiveOverlay from '@/pages/Send/ReceiveOverlay'
 import {LinkHistoryTable} from './history'
-
-
+import CheckInputSection from './CheckInputSection'
 
 
 
@@ -62,12 +61,13 @@ const copy = async (text: string): Promise<void> => {
 
 
 const Check = forwardRef<CheckHandle, Props>(function Check({
-
 	defaultAmount = 1.0,
 	validityDays = 7,
 	cancellable = true
 }: Props, ref) {
 
+	const MemoizedHistoryTable = memo(LinkHistoryTable)
+	const MemoizedReadableAmount = memo(HumanReadableAmount)
 
 	const { profiles } = useDaemonContext()
 	const [amount, setAmount] = useState<string>(defaultAmount.toFixed(2))
@@ -87,9 +87,12 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 	const [explorerUrl] = useState<string>('')
 	const [ccAccountUSDC_Balance, setCcAccountUSDC_Balance] = useState(0)
 	const [signx402Show, setSignx402Show] = useState(false)
+	const [showIssue, setShowIssue] = useState(false)
 	const [requestUrl, setRequestUrl] = useState('')
 	const [messageData, setMessageData] = useState()
 	const [processMode, setProcessMode] = useState<'check'|'link'>('check')
+	const [myAddress, setMyAddress] = useState('')
+	const [usdcAmount, setUsdcAmount] = useState(0)
 
 	const showCheck = ((!process && !error) || processMode === 'check')
 	const showLink = ((!process && !error) || processMode === 'link')
@@ -101,9 +104,44 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 	// 若 count === 1 → 只有一个按钮 → w-full
 	const btnWidth = count === 2 ? "w-1/2" : "w-full"
 
-	const fetchUsdcBalance = async () => {
 
-	}
+	const getBa = async () => {
+
+		
+		const temp = CoNET_Data?.profiles?.[0]
+		if (!temp) return
+		if (!temp.keyID) return
+		setMyAddress(temp.keyID)
+	
+			
+			const _ba = await getBalance(temp.keyID)
+			if (!_ba) return
+			const ba = _ba
+			const eth = Number(ba.eth)
+			const ethUsd = eth * Number(ba.oracle.eth.eth)
+	
+			const usdc = Number(ba.usdc)
+			setUsdcAmount(usdc)
+	
+		}
+
+	useEffect(() => {
+		getBa()
+	}, [myAddress])
+
+	const { fee, net } = useMemo(() => {
+		const amt = Number(String(amount).replace(/,/g, "")) || 0
+
+		// 0.8% 手续费
+		let feeVal = amt * 0.008
+
+		// 最低 0.02，最高 2.00
+		feeVal = Math.max(0.02, Math.min(feeVal, 2.00))
+
+		const netVal = Math.max(amt - feeVal, 0)
+
+		return { fee: feeVal, net: netVal }
+	}, [amount])
 
 	useImperativeHandle(ref, () => ({
 		getValues: () => ({
@@ -127,16 +165,17 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 
 	}, [error])
 	
-
-
 	useEffect(() => {
-		fetchUsdcBalance()
+
 	}, [])
+
 
 	const handleNoteFocus = () => {
 		// 若当前是默认文案，则清空便于输入
-		if (note === note) setNote("")
+		if (note === defaultNote) setNote("")
 	}
+
+	const insufficient = Number(amount) > usdcAmount
 
 	const handleNoteBlur = () => {
 		// 若为空或只含空格，恢复默认文案
@@ -153,23 +192,7 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 	const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-	const { fee, net } = useMemo(() => {
-		const amt = Number(String(amount).replace(/,/g, "")) || 0
-		
-		// 0.8% fee
-		let feeVal = amt * 0.008
 
-		// 最低 0.02
-		if (feeVal < 0.02) feeVal = 0.02
-
-		// 最高 2.00
-		if (feeVal > 2.00) feeVal = 2.00
-
-		// net = amount - fee，不得低于0
-		const netVal = Math.max(amt - feeVal, 0)
-
-		return { fee: feeVal, net: netVal }
-	}, [amount])
 
 	const readableNet = useMemo(() => {
 		return formatAmountReadable(Number(net || 0), 'en', 'usd')
@@ -207,7 +230,7 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 		
 		const check = handleBlur()
 		
-		if (process||!check) {
+		if (process||!check||insufficient) {
 			return
 		}
 
@@ -314,6 +337,110 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 	}
 
 
+	const ShowBarcode = () => {
+		const url = new URL(result)
+
+		const barcodeAmount = Number(url.searchParams.get('amount'))
+		return (
+			<>
+			<div className="rounded-3xl p-5 md:p-6 max-w-md mx-auto">
+				{result && (
+				<div className="mt-6 flex flex-col items-center gap-3">
+					 {/* 右上角关闭按钮 */}
+						<button
+							className="
+							absolute top-0 right-0
+							w-8 h-8 rounded-full flex items-center justify-center
+							text-lg leading-none
+							bg-black/5 dark:bg-white/10
+							m-3
+							"
+							onClick={() => {
+								setShowIssue(false)
+								setResult('')
+							}}
+						>
+							✕
+						</button>
+					<h3 className="text-3xl font-extrabold mb-6 text-slate-900 dark:text-slate-100">
+						{processMode === 'link' ? 'Payment Link' : 'Check Link'}
+					</h3>
+					
+					<div className="p-3 rounded-2xl border border-current/15 shadow-sm bg-transparent mx-auto">
+					<QRCodeCanvas
+						value={result || ""}
+						size={160}
+						includeMargin
+						imageSettings={{
+							src: cashcodeIcon,
+							height: 36,
+							width: 36,
+							excavate: true,
+						}}
+					/>
+
+					<div className="flex justify-center items-center gap-1 text-[13px] mt-0 pt-0 leading-none">
+						<span className="uppercase text-xs text-current/60">Amount</span>
+						<span className="font-mono font-semibold text-xs text-current/80">
+						{formatMoney(barcodeAmount)}
+						</span>
+					</div>
+					</div>
+
+					<div className="flex gap-2 mt-2">
+					<a
+						href={result}
+						target="_blank"
+						rel="noreferrer"
+						className="
+						border border-current
+						px-3 py-1 text-xs rounded-xl
+						transition
+						hover:bg-black/10 dark:hover:bg-white/10
+						"
+					>
+						Open
+					</a>
+
+					<button
+						onClick={() => copy(result!)}
+						className="
+						border border-current
+						px-3 py-1 text-xs rounded-xl
+						transition
+						hover:bg-black/10 dark:hover:bg-white/10
+						"
+					>
+						Copy
+					</button>
+
+					{explorerUrl && (
+						<a
+						href={explorerUrl}
+						target="_blank"
+						rel="noreferrer"
+						className="
+							border border-current
+							px-3 py-1 text-xs rounded-xl
+							hover:bg-current/10
+							transition
+							inline-flex items-center justify-center
+						"
+						>
+						<img src={base_ex} alt="Explorer" className="w-4 h-4" />
+						</a>
+					)}
+					</div>
+
+				</div>
+				)}
+			</div>
+			</>
+					)
+	}
+	
+
+
 	return (
 			<div
 				className=""
@@ -325,218 +452,192 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 					processError={error}
 					processing={process}
 					/>
-				) : !result ? (
-					<div>
-						{/* 备注输入栏 */}
-						<div className="">
+					) : !result ? (
+						<div>
+							{
+								showIssue && (
+									<div className="flex items-center justify-end px-5 pt-5 pb-2">
+										<button
+										className="w-8 h-8 rounded-full flex items-center justify-center 
+													text-lg leading-none 
+													bg-black/5 dark:bg-white/10"
+										onClick={() => {
+											setShowIssue(false)
+										}}
+										>
+										✕
+										</button>
+									</div>
+								)
+							}
 							
-							<input
-								type="text"
-								value={note}
-								onChange={e => setNote(e.target.value)}
-								onFocus={handleNoteFocus}
-								onBlur={handleNoteBlur}
-								placeholder={defaultNote}
-								className="
-												w-full border-0 border-b border-current/25
-								bg-transparent outline-none
-								text-xs text-current pb-0
-								placeholder:text-current/45
-								focus:border-current/60
-								transition-colors
-							"
-							/>
-						</div>
+							{/* 备注输入栏 */}
 
-						<div className="rounded-3xl p-5 md:p-6 max-w-md">
-							{/* 金额输入 + 人类可读 */}
-							
-							<input
-								ref={inputRef}
-								value={amount}
-								inputMode="decimal"
-								type="text"
-								onChange={e => setAmount(e.target.value)}
-								onBlur={handleBlur}
-								placeholder="0.00"
-								style={{
-									fontSize: "45px",
-									textAlign: "right",
-									transition: "all 0.2s ease",
-								}}
-								className="
-									w-full bg-transparent outline-none
-									leading-none font-semibold tracking-wide
-									text-current
-								"
-							/>
-
-							<HumanReadableAmount readable={readable} lang="en" />
-
-							
-						</div>
-
-						{error ? (
-							<div
-							className="mt-2 text-[13px] text-red-600"
-							aria-live="polite"
-							>
-							{error}
-							</div>
-						) : null}
-
-						{/* 实际到账 */}
-						<div className="flex items-baseline justify-between">
-							<span className="text-sm text-current/70">Receive</span>
-							<span className="text-[20px] font-semibold text-current">
-							{formatMoney(net)} {currency}
-							</span>
-						</div>
-
-						{/* 底部提示行 */}
-						<div className="text-xs text-current/60 text-right -mt-1">
-							Fee: {formatMoney(fee)} {currency}
-						</div>
-
-						<div className="mt-2 flex items-center justify-between text-sm text-current/70">
-							<span>Valid for {validityDays} days</span>
-							<span>{cancellable ? "Cancellable" : "\u00A0"}</span>
-						</div>
-
-						{/* 按钮：Generate / Show */}
-						{!result && (
-							<div className="flex gap-3 mt-4 mb-4">
-
-							{showCheck && (
-								<div className={btnWidth}>
-								<AppButton
-									variant="primary"
-									loading={process}
-									errorText={error}
-									fullWidth
-									className="my-0"
-									onClick={() => generateCashCodeCCWallet()}
-								>
-									Generate Check
-								</AppButton>
-								</div>
-							)}
-
-							{showLink && (
-								<div className={btnWidth}>
-								<AppButton
-									variant="secondary"
-									loading={process}
-									errorText={error}
-									fullWidth
-									className="my-0"
-									onClick={() => issueRequestLink()}
-								>
-									Request Link
-								</AppButton>
-								</div>
-							)}
-
-							</div>
-						)}
-						<div className="flex-1 min-h-0">
-							<LinkHistoryTable />
-						</div>
-
-					</div>
-				) : (
-					<>
-						<div className="rounded-3xl p-5 md:p-6 max-w-md">
-
-							{/* 链接 + 二维码 + 操作按钮 */}
-							{result && (
-							<div className="mt-6 flex flex-col items-center gap-3">
-								{/* 二维码 */}
-								<h3
-								className="
-									text-3xl font-extrabold
-									mb-6
-									text-slate-900 dark:text-slate-100
-								"
-								>
-								{processMode === 'link' ? 'Payment Link' : 'Check Link'}
-								</h3>
-								<div className="p-3 rounded-2xl border border-current/15 shadow-sm bg-transparent">
-								<QRCodeCanvas
-									value={result || ""}
-									size={160}
-									includeMargin
-									imageSettings={{
-									src: cashcodeIcon,
-									height: 36,
-									width: 36,
-									excavate: true,
-									}}
+							<div >
+								
+								<input
+									type="text"
+									value={note}
+									onChange={e => setNote(e.target.value)}
+									onFocus={handleNoteFocus}
+									onBlur={handleNoteBlur}
+									placeholder={defaultNote}
+									className={`
+										w-full bg-transparent outline-none
+										text-base text-current pb-0
+										placeholder:text-current/45
+										border-0 border-b
+										border-slate-400/30 dark:border-white/10
+										focus:border-slate-600/60 dark:focus:border-white/20
+										transition-colors
+										${showIssue ? "opacity-60 cursor-not-allowed" : ""}
+									`}
 								/>
-								<div className="flex justify-center items-center gap-1 text-[13px] mt-0 pt-0 leading-none">
-									<span className="uppercase text-xs text-current/60">
-										Amount
-									</span>
-									<span className="font-mono font-semibold text-xs text-current/80">
-										{formatMoney(net)}
-									</span>
-								</div>
-								</div>
-
-								{/* 按钮区 */}
-								<div className="flex gap-2 mt-2">
-									<a
-										href={result}
-										target="_blank"
-										rel="noreferrer"
-										className="
-											border border-current
-											px-3 py-1 text-xs rounded-xl
-											transition
-											hover:bg-black/10 dark:hover:bg-white/10
-										"
-									>
-										Open
-									</a>
-
-									<button
-										onClick={() => copy(result!)}
-										className="
-											border border-current
-											px-3 py-1 text-xs rounded-xl
-											transition
-											hover:bg-black/10 dark:hover:bg-white/10
-										"
-									>
-										Copy
-									</button>
-								{explorerUrl && (
-									<a
-									href={explorerUrl}
-									target="_blank"
-									rel="noreferrer"
-									className="
-										border border-current
-										px-3 py-1 text-xs rounded-xl
-										hover:bg-current/10
-										transition
-										inline-flex items-center justify-center
-									"
-									>
-									<img
-										src={base_ex}
-										alt="Explorer"
-										className="w-4 h-4"
-									/>
-									</a>
-								)}
-								</div>
 							</div>
-							)}
+
+							<div className="rounded-3xl p-5 md:p-6 max-w-md">
+								{/* 金额输入 + 人类可读 */}
+								
+								<input
+									ref={inputRef}
+									value={amount}
+									inputMode="decimal"
+									type="text"
+									onChange={(e) => {
+										console.log('change', e.target.value)
+										setAmount(e.target.value)
+
+									}}
+									
+									placeholder="0.00"
+									style={{
+										fontSize: "45px",
+										textAlign: "right",
+										transition: "all 0.2s ease",
+									}}
+									className={`
+										w-full bg-transparent outline-none
+										leading-none font-semibold tracking-wide
+										text-inherit dark:text-inherit
+										${showIssue ? "opacity-60 cursor-not-allowed" : ""}
+									`}
+								/>
+
+								<MemoizedReadableAmount readable={readable} lang="en" />
+
+								
+							</div>
+
+							{error ? (
+								<div
+								className="mt-2 text-[13px] text-red-600"
+								aria-live="polite"
+								>
+								{error}
+								</div>
+							) : null}
+
+							{/* 实际到账 */}
+							<div className="flex items-baseline justify-between">
+								<span className="text-sm text-current/70">Receive</span>
+								<span className="text-[20px] font-semibold text-current">
+								{formatMoney(net)} {currency}
+								</span>
+							</div>
+
+							{/* 底部提示行 */}
+							<div className="text-xs text-current/60 text-right -mt-1">
+								Fee: {formatMoney(fee)} {currency}
+							</div>
+
+							<div className="mt-2 flex items-center justify-between text-sm text-current/70">
+								<span>Valid for {validityDays} days</span>
+								<span>{cancellable ? "Cancellable" : "\u00A0"}</span>
+							</div>
+
+							{/* 按钮：Generate / Show */}
+							{ showIssue ? (
+
+										<div className="flex gap-3 mt-4 mb-4">
+
+										{showCheck && (
+											<div className={btnWidth}>
+												<AppButton
+												variant={insufficient ? 'secondary' : 'primary'}
+												loading={process}
+												errorText={error}
+												disabled={insufficient}         // 🔥 禁用按钮
+												fullWidth
+												className="my-0"
+												onClick={() => generateCashCodeCCWallet()}
+												>
+												{insufficient ? 'Insufficient balance' : 'Generate Check'}
+												</AppButton>
+											</div>
+										)}
+
+										{showLink && (
+											<div className={btnWidth}>
+											<AppButton
+												variant="primary"
+												loading={process}
+												errorText={error}
+												fullWidth
+												className="my-0"
+												onClick={() => issueRequestLink()}
+											>
+												Request Link
+											</AppButton>
+											</div>
+										)}
+
+										</div>
+									//			Next
+									): (
+
+										<>
+											<AppButton
+												variant="primary"
+												loading={process}
+												errorText={error}
+												fullWidth
+												className="my-0"
+												onClick={() => {
+													setShowIssue(true)
+												}}
+											>
+												Next
+											</AppButton>
+										
+										</>
+									)
+								}
+								{
+									!showIssue && (
+										<div className="flex-1 min-h-0 flex flex-col px-4 pb-4">
+											{/* 你原来这层 */}
+											<div className="flex-1 min-h-0 mt-6">
+												<LinkHistoryTable itemClock={item => {
+												// 这里拿到 LinkHistork 的完整数据
+												console.log('clicked item', item)
+												// do something...
+												const params = new URLSearchParams({amount: item.amount.toFixed(2), code: item.hash, note: item.note, address: myAddress }).toString()
+												const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
+												setResult(requestUrl)
+												setShowIssue(true)
+											}} />
+											</div>
+										</div>
+									)
+								}
+							
+		
+
 						</div>
-					</>
+				) : (
+					<ShowBarcode />
 				)}
-				</div>
+			</div>
 
 	)
 })

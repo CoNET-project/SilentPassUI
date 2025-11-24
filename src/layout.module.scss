@@ -13,6 +13,8 @@
     flex: 1;
     height:calc(100% - 50px);
     overflow: auto;
+	overflow: hidden;           // ⬅️ 根页面不允许滚动
+  	overscroll-behavior: none;  // ⬅️ 禁止橡皮筋传到 viewport
 }
 .bottom {
     flex: 0;

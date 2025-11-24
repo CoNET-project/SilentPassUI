@@ -6,7 +6,6 @@ import CheckInBtn from '@/components/Wallet/checkInBtn/CheckInBtn';
 import Brief from '@/components/Wallet/brief/Brief';
 import Integral from '@/components/Wallet/integral/Integral';
 import MainWallet from '@/components/Wallet/mainWallet/MainWallet';
-import SPWallet from '@/components/Wallet/spWallet/SPWallet';
 import Genesis from '@/components/Wallet/genesis/Genesis';
 import Referrals from '@/components/Wallet/referrals/Referrals';
 import Passport from '@/components/Wallet/passport/Passport';
@@ -60,7 +59,7 @@ const WalletDetail = ({}) => {
                     <Integral />
                     <MainWallet />
                     <Backups />
-                    <SPWallet stakeVisible={stakeVisible} setStakeVisible={setStakeVisible} />
+                   
                     <Genesis />
                     <Passport />
                     <Referrals />

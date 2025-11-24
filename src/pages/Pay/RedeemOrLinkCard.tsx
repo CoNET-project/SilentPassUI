@@ -1,16 +1,19 @@
 import { QRCodeCanvas } from 'qrcode.react'
 import { Copy, ExternalLink } from 'lucide-react'
 import bIcon from '@/components/assets/32x32.svg'
+import { X } from 'lucide-react'
 
 type RedeemOrLinkCardProps = {
   isPay: boolean                     // true = Redeem code 模式, false = Payment link 模式
   amt: number                        // 金额（用于 Redeem 侧显示）
   note?: string                      // 备注
-  securityCode?: string | null       // 安全码
+  securityCode?: string       // 安全码
   successUrl: string                 // 支付链接 / 二维码内容
   tip: number                        // tip 金额
-  redeemCode: string                 // Redeem code 文本
-  onReset: () => void                // 关闭按钮（✕）
+  redeemCode?: string                 // Redeem code 文本
+  onReset: () => void                // 关闭按钮（✕
+  isCompleted: boolean
+  createdAt: number
 }
 
 // 0.8% fee, min 0.02, max 2 USDC
@@ -25,11 +28,13 @@ export const RedeemOrLinkCard = ({
 	isPay,
 	amt,
 	note,
-	securityCode,
+	securityCode='',
 	successUrl,
 	tip,
-	redeemCode,
+	redeemCode = '',
 	onReset,
+	isCompleted,
+	createdAt
 }: RedeemOrLinkCardProps) => {
 	
   const handleCopyLink = async () => {
@@ -75,23 +80,28 @@ export const RedeemOrLinkCard = ({
         flex-1 flex flex-col gap-4
       "
     >
-      {/* Close button: top-right */}
-      <div className="absolute top-3 right-3">
-        <button
-          onClick={onReset}
-          className="
-            w-7 h-7 rounded-full 
-            flex items-center justify-center 
-            text-[14px] 
-            bg-slate-200/60 dark:bg-white/10 
-            text-slate-600 dark:text-slate-300
-            hover:bg-slate-300/70 dark:hover:bg-white/20
-            transition
-          "
-        >
-          ✕
-        </button>
-      </div>
+{/* Close button: top-right, iOS frosted style */}
+		<div className="absolute -top-4 -right-4 z-30">
+		<button
+			type="button"
+			onClick={onReset}
+			className="
+			w-9 h-9
+			rounded-2xl
+			flex items-center justify-center
+			shadow-lg
+			border border-white/40
+			bg-white/20 dark:bg-slate-900/30
+			backdrop-blur-md
+			text-slate-700 dark:text-slate-100
+			hover:bg-white/30 dark:hover:bg-slate-900/45
+			transition
+			"
+			aria-label="Close"
+		>
+			<X className="w-4 h-4" />
+		</button>
+		</div>
 
       {/* === 内容区 === */}
       {isPay ? (
@@ -165,9 +175,37 @@ export const RedeemOrLinkCard = ({
         </>
       ) : (
         <>
-          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-            Payment link
-          </div>
+			{/* Header row: Created date | Payment link | Status */}
+			<div className="
+				mb-1
+				flex items-center justify-between
+				text-[11px]
+				text-slate-500 dark:text-slate-400
+			">
+
+			{/* 左边：创建时间 */}
+			<div className="flex-1 text-left">
+				{new Date(createdAt).toLocaleString()}
+			</div>
+
+			{/* 中间：Payment link */}
+			<div className="flex-1 text-center font-medium text-slate-600 dark:text-slate-300">
+				Payment link
+			</div>
+
+			{/* 右边：状态 */}
+			<div className="flex-1 text-right">
+				{isCompleted ? (
+				<span className="text-green-600 dark:text-green-400 font-medium">
+					Completed
+				</span>
+				) : (
+				<span className="text-amber-600 dark:text-amber-400 font-medium">
+					Pending
+				</span>
+				)}
+			</div>
+			</div>
 
           <div
             className="

@@ -40,7 +40,7 @@ const Footer = ({}) => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const location = useLocation();
-    const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle} = useDaemonContext();
+    const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle, isInitialLoading} = useDaemonContext();
     const { pathname } = location;
 
 
@@ -137,23 +137,29 @@ useEffect(() => {
     ]
     
     return (
-        <div className={styles.footer}>
-            <TabBar safeArea activeKey={pathname} onChange={value => setRouteActive(value)}>
-                {tabs.map(item => (
-                    <TabBar.Item key={item.key} icon={item.icon} title={item.title} badge={item.badge} />
-                ))}
-            </TabBar>
+		<>
+		{
+			!isInitialLoading &&
+				<div className={styles.footer}>
+					<TabBar safeArea activeKey={pathname} onChange={value => setRouteActive(value)}>
+						{tabs.map(item => (
+							<TabBar.Item key={item.key} icon={item.icon} title={item.title} badge={item.badge} />
+						))}
+					</TabBar>
 
-			 {/* 悬浮在 TabBar 上方的 BLogo */}
-			<div className={styles.payCenterLogo} onClick={() => setRouteActive('/pay')}>
-				{darkModle ? <BLogo style={{ width: '4rem', height: '4rem' }} /> : <BLogoLight style={{ width: '4rem', height: '4rem' }} />}
-			</div>
+					{/* 悬浮在 TabBar 上方的 BLogo */}
+					<div className={styles.payCenterLogo} onClick={() => setRouteActive('/pay')}>
+						{darkModle ? <BLogo style={{ width: '4rem', height: '4rem' }} /> : <BLogoLight style={{ width: '4rem', height: '4rem' }} />}
+					</div>
 
-            <Subscription />
-            <Status />
-            <Filter visible={ruleVisible} setVisible={setRuleVisible} />
-            <AirdropTask />
-        </div>
+					<Subscription />
+					<Status />
+					<Filter visible={ruleVisible} setVisible={setRuleVisible} />
+					<AirdropTask />
+				</div>
+		}
+		</>
+        
     )
 }
 

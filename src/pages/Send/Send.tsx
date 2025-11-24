@@ -293,7 +293,8 @@ const Send = ({}) => {
   return (
     
       <div className={styles.home}>
-			<div className="px-5 pt-6 flex flex-col gap-2">
+		
+			{/* <div className="px-5 pt-6 flex flex-col gap-2">
 				<button
 					type="button"
 							className={styles.headerBtn}
@@ -304,10 +305,13 @@ const Send = ({}) => {
 						{darkModle ? <LightDrakMode /> : <LightDrakModeBlue />}
 					</span>
 				</button>
+
+				
 			</div>
+			 */}
 			<div className="flex-1 min-h-0 flex flex-col px-4 pb-4">
-				{/* 你原来这层 */}
-				<div className="flex-1 min-h-0 mt-6">
+				
+				<div className="flex-1 min-h-0">
 					<SendHistoryTable />
 				</div>
 			</div>

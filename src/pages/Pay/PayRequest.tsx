@@ -127,8 +127,8 @@ export default function BeamioPayRequest() {
 
 	useEffect(() => {
 		if (step === "processing") {
-		const timer = setTimeout(() => setStep("generated"), 1500)
-		return () => clearTimeout(timer)
+			const timer = setTimeout(() => setStep("generated"), 1500)
+			return () => clearTimeout(timer)
 		}
 	}, [step])
 
@@ -162,6 +162,11 @@ export default function BeamioPayRequest() {
 		}
 		setMode('request')
 		setProcessing(true)
+
+		const numberAmount = Number(sendAmount)
+		if (isNaN(numberAmount) || numberAmount <= 0.02) {
+			return 
+		}
 			
 			/**
 			 * 
@@ -179,10 +184,12 @@ export default function BeamioPayRequest() {
 	
 		const profile: profile = profiles[0]
 		const code = generateCODE ('')
+
 		const fixedAmount = ethers.parseUnits(sendAmount, 6).toString()
 		const params = new URLSearchParams({amount: fixedAmount, code: code.hash, note, address: profile.keyID }).toString()
+		const showparams = new URLSearchParams({amount: numberAmount.toFixed(2), code: code.hash, note, address: profile.keyID }).toString()
 		const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
-		const showUrl = `${showPaylinkSite}?${params}`
+		const showUrl = `${showPaylinkSite}?${showparams}`
 
 		// setTimeout(() => {
 		// 	setProcessing(false)
@@ -196,8 +203,8 @@ export default function BeamioPayRequest() {
 			if (res.status !== 200) {
 				return setProcessError(`Beamio RPC Error!`)
 			}
-			
-			
+			console.log(note)
+			setSuccessUrl(showUrl)
 			setStep('generated')
 			
 
@@ -206,6 +213,68 @@ export default function BeamioPayRequest() {
 			return setProcessError(`Beamio RPC Error!`)
 		}
 		
+	}
+
+	const generateCheck = async () => {
+	
+		const numberAmount = Number(sendAmount)
+			if (isNaN(numberAmount) || numberAmount <= 0.02) {
+				return 
+			}
+
+		// const code = generateCODE(securityCode.replace('-',''))
+		
+		
+		// const params = new URLSearchParams({amount:price, note, secureCode, hash: code.hash, lang}).toString()
+		// const path = `/api/cashCode?${params}`
+		
+
+		// const remote = "https://api.settleonbase.xyz"
+		// const local = "http://localhost:4088" 
+		// const url = (isLocal ? local : remote) + path
+
+		// let fetchWithPayment
+		// if (WallctClient) {
+		// 	try {
+					
+		// 		fetchWithPayment = wrapFetchWithPayment(fetch, WallctClient, ethers.parseUnits(price, 6))
+
+		// 		const response = await fetchWithPayment(
+		// 			url, {
+		// 				method: 'GET'
+		// 			}
+		// 		)
+		// 		if (response?.ok) {
+					
+		// 			const data = await response.json()
+		// 			if (data?.USDC_tx) {
+						
+		// 				// setExplorerUrl(`https://basescan.org/tx/${ data.USDC_tx}`)
+		// 				console.log("Purchase success:", response)
+		// 				const paramsRemote = new URLSearchParams({hash: code.hash, lang}).toString()
+		// 				const realUrl = `${origin}?${paramsRemote}`
+		// 				setResult(realUrl)
+		// 			}
+					
+
+		// 		} else {
+		// 			// showTermAlert("CashCode Response error", false)
+		// 			console.log("❌ Response error:", response)
+					
+		// 		}
+		// 		setProcess(false)
+		// 	} catch (ex: any) {
+		// 		// showTermAlert("CashCode Response error", false)
+		// 		console.log(ex.message)
+		// 		setProcess(false)
+		// 	}
+		// 	return 
+		// }
+
+		
+		// setRequestUrl(url)
+		// setSignx402Show(true)
+
 	}
 	
 
@@ -372,7 +441,6 @@ export default function BeamioPayRequest() {
 		}
 		
 				
-				
 		const params = new URLSearchParams({amount: sendAmount, toAddress: sendTo, note }).toString()
 		const path = `/api/BeamioTransfer?${params}`
 		const requestEndpoint = aptEndpoint + path
@@ -390,6 +458,7 @@ export default function BeamioPayRequest() {
 				setProcessing(false)
 				return setProcessError('RPC Error!')
 			}
+
 			const { x402Version, accepts } = await response.json()
 			const MessageData = accepts[0]
 			MessageData.reqUrl = requestEndpoint
@@ -422,9 +491,9 @@ export default function BeamioPayRequest() {
 		}
 	}
 
-  const handleResetToForm = () => {
-    setStep("form");
-  };
+	const handleResetToForm = () => {
+		setStep("form");
+	};
 
 
 
@@ -444,7 +513,7 @@ export default function BeamioPayRequest() {
 						</h1>
 					</div>
 
-					<div className="text-right">
+					<div className="text-right ">
 						<p className="text-[12px] font-medium text-slate-900 dark:text-slate-100">
 						USDC {formatWithThousands(usdcToUSD)}
 						</p>
@@ -549,9 +618,6 @@ export default function BeamioPayRequest() {
 		)
 	}
 
-
-
-
 	{
 		(step !== 'x402Sign' && step !== 'success') && (
 			<div className="flex-1 flex flex-col">
@@ -584,10 +650,7 @@ export default function BeamioPayRequest() {
 							</div>
 						</div>
 
-						{/* Tip (Request only, optional) */}
-						{/* {!isPay && <TipInput />} */}
 
-						{/* Security code (Pay only, optional) */}
 						{isPay && (
 						<div className="mb-5">
 							<div className="flex items-baseline justify-between mb-1">
@@ -888,250 +951,12 @@ export default function BeamioPayRequest() {
 				)}
 
 				{/* GENERATED STEP */}
-				{step === "generated" && (
-					<div
-						className="
-						 relative
-						rounded-3xl 
-						bg-slate-50/80 dark:bg-slate-900/60 
-						border border-slate-200/80 dark:border-slate-700/80 
-						px-4 py-4 
-						flex-1 flex flex-col gap-4
-					"
-					>
-					{/* Close button: top-right */}
-					<div className="absolute top-3 right-3">
-						<button
-						onClick={handleResetToForm}
-						className="
-							w-7 h-7 rounded-full 
-							flex items-center justify-center 
-							text-[14px] 
-							bg-slate-200/60 dark:bg-white/10 
-							text-slate-600 dark:text-slate-300
-							hover:bg-slate-300/70 dark:hover:bg-white/20
-							transition
-						"
-						>
-						✕
-						</button>
-					</div>
-
-					{/* === 原有卡片内容保持不变 === */}
-
-					{isPay ? (
-						<>
-							<div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-								Redeem code
-							</div>
-							<div
-								className="
-								h-10 rounded-xl 
-								bg-white/70 dark:bg-slate-900/70 
-								border border-slate-200/80 dark:border-slate-700 
-								flex items-center px-3 justify-between 
-								text-xs font-mono 
-								text-slate-800 dark:text-slate-100
-								"
-							>
-								<span>50BaAO2bH4Gi82QEwdzMrJ</span>
-								<button className="text-[11px] font-medium text-sky-600 dark:text-sky-400">
-								Copy
-								</button>
-							</div>
-
-							<div
-								className="
-								mt-2 rounded-2xl 
-								bg-white/80 dark:bg-slate-900/70 
-								border border-slate-200/80 dark:border-slate-700 
-								px-4 py-3 text-center
-								"
-							>
-								<div className="text-sm font-semibold text-slate-900 dark:text-slate-50 mb-1">
-									{amt.toFixed(2)} USDC
-								</div>
-								<div className="text-[11px] text-slate-500 dark:text-slate-400">
-									Zero and {Math.round(amt * 100).toString().padStart(2, "0")} / 100 dollars
-								</div>
-							</div>
-
-							<div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-								Security code
-							</div>
-							<div className="text-sm text-slate-900 dark:text-slate-100 mb-2">
-								{securityCode ? securityCode : "Not set"}
-							</div>
-
-							{note && (
-								<>
-									<div className="text-xs text-slate-500 dark:text-slate-400 mt-3">
-										Notes
-									</div>
-
-									<div
-									className="
-										mt-1 rounded-2xl
-										bg-white/80 dark:bg-slate-900/70
-										border border-slate-200/80 dark:border-slate-700
-										px-4 py-3
-										text-sm text-slate-900 dark:text-slate-100
-										leading-snug
-									"
-									>
-										{note}
-									</div>
-								</>
-								)}
-						</>
-					) : (
-						<>
-						<div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-							Payment link
-							</div>
-
-							<div
-							className="
-								rounded-xl 
-								bg-white/80 dark:bg-slate-900/70 
-								border border-slate-200/80 dark:border-slate-700 
-								px-3 py-2 
-								text-[11px] text-slate-600 dark:text-slate-300 
-								leading-snug 
-								flex items-start gap-2
-							"
-							>
-							{/* 左侧 URL 文本 */}
-							<div className="flex-1 break-all pr-1">
-								{successUrl}
-							</div>
-
-							{/* 右侧竖排 icon 区域 */}
-							<div className="flex flex-col items-center gap-1 ml-1 pt-0.5">
-
-								{/* Copy icon button */}
-								<button
-								type="button"
-								onClick={handleCopySuccessUrl}
-								className="
-									w-6 h-6 rounded-full
-									flex items-center justify-center
-									bg-slate-200/70 text-slate-700 
-									dark:bg-slate-800/80 dark:text-slate-200
-									hover:bg-slate-300/80 dark:hover:bg-slate-700
-									transition
-								"
-								title="Copy link"
-								>
-								<Copy className="w-3.5 h-3.5" />
-								</button>
-
-								{/* Open icon button */}
-								<button
-								type="button"
-								onClick={() => successUrl && window.open(successUrl, '_blank')}
-								className="
-									w-6 h-6 rounded-full
-									flex items-center justify-center
-									bg-slate-200/70 text-slate-700 
-									dark:bg-slate-800/80 dark:text-slate-200
-									hover:bg-slate-300/80 dark:hover:bg-slate-700
-									transition
-								"
-								title="Open link"
-								>
-								<ExternalLink className="w-3.5 h-3.5" />
-								</button>
-
-							</div>
-							</div>
-
-						{note && (
-							<div
-								className="
-								mt-3 rounded-2xl
-								bg-white/80 dark:bg-slate-900/70
-								border border-slate-200/80 dark:border-slate-700
-								px-4 py-3
-								text-slate-900 dark:text-slate-100
-								space-y-1.5
-								"
-							>
-								{/* Note 标题 */}
-								<div className="text-xs text-slate-500 dark:text-slate-400">
-								Notes
-								</div>
-
-								{/* Note 内容 */}
-								<div className="text-sm leading-snug whitespace-pre-wrap">
-								{note}
-								</div>
-							</div>
-						)}
-
-						<div
-							className="
-							mt-3 rounded-2xl 
-							bg-slate-100/80 dark:bg-slate-900/70 
-							border border-slate-200/80 dark:border-slate-700 
-							px-4 py-3 
-							text-xs text-slate-700 dark:text-slate-300 
-							space-y-1.5
-							"
-						>
-							<div className="flex items-center justify-between">
-							<span>Payer will pay</span>
-							<span>{requestGross > 0 ? requestGross.toFixed(2) : "0.00"} USDC</span>
-							</div>
-							{tip > 0 && (
-							<div className="flex items-center justify-between">
-								<span>Includes tip</span>
-								<span>{tip.toFixed(2)} USDC</span>
-							</div>
-							)}
-							<div className="flex items-center justify-between">
-							<span>You will receive</span>
-							<span>{requestNet.toFixed(2)} USDC</span>
-							</div>
-						</div>
-						</>
-					)}
-
-					{/* QR area */}
-					<div className="mt-4 flex flex-col items-center gap-2">
-						
-						       {/* QR placeholder */}
-								<div className="border border-black/20 rounded-xl p-3 bg-white text-center qrCard">
-										<QRCodeCanvas
-											value={successUrl}
-											size={160}
-											level="H"                      // 高容错，适合加 Logo
-											includeMargin={true}
-											bgColor="transparent"          // 如果你想透明也 OK
-											fgColor="#000"                 
-											imageSettings={{
-												src: bIcon,                  // 你的 Logo 图片
-												height: 40,
-												width: 40,
-												excavate: true               // 在中心挖空，Logo 更清晰
-											}}
-											className="rounded-lg inline-block"
-											/>
-
-										{/* ✅ WALLET 与地址一行显示，紧贴二维码 */}
-										<div className="flex justify-center items-center gap-1 text-[13px] mt-0 pt-0 leading-none">
-											<span className="uppercase text-black/50 font-medium tracking-wider text-xs" style={{ color: "#c0c0c0ff" }}>
-												Amount
-											</span>
-											<span className="font-mono text-black/50 font-semibold text-xs" >
-												{displayGeneratedAmount.toFixed(2)} USDC
-											</span>
-										</div>
-										
-								</div>
-					</div>
-					</div>
-				)}
+				{step === "generated" && <RedeemOrLinkCard createdAt={new Date().getTime()} isCompleted={false} isPay={isPay} amt={amt} successUrl={successUrl} tip={tip} note={note} onReset={() => {
+					setSendAmount('0')
+					setSuccessUrl('')
+					setNote('')
+					setStep('form')
+				}} />}
 			</div>
 		)
 	}

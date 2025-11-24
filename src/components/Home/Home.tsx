@@ -2,31 +2,78 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, generateCODE, getBalance} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, getFaucet} from '@/services/beamio'
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/Wallet/scanBtn/ScanButtonForB'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useNavigate } from "react-router-dom"
+import { createOrGetWallet, storeSystemData} from "@/services/wallets"
+
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 
 const Home = ({}) => {
-	const { profiles, setDarkModle, darkModle, beamio } = useDaemonContext()
+	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles,setBeamio } = useDaemonContext()
 	const navigate = useNavigate()
 	const hasActivity = false;
-	const hasClaimedAlphaReward = false;
+	
 	const [isSearchOpen, setIsSearchOpen] = useState(false)
 	const [myAddress, setMyAddress] = useState('')
 	const [usdcAmount, setUsdcAmount] = useState(0)
 	const [avatarName, setAvatarName] = useState('')
 	const [avatarImageData, setAvatarImageData] = useState<string | null>(null)
+	const [processing, setProcessing] = useState(false)
+	const [showGetFaucet, setShowGetFaucet] = useState(false)
+	const [show200OK, setShow200OK] = useState(false)
+	const [show403, setShow403] = useState(false)
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
 	)}`
+
+	const init = async () => {
+		
+		const profiles = await createOrGetWallet('', false, '', '')
+		setProfiles(profiles)
+
+		const temp = CoNET_Data
+		if (!temp || !profiles ) {
+			return
+		}
+
+
+
+		const bo: beamio = temp?.beamio || {
+			accountName: '',
+			image: '',
+			darkTheme: false,
+			isFaucet: false,
+			initialLoading: true
+		}
+		bo.initialLoading = true
+		temp.beamio = bo
+		if (bo.isFaucet) {
+			setShowGetFaucet(true)
+		}
+
+		setDarkModle(bo.darkTheme)
+		setBeamio (bo)
+		setCoNET_Data(temp)
+		storeSystemData()
+		
+		console.log (temp)
+  	}
+
+  	let first = true
+  	useEffect(() => {
+		if (first) {
+			first = false
+			init()
+		}
+  	}, [])
 
 	
 	const currentAvatarSrc = avatarImageData || avatarUrl
@@ -57,17 +104,23 @@ const Home = ({}) => {
 			setAvatarImageData(beamio.image)
 		}
 
-
 	
 	}
 
 	useEffect(() => {
+		const url = new URL(window.location.href)
+		const amt = url.searchParams.get('amount')||''
+		const code = url.searchParams.get('code')||''
+		if (amt && code && !power) {
+			return navigate('/Browser')
+		}
+
 		getBa()
 	}, [beamio])
 
 	return (
 		<div className="">
-			<div className="px-5 pt-6 flex flex-col gap-2">
+			{/* <div className="px-5 pt-6 flex flex-col gap-2">
 				<button
 					type="button"
 							className={styles.headerBtn}
@@ -78,7 +131,7 @@ const Home = ({}) => {
 						{darkModle ? <LightDrakMode /> : <LightDrakModeBlue />}
 					</span>
 				</button>
-			</div>
+			</div> */}
 		{/* Phone frame */}
 		<div className="mt-6">
 			{/* Status bar stub */}
@@ -177,26 +230,10 @@ const Home = ({}) => {
 				</button>
 
 				<button
-					className="w-7 h-7 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-[11px]"
-					aria-label="Scan QR"
+				className="w-7 h-7 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-[11px]"
+				aria-label="Scan QR"
 				>
-					{/* In the real app, this triggers camera / QR scanner */}
-					<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 24 24"
-					className="w-3.5 h-3.5"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.8"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-					>
-					<path d="M3 7V5a2 2 0 0 1 2-2h2" />
-					<path d="M17 3h2a2 2 0 0 1 2 2v2" />
-					<path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-					<path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-					<rect x="8" y="8" width="8" height="8" rx="1" />
-					</svg>
+				<ScanBtn compact />
 				</button>
 
 				<button
@@ -256,30 +293,123 @@ const Home = ({}) => {
 				</div>
 				</div>
 			)}
+			{
+				show200OK && <>
+					 {/* Top header */}
+						<div className="mb-3">
+							<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">
+							Beamio Alpha Reward
+							</p>
+							<h1 className="text-xl font-semibold text-slate-900">You’ve claimed 0.1 USDC</h1>
+							<p className="mt-1 text-[11px] text-slate-500 leading-snug">
+							Thank you for testing Beamio on Base. Your Beamio wallet has been funded with
+							{" "}
+							<span className="font-semibold text-slate-900">0.1 USDC</span>
+							{" "}
+							so you can try your first gasless payment.
+							</p>
+						</div>
+				</>
+			}
 
-			{/* Alpha testing banner (optional; can be hidden if campaign ends) */}
-			<div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 mb-3 flex gap-3">
-				<div className="mt-0.5 w-6 h-6 rounded-xl bg-amber-100 flex items-center justify-center text-[12px]">
-				🔥
-				</div>
-				<div className="flex-1">
-				<p className="text-[11px] font-semibold text-amber-900 mb-0.5">
-					Alpha drop: 0.1 USDC for testing
-				</p>
-				<p className="text-[10px] text-amber-900/80 leading-snug mb-1.5">
-					First-time users can claim <span className="font-semibold">0.1 USDC</span> and send it gaslessly on Base. Help us reach <span className="font-semibold">500 test transfers</span>.
-				</p>
-				{!hasClaimedAlphaReward ? (
-					<button className="inline-flex items-center px-2.5 py-1.5 rounded-full bg-amber-900 text-[10px] font-medium text-amber-50">
-					Claim 0.1 USDC & start testing
-					</button>
-				) : (
-					<p className="text-[10px] text-amber-900 font-medium">
-					✓ Reward claimed – now send your first payment.
-					</p>
-				)}
-				</div>
-			</div>
+			
+					<>
+						{/* Alpha testing banner (optional; can be hidden if campaign ends) */}
+						<div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 mb-3 flex gap-3">
+							<div className="mt-0.5 w-6 h-6 rounded-xl bg-amber-100 flex items-center justify-center text-[12px]">
+							🔥
+							</div>
+							<div className="flex-1">
+							<p className="text-[11px] font-semibold text-amber-900 mb-0.5">
+								Alpha drop: 0.1 USDC for testing
+							</p>
+							<p className="text-[10px] text-amber-900/80 leading-snug mb-1.5">
+								First-time users can claim <span className="font-semibold">0.1 USDC</span> and send it gaslessly on Base. Help us reach <span className="font-semibold">500 test transfers</span>.
+							</p>
+							
+								<button 
+										onClick={async () => {
+											if (show403 || showGetFaucet) return
+											if (!profiles?.length || processing || !CoNET_Data) return
+
+											const temp = CoNET_Data
+											setProcessing(true)
+
+											const kk = await getFaucet(profiles[0].keyID)
+											if (kk) {
+											temp.beamio.isFaucet = true
+											await setCoNET_Data(temp)
+											await storeSystemData()
+											setShowGetFaucet(true)
+											setShow200OK(true)
+											} else {
+											setShow403(true)
+											}
+											setProcessing(false)
+										}}
+										disabled={processing || show403 || showGetFaucet}
+										className={[
+											"inline-flex items-center px-2.5 py-1.5 rounded-full text-[10px] font-medium transition",
+
+											processing
+											? "bg-amber-900/70 text-amber-200 cursor-wait"
+
+											: show403
+											? "bg-slate-400 text-slate-700 cursor-not-allowed"
+
+											: "bg-amber-900 text-amber-50 hover:bg-amber-800"
+										].join(" ")}
+										>
+										{processing ? (
+											<span className="flex items-center gap-1">
+											<svg
+												className="w-3 h-3 animate-spin text-amber-200"
+												xmlns="http://www.w3.org/2000/svg"
+												fill="none"
+												viewBox="0 0 24 24"
+											>
+												<circle
+												className="opacity-25"
+												cx="12"
+												cy="12"
+												r="10"
+												stroke="currentColor"
+												strokeWidth="4"
+												/>
+												<path
+												className="opacity-75"
+												fill="currentColor"
+												d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+												/>
+											</svg>
+											Processing…
+											</span>
+										) : show403 ? (
+											"Sorry, your wallet address or IP address has already claimed"
+										) : showGetFaucet ? (
+											<span className="flex items-center gap-1">
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												className="w-3 h-3 text-emerald-300"
+												fill="none"
+												viewBox="0 0 24 24"
+												stroke="currentColor"
+												strokeWidth="3"
+											>
+												<path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+											</svg>
+											0.1 USDC claimed for testing
+											</span>
+										) : (
+											"Claim 0.1 USDC & start testing"
+										)}
+																</button>
+							
+							</div>
+						</div>
+					</>
+				
+			
 
 			{/* Activity area */}
 			<div className="flex-1 overflow-hidden">
@@ -311,10 +441,19 @@ const Home = ({}) => {
 					Claim your 0.1 USDC, then send your first gasless payment on Base. Your payments and requests will show up here.
 					</p>
 					<div className="flex gap-2 mt-1">
-					<button className="flex-1 h-8 rounded-full bg-slate-900 text-slate-50 text-[11px] font-medium">
+					<button
+					onClick={() => {
+						return navigate('/pay')
+					}}
+						className="flex-1 h-8 rounded-full bg-slate-900 text-slate-50 text-[11px] font-medium">
 						Send USDC
 					</button>
-					<button className="flex-1 h-8 rounded-full bg-white text-[11px] font-medium text-slate-600 border border-slate-200">
+
+					<button 
+					onClick={() => {
+						return navigate('/pay')
+					}}
+					className="flex-1 h-8 rounded-full bg-white text-[11px] font-medium text-slate-600 border border-slate-200">
 						Create pay link
 					</button>
 					</div>

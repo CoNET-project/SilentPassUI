@@ -107,7 +107,7 @@ import {
 		abi: sGB_Dashboard
 	},
 	beamioConet: {
-		address: '0x1dd706Eb000752c5B8Cad0142cA8FcE752d5CBbb',
+		address: '0xdE51f1daaCa6eae9BDeEe33E324c3e6e96837e94',
 		network: 'CONET DePIN',
 		abi: beamioConetABI
 	}

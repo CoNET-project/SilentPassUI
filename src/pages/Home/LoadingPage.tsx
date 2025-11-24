@@ -22,6 +22,11 @@ export default function BeamioOnboardingModal({home}: Props) {
 			{/* Content */}
 			<div className="flex flex-col h-[calc(100%-2.5rem)] px-5 pb-5">
 			{/* Brand header */}
+
+
+			{/* Modal card */}
+			<div className="mt-1 rounded-2xl bg-slate-50 border border-slate-100 p-4 flex flex-col gap-3 flex-1">
+				{/* Icon */}
 			<div className="flex items-center gap-2 mb-4 ml-4">
 				
 				<div className="flex flex-col">
@@ -34,27 +39,6 @@ export default function BeamioOnboardingModal({home}: Props) {
 				</span>
 				</div>
 			</div>
-
-			{/* Modal card */}
-			<div className="mt-1 rounded-2xl bg-slate-50 border border-slate-100 p-4 flex flex-col gap-3 flex-1">
-				{/* Icon */}
-				<div className="w-10 h-10 rounded-2xl bg-blue-600/10 text-blue-600 flex items-center justify-center mb-1">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 24 24"
-					className="w-5 h-5"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.8"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				>
-					<rect x="3" y="5" width="18" height="14" rx="3" />
-					<path d="M7 10h5" />
-					<path d="M7 14h3" />
-					<circle cx="17" cy="12" r="1.25" />
-				</svg>
-				</div>
 
 				{/* Title & copy */}
 				<div>
@@ -106,14 +90,14 @@ export default function BeamioOnboardingModal({home}: Props) {
 				>
 					Start using Beamio
 				</button>
-				<button
+				{/* <button
 					onClick={() => 
 						navigate("/settings")
 					}
 					className="w-full h-9 rounded-full bg-transparent text-[11px] font-medium text-slate-500 border border-slate-200"
 					>
 						View wallet details
-				</button>
+				</button> */}
 				</div>
 			</div>
 			</div>

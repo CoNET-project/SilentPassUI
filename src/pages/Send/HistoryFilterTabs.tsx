@@ -1,4 +1,4 @@
-export type HistoryFilter = 'all' | 'send' | 'receive' | 'pending'
+export type HistoryFilter = 'all' | 'send' | 'receive' | 'pending' | 'reject'
 
 type HistoryFilterTabsProps = {
 	active: HistoryFilter
@@ -50,12 +50,24 @@ export function HistoryFilterTabs({
 		}
 
 		// pending
+		if (key === 'pending') {
+			return [
+			baseBtn,
+			isActive || isLoading
+				? 'bg-amber-200/80 text-amber-900 dark:bg-amber-400/70 dark:text-amber-950'
+				: 'bg-amber-200/40 text-amber-700 dark:bg-amber-700/35 dark:text-amber-200',
+			].join(' ')
+		}
+		//	reject
 		return [
 		baseBtn,
 		isActive || isLoading
-			? 'bg-amber-200/80 text-amber-900 dark:bg-amber-400/70 dark:text-amber-950'
-			: 'bg-amber-200/40 text-amber-700 dark:bg-amber-700/35 dark:text-amber-200',
+			// Active / Loading 状态：更明显的一点红
+			? 'bg-rose-300/80 text-rose-900 dark:bg-rose-500/70 dark:text-rose-50'
+			// 默认状态：淡红色弱一点（iOS 风格）
+			: 'bg-rose-300/35 text-rose-700 dark:bg-rose-700/35 dark:text-rose-200',
 		].join(' ')
+		
 	}
 
 	const renderLabel = (key: HistoryFilter) => {
@@ -67,7 +79,8 @@ export function HistoryFilterTabs({
 			? 'Send'
 			: key === 'receive'
 			? 'Receive'
-			: 'Pending'
+			: key === 'pending'
+			? 'Pending' : 'Reject'
 
 		if (!isLoading) return label
 
@@ -124,6 +137,13 @@ export function HistoryFilterTabs({
 			onClick={() => handleClick('pending')}
 			>
 			{renderLabel('pending')}
+			</button>
+			<button
+			className={getBtnClass('reject')}
+			disabled={isDisabled('reject')}
+			onClick={() => handleClick('reject')}
+			>
+			{renderLabel('reject')}
 			</button>
 		</div>
 		</div>

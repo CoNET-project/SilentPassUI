@@ -4,14 +4,11 @@ import { ScanCodeOutline } from "antd-mobile-icons";
 import Html5QrcodePlugin from "./Html5QrcodePlugin";
 import styles from "./scanButton.module.scss";
 import { useTranslation } from 'react-i18next';
-
+import { emitWalletEvent} from '@/services/beamio'
 interface Props {
-    solSendRef: any;
-    spSendRef: any;
-    usdtSendRef: any;
-}
 
-const ScanButton = ({solSendRef,spSendRef,usdtSendRef}:Props) => {
+}
+const ScanButton = ({}:Props) => {
     const [scanning, setScanning] = useState(false);
     const [loading, setLoading] = useState(false);
     const { t, i18n } = useTranslation();
@@ -61,39 +58,15 @@ const ScanButton = ({solSendRef,spSendRef,usdtSendRef}:Props) => {
             }
         }
     }
+
     const handleScanSuccess = (text: string) => {
+		if (/^http/i.test(text)) {
+			emitWalletEvent("scan:url", text)
+			return 
+		}
         try{
             const obj=JSON.parse(text);
-            if(obj?.type==='$SP'){
-                spSendRef?.current?.setExternalVisible(true);
-                if(obj&&obj.address){
-                    spSendRef?.current?.setExternalAddress(obj.address);
-                }
-                if(obj&&obj.amount){
-                    spSendRef?.current?.setExternalAmount(String(obj.amount));
-                }
-                return ;
-            }
-            if(obj?.type==='$SOL'){
-                solSendRef?.current?.setExternalVisible(true);
-                if(obj&&obj.address){
-                    solSendRef?.current?.setExternalAddress(obj.address);
-                }
-                if(obj&&obj.amount){
-                    solSendRef?.current?.setExternalAmount(String(obj.amount));
-                }
-                return ;
-            }
-            if(obj?.type==='$USDT'){
-                usdtSendRef?.current?.setExternalVisible(true);
-                if(obj&&obj.address){
-                    usdtSendRef?.current?.setExternalAddress(obj.address);
-                }
-                if(obj&&obj.amount){
-                    usdtSendRef?.current?.setExternalAmount(String(obj.amount));
-                }
-                return ;
-            }
+           
             Toast.show({
                 icon: 'fail',
                 content: t('wallet-receive-code-scan-tip-2')
@@ -104,7 +77,7 @@ const ScanButton = ({solSendRef,spSendRef,usdtSendRef}:Props) => {
                 content: t('wallet-receive-code-scan-tip-2')
             });
         }
-        setScanning(false); // 扫完自动关闭        
+        setScanning(false) // 扫完自动关闭        
     }
 
     return (
@@ -121,4 +94,4 @@ const ScanButton = ({solSendRef,spSendRef,usdtSendRef}:Props) => {
     )
 }
 
-export default ScanButton;
+export default ScanButton

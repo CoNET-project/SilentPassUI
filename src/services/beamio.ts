@@ -12,6 +12,15 @@ export type IBalance= {
 	}
 }
 
+export type x402Response = {
+	timestamp: string
+	network: string
+	payer: string
+	success: boolean
+	USDC_tx?: string
+	SETTLE_tx?: string
+}
+
 type AuthorizationPayload = {
 	x402Version: number
 	scheme: 'exact'
@@ -526,4 +535,28 @@ function intToEnglishBig(n: bigint): string {
 		i++;
 	}
 	return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+type Handler = (payload: any) => void
+
+const listeners = new Map<string, Handler[]>()
+
+export function onWalletEvent(event: string, handler: Handler) {
+  const arr = listeners.get(event) || []
+  arr.push(handler)
+  listeners.set(event, arr)
+
+  // 返回 off 函数
+  return () => {
+    const arr = listeners.get(event)
+    if (!arr) return
+    const idx = arr.indexOf(handler)
+    if (idx >= 0) arr.splice(idx, 1)
+  }
+}
+
+export function emitWalletEvent(event: string, payload?: any) {
+  const arr = listeners.get(event)
+  if (!arr) return
+  arr.forEach(h => h(payload))
 }

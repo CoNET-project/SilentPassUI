@@ -117,14 +117,7 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
 			data.profiles.push(profile2);
 		}
 
-		if (!data?.beamio) {
-			const beamio: beamio = {
-				image: '',
-				accountName: '',
-				isFaucet: false,
-				darkTheme: false
-			}
-		}
+		
 		
 		setCoNET_Data(data)
 	}
@@ -136,6 +129,9 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
 		return null
 	}
 
+
+
+		
 
 
   	tmpData.ChannelPartners = ChannelPartners
@@ -173,6 +169,18 @@ const createOrGetWallet = async (secretPhrase: string | null, initAccount = fals
 
 
   tmpData = await initDuplicate(tmpData)
+  if (!tmpData) {
+		return
+  }
+  const beamio = tmpData.beamio|| {
+		image: '',
+		accountName: '',
+		isFaucet: false,
+		darkTheme: false,
+		initialLoading: true
+	}
+
+	tmpData.beamio = beamio
   
   await setCoNET_Data(tmpData)
 
@@ -240,6 +248,7 @@ const getFaucet: (profile: profile) => Promise<boolean | any> = async (
     let result;
     try {
       result = await postToEndpoint(url, true, { walletAddr: profile.keyID });
+	  
     } catch (ex) {
       console.log(`getFaucet postToEndpoint [${url}] error! `, ex);
       return resolve(false);
@@ -253,11 +262,12 @@ export const storeSystemData = async () => {
   if (!CoNET_Data) {
     return;
   }
+  const temp = CoNET_Data
 
   try {
     await storageHashData(
-      "init",
-      Buffer.from(customJsonStringify(CoNET_Data)).toString("base64")
+		"init",
+		Buffer.from(customJsonStringify(temp)).toString("base64")
     );
   } catch (ex) {
     console.log(`storeSystemData storageHashData Error!`, ex);
@@ -290,17 +300,19 @@ const storageHashData = async (docId: string, data: string) => {
   }
 }
 
-const checkStorage = async () => {
+export const checkStorage = async () => {
   const database = PouchDB(localDatabaseName, { auto_compaction: true });
 
   try {
     const doc = await database.get("init", { latest: true });
     const data = JSON.parse(Buffer.from(doc.title, "base64").toString());
     setCoNET_Data(data);
+	return data
   } catch (ex) {
-    return console.log(
+    console.log(
       `checkStorage have no CoNET data in IndexDB, INIT CoNET data`
-    );
+    )
+	return null
   }
 };
 

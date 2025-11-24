@@ -7,7 +7,7 @@ import {
 	apiv4_endpoint,
 	conetDepinProvider
 } from "../utils/constants"
-import { refreshSolanaBalances, initSolana, storeSystemData, createOrGetWallet } from './wallets'
+import { refreshSolanaBalances, initSolana, storeSystemData } from './wallets'
 import contracts from "../utils/contracts";
 import anchor_linear_vesting_del from '../utils/anchor_linear_vesting.json'
 import {AnchorLinearVesting} from '../utils/anchor_linear_vesting'
@@ -293,7 +293,7 @@ export const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_
 		const keyID = temp.profiles[0].keyID
 		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
 		if (duplicateStatus === false) {
-			await createOrGetWallet(null, true)
+			
 			return null
 		}
 	}

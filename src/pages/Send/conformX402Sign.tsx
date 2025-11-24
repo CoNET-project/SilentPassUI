@@ -81,12 +81,12 @@ export function ConformSignInfo({
 				</span>
 
 				<a
-				href={`https://basescan.org/address/${address}`}
-				target="_blank"
-				rel="noreferrer"
-				className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-				aria-label="View on BaseScan"
-				title="View on BaseScan"
+					href={`https://basescan.org/address/${address}`}
+					target="_blank"
+					rel="noreferrer"
+					className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
+					aria-label="View on BaseScan"
+					title="View on BaseScan"
 				>
 				<img
 					src={darkModle ? base_ex_dark : base_ex}

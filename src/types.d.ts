@@ -140,6 +140,8 @@ interface Region {
 		image: string
 		darkTheme: boolean
 		isFaucet: boolean
+		initialLoading: boolean
+
   }
   
   type encrypt_keys_object = {

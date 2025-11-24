@@ -1,12 +1,11 @@
 //		App.tsx
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import "./default.scss";
 import styles from './layout.module.scss';
 import {Route,Routes,MemoryRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider"
-import { createOrGetWallet} from "./services/wallets";
-import { CoNET_Data, setCoNET_Data } from "./utils/globals";
+
 import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import Send from './pages/Send/Send'
@@ -18,71 +17,15 @@ import zhCN from 'antd-mobile/es/locales/zh-CN';
 import enUS from 'antd-mobile/es/locales/en-US';
 import jaJP from 'antd-mobile/es/locales/ja-JP';
 import './i18n'; // 加载多语言配置
-import { useTranslation } from 'react-i18next';
-import {getFaucet} from '@/services/beamio'
-import { storeSystemData } from '@/services/wallets'
+import { useTranslation } from 'react-i18next'
 
 
 global.Buffer = require('buffer').Buffer;
 
 function App() {
 	const { i18n } = useTranslation();
-  	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading, setBeamio } = useDaemonContext();
- 
-  	let handlePassportProcess = false
-	let secretPhrase: string | null = null;
-	let ChannelPartners = ''
-	let referrals = ''
+  	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading, setBeamio, beamio } = useDaemonContext();
 
-  	const init = async () => {
-		console.log(isInitialLoading)
-		const profiles = await createOrGetWallet(secretPhrase, false, referrals, ChannelPartners)
-		setProfiles(profiles)
-
-		const temp = CoNET_Data
-		if (!temp || !profiles ) {
-			return
-		}
-
-		const profile = temp.profiles[0]
-
-
-		let bo: beamio = temp?.beamio
-		if (!bo) {
-			bo = {
-				accountName: '',
-				image: '',
-				darkTheme: false,
-				isFaucet: false
-			}
-			temp.beamio = bo
-		}
-		setDarkModle(bo.darkTheme)
-		setBeamio (bo)
-		if (!bo.isFaucet && profile?.keyID) {
-			const res = await getFaucet(profile?.keyID)
-			if (res) {
-				bo.isFaucet = true
-				setIsInitialLoading(true)
-				setCoNET_Data(temp)
-				await storeSystemData()
-
-			}
-		} else {
-			setIsInitialLoading(false)
-		}
-		
-
-		console.log (temp)
-  	}
-
-  	let first = true
-  	useEffect(() => {
-		if (first) {
-			first = false
-			init()
-		}
-  	}, [])
 
 	useEffect(() => {
 	const root = document.documentElement
@@ -123,6 +66,36 @@ function App() {
 		localStorage.lang=lang;
   	},[])
 
+	useEffect(() => {
+		const handleTouchMove = (e: TouchEvent) => {
+			let el = e.target as HTMLElement | null
+			if (!el) return
+
+			// 向上爬 DOM，找到第一个 overflow 可滚动的元素
+			while (el && el !== document.body) {
+			const style = window.getComputedStyle(el)
+			const overflowY = style.overflowY
+
+			const isScrollable =
+				(overflowY === 'auto' || overflowY === 'scroll') &&
+				el.scrollHeight > el.clientHeight
+
+			if (isScrollable) {
+				// 允许滚动此容器
+				return
+			}
+
+			el = el.parentElement
+			}
+
+			// 否则禁止页面拖动
+			e.preventDefault()
+		}
+
+		document.addEventListener('touchmove', handleTouchMove, { passive: false })
+		return () => document.removeEventListener('touchmove', handleTouchMove)
+	}, [])
+
   	return (
 		<Router initialEntries={['/']}>
 		    <div className={styles.app}>
@@ -136,9 +109,13 @@ function App() {
 						
 		        	</Routes>
 		      	</div>
-		      	<div className={styles.bottom}>
-		        	<Footer />
-		      	</div>
+				{
+					!isInitialLoading && 
+					<div className={styles.bottom}>
+						<Footer />
+					</div>
+				}
+		      	
 		    </div>
 		</Router>
   	)

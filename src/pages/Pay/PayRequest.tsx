@@ -38,12 +38,13 @@ function calcFee(amountStr: string) {
 type Mode = "pay" | "request" | 'send';
 // form -> sign -> processing -> generated
 type Step = "form" | "sign" | "processing" | "generated" | "x402Sign" | "success"
+const minAmount = 0.02;
 
 
 
 export default function BeamioPayRequest() {
 
-	const { profiles } = useDaemonContext()
+	const { profiles, paymentLink } = useDaemonContext()
 	const [mode, setMode] = useState<Mode>("send")
 	const [step, setStep] = useState<Step>("form")
 
@@ -87,7 +88,9 @@ export default function BeamioPayRequest() {
 	const vaultEstimate = isPay ? payTotal : amt; // only used in sign step
 
     const overbalance = (isNaN(Number(sendAmount)) || Number(sendAmount) <= 0 || Number(sendAmount) > usdcAmount)
-	
+	const numericAmount = parseFloat(amount || "0");
+	const isAmountValid = numericAmount > minAmount;
+	const isNotesValid = note.trim().length > 0
 	const handleCopySuccessUrl = async () => {
 		if (!successUrl) return
 		try {
@@ -97,16 +100,18 @@ export default function BeamioPayRequest() {
 			console.error("Copy failed", e)
 		}
 	}
-
+	//	setPaymentLink({code: '', note: '', address: url, amount: ''})
 	useEffect(() => {
 		getBa()
-
+		if (paymentLink && paymentLink?.address) {
+			setSendTo (paymentLink.address)
+		}
 		window.addEventListener("sign:final", onSignFinal)
 
 		return () => {
 			window.removeEventListener("sign:final", onSignFinal)
 		}
-	}, [])
+	}, [paymentLink])
 
 	const getBa = async () => {
 		const temp = CoNET_Data?.profiles?.[0]
@@ -222,58 +227,20 @@ export default function BeamioPayRequest() {
 				return 
 			}
 
-		// const code = generateCODE(securityCode.replace('-',''))
+		const secureCode = generateCODE(securityCode.replace('-',''))
 		
 		
-		// const params = new URLSearchParams({amount:price, note, secureCode, hash: code.hash, lang}).toString()
-		// const path = `/api/cashCode?${params}`
+		const params = new URLSearchParams({amount: numberAmount.toFixed(2), note, secureCode: secureCode.hash}).toString()
+		const path = `/api/generateCheck?${params}`
 		
 
-		// const remote = "https://api.settleonbase.xyz"
-		// const local = "http://localhost:4088" 
-		// const url = (isLocal ? local : remote) + path
-
-		// let fetchWithPayment
-		// if (WallctClient) {
-		// 	try {
-					
-		// 		fetchWithPayment = wrapFetchWithPayment(fetch, WallctClient, ethers.parseUnits(price, 6))
-
-		// 		const response = await fetchWithPayment(
-		// 			url, {
-		// 				method: 'GET'
-		// 			}
-		// 		)
-		// 		if (response?.ok) {
-					
-		// 			const data = await response.json()
-		// 			if (data?.USDC_tx) {
-						
-		// 				// setExplorerUrl(`https://basescan.org/tx/${ data.USDC_tx}`)
-		// 				console.log("Purchase success:", response)
-		// 				const paramsRemote = new URLSearchParams({hash: code.hash, lang}).toString()
-		// 				const realUrl = `${origin}?${paramsRemote}`
-		// 				setResult(realUrl)
-		// 			}
-					
-
-		// 		} else {
-		// 			// showTermAlert("CashCode Response error", false)
-		// 			console.log("❌ Response error:", response)
-					
-		// 		}
-		// 		setProcess(false)
-		// 	} catch (ex: any) {
-		// 		// showTermAlert("CashCode Response error", false)
-		// 		console.log(ex.message)
-		// 		setProcess(false)
-		// 	}
-		// 	return 
-		// }
-
 		
-		// setRequestUrl(url)
-		// setSignx402Show(true)
+		const url = aptEndpoint + path
+
+		let fetchWithPayment
+		
+		
+		
 
 	}
 	
@@ -316,7 +283,7 @@ export default function BeamioPayRequest() {
 
 	const handleGenerate = () => {
 		if (isPay) {
-			setStep("sign")
+			generateCheck()
 		} else {
 		// Request Link 不需要签名，也不需要 processing，直接进入生成结果
 			issueRequestLink()
@@ -499,475 +466,517 @@ export default function BeamioPayRequest() {
 
   return (
 	<div className="">
-	{/* Header */}
-	{
-		(step !== 'x402Sign' && step !== "generated") && (
-			<>
-				<div className="flex items-center justify-between mb-3">
-					<div className="flex flex-col">
-						<span className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-						Beamio
-						</span>
-						<h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-						Payments
-						</h1>
+		{/* Header */}
+		{
+			(step !== 'x402Sign' && step !== "generated") && (
+				<>
+					<div className="flex items-center justify-between mb-3">
+						<div className="flex flex-col">
+							<span className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+							Beamio
+							</span>
+							<h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+							Payments
+							</h1>
+						</div>
+
+						<div className="text-right ">
+							<p className="text-[12px] font-medium text-slate-900 dark:text-slate-100">
+							USDC {formatWithThousands(usdcToUSD)}
+							</p>
+							<p className="text-[11px] text-slate-500 dark:text-slate-400">
+							Available on Base
+							</p>
+						</div>
 					</div>
 
-					<div className="text-right ">
-						<p className="text-[12px] font-medium text-slate-900 dark:text-slate-100">
-						USDC {formatWithThousands(usdcToUSD)}
-						</p>
-						<p className="text-[11px] text-slate-500 dark:text-slate-400">
-						Available on Base
-						</p>
+					<div className="flex items-center justify-between mb-3">
+					<p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
+						Choose how you want to pay or get paid. All flows are gasless on Base.
+					</p>
 					</div>
-				</div>
-
-				<div className="flex items-center justify-between mb-3">
-				<p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
-					Choose how you want to pay or get paid. All flows are gasless on Base.
-				</p>
-				</div>
-			</>
-			
-
-
-			
-		)
-	}
-		
-
-	{/* Mode pills */}
-
-	{
-		(step !== 'x402Sign' && step !== 'success' && step !== 'generated') && (
-			<>
-			<div className="flex items-center justify-between mb-3">
-				<div className="inline-flex w-full rounded-full bg-slate-100 dark:bg-slate-800 p-0.5">
-
-					{/* SEND */}
-					<button
-					type="button"
-					className={`flex-1 h-8 rounded-full text-[13px] transition-all
-						${mode === "send"
-						? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
-						: "bg-transparent text-slate-500 dark:text-slate-300"
-						}`}
-					onClick={() => { setMode("send"); setStep("form") }}
-					>
-					Send
-					</button>
-
-					{/* REQUEST */}
-
-					
-					<button
-					type="button"
-					className={`flex-1 h-8 rounded-full text-[13px] transition-all
-						${mode === "request"
-						? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
-						: "bg-transparent text-slate-500 dark:text-slate-300"
-						}`}
-					onClick={() => { setMode("request"); setStep("form") }}
-					>
-					Request Link
-					</button>
-
-					{/* PAY */}
-					<button
-					type="button"
-					className={`flex-1 h-8 rounded-full text-[13px] transition-all
-						${mode === "pay"
-						? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
-						: "bg-transparent text-slate-500 dark:text-slate-300"
-						}`}
-					onClick={() => { setMode("pay"); setStep("form") }}
-					>
-					Issue Check
-					</button>
-
-
-
-
-				</div>
-							
-				{/* Note */}
+				</>
 				
-			</div>
-			<div className="flex-1 flex flex-col">
-				<div className="mb-5">
-					<div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-						Notes (visible to the recipient)
-					</div>
-					<textarea
-						value={note}
-						onChange={(e) => setNote(e.target.value)}
-						placeholder={
-						isPay
-							? "Birthday gift, rent share, dinner bill..."
-							: "What is this payment request for?"
-						}
-						rows={2}
-						className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-					/>
-				</div>
-			</div>
-			
-			</>
-			
-		)
-	}
 
-	{
-		(step !== 'x402Sign' && step !== 'success') && (
-			<div className="flex-1 flex flex-col">
-				{/* FORM STEP */}
 
-				{step === "form" && mode !== "send" && (
-					<div className="lex items-center justify-between mb-3">
+				
+			)
+		}
+			
+
+		{/* Mode pills */}
+
+		{
+			(step !== 'x402Sign' && step !== 'success' && step !== 'generated') && (
+				<>
+					<div className="flex items-center justify-between mb-3">
+						<div className="inline-flex w-full rounded-full bg-slate-100 dark:bg-slate-800 p-0.5">
+
+							{/* SEND */}
+							<button
+								type="button"
+								className={`flex-1 h-8 rounded-full text-[13px] transition-all
+									${mode === "send"
+									? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
+									: "bg-transparent text-slate-500 dark:text-slate-300"
+									}`}
+								onClick={() => { setMode("send"); setStep("form") }}
+							>
+								Send
+							</button>
+
+							{/* REQUEST */}
 
 							
-						{/* Amount */}
-						<div className="mb-5">
-							<div className="flex items-baseline justify-between mb-1">
-								<span className="text-xs text-slate-500 dark:text-slate-400">Amount</span>
-								<span className="text-[11px] text-slate-400 dark:text-slate-500">
-								Zero and 00/100 dollars
-								</span>
-							</div>
-							<div className="h-12 rounded-xl bg-slate-900/5 dark:bg-white/5 border 
-								border-slate-200 dark:border-slate-700 flex items-center px-3">
-								<span className="text-sm text-slate-500 dark:text-slate-400 mr-1">USDC</span>
-								<input
-									type="text"
-									inputMode="decimal"
-									value={sendAmount}
-									onChange={(e) => setSendAmount(e.target.value)}
-									className="flex-1 bg-transparent border-none outline-none text-right 
-										text-base font-medium text-slate-900 dark:text-slate-50"
-									placeholder="0.00"
-								/>
-							</div>
+							<button
+							type="button"
+								className={`flex-1 h-8 rounded-full text-[13px] transition-all
+									${mode === "request"
+									? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
+									: "bg-transparent text-slate-500 dark:text-slate-300"
+									}`}
+								onClick={() => { setMode("request"); setStep("form") }}
+							>
+								Payment Link
+							</button>
+
+							{/* PAY */}
+							<button
+								type="button"
+								className={`flex-1 h-8 rounded-full text-[13px] transition-all
+									${mode === "pay"
+									? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
+									: "bg-transparent text-slate-500 dark:text-slate-300"
+									}`}
+								onClick={() => { setMode("pay"); setStep("form") }}
+							>
+									Cashcode
+							</button>
+
 						</div>
-
-
-						{isPay && (
+									
+						{/* Note */}
+						
+					</div>
+					<div className="flex-1 flex flex-col">
 						<div className="mb-5">
-							<div className="flex items-baseline justify-between mb-1">
-							<span className="text-xs text-slate-500 dark:text-slate-400">
-								Security code
-							</span>
-							<span className="text-[11px] text-slate-400 dark:text-slate-500">
-								Optional, 6 digits (e.g. 123456)
-							</span>
+							<div className="flex items-center justify-between text-xs">
+								<span className="text-xs text-slate-500 dark:text-slate-400">Notes (required)</span>
+								<span className="text-slate-400">Visible to the payer · required</span>
 							</div>
-							<input
-							type="tel"
-							inputMode="numeric"
-							maxLength={6}
-							value={securityCode}
-							onChange={(e) =>
-								setSecurityCode(e.target.value.replace(/[^0-9]/g, ""))
-							}
-							className="w-full h-11 rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 text-base tracking-[0.3em] text-center text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-sky-500"
-							placeholder="••••••"
+							<textarea
+								value={note}
+								onChange={(e) => setNote(e.target.value)}
+								placeholder={
+								isPay
+									? "Birthday gift, rent share, dinner bill..."
+									: "What is this payment request for?"
+								}
+								rows={2}
+								className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
 							/>
-						</div>
+							{!isNotesValid && (
+							<p className="text-[11px] text-red-500">Please add a note before generating a payment link.</p>
 						)}
+						</div>
+						
+					</div>
+				
+				</>
+				
+			)
+		}
 
-						{/* Fee + summary */}
-						<div className="mb-6 rounded-2xl bg-slate-900/5 dark:bg-black/40 border border-slate-200 dark:border-slate-800 px-4 py-3 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
-							<div className="flex items-center justify-between">
-								<span>Beamio service fee (0.8%)</span>
-								<span>{fee > 0 ? `${fee.toFixed(2)} USDC` : "0.00 USDC"}</span>
+		{
+			(step !== 'x402Sign' && step !== 'success') && (
+				<div className="flex-1 flex flex-col">
+					{/* FORM STEP */}
+
+					{step === "form" && mode !== "send" && (
+						<div className="lex items-center justify-between mb-3">
+
+								
+							{/* Amount */}
+							<div className="mb-5">
+								<div className="flex items-center justify-between text-xs">
+									<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
+									<span className="text-slate-400">Min amount &gt; 0.02 USDC</span>
+								</div>
+								<div className="h-12 rounded-xl bg-slate-900/5 dark:bg-white/5 border 
+									border-slate-200 dark:border-slate-700 flex items-center px-3">
+									<span className="text-sm text-slate-500 dark:text-slate-400 mr-1">USDC</span>
+									
+									<input
+										type="text"
+										inputMode="decimal"
+										value={sendAmount}
+										onChange={(e) => setSendAmount(e.target.value)}
+										className="flex-1 bg-transparent border-none outline-none text-right 
+											text-base font-medium text-slate-900 dark:text-slate-50"
+										placeholder="0.00"
+									/>
+									
+								</div>
+								{!isAmountValid && (
+										<p className="text-[11px] text-red-500">
+										Amount must be greater than 0.02 USDC to cover the minimum Beamio service fee.
+										</p>
+									)}
 							</div>
-							<div className="flex items-center justify-between">
-								<span>Min / max per transaction</span>
-								<span>0.02 – 2.00 USDC</span>
+
+
+							{isPay && (
+							<div className="mb-5">
+								<div className="flex items-baseline justify-between mb-1">
+								<span className="text-xs text-slate-500 dark:text-slate-400">
+									Security code
+								</span>
+								<span className="text-[11px] text-slate-400 dark:text-slate-500">
+									Optional, 6 digits (e.g. 123456)
+								</span>
+								</div>
+								<input
+									type="tel"
+									inputMode="numeric"
+									maxLength={6}
+									value={securityCode}
+									onChange={(e) =>
+										setSecurityCode(e.target.value.replace(/[^0-9]/g, ""))
+									}
+									className="w-full h-11 rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 text-base tracking-[0.3em] text-center text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-sky-500"
+									placeholder="••••••"
+									/>
+									<p className="text-[11px] text-slate-500">
+										Add an optional security code. Only people who know the code will be able to claim from this cashcode.
+									</p>
 							</div>
-							<div className="pt-1 border-top border-slate-200 dark:border-slate-800 mt-1 space-y-1.5 border-t">
-								{isPay ? (
-								<>
+							)}
+
+							<section className="rounded-2xl bg-slate-100 px-4 py-3 text-xs text-slate-600 space-y-1">
 									<div className="flex items-center justify-between">
-									<span className="text-slate-500 dark:text-slate-400">
-										Recipient will receive
-									</span>
-									<span className="text-slate-900 dark:text-slate-100 font-medium">
-										{amt > 0 ? amt.toFixed(2) : "0.00"} USDC
-									</span>
+										<span>Beamio service fee (0.8%)</span>
+										<span className="font-mono">{formatMoney(fee)} USDC</span>
 									</div>
-									<div className="flex items-center justify-between">
-									<span className="text-slate-500 dark:text-slate-400">
-										You will pay
-									</span>
-									<span className="text-slate-900 dark:text-slate-100 font-medium">
-										{payTotal > 0 ? payTotal.toFixed(2) : "0.00"} USDC
-									</span>
+									<div className="flex items-center justify-between text-[11px]">
+										<span>Min / max per transaction</span>
+										<span className="font-mono">0.02 - 2.00 USDC</span>
 									</div>
-								</>
-								) : (
-								<>
-									<div className="flex items-center justify-between">
-									<span className="text-slate-500 dark:text-slate-400">
-										Payer will pay
-									</span>
-									<span className="text-slate-900 dark:text-slate-100 font-medium">
-										{requestGross > 0 ? requestGross.toFixed(2) : "0.00"} USDC
-									</span>
+									<div className="border-t border-slate-200 mt-2 pt-2 space-y-1">
+										<div className="flex items-center justify-between">
+										<span className="text-slate-500">Payer will pay</span>
+										<span className="font-mono text-slate-900 font-semibold">
+											{formatMoney(displayGeneratedAmount)} USDC
+										</span>
+										</div>
+										<div className="flex items-center justify-between">
+										<span className="text-slate-500">You will receive</span>
+										<span className="font-mono text-slate-900 font-semibold">
+											{formatMoney(requestNet)} USDC
+										</span>
+										</div>
 									</div>
-									{tip > 0 && (
-									<div className="flex items-center justify-between">
+									<p className="mt-1 text-[11px] text-slate-500">
+										Beamio fee is capped at 2.00 USDC per transaction. Direct Send/Receive is 0% Beamio fee.
+									</p>
+									</section>
+
+							{/* Fee + summary */}
+							{/* <div className="mb-6 rounded-2xl bg-slate-900/5 dark:bg-black/40 border border-slate-200 dark:border-slate-800 px-4 py-3 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
+								<div className="flex items-center justify-between">
+									<span>Beamio service fee (0.8%)</span>
+									<span>{fee > 0 ? `${fee.toFixed(2)} USDC` : "0.00 USDC"}</span>
+								</div>
+								<div className="flex items-center justify-between">
+									<span>Min / max per transaction</span>
+									<span>0.02 – 2.00 USDC</span>
+								</div>
+								<div className="pt-1 border-top border-slate-200 dark:border-slate-800 mt-1 space-y-1.5 border-t">
+									{isPay ? (
+									<>
+										<div className="flex items-center justify-between">
 										<span className="text-slate-500 dark:text-slate-400">
-										Includes tip
+											Recipient will receive
 										</span>
 										<span className="text-slate-900 dark:text-slate-100 font-medium">
-										{tip.toFixed(2)} USDC
+											{amt > 0 ? amt.toFixed(2) : "0.00"} USDC
 										</span>
-									</div>
+										</div>
+										<div className="flex items-center justify-between">
+										<span className="text-slate-500 dark:text-slate-400">
+											You will pay
+										</span>
+										<span className="text-slate-900 dark:text-slate-100 font-medium">
+											{payTotal > 0 ? payTotal.toFixed(2) : "0.00"} USDC
+										</span>
+										</div>
+									</>
+									) : (
+									<>
+										<div className="flex items-center justify-between">
+										<span className="text-slate-500 dark:text-slate-400">
+											Payer will pay
+										</span>
+										<span className="text-slate-900 dark:text-slate-100 font-medium">
+											{requestGross > 0 ? requestGross.toFixed(2) : "0.00"} USDC
+										</span>
+										</div>
+										{tip > 0 && (
+										<div className="flex items-center justify-between">
+											<span className="text-slate-500 dark:text-slate-400">
+											Includes tip
+											</span>
+											<span className="text-slate-900 dark:text-slate-100 font-medium">
+											{tip.toFixed(2)} USDC
+											</span>
+										</div>
+										)}
+										<div className="flex items-center justify-between">
+										<span className="text-slate-500 dark:text-slate-400">
+											You will receive
+										</span>
+										<span className="text-slate-900 dark:text-slate-100 font-medium">
+											{requestNet > 0 ? requestNet.toFixed(2) : "0.00"} USDC
+										</span>
+										</div>
+									</>
 									)}
-									<div className="flex items-center justify-between">
-									<span className="text-slate-500 dark:text-slate-400">
-										You will receive
-									</span>
-									<span className="text-slate-900 dark:text-slate-100 font-medium">
-										{requestNet > 0 ? requestNet.toFixed(2) : "0.00"} USDC
-									</span>
-									</div>
-								</>
-								)}
-							</div>
-						</div>
+								</div>
+							</div> */}
 
-						{/* Generate button */}
-						
-						<AppButton
-							disabled={ note.trim() === "" || mode=='pay' && ( overbalance || requestNet <= 0)}
-							onClick={handleGenerate}
-							loading={processing}
-							fullWidth
-							errorText={processError}
-
-						>
-							{isPay ? "Generate Check Code" : "Generate Payment Link"}
-						</AppButton>
-
-					</div>
-				)}
-
-				{step === "form" && mode === "send" && (
-					<div className="flex-1 overflow-y-auto">
-
-						{/* Send to */}
-						<div className="mb-5">
-							<div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-								Send to (username or address)
-							</div>
-							<input
-								type="text"
-								value={sendTo}
-								onChange={(e) => setSendTo(e.target.value)}
-								placeholder="beamio.name or 0xAbC...123"
-								className="w-full h-11 rounded-xl bg-slate-900/5 dark:bg-white/5 
-								border border-slate-200 dark:border-slate-700 px-3 text-sm 
-								text-slate-900 dark:text-slate-100 placeholder:text-slate-400 
-								dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 
-								focus:ring-sky-500"
-							/>
-						</div>
-
-						{/* Amount */}
-						<div className="mb-6">
-							<div className="flex items-baseline justify-between mb-1">
-								<span className="text-xs text-slate-500 dark:text-slate-400">Amount</span>
-								<span className="text-[11px] text-slate-400 dark:text-slate-500">
-								Zero and 00/100 dollars
-								</span>
-							</div>
-							<div className="h-12 rounded-xl bg-slate-900/5 dark:bg-white/5 border 
-								border-slate-200 dark:border-slate-700 flex items-center px-3">
-								<span className="text-sm text-slate-500 dark:text-slate-400 mr-1">USDC</span>
-								<input
-									type="text"
-									inputMode="decimal"
-									value={sendAmount}
-									onChange={(e) => setSendAmount(e.target.value)}
-									className="flex-1 bg-transparent border-none outline-none text-right 
-										text-base font-medium text-slate-900 dark:text-slate-50"
-									placeholder="0.00"
-								/>
-							</div>
-						</div>
-
-						{/* Confirm button */}
-						<div className="flex gap-3 mt-4 mb-4 w-full">
+							{/* Generate button */}
 							
 							<AppButton
-								variant={'primary'}
-								disabled={overbalance || sendTo.trim() === ""}
-								onClick={handleSendConfirm}
-								errorText={processError}
+								disabled={ note.trim() === "" || mode=='pay' && ( overbalance || requestNet <= 0)}
+								onClick={handleGenerate}
 								loading={processing}
 								fullWidth
+								errorText={processError}
+
 							>
-								Confirm Send
+								{isPay ? "Generate Check Code" : "Generate Payment Link"}
 							</AppButton>
-							
-							
+
 						</div>
-						
-						
+					)}
 
-					</div>
-				)}
+					{step === "form" && mode === "send" && (
+						<div className="flex-1 overflow-y-auto">
 
-				{/* SIGN STEP */}
-				{step === "sign" && (
-					<div className="flex-1 px-5 pb-6 pt-2 flex flex-col bg-slate-50 dark:bg-black">
-						<div className="rounded-3xl bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-4 py-4 flex flex-col gap-3 mt-2 flex-1 shadow-sm dark:shadow-none">
-						<div className="text-center mb-2">
-							<div className="text-sm font-semibold mb-1">Beamio Wallet</div>
+							{/* Send to */}
+							<div className="mb-5">
+								<div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+									Send to (username or address)
+								</div>
+								<input
+									type="text"
+									value={sendTo}
+									onChange={(e) => setSendTo(e.target.value)}
+									placeholder="beamio.name or 0xAbC...123"
+									className="w-full h-11 rounded-xl bg-slate-900/5 dark:bg-white/5 
+									border border-slate-200 dark:border-slate-700 px-3 text-sm 
+									text-slate-900 dark:text-slate-100 placeholder:text-slate-400 
+									dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 
+									focus:ring-sky-500"
+								/>
+							</div>
+
+							{/* Amount */}
+							<div className="mb-6">
+								<div className="flex items-baseline justify-between mb-1">
+									<span className="text-xs text-slate-500 dark:text-slate-400">Amount</span>
+									<span className="text-[11px] text-slate-400 dark:text-slate-500">
+										Zero and 00/100 dollars
+									</span>
+								</div>
+								<div className="h-12 rounded-xl bg-slate-900/5 dark:bg-white/5 border 
+									border-slate-200 dark:border-slate-700 flex items-center px-3">
+									<span className="text-sm text-slate-500 dark:text-slate-400 mr-1">USDC</span>
+									<input
+										type="text"
+										inputMode="decimal"
+										value={sendAmount}
+										onChange={(e) => setSendAmount(e.target.value)}
+										className="flex-1 bg-transparent border-none outline-none text-right 
+											text-base font-medium text-slate-900 dark:text-slate-50"
+										placeholder="0.00"
+									/>
+								</div>
+							</div>
+
+							{/* Confirm button */}
+							<div className="flex gap-3 mt-4 mb-4 w-full">
+								
+								<AppButton
+									variant={'primary'}
+									disabled={overbalance || sendTo.trim() === ""}
+									onClick={handleSendConfirm}
+									errorText={processError}
+									loading={processing}
+									fullWidth
+								>
+									Confirm Send
+								</AppButton>
+								
+								
+							</div>
+							
+							
+
+						</div>
+					)}
+
+					{/* SIGN STEP */}
+					{step === "sign" && (
+						<div className="flex-1 px-5 pb-6 pt-2 flex flex-col bg-slate-50 dark:bg-black">
+							<div className="rounded-3xl bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-4 py-4 flex flex-col gap-3 mt-2 flex-1 shadow-sm dark:shadow-none">
+							<div className="text-center mb-2">
+								<div className="text-sm font-semibold mb-1">Beamio Wallet</div>
+								<div className="text-xs text-slate-500 dark:text-slate-400">
+								Confirm vault transfer to issue check
+								</div>
+							</div>
+
+							<div className="text-xs flex items-center justify-between border-t border-b border-slate-200 dark:border-slate-700 py-3 mt-1">
+								<span className="text-slate-500 dark:text-slate-400">
+								Signing with
+								</span>
+								<span className="font-mono text-[11px] text-slate-800 dark:text-slate-100">
+								0x1BBC...c9f2F8a9D3
+								</span>
+							</div>
+
+							<div className="text-xs">
+								<div className="text-slate-500 dark:text-slate-400 mb-1">
+								Asset changes (estimate)
+								</div>
+								<div className="flex items-center justify-between">
+								<span className="text-lg font-semibold">
+									{vaultEstimate.toFixed(2)} USDC
+								</span>
+								<span className="text-[11px] text-slate-500 dark:text-slate-400">
+									Sent to Beamio vault
+								</span>
+								</div>
+							</div>
+
+							<div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+								By signing this request, you will move the above amount into a Beamio
+								vault smart contract. This enables issuing a secure check code. These
+								funds can only be withdrawn with the generated check code.
+							</div>
+
+							<div className="mt-auto pt-4 flex items-center gap-3">
+								<button
+								className="flex-1 h-11 rounded-full border border-slate-300 dark:border-slate-600 text-sm text-slate-700 dark:text-slate-100 bg-white dark:bg-transparent"
+								onClick={handleResetToForm}
+								>
+								Cancel
+								</button>
+								<button
+								className="flex-1 h-11 rounded-full bg-blue-600 text-sm font-medium text-white"
+								onClick={() => setStep("processing")}
+								>
+								Sign
+								</button>
+							</div>
+							</div>
+						</div>
+					)}
+
+					
+
+					{/* PROCESSING STEP */}
+					{step === "processing" && (
+						<div className="flex-1 px-5 pb-6 pt-2 flex flex-col overflow-y-auto">
+							<div className="rounded-3xl bg-slate-900/5 dark:bg-black/40 border border-slate-200 dark:border-slate-800 px-4 py-4 flex flex-col gap-4 mt-2 flex-1">
+							<div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+								{isPay ? "Issuing check" : "Creating payment link"}
+							</div>
+
+							<div className="rounded-2xl bg-slate-100 dark:bg-black/40 border border-slate-200 dark:border-slate-700 px-4 py-3 text-center">
+								<div className="text-2xl font-semibold text-slate-900 dark:text-slate-50 mb-1">
+								{amt.toFixed(2)} USDC
+								</div>
+								<div className="text-[11px] text-slate-500 dark:text-slate-400">
+								Zero and{" "}
+								{Math.round(amt * 100)
+									.toString()
+									.padStart(2, "0")}{" "}
+								/ 100 dollars
+								</div>
+							</div>
+
 							<div className="text-xs text-slate-500 dark:text-slate-400">
-							Confirm vault transfer to issue check
+								{isPay ? "Recipient will receive" : "You will receive"}
 							</div>
-						</div>
-
-						<div className="text-xs flex items-center justify-between border-t border-b border-slate-200 dark:border-slate-700 py-3 mt-1">
-							<span className="text-slate-500 dark:text-slate-400">
-							Signing with
-							</span>
-							<span className="font-mono text-[11px] text-slate-800 dark:text-slate-100">
-							0x1BBC...c9f2F8a9D3
-							</span>
-						</div>
-
-						<div className="text-xs">
-							<div className="text-slate-500 dark:text-slate-400 mb-1">
-							Asset changes (estimate)
-							</div>
-							<div className="flex items-center justify-between">
-							<span className="text-lg font-semibold">
-								{vaultEstimate.toFixed(2)} USDC
-							</span>
-							<span className="text-[11px] text-slate-500 dark:text-slate-400">
-								Sent to Beamio vault
-							</span>
-							</div>
-						</div>
-
-						<div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-							By signing this request, you will move the above amount into a Beamio
-							vault smart contract. This enables issuing a secure check code. These
-							funds can only be withdrawn with the generated check code.
-						</div>
-
-						<div className="mt-auto pt-4 flex items-center gap-3">
-							<button
-							className="flex-1 h-11 rounded-full border border-slate-300 dark:border-slate-600 text-sm text-slate-700 dark:text-slate-100 bg-white dark:bg-transparent"
-							onClick={handleResetToForm}
-							>
-							Cancel
-							</button>
-							<button
-							className="flex-1 h-11 rounded-full bg-blue-600 text-sm font-medium text-white"
-							onClick={() => setStep("processing")}
-							>
-							Sign
-							</button>
-						</div>
-						</div>
-					</div>
-				)}
-
-				
-
-				{/* PROCESSING STEP */}
-				{step === "processing" && (
-					<div className="flex-1 px-5 pb-6 pt-2 flex flex-col overflow-y-auto">
-						<div className="rounded-3xl bg-slate-900/5 dark:bg-black/40 border border-slate-200 dark:border-slate-800 px-4 py-4 flex flex-col gap-4 mt-2 flex-1">
-						<div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-							{isPay ? "Issuing check" : "Creating payment link"}
-						</div>
-
-						<div className="rounded-2xl bg-slate-100 dark:bg-black/40 border border-slate-200 dark:border-slate-700 px-4 py-3 text-center">
-							<div className="text-2xl font-semibold text-slate-900 dark:text-slate-50 mb-1">
-							{amt.toFixed(2)} USDC
-							</div>
-							<div className="text-[11px] text-slate-500 dark:text-slate-400">
-							Zero and{" "}
-							{Math.round(amt * 100)
-								.toString()
-								.padStart(2, "0")}{" "}
-							/ 100 dollars
-							</div>
-						</div>
-
-						<div className="text-xs text-slate-500 dark:text-slate-400">
-							{isPay ? "Recipient will receive" : "You will receive"}
-						</div>
-						<div className="flex items-center justify-between text-xs">
-							<span className="text-slate-500 dark:text-slate-400">
-							Net amount
-							</span>
-							<span className="text-slate-900 dark:text-slate-100 font-medium">
-							{isPay ? amt.toFixed(2) : requestNet.toFixed(2)} USDC
-							</span>
-						</div>
-						<div className="flex items-center justify-between text-xs">
-							<span className="text-slate-500 dark:text-slate-400">
-								Beamio fee
-							</span>
-							<span className="text-slate-900 dark:text-slate-100">
-								{fee.toFixed(2)} USDC
-							</span>
-						</div>
-
-						{isPay ? (
 							<div className="flex items-center justify-between text-xs">
-							<span className="text-slate-500 dark:text-slate-400">
-								You will pay
-							</span>
-							<span className="text-slate-900 dark:text-slate-100">
-								{payTotal.toFixed(2)} USDC
-							</span>
+								<span className="text-slate-500 dark:text-slate-400">
+								Net amount
+								</span>
+								<span className="text-slate-900 dark:text-slate-100 font-medium">
+								{isPay ? amt.toFixed(2) : requestNet.toFixed(2)} USDC
+								</span>
 							</div>
-						) : (
 							<div className="flex items-center justify-between text-xs">
-							<span className="text-slate-500 dark:text-slate-400">
-								Payer will pay
-							</span>
-							<span className="text-slate-900 dark:text-slate-100">
-								{requestGross > 0 ? requestGross.toFixed(2) : "0.00"} USDC
-							</span>
+								<span className="text-slate-500 dark:text-slate-400">
+									Beamio fee
+								</span>
+								<span className="text-slate-900 dark:text-slate-100">
+									{fee.toFixed(2)} USDC
+								</span>
 							</div>
-						)}
 
-						<div className="mt-auto pt-6">
-							<button className="w-full h-11 rounded-full bg-slate-200 text-sm text-slate-700 dark:bg-slate-700 dark:text-slate-300 cursor-wait">
-								Processing...
-							</button>
+							{isPay ? (
+								<div className="flex items-center justify-between text-xs">
+								<span className="text-slate-500 dark:text-slate-400">
+									You will pay
+								</span>
+								<span className="text-slate-900 dark:text-slate-100">
+									{payTotal.toFixed(2)} USDC
+								</span>
+								</div>
+							) : (
+								<div className="flex items-center justify-between text-xs">
+								<span className="text-slate-500 dark:text-slate-400">
+									Payer will pay
+								</span>
+								<span className="text-slate-900 dark:text-slate-100">
+									{requestGross > 0 ? requestGross.toFixed(2) : "0.00"} USDC
+								</span>
+								</div>
+							)}
+
+							<div className="mt-auto pt-6">
+								<button className="w-full h-11 rounded-full bg-slate-200 text-sm text-slate-700 dark:bg-slate-700 dark:text-slate-300 cursor-wait">
+									Processing...
+								</button>
+							</div>
+							</div>
 						</div>
-						</div>
-					</div>
-				)}
+					)}
 
-				{/* GENERATED STEP */}
-				{step === "generated" && <RedeemOrLinkCard createdAt={new Date().getTime()} isCompleted={false} isPay={isPay} amt={amt} successUrl={successUrl} tip={tip} note={note} onReset={() => {
-					setSendAmount('0')
-					setSuccessUrl('')
-					setNote('')
-					setStep('form')
-				}} />}
-			</div>
-		)
-	}
-	
-	{step === 'x402Sign' && (
-		<ConformSignInfo originUrl='https://beamio.app' messageData={messageData} processError={processError} processing={processing} />
-	)}
+					{/* GENERATED STEP */}
+					{step === "generated" && 
+						<RedeemOrLinkCard 
+							createdAt={new Date().getTime()} 
+							isCompleted={false} isPay={isPay} amt={amt} successUrl={successUrl} tip={tip} note={note} 
+							onReset={() => {
+							setSendAmount('0')
+							setSuccessUrl('')
+							setNote('')
+							setStep('form')
+						}} />}
+				</div>
+			)
+		}
+		
+		{step === 'x402Sign' && (
+			<ConformSignInfo originUrl='https://beamio.app' messageData={messageData} processError={processError} processing={processing} />
+		)}
 
-	{step === "success" && (
-		<Success />	
-	)}
+		{step === "success" && (
+			<Success />	
+		)}
 	</div>
 
   )

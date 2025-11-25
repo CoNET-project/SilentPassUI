@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react"
-import ScanBtn from '@/components/Wallet/scanBtn/ScanButtonForB'
+
 import styles from './send.module.scss'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"

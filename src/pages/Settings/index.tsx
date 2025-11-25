@@ -1,12 +1,12 @@
 //		pages/Settings/index.tsx
 
 import { useEffect, useRef, useState } from "react";
-import Setting from '../../components/Setting/Setting'
+import BeamioMeMainScreen from '../../components/Setting/index'
 
 const Settings = ({}) => {
     return (
         <>
-            <Setting />
+            <BeamioMeMainScreen />
         </>
     )
 };

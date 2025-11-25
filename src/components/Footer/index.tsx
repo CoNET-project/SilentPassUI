@@ -19,8 +19,7 @@ import Subscription from '@/components/Subscription/Subscription';
 import Status from '@/components/Home/Status/Status';
 import styles from '@/components/Footer/footer.module.scss';
 import { useDaemonContext } from "@/providers/DaemonProvider";
-import Filter from '@/components/Rules/Filter';
-import AirdropTask from '@/components/Wallet/airdropTask/AirdropTask';
+import Filter from '@/components/Rules/Filter'
 import {Bridge} from '@/bridge/webview-bridge';
 import { getiOSVPNStatus, getAndroidVPNStatus} from "../../api"
 import { ReactComponent as BLogo } from './assets/B-icon.svg'
@@ -43,16 +42,6 @@ const Footer = ({}) => {
     const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle, isInitialLoading} = useDaemonContext();
     const { pathname } = location;
 
-
-	const status = async () => {
-		window.addEventListener('message', (e) => {
-            Bridge.receive(e.data, makeListener)
-        })
-				
-		window.addEventListener("visibilitychange", async () => {
-		})
-		
-	}
 
 useEffect(() => {
   	const root = document.documentElement // <html>
@@ -81,11 +70,6 @@ useEffect(() => {
 		}
 	}, [darkModle])
 
-    useEffect(()=>{
-        // 监听 Electron 或 Native 的回传
-        status()
-
-    },[])
 
     const makeListener=(message: BridgeMessage, makeSend:any)=>{
 
@@ -155,7 +139,7 @@ useEffect(() => {
 					<Subscription />
 					<Status />
 					<Filter visible={ruleVisible} setVisible={setRuleVisible} />
-					<AirdropTask />
+					
 				</div>
 		}
 		</>

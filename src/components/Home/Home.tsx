@@ -6,17 +6,17 @@ import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, get
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import styles from '@/components/Home/home.module.scss'
-import ScanBtn from '@/components/Wallet/scanBtn/ScanButtonForB'
+import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useNavigate } from "react-router-dom"
 import { createOrGetWallet, storeSystemData} from "@/services/wallets"
-
+import { onWalletEvent } from '@/services/beamio'
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 
 const Home = ({}) => {
-	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles,setBeamio } = useDaemonContext()
+	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles,setBeamio, setPaymentLink } = useDaemonContext()
 	const navigate = useNavigate()
 	const hasActivity = false;
 	
@@ -29,6 +29,12 @@ const Home = ({}) => {
 	const [showGetFaucet, setShowGetFaucet] = useState(false)
 	const [show200OK, setShow200OK] = useState(false)
 	const [show403, setShow403] = useState(false)
+
+		const [showLinkPay, setShowLinkPay] = useState(false)
+	const [code, setCode] = useState('')
+	const [note, setNote] = useState('')
+	const [amt, setAmt] = useState('')
+	const [recipient, setRecipient] = useState('')
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -53,6 +59,7 @@ const Home = ({}) => {
 			isFaucet: false,
 			initialLoading: true
 		}
+
 		bo.initialLoading = true
 		temp.beamio = bo
 		if (bo.isFaucet) {
@@ -65,6 +72,16 @@ const Home = ({}) => {
 		storeSystemData()
 		
 		console.log (temp)
+
+		const url = new URL(window.location.href)
+		const codeHash = url.searchParams.get('code')||''
+		const amount = url.searchParams.get('amount')||''
+		setAmt(amount)
+		setCode(codeHash)
+		const _note = url.searchParams.get('note')||''
+		setNote(_note)
+		const address = url.searchParams.get('address')||''
+		setRecipient(address)
   	}
 
   	let first = true
@@ -72,6 +89,39 @@ const Home = ({}) => {
 		if (first) {
 			first = false
 			init()
+		}
+				// 只在挂载时注册一次
+		const off = onWalletEvent("scan:url", (url: string) => {
+			if (/^0x/.test(url)) {
+				setPaymentLink({code: '', note: '', address: url, amount: ''})
+				return setRecipient(url)
+			}
+			// 如果 url 是完整链接，建议这样解析
+			let searchParams: URLSearchParams
+			try {
+				const u = new URL(url)
+				searchParams = u.searchParams
+			} catch {
+				searchParams = new URLSearchParams(url)
+			}
+
+			const code = searchParams.get("code")
+			const _note = searchParams.get("note")
+			const address = searchParams.get("address")
+			const amount = searchParams.get("amount")
+
+			if (code) {
+				setCode(code)
+				setNote(_note || '')
+				setAmt(amount || '0.00')
+				setRecipient(address || '')
+				setShowLinkPay(true)
+				setPaymentLink({code, note: _note, address, amount})
+			}
+		})
+				// 卸载时把监听取消，避免旧实例继续吃事件
+		return () => {
+			if (typeof off === 'function') off()
 		}
   	}, [])
 
@@ -108,15 +158,17 @@ const Home = ({}) => {
 	}
 
 	useEffect(() => {
-		const url = new URL(window.location.href)
-		const amt = url.searchParams.get('amount')||''
-		const code = url.searchParams.get('code')||''
+		
 		if (amt && code && !power) {
 			return navigate('/Browser')
 		}
 
+		if (recipient) {
+			return navigate('/Pay')
+		}
+
 		getBa()
-	}, [beamio])
+	}, [beamio, code, amt, recipient])
 
 	return (
 		<div className="">
@@ -141,121 +193,124 @@ const Home = ({}) => {
 			<div className="flex flex-col h-[calc(100%-2.5rem)] px-5 pb-3">
 			{/* Top bar: wallet pill + icons */}
 			<div className="flex items-center justify-between mb-2">
+
 				{/* Wallet pill */}
-			<button
-				className="
-					flex items-center gap-2 
-					px-2.5 py-1.5 rounded-full 
-					bg-slate-200 dark:bg-slate-900 
-					text-slate-800 dark:text-slate-50 
-					text-[10px] shadow-sm
-				"
-				onClick={() => {
-					navigate("/settings")
-				}}
-			>
-				<div
-				className="
-					w-5 h-5 rounded-full 
-					bg-slate-900/5 dark:bg-slate-50/10 
-					flex items-center justify-center 
-					overflow-hidden
-				"
-				>
-				<img
-					src={currentAvatarSrc}
-					alt="Avatar preview"
+				<button
 					className="
-					w-full h-full 
-					rounded-full 
-					object-cover
+						flex items-center gap-2 
+						px-2.5 py-1.5 rounded-full 
+						bg-slate-200 dark:bg-slate-900 
+						text-slate-800 dark:text-slate-50 
+						text-[10px] shadow-sm
 					"
-				/>
+					onClick={() => {
+						navigate("/settings")
+					}}
+				>
+					<div
+					className="
+						w-5 h-5 rounded-full 
+						bg-slate-900/5 dark:bg-slate-50/10 
+						flex items-center justify-center 
+						overflow-hidden
+					"
+					>
+					<img
+						src={currentAvatarSrc}
+						alt="Avatar preview"
+						className="
+						w-full h-full 
+						rounded-full 
+						object-cover
+						"
+					/>
+					</div>
+
+				<div className="flex flex-col items-start leading-snug">
+				<span
+					className="
+					text-[9px] uppercase tracking-[0.14em]
+					text-slate-500 dark:text-slate-400
+					"
+				>
+					{avatarName}
+				</span>
+
+				<span
+					className="
+					text-[10px] font-medium 
+					text-slate-800 dark:text-slate-100
+					"
+				>
+					{fmtAddr(myAddress)}
+				</span>
 				</div>
 
-			<div className="flex flex-col items-start leading-snug">
-			<span
-				className="
-				text-[9px] uppercase tracking-[0.14em]
-				text-slate-500 dark:text-slate-400
-				"
-			>
-				{avatarName}
-			</span>
-
-			<span
-				className="
-				text-[10px] font-medium 
-				text-slate-800 dark:text-slate-100
-				"
-			>
-				{fmtAddr(myAddress)}
-			</span>
-			</div>
-
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 24 24"
-				className="w-3 h-3 text-slate-500 dark:text-slate-300"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.8"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-			>
-				<path d="m9 6 6 6-6 6" />
-			</svg>
-			</button>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 24 24"
+					className="w-3 h-3 text-slate-500 dark:text-slate-300"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="1.8"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+				>
+					<path d="m9 6 6 6-6 6" />
+				</svg>
+				</button>
 
 				{/* Icons: search, QR, bell */}
-				<div className="flex items-center gap-3 text-slate-500">
-				<button
-					className="w-7 h-7 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-[11px]"
-					aria-label="Search"
-					onClick={() => setIsSearchOpen((v) => !v)}
-				>
-					<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 24 24"
-					className="w-3.5 h-3.5"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.8"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-					>
-					<circle cx="11" cy="11" r="6" />
-					<path d="m16 16 3.5 3.5" />
-					</svg>
-				</button>
+						<div className="flex items-center gap-3 text-slate-500">
+							{/* Search */}
+							<button
+								className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-[11px]"
+								aria-label="Search"
+								onClick={() => setIsSearchOpen((v) => !v)}
+							>
+								<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								className="w-[18px] h-[18px]"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.8"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								>
+								<circle cx="11" cy="11" r="6" />
+								<path d="m16 16 3.5 3.5" />
+								</svg>
+							</button>
 
-				<button
-				className="w-7 h-7 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-[11px]"
-				aria-label="Scan QR"
-				>
-				<ScanBtn compact />
-				</button>
+							{/* Scan */}
+							<button
+								className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-[11px]"
+								aria-label="Scan QR"
+							>
+								<ScanBtn iconSize={18} />
+							</button>
 
-				<button
-					className="w-7 h-7 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-[11px]"
-					aria-label="Notifications"
-				>
-					{/* In the real app, this opens notifications page */}
-					<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 24 24"
-					className="w-3.5 h-3.5"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.8"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-					>
-					<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-					<path d="M10 21h4" />
-					</svg>
-				</button>
-				</div>
+							{/* Notifications */}
+							<button
+								className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-50 border border-slate-200 text-[11px]"
+								aria-label="Notifications"
+							>
+								<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								className="w-[18px] h-[18px]"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.8"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								>
+								<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+								<path d="M10 21h4" />
+								</svg>
+							</button>
+						</div>
 			</div>
 
 			{/* Wallet balance */}

@@ -106,7 +106,6 @@ function App() {
 						<Route path="/Pay" element={<Pay />} />
 		          		<Route path="/Browser" element={<Browser />} />
 		          		<Route path="/settings" element={<Settings />} />
-						
 		        	</Routes>
 		      	</div>
 				{
@@ -115,7 +114,6 @@ function App() {
 						<Footer />
 					</div>
 				}
-		      	
 		    </div>
 		</Router>
   	)

@@ -4,7 +4,7 @@ import base_ex from '@/components/assets/base-ex.svg'
 import {AppButton}  from '@/components/button/AppButton'
 import { CoNET_Data } from "@/utils/globals"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-
+import bIcon from '@/components/assets/32x32.svg'
 import {ethers} from 'ethers'
 
 import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, getBalance, AuthorizationSign} from '@/services/beamio'
@@ -90,7 +90,7 @@ const TipInput = ({ tipAmount, setTipAmount, amt, tipError}: TipInputProps) => {
 }
 
 const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
-	const { darkModle, setDarkModle, setProfiles, setPower } = useDaemonContext()
+	const { darkModle, setDarkModle, setProfiles, setPower, profiles } = useDaemonContext()
 	const [successPayLink, setSuccessPayLink] = useState<string>('')
 	const [signx402Show, setSignx402Show] = useState(false)
 	const [messageData, setMessageData] = useState<any>()
@@ -213,12 +213,12 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 
 	useEffect(() => {
 		getBa()
-			window.addEventListener("sign:final", onSignFinal)
+		window.addEventListener("sign:final", onSignFinal)
 
 		return () => {
 			window.removeEventListener("sign:final", onSignFinal)
 		}
-	}, [])
+	}, [profiles])
 
 	useEffect(() => {
 		
@@ -242,9 +242,13 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 	}, [error, processError])
 
 	const getBa = async () => {
-		const temp = CoNET_Data?.profiles?.[0]
-		if (!temp) return
-		if (!temp.keyID) return
+		if (!profiles?.length) {
+			return
+		}
+		const temp = profiles[0]
+
+		if (!temp?.keyID) return
+
 		setMyAddress(temp.keyID)
 		const _ba = await getBalance(temp.keyID)
 		if (!_ba) return
@@ -317,7 +321,7 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		// }, 2000)
 
 		
-		const fixedAmount = ethers.parseUnits(totalAmount.toString(), 6)
+		const fixedAmount = ethers.parseUnits(totalAmount.toFixed(2), 6)
 		const params = new URLSearchParams({ amount: reject ? '0' : fixedAmount.toString(), code }).toString()
 		const path = `/api/BeamioPaymentLinkFinish?${params}`
 		const requestEndpoint = 'https://api.settleonbase.xyz' + path

@@ -100,6 +100,8 @@ type DaemonContext = {
   setBeamio : (val:beamio|null) => void
   usdcbalance : number
   setUsdcbalance: (val: number) => void
+  paymentLink: any
+  setPaymentLink: (val: any) => void
 };
 
 type DaemonProps = {
@@ -205,7 +207,9 @@ const defaultContextValue: DaemonContext = {
   setBeamio: () => {},
 	beamio: null,
 	usdcbalance: 0,
-	setUsdcbalance: () => {}
+	setUsdcbalance: () => {},
+	paymentLink: null,
+  setPaymentLink: () => {},
 }
 
 const Daemon = createContext<DaemonContext>(defaultContextValue);
@@ -216,6 +220,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [paymentLink, setPaymentLink] = useState(null)
 	const [darkModle, setDarkModle] = useState<boolean>(false)
   const [version] = useState(packageData.version)
   const [power, setPower] = useState<boolean>(false);
@@ -320,7 +325,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version,
-				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,
+				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink,
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle,
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,

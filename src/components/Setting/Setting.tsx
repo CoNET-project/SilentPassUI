@@ -1,5 +1,5 @@
 // @/components/Setting.tsx
-import { useTranslation } from 'react-i18next'
+
 import React, { useState, useEffect } from 'react'
 import styles from './setting.module.scss'
 import { ReactComponent as SettingsIconBlue } from "@/components/Footer/assets/settings-icon-grey.svg"
@@ -9,13 +9,13 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { Popup, Toast } from 'antd-mobile'
 import { MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { storeSystemData } from '../../services/wallets'
+import { storeSystemData } from '@/services/beamio'
 import CryptoAssetsCard from './CryptoAssetsCard/CryptoAssetsCard'
 import Privatekey from './PrivateKey/PrivateKey'
 
 const defaultName = 'Beamio'
 const Setting = ({}) => {
-  const { t } = useTranslation()
+
   const { darkModle, setDarkModle, setProfiles, beamio, setBeamio } = useDaemonContext()
 
 

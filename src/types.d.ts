@@ -136,11 +136,13 @@ interface Region {
   }
 
   type beamio = {
-		accountName: string
-		image: string
-		darkTheme: boolean
-		isFaucet: boolean
-		initialLoading: boolean
+	accountName: string
+	image: string
+	darkTheme: boolean
+	isFaucet: boolean
+	initialLoading: boolean
+	firstName?: string
+	lastName?: string
 
   }
   

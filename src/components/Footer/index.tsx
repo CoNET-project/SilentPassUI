@@ -12,14 +12,12 @@ import { ReactComponent as BrowserBlueIcon } from "./assets/browser-icon-blue.sv
 import { ReactComponent as BrowserGreyIcon } from "./assets/browser-icon-grey.svg";
 import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
 import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg";
-import { cleanCurrentWaitingTimeout } from './../../services/wallets'
-import { TabBar } from 'antd-mobile';
-import { useTranslation } from 'react-i18next';
-import Subscription from '@/components/Subscription/Subscription';
-import Status from '@/components/Home/Status/Status';
+
+import { TabBar } from 'antd-mobile'
+
 import styles from '@/components/Footer/footer.module.scss';
 import { useDaemonContext } from "@/providers/DaemonProvider";
-import Filter from '@/components/Rules/Filter'
+
 import {Bridge} from '@/bridge/webview-bridge';
 import { getiOSVPNStatus, getAndroidVPNStatus} from "../../api"
 import { ReactComponent as BLogo } from './assets/B-icon.svg'
@@ -36,7 +34,6 @@ interface BridgeMessage {
 
 
 const Footer = ({}) => {
-    const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const location = useLocation();
     const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle, isInitialLoading} = useDaemonContext();
@@ -88,33 +85,32 @@ useEffect(() => {
 
     const setRouteActive = (value: string) => {
         navigate(value)
-		cleanCurrentWaitingTimeout()
     }
 
     const tabs = [
         {
             key: '/',
-            title: t('footer-nav-1'),
+            title: 'Home',
             icon: (pathname=='/'?<HomeBlueIcon />:<HomeIconGrey />),
         },
         {
             key: '/Send',
-            title: t('comp-comm-Send'),
+            title: 'Transactions',
             icon: (pathname=='/Send'?<SendBlueIcon />:<SendIconGrey />),
         },
         {
             key: '/pay',
-            title: t('footer-nav-6'),
+            title: 'Pay/Request',
 			icon: <div style={{ width: '2rem', height: '2rem' }} />,
         },
         {
             key: '/Browser',
-            title: t('footer-nav-5'),
+            title: "Browser",
             icon: (pathname=='/Browser'?<BrowserBlueIcon />:<BrowserGreyIcon />),
         },
         {
             key: '/settings',
-            title: t('footer-nav-2'),
+            title: 'Settings',
             icon: (pathname=='/settings'?<WalletBlueIcon />:<WalletIconGrey />),
             ...(hasNewVersion ? { badge: '1' } : {}),
         },
@@ -135,10 +131,6 @@ useEffect(() => {
 					<div className={styles.payCenterLogo} onClick={() => setRouteActive('/pay')}>
 						{darkModle ? <BLogo style={{ width: '4rem', height: '4rem' }} /> : <BLogoLight style={{ width: '4rem', height: '4rem' }} />}
 					</div>
-
-					<Subscription />
-					<Status />
-					<Filter visible={ruleVisible} setVisible={setRuleVisible} />
 					
 				</div>
 		}

@@ -8,7 +8,7 @@ import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE
 // This is a standalone "Receive" UI, separate from the Payments (Send / Request / Check) screen.
 
 type prof = {
-	walletAddress: string
+	colse: () => void
 }
 
 export default function BeamioReceiveScreen() {

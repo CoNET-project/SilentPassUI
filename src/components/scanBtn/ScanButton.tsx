@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Button, Modal, Toast } from "antd-mobile";
 import Html5QrcodePlugin from "./Html5QrcodePlugin";
 import styles from "./scanButton.module.scss";
-import { useTranslation } from 'react-i18next';
+
 import { emitWalletEvent } from '@/services/beamio';
 import { QrCode } from "lucide-react";
 
@@ -13,7 +13,7 @@ interface Props {
 const ScanButton = ({ iconSize = 18 }: Props) => {  // <----- 默认18
   const [scanning, setScanning] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { t } = useTranslation();
+
 
   const handleGoScan = async () => {
     setLoading(true);
@@ -23,10 +23,10 @@ const ScanButton = ({ iconSize = 18 }: Props) => {  // <----- 默认18
 
       if (status.state === 'denied') {
         Modal.show({
-          content: t('wallet-receive-code-scan-tip-1'),
+          content: "Camera permission denied or unavailable",
           closeOnAction: true,
           actions: [
-            { key: 'confirm', text: t('wallet-receive-code-confirm') },
+            { key: 'confirm', text: 'Confirm' },
           ],
         });
         setLoading(false);
@@ -45,10 +45,10 @@ const ScanButton = ({ iconSize = 18 }: Props) => {  // <----- 默认18
         setLoading(false);
       } catch (e: any) {
         Modal.show({
-          content: t('wallet-receive-code-scan-tip-1'),
+          content: "Camera permission denied or unavailable",
           closeOnAction: true,
           actions: [
-            { key: 'confirm', text: t('wallet-receive-code-confirm') },
+            { key: 'confirm', text: 'Confirm' },
           ],
         });
         setLoading(false);
@@ -58,20 +58,20 @@ const ScanButton = ({ iconSize = 18 }: Props) => {  // <----- 默认18
 
   const handleScanSuccess = (text: string) => {
     if (/^http/i.test(text) || /^0x/i.test(text)) {
-      emitWalletEvent("scan:url", text);
-      return;
+		emitWalletEvent("scan:url", text);
+		return;
     }
 
     try {
       JSON.parse(text);
       Toast.show({
         icon: 'fail',
-        content: t('wallet-receive-code-scan-tip-2'),
+        content: 'Unable to recognize scan content',
       });
     } catch {
       Toast.show({
         icon: 'fail',
-        content: t('wallet-receive-code-scan-tip-2'),
+        content: 'Unable to recognize scan content',
       });
     }
 

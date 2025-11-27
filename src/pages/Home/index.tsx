@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Home from '../../components/Home/Home';
 import BeamioOnboardingModal from './LoadingPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {checkStorage, storeSystemData} from '@/services/wallets'
+import {checkStorage, storeSystemData} from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 
 

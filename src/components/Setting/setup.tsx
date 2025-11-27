@@ -12,9 +12,17 @@ import {
   FileText,
 } from "lucide-react";
 import BeamioNavBack from './BeamioNavBack'
-
+import { motion, AnimatePresence } from "framer-motion"
 import React, { useState, useEffect } from 'react'
-
+import BeamioAccountScreen from "./BeamioAccountScreen"
+import BeamioRegionCurrencyScreen from "./BeamioRegionCurrencyScreen"
+import BeamioPaymentMethodsScreen from "./BeamioPaymentMethodsScreen"
+import BeamioCashcodesLinksSettingsScreen from "./BeamioCashcodesLinksSettingsScreen";
+import BeamioPasskeyFaceIDSettingsScreen from "./BeamioPasskeyFaceIDSettingsScreen";
+import BeamioPrivacySettingsScreen from "./BeamioPrivacySettingsScreen";
+import BeamioNotificationsSettingsScreen from "./BeamioNotificationsSettingsScreen";
+import BeamioStatementsReportingScree from "./BeamioStatementsReportingScreen";
+import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 
 export default function BeamioSettingsScreen({
   onClose,
@@ -23,12 +31,12 @@ export default function BeamioSettingsScreen({
 }) {
 
 
-	const [settingsOpen, setReceiveOpen] = useState(false)
+	const [settingsOpen, setSettingsOpen] = useState<''|'Account'|'Region'|'Payment'|'Cashcodes'|'Passkey'|'Privacy'|'Notifications'|'Statement'|'Help'>('')
 
 	const sectionTitleClass =
 		"px-4 pt-6 pb-2 text-xs font-semibold text-slate-400 tracking-[0.12em] uppercase"
 	const rowClass =
-		"flex items-center justify-between px-4 h-12 bg-white active:bg-slate-50 border-b border-slate-100"
+		"w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition"
 	const leftClass = "flex items-center gap-3"
 	const iconWrapperClass =
 		"flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500"
@@ -36,8 +44,8 @@ export default function BeamioSettingsScreen({
   	return (
 		<div className="h-full flex flex-col bg-slate-50 text-slate-900">
       {/* Top nav */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3 bg-white/95 backdrop-blur border-b border-slate-100">
-        <BeamioNavBack title="Settings" onClose={() => onClose()} />
+      <header className="">
+        	<BeamioNavBack title="Settings" onClose={() => onClose()} />
       </header>
 
       {/* 👇 这里是可以滚动的内容区域 */}
@@ -60,71 +68,94 @@ export default function BeamioSettingsScreen({
 			{/* Preferences */}
 			<h2 className={sectionTitleClass}>Preferences</h2>
 			<div className="bg-white border-y border-slate-100">
-				<button className={rowClass}>
-				<div className={leftClass}>
-					<span className={iconWrapperClass}>
-					<User className="h-4 w-4" />
-					</span>
-					<div className="flex flex-col items-start">
-					<span className="text-sm font-medium">Account</span>
-					<span className="text-xs text-slate-500">
-						Name, @handle, profile photo
-					</span>
+				<button 
+					className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Account')
+					}}
+				>
+					<div className={leftClass}>
+						<span className={iconWrapperClass}>
+						<User className="h-4 w-4" />
+						</span>
+						<div className="flex flex-col items-start">
+						<span className="text-sm font-medium">Account</span>
+						<span className="text-xs text-slate-500">
+							Name, @handle, profile photo
+						</span>
+						</div>
 					</div>
-				</div>
-				<ChevronRight className="h-4 w-4 text-slate-300" />
+					<ChevronRight className="h-4 w-4 text-slate-300" />
 				</button>
 
-				<button className={rowClass}>
-				<div className={leftClass}>
-					<span className={iconWrapperClass}>
-					<Globe2 className="h-4 w-4" />
-					</span>
-					<div className="flex flex-col items-start">
-					<span className="text-sm font-medium">Region &amp; currency</span>
-					<span className="text-xs text-slate-500">
-						Country, language, default stablecoin
-					</span>
+				<button 
+					className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Region')
+					}}
+				>
+					<div className={leftClass}>
+						<span className={iconWrapperClass}>
+						<Globe2 className="h-4 w-4" />
+						</span>
+						<div className="flex flex-col items-start">
+						<span className="text-sm font-medium">Region &amp; currency</span>
+						<span className="text-xs text-slate-500">
+							Country, language, default stablecoin
+						</span>
+						</div>
 					</div>
-				</div>
-				<ChevronRight className="h-4 w-4 text-slate-300" />
+					<ChevronRight className="h-4 w-4 text-slate-300" />
 				</button>
 
-				<button className={rowClass}>
-				<div className={leftClass}>
-					<span className={iconWrapperClass}>
-					<CreditCard className="h-4 w-4" />
-					</span>
-					<div className="flex flex-col items-start">
-					<span className="text-sm font-medium">Payment methods</span>
-					<span className="text-xs text-slate-500">
-						Connect Coinbase, bank or cards
-					</span>
+				<button className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Payment')
+					}}
+				>
+					<div className={leftClass}>
+						<span className={iconWrapperClass}>
+						<CreditCard className="h-4 w-4" />
+						</span>
+						<div className="flex flex-col items-start">
+						<span className="text-sm font-medium">Payment methods</span>
+						<span className="text-xs text-slate-500">
+							Connect Coinbase, bank or cards
+						</span>
+						</div>
 					</div>
-				</div>
-				<ChevronRight className="h-4 w-4 text-slate-300" />
+					<ChevronRight className="h-4 w-4 text-slate-300" />
 				</button>
 
-				<button className={rowClass}>
-				<div className={leftClass}>
-					<span className={iconWrapperClass}>
-					<Smartphone className="h-4 w-4" />
-					</span>
-					<div className="flex flex-col items-start">
-					<span className="text-sm font-medium">Cashcodes &amp; links</span>
-					<span className="text-xs text-slate-500">
-						Default memo &amp; expiry for links
-					</span>
+				<button className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Cashcodes')
+					}}
+				
+				>
+					<div className={leftClass}>
+						<span className={iconWrapperClass}>
+						<Smartphone className="h-4 w-4" />
+						</span>
+						<div className="flex flex-col items-start">
+						<span className="text-sm font-medium">Cashcodes &amp; links</span>
+						<span className="text-xs text-slate-500">
+							Default memo &amp; expiry for links
+						</span>
+						</div>
 					</div>
-				</div>
-				<ChevronRight className="h-4 w-4 text-slate-300" />
+					<ChevronRight className="h-4 w-4 text-slate-300" />
 				</button>
 			</div>
 
 			{/* Security & privacy */}
 			<h2 className={sectionTitleClass}>Security &amp; privacy</h2>
 			<div className="bg-white border-y border-slate-100">
-				<button className={rowClass}>
+				<button className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Passkey')
+					}}
+				>
 				<div className={leftClass}>
 					<span className={iconWrapperClass}>
 					<Lock className="h-4 w-4" />
@@ -139,7 +170,11 @@ export default function BeamioSettingsScreen({
 				<ChevronRight className="h-4 w-4 text-slate-300" />
 				</button>
 
-				<button className={rowClass}>
+				<button className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Privacy')
+					}}
+				>
 				<div className={leftClass}>
 					<span className={iconWrapperClass}>
 					<Shield className="h-4 w-4" />
@@ -154,26 +189,35 @@ export default function BeamioSettingsScreen({
 				<ChevronRight className="h-4 w-4 text-slate-300" />
 				</button>
 
-				<button className={rowClass}>
-				<div className={leftClass}>
-					<span className={iconWrapperClass}>
-					<Bell className="h-4 w-4" />
-					</span>
-					<div className="flex flex-col items-start">
-					<span className="text-sm font-medium">Notifications</span>
-					<span className="text-xs text-slate-500">
-						Payment alerts, security alerts, email
-					</span>
+				<button className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Notifications')
+					}}
+				>
+					<div className={leftClass}>
+						<span className={iconWrapperClass}>
+						<Bell className="h-4 w-4" />
+						</span>
+						<div className="flex flex-col items-start">
+						<span className="text-sm font-medium">Notifications</span>
+						<span className="text-xs text-slate-500">
+							Payment alerts, security alerts, email
+						</span>
+						</div>
 					</div>
-				</div>
-				<ChevronRight className="h-4 w-4 text-slate-300" />
+					<ChevronRight className="h-4 w-4 text-slate-300" />
 				</button>
 			</div>
 
 			{/* Reporting */}
 			<h2 className={sectionTitleClass}>Reporting</h2>
 			<div className="bg-white border-y border-slate-100">
-				<button className={rowClass}>
+				<button className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Statement')
+					}}
+				>
+				
 				<div className={leftClass}>
 					<span className={iconWrapperClass}>
 					<FileText className="h-4 w-4" />
@@ -192,7 +236,11 @@ export default function BeamioSettingsScreen({
 			{/* Support */}
 			<h2 className={sectionTitleClass}>Support</h2>
 			<div className="bg-white border-y border-slate-100 mb-10">
-				<button className={rowClass}>
+				<button className={rowClass}
+					onClick={() => {
+						setSettingsOpen('Help')
+					}}
+				>
 				<div className={leftClass}>
 					<span className={iconWrapperClass}>
 					<HelpCircle className="h-4 w-4" />
@@ -208,6 +256,64 @@ export default function BeamioSettingsScreen({
 				</button>
 			</div>
 			</div>
+			<AnimatePresence>
+				{settingsOpen && (
+					<motion.div
+						className="
+							fixed inset-0 z-40 
+							bg-white dark:bg-slate-900
+							flex flex-col
+						"
+						initial={{ x: "100%" }}
+						animate={{ x: 0 }}
+						exit={{ x: "100%" }}
+						transition={{ duration: 0.28, ease: "easeOut" }}
+					>
+						{/* 顶部 Header */}
+						<BeamioNavBack
+							title={settingsOpen === 'Account' ? 'Account' : ''}
+							onClose={() => {
+								setSettingsOpen('')
+							}} 
+						/>
+
+					{/* 内容区域：放你的 BeamioAccountScreen */}
+						<div className="flex-1 overflow-y-auto">
+							{
+								settingsOpen === 'Account' && <BeamioAccountScreen colse={() => setSettingsOpen('')} />
+							}
+							{
+								settingsOpen === 'Region' && <BeamioRegionCurrencyScreen colse={() => setSettingsOpen('')} />
+							}
+							{
+								settingsOpen === 'Payment' && <BeamioPaymentMethodsScreen colse={() => setSettingsOpen('')} />
+							}
+							{
+								settingsOpen === 'Cashcodes' && <BeamioCashcodesLinksSettingsScreen colse={() => setSettingsOpen('')} />
+							}
+							{
+								settingsOpen === 'Passkey' && <BeamioPasskeyFaceIDSettingsScreen colse={() => setSettingsOpen('')} />
+							}
+							{
+								settingsOpen === 'Privacy' && <BeamioPrivacySettingsScreen colse={() => setSettingsOpen('')} />
+							}
+							{
+								settingsOpen === 'Notifications' && <BeamioNotificationsSettingsScreen colse={() => setSettingsOpen('')} />
+							}
+
+							{
+								settingsOpen === 'Statement' && <BeamioStatementsReportingScree colse={() => setSettingsOpen('')} />
+							}
+							{
+								settingsOpen === 'Help' && <BeamioGetHelpSettingsScreen colse={() => setSettingsOpen('')} />
+							}
+
+
+							
+						</div>
+					</motion.div>
+				)}
+				</AnimatePresence>
 		</div>
 	)
 }

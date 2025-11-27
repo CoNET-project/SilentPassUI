@@ -3,7 +3,7 @@ import jsQR from 'jsqr';
 import { Popup, Button, Toast, SpinLoading, Modal } from 'antd-mobile';
 import { CloseCircleOutline } from 'antd-mobile-icons';
 import styles from './html5QrcodePlugin.module.scss';
-import { useTranslation } from 'react-i18next';
+
 
 interface Props {
     shouldStart: boolean;
@@ -18,7 +18,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
     const [loading, setLoading] = useState(false);
     const [redirecting, setRedirecting] = useState(false);
     const [uploading, setUploading] = useState(false);
-    const { t } = useTranslation();
+
     let video = document.createElement("video");
 
     useEffect(() => {
@@ -46,12 +46,12 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
             if(errorMsg.toLowerCase().includes("permission")){
                 onStop?.();
                 Modal.show({
-                    content: t('wallet-receive-code-scan-tip-1'),
+                    content: "Camera permission denied or unavailable",
                     closeOnAction: true,
                     actions: [
                         {
                             key: 'confirm',
-                            text: t('wallet-receive-code-confirm')
+                            text: "Confirm"
                         },
                     ]
                 })
@@ -115,7 +115,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
         if (file.size > maxSize) {
             Toast.show({
                 icon: 'fail',
-                content: t('wallet-receive-code-scan-tip-4')
+                content: "Image size cannot exceed 5MB, please select another file!"
             });
             event.target.value = '';
             return;
@@ -137,7 +137,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
                 } else {
                     Toast.show({
                         icon: 'fail',
-                        content: t('wallet-receive-code-scan-tip-6')
+                        content: "File scan failed"
                     });
                 }
                 onStop?.();
@@ -166,7 +166,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
                 {loading ? (
                     <div className={styles.loading}>
                         <SpinLoading />
-                        <div className={styles.loadingText}>{t('wallet-scan-camera-tip')}...</div>
+                        <div className={styles.loadingText}>Starting camera...</div>
                     </div>
                 ) : null}
 
@@ -184,7 +184,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
                     loading={uploading}
                     onClick={() => document.getElementById('qr-upload')?.click()}
                 >
-                    {t('wallet-receive-code-scan-file-btn')}
+                    Choose File
                 </Button>
                 <input
                     type='file'

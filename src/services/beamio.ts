@@ -1,16 +1,29 @@
-import { CoNET_Data } from '@/utils/globals'
-import {ethers} from 'ethers'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import {ethers} from 'ethers' 
 import usdc_abi from './ABI/usdc_abi.json'
-const uuid62 = require('uuid62')
-export type IBalance= {
-	usdc: string
-	eth: string
-	oracle: {
-		bnb: string
-		eth: string
-		usdc: string
-	}
-}
+import {
+  customJsonStringify,
+  initProfileTokens,
+  isValidSolanaBase58PrivateKey,
+  postToEndpoint,
+
+} from "../utils/utils"
+import {
+  apiv4_endpoint,
+  conetDepinProvider,
+  conetProvider,
+  localDatabaseName,
+  rewardWalletAddress,
+  payment_endpoint,
+  paypal_endpoint,
+  changeRPC,
+  ethProvider,
+  sGB_ReadOnly,
+
+} from "../utils/constants"
+import contracts from "../utils/contracts"
+
+
 
 export type x402Response = {
 	timestamp: string
@@ -37,9 +50,24 @@ type AuthorizationPayload = {
 		}
 	}
 }
+
+
+
+const uuid62 = require('uuid62')
+const PouchDB = require("pouchdb").default
+
 const USDCContract_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const baseEndpoint = new ethers.JsonRpcProvider('https://1rpc.io/base')
 const SC= new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
+export type IBalance= {
+	usdc: string
+	eth: string
+	oracle: {
+		bnb: string
+		eth: string
+		usdc: string
+	}
+}
 
 export const getBalance = async (address: string) => {
 	if (!address) return null
@@ -69,6 +97,9 @@ export const getBalance = async (address: string) => {
 		return null
 	}
 }
+
+const duplicate = contracts.Duplicate
+const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi, conetDepinProvider)
 
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
@@ -560,3 +591,225 @@ export function emitWalletEvent(event: string, payload?: any) {
   if (!arr) return
   arr.forEach(h => h(payload))
 }
+
+const createKeyHDWallets = (secretPhrase: string | null) => {
+  try {
+    if (!secretPhrase) return ethers.Wallet.createRandom();
+
+    return ethers.Wallet.fromPhrase(secretPhrase);
+  } catch (ex) {
+    return null;
+  }
+}
+
+const getDuplicateOwnership = async(duplicateAccount: string, keyID: string): Promise<boolean|null> => {
+	try {
+		const owner = await duplicate_readOnly.duplicateList(keyID)
+		if (owner === ethers.ZeroAddress || duplicateAccount.toLowerCase() !== owner.toLowerCase()) {
+			return false
+		}
+		return true
+	} catch (ex) {
+		return null
+	}
+
+}
+
+const duplicateAPI = `${apiv4_endpoint}duplicate`
+const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
+	
+	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
+	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp._duplicateCode])
+	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+
+
+	if (!temp?.duplicateAccount) {
+		const profiles = temp.profiles
+		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: '', channelPartners: temp.ChannelPartners})
+		const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+		const signMessage = await wallet.signMessage(message)
+		const sendData = {
+		  	message, signMessage
+		}
+	
+		const result = await postToEndpoint(duplicateAPI, true, sendData)
+		if (!result|| !result?.status) {
+			console.log(`initDuplicate Error!`, result?.error)
+			return temp
+		}
+		console.log(`initDuplicate success!`, result?.status)
+
+		temp.duplicateAccount = {
+			privateKeyArmor: profiles[0].privateKeyArmor,
+			tokens: initProfileTokens(),
+			publicKeyArmor: '',
+			referrer: '',
+			keyID: result.status,
+			isNode: false,
+			index: 0,
+			hdPath: null
+		}
+		
+	} else {
+		const keyID = temp.profiles[0].keyID
+		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
+		if (duplicateStatus === false) {
+			
+			return null
+		}
+	}
+
+	if (!temp?.duplicatePassword) {
+		temp.duplicateCode = ''
+	}
+
+	return temp
+
+}
+
+export const createOrGetWallet = async (secretPhrase: string | null, initAccount = false, referrals = '', ChannelPartners = '' ) => {
+	await checkStorage()
+
+  if (secretPhrase|| initAccount ) setCoNET_Data(null)
+
+  if (!CoNET_Data || !CoNET_Data?.profiles) {
+		const acc = createKeyHDWallets(secretPhrase);
+
+		
+
+		if (!acc) return null
+
+		const profile: profile = {
+			tokens: initProfileTokens(),
+			publicKeyArmor: acc.publicKey,
+			keyID: acc.address,
+			isPrimary: true,
+			referrer: null,
+			isNode: false,
+			privateKeyArmor: acc.signingKey.privateKey,
+			hdPath: acc.path,
+			index: acc.index,
+			type: "ethereum",
+			webFilter: true
+		};
+
+		const data: any = {
+			mnemonicPhrase: acc?.mnemonic?.phrase,
+			profiles: [profile],
+			isReady: true,
+			ver: 0,
+			nonce: 0,
+		};
+
+		if (acc?.mnemonic?.phrase) {
+
+		}
+
+		
+		
+		setCoNET_Data(data)
+	}
+
+
+
+	let tmpData = CoNET_Data
+	if (!tmpData) {
+		return null
+	}
+
+  	tmpData.ChannelPartners = ChannelPartners
+	tmpData.referrals = referrals
+  
+
+
+  tmpData = await initDuplicate(tmpData)
+  if (!tmpData) {
+		return
+  }
+  const beamio = tmpData.beamio|| {
+		image: '',
+		accountName: '',
+		isFaucet: false,
+		darkTheme: false,
+		initialLoading: true
+	}
+
+	tmpData.beamio = beamio
+  
+  await setCoNET_Data(tmpData)
+
+  await storeSystemData()
+
+  if (tmpData === null) {
+		setTimeout(() => {
+			return window.location.reload()
+		}, 5000)
+	return null
+  }
+  
+  const profiles = tmpData.profiles
+
+  return profiles
+}
+
+export const checkStorage = async () => {
+  const database = PouchDB(localDatabaseName, { auto_compaction: true });
+
+  try {
+    const doc = await database.get("init", { latest: true });
+    const data = JSON.parse(Buffer.from(doc.title, "base64").toString());
+    setCoNET_Data(data);
+	return data
+  } catch (ex) {
+    console.log(
+      `checkStorage have no CoNET data in IndexDB, INIT CoNET data`
+    )
+	return null
+  }
+}
+
+const storageHashData = async (docId: string, data: string) => {
+  const database = PouchDB(localDatabaseName, { auto_compaction: true });
+
+  let doc: any;
+  try {
+    doc = await database.get(docId, { latest: true });
+
+    try {
+      await database.put({ _id: docId, title: data, _rev: doc._rev });
+    } catch (ex) {
+      console.log(`put doc storageHashData Error!`, ex);
+    }
+  } catch (ex: any) {
+    if (/^not_found/.test(ex.name)) {
+      try {
+        await database.post({ _id: docId, title: data });
+      } catch (ex) {
+        console.log(`create new doc storageHashData Error!`, ex);
+      }
+    } else {
+      console.log(`get doc storageHashData Error!`, ex);
+    }
+  }
+}
+
+export const storeSystemData = async () => {
+  if (!CoNET_Data) {
+    return;
+  }
+  const temp = CoNET_Data
+
+  try {
+    await storageHashData(
+		"init",
+		Buffer.from(customJsonStringify(temp)).toString("base64")
+    );
+  } catch (ex) {
+    console.log(`storeSystemData storageHashData Error!`, ex);
+  }
+}
+
+
+
+
+

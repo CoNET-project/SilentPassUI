@@ -1,6 +1,6 @@
 //		App.tsx
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react"
 import "./default.scss";
 import styles from './layout.module.scss';
 import {Route,Routes,MemoryRouter as Router} from 'react-router-dom';
@@ -13,19 +13,13 @@ import Pay from './pages/Pay'
 import Settings from './pages/Settings'
 import Browser from './pages/Browser'
 import { setDefaultConfig } from 'antd-mobile';
-import zhCN from 'antd-mobile/es/locales/zh-CN';
-import enUS from 'antd-mobile/es/locales/en-US';
-import jaJP from 'antd-mobile/es/locales/ja-JP';
-import './i18n'; // 加载多语言配置
-import { useTranslation } from 'react-i18next'
+
 
 
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-	const { i18n } = useTranslation();
   	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading, setBeamio, beamio } = useDaemonContext();
-
 
 	useEffect(() => {
 	const root = document.documentElement
@@ -37,33 +31,7 @@ function App() {
 	}, [darkModle])
 
   	useEffect(() => {
-  		setDefaultConfig({
-			locale: enUS,
-		})
-  		type AntdLocale = {
-		  	en: typeof enUS;
-		  	zh: typeof zhCN;
-		  	jp: typeof jaJP;
-		}
-  		let storage = window.localStorage;
-  		let lang='en';
-  		const antdMLang: AntdLocale={en:enUS,zh:zhCN,jp:jaJP};
-  		if(storage && storage.lang){
-  			lang=storage.lang;
-  		} else {
-			//@ts-ignore
-			const userLang = navigator.language || navigator.userLanguage;
-			if (/^zh/.test(userLang)) {
-				lang='zh';
-			}else if (/^ja/.test(userLang)) {
-			  	lang = 'ja';
-			}
-		}
-  		setDefaultConfig({
-			locale: antdMLang[lang as keyof typeof antdMLang],
-		})
-		i18n.changeLanguage(lang);
-		localStorage.lang=lang;
+		
   	},[])
 
 	useEffect(() => {

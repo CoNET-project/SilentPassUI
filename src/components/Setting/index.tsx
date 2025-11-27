@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next'
+
 import React, { useState, useEffect } from 'react'
 import styles from './setting.module.scss'
 import { ReactComponent as SettingsIconBlue } from "@/components/Footer/assets/settings-icon-grey.svg"
@@ -8,13 +8,15 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { Popup, Toast } from 'antd-mobile'
 import { MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { storeSystemData } from '../../services/wallets'
+import { storeSystemData } from '@/services/beamio'
 import CryptoAssetsCard from './CryptoAssetsCard/CryptoAssetsCard'
 import Privatekey from './PrivateKey/PrivateKey'
-import { Copy,Check, Bell, Settings, QrCode} from 'lucide-react'
+import { Copy,Check, Bell, Settings, QrCode, Sun, Moon } from 'lucide-react'
 import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, getBalance, AuthorizationSign} from '@/services/beamio'
 import BeamioSettingsScreen from './setup'
 import BeamioReceiveScreen from './BeamioReceiveScreen'
+import BeamioRegionCurrencyScreen from './BeamioReceiveScreen'
+
 //	https://beamio.app?amount=0.03&code=0x36a6200cec2fe34edb2f3b075af1d46645c54bb54a0abe0e97a265068773b3c4&note=test&address=0xc8f855ff966f6be05cd659a5c5c7495a66c5c015
 type prof = {
   wallet: string
@@ -45,8 +47,7 @@ export default function BeamioMeMainScreen() {
 
   const displayName = avatarName || defaultName
 
-  const currentAvatarSrc = avatarImageData || avatarUrl
-  const currentAvatarSrcTemp = avatarImageDataTemp || avatarFileUrl || avatarUrl
+  const currentAvatarSrc = beamio?.image
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [receiveOpen, setReceiveOpen] = useState(false)     // ⭐ 新增：控制 Receive 全屏页
@@ -85,53 +86,13 @@ export default function BeamioMeMainScreen() {
     if (beamio.image && !/^http/.test(beamio.image)) {
       setAvatarImageData(beamio.image)
     }
-  }, [])
+  }, [receiveOpen])
 
-  useEffect(() => {
-    storageSetup()
-  }, [ darkModle, avatarName, avatarImageData ])
+  
 
   useEffect(() => {
     getBa()
   }, [])
-
-  
-
-  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const url = URL.createObjectURL(file)
-    setAvatarFileUrl(prev => {
-      if (prev) URL.revokeObjectURL(prev)
-      return url
-    })
-    setAvatarFileName(file.name)
-
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string
-      setAvatarImageDataTemp(dataUrl)
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const storageSetup = () => {
-    const tmpData = CoNET_Data
-    let _beamio = beamio
-    if (!tmpData || avatarSeed === 'NY' || !_beamio) {
-      return
-    }
-
-    _beamio.accountName= avatarName || defaultName
-    _beamio.image = avatarImageData || currentAvatarSrc
-    _beamio.darkTheme = darkModle
-    tmpData.beamio = _beamio
-    setCoNET_Data(tmpData)
-    setProfiles(CoNET_Data?.profiles)
-    storeSystemData()
-    setBeamio(_beamio)
-  }
 
   const getPrivatekey = (): string => {
     const profile = CoNET_Data?.profiles?.[0]
@@ -228,18 +189,43 @@ export default function BeamioMeMainScreen() {
               </button>
 
 				<div className="flex items-center gap-2 mt-2">
-					{/* Notifications */}
-					<button className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm">
-						<Bell className="w-4 h-4" />
-					</button>
+				{/* Notifications */}
+				<button className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm">
+					<Bell className="w-4 h-4" />
+				</button>
 
-					{/* Settings */}
-					<button
-						className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm"
-						onClick={() => setSettingsOpen(true)}
-					>
-						<Settings className="w-4 h-4" />
-					</button>
+				{/* Settings */}
+				<button
+					className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm"
+					onClick={() => setSettingsOpen(true)}
+				>
+					<Settings className="w-4 h-4" />
+				</button>
+
+				{/* 🌗 Light/Dark Toggle */}
+				<button
+					className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm"
+					onClick={() => {
+					// 本地状态
+					setDarkModle(!darkModle)
+
+					// 切换 <html> class="dark"
+					if (!darkModle) {
+						document.documentElement.classList.add("dark")
+					} else {
+						document.documentElement.classList.remove("dark")
+					}
+
+					// 可选：保存到 localStorage
+					localStorage.setItem("beamio-theme", !darkModle ? "dark" : "light")
+					}}
+				>
+					{darkModle ? (
+					<Sun className="w-4 h-4" /> // dark → 显示 Sun（可切换到 light）
+					) : (
+					<Moon className="w-4 h-4" /> // light → 显示 Moon（可切换到 dark）
+					)}
+				</button>
 				</div>
             </div>
 
@@ -247,9 +233,9 @@ export default function BeamioMeMainScreen() {
             <div className="absolute left-1/2 -translate-x-1/2 top-10 flex flex-col items-center">
               {/* ⭐ 点击头像 / 小 QR 打开 Receive 全屏页 */}
 				<button
-				type="button"
-				onClick={() => setReceiveOpen(true)}
-				className="relative focus:outline-none"
+					type="button"
+					onClick={() => setReceiveOpen(true)}
+					className="relative focus:outline-none"
 				>
 				<div className="w-20 h-20 rounded-full bg-fuchsia-500 flex items-center justify-center text-4xl shadow-lg ring-4 ring-white overflow-hidden">
 					<img src={currentAvatarSrc} className="w-full h-full object-cover" />

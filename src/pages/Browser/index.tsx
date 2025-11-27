@@ -7,14 +7,16 @@ import {getBalance, AuthorizationSign, estimateGasUSDC} from '@/services/beamio'
 import {ethers} from 'ethers'
 import { useNavigate } from "react-router-dom"
 
+
 const Browser = ({}) => {
 	const navigate = useNavigate()
 	const { darkModle, setDarkModle, setProfiles, power, setPower, setUsdcbalance, paymentLink, setPaymentLink } = useDaemonContext()
+	
 	const [showLinkPay, setShowLinkPay] = useState(false)
-	const [code, setCode] = useState('')
-	const [note, setNote] = useState('')
-	const [amt, setAmt] = useState('')
-	const [recipient, setRecipient] = useState('')
+	const [code, setCode] = useState(paymentLink?.code)
+	const [note, setNote] = useState(paymentLink?.note)
+	const [amt, setAmt] = useState(paymentLink?.amount)
+	const [recipient, setRecipient] = useState(paymentLink?.address)
 	const [myAddress, setMyAddress] = useState('')
 	const [usdcAmount, setUsdcAmount] = useState(0)
 	const [usdcToUSDAmount, setUsdcToUSDAmount] = useState(0)
@@ -24,7 +26,8 @@ const Browser = ({}) => {
 	const [successHash, setSuccessHash] = useState('')
 	const [successPayLink, setSuccessPayLink] = useState<string>('')
 	const [amount, setAmount] = useState<string|undefined>(amt)
-
+	const [popupOpen, setPopupOpen] = useState(true)
+	
 	const getBa = async () => {
 		if (!myAddress) return
 		const _ba = await getBalance(myAddress)
@@ -40,31 +43,21 @@ const Browser = ({}) => {
 		const total = ethUsd + usdcUsd
 		setUsdcToUSDAmount(usdcUsd)
 	}
-
-	useEffect(() => {
-		//setPaymentLink({code, note: _note, address, amount})
-		if (paymentLink) {
-			const payLi = paymentLink
-			setCode(payLi?.code)
-			setNote(payLi?.note)
-			setAmt(payLi?.amount)
-			setRecipient(payLi?.address)
-			if (payLi?.amount && payLi?.code) {
-				setShowLinkPay(true)
-			}
-			
-		}
-	},[paymentLink])
 	
 	useEffect(() => {
 
 		const url = new URL(window.location.href)
 		const codeHash = url.searchParams.get('code')||''
 		const amount = url.searchParams.get('amount')||''
-		setAmt(amount)
-		setCode(codeHash)
-		setNote(url.searchParams.get('note')||'')
-		setRecipient(url.searchParams.get('address')||'')
+
+
+		if (codeHash && amount ) {
+			setNote(url.searchParams.get('note')||'')
+			setRecipient(url.searchParams.get('address')||'')
+			setAmt(amount)
+			setCode(codeHash)
+		}
+
 		
 
 		// 只在挂载时注册一次
@@ -119,6 +112,12 @@ const Browser = ({}) => {
 			if (typeof off === 'function') off()
 		}
 	}, [])
+
+	useEffect(() => {
+		if (code && amt) {
+			setShowLinkPay(true)
+		}
+	},[code, amt ])
 
 	const onSignFinal = async (e: any) => {
 		
@@ -222,7 +221,7 @@ const Browser = ({}) => {
 					</div>
 				)
 		}
-        
+
         </>
     )
 };

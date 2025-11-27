@@ -66,7 +66,8 @@ export default function BeamioAccountScreen({colse}:prof) {
 			accountName: avatarName || defaultName,
 			image: currentAvatarSrcTemp,
 			darkTheme: darkModle,
-			isFaucet: beamio?.isFaucet|| false,
+			isETHFaucet: beamio?.isETHFaucet|| false,
+			isUSDCFaucet: beamio?.isUSDCFaucet|| false,
 			initialLoading: beamio?.initialLoading||false
 		}
 

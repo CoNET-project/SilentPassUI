@@ -8,7 +8,7 @@ import { useDaemonContext } from "./providers/DaemonProvider"
 
 import Footer from "@/components/Footer";
 import Home from "./pages/Home";
-import Send from './pages/Send/Send'
+import History from './pages/History/History'
 import Pay from './pages/Pay'
 import Settings from './pages/Settings'
 import Browser from './pages/Browser'
@@ -22,12 +22,12 @@ function App() {
   	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading, setBeamio, beamio } = useDaemonContext();
 
 	useEffect(() => {
-	const root = document.documentElement
-	if (darkModle) {
-		root.classList.add('dark')
-	} else {
-		root.classList.remove('dark')
-	}
+		const root = document.documentElement
+		if (darkModle) {
+			root.classList.add('dark')
+		} else {
+			root.classList.remove('dark')
+		}
 	}, [darkModle])
 
   	useEffect(() => {
@@ -70,7 +70,7 @@ function App() {
 		      	<div className={styles.body}>
 		        	<Routes>
 		          		<Route path="/" element={<Home />} />
-		          		<Route path="/Send" element={<Send />} />
+		          		<Route path="/History" element={<History />} />
 						<Route path="/Pay" element={<Pay />} />
 		          		<Route path="/Browser" element={<Browser />} />
 		          		<Route path="/settings" element={<Settings />} />

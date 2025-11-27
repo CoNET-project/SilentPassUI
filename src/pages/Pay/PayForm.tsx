@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react"
-import {ConformSignInfo} from '@/pages/Send/conformX402Sign'
+import {ConformSignInfo} from '@/pages/History/conformX402Sign'
 import base_ex from '@/components/assets/base-ex.svg'
 import {AppButton}  from '@/components/button/AppButton'
 import { CoNET_Data } from "@/utils/globals"

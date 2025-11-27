@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, getFaucet} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, getUSDCFaucet, getETHFaucet} from '@/services/beamio'
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import styles from '@/components/Home/home.module.scss'
@@ -55,24 +55,34 @@ const Home = ({}) => {
 			return
 		}
 
-
-
 		const bo: beamio = temp?.beamio || {
 			accountName: '',
 			image: '',
 			darkTheme: false,
-			isFaucet: false,
-			initialLoading: true
+			initialLoading: true,
+			isUSDCFaucet: false,
+			isETHFaucet: false,
+			firstName: '',
+			lastName: ''
 		}
 
+		
 		bo.initialLoading = true
-		temp.beamio = bo
-		if (bo.isFaucet) {
-			setShowGetFaucet(true)
+		
+		if (!bo.isETHFaucet) {
+			const newUser = await getETHFaucet(profiles[0].keyID)
+			if (newUser) {
+				bo.isETHFaucet = true
+			}
 		}
+		
+		
+		setShowGetFaucet(true)
+		
 
 		setDarkModle(bo.darkTheme)
 		setBeamio (bo)
+		temp.beamio = bo
 		setCoNET_Data(temp)
 		storeSystemData()
 		
@@ -95,6 +105,7 @@ const Home = ({}) => {
 			return setShowLinkPay(true)
 		}
 
+		
   	}
 
   	let first = true
@@ -429,9 +440,9 @@ const Home = ({}) => {
 												const temp = CoNET_Data
 												setProcessing(true)
 
-												const kk = await getFaucet(profiles[0].keyID)
+												const kk = await getUSDCFaucet(profiles[0].keyID)
 												if (kk) {
-												temp.beamio.isFaucet = true
+												temp.beamio.isUSDCFaucet = true
 												await setCoNET_Data(temp)
 												await storeSystemData()
 												setShowGetFaucet(true)

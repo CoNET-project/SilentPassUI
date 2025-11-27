@@ -45,7 +45,7 @@ const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 type Step = "amount" | "recipient" | "confirm" | "success" | "sign"| "x402Sign"
 
-const Send = ({}) => {
+const History = ({}) => {
 	  
 	  const { darkModle, setDarkModle, setProfiles, setUsdcbalance } = useDaemonContext()
 		const [showReceive, setShowReceive] = useState(false);
@@ -309,15 +309,13 @@ const Send = ({}) => {
 				
 			</div>
 			 */}
-			<div className="flex-1 min-h-0 flex flex-col px-4 pb-4">
-				
-				<div className="flex-1 min-h-0">
-					<SendHistoryTable />
-				</div>
-			</div>
+			
+		
+			<SendHistoryTable />
+		
       </div>
    
   );
 }
 
-export default Send
+export default History

@@ -7,12 +7,12 @@ import { QRCodeCanvas } from "qrcode.react"
 import cashcodeIcon from '@/components/assets/32x32.svg'
 import base_ex from '@/components/assets/base-ex.svg'
 import {ethers} from 'ethers'
-import {ConformSignInfo} from '../Send/conformX402Sign'
+import {ConformSignInfo} from '../History/conformX402Sign'
 import {formatAmountReadable, formatWithThousands, generateCODE, getBalance} from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
 import { CoNET_Data } from "@/utils/globals"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import ReceiveOverlay from '@/pages/Send/ReceiveOverlay'
+import ReceiveOverlay from '@/pages/History/ReceiveOverlay'
 import {LinkHistoryTable} from './history'
 import CheckInputSection from './CheckInputSection'
 

@@ -80,7 +80,7 @@ export const RedeemOrLinkCard = ({
         flex-1 flex flex-col gap-4
       "
     >
-{/* Close button: top-right, iOS frosted style */}
+	{/* Close button: top-right, iOS frosted style */}
 		<div className="absolute -top-4 -right-4 z-30">
 		<button
 			type="button"

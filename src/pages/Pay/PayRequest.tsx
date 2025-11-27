@@ -5,7 +5,7 @@ import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import {AppButton} from '@/components/button/AppButton'
 import {ethers} from 'ethers'
-import {ConformSignInfo} from '@/pages/Send/conformX402Sign'
+import {ConformSignInfo} from '@/pages/History/conformX402Sign'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { Copy, ExternalLink } from 'lucide-react'
 import { QRCodeCanvas } from "qrcode.react"
@@ -88,7 +88,7 @@ export default function BeamioPayRequest() {
 	const vaultEstimate = isPay ? payTotal : amt; // only used in sign step
 
     const overbalance = (isNaN(Number(sendAmount)) || Number(sendAmount) <= 0 || Number(sendAmount) > usdcAmount)
-	const numericAmount = parseFloat(amount || "0");
+	const numericAmount = Number(sendAmount || "0")
 	const isAmountValid = numericAmount > minAmount;
 	const isNotesValid = note.trim().length > 0
 	const handleCopySuccessUrl = async () => {

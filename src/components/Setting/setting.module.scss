@@ -1,3 +1,4 @@
+///	setting.module.scss'
 /* =========================
    1. 全局主题变量（Light / Dark）
    ========================= */
@@ -679,4 +680,57 @@
 .privateKeyCopyIcon {
   width: 16px;
   height: 16px;
+}
+/* =============== PrivateKey 滑入动画 =============== */
+
+@keyframes privateKeySlideInFromLeft {
+  0% {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.privateKeySlideIn {
+  /* 让整个私钥面板从左往右滑入 */
+  animation: privateKeySlideInFromLeft 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* =============== PrivateKey 面板：右 → 左 滑入 =============== */
+
+@keyframes privateKeySlideInFromRight {
+  0% {
+    transform: translateX(40px);  /* ⭐ 从右边一点点开始 */
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.privateKeyPanel {
+  height: 100%;                    /* ⭐ 占满 Popup 的 100% 高度 */
+  box-sizing: border-box;
+  padding: 16px 16px 20px;
+
+  /* 跟 avatarEditorPanel 保持一致的 iOS 卡片风格 */
+  background: rgba(248, 248, 248, 0.98);
+  border-radius: 24px 0 0 24px;
+  box-shadow: -4px 0 18px rgba(0, 0, 0, 0.12);
+
+  display: flex;
+  flex-direction: column;
+
+  animation: privateKeySlideInFromRight 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Dark 模式下的 PrivateKey 面板背景 */
+:global(html.theme-dark) {
+  .privateKeyPanel {
+    background: rgba(10, 10, 12, 0.98);
+    box-shadow: -4px 0 18px rgba(0, 0, 0, 0.7);
+  }
 }

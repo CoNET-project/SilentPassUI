@@ -1,6 +1,6 @@
 import Check from './Check'
 import { useState, useRef, useEffect } from 'react'
-import styles from '@/pages/Send/send.module.scss'
+import styles from '@/pages/History/send.module.scss'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"

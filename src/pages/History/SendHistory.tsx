@@ -208,16 +208,14 @@ export const SendHistoryTable = (
 
 
     return (
-      	<div
-        	className="
+      	<div className="
 				w-full h-full
 				bg-transparent
 				text-sm
 				flex flex-col
 				min-h-0
 				overflow-visible
-		"
-      >
+		">
         
           	{/* Header */}
 			<div className="flex items-center justify-between mb-3">
@@ -246,22 +244,23 @@ export const SendHistoryTable = (
 							<HistoryFilterTabs active={filter} onChange={handleFilterChange} loading={loading} loadingFilter={loadingFilter}/>
 
 							{/* List */}
-							<div className="flex-1 min-h-0 overflow-y-auto">
+							<div className="flex-1 min-h-0 overflow-y-auto pb-28">
 								<div
 									className="
-										flex-1 
-										backdrop-blur-md
-										px-2 py-3 flex flex-col gap-1.5 mb-6
-										overflow-y-auto
+										px-2 py-3 flex flex-col gap-1.5
+      mb-4
+      rounded-2xl
+      bg-white/80 dark:bg-slate-900/70
+      
 									"
 								>
 									{/* Header row inside card */}
 									<div
 										className="
 										flex items-center px-2 pb-1 text-[10px]
-										text-slate-500 dark:text-slate-400
-										border-b border-slate-100/80 dark:border-white/10
-										mb-1
+        text-slate-500 dark:text-slate-400
+        border-b border-slate-100/80 dark:border-white/10
+        mb-1
 										"
 									>
 										<div className="w-20">Type</div>
@@ -287,7 +286,7 @@ export const SendHistoryTable = (
 													<span
 													className={[
 														"inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
-														"backdrop-blur-md border border-white/20",
+														" border border-white/20",
 														tx.status === "Reject"
 														? "bg-rose-300/40 text-rose-700 dark:bg-rose-700/40 dark:text-rose-200"
 														: tx.status === "Pending"
@@ -418,17 +417,17 @@ export const SendHistoryTable = (
 			{
 				showDetail && (
 					<div className="relative overflow-visible">
-												<RedeemOrLinkCard
-						createdAt={createdDate}
-						isCompleted = {isCompleted}
-						isPay={isPay} 
-						amt={amt} 
-						successUrl={successUrl} 
-						tip={tip} 
-						note={note} 
-						onReset={() => {
-							setShowDEtail(false)
-					}} />
+						<RedeemOrLinkCard
+							createdAt={createdDate}
+							isCompleted = {isCompleted}
+							isPay={isPay} 
+							amt={amt} 
+							successUrl={successUrl} 
+							tip={tip} 
+							note={note} 
+							onReset={() => {
+								setShowDEtail(false)
+						}} />
 					</div>
 
 				)

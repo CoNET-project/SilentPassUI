@@ -94,9 +94,9 @@ useEffect(() => {
             icon: (pathname=='/'?<HomeBlueIcon />:<HomeIconGrey />),
         },
         {
-            key: '/Send',
+            key: '/History',
             title: 'Transactions',
-            icon: (pathname=='/Send'?<SendBlueIcon />:<SendIconGrey />),
+            icon: (pathname=='/History'?<SendBlueIcon />:<SendIconGrey />),
         },
         {
             key: '/pay',

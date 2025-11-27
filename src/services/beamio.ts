@@ -106,6 +106,7 @@ const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
 const getOraclesEndPoint = isLocal ? `${local}/api/getOracle` : `${remote}/api/getOracle`
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`
+const getETHFaucetEndpoint = isLocal ? `${local}/api/BeamioETHFaucet` : `${remote}/api/BeamioETHFaucet`
 const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)
 	let binary = ''
@@ -462,7 +463,28 @@ export const formatWithThousands = (n: string | number): string => {
 	return `${intWithCommas}.${decPart}`
 }
 
-export const getFaucet = async (address: string) => {
+export const getETHFaucet = async (address: string) => {
+	const params = new URLSearchParams({address}).toString()
+
+	const url = `${getETHFaucetEndpoint}?${params}`
+	try {
+		const req = await fetch(url, {
+			method: 'GET'
+		})
+		if (req.status !== 500) {
+			console.log(`getFaucet status !== 200 Error!`)
+			return false
+		}
+
+		return true
+
+	} catch (ex) {
+		console.log(`getFaucet Error`, ex)
+	}
+	return false
+}
+
+export const getUSDCFaucet = async (address: string) => {
 	const params = new URLSearchParams({address}).toString()
 	const url = `${getFaucetEndpoint}?${params}`
 	try {

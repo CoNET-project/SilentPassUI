@@ -139,7 +139,8 @@ interface Region {
 	accountName: string
 	image: string
 	darkTheme: boolean
-	isFaucet: boolean
+	isUSDCFaucet: boolean
+	isETHFaucet: boolean
 	initialLoading: boolean
 	firstName?: string
 	lastName?: string

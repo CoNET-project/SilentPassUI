@@ -102,6 +102,8 @@ type DaemonContext = {
   setUsdcbalance: (val: number) => void
   paymentLink: any
   setPaymentLink: (val: any) => void
+  setBeamioAppInstalled: (val:boolean) => void
+	beamioAppInstalled: boolean
 };
 
 type DaemonProps = {
@@ -109,6 +111,8 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	  setBeamioAppInstalled: () => {},
+	beamioAppInstalled: true,
 	darkModle: false,
 	setDarkModle: () => {},
   power: false,
@@ -220,6 +224,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [beamioAppInstalled, setBeamioAppInstalled] = useState(false)
 	const [paymentLink, setPaymentLink] = useState(null)
 	const [darkModle, setDarkModle] = useState<boolean>(false)
   const [version] = useState(packageData.version)
@@ -326,7 +331,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink,
-				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle,
+				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle, beamioAppInstalled, setBeamioAppInstalled,
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,

@@ -12,7 +12,7 @@ import { ReactComponent as BrowserBlueIcon } from "./assets/browser-icon-blue.sv
 import { ReactComponent as BrowserGreyIcon } from "./assets/browser-icon-grey.svg";
 import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
 import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg";
-
+import {isStandalone, MobileType } from '@/services/beamio'
 import { TabBar } from 'antd-mobile'
 
 import styles from '@/components/Footer/footer.module.scss';
@@ -36,7 +36,7 @@ interface BridgeMessage {
 const Footer = ({}) => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle, isInitialLoading} = useDaemonContext();
+    const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle, isInitialLoading, beamioAppInstalled} = useDaemonContext();
     const { pathname } = location;
 
 
@@ -119,9 +119,9 @@ useEffect(() => {
     return (
 		<>
 		{
-			!isInitialLoading &&
+			!isInitialLoading && (isStandalone||MobileType() === 'desktop') &&
 				<div className={styles.footer}>
-					<TabBar safeArea activeKey={pathname} onChange={value => setRouteActive(value)}>
+					<TabBar safeArea={false} activeKey={pathname} onChange={value => setRouteActive(value)}>
 						{tabs.map(item => (
 							<TabBar.Item key={item.key} icon={item.icon} title={item.title} badge={item.badge} />
 						))}

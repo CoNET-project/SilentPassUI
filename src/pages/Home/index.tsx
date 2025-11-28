@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import Home from '../../components/Home/Home';
 import BeamioOnboardingModal from './LoadingPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {checkStorage, storeSystemData} from '@/services/beamio'
+import {checkStorage, storeSystemData, MobileType} from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 
 
 const HomePage = ({}) => {
-	const { isInitialLoading, setIsInitialLoading } = useDaemonContext()
+	const { isInitialLoading, setIsInitialLoading, setBeamio, setProfiles } = useDaemonContext()
 	const [showBeamioOnboardingModal, setShowBeamioOnboardingModal] = useState(false)
 	const init = async () => {
 		const CoNETData: encrypt_keys_object = await checkStorage()
@@ -21,6 +21,17 @@ const HomePage = ({}) => {
 		
 		setShowBeamioOnboardingModal(false)
 		setIsInitialLoading(false)
+		const temp = CoNET_Data
+		if (!temp) {
+			return
+		}
+		setBeamio(temp.beamio)
+		setProfiles(temp.profiles)
+		if (MobileType() === 'android') {
+			window.close()
+			window.open(window.location.href, '_blank', 'noopener,noreferrer')
+		}
+		
 		
 	}
 	useEffect(() => {

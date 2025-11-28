@@ -23,6 +23,8 @@ import BeamioPrivacySettingsScreen from "./BeamioPrivacySettingsScreen";
 import BeamioNotificationsSettingsScreen from "./BeamioNotificationsSettingsScreen";
 import BeamioStatementsReportingScree from "./BeamioStatementsReportingScreen";
 import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
+import PrivateKey from './PrivateKey/PrivateKey'
+import { useDaemonContext } from '@/providers/DaemonProvider'
 
 export default function BeamioSettingsScreen({
   onClose,
@@ -30,8 +32,8 @@ export default function BeamioSettingsScreen({
   onClose: () => void
 }) {
 
-
-	const [settingsOpen, setSettingsOpen] = useState<''|'Account'|'Region'|'Payment'|'Cashcodes'|'Passkey'|'Privacy'|'Notifications'|'Statement'|'Help'>('')
+	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles } = useDaemonContext()
+	const [settingsOpen, setSettingsOpen] = useState<''|'Account'|'Region'|'Payment'|'Cashcodes'|'Passkey'|'Privacy'|'Notifications'|'Statement'|'Help'|'privateKey'>('')
 
 	const sectionTitleClass =
 		"px-4 pt-6 pb-2 text-xs font-semibold text-slate-400 tracking-[0.12em] uppercase"
@@ -40,6 +42,13 @@ export default function BeamioSettingsScreen({
 	const leftClass = "flex items-center gap-3"
 	const iconWrapperClass =
 		"flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+
+	const getPrivatekey = (): string => {
+		const profile = profiles[0]
+		if (!profile || !profile?.privateKeyArmor) return ''
+		const ret = profile.privateKeyArmor.replace(/^0x/i, '')
+		return ret
+	}
 
   	return (
 		<div className="h-full flex flex-col bg-slate-50 text-slate-900">
@@ -59,7 +68,7 @@ export default function BeamioSettingsScreen({
             </p>
           </div>
           <div className="flex flex-col items-end text-right text-[10px] text-slate-400 leading-tight">
-            <span>Version 0.1.0 · MVP</span>
+            <span>Version 0.1.1 · MVP</span>
             <span>Early access · in testing</span>
           </div>
         </section>
@@ -164,6 +173,25 @@ export default function BeamioSettingsScreen({
 					<span className="text-sm font-medium">Passkey &amp; Face ID</span>
 					<span className="text-xs text-slate-500">
 						Sign-in passkey, Face ID, session timeout
+					</span>
+					</div>
+				</div>
+				<ChevronRight className="h-4 w-4 text-slate-300" />
+				</button>
+
+				<button className={rowClass}
+					onClick={() => {
+						setSettingsOpen('privateKey')
+					}}
+				>
+				<div className={leftClass}>
+					<span className={iconWrapperClass}>
+					<Shield className="h-4 w-4" />
+					</span>
+					<div className="flex flex-col items-start">
+					<span className="text-sm font-medium">Wallet backup & private key</span>
+					<span className="text-xs text-slate-500">
+						Back up or export your private key (advanced)
 					</span>
 					</div>
 				</div>
@@ -306,6 +334,9 @@ export default function BeamioSettingsScreen({
 							}
 							{
 								settingsOpen === 'Help' && <BeamioGetHelpSettingsScreen colse={() => setSettingsOpen('')} />
+							}
+							{
+								settingsOpen === 'privateKey' && <PrivateKey privateKey={getPrivatekey()} onClose={() => setSettingsOpen('')}  />
 							}
 
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, getUSDCFaucet, getETHFaucet} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, getUSDCFaucet, getETHFaucet, onWalletEvent} from '@/services/beamio'
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import styles from '@/components/Home/home.module.scss'
@@ -10,7 +10,6 @@ import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useNavigate } from "react-router-dom"
 import { createOrGetWallet, storeSystemData} from "@/services/beamio"
-import { onWalletEvent } from '@/services/beamio'
 
 
 
@@ -87,24 +86,6 @@ const Home = ({}) => {
 		storeSystemData()
 		
 		console.log (temp)
-
-		const url = new URL(window.location.href)
-
-
-		const codeHash = url.searchParams.get('code')||''
-		const amount = url.searchParams.get('amount')||''
-		const _note = url.searchParams.get('note')||''
-		const address = url.searchParams.get('address')||''
-		setAmt(amount)
-		setCode(codeHash)
-		
-		setNote(_note)
-		
-		setRecipient(address)
-		if (amount && codeHash) {
-			return setShowLinkPay(true)
-		}
-
 		
   	}
 

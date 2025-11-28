@@ -835,3 +835,24 @@ export const storeSystemData = async () => {
 
 
 
+export const MobileType = () => {
+	const iOS = 'ios'
+	const android = 'android'
+	const deskyop = 'desktop'
+	const ua = navigator.userAgent
+	const platform = navigator.platform
+	const macLike = /Macintosh/i.test(platform)
+	const touch = navigator.maxTouchPoints && navigator.maxTouchPoints > 1
+
+	if (/iPhone|iPad|iPod/i.test(ua)) return iOS
+	if (macLike && touch) return iOS
+	if (/Android/i.test(ua)) return android
+
+	return deskyop
+}
+
+export	const isStandalone =
+		window.matchMedia?.('(display-mode: standalone)').matches ||
+		// iOS PWA
+		(window.navigator as any).standalone === true;
+

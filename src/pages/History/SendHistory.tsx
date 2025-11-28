@@ -248,9 +248,9 @@ export const SendHistoryTable = (
 								<div
 									className="
 										px-2 py-3 flex flex-col gap-1.5
-      mb-4
-      rounded-2xl
-      bg-white/80 dark:bg-slate-900/70
+										mb-4
+										rounded-2xl
+										bg-white/80 dark:bg-slate-900/70
       
 									"
 								>

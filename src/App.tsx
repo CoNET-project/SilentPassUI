@@ -5,7 +5,7 @@ import "./default.scss";
 import styles from './layout.module.scss';
 import {Route,Routes,MemoryRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider"
-
+import {isStandalone, MobileType } from '@/services/beamio'
 import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import History from './pages/History/History'
@@ -13,6 +13,7 @@ import Pay from './pages/Pay'
 import Settings from './pages/Settings'
 import Browser from './pages/Browser'
 import { setDefaultConfig } from 'antd-mobile';
+import BeamioInstallOnboarding from '@/components/launchPage/BeamioInstallOnboarding'
 
 
 
@@ -20,6 +21,7 @@ global.Buffer = require('buffer').Buffer;
 
 function App() {
   	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading, setBeamio, beamio } = useDaemonContext();
+
 
 	useEffect(() => {
 		const root = document.documentElement
@@ -30,9 +32,9 @@ function App() {
 		}
 	}, [darkModle])
 
-  	useEffect(() => {
-		
-  	},[])
+	
+
+	
 
 	useEffect(() => {
 		const handleTouchMove = (e: TouchEvent) => {
@@ -65,10 +67,11 @@ function App() {
 	}, [])
 
   	return (
-		<Router initialEntries={['/']}>
+		<Router initialEntries={(isStandalone) ? ['/'] : ['/Onboarding']}>
 		    <div className={styles.app}>
 		      	<div className={styles.body}>
 		        	<Routes>
+						<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
 		          		<Route path="/" element={<Home />} />
 		          		<Route path="/History" element={<History />} />
 						<Route path="/Pay" element={<Pay />} />

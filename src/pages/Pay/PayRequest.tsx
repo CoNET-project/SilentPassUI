@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { CoNET_Data } from "@/utils/globals"
-import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, getBalance, AuthorizationSign} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, getBalance, AuthorizationSign, aesGcmEncrypt} from '@/services/beamio'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import {AppButton} from '@/components/button/AppButton'
@@ -39,7 +39,7 @@ function calcFee(amountStr: string) {
 type Mode = "pay" | "request" | 'cashcode';
 // form -> sign -> processing -> generated
 type Step = "form" | "sign" | "processing" | "generated" | "x402Sign" | "success"
-const minAmount = 0.02;
+const minAmount = 0.1;
 
 
 
@@ -138,8 +138,8 @@ export default function BeamioPayRequest() {
 			AmountError = `Please entry a valid Amount`
 		}
 
-		if (numericAmount <= minAmount) {
-			AmountError = `Amount must be greater than 0.02 USDC to cover the minimum Beamio service fee.`
+		if (numericAmount < minAmount) {
+			AmountError = `Amount must be greater than 0.1 USDC to cover the minimum Beamio service fee.`
 		}
 
 
@@ -148,7 +148,6 @@ export default function BeamioPayRequest() {
 
 		return (!!AmountError)
 	}
-
 
 
 	const handleCopySuccessUrl = async () => {
@@ -160,6 +159,7 @@ export default function BeamioPayRequest() {
 			console.error("Copy failed", e)
 		}
 	}
+
 	//	setPaymentLink({code: '', note: '', address: url, amount: ''})
 	useEffect(() => {
 		getBa()
@@ -283,26 +283,65 @@ export default function BeamioPayRequest() {
 	}
 
 	const generateCheck = async () => {
-		if (checkRequestError()) return 
+		if (checkRequestError()|| !profiles?.length) return 
 
 		const numberAmount = Number(sendAmount)
-			if (isNaN(numberAmount) || numberAmount <= 0.02) {
-				return 
-			}
+		
+		const privateKey = profiles[0].privateKey
 
 		const secureCode = generateCODE(securityCode.replace('-',''))
 		
-		
-		const params = new URLSearchParams({amount: numberAmount.toFixed(2), note, secureCode: secureCode.hash}).toString()
+		const data = {secureCode: secureCode.code, passcode: securityCode.replace('-','')}
+		const encryText = await aesGcmEncrypt(JSON.stringify(data), privateKey)
+		const postNode = note||defaultNodeText + '\r\n' + encryText
+		const params = new URLSearchParams({amount: numberAmount.toFixed(2), note: postNode, secureCode: secureCode.hash}).toString()
 		const path = `/api/generateCheck?${params}`
 		
 
 		
 		const url = aptEndpoint + path
+		const requestEndpoint = aptEndpoint + path
+		
+		try {
+			const response = await fetch(url, {
+				method: 'GET'
+			})
+			if (response.status !== 402) {
+				setProcessing(false)
+				return setProcessError('RPC Error!')
+			}
 
-		let fetchWithPayment
-		
-		
+			const { x402Version, accepts } = await response.json()
+			const MessageData = accepts[0]
+			MessageData.reqUrl = requestEndpoint
+			
+
+			const gas: any = await estimateGasUSDC (Number(sendAmount), sendTo)
+			if (!gas) {
+				setProcessing(false)
+				return setProcessError('RPC Error!')
+			}
+
+			const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
+			
+			const ethPrice = gas.oracle.eth.eth
+			const price = Number(gasCostEth) * ethPrice
+			
+			console.log (gas.oracle)
+			MessageData.gas = {
+				gasETH: gasCostEth.toFixed(7),
+				gasUSD: price.toFixed(5),
+				secureCode: secureCode + '\r\n' + securityCode.replace('-','')
+			}
+
+			setProcessing(false)
+			setStep('x402Sign')
+			setMessageData(MessageData)
+
+		} catch (ex: any) {
+			setProcessing(false)
+			setProcessError('RPC Error!')
+		}
 		
 
 	}

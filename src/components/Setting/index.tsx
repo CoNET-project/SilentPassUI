@@ -80,7 +80,7 @@ export default function BeamioMeMainScreen() {
 		if (beamio.image && !/^http/.test(beamio.image)) {
 		setAvatarImageData(beamio.image)
 		}
-	}, [receiveOpen])
+	}, [receiveOpen, beamio])
 
 	
 

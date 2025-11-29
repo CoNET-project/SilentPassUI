@@ -10,10 +10,11 @@ import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE
 type prof = {
 	colse: () => void
 }
-
+const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 export default function BeamioReceiveScreen() {
 	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles } = useDaemonContext()
 		const [walletAddress, setWalletAddress] = useState<string>('')
+		const [account, setAccount ] = useState(beamio?.accountName)
 		const [usdcAmount, setUsdcAmount] = useState(0)
 		const [usdcToUSD, setUsdcToUSD] = useState(0)
 
@@ -36,7 +37,6 @@ export default function BeamioReceiveScreen() {
 		}
 	useEffect(() => {
 		getBa()
-		
 	}, [])
   return (
 		<div className="mt-12">
@@ -122,29 +122,49 @@ export default function BeamioReceiveScreen() {
 					"
 				>
 				{/* QR placeholder / QR 实图可以替换这里 */}
+					{/* Beamio @account */}
+					<div className="text-center mb-2">
+						<p className="text-[13px] font-medium text-slate-900 dark:text-slate-100">
+							Beamio
+						</p>
+
+						<p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+							@{account}
+						</p>
+					</div>
+
+					{/* QR Code */}
 					<div
-						className="
+					className="
 						w-40 h-40 rounded-2xl
 						bg-slate-200 dark:bg-slate-700
-						flex items-center justify-center mb-3
+						flex items-center justify-center mb-1
 						md:w-48 md:h-48 md:rounded-3xl
-						"
+					"
 					>
-						<QRCodeCanvas
-							value={walletAddress}
-							size={160}
-							level="H"
-							includeMargin
-							bgColor="transparent"
-							fgColor="#000000"
-							imageSettings={{
+					<QRCodeCanvas
+						value={walletAddress}
+						size={160}
+						level="H"
+						includeMargin
+						bgColor="transparent"
+						fgColor="#000000"
+						imageSettings={{
 							src: bIcon,
 							height: 40,
 							width: 40,
 							excavate: true,
-							}}
-							className="rounded-lg inline-block"
-						/>
+						}}
+						className="rounded-lg inline-block"
+					/>
+
+					</div>
+					{/* Beamio @account - horizontal */}
+					<div className="flex items-center justify-center mt-0.5 mb-6">
+					
+						<span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+							{fmtAddr(walletAddress)}
+						</span>
 					</div>
 
 					{/* Address */}

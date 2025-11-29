@@ -95,20 +95,20 @@ export default function BeamioAccountScreen({colse}:prof) {
 					<div className="relative h-28 w-28">
 						{/* 整个头像区域可点击 */}
 						<button
-						type="button"
-						onClick={() => {
-							avatarInputRef.current?.click()
-						}}
-						className="
-							h-full w-full 
-							rounded-full 
-							bg-gradient-to-tr from-sky-500 to-blue-600 
-							overflow-hidden shadow-md
-							active:scale-95 active:shadow-lg
-							transition-transform transition-shadow duration-150
-							relative
-							z-10
-						"
+							type="button"
+							onClick={() => {
+								avatarInputRef.current?.click()
+							}}
+							className="
+								h-full w-full 
+								rounded-full 
+								bg-gradient-to-tr from-sky-500 to-blue-600 
+								overflow-hidden shadow-md
+								active:scale-95 active:shadow-lg
+								transition-transform transition-shadow duration-150
+								relative
+								z-10
+							"
 						>
 						{/* Avatar 图片 */}
 						<img
@@ -121,30 +121,30 @@ export default function BeamioAccountScreen({colse}:prof) {
 						{/* 右下角 iOS 半透明 x 按钮（悬浮在头像之上） */}
 						{ (avatarImageDataTemp) && (
 							<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation()
-								setAvatarImageDataTemp(null)
-								setAvatarFileUrl(null)
-								setAvatarFileName('')
-							}}
-							className="
-								absolute -bottom-1 -right-1
-								h-8 w-8
-								rounded-full
-								bg-white/30 dark:bg-slate-900/30
-								border border-white/40 dark:border-slate-700/40
-								backdrop-blur-md
-								shadow
-								flex items-center justify-center
-								text-slate-700 dark:text-slate-200
-								text-sm
-								active:scale-95
-								transition-transform transition-colors duration-150
-								z-20
-							"
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation()
+									setAvatarImageDataTemp(null)
+									setAvatarFileUrl(null)
+									setAvatarFileName('')
+								}}
+								className="
+									absolute -bottom-1 -right-1
+									h-8 w-8
+									rounded-full
+									bg-white/30 dark:bg-slate-900/30
+									border border-white/40 dark:border-slate-700/40
+									backdrop-blur-md
+									shadow
+									flex items-center justify-center
+									text-slate-700 dark:text-slate-200
+									text-sm
+									active:scale-95
+									transition-transform transition-colors duration-150
+									z-20
+								"
 							>
-							<span className="font-bold leading-none">×</span>
+								<span className="font-bold leading-none">×</span>
 							</button>
 						)}
 					</div>
@@ -176,6 +176,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 							<input
 								value={avatarSeed}
 								onChange={e => {
+									setAvatarName(e.target.value)
 									setAvatarSeed(e.target.value)
 								}}
 								type="text"

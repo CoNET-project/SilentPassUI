@@ -17,6 +17,7 @@ import {RedeemOrLinkCard} from '../Pay/RedeemOrLinkCard'
 import { X } from 'lucide-react'
 
 import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, aesGcmDecrypt} from '@/services/beamio'
+type Mode = "pay" | "request" | 'cashcode'
 
 type Payed = {
   payTimestamp: number
@@ -119,6 +120,8 @@ export const SendHistoryTable = (
 	const [securityCode, setSecurityCode] = useState("")
 	const [redeemCode, setRedeemCode] = useState("")
 
+	const [mode, setMode] = useState<Mode>('pay')
+
     const isSend = (item: TransferHistork) => {
 		if (!myAddress) return false
 		return item.from.toLowerCase() === myAddress
@@ -126,7 +129,7 @@ export const SendHistoryTable = (
 
 	useEffect(() => {
 		getTransferNewitems(null)
-	}, [])
+	}, [mode])
 	
 	const [filter, setFilter] = useState<HistoryFilter>('all')
 	const getTransferNewitems = async (next: HistoryFilter | null) => {
@@ -138,103 +141,104 @@ export const SendHistoryTable = (
 		const myAddr = address.toLowerCase()
 		setMyAddress(myAddr)
 
+		let mapped: TransferHistork[]
 		try {
-			const [_transfer, _links, _checks] = await Promise.all([
-				beamioConet.getTransferHistory(address, 0, 100),
-				beamioConet.getLinksHistory(address, 0, 100),
-				beamioConet.getCheckHistory(address, 0, 100)
-			])
+			
+			if (mode === 'pay') {
+				const _transfer = await beamioConet.getTransferHistory(address, 0, 100)
+				const transfer: Transfer[] = _transfer[1]
+				mapped = transfer.map(n => ({
+					date: Number(n.timestamp * BigInt(1000)),
+					amount: Number(ethers.formatUnits(n.amount, 6)),
+					to: n.to,
+					hash: n.finisedHash,
+					from: n.from,
+					note: n.note,
+					status: 'Completed',
+					type: myAddr === n.to.toLowerCase() ? 'Receive' : 'Send',
+					pendingKind: 'Transfer',
+				}))
+			} else if (mode === 'request') {
+				const _links = await beamioConet.getLinksHistory(address, 0, 100)
+				const links: LinksHistory[] = _links[1]
+				mapped = links.map(n => ({
+					date: Number(n.issueTimestamp * BigInt(1000)),
+					amount: Number(ethers.formatUnits(n.amount, 6)),
+					to: n.to,
+					hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
+					from: n.from,
+					note: n.node,
+					status:
+						n.from === '0x1000000000000000000000000000000000000000'
+						? 'Reject'
+						: n.successAuthorizationHash.startsWith('0x00')
+						? 'Pending'
+						: 'Completed',
+					type: 'Receive',
+					pendingKind: 'Request',
+				}))
+			} else {
+				const _checks = await beamioConet.getCheckHistory(address, 0, 100)
+				const checks: CheckHistory[] = _checks[1]
+				mapped = await Promise.all(
+					checks.map(async (n): Promise<TransferHistork> => {
+						const text = n.node.split('\r\n');
+						const encryptedText = text[1];
 
-			const transfer: Transfer[] = _transfer[1]
-			const links: LinksHistory[] = _links[1]
-			const checks: CheckHistory[] = _checks[1]
+						const cleanText =
+						encryptedText && (await aesGcmDecrypt(encryptedText, profile.privateKey));
 
-			const mappedTransfer: TransferHistork[] = transfer.map(n => ({
-				date: Number(n.timestamp * BigInt(1000)),
-				amount: Number(ethers.formatUnits(n.amount, 6)),
-				to: n.to,
-				hash: n.finisedHash,
-				from: n.from,
-				note: n.note,
-				status: 'Completed',
-				type: myAddr === n.to.toLowerCase() ? 'Receive' : 'Send',
-				pendingKind: 'Transfer',
-			}))
+						let ce: { secureCode: string; passcode: string } | undefined;
+						if (cleanText) {
+							ce = JSON.parse(cleanText);
+						}
 
-			const mappedLinkss: TransferHistork[] = links.map(n => ({
-				date: Number(n.issueTimestamp * BigInt(1000)),
-				amount: Number(ethers.formatUnits(n.amount, 6)),
-				to: n.to,
-				hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
-				from: n.from,
-				note: n.node,
-				status:
-					n.from === '0x1000000000000000000000000000000000000000'
-					? 'Reject'
-					: n.successAuthorizationHash.startsWith('0x00')
-					? 'Pending'
-					: 'Completed',
-				type: 'Receive',
-				pendingKind: 'Request',
-			}))
+						const ret: TransferHistork = {
+							date: Number(n.createTimestamp * BigInt(1000)),
+							amount: Number(ethers.formatUnits(n.amount, 6)),
+							to: n.to,
+							hash: n.depositHash.startsWith('0x00')
+								? n.successAuthorizationHash
+								: n.depositHash,
+							from: n.from,
+							note: text[0],
+							status:
+								n.to === '0x0000000000000000000000000000000000000000'
+								? 'Pending'
+								: 'Completed',
+							type: 'Send',
+							pendingKind: 'Check',
+							security: ce?.secureCode,
+							passcode: ce?.passcode,
+							redeemHash: n.payHash
+						};
 
-			const mappedChecks: TransferHistork[] = await Promise.all(
-				checks.map(async (n): Promise<TransferHistork> => {
-					const text = n.node.split('\r\n');
-					const encryptedText = text[1];
-
-					const cleanText =
-					encryptedText && (await aesGcmDecrypt(encryptedText, profile.privateKey));
-
-					let ce: { secureCode: string; passcode: string } | undefined;
-					if (cleanText) {
-						ce = JSON.parse(cleanText);
-					}
-
-					const ret: TransferHistork = {
-						date: Number(n.createTimestamp * BigInt(1000)),
-						amount: Number(ethers.formatUnits(n.amount, 6)),
-						to: n.to,
-						hash: n.depositHash.startsWith('0x00')
-							? n.successAuthorizationHash
-							: n.depositHash,
-						from: n.from,
-						note: text[0],
-						status:
-							n.to === '0x0000000000000000000000000000000000000000'
-							? 'Pending'
-							: 'Completed',
-						type: 'Send',
-						pendingKind: 'Check',
-						security: ce?.secureCode,
-						passcode: ce?.passcode,
-						redeemHash: n.payHash
-					};
-
-					return ret;
-				})
-			)
+						return ret;
+					})
+				)
+			}
+			
 
 
 			// 1️⃣ 先合并，再按 date 做倒序排序（新 -> 旧）
-			const alldatas: TransferHistork[] = [...mappedTransfer, ...mappedLinkss, ...mappedChecks].sort(
+			const alldatas: TransferHistork[] = [...mapped].sort(
 			(a, b) => b.date - a.date
 			)
 
 			// 2️⃣ 基于已经排序好的 alldatas 做筛选
 			let filtered = alldatas
 
-			if (next === 'send') {
-				filtered = alldatas.filter(tx => tx.type === 'Send')
-			} else if (next === 'receive') {
-				filtered = alldatas.filter(
-				tx => tx.type === 'Receive' && tx.status !== 'Reject' && tx.status !== 'Pending'
-			)
-			} else if (next === 'pending') {
-				filtered = alldatas.filter(tx => tx.status === 'Pending')
-			} else if (next === 'reject') {
-				filtered = alldatas.filter(tx => tx.status === 'Reject')
-			}
+			// if (next === 'send') {
+			// 	filtered = alldatas.filter(tx => tx.type === 'Send')
+			// } else if (next === 'receive') {
+			// 	filtered = alldatas.filter(
+			// 	tx => tx.type === 'Receive' && tx.status !== 'Reject' && tx.status !== 'Pending'
+			// )
+			// } else if (next === 'pending') {
+			// 	filtered = alldatas.filter(tx => tx.status === 'Pending')
+			// } else if (next === 'reject') {
+			// 	filtered = alldatas.filter(tx => tx.status === 'Reject')
+			// }
 
 			// 3️⃣ filter === null / 'all' 时，filtered 就是已经按时间倒序的 alldatas
 
@@ -265,6 +269,59 @@ export const SendHistoryTable = (
 		}
 	}
 
+	const SwitchBar = () => {
+		return (
+			<div className="flex items-center justify-between mb-3">
+				<div className="inline-flex w-full rounded-full bg-slate-100 dark:bg-slate-800 p-0.5">
+
+					{/* SEND */}
+					<button
+						type="button"
+						className={`flex-1 h-8 rounded-full text-[13px] transition-all
+							${ mode === 'pay'
+							? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
+							: "bg-transparent text-slate-500 dark:text-slate-300"
+							}`}
+						onClick={() => { setMode("pay")}}
+					>
+						Send
+					</button>
+
+					{/* REQUEST */}
+
+					
+					<button
+					type="button"
+						className={`flex-1 h-8 rounded-full text-[13px] transition-all
+							${mode === 'request'
+							? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
+							: "bg-transparent text-slate-500 dark:text-slate-300"
+							}`}
+						onClick={() => { setMode("request")}}
+					>
+						Payment Link
+					</button>
+
+					{/* cashcode */}
+					<button
+						type="button"
+						className={`flex-1 h-8 rounded-full text-[13px] transition-all
+							${mode === 'cashcode'
+							? "bg-white dark:bg-slate-100 text-slate-900 dark:text-slate-900 shadow-sm"
+							: "bg-transparent text-slate-500 dark:text-slate-300"
+							}`}
+						onClick={() => { setMode('cashcode')}}
+					>
+							Cashcode
+					</button>
+
+				</div>
+							
+				
+				
+			</div>
+		)
+	}
 
 
     return (
@@ -297,9 +354,11 @@ export const SendHistoryTable = (
 					</p>
 				</div>
 			</div>
+
 			{
 				!showDetail && (
 					<>
+						<SwitchBar />
 							{/* FilterTabs */}
 							<HistoryFilterTabs active={filter} onChange={handleFilterChange} loading={loading} loadingFilter={loadingFilter}/>
 

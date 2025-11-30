@@ -92,8 +92,8 @@ export default function BeamioPayRequest() {
 	const isPay = mode === "pay";
 
 	
-	const defaultTextTemp = mode === 'pay' ? 'Send with Beamio' : mode === 'request' 
-	? "Payment Request with Beamio"
+	const defaultTextTemp = mode === 'pay' ? 'Sent with Beamio - no gas fees.' : mode === 'request' 
+	? "Payment request with Beamio"
 	: "Cashcode sent with Beamio."
 
 	useEffect(() => {
@@ -257,6 +257,7 @@ export default function BeamioPayRequest() {
 
 		const numberAmount = Number(sendAmount)
 		if (isNaN(numberAmount) || numberAmount <= 0.02) {
+			setSendAmountError('Amount must be greater than 0.02 USDC to cover the minimum Beamio service fee.')
 			return 
 		}
 			
@@ -463,7 +464,7 @@ export default function BeamioPayRequest() {
 					</div>
 
 					{/* 成功文字 */}
-					<div className="text-sm text-slate-600 dark:text-slate-300 mb-2">
+					<div className="font-semibold text-slate-600 dark:text-slate-300 mb-2 mt-4">
 						{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode Created' : 'Successfully sent' } 
 					</div>
 
@@ -474,7 +475,7 @@ export default function BeamioPayRequest() {
 
 					{/* 提示 */}
 					<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-						{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : '' } 
+						{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : 'This may take a few seconds to appear for the receiver.' } 
 					</div>
 
 					{
@@ -630,9 +631,11 @@ export default function BeamioPayRequest() {
 									</button> */}
 									</div>
 								</div>
+								
 							</div>
 						</>
 					}
+					
 
 					{/* 按钮组 */}
 					<div className="w-full space-y-3">
@@ -816,14 +819,11 @@ export default function BeamioPayRequest() {
 					</div>
 
 					<div className="flex items-center justify-between mb-3">
-					<p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
-						Choose how you want to pay or get paid. All flows are gasless on Base.
-					</p>
+						<p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
+							Choose how you want to pay or get paid. All direct sends are gasless on Base.
+						</p>
 					</div>
 				</>
-				
-
-
 				
 			)
 		}
@@ -879,14 +879,24 @@ export default function BeamioPayRequest() {
 
 						</div>
 									
-						{/* Note */}
+						
 						
 					</div>
+
+
+
+					{/* Note */}
+
 					<div className="flex-1 flex flex-col">
 						<div className="mb-5">
 							<div className="flex items-center justify-between text-xs">
 								<span className="text-xs text-slate-500 dark:text-slate-400">Notes (optional)</span>
-								<span className="text-slate-400">Visible to the recipient</span>
+								<span className="text-slate-400">
+									{
+										mode === 'pay' ? 'Visible to the recipient' : mode === 'request' ?  'Visible to the payer' : 'Visible to the redeemer'
+									}
+									
+								</span>
 							</div>
 							<textarea
 								value={note}
@@ -978,7 +988,7 @@ export default function BeamioPayRequest() {
 							<div className="mt-1 mb-4">
 								<div className="flex items-center justify-between text-xs">
 									<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
-									<span className="text-slate-400">Min amount {mode ==='cashcode' ? 0.1 : 0.02} USDC</span>
+									<span className="text-slate-400">Min amount {mode ==='cashcode' ? 0.1 : '> 0.02 '} USDC</span>
 								</div>
 								<div
 									className="h-12 rounded-xl bg-slate-900/5 dark:bg-white/5 border 
@@ -1047,33 +1057,39 @@ export default function BeamioPayRequest() {
 							{/* Summey */}
 							{
 								mode === 'request' && 
-									<section className="rounded-2xl bg-slate-100 px-4 py-3 text-xs text-slate-600 space-y-1">
-									<div className="flex items-center justify-between">
-										<span>Beamio fee</span>
-										<span className="font-mono">{formatMoney(fee)} USDC</span>
+								<>
+
+								<section>
+									<div className="rounded-3xl bg-slate-50 border border-slate-100 px-4 py-3 space-y-2">
+									<div className="flex items-center justify-between mb-1">
+										<span className="text-xs font-medium text-slate-700">Beamio service fee (0.8%)</span>
+										<span className="text-xs font-medium text-slate-700">{formatMoney(fee)} USDC</span>
 									</div>
-									
-									<div className="border-t border-slate-200 mt-2 pt-2 space-y-1">
+
+									<div className="flex items-center justify-between text-[10px] text-slate-500">
+										<span>Min / max per transaction</span>
+										<span>0.02 – 2.00 USDC</span>
+									</div>
+
+									<div className="mt-2 rounded-2xl bg-white border border-slate-100 px-3 py-2 flex flex-col gap-1 text-[11px]">
 										<div className="flex items-center justify-between">
 										<span className="text-slate-500">Payer will pay</span>
-										<span className="font-mono text-slate-900 font-semibold">
-											{formatMoney(displayGeneratedAmount)} USDC
-										</span>
+										<span className="font-semibold text-slate-900">{formatMoney(displayGeneratedAmount)} USDC</span>
 										</div>
 										<div className="flex items-center justify-between">
 										<span className="text-slate-500">You will receive</span>
-										<span className="font-mono text-slate-900 font-semibold">
-											{formatMoney(requestNet)} USDC
-										</span>
+										<span className="font-semibold text-slate-900">{formatMoney(requestNet)} USDC</span>
 										</div>
 									</div>
-									<div className="border-t border-slate-200 mt-2 pt-2">
-										<p className="mt-1 text-[11px] text-slate-500">
-											Beamio fee is capped at 2.00 USDC per transaction. Direct Send/Receive is 0% Beamio fee.
-										</p>
+
+									<p className="text-[10px] text-slate-400 mt-1">
+										Beamio fee is capped at 2.00 USDC per transaction. Direct Send / Receive has 0% Beamio fee.
+									</p>
 									</div>
-									
 								</section>
+								
+								
+								</>
 							}
 
 							{
@@ -1235,14 +1251,19 @@ export default function BeamioPayRequest() {
 								</div>
 								{
 									sendAmountError &&
-									<p className="text-[11px] text-[11px] text-red-500 dark:text-red-400">
+									<p className="text-[11px] text-red-500 dark:text-red-400">
 										Please entry a valid Amount!
+									</p>
+								}
+								{
+									<p className="text-xs text-slate-500 dark:text-slate-400">
+										Direct sends are free for you - Beamio pays the network fee on Base
 									</p>
 								}
 							</div>
 						
 							{/* Confirm button */}
-							<div className="flex  w-full">
+							<div className="flex w-full">
 								
 								<AppButton
 									variant={'primary'}
@@ -1397,10 +1418,10 @@ export default function BeamioPayRequest() {
 							createdAt={new Date().getTime()} 
 							isCompleted={false} isPay={isPay} amt={amt} successUrl={successUrl} tip={tip} note={note} 
 							onReset={() => {
-							setSendAmount('0')
-							setSuccessUrl('')
-							setNote('')
-							setStep('form')
+									setSendAmount('0')
+									setSuccessUrl('')
+									setNote('')
+									setStep('form')
 						}} />}
 				</div>
 			)

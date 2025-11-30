@@ -359,7 +359,7 @@ export const RedeemOrLinkCard = ({
 			>
 				{/* 左侧 URL 文本 */}
 				<div className="flex-1 break-all pr-1">
-				{successUrl}
+					{successUrl}
 				</div>
 
 				{/* 右侧竖排 icon 区域 */}
@@ -397,8 +397,14 @@ export const RedeemOrLinkCard = ({
 				>
 					<ExternalLink className="w-3.5 h-3.5" />
 				</button> */}
+
+				
 				</div>
+				
 			</div>
+			<p className='text-[11px] text-slate-600 dark:text-slate-300 '>
+					Ask the payer to scan the QR or open the link. They will pay 0.03 USDC and you will receive 0.01 USDC. A 0.8% Beamio service fee is included in the payer's amount.
+				</p>
 		</div>
 	)
 }

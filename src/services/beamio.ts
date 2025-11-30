@@ -213,7 +213,7 @@ export const estimateGasUSDC = async (amount: number, to: string) => {
 	const _amount = ethers.parseUnits(amount.toFixed(2), 6)
 	try {
 		const [gas, price, req] = await Promise.all([
-			sc.transfer.estimateGas(to||contracts.beamioConet.address, _amount),
+			sc.transfer.estimateGas(to||ethers.ZeroAddress, _amount),
 			baseEndpoint.getFeeData(),
 			fetch(getOraclesEndPoint, {method: 'GET'})
 		])

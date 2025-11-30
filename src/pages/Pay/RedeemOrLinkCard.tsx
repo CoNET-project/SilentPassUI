@@ -44,7 +44,7 @@ export const RedeemOrLinkCard = ({
 		try {
 		await navigator.clipboard.writeText(successUrl)
 		} catch (e) {
-		console.error('Failed to copy link', e)
+			console.error('Failed to copy link', e)
 		}
 	}
 
@@ -222,9 +222,9 @@ export const RedeemOrLinkCard = ({
 				<div className="text-sm font-semibold text-slate-900 dark:text-slate-50 mb-1">
 				{amt.toFixed(2)} USDC
 				</div>
-				<div className="text-[11px] text-slate-500 dark:text-slate-400">
+				{/* <div className="text-[11px] text-slate-500 dark:text-slate-400">
 				Zero and {Math.round(amt * 100).toString().padStart(2, '0')} / 100 dollars
-				</div>
+				</div> */}
 			</div>
 
 			
@@ -382,7 +382,7 @@ export const RedeemOrLinkCard = ({
 				</button>
 
 				{/* Open icon button */}
-				<button
+				{/* <button
 					type="button"
 					onClick={handleOpenLink}
 					className="
@@ -396,7 +396,7 @@ export const RedeemOrLinkCard = ({
 					title="Open link"
 				>
 					<ExternalLink className="w-3.5 h-3.5" />
-				</button>
+				</button> */}
 				</div>
 			</div>
 		</div>

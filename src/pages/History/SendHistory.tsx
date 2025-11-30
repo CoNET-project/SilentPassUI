@@ -38,6 +38,7 @@ type TransferHistork = {
 	pendingKind: 'Request'|'Check'|'Transfer'
 	security?: string
 	passcode?: string
+	redeemHash?: string
 }
 
 type LinksHistory = {
@@ -207,6 +208,7 @@ export const SendHistoryTable = (
 						pendingKind: 'Check',
 						security: ce?.secureCode,
 						passcode: ce?.passcode,
+						redeemHash: n.payHash
 					};
 
 					return ret;
@@ -279,19 +281,19 @@ export const SendHistoryTable = (
 			<div className="flex items-center justify-between mb-3">
 				<div className="flex flex-col">
 					<span className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-					Beamio
+						Beamio
 					</span>
 					<h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-					Payments
+						Payments
 					</h1>
 				</div>
 
 				<div className="text-right">
 					<p className="text-[12px] font-medium text-slate-900 dark:text-slate-100">
-					USDC {formatWithThousands(usdcbalance)}
+						USDC {formatWithThousands(usdcbalance)}
 					</p>
 					<p className="text-[11px] text-slate-500 dark:text-slate-400">
-					Available on Base
+						Available on Base
 					</p>
 				</div>
 			</div>
@@ -426,7 +428,7 @@ export const SendHistoryTable = (
 																setTip(0)
 																setAmt(tx.amount)
 																setNote(tx.note)
-																const params = new URLSearchParams({amount: tx.amount.toFixed(2), code: tx.hash, note: tx.note, address:myAddress }).toString()
+																const params = new URLSearchParams(tx.pendingKind === 'Request' ? {amount: tx.amount.toFixed(2), code: tx.hash, note: tx.note, address:myAddress }: {secureCode: tx.hash}).toString()
 																const showUrl = `${showPaylinkSite}?${params}`
 																setCreatedDate(tx.date)
 																setIsCompleted(tx.status === 'Completed')

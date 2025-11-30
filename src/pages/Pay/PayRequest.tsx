@@ -7,7 +7,7 @@ import {AppButton} from '@/components/button/AppButton'
 import {ethers} from 'ethers'
 import {ConformSignInfo} from '@/pages/History/conformX402Sign'
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { Copy, ExternalLink } from 'lucide-react'
+import { Copy, ExternalLink, Check } from 'lucide-react'
 import { QRCodeCanvas } from "qrcode.react"
 import bIcon from '@/components/assets/32x32.svg'
 import {RedeemOrLinkCard} from './RedeemOrLinkCard'
@@ -21,13 +21,32 @@ const aptEndpoint = isLocal ? local : remote
 
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
-  if (!isFinite(base) || base <= 0) return 0;
-  const raw = base * 0.008;
-  const clamped = Math.min(Math.max(raw, 0.02), 2);
-  return Number(clamped.toFixed(2));
+	if (!isFinite(base) || base <= 0) return 0;
+	const raw = base * 0.008;
+	const clamped = Math.min(Math.max(raw, 0.02), 2);
+	return Number(clamped.toFixed(2));
+}
+
+const calcMaxButtonReturnAmt = (baseMax: number): number => {
+	if (!isFinite(baseMax) || baseMax <= 0) return 0
+
+	// 先假设 fee 处于百分比区间，再修正最小/最大边界
+	// fee = amt * 0.008  → baseMax = amt + amt*0.008 = amt * 1.008
+	let amt = baseMax / 1.008
+
+	// 重新根据实际规则计算真实 fee
+	const fee = calcFeeFromNumber(amt)
+
+	// 再反求一次，使 amt + fee = baseMax
+	amt = baseMax - fee
+
+	// 再保守地重新 clamp（避免边界浮点问题）
+	return Number(amt.toFixed(2))
 }
 
 
+//			total = x - calcFeeFromNumber(x)
+//			
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -73,9 +92,9 @@ export default function BeamioPayRequest() {
 	const isPay = mode === "pay";
 
 	
-	const defaultTextTemp = mode === 'pay' ? 'This is a test transfer via Beamio' : mode === 'request' 
-	? "This is a test Payment Request via Beamio"
-	: "This is a test USDC Check via Beamio"
+	const defaultTextTemp = mode === 'pay' ? 'Send with Beamio' : mode === 'request' 
+	? "Payment Request with Beamio"
+	: "Cashcode sent with Beamio."
 
 	useEffect(() => {
 		setDefaultNodeText(defaultTextTemp)
@@ -99,12 +118,16 @@ export default function BeamioPayRequest() {
 
 	// Display amount on generated screen
 	const displayGeneratedAmount = isPay ? amt : requestGross;
+	const displayCashcodeAmount = amt + calcFeeFromNumber(amt)
+	const displayCashcodeNet = displayCashcodeAmount - calcFeeFromNumber(amt)
 
 	const vaultEstimate = isPay ? payTotal : amt; // only used in sign step
 
     const overbalance = (isNaN(Number(sendAmount)) || Number(sendAmount) <= 0 || Number(sendAmount) > usdcAmount)
 	const numericAmount = Number(sendAmount || "0")
 	const isAmountValid = numericAmount > minAmount;
+	const [isFocused, setIsFocused] = useState(false)
+	const [securityCodeDigits, setSecurityCodeDigits] = useState("")
 
 	const checkError = () => {
 		setSendToAddressError (false)
@@ -284,23 +307,32 @@ export default function BeamioPayRequest() {
 
 	const generateCheck = async () => {
 		if (checkRequestError()|| !profiles?.length) return 
+		const Beamiofee = calcFeeFromNumber(Number(sendAmount))
+		const numberAmount = Number(sendAmount) + Beamiofee
+		if (numberAmount > usdcAmount) {
+			setSendAmountError(`Insufficient balance`)
+			return
+		}
 
-		const numberAmount = Number(sendAmount)
+		
+		
 		
 		const privateKey = profiles[0].privateKey
 
-		const secureCode = generateCODE(securityCode.replace('-',''))
+		const passcode = securityCodeDigits.replace('-','')
+		const secureCode = generateCODE(passcode)
 		
-		const data = {secureCode: secureCode.code, passcode: securityCode.replace('-','')}
+		const data = {secureCode: secureCode.code, passcode}
 		const encryText = await aesGcmEncrypt(JSON.stringify(data), privateKey)
 		const postNode = note||defaultNodeText + '\r\n' + encryText
 		const params = new URLSearchParams({amount: numberAmount.toFixed(2), note: postNode, secureCode: secureCode.hash}).toString()
+		const showpParams = new URLSearchParams({secureCode: secureCode.hash}).toString()
 		const path = `/api/generateCheck?${params}`
 		
 
 		
 		const url = aptEndpoint + path
-		const requestEndpoint = aptEndpoint + path
+		const requestEndpoint = `${showPaylinkSite}?${showpParams}`
 		
 		try {
 			const response = await fetch(url, {
@@ -313,26 +345,31 @@ export default function BeamioPayRequest() {
 
 			const { x402Version, accepts } = await response.json()
 			const MessageData = accepts[0]
-			MessageData.reqUrl = requestEndpoint
-			
+			MessageData.showUrl = requestEndpoint
+			MessageData.reqUrl = url
+			MessageData.sginTatle = 'Confirm Cashcode'
+			MessageData.note = note||defaultNodeText
+			MessageData.payToTitle = 'Cashcode Contract'
+			MessageData.Beamiofee = Beamiofee.toFixed(2)
+			MessageData.secureCode = secureCode.code
+			MessageData.passcode = passcode
+			// const gas: any = await estimateGasUSDC (Number(sendAmount), sendTo)
+			// if (!gas) {
+			// 	setProcessing(false)
+			// 	return setProcessError('RPC Error!')
+			// }
 
-			const gas: any = await estimateGasUSDC (Number(sendAmount), sendTo)
-			if (!gas) {
-				setProcessing(false)
-				return setProcessError('RPC Error!')
-			}
-
-			const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
+			// const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
 			
-			const ethPrice = gas.oracle.eth.eth
-			const price = Number(gasCostEth) * ethPrice
+			// const ethPrice = gas.oracle.eth.eth
+			// const price = Number(gasCostEth) * ethPrice
 			
-			console.log (gas.oracle)
-			MessageData.gas = {
-				gasETH: gasCostEth.toFixed(7),
-				gasUSD: price.toFixed(5),
-				secureCode: secureCode + '\r\n' + securityCode.replace('-','')
-			}
+			// console.log (gas.oracle)
+			// MessageData.gas = {
+			// 	gasETH: gasCostEth.toFixed(8),
+			// 	gasUSD: price.toFixed(5),
+				
+			// }
 
 			setProcessing(false)
 			setStep('x402Sign')
@@ -399,21 +436,35 @@ export default function BeamioPayRequest() {
 		}
 	};
 
-	const Success = () => {
+	const Success = ({messageData}: {messageData: any}) => {
+		const [copied, setCopied] = useState(false)
+		const [copied1, setCopied1] = useState(false)
+		const [showSecurity, setShowSecurity] = useState(false)
+		const handleCopy = async (copyData: string, _copyB: (val: boolean) => void) => {
+			if (!copyData) return
+
+			try {
+				await navigator.clipboard.writeText(copyData)
+				_copyB(true)
+
+				// 2 秒后恢复
+				setTimeout(() => _copyB(false), 2000)
+			} catch (err) {
+				console.error('Failed to copy', err)
+			}
+		}
 			return (
 				<div className="flex-1 px-5 pt-6 pb-8 flex flex-col items-center justify-center
 								bg-transparent text-inherit">
 
 					{/* 蓝色圆圈 ✔ */}
-					<div className="w-20 h-20 rounded-full
-									bg-blue-600 text-white
-									flex items-center justify-center mb-6">
-						<span className="text-3xl">✔</span>
+					<div className="h-14 w-14 rounded-full bg-blue-600 flex items-center justify-center text-white text-3xl">
+						✓
 					</div>
 
 					{/* 成功文字 */}
 					<div className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-						Successfully sent
+						{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode Created' : 'Successfully sent' } 
 					</div>
 
 					{/* 金额 */}
@@ -422,9 +473,166 @@ export default function BeamioPayRequest() {
 					</div>
 
 					{/* 提示 */}
-					<div className="text-xs text-slate-500 dark:text-slate-400 mb-10">
-						This takes a few seconds
+					<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+						{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : '' } 
 					</div>
+
+					{
+						/cashcode/i.test(messageData?.sginTatle) && <>
+							<div className="w-full max-w-xl space-y-4 mb-4">
+								{/* Cashcode (redeem code) */}
+								<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1">
+									<div className="flex items-center justify-between">
+										<span className="text-sm font-medium text-slate-800">Cashcode</span>
+										<span className="text-[11px] text-slate-500">Auto-generated cashcode</span>
+									</div>
+
+									<div className="flex items-center gap-2 mt-1">
+										<div className="flex-1 font-mono text-xs md:text-sm break-all text-slate-900">
+										{messageData.secureCode}
+										</div>
+
+										<button
+											onClick={() => handleCopy(messageData?.secureCode, setCopied)}
+											className="
+												h-8 px-3 rounded-xl border border-slate-200 text-[11px] font-medium 
+												text-slate-700 flex items-center justify-center
+												transition-all active:scale-95
+											"
+										>
+										{copied ? (
+											<Check className="w-4 h-4 text-green-600 animate-scaleIn" />
+										) : (
+											'Copy'
+										)}
+										</button>
+									</div>
+
+									<p className="text-[11px] text-slate-500 pt-1">
+										This Cashcode was generated for you. Share it with the recipient.<br />
+										They can redeem it by entering this code on the redeem page, opening the link, or scanning the QR that contains it.
+									</p>
+								</div>
+
+								{/* Security code card (optional) */}
+								{
+									messageData?.passcode && <>
+										<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1">
+											<div className="flex items-center justify-between">
+											<span className="text-sm font-medium text-slate-800">Security code (optional)</span>
+											<button
+												className="text-[11px] text-blue-600 font-medium"
+												onClick={() => setShowSecurity((v) => !v)}
+											>
+												{showSecurity ? "Hide" : "Reveal"}
+											</button>
+											</div>
+											<div className="text-lg font-mono tracking-[0.35em] pl-[0.35em] text-slate-900">
+												{showSecurity ? messageData.passcode : "•••-•••"}
+											</div>
+
+											<p className="text-[11px] text-slate-500 pt-1">
+												If you set a Security code, the recipient will need both this code and the Cashcode to redeem.<br />
+												If you leave it empty, they only need the Cashcode.
+											</p>
+										</div>
+									</>
+								}
+								
+
+
+								{/* QR area */}
+								<div className="mt-4 flex flex-col items-center gap-2">
+									<div className="border border-black/20 rounded-xl p-3 bg-white text-center qrCard">
+										<QRCodeCanvas
+											value={messageData.showUrl}
+											size={160}
+											level="H"
+											includeMargin
+											bgColor="transparent"
+											fgColor="#000000"
+											imageSettings={{
+											src: bIcon,
+											height: 40,
+											width: 40,
+											excavate: true,
+											}}
+											className="rounded-lg inline-block"
+										/>
+
+										<div className="flex justify-center items-center gap-1 text-[13px] mt-0 pt-0 leading-none">
+											<span
+											className="uppercase font-medium tracking-wider text-xs"
+											style={{ color: '#c0c0c0ff' }}
+											>
+											Amount
+											</span>
+											<span className="font-mono text-black/50 font-semibold text-xs">
+											{displayGeneratedAmount.toFixed(2)} USDC
+											</span>
+										</div>
+									</div>
+								</div>
+								<div
+									className="
+										rounded-xl 
+										bg-white/80 dark:bg-slate-900/70 
+										border border-slate-200/80 dark:border-slate-700 
+										px-3 py-2 
+										text-[11px] text-slate-600 dark:text-slate-300 
+										leading-snug 
+										flex items-start gap-2
+									"
+								>
+									{/* 左侧 URL 文本 */}
+									<div className="flex-1 break-all pr-1">
+									{messageData.showUrl}
+									</div>
+
+									{/* 右侧竖排 icon 区域 */}
+									<div className="flex flex-col items-center gap-1 ml-1 pt-0.5">
+									{/* Copy icon button */}
+									<button
+										type="button"
+										onClick={() => handleCopy(messageData.showUrl, setCopied1)}
+										className="
+											w-6 h-6 rounded-full
+											flex items-center justify-center
+											bg-slate-200/70 text-slate-700 
+											dark:bg-slate-800/80 dark:text-slate-200
+											hover:bg-slate-300/80 dark:hover:bg-slate-700
+											transition
+										"
+										title="Copy link"
+									>
+										{copied1 ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+										
+									</button>
+
+									{/* Open icon button */}
+									{/* <button
+										type="button"
+										onClick={() => {
+											if (!messageData.showUrl) return
+    										window.open(messageData.showUrl, '_blank')
+										}}
+										className="
+										w-6 h-6 rounded-full
+										flex items-center justify-center
+										bg-slate-200/70 text-slate-700 
+										dark:bg-slate-800/80 dark:text-slate-200
+										hover:bg-slate-300/80 dark:hover:bg-slate-700
+										transition
+										"
+										title="Open link"
+									>
+										<ExternalLink className="w-3.5 h-3.5" />
+									</button> */}
+									</div>
+								</div>
+							</div>
+						</>
+					}
 
 					{/* 按钮组 */}
 					<div className="w-full space-y-3">
@@ -513,8 +721,8 @@ export default function BeamioPayRequest() {
 
 		
 		if (checkError()) return
-				
-		const params = new URLSearchParams({amount: sendAmount, toAddress: sendTo, note: note||defaultNodeText }).toString()
+		const sendNote = note||defaultNodeText
+		const params = new URLSearchParams({amount: sendAmount, toAddress: sendTo, note: sendNote }).toString()
 		const path = `/api/BeamioTransfer?${params}`
 		const requestEndpoint = aptEndpoint + path
 
@@ -535,7 +743,8 @@ export default function BeamioPayRequest() {
 			const { x402Version, accepts } = await response.json()
 			const MessageData = accepts[0]
 			MessageData.reqUrl = requestEndpoint
-			
+			MessageData.sginTatle = 'Send'
+			MessageData.note = sendNote
 
 			const gas: any = await estimateGasUSDC (Number(sendAmount), sendTo)
 			if (!gas) {
@@ -550,7 +759,7 @@ export default function BeamioPayRequest() {
 			
 			console.log (gas.oracle)
 			MessageData.gas = {
-				gasETH: gasCostEth.toFixed(7),
+				gasETH: gasCostEth.toFixed(8),
 				gasUSD: price.toFixed(5)
 			}
 			
@@ -566,12 +775,22 @@ export default function BeamioPayRequest() {
 
 	const handleResetToForm = () => {
 		setStep("form");
-	};
+	}
+	const formatSecurityCode = (value: string) => {
+		// 只保留数字
+		const digits = value.replace(/\D/g, "").slice(0, 6)
+
+		// 分成两段
+		const left = digits.slice(0, 3).padEnd(3, "•")
+		const right = digits.slice(3, 6).padEnd(3, "•")
+
+		return `${left}-${right}`
+	}
 
 
 
   return (
-	<div className="">
+	<div className="pb-20">
 		{/* Header */}
 		{
 			(step !== 'x402Sign' && step !== "generated") && (
@@ -666,8 +885,8 @@ export default function BeamioPayRequest() {
 					<div className="flex-1 flex flex-col">
 						<div className="mb-5">
 							<div className="flex items-center justify-between text-xs">
-								<span className="text-xs text-slate-500 dark:text-slate-400">Notes (required)</span>
-								<span className="text-slate-400">Visible to the payer · required</span>
+								<span className="text-xs text-slate-500 dark:text-slate-400">Notes (optional)</span>
+								<span className="text-slate-400">Visible to the recipient</span>
 							</div>
 							<textarea
 								value={note}
@@ -700,13 +919,66 @@ export default function BeamioPayRequest() {
 					{/* FORM STEP */}
 
 					{step === "form" && mode !== 'pay' && (
+
 						<div className="lex items-center justify-between mb-3">
+							{
+								mode === 'cashcode' && <>
+									<div className="space-y-1 pt-2 mb-4">
+										<div className="flex items-center justify-between">
+										<label className="text-xs text-slate-500 dark:text-slate-400">
+											Security code
+										</label>
+										<span className="text-[11px] text-slate-400">
+											6 digits (3-3) · optional
+										</span>
+										</div>
+
+										<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 flex flex-col gap-2">
+											<div className="flex flex-col gap-2">
+												<input
+													value={isFocused ? securityCodeDigits : formatSecurityCode(securityCodeDigits)}
+													onChange={(e) => {
+														// 只更新「纯数字」，不做任何格式化
+														const onlyDigits = e.target.value.replace(/\D/g, "").slice(0, 6)
+														setSecurityCodeDigits(onlyDigits)
+													}}
+													onFocus={() => {
+														setIsFocused(true)
+													}}
+													onBlur={() => {
+														setIsFocused(false)
+													}}
+													className="
+														bg-transparent
+														text-base
+														tracking-[0.35em]
+														pl-[0.35em]
+														text-center
+														outline-none
+														text-slate-900
+														font-mono
+													"
+													placeholder="•••-•••"
+												/>
+												
+											</div>
+										</div>
+
+										<p className="text-[11px] text-slate-500">
+											Create an optional 6-digit Security code in a 3-3 format (e.g. 123-456).
+											Share it only with the person who should redeem this Cashcode.
+											If you don’t set a Security code, anyone with this Cashcode link, QR, or code can redeem it.
+										</p>
+									</div>
+								</>
+							}
+							
 
 							{/* Amount */}
-							<div className="mb-5">
+							<div className="mt-1 mb-4">
 								<div className="flex items-center justify-between text-xs">
 									<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
-									<span className="text-slate-400">Min amount &gt; 0.02 USDC</span>
+									<span className="text-slate-400">Min amount {mode ==='cashcode' ? 0.1 : 0.02} USDC</span>
 								</div>
 								<div
 									className="h-12 rounded-xl bg-slate-900/5 dark:bg-white/5 border 
@@ -714,25 +986,27 @@ export default function BeamioPayRequest() {
 								>
 									{/* USDC Icon + Base 角标（现在在最左） */}
 									<div className="relative mr-3">
-									{/* USDC 主图标 */}
-									<img
-										src={usdcIcon}
-										alt="USDC"
-										className="w-6 h-6 rounded-full"
-									/>
+										{/* USDC 主图标 */}
+										<img
+											src={usdcIcon}
+											alt="USDC"
+											className="w-6 h-6 rounded-full"
+										/>
 
-									{/* Base 小角标 */}
-									<img
-										src={baseIcon}
-										alt="Base"
-										className="w-3 h-3 absolute bottom-0 right-0 rounded-full border border-white dark:border-slate-900"
-									/>
+										{/* Base 小角标 */}
+										<img
+											src={baseIcon}
+											alt="Base"
+											className="w-3 h-3 absolute bottom-0 right-0 rounded-full border border-white dark:border-slate-900"
+										/>
 									</div>
 
 									{/* Max 按钮（现在紧跟在 icon 右边） */}
 									{
 										mode == 'cashcode' && <button
-												onClick={() => setSendAmount(usdcAmount.toString())}
+												onClick={() => {
+													setSendAmount(calcMaxButtonReturnAmt(usdcAmount).toFixed(2))
+												}}
 												className="
 													text-xs font-medium
 													px-2 py-0.5
@@ -771,108 +1045,99 @@ export default function BeamioPayRequest() {
 
 							
 							{/* Summey */}
-							<section className="rounded-2xl bg-slate-100 px-4 py-3 text-xs text-slate-600 space-y-1">
-								<div className="flex items-center justify-between">
-									<span>Beamio service fee (0.8%)</span>
-									<span className="font-mono">{formatMoney(fee)} USDC</span>
-								</div>
-								<div className="flex items-center justify-between text-[11px]">
-									<span>Min / max per transaction</span>
-									<span className="font-mono">0.02 - 2.00 USDC</span>
-								</div>
-								<div className="border-t border-slate-200 mt-2 pt-2 space-y-1">
+							{
+								mode === 'request' && 
+									<section className="rounded-2xl bg-slate-100 px-4 py-3 text-xs text-slate-600 space-y-1">
 									<div className="flex items-center justify-between">
-									<span className="text-slate-500">Payer will pay</span>
-									<span className="font-mono text-slate-900 font-semibold">
-										{formatMoney(displayGeneratedAmount)} USDC
-									</span>
+										<span>Beamio fee</span>
+										<span className="font-mono">{formatMoney(fee)} USDC</span>
 									</div>
-									<div className="flex items-center justify-between">
-									<span className="text-slate-500">You will receive</span>
-									<span className="font-mono text-slate-900 font-semibold">
-										{formatMoney(requestNet)} USDC
-									</span>
+									
+									<div className="border-t border-slate-200 mt-2 pt-2 space-y-1">
+										<div className="flex items-center justify-between">
+										<span className="text-slate-500">Payer will pay</span>
+										<span className="font-mono text-slate-900 font-semibold">
+											{formatMoney(displayGeneratedAmount)} USDC
+										</span>
+										</div>
+										<div className="flex items-center justify-between">
+										<span className="text-slate-500">You will receive</span>
+										<span className="font-mono text-slate-900 font-semibold">
+											{formatMoney(requestNet)} USDC
+										</span>
+										</div>
 									</div>
-								</div>
-								<p className="mt-1 text-[11px] text-slate-500">
-									Beamio fee is capped at 2.00 USDC per transaction. Direct Send/Receive is 0% Beamio fee.
-								</p>
-							</section>
+									<div className="border-t border-slate-200 mt-2 pt-2">
+										<p className="mt-1 text-[11px] text-slate-500">
+											Beamio fee is capped at 2.00 USDC per transaction. Direct Send/Receive is 0% Beamio fee.
+										</p>
+									</div>
+									
+								</section>
+							}
 
-							{/* Fee + summary */}
-							{/* <div className="mb-6 rounded-2xl bg-slate-900/5 dark:bg-black/40 border border-slate-200 dark:border-slate-800 px-4 py-3 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
-								<div className="flex items-center justify-between">
-									<span>Beamio service fee (0.8%)</span>
-									<span>{fee > 0 ? `${fee.toFixed(2)} USDC` : "0.00 USDC"}</span>
-								</div>
-								<div className="flex items-center justify-between">
-									<span>Min / max per transaction</span>
-									<span>0.02 – 2.00 USDC</span>
-								</div>
-								<div className="pt-1 border-top border-slate-200 dark:border-slate-800 mt-1 space-y-1.5 border-t">
-									{isPay ? (
+							{
+								mode === 'cashcode' && (
 									<>
+
+									<section className="rounded-2xl bg-slate-100 px-4 py-3 text-xs text-slate-600 space-y-1">
 										<div className="flex items-center justify-between">
-										<span className="text-slate-500 dark:text-slate-400">
-											Recipient will receive
-										</span>
-										<span className="text-slate-900 dark:text-slate-100 font-medium">
-											{amt > 0 ? amt.toFixed(2) : "0.00"} USDC
-										</span>
+											<span>Beamio fee</span>
+											<span className="font-mono">{formatMoney(fee)} USDC</span>
 										</div>
-										<div className="flex items-center justify-between">
-										<span className="text-slate-500 dark:text-slate-400">
-											You will pay
-										</span>
-										<span className="text-slate-900 dark:text-slate-100 font-medium">
-											{payTotal > 0 ? payTotal.toFixed(2) : "0.00"} USDC
-										</span>
-										</div>
-									</>
-									) : (
-									<>
-										<div className="flex items-center justify-between">
-										<span className="text-slate-500 dark:text-slate-400">
-											Payer will pay
-										</span>
-										<span className="text-slate-900 dark:text-slate-100 font-medium">
-											{requestGross > 0 ? requestGross.toFixed(2) : "0.00"} USDC
-										</span>
-										</div>
-										{tip > 0 && (
-										<div className="flex items-center justify-between">
-											<span className="text-slate-500 dark:text-slate-400">
-											Includes tip
+										
+										<div className="border-t border-slate-200 mt-2 pt-2 space-y-1">
+											<div className="flex items-center justify-between">
+											<span className="text-slate-500">You will pay</span>
+											<span className="font-mono text-slate-900 font-semibold">
+												{formatMoney(displayCashcodeAmount)} USDC
 											</span>
-											<span className="text-slate-900 dark:text-slate-100 font-medium">
-											{tip.toFixed(2)} USDC
+											</div>
+											<div className="flex items-center justify-between">
+											<span className="text-slate-500">They will receive</span>
+											<span className="font-mono text-slate-900 font-semibold">
+												{formatMoney(displayCashcodeNet)} USDC
 											</span>
+											</div>
 										</div>
-										)}
-										<div className="flex items-center justify-between">
-										<span className="text-slate-500 dark:text-slate-400">
-											You will receive
-										</span>
-										<span className="text-slate-900 dark:text-slate-100 font-medium">
-											{requestNet > 0 ? requestNet.toFixed(2) : "0.00"} USDC
-										</span>
+
+										{/* 说明文字 */}
+										<div className="border-t border-slate-200 mt-2 pt-2">
+											<p className="text-[11px] text-slate-500 leading-relaxed">
+												0.8% of the Cashcode amount (min 0.02, max 2.00 USDC).<br />
+												Paid by you, the sender.<br />
+												The recipient always receives the full amount.<br />
+												Direct Send / Receive has 0% Beamio fee.
+											</p>
 										</div>
+									</section>
+									<p className="text-[11px] text-slate-500 mt-2">
+										Share this Beamio Cashcode as a link, QR, or redeem code.
+									</p>
+
 									</>
-									)}
-								</div>
-							</div> */}
+								)
+								
+							}
+							
 
 							{/* Generate button */}
-							
+							{
+								processError && (
+									<p className="text-[11px] text-red-500">
+										{processError}
+									</p>
+								)
+							}
 							<AppButton
 								
 								onClick={handleGenerate}
 								loading={processing}
 								fullWidth
-								errorText={processError}
+								disabled={!!processError}
 
 							>
-								{mode === 'cashcode' ? "Generate Check Code" : "Generate Payment Link"}
+								{mode === 'cashcode' ? "Generate Cashcode" : "Generate Payment Link"}
 							</AppButton>
 
 						</div>
@@ -976,9 +1241,6 @@ export default function BeamioPayRequest() {
 								}
 							</div>
 						
-
-							
-							
 							{/* Confirm button */}
 							<div className="flex  w-full">
 								
@@ -1149,7 +1411,7 @@ export default function BeamioPayRequest() {
 		)}
 
 		{step === "success" && (
-			<Success />	
+			<Success messageData={messageData} />	
 		)}
 	</div>
 

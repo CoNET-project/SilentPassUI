@@ -1,12 +1,28 @@
-export type HistoryFilter = 'all' | 'send' | 'receive' | 'pending' | 'completed' | 'reject'
+export type HistoryFilter =
+  | 'all'
+  | 'send'
+  | 'receive'
+  | 'pending'
+  | 'completed'
+  | 'reject'
+  | 'withdraw'
+  | 'deposited'
+
+type Mode = 'pay' | 'request' | 'cashcode'
 
 type HistoryFilterTabsProps = {
-  active: HistoryFilter
-  onChange: (value: HistoryFilter) => void
+	active: HistoryFilter
+	onChange: (value: HistoryFilter) => void
+	loading?: boolean
+	loadingFilter?: HistoryFilter | null
+	mode: Mode
+}
 
-  // 新增：
-  loading?: boolean              // 是否在 loading
-  loadingFilter?: HistoryFilter | null  // 哪个 tab 在 loading
+// --- All moved to last position ---
+const TABS_BY_MODE: Record<Mode, HistoryFilter[]> = {
+  pay: ['send', 'receive', 'all'],
+  request: ['pending', 'withdraw', 'completed', 'all'],
+  cashcode: ['pending', 'completed', 'deposited', 'all'],
 }
 
 export function HistoryFilterTabs({
@@ -14,6 +30,7 @@ export function HistoryFilterTabs({
   onChange,
   loading = false,
   loadingFilter = null,
+  mode,
 }: HistoryFilterTabsProps) {
   const baseBtn =
     'px-2 py-1 rounded-full font-medium text-[10px] backdrop-blur-md border border-white/15 transition disabled:opacity-45 disabled:cursor-default'
@@ -22,12 +39,15 @@ export function HistoryFilterTabs({
     const isActive = active === key
     const isLoading = loading && loadingFilter === key
 
+    // --- NEW: All 的新颜色 ---
     if (key === 'all') {
       return [
         baseBtn,
         isActive || isLoading
-          ? 'bg-slate-900/90 text-white dark:bg-white/15 dark:text-white'
-          : 'bg-slate-900/10 text-slate-700 dark:bg-white/5 dark:text-slate-200',
+          ? // Active
+            'bg-slate-800/85 text-white dark:bg-white/15 dark:text-white'
+          : // Inactive：比 send 深、比现在 all 浅
+            'bg-slate-700/20 text-slate-800 dark:bg-white/10 dark:text-slate-200',
       ].join(' ')
     }
 
@@ -49,7 +69,6 @@ export function HistoryFilterTabs({
       ].join(' ')
     }
 
-    // pending
     if (key === 'pending') {
       return [
         baseBtn,
@@ -59,7 +78,6 @@ export function HistoryFilterTabs({
       ].join(' ')
     }
 
-    // completed（淡蓝色，对应上面 badge）
     if (key === 'completed') {
       return [
         baseBtn,
@@ -69,23 +87,37 @@ export function HistoryFilterTabs({
       ].join(' ')
     }
 
-    // reject
+    if (key === 'withdraw') {
+      return [
+        baseBtn,
+        isActive || isLoading
+          ? 'bg-fuchsia-300/80 text-fuchsia-900 dark:bg-fuchsia-500/70 dark:text-fuchsia-50'
+          : 'bg-fuchsia-300/35 text-fuchsia-800 dark:bg-fuchsia-700/35 dark:text-fuchsia-200',
+      ].join(' ')
+    }
+
+    if (key === 'deposited') {
+      return [
+        baseBtn,
+        isActive || isLoading
+          ? 'bg-indigo-300/80 text-indigo-900 dark:bg-indigo-500/70 dark:text-indigo-50'
+          : 'bg-indigo-300/35 text-indigo-800 dark:bg-indigo-700/35 dark:text-indigo-200',
+      ].join(' ')
+    }
+
     return [
       baseBtn,
       isActive || isLoading
-        // Active / Loading 状态：更明显的一点红
         ? 'bg-rose-300/80 text-rose-900 dark:bg-rose-500/70 dark:text-rose-50'
-        // 默认状态：淡红色弱一点（iOS 风格）
         : 'bg-rose-300/35 text-rose-700 dark:bg-rose-700/35 dark:text-rose-200',
     ].join(' ')
   }
 
   const renderLabel = (key: HistoryFilter) => {
     const isLoading = loading && loadingFilter === key
+
     const label =
-      key === 'all'
-        ? 'All'
-        : key === 'send'
+      key === 'send'
         ? 'Send'
         : key === 'receive'
         ? 'Receive'
@@ -93,7 +125,13 @@ export function HistoryFilterTabs({
         ? 'Pending'
         : key === 'completed'
         ? 'Completed'
-        : 'Reject'
+        : key === 'reject'
+        ? 'Reject'
+        : key === 'withdraw'
+        ? 'Withdraw'
+        : key === 'deposited'
+        ? 'Deposited'
+        : 'All'
 
     if (!isLoading) return label
 
@@ -106,67 +144,30 @@ export function HistoryFilterTabs({
   }
 
   const handleClick = (key: HistoryFilter) => {
-    // 如果当前是 loading，直接忽略点击
     if (loading) return
     onChange(key)
   }
 
   const isDisabled = (key: HistoryFilter) => {
     const isLoadingThis = loading && loadingFilter === key
-    // loading 时，只有正在 loading 的按钮可点（某些场景你也可以让它也 disabled）
     return loading && !isLoadingThis
   }
+
+  const tabs = TABS_BY_MODE[mode] ?? TABS_BY_MODE.pay
 
   return (
     <div className="mb-5 flex items-center justify-end text-[10px]">
       <div className="flex items-center gap-1">
-        <button
-          className={getBtnClass('all')}
-          disabled={isDisabled('all')}
-          onClick={() => handleClick('all')}
-        >
-          {renderLabel('all')}
-        </button>
-
-        <button
-          className={getBtnClass('send')}
-          disabled={isDisabled('send')}
-          onClick={() => handleClick('send')}
-        >
-          {renderLabel('send')}
-        </button>
-
-        <button
-          className={getBtnClass('receive')}
-          disabled={isDisabled('receive')}
-          onClick={() => handleClick('receive')}
-        >
-          {renderLabel('receive')}
-        </button>
-
-        <button
-          className={getBtnClass('pending')}
-          disabled={isDisabled('pending')}
-          onClick={() => handleClick('pending')}
-        >
-          {renderLabel('pending')}
-        </button>
-
-        <button
-          className={getBtnClass('completed')}
-          disabled={isDisabled('completed')}
-          onClick={() => handleClick('completed')}
-        >
-          {renderLabel('completed')}
-        </button>
-
-        <button
-          className={getBtnClass('reject')}
-          disabled={isDisabled('reject')}
-          onClick={() => handleClick('reject')}
-        >
-          {renderLabel('reject')}
-        </button>
+        {tabs.map(key => (
+          <button
+            key={key}
+            className={getBtnClass(key)}
+            disabled={isDisabled(key)}
+            onClick={() => handleClick(key)}
+          >
+            {renderLabel(key)}
+          </button>
+        ))}
       </div>
     </div>
   )

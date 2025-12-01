@@ -30,16 +30,14 @@ type Payed = {
 type TransferHistork = {
 	date: number
 	amount: number
-	to: string
+	account: string
 	hash: string
-	from: string
 	note: string
-	status: 'Completed'|'Pending'|'Reject'
-	type: 'Receive'|'Send'|'Check'
-	pendingKind: 'Request'|'Check'|'Transfer'
+	type: HistoryFilter
 	security?: string
 	passcode?: string
 	redeemHash?: string
+	mode: Mode
 }
 
 type LinksHistory = {
@@ -96,6 +94,42 @@ const formatTime = (ts: number) => {
   return d.toLocaleString()
 }
 
+const badgeBase =
+  "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border border-white/20"
+
+
+const getBadgeClass = (type: HistoryFilter) => {
+  switch (type) {
+    case 'send':
+      return "bg-slate-300/35 text-slate-700 dark:bg-slate-700/35 dark:text-slate-200"
+
+    case 'receive':
+      return "bg-emerald-300/35 text-emerald-700 dark:bg-emerald-700/35 dark:text-emerald-200"
+
+    case 'pending':
+      return "bg-amber-200/40 text-amber-700 dark:bg-amber-700/35 dark:text-amber-200"
+
+    case 'completed':
+      // 淡蓝色，对应 Completed tab 的默认态
+      return "bg-sky-300/35 text-sky-800 dark:bg-sky-700/35 dark:text-sky-200"
+
+    case 'reject':
+      return "bg-rose-300/35 text-rose-700 dark:bg-rose-700/35 dark:text-rose-200"
+
+    // request 专用：Withdraw（紫色）
+    case 'withdraw':
+      return "bg-fuchsia-300/35 text-fuchsia-800 dark:bg-fuchsia-700/35 dark:text-fuchsia-200"
+
+    // cashcode 专用：Deposited（靛蓝）
+    case 'deposited':
+      return "bg-indigo-300/35 text-indigo-800 dark:bg-indigo-700/35 dark:text-indigo-200"
+
+    // 一般不会有 'all' 出现在单条记录里，兜底给个中性灰
+    case 'all':
+    default:
+      return "bg-slate-700/20 text-slate-800 dark:bg-white/10 dark:text-slate-200"
+  }
+}
 
 // 用 forwardRef 包装
 export const SendHistoryTable = (
@@ -122,16 +156,13 @@ export const SendHistoryTable = (
 
 	const [mode, setMode] = useState<Mode>('pay')
 
-    const isSend = (item: TransferHistork) => {
-		if (!myAddress) return false
-		return item.from.toLowerCase() === myAddress
-    }
 
 	useEffect(() => {
 		getTransferNewitems(null)
 	}, [mode])
 	
 	const [filter, setFilter] = useState<HistoryFilter>('all')
+	
 	const getTransferNewitems = async (next: HistoryFilter | null) => {
 		if (!profiles?.length) return
 		const profile: any = profiles[0]   // 这里用你实际的 profile 类型替换 any
@@ -147,36 +178,40 @@ export const SendHistoryTable = (
 			if (mode === 'pay') {
 				const _transfer = await beamioConet.getTransferHistory(address, 0, 100)
 				const transfer: Transfer[] = _transfer[1]
+				
 				mapped = transfer.map(n => ({
 					date: Number(n.timestamp * BigInt(1000)),
 					amount: Number(ethers.formatUnits(n.amount, 6)),
-					to: n.to,
+					account: n.from.toLowerCase() === myAddr ? n.to : n.from,
 					hash: n.finisedHash,
 					from: n.from,
 					note: n.note,
-					status: 'Completed',
-					type: myAddr === n.to.toLowerCase() ? 'Receive' : 'Send',
-					pendingKind: 'Transfer',
+					type: myAddr === n.to.toLowerCase() ? 'receive' : 'send',
+					mode: 'pay'
 				}))
+
 			} else if (mode === 'request') {
 				const _links = await beamioConet.getLinksHistory(address, 0, 100)
 				const links: LinksHistory[] = _links[1]
-				mapped = links.map(n => ({
-					date: Number(n.issueTimestamp * BigInt(1000)),
-					amount: Number(ethers.formatUnits(n.amount, 6)),
-					to: n.to,
-					hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
-					from: n.from,
-					note: n.node,
-					status:
-						n.from === '0x1000000000000000000000000000000000000000'
-						? 'Reject'
-						: n.successAuthorizationHash.startsWith('0x00')
-						? 'Pending'
-						: 'Completed',
-					type: 'Check',
-					pendingKind: 'Request',
-				}))
+				mapped = links.map(n => {
+					const isRequest = n.from.toLowerCase() === myAddress
+					
+					const isPending = isRequest ? n.to === ethers.ZeroAddress : n.from === ethers.ZeroAddress
+					const isReject = isRequest ?  n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
+					const account = (isPending||isReject) ? '' : isRequest ? n.to : n.from
+					const type: HistoryFilter = isReject ? 'reject' : isPending ? 'pending' : isRequest ? 'withdraw' : 'completed'
+
+					const ret: TransferHistork = {
+						date: Number(n.issueTimestamp * BigInt(1000)),
+						amount: Number(ethers.formatUnits(n.amount, 6)),
+						account,
+						hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
+						note: n.node,
+						type,
+						mode: 'request'
+					}
+					return ret
+				})
 			} else {
 				const _checks = await beamioConet.getCheckHistory(address, 0, 100)
 				const checks: CheckHistory[] = _checks[1]
@@ -186,34 +221,33 @@ export const SendHistoryTable = (
 						const encryptedText = text[1];
 
 						const cleanText =
-						encryptedText && (await aesGcmDecrypt(encryptedText, profile.privateKey));
+							encryptedText && (await aesGcmDecrypt(encryptedText, profile.privateKey));
 
 						let ce: { secureCode: string; passcode: string } | undefined;
 						if (cleanText) {
 							ce = JSON.parse(cleanText);
 						}
+						const isSend = n.from.toLowerCase() === myAddress
+						const account = isSend ? n.to === ethers.ZeroAddress ? '' : n.to : n.from === ethers.ZeroAddress ? '' : n.from
+						const type: HistoryFilter = !account ? 'pending' : isSend ? 'completed' : 'deposited'
+
 
 						const ret: TransferHistork = {
 							date: Number(n.createTimestamp * BigInt(1000)),
 							amount: Number(ethers.formatUnits(n.amount, 6)),
-							to: n.to,
-							hash: n.depositHash.startsWith('0x00')
+							account,
+							hash: type === 'pending'
 								? n.payHash
 								: n.depositHash,
-							from: n.from,
 							note: text[0],
-							status:
-								n.to === '0x0000000000000000000000000000000000000000'
-								? 'Pending'
-								: 'Completed',
-							type: 'Check',
-							pendingKind: 'Check',
+							type,
 							security: ce?.secureCode,
 							passcode: ce?.passcode,
-							redeemHash: n.payHash
-						};
+							redeemHash: n.payHash,
+							mode: 'cashcode'
+						}
 
-						return ret;
+						return ret
 					})
 				)
 			}
@@ -228,25 +262,15 @@ export const SendHistoryTable = (
 			// 2️⃣ 基于已经排序好的 alldatas 做筛选
 			let filtered = alldatas
 
-			// if (next === 'send') {
-			// 	filtered = alldatas.filter(tx => tx.type === 'Send')
-			// } else if (next === 'receive') {
-			// 	filtered = alldatas.filter(
-			// 	tx => tx.type === 'Receive' && tx.status !== 'Reject' && tx.status !== 'Pending'
-			// )
-			// } else if (next === 'pending') {
-			// 	filtered = alldatas.filter(tx => tx.status === 'Pending')
-			// } else if (next === 'reject') {
-			// 	filtered = alldatas.filter(tx => tx.status === 'Reject')
-			// }
-
-			// 3️⃣ filter === null / 'all' 时，filtered 就是已经按时间倒序的 alldatas
+			if (next && next !== 'all') {
+				filtered = alldatas.filter(tx => tx.type === next)
+			}
 
 			setItems([]) // 清掉旧的
 
 			setTimeout(() => {
-			// 这里不需要再 reverse 了，因为 alldatas 已经是倒序
-			setItems(filtered)
+				// 这里不需要再 reverse 了，因为 alldatas 已经是倒序
+				setItems(filtered)
 			}, 0)
 		} catch (ex: any) {
 			console.log(ex.message)
@@ -256,6 +280,7 @@ export const SendHistoryTable = (
     // ⭐ 用 useCallback，这样 refresh 一直是同一个函数
 
 	const handleFilterChange = async (next: HistoryFilter) => {
+		
 		setActiveFilter(next)
 		setLoading(true)
 		setLoadingFilter(next)
@@ -314,11 +339,7 @@ export const SendHistoryTable = (
 					>
 							Cashcode
 					</button>
-
 				</div>
-							
-				
-				
 			</div>
 		)
 	}
@@ -360,7 +381,7 @@ export const SendHistoryTable = (
 					<>
 						<SwitchBar />
 							{/* FilterTabs */}
-							<HistoryFilterTabs active={filter} onChange={handleFilterChange} loading={loading} loadingFilter={loadingFilter}/>
+							<HistoryFilterTabs active={filter} onChange={handleFilterChange} loading={loading} loadingFilter={loadingFilter} mode={mode} />
 
 							{/* List */}
 							<div className="flex-1 min-h-0 overflow-y-auto pb-28">
@@ -402,53 +423,17 @@ export const SendHistoryTable = (
 											<>
 												{/* Type pill */}
 												<div className="w-20">
-<span
-  className={[
-    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
-    "border border-white/20",
-
-    // Reject — 红
-    tx.status === "Reject"
-      ? "bg-rose-300/40 text-rose-700 dark:bg-rose-700/40 dark:text-rose-200"
-
-    // Pending — 黄
-      : tx.status === "Pending"
-      ? "bg-amber-200/60 text-amber-800 dark:bg-amber-700/40 dark:text-amber-200"
-
-    // Completed 只给 Check 用 — 淡蓝色
-      : tx.type === "Check" && tx.status === "Completed"
-      ? "bg-sky-300/40 text-sky-800 dark:bg-sky-700/40 dark:text-sky-200"
-
-    // Send — 灰色
-      : tx.type === "Send"
-      ? "bg-slate-300/40 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
-
-    // Receive — 绿色（其他情况）
-      : "bg-emerald-300/35 text-emerald-700 dark:bg-emerald-700/40 dark:text-emerald-200",
-  ].join(" ")}
->
-  {
-    tx.status === "Reject"
-      ? "Reject"
-      : tx.status === "Pending"
-      ? "Pending"
-      : tx.type === "Check" && tx.status === "Completed"
-      ? "Completed"
-      : tx.type === "Send"
-      ? "Send"
-      : "Receive"
-  }
-</span>
-												</div>
+												<span
+													className={[badgeBase, getBadgeClass(tx.type as HistoryFilter)].join(" ")}
+												>
+													{tx.type}
+												</span>
+											</div>
 
 												{/* Account + note + status */}
 												<div className="flex-1 flex flex-col">
 													<span className="font-mono text-slate-800 dark:text-slate-100">
-														{fmtAddr((tx.type === "Receive")
-																	? ((tx.pendingKind ==='Request')
-																			? (tx.status === 'Completed' ? tx.from : '')
-																			: tx.from)
-																	: tx.status === 'Completed' ? tx.to : '')
+														{fmtAddr(tx.account)
 														}
 													</span>
 
@@ -458,14 +443,7 @@ export const SendHistoryTable = (
 														</span>
 													)}
 
-													{tx.status === "Pending" && (
-														<span className="text-[10px] text-amber-600 dark:text-amber-300 flex items-center gap-1">
-															<span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-300" />
-															{tx.pendingKind === "Request" && "Pending · Request link"}
-															{tx.pendingKind === "Check" && "Pending · Cashcode"}
-															{!tx.pendingKind && "Pending"}
-														</span>
-													)}
+													
 
 													<span className="text-[10px] text-slate-400 dark:text-slate-500">
 														{formatTime(tx.date)}
@@ -475,13 +453,7 @@ export const SendHistoryTable = (
 												{/* Amount */}
 												<div className="w-16 text-right text-[11px] font-medium">
 												<span
-													className={
-													tx.status === "Pending"
-														? "text-slate-500 dark:text-slate-400"
-														: tx.type === "Send"
-														? "text-slate-900 dark:text-slate-100"
-														: "text-emerald-700 dark:text-emerald-300"
-													}
+													
 												>
 													{tx.amount}
 												</span>
@@ -492,19 +464,19 @@ export const SendHistoryTable = (
 											// 有 hash：<a>，打开 BaseScan
 											if (hasHash) {
 												//				show request link
-												if (tx.pendingKind === 'Request' || tx.pendingKind === 'Check') {
+												if (tx.mode !== 'pay') {
 													return (
 														<a
 															onClick={() => {
 
-																setIsPay (tx.pendingKind === 'Request' ? false : true)
+																setIsPay (tx.mode === 'request' ? true : false)
 																setTip(0)
 																setAmt(tx.amount)
 																setNote(tx.note)
-																const params = new URLSearchParams(tx.pendingKind === 'Request' ? {amount: tx.amount.toFixed(2), code: tx.hash, note: tx.note, address:myAddress }: {secureCode: tx.hash}).toString()
+																const params = new URLSearchParams(tx.mode === 'cashcode' ? {amount: tx.amount.toFixed(2), code: tx.hash, note: tx.note, address:myAddress }: {secureCode: tx.hash}).toString()
 																const showUrl = `${showPaylinkSite}?${params}`
 																setCreatedDate(tx.date)
-																setIsCompleted(tx.status === 'Completed')
+																setIsCompleted(tx.type !== 'pending' && tx.type !== 'reject')
 																setSuccessUrl(showUrl)
 																setShowDEtail(true)
 																setSecurityCode(tx.passcode||'')
@@ -538,7 +510,7 @@ export const SendHistoryTable = (
 											// 没有 hash：<div>，只能看，不能点
 											return (
 												<div
-													key={`${tx.date}-${tx.from}-${tx.to}`}
+													key={`${tx.date}-${tx.account}`}
 													className={baseRowClass + clickableClass}
 												>
 													{rowContent}

@@ -35,7 +35,7 @@ type TransferHistork = {
 	from: string
 	note: string
 	status: 'Completed'|'Pending'|'Reject'
-	type: 'Receive'|'Send'
+	type: 'Receive'|'Send'|'Check'
 	pendingKind: 'Request'|'Check'|'Transfer'
 	security?: string
 	passcode?: string
@@ -174,7 +174,7 @@ export const SendHistoryTable = (
 						: n.successAuthorizationHash.startsWith('0x00')
 						? 'Pending'
 						: 'Completed',
-					type: 'Receive',
+					type: 'Check',
 					pendingKind: 'Request',
 				}))
 			} else {
@@ -198,7 +198,7 @@ export const SendHistoryTable = (
 							amount: Number(ethers.formatUnits(n.amount, 6)),
 							to: n.to,
 							hash: n.depositHash.startsWith('0x00')
-								? n.successAuthorizationHash
+								? n.payHash
 								: n.depositHash,
 							from: n.from,
 							note: text[0],
@@ -206,7 +206,7 @@ export const SendHistoryTable = (
 								n.to === '0x0000000000000000000000000000000000000000'
 								? 'Pending'
 								: 'Completed',
-							type: 'Send',
+							type: 'Check',
 							pendingKind: 'Check',
 							security: ce?.secureCode,
 							passcode: ce?.passcode,
@@ -402,29 +402,43 @@ export const SendHistoryTable = (
 											<>
 												{/* Type pill */}
 												<div className="w-20">
-													<span
-														className={[
-															"inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
-															" border border-white/20",
-															tx.status === "Reject"
-															? "bg-rose-300/40 text-rose-700 dark:bg-rose-700/40 dark:text-rose-200"
-															: tx.status === "Pending"
-															? "bg-amber-200/60 text-amber-800 dark:bg-amber-700/40 dark:text-amber-200"
-															: tx.type === "Send"
-															? "bg-slate-300/40 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
-															: "bg-emerald-300/35 text-emerald-700 dark:bg-emerald-700/40 dark:text-emerald-200",
-														].join(" ")}
-													>
-													{
-														tx.status === "Reject"
-														? "Reject"
-														: tx.status === "Pending"
-														? "Pending"
-														: tx.type === "Send"
-														? "Send"
-														: "Receive"
-													}
-													</span>
+<span
+  className={[
+    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
+    "border border-white/20",
+
+    // Reject — 红
+    tx.status === "Reject"
+      ? "bg-rose-300/40 text-rose-700 dark:bg-rose-700/40 dark:text-rose-200"
+
+    // Pending — 黄
+      : tx.status === "Pending"
+      ? "bg-amber-200/60 text-amber-800 dark:bg-amber-700/40 dark:text-amber-200"
+
+    // Completed 只给 Check 用 — 淡蓝色
+      : tx.type === "Check" && tx.status === "Completed"
+      ? "bg-sky-300/40 text-sky-800 dark:bg-sky-700/40 dark:text-sky-200"
+
+    // Send — 灰色
+      : tx.type === "Send"
+      ? "bg-slate-300/40 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200"
+
+    // Receive — 绿色（其他情况）
+      : "bg-emerald-300/35 text-emerald-700 dark:bg-emerald-700/40 dark:text-emerald-200",
+  ].join(" ")}
+>
+  {
+    tx.status === "Reject"
+      ? "Reject"
+      : tx.status === "Pending"
+      ? "Pending"
+      : tx.type === "Check" && tx.status === "Completed"
+      ? "Completed"
+      : tx.type === "Send"
+      ? "Send"
+      : "Receive"
+  }
+</span>
 												</div>
 
 												{/* Account + note + status */}

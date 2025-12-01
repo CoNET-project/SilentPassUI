@@ -99,7 +99,7 @@ export function ConformSignInfo({
 				{/* Review / From host */}
 				<section className="space-y-2">
 					<div className="text-[11px] font-medium tracking-wide text-slate-500 uppercase">
-						Asset changes (estimate) Amount
+						Amount
 					</div>
 
 					{/* 文字 + 图标 同一行 */}
@@ -137,7 +137,7 @@ export function ConformSignInfo({
 						<span className="text-[11px] font-medium tracking-wide text-slate-500 uppercase">
 							Note for the recipient
 						</span>
-						<span className="text-[11px] text-slate-400">Visible to the recipient</span>
+						
 					</div>
 					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-800">
 						{messageData?.note}

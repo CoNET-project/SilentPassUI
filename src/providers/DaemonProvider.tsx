@@ -104,6 +104,10 @@ type DaemonContext = {
   setPaymentLink: (val: any) => void
   setBeamioAppInstalled: (val:boolean) => void
 	beamioAppInstalled: boolean
+	setSecureCode: (val: string) => void,
+	secureCode: string
+	ignoreUrl: boolean
+	setIgnoreUrl: (val: boolean) => void
 };
 
 type DaemonProps = {
@@ -111,6 +115,10 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	ignoreUrl: false,
+	setIgnoreUrl: (val: boolean) => {},
+	setSecureCode: (val: string) => {},
+	secureCode: '',
 	  setBeamioAppInstalled: () => {},
 	beamioAppInstalled: true,
 	darkModle: false,
@@ -280,7 +288,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [currentBlock,setCurrentBlock] = useState(0)
   const [beamio, setBeamio] = useState<beamio|null>(null)
   const [usdcbalance, setUsdcbalance] = useState(0)
-
+	const [secureCode, setSecureCode] = useState('')
+	const [ignoreUrl, setIgnoreUrl] = useState(false)
 
   useEffect(() => {
     {
@@ -329,10 +338,10 @@ export function DaemonProvider({ children }: DaemonProps) {
   },[quickLinksShow])
 
   return (
-    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version,
+    <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink,
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle, beamioAppInstalled, setBeamioAppInstalled,
-				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode,
+				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode, ignoreUrl, setIgnoreUrl,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance,

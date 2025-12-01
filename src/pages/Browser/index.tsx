@@ -6,11 +6,11 @@ import PayForm from '@/pages/Pay/PayForm'
 import {getBalance, AuthorizationSign, estimateGasUSDC} from '@/services/beamio'
 import {ethers} from 'ethers'
 import { useNavigate } from "react-router-dom"
-
+import RedeemScreen from './RedeemScreen'
 
 const Browser = ({}) => {
 	const navigate = useNavigate()
-	const { darkModle, setDarkModle, setProfiles, power, setPower, setUsdcbalance, paymentLink, setPaymentLink } = useDaemonContext()
+	const { darkModle, setDarkModle, setProfiles, power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl } = useDaemonContext()
 	
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState(paymentLink?.code)
@@ -27,6 +27,85 @@ const Browser = ({}) => {
 	const [successPayLink, setSuccessPayLink] = useState<string>('')
 	const [amount, setAmount] = useState<string|undefined>(amt)
 	const [popupOpen, setPopupOpen] = useState(true)
+
+	const [value, setValue] = useState("")
+	const [valueError, setValueError] = useState(false)
+
+	const handlePaste = async () => {
+		setValueError(false)
+		if (value?.length ) {
+			setValue ('')
+			setValueError(false)
+			return
+		}
+
+		try {
+		if (navigator.clipboard && (navigator.clipboard as any).readText) {
+			const text = await navigator.clipboard.readText();
+			setValue(text);
+		}
+		} catch (e) {
+			console.warn("Clipboard not available", e);
+		}
+	}
+
+	const handleOpen = () => {
+		if (!value.trim()) return
+		try {
+			const url = new URL(value)
+
+			const isBeamio = url.hostname === "beamio.app"
+			const hasParams = [...url.searchParams].length > 0
+
+			if (!isBeamio || !hasParams) {
+				return setValueError(true)
+			}
+
+			setValueError(false)
+			checkUrl(value)
+		} catch {
+			setValueError(true)
+		}
+
+	}
+
+	const checkUrl = (url: string) => {
+		
+
+		const u = new URL(url)
+		let searchParams: URLSearchParams
+		try {
+			const u = new URL(url)
+			searchParams = u.searchParams
+		} catch {
+			searchParams = new URLSearchParams(url)
+		}
+
+		const code = searchParams.get("code")||''
+		const _note = searchParams.get("note")||''
+		const address = searchParams.get("address")||''
+		const amount = searchParams.get("amount")||''
+		const _secureCode = searchParams.get("secureCode")||''
+
+		if (_secureCode) {
+			setSecureCode (_secureCode)
+			setShowLinkPay(true)
+			return 
+		}
+
+		if (code && amount) {
+			setCode(code)
+			setNote(_note || '')
+			setAmt(amount || '0.00')
+			setRecipient(address || '')
+
+			setPaymentLink({code, note: _note, address, amount})
+			setShowLinkPay(true)
+			
+		}
+
+
+	}
 	
 	const getBa = async () => {
 		if (!myAddress) return
@@ -44,21 +123,30 @@ const Browser = ({}) => {
 		setUsdcToUSDAmount(usdcUsd)
 	}
 	
+
 	useEffect(() => {
+		if (ignoreUrl) {
+			cancel()
+			return
+		}
 
 		const url = new URL(window.location.href)
 		const codeHash = url.searchParams.get('code')||''
 		const amount = url.searchParams.get('amount')||''
-
+		const _secureCode = url.searchParams.get('secureCode')||''
+		if (_secureCode) {
+			setSecureCode(_secureCode)
+		}
 
 		if (codeHash && amount ) {
+
 			setNote(url.searchParams.get('note')||'')
 			setRecipient(url.searchParams.get('address')||'')
 			setAmt(amount)
 			setCode(codeHash)
 		}
 
-		if (amount && codeHash && !power) {
+		if ((_secureCode || amount && codeHash) && !power) {
 			setShowLinkPay(true)
 		}
 
@@ -78,43 +166,109 @@ const Browser = ({}) => {
 		setRecipient('')
 		setPower(true)
 		setShowLinkPay(false)
-		navigate('/Pay')
 		setPaymentLink(null)
+		setSuccessHash('')
+		setSecureCode('')
+		setIgnoreUrl(false)
 	}
 
     return (
         <>
-		{
-			showLinkPay ? (
-				<PayForm code={code} amt={amt} note={note} recipient={recipient} closeWin={()=> {
-					cancel()
-				}} />
-				) : (
-					<div className="relative px-5 pt-6">
-						
-						{/* 左侧：切换主题按钮 */}
-						{/* <button
-							type="button"
-							className={styles.headerBtn}
-							aria-label="Toggle theme"
-							onClick={() => setDarkModle(!darkModle)}
-						>
-							<span className={styles.headerBtnIcon}>
-							{darkModle ? <LightDrakMode /> : <LightDrakModeBlue />}
-							</span>
-						</button> */}
+			{
+				showLinkPay ? 
+					secureCode ? <RedeemScreen /> :
+					
+					(
+						<PayForm code={code} amt={amt} note={note} recipient={recipient} closeWin={()=> {
+							cancel()
+						}} />
+					) 
+				: (
+						 <div className="flex justify-center mt-8">
+							<div className="w-full max-w-md h-full flex flex-col">
+							{/* Top bar placeholder, match your existing app shell */}
+							<header className="px-4 pt-3 pb-2 border-b border-slate-200 backdrop-blur flex items-center justify-between">
+								<div>
+								<div className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
+									Browser
+								</div>
+								<div className="text-sm text-slate-700">Open Beamio links here</div>
+								</div>
+							</header>
 
-						{/* 右侧：Scan 按钮 */}
-						{/* 固定右上角的 ScanBtn */}
-						<div className="absolute right-0 pt-6">
-							{/* <ScanBtn/> */}
+							{/* Content */}
+							<main className="flex-1 px-4 py-6 flex flex-col items-center justify-start text-center">
+								<div className="w-full max-w-md">
+									<div className="mb-4">
+										<h2 className="text-lg font-semibold text-slate-900 mb-1">
+											Paste a Beamio link to open
+										</h2>
+										<p className="text-xs md:text-sm text-slate-600 leading-relaxed">
+											Paste any Beamio payment link or Cashcode URL you&apos;ve received. We&apos;ll open it here so
+											you can review and pay with your Beamio wallet.
+										</p>
+									</div>
+
+									<div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-3 md:p-4 mb-3 flex items-center gap-2">
+										<input
+											value={value}
+											onChange={(e) => setValue(e.target.value)}
+											placeholder="https://beamio.app/pay/..."
+											className="flex-1 bg-transparent outline-none text-xs md:text-sm text-slate-900 placeholder:text-slate-400 text-center"
+										/>
+										<button
+											type="button"
+											onClick={handlePaste}
+											className="px-2.5 py-1.5 rounded-full text-[11px] md:text-xs font-medium border border-slate-200 text-slate-700 hover:bg-slate-50"
+										>
+											{value ? 'Delete' : 'Paste'} 
+										</button>
+										<button
+											type="button"
+											onClick={handleOpen}
+											className="px-3 py-1.5 rounded-full text-[11px] md:text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
+										>
+											Open
+										</button>
+									</div>
+									<div className="text-[11px] md:text-xs text-slate-500 space-y-1.5 text-left">
+
+										  {/* 🔴 Error message above Mobile text */}
+											{valueError && (
+												<p className="text-red-500 font-medium">
+												The URL is invalid or this type of URL is not supported.
+												</p>
+											)}
+										<p>
+											• Mobile: open Beamio from your <span className="font-medium">Home Screen / installed app icon</span>, then
+											open links here in the Browser tab.
+										</p>
+
+										<p>
+											• Desktop: you can open Beamio links in <span className="font-medium">Google Chrome</span> and use your Beamio
+											wallet there. Third-party wallets are supported for payment requests only, not for Cashcode redeem.
+										</p>
+
+										</div>
+									<div className="text-[11px] md:text-xs text-slate-500 space-y-1.5 text-left">
+										<p>
+											• Mobile: open Beamio from your <span className="font-medium">Home Screen / installed app icon</span>, then
+											open links here in the Browser tab.
+										</p>
+										<p>
+											• Desktop: you can open Beamio links in <span className="font-medium">Google Chrome</span> and use your Beamio
+											wallet there. Third-party wallets are supported for payment requests only, not for Cashcode redeem.
+										</p>
+									</div>
+								</div>
+							</main>
+							</div>
 						</div>
-					</div>
-				)
-		}
 
+					)
+			}
         </>
     )
-};
+}
 
 export default Browser

@@ -121,7 +121,6 @@ export default function BeamioReceiveScreen() {
 						md:px-6 md:py-6
 					"
 				>
-				{/* QR placeholder / QR 实图可以替换这里 */}
 					{/* Beamio @account */}
 					<div className="text-center mb-2">
 						<p className="text-[13px] font-medium text-slate-900 dark:text-slate-100">
@@ -204,42 +203,6 @@ export default function BeamioReceiveScreen() {
 						</div>
 					</div>
 
-					{/* Buttons */}
-					{/* <div
-						className="
-						w-full flex gap-2 mt-2 text-[11px]
-						md:text-[12px] md:gap-3
-						"
-					>
-						
-						<button
-						className="
-							flex-1 h-9 md:h-10
-							rounded-full
-							bg-slate-900 text-slate-50
-							font-medium shadow-sm
-							active:translate-y-[1px]
-						"
-						>
-							Share address
-						</button>
-
-					
-						<button
-						className="
-							flex-1 h-9 md:h-10
-							rounded-full
-							border border-slate-300 dark:border-slate-600
-							bg-white dark:bg-slate-900
-							text-slate-700 dark:text-slate-200
-							font-medium
-							active:translate-y-[1px]
-						"
-						>
-							Save QR
-						</button>
-					</div> */}
-
 					{/* Small hint */}
 					<p
 						className="
@@ -252,27 +215,92 @@ export default function BeamioReceiveScreen() {
 						Only send <span className="font-medium">USDC on Base</span> to this address.
 						Sending any other assets may result in loss of funds.
 					</p>
+				</div>
+
+				{/* 2) Receive by redeeming a Cashcode */}
+					<section className="rounded-3xl bg-white border border-slate-100 shadow-sm px-4 pt-4 pb-5">
+					<div className="flex items-center justify-between mb-3">
+						<div className="flex flex-col">
+						<span className="text-xs font-medium text-slate-700">Redeem a Cashcode</span>
+						<span className="text-[10px] text-slate-400">One-time digital check into this wallet</span>
+						</div>
 					</div>
 
-					{/* Safety / info card */}
-					<div
-						className="
-							mt-auto rounded-2xl
-							border border-emerald-100 dark:border-emerald-500/40
-							bg-emerald-50 dark:bg-emerald-900/30
-							px-3 py-2 md:px-4 md:py-3
-							text-[10px] md:text-[11px]
-							text-emerald-700 dark:text-emerald-200
-						"
-					>
-						<p className="font-medium mb-1 md:mb-2">
-							Beamio never takes custody of your funds.
-						</p>
-						<p>
-							Payments go directly from other wallets to your Beamio wallet on Base. You keep
-							full control of your keys.
-						</p>
+					{/* Cashcode input */}
+					<div className="flex flex-col gap-2">
+						<label className="text-[11px] text-slate-500" htmlFor="cashcode-input">
+						Cashcode
+						</label>
+						<div className="flex items-center gap-2 rounded-full bg-slate-50 border border-slate-200 px-3 py-2">
+						<input
+							id="cashcode-input"
+							type="text"
+							placeholder="Paste or type your Beamio Cashcode"
+							className="flex-1 bg-transparent text-[11px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
+						/>
+						<button className="text-[11px] font-medium text-blue-600 hover:text-blue-700">Paste</button>
+						</div>
 					</div>
+
+					{/* Security code input */}
+					<div className="flex flex-col gap-2 mt-3">
+						<div className="flex items-baseline justify-between">
+						<label className="text-[11px] text-slate-500" htmlFor="security-code-input-1">
+							Security code (optional)
+						</label>
+						<span className="text-[10px] text-slate-400">3-3 digits (if required)</span>
+						</div>
+						<div className="flex items-center gap-2 rounded-full bg-slate-50 border border-slate-200 px-3 py-2">
+						<input
+							id="security-code-input-1"
+							type="text"
+							inputMode="numeric"
+							maxLength={3}
+							placeholder="123"
+							className="w-14 text-center bg-transparent text-[13px] font-semibold text-slate-800 placeholder:text-slate-300 focus:outline-none"
+						/>
+						<span className="text-[12px] text-slate-400">-</span>
+						<input
+							id="security-code-input-2"
+							type="text"
+							inputMode="numeric"
+							maxLength={3}
+							placeholder="456"
+							className="w-14 text-center bg-transparent text-[13px] font-semibold text-slate-800 placeholder:text-slate-300 focus:outline-none"
+						/>
+						</div>
+					</div>
+
+					{/* Helper copy */}
+					<p className="text-[11px] text-slate-500 leading-snug mt-2">
+						Cashcodes are one-time digital checks. To redeem, paste your Cashcode and, if the creator set one, enter the 3-3 security code. If there is no security code for this Cashcode, you can leave those fields empty. When you redeem, the USDC that was locked in the Cashcode moves into this wallet. The Beamio service fee (0.8%, min 0.02 USDC, max 2 USDC) was already paid by the person who created the Cashcode, so you receive the full amount.
+					</p>
+
+					{/* Redeem button */}
+					<button className="w-full mt-3 rounded-full bg-slate-900 text-white text-xs font-medium py-2.5 hover:bg-slate-800">
+						Redeem Cashcode
+					</button>
+					</section>
+
+				{/* Safety / info card */}
+				<div
+					className="
+						mt-auto rounded-2xl
+						border border-emerald-100 dark:border-emerald-500/40
+						bg-emerald-50 dark:bg-emerald-900/30
+						px-3 py-2 md:px-4 md:py-3
+						text-[10px] md:text-[11px]
+						text-emerald-700 dark:text-emerald-200
+					"
+				>
+					<p className="font-medium mb-1 md:mb-2">
+						Beamio never takes custody of your funds.
+					</p>
+					<p>
+						Payments go directly from other wallets to your Beamio wallet on Base. You keep
+						full control of your keys.
+					</p>
+				</div>
 			</div>
 		</div>
 

@@ -29,6 +29,7 @@ type TipInputProps = {
 
 }
 
+const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 const TipInput = ({ tipAmount, setTipAmount, amt, tipError}: TipInputProps) => {
   return (
     <div className="mb-5">
@@ -124,9 +125,19 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 	const ShowAmount = () => {
 		return (
 
+			<>
+			<div className="mb-3">
+					<div className="flex items-center justify-between mb-1">
+						<label className="block text-[11px] text-slate-500">Request Account</label>
+					</div>
+					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+						
+						<span className="text-lg font-semibold text-slate-900 tracking-tight">{fmtAddr(recipient)}</span>
+					</div>
+				</div>
 				<div className="mb-3">
 					<div className="flex items-center justify-between mb-1">
-						<label className="block text-[11px] text-slate-500">Amount</label>
+						<label className="block text-[11px] text-slate-500">Request Amount</label>
 						<span className="text-[11px] text-slate-400">USDC on Base</span>
 					</div>
 					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
@@ -134,6 +145,9 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 						<span className="text-lg font-semibold text-slate-900 tracking-tight">{amount}</span>
 					</div>
 				</div>
+			</>
+
+				
 		)
 	}
 
@@ -474,7 +488,10 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 						</>
 						: <>
 							<Header />
-							<ShowNode />
+							{
+								note && <ShowNode />
+							}
+							
 							<ShowAmount />
 							<TipInput
 								tipAmount={tipAmount}

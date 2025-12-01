@@ -42,7 +42,12 @@ export const RedeemOrLinkCard = ({
 		if (!successUrl) return
 
 		try {
-		await navigator.clipboard.writeText(successUrl)
+			await navigator.clipboard.writeText(successUrl)
+			setCopied1(true)
+
+			setTimeout(() => {
+				setCopied1(false)
+			}, 2000)
 		} catch (e) {
 			console.error('Failed to copy link', e)
 		}
@@ -72,6 +77,7 @@ export const RedeemOrLinkCard = ({
 	const fee = feeBase > 0 ? calcFeeFromNumber(feeBase) : 0;
 	const requestNet = requestGross > 0 ? Math.max(requestGross - fee, 0) : 0;
 	const [copied, setCopied] = useState(false)
+	const [copied1, setCopied1] = useState(false)
 
   return (
 	<div
@@ -378,7 +384,11 @@ export const RedeemOrLinkCard = ({
 					"
 					title="Copy link"
 				>
-					<Copy className="w-3.5 h-3.5" />
+					{copied1 ? (
+							<Check className="w-4 h-4 text-green-500" />
+						) : (
+							<Copy className="w-4 h-4" />
+						)}
 				</button>
 
 				{/* Open icon button */}
@@ -403,8 +413,8 @@ export const RedeemOrLinkCard = ({
 				
 			</div>
 			<p className='text-[11px] text-slate-600 dark:text-slate-300 '>
-					Ask the payer to scan the QR or open the link. They will pay 0.03 USDC and you will receive 0.01 USDC. A 0.8% Beamio service fee is included in the payer's amount.
-				</p>
+				Ask the payer to scan the QR or open the link. They will pay 0.03 USDC and you will receive 0.01 USDC. A 0.8% Beamio service fee is included in the payer's amount.
+			</p>
 		</div>
 	)
 }

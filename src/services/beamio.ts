@@ -401,6 +401,11 @@ function toJapaneseNumber(input: number | string): string {
 	return sign + intCN + "ドル" + (fracCN ? fracCN : "")
 }
 
+export const redeemCodeHash = (redeemCode: string, passcode: string) => {
+	const hash = ethers.solidityPackedKeccak256(['string', 'string'], [redeemCode, passcode])
+	return hash
+}
+
 export const generateCODE = (passcode: string) => {
 	const code: string = uuid62.v4()
 	const hash = ethers.solidityPackedKeccak256(['string', 'string'], [code, passcode])
@@ -503,7 +508,6 @@ export const getUSDCFaucet = async (address: string) => {
 	}
 	return false
 }
-
 
 export function toEnglishCheckWords(input: number | string): string {
 	// 1) 统一为字符串，清理除 0-9 . - 之外的字符

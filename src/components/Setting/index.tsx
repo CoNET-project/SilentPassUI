@@ -65,11 +65,10 @@ export default function BeamioMeMainScreen() {
 	}
 
 	useEffect(() => {
-		if (!currentAvatarSrc) {
-		return
+		if (!currentAvatarSrc||!beamio) {
+			return
 		}
 
-		if (!beamio) return
 
 		if (beamio.accountName) {
 			setAvatarName(beamio.accountName)
@@ -78,8 +77,9 @@ export default function BeamioMeMainScreen() {
 		setDarkModle(beamio.darkTheme)
 
 		if (beamio.image && !/^http/.test(beamio.image)) {
-		setAvatarImageData(beamio.image)
+			setAvatarImageData(beamio.image)
 		}
+		
 	}, [receiveOpen, beamio])
 
 	

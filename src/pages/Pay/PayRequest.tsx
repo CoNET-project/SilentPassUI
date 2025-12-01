@@ -58,7 +58,7 @@ function calcFee(amountStr: string) {
 type Mode = "pay" | "request" | 'cashcode';
 // form -> sign -> processing -> generated
 type Step = "form" | "sign" | "processing" | "generated" | "x402Sign" | "success"
-const minAmount = 0.1;
+const minAmount = 0.03;
 
 
 
@@ -162,7 +162,7 @@ export default function BeamioPayRequest() {
 		}
 
 		if (numericAmount < minAmount) {
-			AmountError = `Amount must be greater than 0.1 USDC to cover the minimum Beamio service fee.`
+			AmountError = `Amount must be greater than 0.02 USDC to cover the minimum Beamio service fee.`
 		}
 
 
@@ -310,6 +310,11 @@ export default function BeamioPayRequest() {
 		if (checkRequestError()|| !profiles?.length) return 
 		const Beamiofee = calcFeeFromNumber(Number(sendAmount))
 		const numberAmount = Number(sendAmount) + Beamiofee
+		if (numberAmount < 0.1) {
+			const AmountError = `Cashcode amount must be greater than 0.10 USDC .`
+			setSendAmountError(AmountError)
+			return
+		}
 		if (numberAmount > usdcAmount) {
 			setSendAmountError(`Insufficient balance`)
 			return
@@ -935,12 +940,12 @@ export default function BeamioPayRequest() {
 								mode === 'cashcode' && <>
 									<div className="space-y-1 pt-2 mb-4">
 										<div className="flex items-center justify-between">
-										<label className="text-xs text-slate-500 dark:text-slate-400">
-											Security code
-										</label>
-										<span className="text-[11px] text-slate-400">
-											6 digits (3-3) · optional
-										</span>
+											<label className="text-xs text-slate-500 dark:text-slate-400">
+												Security code
+											</label>
+											<span className="text-[11px] text-slate-400">
+												6 digits (3-3) · optional
+											</span>
 										</div>
 
 										<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 flex flex-col gap-2">

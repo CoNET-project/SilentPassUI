@@ -108,6 +108,8 @@ type DaemonContext = {
 	secureCode: string
 	ignoreUrl: boolean
 	setIgnoreUrl: (val: boolean) => void
+	setPayTag: (val: string) => void
+	payTag: string
 };
 
 type DaemonProps = {
@@ -115,6 +117,8 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	setPayTag: (val: string) => {},
+	payTag: '',
 	ignoreUrl: false,
 	setIgnoreUrl: (val: boolean) => {},
 	setSecureCode: (val: string) => {},
@@ -290,6 +294,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [usdcbalance, setUsdcbalance] = useState(0)
 	const [secureCode, setSecureCode] = useState('')
 	const [ignoreUrl, setIgnoreUrl] = useState(false)
+	const [payTag, setPayTag] = useState('')
 
   useEffect(() => {
     {
@@ -342,7 +347,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink,
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle, beamioAppInstalled, setBeamioAppInstalled,
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode, ignoreUrl, setIgnoreUrl,
-				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,
+				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,payTag, setPayTag,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,

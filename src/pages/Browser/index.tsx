@@ -7,10 +7,11 @@ import {getBalance, AuthorizationSign, estimateGasUSDC} from '@/services/beamio'
 import {ethers} from 'ethers'
 import { useNavigate } from "react-router-dom"
 import RedeemScreen from './RedeemScreen'
+import ScanBtn from '@/components/scanBtn/ScanButton'
 
 const Browser = ({}) => {
 	const navigate = useNavigate()
-	const { darkModle, setDarkModle, setProfiles, power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl } = useDaemonContext()
+	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl } = useDaemonContext()
 	
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState(paymentLink?.code)
@@ -156,7 +157,7 @@ const Browser = ({}) => {
 		if (code && amt) {
 			setShowLinkPay(true)
 		}
-	},[code, amt ])
+	},[code, amt])
 
 
 	const cancel = () => {
@@ -173,7 +174,7 @@ const Browser = ({}) => {
 	}
 
     return (
-        <>
+        <div className='flex flex-col h-screen'>
 			{
 				showLinkPay ? 
 					secureCode ? <RedeemScreen /> :
@@ -267,7 +268,7 @@ const Browser = ({}) => {
 
 					)
 			}
-        </>
+        </div>
     )
 }
 

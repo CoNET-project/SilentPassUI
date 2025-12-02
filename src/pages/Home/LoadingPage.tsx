@@ -2,7 +2,7 @@ import React, {useEffect, useState} from "react";
 import beamio_icon from '@/components/assets/32x32.svg'
 import { useNavigate } from "react-router-dom"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, getUSDCFaucet, getETHFaucet, onWalletEvent} from '@/services/beamio'
+import {getETHFaucet, onWalletEvent} from '@/services/beamio'
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import styles from '@/components/Home/home.module.scss'
@@ -20,7 +20,7 @@ type Props = {
 }
 
 export default function BeamioOnboardingModal({home}: Props) {
-	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, beamioAppInstalled } = useDaemonContext()
+	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag } = useDaemonContext()
 	const [addressPreview, SETaddressPreview] = useState('')
 	const [loading, SetLoading] = useState(true)
 	const init = async () => {

@@ -21,7 +21,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 	return (
 		<div className="flex flex-col h-full">
 
-			<div className="flex-1 flex flex-col items-center px-6 pt-10 pb-8 overflow-auto">
+			<div className="flex-1 flex flex-col items-center px-6 pt-10 pb-20 overflow-auto">
 				<div className="flex flex-col items-center gap-3 mb-6">
 				<div className="h-14 w-14 rounded-full bg-blue-600 flex items-center justify-center text-white text-3xl">
 					✓
@@ -182,9 +182,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 					This Cashcode has been redeemed and can no longer be used.<br />The sender has already paid the Beamio fee and network fee for this transaction.
 				</p>
 				</div>
-			</div>
-
-			<div className="px-6 pb-4 flex flex-col gap-3 max-w-xl w-full mx-auto">
+				<div className="px-6 pb-4 flex flex-col gap-3 max-w-xl w-full mx-auto">
 				<AppButton
 					fullWidth
 					onClick={() => {
@@ -196,6 +194,9 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 				
 				
 			</div>
+			</div>
+
+			
 		</div>
 	)
 }

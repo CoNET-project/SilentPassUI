@@ -1,11 +1,11 @@
 export type HistoryFilter =
   | 'all'
-  | 'send'
-  | 'receive'
+  | 'sent'
+  | 'received'
   | 'pending'
   | 'completed'
   | 'reject'
-  | 'withdraw'
+  | 'paid'
   | 'deposited'
 
 type Mode = 'pay' | 'request' | 'cashcode'
@@ -20,9 +20,9 @@ type HistoryFilterTabsProps = {
 
 // --- All moved to last position ---
 const TABS_BY_MODE: Record<Mode, HistoryFilter[]> = {
-  pay: ['send', 'receive', 'all'],
-  request: ['pending', 'withdraw', 'completed', 'all'],
-  cashcode: ['pending', 'completed', 'deposited', 'all'],
+  pay: ['sent', 'received', 'all'],
+  request: ['pending', 'paid', 'completed', 'all'],
+  cashcode: ['pending', 'deposited', 'completed', 'all'],
 }
 
 export function HistoryFilterTabs({
@@ -51,7 +51,7 @@ export function HistoryFilterTabs({
       ].join(' ')
     }
 
-    if (key === 'send') {
+    if (key === 'sent') {
       return [
         baseBtn,
         isActive || isLoading
@@ -60,7 +60,7 @@ export function HistoryFilterTabs({
       ].join(' ')
     }
 
-    if (key === 'receive') {
+    if (key === 'received') {
       return [
         baseBtn,
         isActive || isLoading
@@ -87,7 +87,7 @@ export function HistoryFilterTabs({
       ].join(' ')
     }
 
-    if (key === 'withdraw') {
+    if (key === 'paid') {
       return [
         baseBtn,
         isActive || isLoading
@@ -117,9 +117,9 @@ export function HistoryFilterTabs({
     const isLoading = loading && loadingFilter === key
 
     const label =
-      key === 'send'
-        ? 'Send'
-        : key === 'receive'
+      key === 'sent'
+        ? 'Sent'
+        : key === 'received'
         ? 'Receive'
         : key === 'pending'
         ? 'Pending'
@@ -127,8 +127,8 @@ export function HistoryFilterTabs({
         ? 'Completed'
         : key === 'reject'
         ? 'Reject'
-        : key === 'withdraw'
-        ? 'Withdraw'
+        : key === 'paid'
+        ? 'Paid'
         : key === 'deposited'
         ? 'Deposited'
         : 'All'

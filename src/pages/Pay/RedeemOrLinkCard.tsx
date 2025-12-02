@@ -113,7 +113,7 @@ export const RedeemOrLinkCard = ({
 				</button>
 			</div>
 
-		{/* === 内容区 === */}
+		{/* Cashcode area */}
 		{isPay ? (
 			<>
 			{/* Header row: Created date | Payment link | Status */}
@@ -239,6 +239,7 @@ export const RedeemOrLinkCard = ({
 			</>
 		) : (
 			<>
+				{/* Payment Link */}
 				{/* Header row: Created date | Payment link | Status */}
 				<div className="
 					mb-1
@@ -331,23 +332,23 @@ export const RedeemOrLinkCard = ({
 						bgColor="transparent"
 						fgColor="#000000"
 						imageSettings={{
-						src: bIcon,
-						height: 40,
-						width: 40,
-						excavate: true,
+							src: bIcon,
+							height: 40,
+							width: 40,
+							excavate: true,
 						}}
 						className="rounded-lg inline-block"
 					/>
 
 					<div className="flex justify-center items-center gap-1 text-[13px] mt-0 pt-0 leading-none">
 						<span
-						className="uppercase font-medium tracking-wider text-xs"
-						style={{ color: '#c0c0c0ff' }}
+							className="uppercase font-medium tracking-wider text-xs"
+							style={{ color: '#c0c0c0ff' }}
 						>
-						Amount
+							Amount
 						</span>
 						<span className="font-mono text-black/50 font-semibold text-xs">
-						{displayGeneratedAmount.toFixed(2)} USDC
+							{displayGeneratedAmount.toFixed(2)} USDC
 						</span>
 					</div>
 				</div>
@@ -412,8 +413,9 @@ export const RedeemOrLinkCard = ({
 				</div>
 				
 			</div>
+			
 			<p className='text-[11px] text-slate-600 dark:text-slate-300 '>
-				Ask the payer to scan the QR or open the link. They will pay 0.03 USDC and you will receive 0.01 USDC. A 0.8% Beamio service fee is included in the payer's amount.
+				Beamio service fee (0.8%) is deducted from the amount you receive. The payer always pays the full “Payer will pay” amount. Beamio fee is capped at 2.00 USDC per Payment Link. Direct Send / Receive has 0% Beamio fee.
 			</p>
 		</div>
 	)

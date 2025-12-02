@@ -2,23 +2,17 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {ethers} from 'ethers' 
 import usdc_abi from './ABI/usdc_abi.json'
 import {
-  customJsonStringify,
-  initProfileTokens,
-  isValidSolanaBase58PrivateKey,
-  postToEndpoint,
+	customJsonStringify,
+	initProfileTokens,
+	isValidSolanaBase58PrivateKey,
+	postToEndpoint,
 
 } from "../utils/utils"
 import {
-  apiv4_endpoint,
-  conetDepinProvider,
-  conetProvider,
-  localDatabaseName,
-  rewardWalletAddress,
-  payment_endpoint,
-  paypal_endpoint,
-  changeRPC,
-  ethProvider,
-  sGB_ReadOnly,
+	apiv4_endpoint,
+	conetDepinProvider,
+	conetProvider,
+	localDatabaseName,
 
 } from "../utils/constants"
 import contracts from "../utils/contracts"
@@ -213,14 +207,14 @@ export const estimateGasUSDC = async (amount: number, to: string) => {
 	const _amount = ethers.parseUnits(amount.toFixed(2), 6)
 	try {
 		const [gas, price, req] = await Promise.all([
-			sc.transfer.estimateGas(to||ethers.ZeroAddress, _amount),
+			sc.transfer.estimateGas(to||contracts.beamioConet.address, _amount),
 			baseEndpoint.getFeeData(),
 			fetch(getOraclesEndPoint, {method: 'GET'})
 		])
 
 		if (req.status === 200) {
 			const oracle = await req.json()
-			return {gas, price: price.gasPrice, oracle}
+			return {gas: gas * BigInt(3), price: price.gasPrice, oracle}
 		}
 
 		return null
@@ -834,9 +828,6 @@ export const storeSystemData = async () => {
     console.log(`storeSystemData storageHashData Error!`, ex);
   }
 }
-
-
-
 
 
 export const MobileType = () => {

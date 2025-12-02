@@ -14,7 +14,7 @@ import styles from './setting.module.scss'
 
 //	https://beamio.app?amount=0.03&code=0x36a6200cec2fe34edb2f3b075af1d46645c54bb54a0abe0e97a265068773b3c4&note=test&address=0xc8f855ff966f6be05cd659a5c5c7495a66c5c015
 type prof = {
-  wallet: string
+  	wallet: string
 }
 const formatMoney = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -23,7 +23,7 @@ const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 const defaultName = 'Beamio'
 
 export default function BeamioMeMainScreen() {
-	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles } = useDaemonContext()
+	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles, payTag, setPayTag } = useDaemonContext()
 
 	const [avatarSeed, setAvatarSeed] = useState('NY')
 	const [avatarName, setAvatarName] = useState('')
@@ -79,12 +79,15 @@ export default function BeamioMeMainScreen() {
 		if (beamio.image && !/^http/.test(beamio.image)) {
 			setAvatarImageData(beamio.image)
 		}
-		
+
 	}, [receiveOpen, beamio])
 
 	
 
 	useEffect(() => {
+		if (payTag === 'receive') {
+			setReceiveOpen(true)
+		}
 		getBa()
 	}, [])
 
@@ -322,39 +325,45 @@ export default function BeamioMeMainScreen() {
 			{/* Settings full-screen slide-over */}
 			<div
 				className={[
-					"fixed inset-0 z-40 bg-slate-50",
+					"fixed inset-0 z-40 bg-slate-50 flex-1 overflow-y-auto",
 					"transition-transform duration-300 ease-out",
 					settingsOpen ? "translate-x-0" : "translate-x-full",
 				].join(" ")}
 			>
-				<BeamioSettingsScreen onClose={() => setSettingsOpen(false)} />
+				<div className="flex-1 overflow-y-auto">
+					<BeamioSettingsScreen onClose={() => setSettingsOpen(false)} />
+				</div>
+				
 			</div>
 
 			{/* ⭐ Receive full-screen slide-over（从右向左滑入） */}
 			<div
 				className={[
 					"fixed inset-0 z-50 bg-white dark:bg-slate-900",
-					"transition-transform duration-300 ease-out",
+					"transition-transform duration-300 ease-out flex flex-col",
 					receiveOpen ? "translate-x-0" : "translate-x-full",
 				].join(" ")}
 			>
 				{/* 关闭按钮：右上角 iOS 毛玻璃风格 */}
 				<button
-					onClick={() => setReceiveOpen(false)}
+					onClick={() => {
+						setPayTag('')
+						setReceiveOpen(false)
+					}}
 					className="
-						absolute top-4 right-4
+						    absolute top-4 right-4
 						w-8 h-8 rounded-full
-						bg-white/70 dark:bg-slate-800/70
+						bg-sky-200/60 dark:bg-sky-900/40   /* ⭐ 淡蓝色透明背景 */
 						backdrop-blur-md shadow
 						flex items-center justify-center
-						text-slate-700 dark:text-slate-300
+						text-sky-700 dark:text-sky-200    /* ⭐ 让叉号跟着蓝色系 */
 					"
 				>
 					✕
 				</button>
 
 				{/* 真正的 Receive 内容 */}
-				<div className="w-full h-full">
+				<div className="flex-1 overflow-y-auto">
 					<BeamioReceiveScreen />
 				</div>
 			</div>

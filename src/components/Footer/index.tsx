@@ -100,7 +100,7 @@ useEffect(() => {
         },
         {
             key: '/pay',
-            title: 'Pay/Request',
+            title: 'Pay & Request',
 			icon: <div style={{ width: '2rem', height: '2rem' }} />,
         },
         {
@@ -110,7 +110,7 @@ useEffect(() => {
         },
         {
             key: '/settings',
-            title: 'Settings',
+            title: 'Me',
             icon: (pathname=='/settings'?<WalletBlueIcon />:<WalletIconGrey />),
             ...(hasNewVersion ? { badge: '1' } : {}),
         },

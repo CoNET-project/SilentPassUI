@@ -63,9 +63,10 @@ const minAmount = 0.03;
 
 
 export default function BeamioPayRequest() {
+	
+	const { profiles, paymentLink , payTag} = useDaemonContext()
 
-	const { profiles, paymentLink } = useDaemonContext()
-	const [mode, setMode] = useState<Mode>("request")
+	const [mode, setMode] = useState<Mode>( 'pay')
 	const [step, setStep] = useState<Step>("form")
 	const [defaultNodeText, setDefaultNodeText] = useState('')
 
@@ -92,11 +93,21 @@ export default function BeamioPayRequest() {
 	const isPay = mode === "pay";
 
 	
-	const defaultTextTemp = mode === 'pay' ? 'Sent with Beamio - no gas fees.' : mode === 'request' 
-	? "Payment request with Beamio"
-	: "Cashcode sent with Beamio."
+	const defaultTextTemp = mode === 'pay' ? 'Sent with Beamio - no gas fees.' 
+		: mode === 'request' ? "Payment request with Beamio"
+		: "Cashcode sent with Beamio."
+
 
 	useEffect(() => {
+		if (payTag?.length) {
+			if (payTag === 'pay') {
+				setMode ('pay')
+			} else if (payTag === 'cashcode') {
+				setMode('cashcode')
+			} else if (payTag === 'request') {
+				setMode('request')
+			}
+		}
 		setDefaultNodeText(defaultTextTemp)
 	}, [mode])
 
@@ -171,7 +182,6 @@ export default function BeamioPayRequest() {
 
 		return (!!AmountError)
 	}
-
 
 	const handleCopySuccessUrl = async () => {
 		if (!successUrl) return
@@ -277,7 +287,7 @@ export default function BeamioPayRequest() {
 		const code = generateCODE ('')
 
 		const fixedAmount = ethers.parseUnits(sendAmount, 6).toString()
-		const params = new URLSearchParams({amount: fixedAmount, code: code.hash, note, address: profile.keyID }).toString()
+		const params = new URLSearchParams({amount: fixedAmount, code: code.hash, note:note||defaultNodeText, address: profile.keyID }).toString()
 		const showparams = new URLSearchParams({amount: numberAmount.toFixed(2), code: code.hash, note: note||defaultNodeText, address: profile.keyID }).toString()
 		const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
 		const showUrl = `${showPaylinkSite}?${showparams}`
@@ -440,7 +450,7 @@ export default function BeamioPayRequest() {
 		// Request Link 不需要签名，也不需要 processing，直接进入生成结果
 			issueRequestLink()
 		}
-	};
+	}
 
 	const Success = ({messageData}: {messageData: any}) => {
 		const [copied, setCopied] = useState(false)
@@ -796,7 +806,6 @@ export default function BeamioPayRequest() {
 	}
 
 
-
   return (
 	<div className="pb-20">
 		{/* Header */}
@@ -825,7 +834,12 @@ export default function BeamioPayRequest() {
 
 					<div className="flex items-center justify-between mb-3">
 						<p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
-							Choose how you want to pay or get paid. All direct sends are gasless on Base.
+							{
+								mode === 'request' ? 
+								<>Create a payment link someone can tap to pay you. Direct sends are still gasless on Base.</>
+								: <>Choose how you want to pay or get paid. All direct sends are gasless on Base.</>
+							}
+							
 						</p>
 					</div>
 				</>
@@ -1088,6 +1102,7 @@ export default function BeamioPayRequest() {
 									</div>
 
 									<p className="text-[10px] text-slate-400 mt-1">
+										The payer covers the Beamio fee. You always receive the full “You will receive” amount.
 										Beamio fee is capped at 2.00 USDC per transaction. Direct Send / Receive has 0% Beamio fee.
 									</p>
 									</div>
@@ -1421,7 +1436,7 @@ export default function BeamioPayRequest() {
 					{step === "generated" && 
 						<RedeemOrLinkCard 
 							createdAt={new Date().getTime()} 
-							isCompleted={false} isPay={isPay} amt={amt} successUrl={successUrl} tip={tip} note={note} 
+							isCompleted={false} isPay={isPay} amt={amt} successUrl={successUrl} tip={tip} note={note}
 							onReset={() => {
 									setSendAmount('0')
 									setSuccessUrl('')

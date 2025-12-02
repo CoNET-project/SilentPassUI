@@ -13,8 +13,9 @@ import { ethers } from "ethers"
 import send_icon from "@/components/assets/send-icon.svg"
 import receive_icon from "@/components/assets/receive-icon.svg"
 import {HistoryFilterTabs, HistoryFilter} from './HistoryFilterTabs'
-import {RedeemOrLinkCard} from '../Pay/RedeemOrLinkCard'
+import {RedeemOrLinkCard} from './showHistoryDetail'
 import { X } from 'lucide-react'
+import base_ex from '@/components/assets/base-ex.svg'
 
 import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, aesGcmDecrypt} from '@/services/beamio'
 type Mode = "pay" | "request" | 'cashcode'
@@ -38,6 +39,7 @@ type TransferHistork = {
 	passcode?: string
 	redeemHash?: string
 	mode: Mode
+	fee: number
 }
 
 type LinksHistory = {
@@ -70,8 +72,15 @@ type CheckHistory = {
     payHash: string
 }
 
-
-
+// 0.8% fee, min 0.02, max 2 USDC
+function calcFeeFromNumber(base: number) {
+	if (!isFinite(base) || base <= 0) return 0;
+	const raw = base * 0.008;
+	const clamped = Math.min(Math.max(raw, 0.02), 2);
+	return Number(clamped.toFixed(2));
+}
+const formatMoney = (n: number) =>
+		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 type HistoryTableProps = {
 }
 
@@ -100,10 +109,10 @@ const badgeBase =
 
 const getBadgeClass = (type: HistoryFilter) => {
   switch (type) {
-    case 'send':
+    case 'sent':
       return "bg-slate-300/35 text-slate-700 dark:bg-slate-700/35 dark:text-slate-200"
 
-    case 'receive':
+    case 'received':
       return "bg-emerald-300/35 text-emerald-700 dark:bg-emerald-700/35 dark:text-emerald-200"
 
     case 'pending':
@@ -117,7 +126,7 @@ const getBadgeClass = (type: HistoryFilter) => {
       return "bg-rose-300/35 text-rose-700 dark:bg-rose-700/35 dark:text-rose-200"
 
     // request 专用：Withdraw（紫色）
-    case 'withdraw':
+    case 'paid':
       return "bg-fuchsia-300/35 text-fuchsia-800 dark:bg-fuchsia-700/35 dark:text-fuchsia-200"
 
     // cashcode 专用：Deposited（靛蓝）
@@ -148,11 +157,14 @@ export const SendHistoryTable = (
 	const [successUrl, setSuccessUrl] = useState("")
 	const [tip, setTip] = useState(0)
 	const [note, setNote] = useState("")
+	const [fee, setFee] = useState(0)
 	const [createdDate, setCreatedDate] = useState(0)
-	const [isCompleted, setIsCompleted] = useState(false)
+	const [type, setType] = useState<HistoryFilter>('paid')
+	const [account, setAccount] = useState("")
 
 	const [securityCode, setSecurityCode] = useState("")
 	const [redeemCode, setRedeemCode] = useState("")
+	const [hash, setHash] = useState("")
 
 	const [mode, setMode] = useState<Mode>('pay')
 
@@ -186,8 +198,9 @@ export const SendHistoryTable = (
 					hash: n.finisedHash,
 					from: n.from,
 					note: n.note,
-					type: myAddr === n.to.toLowerCase() ? 'receive' : 'send',
-					mode: 'pay'
+					type: myAddr === n.to.toLowerCase() ? 'received' : 'sent',
+					mode: 'pay',
+					fee: 0
 				}))
 
 			} else if (mode === 'request') {
@@ -199,16 +212,19 @@ export const SendHistoryTable = (
 					const isPending = isRequest ? n.to === ethers.ZeroAddress : n.from === ethers.ZeroAddress
 					const isReject = isRequest ?  n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
 					const account = (isPending||isReject) ? '' : isRequest ? n.to : n.from
-					const type: HistoryFilter = isReject ? 'reject' : isPending ? 'pending' : isRequest ? 'withdraw' : 'completed'
-
+					const type: HistoryFilter = isReject ? 'reject' : isPending ? 'pending' : isRequest ? 'paid' : 'completed'
+					const preAmount =  Number(ethers.formatUnits(n.amount, 6))
+					const fee = isRequest ?  0 : calcFeeFromNumber(preAmount)
+					const amount = preAmount
 					const ret: TransferHistork = {
 						date: Number(n.issueTimestamp * BigInt(1000)),
-						amount: Number(ethers.formatUnits(n.amount, 6)),
+						amount,
 						account,
 						hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
 						note: n.node,
 						type,
-						mode: 'request'
+						mode: 'request',
+						fee
 					}
 					return ret
 				})
@@ -230,11 +246,12 @@ export const SendHistoryTable = (
 						const isSend = n.from.toLowerCase() === myAddress
 						const account = isSend ? n.to === ethers.ZeroAddress ? '' : n.to : n.from === ethers.ZeroAddress ? '' : n.from
 						const type: HistoryFilter = !account ? 'pending' : isSend ? 'completed' : 'deposited'
-
-
+						const preAmount = Number(ethers.formatUnits(n.amount, 6))
+						const fee = isSend ? 0 : calcFeeFromNumber(preAmount)
+						const amount = preAmount
 						const ret: TransferHistork = {
 							date: Number(n.createTimestamp * BigInt(1000)),
-							amount: Number(ethers.formatUnits(n.amount, 6)),
+							amount,
 							account,
 							hash: type === 'pending'
 								? n.payHash
@@ -244,7 +261,8 @@ export const SendHistoryTable = (
 							security: ce?.secureCode,
 							passcode: ce?.passcode,
 							redeemHash: n.payHash,
-							mode: 'cashcode'
+							mode: 'cashcode',
+							fee
 						}
 
 						return ret
@@ -309,7 +327,7 @@ export const SendHistoryTable = (
 							}`}
 						onClick={() => { setMode("pay")}}
 					>
-						Send
+						Send / Receive
 					</button>
 
 					{/* REQUEST */}
@@ -421,42 +439,65 @@ export const SendHistoryTable = (
 
 											const rowContent = (
 											<>
-												{/* Type pill */}
-												<div className="w-20">
-												<span
-													className={[badgeBase, getBadgeClass(tx.type as HistoryFilter)].join(" ")}
-												>
-													{tx.type}
-												</span>
-											</div>
-
-												{/* Account + note + status */}
-												<div className="flex-1 flex flex-col">
-													<span className="font-mono text-slate-800 dark:text-slate-100">
-														{fmtAddr(tx.account)
-														}
-													</span>
-
-													{tx.note && (
-														<span className="text-[10px] text-slate-500 dark:text-slate-400">
-															{tx.note}
+												
+												{/* 整个 rowContent */}
+												<div className="flex items-center gap-3 w-full">
+												
+													{/* 1. 左侧固定宽度 */}
+													<div className="w-20 shrink-0">
+														<span className={[badgeBase, getBadgeClass(tx.type as HistoryFilter)].join(" ")}>
+															{tx.type}
 														</span>
-													)}
+													</div>
 
-													
+													{/* 2. 中间自适应 */}
+													<div className="flex-1 flex items-center min-w-0">
+														{/* 左侧文字内容 */}
+														<div className="flex-1 flex flex-col min-w-0">
+															<span className="font-mono text-slate-800 dark:text-slate-100 truncate">
+																{fmtAddr(tx.account)}
+															</span>
 
-													<span className="text-[10px] text-slate-400 dark:text-slate-500">
-														{formatTime(tx.date)}
-													</span>
-												</div>
+															{tx.note && (
+																<span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+																	{tx.note}
+																</span>
+															)}
 
-												{/* Amount */}
-												<div className="w-16 text-right text-[11px] font-medium">
-												<span
-													
-												>
-													{tx.amount}
-												</span>
+															<span className="text-[10px] text-slate-400 dark:text-slate-500">
+																{formatTime(tx.date)}
+															</span>
+														</div>
+
+														{/* 中间区右侧按钮 */}
+														{
+															tx.mode === 'pay' && (
+																<button
+																	className="
+																		ml-3 shrink-0
+																		w-8 h-8 rounded-lg
+																		flex items-center justify-center
+																		bg-slate-100 dark:bg-slate-800
+																		border border-slate-200 dark:border-slate-700
+																		hover:bg-slate-200 dark:hover:bg-slate-700
+																		transition
+																	"
+																	onClick={() => {
+																		window.open(`https://basescan.org/tx/${tx.hash}`, '_blank', 'noopener,noreferrer')
+																	}}
+																>
+																	<img src={base_ex} alt="" className="w-4 h-4" />
+																</button>
+															)
+														}
+														
+													</div>
+
+													{/* 3. 右侧固定宽度金额 —— 一定在右边 */}
+													<div className="w-16 shrink-0 text-right text-[11px] font-medium">
+														{formatMoney(tx.amount)}
+													</div>
+
 												</div>
 											</>
 											)
@@ -469,18 +510,21 @@ export const SendHistoryTable = (
 														<a
 															onClick={() => {
 
-																setIsPay (tx.mode === 'request' ? true : false)
+																setIsPay (tx.mode === 'cashcode' ? true : false)
 																setTip(0)
 																setAmt(tx.amount)
 																setNote(tx.note)
-																const params = new URLSearchParams(tx.mode === 'cashcode' ? {amount: tx.amount.toFixed(2), code: tx.hash, note: tx.note, address:myAddress }: {secureCode: tx.hash}).toString()
+																const params = new URLSearchParams(tx.mode === 'request' ? {amount: tx.amount.toFixed(2), code: tx.hash, note: tx.note, address:myAddress }: {secureCode: tx.hash}).toString()
 																const showUrl = `${showPaylinkSite}?${params}`
 																setCreatedDate(tx.date)
-																setIsCompleted(tx.type !== 'pending' && tx.type !== 'reject')
+																setType(tx.type)
 																setSuccessUrl(showUrl)
 																setShowDEtail(true)
+																setAccount(tx.account)
 																setSecurityCode(tx.passcode||'')
 																setRedeemCode(tx.security||'')
+																setFee(tx.fee)
+																setHash(tx.hash)
 
 															}}
 															key={tx.hash}
@@ -491,19 +535,13 @@ export const SendHistoryTable = (
 														</a>
 													)
 												}
-
-												
-
 												return (
-													<a
-														key={tx.hash}
-														href={`https://basescan.org/tx/${tx.hash}`}
-														target="_blank"
-														rel="noreferrer"
+													<div
+														key={`${tx.date}-${tx.account}`}
 														className={baseRowClass + clickableClass}
 													>
 														{rowContent}
-													</a>
+													</div>
 												)
 											}
 
@@ -529,7 +567,7 @@ export const SendHistoryTable = (
 					<div className="relative overflow-visible">
 						<RedeemOrLinkCard
 							createdAt={createdDate}
-							isCompleted = {isCompleted}
+							type={type}
 							isPay={isPay}
 							amt={amt} 
 							successUrl={successUrl} 
@@ -538,8 +576,13 @@ export const SendHistoryTable = (
 							onReset={() => {
 								setShowDEtail(false)
 							}}
+							hash = {hash}
+							account={account}
+							fee={fee}
+							mode = {mode}
 							securityCode={securityCode}
 							redeemCode={redeemCode}
+
 						/>
 
 					</div>

@@ -28,66 +28,68 @@ type TipInputProps = {
 	tipError: boolean
 
 }
-
+const formatMoney = (n: number) =>
+		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 const TipInput = ({ tipAmount, setTipAmount, amt, tipError}: TipInputProps) => {
-  return (
-    <div className="mb-5">
-      <div className="flex items-center justify-between mb-1">
-        <label className="block text-[11px] text-slate-500">Tip (optional)</label>
-        <span className="text-[10px] text-slate-400">Added on top of the amount</span>
-      </div>
+	return (
+		<div className="mb-5">
+		<div className="flex items-center justify-between mb-1">
+			<label className="block text-[11px] text-slate-500">Tip (optional)</label>
+			<span className="text-[10px] text-slate-400">Added on top of the amount</span>
+		</div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 flex items-center mb-2">
-        <span className="text-[11px] text-slate-400 mr-2">USDC</span>
-        <input
-          value={tipAmount}
-          placeholder="0.00"
-          className={
-            "flex-1 bg-transparent text-[12px] text-right placeholder:text-slate-300 focus:outline-none " +
-            (tipError
-              ? "border border-red-300 bg-red-50/40 text-red-700 rounded-xl"
-              : "border border-transparent")
-          }
-          onChange={(e) => {
-            const v = e.target.value
-            setTipAmount(v)
-            // 校验逻辑写这里
-          }}
-        />
-      </div>
+		<div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 flex items-center mb-2">
+			<span className="text-[11px] text-slate-400 mr-2">USDC</span>
+			<input
+			value={tipAmount}
+			placeholder="0.00"
+			className={
+				"flex-1 bg-transparent text-[12px] text-right placeholder:text-slate-300 focus:outline-none " +
+				(tipError
+				? "border border-red-300 bg-red-50/40 text-red-700 rounded-xl"
+				: "border border-transparent")
+			}
+			readOnly
+			onChange={(e) => {
+				// const v = e.target.value
+				// setTipAmount(v)
+				// 校验逻辑写这里
+			}}
+			/>
+		</div>
 
-      {/* Quick tip percentages */}
-      <div className="flex items-center gap-2 text-[11px]">
-        {[0, 15, 18, 20].map((p) => (
-          <button
-            key={p}
-            type="button"
-            className="
-              flex-1 px-2.5 py-1 
-              rounded-full border 
-              border-slate-300 dark:border-slate-600 
-              text-slate-700 dark:text-slate-200 
-              bg-slate-900/5 dark:bg-black/40 
-              hover:border-slate-500 dark:hover:border-slate-300 
-              transition text-center
-            "
-            onClick={() => {
-              const _amt = Number(amt)
-              const base = isNaN(_amt) ? 0 : _amt
-              const t = base > 0 ? base * (p / 100) : 0
-              setTipAmount(t.toFixed(2))
-            }}
-          >
-            {p}%
-          </button>
-        ))}
-      </div>
-      <p className="text-[10px] text-slate-500">
-        Choose a quick tip or leave it empty. Tips go directly to the merchant.
-      </p>
-    </div>
-  )
+		{/* Quick tip percentages */}
+			<div className="flex items-center gap-2 text-[11px]">
+				{[0, 15, 18, 20].map((p) => (
+				<button
+					key={p}
+					type="button"
+					className="
+					flex-1 px-2.5 py-1 
+					rounded-full border 
+					border-slate-300 dark:border-slate-600 
+					text-slate-700 dark:text-slate-200 
+					bg-slate-900/5 dark:bg-black/40 
+					hover:border-slate-500 dark:hover:border-slate-300 
+					transition text-center
+					"
+					onClick={() => {
+						const _amt = Number(amt)
+						const base = isNaN(_amt) ? 0 : _amt
+						const t = base > 0 ? base * (p / 100) : 0
+						// setTipAmount(t.toFixed(2))
+					}}
+				>
+					{p}%
+				</button>
+				))}
+			</div>
+			<p className="text-[10px] text-slate-500">
+				Choose a quick tip or leave it empty. Tips go directly to the merchant.
+			</p>
+		</div>
+	)
 }
 
 const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
@@ -126,25 +128,28 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		return (
 
 			<>
+			<p>
+				Review the details and confirm this payment.
+			</p>
 			<div className="mb-3">
-					<div className="flex items-center justify-between mb-1">
-						<label className="block text-[11px] text-slate-500">Request Account</label>
-					</div>
-					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
-						
-						<span className="text-lg font-semibold text-slate-900 tracking-tight">{fmtAddr(recipient)}</span>
-					</div>
+				<div className="flex items-center justify-between mb-1">
+					<label className="block text-[11px] text-slate-500">Request Account</label>
 				</div>
-				<div className="mb-3">
-					<div className="flex items-center justify-between mb-1">
-						<label className="block text-[11px] text-slate-500">Request Amount</label>
-						<span className="text-[11px] text-slate-400">USDC on Base</span>
-					</div>
-					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
-						<span className="text-[12px] text-slate-500">You will pay</span>
-						<span className="text-lg font-semibold text-slate-900 tracking-tight">{amount}</span>
-					</div>
+				<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+					
+					<span className="text-lg font-semibold text-slate-900 tracking-tight">{fmtAddr(recipient)}</span>
 				</div>
+			</div>
+			<div className="mb-3">
+				<div className="flex items-center justify-between mb-1">
+					<label className="block text-[11px] text-slate-500">Amount</label>
+					<span className="text-[11px] text-slate-400">USDC on Base</span>
+				</div>
+				<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+					<span className="text-[12px] text-slate-500">You will pay</span>
+					<span className="text-lg font-semibold text-slate-900 tracking-tight">{amount}</span>
+				</div>
+			</div>
 			</>
 
 				
@@ -154,23 +159,26 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 	const Paymentbreakdown = () => {
 		return (
 			<div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 space-y-1.5">
-            <div className="flex justify-between">
-              <span>Request amount</span>
-              <span className="text-slate-900 font-medium"> {amount} USDC</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Tip</span>
-              <span className="text-slate-900 font-medium">{tipAmount} USDC</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Gas fee</span>
-              <span className="text-emerald-600 font-medium">Sponsored by Beamio</span>
-            </div>
-            <div className="flex justify-between pt-1 border-t border-slate-200 mt-1">
-              <span>Total from your wallet</span>
-              <span className="text-slate-900 font-semibold">{totalAmount.toFixed(2)} USDC</span>
-            </div>
-          </div>
+				<div className="flex justify-between">
+					<span>Request amount</span>
+					<span className="text-slate-900 font-medium"> {amount} USDC</span>
+				</div>
+				<div className="flex justify-between">
+					<span>Tip</span>
+					<span className="text-slate-900 font-medium">{tipAmount} USDC</span>
+				</div>
+				<div className="flex justify-between">
+					<span>Network Fee</span>
+					<span className="text-emerald-600 font-medium">Sponsored by Beamio</span>
+				</div>
+				<div className="flex justify-between pt-1 border-t border-slate-200 mt-1">
+					<span>Total from your wallet</span>
+					<span className="text-slate-900 font-semibold">{totalAmount.toFixed(2)} USDC</span>
+				</div>
+				<p>
+					Beamio service fee (0.8%) for this Payment Link is paid by the person who created it. You only pay the total shown above.
+				</p>
+          	</div>
 		)
 	}
 
@@ -197,8 +205,8 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 			if (!secondResponse.ok) {
 				return setProcessError('RPC Error!')
 			}
-			const _amount = Number(ethers.formatUnits(messageDataRe.maxAmountRequired, 6)).toFixed(2)
-			setAmount (_amount)
+			const _amount = Number(ethers.formatUnits(messageDataRe.maxAmountRequired, 6))
+			setAmount (formatMoney(_amount))
 
 			
 			setSignx402Show(false)
@@ -221,8 +229,9 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		}
 		setProcessing(false)
 		console.log("❌ 用户取消签名")
+		
+		setSignx402Show (false)
 		setStep('form')
-
 	}
 
 	useEffect(() => {
@@ -281,19 +290,19 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 					<div className="flex items-center justify-between mb-3">
 					<div className="flex flex-col">
 						<span className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-						Beamio
+							Beamio
 						</span>
 						<h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-						Payments
+							Payments
 						</h1>
 					</div>
 
 					<div className="text-right">
 						<p className="text-[12px] font-medium text-slate-900 dark:text-slate-100">
-						USDC {formatWithThousands(usdcToUSD)}
+							USDC {formatWithThousands(usdcToUSD)}
 						</p>
 						<p className="text-[11px] text-slate-500 dark:text-slate-400">
-						Available on Base
+							Available on Base
 						</p>
 					</div>
 				</div>
@@ -313,7 +322,10 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		}
 		if (reject) {
 			setShowPayButton(false)
+
 			setPower(true)
+			closeWin()
+			return
 		}
 
 		setProcessing(true)
@@ -378,11 +390,13 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 			const ethPrice = gas.oracle.eth.eth
 			const price = Number(gasCostEth) * ethPrice
 			
-			console.log (gas.oracle)
+			
 			MessageData.gas = {
 				gasETH: gasCostEth.toFixed(7),
 				gasUSD: price.toFixed(5)
 			}
+
+			MessageData.showPayToAddress = recipient
 			
 			setProcessing(false)
 			setSignx402Show(true)
@@ -396,95 +410,79 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		
 	}
 
+	const SuccessPayment = () => {
+		return (
+			 <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+				{/* Header */}
+				<header className="flex items-center justify-between px-6 pt-4 pb-3 border-slate-100">
+					<div className="flex flex-col gap-0.5">
+					<span className="text-[11px] tracking-[0.18em] text-slate-500 uppercase">
+						Beamio
+					</span>
+					<h1 className="text-lg font-semibold text-slate-900">Payments</h1>
+					</div>
+				</header>
+
+				<main className="flex-1 px-6 pt-10 pb-24 flex flex-col items-center">
+					{/* Check icon */}
+					<div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/40">
+					<span className="text-3xl text-white">✓</span>
+					</div>
+
+					<h2 className="text-base font-semibold text-slate-900 mb-1 text-center">
+					Payment successful
+					</h2>
+					<p className="text-[13px] text-slate-500 mb-4 text-center">
+					You just paid
+					</p>
+					<p className="text-3xl font-semibold text-slate-900 mb-2 text-center">
+					{amount} USDC
+					</p>
+					<p className="text-[11px] text-slate-500 mb-6 text-center max-w-xs">
+						The recipient received {amount} USDC. Any Beamio service fee was
+						already handled in their Payment Link. Network fees were paid by
+						Beamio.
+					</p>
+
+					<div className="w-full mt-auto flex flex-col gap-0">
+						<AppButton
+							fullWidth
+							variant='primary'
+							onClick={() => {
+								closeWin()
+							}}
+						>
+							Done
+						</AppButton>
+						<AppButton
+							fullWidth
+							variant='secondary'
+							onClick={() => {
+								window.open(`https://basescan.org/tx/${successPayLink}`, '_blank', 'noopener,noreferrer')
+							}}
+						>
+							View transaction
+						</AppButton>
+					
+					</div>
+				</main>
+			</div>
+		)
+	}
+
 	return (
-		<>
+		
+		<div
+			className="px-6 pt-8 pb-16 overflow-auto"
+		>
 
 			{
 				signx402Show ?
 				<ConformSignInfo originUrl='https://beamio.app' messageData={messageData} processError={processError} processing={processing} /> 
-				:
-				<div className="p-5 space-y-5">
+				: <div className="">
 					{
 						successPayLink ?  <>
-							<div className="w-full mt-3">
-								<div
-								className="
-									relative
-									w-full
-									rounded-2xl
-									border border-black/10
-									bg-white/80 dark:bg-slate-900/80
-									backdrop-blur-md
-									shadow-lg
-									px-4 py-4
-									text-xs
-									text-black/70 dark:text-slate-100
-								"
-								>
-								{/* 右上角关闭按钮 */}
-								<button
-									type="button"
-									onClick={() => {
-										closeWin()
-									}}
-									className="
-									absolute -top-2 -right-2
-									w-7 h-7
-									rounded-full
-									flex items-center justify-center
-									text-[12px]
-									bg-black/5 dark:bg-white/10
-									text-slate-600 dark:text-slate-200
-									shadow
-									hover:bg-black/10 dark:hover:bg-white/20
-									transition
-									"
-								>
-									✕
-								</button>
-
-								<h2 className="text-sm font-semibold text-black/80 dark:text-slate-50 mb-1">
-									{successPayLink && /^0x[0-9a-fA-F]{64}$/.test(successPayLink)
-									? "Successful:"
-									: "Reject Successful"}
-								</h2>
-
-								<div className="flex flex-wrap items-center gap-1 text-[11px]">
-									<span>Success at：</span>
-
-									<span>
-									{new Date().toLocaleString(undefined, {
-										year: "numeric",
-										month: "2-digit",
-										day: "2-digit",
-										hour: "2-digit",
-										minute: "2-digit",
-										second: "2-digit",
-									})}
-									</span>
-
-									{successPayLink && /^0x[0-9a-fA-F]{64}$/.test(successPayLink) && (
-									<a
-										href={`https://basescan.org/tx/${successPayLink}`}
-										target="_blank"
-										rel="noreferrer"
-										className="
-										ml-2 inline-flex items-center justify-center
-										rounded-md border border-blue-500
-										px-1.5 py-0.5
-										text-[11px]
-										hover:bg-blue-600 hover:text-white
-										transition
-										"
-									>
-										<img src={base_ex} alt="" className="w-4 h-4" />
-										<span className="sr-only">View on BaseScan</span>
-									</a>
-									)}
-								</div>
-								</div>
-							</div>
-					
+							<SuccessPayment />
 						</>
 						: <>
 							<Header />
@@ -507,27 +505,8 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 							) : null}
 
 							<Paymentbreakdown />
-							{
-								
-								(!processing || showPayButton) && <AppButton
-									disabled={!!error}
-									fullWidth
-									errorText={processError}
-									loading={processing}
-									onClick={() => {
-
-										if (!!error) {
-											return
-										}
-
-										
-										payLinkClick(false)
-
-									}}
-								>
-									Pay {totalAmount} USDC with Beamio
-								</AppButton>
-							}
+							<div className="flex items-center gap-3 mt-3">
+							
 							{
 								(!processing || !showPayButton) &&  <AppButton
 									variant='secondary'
@@ -539,15 +518,38 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 										payLinkClick(true)
 									}}
 								>
-									Reject request
+									Cancel
 								</AppButton>
 							}
+							{
+								
+								(!processing || showPayButton) && 
+									<AppButton
+										disabled={!!error}
+										fullWidth
+										errorText={processError}
+										loading={processing}
+										onClick={() => {
+
+											if (!!error) {
+												return
+											}
+											payLinkClick(false)
+
+										}}
+									>
+										Pay {formatMoney(totalAmount)} USDC with Beamio
+									</AppButton>
+							}
+						</div>
 							
 						</>
 					}
 				</div>
 			}
-		</>
+			{/* 底部留白占位 */}
+  			<div className="h-6" />
+		</div>
 	)
 }
 

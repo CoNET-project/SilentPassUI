@@ -12,7 +12,7 @@ import {
   FileText,
 } from "lucide-react";
 import BeamioNavBack from './BeamioNavBack'
-import { motion, AnimatePresence } from "framer-motion"
+import {motion, AnimatePresence } from "framer-motion"
 import React, { useState, useEffect } from 'react'
 import BeamioAccountScreen from "./BeamioAccountScreen"
 import BeamioRegionCurrencyScreen from "./BeamioRegionCurrencyScreen"

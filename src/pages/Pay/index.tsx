@@ -6,7 +6,7 @@ import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import BeamioPayRequest from './PayRequest'
 import { onWalletEvent } from '@/services/beamio'
-import PayForm from './PayForm'
+
 import { Button,Modal,Toast } from "antd-mobile"
 
 type Props = {
@@ -42,7 +42,6 @@ const Pay = ({}) => {
 				}
 				
 			</div>
-			
 		</div>
 	)
 }

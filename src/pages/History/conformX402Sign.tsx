@@ -77,21 +77,21 @@ export function ConformSignInfo({
 			<div className="max-w-2xl mx-auto space-y-6 text-sm mt-6">
 				<section className="border-b border-slate-200 pb-4">
 					<div className="flex items-center justify-between">
-					<div className="flex flex-col gap-0.5">
-						<span className="text-[11px] tracking-[0.16em] text-slate-500 uppercase">
-						Signing with
-						</span>
-						<span className="text-sm font-medium text-slate-900">
-						Your Beamio wallet
-						</span>
-						<span className="text-[11px] text-slate-500">
-						Request from https://beamio.app
-						</span>
-					</div>
-					<div className="flex flex-col items-end gap-0.5 text-xs text-slate-600">
-						<span className="font-mono text-sm text-slate-800">{fmtAddr(address)}</span>
-						<span className="text-[11px] text-slate-500">Your address</span>
-					</div>
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[11px] tracking-[0.16em] text-slate-500 uppercase">
+								Signing with
+							</span>
+							<span className="text-sm font-medium text-slate-900">
+								Your Beamio wallet
+							</span>
+							<span className="text-[11px] text-slate-500">
+								Request from https://beamio.app
+							</span>
+						</div>
+						<div className="flex flex-col items-end gap-0.5 text-xs text-slate-600">
+							<span className="font-mono text-sm text-slate-800">{fmtAddr(address)}</span>
+							<span className="text-[11px] text-slate-500">Your address</span>
+						</div>
 					</div>
 				</section>
      
@@ -99,7 +99,7 @@ export function ConformSignInfo({
 				{/* Review / From host */}
 				<section className="space-y-2">
 					<div className="text-[11px] font-medium tracking-wide text-slate-500 uppercase">
-						Amount
+						You will pay
 					</div>
 
 					{/* 文字 + 图标 同一行 */}
@@ -132,7 +132,7 @@ export function ConformSignInfo({
 				</section>
 
 			    {/* Note for the recipient (read-only preview) */}
-				<section className="space-y-1">
+				{/* <section className="space-y-1">
 					<div className="flex items-center justify-between">
 						<span className="text-[11px] font-medium tracking-wide text-slate-500 uppercase">
 							Note for the recipient
@@ -142,7 +142,7 @@ export function ConformSignInfo({
 					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-800">
 						{messageData?.note}
 					</div>
-				</section>
+				</section> */}
 
 			</div>
 		</div>
@@ -153,17 +153,17 @@ export function ConformSignInfo({
 
 				{/* 左侧：Pay to */}
 				<div className="font-semibold">
-				{messageData?.payToTitle || 'Pay to'}
+					{messageData?.payToTitle || 'Pay to'}
 				</div>
 
 				{/* 右侧：地址 + icon */}
 				<div className="flex items-center gap-2">
 					<span className="font-mono">
-						{fmtAddr(messageData?.payTo)}
+						{fmtAddr(messageData?.showPayToAddress || messageData?.payTo)}
 					</span>
 
 					<a
-						href={`https://basescan.org/address/${messageData?.payTo}`}
+						href={`https://basescan.org/address/${messageData?.showPayToAddress || messageData?.payTo}`}
 						target="_blank"
 						rel="noreferrer"
 						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
@@ -239,9 +239,9 @@ export function ConformSignInfo({
 							<span className="text-slate-800 text-sm font-semibold">
 								{messageData.Beamiofee} USDC
 							</span>
-							<span className="text-slate-500">
+							{/* <span className="text-slate-500">
 								Includes all on-chain costs for this Cashcode.
-							</span>
+							</span> */}
 						</div>
 					</div>
 			}
@@ -293,10 +293,24 @@ export function ConformSignInfo({
 		{
 			/cashcode/i.test(messageData.sginTatle) ? 
 				
-				<p className="px-5 py-4 text-sm opacity-70 border-t border-slate-200 dark:border-white/10">
-					You are authorizing the Beamio Cashcode smart contract (non-custodial, with no admin access) to lock <span className="text-slate-800 text-sm font-semibold">{assetLine} </span>for this Cashcode. <br />
-					When the recipient redeems, <span className="text-slate-800 text-sm font-semibold">{recipientLine} </span>will be released from the contract to their wallet.
-					Beamio cannot move these funds, and your wallet address is not shown to the person redeeming the Cashcode.
+				<p className="px-5 py-4 text-sm opacity-70 border-t space-y-3 border-slate-200 dark:border-white/10">
+					<p>
+						You are authorizing the Beamio Cashcode smart contract (non-custodial, with no admin access) to lock 
+						<span className="text-slate-800 text-sm font-semibold"> {assetLine} </span>for this Cashcode.
+					</p>
+					<p>
+						When the recipient redeems, 
+						<span className="text-slate-800 text-sm font-semibold"> {recipientLine} </span> 
+						will be released from the contract to their wallet.
+					</p>
+					<p>
+						Beamio collects the service fee from the contract and cannot move any other funds.
+					</p>
+					<p>
+						The person redeeming this Cashcode does not see your full wallet history, and your wallet address is not shown to them inside the redeem flow.
+					</p>
+					
+					
 
 					
 				</p>

@@ -1,6 +1,8 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 type DaemonContext = {
+	setSendToMemo: (val: string) => void
+	sendToMemo: string
 	darkModle: boolean
 	setDarkModle: (val: boolean) => void
   version: string
@@ -117,6 +119,8 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	setSendToMemo: (val: string) => {},
+	sendToMemo: '',
 	setPayTag: (val: string) => {},
 	payTag: '',
 	ignoreUrl: false,
@@ -236,6 +240,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [sendToMemo, setSendToMemo]= useState('')
 	const [beamioAppInstalled, setBeamioAppInstalled] = useState(false)
 	const [paymentLink, setPaymentLink] = useState(null)
 	const [darkModle, setDarkModle] = useState<boolean>(false)
@@ -350,7 +355,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,payTag, setPayTag,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance,
-				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,
+				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
         	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>

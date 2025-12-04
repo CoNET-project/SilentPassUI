@@ -329,7 +329,7 @@ export function ConformSignInfo({
 		<div
 			className={`
 				px-5 pb-5 pt-6
-				grid gap-3
+				grid gap-3 mb-12
 				border-t border-slate-200 dark:border-white/10
 				${processing ? 'grid-cols-1' : 'grid-cols-2'}
 			`}

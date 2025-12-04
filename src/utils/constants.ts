@@ -48,6 +48,11 @@ const beamioConet = new ethers.Contract(
 	conetDepinProvider
 )
 
+const beamioCoreConet = new ethers.Contract(
+	contracts.beamioCoreConet.address,
+	contracts.beamioCoreConet.abi,
+	conetDepinProvider
+)
 
 
 const changeRPC = () => {
@@ -76,5 +81,6 @@ export {
   Solana_SP,
   sGB_ReadOnly,
   sGB_Dashboard_ReadOnly,
-  beamioConet
+  beamioConet,
+  beamioCoreConet
 };

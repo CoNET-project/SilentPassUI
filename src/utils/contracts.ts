@@ -16,11 +16,12 @@ import {
 	SpClubPoint,
 	Duplicate,
 	sGB,
-	sGB_Dashboard
+	sGB_Dashboard,
+	
   } from "./abis"
 
   import beamioConetABI from '@/services/ABI/beamioConetABI.json'
-  
+  import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
   const contracts = {
 	GuardianNodesInfoV6: {
 	  address: "0x2DF3302d0c9aC19BE01Ee08ce3DDA841BdcF6F03",
@@ -110,6 +111,12 @@ import {
 		address: '0x404EEE7B7A3e31F9b8D6d6a8E76B3E601f2C4Ce1',
 		network: 'CONET DePIN',
 		abi: beamioConetABI
+	},
+
+	beamioCoreConet: {
+		address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
+		network: 'CONET DePIN',
+		abi: beamioConetCoreABI
 	}
 
   }

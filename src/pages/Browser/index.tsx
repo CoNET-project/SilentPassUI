@@ -11,7 +11,7 @@ import ScanBtn from '@/components/scanBtn/ScanButton'
 
 const Browser = ({}) => {
 	const navigate = useNavigate()
-	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl } = useDaemonContext()
+	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl, setSendToMemo} = useDaemonContext()
 	
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState(paymentLink?.code)
@@ -28,6 +28,7 @@ const Browser = ({}) => {
 	const [successPayLink, setSuccessPayLink] = useState<string>('')
 	const [amount, setAmount] = useState<string|undefined>(amt)
 	const [popupOpen, setPopupOpen] = useState(true)
+	const [localSecureCode, setLocalSecureCode] = useState(secureCode)
 
 	const [value, setValue] = useState("")
 	const [valueError, setValueError] = useState(false)
@@ -70,16 +71,14 @@ const Browser = ({}) => {
 
 	}
 
-	const checkUrl = (url: string) => {
-		
-
-		const u = new URL(url)
+	const checkUrl = (urlPath: string) => {
+	
 		let searchParams: URLSearchParams
 		try {
-			const u = new URL(url)
+			const u = new URL(urlPath)
 			searchParams = u.searchParams
 		} catch {
-			searchParams = new URLSearchParams(url)
+			searchParams = new URLSearchParams(urlPath)
 		}
 
 		const code = searchParams.get("code")||''
@@ -91,6 +90,7 @@ const Browser = ({}) => {
 		if (_secureCode) {
 			setSecureCode (_secureCode)
 			setShowLinkPay(true)
+			setLocalSecureCode(_secureCode)
 			return 
 		}
 
@@ -99,13 +99,10 @@ const Browser = ({}) => {
 			setNote(_note || '')
 			setAmt(amount || '0.00')
 			setRecipient(address || '')
-
 			setPaymentLink({code, note: _note, address, amount})
 			setShowLinkPay(true)
 			
 		}
-
-
 	}
 	
 	const getBa = async () => {
@@ -131,10 +128,17 @@ const Browser = ({}) => {
 			return
 		}
 
+		if (secureCode) {
+			setShowLinkPay(true)
+			setLocalSecureCode(secureCode)
+			return
+		}
+
 		const url = new URL(window.location.href)
 		const codeHash = url.searchParams.get('code')||''
 		const amount = url.searchParams.get('amount')||''
 		const _secureCode = url.searchParams.get('secureCode')||''
+
 		if (_secureCode) {
 			setSecureCode(_secureCode)
 		}
@@ -151,33 +155,54 @@ const Browser = ({}) => {
 			setShowLinkPay(true)
 		}
 
+						// 只在挂载时注册一次
+		const off = onWalletEvent("scan:url", (url: string) => {
+			cancel()
+			if (/^0x/i.test(url)) {
+				setPaymentLink({code: '', note: '', address: url, amount: ''})
+				
+				setSendToMemo(url)
+				navigate('/Pay')
+				return 
+			}
+
+			checkUrl(url)
+		})
+				// 卸载时把监听取消，避免旧实例继续吃事件
+		return () => {
+			if (typeof off === 'function') off()
+		}
+
 	}, [])
 
 	useEffect(() => {
+
 		if (code && amt) {
 			setShowLinkPay(true)
 		}
 	},[code, amt])
-
 
 	const cancel = () => {
 		setCode('')
 		setAmt('')
 		setNote('')
 		setRecipient('')
-		setPower(true)
+		
 		setShowLinkPay(false)
 		setPaymentLink(null)
 		setSuccessHash('')
 		setSecureCode('')
-		setIgnoreUrl(false)
+		setIgnoreUrl(true)
+		setSendToMemo('')
 	}
 
     return (
         <div className='flex flex-col h-screen'>
 			{
 				showLinkPay ? 
-					secureCode ? <RedeemScreen /> :
+					localSecureCode ? <RedeemScreen close={() => {
+						cancel()
+					}} /> :
 					
 					(
 						<PayForm code={code} amt={amt} note={note} recipient={recipient} closeWin={()=> {
@@ -189,12 +214,18 @@ const Browser = ({}) => {
 							<div className="w-full max-w-md h-full flex flex-col">
 							{/* Top bar placeholder, match your existing app shell */}
 							<header className="px-4 pt-3 pb-2 border-b border-slate-200 backdrop-blur flex items-center justify-between">
-								<div>
+							{/* Left side text block */}
+							<div className="flex flex-col">
 								<div className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
 									Browser
 								</div>
-								<div className="text-sm text-slate-700">Open Beamio links here</div>
+								<div className="text-sm text-slate-700">
+									Open Beamio links here
 								</div>
+							</div>
+
+							{/* Right side Scan button */}
+							<ScanBtn />
 							</header>
 
 							{/* Content */}

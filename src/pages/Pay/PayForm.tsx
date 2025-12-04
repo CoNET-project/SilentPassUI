@@ -426,46 +426,50 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 				<main className="flex-1 px-6 pt-10 pb-24 flex flex-col items-center">
 					{/* Check icon */}
 					<div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/40">
-					<span className="text-3xl text-white">✓</span>
+						<span className="text-3xl text-white">✓</span>
 					</div>
 
 					<h2 className="text-base font-semibold text-slate-900 mb-1 text-center">
-					Payment successful
+						Payment successful
 					</h2>
+
 					<p className="text-[13px] text-slate-500 mb-4 text-center">
-					You just paid
+						You just paid
 					</p>
+
 					<p className="text-3xl font-semibold text-slate-900 mb-2 text-center">
-					{amount} USDC
+						{amount} USDC
 					</p>
+
 					<p className="text-[11px] text-slate-500 mb-6 text-center max-w-xs">
 						The recipient received {amount} USDC. Any Beamio service fee was
 						already handled in their Payment Link. Network fees were paid by
 						Beamio.
 					</p>
 
-					<div className="w-full mt-auto flex flex-col gap-0">
+					{/* 跟在说明文字下方 */}
+					<div className="w-full mt-4 flex flex-col gap-2">
 						<AppButton
-							fullWidth
-							variant='primary'
-							onClick={() => {
-								closeWin()
-							}}
+						fullWidth
+						variant='primary'
+						onClick={() => {
+							closeWin()
+						}}
 						>
-							Done
+						Done
 						</AppButton>
+
 						<AppButton
-							fullWidth
-							variant='secondary'
-							onClick={() => {
-								window.open(`https://basescan.org/tx/${successPayLink}`, '_blank', 'noopener,noreferrer')
-							}}
+						fullWidth
+						variant='secondary'
+						onClick={() => {
+							window.open(`https://basescan.org/tx/${successPayLink}`, '_blank', 'noopener,noreferrer')
+						}}
 						>
-							View transaction
+						View transaction
 						</AppButton>
-					
 					</div>
-				</main>
+					</main>
 			</div>
 		)
 	}
@@ -484,7 +488,7 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 						successPayLink ?  <>
 							<SuccessPayment />
 						</>
-						: <>
+						: <div >
 							<Header />
 							{
 								note && <ShowNode />
@@ -505,7 +509,7 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 							) : null}
 
 							<Paymentbreakdown />
-							<div className="flex items-center gap-3 mt-3">
+							<div className="flex items-center gap-3 mt-3 mb-6">
 							
 							{
 								(!processing || !showPayButton) &&  <AppButton
@@ -541,14 +545,14 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 										Pay {formatMoney(totalAmount)} USDC with Beamio
 									</AppButton>
 							}
-						</div>
+							</div>
 							
-						</>
+						</div>
 					}
 				</div>
 			}
 			{/* 底部留白占位 */}
-  			<div className="h-6" />
+  			<div className="h-12" />
 		</div>
 	)
 }

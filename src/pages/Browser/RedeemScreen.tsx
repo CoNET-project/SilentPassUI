@@ -19,7 +19,9 @@ type IGtCheckMemooo = {
 	node: string
 	createTimestamp: bigint
 }
-
+type Prof = {
+	close: () => void
+}
 
 const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
@@ -46,9 +48,10 @@ const CoreContract = new ethers.Contract(beamioConetContract.address, beamioCone
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
-const RedeemScreen: React.FC = () => {
+
+const RedeemScreen = ({close}: Prof) => {
 	const { profiles, secureCode, setSecureCode, beamio, ignoreUrl, setIgnoreUrl } = useDaemonContext()
-	const navigate = useNavigate()
+
 	const [hashError, setHashError] = useState(false) 
 	const [note, setNote] = useState('')
 	const [GenerateHash, setGenerateHash] = useState('')
@@ -117,6 +120,8 @@ const RedeemScreen: React.FC = () => {
 			setProcessError(`The entered Cashcode and Security Code could not be validated. Please try again.`)
 			return 
 		}
+
+
 
 		const params = new URLSearchParams({secureCode: redeemCode, securityCodeDigits, address:myAddres }).toString()
 		const endpointUrl = `${aptEndpoint}/api/redeemCheck?${params}`
@@ -194,8 +199,7 @@ const RedeemScreen: React.FC = () => {
 			{
 				successHash ? (
 					<RedeemSuccessScreen amount={amount} myAddress={myAddres} hash={successHash} note={note} viewClose={() => {
-						setIgnoreUrl(true)
-						navigate('/')
+						close()
 					}} />
 				) : (
 					<>
@@ -359,8 +363,7 @@ const RedeemScreen: React.FC = () => {
 									variant='secondary'
 									fullWidth
 									onClick={() => {
-										setIgnoreUrl(true)
-										navigate('/')
+										close()
 									}}
 									>
 									Cancel

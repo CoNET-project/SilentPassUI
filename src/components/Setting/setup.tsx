@@ -68,7 +68,7 @@ export default function BeamioSettingsScreen({
             </p>
           </div>
           <div className="flex flex-col items-end text-right text-[10px] text-slate-400 leading-tight">
-            <span>Version 0.1.1 · MVP</span>
+            <span>Version 0.1.5 · MVP</span>
             <span>Early access · in testing</span>
           </div>
         </section>

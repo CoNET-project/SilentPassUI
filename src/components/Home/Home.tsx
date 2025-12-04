@@ -20,7 +20,7 @@ import {motion } from "framer-motion"
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 const Home = ({}) => {
-	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPaymentLink, paymentLink, setSecureCode,  secureCode, ignoreUrl, setPayTag} = useDaemonContext()
+	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPaymentLink, paymentLink, setSecureCode,setPower,  secureCode, ignoreUrl, setPayTag, setSendToMemo} = useDaemonContext()
 	const navigate = useNavigate()
 	const hasActivity = false;
 	
@@ -66,6 +66,7 @@ const Home = ({}) => {
 		if (_secureCode) {
 			setSecureCode (_secureCode)
 			setShowLinkPay(true)
+			navigate('/Browser')
 			return 
 		}
 
@@ -77,6 +78,7 @@ const Home = ({}) => {
 
 			setPaymentLink({code, note: _note, address, amount})
 			setShowLinkPay(true)
+			navigate('/Browser')
 			
 		}
 
@@ -170,8 +172,9 @@ const Home = ({}) => {
 		const off = onWalletEvent("scan:url", (url: string) => {
 			if (/^0x/i.test(url)) {
 				setPaymentLink({code: '', note: '', address: url, amount: ''})
-				setShowLinkPay(true)
-				setRecipient(url)
+				
+				setSendToMemo(url)
+				navigate('/Pay')
 				return 
 			}
 			checkUrl(url)
@@ -238,15 +241,11 @@ const Home = ({}) => {
 			return
 		}
 
-
-
 		if ((secureCode || (amt && code && recipient)) && !power) {
 			navigate('/Browser')
 			return
 		}
 
-		
-		
 	
 	}, [showLinkPay])
 

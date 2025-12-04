@@ -847,9 +847,9 @@ export const MobileType = () => {
 }
 
 export	const isStandalone =
-		window.matchMedia?.('(display-mode: standalone)').matches ||
-		// iOS PWA
-		(window.navigator as any).standalone === true;
+	window.matchMedia?.('(display-mode: standalone)').matches ||
+	// iOS PWA
+	(window.navigator as any).standalone === true;
 
 
 export const aesGcmEncrypt = async (plaintext: string, password: string) => {
@@ -894,4 +894,9 @@ export const aesGcmDecrypt= async (ciphertext: string, password: string) => {
 	} catch (e) {
 		throw new Error('Decrypt failed')
 	}
+}
+
+export const isBeamioAndroidWebView = () => {
+    const ua = navigator.userAgent.toLowerCase()
+    return /wv|webview|beamioappwebview/i.test(ua)
 }

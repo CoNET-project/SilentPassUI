@@ -178,7 +178,7 @@ export const SendHistoryTable = (
 	const getTransferNewitems = async (next: HistoryFilter | null) => {
 		if (!profiles?.length) return
 		const profile: any = profiles[0]   // 这里用你实际的 profile 类型替换 any
-		const address = profile.keyID
+		let address = profile.keyID
 		console.log(`getAllHistory called, balance = ${usdcbalance}`)
 
 		const myAddr = address.toLowerCase()

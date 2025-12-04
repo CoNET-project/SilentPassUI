@@ -5,7 +5,7 @@ import "./default.scss";
 import styles from './layout.module.scss';
 import {Route,Routes,MemoryRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider"
-import {isStandalone, MobileType } from '@/services/beamio'
+import {isStandalone, MobileType, isBeamioAndroidWebView } from '@/services/beamio'
 import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import History from './pages/History/History'
@@ -67,7 +67,7 @@ function App() {
 	}, [])
 
   	return (
-		<Router initialEntries={(isStandalone) ? ['/'] : ['/Onboarding']}>
+		<Router initialEntries={(isStandalone||isBeamioAndroidWebView()) ? ['/'] : ['/Onboarding']}>
 		    <div className={styles.app}>
 		      	<div className={styles.body}>
 		        	<Routes>

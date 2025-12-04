@@ -64,7 +64,7 @@ const minAmount = 0.03;
 
 export default function BeamioPayRequest() {
 	
-	const { profiles, paymentLink , payTag} = useDaemonContext()
+	const { profiles, paymentLink , payTag, setSendToMemo, sendToMemo} = useDaemonContext()
 
 	const [mode, setMode] = useState<Mode>( 'pay')
 	const [step, setStep] = useState<Step>("form")
@@ -75,7 +75,7 @@ export default function BeamioPayRequest() {
 	const [securityCode, setSecurityCode] = useState("");
 	const [tipAmount, setTipAmount] = useState("0.00"); // Request 模式的 tip
 
-  	const [sendTo, setSendTo] = useState("")
+  	const [sendTo, setSendTo] = useState(sendToMemo)
 	const [sendAmount, setSendAmount] = useState("")
 	const [usdcAmount, setUsdcAmount] = useState(0)
 	const [usdcToUSD, setUsdcToUSD] = useState(0)
@@ -236,7 +236,7 @@ export default function BeamioPayRequest() {
 		}
 		setTimeout(() => {
 			setProcessError ('')
-		}, 4000)
+		}, 2000)
 	}, [processError])
 
   	const onSignFinal = async (e: any) => {
@@ -340,6 +340,12 @@ export default function BeamioPayRequest() {
 		
 		const data = {secureCode: secureCode.code, passcode}
 		const encryText = await aesGcmEncrypt(JSON.stringify(data), privateKey)
+
+		if (!encryText?.length) {
+			setProcessing(false)
+			return setProcessError('Generate Check error, try again!')
+		}
+
 		const postNode = note||defaultNodeText + '\r\n' + encryText
 		const params = new URLSearchParams({amount: numberAmount.toFixed(2), note: postNode, secureCode: secureCode.hash}).toString()
 		const showpParams = new URLSearchParams({secureCode: secureCode.hash}).toString()
@@ -401,8 +407,9 @@ export default function BeamioPayRequest() {
 	
 
 	const signRequest = async (messageDataRe: any) => {
-		setProcessing (true)
 		
+		setProcessing (true)
+
 		const paymentHeader = await AuthorizationSign(messageDataRe.maxAmountRequired, messageDataRe.payTo)
 		const newInit = {
 			method: 'GET',
@@ -427,6 +434,7 @@ export default function BeamioPayRequest() {
 			setAmount (_amount)
 			setStep('success')
 			return setSuccessHash(body.USDC_tx)
+
 		} catch (ex) {
 			setProcessing (false)
 			return setProcessError('RPC Error!')

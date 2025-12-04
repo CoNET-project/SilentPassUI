@@ -7,7 +7,8 @@ import {AppButton} from '@/components/button/AppButton'
 import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, getBalance, AuthorizationSign, redeemCodeHash} from '@/services/beamio'
 import RedeemSuccessScreen from '@/pages/Browser/RedeemSuccessScreen'
 import { useNavigate } from "react-router-dom"
-
+import {ethers} from 'ethers'
+import { beamioCoreConet } from "@/utils/constants"
 // Beamio Receive screen: show wallet address & QR to receive USDC on Base
 // This is a standalone "Receive" UI, separate from the Payments (Send / Request / Check) screen.
 
@@ -15,11 +16,14 @@ type prof = {
 	colse: () => void
 }
 
+
+
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
 const showPaylinkSite = 'https://beamio.app'
 const aptEndpoint = isLocal ? local : remote
+
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 export default function BeamioReceiveScreen() {
@@ -49,6 +53,10 @@ export default function BeamioReceiveScreen() {
 		return `${left}-${right}`
 	}
 
+	const getCashcodeInfo = async (hash: string) => {
+		
+	}
+
 	const [redeemCode, setRedeemCode] = useState('')
 
 	const handlePaste = async () => {
@@ -68,39 +76,54 @@ export default function BeamioReceiveScreen() {
 			console.warn("Clipboard not available", e)
 		}
 	}
-	const tryRedeem = async() => {
-			setProcessing(true)
-			/**
-			 * 		UI test
-			 */
-	
-			// setTimeout(() => {
-			// 	setProcessing(false)
-			// 	setProcessError(`Server error!`)
-			// }, 2000)
-	
-			const hash = redeemCodeHash(redeemCode, securityCodeDigits)
 
-			const params = new URLSearchParams({secureCode: redeemCode, securityCodeDigits, address: walletAddress }).toString()
-			const endpointUrl = `${aptEndpoint}/api/redeemCheck?${params}`
-			
-	
-			try {
-				const res = await fetch(endpointUrl, {method: 'GET'})
-	
-				setProcessing(false)
-				if (res.status !== 200) {
-					return setProcessError(`The entered Cashcode and Security Code could not be validated. Please try again.`)
-				}
-				const result = await res.json()
-				setSuccessHash(result.tx)
-	
-			} catch (ex) {
-				setProcessing(false)
-				return setProcessError(`Beamio RPC Error!`)
+
+	const tryRedeem = async() => {
+		setProcessing(true)
+		/**
+		 * 		UI test
+		 */
+
+		// setTimeout(() => {
+		// 	setProcessing(false)
+		// 	setProcessError(`Server error!`)
+		// }, 2000)
+
+		const hash = redeemCodeHash(redeemCode, securityCodeDigits)
+
+
+		const params = new URLSearchParams({secureCode: redeemCode, securityCodeDigits, address: walletAddress }).toString()
+		const endpointUrl = `${aptEndpoint}/api/redeemCheck?${params}`
+		
+
+		try {
+
+			const cashcode = await beamioCoreConet.checkMemo(hash)
+			if (cashcode?.from === ethers.ZeroAddress) {
+				return setProcessError(`The entered Cashcode and Security Code could not be validated. Please try again.`)
 			}
-			
+
+			const _amount = ethers.formatUnits(cashcode?.amount, 6)
+			const _node: string = cashcode?.node
+			const _node1 = _node.split('\r\n')[0]
+			setnode(_node1)
+			setamount(_amount)
+
+			const res = await fetch(endpointUrl, {method: 'GET'})
+
+			setProcessing(false)
+			if (res.status !== 200) {
+				return setProcessError(`The entered Cashcode and Security Code could not be validated. Please try again.`)
+			}
+			const result = await res.json()
+			setSuccessHash(result.tx)
+
+		} catch (ex) {
+			setProcessing(false)
+			return setProcessError(`Beamio RPC Error!`)
 		}
+		
+	}
 
 	const getBa = async () => {
 		const temp = profiles?.[0]

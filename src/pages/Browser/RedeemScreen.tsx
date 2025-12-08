@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useState, useRef, useEffect } from 'react'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {ethers} from 'ethers'
-import {getBalance, redeemCodeHash} from '@/services/beamio'
+import {redeemCodeHash} from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
 import RedeemSuccessScreen from './RedeemSuccessScreen'
 
@@ -50,18 +50,13 @@ const formatMoney = (n: number) =>
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 
 const RedeemScreen = ({close}: Prof) => {
-	const { profiles, secureCode, setSecureCode, beamio, ignoreUrl, setIgnoreUrl } = useDaemonContext()
+	const { profiles, secureCode, setSecureCode, beamio, ignoreUrl, setIgnoreUrl, redeemCode, setRedeemCode, myAddress } = useDaemonContext()
 
 	const [hashError, setHashError] = useState(false) 
 	const [note, setNote] = useState('')
 	const [GenerateHash, setGenerateHash] = useState('')
 	const [amount, setAmount] = useState('')
 	const [createTimestamp, setCreateTimestamp] = useState(0)
-	const [myAddres, setMyAddress] = useState('')
-	const [usdcAmount,setUsdcAmount] = useState(0)
-	const [avatarName,setAvatarName] = useState('')
-	const [redeemCode, setRedeemCode] = useState('')
-	const [,setAvatarImageData] = useState('')
 	const [isFocused, setIsFocused] = useState(false)
 	const [securityCodeDigits, setSecurityCodeDigits] = useState("")
 	const [processError, setProcessError] = useState("")
@@ -100,11 +95,10 @@ const RedeemScreen = ({close}: Prof) => {
 			setHashError(true)
 			setSecureCode('')
 		}
-		getAccountInfo()
 	}
 
 	const tryRedeem = async() => {
-		setProcessing(true)
+		
 		/**
 		 * 		UI test
 		 */
@@ -120,10 +114,10 @@ const RedeemScreen = ({close}: Prof) => {
 			setProcessError(`The entered Cashcode and Security Code could not be validated. Please try again.`)
 			return 
 		}
+		setProcessing(true)
 
 
-
-		const params = new URLSearchParams({secureCode: redeemCode, securityCodeDigits, address:myAddres }).toString()
+		const params = new URLSearchParams({secureCode: redeemCode, securityCodeDigits, address: myAddress }).toString()
 		const endpointUrl = `${aptEndpoint}/api/redeemCheck?${params}`
 		
 
@@ -144,44 +138,7 @@ const RedeemScreen = ({close}: Prof) => {
 		
 	}
 
-	
 
-	const getBa = async () => {
-	
-		if (!beamio) return
-		
-		const profile: profile = profiles[0]
-		if (!profile) return
-
-		const key = profile.keyID
-		
-		setMyAddress(key)
-		
-
-			
-		const _ba = await getBalance(key)
-		if (!_ba) return
-		const ba = _ba
-		const eth = Number(ba.eth)
-		const ethUsd = eth * Number(ba.oracle.eth.eth)
-
-		const usdc = Number(ba.usdc)
-		setUsdcAmount(usdc)
-		setAvatarName(beamio?.accountName||'@Beamio')
-
-		if (beamio?.image) {
-			setAvatarImageData(beamio.image)
-		}
-
-	
-	}
-
-	const getAccountInfo = () => {
-		if (!profiles?.length) {
-			return
-		}
-		getBa()
-	}
 	
 	useEffect(() => {
 
@@ -193,12 +150,24 @@ const RedeemScreen = ({close}: Prof) => {
 
 	}, [])
 
+	useEffect(() => {
+
+		if (!processError) {
+			return
+		}
+
+		setTimeout(() => {
+			setProcessError('')
+		}, 3000)
+
+	}, [processError])
+
 	return (
 		
 		<div className="flex flex-col h-full pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
 			{
 				successHash ? (
-					<RedeemSuccessScreen amount={amount} myAddress={myAddres} hash={successHash} note={note} viewClose={() => {
+					<RedeemSuccessScreen amount={amount} myAddress={myAddress} hash={successHash} note={note} viewClose={() => {
 						close()
 					}} />
 				) : (
@@ -228,7 +197,7 @@ const RedeemScreen = ({close}: Prof) => {
 												<div className="flex flex-col items-end gap-0.5 text-[11px] text-slate-500">
 													<span>To: Your Beamio wallet</span>
 													<span className="font-mono text-xs text-slate-700">
-														{fmtAddr(myAddres)}
+														{fmtAddr(myAddress)}
 													</span>
 												</div>
 											</div>

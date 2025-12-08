@@ -1,6 +1,14 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 type DaemonContext = {
+	paymentLinkCode: string
+	setPaymentLinkCode: (val: string) => void
+	redeemCode: string
+	setRedeemCode: (val: string) => void
+	myAddress: string
+	setMyAddress: (val: string) => void
+	listenningProcess: boolean
+	setListenningProcess: (va: boolean) => void
 	setSendToMemo: (val: string) => void
 	sendToMemo: string
 	darkModle: boolean
@@ -101,7 +109,12 @@ type DaemonContext = {
   beamio: beamio|null
   setBeamio : (val:beamio|null) => void
   usdcbalance : number
+
   setUsdcbalance: (val: number) => void
+	usdcToUSD: number
+	setUsdcToUSD: (val: number) => void
+
+
   paymentLink: any
   setPaymentLink: (val: any) => void
   setBeamioAppInstalled: (val:boolean) => void
@@ -119,6 +132,16 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	paymentLinkCode: '',
+	setPaymentLinkCode: (val: string) => {},
+	redeemCode: '',
+	setRedeemCode: (val: string) => {},
+	myAddress: '',
+	setMyAddress: (val: string) => {},
+	usdcToUSD: 0,
+	setUsdcToUSD: (val: number) => {},
+	listenningProcess: false,
+	setListenningProcess: (va: boolean) => {},
 	setSendToMemo: (val: string) => {},
 	sendToMemo: '',
 	setPayTag: (val: string) => {},
@@ -240,6 +263,10 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [paymentLinkCode, setPaymentLinkCode] = useState('')
+	const [usdcToUSD, setUsdcToUSD] = useState(0)
+	const [listenningProcess, setListenningProcess] = useState<boolean>(false)
+	
 	const [sendToMemo, setSendToMemo]= useState('')
 	const [beamioAppInstalled, setBeamioAppInstalled] = useState(false)
 	const [paymentLink, setPaymentLink] = useState(null)
@@ -268,6 +295,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [isLocalProxy, setIsLocalProxy] = useState(false);
   const [paymentKind, setPaymentKind] = useState(0)
   const [successNFTID, setSuccessNFTID] = useState('0')
+  const [myAddress, setMyAddress] = useState('')
   const [selectedPlan, setSelectedPlan] = useState< '12' | '1' | string >('12');
   const [airdropProcess, setAirdropProcess] = useState(false)
   const [airdropSuccess, setAirdropSuccess] = useState(false)
@@ -298,6 +326,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [beamio, setBeamio] = useState<beamio|null>(null)
   const [usdcbalance, setUsdcbalance] = useState(0)
 	const [secureCode, setSecureCode] = useState('')
+	const [redeemCode, setRedeemCode] = useState('')
 	const [ignoreUrl, setIgnoreUrl] = useState(false)
 	const [payTag, setPayTag] = useState('')
 
@@ -349,14 +378,14 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
-				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink,
+				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink, redeemCode, setRedeemCode,
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle, beamioAppInstalled, setBeamioAppInstalled,
-				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode, ignoreUrl, setIgnoreUrl,
-				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,payTag, setPayTag,
-				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput,
+				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode, ignoreUrl, setIgnoreUrl, paymentLinkCode, setPaymentLinkCode, 
+				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,payTag, setPayTag, myAddress, setMyAddress,
+				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput, usdcToUSD, setUsdcToUSD,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo,
-				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, 
+				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
         	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 

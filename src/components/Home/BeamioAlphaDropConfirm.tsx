@@ -1,5 +1,5 @@
 import React from "react";
-import {formatAmountReadable, formatWithThousands, generateCODE, getBalance, getUSDCFaucet, getETHFaucet, onWalletEvent} from '@/services/beamio'
+import { getUSDCFaucet, getETHFaucet, onWalletEvent} from '@/services/beamio'
 // Beamio – Alpha Drop Confirm Screen
 // Full-screen confirm page (can also be implemented as a modal/sheet)
 import {AppButton} from'@/components/button/AppButton'

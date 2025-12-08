@@ -299,7 +299,7 @@ export const RedeemOrLinkCard = ({
 
 									{/* 右侧 — 保留你的布局与样式 */}
 									<span className="text-sm font-semibold text-slate-900 dark:text-slate-50">
-										{formatMoney(amt - calcFeeFromNumber(amt))} USDC
+										{formatMoney(amt)} USDC
 									</span>
 								</div>
 							</div>
@@ -409,14 +409,14 @@ export const RedeemOrLinkCard = ({
 					<div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3 text-[11px] space-y-1">
 						<div className="flex items-center justify-between">
 						<span className="text-slate-500">{ type === 'paid' ? 'You paid' : type ==='completed'?  'Payer paid' : 'Payer will pay' } </span>
-						<span className="font-semibold text-slate-900">{formatMoney(amt)} USDC</span>
+						<span className="font-semibold text-slate-900">{formatMoney(type === 'paid' ? amt: amt + fee )} USDC</span>
 						</div>
 						{
 							type !== 'paid' && (
 								<>
 									<div className="flex items-center justify-between">
 										<span className="text-slate-500">{type === 'pending' ? 'You will receive' : 'You received' }</span>
-										<span className="font-semibold text-slate-900">{formatMoney(amt-fee)} USDC</span>
+										<span className="font-semibold text-slate-900">{formatMoney(amt)} USDC</span>
 									</div>
 									<div className="flex items-center justify-between pt-1 border-t border-slate-200 mt-1">
 										<span className="text-slate-500">Beamio service fee (0.8%)</span>
@@ -465,7 +465,7 @@ export const RedeemOrLinkCard = ({
 									Amount
 								</span>
 								<span className="font-mono text-black/50 font-semibold text-xs">
-									{displayGeneratedAmount.toFixed(2)} USDC
+									{formatMoney(amt+ fee)} USDC
 								</span>
 							</div>
 						</div>

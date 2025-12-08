@@ -20,8 +20,7 @@ import BeamioInstallOnboarding from '@/components/launchPage/BeamioInstallOnboar
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading, setBeamio, beamio } = useDaemonContext();
-
+  	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading } = useDaemonContext();
 
 	useEffect(() => {
 		const root = document.documentElement
@@ -32,11 +31,9 @@ function App() {
 		}
 	}, [darkModle])
 
-	
-
-	
 
 	useEffect(() => {
+
 		const handleTouchMove = (e: TouchEvent) => {
 			let el = e.target as HTMLElement | null
 			if (!el) return
@@ -63,6 +60,7 @@ function App() {
 		}
 
 		document.addEventListener('touchmove', handleTouchMove, { passive: false })
+
 		return () => document.removeEventListener('touchmove', handleTouchMove)
 	}, [])
 

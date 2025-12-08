@@ -8,7 +8,7 @@ import cashcodeIcon from '@/components/assets/32x32.svg'
 import base_ex from '@/components/assets/base-ex.svg'
 import {ethers} from 'ethers'
 import {ConformSignInfo} from '../History/conformX402Sign'
-import {formatAmountReadable, formatWithThousands, generateCODE, getBalance} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, generateCODE} from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
 import { CoNET_Data } from "@/utils/globals"
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -85,7 +85,6 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 	const [secureError, setSecureError] = useState<string>("")
 
 	const [explorerUrl] = useState<string>('')
-	const [ccAccountUSDC_Balance, setCcAccountUSDC_Balance] = useState(0)
 	const [signx402Show, setSignx402Show] = useState(false)
 	const [showIssue, setShowIssue] = useState(false)
 	const [requestUrl, setRequestUrl] = useState('')
@@ -104,30 +103,6 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 	// 若 count === 1 → 只有一个按钮 → w-full
 	const btnWidth = count === 2 ? "w-1/2" : "w-full"
 
-
-	const getBa = async () => {
-
-		
-		const temp = CoNET_Data?.profiles?.[0]
-		if (!temp) return
-		if (!temp.keyID) return
-		setMyAddress(temp.keyID)
-	
-			
-			const _ba = await getBalance(temp.keyID)
-			if (!_ba) return
-			const ba = _ba
-			const eth = Number(ba.eth)
-			const ethUsd = eth * Number(ba.oracle.eth.eth)
-	
-			const usdc = Number(ba.usdc)
-			setUsdcAmount(usdc)
-	
-		}
-
-	useEffect(() => {
-		getBa()
-	}, [myAddress])
 
 	const { fee, net } = useMemo(() => {
 		const amt = Number(String(amount).replace(/,/g, "")) || 0
@@ -447,10 +422,10 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 			>
 				{signx402Show ? (
 					<ConformSignInfo
-					messageData={{ messageData }}
-					originUrl="https://beamio.app"
-					processError={error}
-					processing={process}
+						messageData={{ messageData }}
+						originUrl="https://beamio.app"
+						processError={error}
+						processing={process}
 					/>
 					) : !result ? (
 						<div>
@@ -458,12 +433,12 @@ const Check = forwardRef<CheckHandle, Props>(function Check({
 								showIssue && (
 									<div className="flex items-center justify-end px-5 pt-5 pb-2">
 										<button
-										className="w-8 h-8 rounded-full flex items-center justify-center 
-													text-lg leading-none 
-													bg-black/5 dark:bg-white/10"
-										onClick={() => {
-											setShowIssue(false)
-										}}
+											className="w-8 h-8 rounded-full flex items-center justify-center 
+														text-lg leading-none 
+														bg-black/5 dark:bg-white/10"
+											onClick={() => {
+												setShowIssue(false)
+											}}
 										>
 										✕
 										</button>

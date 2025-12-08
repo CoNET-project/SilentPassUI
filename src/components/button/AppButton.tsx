@@ -74,7 +74,7 @@ export function AppButton({
       : "bg-slate-900 dark:bg-slate-100" // secondary / ghost：亮色和暗色都看得见
 
   return (
-    <div className={`${widthClass} my-4`}>
+    <div className={`${widthClass} my-1`}>
       <button
         disabled={isDisabled}
         className={`

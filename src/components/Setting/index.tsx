@@ -7,10 +7,16 @@ import { Popup } from 'antd-mobile'
 import { CoNET_Data } from '../../utils/globals'
 import Privatekey from './PrivateKey/PrivateKey'
 import { Copy,Check, Bell, Settings, QrCode, Sun, Moon } from 'lucide-react'
-import {getBalance} from '@/services/beamio'
 import BeamioSettingsScreen from './setup'
 import BeamioReceiveScreen from './BeamioReceiveScreen'
+import { getBalanceProcess } from '@/services/beamio'
 import styles from './setting.module.scss'
+import { AppButton } from '../button/AppButton'
+
+import { BuyWithCoinbaseButton } from './BuyWithCoinbaseButton'
+import {SellWithCoinbaseButton} from './SellWithCoinbaseButton'
+
+
 
 //	https://beamio.app?amount=0.03&code=0x36a6200cec2fe34edb2f3b075af1d46645c54bb54a0abe0e97a265068773b3c4&note=test&address=0xc8f855ff966f6be05cd659a5c5c7495a66c5c015
 type prof = {
@@ -23,7 +29,7 @@ const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 const defaultName = 'Beamio'
 
 export default function BeamioMeMainScreen() {
-	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles, payTag, setPayTag } = useDaemonContext()
+	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD } = useDaemonContext()
 
 	const [avatarSeed, setAvatarSeed] = useState('NY')
 	const [avatarName, setAvatarName] = useState('')
@@ -32,9 +38,6 @@ export default function BeamioMeMainScreen() {
 
 	const [privatekeyVisible, setPrivatekeyVisible] = useState(false)
 	const [avatarEditorVisible, setAvatarEditorVisible] = useState(false)
-	const [walletAddress, setWalletAddress] = useState<string>('')
-	const [usdcAmount, setUsdcAmount] = useState(0)
-	const [usdcToUSD, setUsdcToUSD] = useState(0)
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 
@@ -43,26 +46,9 @@ export default function BeamioMeMainScreen() {
 	const currentAvatarSrc = beamio?.image
 
 	const [settingsOpen, setSettingsOpen] = useState(false)
+	const [coinbaseOpen, setCoinbaseOpen] = useState<'buy'|'sale'|''>()
 	const [receiveOpen, setReceiveOpen] = useState(false)     // 控制 Receive 全屏页
 
-
-	const getBa = async () => {
-		const temp = profiles?.[0]
-
-		if (!temp?.keyID) return
-
-		setWalletAddress(temp.keyID)
-		const _ba = await getBalance(temp.keyID)
-		if (!_ba) return
-		const ba = _ba
-		const eth = Number(ba.eth)
-		const ethUsd = eth * Number(ba.oracle.eth.eth)
-
-		const usdc = Number(ba.usdc)
-		setUsdcAmount(usdc)
-		const usdcToUSD = usdc * Number(ba.oracle.eth.usdc)
-		setUsdcToUSD(usdcToUSD)
-	}
 
 	useEffect(() => {
 		if (!currentAvatarSrc||!beamio) {
@@ -80,6 +66,8 @@ export default function BeamioMeMainScreen() {
 			setAvatarImageData(beamio.image)
 		}
 
+		
+
 	}, [receiveOpen, beamio])
 
 	
@@ -88,7 +76,20 @@ export default function BeamioMeMainScreen() {
 		if (payTag === 'receive') {
 			setReceiveOpen(true)
 		}
-		getBa()
+		if (!profiles?.length) {
+			return
+		}
+		const profile: profile = profiles[0]
+
+		if (!myAddress) {
+			setMyAddress(profile.keyID)
+			if (!listenningProcess) {
+				getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+			}
+		}
+		if (beamio) {
+			setAvatarName(beamio.accountName)
+		}
 	}, [])
 
 	const getPrivatekey = (): string => {
@@ -102,7 +103,7 @@ export default function BeamioMeMainScreen() {
 		setAvatarEditorVisible(false)
 		setAvatarName(avatarSeed || defaultName)
 		if (avatarImageDataTemp !== avatarImageData) {
-		setAvatarImageData(avatarImageDataTemp)
+			setAvatarImageData(avatarImageDataTemp)
 		}
 	}
 
@@ -110,42 +111,42 @@ export default function BeamioMeMainScreen() {
 		const [copied, setCopied] = useState(false)
 
 		const handleCopy = async () => {
-		if (!walletAddress) return
+		if (!myAddress) return
 
-		await navigator.clipboard.writeText(walletAddress)
+		await navigator.clipboard.writeText(myAddress)
 		setCopied(true)
 
 		setTimeout(() => setCopied(false), 1200)
 		}
 
 		return (
-		<button
-			onClick={handleCopy}
-			className="
-			mt-0.5 inline-flex items-center gap-1
-			text-[10px] text-slate-500 
-			bg-white/80 px-2 py-1 rounded-full 
-			border border-slate-200 shadow-sm
-			"
-		>
-			<span className="font-mono">{fmtAddr(walletAddress)}</span>
-
-			<span
-			className="
-				flex items-center justify-center
-				px-1.5 py-0.5 rounded-full 
-				border border-slate-200 text-[9px] 
-				text-slate-500 bg-slate-50
-			"
+			<button
+				onClick={handleCopy}
+				className="
+				mt-0.5 inline-flex items-center gap-1
+				text-[10px] text-slate-500 
+				bg-white/80 px-2 py-1 rounded-full 
+				border border-slate-200 shadow-sm
+				"
 			>
-			{copied ? (
-				<Check className="w-3 h-3 text-emerald-600" />
-			) : (
-				<Copy className="w-3 h-3" />
-			)}
-			</span>
-		</button>
-		)
+				<span className="font-mono">{fmtAddr(myAddress)}</span>
+
+				<span
+				className="
+					flex items-center justify-center
+					px-1.5 py-0.5 rounded-full 
+					border border-slate-200 text-[9px] 
+					text-slate-500 bg-slate-50
+				"
+				>
+				{copied ? (
+					<Check className="w-3 h-3 text-emerald-600" />
+				) : (
+					<Copy className="w-3 h-3" />
+				)}
+				</span>
+			</button>
+			)
 	}
 
 	const showPrivateKeyPopup = () => {
@@ -267,9 +268,9 @@ export default function BeamioMeMainScreen() {
 						</div>
 						<button
 							onClick={() => {
-								if (!walletAddress) return
+								if (!myAddress) return
 								window.open(
-								`https://basescan.org/address/${walletAddress}`,
+								`https://basescan.org/address/${myAddress}`,
 								"_blank"
 								)
 							}}
@@ -311,13 +312,15 @@ export default function BeamioMeMainScreen() {
 										${formatMoney(usdcToUSD)}
 									</p>
 									<p className="text-[11px] text-slate-500 dark:text-slate-400">
-										{formatMoney(usdcAmount)} USDC
+										{formatMoney(usdcbalance)} USDC
 									</p>
 								</div>
 
 							</div>
 
+						{/* <BuyWithCoinbaseButton myAddress={myAddress} />
 
+						<SellWithCoinbaseButton myAddress={myAddress} /> */}
 					</div>
 				</div>
 			</div>
@@ -369,6 +372,7 @@ export default function BeamioMeMainScreen() {
 			</div>
 			
 			{showPrivateKeyPopup()}
+
 			
 		</div>
 	)

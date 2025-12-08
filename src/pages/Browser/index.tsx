@@ -3,31 +3,33 @@ import { useState, useRef, useEffect } from 'react'
 import { onWalletEvent } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import PayForm from '@/pages/Pay/PayForm'
-import {getBalance, AuthorizationSign, estimateGasUSDC} from '@/services/beamio'
 import {ethers} from 'ethers'
 import { useNavigate } from "react-router-dom"
 import RedeemScreen from './RedeemScreen'
 import ScanBtn from '@/components/scanBtn/ScanButton'
+import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+
+const beamioConetContract = {
+	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
+	network: 'CONET DePIN',
+	abi: beamioConetCoreABI,
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	
+}
+const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
+const formatMoney = (n: number) =>
+		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const Browser = ({}) => {
 	const navigate = useNavigate()
-	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl, setSendToMemo} = useDaemonContext()
+	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl, setSendToMemo, setRedeemCode, setPaymentLinkCode, paymentLinkCode} = useDaemonContext()
 	
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState(paymentLink?.code)
 	const [note, setNote] = useState(paymentLink?.note)
 	const [amt, setAmt] = useState(paymentLink?.amount)
 	const [recipient, setRecipient] = useState(paymentLink?.address)
-	const [myAddress, setMyAddress] = useState('')
-	const [usdcAmount, setUsdcAmount] = useState(0)
-	const [usdcToUSDAmount, setUsdcToUSDAmount] = useState(0)
-	const [processing, setProcessing] = useState(false)
-	const [processError, setProcessError] = useState('')
-	const [signx402Show, setSignx402Show] = useState(false)
 	const [successHash, setSuccessHash] = useState('')
-	const [successPayLink, setSuccessPayLink] = useState<string>('')
-	const [amount, setAmount] = useState<string|undefined>(amt)
-	const [popupOpen, setPopupOpen] = useState(true)
 	const [localSecureCode, setLocalSecureCode] = useState(secureCode)
 
 	const [value, setValue] = useState("")
@@ -71,7 +73,7 @@ const Browser = ({}) => {
 
 	}
 
-	const checkUrl = (urlPath: string) => {
+	const checkUrl = async (urlPath: string) => {
 	
 		let searchParams: URLSearchParams
 		try {
@@ -86,74 +88,59 @@ const Browser = ({}) => {
 		const address = searchParams.get("address")||''
 		const amount = searchParams.get("amount")||''
 		const _secureCode = searchParams.get("secureCode")||''
-
+		const cashcode = searchParams.get("cashcode")||''
 		if (_secureCode) {
 			setSecureCode (_secureCode)
 			setShowLinkPay(true)
 			setLocalSecureCode(_secureCode)
+			setRedeemCode(cashcode)
 			return 
 		}
 
-		if (code && amount) {
+		if (code) {
 			setCode(code)
-			setNote(_note || '')
-			setAmt(amount || '0.00')
-			setRecipient(address || '')
-			setPaymentLink({code, note: _note, address, amount})
-			setShowLinkPay(true)
+			try {
+				const fx = await CoreContract.getLinkMemo(code)
+				const amount = Number(ethers.formatUnits(fx.amount, 6))
+				setAmt(formatMoney(amount))
+				setNote(fx.node)
+				setRecipient(fx.to)
+				setShowLinkPay(true)
+			} catch (ex: any) {
+				console.log(`getInfo ex: ${ex.message}`)
+			}
 			
 		}
 	}
-	
-	const getBa = async () => {
-		if (!myAddress) return
-		const _ba = await getBalance(myAddress)
-		if (!_ba) return
-		const ba = _ba
-		const eth = Number(ba.eth)
-		const ethUsd = eth * Number(ba.oracle.eth.eth)
 
-		const usdc = Number(ba.usdc)
-		setUsdcAmount(usdc)
-		const usdcUsd = usdc * Number(ba.oracle.eth.usdc)
-		setUsdcbalance(usdc)
-		const total = ethUsd + usdcUsd
-		setUsdcToUSDAmount(usdcUsd)
-	}
-	
-
-	useEffect(() => {
-		if (ignoreUrl) {
-			cancel()
-			return
-		}
+	const forwardFromHome = async () => {
 
 		if (secureCode) {
 			setShowLinkPay(true)
 			setLocalSecureCode(secureCode)
+			setPaymentLinkCode('')
 			return
 		}
 
-		const url = new URL(window.location.href)
-		const codeHash = url.searchParams.get('code')||''
-		const amount = url.searchParams.get('amount')||''
-		const _secureCode = url.searchParams.get('secureCode')||''
+		if (paymentLinkCode) {
+			setLocalSecureCode('')
+			setCode(code)
+			try {
+				const fx = await CoreContract.getLinkMemo(code)
+				const amount = Number(ethers.formatUnits(fx.amount, 6))
+				setAmt(formatMoney(amount))
+				setNote(fx.node)
+				setRecipient(fx.to)
+				setShowLinkPay(true)
+			} catch (ex: any) {
+				console.log(`getInfo ex: ${ex.message}`)
+			}
 
-		if (_secureCode) {
-			setSecureCode(_secureCode)
 		}
+	}
 
-		if (codeHash && amount ) {
-
-			setNote(url.searchParams.get('note')||'')
-			setRecipient(url.searchParams.get('address')||'')
-			setAmt(amount)
-			setCode(codeHash)
-		}
-
-		if ((_secureCode || amount && codeHash) && !power) {
-			setShowLinkPay(true)
-		}
+	useEffect(() => {
+		forwardFromHome()
 
 						// 只在挂载时注册一次
 		const off = onWalletEvent("scan:url", (url: string) => {
@@ -175,13 +162,6 @@ const Browser = ({}) => {
 
 	}, [])
 
-	useEffect(() => {
-
-		if (code && amt) {
-			setShowLinkPay(true)
-		}
-	},[code, amt])
-
 	const cancel = () => {
 		setCode('')
 		setAmt('')
@@ -194,6 +174,8 @@ const Browser = ({}) => {
 		setSecureCode('')
 		setIgnoreUrl(true)
 		setSendToMemo('')
+		setPaymentLinkCode('')
+
 	}
 
     return (

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { CoNET_Data } from "@/utils/globals"
-import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, getBalance, AuthorizationSign, aesGcmEncrypt} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, AuthorizationSign, aesGcmEncrypt} from '@/services/beamio'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import {AppButton} from '@/components/button/AppButton'
@@ -64,7 +64,7 @@ const minAmount = 0.03;
 
 export default function BeamioPayRequest() {
 	
-	const { profiles, paymentLink , payTag, setSendToMemo, sendToMemo} = useDaemonContext()
+	const { profiles, paymentLink , payTag, setSendToMemo, sendToMemo, usdcToUSD, usdcbalance} = useDaemonContext()
 
 	const [mode, setMode] = useState<Mode>( 'pay')
 	const [step, setStep] = useState<Step>("form")
@@ -77,8 +77,6 @@ export default function BeamioPayRequest() {
 
   	const [sendTo, setSendTo] = useState(sendToMemo)
 	const [sendAmount, setSendAmount] = useState("")
-	const [usdcAmount, setUsdcAmount] = useState(0)
-	const [usdcToUSD, setUsdcToUSD] = useState(0)
 
 	const [myAddress, setMyAddress] = useState('')
 	const [processing, setProcessing] = useState(false)
@@ -134,7 +132,7 @@ export default function BeamioPayRequest() {
 
 	const vaultEstimate = isPay ? payTotal : amt; // only used in sign step
 
-    const overbalance = (isNaN(Number(sendAmount)) || Number(sendAmount) <= 0 || Number(sendAmount) > usdcAmount)
+    const overbalance = (isNaN(Number(sendAmount)) || Number(sendAmount) <= 0 || Number(sendAmount) > usdcbalance)
 	const numericAmount = Number(sendAmount || "0")
 	const isAmountValid = numericAmount > minAmount;
 	const [isFocused, setIsFocused] = useState(false)
@@ -153,7 +151,7 @@ export default function BeamioPayRequest() {
 			AmountError = `Please entry a valid Amount`
 		}
 
-		if (_sendAmount > usdcAmount) {
+		if (_sendAmount > usdcbalance) {
 			AmountError = `Insufficient balance`
 		}
 
@@ -183,19 +181,9 @@ export default function BeamioPayRequest() {
 		return (!!AmountError)
 	}
 
-	const handleCopySuccessUrl = async () => {
-		if (!successUrl) return
-		try {
-			await navigator.clipboard.writeText(successUrl)
-			// 这里可以触发一个 toast / 提示，比如 setToast("Link copied")
-		} catch (e) {
-			console.error("Copy failed", e)
-		}
-	}
 
 	//	setPaymentLink({code: '', note: '', address: url, amount: ''})
 	useEffect(() => {
-		getBa()
 		if (paymentLink && paymentLink?.address) {
 			setSendTo (paymentLink.address)
 		}
@@ -206,22 +194,6 @@ export default function BeamioPayRequest() {
 		}
 	}, [paymentLink])
 
-	const getBa = async () => {
-		const temp = CoNET_Data?.profiles?.[0]
-		if (!temp) return
-		if (!temp.keyID) return
-		setMyAddress(temp.keyID)
-		const _ba = await getBalance(temp.keyID)
-		if (!_ba) return
-		const ba = _ba
-		const eth = Number(ba.eth)
-		const ethUsd = eth * Number(ba.oracle.eth.eth)
-
-		const usdc = Number(ba.usdc)
-		setUsdcAmount(usdc)
-		const usdcToUSD = usdc * Number(ba.oracle.eth.usdc)
-		setUsdcToUSD(usdcToUSD)
-	}
 
 	useEffect(() => {
 		if (step === "processing") {
@@ -288,7 +260,7 @@ export default function BeamioPayRequest() {
 
 		const fixedAmount = ethers.parseUnits(sendAmount, 6).toString()
 		const params = new URLSearchParams({amount: fixedAmount, code: code.hash, note:note||defaultNodeText, address: profile.keyID }).toString()
-		const showparams = new URLSearchParams({amount: numberAmount.toFixed(2), code: code.hash, note: note||defaultNodeText, address: profile.keyID }).toString()
+		const showparams = new URLSearchParams({code: code.hash}).toString()
 		const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
 		const showUrl = `${showPaylinkSite}?${showparams}`
 
@@ -325,13 +297,10 @@ export default function BeamioPayRequest() {
 			setSendAmountError(AmountError)
 			return
 		}
-		if (numberAmount > usdcAmount) {
+		if (numberAmount > usdcbalance) {
 			setSendAmountError(`Insufficient balance`)
 			return
 		}
-
-		
-		
 		
 		const privateKey = profiles[0].privateKey
 
@@ -348,7 +317,7 @@ export default function BeamioPayRequest() {
 
 		const postNode = note||defaultNodeText + '\r\n' + encryText
 		const params = new URLSearchParams({amount: numberAmount.toFixed(2), note: postNode, secureCode: secureCode.hash}).toString()
-		const showpParams = new URLSearchParams({secureCode: secureCode.hash}).toString()
+		const showpParams = new URLSearchParams({secureCode: secureCode.hash, cashcode: secureCode.code}).toString()
 		const path = `/api/generateCheck?${params}`
 		
 
@@ -1042,7 +1011,7 @@ export default function BeamioPayRequest() {
 									{
 										mode == 'cashcode' && <button
 												onClick={() => {
-													setSendAmount(calcMaxButtonReturnAmt(usdcAmount).toFixed(2))
+													setSendAmount(calcMaxButtonReturnAmt(usdcbalance).toFixed(2))
 												}}
 												className="
 													text-xs font-medium
@@ -1249,7 +1218,7 @@ export default function BeamioPayRequest() {
 
 									{/* Max 按钮（现在紧跟在 icon 右边） */}
 									<button
-										onClick={() => setSendAmount(usdcAmount.toString())}
+										onClick={() => setSendAmount(usdcbalance.toString())}
 										className="
 											text-xs font-medium
 											px-2 py-0.5

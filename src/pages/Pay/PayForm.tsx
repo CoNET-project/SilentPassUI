@@ -7,7 +7,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import bIcon from '@/components/assets/32x32.svg'
 import {ethers} from 'ethers'
 
-import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, getBalance, AuthorizationSign} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign} from '@/services/beamio'
 
 type Step = "form" | "sign" | "processing" | "generated" | "x402Sign" | "success"
 
@@ -93,7 +93,7 @@ const TipInput = ({ tipAmount, setTipAmount, amt, tipError}: TipInputProps) => {
 }
 
 const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
-	const { darkModle, setDarkModle, setProfiles, setPower, profiles } = useDaemonContext()
+	const { darkModle, setDarkModle, setProfiles, setPower, profiles, usdcbalance, usdcToUSD, setMyAddress, myAddress } = useDaemonContext()
 	const [successPayLink, setSuccessPayLink] = useState<string>('')
 	const [signx402Show, setSignx402Show] = useState(false)
 	const [messageData, setMessageData] = useState<any>()
@@ -103,10 +103,6 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 	const [tipError, setTipError] = useState(false)
 	const [error, setError] = useState<string>("")
 	const [amount, setAmount] = useState<string|undefined>(amt)
-	const [myAddress, setMyAddress] = useState('')
-
-	const [usdcAmount, setUsdcAmount] = useState(0)
-	const [usdcToUSD, setUsdcToUSD] = useState(0)
 	const [showPayButton, setShowPayButton] = useState(true)
 	const [step, setStep] = useState<Step>("form")
 
@@ -235,21 +231,28 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 	}
 
 	useEffect(() => {
-		getBa()
+		if (!profiles?.length) {
+			return
+		}
+		const profile: profile = profiles[0]
+		if (!myAddress) {
+			setMyAddress(profile.keyID)
+		}
+		
 		window.addEventListener("sign:final", onSignFinal)
 
 		return () => {
 			window.removeEventListener("sign:final", onSignFinal)
 		}
-	}, [profiles])
+	}, [])
 
 	useEffect(() => {
 		
-		if ( totalAmount > usdcAmount) {
+		if ( totalAmount > usdcbalance) {
 			return setError('Insufficient balance')
 		}
 		return setError('')
-	}, [tipAmount, usdcAmount])
+	}, [tipAmount, usdcbalance])
 
 	useEffect(() => {
 		
@@ -264,26 +267,6 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 
 	}, [error, processError])
 
-	const getBa = async () => {
-		if (!profiles?.length) {
-			return
-		}
-		const temp = profiles[0]
-
-		if (!temp?.keyID) return
-
-		setMyAddress(temp.keyID)
-		const _ba = await getBalance(temp.keyID)
-		if (!_ba) return
-		const ba = _ba
-		const eth = Number(ba.eth)
-		const ethUsd = eth * Number(ba.oracle.eth.eth)
-
-		const usdc = Number(ba.usdc)
-		setUsdcAmount(usdc)
-		const usdcToUSD = usdc * Number(ba.oracle.eth.usdc)
-		setUsdcToUSD(usdcToUSD)
-	}
 
 	const Header = () => {
 		return (
@@ -317,7 +300,7 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		}
 
 		const total = Number(tipAmount) + Number(amount)
-		if ( !reject && total > usdcAmount) {
+		if ( !reject && total > usdcbalance) {
 			return setError('Insufficient balance')
 		}
 		if (reject) {

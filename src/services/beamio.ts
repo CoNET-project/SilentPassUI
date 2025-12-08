@@ -8,6 +8,7 @@ import {
 	postToEndpoint,
 
 } from "../utils/utils"
+
 import {
 	apiv4_endpoint,
 	conetDepinProvider,
@@ -15,8 +16,12 @@ import {
 	localDatabaseName,
 
 } from "../utils/constants"
-import contracts from "../utils/contracts"
 
+import beamioAccountABI from '@/services/ABI/beamio-AccountRegistry.json'
+import { randomBytes } from '@noble/hashes/utils.js'
+import contracts from "../utils/contracts"
+import { argon2id } from '@noble/hashes/argon2.js'
+import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 
 
 export type x402Response = {
@@ -28,30 +33,19 @@ export type x402Response = {
 	SETTLE_tx?: string
 }
 
-type AuthorizationPayload = {
-	x402Version: number
-	scheme: 'exact'
-	network: 'base' | string
-	payload: {
-		signature: `0x${string}`
-		authorization: {
-			from: string
-			to: string
-			value: string
-			validAfter: string
-			validBefore: string
-			nonce: `0x${string}`
-		}
-	}
-}
-
 
 
 const uuid62 = require('uuid62')
 const PouchDB = require("pouchdb").default
 
 const USDCContract_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
-const baseEndpoint = new ethers.JsonRpcProvider('https://1rpc.io/base')
+const baseEndpoint = new ethers.JsonRpcProvider(
+	'https://1rpc.io/base',
+	{
+		name: "base",
+		chainId: 8453
+	}
+)
 const SC= new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
 export type IBalance= {
 	usdc: string
@@ -63,7 +57,7 @@ export type IBalance= {
 	}
 }
 
-export const getBalance = async (address: string) => {
+const getBalance = async (address: string) => {
 	if (!address) return null
 
 	try {
@@ -101,6 +95,8 @@ const local = 'http://localhost:4088'
 const getOraclesEndPoint = isLocal ? `${local}/api/getOracle` : `${remote}/api/getOracle`
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`
 const getETHFaucetEndpoint = isLocal ? `${local}/api/BeamioETHFaucet` : `${remote}/api/BeamioETHFaucet`
+const storageNewUser = `${remote}/api/addUser`
+
 const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)
 	let binary = ''
@@ -194,6 +190,75 @@ export async function AuthorizationSign(
 		return ''
 	}
 	
+}
+
+function b64ToBytes(s: string): Uint8Array {
+	if (typeof Buffer !== 'undefined') {
+		return new Uint8Array(Buffer.from(s, 'base64'))
+	}
+	const bin = atob(s)
+	const out = new Uint8Array(bin.length)
+	for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+	return out
+}
+
+function bytesToB64(bytes: Uint8Array): string {
+	if (typeof Buffer !== 'undefined') {
+		return Buffer.from(bytes).toString('base64')
+	}
+	let bin = ''
+	for (let i = 0; i < bytes.length; i++) {
+		bin += String.fromCharCode(bytes[i])
+	}
+	return btoa(bin)
+}
+
+// 把 string 转为 Uint8Array
+const enc = new TextEncoder()
+
+
+const b64encode = (bytes: Uint8Array): string => {
+	if (typeof Buffer !== 'undefined') {
+		return Buffer.from(bytes).toString('base64')
+	}
+	let binary = ''
+	for (let i = 0; i < bytes.length; i++) {
+		binary += String.fromCharCode(bytes[i])
+	}
+	return btoa(binary)
+}
+
+const b64decode = (s: string): Uint8Array => {
+	if (typeof Buffer !== 'undefined') {
+		return new Uint8Array(Buffer.from(s, 'base64'))
+	}
+	const binary = atob(s)
+	const bytes = new Uint8Array(binary.length)
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i)
+	}
+	return bytes
+}
+
+const timingSafeEqualUint8 = (a: Uint8Array, b: Uint8Array): boolean => {
+	if (a.length !== b.length) return false
+	let diff = 0
+	for (let i = 0; i < a.length; i++) {
+		diff |= a[i] ^ b[i]
+	}
+	return diff === 0
+}
+
+
+
+export function encodeStoredCBOR(obj: any): string {
+	const bytes = cborEncode(obj)  // 这里是 Uint8Array（真正的 CBOR 二进制）
+  	return bytesToB64(bytes)       // 再转为 Base64 字符串
+}
+
+export function decodeStoredCBOR(b64: string): any {
+	const bytes = b64ToBytes(b64)  // Base64 → Uint8Array
+  	return cborDecode(bytes)       // CBOR → 原始对象
 }
 
 
@@ -588,7 +653,7 @@ function intToEnglishBig(n: bigint): string {
 	return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
-type Handler = (payload: any) => void
+
 
 const listeners = new Map<string, Handler[]>()
 
@@ -742,34 +807,23 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
   
 
 
-  tmpData = await initDuplicate(tmpData)
-  if (!tmpData) {
-		return
-  }
-  const beamio = tmpData.beamio|| {
-		image: '',
-		accountName: '',
-		isFaucet: false,
-		darkTheme: false,
-		initialLoading: true
+	tmpData = await initDuplicate(tmpData)
+	if (!tmpData) {
+			return
+	}
+  
+	await setCoNET_Data(tmpData)
+
+	await storeSystemData()
+
+	if (tmpData === null) {
+			setTimeout(() => {
+				return window.location.reload()
+			}, 5000)
+		return null
 	}
 
-	tmpData.beamio = beamio
-  
-  await setCoNET_Data(tmpData)
-
-  await storeSystemData()
-
-  if (tmpData === null) {
-		setTimeout(() => {
-			return window.location.reload()
-		}, 5000)
-	return null
-  }
-  
-  const profiles = tmpData.profiles
-
-  return profiles
+	return tmpData
 }
 
 export const checkStorage = async () => {
@@ -896,7 +950,402 @@ export const aesGcmDecrypt= async (ciphertext: string, password: string) => {
 	}
 }
 
+const deriveAesKeyFromPassword = (
+	password: string,
+	stored: Argon2idHash
+): Promise<CryptoKey> => {
+	const passwordBytes = enc.encode(password)
+	const salt = b64ToBytes(stored.salt)
+
+	// 🔧 关键改动：把 noble 返回的 Uint8Array<ArrayBufferLike>
+	//            转成标准 Uint8Array（buffer 类型为 ArrayBuffer）
+	const keyBytes = Uint8Array.from(
+		argon2id(passwordBytes, salt, {
+		m: stored.m,
+		t: stored.t,
+		p: stored.p,
+		dkLen: 32
+		})
+	)
+
+	// 导入为 WebCrypto AES-GCM 密钥
+	return crypto.subtle.importKey(
+		'raw',
+		keyBytes,                // 现在是合法的 BufferSource
+		{ name: 'AES-GCM' },
+		false,
+		['encrypt', 'decrypt']
+	)
+}
+const dec = new TextDecoder()
+export const aesGcmDecryptWithStored = async (
+	cipherB64: string,
+	password: string,
+	stored: Argon2idHash
+): Promise<string> => {
+	const key = await deriveAesKeyFromPassword(password, stored)
+
+	const combined = b64ToBytes(cipherB64)
+	const iv = combined.slice(0, 12)
+	const cipherBytes = combined.slice(12)
+
+	const decrypted = await crypto.subtle.decrypt(
+		{ name: 'AES-GCM', iv },
+		key,
+		cipherBytes
+	)
+
+	return dec.decode(decrypted)
+}
+
 export const isBeamioAndroidWebView = () => {
     const ua = navigator.userAgent.toLowerCase()
     return /wv|webview|beamioappwebview/i.test(ua)
 }
+
+let processing = false
+export const getBalanceProcess = async (keyID: string,  setBalance: (val: number) => void, setUsdcToUsd: (val: number) => void) => {
+	if (processing) {
+		return
+	}
+	processing = true
+	const ba = await getBalance(keyID)
+	if (!ba) {
+		processing = false
+		return 
+	}
+	
+	const usdc = Number(ba.usdc)
+
+	setBalance(usdc)
+	const usdcToUSD = usdc * Number(ba.oracle.eth.usdc)
+	setUsdcToUsd(usdcToUSD)
+	processing = false
+}
+
+const listenning = async (listenningProcess: boolean, setListenningProcess: (val: boolean) => void, keyID: string, setBalance: (val: number) => void, setUsdcToUsd: (val: number) => void) => {
+	if (listenningProcess) return
+	setListenningProcess(true)
+	await getBalanceProcess(keyID, setBalance, setUsdcToUsd)
+
+	// conetDepinProvider.on ('block', async (block: number) => {
+	// 	console.log (block)
+	// 	if (!(block % 5)) {
+	// 		getBalanceProcess(keyID, setBalance, setUsdcToUsd)
+	// 	}
+	// })
+}
+
+const beamioAccountContract = {
+	address: '0x532d8A82b07d4091F8e045c017a4dF62b1019b1c',
+	network: 'CONET DePIN',
+	abi: beamioAccountABI,
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	
+}
+
+const beamioAccountSC = new ethers.Contract(beamioAccountContract.address, beamioAccountContract.abi, beamioAccountContract.provider)
+
+
+
+const defaultBrowserParams: Argon2idParams = {
+	memoryKB: 32 * 1024, // 32 MB
+	iterations: 3,
+	parallelism: 1,
+	hashLen: 32
+}
+
+
+
+const hashPasswordBrowser = (
+	password: string,
+	params: Argon2idParams = defaultBrowserParams
+): Argon2idHash => {
+	const salt = randomBytes(16)
+
+	const hash = argon2id(
+		enc.encode(password),
+		salt,
+		{
+			m: params.memoryKB,
+			t: params.iterations,
+			p: params.parallelism,
+			dkLen: params.hashLen
+		}
+	)
+
+	return {
+		algo: 'argon2id',
+		v: 19,
+		m: params.memoryKB,
+		t: params.iterations,
+		p: params.parallelism,
+		salt: b64encode(salt),
+		hash: b64encode(hash)
+	}
+}
+
+const verifyPasswordBrowser = (
+	password: string,
+	stored: Argon2idHash
+): boolean => {
+	if (stored.algo !== 'argon2id') return false
+
+	const salt = b64decode(stored.salt)
+	const target = b64decode(stored.hash)
+
+	const hash = argon2id(
+		enc.encode(password),
+		salt,
+		{
+			m: stored.m,
+			t: stored.t,
+			p: stored.p,
+			dkLen: target.length
+		}
+	)
+
+	return timingSafeEqualUint8(hash, target)
+}
+
+function encodeStoredToBase64(stored: any): string {
+	const json = JSON.stringify(stored)
+	const bytes = new TextEncoder().encode(json)
+	return btoa(String.fromCharCode(...bytes))
+}
+
+function decodeStoredFromBase64(b64: string): any {
+	const binary = atob(b64)
+	const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
+	const json = new TextDecoder().decode(bytes)
+	return JSON.parse(json)
+}
+
+export const checkBeamioAccountAPI = async(preBeamio: string): Promise<boolean> => {
+	try {
+		const isExits = await beamioAccountSC.isAccountNameAvailable(preBeamio)
+		return isExits
+	} catch (ex: any) {
+		console.log(`checkBeamioAccount error ${ex.message}`)
+		
+	}
+	return true
+}
+
+type IAccountRecover = {
+	hash: string
+	encrypto: string
+}
+
+const newUser = async (BeamioName: string, recoverData:IAccountRecover[], wallet: string) => {
+	const Url = storageNewUser
+	try {
+		const body = {
+			accountName: BeamioName,
+			recover: recoverData,
+			wallet: wallet
+		}
+
+		const resp = await fetch(Url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify(body)
+		})
+
+		if (!resp.ok) {
+			return false
+		}
+
+		const json = await resp.json()
+		return true
+	} catch (err) {
+		console.error("newUser error:", err)
+	}
+	return false
+}
+
+export const postBeamio = async (beamio: beamio, wallet: string) => {
+	const Url = storageNewUser
+	try {
+		const body = {
+			accountName: beamio.accountName,
+			wallet: wallet,
+			image: beamio.image,
+			isUSDCFaucet: beamio.isUSDCFaucet,
+			darkTheme: beamio.darkTheme,
+			isETHFaucet: beamio.isETHFaucet,
+			firstName: beamio.firstName,
+			lastName: beamio.lastName
+		}
+
+		const resp = await fetch(Url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify(body)
+		})
+
+		if (!resp.ok) {
+			return false
+		}
+
+		const json = await resp.json()
+		return true
+	} catch (err) {
+		console.error("newUser error:", err)
+	}
+	return false
+}
+
+const aesGcmEncryptWithStored = async (
+		plaintext: string,
+		password: string,
+		stored: Argon2idHash
+	): Promise<string> => {
+	const key = await deriveAesKeyFromPassword(password, stored)
+
+	// 12 字节随机 IV（GCM 推荐长度）
+	const iv = crypto.getRandomValues(new Uint8Array(12))
+
+	const data = enc.encode(plaintext)
+
+	const encrypted = await crypto.subtle.encrypt(
+		{ name: 'AES-GCM', iv },
+		key,
+		data
+	)
+
+	const cipherBytes = new Uint8Array(encrypted)
+
+	// 拼成 iv || ciphertext
+	const combined = new Uint8Array(iv.length + cipherBytes.length)
+	combined.set(iv, 0)
+	combined.set(cipherBytes, iv.length)
+
+	return bytesToB64(combined)
+}
+
+function fromBase64(b64: string): string {
+	const bin = atob(b64)
+	const bytes = new Uint8Array(bin.length)
+	for (let i = 0; i < bin.length; i++) {
+		bytes[i] = bin.charCodeAt(i)
+	}
+	return new TextDecoder().decode(bytes)
+}
+
+export const createRecover = async (BeamioName: string, pin: string) => {
+	const temp = await createOrGetWallet('')
+	if (!temp|| !temp?.mnemonicPhrase|| !temp?.profiles?.length) {
+		return null
+	}
+	const wallet = temp.profiles[0].keyID
+	const recoverCode =  generateCODE('')
+	const stored = hashPasswordBrowser(pin)
+	
+	const phraseBase64 = toBase64(temp.mnemonicPhrase)
+	
+	const img = await aesGcmEncryptWithStored (phraseBase64, pin + recoverCode.code, stored)
+	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)
+
+	const storageEncryptedImg = toBase64(JSON.stringify({stored, img}))
+	const obj = { pin, recoverCode: recoverCode.code, qrCode: recoverCode.code, temp}
+	// const kkk = decodeStoredCBOR(qrCode)
+	// const ks = verifyPasswordBrowser(passcode, stored)
+	const hash = ethers.solidityPackedKeccak256(['string'], [BeamioName])
+	const storageEncryptedImg1 = toBase64(JSON.stringify({stored, img: img1}))
+	// const dddd = fromBase64(storageEncryptedImg)
+	// const kkk = JSON.parse(dddd)
+	// const mnemonicPhraseBase64 = await aesGcmDecryptWithStored (kkk.img, pin + recoverCode.code, kkk.stored)
+	// const mnemonicPhraseB = fromBase64(mnemonicPhraseBase64)
+	// console.log (mnemonicPhraseB)
+	await newUser(BeamioName, [{hash: recoverCode.hash, encrypto: storageEncryptedImg}, {hash, encrypto: storageEncryptedImg1}], wallet)
+	return obj
+}
+
+
+export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
+	const hash = ethers.solidityPackedKeccak256(['string'], [recoveryCode])
+
+	try {
+		const hashedImg: string = await beamioAccountSC.getBase64ByNameHash(hash)
+		const objStr = fromBase64(hashedImg)
+		const obj = JSON.parse(objStr)
+
+		if (!obj?.img || !obj?.stored) {
+			return false
+		}
+
+		const mnemonicPhrase = await aesGcmDecryptWithStored (obj.img, pin + recoveryCode, obj.stored)
+		const mnemonicPhraseB = fromBase64(mnemonicPhrase)
+		const temp = await createOrGetWallet(mnemonicPhraseB)
+		if (!temp||!temp?.profiles?.length) {
+			return false
+		}
+		const profile: profile = temp.profiles[0]
+		const beamio = await getUserInfo(profile.keyID)
+		if (beamio) {
+			temp.beamio = beamio
+		}
+		
+		return temp
+	} catch (ex: any) {
+		console.log(`checkBeamioAccount error ${ex.message}`)
+		return false
+	}
+}
+
+const getUserInfo = async (keyID: string) => {
+	
+	try {
+		const userInfo = await beamioAccountSC.getAccount(keyID)
+		const bo: beamio = {
+			accountName: userInfo?.accountName,
+			image: userInfo?.image,
+			darkTheme: userInfo?.darkTheme,
+			initialLoading: userInfo?.initialLoading,
+			isUSDCFaucet: userInfo?.isUSDCFaucet,
+			isETHFaucet: userInfo?.isETHFaucet,
+			firstName: userInfo?.firstName,
+			lastName: userInfo?.lastName,
+			createdAt: Number(userInfo?.createdAt)
+		}
+		return bo
+	} catch (ex: any) {
+		return null
+	}
+}
+
+export const restoreWithUserPin = async (username: string, pin: string) => {
+	try {
+		const hashedImg: string = await beamioAccountSC.getBase64ByAccountName(username)
+		const objStr = fromBase64(hashedImg)
+		const obj = JSON.parse(objStr)
+
+		if (!obj?.img || !obj?.stored) {
+			return false
+		}
+
+		const mnemonicPhrase = await aesGcmDecryptWithStored (obj.img, pin, obj.stored)
+		const mnemonicPhraseB = fromBase64(mnemonicPhrase)
+		const temp = await createOrGetWallet(mnemonicPhraseB)
+
+		if (!temp||!temp?.profiles?.length) {
+			return false
+		}
+		const profile: profile = temp.profiles[0]
+		const beamio = await getUserInfo(profile.keyID)
+		if (beamio) {
+			temp.beamio = beamio
+		}
+		
+		return temp
+	} catch (ex: any) {
+		console.log(`checkBeamioAccount error ${ex.message}`)
+		return false
+	}
+}
+

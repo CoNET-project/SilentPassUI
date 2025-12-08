@@ -34,10 +34,14 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
       </div>
 
       {/* 警示文字 */}
-      <p className={styles.privateKeyWarning}>
-        Do not share this with anyone. Anyone with your private key can steal
-        your funds.
-      </p>
+      <p>
+	This is the secret key for your Beamio wallet. Do not share it
+	with anyone – anyone with this key can move your funds.
+	</p>
+	<p className="mt-1">
+	Beamio cannot recover this wallet if both your device and this
+	private key are lost.
+	</p>
 
       {/* 私钥容器 */}
       <div className={styles.privateKeyBox}>
@@ -66,8 +70,20 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
             <Eye className={styles.privateKeyToggleIcon} strokeWidth={2.5} />
           )}
         </button>
+		
       </div>
-
+	  <p className="text-[10px] text-slate-400 leading-snug">
+            View this key only in a private place. Make sure no one is looking
+            at your screen when you reveal it.
+          </p>
+		<div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5 mt-3 text-[11px] text-slate-700 leading-snug">
+            <p className="font-semibold mb-1">How to back this up</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Save it in a password manager you control, or</li>
+              <li>Write it down on paper and store it in a safe place.</li>
+              <li>Do not keep it in screenshots, email, or chat apps.</li>
+            </ul>
+          </div>
       {/* 底部按钮区：左 Close，右 Copy */}
       <div className={styles.avatarEditorActions}>
         <button

@@ -4,7 +4,7 @@ import bIcon from '@/components/assets/32x32.svg'
 import { QRCodeCanvas } from "qrcode.react"
 import CopyButton from '@/components/button/CopyButton'
 import {AppButton} from '@/components/button/AppButton'
-import {formatAmountReadable, formatWithThousands, estimateGasUSDC, generateCODE, getBalance, AuthorizationSign, redeemCodeHash} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, AuthorizationSign, redeemCodeHash} from '@/services/beamio'
 import RedeemSuccessScreen from '@/pages/Browser/RedeemSuccessScreen'
 import { useNavigate } from "react-router-dom"
 import {ethers} from 'ethers'
@@ -23,15 +23,21 @@ const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
 const showPaylinkSite = 'https://beamio.app'
 const aptEndpoint = isLocal ? local : remote
-
+// 0.8% fee, min 0.02, max 2 USDC
+function calcFeeFromNumber(base: number) {
+	if (!isFinite(base) || base <= 0) return 0;
+	const raw = base * 0.008;
+	const clamped = Math.min(Math.max(raw, 0.02), 2);
+	return Number(clamped.toFixed(2));
+}
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
+const formatMoney = (n: number) =>
+		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export default function BeamioReceiveScreen() {
-	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles } = useDaemonContext()
-	const [walletAddress, setWalletAddress] = useState<string>('')
+	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles, myAddress } = useDaemonContext()
 	const [account, setAccount ] = useState(beamio?.accountName)
-	const [usdcAmount, setUsdcAmount] = useState(0)
-	const [usdcToUSD, setUsdcToUSD] = useState(0)
 	const [processError, setProcessError] = useState("")
 	const [valueError, setValueError] = useState(false)
 	const [isFocused, setIsFocused] = useState(false)
@@ -92,7 +98,7 @@ export default function BeamioReceiveScreen() {
 		const hash = redeemCodeHash(redeemCode, securityCodeDigits)
 
 
-		const params = new URLSearchParams({secureCode: redeemCode, securityCodeDigits, address: walletAddress }).toString()
+		const params = new URLSearchParams({secureCode: redeemCode, securityCodeDigits, address: myAddress }).toString()
 		const endpointUrl = `${aptEndpoint}/api/redeemCheck?${params}`
 		
 
@@ -100,6 +106,7 @@ export default function BeamioReceiveScreen() {
 
 			const cashcode = await beamioCoreConet.checkMemo(hash)
 			if (cashcode?.from === ethers.ZeroAddress) {
+				setProcessing(false)
 				return setProcessError(`The entered Cashcode and Security Code could not be validated. Please try again.`)
 			}
 
@@ -107,7 +114,8 @@ export default function BeamioReceiveScreen() {
 			const _node: string = cashcode?.node
 			const _node1 = _node.split('\r\n')[0]
 			setnode(_node1)
-			setamount(_amount)
+			const fee = calcFeeFromNumber(Number(_amount))
+			setamount(formatMoney(Number(_amount) -fee))
 
 			const res = await fetch(endpointUrl, {method: 'GET'})
 
@@ -125,31 +133,11 @@ export default function BeamioReceiveScreen() {
 		
 	}
 
-	const getBa = async () => {
-		const temp = profiles?.[0]
-
-		if (!temp?.keyID) return
-
-		setWalletAddress(temp.keyID)
-		const _ba = await getBalance(temp.keyID)
-		if (!_ba) return
-		const ba = _ba
-		const eth = Number(ba.eth)
-		const ethUsd = eth * Number(ba.oracle.eth.eth)
-
-		const usdc = Number(ba.usdc)
-		setUsdcAmount(usdc)
-		const usdcToUSD = usdc * Number(ba.oracle.eth.usdc)
-		setUsdcToUSD(usdcToUSD)
-	}
-	useEffect(() => {
-		getBa()
-	}, [])
   return (
 		<div className="mt-12 flex-1 overflow-y-auto">
 			{
 				successHash ? (
-					<RedeemSuccessScreen amount={amount} myAddress={walletAddress} hash={successHash} note={note} viewClose={() => {
+					<RedeemSuccessScreen amount={amount} myAddress={myAddress} hash={successHash} note={note} viewClose={() => {
 						
 						navigate('/')
 					}} />
@@ -255,7 +243,7 @@ export default function BeamioReceiveScreen() {
 							"
 							>
 							<QRCodeCanvas
-								value={walletAddress}
+								value={myAddress}
 								size={160}
 								level="H"
 								includeMargin
@@ -275,7 +263,7 @@ export default function BeamioReceiveScreen() {
 							<div className="flex items-center justify-center mt-0.5 mb-6">
 							
 								<span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-									{fmtAddr(walletAddress)}
+									{fmtAddr(myAddress)}
 								</span>
 							</div>
 
@@ -309,10 +297,10 @@ export default function BeamioReceiveScreen() {
 									truncate
 									"
 								>
-									{walletAddress}
+									{myAddress}
 								</span>
 
-								<CopyButton value={walletAddress} />
+								<CopyButton value={myAddress} />
 								</div>
 							</div>
 

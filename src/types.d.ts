@@ -144,6 +144,7 @@ interface Region {
 	initialLoading: boolean
 	firstName?: string
 	lastName?: string
+	createdAt?: number
 
   }
   
@@ -388,4 +389,41 @@ type IAirdrop = {
 interface airDropStatus {
 	isReadyForSP: boolean
 	isReadyForReferees: boolean
+}
+
+
+type AuthorizationPayload = {
+	x402Version: number
+	scheme: 'exact'
+	network: 'base' | string
+	payload: {
+		signature: `0x${string}`
+		authorization: {
+			from: string
+			to: string
+			value: string
+			validAfter: string
+			validBefore: string
+			nonce: `0x${string}`
+		}
+	}
+}
+
+type Argon2idParams = {
+	memoryKB: number   // 内存（KB）
+	iterations: number // 迭代次数
+	parallelism: number
+	hashLen: number    // 输出长度（字节）
+}
+
+type Handler = (payload: any) => void
+
+type Argon2idHash = {
+	algo: 'argon2id'
+	v: number
+	m: number
+	t: number
+	p: number
+	salt: string // base64
+	hash: string // base64
 }

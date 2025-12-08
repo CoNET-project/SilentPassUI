@@ -16,67 +16,51 @@ const ScanButton = ({ iconSize = 18 }: Props) => {  // <----- 默认18
 
 
   const handleGoScan = async () => {
-    setLoading(true);
+		setLoading(true);
 
-    try {
-      const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
+		try {
+		const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
 
-      if (status.state === 'denied') {
-        Modal.show({
-          content: "Camera permission denied or unavailable",
-          closeOnAction: true,
-          actions: [
-            { key: 'confirm', text: 'Confirm' },
-          ],
-        });
-        setLoading(false);
-        return;
-      }
+		if (status.state === 'denied') {
+			Modal.show({
+			content: "Camera permission denied or unavailable",
+			closeOnAction: true,
+			actions: [
+				{ key: 'confirm', text: 'Confirm' },
+			],
+			});
+			setLoading(false);
+			return;
+		}
 
-      setScanning(true);
-      setLoading(false);
-      return;
-
-    } catch (err: any) {
-      // iOS 或 prompt 触发 getUserMedia
-      try {
-        await navigator.mediaDevices.getUserMedia({ video: true });
-        setScanning(true);
-        setLoading(false);
-      } catch (e: any) {
-        Modal.show({
-          content: "Camera permission denied or unavailable",
-          closeOnAction: true,
-          actions: [
-            { key: 'confirm', text: 'Confirm' },
-          ],
-        });
-        setLoading(false);
-      }
-    }
-  };
-
-  const handleScanSuccess = (text: string) => {
-    if (/^http/i.test(text) || /^0x/i.test(text)) {
-		emitWalletEvent("scan:url", text);
+		setScanning(true);
+		setLoading(false);
 		return;
-    }
 
-    try {
-      JSON.parse(text);
-      Toast.show({
-        icon: 'fail',
-        content: 'Unable to recognize scan content',
-      });
-    } catch {
-      Toast.show({
-        icon: 'fail',
-        content: 'Unable to recognize scan content',
-      });
-    }
+		} catch (err: any) {
+		// iOS 或 prompt 触发 getUserMedia
+		try {
+			await navigator.mediaDevices.getUserMedia({ video: true });
+			setScanning(true);
+			setLoading(false);
+		} catch (e: any) {
+			Modal.show({
+			content: "Camera permission denied or unavailable",
+			closeOnAction: true,
+			actions: [
+				{ key: 'confirm', text: 'Confirm' },
+			],
+			});
+			setLoading(false);
+		}
+		}
+	};
 
-    setScanning(false);
-  };
+	const handleScanSuccess = (text: string) => {
+		
+			emitWalletEvent("scan:url", text);
+			return
+	}
 
   return (
     <>

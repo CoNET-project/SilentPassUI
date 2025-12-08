@@ -1681,6 +1681,60 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@cbor-extract/cbor-extract-darwin-arm64@npm:2.2.0":
+  version: 2.2.0
+  resolution: "@cbor-extract/cbor-extract-darwin-arm64@npm:2.2.0"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@cbor-extract/cbor-extract-darwin-x64@npm:2.2.0":
+  version: 2.2.0
+  resolution: "@cbor-extract/cbor-extract-darwin-x64@npm:2.2.0"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@cbor-extract/cbor-extract-linux-arm64@npm:2.2.0":
+  version: 2.2.0
+  resolution: "@cbor-extract/cbor-extract-linux-arm64@npm:2.2.0"
+  conditions: os=linux & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@cbor-extract/cbor-extract-linux-arm@npm:2.2.0":
+  version: 2.2.0
+  resolution: "@cbor-extract/cbor-extract-linux-arm@npm:2.2.0"
+  conditions: os=linux & cpu=arm
+  languageName: node
+  linkType: hard
+
+"@cbor-extract/cbor-extract-linux-x64@npm:2.2.0":
+  version: 2.2.0
+  resolution: "@cbor-extract/cbor-extract-linux-x64@npm:2.2.0"
+  conditions: os=linux & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@cbor-extract/cbor-extract-win32-x64@npm:2.2.0":
+  version: 2.2.0
+  resolution: "@cbor-extract/cbor-extract-win32-x64@npm:2.2.0"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@coinbase/cbpay-js@npm:^2.4.0":
+  version: 2.4.0
+  resolution: "@coinbase/cbpay-js@npm:2.4.0"
+  peerDependencies:
+    regenerator-runtime: ^0.13.9
+  peerDependenciesMeta:
+    regenerator-runtime:
+      optional: true
+  checksum: 10c0/c09ee58111422875d51883e6ca320a92de49840d04e8a65a44f2f4c2d4ab839c4adce2bc66feb716486bde7da120ce29f04533602ccdbf3fa5ac97ef95771c82
+  languageName: node
+  linkType: hard
+
 "@coral-xyz/anchor-errors@npm:^0.31.1":
   version: 0.31.1
   resolution: "@coral-xyz/anchor-errors@npm:0.31.1"
@@ -2839,10 +2893,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@noble/hashes@npm:1.8.0, @noble/hashes@npm:^1.3.1, @noble/hashes@npm:^1.5.0, @noble/hashes@npm:^1.8.0, @noble/hashes@npm:~1.8.0":
+"@noble/hashes@npm:1.8.0, @noble/hashes@npm:^1.3.1, @noble/hashes@npm:^1.5.0, @noble/hashes@npm:~1.8.0":
   version: 1.8.0
   resolution: "@noble/hashes@npm:1.8.0"
   checksum: 10c0/06a0b52c81a6fa7f04d67762e08b2c476a00285858150caeaaff4037356dd5e119f45b2a530f638b77a5eeca013168ec1b655db41bae3236cb2e9d511484fc77
+  languageName: node
+  linkType: hard
+
+"@noble/hashes@npm:^2.0.1":
+  version: 2.0.1
+  resolution: "@noble/hashes@npm:2.0.1"
+  checksum: 10c0/e81769ce21c3b1c80141a3b99bd001f17edea09879aa936692ae39525477386d696101cd573928a304806efb2b9fa751e1dd83241c67d0c84d30091e85c79bdb
   languageName: node
   linkType: hard
 
@@ -6073,6 +6134,7 @@ __metadata:
     "@ant-design/icons": "npm:^6.0.0"
     "@babel/parser": "npm:^7.23.0"
     "@babel/types": "npm:^7.23.0"
+    "@coinbase/cbpay-js": "npm:^2.4.0"
     "@coral-xyz/anchor": "npm:0.31.1"
     "@craco/craco": "npm:^7.1.0"
     "@emotion/react": "npm:^11.14.0"
@@ -6081,7 +6143,7 @@ __metadata:
     "@jup-ag/api": "npm:^6.0.44"
     "@mui/material": "npm:^7.0.2"
     "@noble/ed25519": "npm:^2.2.3"
-    "@noble/hashes": "npm:^1.8.0"
+    "@noble/hashes": "npm:^2.0.1"
     "@radix-ui/react-dialog": "npm:^1.0.20"
     "@radix-ui/react-tabs": "npm:^1.0.15"
     "@scure/bip32": "npm:^1.6.2"
@@ -6106,6 +6168,7 @@ __metadata:
     bip39: "npm:^3.1.0"
     blobshape: "npm:^1.0.0"
     bs58: "npm:^6.0.0"
+    cbor-x: "npm:^1.6.0"
     copy-to-clipboard: "npm:^3.3.3"
     ethers: "npm:^6.15.0"
     framer-motion: "npm:^12.23.7"
@@ -6545,6 +6608,49 @@ __metadata:
   version: 2.1.1
   resolution: "catering@npm:2.1.1"
   checksum: 10c0/a69f946f82cba85509abcb399759ed4c39d2cc9e33ba35674f242130c1b3c56673da3c3e85804db6898dfd966c395aa128ba484b31c7b906cc2faca6a581e133
+  languageName: node
+  linkType: hard
+
+"cbor-extract@npm:^2.2.0":
+  version: 2.2.0
+  resolution: "cbor-extract@npm:2.2.0"
+  dependencies:
+    "@cbor-extract/cbor-extract-darwin-arm64": "npm:2.2.0"
+    "@cbor-extract/cbor-extract-darwin-x64": "npm:2.2.0"
+    "@cbor-extract/cbor-extract-linux-arm": "npm:2.2.0"
+    "@cbor-extract/cbor-extract-linux-arm64": "npm:2.2.0"
+    "@cbor-extract/cbor-extract-linux-x64": "npm:2.2.0"
+    "@cbor-extract/cbor-extract-win32-x64": "npm:2.2.0"
+    node-gyp: "npm:latest"
+    node-gyp-build-optional-packages: "npm:5.1.1"
+  dependenciesMeta:
+    "@cbor-extract/cbor-extract-darwin-arm64":
+      optional: true
+    "@cbor-extract/cbor-extract-darwin-x64":
+      optional: true
+    "@cbor-extract/cbor-extract-linux-arm":
+      optional: true
+    "@cbor-extract/cbor-extract-linux-arm64":
+      optional: true
+    "@cbor-extract/cbor-extract-linux-x64":
+      optional: true
+    "@cbor-extract/cbor-extract-win32-x64":
+      optional: true
+  bin:
+    download-cbor-prebuilds: bin/download-prebuilds.js
+  checksum: 10c0/c36dec273f2114fcfe3b544d03d8bfddd2d537d114b9f94ba52a9366a8b852ea9725850e3d29ceda5df6894faeb37026e3bf2cb0d2bb4429f0a699fcfdfa1b8b
+  languageName: node
+  linkType: hard
+
+"cbor-x@npm:^1.6.0":
+  version: 1.6.0
+  resolution: "cbor-x@npm:1.6.0"
+  dependencies:
+    cbor-extract: "npm:^2.2.0"
+  dependenciesMeta:
+    cbor-extract:
+      optional: true
+  checksum: 10c0/c6ab391e935a60c8a768080806f2c9aee01b2b124de68997e3e4cb700753757286860186094a92f510b595d7f8c77b3023d9125a05247afcbfea08cae45a0615
   languageName: node
   linkType: hard
 
@@ -7586,6 +7692,13 @@ __metadata:
   bin:
     detect-libc: ./bin/detect-libc.js
   checksum: 10c0/4da0deae9f69e13bc37a0902d78bf7169480004b1fed3c19722d56cff578d16f0e11633b7fbf5fb6249181236c72e90024cbd68f0b9558ae06e281f47326d50d
+  languageName: node
+  linkType: hard
+
+"detect-libc@npm:^2.0.1":
+  version: 2.1.2
+  resolution: "detect-libc@npm:2.1.2"
+  checksum: 10c0/acc675c29a5649fa1fb6e255f993b8ee829e510b6b56b0910666949c80c364738833417d0edb5f90e4e46be17228b0f2b66a010513984e18b15deeeac49369c4
   languageName: node
   linkType: hard
 
@@ -12337,6 +12450,19 @@ __metadata:
   version: 1.3.1
   resolution: "node-forge@npm:1.3.1"
   checksum: 10c0/e882819b251a4321f9fc1d67c85d1501d3004b4ee889af822fd07f64de3d1a8e272ff00b689570af0465d65d6bf5074df9c76e900e0aff23e60b847f2a46fbe8
+  languageName: node
+  linkType: hard
+
+"node-gyp-build-optional-packages@npm:5.1.1":
+  version: 5.1.1
+  resolution: "node-gyp-build-optional-packages@npm:5.1.1"
+  dependencies:
+    detect-libc: "npm:^2.0.1"
+  bin:
+    node-gyp-build-optional-packages: bin.js
+    node-gyp-build-optional-packages-optional: optional.js
+    node-gyp-build-optional-packages-test: build-test.js
+  checksum: 10c0/f9fad2061c48fb0fc90831cd11d6a7670d731d22a5b00c7d3441b43b4003543299ff64ff2729afe2cefd7d14928e560d469336e5bb00f613932ec2cd56b3665b
   languageName: node
   linkType: hard
 

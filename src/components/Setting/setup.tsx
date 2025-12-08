@@ -52,26 +52,26 @@ export default function BeamioSettingsScreen({
 
   	return (
 		<div className="h-full flex flex-col bg-slate-50 text-slate-900">
-      {/* Top nav */}
-      <header className="">
-        	<BeamioNavBack title="Settings" onClose={() => onClose()} />
-      </header>
+			{/* Top nav */}
+			<header className="">
+					<BeamioNavBack title="Settings" onClose={() => onClose()} />
+			</header>
 
-      {/* 👇 这里是可以滚动的内容区域 */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Brand strip */}
-        <section className="bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold">Beamio · 0-gas USDC on Base</p>
-            <p className="text-xs text-slate-500">
-              Non-custodial passkey wallet · no centralized user database
-            </p>
-          </div>
-          <div className="flex flex-col items-end text-right text-[10px] text-slate-400 leading-tight">
-            <span>Version 0.1.5 · MVP</span>
-            <span>Early access · in testing</span>
-          </div>
-        </section>
+			{/* 👇 这里是可以滚动的内容区域 */}
+			<div className="flex-1 min-h-0 overflow-y-auto">
+			{/* Brand strip */}
+			<section className="bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between">
+			<div>
+				<p className="text-sm font-semibold">Beamio · 0-gas USDC on Base</p>
+				<p className="text-xs text-slate-500">
+				Non-custodial passkey wallet · no centralized user database
+				</p>
+			</div>
+			<div className="flex flex-col items-end text-right text-[10px] text-slate-400 leading-tight">
+				<span>Version 0.1.6 · MVP</span>
+				<span>Early access · in testing</span>
+			</div>
+			</section>
 
 
 			{/* Preferences */}
@@ -85,13 +85,13 @@ export default function BeamioSettingsScreen({
 				>
 					<div className={leftClass}>
 						<span className={iconWrapperClass}>
-						<User className="h-4 w-4" />
+							<User className="h-4 w-4" />
 						</span>
 						<div className="flex flex-col items-start">
-						<span className="text-sm font-medium">Account</span>
-						<span className="text-xs text-slate-500">
-							Name, @handle, profile photo
-						</span>
+							<span className="text-sm font-medium">Account</span>
+							<span className="text-xs text-slate-500">
+								Name, @handle, profile photo
+							</span>
 						</div>
 					</div>
 					<ChevronRight className="h-4 w-4 text-slate-300" />
@@ -127,10 +127,10 @@ export default function BeamioSettingsScreen({
 						<CreditCard className="h-4 w-4" />
 						</span>
 						<div className="flex flex-col items-start">
-						<span className="text-sm font-medium">Payment methods</span>
-						<span className="text-xs text-slate-500">
-							Connect Coinbase, bank or cards
-						</span>
+							<span className="text-sm font-medium">Payment methods</span>
+							<span className="text-xs text-slate-500">
+								Connect Coinbase, bank or cards
+							</span>
 						</div>
 					</div>
 					<ChevronRight className="h-4 w-4 text-slate-300" />
@@ -144,13 +144,13 @@ export default function BeamioSettingsScreen({
 				>
 					<div className={leftClass}>
 						<span className={iconWrapperClass}>
-						<Smartphone className="h-4 w-4" />
+							<Smartphone className="h-4 w-4" />
 						</span>
 						<div className="flex flex-col items-start">
-						<span className="text-sm font-medium">Cashcodes &amp; links</span>
-						<span className="text-xs text-slate-500">
-							Default memo &amp; expiry for links
-						</span>
+							<span className="text-sm font-medium">Cashcodes &amp; links</span>
+							<span className="text-xs text-slate-500">
+								Default memo &amp; expiry for links
+							</span>
 						</div>
 					</div>
 					<ChevronRight className="h-4 w-4 text-slate-300" />
@@ -344,7 +344,7 @@ export default function BeamioSettingsScreen({
 						</div>
 					</motion.div>
 				)}
-				</AnimatePresence>
+			</AnimatePresence>
 		</div>
 	)
 }

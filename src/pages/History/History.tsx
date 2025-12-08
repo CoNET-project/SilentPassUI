@@ -2,20 +2,11 @@ import { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle }
 
 import styles from './send.module.scss'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
-import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import { CoNET_Data } from '@/utils/globals'
-import {getBalance, AuthorizationSign, estimateGasUSDC} from '@/services/beamio'
-import SendTabs from './SendTabs'
-import SendToInput from './SendToInput'
-import usdcIcon from '@/components/assets/usdc.png'
-import baseIcon from '@/components/assets/base-logo.png'
-import ReceiveOverlay from './ReceiveOverlay'
-import {ethers} from 'ethers'
-import {ConformSignInfo} from './conformX402Sign'
+import {AuthorizationSign, getBalanceProcess} from '@/services/beamio'
+
 import {SendHistoryTable} from './SendHistory'
 
-import {AppButton} from '@/components/button/AppButton'
 
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
@@ -47,53 +38,35 @@ type Step = "amount" | "recipient" | "confirm" | "success" | "sign"| "x402Sign"
 
 const History = ({}) => {
 	  
-	  const { darkModle, setDarkModle, setProfiles, setUsdcbalance } = useDaemonContext()
-		const [showReceive, setShowReceive] = useState(false);
-		const [amount, setAmount] = useState(0)
-		const [preInput, setPreInput] = useState('')
-		const [showAmount, setShowAmount] = useState('0.00')
-		const [step, setStep] = useState<Step>("amount")
-		const [myAddress, setMyAddress] = useState('')
-		const [sendAddress, setSendAddress] = useState('')
-		const [error, setError] = useState('')
-		const [processError, setProcessError] = useState('')
-		const [processing, setProcessing] = useState(false)
+	const { usdcToUSD, usdcbalance } = useDaemonContext()
+	const [amount, setAmount] = useState(0)
+	const [preInput, setPreInput] = useState('')
+	const [showAmount, setShowAmount] = useState('0.00')
+	const [step, setStep] = useState<Step>("amount")
+	const [myAddress, setMyAddress] = useState('')
+	const [error, setError] = useState('')
+	const [processError, setProcessError] = useState('')
+	const [processing, setProcessing] = useState(false)
 
-		const inputRef = useRef<HTMLInputElement | null>(null)
+	const inputRef = useRef<HTMLInputElement | null>(null)
 
-		// Toggle between entering amount in crypto (USDC) vs fiat (USD)
-		const [denom, setDenom] = useState<"USDC" | "USD">("USDC")
-		
-
-		const [usdcAmount, setUsdcAmount] = useState(0)
-		const [usdcToUSDAmount, setUsdcToUSDAmount] = useState(0)
-		const [gasETH,setGasETH] = useState('')
-		const [gasUSD,setGasUSD] = useState('')
-		const [messageData, setMessageData] = useState<any>()
-		const [requestEndpoint, setRequestEndpoint] = useState('')
-		const [successHash, setSuccessHash] = useState('')
+	// Toggle between entering amount in crypto (USDC) vs fiat (USD)
+	const [denom, setDenom] = useState<"USDC" | "USD">("USDC")
+	const [successHash, setSuccessHash] = useState('')
 
 
-		const isUsdc = denom === "USDC";
-		const primaryUnitLabel = isUsdc ? "USDC" : "USD";
+	const isUsdc = denom === "USDC";
+	const primaryUnitLabel = isUsdc ? "USDC" : "USD";
 
-		// Because USDC ~= 1 USD, conversion is 1:1 for UI
-		const formattedUsd = formatWithThousands(amount)
-		const estimateGas = async () => {
-			
-			
-			
-		}
+	// Because USDC ~= 1 USD, conversion is 1:1 for UI
+	const formattedUsd = formatWithThousands(amount)
+
 
 	const init = () => {
 		const temp = CoNET_Data?.profiles?.[0]
 		if (!temp) return
 		setMyAddress(temp.keyID)
 	}
-
-	useEffect(() => {
-		getBa()
-	}, [myAddress])
 
 	useEffect(() => {
 		if (processError) {
@@ -110,84 +83,6 @@ const History = ({}) => {
 		}
 		setStep('success')
 		setSuccessHash(hash.USDC_tx)
-		console.log(hash)
-		getBa()
-	}
-
-	const processSend = async (addr: string) => {
-		if (!addr|| amount <= 0) {
-			return setProcessError('Error')
-		}
-		setSendAddress(addr)
-		setProcessing(true)
-		
-		
-		const params = new URLSearchParams({amount:amount.toFixed(2), toAddress: addr}).toString()
-		const path = `/api/BeamioTransfer?${params}`
-		const requestEndpoint = endpoint + path
-		setRequestEndpoint(requestEndpoint)
-		
-		try {
-			
-			const response = await fetch(requestEndpoint, {
-				method: 'GET'
-			})
-			
-
-			if (response.status !== 402) {
-				setProcessing(false)
-				return setProcessError('RPC Error!')
-			}
-			const { x402Version, accepts } = await response.json()
-			const MessageData = accepts[0]
-			MessageData.reqUrl = requestEndpoint
-			setMessageData(MessageData)
-
-			const gas: any = await estimateGasUSDC (amount, addr)
-			if (!gas) {
-				setProcessing(false)
-				return setProcessError('RPC Error!')
-			}
-
-			const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
-			setGasETH(gasCostEth.toFixed(7))
-			const ethPrice = gas.oracle.eth.eth
-			const price = Number(gasCostEth) * ethPrice
-			setGasUSD(price.toFixed(5))
-			console.log (gas.oracle)
-			MessageData.gas = {
-				gasETH: gasCostEth.toFixed(7),
-				gasUSD: price.toFixed(5)
-			}
-			//const urlObj = new URL(url)
-				setProcessing(false)
-			setStep('x402Sign')
-
-			
-		} catch (ex) {
-			setProcessing(false)
-			setProcessError('RPC Error!')
-		}
-				
-				
-	}
-	
-
-	const getBa = async () => {
-		if (!myAddress) return
-		const _ba = await getBalance(myAddress)
-		if (!_ba) return
-		const ba = _ba
-		const eth = Number(ba.eth)
-		const ethUsd = eth * Number(ba.oracle.eth.eth)
-
-		const usdc = Number(ba.usdc)
-		setUsdcAmount(usdc)
-		const usdcUsd = usdc * Number(ba.oracle.eth.usdc)
-		setUsdcbalance(usdc)
-		const total = ethUsd + usdcUsd
-		setUsdcToUSDAmount(usdcUsd)
-
 	}
 
 	// useEffect(() => {
@@ -225,7 +120,7 @@ const History = ({}) => {
 			return false
 		}
 
-		if (v > usdcAmount) {
+		if (v > usdcbalance) {
 			setError("Amount over available balance!")
 			return false
 		}

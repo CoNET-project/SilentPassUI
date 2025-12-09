@@ -395,7 +395,7 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 
 	const SuccessPayment = () => {
 		return (
-			 <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+			 <div className="flex flex-col bg-slate-50 text-slate-900">
 				{/* Header */}
 				<header className="flex items-center justify-between px-6 pt-4 pb-3 border-slate-100">
 					<div className="flex flex-col gap-0.5">

@@ -92,10 +92,13 @@ const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi,
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
-const getOraclesEndPoint = isLocal ? `${local}/api/getOracle` : `${remote}/api/getOracle`
+const beamioApi = 'https://beamio.app'
+
+const getOraclesEndPoint = `${beamioApi}/api/getOracle`
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`
-const getETHFaucetEndpoint = isLocal ? `${local}/api/BeamioETHFaucet` : `${remote}/api/BeamioETHFaucet`
-const storageNewUser = `${remote}/api/addUser`
+
+const storageNewUser = `${beamioApi}/api/addUser`
+const searchUrl = `${beamioApi}/api/search-users`
 
 const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)
@@ -525,27 +528,6 @@ export const formatWithThousands = (n: string | number): string => {
 	const [intPart, decPart = "00"] = num.toFixed(2).split(".")
 	const intWithCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
 	return `${intWithCommas}.${decPart}`
-}
-
-export const getETHFaucet = async (address: string) => {
-	const params = new URLSearchParams({address}).toString()
-
-	const url = `${getETHFaucetEndpoint}?${params}`
-	try {
-		const req = await fetch(url, {
-			method: 'GET'
-		})
-		if (req.status !== 500) {
-			console.log(`getFaucet status !== 200 Error!`)
-			return false
-		}
-
-		return true
-
-	} catch (ex) {
-		console.log(`getFaucet Error`, ex)
-	}
-	return false
 }
 
 export const getUSDCFaucet = async (address: string) => {
@@ -1263,6 +1245,7 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	// const mnemonicPhraseB = fromBase64(mnemonicPhraseBase64)
 	// console.log (mnemonicPhraseB)
 	await newUser(BeamioName, [{hash: recoverCode.hash, encrypto: storageEncryptedImg}, {hash, encrypto: storageEncryptedImg1}], wallet)
+
 	return obj
 }
 
@@ -1298,7 +1281,7 @@ export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
 	}
 }
 
-const getUserInfo = async (keyID: string) => {
+export const getUserInfo = async (keyID: string) => {
 	
 	try {
 		const userInfo = await beamioAccountSC.getAccount(keyID)
@@ -1347,5 +1330,24 @@ export const restoreWithUserPin = async (username: string, pin: string) => {
 		console.log(`checkBeamioAccount error ${ex.message}`)
 		return false
 	}
+}
+
+export const searchUsername = async (keyward: string) => {
+	const params = new URLSearchParams({keyward}).toString()
+	const requestUrl = `${searchUrl}?${params}`
+	try {
+		const res = await fetch(requestUrl, {method: 'GET'})
+
+		
+		if (res.status !== 200) {
+			return null
+		}
+		return await res.json()
+		
+
+	} catch (ex) {
+		
+	}
+	return null
 }
 

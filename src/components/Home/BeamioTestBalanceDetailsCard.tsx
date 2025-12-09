@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 export default function BeamioTestBalanceDetailsCard() {
 	const navigate = useNavigate()
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="flex flex-col bg-slate-50 text-slate-900">
       {/* Card */}
       <div className="flex-1 px-5 pt-5 pb-8 overflow-y-auto">
         {/* Handle bar for sheet style */}

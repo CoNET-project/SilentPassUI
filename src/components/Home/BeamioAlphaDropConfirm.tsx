@@ -1,5 +1,5 @@
 import React from "react";
-import { getUSDCFaucet, getETHFaucet, onWalletEvent} from '@/services/beamio'
+import { getUSDCFaucet} from '@/services/beamio'
 // Beamio – Alpha Drop Confirm Screen
 // Full-screen confirm page (can also be implemented as a modal/sheet)
 import {AppButton} from'@/components/button/AppButton'
@@ -10,7 +10,7 @@ type Prof = {
 }
 export default function BeamioAlphaDropConfirm({close, wallet}: Prof) {
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="flex flex-col bg-slate-50 text-slate-900">
 
       {/* Content */}
       <main className="flex-1 px-5 pt-6 pb-6 flex flex-col gap-6">

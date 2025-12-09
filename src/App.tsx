@@ -15,7 +15,7 @@ import Browser from './pages/Browser'
 import { setDefaultConfig } from 'antd-mobile';
 import BeamioInstallOnboarding from '@/components/launchPage/BeamioInstallOnboarding'
 
-
+//			min-h-screen 
 
 global.Buffer = require('buffer').Buffer;
 

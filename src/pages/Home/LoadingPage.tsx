@@ -2,13 +2,13 @@ import React, {useEffect, useState} from "react";
 import beamio_icon from '@/components/assets/32x32.svg'
 import { useNavigate } from "react-router-dom"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {getETHFaucet, onWalletEvent} from '@/services/beamio'
+import {onWalletEvent} from '@/services/beamio'
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { createOrGetWallet, storeSystemData, checkStorage} from "@/services/beamio"
+import { getUserInfo, storeSystemData, checkStorage} from "@/services/beamio"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
@@ -55,26 +55,11 @@ export default function BeamioOnboardingModal({home}: Props) {
 
 		setProfiles(profiles)
 
-		const bo: beamio = temp?.beamio || {
-			accountName: '',
-			image: '',
-			darkTheme: false,
-			initialLoading: true,
-			isUSDCFaucet: false,
-			isETHFaucet: false,
-			firstName: '',
-			lastName: ''
-		}
+		const bo: beamio = temp?.beamio || await getUserInfo(profiles[0].keyID)
 
 		
 		bo.initialLoading = true
 		
-		if (!bo.isETHFaucet) {
-			const newUser = await getETHFaucet(profiles[0].keyID)
-			if (newUser) {
-				bo.isETHFaucet = true
-			}
-		}
 	
 		setDarkModle(bo.darkTheme)
 		setBeamio (bo)

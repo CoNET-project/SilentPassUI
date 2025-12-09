@@ -1,5 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom"
+
+
 // Beamio – "Learn how it works" card
 // Used from Home empty-state (including starter-not-available state).
 // General explanation of how Beamio works, without 0.1 USDC-specific copy.
@@ -10,8 +12,8 @@ export default function BeamioLearnHowItWorksCard() {
   return (
     
       
-      <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-		<main className="flex-1 px-5 pt-5 pb-8 overflow-y-auto">
+      <div className="flex flex-col bg-slate-50 text-slate-900">
+		<main className="flex-1 px-5 pt-5 pb-8 ">
 
         {/* Header */}
         <div className="flex flex-col h-[calc(100%-2.5rem)] px-5 pb-3">

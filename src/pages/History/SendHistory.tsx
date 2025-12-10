@@ -317,7 +317,7 @@ export const SendHistoryTable = (
 			// 2️⃣ 基于已经排序好的 alldatas 做 mode 筛选
 			let filtered = alldatas.filter(tx => {
 				if (localMode !== 'pay') {
-					return tx.mode === localMode 
+					return tx.mode === localMode
 				}
 				return tx.mode === localMode || ((tx.type === 'paid' || tx.type === 'completed' || tx.type === 'deposited') )
 				

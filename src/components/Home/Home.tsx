@@ -20,8 +20,8 @@ import {motion, AnimatePresence } from "framer-motion"
 import { Search } from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
-import SearchInputWithDropdown from './SearchBarWithResults'
-
+import SearchInputWithDropdown, {searchResult} from './SearchBarWithResults'
+import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
@@ -49,7 +49,8 @@ const Home = ({}) => {
 	const [amt, setAmt] = useState('')
 	const [recipient, setRecipient] = useState('')
 	const [claimLoading, setClaimLoading] = useState(false)
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'>('')
+	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'>('')
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -261,7 +262,8 @@ const Home = ({}) => {
 					>
 					<div className="pointer-events-none">
 						<SearchInputWithDropdown
-						onSelect={() => {}}
+							readonly={true}
+							onSelect={() => {}}
 						/>
 					</div>
 					</button>
@@ -484,21 +486,24 @@ const Home = ({}) => {
 							<BeamioAlphaDropConfirm
 								wallet={myAddress}
 								close={(success) => {
-								setShowAlphaHowItWorks('')
+									setShowAlphaHowItWorks('')
 
-								if (!success) return
-								if (success === 'error') {
-									return setShowGetFaucet('sameIP')
-								}
-
-								storee()
-								setShowGetFaucet('finished')
+									if (!success) return
+									if (success === 'error') {
+										return setShowGetFaucet('sameIP')
+									}
+									storee()
+									setShowGetFaucet('finished')
 								}}
 							/>
 							)}
 							{showAlphaHowItWorks === 'BeamioTestBalance' && <BeamioTestBalanceDetailsCard />}
-							{showAlphaHowItWorks === 'Search' && <BeamioSearch />}
+							{showAlphaHowItWorks === 'Search' && <BeamioSearch onSelect={(v) => {
+								setUserPreviewItem(v)
+								setShowAlphaHowItWorks('BeamioContactProfilePreview')
+							}} />}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
+							
 						</div>
 					</motion.div>
 				</AnimatePresence>

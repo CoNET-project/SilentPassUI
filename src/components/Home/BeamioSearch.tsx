@@ -1,9 +1,11 @@
 import React from "react";
+import SearchInputWithDropdown, {searchResult} from './SearchBarWithResults'
 
-// Beamio – "How it works" screen (Alpha)
-// Explains the 0.2 USDC test balance and the three MVP flows.
-import SearchInputWithDropdown from './SearchBarWithResults'
-export default function BeamioSearch() {
+type Props = {
+	onSelect: (item: searchResult) => void
+}
+
+export default function BeamioSearch({onSelect}: Props) {
 	return (
 		<div className="mt-4 flex items-center justify-between px-6 pt-4 pb-3 border-slate-100">
 
@@ -11,9 +13,9 @@ export default function BeamioSearch() {
 			<main className="flex-1">
 				{/* Intro card */}
 				<section className="">
-					<SearchInputWithDropdown onSelect={() => {
-
-					}} />
+					<SearchInputWithDropdown onSelect={(v) => {
+						onSelect(v)
+					}} readonly={false}/>
 				</section>
 			</main>
 		</div>

@@ -1,4 +1,4 @@
-import Check from './Check'
+
 import { useState, useRef, useEffect } from 'react'
 import styles from '@/pages/History/send.module.scss'
 import { useDaemonContext } from '@/providers/DaemonProvider'

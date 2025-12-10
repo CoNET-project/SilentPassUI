@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Camera, Trash2 } from "lucide-react";
+import { X, Camera, Trash2, Check } from "lucide-react";
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { storeSystemData, postBeamio } from '@/services/beamio'
@@ -15,7 +15,7 @@ type prof = {
 
 
 export default function BeamioAccountScreen({colse}:prof) {
-	const { beamio, setBeamio, setProfiles, setDarkModle, darkModle } = useDaemonContext()
+	const {beamio, setBeamio, setProfiles, setDarkModle, darkModle } = useDaemonContext()
 	const [avatarSeed, setAvatarSeed] = useState(beamio?.accountName||defaultName)
 	const [avatarName, setAvatarName] = useState(beamio?.accountName||defaultName)
 	const [firstName, setFirstName] = useState(beamio?.firstName)
@@ -26,6 +26,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 	const [avatarFileName, setAvatarFileName] = useState<string>('')
 	const avatarInputRef = useRef<HTMLInputElement>(null)
 	const [loading, setLoading] = useState(false)
+	const [avatarSeedConfirmed, setAvatarSeedConfirmed] = useState(false)
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 
@@ -130,7 +131,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 			initialLoading: beamio?.initialLoading||false
 		}
 
-		await postBeamio(bo, profile.keyID)
+		await postBeamio(bo, profile.privateKeyArmor)
 
 		tmpData.beamio = bo
 		setCoNET_Data(tmpData)
@@ -214,29 +215,68 @@ export default function BeamioAccountScreen({colse}:prof) {
 					<p className="text-xs text-slate-500">
 						Your Beamio avatar (stored locally / on-chain, not in our servers)
 					</p>
-					</div>
-					<input
-						ref={avatarInputRef}
-						id="avatarFileInput"
-						type="file"
-						accept="image/*"
-						capture="environment"
-						className="hidden"
-						onChange={handleAvatarFileChange}
-					/>
+					
+						<div className="
+							flex items-center rounded-2xl bg-slate-50 border border-slate-200
+							focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100
+							overflow-hidden
+						">
+							<span className="px-3 text-sm text-slate-500"> </span>
+
+							<input
+								value={avatarSeed}
+								onChange={e => setAvatarSeed(e.target.value)}
+								type="text"
+								onFocus={() => setAvatarSeedConfirmed(false)}
+								placeholder="any word or phrase"
+								className="flex-1 bg-transparent outline-none text-sm py-3 pr-2 placeholder:text-slate-400"
+							/>
+
+							{/* ✔️ 绿色确认按钮 */}
+							{
+								!avatarSeedConfirmed && (
+									<button
+										type="button"
+										onClick={() => {
+											setAvatarSeedConfirmed(true)
+										}}
+										className="
+											h-8 w-8 mr-2 flex items-center justify-center
+											rounded-full bg-emerald-500 hover:bg-emerald-600
+											text-white transition-all duration-150
+											active:scale-90 active:ring-4 active:ring-emerald-200
+										"
+									>
+										<Check className="w-4 h-4" strokeWidth={2} />
+									</button>
+								)
+							}
+							
+						</div>
+
+				</div>
+				<input
+					ref={avatarInputRef}
+					id="avatarFileInput"
+					type="file"
+					accept="image/*"
+					capture="environment"
+					className="hidden"
+					onChange={handleAvatarFileChange}
+				/>
 
 				{/* Form fields */}
 				<div className="space-y-5">
 					{/* Beamio handle */}
 					<div className="space-y-2">
 						<label className="block text-sm font-medium text-slate-800">
-							Beamio name
+							Beamio name (cannot be changed)
 							<span className="ml-1 text-xs font-normal text-slate-500">(@handle)</span>
 						</label>
 						<div className="flex items-center rounded-2xl bg-slate-50 border border-slate-200 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100 overflow-hidden">
 							<span className="px-3 text-sm text-slate-500">@</span>
 							<input
-								value={avatarSeed}
+								value={avatarName}
 								// onChange={e => {
 								// 	setAvatarName(e.target.value)
 								// 	setAvatarSeed(e.target.value)
@@ -247,9 +287,9 @@ export default function BeamioAccountScreen({colse}:prof) {
 								readOnly
 							/>
 						</div>
-					<p className="text-xs text-slate-500">
-						This is the public name friends and merchants see when they pay you.
-					</p>
+						<p className="text-xs text-slate-500">
+							This is the public name friends and merchants see when they pay you.
+						</p>
 					</div>
 
 					{/* First name */}

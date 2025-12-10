@@ -99,6 +99,9 @@ const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api
 
 const storageNewUser = `${beamioApi}/api/addUser`
 const searchUrl = `${beamioApi}/api/search-users`
+const followStatusUrl = `${beamioApi}/api/getFollowStatus`
+const removeFollowingUrl = `${beamioApi}/api/removeFollow`
+const addFollowingUrl = `${beamioApi}/api/addFollow`
 
 const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)
@@ -1019,7 +1022,7 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x532d8A82b07d4091F8e045c017a4dF62b1019b1c',
+	address: '0x09dfed722FBD199E9EC6ece19630DE02692eF572',
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
 	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
@@ -1119,13 +1122,17 @@ type IAccountRecover = {
 	encrypto: string
 }
 
-const newUser = async (BeamioName: string, recoverData:IAccountRecover[], wallet: string) => {
+const newUser = async (BeamioName: string, recoverData:IAccountRecover[], privateKey: string) => {
+	
+	const signWallet = new ethers.Wallet(privateKey)
+	const signMessage = await signWallet.signMessage(signWallet.address)
 	const Url = storageNewUser
 	try {
 		const body = {
 			accountName: BeamioName,
 			recover: recoverData,
-			wallet: wallet
+			wallet: signWallet.address,
+			signMessage
 		}
 
 		const resp = await fetch(Url, {
@@ -1148,18 +1155,21 @@ const newUser = async (BeamioName: string, recoverData:IAccountRecover[], wallet
 	return false
 }
 
-export const postBeamio = async (beamio: beamio, wallet: string) => {
+export const postBeamio = async (beamio: beamio, privateKey: string) => {
 	const Url = storageNewUser
+	const signWallet = new ethers.Wallet(privateKey)
+	const signMessage = await signWallet.signMessage(signWallet.address)
 	try {
 		const body = {
 			accountName: beamio.accountName,
-			wallet: wallet,
+			wallet: signWallet.address,
 			image: beamio.image,
 			isUSDCFaucet: beamio.isUSDCFaucet,
 			darkTheme: beamio.darkTheme,
 			isETHFaucet: beamio.isETHFaucet,
 			firstName: beamio.firstName,
-			lastName: beamio.lastName
+			lastName: beamio.lastName,
+			signMessage
 		}
 
 		const resp = await fetch(Url, {
@@ -1224,7 +1234,7 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	if (!temp|| !temp?.mnemonicPhrase|| !temp?.profiles?.length) {
 		return null
 	}
-	const wallet = temp.profiles[0].keyID
+	const wallet = temp.profiles[0].privateKeyArmor
 	const recoverCode =  generateCODE('')
 	const stored = hashPasswordBrowser(pin)
 	
@@ -1351,3 +1361,81 @@ export const searchUsername = async (keyward: string) => {
 	return null
 }
 
+export const getFollowStatus = async (wallet: string, followAddress: string) => {
+	//		isFollowingAddress
+
+	const params = new URLSearchParams({wallet, followAddress}).toString()
+	const Url = `${followStatusUrl}?${params}`
+	try {
+		const res = await fetch(Url, {method: 'GET'})
+		if (res.status !== 200) {
+			return null
+		}
+		return await res.json()
+	} catch (ex: any) {
+		return null
+	}
+	
+}
+
+export const removeFollowing = async (privateKey: string, followAddress: string) => {
+	const Url = removeFollowingUrl
+	const wallet = new ethers.Wallet(privateKey)
+
+	try {
+		const body = {
+			wallet: wallet.address,
+			followAddress,
+			signMessage: await wallet.signMessage(wallet.address)
+		}
+
+		const resp = await fetch(Url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify(body)
+		})
+
+		if (!resp.ok) {
+			return false
+		}
+
+		const json = await resp.json()
+		return true
+	} catch (err) {
+		console.error("removeFollowing error:", err)
+	}
+	return false
+}
+
+export const addFollowing = async (privateKey: string, followAddress: string) => {
+	const Url = addFollowingUrl
+	const wallet = new ethers.Wallet(privateKey)
+
+	try {
+		const body = {
+			wallet: wallet.address,
+			followAddress,
+			signMessage: await wallet.signMessage(wallet.address)
+		}
+
+		const resp = await fetch(Url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify(body)
+		})
+
+		if (!resp.ok) {
+			return false
+		}
+
+		const json = await resp.json()
+		return true
+	} catch (err) {
+		console.error("addFollowing error:", err)
+	}
+	return false
+}

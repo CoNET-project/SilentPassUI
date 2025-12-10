@@ -320,8 +320,6 @@ export default function BeamioPayRequest() {
 		const showpParams = new URLSearchParams({secureCode: secureCode.hash, cashcode: secureCode.code}).toString()
 		const path = `/api/generateCheck?${params}`
 		
-
-		
 		const url = aptEndpoint + path
 		const requestEndpoint = `${showPaylinkSite}?${showpParams}`
 		

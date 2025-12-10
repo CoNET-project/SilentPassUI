@@ -18,7 +18,7 @@ export type searchResult = {
 }
 
 type Props = {
-  	onSelect: (item: searchResult) => void
+  	close: (path: string) => void
 	readonly: boolean
 }
 
@@ -45,7 +45,7 @@ function formatUserDate(timestamp?: string | number): string {
 	})
 }
 
-const SearchInputWithDropdown: React.FC<Props> = ({ onSelect, readonly }) => {
+const SearchInputWithDropdown: React.FC<Props> = ({ close, readonly }) => {
 	const { profiles
 		} = useDaemonContext()
 	const [query, setQuery] = useState('')
@@ -53,11 +53,12 @@ const SearchInputWithDropdown: React.FC<Props> = ({ onSelect, readonly }) => {
 	const [loading, setLoading] = useState(false)
 	const inputRef = useRef<HTMLInputElement>(null)
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState(false)
+	const [myAddress, setMyAddress] = useState('')
 
 	const hasQuery = query.trim().length > 0
 	const showDropdown = hasQuery
-	const profile: profile = profiles[0]
-	const myAddress = profile.keyID.toLowerCase()
+	
 	const search = async (q: string) => {
 		setLoading(true)
 		const data = await searchUsername(q)
@@ -67,6 +68,15 @@ const SearchInputWithDropdown: React.FC<Props> = ({ onSelect, readonly }) => {
 		setResults(filted)
 		
 	}
+	useEffect(() => {
+		if (!profiles?.length) {
+			return
+		}
+		const profile: profile = profiles[0]
+		setMyAddress(profile.keyID.toLowerCase())
+
+	}, [])
+
 
 	useEffect(() => {
 		const q = query.trim().replace('@','')
@@ -98,8 +108,13 @@ const SearchInputWithDropdown: React.FC<Props> = ({ onSelect, readonly }) => {
 	return (
 		<>
 		{
-			userPreviewItem ? <BeamioContactProfilePreview item={userPreviewItem} close={() => {
-				setUserPreviewItem(null)
+			userPreviewItem ? <BeamioContactProfilePreview item={userPreviewItem} close={path => {
+				if (!path){
+					setUserPreviewItem(null)
+				} else {
+					close(path)
+				}
+				
 			}} /> :(
 					<div className="relative w-full h-11">
 						{/* 没输入：普通 pill 输入框 */}

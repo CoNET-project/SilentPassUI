@@ -812,9 +812,10 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
 }
 
 export const checkStorage = async () => {
-  const database = PouchDB(localDatabaseName, { auto_compaction: true });
+  
 
   try {
+	const database = PouchDB(localDatabaseName, { auto_compaction: true });
     const doc = await database.get("init", { latest: true });
     const data = JSON.parse(Buffer.from(doc.title, "base64").toString());
     setCoNET_Data(data);

@@ -182,7 +182,7 @@ export default function BeamioPayRequest() {
 	}
 
 
-	//	setPaymentLink({code: '', note: '', address: url, amount: ''})
+	
 	useEffect(() => {
 		if (paymentLink && paymentLink?.address) {
 			setSendTo (paymentLink.address)

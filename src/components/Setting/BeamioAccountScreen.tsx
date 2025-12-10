@@ -60,7 +60,6 @@ export default function BeamioAccountScreen({colse}:prof) {
 			return url
 		})
 
-
 		setAvatarFileName(file.name)
 
 		const reader = new FileReader()
@@ -262,7 +261,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 					accept="image/*"
 					capture="environment"
 					className="hidden"
-					onChange={handleAvatarFileChange}
+					// onChange={handleAvatarFileChange}
 				/>
 
 				{/* Form fields */}

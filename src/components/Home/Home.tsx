@@ -4,9 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo} from '@/services/beamio'
-import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
-import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
-import styles from '@/components/Home/home.module.scss'
+import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useNavigate } from "react-router-dom"
@@ -21,12 +19,12 @@ import { Search } from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
 import SearchInputWithDropdown, {searchResult} from './SearchBarWithResults'
-import BeamioContactProfilePreview from './BeamioContactProfilePreview'
+
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 const formatMoney = (n: number) =>
-		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 const Home = ({}) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress,
@@ -144,8 +142,6 @@ const Home = ({}) => {
 
   	}
 
-
-
   	let first = true
 
   	useEffect(() => {
@@ -179,30 +175,108 @@ const Home = ({}) => {
 		setShowAlphaHowItWorks('BeamioAlphaDropConfirm')
 	}
 
+	/** 余额卡：白底 + 渐变描边 */
+	function BalanceCard() {
+		return (
+			
+			<div className="rounded-3xl bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b] p-4 shadow-lg mb-6">
+				{/* 顶部：标题 + Base 标识 */}
+				<div className="flex items-center justify-between mb-4">
+					<div className="text-xs font-medium text-white/80">
+						Beamio Balance
+					</div>
+					<div className="flex items-center gap-1 text-white">
+
+						{/* 圆形图标区域 */}
+						<span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/15">
+							<img
+								src={base_icon}
+								alt="Base"
+								className="w-3.5 h-3.5 object-contain"
+							/>
+						</span>
+
+						{/* 文本 */}
+						<span className="text-[11px] font-medium tracking-wide">
+							Base
+						</span>
+					</div>
+				</div>
+
+				{/* 中间：金额 */}
+				<div className="mb-4">
+					<div className="text-3xl font-semibold text-white tabular-nums leading-tight">
+						{formatWithThousands(usdcbalance)}
+					</div>
+					<div className="text-xs text-white/80 mt-1">
+						USDC
+					</div>
+				</div>
+
+				{/* 底部：Gas sponsored pill */}
+				<div>
+					<div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 backdrop-blur-sm">
+						<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/80 text-[9px] text-[#1652f0] font-bold">
+							⚡
+						</span>
+						<span className="text-[11px] font-medium text-white">
+							Gas sponsored
+						</span>
+					</div>
+				</div>
+			</div>
+			
+		)
+	}
+
+	const ButtonArea = () => {
+		return (
+			<div className="flex gap-3 mt-4">
+				<button
+					className="flex-1 h-9 rounded-full bg-white text-sm font-semibold text-blue-600 shadow-md"
+					onClick={() => {
+						setShowAlphaHowItWorks('Search')
+					}}
+				>
+					Send
+				</button>
+				<button
+					className="flex-1 h-9 rounded-full border border-blue-600 text-sm font-semibold text-blue-600 bg-white/10 shadow-md"
+					onClick={() => {
+						setPayTag('request')
+						navigate('/Pay')
+					}}
+				>
+					Request
+				</button>
+			</div>	
+		)
+	}
+
 	const Claim02Pannel = () => {
 		return (
 			<section className="mb-6">
-				<div className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col gap-2">
+				<div className="rounded-3xl bg-gradient-to-r from-[#ff8a3c] via-[#f7478f] to-[#8b5cf6] px-5 py-4 text-white shadow-md">
 					<div className="flex items-center gap-2">
 					<span className="text-lg">🔥</span>
 					<div className="flex flex-col">
-						<span className="text-sm font-semibold text-amber-900">
+						<span className="text-sm font-semibold mb-1">
 							0.2 USDC added to your wallet
 						</span>
-						<span className="text-xs text-amber-800">
+						<span className="text-xs text-white/90 mb-4">
 							Use this to try a few small test transfers with friends or family. For everyday payments, you can add more USDC later.
 						</span>
 					</div>
 					</div>
 					<div className="flex flex-wrap gap-2 mt-1">
-					<button className="inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-xs font-medium px-4 py-1.5 shadow-sm hover:bg-amber-600"
+					<button className="flex-1 h-9 rounded-full border border-white/60 text-xs font-medium bg-white/10"
 						onClick={() => {
-							navigate('/Pay')
+							setShowAlphaHowItWorks('Search')
 						}}
 					>
 						Start a payment
 					</button>
-					<button className="text-[11px] text-amber-800 underline underline-offset-2"
+					<button className="flex-1 h-9 rounded-full bg-white text-xs font-semibold text-orange-500"
 						onClick={() => {
 							setShowAlphaHowItWorks('BeamioTestBalance')
 						}}
@@ -213,6 +287,19 @@ const Home = ({}) => {
 				</div>
 			</section>
 		)
+	}
+
+	function ActivityPreview() {
+		return (
+			<div className="pt-6 pb-4">
+				<div className="text-xs font-medium text-slate-500 mb-2">No activity yet</div>
+				<div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-3">
+					<div className="text-xs text-slate-500">
+						When you send or receive USDC, your payments will show up here.
+					</div>
+				</div>
+			</div>
+		);
 	}
 
 	useEffect(() => {
@@ -263,7 +350,9 @@ const Home = ({}) => {
 					<div className="pointer-events-none">
 						<SearchInputWithDropdown
 							readonly={true}
-							onSelect={() => {}}
+							close={ path => {
+								setShowAlphaHowItWorks('')
+							}}
 						/>
 					</div>
 					</button>
@@ -277,7 +366,7 @@ const Home = ({}) => {
 					{/* Hero card */}
 					{
 						showGetFaucet === 'Faucet' ? (
-							<div className="mt-3 rounded-2xl bg-gradient-to-r from-orange-400 via-pink-500 to-purple-600 text-white px-4 py-3">
+							<div className="mt-3 rounded-2xl bg-gradient-to-r from-orange-400 via-pink-500 to-purple-600 text-white px-4 py-3 mb-6">
 	
 								<div className="text-[12px] font-semibold mb-1">
 									Claim 0.2 USDC to get started
@@ -330,49 +419,11 @@ const Home = ({}) => {
 						)
 					}
 
-					    {/* Wallet card（Home 的主角） */}
+					
 
 						
-						<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-							<div className="flex items-center justify-between mb-1">
-								<div className="text-[11px] text-slate-500">In Beamio</div>
-
-								<button
-									type="button"
-									onClick={() => {
-										setShowAlphaHowItWorks('BeamioLearnHowItWorksCard')
-									}}
-									className="
-									w-5 h-5 rounded-full bg-[#1652f0] text-white 
-									text-[11px] font-semibold flex items-center justify-center 
-									shadow-sm hover:bg-[#1346cc] translate-y-[8px]
-									"
-								>
-									i
-								</button>
-							</div>
-						
-							<div className="flex items-end justify-between">
-								<div>
-								<div className="text-2xl font-semibold text-slate-900">{formatMoney(usdcbalance)}</div>
-								<div className="text-[11px] text-slate-500">
-									USDC on Base · gasless tier
-								</div>
-								</div>
-								<button className="text-[11px] text-slate-500 underline">
-									Hide balance
-								</button>
-							</div>
-							<div className="mt-3 grid grid-cols-2 gap-2">
-								<button className="h-9 rounded-full bg-sky-600 text-white text-[12px] font-medium">
-								Send USDC
-								</button>
-								<button className="h-9 rounded-full bg-white text-sky-600 text-[12px] font-medium border border-sky-100">
-								Receive USDC
-								</button>
-							</div>
-						</div>
-
+					<BalanceCard />
+					<ButtonArea />
 
 					{/* Optional inline search bar, only when user taps search icon */}
 					{isSearchOpen && (
@@ -426,7 +477,7 @@ const Home = ({}) => {
 							<div className="flex items-center justify-between py-2 border-b border-slate-100">
 							<div className="flex items-center gap-2">
 								<div className="w-7 h-7 rounded-full bg-slate-900/5 flex items-center justify-center text-[10px] font-medium text-slate-700">
-								A
+									A
 								</div>
 								<div>
 								<p className="text-[11px] text-slate-800">You paid Alice</p>
@@ -437,13 +488,7 @@ const Home = ({}) => {
 							</div>
 						</div>
 						) : (
-							<section>
-								
-								
-
-									
-							</section>
-
+							<ActivityPreview />
 							
 						)}
 					</div>
@@ -498,9 +543,8 @@ const Home = ({}) => {
 							/>
 							)}
 							{showAlphaHowItWorks === 'BeamioTestBalance' && <BeamioTestBalanceDetailsCard />}
-							{showAlphaHowItWorks === 'Search' && <BeamioSearch onSelect={(v) => {
-								setUserPreviewItem(v)
-								setShowAlphaHowItWorks('BeamioContactProfilePreview')
+							{showAlphaHowItWorks === 'Search' && <BeamioSearch close={path => {
+								setShowAlphaHowItWorks('')
 							}} />}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
 							

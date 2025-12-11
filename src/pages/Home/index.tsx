@@ -10,12 +10,9 @@ const HomePage = ({}) => {
 	const { isInitialLoading, setIsInitialLoading, setBeamio, setProfiles } = useDaemonContext()
 	const [showBeamioOnboardingModal, setShowBeamioOnboardingModal] = useState(false)
 	const init = async () => {
-		if (!CoNET_Data) {
-			return
-		}
 		
 		const CoNETData: encrypt_keys_object = await checkStorage()
-		if (!CoNETData?.beamio?.initialLoading) {
+		if ( !CoNETData|| !CoNETData?.beamio?.initialLoading ) {
 			setIsInitialLoading(true)
 			setShowBeamioOnboardingModal(true)
 		}
@@ -38,6 +35,7 @@ const HomePage = ({}) => {
 		
 		
 	}
+
 	useEffect(() => {
 		init()
   	}, [])

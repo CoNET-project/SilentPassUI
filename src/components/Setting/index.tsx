@@ -9,14 +9,14 @@ import Privatekey from './PrivateKey/PrivateKey'
 import { Copy,Check, Bell, Settings, QrCode, Sun, Moon } from 'lucide-react'
 import BeamioSettingsScreen from './setup'
 import BeamioReceiveScreen from './BeamioReceiveScreen'
-import { getBalanceProcess } from '@/services/beamio'
+import { getBalanceProcess, getMyFollowStatus } from '@/services/beamio'
 import styles from './setting.module.scss'
 import { AppButton } from '../button/AppButton'
 
 import { BuyWithCoinbaseButton } from './BuyWithCoinbaseButton'
 import {SellWithCoinbaseButton} from './SellWithCoinbaseButton'
 
-
+const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 
 //	https://beamio.app?amount=0.03&code=0x36a6200cec2fe34edb2f3b075af1d46645c54bb54a0abe0e97a265068773b3c4&note=test&address=0xc8f855ff966f6be05cd659a5c5c7495a66c5c015
 type prof = {
@@ -27,6 +27,35 @@ const formatMoney = (n: number) =>
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 const defaultName = 'Beamio'
+
+const buildCreatedAtLabel = (created_at?: number | string) => {
+	if (!created_at) return ""
+
+	// 统一转换成 number
+	const num = Number(created_at)
+	if (!Number.isFinite(num)) return ""
+
+	// 秒 → 毫秒
+	const ts = (String(created_at).length === 10)
+		? num * 1000
+		: num
+
+	const d = new Date(ts)
+	if (Number.isNaN(d.getTime())) return ""
+
+	return d.toLocaleDateString("en-US", {
+		year: "numeric",
+		month: "short",
+		day: "numeric",
+	})
+}
+
+const shortenAddress = (addr: string) => {
+	if (!addr) return ""
+	if (addr.length <= 10) return addr
+	return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
 
 export default function BeamioMeMainScreen() {
 	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD } = useDaemonContext()
@@ -48,7 +77,12 @@ export default function BeamioMeMainScreen() {
 	const [settingsOpen, setSettingsOpen] = useState(false)
 	const [coinbaseOpen, setCoinbaseOpen] = useState<'buy'|'sale'|''>()
 	const [receiveOpen, setReceiveOpen] = useState(false)     // 控制 Receive 全屏页
-
+	const [copied, setCopied] = React.useState(false)
+	const [followingCount, setFollowingCount] = useState(0)
+	const [followerCount, setFollowerCount] = useState(0)
+	const [firstName, setFirstName] = useState('')
+	const [lastName, setLastName] = useState('')
+	const [createAt, setCreatedAt] = useState(0)
 
 	useEffect(() => {
 		if (!currentAvatarSrc||!beamio) {
@@ -59,6 +93,9 @@ export default function BeamioMeMainScreen() {
 		if (beamio.accountName) {
 			setAvatarName(beamio.accountName)
 			setAvatarSeed(beamio.accountName)
+			setFirstName(beamio.firstName || '')
+			setLastName(beamio.lastName || '')
+			setCreatedAt(beamio.createdAt || 0)
 		}
 		setDarkModle(beamio.darkTheme)
 
@@ -71,8 +108,11 @@ export default function BeamioMeMainScreen() {
 	}, [receiveOpen, beamio])
 
 	
+	let init = false
 
 	useEffect(() => {
+		if (init) return
+		init = true
 		if (payTag === 'receive') {
 			setReceiveOpen(true)
 		}
@@ -89,7 +129,12 @@ export default function BeamioMeMainScreen() {
 		}
 		if (beamio) {
 			setAvatarName(beamio.accountName)
+			setFirstName(beamio.firstName || '')
+			setLastName(beamio.lastName || '')
+			setCreatedAt(beamio.createdAt || 0)
 		}
+
+		getFollowerStatus(profile.keyID)
 	}, [])
 
 	const getPrivatekey = (): string => {
@@ -106,6 +151,8 @@ export default function BeamioMeMainScreen() {
 			setAvatarImageData(avatarImageDataTemp)
 		}
 	}
+
+			
 
 	function WalletAddrButton({}) {
 		const [copied, setCopied] = useState(false)
@@ -171,169 +218,235 @@ export default function BeamioMeMainScreen() {
 		)
 	}
 
-	return (
-		<div className="relative">
-			<div className="">
+	const getFollowerStatus = async (wallet: string) => {
+		if (!myAddress) return
 
-				{/* Content */}
-				<div className="flex flex-col h-[calc(100%-2.5rem)] px-5 pb-4">
-					{/* Top blue header with avatar (Venmo-style) */}
-					<div className="relative mb-6">
-						{/* Blue wave background */}
-						<div className="-mx-5 h-32 rounded-b-[40px] bg-gradient-to-r from-[#1652F0] to-[#2F7BFF] flex items-start justify-between px-5 pt-3">
-							{/* Placeholder for future account switcher */}
-							<button 
-								onClick={() => {
-									setPrivatekeyVisible(true)
-								}}
-								className="mt-4 text-[11px] font-medium text-white/90 px-2 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm"
-							>
-								Personal
-							</button>
+		
+		const res = await getMyFollowStatus(wallet)
+		if (res) {
+			setFollowingCount(res.followingCount)
+			setFollowerCount(res.followerCount)
+		}
+		
+	}
 
-							<div className="flex items-center gap-2 mt-2">
-								{/* Notifications */}
-								<button className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm">
-									<Bell className="w-4 h-4" />
-								</button>
+	const ProfileInformation = () => {
+		const info = {
+			title: 'Your Beamio profile',
+			description1: 'Manage account, security and payment settings from the gear icon in the top right.',
+			description2: 'Tap Following or Followers to see your connections.',
+		}
+		return (
+			<div className="rounded-2xl bg-white shadow-sm p-4 text-slate-800 leading-snug">
+				<div className="text-[17px] font-semibold mb-1">
+				{info.title}
+				</div>
 
-								{/* Settings */}
-								<button
-									className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm"
-									onClick={() => setSettingsOpen(true)}
-								>
-									<Settings className="w-4 h-4" />
-								</button>
+				<p className="text-[14px] text-slate-500 mb-1">
+				{info.description1}
+				</p>
 
-								{/* 🌗 Light/Dark Toggle */}
-								<button
-									className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm"
-									onClick={() => {
-									// 本地状态
-									setDarkModle(!darkModle)
+				<p className="text-[14px] text-slate-500">
+				{info.description2}
+				</p>
+			</div>
+		)
+	}
 
-									// 切换 <html> class="dark"
-									if (!darkModle) {
-										document.documentElement.classList.add("dark")
-									} else {
-										document.documentElement.classList.remove("dark")
-									}
+	const HeadArea = () => (
+		<div className="relative w-full h-11">
+			{/* 顶部蓝色区域：头像 + 名字 */}
+			<div 
+				className="
+					relative z-10
+					bg-gradient-to-r from-sky-500 to-blue-600 text-white
+					px-5 pt-3 pb-10
+					rounded-b-[28px]
+					shadow-[0_8px_24px_rgba(15,23,42,0.35)]
+				"
+			>
 
-									// 可选：保存到 localStorage
-									localStorage.setItem("beamio-theme", !darkModle ? "dark" : "light")
-									}}
-								>
-									{darkModle ? (
-									<Sun className="w-4 h-4" /> // dark → 显示 Sun（可切换到 light）
-									) : (
-									<Moon className="w-4 h-4" /> // light → 显示 Moon（可切换到 dark）
-									)}
-								</button>
-							</div>
-						</div>
+					
+								{/* Blue wave background */}
+				<div className="-mx-5 flex items-start justify-between px-5">
+					{/* Placeholder for future account switcher */}
+					<button 
+						onClick={() => {
+							setPrivatekeyVisible(true)
+						}}
+						className="mt-4 text-[11px] font-medium text-white/90 px-2 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm"
+					>
+						Personal
+					</button>
 
-						{/* Avatar and handle, overlapping the blue area */}
-						<div className="absolute left-1/2 -translate-x-1/2 top-10 flex flex-col items-center">
-							{/* ⭐ 点击头像 / 小 QR 打开 Receive 全屏页 */}
-								<button
-									type="button"
-									onClick={() => setReceiveOpen(true)}
-									className="relative focus:outline-none"
-								>
-								<div className="w-20 h-20 rounded-full bg-fuchsia-500 flex items-center justify-center text-4xl shadow-lg ring-4 ring-white overflow-hidden">
-									<img src={currentAvatarSrc} className="w-full h-full object-cover" />
-								</div>
-
-								{/* Small QR badge */}
-								<div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white shadow flex items-center justify-center border border-slate-200">
-									<QrCode className="w-4 h-4 text-slate-700" />
-								</div>
-								</button>
-
-							<span className="mt-2 text-sm font-semibold text-slate-900">
-								{displayName}
-							</span>
-							<WalletAddrButton />
-						</div>
-					</div>
-
-					{/* Main wallet summary (similar to Venmo "In Beamio") */}
-					<div className="mb-4">
-						<p className="text-[13px] font-medium text-slate-900">In Beamio</p>
-						<div className="flex items-baseline justify-between mt-1 mb-1">
-							<p className="text-[28px] leading-none font-semibold text-slate-900">
-								${formatMoney(usdcToUSD)}
-							</p>
-							<p className="text-[11px] text-slate-500">USDC on Base</p>
-						</div>
-						<button
-							onClick={() => {
-								if (!myAddress) return
-								window.open(
-								`https://basescan.org/address/${myAddress}`,
-								"_blank"
-								)
-							}}
-							className="text-[11px] font-medium text-[#1652F0] underline underline-offset-2"
-						>
-							Crypto assets
+					<div className="flex items-center gap-2 mt-2">
+						{/* Notifications */}
+						<button className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm">
+							<Bell className="w-4 h-4" />
 						</button>
 
-						{/* Primary USDC row */}
-							<div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 flex items-center justify-between">
-							
-								{/* 左侧 USDC + Base 叠加图标 */}
-								<div className="relative w-7 h-7">
-									{/* USDC 主图 */}
-									<img
-										src={usdcIcon}
-										alt="USDC"
-										className="w-7 h-7 rounded-full"
-									/>
+						{/* Settings */}
+						<button
+							className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm"
+							onClick={() => setSettingsOpen(true)}
+						>
+							<Settings className="w-4 h-4" />
+						</button>
+					</div>
+				</div>
+				{/* 头像 + 名字 + username + Add friend */}
+				<div className="flex flex-col items-center text-center">
+					{/* 头像 */}
+					{beamio?.image ? (
+						<img
+							src={beamio.image}
+							alt={beamio.accountName}
+							className="w-20 h-20 rounded-full object-cover mr-2 flex-shrink-0"
+						/>
+						) : (
+						<img
+							src={getImg(beamio?.accountName)}
+							alt={beamio?.accountName}
+							className="w-20 h-20 rounded-full object-cover mr-2 flex-shrink-0 bg-slate-200"
+						/>
+					)}
 
-									{/* Base 右下角叠加 */}
-									<img
-										src={baseIcon}
-										alt="Base"
-										className="
-											absolute
-											w-3.5 h-3.5
-											bottom-[-2px] right-[-2px]
-											rounded-full
-											border border-white dark:border-slate-900
-											bg-white
-										"
-									/>
-								</div>
+				
+						
+						
+					{/* @username */}
+					<div className="mt-4 text-[18px] font-semibold tracking-tight">
+						@{beamio?.accountName || 'Beamio'}
+					</div>
 
-								{/* 右侧金额 */}
-								<div className="text-right">
-									<p className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">
-										${formatMoney(usdcToUSD)}
-									</p>
-									<p className="text-[11px] text-slate-500 dark:text-slate-400">
-										{formatMoney(usdcbalance)} USDC
-									</p>
-								</div>
+					{/* createdAtLabel */}
+						
+					<div className="mt-1 text-[11px] text-white/75">
+						{firstName} {lastName} since {buildCreatedAtLabel(createAt)}
+					</div>
+						
 
-							</div>
+					{/* 地址 pill + 复制按钮 */}
+					{beamio && (
+						<button
+							type="button"
+							className={`
+							mt-3 inline-flex items-center gap-2
+							px-4 py-1.5 rounded-full
+							bg-white/20 text-[12px] font-medium text-white/95
+							backdrop-blur-sm
+							transition-transform duration-150 ease-out
+							${copied ? "scale-95" : "hover:scale-[1.02] active:scale-95"}
+							`}
+							onClick={() => {
+							if (!navigator?.clipboard || !myAddress) return
 
-						{/* <BuyWithCoinbaseButton myAddress={myAddress} />
+							navigator.clipboard
+								.writeText(myAddress)
+								.then(() => {
+								setCopied(true)
+								setTimeout(() => setCopied(false), 2000)
+								})
+								.catch(() => {
+								// 失败就不切换状态，必要时可以加 toast
+								})
+							}}
+						>
+							<span className="tracking-wide">
+							{shortenAddress(myAddress)}
+							</span>
 
-						<SellWithCoinbaseButton myAddress={myAddress} /> */}
+							<span
+							className={`
+								w-6 h-6 rounded-full flex items-center justify-center
+								transition-colors duration-150
+								${copied ? "bg-emerald-500" : "bg-white/20"}
+							`}
+							>
+							{copied ? (
+								<Check className="w-3.5 h-3.5 text-white" strokeWidth={2} />
+							) : (
+								<Copy className="w-3.5 h-3.5 text-white/95" strokeWidth={2} />
+							)}
+							</span>
+						</button>
+					)}
+
+
+					
+						
+					
+
+					{/* Following / Followers */}
+
+
+					<div
+						className="
+							mt-4
+							flex items-center
+							rounded-full border border-white/30
+							overflow-hidden
+							text-white
+							h-[56px]
+							min-w-[240px]              /* ⭐ 加宽：关键代码 */
+							px-4                       /* ⭐ 两侧增加 padding，使视觉更宽 */
+						"
+					>
+						{/* Following */}
+						<div className="flex flex-1 flex-col items-center justify-center">
+							<span className="text-[15px] font-semibold">{followingCount}</span>
+							<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
+								Following
+							</span>
+						</div>
+
+						{/* Divider */}
+						<div className="w-px h-8 bg-white/30" />
+
+						{/* Followers */}
+						<div className="flex flex-1 flex-col items-center justify-center">
+							<span className="text-[15px] font-semibold">{followerCount}</span>
+							<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
+								Followers
+							</span>
+						</div>
 					</div>
 				</div>
 			</div>
+			<div 
+				className="
+					relative z-0
+					flex-1
+					-mt-12           /* 让白色卡片往上贴住蓝色 */
+					px-5 pt-20 pb-5 /* 用更大的 pt 把内容往下推开，避免和 Add friend 重叠 */
+					flex flex-col gap-4
+					rounded-t-[28px]
+					
+				"
+			>
+					
+			<ProfileInformation />
+			</div>		
+		</div>	
+	)
 
+	return (
+		<div className="relative">
+			<div className="">
+				<HeadArea />
+				{/* Content */}
+				
+			</div>
+			
 			{/* Settings full-screen slide-over */}
 			<div
 				className={[
-					"fixed inset-0 z-40 bg-slate-50 flex-1 overflow-y-auto",
+					"fixed inset-0 z-40 flex-1 overflow-y-auto",
 					"transition-transform duration-300 ease-out",
 					settingsOpen ? "translate-x-0" : "translate-x-full",
 				].join(" ")}
 			>
-				<div className="flex-1 overflow-y-auto">
+				<div className="flex-1">
 					<BeamioSettingsScreen onClose={() => setSettingsOpen(false)} />
 				</div>
 				
@@ -370,7 +483,7 @@ export default function BeamioMeMainScreen() {
 					<BeamioReceiveScreen />
 				</div>
 			</div>
-			
+
 			{showPrivateKeyPopup()}
 
 			

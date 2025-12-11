@@ -9,7 +9,7 @@ import {AppButton} from '@/components/button/AppButton'
 const defaultName = 'Beamio'
 
 type prof = {
-	colse: () => void
+	colse: (bo: beamio) => void
 }
 
 
@@ -30,13 +30,13 @@ export default function BeamioAccountScreen({colse}:prof) {
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 
-	const currentAvatarSrcTemp = avatarImageDataTemp || avatarFileUrl || avatarUrl
+	const currentAvatarSrcTemp = avatarUrl
 
 	useEffect(() => {
 		
 		if (!beamio) return
 	
-		if (beamio.image && !/^http/.test(beamio.image)) {
+		if (beamio.image) {
 			setAvatarImageDataTemp(beamio.image)
 		}
 	}, [])
@@ -127,7 +127,8 @@ export default function BeamioAccountScreen({colse}:prof) {
 			darkTheme: darkModle,
 			isETHFaucet: beamio?.isETHFaucet|| false,
 			isUSDCFaucet: beamio?.isUSDCFaucet|| false,
-			initialLoading: beamio?.initialLoading||false
+			initialLoading: beamio?.initialLoading||false,
+			createdAt: beamio?.createdAt|| Date.now(),
 		}
 
 		await postBeamio(bo, profile.privateKeyArmor)
@@ -138,7 +139,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 		await storeSystemData()
 		setBeamio(bo)
 		setLoading(false)
-		colse()
+		colse(bo)
 	}
 
 	return (
@@ -159,7 +160,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 						<button
 							type="button"
 							onClick={() => {
-								avatarInputRef.current?.click()
+								// avatarInputRef.current?.click()
 							}}
 							className="
 								h-full w-full 
@@ -211,16 +212,19 @@ export default function BeamioAccountScreen({colse}:prof) {
 						)}
 					</div>
 
-					<p className="text-xs text-slate-500">
-						Your Beamio avatar (stored locally / on-chain, not in our servers)
+					<p className="text-lg text-slate-500">
+						Your Beamio avatar
 					</p>
+
+
+					
 					
 						<div className="
 							flex items-center rounded-2xl bg-slate-50 border border-slate-200
 							focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100
 							overflow-hidden
 						">
-							<span className="px-3 text-sm text-slate-500"> </span>
+							<span className="px-3 text-sm text-slate-500">Avatar text </span>
 
 							<input
 								value={avatarSeed}
@@ -230,6 +234,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 								placeholder="any word or phrase"
 								className="flex-1 bg-transparent outline-none text-sm py-3 pr-2 placeholder:text-slate-400"
 							/>
+
 
 							{/* ✔️ 绿色确认按钮 */}
 							{
@@ -252,7 +257,9 @@ export default function BeamioAccountScreen({colse}:prof) {
 							}
 							
 						</div>
-
+						<p className=" text-[12px] text-slate-500">
+							Change the letters to pick a different avatar.
+						</p>
 				</div>
 				<input
 					ref={avatarInputRef}
@@ -269,25 +276,24 @@ export default function BeamioAccountScreen({colse}:prof) {
 					{/* Beamio handle */}
 					<div className="space-y-2">
 						<label className="block text-sm font-medium text-slate-800">
-							Beamio name (cannot be changed)
-							<span className="ml-1 text-xs font-normal text-slate-500">(@handle)</span>
+							
+							<span className="ml-1 text-xs font-normal text-slate-500">Beamio handle (@handle)</span>
 						</label>
-						<div className="flex items-center rounded-2xl bg-slate-50 border border-slate-200 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100 overflow-hidden">
-							<span className="px-3 text-sm text-slate-500">@</span>
-							<input
-								value={avatarName}
-								// onChange={e => {
-								// 	setAvatarName(e.target.value)
-								// 	setAvatarSeed(e.target.value)
-								// }}
-								type="text"
-								placeholder="yourname"
-								className="flex-1 bg-transparent outline-none text-sm py-3 pr-4 placeholder:text-slate-400"
-								readOnly
-							/>
-						</div>
+						<div className="h-10 rounded-xl border border-slate-200 px-3 text-[13px] bg-slate-50 flex items-center justify-between">
+
+							
+							<div className="font-mono text-slate-800">
+								@{avatarName}
+							</div>
+							<span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+								Unique &amp; permanent
+							</span>
+							</div>
+						
 						<p className="text-xs text-slate-500">
-							This is the public name friends and merchants see when they pay you.
+							Set once during onboarding. This is the public name friends and
+							merchants see when they pay you, and it is used together with your
+							PIN to help restore this wallet.
 						</p>
 					</div>
 
@@ -319,6 +325,13 @@ export default function BeamioAccountScreen({colse}:prof) {
 					/>
 					</div>
 				</div>
+				<p className="mt-3 text-[10px] text-slate-500 leading-snug">
+					Optional. Used on receipts and statements, not required for wallet recovery.
+				</p>
+				<p className="mt-3 text-[10px] text-slate-500 leading-snug">
+					Beamio does not keep a centralized user database. Your account
+					information is stored on your device and/or on-chain.
+				</p>
 			</div>
 
 			{/* Footer actions */}
@@ -333,6 +346,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 			</AppButton>
 			
 			</footer>
+			
 		</aside>
 		</>
 	)

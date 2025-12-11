@@ -1,6 +1,6 @@
 //		Footer/index.tsx
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
 import { ReactComponent as HomeIconGrey } from "./assets/home-icon-grey.svg";
 import { ReactComponent as HomeBlueIcon } from "./assets/home-icon-blue.svg";
@@ -38,34 +38,26 @@ const Footer = ({}) => {
     const location = useLocation();
     const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle, isInitialLoading, beamioAppInstalled} = useDaemonContext();
     const { pathname } = location;
-
-
-useEffect(() => {
-  	const root = document.documentElement // <html>
-
-	if (darkModle) {
-		// 你的自定义暗色主题
-		root.classList.add('dark')
-		root.classList.add('theme-dark')
-		root.classList.remove('theme-light')
-	} else {
-		root.classList.remove('dark')
-		root.classList.remove('theme-dark')
-		root.classList.add('theme-light')
-	}
-}, [darkModle])
+	const [showBar, setShowBar] =  useState(true);
 
 	useEffect(() => {
-		const root = document.documentElement; // <html>
+		const root = document.documentElement // <html>
 
 		if (darkModle) {
-			root.classList.add('theme-dark');
-			root.classList.remove('theme-light');
+			// 你的自定义暗色主题
+			root.classList.add('dark')
+			root.classList.add('theme-dark')
+			root.classList.remove('theme-light')
 		} else {
-			root.classList.add('theme-light');
-			root.classList.remove('theme-dark');
+			root.classList.remove('dark')
+			root.classList.remove('theme-dark')
+			root.classList.add('theme-light')
 		}
 	}, [darkModle])
+
+	useEffect(() => {
+		isInitialLoading ? setShowBar(false) : setShowBar(true)
+	}, [isInitialLoading])
 
 
     const makeListener=(message: BridgeMessage, makeSend:any)=>{
@@ -119,7 +111,7 @@ useEffect(() => {
     return (
 		<>
 		{
-			!isInitialLoading && (isStandalone||MobileType() === 'desktop') &&
+			showBar && (isStandalone||MobileType() === 'desktop') &&
 				<div className={styles.footer}>
 					<TabBar safeArea={false} activeKey={pathname} onChange={value => setRouteActive(value)}>
 						{tabs.map(item => (

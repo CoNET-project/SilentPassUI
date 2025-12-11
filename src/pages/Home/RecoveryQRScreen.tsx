@@ -13,6 +13,7 @@ const RecoveryQRScreen = ({
 	close: () => void
 }) => {
 	const [copied, setCopied] = useState(false)
+	const [loading, setLoading] = useState(false)
 
 	// ⭐ 绑定 QR 的 canvas
 	const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -136,7 +137,11 @@ const RecoveryQRScreen = ({
       <div className="mt-6">
         <AppButton
           fullWidth
-          onClick={close}
+          onClick={() => {
+			setLoading(true);
+			close();
+		  }}
+		  loading={loading}
           className="rounded-[999px] py-3 text-[15px] font-semibold"
         >
           I&apos;ve saved my Recovery QR

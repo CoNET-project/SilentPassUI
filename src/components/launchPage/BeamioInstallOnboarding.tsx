@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import beamioIcon from '@/components/assets/32x32.svg'
 // Beamio onboarding: "Install before using" screen
 // Optimized UI for guiding users to install Beamio as a web app or use Chrome on desktop
-import {isStandalone, MobileType } from '@/services/beamio'
+import {isStandalone, MobileType, checkStorage } from '@/services/beamio'
 import BeamioOnboardingModal from '@/pages/Home/LoadingPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {AppButton} from '../button/AppButton'
@@ -29,11 +29,29 @@ const BeamioInstallOnboarding: React.FC = () => {
 	const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 	const platform = typeof navigator !== 'undefined' ? navigator.platform : ''
 
-		const isMac = /Macintosh|MacIntel|MacPPC|Mac68K/i.test(platform)
+	const isMac = /Macintosh|MacIntel|MacPPC|Mac68K/i.test(platform)
 	const isWindows = /Win/i.test(platform)
 	const isAndroid = /Android/i.test(ua)
 	const isIOS = /iPhone|iPad|iPod/i.test(ua)
+
+	const checkLocal= async () => {
+		const CoNETData: encrypt_keys_object = await checkStorage()
+		if ( CoNETData && CoNETData?.beamio) {
+			return navigate('/')
+		}
+	}
+
 	useEffect(() => {
+		checkLocal()
+		
+		if (isStandalone) {
+			
+			setInstalled(true)
+			
+			return 
+		}
+
+
 		const handleBeforeInstallPrompt = (e: Event) => {
 			e.preventDefault()
 			setInstalled(false)

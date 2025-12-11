@@ -102,6 +102,7 @@ const searchUrl = `${beamioApi}/api/search-users`
 const followStatusUrl = `${beamioApi}/api/getFollowStatus`
 const removeFollowingUrl = `${beamioApi}/api/removeFollow`
 const addFollowingUrl = `${beamioApi}/api/addFollow`
+const myFollowStatusUrl = `${beamioApi}/api/getMyFollowStatus`
 
 const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)
@@ -886,10 +887,21 @@ export const MobileType = () => {
 	return deskyop
 }
 
-export	const isStandalone =
-	window.matchMedia?.('(display-mode: standalone)').matches ||
-	// iOS PWA
-	(window.navigator as any).standalone === true;
+export const isStandalone = (() => {
+	try {
+		// Android / Desktop PWA
+		if (window.matchMedia?.('(display-mode: standalone)').matches) {
+			return true
+		}
+
+		// iOS Safari PWA
+		if ((window.navigator as any).standalone === true) {
+			return true
+		}
+	} catch (e) {}
+
+	return false
+})()
 
 
 export const aesGcmEncrypt = async (plaintext: string, password: string) => {
@@ -1230,6 +1242,9 @@ function fromBase64(b64: string): string {
 	return new TextDecoder().decode(bytes)
 }
 
+
+
+
 export const createRecover = async (BeamioName: string, pin: string) => {
 	const temp = await createOrGetWallet('')
 	if (!temp|| !temp?.mnemonicPhrase|| !temp?.profiles?.length) {
@@ -1245,6 +1260,7 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)
 
 	const storageEncryptedImg = toBase64(JSON.stringify({stored, img}))
+	temp.encryptedString = recoverCode.code
 	const obj = { pin, recoverCode: recoverCode.code, qrCode: recoverCode.code, temp}
 	// const kkk = decodeStoredCBOR(qrCode)
 	// const ks = verifyPasswordBrowser(passcode, stored)
@@ -1313,7 +1329,7 @@ export const getUserInfo = async (keyID: string) => {
 	}
 }
 
-export const restoreWithUserPin = async (username: string, pin: string) => {
+export const restoreWithUserPin = async (username: string, pin: string, test = false) => {
 	try {
 		const hashedImg: string = await beamioAccountSC.getBase64ByAccountName(username)
 		const objStr = fromBase64(hashedImg)
@@ -1325,11 +1341,21 @@ export const restoreWithUserPin = async (username: string, pin: string) => {
 
 		const mnemonicPhrase = await aesGcmDecryptWithStored (obj.img, pin, obj.stored)
 		const mnemonicPhraseB = fromBase64(mnemonicPhrase)
+
+		const key = createKeyHDWallets(mnemonicPhraseB)
+		if (!key) {
+			return
+		}
+		if (test) {
+			return true
+		}
 		const temp = await createOrGetWallet(mnemonicPhraseB)
 
 		if (!temp||!temp?.profiles?.length) {
 			return false
 		}
+		
+
 		const profile: profile = temp.profiles[0]
 		const beamio = await getUserInfo(profile.keyID)
 		if (beamio) {
@@ -1439,4 +1465,77 @@ export const addFollowing = async (privateKey: string, followAddress: string) =>
 		console.error("addFollowing error:", err)
 	}
 	return false
+}
+
+export const getMyFollowStatus = async (wallet: string) => {
+	const params = new URLSearchParams({wallet}).toString()
+	const Url = `${myFollowStatusUrl}?${params}`
+	try {
+		const res = await fetch(Url, {method: 'GET'})
+		const data = await res.json()
+		if (res.status !== 200) {
+			console.log(`getMyFollowStatus Error!, status code: ${data}`)
+			return null
+		}
+		return data
+	} catch (ex: any) {
+		return null
+	}
+}
+
+const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], privateKey: string) => {
+	
+	const signWallet = new ethers.Wallet(privateKey)
+	const signMessage = await signWallet.signMessage(signWallet.address)
+	const Url = storageNewUser
+	try {
+		const body = {
+			accountName: beamio.accountName,
+			recover: recoverData,
+			wallet: signWallet.address,
+			signMessage,
+			isUSDCFaucet: beamio.isUSDCFaucet,
+			darkTheme: beamio.darkTheme,
+			isETHFaucet: beamio.isETHFaucet,
+			firstName: beamio.firstName,
+			lastName: beamio.lastName
+		}
+
+		const resp = await fetch(Url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify(body)
+		})
+
+		if (!resp.ok) {
+			return false
+		}
+
+		const json = await resp.json()
+		return true
+	} catch (err) {
+		console.error("newUser error:", err)
+	}
+	return false
+}
+
+export const RegenerateRecover = async (mnemonicPhrase: string, beamio: beamio, pin: string, privateKey: string) => {
+	await new Promise(executor => setTimeout(() => executor(true), 1000))
+	const recoverCode =  generateCODE('')
+	const stored = hashPasswordBrowser(pin)
+	const phraseBase64 = toBase64(mnemonicPhrase)
+	const img = await aesGcmEncryptWithStored (phraseBase64, pin + recoverCode.code, stored)
+	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)
+
+	const storageEncryptedImg = toBase64(JSON.stringify({stored, img}))
+	const obj = { pin, recoverCode: recoverCode.code, qrCode: recoverCode.code}
+	const hash = ethers.solidityPackedKeccak256(['string'], [beamio.accountName])
+	const storageEncryptedImg1 = toBase64(JSON.stringify({stored, img: img1}))
+	const result = await RegenerateUser(beamio, [{hash: recoverCode.hash, encrypto: storageEncryptedImg}, {hash, encrypto: storageEncryptedImg1}], privateKey)
+	if (!result) {
+		return null
+	}
+	return obj
 }

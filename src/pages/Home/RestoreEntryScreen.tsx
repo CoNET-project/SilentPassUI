@@ -33,15 +33,15 @@ const RestoreEntryScreen = ({
 					{/* 主按钮 */}
 					<div className="flex flex-col gap-1.5">
 						<AppButton
-						fullWidth
-						className="rounded-[999px] py-3 text-[15px] font-semibold"
-						onClick={onUseRecoveryQR}
+							fullWidth
+							className="rounded-[999px] py-3 text-[15px] font-semibold"
+							onClick={onUseRecoveryQR}
 						>
-						Use Recovery QR / code S
+							Use Recovery QR / code S
 						</AppButton>
 
 						<p className="text-[12px] text-slate-500">
-						Recommended if you have your Recovery QR saved.
+							Recommended if you have your Recovery QR saved.
 						</p>
 					</div>
 

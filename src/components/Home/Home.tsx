@@ -139,7 +139,6 @@ const Home = ({}) => {
 		}
 		checkUrl(window.location.href)
 
-
   	}
 
   	let first = true
@@ -342,10 +341,10 @@ const Home = ({}) => {
 				{/* Search */}
 				<div className="flex items-center gap-2 mb-12">
 					 <button 
-					onClick={() => {
-						setShowAlphaHowItWorks('Search')
-					}}
-					className="w-full"
+						onClick={() => {
+							setShowAlphaHowItWorks('Search')
+						}}
+						className="w-full"
 					>
 					<div className="pointer-events-none">
 						<SearchInputWithDropdown

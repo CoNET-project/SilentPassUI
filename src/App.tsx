@@ -5,7 +5,7 @@ import "./default.scss";
 import styles from './layout.module.scss';
 import {Route,Routes,MemoryRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider"
-import {isStandalone, MobileType, isBeamioAndroidWebView } from '@/services/beamio'
+import {isStandalone, MobileType, isBeamioAndroidWebView, checkStorage } from '@/services/beamio'
 import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import History from './pages/History/History'
@@ -22,18 +22,12 @@ global.Buffer = require('buffer').Buffer;
 function App() {
   	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading } = useDaemonContext();
 
-	useEffect(() => {
-		const root = document.documentElement
-		if (darkModle) {
-			root.classList.add('dark')
-		} else {
-			root.classList.remove('dark')
-		}
-	}, [darkModle])
+
+
 
 
 	useEffect(() => {
-
+	
 		const handleTouchMove = (e: TouchEvent) => {
 			let el = e.target as HTMLElement | null
 			if (!el) return
@@ -65,7 +59,7 @@ function App() {
 	}, [])
 
   	return (
-		<Router initialEntries={(isStandalone||isBeamioAndroidWebView()) ? ['/'] : ['/Onboarding']}>
+		<Router initialEntries={['/Onboarding']}>
 		    <div className={styles.app}>
 		      	<div className={styles.body}>
 		        	<Routes>

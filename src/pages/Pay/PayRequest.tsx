@@ -315,7 +315,7 @@ export default function BeamioPayRequest() {
 			return setProcessError('Generate Check error, try again!')
 		}
 
-		const postNode = note||defaultNodeText + '\r\n' + encryText
+		const postNode = (note||defaultNodeText) + '\r\n' + encryText
 		const params = new URLSearchParams({amount: numberAmount.toFixed(2), note: postNode, secureCode: secureCode.hash}).toString()
 		const showpParams = new URLSearchParams({secureCode: secureCode.hash, cashcode: secureCode.code}).toString()
 		const path = `/api/generateCheck?${params}`

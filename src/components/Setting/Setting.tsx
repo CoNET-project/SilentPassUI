@@ -7,6 +7,7 @@ import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { Popup, Toast } from 'antd-mobile'
+
 import { MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { storeSystemData } from '@/services/beamio'
@@ -44,11 +45,11 @@ const Setting = ({}) => {
 		if (!beamio) return
 
 		if (beamio.accountName) {
-		setAvatarName(beamio.accountName)
-		setAvatarSeed(beamio.accountName)
+			setAvatarName(beamio.accountName)
+			setAvatarSeed(beamio.accountName)
 		}
 		setDarkModle(beamio.darkTheme)
-
+		
 
 		if (beamio.image && !/^http/.test(beamio.image)) {
 			setAvatarImageData(beamio.image)
@@ -292,18 +293,18 @@ const Setting = ({}) => {
 
 			<div className={styles.avatarEditorActions}>
 				<button
-				type="button"
-				className={styles.avatarEditorCancel}
-				onClick={() => setAvatarEditorVisible(false)}
+					type="button"
+					className={styles.avatarEditorCancel}
+					onClick={() => setAvatarEditorVisible(false)}
 				>
-				Cancel
+					Cancel
 				</button>
 				<button
-				type="button"
-				className={styles.avatarEditorSave}
-				onClick={handleSaveAvatar}
+					type="button"
+					className={styles.avatarEditorSave}
+					onClick={handleSaveAvatar}
 				>
-				Save
+					Save
 				</button>
 			</div>
 			</div>

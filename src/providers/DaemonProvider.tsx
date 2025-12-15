@@ -1,6 +1,12 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
+
+
+
+
 type DaemonContext = {
+	currencyData: currencyData
+	setCurrencyData: (val: currencyData) => void
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -132,6 +138,15 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	currencyData: {
+		CAD: 0,
+		USD: 0,
+		JPY: 0,
+		CNY: 0,
+		USDC: 0
+	},
+
+	setCurrencyData: (val: currencyData) => {},
 	paymentLinkCode: '',
 	setPaymentLinkCode: (val: string) => {},
 	redeemCode: '',
@@ -329,6 +344,13 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const [redeemCode, setRedeemCode] = useState('')
 	const [ignoreUrl, setIgnoreUrl] = useState(false)
 	const [payTag, setPayTag] = useState('')
+	const [currencyData, setCurrencyData] = useState({
+		CAD: 0,
+		USD: 0,
+		JPY: 0,
+		CNY: 0,
+		USDC: 0
+	})
 
   useEffect(() => {
     {
@@ -383,7 +405,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode, ignoreUrl, setIgnoreUrl, paymentLinkCode, setPaymentLinkCode, 
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,payTag, setPayTag, myAddress, setMyAddress,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput, usdcToUSD, setUsdcToUSD,
-				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance,
+				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance, currencyData, setCurrencyData,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,

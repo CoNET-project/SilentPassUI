@@ -361,7 +361,9 @@ export default function BeamioSettingsScreen({
 								}} />
 							}
 							{
-								settingsOpen === 'Region' && <BeamioRegionCurrencyScreen colse={() => setSettingsOpen('')} />
+								settingsOpen === 'Region' && <BeamioRegionCurrencyScreen colse={() => {
+									setSettingsOpen('')
+								}} />
 							}
 							{
 								settingsOpen === 'Payment' && <BeamioPaymentMethodsScreen colse={() => setSettingsOpen('')} />

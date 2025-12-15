@@ -270,6 +270,19 @@ export function decodeStoredCBOR(b64: string): any {
   	return cborDecode(bytes)       // CBOR → 原始对象
 }
 
+export const getOracle = async () => {
+	try {
+		const req = await fetch(getOraclesEndPoint, {method: 'GET'})
+		if (req.status === 200) {
+			const oracle = await req.json()
+			return oracle
+		}
+		return null
+	} catch (ex) {
+		return null
+	}
+}
+
 
 export const estimateGasUSDC = async (amount: number, to: string) => {
 	if (!CoNET_Data?.profiles?.length) {
@@ -1174,6 +1187,7 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 	const Url = storageNewUser
 	const signWallet = new ethers.Wallet(privateKey)
 	const signMessage = await signWallet.signMessage(signWallet.address)
+	const lastname = `${beamio.lastName}\r\n${JSON.stringify({language:beamio.language,currency: beamio.currency})}` 
 	try {
 		const body = {
 			accountName: beamio.accountName,
@@ -1183,7 +1197,7 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 			darkTheme: beamio.darkTheme,
 			isETHFaucet: beamio.isETHFaucet,
 			firstName: beamio.firstName,
-			lastName: beamio.lastName,
+			lastName: lastname,
 			signMessage
 		}
 
@@ -1314,6 +1328,11 @@ export const getUserInfo = async (keyID: string) => {
 	
 	try {
 		const userInfo = await beamioAccountSC.getAccount(keyID)
+		const lastNameArray: string = (userInfo?.lastName||'')
+		const lastName = lastNameArray.split('\r\n')
+
+		const addedSetup: beamioAddedSetup = lastName.length > 1 ? JSON.parse(lastName[1]) : {language: 'en', currency: 'USD'}
+
 		const bo: beamio = {
 			accountName: userInfo?.accountName,
 			image: userInfo?.image,
@@ -1322,8 +1341,10 @@ export const getUserInfo = async (keyID: string) => {
 			isUSDCFaucet: userInfo?.isUSDCFaucet,
 			isETHFaucet: userInfo?.isETHFaucet,
 			firstName: userInfo?.firstName,
-			lastName: userInfo?.lastName,
-			createdAt: Number(userInfo?.createdAt)
+			lastName: lastName[0],
+			createdAt: Number(userInfo?.createdAt),
+			language: addedSetup.language,
+			currency: addedSetup.currency
 		}
 		return bo
 	} catch (ex: any) {
@@ -1490,6 +1511,7 @@ const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], pri
 	const signWallet = new ethers.Wallet(privateKey)
 	const signMessage = await signWallet.signMessage(signWallet.address)
 	const Url = storageNewUser
+	const lastName = `${beamio.lastName}\r\n${JSON.stringify({language: beamio.language, currency: beamio.currency})}`
 	try {
 		const body = {
 			accountName: beamio.accountName,
@@ -1500,7 +1522,7 @@ const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], pri
 			darkTheme: beamio.darkTheme,
 			isETHFaucet: beamio.isETHFaucet,
 			firstName: beamio.firstName,
-			lastName: beamio.lastName
+			lastName: lastName
 		}
 
 		const resp = await fetch(Url, {

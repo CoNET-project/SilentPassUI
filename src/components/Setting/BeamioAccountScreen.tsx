@@ -129,6 +129,8 @@ export default function BeamioAccountScreen({colse}:prof) {
 			isUSDCFaucet: beamio?.isUSDCFaucet|| false,
 			initialLoading: beamio?.initialLoading||false,
 			createdAt: beamio?.createdAt|| Date.now(),
+			currency: 'USD',
+			language: 'en'
 		}
 
 		await postBeamio(bo, profile.privateKeyArmor)

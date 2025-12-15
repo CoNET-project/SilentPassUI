@@ -126,6 +126,17 @@ interface Region {
 	ClaimableSubscriptionPoint: number
 	ClaimableRefferentSubscriptionPoint: number
   }
+
+	type currencyData = {
+		CAD: number
+		USD: number
+		JPY: number
+		CNY: number
+		USDC: number
+	}
+
+	type ICurrency = 'CAD'|'USD'|'JPY'|'CNY'|'USDC'
+	type ILanguage = 'en'
   
   interface SpClub {
 	memberId: string;
@@ -135,17 +146,23 @@ interface Region {
 
   }
 
-  type beamio = {
-	accountName: string
-	image: string
-	darkTheme: boolean
-	isUSDCFaucet: boolean
-	isETHFaucet: boolean
-	initialLoading: boolean
-	firstName?: string
-	lastName?: string
-	createdAt?: number
+	type beamioAddedSetup = {
+		language: ILanguage
+		currency: ICurrency
+	}
 
+  type beamio = {
+		accountName: string
+		image: string
+		darkTheme: boolean
+		isUSDCFaucet: boolean
+		isETHFaucet: boolean
+		initialLoading: boolean
+		firstName?: string
+		lastName?: string
+		createdAt?: number
+		language: ILanguage
+		currency: ICurrency
   }
   
   type encrypt_keys_object = {

@@ -292,11 +292,13 @@ export default function BeamioPayRequest() {
 		if (checkRequestError()|| !profiles?.length) return 
 		const Beamiofee = calcFeeFromNumber(Number(sendAmount))
 		const numberAmount = Number(sendAmount) + Beamiofee
+
 		if (numberAmount < 0.1) {
 			const AmountError = `Cashcode amount must be greater than 0.10 USDC .`
 			setSendAmountError(AmountError)
 			return
 		}
+		
 		if (numberAmount > usdcbalance) {
 			setSendAmountError(`Insufficient balance`)
 			return

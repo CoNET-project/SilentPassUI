@@ -7,7 +7,7 @@ type Props = {
 
 export default function BeamioSearch({close}: Props) {
 	return (
-		<div className="mt-4 flex items-center justify-between px-6 pt-4 pb-3 border-slate-100">
+		<div className="mt-0 flex items-center justify-between px-6 pt-4 pb-3 border-slate-100">
 
 		{/* Content */}
 			<main className="flex-1">

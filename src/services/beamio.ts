@@ -103,6 +103,8 @@ const followStatusUrl = `${beamioApi}/api/getFollowStatus`
 const removeFollowingUrl = `${beamioApi}/api/removeFollow`
 const addFollowingUrl = `${beamioApi}/api/addFollow`
 const myFollowStatusUrl = `${beamioApi}/api/getMyFollowStatus`
+const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
+
 
 const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)
@@ -1538,4 +1540,22 @@ export const RegenerateRecover = async (mnemonicPhrase: string, beamio: beamio, 
 		return null
 	}
 	return obj
+}
+
+
+export const getFololowsData = async (wallet: string) => {
+	const params = new URLSearchParams({wallet}).toString()
+	const Url = `${getFollowersUrl}?${params}`
+	try {
+		const res = await fetch(Url, {method: 'GET'})
+		const data = await res.json()
+		if (res.status !== 200) {
+			console.log(`getMyFollowStatus Error!, status code: ${data}`)
+			return null
+		}
+		return data
+	} catch (ex: any) {
+		return null
+	}
+	
 }

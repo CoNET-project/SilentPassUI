@@ -19,6 +19,9 @@ import { Search } from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
 import SearchInputWithDropdown, {searchResult} from './SearchBarWithResults'
+import { ArrowDownCircle, PlusCircle } from "lucide-react"
+import CoinbaseRamps from '@/components/Setting/CoinbaseRamps'
+import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
@@ -48,7 +51,8 @@ const Home = ({}) => {
 	const [recipient, setRecipient] = useState('')
 	const [claimLoading, setClaimLoading] = useState(false)
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'>('')
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|
+		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'>('')
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -131,8 +135,10 @@ const Home = ({}) => {
 		
 		const profile = profiles[0]
 		setMyAddress (profile.keyID)
-
-		getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+		setTimeout(() => {
+			getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+		}, 1500)
+		
 		
 		if (ignoreUrl) {
 			return
@@ -174,11 +180,19 @@ const Home = ({}) => {
 		setShowAlphaHowItWorks('BeamioAlphaDropConfirm')
 	}
 
+	const handleCashOut = () => {
+		setShowAlphaHowItWorks('CoinbaseRamps')
+	}
+
+	const handleAddFunds = () => {
+		setShowAlphaHowItWorks('CoinbaseRamps')
+	}
+
 	/** 余额卡：白底 + 渐变描边 */
 	function BalanceCard() {
 		return (
 			
-			<div className="rounded-3xl bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b] p-4 shadow-lg mb-6">
+			<div className="rounded-3xl bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b] p-4 shadow-lg mb-4">
 				{/* 顶部：标题 + Base 标识 */}
 				<div className="flex items-center justify-between mb-4">
 					<div className="text-xs font-medium text-white/80">
@@ -213,15 +227,54 @@ const Home = ({}) => {
 				</div>
 
 				{/* 底部：Gas sponsored pill */}
-				<div>
+
+				<div className="flex justify-end mb-4">
 					<div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 backdrop-blur-sm">
 						<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/80 text-[9px] text-[#1652f0] font-bold">
-							⚡
+						⚡
 						</span>
 						<span className="text-[11px] font-medium text-white">
-							Gas sponsored
+						Gas sponsored
 						</span>
 					</div>
+				</div>
+				{/* 新增：Add funds / Cash out 两个轻量按钮 */}
+				<div className="flex items-center gap-2 mt-1">
+				{/* Add funds */}
+				<button
+					type="button"
+					onClick={handleAddFunds}
+					className="
+					flex-1 flex items-center justify-center gap-1.5
+					py-3
+					rounded-full
+					bg-white/15
+					text-[10px] font-medium text-white
+					hover:bg-white/20 transition
+					"
+				>
+					<PlusCircle className="h-4 w-4 text-white/90" />
+					<span>Add funds</span>
+					<span className="text-white/70 text-[9px]"></span>
+				</button>
+
+				{/* Cash out */}
+				<button
+					type="button"
+					onClick={handleCashOut}
+					className="
+						flex-1 flex items-center justify-center gap-1.5
+						py-3
+						rounded-full
+						bg-white/10
+						text-[10px] font-medium text-white
+						hover:bg-white/15 transition
+					"
+				>
+					<ArrowDownCircle className="h-4 w-4 text-white/90" />
+					<span>Cash out</span>
+					<span className="text-white/70 text-[9px]"></span>
+				</button>
 				</div>
 			</div>
 			
@@ -254,7 +307,7 @@ const Home = ({}) => {
 
 	const Claim02Pannel = () => {
 		return (
-			<section className="mb-6">
+			<section className="mb-4">
 				<div className="rounded-3xl bg-gradient-to-r from-[#ff8a3c] via-[#f7478f] to-[#8b5cf6] px-5 py-4 text-white shadow-md">
 					<div className="flex items-center gap-2">
 					<span className="text-lg">🔥</span>
@@ -337,23 +390,23 @@ const Home = ({}) => {
 			</div> */}
 			{/* Phone frame */}
 			<div className="mt-12 flex-1 px-5 pb-3 overflow-y-auto mb-10">
-				{/* Status bar stub */}
+				
 				{/* Search */}
-				<div className="flex items-center gap-2 mb-12">
+				<div className="flex items-center gap-2 mb-4">
 					 <button 
 						onClick={() => {
 							setShowAlphaHowItWorks('Search')
 						}}
 						className="w-full"
 					>
-					<div className="pointer-events-none">
-						<SearchInputWithDropdown
-							readonly={true}
-							close={ path => {
-								setShowAlphaHowItWorks('')
-							}}
-						/>
-					</div>
+						<div className="pointer-events-none">
+							<SearchInputWithDropdown
+								readonly={true}
+								close={ path => {
+									setShowAlphaHowItWorks('')
+								}}
+							/>
+						</div>
 					</button>
 					<div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
 						<ScanBtn />
@@ -365,7 +418,7 @@ const Home = ({}) => {
 					{/* Hero card */}
 					{
 						showGetFaucet === 'Faucet' ? (
-							<div className="mt-3 rounded-2xl bg-gradient-to-r from-orange-400 via-pink-500 to-purple-600 text-white px-4 py-3 mb-6">
+							<div className="mt-3 rounded-2xl bg-gradient-to-r from-orange-400 via-pink-500 to-purple-600 text-white px-4 py-3 mb-4">
 	
 								<div className="text-[12px] font-semibold mb-1">
 									Claim 0.2 USDC to get started
@@ -509,13 +562,14 @@ const Home = ({}) => {
 					{/* 顶部 Header */}
 					<BeamioNavBack
 						title={
-						showAlphaHowItWorks === 'BeamioAlphaHowItWorks'
+							showAlphaHowItWorks === 'BeamioAlphaHowItWorks'
 							? 'How Beamio Alpha works'
 							: showAlphaHowItWorks === 'BeamioLearnHowItWorksCard'
 							? 'How Beamio works'
 							: showAlphaHowItWorks === 'BeamioTestBalance'
 							? 'About this 0.2 USDC'
 							: ''
+							
 						}
 						onClose={() => {
 							setShowAlphaHowItWorks('')
@@ -546,6 +600,7 @@ const Home = ({}) => {
 								setShowAlphaHowItWorks('')
 							}} />}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
+							{showAlphaHowItWorks === 'CoinbaseRamps' && <BeamioAddUSDCFlow />}
 							
 						</div>
 					</motion.div>

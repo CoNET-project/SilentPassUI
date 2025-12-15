@@ -12,10 +12,11 @@ import BeamioReceiveScreen from './BeamioReceiveScreen'
 import { getBalanceProcess, getMyFollowStatus } from '@/services/beamio'
 import styles from './setting.module.scss'
 import { AppButton } from '../button/AppButton'
-
+import { motion, AnimatePresence } from 'framer-motion'
 import { BuyWithCoinbaseButton } from './BuyWithCoinbaseButton'
 import {SellWithCoinbaseButton} from './SellWithCoinbaseButton'
-
+import FollowListContainer from './followList/FollowListContainer'
+import CoinbaseRamps from './CoinbaseRamps'
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 
 //	https://beamio.app?amount=0.03&code=0x36a6200cec2fe34edb2f3b075af1d46645c54bb54a0abe0e97a265068773b3c4&note=test&address=0xc8f855ff966f6be05cd659a5c5c7495a66c5c015
@@ -58,7 +59,9 @@ const shortenAddress = (addr: string) => {
 
 
 export default function BeamioMeMainScreen() {
-	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD } = useDaemonContext()
+	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, 
+		profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, 
+		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD } = useDaemonContext()
 
 	const [avatarSeed, setAvatarSeed] = useState('NY')
 	const [avatarName, setAvatarName] = useState('')
@@ -74,7 +77,8 @@ export default function BeamioMeMainScreen() {
 
 	const currentAvatarSrc = beamio?.image
 
-	const [settingsOpen, setSettingsOpen] = useState(false)
+	const [settingsOpen, setSettingsOpen] = useState<''|'BeamioSettings'|'FollowList'|'CoinbaseRamp'>('')
+	const [setFollowOpen, setSetFollowOpen] = useState<'following' | 'followers'|''>('')
 	const [coinbaseOpen, setCoinbaseOpen] = useState<'buy'|'sale'|''>()
 	const [receiveOpen, setReceiveOpen] = useState(false)     // 控制 Receive 全屏页
 	const [copied, setCopied] = React.useState(false)
@@ -83,6 +87,20 @@ export default function BeamioMeMainScreen() {
 	const [firstName, setFirstName] = useState('')
 	const [lastName, setLastName] = useState('')
 	const [createAt, setCreatedAt] = useState(0)
+	const [copiedUsername, setCopiedUsername] = useState(false)
+
+	const handleCopyUsername = async () => {
+		const username = beamio?.accountName
+		if (!username) return
+
+		try {
+			await navigator.clipboard.writeText(`@${username}`)
+			setCopiedUsername(true)
+			setTimeout(() => setCopiedUsername(false), 2000) // 2 秒后恢复
+		} catch (e) {
+			console.error('copy username failed', e)
+		}
+	}
 
 	useEffect(() => {
 		if (!currentAvatarSrc||!beamio) {
@@ -239,15 +257,15 @@ export default function BeamioMeMainScreen() {
 		return (
 			<div className="rounded-2xl bg-white shadow-sm p-4 text-slate-800 leading-snug">
 				<div className="text-[17px] font-semibold mb-1">
-				{info.title}
+					{info.title}
 				</div>
 
 				<p className="text-[14px] text-slate-500 mb-1">
-				{info.description1}
+					{info.description1}
 				</p>
 
 				<p className="text-[14px] text-slate-500">
-				{info.description2}
+					{info.description2}
 				</p>
 			</div>
 		)
@@ -267,12 +285,12 @@ export default function BeamioMeMainScreen() {
 			>
 
 					
-								{/* Blue wave background */}
+				{/* Blue wave background */}
 				<div className="-mx-5 flex items-start justify-between px-5">
 					{/* Placeholder for future account switcher */}
 					<button 
 						onClick={() => {
-							setPrivatekeyVisible(true)
+							// setPrivatekeyVisible(true)
 						}}
 						className="mt-4 text-[11px] font-medium text-white/90 px-2 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm"
 					>
@@ -288,7 +306,7 @@ export default function BeamioMeMainScreen() {
 						{/* Settings */}
 						<button
 							className="w-9 h-9 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-white shadow-sm"
-							onClick={() => setSettingsOpen(true)}
+							onClick={() => setSettingsOpen('BeamioSettings')}
 						>
 							<Settings className="w-4 h-4" />
 						</button>
@@ -297,78 +315,128 @@ export default function BeamioMeMainScreen() {
 				{/* 头像 + 名字 + username + Add friend */}
 				<div className="flex flex-col items-center text-center">
 					{/* 头像 */}
+					<motion.button
+					type="button"
+					onClick={() => setReceiveOpen(true)}
+					whileTap={{ scale: 0.95 }}              // 点击动画（可选）
+					className="flex-shrink-0 mr-2"
+					>
 					{beamio?.image ? (
 						<img
-							src={beamio.image}
-							alt={beamio.accountName}
-							className="w-20 h-20 rounded-full object-cover mr-2 flex-shrink-0"
+						src={beamio.image}
+						alt={beamio.accountName}
+						className="w-20 h-20 rounded-full object-cover"
 						/>
-						) : (
+					) : (
 						<img
-							src={getImg(beamio?.accountName)}
-							alt={beamio?.accountName}
-							className="w-20 h-20 rounded-full object-cover mr-2 flex-shrink-0 bg-slate-200"
+						src={getImg(beamio?.accountName)}
+						alt={beamio?.accountName}
+						className="w-20 h-20 rounded-full object-cover bg-slate-200"
 						/>
 					)}
+					</motion.button>
 
 				
 						
 						
-					{/* @username */}
-					<div className="mt-4 text-[18px] font-semibold tracking-tight">
-						@{beamio?.accountName || 'Beamio'}
+				{/* @username pill */}
+					<div className="mt-4 flex justify-center">
+						<div
+							className="
+							inline-flex items-center gap-3
+							rounded-full bg-black/0        /* ⭐ 黑 + 70% 透明度 */
+							px-5 py-1
+							"
+						>
+							<span className="text-[18px] font-semibold tracking-tight text-white">
+								@{beamio?.accountName || 'Beamio'}
+							</span>
+
+							<motion.button
+								type="button"
+								onClick={handleCopyUsername}
+								className="
+									flex h-6 w-6 items-center justify-center
+									rounded-full
+									bg-black/20 text-white      /* ⭐ 改为黑色透明，外框彻底不再出现 */
+									backdrop-blur-sm
+								"
+								whileTap={{ scale: 0.9 }}
+								transition={{ duration: 0.12 }}
+								>
+								<AnimatePresence initial={false} mode="wait">
+									{copiedUsername ? (
+									<motion.span
+										key="check-username"
+										initial={{ opacity: 0, scale: 0.6 }}
+										animate={{ opacity: 1, scale: 1 }}
+										exit={{ opacity: 0, scale: 0.6 }}
+									>
+										<Check className="w-4 h-4 text-emerald-400" />
+									</motion.span>
+									) : (
+									<motion.span
+										key="copy-username"
+										initial={{ opacity: 0, scale: 0.6 }}
+										animate={{ opacity: 1, scale: 1 }}
+										exit={{ opacity: 0, scale: 0.6 }}
+									>
+										<Copy className="w-3 h-3 text-white/95" />
+									</motion.span>
+									)}
+								</AnimatePresence>
+							</motion.button>
+						</div>
 					</div>
 
-					{/* createdAtLabel */}
+				{/* createdAtLabel */}
 						
 					<div className="mt-1 text-[11px] text-white/75">
 						{firstName} {lastName} since {buildCreatedAtLabel(createAt)}
 					</div>
 						
 
-					{/* 地址 pill + 复制按钮 */}
+				{/* 地址 pill + 复制按钮 */}
 					{beamio && (
 						<button
-							type="button"
-							className={`
+						type="button"
+						className={`
 							mt-3 inline-flex items-center gap-2
 							px-4 py-1.5 rounded-full
-							bg-white/20 text-[12px] font-medium text-white/95
+							bg-black/20 text-[12px] font-medium text-white/95   /* ⬅️ 改为黑色 20% */
 							backdrop-blur-sm
 							transition-transform duration-150 ease-out
 							${copied ? "scale-95" : "hover:scale-[1.02] active:scale-95"}
-							`}
-							onClick={() => {
+						`}
+						onClick={() => {
 							if (!navigator?.clipboard || !myAddress) return
 
 							navigator.clipboard
-								.writeText(myAddress)
-								.then(() => {
+							.writeText(myAddress)
+							.then(() => {
 								setCopied(true)
 								setTimeout(() => setCopied(false), 2000)
-								})
-								.catch(() => {
-								// 失败就不切换状态，必要时可以加 toast
-								})
-							}}
+							})
+							.catch(() => {})
+						}}
 						>
-							<span className="tracking-wide">
+						<span className="tracking-wide">
 							{shortenAddress(myAddress)}
-							</span>
+						</span>
 
-							<span
+						<span
 							className={`
 								w-6 h-6 rounded-full flex items-center justify-center
 								transition-colors duration-150
-								${copied ? "bg-emerald-500" : "bg-white/20"}
+								${copied ? "bg-emerald-500" : "bg-black/20"}   /* ⬅️ 同样改为黑色透明度 */
 							`}
-							>
+						>
 							{copied ? (
 								<Check className="w-3.5 h-3.5 text-white" strokeWidth={2} />
 							) : (
 								<Copy className="w-3.5 h-3.5 text-white/95" strokeWidth={2} />
 							)}
-							</span>
+						</span>
 						</button>
 					)}
 
@@ -377,40 +445,54 @@ export default function BeamioMeMainScreen() {
 						
 					
 
-					{/* Following / Followers */}
-
-
-					<div
+				{/* Following / Followers */}
+						<div
 						className="
 							mt-4
 							flex items-center
-							rounded-full border border-white/30
+							rounded-full                      /* ⭐ 仍然是胶囊形状 */
+							bg-black/20                       /* ⭐ 20% 黑色背景 */
 							overflow-hidden
 							text-white
 							h-[56px]
-							min-w-[240px]              /* ⭐ 加宽：关键代码 */
-							px-4                       /* ⭐ 两侧增加 padding，使视觉更宽 */
+							min-w-[240px]
+							px-4
+							backdrop-blur-sm
 						"
-					>
+						>
 						{/* Following */}
-						<div className="flex flex-1 flex-col items-center justify-center">
+						<button
+							type="button"
+							onClick={() => setSettingsOpen('FollowList')}
+							className="
+								flex flex-1 flex-col items-center justify-center
+								active:opacity-70
+							"
+						>
 							<span className="text-[15px] font-semibold">{followingCount}</span>
 							<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
 								Following
 							</span>
-						</div>
+						</button>
 
 						{/* Divider */}
 						<div className="w-px h-8 bg-white/30" />
 
 						{/* Followers */}
-						<div className="flex flex-1 flex-col items-center justify-center">
+						<button
+							type="button"
+							onClick={() => setSettingsOpen('FollowList')}
+							className="
+							flex flex-1 flex-col items-center justify-center
+							active:opacity-70
+							"
+						>
 							<span className="text-[15px] font-semibold">{followerCount}</span>
 							<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
 								Followers
 							</span>
+						</button>
 						</div>
-					</div>
 				</div>
 			</div>
 			<div 
@@ -423,9 +505,9 @@ export default function BeamioMeMainScreen() {
 					rounded-t-[28px]
 					
 				"
-			>
+			>	
 					
-			<ProfileInformation />
+				<ProfileInformation />
 			</div>		
 		</div>	
 	)
@@ -447,7 +529,18 @@ export default function BeamioMeMainScreen() {
 				].join(" ")}
 			>
 				<div className="flex-1">
-					<BeamioSettingsScreen onClose={() => setSettingsOpen(false)} />
+					{
+						settingsOpen === 'BeamioSettings' && <BeamioSettingsScreen onClose={() => setSettingsOpen('')} />
+					}
+
+					{
+						settingsOpen === 'FollowList' && <FollowListContainer tab={setFollowOpen||'following'} onClose={() => setSettingsOpen('')} />
+					}
+
+					{
+						settingsOpen === 'CoinbaseRamp' && <CoinbaseRamps />
+					}
+					
 				</div>
 				
 			</div>
@@ -467,7 +560,7 @@ export default function BeamioMeMainScreen() {
 						setReceiveOpen(false)
 					}}
 					className="
-						    absolute top-4 right-4
+						absolute top-4 right-4
 						w-8 h-8 rounded-full
 						bg-sky-200/60 dark:bg-sky-900/40   /* ⭐ 淡蓝色透明背景 */
 						backdrop-blur-md shadow

@@ -30,7 +30,7 @@ import RecoveryQRDetailScreen from './RecoveryQRDetailScreen'
 
 
 
-export type IMenu = ''|'Account'|'Region'|'Payment'|'Cashcodes'|'Passkey'|'Privacy'|'Notifications'|'Statement'|'Help'|'privateKey'|'backup'|'RecoveryBackupScreen'|'RecoveryQRDetailScreen'
+export type IMenu = ''|'Account'|'Region'|'Payment'|'Cashcodes'|'Passkey'|'Privacy'|'Notifications'|'Statement'|'Help'|'privateKey'|'backup'|'RecoveryBackupScreen'|'RecoveryQRDetailScreen'|'ChangePIN'
 
 export default function BeamioSettingsScreen({
   	onClose,
@@ -73,7 +73,7 @@ export default function BeamioSettingsScreen({
 						<div>
 							<p className="text-sm font-semibold">Beamio · 0-gas USDC on Base</p>
 							<p className="text-xs text-slate-500">
-							Non-custodial passkey wallet · no centralized user database
+								Non-custodial passkey wallet · no centralized user database
 							</p>
 						</div>
 						<div className="flex flex-col items-end text-right text-[10px] text-slate-400 leading-tight">
@@ -195,10 +195,10 @@ export default function BeamioSettingsScreen({
 							>
 								<div className={leftClass}>
 									<span className={iconWrapperClass}>
-									<Shield className="h-4 w-4" />
+										<Shield className="h-4 w-4" />
 									</span>
 									<div className="flex flex-col items-start">
-										<span className="text-sm font-medium">Recovery & backup</span>
+										<span className="text-sm font-medium">Recovery Backup</span>
 										<span className="text-xs text-slate-500">
 											Recovery QR, code (S), change PIN
 										</span>
@@ -206,6 +206,7 @@ export default function BeamioSettingsScreen({
 								</div>
 								<ChevronRight className="h-4 w-4 text-slate-300" />
 							</button>
+
 
 							<button className={rowClass}
 								onClick={() => {
@@ -345,6 +346,7 @@ export default function BeamioSettingsScreen({
 
 					{/* 内容区域：放你的 BeamioAccountScreen */}
 						<div className="flex-1 overflow-y-auto ">
+							
 							{
 								settingsOpen === 'RecoveryQRDetailScreen' && <RecoveryQRDetailScreen colse={() => setSettingsOpen('')} />
 							}

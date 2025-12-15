@@ -8,8 +8,8 @@ type Prof = {
 
 // 自己定义一个 Coinbase 实例类型，包含 open / destroy
 type CBPayInstance = {
-  open: () => void
-  destroy: () => void
+	open: () => void
+	destroy: () => void
 }
 
 export const BuyWithCoinbaseButton = ({ myAddress }: Prof) => {
@@ -46,21 +46,21 @@ export const BuyWithCoinbaseButton = ({ myAddress }: Prof) => {
 			// ⭐ 直接打开 Coinbase 返回的安全 URL（已包含 sessionToken）
 			window.open(onrampUrl, '_blank', 'noopener,noreferrer')
 		} catch (e) {
-		console.error('open coinbase onramp error', e)
+			console.error('open coinbase onramp error', e)
 		} finally {
-		setLoading(false)
+			setLoading(false)
 		}
 	}
 
 	return (
 		<AppButton
-		fullWidth
-		disabled={loading || !myAddress}
-		loading={loading}
-		onClick={handleClick}
+			fullWidth
+			disabled={loading || !myAddress}
+			loading={loading}
+			onClick={handleClick}
 		>
-		Buy USDC with Coinbase
+			Buy USDC with Coinbase
 		</AppButton>
 	)
-	}
+}
 

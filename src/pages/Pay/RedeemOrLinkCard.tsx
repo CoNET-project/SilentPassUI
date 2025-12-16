@@ -3,6 +3,7 @@ import { Copy, ExternalLink, Check } from 'lucide-react'
 import bIcon from '@/components/assets/32x32.svg'
 import { X } from 'lucide-react'
 import {useState} from 'react'
+import AmountCurrency from '@/components/input/AmountCurrency'
 
 type RedeemOrLinkCardProps = {
   isPay: boolean                     // true = Redeem code 模式, false = Payment link 模式
@@ -173,15 +174,15 @@ export const RedeemOrLinkCard = ({
 
 						{/* Copy icon 按钮 */}
 						<button
-						type="button"
-						onClick={handleCopyCode}
-						className="
-							shrink-0
-							text-sky-600 dark:text-sky-400
-							hover:text-sky-700 dark:hover:text-sky-300
-							active:scale-90
-							transition-all duration-150
-						"
+							type="button"
+							onClick={handleCopyCode}
+							className="
+								shrink-0
+								text-sky-600 dark:text-sky-400
+								hover:text-sky-700 dark:hover:text-sky-300
+								active:scale-90
+								transition-all duration-150
+							"
 						>
 						{copied ? (
 							<Check className="w-4 h-4 text-green-500" />

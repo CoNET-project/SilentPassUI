@@ -65,8 +65,6 @@ function DropdownRow({
 }
 
 
-
-
 export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	const { currencyData, setCurrencyData, setBeamio, beamio} = useDaemonContext()
 	const [exchangeSource, setExchangeSource] = useState<"coinbase">("coinbase")
@@ -159,6 +157,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	function usdcToCurrency(usdc: number, currency: ICurrency) {
 		return usdc * fxRateUSDCToCurrency(currency)
 	}
+	
 	function formatFiat(usdcAmount = 1, currency: ICurrency) {
 		// 1 USDC ≈ X {currency}
 		const rate = fxRateUSDCToCurrency(currency)

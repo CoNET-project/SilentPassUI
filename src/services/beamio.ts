@@ -540,13 +540,13 @@ export function formatAmountReadable(amount: number | string, lang='en', currenc
 }
 
  // 千分位格式化（固定两位小数）
-export const formatWithThousands = (n: string | number): string => {
+export const formatWithThousands = (n: string | number, fixed = 2): string => {
 	const num = Number(n)
 	if (isNaN(num)) return "0.00"
 
-	const [intPart, decPart = "00"] = num.toFixed(2).split(".")
+	const [intPart, decPart = "00"] = num.toFixed(fixed).split(".")
 	const intWithCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-	return `${intWithCommas}.${decPart}`
+	return `${intWithCommas}${fixed ? '.' + decPart : ''}`
 }
 
 export const getUSDCFaucet = async (address: string) => {
@@ -1581,3 +1581,5 @@ export const getFololowsData = async (wallet: string) => {
 	}
 	
 }
+
+

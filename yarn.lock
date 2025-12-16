@@ -5727,9 +5727,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"antd-mobile@npm:^5.39.0":
-  version: 5.39.0
-  resolution: "antd-mobile@npm:5.39.0"
+"antd-mobile@npm:^5.42.1":
+  version: 5.42.1
+  resolution: "antd-mobile@npm:5.42.1"
   dependencies:
     "@floating-ui/dom": "npm:^1.4.2"
     "@rc-component/mini-decimal": "npm:^1.1.0"
@@ -5744,7 +5744,7 @@ __metadata:
     nano-memoize: "npm:^3.0.16"
     rc-field-form: "npm:^1.34.2"
     rc-segmented: "npm:~2.4.1"
-    rc-util: "npm:^5.38.1"
+    rc-util: "npm:^5.44.4"
     react-fast-compare: "npm:^3.2.2"
     react-is: "npm:^18.2.0"
     runes2: "npm:^1.1.2"
@@ -5752,9 +5752,9 @@ __metadata:
     tslib: "npm:^2.5.0"
     use-sync-external-store: "npm:^1.2.0"
   peerDependencies:
-    react: ^16.8.0 || ^17.0.0 || ^18.0.0
-    react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
-  checksum: 10c0/df19419e2218cbcbb0844ff2ee9c94ffc687189918a5b6d8d7d571b9cf5cae791c9026e714dbac99a55101dea7b8f2dfc1e7343eba17b2dd3f78cd44aa38a644
+    react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+  checksum: 10c0/07132b61d561f82657b406df3dc5df476dc11daa8241ef0dbf08c5d8a09e1165d4111f2762b9b4a47f0c7782b08ae5761af64f19a7f8e0e868c7d4a7c82e89cf
   languageName: node
   linkType: hard
 
@@ -6358,7 +6358,7 @@ __metadata:
     "@types/react-dom": "npm:^18.3.1"
     "@types/react-virtualized": "npm:^9.22.2"
     "@types/styled-components": "npm:^5.1.34"
-    antd-mobile: "npm:^5.39.0"
+    antd-mobile: "npm:^5.42.1"
     async: "npm:^3.2.6"
     axios: "npm:^1.7.7"
     bignumber.js: "npm:^9.3.0"
@@ -14459,7 +14459,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rc-util@npm:^5.17.0, rc-util@npm:^5.32.2, rc-util@npm:^5.38.1, rc-util@npm:^5.44.0":
+"rc-util@npm:^5.17.0, rc-util@npm:^5.32.2, rc-util@npm:^5.44.0, rc-util@npm:^5.44.4":
   version: 5.44.4
   resolution: "rc-util@npm:5.44.4"
   dependencies:

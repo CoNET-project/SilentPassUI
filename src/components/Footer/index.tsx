@@ -1,134 +1,128 @@
-//		Footer/index.tsx
+// Footer/index.tsx
 
-import { useEffect, useState } from 'react';
-import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
-import { ReactComponent as HomeIconGrey } from "./assets/home-icon-grey.svg";
-import { ReactComponent as HomeBlueIcon } from "./assets/home-icon-blue.svg";
-import { ReactComponent as SendIconGrey } from "./assets/send-icon-grey.svg";
-import { ReactComponent as SendBlueIcon } from "./assets/send-icon-blue.svg";
-import { ReactComponent as WalletBlueIcon } from "./assets/wallet-icon-blue.svg";
-import { ReactComponent as WalletIconGrey } from "./assets/wallet-icon-grey.svg";
-import { ReactComponent as BrowserBlueIcon } from "./assets/browser-icon-blue.svg";
-import { ReactComponent as BrowserGreyIcon } from "./assets/browser-icon-grey.svg";
-import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
-import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg";
-import {isStandalone, MobileType } from '@/services/beamio'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { TabBar } from 'antd-mobile'
 
-import styles from '@/components/Footer/footer.module.scss';
-import { useDaemonContext } from "@/providers/DaemonProvider";
+import { ReactComponent as HomeIconGrey } from './assets/home-icon-grey.svg'
+import { ReactComponent as HomeBlueIcon } from './assets/home-icon-blue.svg'
+import { ReactComponent as SendIconGrey } from './assets/send-icon-grey.svg'
+import { ReactComponent as SendBlueIcon } from './assets/send-icon-blue.svg'
+import { ReactComponent as WalletBlueIcon } from './assets/wallet-icon-blue.svg'
+import { ReactComponent as WalletIconGrey } from './assets/wallet-icon-grey.svg'
+import { ReactComponent as ChatBlueIcon } from './assets/chat-blue.svg'
+import { ReactComponent as ChatGreyIcon } from './assets/chat-grey.svg'
 
-import {Bridge} from '@/bridge/webview-bridge';
-import { getiOSVPNStatus, getAndroidVPNStatus} from "../../api"
 import { ReactComponent as BLogo } from './assets/B-icon.svg'
 import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
-import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 
-interface BridgeMessage {
-    event?: string;
-    data?: any;
-    callbackId?: string;
-    response?: any;
-}
+import { isStandalone, MobileType } from '@/services/beamio'
+import { useDaemonContext } from '@/providers/DaemonProvider'
 
+import styles from '@/components/Footer/footer.module.scss'
 
+const Footer = () => {
+	const navigate = useNavigate()
+	const location = useLocation()
+	const { pathname } = location
 
-const Footer = ({}) => {
-    const navigate = useNavigate();
-    const location = useLocation();
-    const { ruleVisible, setRuleVisible, setPower, hasNewVersion,darkModle, isInitialLoading, beamioAppInstalled} = useDaemonContext();
-    const { pathname } = location;
-	const [showBar, setShowBar] =  useState(true);
+	const { hasNewVersion, darkModle, isInitialLoading } = useDaemonContext()
+	const [showBar, setShowBar] = useState(true)
 
+	// 主题切换
 	useEffect(() => {
-		const root = document.documentElement // <html>
-
+		const root = document.documentElement
 		if (darkModle) {
-			// 你的自定义暗色主题
-			root.classList.add('dark')
-			root.classList.add('theme-dark')
+			root.classList.add('dark', 'theme-dark')
 			root.classList.remove('theme-light')
 		} else {
-			root.classList.remove('dark')
-			root.classList.remove('theme-dark')
+			root.classList.remove('dark', 'theme-dark')
 			root.classList.add('theme-light')
 		}
 	}, [darkModle])
 
 	useEffect(() => {
-		isInitialLoading ? setShowBar(false) : setShowBar(true)
+		setShowBar(!isInitialLoading)
 	}, [isInitialLoading])
 
-
-    const makeListener=(message: BridgeMessage, makeSend:any)=>{
-
-		console.log(`makeListener got message`, message)
-
-
-        if (message.event === 'native_VPNStatus') {
-            if(message?.data?.VPNStatus===1){
-                setPower(false);
-            }
-            if(message?.data?.VPNStatus===3){
-                setPower(true);
-            }
-        }
-    }
-
-    const setRouteActive = (value: string) => {
-        navigate(value)
-    }
-
-    const tabs = [
-        {
-            key: '/',
-            title: 'Home',
-            icon: (pathname=='/'?<HomeBlueIcon />:<HomeIconGrey />),
-        },
-        {
-            key: '/History',
-            title: 'Transactions',
-            icon: (pathname=='/History'?<SendBlueIcon />:<SendIconGrey />),
-        },
-        {
-            key: '/pay',
-            title: 'Pay & Request',
-			icon: <div style={{ width: '2rem', height: '2rem' }} />,
-        },
-        {
-            key: '/Browser',
-            title: "Browser",
-            icon: (pathname=='/Browser'?<BrowserBlueIcon />:<BrowserGreyIcon />),
-        },
-        {
-            key: '/settings',
-            title: 'Me',
-            icon: (pathname=='/settings'?<WalletBlueIcon />:<WalletIconGrey />),
-            ...(hasNewVersion ? { badge: '1' } : {}),
-        },
-    ]
-    
-    return (
-		<>
+	const tabs = [
 		{
-			showBar && (isStandalone||MobileType() === 'desktop') &&
-				<div className={styles.footer}>
-					<TabBar safeArea={false} activeKey={pathname} onChange={value => setRouteActive(value)}>
-						{tabs.map(item => (
-							<TabBar.Item key={item.key} icon={item.icon} title={item.title} badge={item.badge} />
-						))}
-					</TabBar>
+			key: '/',
+			title: 'Home',
+			iconGrey: <HomeIconGrey />,
+			iconBlue: <HomeBlueIcon />,
+		},
+		{
+			key: '/history',
+			title: 'Transactions',
+			iconGrey: <SendIconGrey />,
+			iconBlue: <SendBlueIcon />,
+		},
+		{
+			key: '/pay',
+			title: 'Pay & Request',
+			iconGrey: <div style={{ width: '2rem', height: '2rem' }} />,
+			iconBlue: <div style={{ width: '2rem', height: '2rem' }} />,
+		},
+		{
+			key: '/chat',
+			title: 'Chat',
+			iconGrey: <ChatGreyIcon />,
+			iconBlue: <ChatBlueIcon />,
+		},
+		{
+			key: '/settings',
+			title: 'Me',
+			iconGrey: <WalletIconGrey />,
+			iconBlue: <WalletBlueIcon />,
+			...(hasNewVersion ? { badge: '1' } : {}),
+		},
+	] as const
 
-					{/* 悬浮在 TabBar 上方的 BLogo */}
-					<div className={styles.payCenterLogo} onClick={() => setRouteActive('/pay')}>
-						{darkModle ? <BLogo style={{ width: '4rem', height: '4rem' }} /> : <BLogoLight style={{ width: '4rem', height: '4rem' }} />}
-					</div>
-					
-				</div>
-		}
-		</>
-        
-    )
+	// ✅ 关键：把 pathname 归一成一个“TabBar activeKey”
+	// - 大小写不敏感
+	// - 支持子路由：/history/xxx 也归到 /history
+	const activeKey = useMemo(() => {
+		const p = (pathname || '/').toLowerCase()
+
+		if (p === '/' || p.startsWith('/?')) return '/'
+		if (p.startsWith('/history')) return '/history'
+		if (p.startsWith('/chat')) return '/chat'
+		if (p.startsWith('/settings')) return '/settings'
+		if (p.startsWith('/pay')) return '/pay'
+
+		return p
+	}, [pathname])
+
+	const setRouteActive = (value: string) => {
+		navigate(value)
+	}
+
+	if (!showBar || (!isStandalone && MobileType() !== 'desktop')) return null
+
+	return (
+		<div className={styles.footer}>
+			<TabBar safeArea={false} activeKey={activeKey} onChange={setRouteActive}>
+				{tabs.map(item => (
+					<TabBar.Item
+						key={item.key}
+						title={item.title}
+						badge={(item as any).badge}
+						icon={activeKey === item.key ? item.iconBlue : item.iconGrey}
+					/>
+				))}
+			</TabBar>
+
+			{/* 悬浮在 TabBar 上方的 BLogo */}
+			<div className={styles.payCenterLogo} onClick={() => setRouteActive('/pay')}>
+				{darkModle ? (
+					<BLogo style={{ width: '4rem', height: '4rem' }} />
+				) : (
+					<BLogoLight style={{ width: '4rem', height: '4rem' }} />
+				)}
+			</div>
+		</div>
+	)
 }
 
 export default Footer

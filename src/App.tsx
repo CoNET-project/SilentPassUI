@@ -11,9 +11,11 @@ import Home from "./pages/Home";
 import History from './pages/History/History'
 import Pay from './pages/Pay'
 import Settings from './pages/Settings'
-import Browser from './pages/Browser'
+import Chat from './pages/chat'
 import { setDefaultConfig } from 'antd-mobile';
 import BeamioInstallOnboarding from '@/components/launchPage/BeamioInstallOnboarding'
+
+
 
 //			min-h-screen 
 
@@ -67,7 +69,7 @@ function App() {
 		          		<Route path="/" element={<Home />} />
 		          		<Route path="/History" element={<History />} />
 						<Route path="/Pay" element={<Pay />} />
-		          		<Route path="/Browser" element={<Browser />} />
+		          		<Route path="/Chat" element={<Chat />} />
 		          		<Route path="/settings" element={<Settings />} />
 		        	</Routes>
 		      	</div>

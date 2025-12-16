@@ -1,6 +1,6 @@
 // Home.tsx
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo, useLayoutEffect} from "react"
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo} from '@/services/beamio'
@@ -8,21 +8,22 @@ import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useNavigate } from "react-router-dom"
-import { createOrGetWallet, storeSystemData} from "@/services/beamio"
+import { createOrGetWallet, storeSystemData, getOracle, postBeamio} from "@/services/beamio"
 import BeamioAlphaHowItWorks from './BeamioAlphaHowItWorks'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Search } from "lucide-react"
+import { Search, Settings, Check, ArrowDownCircle, PlusCircle , X } 
+	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
 import SearchInputWithDropdown, {searchResult} from './SearchBarWithResults'
-import { ArrowDownCircle, PlusCircle } from "lucide-react"
 import CoinbaseRamps from '@/components/Setting/CoinbaseRamps'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
-
+import usdcIcon from '@/components/assets/usdc.png'
+import baseIcon from '@/components/assets/base-logo.png'
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
@@ -30,8 +31,9 @@ const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 const Home = ({}) => {
 	const { setDarkModle, profiles,
-		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress,
-		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode
+		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
+		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
+		currencyData
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	const hasActivity = false;
@@ -50,6 +52,8 @@ const Home = ({}) => {
 	const [amt, setAmt] = useState('')
 	const [recipient, setRecipient] = useState('')
 	const [claimLoading, setClaimLoading] = useState(false)
+	const [currency, setCurrency] = useState<ICurrency>('USD')
+	const [language, setLanguage] = useState<"en">("en")
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'>('')
@@ -57,6 +61,24 @@ const Home = ({}) => {
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
 	)}`
+
+	const getAccountData = (bo: beamio) => {
+		if (!bo) return
+		setCurrency(bo.currency)
+		setLanguage(bo.language)
+	}
+
+	const oracle = async () => {
+		
+		const data = await getOracle ()
+		setCurrencyData({
+			CAD: Number(data.usdcad),
+			JPY: Number(data.usdjpy),
+			USD: 1,
+			CNY: Number(data.usdcny),
+			USDC: Number(data.usdc),
+		})
+	}
 
 	const checkUrl = (url: string) => {
 	
@@ -107,6 +129,24 @@ const Home = ({}) => {
 
 	}
 
+	const handleSaveAvatar = async (curr: ICurrency) => {
+		if (!CoNET_Data||!beamio ) return
+		
+		const tmpData = CoNET_Data
+		
+		const profile: profile = tmpData.profiles[0]
+		const bo = beamio
+		bo.currency = curr
+		await postBeamio(bo, profile.privateKeyArmor)
+
+		tmpData.beamio = bo
+		setCoNET_Data(tmpData)
+		
+		await storeSystemData()
+		setBeamio(bo)
+
+	}
+
 	const init = async () => {
 		
 		const temp = CoNET_Data
@@ -119,7 +159,7 @@ const Home = ({}) => {
 		
 		bo.initialLoading = true
 		
-		
+		oracle()
 		if (bo.isUSDCFaucet) {
 			setShowGetFaucet('finished')
 		} else {
@@ -130,6 +170,7 @@ const Home = ({}) => {
 		setDarkModle(bo.darkTheme)
 		setBeamio (bo)
 		temp.beamio = bo
+		getAccountData(bo)
 		setCoNET_Data(temp)
 		storeSystemData()
 		
@@ -173,7 +214,63 @@ const Home = ({}) => {
 
   	}, [])
 
-	
+	/**
+	 * @returns 1 USDC ≈ X {currency}
+	 */
+	function fxRateUSDCToCurrency(currency: ICurrency): number {
+		// 1 USDC = ? USD
+		const usdcToUSD = currencyData.USDC ?? 1
+
+		switch (currency) {
+			case 'USDC':
+				// 1 USDC = 1 USDC
+				return 1
+
+			case 'USD':
+				// 1 USDC = ? USD
+				return usdcToUSD
+
+			case 'CAD':
+				// 1 USDC = (USDC→USD) * (USD→CAD)
+				return usdcToUSD * currencyData.CAD
+
+			case 'CNY':
+				return usdcToUSD * currencyData.CNY
+
+			case 'JPY':
+				return usdcToUSD * currencyData.JPY
+
+			default:
+				return usdcToUSD
+		}
+	}
+
+	function formatFiat() {
+		// 1 USDC ≈ X {currency}
+		const rate = fxRateUSDCToCurrency(currency)
+
+		// 目标币种金额
+		const v = currency === 'USDC' ? usdcbalance : usdcbalance * rate
+
+		switch (currency) {
+			case 'JPY':
+			// 日元无小数
+			return `JPY¥ ${formatWithThousands(v, 0)}`
+
+			case 'CNY':
+			return `CNY¥ ${formatWithThousands(v)}`
+
+			case 'CAD':
+			return `CA$ ${formatWithThousands(v)}`
+
+			case 'USDC':
+			return `${formatWithThousands(usdcbalance)} USDC`
+
+			case 'USD':
+			default:
+			return `US$ ${formatWithThousands(v)}`
+		}
+	}
 	const currentAvatarSrc = avatarImageData || avatarUrl
 
 	const claimFaucet = async () => {
@@ -190,17 +287,40 @@ const Home = ({}) => {
 
 	/** 余额卡：白底 + 渐变描边 */
 	function BalanceCard() {
-		return (
+		const [showSetup, setShowSetup] = useState(false)
+
+		// 🔁 用你真实的 currency state 替换
+
+		const options = useMemo(
+			() => [
+				{ value: 'USD' as const, label: 'USD', hint: 'US Dollar' },
+				{ value: 'CAD' as const, label: 'CAD', hint: 'Canadian Dollar' },
+				{ value: 'JPY' as const, label: 'JPY', hint: 'Japanese Yen' },
+				{ value: 'CNY' as const, label: 'CNY', hint: 'Chinese Yuan' },
+			],
+			[]
+		)
+
+		const closeSetup = () => setShowSetup(false)
+
+		const chooseCurrency = (v: ICurrency) => {
+
+			setCurrency(v)
+			handleSaveAvatar(v)
+			// 轻微延迟，保证点击反馈先出现
+			setTimeout(() => setShowSetup(false), 80)
 			
-			<div className="rounded-3xl bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b] p-4 shadow-lg mb-4">
+		}
+
+		return (
+			<div className="rounded-3xl bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b] p-4 shadow-lg mb-4 overflow-hidden">
 				{/* 顶部：标题 + Base 标识 */}
-				<div className="flex items-center justify-between mb-4">
+				<div className="flex items-center justify-between mb-4 w-full max-w-[540px] px-4">
 					<div className="text-xs font-medium text-white/80">
 						Beamio Balance
 					</div>
-					<div className="flex items-center gap-1 text-white">
 
-						{/* 圆形图标区域 */}
+					<div className="flex items-center gap-1 text-white">
 						<span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/15">
 							<img
 								src={base_icon}
@@ -208,76 +328,175 @@ const Home = ({}) => {
 								className="w-3.5 h-3.5 object-contain"
 							/>
 						</span>
-
-						{/* 文本 */}
 						<span className="text-[11px] font-medium tracking-wide">
-							Base
+							USDC on Base
 						</span>
 					</div>
 				</div>
 
-				{/* 中间：金额 */}
-				<div className="mb-4">
-					<div className="text-3xl font-semibold text-white tabular-nums leading-tight">
-						{formatWithThousands(usdcbalance)}
-					</div>
-					<div className="text-xs text-white/80 mt-1">
-						USDC
-					</div>
-				</div>
+				{/* 固定高度视口 */}
+				<div className="relative h-[170px]">
+					<div
+						className={`
+							flex w-[200%] h-full
+							transition-transform duration-300 ease-out
+							${showSetup ? '-translate-x-1/2' : 'translate-x-0'}
+						`}
+					>
+						{/* ===== Page A：主内容 ===== */}
+						<div className="w-1/2 h-full flex justify-center">
+  							<div className="w-full max-w-[540px] px-4">
+							{/* 金额 + Setup（右侧） */}
+							<div className="mb-4 flex items-center justify-between">
+								<div>
+									<div className="text-3xl font-semibold text-white tabular-nums leading-tight">
+										{formatFiat()}
+									</div>
 
-				{/* 底部：Gas sponsored pill */}
+									<div className="mt-1 flex items-center text-xs text-white/80">
+										<div className="relative mr-2 flex-shrink-0">
+											<img
+												src={usdcIcon}
+												alt="USDC"
+												className="w-5 h-5 rounded-full"
+											/>
+											<img
+												src={baseIcon}
+												alt="Base"
+												className="
+													w-3 h-3
+													absolute -bottom-0.5 -right-0.5
+													rounded-full
+													border border-white dark:border-slate-900
+												"
+											/>
+										</div>
 
-				<div className="flex justify-end mb-4">
-					<div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 backdrop-blur-sm">
-						<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/80 text-[9px] text-[#1652f0] font-bold">
-						⚡
-						</span>
-						<span className="text-[11px] font-medium text-white">
-						Gas sponsored
-						</span>
+										<span>
+											USDC ${formatWithThousands(usdcbalance)}
+										</span>
+									</div>
+								</div>
+
+								<button
+									type="button"
+									onClick={() => setShowSetup(true)}
+									className="
+										w-9 h-9
+										flex items-center justify-center
+										rounded-full
+										bg-white/10 hover:bg-white/20
+										active:scale-95
+										transition-all
+										backdrop-blur
+									"
+									aria-label="Settings"
+								>
+									<Settings className="w-5 h-5 text-white" />
+								</button>
+							</div>
+
+							{/* Gas sponsored */}
+							<div className="flex justify-end mb-4">
+								<div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 backdrop-blur-sm">
+									<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/80 text-[9px] text-[#1652f0] font-bold">
+										⚡
+									</span>
+									<span className="text-[11px] font-medium text-white">
+										Gas sponsored
+									</span>
+								</div>
+							</div>
+
+							{/* 操作按钮 */}
+							<div className="flex items-center gap-2 mt-1">
+								<button
+									type="button"
+									onClick={handleAddFunds}
+									className="
+										flex-1 flex items-center justify-center gap-1.5
+										py-3 rounded-full
+										bg-white/15
+										text-[10px] font-medium text-white
+										hover:bg-white/20 transition
+									"
+								>
+									<PlusCircle className="h-4 w-4 text-white/90" />
+									<span>Add funds</span>
+								</button>
+
+								<button
+									type="button"
+									onClick={handleCashOut}
+									className="
+										flex-1 flex items-center justify-center gap-1.5
+										py-3 rounded-full
+										bg-white/10
+										text-[10px] font-medium text-white
+										hover:bg-white/15 transition
+									"
+								>
+									<ArrowDownCircle className="h-4 w-4 text-white/90" />
+									<span>Cash out</span>
+								</button>
+							</div>
+						</div>
+						</div>
+
+						{/* ===== Page B：Setup ===== */}
+						<div className="w-1/2 px-4 h-full overflow-y-auto">
+							
+
+							<div className="space-y-2">
+								{[
+									// ⭐ 已选中的永远放第一
+									...options.filter(opt => opt.value === currency),
+									// 其余的保持原顺序
+									...options.filter(opt => opt.value !== currency),
+								].map(opt => {
+									const active = currency === opt.value
+
+									return (
+										<button
+											key={opt.value}
+											type="button"
+											onClick={() => chooseCurrency(opt.value)}
+											className={`
+												w-full flex items-center justify-between
+												rounded-xl px-3 py-1.5
+												backdrop-blur
+												transition
+												${active
+													? 'bg-white/25'
+													: 'bg-white/12 hover:bg-white/18'}
+											`}
+										>
+											<div className="text-left">
+												<div className="text-[12px] font-semibold text-white">
+													{opt.label}
+												</div>
+												<div className="text-[11px] leading-tight text-white/75">
+													{opt.hint}
+												</div>
+											</div>
+
+											<div className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10">
+												{active ? (
+													<Check className="w-4 h-4 text-white" />
+												) : (
+													<span className="text-[11px] text-white/70">
+														{opt.value}
+													</span>
+												)}
+											</div>
+										</button>
+									)
+								})}
+							</div>
+						</div>
 					</div>
-				</div>
-				{/* 新增：Add funds / Cash out 两个轻量按钮 */}
-				<div className="flex items-center gap-2 mt-1">
-				{/* Add funds */}
-				<button
-					type="button"
-					onClick={handleAddFunds}
-					className="
-					flex-1 flex items-center justify-center gap-1.5
-					py-3
-					rounded-full
-					bg-white/15
-					text-[10px] font-medium text-white
-					hover:bg-white/20 transition
-					"
-				>
-					<PlusCircle className="h-4 w-4 text-white/90" />
-					<span>Add funds</span>
-					<span className="text-white/70 text-[9px]"></span>
-				</button>
-
-				{/* Cash out */}
-				<button
-					type="button"
-					onClick={handleCashOut}
-					className="
-						flex-1 flex items-center justify-center gap-1.5
-						py-3
-						rounded-full
-						bg-white/10
-						text-[10px] font-medium text-white
-						hover:bg-white/15 transition
-					"
-				>
-					<ArrowDownCircle className="h-4 w-4 text-white/90" />
-					<span>Cash out</span>
-					<span className="text-white/70 text-[9px]"></span>
-				</button>
 				</div>
 			</div>
-			
 		)
 	}
 
@@ -506,15 +725,15 @@ const Home = ({}) => {
 							{/* Top header */}
 								<div className="mb-3">
 									<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">
-									Beamio Alpha Reward
+										Beamio Alpha Reward
 									</p>
 									<h1 className="text-xl font-semibold text-slate-900">You’ve claimed 0.1 USDC</h1>
 									<p className="mt-1 text-[11px] text-slate-500 leading-snug">
-									Thank you for testing Beamio on Base. Your Beamio wallet has been funded with
+										Thank you for testing Beamio on Base. Your Beamio wallet has been funded with
 									{" "}
 									<span className="font-semibold text-slate-900">0.1 USDC</span>
 									{" "}
-									so you can try your first gasless payment.
+										so you can try your first gasless payment.
 									</p>
 								</div>
 						</>

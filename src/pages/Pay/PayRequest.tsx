@@ -11,7 +11,8 @@ import { Copy, ExternalLink, Check } from 'lucide-react'
 import { QRCodeCanvas } from "qrcode.react"
 import bIcon from '@/components/assets/32x32.svg'
 import {RedeemOrLinkCard} from './RedeemOrLinkCard'
-
+import AmountCurrency from '@/components/input/AmountCurrency'
+import { Loading } from "antd-mobile"
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
@@ -87,6 +88,7 @@ export default function BeamioPayRequest() {
 
 	const [sendToAddressError, setSendToAddressError] = useState(false)
 	const [sendAmountError, setSendAmountError] = useState('')
+	const [amountError, setAmountError] = useState(false)
 
 	const isPay = mode === "pay";
 
@@ -170,14 +172,8 @@ export default function BeamioPayRequest() {
 			AmountError = `Please entry a valid Amount`
 		}
 
-		if (numericAmount < minAmount) {
-			AmountError = `Amount must be greater than 0.02 USDC to cover the minimum Beamio service fee.`
-		}
-
-
 		setSendAmountError(AmountError)
 		
-
 		return (!!AmountError)
 	}
 
@@ -208,8 +204,14 @@ export default function BeamioPayRequest() {
 		}
 		setTimeout(() => {
 			setProcessError ('')
+			setSendAmountError('')
 		}, 2000)
-	}, [processError])
+	}, [processError, sendAmountError])
+
+
+
+
+
 
   	const onSignFinal = async (e: any) => {
 		
@@ -235,14 +237,14 @@ export default function BeamioPayRequest() {
 		if (checkRequestError()) return 
 
 	
-		setProcessing(true)
+		
 
 		const numberAmount = Number(sendAmount)
 		if (isNaN(numberAmount) || numberAmount <= 0.02) {
 			setSendAmountError('Amount must be greater than 0.02 USDC to cover the minimum Beamio service fee.')
 			return 
 		}
-			
+			setProcessing(true)
 			/**
 			 * 
 			 * 		UI test
@@ -291,16 +293,11 @@ export default function BeamioPayRequest() {
 	const generateCheck = async () => {
 		if (checkRequestError()|| !profiles?.length) return 
 		const Beamiofee = calcFeeFromNumber(Number(sendAmount))
-		const numberAmount = Number(sendAmount) + Beamiofee
+		const numberAmount = Number(sendAmount) + Beamiofee > usdcbalance ? usdcbalance : Number(sendAmount) + Beamiofee
 
 		if (numberAmount < 0.1) {
 			const AmountError = `Cashcode amount must be greater than 0.10 USDC .`
 			setSendAmountError(AmountError)
-			return
-		}
-		
-		if (numberAmount > usdcbalance) {
-			setSendAmountError(`Insufficient balance`)
 			return
 		}
 		
@@ -715,7 +712,7 @@ export default function BeamioPayRequest() {
 	const handleSendConfirm = async () => {
 
 		
-		if (checkError()) return
+		if (checkError()||amountError) return
 		const sendNote = note||defaultNodeText
 		const params = new URLSearchParams({amount: sendAmount, toAddress: sendTo, note: sendNote }).toString()
 		const path = `/api/BeamioTransfer?${params}`
@@ -741,22 +738,22 @@ export default function BeamioPayRequest() {
 			MessageData.sginTatle = 'Send'
 			MessageData.note = sendNote
 
-			const gas: any = await estimateGasUSDC (Number(sendAmount), sendTo)
-			if (!gas) {
-				setProcessing(false)
-				return setProcessError('RPC Error!')
-			}
+			// const gas: any = await estimateGasUSDC (Number(sendAmount), sendTo)
+			// if (!gas) {
+			// 	setProcessing(false)
+			// 	return setProcessError('RPC Error!')
+			// }
 
-			const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
+			// const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
 			
-			const ethPrice = gas.oracle.eth.eth
-			const price = Number(gasCostEth) * ethPrice
+			// const ethPrice = gas.oracle.eth.eth
+			// const price = Number(gasCostEth) * ethPrice
 			
-			console.log (gas.oracle)
-			MessageData.gas = {
-				gasETH: gasCostEth.toFixed(8),
-				gasUSD: price.toFixed(5)
-			}
+			// console.log (gas.oracle)
+			// MessageData.gas = {
+			// 	gasETH: gasCostEth.toFixed(8),
+			// 	gasUSD: price.toFixed(5)
+			// }
 			
 			setProcessing(false)
 			setStep('x402Sign')
@@ -799,14 +796,7 @@ export default function BeamioPayRequest() {
 							</h1>
 						</div>
 
-						<div className="text-right ">
-							<p className="text-[12px] font-medium text-slate-900 dark:text-slate-100">
-								USDC {formatWithThousands(usdcToUSD)}
-							</p>
-							<p className="text-[11px] text-slate-500 dark:text-slate-400">
-								Available on Base
-							</p>
-						</div>
+						
 					</div>
 
 					<div className="flex items-center justify-between mb-3">
@@ -940,6 +930,9 @@ export default function BeamioPayRequest() {
 										</div>
 
 										<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 flex flex-col gap-2">
+
+											
+
 											<div className="flex flex-col gap-2">
 												<input
 													value={isFocused ? securityCodeDigits : formatSecurityCode(securityCodeDigits)}
@@ -981,67 +974,17 @@ export default function BeamioPayRequest() {
 							
 
 							{/* Amount */}
+
+							<AmountCurrency 
+								setAmount={setSendAmount} amount={sendAmount} 
+								showMax={mode == 'cashcode'} autoEntry={true}
+								setError={setAmountError}
+								readOnly={processing} needBalance={mode == 'cashcode'} 
+								showLimit={mode ==='cashcode' ? 0.1 : 0.02} />
+							
 							<div className="mt-1 mb-4">
-								<div className="flex items-center justify-between text-xs">
-									<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
-									<span className="text-slate-400">Min amount {mode ==='cashcode' ? 0.1 : '> 0.02 '} USDC</span>
-								</div>
-								<div
-									className="h-12 rounded-xl bg-slate-900/5 dark:bg-white/5 border 
-									border-slate-200 dark:border-slate-700 flex items-center px-3 relative"
-								>
-									{/* USDC Icon + Base 角标（现在在最左） */}
-									<div className="relative mr-3">
-										{/* USDC 主图标 */}
-										<img
-											src={usdcIcon}
-											alt="USDC"
-											className="w-6 h-6 rounded-full"
-										/>
 
-										{/* Base 小角标 */}
-										<img
-											src={baseIcon}
-											alt="Base"
-											className="w-3 h-3 absolute bottom-0 right-0 rounded-full border border-white dark:border-slate-900"
-										/>
-									</div>
-
-									{/* Max 按钮（现在紧跟在 icon 右边） */}
-									{
-										mode == 'cashcode' && <button
-												onClick={() => {
-													setSendAmount(calcMaxButtonReturnAmt(usdcbalance).toFixed(2))
-												}}
-												className="
-													text-xs font-medium
-													px-2 py-0.5
-													rounded-full
-													bg-blue-200/60 dark:bg-blue-700/60
-													text-slate-600 dark:text-slate-300
-													active:scale-95 transition-transform
-													mr-2
-												"
-											>
-												Max
-											</button>
-									}
-									
-
-									{/* 输入框（仍然右对齐） */}
-									<input
-										type="text"
-										inputMode="decimal"
-										value={sendAmount}
-										onChange={(e) => {
-											setSendAmountError('')
-											setSendAmount(e.target.value)
-										}}
-										className="flex-1 bg-transparent border-none outline-none text-right 
-											text-base font-medium text-slate-900 dark:text-slate-50"
-										placeholder="0.00"
-									/>
-								</div>
+								
 								{sendAmountError && (
 									<p className="text-[11px] text-red-500">
 										{sendAmountError}
@@ -1195,57 +1138,8 @@ export default function BeamioPayRequest() {
 								</div>
 
 								{/* 输入框容器 */}
-								<div
-									className="h-12 rounded-xl bg-slate-900/5 dark:bg-white/5 border 
-									border-slate-200 dark:border-slate-700 flex items-center px-3 relative"
-								>
-									{/* USDC Icon + Base 角标（现在在最左） */}
-									<div className="relative mr-3">
-									{/* USDC 主图标 */}
-									<img
-										src={usdcIcon}
-										alt="USDC"
-										className="w-6 h-6 rounded-full"
-									/>
 
-									{/* Base 小角标 */}
-									<img
-										src={baseIcon}
-										alt="Base"
-										className="w-3 h-3 absolute bottom-0 right-0 rounded-full border border-white dark:border-slate-900"
-									/>
-									</div>
-
-									{/* Max 按钮（现在紧跟在 icon 右边） */}
-									<button
-										onClick={() => setSendAmount(usdcbalance.toString())}
-										className="
-											text-xs font-medium
-											px-2 py-0.5
-											rounded-full
-											bg-blue-200/60 dark:bg-blue-700/60
-											text-slate-600 dark:text-slate-300
-											active:scale-95 transition-transform
-											mr-2
-										"
-									>
-										Max
-									</button>
-
-									{/* 输入框（仍然右对齐） */}
-									<input
-										type="text"
-										inputMode="decimal"
-										value={sendAmount}
-										onChange={(e) => {
-											setSendAmountError('')
-											setSendAmount(e.target.value)
-										}}
-										className="flex-1 bg-transparent border-none outline-none text-right 
-											text-base font-medium text-slate-900 dark:text-slate-50"
-										placeholder="0.00"
-									/>
-								</div>
+								<AmountCurrency setAmount={setSendAmount} amount={sendAmount} autoEntry={true} showMax={true} readOnly={processing} needBalance={true} showLimit={0} setError={setAmountError} />
 								{
 									sendAmountError &&
 									<p className="text-[11px] text-red-500 dark:text-red-400">

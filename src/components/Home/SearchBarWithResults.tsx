@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Search } from 'lucide-react'
-import { searchUsername } from '@/services/beamio'
+import { searchUsername, storeSystemData } from '@/services/beamio'
 import beamio_icon from '@/components/assets/32x32.svg'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { CoNET_Data, setCoNET_Data, } from '@/utils/globals'
+import { Card, CardContent } from "@/components/ui/card"
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
@@ -12,21 +14,18 @@ export type SearchInputRef = {
 	focus: () => void
 }
 
-export type searchResult = {
-	address: string
-	created_at: number
-	first_name: string
-	image: string
-	last_name: string
-	username: string
-	follow_count: string
-	follower_count: string
-}
 
 type Props = {
 	close: (path: string | searchResult) => void
 	readonly: boolean
 	select?: boolean
+	showHistory: boolean
+}
+
+const displayName = (item: searchResult) => {
+	const lastname = item.last_name.split('\r\n')
+	const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
+	return fullName || item.username || item.address
 }
 
 const shortAddress = (addr: string) =>
@@ -49,10 +48,12 @@ function formatUserDate(timestamp?: string | number): string {
 	})
 }
 
+
+
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
-	({ close, readonly, select }, ref) => {
-		const { profiles } = useDaemonContext()
+	({ close, readonly, select, showHistory }, ref) => {
+		const { profiles, } = useDaemonContext()
 
 		const [query, setQuery] = useState('')
 		const [results, setResults] = useState<searchResult[]>([])
@@ -62,6 +63,8 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 		const [myAddress, setMyAddress] = useState('')
 		const [sideSlide, setSideSlide] = useState<'' | 'BeamioContactProfilePreview'>('')
 		const [showDropdown, setShowDropdown] = useState(false)
+		const [searchBeamiosHistory, setSearchBeamiosHistory] = useState<searchkeywork[]>([])
+		const [searchKeysHistory, setSearchKeysHistory] = useState<searchkeywork[]>([])
 
 		const hasQuery = query.trim().length > 0
 
@@ -75,14 +78,23 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 			},
 		}))
 
+		
+
+
 		const search = async (q: string) => {
 			setLoading(true)
+			q = q.trim().replace('@', '').toLowerCase()
 			const data = await searchUsername(q)
 			setLoading(false)
 
 			const result: searchResult[] = data?.results || []
 			const filted = result.filter(n => n.address.toLowerCase() !== myAddress)
-
+			if (filted.length) {
+				const index = searchKeysHistory.findIndex(n => n.type === 'search' && n.keyward.toLowerCase() === q)
+				if (index < 0) {
+					setSearchKeysHistory(prev => [...prev, {keyward: q, type:'search'}])
+				}
+			}
 			setResults(filted)
 			if (hasQuery) {
 				setShowDropdown(true)
@@ -91,10 +103,19 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 			}
 		}
 
+
+
 		useEffect(() => {
-			if (!profiles?.length) return
+			if (!profiles?.length || !CoNET_Data||readonly) return
 			const profile: profile = profiles[0]
 			setMyAddress(profile.keyID.toLowerCase())
+			const search = CoNET_Data?.search|| {
+				searchBeamios: [],
+				searchKeywords: []
+			}
+
+			setSearchKeysHistory(search.searchKeywords)
+			setSearchBeamiosHistory(search.searchBeamios)
 		}, [])
 
 		useEffect(() => {
@@ -111,11 +132,7 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 			search(q)
 		}, [query])
 
-		const displayName = (item: searchResult) => {
-			const lastname = item.last_name.split('\r\n')
-			const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
-			return fullName || item.username || item.address
-		}
+
 
 		// 下拉框显示/隐藏时，重新 focus input
 		useEffect(() => {
@@ -130,7 +147,113 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 				return close(item)
 			}
 			setUserPreviewItem(item)
+			const index = searchBeamiosHistory.findIndex(n => n.beamio?.username === item.username.toLowerCase())
+			if (index < 0) {
+				const data: searchkeywork = {
+					keyward: item.username.toLowerCase(),
+					type: 'beamio',
+					beamio: item
+				}
+
+				setSearchBeamiosHistory((pre => [...pre, data]))
+			}
+			
 			setSideSlide('BeamioContactProfilePreview')
+		}
+
+		function recentBeamios() {
+			// 1) 取出 beamio 记录
+			const beamios = searchBeamiosHistory
+				.filter(x => x.type === 'beamio' && x.beamio)
+				.map(x => x.beamio as searchResult)
+
+			// 2) 去重：保留“最新出现”的 accountName
+			const seen = new Set<string>()
+			const unique: searchResult[] = []
+			for (const b of beamios) {
+				const key = (b.username || '').toLowerCase()
+				if (!key || seen.has(key)) continue
+				seen.add(key)
+				unique.push(b)
+			}
+
+			if (unique.length === 0) return null
+
+			return (
+				<div className="flex flex-wrap gap-2">
+					
+					{unique.map(b => {
+						const fallback = typeof getImg === 'function' ? getImg(b.image) : ''
+
+						return (
+							
+								
+										<button
+											key={b.username}
+											type="button"
+											onClick={() => handleSelect(b)}
+											className="
+												inline-flex items-center gap-2
+												max-w-full
+												rounded-full
+												border border-slate-200
+												bg-slate-50
+												px-3 py-2
+												text-left
+												hover:bg-slate-100
+												active:scale-[0.98]
+												transition
+											"
+										>
+											<img
+												src={b.image || fallback}
+												alt={b.username}
+												className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-slate-200"
+											/>
+
+											<span className="min-w-0">
+												<span className="block text-[12px] text-slate-900 truncate">
+													{displayName(b)}
+												</span>
+												<span className="block text-[10px] text-slate-500 truncate">
+													@{b.username}
+												</span>
+											</span>
+										</button>
+								
+								
+							
+							
+						)
+					})}
+				</div>
+			)
+		}
+
+		const processRef = useRef(false)
+
+		useEffect(() => {
+			saveSearchKeywork()
+		}, [searchKeysHistory, searchBeamiosHistory])
+
+		const saveSearchKeywork = async () => {
+			if (!CoNET_Data ) return
+			if (!searchBeamiosHistory.length && !searchKeysHistory.length) return
+			// 🔒 全局锁
+			if (processRef.current) return
+			processRef.current = true
+
+			try {
+				CoNET_Data.search = {
+					searchBeamios: searchBeamiosHistory,
+					searchKeywords: searchKeysHistory
+				}
+
+				setCoNET_Data({ ...CoNET_Data }) // ⚠️ 保证引用变化
+				await storeSystemData()
+			} finally {
+				processRef.current = false
+			}
 		}
 
 		return (
@@ -139,6 +262,7 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 				<div className="relative w-full h-11">
 					{/* 没输入：普通 pill 输入框 */}
 					{!showDropdown && (
+						<>
 						<div className="flex items-center bg-slate-100 rounded-full px-3 h-11 flex-1">
 							{/* Beamio icon —— 在最左侧 */}
 							<img
@@ -163,6 +287,17 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 								onChange={e => setQuery(e.currentTarget.value)}
 							/>
 						</div>
+						
+							{!readonly && showHistory && (
+								<div className=" mt-6">
+									<CardContent className="p-4 space-y-4">
+										{recentBeamios()}
+									</CardContent>
+								</div>
+							)}
+						
+						</>
+
 					)}
 
 					{/* 有输入：Google 风格大卡片，input + 下拉合在一起 */}
@@ -304,9 +439,9 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 					].join(" ")}
 				>
 					<div className="flex-1">
-						{sideSlide === 'BeamioContactProfilePreview' && (
+						{sideSlide === 'BeamioContactProfilePreview' && userPreviewItem && (
 							<BeamioContactProfilePreview
-								item={userPreviewItem || null}
+								item={userPreviewItem}
 								close={path => {
 									if (!path) {
 										setUserPreviewItem(null)
@@ -319,6 +454,10 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 						)}
 					</div>
 				</div>
+
+				{
+
+				}
 			</>
 		)
 	}

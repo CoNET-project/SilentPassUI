@@ -19,7 +19,7 @@ import { Search, Settings, Check, ArrowDownCircle, PlusCircle , X }
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
-import SearchInputWithDropdown, {searchResult} from './SearchBarWithResults'
+import SearchInputWithDropdown from './SearchBarWithResults'
 import CoinbaseRamps from '@/components/Setting/CoinbaseRamps'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
@@ -661,6 +661,7 @@ const Home = ({}) => {
 					>
 						<div className="pointer-events-none">
 							<SearchInputWithDropdown
+								showHistory={false}
 								readonly={true}
 								close={ path => {
 									setShowAlphaHowItWorks('')
@@ -854,9 +855,11 @@ const Home = ({}) => {
 							)}
 							{showAlphaHowItWorks === 'BeamioTestBalance' && <BeamioTestBalanceDetailsCard />}
 							
-							{showAlphaHowItWorks === 'Pay' && <PayScreen close={path => {
-								setShowAlphaHowItWorks('')
-							}} />}
+							{showAlphaHowItWorks === 'Pay' && <PayScreen 
+								beamioer={userPreviewItem||undefined}
+								close={path => {
+									setShowAlphaHowItWorks('')
+								}} />}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
 							{showAlphaHowItWorks === 'CoinbaseRamps' && <BeamioAddUSDCFlow />}
 							
@@ -873,7 +876,15 @@ const Home = ({}) => {
 					${ openSearch ? 'translate-y-0' : 'translate-y-full'}
 				`}
 			>
-				<BeamioSearch close={() => setOpenSearch(false)} />
+				<BeamioSearch close={(item) => {
+					if (!item || typeof item === 'string') {
+						setOpenSearch(false)
+					} else {
+						setUserPreviewItem(item)
+						setShowAlphaHowItWorks('Pay')
+					}
+					
+				} }/>
 			</div>
 		</div>
 	)

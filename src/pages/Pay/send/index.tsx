@@ -1,5 +1,5 @@
 import React, {useRef, useState, useEffect} from "react"
-import SearchInputWithDropdown, {searchResult, SearchInputRef} from '@/components/Home/SearchBarWithResults'
+import SearchInputWithDropdown, {SearchInputRef} from '@/components/Home/SearchBarWithResults'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -60,16 +60,17 @@ const shortAddress = (addr: string) =>
 
 type Props = {
 	close: (path: string) => void
+	beamioer?: searchResult
 }
 
-export default function PayScreen ({close}: Props) {
+export default function PayScreen ({close, beamioer}: Props) {
 	const searchRef = useRef<SearchInputRef>(null)
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
 	const [amountError, setAmountError]  = useState(false)
 	const [note, setNote] = useState("");
 	const [defaultNodeText, setDefaultNodeText] = useState(defaultTextTemp)
-	const [item, setItem] = useState<searchResult|null>(null)
+	const [item, setItem] = useState<searchResult|null>(beamioer||null)
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'ConformView'>('')
 	const [focusAmount, setFocusAmount] = useState(false)
 	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress } = useDaemonContext()
@@ -278,7 +279,8 @@ export default function PayScreen ({close}: Props) {
 									!item && (
 										<section className="mb-4">
 											<SearchInputWithDropdown 
-												readonly={false} 
+												readonly={false}
+												showHistory={false}
 												close={item => {
 													if (typeof item !== 'string') {
 														selectItem(item)

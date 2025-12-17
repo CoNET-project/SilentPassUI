@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { getFololowsData } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import { searchResult } from "@/components/Home/SearchBarWithResults"
 import BeamioContactProfilePreview from '@/components/Home/BeamioContactProfilePreview'
 
 type FollowUserItem = {

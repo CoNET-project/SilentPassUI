@@ -155,6 +155,27 @@ interface Region {
 		currency: ICurrency
 	}
 
+	type searchkeywork = {
+		keyward: string
+		type: 'search'|'beamio'
+		beamio?: searchResult
+	}
+
+	type ISearch = {
+		searchKeywords: searchkeywork[]
+		searchBeamios: searchkeywork[]
+	}
+
+	type searchResult = {
+		address: string
+		created_at: number
+		first_name: string
+		image: string
+		last_name: string
+		username: string
+		follow_count: string
+		follower_count: string
+	}
 
 
   
@@ -181,6 +202,7 @@ interface Region {
 	ChannelPartners?: string
 	referrals?: string
 	beamio: beamio
+	search?: ISearch
   }
   
   interface passportInfoFromChain {

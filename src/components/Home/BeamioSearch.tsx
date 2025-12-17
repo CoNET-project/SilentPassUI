@@ -1,9 +1,9 @@
 import React from "react";
-import SearchInputWithDropdown, {searchResult} from './SearchBarWithResults'
+import SearchInputWithDropdown from './SearchBarWithResults'
 import { ChevronLeft } from 'lucide-react'
 
 type Props = {
-	close: (path: string) => void
+	close: (path: string|searchResult) => void
 }
 
 export default function BeamioSearch({close}: Props) {
@@ -32,8 +32,9 @@ return (
         <div className="flex-1">
           <SearchInputWithDropdown
             readonly={false}
+			showHistory={true}
             close={path => {
-              if (typeof path === 'string') {
+              if (path) {
                 close(path)
               } else {
                 close('/')

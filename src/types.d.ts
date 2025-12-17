@@ -133,9 +133,13 @@ interface Region {
 		JPY: number
 		CNY: number
 		USDC: number
+		HKD: number
+		SGD: number
+		TWD: number
+		EUR: number
 	}
 
-	type ICurrency = 'CAD'|'USD'|'JPY'|'CNY'|'USDC'
+	type ICurrency = 'CAD'|'USD'|'JPY'|'CNY'|'USDC'|'HKD'|'EUR'|'SGD'|'TWD'
 	type ILanguage = 'en'
   
   interface SpClub {
@@ -151,19 +155,8 @@ interface Region {
 		currency: ICurrency
 	}
 
-  type beamio = {
-		accountName: string
-		image: string
-		darkTheme: boolean
-		isUSDCFaucet: boolean
-		isETHFaucet: boolean
-		initialLoading: boolean
-		firstName?: string
-		lastName?: string
-		createdAt?: number
-		language: ILanguage
-		currency: ICurrency
-  }
+
+
   
   type encrypt_keys_object = {
 	profiles: profile[];
@@ -443,4 +436,36 @@ type Argon2idHash = {
 	p: number
 	salt: string // base64
 	hash: string // base64
+}
+
+
+  type beamio = {
+		accountName: string
+		image: string
+		darkTheme: boolean
+		isUSDCFaucet: boolean
+		isETHFaucet: boolean
+		initialLoading: boolean
+		firstName?: string
+		lastName?: string
+		createdAt?: number
+		language: ILanguage
+		currency: ICurrency
+  }
+
+	type IMessageDataAccountInfo = {
+		accountName: string
+		address: string
+		firstName: string
+		lastName: string
+		image: string
+	}
+
+type IMessageData = {
+	receive: IMessageDataAccountInfo
+	sender: IMessageDataAccountInfo
+	node: string
+	sginTatle: 'send'
+	reqUrl: string
+	amount: string
 }

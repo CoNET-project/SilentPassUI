@@ -3,6 +3,8 @@ import { useAutoFocus } from "@/components/input/useAutoFocus"
 import { XCircle } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { getOracle } from "@/services/beamio"
+import usdcIcon from '@/components/assets/usdc.png'
+import baseIcon from '@/components/assets/base-logo.png'
 
 type Prof = {
 	setAmount: (usdc: string) => void // ✅ 永远回传 USDC
@@ -13,17 +15,34 @@ type Prof = {
 	needBalance: boolean
 	showLimit: number
 	setError: (val: boolean) => void
+	focusSignal?: boolean
 }
 
+//@ts-ignore
+const CURRENCY_META: Record<ICurrency, { flag: string; sym: string; maxDp: number }> = {
+	USD: { flag: "🇺🇸", sym: "$", maxDp: 2 },
+	CAD: { flag: "🇨🇦", sym: "$", maxDp: 2 },
+	EUR: { flag: "🇪🇺", sym: "€", maxDp: 2 },
+	JPY: { flag: "🇯🇵", sym: "¥", maxDp: 0 },
+	CNY: { flag: "🇨🇳", sym: "¥", maxDp: 2 },
+	HKD: { flag: "🇭🇰", sym: "$", maxDp: 2 },
+	TWD: { flag: "🇹🇼", sym: "NT$", maxDp: 2 },
+	SGD: { flag: "🇸🇬", sym: "$", maxDp: 2 },
+}
 
+const formatMoney = (n: number, fixed: number) =>
+		n.toLocaleString("en-US", { minimumFractionDigits: fixed, maximumFractionDigits: fixed })
 
-const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError }: Prof) => {
+const isCurrency = (v: any): v is ICurrency =>
+	['USD','CAD','EUR','JPY','CNY','HKD','TWD','SGD'].includes(String(v))
+
+const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal }: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
 	const { usdcbalance, beamio, setCurrencyData, currencyData } = useDaemonContext()
 
 	const [sendError, setSendError] = useState("")
-	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>("CAD")
+	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>('USD')
 	const [showCurrencyPicker, setShowCurrencyPicker] = useState(false)
 
 	// ✅ UI 显示值：当前 currency 的金额（input 只绑定它）
@@ -32,7 +51,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	const lastSentUsdcRef = useRef<string>("")
 	const firstEditArmedRef = useRef(true)
 
-	const maxDp = currentCurrency === "JPY" ? 0 : currentCurrency === "CNY" ? 2 : 4
+	
 
 	// Focus management
 	const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -42,7 +61,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	const oracleOnce = useRef(false)
 
 	// ---------- FX helpers ----------
-	const currencySymbol = (c: ICurrency) => (c === "JPY" || c === "CNY" ? "¥" : "$")
+	const maxDp = CURRENCY_META[currentCurrency]?.maxDp ?? 2
+	const currencySymbol = (c: ICurrency) => CURRENCY_META[c]?.sym ?? "$"
+	const currencyFlag = (c: ICurrency) => CURRENCY_META[c]?.flag ?? ""
 
 	// 1 USDC -> ? USD, 1 USD -> ? currency
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
@@ -70,17 +91,24 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	const formatUsdc = (n: number) => {
 		if (!Number.isFinite(n)) return "0"
 		// USDC 常用 6 位，小额也不会丢精度
-		return n.toFixed(6).replace(/\.?0+$/, "")
+		return n.toFixed(4).replace(/\.?0+$/, "")
 	}
 
-	// ---------- Init currency + oracle ----------
-	const getAccountData = () => {
-		if (!beamio) return
-		if (beamio.currency) setcurrentCurrency(beamio.currency as ICurrency)
+	function fxRateUSDCToCurrency(currency: ICurrency): number {
+		// 1 USDC = ? USD
+		const usdcToUSD = currencyData.USDC ?? 1
+
+		if (currency === 'USD') return usdcToUSD
+
+		const usdToCurrency = currencyData[currency]
+		if (typeof usdToCurrency !== 'number') return usdcToUSD
+
+		return usdcToUSD * usdToCurrency
 	}
+
+
 
 	const oracle = async () => {
-		getAccountData()
 		const data = await getOracle()
 		setCurrencyData({
 			CAD: Number(data.usdcad),
@@ -88,14 +116,32 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			USD: 1,
 			CNY: Number(data.usdcny),
 			USDC: Number(data.usdc),
+			HKD: Number(data.usdhkd),
+			TWD: Number(data.usdtwd),
+			EUR: Number(data.usdeur),
+			SGD: Number(data.usdsgd),
 		})
 	}
+
 
 	useEffect(() => {
 		if (oracleOnce.current) return
 		oracleOnce.current = true
 		oracle()
 	}, [])
+
+	useEffect(() => {
+		if (!focusSignal) return
+		requestAnimationFrame(() => {
+			amountInputRef.current?.focus({ preventScroll: true } as any)
+		})
+	}, [focusSignal])
+
+	useEffect(() => {
+		const c = beamio?.currency
+		if (!c) return
+		setcurrentCurrency(isCurrency(c) ? c : 'USD')
+	}, [beamio?.currency])
 
 	// ---------- Balance check (USDC truth) ----------
 	const checkBalance = (usdcToSend: number) => {
@@ -184,6 +230,11 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			}
 		}
 	}
+	
+	const balanceInCurrentCurrency =
+	typeof usdcbalance === "number"
+		? usdcbalance * fxRateUSDCToCurrency(currentCurrency)
+		: null
 
 	// ---------- Pick currency (USDC truth stays) ----------
 	const pickCurrency = (next: ICurrency) => {
@@ -217,7 +268,18 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		const usdc = currencyToUsdcAmount(v, currentCurrency)
 		if (!Number.isFinite(usdc) || usdc <= 0) return ""
 
-		return `≈ ${formatUsdc(usdc)} USDC`
+		let decimals = 0
+		if (usdc < 10) decimals = 4
+		else if (usdc < 100) decimals = 2
+		else if (usdc >= 1000) decimals = 0
+		else decimals = 2 // 100–999
+
+		const formatted = usdc.toLocaleString(undefined, {
+			minimumFractionDigits: decimals,
+			maximumFractionDigits: decimals,
+		})
+
+		return `${formatted}`
 	}, [displayAmount, currentCurrency, currencyData])
 
 	return (
@@ -235,17 +297,26 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 					aria-hidden={showCurrencyPicker}
 					{...(showCurrencyPicker ? ({ inert: "" } as any) : {})}
 				>
-					{/* Title row: left amount label, right balance */}
-					<div className="flex items-center justify-between mb-1">
-						<div className="text-[12px] uppercase tracking-wide text-slate-400 text-left pl-1">
-							Amount in {currentCurrency}
+
+
+					{/**		Balance  */}
+					<div className="flex items-center justify-between text-[12px] tracking-wide text-slate-400 pr-1">
+						{/* 左侧：currentCurrency 计价 */}
+						<div className="leading-none opacity-70">
+							{typeof usdcbalance === "number" && (
+								<>
+									{currentCurrency}{" "}
+									{formatMoney(usdcbalance * fxRateUSDCToCurrency(currentCurrency), currentCurrency === "JPY" ? 0 : 2)}
+								</>
+							)}
 						</div>
 
-						<div className="text-[12px] tracking-wide text-slate-400 text-right pr-1">
-							Balance USDC{" "}
-							{typeof usdcbalance === "number"
-								? usdcbalance.toLocaleString(undefined, { maximumFractionDigits: 6 })
-								: usdcbalance}
+						{/* 右侧：USDC 余额（保持原样） */}
+						<div className="inline-flex items-center gap-1">
+
+							<span className="leading-none">
+								{formatMoney(usdcbalance,4)} USDC
+							</span>
 						</div>
 					</div>
 
@@ -254,52 +325,46 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						{/* Left */}
 						<div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
 							{/* Currency capsule */}
-							<button
-								type="button"
-								onClick={openPicker}
-								disabled={readOnly}
-								className="
-									inline-flex items-center gap-1.5
-									px-2.5 py-1
-									rounded-full
-									bg-slate-900/10
-									dark:bg-white/4
-									backdrop-blur-sm
+								<button
+									type="button"
+									onClick={openPicker}
+									disabled={readOnly}
+									className="
+										inline-flex items-center gap-0.5        /* 👈 gap 缩小 */
+										px-1.5 py-1                           /* 👈 内边距收紧 */
+										rounded-full
+										bg-slate-900/10
+										dark:bg-white/4
+										backdrop-blur-sm
 
-									text-left select-none
-									hover:bg-slate-900/15
-									dark:hover:bg-white/15
-									active:scale-95
-									transition-all duration-150
+										text-left select-none
+										hover:bg-slate-900/15
+										dark:hover:bg-white/15
+										active:scale-95
+										transition-all duration-150
 
-									disabled:opacity-60 disabled:active:scale-100
-								"
-							>
-								<span className="text-[16px] leading-none">
-									{currentCurrency === "CAD"
-										? "🇨🇦"
-										: currentCurrency === "USD"
-											? "🇺🇸"
-											: currentCurrency === "JPY"
-												? "🇯🇵"
-												: "🇨🇳"}
-								</span>
+										disabled:opacity-60 disabled:active:scale-100
+									"
+								>
+									<span className="text-[15px] leading-none">   {/* 👈 国旗略小 */}
+										{currencyFlag(currentCurrency)}
+									</span>
 
-								<span className="text-[14px] font-normal text-slate-700 dark:text-slate-100 leading-none">
-									{currencySymbol(currentCurrency)}
-								</span>
-							</button>
+									<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
+										{currencySymbol(currentCurrency)}
+									</span>
+								</button>
 
 							{/* MAX */}
-							{showMax && (
+							{/* {showMax && (
 								<button
 									type="button"
 									onClick={handleMax}
 									disabled={readOnly}
 									className="
-										px-2.5 py-1
+										px-1 py-1            
 										rounded-full
-										text-[10px] font-semibold
+										text-[10px] font-semibold 
 										text-sky-700 dark:text-sky-300
 										bg-sky-100/80 dark:bg-sky-900/40
 										hover:bg-sky-200/80 dark:hover:bg-sky-900/60
@@ -311,11 +376,11 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 								>
 									MAX
 								</button>
-							)}
+							)} */}
 						</div>
 
 						{/* Right: clear */}
-						{!!displayAmount && displayAmount !== "0" && (
+						{/* {!!displayAmount && displayAmount !== "0" && (
 							<button
 								type="button"
 								onClick={() => {
@@ -326,8 +391,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 								}}
 								disabled={readOnly}
 								className="
-									absolute right-0 top-1/2 -translate-y-1/2 
-									p-1.5 rounded-full
+									absolute -right-3 top-1/2 -translate-y-[43%]
+									p-1.5 
+									rounded-full
 									text-slate-400 hover:text-slate-600
 									active:scale-90 transition
 									disabled:opacity-60 disabled:active:scale-100
@@ -336,7 +402,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							>
 								<XCircle className="w-5 h-5" />
 							</button>
-						)}
+						)} */}
 
 						{/* Input: binds to displayAmount, but outputs USDC */}
 						<input
@@ -477,13 +543,54 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							<div
 								className="
 									pointer-events-none
-									absolute right-10 top-1/2 -translate-y-1/2
-									text-[11px] 
+									absolute right-1 top-1/2 -translate-y-1/2
+									flex items-center gap-1.5
+									text-[11px]
 									text-slate-900/50 dark:text-white/20
 									whitespace-nowrap
 								"
 							>
-								{approxUsdcText}
+								<span>
+									≈ 
+								</span>
+								
+
+								{/* USDC on Base icon（尺寸锁死） */}
+								<div
+									className="
+										relative
+										flex-shrink-0
+										w-4 h-4
+										min-w-[16px] min-h-[16px]
+									"
+								>
+									<img
+										src={usdcIcon}
+										alt="USDC"
+										className="
+											block
+											w-4 h-4
+											rounded-full
+											object-contain
+										"
+									/>
+									<img
+										src={baseIcon}
+										alt="Base"
+										className="
+											block
+											w-2.5 h-2.5
+											absolute -bottom-0.5 -right-0.5
+											rounded-full
+											border border-white dark:border-slate-900
+											bg-white
+										"
+									/>
+								</div>
+								{/* ≈ 文本 */}
+								<span className="leading-none">
+									{approxUsdcText}
+								</span>
 							</div>
 						)}
 					</div>
@@ -505,60 +612,58 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 				</div>
 
 				{/* ===================== ② Picker view ===================== */}
-				<div
-					className="w-1/2 pl-3"
-					aria-hidden={!showCurrencyPicker}
-					{...(!showCurrencyPicker ? ({ inert: "" } as any) : {})}
-					onKeyDown={onPickerKeyDown}
-				>
-					<div className="rounded-2xl bg-sky-50 border border-sky-100 px-3 py-3">
-						<div className="text-[12px] uppercase tracking-wide text-sky-700/70 mb-2">
-							Select currency
-						</div>
-
-						<div className="grid grid-cols-2 gap-2">
-							{(
-								[
-									{ c: "USD" as const, flag: "🇺🇸", sym: "$" },
-									{ c: "CAD" as const, flag: "🇨🇦", sym: "$" },
-									{ c: "JPY" as const, flag: "🇯🇵", sym: "¥" },
-									{ c: "CNY" as const, flag: "🇨🇳", sym: "¥" },
-								] as const
-							).map((item, idx) => (
-								<button
-									key={item.c}
-									ref={el => {
-										optionRefs.current[idx] = el
-										if (idx === 0) firstOptionRef.current = el
-									}}
-									type="button"
-									tabIndex={showCurrencyPicker ? 0 : -1}
-									onClick={() => pickCurrency(item.c)}
-									className={`
-										w-full
-										inline-flex items-center justify-center gap-2
-										px-3 py-2
-										rounded-full
-										border
-										transition-all duration-150
-										active:scale-95
-										focus:outline-none focus:ring-2 focus:ring-sky-200
-										${item.c === currentCurrency
-											? "bg-white border-sky-200 shadow-sm"
-											: "bg-white/70 border-sky-100 hover:bg-white"}
-									`}
-								>
-									<span className="text-[16px] leading-none">{item.flag}</span>
-									<span className="text-[14px] font-normal text-slate-700 leading-none">{item.sym}</span>
-									<span className="text-[12px] font-semibold text-slate-500 leading-none">{item.c}</span>
-								</button>
-							))}
-						</div>
-
-						{/* Optional: Esc closes picker (no close button) */}
-						<div className="sr-only" aria-hidden="true" />
+				<div className="w-1/2 flex-shrink-0 px-4 py-2">
+					<div 
+						className="grid gap-2"
+						style={{ 
+							gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))'
+						}}
+					>
+						{(
+							[
+								{ c: "USD", flag: "🇺🇸", sym: "$" },
+								{ c: "CAD", flag: "🇨🇦", sym: "$" },
+								{ c: "EUR", flag: "🇪🇺", sym: "€" },
+								{ c: "JPY", flag: "🇯🇵", sym: "¥" },
+								{ c: "CNY", flag: "🇨🇳", sym: "¥" },
+								{ c: "HKD", flag: "🇭🇰", sym: "$" },
+								{ c: "TWD", flag: "🇹🇼", sym: "$" },
+								{ c: "SGD", flag: "🇸🇬", sym: "$" },
+							] as const
+						).map((item, idx) => (
+							<button
+								key={item.c}
+								ref={el => {
+									optionRefs.current[idx] = el
+									if (idx === 0) firstOptionRef.current = el
+								}}
+								type="button"
+								tabIndex={showCurrencyPicker ? 0 : -1}
+								onClick={() => pickCurrency(item.c)}
+								className={`
+									inline-flex items-center justify-center gap-2
+									px-3 py-2
+									rounded-full
+									border
+									transition-all duration-150
+									active:scale-95
+									focus:outline-none focus:ring-2 focus:ring-sky-200
+									whitespace-nowrap
+									${item.c === currentCurrency
+										? "bg-white border-sky-200 shadow-sm"
+										: "bg-white/70 border-sky-100 hover:bg-white"}
+								`}
+							>
+								<span className="text-[16px] leading-none">{item.flag}</span>
+								<span className="text-[14px] font-normal text-slate-700 leading-none">{item.sym}</span>
+								<span className="text-[12px] font-semibold text-slate-500 leading-none">
+									{item.c}
+								</span>
+							</button>
+						))}
 					</div>
 				</div>
+
 			</div>
 		</div>
 	)

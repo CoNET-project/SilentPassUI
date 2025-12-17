@@ -24,6 +24,7 @@ import CoinbaseRamps from '@/components/Setting/CoinbaseRamps'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
+import PayScreen from '@/pages/Pay/send'
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
@@ -55,7 +56,8 @@ const Home = ({}) => {
 	const [currency, setCurrency] = useState<ICurrency>('USD')
 	const [language, setLanguage] = useState<"en">("en")
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|
+	const [openSearch, setOpenSearch]= useState(false)
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'>('')
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
@@ -77,6 +79,11 @@ const Home = ({}) => {
 			USD: 1,
 			CNY: Number(data.usdcny),
 			USDC: Number(data.usdc),
+			HKD: Number(data.usdhkd),
+			TWD: Number(data.usdtwd),
+			EUR: Number(data.usdeur),
+			SGD: Number(data.usdsgd)
+			
 		})
 	}
 
@@ -222,26 +229,36 @@ const Home = ({}) => {
 		const usdcToUSD = currencyData.USDC ?? 1
 
 		switch (currency) {
-			case 'USDC':
-				// 1 USDC = 1 USDC
-				return 1
-
 			case 'USD':
 				// 1 USDC = ? USD
 				return usdcToUSD
 
 			case 'CAD':
-				// 1 USDC = (USDC→USD) * (USD→CAD)
 				return usdcToUSD * currencyData.CAD
 
-			case 'CNY':
-				return usdcToUSD * currencyData.CNY
+			case 'EUR':
+				return usdcToUSD * currencyData.EUR
 
 			case 'JPY':
 				return usdcToUSD * currencyData.JPY
 
-			default:
+			case 'CNY':
+				return usdcToUSD * currencyData.CNY
+
+			case 'HKD':
+				return usdcToUSD * currencyData.HKD
+
+			case 'TWD':
+				return usdcToUSD * currencyData.TWD
+
+			case 'SGD':
+				return usdcToUSD * currencyData.SGD
+
+			default: {
+				// 理论上不会发生，兜底防炸
+				console.warn('Unknown currency:', currency)
 				return usdcToUSD
+			}
 		}
 	}
 
@@ -253,22 +270,42 @@ const Home = ({}) => {
 		const v = currency === 'USDC' ? usdcbalance : usdcbalance * rate
 
 		switch (currency) {
+			case 'EUR': {
+				// 欧元
+				return `€ ${formatWithThousands(v, 2)}`
+			}
+
+			case 'TWD': {
+				// 新台币（更通用写法）
+				return `NT$ ${formatWithThousands(v, 2)}`
+			}
+
+			case 'SGD': {
+				return `SG$ ${formatWithThousands(v, 2)}`
+			}
+
+			case 'HKD': {
+				return `HK$ ${formatWithThousands(v, 2)}`
+			}
+
 			case 'JPY':
-			// 日元无小数
-			return `JPY¥ ${formatWithThousands(v, 0)}`
+				// 日元无小数
+				return `JP¥ ${formatWithThousands(v, 0)}`
 
 			case 'CNY':
-			return `CNY¥ ${formatWithThousands(v)}`
+				// 人民币
+				return `RMB¥ ${formatWithThousands(v, 2)}`
 
 			case 'CAD':
-			return `CA$ ${formatWithThousands(v)}`
+				return `CA$ ${formatWithThousands(v, 2)}`
 
 			case 'USDC':
-			return `${formatWithThousands(usdcbalance)} USDC`
+				// USDC 是 token，不是法币
+				return `${formatWithThousands(usdcbalance)} USDC`
 
 			case 'USD':
 			default:
-			return `US$ ${formatWithThousands(v)}`
+				return `US$ ${formatWithThousands(v, 2)}`
 		}
 	}
 	const currentAvatarSrc = avatarImageData || avatarUrl
@@ -295,8 +332,12 @@ const Home = ({}) => {
 			() => [
 				{ value: 'USD' as const, label: 'USD', hint: 'US Dollar' },
 				{ value: 'CAD' as const, label: 'CAD', hint: 'Canadian Dollar' },
+				{ value: 'EUR' as const, label: 'EUR', hint: 'Euro' },                 // 👈 欧元
 				{ value: 'JPY' as const, label: 'JPY', hint: 'Japanese Yen' },
 				{ value: 'CNY' as const, label: 'CNY', hint: 'Chinese Yuan' },
+				{ value: 'HKD' as const, label: 'HKD', hint: 'Hong Kong Dollar' },     // 👈 港币
+				{ value: 'TWD' as const, label: 'TWD', hint: 'New Taiwan Dollar' },    // 👈 台币
+				{ value: 'SGD' as const, label: 'SGD', hint: 'Singapore Dollar' },     // 👈 新加坡币
 			],
 			[]
 		)
@@ -373,7 +414,7 @@ const Home = ({}) => {
 										</div>
 
 										<span>
-											USDC ${formatWithThousands(usdcbalance)}
+											{formatWithThousands(usdcbalance)}
 										</span>
 									</div>
 								</div>
@@ -506,7 +547,7 @@ const Home = ({}) => {
 				<button
 					className="flex-1 h-9 rounded-full bg-white text-sm font-semibold text-blue-600 shadow-md"
 					onClick={() => {
-						setShowAlphaHowItWorks('Search')
+						setShowAlphaHowItWorks('Pay')
 					}}
 				>
 					Send
@@ -614,7 +655,7 @@ const Home = ({}) => {
 				<div className="flex items-center gap-2 mb-4">
 					 <button 
 						onClick={() => {
-							setShowAlphaHowItWorks('Search')
+							setOpenSearch(true)
 						}}
 						className="w-full"
 					>
@@ -781,14 +822,11 @@ const Home = ({}) => {
 					{/* 顶部 Header */}
 					<BeamioNavBack
 						title={
-							showAlphaHowItWorks === 'BeamioAlphaHowItWorks'
-							? 'How Beamio Alpha works'
-							: showAlphaHowItWorks === 'BeamioLearnHowItWorksCard'
-							? 'How Beamio works'
-							: showAlphaHowItWorks === 'BeamioTestBalance'
-							? 'About this 0.2 USDC'
-							: ''
-							
+							showAlphaHowItWorks === 'BeamioAlphaHowItWorks' ? 'How Beamio Alpha works'
+							: showAlphaHowItWorks === 'BeamioLearnHowItWorksCard' ? 'How Beamio works'
+							: showAlphaHowItWorks === 'BeamioTestBalance' ? 'About this 0.2 USDC'
+							: showAlphaHowItWorks === 'Pay' ? 'Pay'
+							: 'Search'
 						}
 						onClose={() => {
 							setShowAlphaHowItWorks('')
@@ -815,7 +853,8 @@ const Home = ({}) => {
 							/>
 							)}
 							{showAlphaHowItWorks === 'BeamioTestBalance' && <BeamioTestBalanceDetailsCard />}
-							{showAlphaHowItWorks === 'Search' && <BeamioSearch close={path => {
+							
+							{showAlphaHowItWorks === 'Pay' && <PayScreen close={path => {
 								setShowAlphaHowItWorks('')
 							}} />}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
@@ -826,6 +865,16 @@ const Home = ({}) => {
 				</AnimatePresence>
 				, document.body
 			)}
+			<div
+				className={`
+					fixed inset-0 z-50
+					bg-white
+					transition-transform duration-100 ease-out
+					${ openSearch ? 'translate-y-0' : 'translate-y-full'}
+				`}
+			>
+				<BeamioSearch close={() => setOpenSearch(false)} />
+			</div>
 		</div>
 	)
 }

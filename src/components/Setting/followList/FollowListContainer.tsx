@@ -64,8 +64,9 @@ const FollowListContainer = ({ tab, onClose }: FollowListContainerProps) => {
   const list = activeTab === 'following' ? following : followers
 
   const displayName = (item: FollowUserItem) => {
-    const full = [item.firstName, item.lastName].filter(Boolean).join(' ')
-    return full || item.username || 'Unknown'
+		const lastname = item.lastName.split('\r\n')
+		const fullName = `${item.firstName || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
+		return fullName || item.username || item.address
   }
 
   const shortAddress = (addr: string) => {

@@ -1,9 +1,6 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 
-
-
-
 type DaemonContext = {
 	currencyData: currencyData
 	setCurrencyData: (val: currencyData) => void
@@ -143,7 +140,11 @@ const defaultContextValue: DaemonContext = {
 		USD: 0,
 		JPY: 0,
 		CNY: 0,
-		USDC: 0
+		USDC: 0,
+		HKD: 0,
+		EUR: 0,
+		TWD: 0,
+		SGD: 0
 	},
 
 	setCurrencyData: (val: currencyData) => {},
@@ -349,7 +350,11 @@ export function DaemonProvider({ children }: DaemonProps) {
 		USD: 0,
 		JPY: 0,
 		CNY: 0,
-		USDC: 0
+		USDC: 0,
+		HKD: 0,
+		SGD: 0,
+		EUR: 0,
+		TWD: 0
 	})
 
   useEffect(() => {

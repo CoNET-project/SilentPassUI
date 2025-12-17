@@ -85,6 +85,10 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 			USD: 1,
 			CNY: Number(data.usdcny),
 			USDC: Number(data.usdc),
+			HKD: Number(data.usdhkd),
+			TWD: Number(data.usdtwd),
+			EUR: Number(data.usdeur),
+			SGD: Number(data.usdsgd)
 		})
 		setFxUpdatedAt(new Date())
 	}
@@ -157,7 +161,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	function usdcToCurrency(usdc: number, currency: ICurrency) {
 		return usdc * fxRateUSDCToCurrency(currency)
 	}
-	
+
 	function formatFiat(usdcAmount = 1, currency: ICurrency) {
 		// 1 USDC ≈ X {currency}
 		const rate = fxRateUSDCToCurrency(currency)

@@ -1,5 +1,5 @@
 import React, {useRef, useState, useEffect} from "react"
-import SearchInputWithDropdown, {SearchInputRef} from '@/components/Home/SearchBarWithResults'
+import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -64,7 +64,7 @@ type Props = {
 }
 
 export default function PayScreen ({close, beamioer}: Props) {
-	const searchRef = useRef<SearchInputRef>(null)
+	
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
 	const [amountError, setAmountError]  = useState(false)
@@ -95,7 +95,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 		if (item) {
 			setFocusAmount(true)
 		} else {
-			searchRef.current?.focus()
+			
 		}
 	}, [item])
 
@@ -287,13 +287,11 @@ export default function PayScreen ({close, beamioer}: Props) {
 													}
 												
 												}}
-												ref={searchRef}
 												select={true}
 											/>
 										</section>
 									)
 								}
-
 
 								{
 									item && (

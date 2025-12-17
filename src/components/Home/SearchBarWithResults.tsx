@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
-import { Search } from 'lucide-react'
+import { Search, ChevronLeft} from 'lucide-react'
 import { searchUsername, storeSystemData } from '@/services/beamio'
 import beamio_icon from '@/components/assets/32x32.svg'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
@@ -9,11 +9,6 @@ import { Card, CardContent } from "@/components/ui/card"
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
-
-export type SearchInputRef = {
-	focus: () => void
-}
-
 
 type Props = {
 	close: (path: string | searchResult) => void
@@ -51,8 +46,8 @@ function formatUserDate(timestamp?: string | number): string {
 
 
 // ✅ 改成 forwardRef：对外暴露 focus()
-const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
-	({ close, readonly, select, showHistory }, ref) => {
+const SearchInputWithDropdown = forwardRef(
+	({ close, readonly, select, showHistory }: Props) => {
 		const { profiles, } = useDaemonContext()
 
 		const [query, setQuery] = useState('')
@@ -67,16 +62,6 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 		const [searchKeysHistory, setSearchKeysHistory] = useState<searchkeywork[]>([])
 
 		const hasQuery = query.trim().length > 0
-
-		// ✅ 对外暴露方法：父组件可 searchRef.current?.focus()
-		useImperativeHandle(ref, () => ({
-			focus() {
-				// 让 focus 更稳：等一帧再聚焦（iOS/WebView 也更稳定）
-				requestAnimationFrame(() => {
-					inputRef.current?.focus({ preventScroll: true } as any)
-				})
-			},
-		}))
 
 		
 
@@ -313,29 +298,53 @@ const SearchInputWithDropdown = forwardRef<SearchInputRef, Props>(
 							"
 						>
 							{/* 顶部：输入行 */}
-							<div className="flex items-center bg-slate-100 rounded-full px-3 h-11 flex-1">
-								{/* Beamio icon —— 在最左侧 */}
-								<img
-									src={beamio_icon}
-									alt="Beamio"
-									className="w-5 h-5 mr-2 flex-shrink-0 opacity-80"
-								/>
+							<div className="flex items-center bg-slate-100 rounded-full px-2 h-11 flex-1">
+							{/* ← 返回按钮 */}
+							<button
+								type="button"
+								onClick={() => close('/')}
+								className="
+								w-7 h-7
+								mr-2
+								flex items-center justify-center
+								rounded-full
+								hover:bg-slate-200
+								active:scale-95
+								transition
+								flex-shrink-0
+								"
+							>
+								<ChevronLeft className="w-4 h-4 text-slate-700" />
+							</button>
 
-								{/* Search icon —— 紧接 Beamio icon */}
-								<Search
-									className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0"
-									strokeWidth={2}
-								/>
+							{/* Beamio icon */}
+							<img
+								src={beamio_icon}
+								alt="Beamio"
+								className="w-5 h-5 mr-2 flex-shrink-0 opacity-80"
+							/>
 
-								{/* 输入框 */}
-								<input
-									ref={inputRef}
-									className="flex-1 bg-transparent text-[13px] placeholder-slate-400 focus:outline-none"
-									placeholder="Search for @BeamioTag or wallet address"
-									value={query}
-									readOnly={readonly}
-									onChange={e => setQuery(e.currentTarget.value)}
-								/>
+							{/* Search icon */}
+							<Search
+								className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0"
+								strokeWidth={2}
+							/>
+
+							{/* 输入框 */}
+							<input
+								ref={inputRef}
+								className="
+								flex-1
+								bg-transparent
+								text-[13px]
+								placeholder-slate-400
+								focus:outline-none
+								"
+								placeholder="Search for @BeamioTag or wallet address"
+								value={query}
+								readOnly={readonly}
+								onChange={e => setQuery(e.currentTarget.value)}
+							/>
 							</div>
 
 							{/* 下方：search 行 + 结果列表 */}

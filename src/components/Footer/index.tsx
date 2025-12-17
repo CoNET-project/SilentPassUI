@@ -83,6 +83,19 @@ const Footer = () => {
 	// - 大小写不敏感
 	// - 支持子路由：/history/xxx 也归到 /history
 	const activeKey = useMemo(() => {
+
+		// iOS PWA：路由切换会“恢复”上次 focus，导致键盘弹出
+		requestAnimationFrame(() => {
+			const el = document.activeElement as HTMLElement | null
+			if (!el) return
+
+			const tag = el.tagName?.toLowerCase()
+			const isEditable =
+			tag === 'input' || tag === 'textarea' || (el as any).isContentEditable
+
+			if (isEditable) el.blur()
+		})
+
 		const p = (pathname || '/').toLowerCase()
 
 		if (p === '/' || p.startsWith('/?')) return '/'
@@ -95,6 +108,9 @@ const Footer = () => {
 	}, [pathname])
 
 	const setRouteActive = (value: string) => {
+		const el = document.activeElement as HTMLElement | null
+		el?.blur()
+
 		navigate(value)
 	}
 

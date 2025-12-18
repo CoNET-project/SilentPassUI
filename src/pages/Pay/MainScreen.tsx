@@ -12,7 +12,7 @@ export default function MainScreen({
   onAction?: (action: Action) => void
 }) {
   return (
-    <div className="grid grid-cols-1 gap-3 mt-10">
+    <div className="grid grid-cols-1 gap-3 mt-2">
   {/* Pay someone */}
   <button
     type="button"

@@ -287,6 +287,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 													}
 												
 												}}
+												showBackIcon={false}
 												select={true}
 											/>
 										</section>

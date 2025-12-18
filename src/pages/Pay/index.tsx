@@ -47,7 +47,7 @@ const Pay = ({}) => {
 		<div className={styles.home}>
 			
 			{/* Search */}
-			<div className="flex items-center gap-2 mb-4 mt-10">
+			<div className="flex items-center gap-2 mb-4 mt-4">
 					<button 
 					onClick={() => {
 						setOpenSearch(true)
@@ -70,7 +70,7 @@ const Pay = ({}) => {
 
 				
 			</div>
-			<div className="grid grid-cols-1 gap-3 mt-10">
+			<div className="grid grid-cols-1 gap-3 mt-4">
 				<MainScreen onAction={val => {
 					switch(val) {
 						case 'cashcode': {

@@ -22,7 +22,7 @@ import type { Transition } from 'framer-motion'
 type TabKey = '/' | '/history' | '/pay' | '/chat' | '/settings'
 type Phase = 'idle' | 'moving' | 'settling'|'impact'
 
-const ICON_CLASS = 'w-12 h-12 block'
+const ICON_CLASS = 'w-8 h-8 block'
 const SLOT_H = 'h-12'
 
 const Footer = () => {

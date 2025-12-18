@@ -114,10 +114,6 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		return usdcToUSD * usdToCurrency
 	}
 
-	
-
-
-
 	const oracle = async () => {
 		const data = await getOracle()
 		setCurrencyData({
@@ -138,7 +134,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		if (prev === currencyUSDC) return
 		prevModeRef.current = currencyUSDC
 
-		// false -> true：把当前输入框里的法币 displayAmount 当作“最终值”，换算成 USDC 并回写给外部
+		// false -> true：把当前输入框里的法币 displayAmount 当作"最终值"，换算成 USDC 并回写给外部
 		if (currencyUSDC) {
 			const n = Number(displayAmount || 0)
 			const fiat = Number.isFinite(n) ? n : 0
@@ -146,7 +142,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			const usdcStr = formatUsdc(usdc)
 
 			lastSentUsdcRef.current = usdcStr
-			setAmount(usdcStr)                 // ✅ 外部拿到“刚刚键入的法币”对应的 USDC
+			setAmount(usdcStr)                 // ✅ 外部拿到"刚刚键入的法币"对应的 USDC
 			setDisplayAmount(usdcStr)          // ✅ 输入框切到 USDC 显示
 			checkBalance(usdc)
 			return
@@ -158,14 +154,13 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		const curValue = usdcToCurrencyAmount(safeUsdc, currentCurrency)
 		setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency))
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [currencyUSDC])
-		useEffect(() => {
-			if (currencyUSDC) return // ✅ USDC 模式不改 currentCurrency（保留上一次法币）
-			if (beamio) return setcurrentCurrency(beamio.currency)
-			setcurrentCurrency('USD')
-	}, [currencyUSDC, beamio])
-
+	}, [currencyUSDC])
 	
+	useEffect(() => {
+		if (currencyUSDC) return // ✅ USDC 模式不改 currentCurrency（保留上一次法币）
+		if (beamio) return setcurrentCurrency(beamio.currency)
+		setcurrentCurrency('USD')
+	}, [currencyUSDC, beamio])
 
 	useEffect(() => {
 		if (!focusSignal) return
@@ -225,7 +220,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [amount, currentCurrency, currencyData, currencyUSDC])
 
-	// ---------- Picker open/close + focus ----------
+	// ---------- Picker open/close ----------
 	const openPicker = () => {
 		if (readOnly) return
 		setShowCurrencyPicker(true)
@@ -289,9 +284,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		
 		await storeSystemData()
 		setBeamio({...bo})
-
 	}
-	
 
 	// ---------- Pick currency (USDC truth stays) ----------
 	const pickCurrency = (next: ICurrency) => {
@@ -341,328 +334,36 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}, [displayAmount, currentCurrency, currencyData])
 
 	return (
-		<div className="mb-4 overflow-hidden">
-			<div
-				className={`
-					w-[200%] flex items-stretch
-					transition-transform duration-300 ease-out
-					${showCurrencyPicker ? "-translate-x-1/2" : "translate-x-0"}
-				`}
-			>
-				{/* ===================== ① Input view ===================== */}
-				<div
-					className="w-1/2 pr-3"
-					aria-hidden={showCurrencyPicker}
-					{...(showCurrencyPicker ? ({ inert: "" } as any) : {})}
-				>
-
-
-					{/**		Balance  */}
-					<div className="flex items-center justify-between text-[12px] tracking-wide text-slate-400 pr-1">
-						{/* 左侧：currentCurrency 计价 */}
-						<div className="leading-none opacity-70">
-							{typeof usdcbalance === "number" && (
-								<>
-									{currentCurrency}{" "}
-									{formatMoney(usdcbalance * fxRateUSDCToCurrency(currentCurrency), currentCurrency === "JPY" ? 0 : 2)}
-								</>
-							)}
-						</div>
-
-						{/* 右侧：USDC 余额（保持原样） */}
-						<div className="inline-flex items-center gap-1">
-
-							<span className="leading-none">
-								{formatMoney(usdcbalance,4)} USDC
-							</span>
-						</div>
+		<div className="mb-3 overflow-visible" onKeyDown={onPickerKeyDown}>
+			{/* ===================== Input view ===================== */}
+			<div>
+				{/**		Balance  */}
+				<div className="flex items-center justify-between text-[12px] tracking-wide text-slate-400 pr-1">
+					{/* 左侧：currentCurrency 计价 */}
+					<div className="leading-none opacity-70">
+						{typeof usdcbalance === "number" && (
+							<>
+								{currentCurrency}{" "}
+								{formatMoney(usdcbalance * fxRateUSDCToCurrency(currentCurrency), currentCurrency === "JPY" ? 0 : 2)}
+							</>
+						)}
 					</div>
 
-					{/* Input row: fixed height so absolute elements never jump */}
-					<div className="relative h-12">
-						{/* Left */}
-						<div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
-							{/* Currency capsule */}
-							{
-								currencyUSDC ? (
-									<div
-										className="
-											relative
-											flex-shrink-0
-											w-4 h-4
-											min-w-[16px] min-h-[16px]
-										"
-									>
-										<img
-											src={usdcIcon}
-											alt="USDC"
-											className="
-												block
-												w-4 h-4
-												rounded-full
-												object-contain
-											"
-										/>
-										<img
-											src={baseIcon}
-											alt="Base"
-											className="
-												block
-												w-2.5 h-2.5
-												absolute -bottom-0.5 -right-0.5
-												rounded-full
-												border border-white dark:border-slate-900
-												bg-white
-											"
-										/>
-									</div>
-								) : (
-									<button
-									type="button"
-									onClick={openPicker}
-									disabled={readOnly}
-									className="
-										inline-flex items-center gap-0.5        /* 👈 gap 缩小 */
-										px-1.5 py-1                           /* 👈 内边距收紧 */
-										rounded-full
-										bg-slate-900/10
-										dark:bg-white/4
-										backdrop-blur-sm
+					{/* 右侧：USDC 余额（保持原样） */}
+					<div className="inline-flex items-center gap-1">
+						<span className="leading-none">
+							{formatMoney(usdcbalance,4)} USDC
+						</span>
+					</div>
+				</div>
 
-										text-left select-none
-										hover:bg-slate-900/15
-										dark:hover:bg-white/15
-										active:scale-95
-										transition-all duration-150
-
-										disabled:opacity-60 disabled:active:scale-100
-									"
-								>
-									<span className="text-[15px] leading-none">   {/* 👈 国旗略小 */}
-										{currencyFlag(currentCurrency)}
-									</span>
-
-									<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
-										{currencySymbol(currentCurrency)}
-									</span>
-								</button>
-								)
-							}
-								
-
-
-							{/* MAX */}
-							{currencyUSDC && showMax && (
-								<button
-									type="button"
-									onClick={handleMax}
-									disabled={readOnly}
-									className="
-										px-1 py-1            
-										rounded-full
-										text-[10px] font-semibold 
-										text-sky-700 dark:text-sky-300
-										bg-sky-100/80 dark:bg-sky-900/40
-										hover:bg-sky-200/80 dark:hover:bg-sky-900/60
-										active:scale-95
-										transition-all duration-150
-
-										disabled:opacity-60 disabled:active:scale-100
-									"
-								>
-									MAX
-								</button>
-							)}
-						</div>
-
-						{/* Right: clear */}
-						{/* {!!displayAmount && displayAmount !== "0" && (
-							<button
-								type="button"
-								onClick={() => {
-									setDisplayAmount("0")
-									setAmount("0")
-									setSendError("")
-									setError(false)
-								}}
-								disabled={readOnly}
-								className="
-									absolute -right-3 top-1/2 -translate-y-[43%]
-									p-1.5 
-									rounded-full
-									text-slate-400 hover:text-slate-600
-									active:scale-90 transition
-									disabled:opacity-60 disabled:active:scale-100
-								"
-								aria-label="Clear amount"
-							>
-								<XCircle className="w-5 h-5" />
-							</button>
-						)} */}
-
-						{/* Input: binds to displayAmount, but outputs USDC */}
-						<input
-							ref={amountInputRef}
-							type="text"
-							inputMode="decimal"
-							pattern="[0-9]*[.,]?[0-9]*"
-							autoComplete="off"
-							enterKeyHint="done"
-							value={displayAmount}
-							onFocus={() => {
-								// 当显示是默认 0.00（或 JPY 的 0）时，武装“首次键入替换”
-								const zeroDisplay = formatCurrencyAmount(0, currentCurrency)
-								firstEditArmedRef.current = (displayAmount === zeroDisplay)
-							}}
-							onKeyDown={e => {
-								if (readOnly) return
-
-								const zeroDisplay = currencyUSDC ? formatUsdc(0) : formatCurrencyAmount(0, currentCurrency)
-								
-								if (displayAmount !== zeroDisplay) {
-									firstEditArmedRef.current = false
-									return
-								}
-
-								firstEditArmedRef.current = false
-								const k = e.key
-
-								// 首次键入数字：直接替换成该数字
-								if (/^[0-9]$/.test(k)) {
-									e.preventDefault()
-									const next = k
-									setDisplayAmount(next)
-
-									const usdc = currencyUSDC ? Number(next) : currencyToUsdcAmount(Number(next), currentCurrency)
-									const usdcStr = formatUsdc(usdc)
-									lastSentUsdcRef.current = usdcStr
-									setAmount(usdcStr)
-									checkBalance(usdc)
-
-									requestAnimationFrame(() => {
-										const el = amountInputRef.current
-										if (!el) return
-										el.setSelectionRange(next.length, next.length)
-									})
-
-									firstEditArmedRef.current = false
-									return
-								}
-
-								// 首次键入 "."：替换为 "0."
-								if (k === ".") {
-									if (currencyUSDC) {
-										return setAmount("0")
-									}
-									e.preventDefault()
-									const next = "0."
-									setDisplayAmount(next)
-
-									const usdc = currencyToUsdcAmount(0, currentCurrency)
-									const usdcStr = formatUsdc(usdc)
-									lastSentUsdcRef.current = usdcStr
-									setAmount(usdcStr)
-									checkBalance(usdc)
-
-									requestAnimationFrame(() => {
-										const el = amountInputRef.current
-										if (!el) return
-										el.setSelectionRange(next.length, next.length)
-									})
-
-									firstEditArmedRef.current = false
-									return
-								}
-							}}
-							onChange={e => {
-								const raw = e.target.value
-								let v = sanitizeNumeric(raw)
-
-								// 如果用户已经开始输入了，就取消“首次替换”武装
-								firstEditArmedRef.current = false
-
-								if (displayAmount === "0" && v !== "0" && !v.startsWith("0.")) {
-									v = v.replace(/^0+/, "")
-									if (v === "") v = "0"
-								}
-
-								// ✅ 位数检查：只算数字，不算小数点（例如 123.45 => 5 位）
-								if (v.includes(".")) {
-									const [, frac = ""] = v.split(".")
-
-									// JPY 不允许小数点
-									if (maxDp === 0) {
-										setSendError("JPY & TWD does not allow decimals")
-										return // 不更新 displayAmount → 回滚本次输入
-									}
-
-									// 其他币种限制小数位
-									if (frac.length > maxDp) {
-										setSendError(`Max ${maxDp} decimals`)
-										return
-									}
-								}
-
-								// 通过校验：清掉错误再更新
-								setSendError("")
-								setError(false)
-								setDisplayAmount(v)
-
-								const n = Number(v)
-
-								if (currencyUSDC) {
-								const usdc = Number.isFinite(n) ? n : 0
-								const usdcStr = formatUsdc(usdc)
-								lastSentUsdcRef.current = usdcStr
-								setAmount(usdcStr)
-								checkBalance(usdc)
-								} else {
-								const usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, currentCurrency)
-								const usdcStr = formatUsdc(usdc)
-								lastSentUsdcRef.current = usdcStr
-								setAmount(usdcStr)
-								checkBalance(usdc)
-								}
-							}}
-							readOnly={readOnly}
-							className="
-								w-full h-12
-								text-[32px] leading-none font-semibold
-								text-slate-900
-								bg-transparent outline-none
-								text-center
-								selection:bg-sky-200
-								px-16
-								border-b border-slate-400/20
-							"
-						/>
+				{/* Input row: fixed height so absolute elements never jump */}
+				<div className="relative h-12">
+					{/* Left */}
+					<div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
+						{/* Currency capsule */}
 						{
-							showLimit > 0 && (
-								<div className="flex items-center justify-between text-xs MT-6">
-									<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
-									<span className="text-slate-400">Min amount {'> ' + showLimit} USDC</span>
-								</div>
-							)
-						}
-
-						{/* ≈ USDC hint（右侧，20% 灰） */}
-						{approxUsdcText && !currencyUSDC && (
-							<div
-								className="
-									pointer-events-none
-									absolute right-1 top-1/2 -translate-y-1/2
-									flex items-center gap-1.5
-									text-[11px]
-									text-slate-900/50 dark:text-white/20
-									whitespace-nowrap
-								"
-							>
-								<span>
-									≈ 
-								</span>
-								
-
-								{/* USDC on Base icon（尺寸锁死） */}
+							currencyUSDC ? (
 								<div
 									className="
 										relative
@@ -694,38 +395,356 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 										"
 									/>
 								</div>
-								{/* ≈ 文本 */}
-								<span className="leading-none">
-									{approxUsdcText}
+							) : (
+								<button
+								type="button"
+								onClick={openPicker}
+								disabled={readOnly}
+								className="
+									inline-flex items-center gap-0.5        
+									px-1.5 py-1                           
+									rounded-full
+									bg-slate-900/10
+									dark:bg-white/4
+									backdrop-blur-sm
+
+									text-left select-none
+									hover:bg-slate-900/15
+									dark:hover:bg-white/15
+									active:scale-95
+									transition-all duration-150
+
+									disabled:opacity-60 disabled:active:scale-100
+								"
+							>
+								<span className="text-[15px] leading-none">   
+									{currencyFlag(currentCurrency)}
 								</span>
-							</div>
+
+								<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
+									{currencySymbol(currentCurrency)}
+								</span>
+							</button>
+							)
+						}
+							
+
+						{/* MAX */}
+						{currencyUSDC && showMax && (
+							<button
+								type="button"
+								onClick={handleMax}
+								disabled={readOnly}
+								className="
+									px-1 py-1            
+									rounded-full
+									text-[10px] font-semibold 
+									text-sky-700 dark:text-sky-300
+									bg-sky-100/80 dark:bg-sky-900/40
+									hover:bg-sky-200/80 dark:hover:bg-sky-900/60
+									active:scale-95
+									transition-all duration-150
+
+									disabled:opacity-60 disabled:active:scale-100
+								"
+							>
+								MAX
+							</button>
 						)}
 					</div>
 
-					{/* Error line: fixed height placeholder so layout never shifts */}
-					<div className="mt-2 min-h-[14px] pl-1">
+					{/* Input: binds to displayAmount, but outputs USDC */}
+					<input
+						ref={amountInputRef}
+						type="text"
+						inputMode="decimal"
+						pattern="[0-9]*[.,]?[0-9]*"
+						autoComplete="off"
+						enterKeyHint="done"
+						value={displayAmount}
+						onFocus={() => {
+							// 当显示是默认 0.00（或 JPY 的 0）时，武装"首次键入替换"
+							const zeroDisplay = formatCurrencyAmount(0, currentCurrency)
+							firstEditArmedRef.current = (displayAmount === zeroDisplay)
+						}}
+						onKeyDown={e => {
+							if (readOnly) return
 
-						<span
-							aria-hidden={!sendError}
-							className={`
-								font-medium
-								block text-[13px] text-rose-500 -ml-1
-								transition-opacity duration-150 mt-6
-								${sendError ? "opacity-100" : "opacity-0"}
-							`}
+							const zeroDisplay = currencyUSDC ? formatUsdc(0) : formatCurrencyAmount(0, currentCurrency)
+							
+							if (displayAmount !== zeroDisplay) {
+								firstEditArmedRef.current = false
+								return
+							}
+
+							firstEditArmedRef.current = false
+							const k = e.key
+
+							// 首次键入数字：直接替换成该数字
+							if (/^[0-9]$/.test(k)) {
+								e.preventDefault()
+								const next = k
+								setDisplayAmount(next)
+
+								const usdc = currencyUSDC ? Number(next) : currencyToUsdcAmount(Number(next), currentCurrency)
+								const usdcStr = formatUsdc(usdc)
+								lastSentUsdcRef.current = usdcStr
+								setAmount(usdcStr)
+								checkBalance(usdc)
+
+								requestAnimationFrame(() => {
+									const el = amountInputRef.current
+									if (!el) return
+									el.setSelectionRange(next.length, next.length)
+								})
+
+								firstEditArmedRef.current = false
+								return
+							}
+
+							// 首次键入 "."：替换为 "0."
+							if (k === ".") {
+								if (currencyUSDC) {
+									return setAmount("0")
+								}
+								e.preventDefault()
+								const next = "0."
+								setDisplayAmount(next)
+
+								const usdc = currencyToUsdcAmount(0, currentCurrency)
+								const usdcStr = formatUsdc(usdc)
+								lastSentUsdcRef.current = usdcStr
+								setAmount(usdcStr)
+								checkBalance(usdc)
+
+								requestAnimationFrame(() => {
+									const el = amountInputRef.current
+									if (!el) return
+									el.setSelectionRange(next.length, next.length)
+								})
+
+								firstEditArmedRef.current = false
+								return
+							}
+						}}
+						onChange={e => {
+							const raw = e.target.value
+							let v = sanitizeNumeric(raw)
+
+							// 如果用户已经开始输入了，就取消"首次替换"武装
+							firstEditArmedRef.current = false
+
+							if (displayAmount === "0" && v !== "0" && !v.startsWith("0.")) {
+								v = v.replace(/^0+/, "")
+								if (v === "") v = "0"
+							}
+
+							// ✅ 位数检查：只算数字，不算小数点（例如 123.45 => 5 位）
+							if (v.includes(".")) {
+								const [, frac = ""] = v.split(".")
+
+								// JPY 不允许小数点
+								if (maxDp === 0) {
+									setSendError("JPY & TW does not allow decimals")
+									return // 不更新 displayAmount → 回滚本次输入
+								}
+
+								// 其他币种限制小数位
+								if (frac.length > maxDp) {
+									setSendError(`Max ${maxDp} decimals`)
+									return
+								}
+							}
+
+							// 通过校验：清掉错误再更新
+							setSendError("")
+							setError(false)
+							setDisplayAmount(v)
+
+							const n = Number(v)
+
+							if (currencyUSDC) {
+								const usdc = Number.isFinite(n) ? n : 0
+								const usdcStr = formatUsdc(usdc)
+								lastSentUsdcRef.current = usdcStr
+								setAmount(usdcStr)
+								checkBalance(usdc)
+							} else {
+								const usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, currentCurrency)
+								const usdcStr = formatUsdc(usdc)
+								lastSentUsdcRef.current = usdcStr
+								setAmount(usdcStr)
+								checkBalance(usdc)
+							}
+						}}
+						readOnly={readOnly}
+						className="
+							w-full h-12
+							text-[32px] leading-none font-semibold
+							text-slate-900
+							bg-transparent outline-none
+							text-center
+							selection:bg-sky-200
+							px-16
+							border-b border-slate-400/20
+						"
+					/>
+					{
+						showLimit > 0 && (
+							<div className="flex items-center justify-between text-xs MT-6">
+								<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
+								<span className="text-slate-400">Min amount {'> ' + showLimit} USDC</span>
+							</div>
+						)
+					}
+
+					{/* ≈ USDC hint（右侧，20% 灰） */}
+					{approxUsdcText && !currencyUSDC && (
+						<div
+							className="
+								pointer-events-none
+								absolute right-1 top-1/2 -translate-y-1/2
+								flex items-center gap-1.5
+								text-[11px]
+								text-slate-900/50 dark:text-white/20
+								whitespace-nowrap
+							"
 						>
-							{sendError || "placeholder"}
-						</span>
-					</div>
+							<span>
+								≈ 
+							</span>
+							
+
+							{/* USDC on Base icon（尺寸锁死） */}
+							<div
+								className="
+									relative
+									flex-shrink-0
+									w-4 h-4
+									min-w-[16px] min-h-[16px]
+								"
+							>
+								<img
+									src={usdcIcon}
+									alt="USDC"
+									className="
+										block
+										w-4 h-4
+										rounded-full
+										object-contain
+									"
+								/>
+								<img
+									src={baseIcon}
+									alt="Base"
+									className="
+										block
+										w-2.5 h-2.5
+										absolute -bottom-0.5 -right-0.5
+										rounded-full
+										border border-white dark:border-slate-900
+										bg-white
+									"
+								/>
+							</div>
+							{/* ≈ 文本 */}
+							<span className="leading-none">
+								{approxUsdcText}
+							</span>
+						</div>
+					)}
 				</div>
 
-				{/* ===================== ② Picker view ===================== */}
-				<div className="w-1/2 flex-shrink-0 px-4 py-2">
-					<div 
-						className="grid gap-2"
-						style={{ 
-							gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))'
-						}}
+				{/* Error line: fixed height placeholder so layout never shifts */}
+
+				{
+					sendError && (
+						<div className="mt-2 min-h-[14px] pl-1">
+							<span
+								aria-hidden={!sendError}
+								className={`
+									font-medium
+									block text-[13px] text-rose-500 -ml-1
+									transition-opacity duration-150 mt-6
+									${sendError ? "opacity-100" : "opacity-0"}
+								`}
+							>
+								{sendError || "placeholder"}
+							</span>
+						</div>
+					)
+				}
+				
+			</div>
+
+			{/* ===================== 浮层背景 + Picker Modal ===================== */}
+			
+			{/* 半透明磨砂玻璃背景 */}
+			{showCurrencyPicker && (
+				<div
+					className="
+						fixed inset-0
+						bg-black/30
+						backdrop-blur-sm
+						transition-opacity duration-300
+						z-40
+					"
+					onClick={closePicker}
+					aria-hidden="true"
+				/>
+			)}
+
+			{/* Picker 浮层：从小到大长出来 */}
+			<div
+				className={`
+					fixed inset-0
+					flex items-center justify-center
+					pointer-events-none
+					z-50
+					transition-all duration-300
+					${showCurrencyPicker ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
+				`}
+			>
+				<div
+					className={`
+						bg-white dark:bg-slate-800
+						rounded-2xl shadow-2xl
+						p-6
+						max-w-sm w-[90vw]
+						transition-all duration-300 ease-out
+						${showCurrencyPicker 
+							? "scale-100 translate-y-0" 
+							: "scale-75 translate-y-8"
+						}
+					`}
+				>
+					<div className="flex items-center justify-between mb-6">
+						<h2 className="text-lg font-bold text-slate-900 dark:text-white">
+							Choose Currency
+						</h2>
+						<button
+							type="button"
+							onClick={closePicker}
+							className="
+								p-1 rounded-lg
+								text-slate-400 hover:text-slate-600
+								dark:hover:text-slate-300
+								transition-colors
+								-mr-2
+							"
+							aria-label="Close picker"
+						>
+							<XCircle className="w-6 h-6" />
+						</button>
+					</div>
+
+					{/* 货币网格 */}
+					<div
+						className="
+							grid gap-3
+							grid-cols-2
+							sm:grid-cols-3
+						"
 					>
 						{(
 							[
@@ -735,43 +754,50 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 								{ c: "JPY", flag: "🇯🇵", sym: "¥" },
 								{ c: "CNY", flag: "🇨🇳", sym: "¥" },
 								{ c: "HKD", flag: "🇭🇰", sym: "$" },
-								{ c: "TWD", flag: "🇹🇼", sym: "$" },
+								{ c: "TWD", flag: "🇹🇼", sym: "NT$" },
 								{ c: "SGD", flag: "🇸🇬", sym: "$" },
 							] as const
 						).map((item, idx) => (
 							<button
-								key={item.c}
-								ref={el => {
-									optionRefs.current[idx] = el
-									if (idx === 0) firstOptionRef.current = el
-								}}
-								type="button"
-								tabIndex={showCurrencyPicker ? 0 : -1}
-								onClick={() => pickCurrency(item.c)}
-								className={`
-									inline-flex items-center justify-center gap-2
-									px-3 py-2
-									rounded-full
-									border
-									transition-all duration-150
-									active:scale-95
-									focus:outline-none focus:ring-2 focus:ring-sky-200
-									whitespace-nowrap
-									${item.c === currentCurrency
-										? "bg-white border-sky-200 shadow-sm"
-										: "bg-white/70 border-sky-100 hover:bg-white"}
-								`}
+							key={item.c}
+							ref={el => {
+								optionRefs.current[idx] = el
+								if (idx === 0) firstOptionRef.current = el
+							}}
+							type="button"
+							tabIndex={showCurrencyPicker ? 0 : -1}
+							onClick={() => pickCurrency(item.c as ICurrency)}
+							className={`
+								inline-flex items-center justify-center gap-2
+								px-3 py-2
+								rounded-full
+								border
+								transition-all duration-150
+								active:scale-95
+								focus:outline-none focus:ring-2 focus:ring-sky-300
+								whitespace-nowrap
+								${item.c === currentCurrency
+								? "bg-sky-50 dark:bg-sky-900/30 border-sky-300 dark:border-sky-500 shadow-sm"
+								: "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
+								}
+							`}
 							>
-								<span className="text-[16px] leading-none">{item.flag}</span>
-								<span className="text-[14px] font-normal text-slate-700 leading-none">{item.sym}</span>
-								<span className="text-[12px] font-semibold text-slate-500 leading-none">
-									{item.c}
-								</span>
+							{/* Flag */}
+							<span className="text-[16px] leading-none">{item.flag}</span>
+
+							{/* Currency code */}
+							<span className="text-[12px] font-semibold text-slate-600 dark:text-slate-300 leading-none">
+								{item.c}
+							</span>
+
+							{/* Symbol */}
+							<span className="text-[13px] font-medium text-slate-700 dark:text-slate-200 leading-none">
+								{item.sym}
+							</span>
 							</button>
 						))}
 					</div>
 				</div>
-
 			</div>
 		</div>
 	)

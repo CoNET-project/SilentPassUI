@@ -319,18 +319,19 @@ const iconTransition: Transition = (() => {
     <div className="fixed left-0 right-0 bottom-0 z-50 px-4 pb-4">
       <motion.div
         className="
-          mx-auto max-w-[520px]
-          rounded-[24px]
-          px-2 py-2
-          backdrop-blur-3xl
-          border border-white/60 dark:border-slate-700/70
-          shadow-[0_18px_55px_rgba(0,0,0,0.22)]
+           mx-auto max-w-[520px]
+		rounded-[24px]
+		px-2 py-2
+		bg-white/90 dark:bg-slate-900/40
+		backdrop-blur-lg
+		border border-white/10 dark:border-white/10
+		shadow-[0_14px_40px_rgba(0,0,0,0.18)]
         "
 		
         style={{
           background: darkModle
-            ? 'linear-gradient(180deg, rgba(15,23,42,0.66), rgba(15,23,42,0.46))'
-            : 'linear-gradient(180deg, rgba(255,255,255,0.74), rgba(255,255,255,0.56))',
+      ? 'rgba(15, 23, 42, 0.25)'   // 深色半透明
+      : 'rgba(255, 255, 255, 0.25)' // 浅色半透明
         }}
 
 		animate={

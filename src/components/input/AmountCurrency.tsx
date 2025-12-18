@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useAutoFocus } from "@/components/input/useAutoFocus"
 import { XCircle } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { getOracle } from "@/services/beamio"
+import { getOracle, postBeamio, storeSystemData } from "@/services/beamio"
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 
 type Prof = {
 	setAmount: (usdc: string) => void // ✅ 永远回传 USDC
@@ -16,6 +17,7 @@ type Prof = {
 	showLimit: number
 	setError: (val: boolean) => void
 	focusSignal?: boolean
+	currencyUSDC?: boolean
 }
 
 //@ts-ignore
@@ -36,10 +38,10 @@ const formatMoney = (n: number, fixed: number) =>
 const isCurrency = (v: any): v is ICurrency =>
 	['USD','CAD','EUR','JPY','CNY','HKD','TWD','SGD'].includes(String(v))
 
-const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal }: Prof) => {
+const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal, currencyUSDC=false }: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
-	const { usdcbalance, beamio, setCurrencyData, currencyData } = useDaemonContext()
+	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
 
 	const [sendError, setSendError] = useState("")
 	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>('USD')
@@ -50,7 +52,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 	const lastSentUsdcRef = useRef<string>("")
 	const firstEditArmedRef = useRef(true)
-
+	const prevModeRef = useRef<boolean>(currencyUSDC)
 	
 
 	// Focus management
@@ -61,7 +63,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	const oracleOnce = useRef(false)
 
 	// ---------- FX helpers ----------
-	const maxDp = CURRENCY_META[currentCurrency]?.maxDp ?? 2
+	const maxDp = currencyUSDC ? 4 : (CURRENCY_META[currentCurrency]?.maxDp ?? 2)
 	const currencySymbol = (c: ICurrency) => CURRENCY_META[c]?.sym ?? "$"
 	const currencyFlag = (c: ICurrency) => CURRENCY_META[c]?.flag ?? ""
 
@@ -83,7 +85,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}
 
 	const formatCurrencyAmount = (n: number, c: ICurrency) => {
-		const decimals = c === "JPY" ? 0 : 2
+		const decimals = (c === "JPY" || c==='TWD') ? 0 : 2
 		if (!Number.isFinite(n)) return "0"
 		return n.toFixed(decimals)
 	}
@@ -93,6 +95,12 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		// USDC 常用 6 位，小额也不会丢精度
 		return n.toFixed(4).replace(/\.?0+$/, "")
 	}
+
+	useEffect(() => {
+		if (oracleOnce.current) return
+		oracleOnce.current = true
+		oracle()
+	}, [])
 
 	function fxRateUSDCToCurrency(currency: ICurrency): number {
 		// 1 USDC = ? USD
@@ -105,6 +113,8 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 		return usdcToUSD * usdToCurrency
 	}
+
+	
 
 
 
@@ -123,12 +133,39 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		})
 	}
 
-
 	useEffect(() => {
-		if (oracleOnce.current) return
-		oracleOnce.current = true
-		oracle()
-	}, [])
+		const prev = prevModeRef.current
+		if (prev === currencyUSDC) return
+		prevModeRef.current = currencyUSDC
+
+		// false -> true：把当前输入框里的法币 displayAmount 当作“最终值”，换算成 USDC 并回写给外部
+		if (currencyUSDC) {
+			const n = Number(displayAmount || 0)
+			const fiat = Number.isFinite(n) ? n : 0
+			const usdc = currencyToUsdcAmount(fiat, currentCurrency)
+			const usdcStr = formatUsdc(usdc)
+
+			lastSentUsdcRef.current = usdcStr
+			setAmount(usdcStr)                 // ✅ 外部拿到“刚刚键入的法币”对应的 USDC
+			setDisplayAmount(usdcStr)          // ✅ 输入框切到 USDC 显示
+			checkBalance(usdc)
+			return
+		}
+
+		// true -> false：保持 amount(USDC) 不变，仅重算法币显示
+		const usdc = Number(amount || 0)
+		const safeUsdc = Number.isFinite(usdc) ? usdc : 0
+		const curValue = usdcToCurrencyAmount(safeUsdc, currentCurrency)
+		setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency))
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		}, [currencyUSDC])
+		useEffect(() => {
+			if (currencyUSDC) return // ✅ USDC 模式不改 currentCurrency（保留上一次法币）
+			if (beamio) return setcurrentCurrency(beamio.currency)
+			setcurrentCurrency('USD')
+	}, [currencyUSDC, beamio])
+
+	
 
 	useEffect(() => {
 		if (!focusSignal) return
@@ -177,10 +214,16 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		if (amount === lastSentUsdcRef.current) return
 
 		const usdc = Number(amount || 0)
-		const curValue = usdcToCurrencyAmount(Number.isFinite(usdc) ? usdc : 0, currentCurrency)
-		setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency))
+		const safeUsdc = Number.isFinite(usdc) ? usdc : 0
+
+		if (currencyUSDC) {
+			setDisplayAmount(formatUsdc(safeUsdc)) // ✅ USDC 模式：显示 USDC
+		} else {
+			const curValue = usdcToCurrencyAmount(safeUsdc, currentCurrency)
+			setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency)) // ✅ 法币模式：显示法币
+		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [amount, currentCurrency, currencyData])
+	}, [amount, currentCurrency, currencyData, currencyUSDC])
 
 	// ---------- Picker open/close + focus ----------
 	const openPicker = () => {
@@ -230,11 +273,25 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			}
 		}
 	}
+
+	const handleSaveAvatar = async (curr: ICurrency) => {
+		if (!CoNET_Data||!beamio ) return
+		
+		const tmpData = CoNET_Data
+		
+		const profile: profile = tmpData.profiles[0]
+		const bo = beamio
+		bo.currency = curr
+		await postBeamio(bo, profile.privateKeyArmor)
+
+		tmpData.beamio = bo
+		setCoNET_Data(tmpData)
+		
+		await storeSystemData()
+		setBeamio({...bo})
+
+	}
 	
-	const balanceInCurrentCurrency =
-	typeof usdcbalance === "number"
-		? usdcbalance * fxRateUSDCToCurrency(currentCurrency)
-		: null
 
 	// ---------- Pick currency (USDC truth stays) ----------
 	const pickCurrency = (next: ICurrency) => {
@@ -243,7 +300,8 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		const usdc = Number(amount || 0)
 		const nextDisplay = usdcToCurrencyAmount(Number.isFinite(usdc) ? usdc : 0, next)
 		setDisplayAmount(formatCurrencyAmount(nextDisplay, next))
-
+		
+		handleSaveAvatar(next)
 		setSendError("")
 		setError(false)
 		closePicker()
@@ -325,7 +383,41 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						{/* Left */}
 						<div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
 							{/* Currency capsule */}
-								<button
+							{
+								currencyUSDC ? (
+									<div
+										className="
+											relative
+											flex-shrink-0
+											w-4 h-4
+											min-w-[16px] min-h-[16px]
+										"
+									>
+										<img
+											src={usdcIcon}
+											alt="USDC"
+											className="
+												block
+												w-4 h-4
+												rounded-full
+												object-contain
+											"
+										/>
+										<img
+											src={baseIcon}
+											alt="Base"
+											className="
+												block
+												w-2.5 h-2.5
+												absolute -bottom-0.5 -right-0.5
+												rounded-full
+												border border-white dark:border-slate-900
+												bg-white
+											"
+										/>
+									</div>
+								) : (
+									<button
 									type="button"
 									onClick={openPicker}
 									disabled={readOnly}
@@ -354,9 +446,13 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 										{currencySymbol(currentCurrency)}
 									</span>
 								</button>
+								)
+							}
+								
+
 
 							{/* MAX */}
-							{/* {showMax && (
+							{currencyUSDC && showMax && (
 								<button
 									type="button"
 									onClick={handleMax}
@@ -376,7 +472,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 								>
 									MAX
 								</button>
-							)} */}
+							)}
 						</div>
 
 						{/* Right: clear */}
@@ -421,7 +517,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							onKeyDown={e => {
 								if (readOnly) return
 
-								const zeroDisplay = formatCurrencyAmount(0, currentCurrency)
+								const zeroDisplay = currencyUSDC ? formatUsdc(0) : formatCurrencyAmount(0, currentCurrency)
 								
 								if (displayAmount !== zeroDisplay) {
 									firstEditArmedRef.current = false
@@ -437,7 +533,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 									const next = k
 									setDisplayAmount(next)
 
-									const usdc = currencyToUsdcAmount(Number(next), currentCurrency)
+									const usdc = currencyUSDC ? Number(next) : currencyToUsdcAmount(Number(next), currentCurrency)
 									const usdcStr = formatUsdc(usdc)
 									lastSentUsdcRef.current = usdcStr
 									setAmount(usdcStr)
@@ -455,6 +551,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 								// 首次键入 "."：替换为 "0."
 								if (k === ".") {
+									if (currencyUSDC) {
+										return  setAmount("0")
+									}
 									e.preventDefault()
 									const next = "0."
 									setDisplayAmount(next)
@@ -509,13 +608,21 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 								setError(false)
 								setDisplayAmount(v)
 
+								const n = Number(v)
 
-								// ✅ 回传给父组件：永远是 USDC
-								const usdc = currencyToUsdcAmount(Number(v), currentCurrency)
+								if (currencyUSDC) {
+								const usdc = Number.isFinite(n) ? n : 0
 								const usdcStr = formatUsdc(usdc)
 								lastSentUsdcRef.current = usdcStr
 								setAmount(usdcStr)
 								checkBalance(usdc)
+								} else {
+								const usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, currentCurrency)
+								const usdcStr = formatUsdc(usdc)
+								lastSentUsdcRef.current = usdcStr
+								setAmount(usdcStr)
+								checkBalance(usdc)
+								}
 							}}
 							readOnly={readOnly}
 							className="
@@ -539,7 +646,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						}
 
 						{/* ≈ USDC hint（右侧，20% 灰） */}
-						{approxUsdcText && (
+						{approxUsdcText && !currencyUSDC && (
 							<div
 								className="
 									pointer-events-none
@@ -601,8 +708,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						<span
 							aria-hidden={!sendError}
 							className={`
-								block text-[11px] text-rose-500
-								transition-opacity duration-150 mt-4
+								font-medium
+								block text-[13px] text-rose-500 -ml-1
+								transition-opacity duration-150 mt-6
 								${sendError ? "opacity-100" : "opacity-0"}
 							`}
 						>

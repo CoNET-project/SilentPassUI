@@ -97,7 +97,7 @@ const Setting = ({}) => {
 		setCoNET_Data(tmpData)
 		setProfiles(CoNET_Data?.profiles)
 		storeSystemData()
-		setBeamio(_beamio)
+		setBeamio({..._beamio})
 	}
 
 		const getPrivatekey = (): string => {

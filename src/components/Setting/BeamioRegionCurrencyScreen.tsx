@@ -109,7 +109,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 		setCoNET_Data(tmpData)
 		
 		await storeSystemData()
-		setBeamio(bo)
+		setBeamio({...bo})
 		setLoading(false)
 		colse()
 	}

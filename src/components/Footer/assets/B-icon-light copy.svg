@@ -1,0 +1,35 @@
+<svg width="120" height="120" viewBox="0 0 120 120"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+
+
+    <!-- B 的蓝色动态渐变 -->
+    <linearGradient id="beamio-B-anim-light" x1="0%" y1="0%" x2="100%">
+      <stop offset="0%" stop-color="#0031CC" />
+      <stop offset="50%" stop-color="#4C8DFF">
+        <animate attributeName="offset" values="0;1;0" dur="2.2s" repeatCount="indefinite" />
+      </stop>
+      <stop offset="100%" stop-color="#0031CC" />
+    </linearGradient>
+
+    <clipPath id="lightCircleClip">
+      <circle cx="60" cy="60" r="56" />
+    </clipPath>
+  </defs>
+
+
+  <!-- 中央的 B -->
+  <text
+    x="62" y="87"
+    text-anchor="middle"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
+    font-size="72"
+    font-weight="700"
+    font-style="italic"
+    letter-spacing="0.02em"
+    fill="url(#beamio-B-anim-light)"
+  >
+    B
+  </text>
+</svg>

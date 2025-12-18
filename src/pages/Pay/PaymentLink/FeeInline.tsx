@@ -10,6 +10,29 @@ function calcFeeFromNumber(base: number) {
 	return Number(clamped.toFixed(2));
 }
 
+const CURRENCY_META: Record<
+  ICurrency,
+  { flag: string; symbol: string; label: string }
+> = {
+  USD: { flag: "🇺🇸", symbol: "$", label: "USD" },
+  CAD: { flag: "🇨🇦", symbol: "$", label: "CAD" },
+  EUR: { flag: "🇪🇺", symbol: "€", label: "EUR" },
+  JPY: { flag: "🇯🇵", symbol: "¥", label: "JPY" },
+  CNY: { flag: "🇨🇳", symbol: "¥", label: "CNY" },
+  HKD: { flag: "🇭🇰", symbol: "$", label: "HKD" },
+  TWD: { flag: "🇹🇼", symbol: "$", label: "TWD" },
+  SGD: { flag: "🇸🇬", symbol: "$", label: "SGD" },
+  USDC: {flag:"", symbol: "", label: ""}
+};
+
+function fiatPrefix(ccy: ICurrency) {
+  if (ccy === "CAD") return "CA$";
+  if (ccy === "USD") return "$";
+  if (ccy === "EUR") return "€";
+  if (ccy === "JPY") return "¥";
+  return CURRENCY_META[ccy].symbol;
+}
+
 function FeeInline({
   	payUsdc,
 	isUSDC,
@@ -40,7 +63,7 @@ function FeeInline({
 
 	function formatAmount(v: number, c: ICurrency) {
 		if (!isFinite(v)) return `0 ${c}`
-		return `${v.toFixed(2)} ${c}`
+		return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : v.toFixed(2)} ${c}`
 	}
 
 	function usdcToCurrencyAmount(usdc: number, c: ICurrency) {
@@ -90,47 +113,83 @@ function FeeInline({
 
 	return (
 		<div className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-100">
-		<div className="flex items-center justify-between">
-			<div className="text-sm text-slate-600">Fee paid by creator · Gas sponsored</div>
-			<button
-				className="text-sm font-medium text-slate-900 hover:opacity-80"
-				onClick={() => setOpen((v) => !v)}
-			>
-				{open ? "Hide" : "Details"}
-			</button>
-		</div>
-
-		{!open && (
-			<div className="mt-2 flex items-center justify-between text-sm">
-				<span className="text-slate-500">Payer will pay 
-					{!isUSDC && <> the equivalent of </>}
-				</span>
-				<span className="font-semibold tabular-nums text-slate-900">
-					{display.pay} {!isUSDC && <> in USDC</>}
-				</span>
+			<div className="flex items-center justify-between">
+				
+				<button
+					className="text-sm font-medium text-slate-900 hover:opacity-80"
+					onClick={() => setOpen((v) => !v)}
+				>
+					{open ? "Hide" : "Details"}
+				</button>
 			</div>
-		)}
+
+			{!open && (
+				<div className="mt-2 flex items-center justify-between text-sm">
+					<span className="text-slate-500">
+						You receive
+						
+					</span>
+					<span className="font-semibold tabular-nums text-slate-900">
+						{fiatPrefix(currentCurrency) + display.pay}
+					</span>
+				</div>
+			)}
 
 		{open && (
 			<div className="mt-3 space-y-2 text-sm">
-				<div className="flex items-center justify-between">
-					<span className="text-slate-500">Payer will pay
-						{!isUSDC && <> the equivalent of </>}
-					</span>
-					<span className="font-semibold tabular-nums text-slate-900">
-						{display.pay} {!isUSDC && <> in USDC</>}
-					</span>
-				</div>
 
-				<div className="flex items-center justify-between">
-					<span className="text-slate-500">Beamio fee (0.8%)
-						{!isUSDC && <> the equivalent of </>}
+				<div className="flex items-start justify-between">
+				{/* 左侧 */}
+				<span className="text-slate-500 leading-snug">
+					Request
+					{!isUSDC && <> (fiat)</>}
+				</span>
+
+				{/* 右侧：两行，右对齐 */}
+				<div className="flex flex-col items-end leading-snug">
+					<span className="font-semibold tabular-nums text-slate-900">
+					{fiatPrefix(currentCurrency) + display.pay}
 					</span>
-					<span className="font-medium tabular-nums text-slate-900">
-						-{display.fee} 
-						{!isUSDC && <> in USDC</>}
+
+					{!isUSDC && (
+					<span className="text-xs text-slate-500 tabular-nums">
+						{payUsdc} USDC
 					</span>
+					)}
 				</div>
+			</div>
+
+
+			<div className="flex items-start justify-between">
+				{/* 左侧 */}
+				<span className="text-slate-500 leading-snug">
+					Payer pays
+					{!isUSDC && <> (est.)</>}
+				</span>
+
+				{/* 右侧：两行，右对齐 */}
+				<div className="flex flex-col items-end leading-snug">
+					<span className="font-semibold tabular-nums text-slate-900">
+					{fiatPrefix(currentCurrency) + display.pay}
+					</span>
+
+					{!isUSDC && (
+					<span className="text-xs text-slate-500 tabular-nums">
+						(≈ {payUsdc} USDC)
+					</span>
+					)}
+				</div>
+			</div>
+
+			<div className="flex items-center justify-between">
+				<span className="text-slate-500">
+					Beamio fee
+				</span>
+				<span className="font-medium tabular-nums text-slate-900">
+					{fiatPrefix(currentCurrency) + display.fee}
+					{!isUSDC && <> in USDC</>}
+				</span>
+			</div>
 
 				<div className="flex items-center justify-between">
 					<span className="text-slate-500">You will receiv
@@ -142,7 +201,11 @@ function FeeInline({
 				</div>
 
 				<div className="pt-1 text-xs text-slate-400">
-					Fee is deducted from the creator’s receive amount.
+					{
+						isUSDC ? `USDC amount is fixed · Fee paid by creator · Gas sponsored`
+						: `Estimated · Fee paid by creator · Gas sponsored. Final USDC amount, fee, and net receive are calculated when the payer pays, based on the live FX quote.`
+					}
+					
 				</div>
 			</div>
 		)}

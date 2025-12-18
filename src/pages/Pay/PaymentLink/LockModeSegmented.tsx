@@ -1,93 +1,103 @@
-/** Segmented Control (replaces ugly radio) */
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import { Globe } from 'lucide-react'
 
-function LockModeSegmented({
+function LockModeSwitch({
   value,
   onChange,
 }: {
-  value: PaymentLinkLockMode;
-  onChange: (v: PaymentLinkLockMode) => void;
+  value: PaymentLinkLockMode
+  onChange: (v: PaymentLinkLockMode) => void
 }) {
-  const isFiat = value === "FIAT_LOCKED";
-
-  const base = "flex-1 rounded-full px-4 py-3 text-left transition ring-1";
-  const selected =
-    "bg-blue-50 ring-blue-200 shadow-[0_1px_2px_rgba(15,23,42,0.06)]";
-  const unselected = "bg-white ring-slate-200 hover:bg-slate-50";
+  const isUSDC = value === 'USDC_LOCKED'
 
   return (
-    <div className="rounded-full bg-slate-50 p-1 ring-1 ring-slate-200">
-      <div className="flex gap-1">
-        <button
-          type="button"
-          aria-pressed={isFiat}
-          onClick={() => onChange("FIAT_LOCKED")}
-          className={`${base} ${isFiat ? selected : unselected}`}
-        >
-          <div className="flex items-center gap-2">
-			<Globe className="w-5 h-5 text-slate-500" />
+    <div className="flex items-center justify-between gap-3">
+      {/* 左侧内容（单层 DOM，opacity 切换） */}
+      <div className="flex items-center gap-2 min-w-0">
+        {/* Icon */}
+        <div className="relative w-6 h-6 flex-shrink-0">
+          <Globe
+            className={`
+              absolute inset-0 w-6 h-6
+              text-slate-500
+              transition-opacity duration-150
+              ${isUSDC ? 'opacity-0 pointer-events-none' : 'opacity-100'}
+            `}
+            aria-hidden={isUSDC}
+          />
 
-			<div>
-				<div className="text-sm font-semibold text-slate-900">
-				Local currency
-				</div>
-				<div className="text-xs text-slate-500">
-				USDC quoted at checkout
-				</div>
-			</div>
-			</div>
-        </button>
-
-        <button
-          type="button"
-          aria-pressed={!isFiat}
-          onClick={() => onChange("USDC_LOCKED")}
-          className={`${base} ${!isFiat ? selected : unselected}`}
-        >
-          <div className="flex items-center gap-2">
-				<div
-					className="
-						relative
-						flex-shrink-0
-						w-5 h-5
-						min-w-[16px] min-h-[16px]
-					"
-				>
-					<img
-						src={usdcIcon}
-						alt="USDC"
-						className="
-							block
-							w-5 h-5
-							rounded-full
-							object-contain
-						"
-					/>
-					<img
-						src={baseIcon}
-						alt="Base"
-						className="
-							block
-							w-2.5 h-2.5
-							absolute -bottom-0.5 -right-0.5
-							rounded-full
-							border border-white dark:border-slate-900
-							bg-white
-						"
-					/>
-				</div>
-            <div>
-              <div className="text-sm font-semibold text-slate-900">USDC</div>
-              <div className="text-xs text-slate-500">Fiat shown as reference</div>
-            </div>
+          <div
+            className={`
+              absolute inset-0
+              transition-opacity duration-150
+              ${isUSDC ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+            `}
+            aria-hidden={!isUSDC}
+          >
+            <img
+              src={usdcIcon}
+              alt="USDC"
+              className="w-6 h-6 rounded-full object-contain"
+            />
+            <img
+              src={baseIcon}
+              alt="Base"
+              className="
+                absolute -bottom-0.5 -right-0.5
+                w-3 h-3
+                rounded-full
+                border border-white dark:border-slate-900
+                bg-white
+              "
+            />
           </div>
-        </button>
+        </div>
+
+        {/* Text（真正单层：内容直接切换，不叠） */}
+        <div className="min-w-0 transition-opacity duration-150">
+          <div className="text-sm font-semibold text-slate-900 leading-snug">
+            {isUSDC ? 'USDC' : 'Local currency'}
+          </div>
+          <div className="text-xs text-slate-500 leading-snug">
+            {isUSDC
+              ? 'Fiat shown as reference'
+              : 'USDC quoted at checkout'}
+          </div>
+        </div>
       </div>
+
+      {/* 右侧 iOS 蓝色 Switch */}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isUSDC}
+        onClick={() => onChange(isUSDC ? 'FIAT_LOCKED' : 'USDC_LOCKED')}
+        className={`
+          relative inline-flex
+          w-[44px] h-[26px]
+          flex-shrink-0
+          rounded-full
+          transition-colors duration-200
+          focus:outline-none
+          focus:ring-2 focus:ring-blue-300
+          ${isUSDC ? 'bg-blue-500' : 'bg-slate-300'}
+        `}
+      >
+        <span
+          className={`
+            absolute top-[2px]
+            w-[22px] h-[22px]
+            rounded-full
+            bg-white
+            shadow
+            transition-transform duration-200
+            ${isUSDC ? 'translate-x-[18px]' : 'translate-x-[2px]'}
+          `}
+        />
+      </button>
     </div>
-  );
+  )
 }
 
-
-export default LockModeSegmented
+export default LockModeSwitch

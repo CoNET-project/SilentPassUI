@@ -100,6 +100,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 	const [currency, setCurrency] = useState<ICurrency>('USD')
 	const [payAmount, setPayAmount] = useState("")
 	const [requestNet, setRequestNet] = useState("")
+	const [processError, setProcessError] = useState("")
 
 
 	useEffect(() => {
@@ -197,29 +198,33 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		const showUrl = `${showPaylinkSite}?${showparams}`
 		setPayAmount(showCurrencyNumber)
 		setRequestNet(showNetCurrency)
-		
-		setTimeout(() => {
-			setProcessing(false)
-			setSuccessUrl(showUrl)
-		}, 1000)
-
-
-		// try {
-		// 	const res = await fetch(requestUrl, {method: 'GET'})
-
+		/**
+			 * 
+			 * 		UI test
+			 * 
+			 */
+		// setTimeout(() => {
 		// 	setProcessing(false)
-		// 	if (res.status !== 200) {
-		// 		return setProcessError(`Beamio RPC Error!`)
-		// 	}
-		// 	console.log(note)
 		// 	setSuccessUrl(showUrl)
-		// 	setStep('generated')
+		// }, 1000)
+
+
+		try {
+			const res = await fetch(requestUrl, {method: 'GET'})
+
+			setProcessing(false)
+			if (res.status !== 200) {
+				return setProcessError(`Beamio RPC Error!`)
+			}
+			console.log(note)
+			setSuccessUrl(showUrl)
+
 			
 
-		// } catch (ex) {
-		// 	setProcessing(false)
-		// 	return setProcessError(`Beamio RPC Error!`)
-		// }
+		} catch (ex) {
+			setProcessing(false)
+			return setProcessError(`Beamio RPC Error!`)
+		}
 		
 	}
 
@@ -245,7 +250,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 								<div>
 									<div className="text-lg font-semibold">Create Payment Link</div>
 									<div className="mt-1 text-sm text-slate-500">
-										Request in local currency or USDC. Payer confirms before paying.
+										Create a request in fiat. USDC is shown as an estimate.
 									</div>
 								</div>
 
@@ -256,77 +261,65 @@ export default function PaymentLink ({close, beamioer}: Props) {
 								}} />
 								</div>
 								
-								<section className="input">
-									<AmountCurrency 
-										amount={sendAmount} 
-										setAmount={setSendAmount} 
-										autoEntry={!!!item} 
-										readOnly={processing} 
-										showLimit={0.02}
-										setError={setAmountError}
-										showMax={false}
-										needBalance={true}
-										focusSignal={focusAmount}
-										currencyUSDC={lockMode === 'USDC_LOCKED'}
-									/>
-								</section>
-
+									
+									
+										<section className="input">
+											<AmountCurrency 
+												amount={sendAmount} 
+												setAmount={setSendAmount} 
+												autoEntry={!!!item} 
+												readOnly={processing} 
+												showLimit={0.02}
+												setError={setAmountError}
+												showMax={false}
+												needBalance={false}
+												focusSignal={focusAmount}
+												currencyUSDC={lockMode === 'USDC_LOCKED'}
+											/>
+										</section>
+									
+								
 								 <div className="mt-5">
 									<FeeInline
 										payUsdc={Number(sendAmount)}
 										isUSDC={lockMode ==='USDC_LOCKED' ? true : false}
 									/>
-									</div>
+								</div>
 
 
 								
 								{/* Note */}
-								{
-									!message && (
-										<textarea
-											value={note}
-											onFocus={(e) => {
-												if (note === defaultNodeText) {
-													setNote('') // 清空默认文本
-												}
-											}}
+								
+								<textarea
+									value={note}
+									onFocus={(e) => {
+										if (note === defaultNodeText) {
+											setNote('') // 清空默认文本
+										}
+									}}
 
-											readOnly={!!message}
-											
-											placeholder="What's this for?"
-											onChange={(e) => {
-												setNote(e.target.value)
-											}}
-											rows={2}
-											className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-										/>
-									)
-								}
+									readOnly={!!message}
+									
+									placeholder="What's this for?"
+									onChange={(e) => {
+										setNote(e.target.value)
+									}}
+									rows={2}
+									className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+								/>
+									
 								
 								
 								<div className="mt-3 flex gap-3 w-full">
-									{
-										message && !processing && (
-											<AppButton
-												variant='secondary'
-												fullWidth
-												onClick={() => {
-													senMessage(null)
-												}}
-											>
-
-												Cancel
-											</AppButton>
-										)
-									}
+									
 									<AppButton
 										fullWidth
 										onClick={issueRequestLink}
 										loading={processing}
-										errorText={sendError}
+										errorText={processError}
 									>
 
-										{message ? 'Conform': 'Send'}
+										Generate Payment Link
 									</AppButton>
 								</div>
 								

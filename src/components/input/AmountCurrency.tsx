@@ -28,7 +28,7 @@ const CURRENCY_META: Record<ICurrency, { flag: string; sym: string; maxDp: numbe
 	JPY: { flag: "🇯🇵", sym: "¥", maxDp: 0 },
 	CNY: { flag: "🇨🇳", sym: "¥", maxDp: 2 },
 	HKD: { flag: "🇭🇰", sym: "$", maxDp: 2 },
-	TWD: { flag: "🇹🇼", sym: "NT$", maxDp: 2 },
+	TWD: { flag: "🇹🇼", sym: "NT$", maxDp: 0 },
 	SGD: { flag: "🇸🇬", sym: "$", maxDp: 2 },
 }
 
@@ -552,7 +552,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 								// 首次键入 "."：替换为 "0."
 								if (k === ".") {
 									if (currencyUSDC) {
-										return  setAmount("0")
+										return setAmount("0")
 									}
 									e.preventDefault()
 									const next = "0."
@@ -592,7 +592,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 									// JPY 不允许小数点
 									if (maxDp === 0) {
-										setSendError("JPY does not allow decimals")
+										setSendError("JPY & TWD does not allow decimals")
 										return // 不更新 displayAmount → 回滚本次输入
 									}
 

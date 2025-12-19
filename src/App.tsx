@@ -12,6 +12,7 @@ import History from './pages/History/History'
 import Pay from './pages/Pay'
 import Settings from './pages/Settings'
 import Chat from './pages/chat'
+import ChatDetail from './pages/chatDetail'
 import { setDefaultConfig } from 'antd-mobile';
 import BeamioInstallOnboarding from '@/components/launchPage/BeamioInstallOnboarding'
 
@@ -70,6 +71,7 @@ function App() {
 		          		<Route path="/History" element={<History />} />
 						<Route path="/Pay" element={<Pay />} />
 		          		<Route path="/Chat" element={<Chat />} />
+		          		<Route path='/chat/:id' element={<ChatDetail />} />
 		          		<Route path="/settings" element={<Settings />} />
 		        	</Routes>
 		      	</div>

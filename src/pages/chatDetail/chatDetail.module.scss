@@ -1,0 +1,129 @@
+.wrap{
+    height:100%;
+    display:flex;
+    flex-direction: column;
+    .navBox{
+        background: #fff;
+        border-bottom:1px #e2e8f0 solid;
+        padding:6px 0;
+        .titleBox{
+            display: flex;
+            align-items: center;
+            .text{
+                margin:0 0 0 10px;
+                .name{
+                    font-size: 15px;
+                    font-weight: 500;
+                    color:#0f172b;
+                    line-height:1;
+                }
+                .sub{
+                    font-size: 11px;
+                    color:#009966;
+                    line-height:1;
+                    margin:4px 0 0;
+                }
+            }
+        }
+        .more{
+            font-size:26px;
+        }
+    }
+    .cont{
+        flex:1;
+        padding:0 15px;
+        overflow:auto;
+        background: #eaf0fe;
+        .time {
+            align-self: center;
+            margin: 10px auto 16px;
+            padding: 4px 12px;
+            font-size: 12px;
+            color: #888;
+            background: #e9eefc;
+            border-radius: 12px;
+            width: fit-content;
+        }
+        /* 左消息 */
+        .msgLeft {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            gap: 8px;
+        }
+
+        .bubbleLeft {
+            max-width: 70%;
+            padding: 10px 14px;
+            background: #fff;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        /* 右消息 */
+        .msgRight {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 12px;
+        }
+        .bubbleRight {
+            max-width: 70%;
+            padding: 10px 14px;
+            background: #2457f5;
+            color: #fff;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+    } 
+    /* 底部发送栏 */
+    .sendBox {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        background: #fff;
+        border-top: 1px solid #eee;
+        gap: 8px;
+        .add {
+            font-size: 20px;
+            color: #333;
+            padding:6px;
+            border-radius: 50%;
+            background: #f2f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex:none;
+            cursor:pointer;
+            user-select: none;
+        }
+        .input {
+            flex: 1;
+            background: #f4f6fa;
+            border-radius: 18px;
+            padding: 0 12px;
+            height:32px;
+            font-size: 14px;
+        }
+        .sendBtn {
+            flex:none;
+            font-size: 20px;
+            height:32px;
+            width:32px;
+            background: #2457f5;
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor:pointer;
+            user-select: none;
+        }   
+    }
+
+    
+
+    
+
+    
+}

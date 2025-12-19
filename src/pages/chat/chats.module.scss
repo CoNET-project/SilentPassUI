@@ -1,0 +1,43 @@
+.wrap{
+    padding:10px 20px 20px;
+    height:100%;
+    overflow:auto;
+    .tip{
+        color:#62748e;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        padding:10px 10px;
+        .icon{
+            margin:0 6px 0 0;
+        }
+    }
+    .list{
+        background: #fff;
+        box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
+        border-radius: 20px;
+        overflow: hidden;
+        :global(.adm-list-item){
+            padding-left:0;
+        }
+        :global(.adm-list-item-content){
+            padding: 0 12px;
+        }
+        :global(.adm-list-item-content){
+            border-top:0.5px #efefef solid;
+        }
+        .name{
+            color:#0f172b;
+            font-weight: 500;
+            font-size: 15px;
+        }
+        .extra{
+            text-align:right;
+            font-size: 12px;
+            .time{
+                color:#90a1b9;
+                font-size: 11px;
+            }
+        }
+    }
+}

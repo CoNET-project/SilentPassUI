@@ -78,7 +78,7 @@ function LockModeSwitch({
   }, [targetX, knob])
 
   return (
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex items-center justify-between gap-3 w-full">
       {/* 左侧内容（单层 DOM，opacity 切换） */}
       <div className="flex items-center gap-2 min-w-0">
         {/* Icon */}

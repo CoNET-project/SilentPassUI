@@ -10,6 +10,7 @@ import {
   ChevronRight,
   X,
   Copy,
+  Info,
   ExternalLink,
 } from "lucide-react"
 import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
@@ -25,8 +26,19 @@ import LockModeSegmented from './LockModeSegmented'
 import FeeInline from './FeeInline'
 import {RedeemOrLinkCard} from '@/pages/Pay/RedeemOrLinkCard'
 import SuccessShow from './successShow'
-import IOSBlurPillButton from '@/components/button/IOSButton'
 
+function fiatPrefix(ccy: ICurrency) {
+	if (ccy === "CAD") return "CA$"
+	if (ccy === "USD") return "$"
+	if (ccy === "EUR") return "€"
+	if (ccy === "JPY") return "JP¥"
+	if (ccy==='TWD') return "NT$"
+	if (ccy==='CNY') return 'CN¥'
+	if (ccy==='HKD') return 'HK$'
+	if (ccy==='SGD') return 'SG$'
+	
+  return '$';
+}
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -196,42 +208,43 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		const showparams = new URLSearchParams({code: code.hash}).toString()
 		const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
 		const showUrl = `${showPaylinkSite}?${showparams}`
-		setPayAmount(showCurrencyNumber)
-		setRequestNet(showNetCurrency)
+		setPayAmount(`${fiatPrefix(currency)} ${showCurrencyNumber}`)
+		setRequestNet(`${fiatPrefix(currency)} ${showNetCurrency}`)
+
 		/**
 			 * 
 			 * 		UI test
 			 * 
 			 */
-		// setTimeout(() => {
-		// 	setProcessing(false)
-		// 	setSuccessUrl(showUrl)
-		// }, 1000)
-
-
-		try {
-			const res = await fetch(requestUrl, {method: 'GET'})
-
+		setTimeout(() => {
 			setProcessing(false)
-			if (res.status !== 200) {
-				return setProcessError(`Beamio RPC Error!`)
-			}
-			console.log(note)
 			setSuccessUrl(showUrl)
+		}, 1000)
+
+
+		// try {
+		// 	const res = await fetch(requestUrl, {method: 'GET'})
+
+		// 	setProcessing(false)
+		// 	if (res.status !== 200) {
+		// 		return setProcessError(`Beamio RPC Error!`)
+		// 	}
+		// 	console.log(note)
+		// 	setSuccessUrl(showUrl)
 
 			
 
-		} catch (ex) {
-			setProcessing(false)
-			return setProcessError(`Beamio RPC Error!`)
-		}
+		// } catch (ex) {
+		// 	setProcessing(false)
+		// 	return setProcessError(`Beamio RPC Error!`)
+		// }
 		
 	}
 
 	return (
-		<div className="mt-0 flex items-center justify-between px-6 pt-4 pb-3 border-slate-100 flex-col">
-			<div className="mt-2 w-full">
-				<Card className="rounded-3xl border-zinc-200">
+		<div className="mt-0 flex flex-col px-6 pt-4 pb-3 border-slate-100 bg-transparent">
+			<div className="mt-2 w-full bg-transparent">
+				<div className="rounded-2xl shadow-sm p-4 text-slate-800 leading-snug bg-gray-100">
 					{
 						successUrl ? 
 							<SuccessShow note={note} successUrl={successUrl}
@@ -242,11 +255,11 @@ export default function PaymentLink ({close, beamioer}: Props) {
 								onReset={() => {
 									close('')
 								}}
-								
+								creatorEstUsdcFromFiat={sendAmount}
 							/>
 						
 						 : (
-							<CardContent className="p-4 space-y-4">
+							<div className="p-4 space-y-4 bg-transparent">
 								<div>
 									<div className="text-lg font-semibold">Create Payment Link</div>
 									<div className="mt-1 text-sm text-slate-500">
@@ -254,35 +267,32 @@ export default function PaymentLink ({close, beamioer}: Props) {
 									</div>
 								</div>
 
-								<div className="mt-5 grid gap-3">
-								<p className="text-slate-700">Amount type</p>
-								<LockModeSegmented value={lockMode} onChange={val => {
-									setLockMode(val)
-								}} />
+								<div className="mt-5 flex items-center gap-3">
+									
+
+									<LockModeSegmented
+										value={lockMode}
+										onChange={val => {
+										setLockMode(val)
+										}}
+									/>
 								</div>
 								
+								<section className="input">
+									<AmountCurrency 
+										amount={sendAmount} 
+										setAmount={setSendAmount} 
+										autoEntry={!!!item} 
+										readOnly={processing} 
+										showLimit={0.02}
+										setError={setAmountError}
+										showMax={false}
+										needBalance={false}
+										focusSignal={focusAmount}
+										currencyUSDC={lockMode === 'USDC_LOCKED'}
+									/>
+								</section>
 									
-									
-										<section className="input">
-											<AmountCurrency 
-												amount={sendAmount} 
-												setAmount={setSendAmount} 
-												autoEntry={!!!item} 
-												readOnly={processing} 
-												showLimit={0.02}
-												setError={setAmountError}
-												showMax={false}
-												needBalance={false}
-												focusSignal={focusAmount}
-												currencyUSDC={lockMode === 'USDC_LOCKED'}
-											/>
-										</section>
-									
-								
-								
-
-
-								
 								{/* Note */}
 								
 								<textarea
@@ -303,11 +313,13 @@ export default function PaymentLink ({close, beamioer}: Props) {
 									className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
 								/>
 
-								 <div className="mt-5">
+								<div className="mt-5">
+
 									<FeeInline
-										payUsdc={Number(sendAmount)}
-										isUSDC={lockMode ==='USDC_LOCKED' ? true : false}
+									payUsdc={Number(sendAmount)}
+									isUSDC={lockMode === 'USDC_LOCKED'}
 									/>
+								
 								</div>
 									
 								
@@ -325,12 +337,13 @@ export default function PaymentLink ({close, beamioer}: Props) {
 									</AppButton>
 								</div>
 								
-							</CardContent>
+							</div>
 						)
 					}
 					
-				</Card>
+				</div>
 			</div>
+			
 		</div>
 	)
 }

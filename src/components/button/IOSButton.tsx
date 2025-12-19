@@ -3,13 +3,13 @@ import React, { useEffect, useRef, useState } from "react"
 type Phase = "visible" | "pop" | "shrink" | "idle"
 
 function IOSGlassPillButton({
-  open,
-  onToggle,
-  children
+	open,
+	onToggle,
+	children
 }: {
-  open: boolean
-  onToggle: () => void
-  children?: React.ReactNode
+	open: boolean
+	onToggle: () => void
+	children?: React.ReactNode
 }) {
   const [phase, setPhase] = useState<Phase>(open ? "pop" : "visible")
 
@@ -62,6 +62,7 @@ function IOSGlassPillButton({
   const clickable = !open && phase === "visible"
 
   return (
+	<div className="relative flex-none">
     <button
       type="button"
       onClick={() => {
@@ -85,32 +86,23 @@ function IOSGlassPillButton({
         ${phase === "shrink" ? "scale-[0.5] opacity-0 duration-350 ease-[0.2,0.8,0.2,1]" : ""}
       `}
       style={{
-        WebkitBackdropFilter: "blur(12px)",
-        background:
-          "linear-gradient(315deg, rgba(240,240,240,0.15) 0%, rgba(160,160,160,0.25) 22%, rgba(240,240,240,0.15) 77%, rgba(160,160,160,0.15) 100%)"
+			/* ✅ 只有：透明 + 模糊 */
+			WebkitBackdropFilter: "blur(16px) saturate(160%)",
+			backdropFilter: "blur(16px) saturate(160%)",
+
+			/* ✅ 纯透明底（无渐变、无高光） */
+			background: "rgba(255,255,255,0.10)",
+
+			/* ✅ iOS 风格细边框 */
+			border: "1px solid rgba(255,255,255,0.8)"
       }}
     >
-      {/* 外框线条（ring） */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-full"
-        style={{
-          padding: 1.25,
-          borderRadius: 9999,
-          background:
-            "linear-gradient(315deg, rgba(240, 240, 240, 0.15) 0%, rgba(160, 160, 160, 0.25) 22%, rgba(240, 240, 240, 0.15) 77%, rgba(160, 160, 160, 0.15) 100%)",
-          WebkitMask:
-            "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-          WebkitMaskComposite: "xor",
-          maskComposite: "exclude",
-          filter: "blur(0.15px)"
-        }}
-      />
 
       <span className="relative z-10 inline-flex items-center gap-1.5">
         {children}
       </span>
     </button>
+	</div>
   )
 }
 

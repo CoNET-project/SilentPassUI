@@ -5,7 +5,6 @@ import "./default.scss";
 import styles from './layout.module.scss';
 import {Route,Routes,MemoryRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider"
-import {isStandalone, MobileType, isBeamioAndroidWebView, checkStorage } from '@/services/beamio'
 import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import History from './pages/History/History'
@@ -13,21 +12,14 @@ import Pay from './pages/Pay'
 import Settings from './pages/Settings'
 import Chat from './pages/chat'
 import ChatDetail from './pages/chatDetail'
-import { setDefaultConfig } from 'antd-mobile';
 import BeamioInstallOnboarding from '@/components/launchPage/BeamioInstallOnboarding'
-
-
-
+import RedeemScreen from '@/pages/chat/RedeemScreen'
 //			min-h-screen 
 
 global.Buffer = require('buffer').Buffer;
 
 function App() {
-  	const { darkModle, setDarkModle, setProfiles, setIsInitialLoading, isInitialLoading } = useDaemonContext();
-
-
-
-
+  	const { isInitialLoading } = useDaemonContext();
 
 	useEffect(() => {
 	

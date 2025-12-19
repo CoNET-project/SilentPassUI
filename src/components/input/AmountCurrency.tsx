@@ -402,7 +402,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							) : (
 								<>
 									<IOSGlassPillButton open={showCurrencyPicker} onToggle={openPicker} >
-											<span className="text-[15px] leading-none">   
+										<span className="text-[15px] leading-none">   
 											{currencyFlag(currentCurrency)}
 										</span>
 
@@ -684,7 +684,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 				{/* ❌ 不加任何背景遮罩、不模糊外层 */}
 
 					  {/* ✅ 半透明 + 模糊的浮层背景 */}
-						<div
+						{/* <div
 							aria-hidden
 							className={`
 							absolute inset-0
@@ -695,23 +695,28 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							`}
 							style={{ WebkitBackdropFilter: "blur(4px)" }}
 							onClick={closePicker}
-						/>
+						/> */}
 				{/* ✅ 只对弹出窗口本身做模糊 + 透明 */}
 				<div
 					className={`
-					relative
-					rounded-2xl
-					shadow-2xl
-					p-4
-					max-w-sm w-[90vw]
-					transition-all duration-300 ease-out
-					backdrop-blur-xl
-					
-					${showCurrencyPicker
-						? "scale-100 translate-y-0"
-						: "scale-75 translate-y-8"}
+						relative
+						rounded-2xl
+						shadow-2xl
+						p-4
+						max-w-sm w-[90vw]
+						transition-all duration-300 ease-out
+
+						/* ✅ glass */
+						bg-white/12
+						backdrop-blur-xl
+						border border-white/20
+
+						${showCurrencyPicker ? "scale-100 translate-y-0" : "scale-75 translate-y-8"}
 					`}
-					style={{ WebkitBackdropFilter: "blur(18px)" }}
+					style={{
+						WebkitBackdropFilter: "blur(18px) saturate(160%)",
+						backdropFilter: "blur(18px) saturate(160%)"
+					}}
 				>
 					
 

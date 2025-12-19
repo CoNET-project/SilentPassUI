@@ -1,7 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-
-
-
 type Props = {
   currentCurrency: ICurrency;
   setCurrentCurrency: (val: ICurrency) => void;

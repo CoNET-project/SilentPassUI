@@ -4,15 +4,17 @@ import bIcon from '@/components/assets/32x32.svg'
 import { X } from 'lucide-react'
 import {useState} from 'react'
 import AmountCurrency from '@/components/input/AmountCurrency'
+import FeeInline from './FeeInline'
 
 type RedeemOrLinkCardProps = {
-	payAmount: string                      // 金额（用于 Redeem 侧显示）
+	payAmount: string                  // 金额（用于 Redeem 侧显示）
 	note?: string                      // 备注
 	successUrl: string                 // 支付链接 / 二维码内容
 	onReset: () => void                // 关闭按钮（✕
 	lockMode: PaymentLinkLockMode
 	currency: ICurrency
 	requestNet: string
+	creatorEstUsdcFromFiat?: string
 }
 
 
@@ -23,7 +25,8 @@ const SuccessShow = ({
 	onReset,
 	lockMode,
 	requestNet,
-	currency
+	currency,
+	creatorEstUsdcFromFiat
 }: RedeemOrLinkCardProps) => {
 	
 	const handleCopyLink = async () => {
@@ -103,6 +106,27 @@ const SuccessShow = ({
 						
 					</div>
 				</div>
+				<div className="flex items-center justify-between">
+					<div>
+					<div className="text-xs text-slate-400">Requested</div>
+					<div className="mt-1 text-lg font-semibold text-slate-900">
+						{payAmount}
+					</div>
+					</div>
+					{lockMode === "FIAT_LOCKED" ? (
+					<div className="text-right">
+						<div className="text-xs text-slate-400">Estimate</div>
+						<div className="mt-1 text-sm font-semibold text-slate-600 tabular-nums">
+						≈ {creatorEstUsdcFromFiat ? creatorEstUsdcFromFiat : ''}
+						</div>
+					</div>
+					) : (
+					<div className="text-right">
+						<div className="text-xs text-slate-400">Status</div>
+						<div className="mt-1 text-sm font-semibold text-slate-600">Fixed</div>
+					</div>
+					)}
+				</div>
 
 				{note && (
 					<div
@@ -121,38 +145,6 @@ const SuccessShow = ({
 					</div>
 				)}
 
-				<div
-					className="
-					mt-3 rounded-2xl 
-					bg-slate-100/80 dark:bg-slate-900/70 
-					border border-slate-200/80 dark:border-slate-700 
-					px-4 py-3 
-					text-xs text-slate-700 dark:text-slate-300 
-					space-y-1.5
-					"
-				>
-					<div className="flex items-center justify-between">
-					<span>The payer will pay 
-						{lockMode === 'FIAT_LOCKED' && <> the equivalent of </>}
-					</span>
-					<span>
-						{payAmount} 
-						{lockMode === 'FIAT_LOCKED' ? ` ${currency}` + ` in USDC`: ' USDC'} 
-					</span>
-					</div>
-
-					<div className="flex items-center justify-between">
-						<span>You will receive
-							{lockMode === 'FIAT_LOCKED' && <> the equivalent of </>}
-						</span>
-						<span>
-							{requestNet}
-							{lockMode === 'FIAT_LOCKED' ? (<>
-							{` ${currency} in USDC`}
-							</>) : ' USDC'} 
-						</span>
-					</div>
-				</div>
 			</>
 		
 
@@ -236,10 +228,15 @@ const SuccessShow = ({
 				</div>
 				
 			</div>
+			<div className="mt-5">
+
+				<FeeInline
+					payUsdc={Number(creatorEstUsdcFromFiat)}
+					isUSDC={lockMode === 'USDC_LOCKED'}
+				/>
 			
-			<p className='text-[11px] text-slate-600 dark:text-slate-300 '>
-				Beamio service fee (0.8%) is deducted from the amount you receive. The payer always pays the full “Payer will pay” amount. Beamio fee is capped at 2.00 USDC per Payment Link. Direct Send / Receive has 0% Beamio fee.
-			</p>
+			</div>
+			
 		</div>
 	)
 }

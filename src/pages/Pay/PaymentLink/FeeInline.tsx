@@ -1,9 +1,21 @@
 /** Fee inline: one-line + details (default collapsed) */
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-
+import IOSBlurPillButton from '@/components/button/IOSButton'
 import LockModeSwitch from '@/components/switch/LockModeSegmented'
+import {
+  ArrowLeft,
+  Camera,
+  Check,
+  Search,
+  ChevronRight,
+  X,
+  Copy,
+  Info,
+  ExternalLink,
+} from "lucide-react"
 
+import FeeInfo from './FeeInfo'
 
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
@@ -29,11 +41,15 @@ const CURRENCY_META: Record<
 };
 
 function fiatPrefix(ccy: ICurrency) {
-//   if (ccy === "CAD") return "CA$";
-//   if (ccy === "USD") return "$";
-//   if (ccy === "EUR") return "€";
-//   if (ccy === "JPY") return "¥";
-//   if (ccy==='TWD') return "NT$";
+	if (ccy === "CAD") return "CA$"
+	if (ccy === "USD") return "$"
+	if (ccy === "EUR") return "€"
+	if (ccy === "JPY") return "JP¥"
+	if (ccy==='TWD') return "NT$"
+	if (ccy==='CNY') return 'CN¥'
+	if (ccy==='HKD') return 'HK$'
+	if (ccy==='SGD') return 'SG$'
+	
   return CURRENCY_META[ccy].symbol;
 }
 
@@ -48,6 +64,7 @@ function FeeInline({
 	const [open, setOpen] = useState(false)
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
 	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>('USDC')
+	const [openInof, setOpenInfo] = useState(false)
 	
 
 	useEffect (() => {
@@ -68,7 +85,7 @@ function FeeInline({
 
 	function formatAmount(v: number, c: ICurrency) {
 		if (!isFinite(v)) return `0 ${c}`
-		return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)} ${c}`
+		return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
 	}
 
 	function usdcToCurrencyAmount(usdc: number, c: ICurrency) {
@@ -116,118 +133,172 @@ function FeeInline({
 		}
 	}, [isUSDC, payUsdc, feeUsdc, receiveUsdc, currentCurrency])
 
+	
 	return (
-		<div className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-100">
+		<div className="relative w-full">
+			
+			
+			
+				<div className="w-full">
+					<div className="flex items-center justify-end">
+						<div className="relative inline-flex items-center">
+							<div 
+								className="
+									absolute
+									left-[-3.3rem]
+									top-1/2
+									-translate-y-1/2
+									z-10
+									inline-flex
+									w-fit
+									scale-90
+									origin-center
+								"
+							>
+							<IOSBlurPillButton
+								open={openInof}
+								onToggle={() => setOpenInfo(true)}
+							>
+								<Info className="w-4 h-4 text-yellow-500" />
+							</IOSBlurPillButton>
+							</div>
 
-			<div className="flex items-center justify-end">
-				
-				{/* 右侧开关 */}
-				<LockModeSwitch
-				value={open}
-				onChange={() => setOpen(!open)}
-				>
-					Detail
-				</LockModeSwitch>
-			</div>
 
-			{!open && (
-				<div className="mt-2 flex items-center justify-between text-sm">
-					<span className="text-slate-500">
-						You receive
+						{/* 右侧开关 */}
+						<LockModeSwitch
+							value={open}
+							onChange={() => setOpen(!open)}
+						>
+							Detail
+						</LockModeSwitch>
+
+						</div>
 						
-					</span>
-					<span className="font-semibold tabular-nums text-slate-900">
-						{fiatPrefix(currentCurrency) + display.receive}
-					</span>
-				</div>
-			)}
+					</div>
 
-		{open && (
-			<div className="mt-3 space-y-2 text-sm">
+					{!open && (
+						<div className="mt-2 flex items-center justify-between text-sm">
+							<span className="text-slate-500">
+								You receive
+								
+							</span>
+							<span className="font-semibold tabular-nums text-slate-900">
+								{fiatPrefix(currentCurrency) + display.receive}
+							</span>
+						</div>
+					)}
 
-				<div className="flex items-start justify-between">
-				{/* 左侧 */}
-				<span className="text-slate-500 leading-snug">
-					Request
-					
-				</span>
+					{open && (
+						<div className="mt-3 space-y-2 text-sm">
 
-				{/* 右侧：两行，右对齐 */}
-				<div className="flex flex-col items-end leading-snug">
-					<span className="font-semibold tabular-nums text-slate-900">
-						{fiatPrefix(currentCurrency) + display.pay}
-					</span>
+							<div className="flex items-start justify-between">
+							{/* 左侧 */}
+							<span className="text-slate-500 leading-snug">
+								Request
+								
+							</span>
 
-					{!isUSDC && (
-					<span className="text-xs text-slate-500 tabular-nums">
-						≈ {payUsdc} USDC
-					</span>
+							{/* 右侧：两行，右对齐 */}
+							<div className="flex flex-col items-end leading-snug">
+								<span className="font-semibold tabular-nums text-slate-900">
+									{fiatPrefix(currentCurrency) + display.pay}
+								</span>
+
+								{!isUSDC && (
+								<span className="text-xs text-slate-500 tabular-nums">
+									≈ {payUsdc} USDC
+								</span>
+								)}
+							</div>
+						</div>
+
+
+						<div className="flex items-start justify-between">
+							{/* 左侧 */}
+							<span className="text-slate-500 leading-snug">
+								Payer pays
+							</span>
+
+							{/* 右侧：两行，右对齐 */}
+							<div className="flex flex-col items-end leading-snug">
+								<span className="font-semibold tabular-nums text-slate-900">
+								{fiatPrefix(currentCurrency) + display.pay}
+								</span>
+
+								{!isUSDC && (
+								<span className="text-xs text-slate-500 tabular-nums">
+									≈ {payUsdc} USDC
+								</span>
+								)}
+							</div>
+						</div>
+
+						<div className="flex items-start justify-between">
+							{/* 左侧 */}
+							<span className="text-slate-500 leading-snug">
+								Beamio fee
+							</span>
+
+							{/* 右侧：两行，右对齐 */}
+							<div className="flex flex-col items-end leading-snug">
+								<span className="font-semibold tabular-nums text-slate-900">
+									{fiatPrefix(currentCurrency) + display.fee}
+								</span>
+
+								{!isUSDC && (
+								<span className="text-xs text-slate-500 tabular-nums">
+									≈ {feeUsdc} USDC
+								</span>
+								)}
+							</div>
+						</div>
+
+						<div className="flex items-start justify-between">
+							{/* 左侧 */}
+							<span className="text-slate-500 leading-snug">
+								Receive
+							</span>
+
+							{/* 右侧：两行，右对齐 */}
+							<div className="flex flex-col items-end leading-snug">
+								<span className="font-semibold tabular-nums text-slate-900">
+									{fiatPrefix(currentCurrency) + display.receive}
+								</span>
+
+								{!isUSDC && (
+								<span className="text-xs text-slate-500 tabular-nums">
+									≈ {receiveUsdc.toFixed(4)} USDC
+								</span>
+								)}
+							</div>
+						</div>
+						</div>
 					)}
 				</div>
-			</div>
-
-
-			<div className="flex items-start justify-between">
-				{/* 左侧 */}
-				<span className="text-slate-500 leading-snug">
-					Payer pays
-				</span>
-
-				{/* 右侧：两行，右对齐 */}
-				<div className="flex flex-col items-end leading-snug">
-					<span className="font-semibold tabular-nums text-slate-900">
-					{fiatPrefix(currentCurrency) + display.pay}
-					</span>
-
-					{!isUSDC && (
-					<span className="text-xs text-slate-500 tabular-nums">
-						≈ {payUsdc} USDC
-					</span>
-					)}
+							{/* ✅ 只对弹出窗口本身做模糊 + 透明 */}
+				{openInof && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center px-4"
+					onClick={() => setOpenInfo(false)}
+				>
+					<div
+					className="
+						relative rounded-2xl shadow-2xl p-4
+						max-w-sm w-[90vw]
+						bg-white/12 backdrop-blur-xl border border-white/20
+						transition-all duration-300 ease-out
+						scale-100 translate-y-0
+					"
+					style={{
+						WebkitBackdropFilter: "blur(18px) saturate(160%)",
+						backdropFilter: "blur(18px) saturate(160%)"
+					}}
+					onClick={(e) => e.stopPropagation()}
+					>
+					<FeeInfo close={() => setOpenInfo(false)} />
+					</div>
 				</div>
-			</div>
-
-			<div className="flex items-start justify-between">
-				{/* 左侧 */}
-				<span className="text-slate-500 leading-snug">
-					Beamio fee
-				</span>
-
-				{/* 右侧：两行，右对齐 */}
-				<div className="flex flex-col items-end leading-snug">
-					<span className="font-semibold tabular-nums text-slate-900">
-						{fiatPrefix(currentCurrency) + display.fee}
-					</span>
-
-					{!isUSDC && (
-					<span className="text-xs text-slate-500 tabular-nums">
-						≈ {feeUsdc} USDC
-					</span>
-					)}
-				</div>
-			</div>
-
-			<div className="flex items-start justify-between">
-				{/* 左侧 */}
-				<span className="text-slate-500 leading-snug">
-					Receive
-				</span>
-
-				{/* 右侧：两行，右对齐 */}
-				<div className="flex flex-col items-end leading-snug">
-					<span className="font-semibold tabular-nums text-slate-900">
-						{fiatPrefix(currentCurrency) + display.receive}
-					</span>
-
-					{!isUSDC && (
-					<span className="text-xs text-slate-500 tabular-nums">
-						≈ {receiveUsdc} USDC
-					</span>
-					)}
-				</div>
-			</div>
-			</div>
-		)}
+				)}
 		</div>
 	);
 	}

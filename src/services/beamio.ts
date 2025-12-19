@@ -1582,6 +1582,3 @@ export const getFololowsData = async (wallet: string) => {
 	
 }
 
-
-
-

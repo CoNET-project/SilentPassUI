@@ -1,86 +1,100 @@
-import React from 'react'
-import { X } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react';
 
-type CostInfoProps = {
-  open: boolean
-  onClose: () => void
-  feeTitle?: string
-  feeText?: string
-  fxTitle?: string
-  fxText?: string
-}
 
-export default function CostInfo({
-  open,
-  onClose,
-  feeTitle = 'Beamio fee',
-  feeText = 'Beamio fee: 0.8% (min 0.02 USDC; max 2.00 USDC)',
-  fxTitle = 'FX note',
-  fxText = 'Fiat-locked: final USDC amount, fee, and net receive are calculated when the payer pays, based on the live FX quote.',
-}: CostInfoProps) {
-  if (!open) return null
+import {
+  ArrowLeft,
+  Camera,
+  Check,
+  Search,
+  ChevronRight,
+  X,
+  Copy,
+  Info,
+  ExternalLink,
+} from "lucide-react"
+
+type Props = {
+	close: () => void
+};
+
+
+const FeeInfo = ({ close }: Props) => {
+  const [cols, setCols] = useState(3);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+
+  // 监听容器宽度变化，自适应列数
+  useEffect(() => {
+    const calculateCols = () => {
+      if (!containerRef.current) return;
+
+      const width = containerRef.current.offsetWidth;
+      const itemWidth = 120; // 每个胶囊的估计宽度（包括间距）
+      const newCols = Math.max(2, Math.floor(width / itemWidth));
+
+      setCols(newCols);
+    };
+
+    calculateCols();
+
+    const resizeObserver = new ResizeObserver(calculateCols);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   return (
-    <div className="fixed inset-0 z-[999]">
-      {/* Backdrop */}
-      <button
-        type="button"
-        aria-label="Close"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/20 backdrop-blur-[10px]"
-      />
-
-      {/* Panel */}
-      <div className="absolute inset-x-0 top-0 mx-auto w-full max-w-[760px]">
-        <div
+ <div className="w-full">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-[22px] font-semibold tracking-tight text-slate-900">
+          Fees &amp; settlement
+        </h2>
+		<button
+          type="button"
+          onClick={close}
           className="
-            relative
-            bg-white
-            rounded-t-[26px] rounded-b-[18px]
-            shadow-[0_18px_60px_rgba(0,0,0,0.18)]
-            border border-slate-200/70
-            overflow-hidden
+            inline-flex items-center justify-center
+            w-10 h-10 rounded-full
+            bg-white/60 border border-white/25
+            backdrop-blur
+            transition
+            active:scale-[0.98]
           "
+          aria-label="Close"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-5">
-            <div className="text-[26px] font-semibold tracking-tight text-slate-900">
-              Fees &amp; settlement
-            </div>
+          <X className="w-5 h-5 text-black/20" />
+        </button>
+      </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="
-                w-12 h-12 rounded-full
-                border border-slate-200
-                bg-white
-                flex items-center justify-center
-                hover:bg-slate-50 active:scale-95
-                transition
-              "
-              aria-label="Close"
-            >
-              <X className="w-6 h-6 text-slate-700" strokeWidth={2.2} />
-            </button>
+      {/* Cards */}
+      <div className="mt-4 space-y-4">
+        {/* Beamio fee */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-5">
+          <div className="text-[18px] font-semibold text-slate-900">
+            Beamio fee
           </div>
+          <div className="mt-2 text-[16px] leading-relaxed text-slate-600">
+            Beamio fee: 0.8% (min 0.02 USDC; max 2.00 USDC)
+          </div>
+        </div>
 
-          <div className="h-px bg-slate-200/70" />
-
-          {/* Content */}
-          <div className="px-6 py-6 space-y-6">
-            <div className="rounded-[22px] border border-slate-200/70 bg-slate-50/40 px-6 py-5">
-              <div className="text-[22px] font-semibold text-slate-900">{feeTitle}</div>
-              <div className="mt-3 text-[22px] leading-snug text-slate-600">{feeText}</div>
-            </div>
-
-            <div className="rounded-[22px] border border-slate-200/70 bg-slate-50/40 px-6 py-5">
-              <div className="text-[22px] font-semibold text-slate-900">{fxTitle}</div>
-              <div className="mt-3 text-[22px] leading-snug text-slate-600">{fxText}</div>
-            </div>
+        {/* FX note */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-5">
+          <div className="text-[18px] font-semibold text-slate-900">
+            FX note
+          </div>
+          <div className="mt-2 text-[16px] leading-relaxed text-slate-600">
+            Fiat-locked: final USDC amount, fee, and net receive are calculated
+            when the payer pays, based on the live FX quote.
           </div>
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
+
+export default FeeInfo;

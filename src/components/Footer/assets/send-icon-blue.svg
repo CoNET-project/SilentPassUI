@@ -1,12 +1,13 @@
-
-<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="36" height="36"  viewBox="0 0 36.08 33.13">
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 36 36">
+  <!-- Generator: Adobe Illustrator 30.0.0, SVG Export Plug-In . SVG Version: 2.1.1 Build 123)  -->
   <defs>
     <style>
-      .clsss-1 {
+      .st0 {
         fill: #9fbfe5;
       }
     </style>
   </defs>
-  <path class="clsss-1" d="M18.68,13.83L9.36,1.15,0,13.83h5.12v13.96c0,2.32,1.88,4.2,4.2,4.2s4.2-1.88,4.2-4.2v-13.96h5.16Z"/>
-  <path class="clsss-1" d="M30.96,19.31V5.35c0-2.32-1.88-4.2-4.2-4.2s-4.2,1.88-4.2,4.2v13.96h-5.12l9.32,12.68,9.32-12.68s-5.12,0-5.12,0Z"/>
+  <path class="st0" d="M18.64,17.27L9.34,6.62,0,17.27h5.11v11.93c0,2.31,1.88,4.19,4.19,4.19s4.19-1.88,4.19-4.19v-11.93h5.15Z"/>
+  <path class="st0" d="M30.89,22.74v-11.93c0-2.31-1.88-4.19-4.19-4.19s-4.19,1.88-4.19,4.19v11.93h-5.11l9.3,10.65,9.3-10.65s-5.11,0-5.11,0Z"/>
 </svg>

@@ -1,29 +1,6 @@
-<svg width="120" height="120" viewBox="0 0 120 120"
-     xmlns="http://www.w3.org/2000/svg">
-
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" width="36" height="36" xmlns="http://www.w3.org/2000/svg" viewBox="-10 -7 47 47">
   <defs>
-    <!-- 浅色“微凸”圆形 -->
-    <radialGradient id="lightGlossyCircle" cx="30%" cy="25%" r="75%">
-      <stop offset="0%"  stop-color="#FFFFFF"/>
-      <stop offset="40%" stop-color="#F5F5F5"/>
-      <stop offset="75%" stop-color="#E5E7EB"/>
-      <stop offset="100%" stop-color="#D4D4D8"/>
-    </radialGradient>
-
-    <!-- 左上高光 -->
-    <radialGradient id="lightHighlightGrad" cx="0%" cy="0%" r="100%">
-      <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.9"/>
-      <stop offset="35%"  stop-color="#FFFFFF" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
-    </radialGradient>
-
-    <!-- 底部小面积反光（缩小 50%+） -->
-    <radialGradient id="bottomShadowGrad" cx="50%" cy="100%" r="80%">
-      <stop offset="0%"   stop-color="#9CA3AF" stop-opacity="0.35"/>
-      <stop offset="60%"  stop-color="#9CA3AF" stop-opacity="0.0"/>
-      <stop offset="100%" stop-color="#9CA3AF" stop-opacity="0.0"/>
-    </radialGradient>
-
     <!-- B 的蓝色动态渐变 -->
     <linearGradient id="beamio-B-anim-light" x1="0%" y1="0%" x2="100%">
       <stop offset="0%" stop-color="#0031CC" />
@@ -37,44 +14,11 @@
       <circle cx="60" cy="60" r="56" />
     </clipPath>
   </defs>
-
-  <!-- 主体浅色凸起圆 -->
-  <circle
-    cx="60" cy="60" r="56"
-    fill="url(#lightGlossyCircle)"
-    stroke="#E5E7EB"
-    stroke-width="1"
-  />
-
-  <!-- 底部反光（缩小 50%+） -->
-  <g clip-path="url(#lightCircleClip)">
-    <ellipse
-      cx="60" cy="80"
-      rx="22" ry="9"
-      fill="url(#bottomShadowGrad)"
-    />
+  <g class="cls-1">
+    <g class="cls-1">
+      <path class="cls-2" 
+	  fill="url(#beamio-B-anim-light)"
+	  d="M0,34.36L7.2,0h11.74c2.55,0,4.33.08,5.34.23,1.69.23,3.12.7,4.29,1.41s2.06,1.64,2.67,2.81.91,2.47.91,3.89c0,1.91-.53,3.56-1.59,4.96s-2.7,2.46-4.92,3.18c1.77.48,3.14,1.35,4.14,2.59s1.49,2.64,1.49,4.21c0,2.06-.59,4.02-1.76,5.87s-2.79,3.18-4.85,4-4.88,1.22-8.46,1.22H0ZM8.23,28.83h6.82c2.86,0,4.78-.18,5.75-.55s1.76-.97,2.34-1.82.88-1.73.88-2.67c0-1.14-.42-2.08-1.27-2.82s-2.25-1.11-4.22-1.11h-8.44l-1.88,8.98ZM11.34,13.88h5.39c2.42,0,4.16-.17,5.23-.52s1.86-.91,2.39-1.69.8-1.62.8-2.51-.25-1.59-.75-2.16-1.21-.94-2.13-1.12c-.52-.09-1.76-.14-3.73-.14h-5.48l-1.71,8.13Z"/>
+    </g>
   </g>
-
-  <!-- 左上高光 -->
-  <g clip-path="url(#lightCircleClip)">
-    <ellipse
-      cx="34" cy="22"
-      rx="30" ry="16"
-      fill="url(#lightHighlightGrad)"
-    />
-  </g>
-
-  <!-- 中央的 B -->
-  <text
-    x="62" y="87"
-    text-anchor="middle"
-    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
-    font-size="72"
-    font-weight="700"
-    font-style="italic"
-    letter-spacing="0.02em"
-    fill="url(#beamio-B-anim-light)"
-  >
-    B
-  </text>
 </svg>

@@ -31,10 +31,10 @@ type RedeemOrLinkCardProps = {
 
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
-  if (!isFinite(base) || base <= 0) return 0;
-  const raw = base * 0.008;
-  const clamped = Math.min(Math.max(raw, 0.02), 2);
-  return Number(clamped.toFixed(2));
+	if (!isFinite(base) || base <= 0) return 0;
+	const raw = base * 0.008;
+	const clamped = Math.min(Math.max(raw, 0.02), 2);
+	return Number(clamped.toFixed(2));
 }
 
 const formatMoney = (n: number) =>
@@ -75,31 +75,31 @@ export const RedeemOrLinkCard = ({
 
 
 	const handleCopyCode = async () => {
-			try {
-				await navigator.clipboard.writeText(redeemCode)
-				setCopied(true)
+		try {
+			await navigator.clipboard.writeText(redeemCode)
+			setCopied(true)
 
-				setTimeout(() => {
-				setCopied(false)
-				}, 2000)
-			} catch (e) {
-				console.error('Copy failed:', e)
-			}
+			setTimeout(() => {
+			setCopied(false)
+			}, 2000)
+		} catch (e) {
+			console.error('Copy failed:', e)
+		}
 	}
 
-  const handleOpenLink = () => {
-    if (!successUrl) return
-    window.open(successUrl, '_blank')
-  }
-    const requestGross = amt + tip; // payer will pay
-	
-	const displayGeneratedAmount = isPay ? amt : requestGross;
-	
-	
-	const [copied, setCopied] = useState(false)
-	const [copied1, setCopied1] = useState(false)
+	const handleOpenLink = () => {
+			if (!successUrl) return
+			window.open(successUrl, '_blank')
+	}
+		const requestGross = amt + tip; // payer will pay
+		
+		const displayGeneratedAmount = isPay ? amt : requestGross;
+		
+		
+		const [copied, setCopied] = useState(false)
+		const [copied1, setCopied1] = useState(false)
 
-	function CopyLinkButton({ appUrl }: { appUrl: string }) {
+		function CopyLinkButton({ appUrl }: { appUrl: string }) {
 		const [copied, setCopied] = useState(false)
 
 		const handleCopy = async () => {
@@ -502,7 +502,7 @@ export const RedeemOrLinkCard = ({
 							"
 							title="Copy link"
 						>
-							{copied1 ? (
+							{ copied1 ? (
 									<Check className="w-4 h-4 text-green-500" />
 								) : (
 									<Copy className="w-4 h-4" />

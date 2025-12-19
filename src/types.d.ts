@@ -491,3 +491,5 @@ type IMessageData = {
 	reqUrl: string
 	amount: string
 }
+
+type PaymentLinkLockMode = "FIAT_LOCKED" | "USDC_LOCKED";

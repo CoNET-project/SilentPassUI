@@ -129,7 +129,7 @@ const Home = ({}) => {
 
 		const bo: beamio = temp?.beamio || await getUserInfo(profiles[0].keyID)
 		bo.isUSDCFaucet = true
-		setBeamio (bo)
+		setBeamio ({...bo})
 		temp.beamio = bo
 		setCoNET_Data(temp)
 		storeSystemData()
@@ -150,7 +150,7 @@ const Home = ({}) => {
 		setCoNET_Data(tmpData)
 		
 		await storeSystemData()
-		setBeamio(bo)
+		setBeamio({...bo})
 
 	}
 
@@ -175,7 +175,7 @@ const Home = ({}) => {
 		
 		
 		setDarkModle(bo.darkTheme)
-		setBeamio (bo)
+		setBeamio ({...bo})
 		temp.beamio = bo
 		getAccountData(bo)
 		setCoNET_Data(temp)
@@ -649,10 +649,10 @@ const Home = ({}) => {
 				</button>
 			</div> */}
 			{/* Phone frame */}
-			<div className="mt-12 flex-1 px-5 pb-3 overflow-y-auto mb-10">
+			<div className="flex-1 px-5 pb-3 overflow-y-auto">
 				
 				{/* Search */}
-				<div className="flex items-center gap-2 mb-4">
+				<div className="flex items-center gap-2 mb-4 mt-10">
 					 <button 
 						onClick={() => {
 							setOpenSearch(true)

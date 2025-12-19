@@ -15,6 +15,7 @@ type Props = {
 	readonly: boolean
 	select?: boolean
 	showHistory: boolean
+	showBackIcon?: boolean
 }
 
 const displayName = (item: searchResult) => {
@@ -47,7 +48,7 @@ function formatUserDate(timestamp?: string | number): string {
 
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = forwardRef(
-	({ close, readonly, select, showHistory }: Props) => {
+	({ close, readonly, select, showHistory, showBackIcon=true }: Props) => {
 		const { profiles, } = useDaemonContext()
 
 		const [query, setQuery] = useState('')
@@ -248,7 +249,29 @@ const SearchInputWithDropdown = forwardRef(
 					{/* 没输入：普通 pill 输入框 */}
 					{!showDropdown && (
 						<>
-						<div className="flex items-center bg-slate-100 rounded-full px-3 h-11 flex-1">
+						<div className="flex items-center bg-slate-100 rounded-full px-2 h-11 flex-1">
+							{/* ← 返回按钮 */}
+							{
+								!readonly && showBackIcon && (
+									<button
+										type="button"
+										onClick={() => close('/')}
+										className="
+										w-7 h-7
+										mr-2
+										flex items-center justify-center
+										rounded-full
+										hover:bg-slate-200
+										active:scale-95
+										transition
+										flex-shrink-0
+										"
+									>
+										<ChevronLeft className="w-4 h-4 text-slate-700" />
+									</button>
+								)
+							}
+							
 							{/* Beamio icon —— 在最左侧 */}
 							<img
 								src={beamio_icon}
@@ -271,6 +294,7 @@ const SearchInputWithDropdown = forwardRef(
 								value={query}
 								onChange={e => setQuery(e.currentTarget.value)}
 							/>
+							
 						</div>
 						
 							{!readonly && showHistory && (
@@ -300,22 +324,27 @@ const SearchInputWithDropdown = forwardRef(
 							{/* 顶部：输入行 */}
 							<div className="flex items-center bg-slate-100 rounded-full px-2 h-11 flex-1">
 							{/* ← 返回按钮 */}
-							<button
-								type="button"
-								onClick={() => close('/')}
-								className="
-								w-7 h-7
-								mr-2
-								flex items-center justify-center
-								rounded-full
-								hover:bg-slate-200
-								active:scale-95
-								transition
-								flex-shrink-0
-								"
-							>
-								<ChevronLeft className="w-4 h-4 text-slate-700" />
-							</button>
+							{
+								!readonly && showBackIcon && (
+									<button
+										type="button"
+										onClick={() => close('/')}
+										className="
+										w-7 h-7
+										mr-2
+										flex items-center justify-center
+										rounded-full
+										hover:bg-slate-200
+										active:scale-95
+										transition
+										flex-shrink-0
+										"
+									>
+										<ChevronLeft className="w-4 h-4 text-slate-700" />
+									</button>
+								)
+							}
+							
 
 							{/* Beamio icon */}
 							<img

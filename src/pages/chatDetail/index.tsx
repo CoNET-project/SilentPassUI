@@ -121,7 +121,7 @@ const ChatDetail=()=> {
 	    			<div className={styles.titleBox}>
 	    				<Avatar src={'https://api.dicebear.com/8.x/fun-emoji/svg?seed=%40Beamio'} style={{ '--size': '40px','--border-radius': '50%' }} />
 			          	<div className={styles.text}>
-				          	<div className={styles.name}>Jing Luo</div>
+				          	<div className={styles.name}>KEY </div>
 				          	<div className={styles.sub}>Encrypted · Beamio + CoNET</div>
 				        </div>
 			        </div>

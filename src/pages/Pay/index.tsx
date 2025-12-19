@@ -124,7 +124,7 @@ const Pay = ({}) => {
 					<BeamioNavBack
 						title={
 							showAlphaHowItWorks === 'Pay' ? 'Pay':
-							showAlphaHowItWorks === 'PayRequest' ? 'Payment Request' : 
+							showAlphaHowItWorks === 'PayRequest' ? 'Request' : 
 							''
 						}
 						onClose={() => {

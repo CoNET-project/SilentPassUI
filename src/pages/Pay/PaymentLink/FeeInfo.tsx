@@ -2,23 +2,16 @@ import { useState, useRef, useEffect } from 'react';
 
 
 import {
-  ArrowLeft,
-  Camera,
-  Check,
-  Search,
-  ChevronRight,
   X,
-  Copy,
-  Info,
-  ExternalLink,
 } from "lucide-react"
 
 type Props = {
 	close: () => void
+	isUSDCFixed: boolean
 };
 
 
-const FeeInfo = ({ close }: Props) => {
+const FeeInfo = ({ close, isUSDCFixed }: Props) => {
   const [cols, setCols] = useState(3);
   const containerRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -71,28 +64,39 @@ const FeeInfo = ({ close }: Props) => {
       </div>
 
       {/* Cards */}
-      <div className="mt-4 space-y-4">
-        {/* Beamio fee */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-5">
-          <div className="text-[18px] font-semibold text-slate-900">
-            Beamio fee
-          </div>
-          <div className="mt-2 text-[16px] leading-relaxed text-slate-600">
-            Beamio fee: 0.8% (min 0.02 USDC; max 2.00 USDC)
-          </div>
-        </div>
+		<div className="mt-4 space-y-4">
 
-        {/* FX note */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-5">
-          <div className="text-[18px] font-semibold text-slate-900">
-            FX note
-          </div>
-          <div className="mt-2 text-[16px] leading-relaxed text-slate-600">
-            Fiat-locked: final USDC amount, fee, and net receive are calculated
-            when the payer pays, based on the live FX quote.
-          </div>
-        </div>
-      </div>
+			{/* Beamio fee */}
+			<div className="rounded-3xl border border-slate-200 bg-white p-5">
+			<div className="text-[18px] font-semibold text-slate-900">
+				Beamio fee
+			</div>
+			<div className="mt-2 text-[16px] leading-relaxed text-slate-600">
+				Beamio fee: 0.8% (min 0.02 USDC; max 2.00 USDC)
+			</div>
+			</div>
+
+			{/* FX note */}
+			<div className="rounded-3xl border border-slate-200 bg-white p-5">
+				<div className="text-[18px] font-semibold text-slate-900">
+					{isUSDCFixed ? 'USDC-locked' : 'FX note'}
+					
+				</div>
+			<div className="mt-2 text-[16px] leading-relaxed text-slate-600">
+				{
+					isUSDCFixed ? (
+						<>
+							USDC amount is fixed. No fiat conversion is used.
+						</>
+					) : (
+						<>
+						Fiat-locked: final USDC amount, fee, and net receive are calculated when the payer pays, based on the live FX quote.
+						</>
+					)
+				}
+			</div>
+			</div>
+		</div>
     </div>
   );
 };

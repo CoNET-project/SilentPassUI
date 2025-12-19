@@ -583,7 +583,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						showLimit > 0 && (
 							<div className="flex items-center justify-between text-xs MT-6">
 								<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
-								<span className="text-slate-400">Min amount {'> ' + showLimit} USDC</span>
+								<span className="text-slate-400">Min {'> ' + showLimit} USDC</span>
 							</div>
 						)
 					}

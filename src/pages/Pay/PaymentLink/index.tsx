@@ -1,30 +1,12 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 
-import {
-  ArrowLeft,
-  Camera,
-  Check,
-  Search,
-  ChevronRight,
-  X,
-  Copy,
-  Info,
-  ExternalLink,
-} from "lucide-react"
 import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
-import { AppButton } from "@/components/button/AppButton";
-import {motion, AnimatePresence } from "framer-motion"
-import { createPortal } from 'react-dom';
-import BeamioNavBack from '@/components/Setting/BeamioNavBack'
+import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {ethers} from 'ethers'
-import base_ex from '@/components/assets/base-ex.svg'
 import LockModeSegmented from './LockModeSegmented'
 import FeeInline from './FeeInline'
-import {RedeemOrLinkCard} from '@/pages/Pay/RedeemOrLinkCard'
 import SuccessShow from './successShow'
 
 function fiatPrefix(ccy: ICurrency) {
@@ -45,12 +27,6 @@ const aptEndpoint = 'https://api.settleonbase.xyz'
 const showPaylinkSite = 'https://beamio.app'
 
 const defaultTextTemp = `Sent with Beamio - no gas fees.`
-
-const displayName = (item: searchResult) => {
-	const lastname = item.last_name.split('\r\n')
-	const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
-	return fullName || item.username || item.address
-}
 
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
@@ -125,9 +101,8 @@ export default function PaymentLink ({close, beamioer}: Props) {
 
 	useEffect(() => {
 		if (!beamio) return
-
 		setCurrency(beamio.currency)
-
+		
 	}, [beamio])
 
 	useEffect(() => {
@@ -160,8 +135,6 @@ export default function PaymentLink ({close, beamioer}: Props) {
 
 		return usdcToUSD * usdToCurrency
 	}
-
-
 
 
 	const issueRequestLink = async () => {
@@ -205,7 +178,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		const params = new URLSearchParams({amount: fixedAmount, code: code.hash, note:showNote, address: profile.keyID }).toString()
 		const net = numberAmount - calcFeeFromNumber(numberAmount)
 		const showNetCurrency = lockMode === 'USDC_LOCKED' ? net.toFixed(4) : formatCurrencyAmount(net * fxRateUSDCToCurrency(currency), currency)
-		const showparams = new URLSearchParams({code: code.hash}).toString()
+		const showparams = new URLSearchParams({code: code.code}).toString()
 		const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
 		const showUrl = `${showPaylinkSite}?${showparams}`
 		setPayAmount(`${fiatPrefix(currency)} ${showCurrencyNumber}`)
@@ -216,28 +189,28 @@ export default function PaymentLink ({close, beamioer}: Props) {
 			 * 		UI test
 			 * 
 			 */
-		setTimeout(() => {
-			setProcessing(false)
-			setSuccessUrl(showUrl)
-		}, 1000)
-
-
-		// try {
-		// 	const res = await fetch(requestUrl, {method: 'GET'})
-
+		// setTimeout(() => {
 		// 	setProcessing(false)
-		// 	if (res.status !== 200) {
-		// 		return setProcessError(`Beamio RPC Error!`)
-		// 	}
-		// 	console.log(note)
 		// 	setSuccessUrl(showUrl)
+		// }, 1000)
+
+
+		try {
+			const res = await fetch(requestUrl, {method: 'GET'})
+
+			setProcessing(false)
+			if (res.status !== 200) {
+				return setProcessError(`Beamio RPC Error!`)
+			}
+			console.log(note)
+			setSuccessUrl(showUrl)
 
 			
 
-		// } catch (ex) {
-		// 	setProcessing(false)
-		// 	return setProcessError(`Beamio RPC Error!`)
-		// }
+		} catch (ex) {
+			setProcessing(false)
+			return setProcessError(`Beamio RPC Error!`)
+		}
 		
 	}
 
@@ -262,9 +235,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 							<div className="p-4 space-y-4 bg-transparent">
 								<div>
 									<div className="text-lg font-semibold">Create Payment Link</div>
-									<div className="mt-1 text-sm text-slate-500">
-										Create a request in fiat. USDC is shown as an estimate.
-									</div>
+									
 								</div>
 
 								<div className="mt-5 flex items-center gap-3">
@@ -316,8 +287,8 @@ export default function PaymentLink ({close, beamioer}: Props) {
 								<div className="mt-5">
 
 									<FeeInline
-									payUsdc={Number(sendAmount)}
-									isUSDC={lockMode === 'USDC_LOCKED'}
+										payUsdc={Number(sendAmount)}
+										isUSDC={lockMode === 'USDC_LOCKED'}
 									/>
 								
 								</div>
@@ -333,7 +304,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 										errorText={processError}
 									>
 
-										Generate Payment Link
+										Generate
 									</AppButton>
 								</div>
 								

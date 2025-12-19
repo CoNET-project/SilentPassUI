@@ -81,43 +81,43 @@ function LockModeSwitch({
     <div className="flex items-center justify-between gap-3 w-full">
       {/* 左侧内容（单层 DOM，opacity 切换） */}
       <div className="flex items-center gap-2 min-w-0">
-        {/* Icon */}
-        <div className="relative w-6 h-6 flex-shrink-0">
-          <Globe
-            className={`
-              absolute inset-0 w-6 h-6
-              text-slate-500
-              transition-opacity duration-150
-              ${isUSDC ? 'opacity-0 pointer-events-none' : 'opacity-100'}
-            `}
-            aria-hidden={isUSDC}
-          />
+			{/* Icon */}
+			<div className="relative w-6 h-6 flex-shrink-0">
+			<Globe
+				className={`
+					absolute inset-0 w-6 h-6
+					text-slate-500
+					transition-opacity duration-150
+					${isUSDC ? 'opacity-0 pointer-events-none' : 'opacity-100'}
+				`}
+				aria-hidden={isUSDC}
+			/>
 
-          <div
-            className={`
-              absolute inset-0
-              transition-opacity duration-150
-              ${isUSDC ? 'opacity-100' : 'opacity-0 pointer-events-none'}
-            `}
-            aria-hidden={!isUSDC}
-          >
-            <img
-              src={usdcIcon}
-              alt="USDC"
-              className="w-6 h-6 rounded-full object-contain"
-            />
-            <img
-              src={baseIcon}
-              alt="Base"
-              className="
-                absolute -bottom-0.5 -right-0.5
-                w-3 h-3
-                rounded-full
-                border border-white dark:border-slate-900
-                bg-white
-              "
-            />
-          </div>
+			<div
+				className={`
+					absolute inset-0
+					transition-opacity duration-150
+					${isUSDC ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+				`}
+				aria-hidden={!isUSDC}
+			>
+				<img
+					src={usdcIcon}
+					alt="USDC"
+					className="w-6 h-6 rounded-full object-contain"
+				/>
+				<img
+				src={baseIcon}
+				alt="Base"
+				className="
+					absolute -bottom-0.5 -right-0.5
+					w-3 h-3
+					rounded-full
+					border border-white dark:border-slate-900
+					bg-white
+				"
+				/>
+			</div>
         </div>
 
         {/* Text（单层：内容直接切换，不叠） */}
@@ -126,7 +126,7 @@ function LockModeSwitch({
             {isUSDC ? 'USDC' : 'Local currency'}
           </div>
           <div className="text-xs text-slate-500 leading-snug">
-            {isUSDC ? 'Fiat shown as reference' : 'USDC quoted at checkout'}
+            {!isUSDC ? 'USDC at checkout' : 'Fixed'}
           </div>
         </div>
       </div>

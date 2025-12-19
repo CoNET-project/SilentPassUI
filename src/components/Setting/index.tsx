@@ -71,15 +71,10 @@ export default function BeamioMeMainScreen() {
 	const [privatekeyVisible, setPrivatekeyVisible] = useState(false)
 	const [avatarEditorVisible, setAvatarEditorVisible] = useState(false)
 
-	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
-
-	const displayName = avatarName || defaultName
-
 	const currentAvatarSrc = beamio?.image
 
 	const [settingsOpen, setSettingsOpen] = useState<''|'BeamioSettings'|'FollowList'|'CoinbaseRamp'>('')
 	const [setFollowOpen, setSetFollowOpen] = useState<'following' | 'followers'|''>('')
-	const [coinbaseOpen, setCoinbaseOpen] = useState<'buy'|'sale'|''>()
 	const [receiveOpen, setReceiveOpen] = useState(false)     // 控制 Receive 全屏页
 	const [copied, setCopied] = React.useState(false)
 	const [followingCount, setFollowingCount] = useState(0)

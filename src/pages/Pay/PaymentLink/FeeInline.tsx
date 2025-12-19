@@ -49,7 +49,7 @@ function fiatPrefix(ccy: ICurrency) {
 	if (ccy==='CNY') return 'CN¥'
 	if (ccy==='HKD') return 'HK$'
 	if (ccy==='SGD') return 'SG$'
-	
+
   return CURRENCY_META[ccy].symbol;
 }
 
@@ -176,42 +176,24 @@ function FeeInline({
 						
 					</div>
 
-					{!open && (
-						<div className="mt-2 flex items-center justify-between text-sm">
-							<span className="text-slate-500">
-								You receive
-								
-							</span>
-							<span className="font-semibold tabular-nums text-slate-900">
-								{fiatPrefix(currentCurrency) + display.receive}
-							</span>
-						</div>
-					)}
+						{
+							!open && (
+								<div className="mt-2 flex items-center justify-between text-sm">
+									<span className="text-slate-500">
+										You receive
+										
+									</span>
+									<span className="font-semibold tabular-nums text-slate-900">
+										{isUSDC ? `${display.receive} USDC` : fiatPrefix(currentCurrency) + display.receive}
+									</span>
+								</div>
+							)
+						}
+						
+					
 
 					{open && (
 						<div className="mt-3 space-y-2 text-sm">
-
-							<div className="flex items-start justify-between">
-							{/* 左侧 */}
-							<span className="text-slate-500 leading-snug">
-								Request
-								
-							</span>
-
-							{/* 右侧：两行，右对齐 */}
-							<div className="flex flex-col items-end leading-snug">
-								<span className="font-semibold tabular-nums text-slate-900">
-									{fiatPrefix(currentCurrency) + display.pay}
-								</span>
-
-								{!isUSDC && (
-								<span className="text-xs text-slate-500 tabular-nums">
-									≈ {payUsdc} USDC
-								</span>
-								)}
-							</div>
-						</div>
-
 
 						<div className="flex items-start justify-between">
 							{/* 左侧 */}
@@ -221,14 +203,14 @@ function FeeInline({
 
 							{/* 右侧：两行，右对齐 */}
 							<div className="flex flex-col items-end leading-snug">
-								<span className="font-semibold tabular-nums text-slate-900">
-								{fiatPrefix(currentCurrency) + display.pay}
+								<span className="font-mono font-medium text-[13px] text-black/60">
+									{ isUSDC ? `${display.pay} USDC` : fiatPrefix(currentCurrency) + display.pay}
 								</span>
 
 								{!isUSDC && (
-								<span className="text-xs text-slate-500 tabular-nums">
-									≈ {payUsdc} USDC
-								</span>
+									<span className="text-xs text-slate-500 tabular-nums">
+										≈ {payUsdc} USDC
+									</span>
 								)}
 							</div>
 						</div>
@@ -241,8 +223,8 @@ function FeeInline({
 
 							{/* 右侧：两行，右对齐 */}
 							<div className="flex flex-col items-end leading-snug">
-								<span className="font-semibold tabular-nums text-slate-900">
-									{fiatPrefix(currentCurrency) + display.fee}
+								<span className="font-mono font-medium text-[13px] text-black/60">
+									{ isUSDC ? `${display.fee} USDC` : fiatPrefix(currentCurrency) + display.fee}
 								</span>
 
 								{!isUSDC && (
@@ -252,7 +234,7 @@ function FeeInline({
 								)}
 							</div>
 						</div>
-
+						
 						<div className="flex items-start justify-between">
 							{/* 左侧 */}
 							<span className="text-slate-500 leading-snug">
@@ -262,13 +244,13 @@ function FeeInline({
 							{/* 右侧：两行，右对齐 */}
 							<div className="flex flex-col items-end leading-snug">
 								<span className="font-semibold tabular-nums text-slate-900">
-									{fiatPrefix(currentCurrency) + display.receive}
+									{ isUSDC ? `${display.receive} USDC` : fiatPrefix(currentCurrency) + display.receive}
 								</span>
 
 								{!isUSDC && (
-								<span className="text-xs text-slate-500 tabular-nums">
-									≈ {receiveUsdc.toFixed(4)} USDC
-								</span>
+									<span className="text-xs text-slate-500 tabular-nums">
+										≈ {receiveUsdc.toFixed(4)} USDC
+									</span>
 								)}
 							</div>
 						</div>
@@ -295,7 +277,10 @@ function FeeInline({
 					}}
 					onClick={(e) => e.stopPropagation()}
 					>
-					<FeeInfo close={() => setOpenInfo(false)} />
+					<FeeInfo 
+						close={() => setOpenInfo(false)}
+						isUSDCFixed={isUSDC}
+					/>
 					</div>
 				</div>
 				)}

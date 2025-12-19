@@ -2,12 +2,15 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 
+import LockModeSwitch from '@/components/switch/LockModeSegmented'
+
+
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
 	if (!isFinite(base) || base <= 0) return 0;
 	const raw = base * 0.008;
 	const clamped = Math.min(Math.max(raw, 0.02), 2);
-	return Number(clamped.toFixed(2));
+	return Number(clamped)
 }
 
 const CURRENCY_META: Record<
@@ -26,10 +29,11 @@ const CURRENCY_META: Record<
 };
 
 function fiatPrefix(ccy: ICurrency) {
-  if (ccy === "CAD") return "CA$";
-  if (ccy === "USD") return "$";
-  if (ccy === "EUR") return "€";
-  if (ccy === "JPY") return "¥";
+//   if (ccy === "CAD") return "CA$";
+//   if (ccy === "USD") return "$";
+//   if (ccy === "EUR") return "€";
+//   if (ccy === "JPY") return "¥";
+//   if (ccy==='TWD') return "NT$";
   return CURRENCY_META[ccy].symbol;
 }
 
@@ -44,6 +48,7 @@ function FeeInline({
 	const [open, setOpen] = useState(false)
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
 	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>('USDC')
+	
 
 	useEffect (() => {
 		if (isUSDC||!beamio) return
@@ -63,7 +68,7 @@ function FeeInline({
 
 	function formatAmount(v: number, c: ICurrency) {
 		if (!isFinite(v)) return `0 ${c}`
-		return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : v.toFixed(2)} ${c}`
+		return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)} ${c}`
 	}
 
 	function usdcToCurrencyAmount(usdc: number, c: ICurrency) {
@@ -85,12 +90,12 @@ function FeeInline({
 	}
 
 	const feeUsdc = useMemo(
-		() => calcFeeFromNumber(payUsdc),
+		() => calcFeeFromNumber(payUsdc).toFixed(4),
 		[payUsdc]
 	)
 
 	const receiveUsdc = useMemo(
-		() => payUsdc - feeUsdc,
+		() => payUsdc - Number(feeUsdc),
 		[payUsdc, feeUsdc]
 	)
 
@@ -98,7 +103,7 @@ function FeeInline({
 		if (isUSDC) {
 			return {
 				pay: formatAmount(payUsdc, 'USDC'),
-				fee: formatAmount(feeUsdc, 'USDC'),
+				fee: formatAmount(Number(feeUsdc), 'USDC'),
 				receive: formatAmount(receiveUsdc, 'USDC'),
 			}
 		}
@@ -106,21 +111,23 @@ function FeeInline({
 		const c = currentCurrency
 		return {
 			pay: formatAmount(usdcToCurrencyAmount(payUsdc, c), c),
-			fee: formatAmount(usdcToCurrencyAmount(feeUsdc, c), c),
+			fee: formatAmount(usdcToCurrencyAmount(Number(feeUsdc), c), c),
 			receive: formatAmount(usdcToCurrencyAmount(receiveUsdc, c), c),
 		}
 	}, [isUSDC, payUsdc, feeUsdc, receiveUsdc, currentCurrency])
 
 	return (
 		<div className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-100">
-			<div className="flex items-center justify-between">
+
+			<div className="flex items-center justify-end">
 				
-				<button
-					className="text-sm font-medium text-slate-900 hover:opacity-80"
-					onClick={() => setOpen((v) => !v)}
+				{/* 右侧开关 */}
+				<LockModeSwitch
+				value={open}
+				onChange={() => setOpen(!open)}
 				>
-					{open ? "Hide" : "Details"}
-				</button>
+					Detail
+				</LockModeSwitch>
 			</div>
 
 			{!open && (
@@ -130,7 +137,7 @@ function FeeInline({
 						
 					</span>
 					<span className="font-semibold tabular-nums text-slate-900">
-						{fiatPrefix(currentCurrency) + display.pay}
+						{fiatPrefix(currentCurrency) + display.receive}
 					</span>
 				</div>
 			)}
@@ -142,18 +149,18 @@ function FeeInline({
 				{/* 左侧 */}
 				<span className="text-slate-500 leading-snug">
 					Request
-					{!isUSDC && <> (fiat)</>}
+					
 				</span>
 
 				{/* 右侧：两行，右对齐 */}
 				<div className="flex flex-col items-end leading-snug">
 					<span className="font-semibold tabular-nums text-slate-900">
-					{fiatPrefix(currentCurrency) + display.pay}
+						{fiatPrefix(currentCurrency) + display.pay}
 					</span>
 
 					{!isUSDC && (
 					<span className="text-xs text-slate-500 tabular-nums">
-						{payUsdc} USDC
+						≈ {payUsdc} USDC
 					</span>
 					)}
 				</div>
@@ -164,7 +171,6 @@ function FeeInline({
 				{/* 左侧 */}
 				<span className="text-slate-500 leading-snug">
 					Payer pays
-					{!isUSDC && <> (est.)</>}
 				</span>
 
 				{/* 右侧：两行，右对齐 */}
@@ -175,38 +181,51 @@ function FeeInline({
 
 					{!isUSDC && (
 					<span className="text-xs text-slate-500 tabular-nums">
-						(≈ {payUsdc} USDC)
+						≈ {payUsdc} USDC
 					</span>
 					)}
 				</div>
 			</div>
 
-			<div className="flex items-center justify-between">
-				<span className="text-slate-500">
+			<div className="flex items-start justify-between">
+				{/* 左侧 */}
+				<span className="text-slate-500 leading-snug">
 					Beamio fee
 				</span>
-				<span className="font-medium tabular-nums text-slate-900">
-					{fiatPrefix(currentCurrency) + display.fee}
-					{!isUSDC && <> in USDC</>}
-				</span>
+
+				{/* 右侧：两行，右对齐 */}
+				<div className="flex flex-col items-end leading-snug">
+					<span className="font-semibold tabular-nums text-slate-900">
+						{fiatPrefix(currentCurrency) + display.fee}
+					</span>
+
+					{!isUSDC && (
+					<span className="text-xs text-slate-500 tabular-nums">
+						≈ {feeUsdc} USDC
+					</span>
+					)}
+				</div>
 			</div>
 
-				<div className="flex items-center justify-between">
-					<span className="text-slate-500">You will receiv
-						{!isUSDC && <> the equivalent of </>}
-					</span>
-					<span className="font-medium tabular-nums text-slate-900">
-						{display.receive} {!isUSDC && <> in USDC</>}
-					</span>
-				</div>
+			<div className="flex items-start justify-between">
+				{/* 左侧 */}
+				<span className="text-slate-500 leading-snug">
+					Receive
+				</span>
 
-				<div className="pt-1 text-xs text-slate-400">
-					{
-						isUSDC ? `USDC amount is fixed · Fee paid by creator · Gas sponsored`
-						: `Estimated · Fee paid by creator · Gas sponsored. Final USDC amount, fee, and net receive are calculated when the payer pays, based on the live FX quote.`
-					}
-					
+				{/* 右侧：两行，右对齐 */}
+				<div className="flex flex-col items-end leading-snug">
+					<span className="font-semibold tabular-nums text-slate-900">
+						{fiatPrefix(currentCurrency) + display.receive}
+					</span>
+
+					{!isUSDC && (
+					<span className="text-xs text-slate-500 tabular-nums">
+						≈ {receiveUsdc} USDC
+					</span>
+					)}
 				</div>
+			</div>
 			</div>
 		)}
 		</div>

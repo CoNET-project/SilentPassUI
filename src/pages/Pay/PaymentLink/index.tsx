@@ -25,7 +25,7 @@ import LockModeSegmented from './LockModeSegmented'
 import FeeInline from './FeeInline'
 import {RedeemOrLinkCard} from '@/pages/Pay/RedeemOrLinkCard'
 import SuccessShow from './successShow'
-
+import IOSBlurPillButton from '@/components/button/IOSButton'
 
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
@@ -279,12 +279,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 										</section>
 									
 								
-								 <div className="mt-5">
-									<FeeInline
-										payUsdc={Number(sendAmount)}
-										isUSDC={lockMode ==='USDC_LOCKED' ? true : false}
-									/>
-								</div>
+								
 
 
 								
@@ -307,6 +302,13 @@ export default function PaymentLink ({close, beamioer}: Props) {
 									rows={2}
 									className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
 								/>
+
+								 <div className="mt-5">
+									<FeeInline
+										payUsdc={Number(sendAmount)}
+										isUSDC={lockMode ==='USDC_LOCKED' ? true : false}
+									/>
+								</div>
 									
 								
 								

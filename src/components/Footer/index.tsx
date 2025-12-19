@@ -22,7 +22,7 @@ import type { Transition } from 'framer-motion'
 type TabKey = '/' | '/history' | '/pay' | '/chat' | '/settings'
 type Phase = 'idle' | 'moving' | 'settling'|'impact'
 
-const ICON_CLASS = 'w-8 h-8 block'
+const ICON_CLASS = 'w-11 h-11 block'
 const SLOT_H = 'h-12'
 
 const Footer = () => {
@@ -144,38 +144,55 @@ useEffect(() => {
   let cancelled = false
 
   const run = async () => {
-    setPhase('moving')
+    
 
-    // 1) 立刻变球，并以球体形态移动到新位置
+	/* ================================
+     * ① 移动开始：瞬间缩小到 10%
+     * ================================ */
+    dropletControls.set({
+	x: `${prevIndexRef.current * 100}%`,   // ✅ 用旧位置（很关键）
+	borderRadius: 999,
+	scaleX: 0.5,
+	scaleY: 0.5,
+	})
+
+	setPhase('moving')
+    /* ================================
+     * ② 快速放大成球体 + 同时移动
+     * ================================ */
     await dropletControls.start({
-      x: `${activeIndex * 100}%`,
-      borderRadius: 999,
-      // 球体感：更圆更鼓（一路保持）
-      scaleX: 0.86,
-      scaleY: 1.10,
-      transition: {
-        // ✅ 同时移动 + 变球，但“变球”几乎立刻完成
-        x: { type: 'spring', stiffness: 520, damping: 34, mass: 0.75 },
-        borderRadius: { duration: 0.10, ease: 'easeOut' },
-        scaleX: { duration: 0.10, ease: 'easeOut' },
-        scaleY: { duration: 0.10, ease: 'easeOut' },
-      },
-    })
-
+		borderRadius: 26,
+		scaleX: 1.10,
+		scaleY: 0.90,
+		transition: {
+			duration: 0.12,
+			ease: [0.55, 0.0, 1.0, 0.45], // ✅ 加速结束（无减速）
+		},
+	})
+	setPhase('settling')
     if (cancelled) return
 
-    // 2) 到达后：缓慢压扁回胶囊
-    setPhase('settling')
-    await dropletControls.start({
-      borderRadius: 26,
-      // 扁平胶囊：略宽略扁
-      scaleX: 1.06,
-      scaleY: 0.96,
-      transition: {
-        duration: 0.40,
-        ease: [0.2, 0.9, 0.2, 1],
-      },
-    })
+
+		// ③A：高速进入「120% 扁平态」（承接上一段高速）
+		await dropletControls.start({
+		borderRadius: 26,
+		scaleX: 1.272, // 1.06 * 1.2
+		scaleY: 1.152, // 0.96 * 1.2
+		transition: {
+			duration: 0.14,
+			ease: [0.55, 0.0, 1.0, 0.45], // ✅ 加速结束（无减速）
+		},
+		})
+
+		// ④：从 120% 慢慢恢复到 100%（最终尺寸）
+		await dropletControls.start({
+		scaleX: 1.06,
+		scaleY: 0.96,
+		transition: {
+			duration: 0.55,
+			ease: [0.2, 0.9, 0.2, 1], // ✅ 缓慢收尾
+		},
+		})
 
     if (cancelled) return
     setPhase('idle')
@@ -235,7 +252,7 @@ const iconTarget = (() => {
 
   // 球体移动阶段：icon 被挤压
   if (phase === 'moving') {
-    return { scaleX: 1.16, scaleY: 0.70, y: 2 }
+    return { scaleX: 0.7, scaleY: 0.60, y: 2 }
   }
 
   // 到达后压扁阶段 + idle：icon 恢复原样
@@ -351,6 +368,7 @@ const iconTransition: Transition = (() => {
             className="
               absolute inset-y-0 left-0 w-1/5
               overflow-hidden
+			  -top-2 -bottom-2
               backdrop-blur-3xl
               shadow-[0_14px_36px_rgba(0,0,0,0.20)]
               border border-white/60 dark:border-slate-700/70

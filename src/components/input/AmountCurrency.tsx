@@ -6,6 +6,10 @@ import { getOracle, postBeamio, storeSystemData } from "@/services/beamio"
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import IOSGlassPillButton from '@/components/button/IOSButton'
+import CurrencyPicker from './SelectCurrent'
+
+
 
 type Prof = {
 	setAmount: (usdc: string) => void // ✅ 永远回传 USDC
@@ -178,7 +182,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	// ---------- Balance check (USDC truth) ----------
 	const checkBalance = (usdcToSend: number) => {
 		if (showLimit) {
-			if (usdcToSend < showLimit) {
+			if (usdcToSend <= showLimit) {
 				setSendError(`The minimum amount must be greater than ${showLimit} threshold.`)
 				setError(true)
 				return false
@@ -396,35 +400,19 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 									/>
 								</div>
 							) : (
-								<button
-								type="button"
-								onClick={openPicker}
-								disabled={readOnly}
-								className="
-									inline-flex items-center gap-0.5        
-									px-1.5 py-1                           
-									rounded-full
-									bg-slate-900/10
-									dark:bg-white/4
-									backdrop-blur-sm
+								<>
+									<IOSGlassPillButton open={showCurrencyPicker} onToggle={openPicker} >
+											<span className="text-[15px] leading-none">   
+											{currencyFlag(currentCurrency)}
+										</span>
 
-									text-left select-none
-									hover:bg-slate-900/15
-									dark:hover:bg-white/15
-									active:scale-95
-									transition-all duration-150
-
-									disabled:opacity-60 disabled:active:scale-100
-								"
-							>
-								<span className="text-[15px] leading-none">   
-									{currencyFlag(currentCurrency)}
-								</span>
-
-								<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
-									{currencySymbol(currentCurrency)}
-								</span>
-							</button>
+										<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
+											{currencySymbol(currentCurrency)}
+										</span>
+									</IOSGlassPillButton>
+									
+								</>
+								
 							)
 						}
 							
@@ -469,7 +457,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						}}
 						onKeyDown={e => {
 							if (readOnly) return
-
+							setSendError("")
 							const zeroDisplay = currencyUSDC ? formatUsdc(0) : formatCurrencyAmount(0, currentCurrency)
 							
 							if (displayAmount !== zeroDisplay) {
@@ -528,7 +516,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							}
 						}}
 						onChange={e => {
+
 							const raw = e.target.value
+							setSendError("")
 							let v = sanitizeNumeric(raw)
 
 							// 如果用户已经开始输入了，就取消"首次替换"武装
@@ -678,128 +668,69 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			</div>
 
 			{/* ===================== 浮层背景 + Picker Modal ===================== */}
-			
-			{/* 半透明磨砂玻璃背景 */}
-			{showCurrencyPicker && (
-				<div
-					className="
-						fixed inset-0
-						bg-black/30
-						backdrop-blur-sm
-						transition-opacity duration-300
-						z-40
-					"
-					onClick={closePicker}
-					aria-hidden="true"
-				/>
-			)}
 
-			{/* Picker 浮层：从小到大长出来 */}
+
+
+			
 			<div
 				className={`
 					fixed inset-0
 					flex items-center justify-center
-					pointer-events-none
 					z-50
 					transition-all duration-300
 					${showCurrencyPicker ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
 				`}
-			>
+				>
+				{/* ❌ 不加任何背景遮罩、不模糊外层 */}
+
+					  {/* ✅ 半透明 + 模糊的浮层背景 */}
+						<div
+							aria-hidden
+							className={`
+							absolute inset-0
+							
+							backdrop-blur-md
+							transition-opacity
+							${showCurrencyPicker ? "opacity-0.4" : "opacity-0"}
+							`}
+							style={{ WebkitBackdropFilter: "blur(4px)" }}
+							onClick={closePicker}
+						/>
+				{/* ✅ 只对弹出窗口本身做模糊 + 透明 */}
 				<div
 					className={`
-						bg-white dark:bg-slate-800
-						rounded-2xl shadow-2xl
-						p-6
-						max-w-sm w-[90vw]
-						transition-all duration-300 ease-out
-						${showCurrencyPicker 
-							? "scale-100 translate-y-0" 
-							: "scale-75 translate-y-8"
-						}
+					relative
+					rounded-2xl
+					shadow-2xl
+					p-4
+					max-w-sm w-[90vw]
+					transition-all duration-300 ease-out
+					backdrop-blur-xl
+					
+					${showCurrencyPicker
+						? "scale-100 translate-y-0"
+						: "scale-75 translate-y-8"}
 					`}
+					style={{ WebkitBackdropFilter: "blur(18px)" }}
 				>
-					<div className="flex items-center justify-between mb-6">
-						<h2 className="text-lg font-bold text-slate-900 dark:text-white">
-							Choose Currency
-						</h2>
-						<button
-							type="button"
-							onClick={closePicker}
-							className="
-								p-1 rounded-lg
-								text-slate-400 hover:text-slate-600
-								dark:hover:text-slate-300
-								transition-colors
-								-mr-2
-							"
-							aria-label="Close picker"
-						>
-							<XCircle className="w-6 h-6" />
-						</button>
-					</div>
+					
+
+					{/* Grid */}
+					
+					{/* Picker 浮层：从小到大长出来 */}
+			
+					
 
 					{/* 货币网格 */}
-					<div
-						className="
-							grid gap-3
-							grid-cols-2
-							sm:grid-cols-3
-						"
-					>
-						{(
-							[
-								{ c: "USD", flag: "🇺🇸", sym: "$" },
-								{ c: "CAD", flag: "🇨🇦", sym: "$" },
-								{ c: "EUR", flag: "🇪🇺", sym: "€" },
-								{ c: "JPY", flag: "🇯🇵", sym: "¥" },
-								{ c: "CNY", flag: "🇨🇳", sym: "¥" },
-								{ c: "HKD", flag: "🇭🇰", sym: "$" },
-								{ c: "TWD", flag: "🇹🇼", sym: "NT$" },
-								{ c: "SGD", flag: "🇸🇬", sym: "$" },
-							] as const
-						).map((item, idx) => (
-							<button
-							key={item.c}
-							ref={el => {
-								optionRefs.current[idx] = el
-								if (idx === 0) firstOptionRef.current = el
-							}}
-							type="button"
-							tabIndex={showCurrencyPicker ? 0 : -1}
-							onClick={() => pickCurrency(item.c as ICurrency)}
-							className={`
-								inline-flex items-center justify-center gap-2
-								px-3 py-2
-								rounded-full
-								border
-								transition-all duration-150
-								active:scale-95
-								focus:outline-none focus:ring-2 focus:ring-sky-300
-								whitespace-nowrap
-								${item.c === currentCurrency
-								? "bg-sky-50 dark:bg-sky-900/30 border-sky-300 dark:border-sky-500 shadow-sm"
-								: "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
-								}
-							`}
-							>
-							{/* Flag */}
-							<span className="text-[16px] leading-none">{item.flag}</span>
+					<CurrencyPicker setCurrentCurrency={pickCurrency} currentCurrency={currentCurrency} />
 
-							{/* Currency code */}
-							<span className="text-[12px] font-semibold text-slate-600 dark:text-slate-300 leading-none">
-								{item.c}
-							</span>
-
-							{/* Symbol */}
-							<span className="text-[13px] font-medium text-slate-700 dark:text-slate-200 leading-none">
-								{item.sym}
-							</span>
-							</button>
-						))}
-					</div>
+				
 				</div>
 			</div>
-		</div>
+</div>
+
+			
+		
 	)
 }
 

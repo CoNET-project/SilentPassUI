@@ -94,7 +94,7 @@ const totalDur = 0.62 // 整体动画时长（前快后慢的手感关键）
       key: '/pay' as const,
       iconGrey: darkModle ? <BLogo className={ICON_CLASS} /> : <BLogoLight className={ICON_CLASS} />,
       iconBlue: darkModle ? <BLogo className={ICON_CLASS} /> : <BLogoLight className={ICON_CLASS} />,
-	  title: 'Pay & Request'
+	  title: ''
     },
     {
       key: '/chat' as const,
@@ -338,7 +338,7 @@ const iconTransition: Transition = (() => {
         className="
            mx-auto max-w-[520px]
 		rounded-[24px]
-		px-2 py-2
+		px-1 py-1.5
 		bg-white/90 dark:bg-slate-900/40
 		backdrop-blur-lg
 		border border-white/10 dark:border-white/10

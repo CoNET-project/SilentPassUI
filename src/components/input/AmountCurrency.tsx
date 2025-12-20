@@ -22,6 +22,7 @@ type Prof = {
 	setError: (val: boolean) => void
 	focusSignal?: boolean
 	currencyUSDC?: boolean
+	feePlus?: boolean
 }
 
 //@ts-ignore
@@ -36,13 +37,21 @@ const CURRENCY_META: Record<ICurrency, { flag: string; sym: string; maxDp: numbe
 	SGD: { flag: "🇸🇬", sym: "$", maxDp: 2 },
 }
 
+// 0.8% fee, min 0.02, max 2 USDC
+function calcFeeFromNumber(base: number) {
+	if (!isFinite(base) || base <= 0) return 0;
+	const raw = base * 0.008;
+	const clamped = Math.min(Math.max(raw, 0.02), 2);
+	return Number(clamped)
+}
+
 const formatMoney = (n: number, fixed: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: fixed, maximumFractionDigits: fixed })
 
 const isCurrency = (v: any): v is ICurrency =>
 	['USD','CAD','EUR','JPY','CNY','HKD','TWD','SGD'].includes(String(v))
 
-const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal, currencyUSDC=false }: Prof) => {
+const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal, currencyUSDC=false, feePlus=false }: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
@@ -549,18 +558,32 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							// 通过校验：清掉错误再更新
 							setSendError("")
 							setError(false)
+							
 							setDisplayAmount(v)
 
-							const n = Number(v)
+							let n = Number(v)
+							
+							
 
 							if (currencyUSDC) {
+								const fee = calcFeeFromNumber(n)
+								if (feePlus) {
+									n += fee
+								}
 								const usdc = Number.isFinite(n) ? n : 0
 								const usdcStr = formatUsdc(usdc)
 								lastSentUsdcRef.current = usdcStr
 								setAmount(usdcStr)
 								checkBalance(usdc)
 							} else {
-								const usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, currentCurrency)
+							
+								let usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, currentCurrency)
+								const fee = calcFeeFromNumber(usdc)
+								if (feePlus) {
+									usdc += fee
+								}
+
+
 								const usdcStr = formatUsdc(usdc)
 								lastSentUsdcRef.current = usdcStr
 								setAmount(usdcStr)

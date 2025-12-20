@@ -16,7 +16,7 @@ import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import {motion, AnimatePresence } from "framer-motion"
 import PayScreen from '@/pages/Pay/send'
 import PaymentLink from './PaymentLink'
-
+import Cashcode from './Cashcode'
 type Props = {
 	amount: string
 	noteText: string
@@ -28,7 +28,7 @@ const Pay = ({}) => {
 	const spSendRef=useRef()
 	const solSendRef=useRef()
 	const usdtSendRef=useRef()
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Pay'|''|'PayRequest'>('')
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Pay'|''|'PayRequest'|'Cashcode'>('')
 	const { darkModle, setDarkModle, setProfiles, power, setPower } = useDaemonContext()
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState('')
@@ -74,7 +74,7 @@ const Pay = ({}) => {
 				<MainScreen onAction={val => {
 					switch(val) {
 						case 'cashcode': {
-							return
+							return setShowAlphaHowItWorks('Cashcode')
 						}
 						case 'pay': {
 							return setShowAlphaHowItWorks('Pay')
@@ -125,7 +125,7 @@ const Pay = ({}) => {
 						title={
 							showAlphaHowItWorks === 'Pay' ? 'Pay':
 							showAlphaHowItWorks === 'PayRequest' ? 'Request' : 
-							''
+							showAlphaHowItWorks === 'Cashcode' ? 'Cashcode' : ''
 						}
 						onClose={() => {
 							setShowAlphaHowItWorks('')
@@ -141,6 +141,9 @@ const Pay = ({}) => {
 							}
 							{
 								showAlphaHowItWorks === 'PayRequest' && <PaymentLink close={() => setShowAlphaHowItWorks('')} />
+							}
+							{
+								showAlphaHowItWorks === 'Cashcode' && <Cashcode close={( )=> setShowAlphaHowItWorks('')} />
 							}
 							
 						</div>

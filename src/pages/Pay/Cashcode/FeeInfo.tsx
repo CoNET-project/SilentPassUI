@@ -43,44 +43,45 @@ const FeeInfo = ({ close, isUSDCFixed }: Props) => {
  <div className="w-full">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-[22px] font-semibold tracking-tight text-black/50">
-          Fees &amp; settlement
+        <h2 className="text-[22px] font-semibold tracking-tight text-slate-900 text-black/50">
+          Fees
         </h2>
 		<Close onClick={close} />
       </div>
 
       {/* Cards */}
-		<div className="mt-4 space-y-4">
+		<div className="mt-4 space-y-4 ">
 
 			{/* Beamio fee */}
 			<div className="rounded-3xl border border-slate-200 p-5">
-			<div className="text-[18px] font-semibold text-slate-900 text-black/50">
-				Beamio fee
-			</div>
-			<div className="mt-2 text-[16px] leading-relaxed text-slate-600 text-black/50">
-				Beamio fee: 0.8% (min 0.02 USDC; max 2.00 USDC)
-			</div>
+				<div className="text-[18px] font-semibold text-slate-900 text-black/50">
+					Beamio fee
+				</div>
+				<div className="mt-2 text-[16px] leading-relaxed text-slate-600 text-black/50">
+					0.8% (min 0.02 USDC; max 2.00 USDC)
+				</div>
 			</div>
 
-			{/* FX note */}
-			<div className="rounded-3xl border border-slate-200 p-5">
+			{/* Settlement note */}
+			<div className="rounded-3xl border border-slate-200 p-5 ">
 				<div className="text-[18px] font-semibold text-slate-900 text-black/50">
-					{isUSDCFixed ? 'USDC-locked' : 'FX note'}
+					Settlement
 					
 				</div>
-			<div className="mt-2 text-[16px] leading-relaxed text-slate-600 text-black/50">
-				{
-					isUSDCFixed ? (
-						<>
-							USDC amount is fixed. No fiat conversion is used.
-						</>
-					) : (
-						<>
-						Fiat-locked: final USDC amount, fee, and net receive are calculated when the payer pays, based on the live FX quote.
-						</>
-					)
-				}
+				<div className="mt-2 text-[16px] leading-relaxed text-slate-600 text-black/50">
+					Beamio settles in USDC only. If you enter local currency, we convert at the live quote and lock the USDC value.
+				</div>
 			</div>
+
+			{/* Minimum note */}
+			<div className="rounded-3xl border border-slate-200 p-5">
+				<div className="text-[18px] font-semibold text-slate-900 text-black/50">
+					Minimum
+					
+				</div>
+				<div className="mt-2 text-[16px] leading-relaxed text-slate-600 text-black/50">
+					Cashcode value must be greater than 0.10 USDC.
+				</div>
 			</div>
 		</div>
     </div>

@@ -1,26 +1,11 @@
 import React, {useRef, useState, useEffect} from "react"
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
-import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import {
-  ArrowLeft,
-  Camera,
-  Check,
-  Search,
-  ChevronRight,
-  X,
-  Copy,
-  ExternalLink,
-} from "lucide-react"
 import {AuthorizationSign, getBalanceProcess} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
-import { AppButton } from "@/components/button/AppButton";
-import {motion, AnimatePresence } from "framer-motion"
-import { createPortal } from 'react-dom';
-import BeamioNavBack from '@/components/Setting/BeamioNavBack'
+import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import ConformView from './ConformView'
-import {ethers} from 'ethers'
 import base_ex from '@/components/assets/base-ex.svg'
 
 
@@ -145,25 +130,25 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 						{/* 查看交易按钮 */}
 						<button
-						className="
-							w-full h-11 rounded-full
-							bg-black/5 text-slate-700
-							dark:bg-white/10 dark:text-slate-100
-							text-sm
-							flex items-center justify-center gap-2
-						"
-						onClick={() => {
-							window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
-						}}
-						>
-						<img
-							src={base_ex}
-							alt="Base Explorer"
-							className="w-4 h-4 object-contain"
-						/>
-						<span>
-							View transaction
-						</span>
+							className="
+								w-full h-11 rounded-full
+								bg-black/5 text-slate-700
+								dark:bg-white/10 dark:text-slate-100
+								text-sm
+								flex items-center justify-center gap-2
+							"
+							onClick={() => {
+								window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
+							}}
+							>
+							<img
+								src={base_ex}
+								alt="Base Explorer"
+								className="w-4 h-4 object-contain"
+							/>
+							<span>
+								View transaction
+							</span>
 						</button>
 					</div>
 				</div>

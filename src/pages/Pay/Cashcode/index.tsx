@@ -1,6 +1,6 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
 
-import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
+import {AuthorizationSign, aesGcmEncrypt, generateCODE} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -9,7 +9,7 @@ import LockModeSegmented from '@/pages/Pay/PaymentLink/LockModeSegmented'
 import FeeInline from './FeeInline'
 import SuccessShow from './successShow'
 import Securitycode from '@/components/input/Securitycode'
-
+import ConformView from '@/pages/Pay/send/ConformView'
 function fiatPrefix(ccy: ICurrency) {
 	if (ccy === "CAD") return "CA$"
 	if (ccy === "USD") return "$"
@@ -30,6 +30,7 @@ const showPaylinkSite = 'https://beamio.app'
 const defaultTextTemp = `Sent with Beamio - no gas fees.`
 
 // 0.8% fee, min 0.02, max 2 USDC
+
 function calcFeeFromNumber(base: number) {
 	if (!isFinite(base) || base <= 0) return 0;
 	const raw = base * 0.008;
@@ -55,6 +56,12 @@ function formatUserDate(timestamp?: string | number): string {
 		month: "short",
 		day: "numeric"
 	})
+}
+
+
+function formatAmount(v: number, c: ICurrency) {
+	if (!isFinite(v)) return `0 ${c}`
+	return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
 }
 
 const formatCurrencyAmount = (n: number, c: ICurrency) => {
@@ -87,10 +94,14 @@ export default function PaymentLink ({close, beamioer}: Props) {
 	const [successUrl, setSuccessUrl] = useState("")
 	const [lockMode, setLockMode] = useState<PaymentLinkLockMode>("FIAT_LOCKED")
 	const [currency, setCurrency] = useState<ICurrency>('USD')
-	const [payAmount, setPayAmount] = useState("")
-	const [requestNet, setRequestNet] = useState("")
+	const [valueUSDCAmount, setValueUSDCAmount] = useState("")
+	const [payedUSDC, setPayedUSDC] = useState(0)
+	const [successHash, setSuccessHash] = useState("")
+
+	const [valuecurrencyAmount, setValuecurrencyAmount] = useState("")
 	const [processError, setProcessError] = useState("")
 	const [securityCodeDigits, setSecurityCodeDigits] = useState("")
+
 
 	useEffect(() => {
 		if (sendError) {
@@ -137,24 +148,77 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		return usdcToUSD * usdToCurrency
 	}
 
+	function usdcToCurrencyAmount(usdc: number, c: ICurrency) {
+		const rate = fxRateUSDCToCurrency(c)
+		return usdc * rate
+	}
+
+
+	const signRequest = async (messageDataRe: any) => {
+		
+		setProcessing (true)
+
+		const paymentHeader = await AuthorizationSign(messageDataRe.maxAmountRequired, messageDataRe.payTo)
+		const newInit = {
+			method: 'GET',
+			headers: {
+				
+				"X-PAYMENT": paymentHeader,
+				"Access-Control-Expose-Headers": "X-PAYMENT-RESPONSE"
+			},
+			__is402Retry: true
+		}
+
+		const data = messageDataRe.data
+
+		const reqUrl = data.reqUrl
+		try {
+			const secondResponse = await fetch(reqUrl, newInit)
+			const body = await secondResponse.json()
+			console.log(secondResponse.ok)
+			setProcessing (false)
+			if (!secondResponse.ok) {
+				return setProcessError('RPC Error!')
+			}
+			setSuccessUrl(data.showUrl)
+			return setSuccessHash(body.USDC_tx)
+
+		} catch (ex) {
+			setProcessing (false)
+			return setProcessError('RPC Error!')
+			
+		}
+
+	}
 
 	const issueRequestLink = async () => {
 
-		if (!profiles?.length||!beamio) {
+		if ( !profiles?.length || !beamio) {
 			return
 		}
+
+		if (securityCodeDigits.length > 0 &&  securityCodeDigits.length < 6) {
+			return
+		}
+
 		const currency = beamio.currency
-		const numberAmount = Number(sendAmount)
-		if (isNaN(numberAmount) || numberAmount <= 0.02) {
+		const numberUSDCAmount = Number(sendAmount)
+		if (isNaN(numberUSDCAmount) || numberUSDCAmount < 0.1) {
 			return 
 		}
 
+		if (usdcbalance - numberUSDCAmount < 0) {
+			return
+		}
 
+		const feeUsdc = calcFeeFromNumber(numberUSDCAmount)
 		
+		const display = {
+			pay: numberUSDCAmount,
+			fee: feeUsdc,
+			receive: numberUSDCAmount - feeUsdc,
+		}
 
-		const showCurrencyNumber = lockMode === 'USDC_LOCKED' ? numberAmount.toFixed(4) : formatCurrencyAmount(numberAmount * fxRateUSDCToCurrency(currency), currency)
-		console.log(showCurrencyNumber)
-		
 		setProcessing(true)
 			/**
 			 * 
@@ -167,52 +231,82 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		// 	setProcessError('RPC ERROR!')
 		// }, 3000)
 
-		const currencyData = lockMode === 'USDC_LOCKED' ? 'USDC': currency
-		const showNote = note + `\r\n` + currencyData
+		const secureCode = generateCODE(securityCodeDigits)
 		
 		
 		const profile: profile = profiles[0]
-		const code = generateCODE ('')
+
+		const data = {secureCode: secureCode.code, securityCodeDigits}
+		const encryText = await aesGcmEncrypt(JSON.stringify(data), profile.privateKeyArmor)
 
 
-		const fixedAmount = ethers.parseUnits(showCurrencyNumber, 6).toString()
-		const params = new URLSearchParams({amount: fixedAmount, code: code.hash, note:showNote, address: profile.keyID }).toString()
-		const net = numberAmount - calcFeeFromNumber(numberAmount)
-		const showNetCurrency = lockMode === 'USDC_LOCKED' ? net.toFixed(4) : formatCurrencyAmount(net * fxRateUSDCToCurrency(currency), currency)
-		const showparams = new URLSearchParams({code: code.code}).toString()
-		const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
-		const showUrl = `${showPaylinkSite}?${showparams}`
+		if (!encryText?.length) {
+			setProcessing(false)
+			return setProcessError('Generate Check error, try again!')
+		}
+
+
+		const postNode = (note) + '\r\n' + encryText
+		const params = new URLSearchParams({amount: display.pay.toFixed(4), note: postNode, secureCode: secureCode.hash}).toString()
+		const showpParams = new URLSearchParams({cashcode: secureCode.code}).toString()
+		const path = `/api/generateCheck?${params}`
+
+
+		const fixedAmount = ethers.parseUnits(display.pay.toString(), 6).toString()
 		
-		setPayAmount(`${fiatPrefix(currency)} ${net}`)
-		setRequestNet(`${fiatPrefix(currency)} ${showNetCurrency}`)
+		const showNetCurrency = formatCurrencyAmount(display.receive * fxRateUSDCToCurrency(currency), currency)
+		const showUrl = `${showPaylinkSite}?${showpParams}`
+
+
+		const url = aptEndpoint + path
+		const requestEndpoint = `${showPaylinkSite}?${showpParams}`
+		
+		setValueUSDCAmount(`${display.receive}`)
+		setValuecurrencyAmount(`${fiatPrefix(currency)} ${showNetCurrency}`)
+		setPayedUSDC(display.pay)
 
 		/**
 			 * 
 			 * 		UI test
 			 * 
 			 */
-		setTimeout(() => {
-			setProcessing(false)
-			setSuccessUrl(showUrl)
-		}, 1000)
-
-
-		// try {
-		// 	const res = await fetch(requestUrl, {method: 'GET'})
-
+		// setTimeout(() => {
+		// 	setSuccessHash('0xffff')
 		// 	setProcessing(false)
-		// 	if (res.status !== 200) {
-		// 		return setProcessError(`Beamio RPC Error!`)
-		// 	}
-		// 	console.log(note)
 		// 	setSuccessUrl(showUrl)
+		// }, 1000)
 
-			
 
-		// } catch (ex) {
-		// 	setProcessing(false)
-		// 	return setProcessError(`Beamio RPC Error!`)
-		// }
+		try {
+			const response = await fetch(url, {
+				method: 'GET'
+			})
+			if (response.status !== 402) {
+				setProcessing(false)
+				return setProcessError('RPC Error!')
+			}
+
+			const { x402Version, accepts } = await response.json()
+			const MessageData = accepts[0]
+			const data = {
+				showUrl,
+				node: note,
+				sginTatle: 'Cashcode',
+				reqUrl: url,
+				amount: sendAmount
+
+			}
+			MessageData.data = data
+			senMessage(MessageData)
+			setShowAlphaHowItWorks('ConformView')
+			setProcessing(false)
+
+		} catch (ex: any) {
+			setProcessing(false)
+			setProcessError('RPC Error!')
+		}
+		
+
 		
 	}
 
@@ -223,94 +317,163 @@ export default function PaymentLink ({close, beamioer}: Props) {
 					{
 						successUrl ? 
 							<SuccessShow note={note} successUrl={successUrl}
-								currency={currency}
+								security={!!securityCodeDigits}
 								lockMode={lockMode}
-								payAmount = {payAmount}
-								requestNet={requestNet}
+								valueUSDCAmount = {valueUSDCAmount}
+								successHash={successHash}
 								onReset={() => {
 									close('')
 								}}
-								creatorEstUsdcFromFiat={sendAmount}
+								valueCurrencyAmount={valuecurrencyAmount}
 							/>
 						
 						 : (
 							<div className="p-2 space-y-3 bg-transparent">
 								<div>
-									<div className="text-lg font-semibold">Create Cashcode</div>
-								</div>
-
-								<div className="mt-5 flex items-center gap-3">
-									
-
-									<LockModeSegmented
-										value={lockMode}
-										onChange={val => {
-										setLockMode(val)
-										}}
-									/>
-								</div>
-								
-								<section className="input">
-									<AmountCurrency 
-										amount={sendAmount} 
-										setAmount={setSendAmount} 
-										autoEntry={!!!item} 
-										readOnly={processing} 
-										showLimit={0.1}
-										setError={setAmountError}
-										showMax={true}
-										needBalance={true}
-										focusSignal={focusAmount}
-										currencyUSDC={lockMode === 'USDC_LOCKED'}
-										feePlus={true}
-									/>
-								</section>
-
-								<Securitycode securityCodeDigits={securityCodeDigits} setSecurityCodeDigits={setSecurityCodeDigits} />
-									
-								{/* Note */}
-								
-								<textarea
-									value={note}
-									onFocus={(e) => {
-										if (note === defaultNodeText) {
-											setNote('') // 清空默认文本
+									<div className="text-lg font-semibold">
+										{
+											message ? 'Confirm' : 'Create Cashcode'
 										}
-									}}
-
-									readOnly={!!message}
-									
-									placeholder="What's this for?"
-									onChange={(e) => {
-										setNote(e.target.value)
-									}}
-									rows={2}
-									className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-								/>
-
-								<div className="mt-5">
-
-									<FeeInline
-										payUsdc={Number(sendAmount)}
-										isUSDC={lockMode === 'USDC_LOCKED'}
-									/>
 								
+									</div>
 								</div>
-									
-								
-								
-								<div className="mt-3 flex gap-3 w-full">
-									
-									<AppButton
-										fullWidth
-										onClick={issueRequestLink}
-										loading={processing}
-										errorText={processError}
-									>
 
-										Generate
-									</AppButton>
-								</div>
+								{
+									message ? (
+										<>
+											{/* Note */}
+												{
+													note && <textarea
+														value={note}
+														onFocus={(e) => {
+															if (note === defaultNodeText) {
+																setNote('') // 清空默认文本
+															}
+														}}
+														readOnly={true}
+														rows={2}
+														className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+													/>
+												}
+
+												<div className="mt-5">
+
+													<FeeInline
+														payUsdc={Number(sendAmount)}
+														isUSDC={lockMode === 'USDC_LOCKED'}
+													/>
+												
+												</div>
+												
+											<ConformView
+												messageData={message}
+											 />
+
+											<div className="grid grid-cols-2 gap-3">
+												{!processing && (
+													<AppButton
+														fullWidth
+														variant="secondary"
+														onClick={() => {
+															senMessage('')
+														}}
+													>
+													Cancel
+													</AppButton>
+												)}
+
+												<div className={processing ? "col-span-2" : ""}>
+													<AppButton
+														fullWidth
+														loading={processing}
+														onClick={() => {
+															signRequest(message)
+														}}
+													>
+														Confirm
+													</AppButton>
+												</div>
+											</div>
+										</>
+									) : (
+										<>
+										<section className="input form">
+											<div className="mt-5 flex items-center gap-3">
+											
+
+												<LockModeSegmented
+													value={lockMode}
+													onChange={val => {
+													setLockMode(val)
+													}}
+												/>
+											</div>
+												
+											<section className="input">
+												<AmountCurrency 
+													amount={sendAmount} 
+													setAmount={setSendAmount} 
+													autoEntry={!!!item} 
+													readOnly={processing} 
+													showLimit={0.1}
+													setError={setAmountError}
+													showMax={true}
+													needBalance={true}
+													focusSignal={focusAmount}
+													currencyUSDC={lockMode === 'USDC_LOCKED'}
+													feePlus={true}
+												/>
+											</section>
+
+												<Securitycode securityCodeDigits={securityCodeDigits} setSecurityCodeDigits={setSecurityCodeDigits} />
+													
+												{/* Note */}
+												
+												<textarea
+													value={note}
+													onFocus={(e) => {
+														if (note === defaultNodeText) {
+															setNote('') // 清空默认文本
+														}
+													}}
+													
+													placeholder="What's this for?"
+													onChange={(e) => {
+														setNote(e.target.value)
+													}}
+													rows={2}
+													className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+												/>
+
+												<div className="mt-5">
+
+													<FeeInline
+														payUsdc={Number(sendAmount)}
+														isUSDC={lockMode === 'USDC_LOCKED'}
+													/>
+												
+												</div>
+												
+												<div className="mt-3 flex gap-3 w-full">
+													
+													<AppButton
+														fullWidth
+														onClick={issueRequestLink}
+														loading={processing}
+														errorText={processError}
+													>
+
+														Generate
+													</AppButton>
+												</div>
+										</section>
+										</>
+									)
+								}
+
+								
+
+								
 								
 							</div>
 						)

@@ -206,7 +206,7 @@ export const SendHistoryTable = (
 
 	const process = async (next: HistoryFilter | null) => {
 		if (!profiles?.length || !localMode) return
-		const profile: any = profiles[0]   // 这里用你实际的 profile 类型替换 any
+		const profile: profile = profiles[0]
 		let address = profile.keyID
 		if (!myAddress) {
 			setMyAddress(address)
@@ -273,9 +273,14 @@ export const SendHistoryTable = (
 				checks.map(async (n): Promise<TransferHistork> => {
 					const text = n.node.split('\r\n');
 					const encryptedText = text[1];
-
-					const cleanText =
-						encryptedText && (await aesGcmDecrypt(encryptedText, profile.privateKey));
+					let cleanText = ''
+					try {
+						cleanText =
+						encryptedText && (await aesGcmDecrypt(encryptedText, profile.privateKeyArmor));
+					} catch (ex) {
+						console.log (`${encryptedText} aesGcmDecrypt Error!`)
+					}
+					
 
 					let ce: { secureCode: string; passcode: string } | undefined;
 					if (cleanText) {

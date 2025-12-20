@@ -1,21 +1,20 @@
 import { QRCodeCanvas } from 'qrcode.react'
 import React, {useRef, useState, useEffect, useMemo} from "react"
-import { Copy, ExternalLink, Check, Currency } from 'lucide-react'
+import { Copy, ExternalLink, Check, Lock, Unlock } from 'lucide-react'
 import bIcon from '@/components/assets/32x32.svg'
 import { X } from 'lucide-react'
-import AmountCurrency from '@/components/input/AmountCurrency'
-import FeeInline from '../PaymentLink/FeeInline'
 import { useDaemonContext } from "@/providers/DaemonProvider"
-
+import base_ex from '@/components/assets/base-ex.svg'
+import IOSBounceCloseButton from '@/components/button/CloseButton'
 type RedeemOrLinkCardProps = {
-	payAmount: string                  // 金额（用于 Redeem 侧显示）
+	valueUSDCAmount: string                  // 金额（用于 Redeem 侧显示）
+	valueCurrencyAmount: string
 	note?: string                      // 备注
 	successUrl: string                 // 支付链接 / 二维码内容
 	onReset: () => void                // 关闭按钮（✕
 	lockMode: PaymentLinkLockMode
-	currency: ICurrency
-	requestNet: string
-	creatorEstUsdcFromFiat?: string
+	security: boolean
+	successHash: string
 }
 
 const displayName = (item: beamio) => {
@@ -25,14 +24,14 @@ const displayName = (item: beamio) => {
 }
 
 const SuccessShow = ({
-	payAmount,
+	valueUSDCAmount,
 	note,
 	successUrl,
 	onReset,
 	lockMode,
-	requestNet,
-	currency,
-	creatorEstUsdcFromFiat
+	security,
+	successHash
+
 }: RedeemOrLinkCardProps) => {
 	
 	const handleCopyLink = async () => {
@@ -50,7 +49,7 @@ const SuccessShow = ({
 		}
 	}
 	const [copied1, setCopied1] = useState(false)
-	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles } = useDaemonContext()
+	const { beamio } = useDaemonContext()
 	const [username, setusername] = useState('')
 
 	useEffect(() => {
@@ -68,26 +67,9 @@ const SuccessShow = ({
 			"
 		>
 			{/* Close button: top-right, iOS frosted style */}
+				
 				<div className="absolute -top-4 -right-4 z-30">
-					<button
-						type="button"
-						onClick={onReset}
-						className="
-							w-9 h-9
-							rounded-2xl
-							flex items-center justify-center
-							shadow-lg
-							border border-white/40
-							bg-white/20 dark:bg-slate-900/30
-							backdrop-blur-md
-							text-slate-700 dark:text-slate-100
-							hover:bg-white/30 dark:hover:bg-slate-900/45
-							transition
-							"
-						aria-label="Close"
-					>
-						<X className="w-4 h-4" />
-					</button>
+					<IOSBounceCloseButton onClick={onReset} />
 				</div>
 
 			{/* Cashcode area */}
@@ -124,15 +106,27 @@ const SuccessShow = ({
 					<div className="flex items-center justify-between">
 						<div>
 						<div className="text-xs text-slate-400">Value</div>
-						<div className="mt-1 text-lg font-semibold text-slate-900">
-							{lockMode === 'FIAT_LOCKED' ? payAmount : `${creatorEstUsdcFromFiat} USDC` }
-						</div>
+							<div className="mt-1 text-lg font-semibold text-slate-900">
+								{Number(valueUSDCAmount).toFixed(4)} USDC
+							</div>
 						</div>
 						{lockMode === "FIAT_LOCKED" ? (
 							<div className="text-right">
-								<div className="text-xs text-slate-400">Estimate</div>
+								<div className="text-xs text-slate-400">Security</div>
 								<div className="mt-1 text-sm font-semibold text-slate-600 tabular-nums">
-									{creatorEstUsdcFromFiat ? creatorEstUsdcFromFiat : ''} USDC
+									<div className="mt-1 text-sm font-semibold tabular-nums">
+									{security ? (
+										<span className="inline-flex items-center gap-1 text-rose-500">
+										<Lock className="w-4 h-4" />
+										on
+										</span>
+									) : (
+										<span className="inline-flex items-center gap-1 text-slate-400">
+										<Unlock className="w-4 h-4" />
+										off
+										</span>
+									)}
+									</div>
 								</div>
 							</div>
 							) : (
@@ -199,7 +193,7 @@ const SuccessShow = ({
 							</span>
 
 							<span className="font-mono font-semibold text-[13px] text-black/60">
-								{lockMode === 'FIAT_LOCKED' ? payAmount : `${creatorEstUsdcFromFiat} USDC` }
+								{Number(valueUSDCAmount).toFixed(4)} USDC
 							</span>
 						</div>
 					</div>
@@ -244,15 +238,30 @@ const SuccessShow = ({
 						</button>
 					</div>
 					
+					
 				</div>
-				<div className="mt-5">
-
-					<FeeInline
-						payUsdc={Number(creatorEstUsdcFromFiat)}
-						isUSDC={lockMode === 'USDC_LOCKED'}
-					/>
-				
-				</div>
+				{/* 查看交易按钮 */}
+						<button
+							className="
+								w-full h-11 rounded-full
+								bg-black/5 text-slate-700
+								dark:bg-white/10 dark:text-slate-100
+								text-sm
+								flex items-center justify-center gap-2
+							"
+							onClick={() => {
+								window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
+							}}
+							>
+							<img
+								src={base_ex}
+								alt="Base Explorer"
+								className="w-4 h-4 object-contain"
+							/>
+							<span>
+								View transaction
+							</span>
+						</button>
 				
 			</div>
 		)

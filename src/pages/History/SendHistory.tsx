@@ -14,19 +14,19 @@ import {HistoryFilterTabs, HistoryFilter} from './HistoryFilterTabs'
 import {RedeemOrLinkCard} from './showHistoryDetail'
 import { X } from 'lucide-react'
 import base_ex from '@/components/assets/base-ex.svg'
-import {getBalanceProcess, formatWithThousands, aesGcmDecrypt} from '@/services/beamio'
+import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
 import BallSequence from '@/components/loading/BallSequence'
 import { QrCode, Link as LinkIcon } from "lucide-react"
-
+import AccountBeo from './AccountBea'
 
 type Mode = "pay" | "request" | 'cashcode'
 
 type Payed = {
-  payTimestamp: number
-  fromAddress: string
-  fromBeamioName: string
-  payAmount: number
-  hash: string
+	payTimestamp: number
+	fromAddress: string
+	fromBeamioName: string
+	payAmount: number
+	hash: string
 }
 
 type TransferHistork = {
@@ -111,6 +111,15 @@ const formatTime = (ts: number) => {
 	return d.toLocaleString()
 }
 
+const formatTimev2 = (ts: number) => {
+	if (!ts) return "—"
+	const d = new Date(ts)
+	return d.toLocaleDateString(undefined, {
+		month: "short",
+		day: "numeric"
+	})
+}
+
 const badgeBase = "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border border-white/20"
 
 
@@ -158,7 +167,7 @@ export const SendHistoryTable = (
 	const [loading, setLoading] = useState(false)
 	const [loadingFilter, setLoadingFilter] = useState<HistoryFilter | null>(null)
 	const [showDetail, setShowDEtail] = useState(false)
-
+	const [accounts, setAccounts] = useState <searchResult[]> ([])
 	const [isPay, setIsPay] = useState(false)
 	const [amt, setAmt] = useState(0)
 	const [successUrl, setSuccessUrl] = useState("")
@@ -265,6 +274,7 @@ export const SendHistoryTable = (
 					type1: type === 'paid' ? 'sent' :  type === 'completed' ? 'received' : '',
 					preAmount: preAmount
 				}
+
 				return ret
 			})
 		
@@ -296,7 +306,7 @@ export const SendHistoryTable = (
 					const ret: TransferHistork = {
 						date: Number(n.createTimestamp * BigInt(1000)),
 						amount,
-						account,
+						account: account.toLowerCase(),
 						hash: type === 'pending'
 							? n.payHash
 							: n.depositHash,
@@ -310,6 +320,7 @@ export const SendHistoryTable = (
 						type1: type === 'deposited' ? 'received' : type === 'completed' ? 'sent' : '',
 						preAmount: isSend ? preAmount : amount
 					}
+					
 					return ret
 				})
 			)
@@ -331,6 +342,21 @@ export const SendHistoryTable = (
 			if (next && next !== 'all') {
 				filtered = filtered.filter(tx => tx.type === next)
 			}
+			const mapAccount: Map<string, searchResult|null> = new Map()
+			filtered.forEach(n => mapAccount.set(n.account, null))
+			
+			const promises = Array.from(mapAccount.keys()).map(async (key) => {
+				const data = await searchUsername(key)
+				return data?.results?.[0] ?? []
+			})
+
+			const allResults = await Promise.all(promises)
+
+			// 🔒 一次性 setState（避免多次 render + 顺序错乱）
+			setAccounts(prev => [
+				...prev,
+				...allResults.flat()
+			])
 
 			setItems([]) // 清掉旧的
 
@@ -344,6 +370,8 @@ export const SendHistoryTable = (
 			console.log(ex.message)
 		}
 	}
+
+	
 	
 	const getTransferNewitems = async (next: HistoryFilter | null) => {
 		
@@ -476,18 +504,7 @@ export const SendHistoryTable = (
 									"
 								>
 									{/* Header row inside card */}
-									<div
-										className="
-											flex items-center px-6 pb-1 text-[10px]
-											text-slate-500 dark:text-slate-400
-											border-b border-slate-100/80 dark:border-white/10
-											mb-1
-										"
-									>
-										<div className="w-20">Type</div>
-										<div className="flex-1">Account</div>
-										<div className="w-16 text-right">Value</div>
-									</div>
+									
 
 									{
 										items.map((tx) => {
@@ -503,78 +520,46 @@ export const SendHistoryTable = (
 											const rowContent = (
 											<>
 												
-												{/* 整个 rowContent */}
-												<div className="flex items-center gap-3 w-full">
-												
-													{/* 1. 左侧固定宽度 */}
-													<div className="w-20 shrink-0 flex items-center gap-1">
-													
-													{/* 类型 Badge */}
-													<span
-														className={[
-														"inline-flex",   // 只包文字
-														badgeBase,
-														getBadgeClass(
-															(localMode === 'pay'
-															? tx.mode !== 'pay'
-																? tx.type1
-																: tx.type
-															: tx.type) as HistoryFilter
-														)
-														].join(" ")}
-													>
-														{localMode === 'pay'
-														? tx.mode !== 'pay'
-															? tx.type1
-															: tx.type
-														: tx.type}
-													</span>
+												{/* 整个 rowContent：全行宽，左自适应，中/右固定 */}
+													<div className="w-full flex items-center">
+														{/* 左侧：自适应（必须 min-w-0 才能被压缩） */}
+														<div className="flex-1 min-w-0 flex items-center gap-3">
+															
+															<AccountBeo
+																fromBeamio={accounts.find(n => n.address === tx.account)}
+																note={tx.note}
+																dateData={formatTimev2(tx.date)}
+															/>
 
-													{/* C / P 图标 Badge */}
-													{(localMode === 'pay' && tx.mode !== 'pay') && (
-														<span
-														className={[
-															"w-[15px] h-[15px] rounded-full flex items-center justify-center",
-															tx.mode === 'cashcode'
-															? "bg-sky-300/40 text-sky-800 dark:bg-sky-700/40 dark:text-sky-200"
-															: "bg-fuchsia-300/40 text-fuchsia-800 dark:bg-fuchsia-700/40 dark:text-fuchsia-200"
-														].join(" ")}
-														>
-														{tx.mode === 'cashcode' ? (
-															<QrCode className="w-2.5 h-2.5" strokeWidth={2} />
-														) : (
-															<LinkIcon className="w-2.5 h-2.5" strokeWidth={2} />
-														)}
-														</span>
-													)}
+															{/* 这里如果还有额外文字块，务必包 min-w-0 + truncate */}
+															{/* <div className="min-w-0 flex-1">
+																<div className="truncate">...</div>
+															</div> */}
+														</div>
 
-													</div>
-
-													{/* 2. 中间自适应 */}
-													<div className="flex-1 flex items-center min-w-0">
-														{/* 左侧文字内容 */}
-														<div className="flex-1 flex flex-col min-w-0">
-															<span className="font-mono text-slate-800 dark:text-slate-100 truncate">
-																{fmtAddr(tx.account)}
-															</span>
-
-															{tx.note && (
-																<span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-																	{tx.note}
+														{/* 中间：固定宽度（badge / icon），靠右但在金额左边 */}
+														<div className="w-20 shrink-0 flex items-center justify-end gap-1 pl-2">
+															{(localMode === "pay" && tx.mode !== "pay") && (
+																<span
+																	className={[
+																		"w-[15px] h-[15px] rounded-full flex items-center justify-center",
+																		tx.mode === "cashcode"
+																			? "bg-sky-300/40 text-sky-800 dark:bg-sky-700/40 dark:text-sky-200"
+																			: "bg-fuchsia-300/40 text-fuchsia-800 dark:bg-fuchsia-700/40 dark:text-fuchsia-200"
+																	].join(" ")}
+																>
+																	{tx.mode === "cashcode" ? (
+																		<QrCode className="w-2.5 h-2.5" strokeWidth={2} />
+																	) : (
+																		<LinkIcon className="w-2.5 h-2.5" strokeWidth={2} />
+																	)}
 																</span>
 															)}
 
-															<span className="text-[10px] text-slate-400 dark:text-slate-500">
-																{formatTime(tx.date)}
-															</span>
-														</div>
-
-														{/* 中间区右侧按钮 */}
-														{
-															localMode === 'pay' && (
+															{localMode === "pay" && (
 																<button
 																	className="
-																		ml-3 shrink-0
+																		ml-2 shrink-0
 																		w-8 h-8 rounded-lg
 																		flex items-center justify-center
 																		bg-slate-100 dark:bg-slate-800
@@ -583,41 +568,29 @@ export const SendHistoryTable = (
 																		transition
 																	"
 																	onClick={() => {
-																		window.open(`https://basescan.org/tx/${tx.hash}`, '_blank', 'noopener,noreferrer')
+																		window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
 																	}}
 																>
 																	<img src={base_ex} alt="" className="w-4 h-4" />
 																</button>
-															)
-														}
-														
-													</div>
+															)}
+														</div>
 
-													{/* 3. 右侧固定宽度金额 —— 一定在右边 */}
-													<div
-														className={[
-															"w-16 shrink-0 text-right text-[11px] font-medium",
-
-															// 如果是 sent → 红色；否则 → 灰色（正数）
-															(tx.mode === "pay"
-																? tx.type === "sent"
-																: tx.type1 === "sent")
-																? "text-rose-600 dark:text-rose-400"     // 负数
-																: "text-slate-500 dark:text-slate-400"   // 正数用灰色 50
-														].join(" ")}
-													>
-														{`${tx.mode === 'pay'
-															? tx.type === 'sent'
-																? '-'    // 支出
-																: '+'
-															: tx.type1 === 'sent'
-																? '-'    // 支出
-																: '+'
-														} ${
-															formatMoney( localMode === 'pay' ? tx.amount : tx.preAmount)
-														}`}
+														{/* 右侧：固定宽度金额（永远贴右） */}
+														<div
+															className={[
+																"w-16 shrink-0 text-right text-[11px] font-medium tabular-nums pl-2",
+																(tx.mode === "pay" ? tx.type === "sent" : tx.type1 === "sent")
+																	? "text-rose-600 dark:text-rose-400"
+																	: "text-slate-500 dark:text-slate-400"
+															].join(" ")}
+														>
+															{`${tx.mode === "pay"
+																? tx.type === "sent" ? "-" : "+"
+																: tx.type1 === "sent" ? "-" : "+"
+															} ${formatMoney(localMode === "pay" ? tx.amount : tx.preAmount)}`}
+														</div>
 													</div>
-												</div>
 											</>
 											)
 

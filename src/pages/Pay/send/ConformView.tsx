@@ -33,7 +33,7 @@ const ConformView = ({messageData}: Props) => {
 				</div>
 				<div className="flex items-center justify-between">
 					<span>Beamio fee</span>
-					<span className="font-medium text-slate-900">0.00 USDC</span>
+					<span className="font-medium text-slate-900">{data.fee} USDC</span>
 				</div>
 				<div className="pt-1 border-t border-dashed border-slate-200 text-[10px] text-slate-500">
 					This is a direct wallet-to-wallet send on Base. Beamio sponsors the

@@ -6,6 +6,8 @@ import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { CoNET_Data, setCoNET_Data, } from '@/utils/globals'
 import { Card, CardContent } from "@/components/ui/card"
+import { useNavigate, useLocation } from 'react-router-dom'
+import {ethers} from 'ethers'
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
@@ -49,8 +51,8 @@ function formatUserDate(timestamp?: string | number): string {
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = forwardRef(
 	({ close, readonly, select, showHistory, showBackIcon=true }: Props) => {
-		const { profiles, } = useDaemonContext()
-
+		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode} = useDaemonContext()
+		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
 		const [results, setResults] = useState<searchResult[]>([])
 		const [loading, setLoading] = useState(false)
@@ -65,11 +67,56 @@ const SearchInputWithDropdown = forwardRef(
 		const hasQuery = query.trim().length > 0
 
 		
+		const requestUrl = (request: string) => {
+			console.log(request)
+			
+			let searchParams: URLSearchParams
+			try {
+				const u = new URL(request)
 
+				searchParams = u.searchParams
+				if (!u.host||!/beamio.app/i.test(u.host)) {
+					return
+				}
+			} catch {
+				searchParams = new URLSearchParams(request)
+			}
+
+			
+	
+			const code = searchParams.get("code")||''
+			const _note = searchParams.get("note")||''
+			const address = searchParams.get("address")||''
+			const amount = searchParams.get("amount")||''
+			const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
+			const cashcode = searchParams.get("cashcode")||''
+			if (_secureCode) {
+				setSecureCode (_secureCode)
+				setRedeemCode(cashcode)
+				return navigate('/browser')
+			}
+	
+			if (code) {
+
+				if (!code.startsWith('0x')) {
+					const _code = ethers.solidityPackedKeccak256(['string'], [code])
+					setPaymentLinkCode(_code)
+					return navigate('/browser')
+				}
+				setPaymentLinkCode(code)
+				return navigate('/browser')
+			}
+			
+
+		}
 
 		const search = async (q: string) => {
 			setLoading(true)
+			if (q.startsWith('http')) {
+				return requestUrl(q)
+			}
 			q = q.trim().replace('@', '').toLowerCase()
+			
 			const data = await searchUsername(q)
 			setLoading(false)
 
@@ -207,8 +254,6 @@ const SearchInputWithDropdown = forwardRef(
 											</span>
 										</button>
 								
-								
-							
 							
 						)
 					})}

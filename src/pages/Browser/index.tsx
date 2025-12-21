@@ -73,6 +73,7 @@ const Browser = ({}) => {
 
 	}
 
+
 	const checkUrl = async (urlPath: string) => {
 	
 		let searchParams: URLSearchParams
@@ -124,9 +125,9 @@ const Browser = ({}) => {
 
 		if (paymentLinkCode) {
 			setLocalSecureCode('')
-			setCode(code)
+			setCode(paymentLinkCode)
 			try {
-				const fx = await CoreContract.getLinkMemo(code)
+				const fx = await CoreContract.getLinkMemo(paymentLinkCode)
 				const amount = Number(ethers.formatUnits(fx.amount, 6))
 				setAmt(formatMoney(amount))
 				setNote(fx.node)
@@ -138,6 +139,7 @@ const Browser = ({}) => {
 
 		}
 	}
+
 
 	useEffect(() => {
 		forwardFromHome()
@@ -159,6 +161,7 @@ const Browser = ({}) => {
 		return () => {
 			if (typeof off === 'function') off()
 		}
+
 
 	}, [])
 
@@ -184,11 +187,13 @@ const Browser = ({}) => {
 				showLinkPay ? 
 					localSecureCode ? <RedeemScreen close={() => {
 						cancel()
+						navigate('/')
 					}} /> :
 					
 					(
 						<PayForm code={code} amt={amt} note={note} recipient={recipient} closeWin={()=> {
 							cancel()
+							navigate('/')
 						}} />
 					) 
 				: (

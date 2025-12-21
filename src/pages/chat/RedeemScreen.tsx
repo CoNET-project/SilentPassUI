@@ -116,7 +116,6 @@ const RedeemScreen = ({close}: Prof) => {
 		}
 		setProcessing(true)
 
-
 		const params = new URLSearchParams({secureCode: redeemCode, securityCodeDigits, address: myAddress }).toString()
 		const endpointUrl = `${aptEndpoint}/api/redeemCheck?${params}`
 		
@@ -137,8 +136,6 @@ const RedeemScreen = ({close}: Prof) => {
 		}
 		
 	}
-
-
 	
 	useEffect(() => {
 

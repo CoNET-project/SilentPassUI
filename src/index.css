@@ -21,6 +21,15 @@
   box-sizing: border-box;
 }
 
+html, body, #root {
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;              /* ✅ 关掉 window/html/body 的滚动条 */
+	overscroll-behavior: none;     /* ✅ 防止橡皮筋扩散到外层 */
+}
+
+
 body {
   margin: 0;
   background-color: #0D0D0D;
@@ -29,6 +38,12 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;              /* ✅ 关掉 window/html/body 的滚动条 */
+	overscroll-behavior: none;     /* ✅ 防止橡皮筋扩散到外层 */
+	/* iOS 上更稳：避免一些情况下 body 仍可滚 */
+	position: fixed;
+	inset: 0;
+	width: 100%;
 }
 
 code {

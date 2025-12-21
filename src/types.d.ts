@@ -490,6 +490,7 @@ type IMessageData = {
 	sginTatle: 'send'
 	reqUrl: string
 	amount: string
+	fee?: string
 }
 
 type PaymentLinkLockMode = "FIAT_LOCKED" | "USDC_LOCKED";

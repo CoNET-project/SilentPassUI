@@ -1,81 +1,187 @@
-//		App.tsx
-
-import { useEffect, useState } from "react"
-import "./default.scss";
-import styles from './layout.module.scss';
-import {Route,Routes,MemoryRouter as Router} from 'react-router-dom';
+// App.tsx
+import { useEffect, useRef, useState } from "react"
+import "./default.scss"
+import styles from "./layout.module.scss"
+import { Route, Routes, MemoryRouter as Router } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
-import Footer from "@/components/Footer";
-import Home from "./pages/Home";
-import History from './pages/History/History'
-import Pay from './pages/Pay'
-import Settings from './pages/Settings'
-import Chat from './pages/chat'
-import ChatDetail from './pages/chatDetail'
-import BeamioInstallOnboarding from '@/components/launchPage/BeamioInstallOnboarding'
-import RedeemScreen from '@/pages/chat/RedeemScreen'
-//			min-h-screen 
+import Footer from "@/components/Footer"
+import Home from "./pages/Home"
+import History from "./pages/History/History"
+import Pay from "./pages/Pay"
+import Settings from "./pages/Settings"
+import Chat from "./pages/chat"
+import ChatDetail from "./pages/chatDetail"
+import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
+import Browser from "@/pages/Browser"
 
-global.Buffer = require('buffer').Buffer;
+global.Buffer = require("buffer").Buffer
 
 function App() {
-  	const { isInitialLoading } = useDaemonContext();
+	const { isInitialLoading } = useDaemonContext()
+	const bodyRef = useRef<HTMLDivElement | null>(null)
 
+	// Footer 是否显示（由滚动决定）
+	const [footerVisible, setFooterVisible] = useState(true)
+
+	// 你原来的防橡皮筋 touchmove 逻辑（保留不动）
 	useEffect(() => {
-	
-		const handleTouchMove = (e: TouchEvent) => {
-			let el = e.target as HTMLElement | null
-			if (!el) return
-
-			// 向上爬 DOM，找到第一个 overflow 可滚动的元素
-			while (el && el !== document.body) {
+		const canScroll = (el: HTMLElement) => {
 			const style = window.getComputedStyle(el)
 			const overflowY = style.overflowY
+			if (overflowY !== "auto" && overflowY !== "scroll") return false
+			return el.scrollHeight > el.clientHeight
+		}
 
-			const isScrollable =
-				(overflowY === 'auto' || overflowY === 'scroll') &&
-				el.scrollHeight > el.clientHeight
+		const handleTouchMove = (e: TouchEvent) => {
+			const target = e.target as HTMLElement | null
+			if (!target) return
 
-			if (isScrollable) {
-				// 允许滚动此容器
+			let el: HTMLElement | null = target
+			const root = (document.scrollingElement as HTMLElement) || document.documentElement
+
+			while (el && el !== root && !canScroll(el)) el = el.parentElement
+
+			if (!el || el === root) {
+				e.preventDefault()
 				return
 			}
 
-			el = el.parentElement
-			}
+			const current = el
+			const touch = e.touches[0]
+			if (!touch) return
 
-			// 否则禁止页面拖动
-			e.preventDefault()
+			const anyEl = current as any
+			const lastY = anyEl.__lastTouchY as number | undefined
+			anyEl.__lastTouchY = touch.clientY
+			if (lastY === undefined) return
+
+			const deltaY = touch.clientY - lastY
+			const atTop = current.scrollTop <= 0
+			const atBottom = current.scrollTop + current.clientHeight >= current.scrollHeight - 1
+
+			if ((atTop && deltaY > 0) || (atBottom && deltaY < 0)) {
+				e.preventDefault()
+			}
 		}
 
-		document.addEventListener('touchmove', handleTouchMove, { passive: false })
+		const handleTouchEnd = (e: TouchEvent) => {
+			const target = e.target as HTMLElement | null
+			if (!target) return
 
-		return () => document.removeEventListener('touchmove', handleTouchMove)
+			let el: HTMLElement | null = target
+			const root = (document.scrollingElement as HTMLElement) || document.documentElement
+
+			while (el && el !== root) {
+				if ((el as any).__lastTouchY !== undefined) delete (el as any).__lastTouchY
+				el = el.parentElement
+			}
+		}
+
+		document.addEventListener("touchmove", handleTouchMove, { passive: false })
+		document.addEventListener("touchend", handleTouchEnd, { passive: true })
+		document.addEventListener("touchcancel", handleTouchEnd, { passive: true })
+
+		return () => {
+			document.removeEventListener("touchmove", handleTouchMove as any)
+			document.removeEventListener("touchend", handleTouchEnd as any)
+			document.removeEventListener("touchcancel", handleTouchEnd as any)
+		}
 	}, [])
 
-  	return (
-		<Router initialEntries={['/Onboarding']}>
-		    <div className={styles.app}>
-		      	<div className={styles.body}>
-		        	<Routes>
-						<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
-		          		<Route path="/" element={<Home />} />
-		          		<Route path="/History" element={<History />} />
-						<Route path="/Pay" element={<Pay />} />
-		          		<Route path="/Chat" element={<Chat />} />
-		          		<Route path='/chat/:id' element={<ChatDetail />} />
-		          		<Route path="/settings" element={<Settings />} />
-		        	</Routes>
-		      	</div>
-				{
-					!isInitialLoading && 
-					<div className={styles.bottom}>
-						<Footer />
-					</div>
+	// 你原来的滚动监听（保留，只是控制 footerVisible）
+	useEffect(() => {
+		const lastTopMap = new WeakMap<EventTarget, number>()
+		let ticking = false
+		const threshold = 6
+
+		const getScrollTop = (t: EventTarget) => {
+			if (t === window || t === document || t === document.documentElement || t === document.body) {
+				return window.scrollY || document.documentElement.scrollTop || (document.body as any).scrollTop || 0
+			}
+			const el = t as HTMLElement
+			return typeof (el as any).scrollTop === "number" ? (el as any).scrollTop : 0
+		}
+
+		const onAnyScroll = (e: Event) => {
+			const target = e.target as HTMLElement | Document | Window | null
+			if (bodyRef.current && target && target instanceof HTMLElement) {
+				if (!bodyRef.current.contains(target)) return
+			}
+
+			if (ticking) return
+			ticking = true
+
+			requestAnimationFrame(() => {
+				const src = (e.target || window) as EventTarget
+
+				const top = getScrollTop(src)
+				const lastTop = lastTopMap.get(src) ?? top
+				const delta = top - lastTop
+
+				let nearBottom = false
+				if (src && (src as any).scrollHeight != null) {
+					const el = src as HTMLElement
+					const maxTop = Math.max(0, el.scrollHeight - el.clientHeight)
+					const bottomLockPx = 24
+					nearBottom = top >= maxTop - bottomLockPx
 				}
-		    </div>
+
+				if (top <= 0) {
+					setFooterVisible(true)
+				} else if (Math.abs(delta) >= threshold) {
+					if (delta > 0) setFooterVisible(false)
+					else {
+						if (!nearBottom) setFooterVisible(true)
+					}
+				}
+
+				lastTopMap.set(src, top)
+				ticking = false
+			})
+		}
+
+		window.addEventListener("scroll", onAnyScroll, { passive: true })
+		document.addEventListener("scroll", onAnyScroll, { passive: true, capture: true })
+
+		return () => {
+			window.removeEventListener("scroll", onAnyScroll)
+			document.removeEventListener("scroll", onAnyScroll, true)
+		}
+	}, [])
+
+	// 首次进入显示
+	useEffect(() => {
+		const t = setTimeout(() => setFooterVisible(true), 0)
+		return () => clearTimeout(t)
+	}, [])
+
+	return (
+		<Router initialEntries={["/Onboarding"]}>
+			<div className={styles.app}>
+				<div ref={bodyRef} className={styles.body}>
+					<Routes>
+						<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
+						<Route path="/" element={<Home />} />
+						<Route path="/History" element={<History />} />
+						<Route path="/Pay" element={<Pay />} />
+						<Route path="/Chat" element={<Chat />} />
+						<Route path="/chat/:id" element={<ChatDetail />} />
+						<Route path="/settings" element={<Settings />} />
+						<Route path="/browser" element={<Browser />} />
+					</Routes>
+				</div>
+
+				{/* ✅ 外层只当占位（不再做 transform），动画全部在 Footer 自己的 motion.div 上做 */}
+				{!isInitialLoading && (
+					<div className={styles.bottom}>
+						<div className={styles.bottomInner}>
+							<Footer visible={footerVisible} peek={false} />
+						</div>
+					</div>
+				)}
+			</div>
 		</Router>
-  	)
+	)
 }
 
 export default App

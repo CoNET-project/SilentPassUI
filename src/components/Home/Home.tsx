@@ -652,7 +652,7 @@ const Home = ({}) => {
 			<div className="flex-1 px-5 pb-3 overflow-y-auto">
 				
 				{/* Search */}
-				<div className="flex items-center gap-2 mb-4 mt-10">
+				<div className="flex items-center gap-2 mb-4 mt-6">
 					 <button 
 						onClick={() => {
 							setOpenSearch(true)

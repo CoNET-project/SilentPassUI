@@ -3,10 +3,10 @@ import { useNavigate } from "react-router-dom"
 import { useState, useRef, useEffect } from 'react'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {ethers} from 'ethers'
-import {redeemCodeHash} from '@/services/beamio'
+import {redeemCodeHash, searchUsername} from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
 import RedeemSuccessScreen from './RedeemSuccessScreen'
-
+import Securitycode from '@/components/input/Securitycode'
 
 type IGtCheckMemooo = {
 	payHash: string
@@ -31,11 +31,19 @@ const beamioConetContract = {
 	
 }
 
+const getImg = (avatarSeed: string) =>
+	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
 const showPaylinkSite = 'https://beamio.app'
 const aptEndpoint = isLocal ? local : remote
+
+const displayName = (item: searchResult) => {
+	const lastname = item.last_name.split('\r\n')
+	const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
+	return fullName || item.username || item.address
+}
 
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
@@ -62,6 +70,7 @@ const RedeemScreen = ({close}: Prof) => {
 	const [processError, setProcessError] = useState("")
 	const [processing, setProcessing] = useState(false)
 	const [successHash, setSuccessHash] = useState("")
+	const [fromBeamio, setFromBeamio] = useState<searchResult|null>(null)
 
 	const formatSecurityCode = (value: string) => {
 		// 只保留数字
@@ -74,23 +83,92 @@ const RedeemScreen = ({close}: Prof) => {
 		return `${left}-${right}`
 	}
 
+	const getBeo = async (address: string) => {
+
+		const data = await searchUsername(address)||[]
+		if (data?.results?.length) {
+			setFromBeamio({...data.results[0]})
+		}
+	}
+
+	
+	const SenderBmo = () => {
+		if (!fromBeamio) {
+			return (<></>)
+		}
+
+		const fallback = typeof getImg === 'function' ? getImg(fromBeamio?.image||'') : ''
+		return (
+				<button
+					key={fromBeamio?.username}
+					type="button"
+					className="
+						w-full
+						flex items-center gap-2
+						rounded-full
+						border border-slate-200
+						bg-slate-50
+						px-3 py-2
+						text-left
+						hover:bg-slate-100
+						active:scale-[0.98]
+						transition
+					"
+				>
+					{/* Avatar */}
+					<img
+						src={fromBeamio?.image || fallback}
+						alt={fromBeamio?.username}
+						className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-slate-200"
+					/>
+
+					{/* 左侧：用户名 / @handle（必须 flex-1 + min-w-0） */}
+					<span className="flex-1 min-w-0">
+						<span className="block text-[12px] text-slate-900 truncate">
+							{fromBeamio ? displayName(fromBeamio) : ""}
+						</span>
+						<span className="block text-[10px] text-slate-500 truncate">
+							@{fromBeamio?.username}
+						</span>
+					</span>
+
+					{/* 右侧：金额（整行最右 + 粗体） */}
+					<span
+						className="
+							ml-auto
+							flex-shrink-0
+							text-right
+							text-[12px]
+							font-semibold
+							tabular-nums
+							text-slate-900
+							text-[16px]
+						"
+					>
+						{amount} USDC
+					</span>
+				</button>)
+	}
+
 	const getItem = async () => {
 		try {
 			const check: IGtCheckMemooo = await CoreContract.getCheckMemo(secureCode)
 
-			if (!check.payHash || check.depositHash != ethers.ZeroHash) {
+			if (!check.payHash || check.depositHash != ethers.ZeroHash || check.from === ethers.ZeroAddress) {
 				setHashError(true)
 				return
 			}
 
+			await getBeo(check.from)
 			const _note = check.node.split('\r\n')[0]
 			setNote(_note)
 			setGenerateHash(check.payHash)
 			const _amount = Number(ethers.formatUnits(check.amount, 6))
 			const fee = calcFeeFromNumber(_amount)
-			setAmount(formatMoney(_amount - fee))
+			setAmount(formatMoney(_amount))
 			const _timestamp = Number(check.createTimestamp * BigInt(1000))
 			setCreateTimestamp(_timestamp)
+			
 		} catch (ex: any) {
 			setHashError(true)
 			setSecureCode('')
@@ -138,8 +216,6 @@ const RedeemScreen = ({close}: Prof) => {
 		
 	}
 
-
-	
 	useEffect(() => {
 
 		if (!secureCode) {
@@ -176,12 +252,97 @@ const RedeemScreen = ({close}: Prof) => {
 							<h1 className="text-center text-lg font-semibold text-slate-900 mb-1">
 								Redeem Cashcode
 							</h1>
-							<p className="text-center text-[11px] text-slate-500 mb-6">
-								Enter the Cashcode and, if needed, the Security code that was shared with you.
-							</p>
+							<div className="rounded-2xl shadow-sm p-3 text-slate-800 leading-snug bg-gray-100">
+								{
+									fromBeamio && <SenderBmo />
+								}
+								{/* Cashcode input */}
+								<section className="space-y-1">
+									<div className="flex items-center justify-between">
+										<label className="text-sm font-medium text-slate-800">
+											Enter cashcode
+										</label>
+										
+									</div>
+									<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 flex justify-center">
+										<input
+											value={redeemCode}
+											className="
+												w-full
+												bg-transparent
+												text-xs md:text-sm
+												font-mono
+												text-slate-900
+												outline-none
+												placeholder:text-slate-400
+												text-center     /* ⭐ 让文字居中 */
+											"
+											placeholder="Paste or type the Cashcode (e.g. 24J2RgQYpiH1iXSlhOKYNV)"
+											onChange={e => {
+												setProcessError('')
+												setRedeemCode( e.target.value )
+											}}
+										/>
+									</div>
+									
+								</section>
+
+								{/* Security code input (optional) */}
+								<Securitycode securityCodeDigits={securityCodeDigits} setSecurityCodeDigits={setSecurityCodeDigits} />
+
+								{/* Info */}
+								<section className="space-y-1 text-[11px] text-slate-500">
+									<p>
+										When you redeem, <span className="font-mono font-bold">{amount}</span> will be released
+										from the Cashcode smart contract to your Beamio wallet on Base.
+										Beamio pays the network fee for this transaction.
+									</p>
+								</section>
+
+								{/* 错误提示条 */}
+								{processError && (
+									<div className="mb-4 px-3 py-2 text-left">
+										<p className="text-red-700 text-sm leading-relaxed">
+											{processError}
+										</p>
+									</div>
+								)}
+								{/* 按钮区：灵活容器 */}
+								<div className="flex gap-3 w-full">
+
+									{/* Cancel：只有在 !processing 时出现 */}
+									{!processing && (
+									<div className="flex-1">
+
+										<AppButton
+										variant='secondary'
+										fullWidth
+										onClick={() => {
+											close()
+										}}
+										>
+										Cancel
+										</AppButton>
+									</div>
+									)}
+
+									{/* Redeem：processing 时自动占据整行 */}
+									<div className={`${processing ? 'flex-1' : 'flex-1'}`}>
+										<AppButton
+											fullWidth
+											disabled={!!processError}
+											loading={processing}
+											onClick={() => tryRedeem()}
+										>
+											Redeem
+										</AppButton>
+									</div>
+
+								</div>
+							</div>
 
 							<div className="max-w-xl mx-auto space-y-6 text-sm">
-								{
+								{/* {
 									GenerateHash && (
 										<section className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-2">
 											
@@ -214,146 +375,26 @@ const RedeemScreen = ({close}: Prof) => {
 											<p className="text-[11px] text-slate-500 pt-1">
 												The person who created this Cashcode pays the Beamio and network fees. Their wallet address is not shown to you.
 											</p>
-											{/* Create Time */}
+											
 											<div className="text-[10px] sm:text-[11px] text-slate-400 text-right">
 												Created: {new Date(createTimestamp).toLocaleString()}
 											</div>
 										</section>
 
 									)
-								}
+								} */}
 
 
-								{/* Cashcode input */}
-								<section className="space-y-1">
-									<div className="flex items-center justify-between">
-										<label className="text-sm font-medium text-slate-800">
-											Cashcode
-										</label>
-										<span className="text-[11px] text-slate-400">
-											Required · long code
-										</span>
-									</div>
-									<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 flex justify-center">
-										<input
-											value={redeemCode}
-											className="
-												w-full
-												bg-transparent
-												text-xs md:text-sm
-												font-mono
-												text-slate-900
-												outline-none
-												placeholder:text-slate-400
-												text-center     /* ⭐ 让文字居中 */
-											"
-											placeholder="Paste or type the Cashcode (e.g. 24J2RgQYpiH1iXSlhOKYNV)"
-											onChange={e => {
-												setProcessError('')
-												setRedeemCode( e.target.value )
-											}}
-										/>
-									</div>
-									<p className="text-[11px] text-slate-500">
-										This is the long code that identifies the Cashcode. If you opened this page from a Beamio link, this field may already be filled for you.
-									</p>
-								</section>
-
-								{/* Security code input (optional) */}
-								<section className="space-y-1">
-									<div className="flex items-center justify-between">
-										<label className="text-sm font-medium text-slate-800">
-											Security code (optional)
-										</label>
-										<span className="text-[11px] text-slate-400">
-											6 digits (3-3)
-										</span>
-									</div>
-									<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 flex justify-center">
-										<input
-											value={isFocused ? securityCodeDigits : formatSecurityCode(securityCodeDigits)}
-											onChange={(e) => {
-												setProcessError('')
-												const onlyDigits = e.target.value.replace(/\D/g, "").slice(0, 6)
-												setSecurityCodeDigits(onlyDigits)
-											}}
-											onFocus={() => setIsFocused(true)}
-											onBlur={() => setIsFocused(false)}
-											className="
-												bg-transparent
-												text-base
-												tracking-[0.35em]
-												text-center
-												outline-none
-												text-slate-900
-												font-mono
-												
-												mx-auto        /* ⭐ 水平自动外边距使其在父容器中居中 */
-											"
-											placeholder="•••-•••"
-										/>
-									</div>
-									<p className="text-[11px] text-slate-500">
-										Only needed if the sender told you there is a Security code (e.g. 123-456). If you don&apos;t have one, leave this blank and try with just the Cashcode.
-									</p>
-								</section>
-
-								{/* Info */}
-								<section className="space-y-1 text-[11px] text-slate-500">
-									<p>
-										When you redeem, <span className="font-mono font-bold">{amount}</span> will be released
-										from the Cashcode smart contract to your Beamio wallet on Base.
-										Beamio pays the network fee for this transaction.
-									</p>
-								</section>
 
 
 							</div>
 
 							<div className="px-6 pb-6 max-w-xl mx-auto w-full">
 
-							{/* 错误提示条 */}
-							{processError && (
-								<div className="mb-4 px-3 py-2 text-left">
-									<p className="text-red-700 text-sm leading-relaxed">
-										{processError}
-									</p>
-								</div>
-							)}
+								
 
-							{/* 按钮区：灵活容器 */}
-							<div className="flex gap-3 w-full">
-
-								{/* Cancel：只有在 !processing 时出现 */}
-								{!processing && (
-								<div className="flex-1">
-
-									<AppButton
-									variant='secondary'
-									fullWidth
-									onClick={() => {
-										close()
-									}}
-									>
-									Cancel
-									</AppButton>
-								</div>
-								)}
-
-								{/* Redeem：processing 时自动占据整行 */}
-								<div className={`${processing ? 'flex-1' : 'flex-1'}`}>
-								<AppButton
-									fullWidth
-									disabled={!!processError}
-									loading={processing}
-									onClick={() => tryRedeem()}
-								>
-									Redeem
-								</AppButton>
-								</div>
-
+								
 							</div>
-						</div>
 						</div>
 
 						

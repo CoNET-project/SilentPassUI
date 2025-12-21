@@ -248,7 +248,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 
 		const postNode = (note) + '\r\n' + encryText
 		const params = new URLSearchParams({amount: display.pay.toFixed(4), note: postNode, secureCode: secureCode.hash}).toString()
-		const showpParams = new URLSearchParams({cashcode: secureCode.code}).toString()
+		const showpParams = new URLSearchParams({cashcode: secureCode.code, secureCode: secureCode.hash}).toString()
 		const path = `/api/generateCheck?${params}`
 
 
@@ -293,7 +293,8 @@ export default function PaymentLink ({close, beamioer}: Props) {
 				node: note,
 				sginTatle: 'Cashcode',
 				reqUrl: url,
-				amount: sendAmount
+				amount: sendAmount,
+				fee: display.fee
 
 			}
 			MessageData.data = data

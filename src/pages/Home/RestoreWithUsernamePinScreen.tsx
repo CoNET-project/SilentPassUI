@@ -51,7 +51,7 @@ const RestoreWithUsernamePinScreen = ({
 		}
 
 
-		if (pin.trim().length < 6 || pin.trim().length > 8 || !/^[0-9]+$/.test(pin.trim())) {
+		if (pin.trim().length < 6) {
 			setError('PIN must be 6–8 digits')
 			return
 		}
@@ -94,7 +94,7 @@ const RestoreWithUsernamePinScreen = ({
 			{/* Username 输入 */}
 			<div className="flex flex-col gap-1.5 mt-2">
 				<label className="text-[12px] font-medium text-slate-700">
-				@username
+					@username
 				</label>
 				<input
 				type="text"
@@ -163,7 +163,7 @@ const RestoreWithUsernamePinScreen = ({
 					disabled={loading}
 					className="rounded-[999px] py-3 text-[15px] font-semibold"
 				>
-				{loading ? 'Restoring…' : 'Restore wallet'}
+					{loading ? 'Restoring…' : 'Restore wallet'}
 				</AppButton>
 			</div>
 		</form>

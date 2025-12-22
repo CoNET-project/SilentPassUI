@@ -337,7 +337,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 			</div>
 
 			{/* Footer actions */}
-			<footer className="mt-auto px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-4 bg-white/90 backdrop-blur">
+			<footer className="mt-auto px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-4 bg-white/90 backdrop-blur ">
 			
 			<AppButton
 				onClick={handleSaveAvatar}

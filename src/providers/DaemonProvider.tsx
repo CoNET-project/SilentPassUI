@@ -2,6 +2,8 @@ import React, { createContext, useContext, ReactNode, useState, useEffect, useRe
 import packageData from '../../package.json'
 
 type DaemonContext = {
+	beamioUsers: searchResult[]
+	setbBeamioUsers: (val: searchResult[]) => void
 	currencyData: currencyData
 	setCurrencyData: (val: currencyData) => void
 	paymentLinkCode: string
@@ -147,6 +149,9 @@ const defaultContextValue: DaemonContext = {
 		SGD: 0
 	},
 
+	beamioUsers: [],
+	setbBeamioUsers: (val: searchResult[]) => {},
+
 	setCurrencyData: (val: currencyData) => {},
 	paymentLinkCode: '',
 	setPaymentLinkCode: (val: string) => {},
@@ -280,6 +285,7 @@ export function useDaemonContext() {
 
 export function DaemonProvider({ children }: DaemonProps) {
 	const [paymentLinkCode, setPaymentLinkCode] = useState('')
+
 	const [usdcToUSD, setUsdcToUSD] = useState(0)
 	const [listenningProcess, setListenningProcess] = useState<boolean>(false)
 	
@@ -345,6 +351,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const [redeemCode, setRedeemCode] = useState('')
 	const [ignoreUrl, setIgnoreUrl] = useState(false)
 	const [payTag, setPayTag] = useState('')
+	const [beamioUsers, setbBeamioUsers] = useState<searchResult[]>([])
 	const [currencyData, setCurrencyData] = useState({
 		CAD: 0,
 		USD: 0,
@@ -414,6 +421,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
+				beamioUsers, setbBeamioUsers,
         	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 
       {children}

@@ -1,28 +1,23 @@
 {
+	"id": "/app/",
 	"short_name": "Beamio",
 	"name": "Beamio APP",
 	"icons": [
-		{
-		"src": "/app/logo192.png",
-		"sizes": "192x192",
-		"type": "image/png"
-		},
-		{
-		"src": "/app/logo512.png",
-		"sizes": "512x512",
-		"type": "image/png"
-		}
+		{ "src": "/app/logo192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+		{ "src": "/app/logo512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+		{ "src": "/app/logo512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
 	],
 	"start_url": "/app/",
 	"scope": "/app/",
 	"display": "standalone",
-	"theme_color": "#000000",
-	"background_color": "#000000",
+	"theme_color": "#0d0d0d",
+	"background_color": "#0d0d0d",
 	"shortcuts": [
 		{
-			"name": "Open Beamio",
-			"short_name": "Beamio",
-			"url": "/app/"
+		"name": "Open Beamio",
+		"short_name": "Beamio",
+		"url": "/app/",
+		"icons": [{ "src": "/app/logo192.png", "sizes": "192x192" }]
 		}
-  	]
+	]
 }

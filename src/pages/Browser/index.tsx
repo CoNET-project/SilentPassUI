@@ -126,16 +126,7 @@ const Browser = ({}) => {
 		if (paymentLinkCode) {
 			setLocalSecureCode('')
 			setCode(paymentLinkCode)
-			try {
-				const fx = await CoreContract.getLinkMemo(paymentLinkCode)
-				const amount = Number(ethers.formatUnits(fx.amount, 6))
-				setAmt(formatMoney(amount))
-				setNote(fx.node)
-				setRecipient(fx.to)
-				setShowLinkPay(true)
-			} catch (ex: any) {
-				console.log(`getInfo ex: ${ex.message}`)
-			}
+			return setShowLinkPay(true)
 
 		}
 	}
@@ -191,7 +182,7 @@ const Browser = ({}) => {
 					}} /> :
 					
 					(
-						<PayForm code={code} amt={amt} note={note} recipient={recipient} closeWin={()=> {
+						<PayForm code={code} closeWin={()=> {
 							cancel()
 							navigate('/')
 						}} />

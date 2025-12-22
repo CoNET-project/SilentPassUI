@@ -187,7 +187,7 @@ const Browser = ({}) => {
 					}} /> :
 					
 					(
-						<PayForm code={code} amt={amt} note={note} recipient={recipient} closeWin={()=> {
+						<PayForm code={code} closeWin={()=> {
 							cancel()
 						}} />
 					) 

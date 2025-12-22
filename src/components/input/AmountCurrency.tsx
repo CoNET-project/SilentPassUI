@@ -72,8 +72,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
 	const firstOptionRef = useRef<HTMLButtonElement | null>(null)
 
-	// Run oracle once
-	const oracleOnce = useRef(false)
+	
 
 	// ---------- FX helpers ----------
 	const maxDp = currencyUSDC ? 4 : (CURRENCY_META[currentCurrency]?.maxDp ?? 2)
@@ -109,9 +108,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		return n.toFixed(4).replace(/\.?0+$/, "")
 	}
 
+
 	useEffect(() => {
-		if (oracleOnce.current) return
-		oracleOnce.current = true
+
 		oracle()
 	}, [])
 

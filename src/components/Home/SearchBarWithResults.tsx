@@ -8,10 +8,18 @@ import { CoNET_Data, setCoNET_Data, } from '@/utils/globals'
 import { Card, CardContent } from "@/components/ui/card"
 import { useNavigate, useLocation } from 'react-router-dom'
 import {ethers} from 'ethers'
+import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
-
+const beamioConetContract = {
+	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
+	network: 'CONET DePIN',
+	abi: beamioConetCoreABI,
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	
+}
+const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 type Props = {
 	close: (path: string | searchResult) => void
 	readonly: boolean
@@ -49,7 +57,7 @@ function formatUserDate(timestamp?: string | number): string {
 
 
 // ✅ 改成 forwardRef：对外暴露 focus()
-const SearchInputWithDropdown = forwardRef(
+const SearchInputWithDropdown = 
 	({ close, readonly, select, showHistory, showBackIcon=true }: Props) => {
 		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode} = useDaemonContext()
 		const navigate = useNavigate()
@@ -67,9 +75,9 @@ const SearchInputWithDropdown = forwardRef(
 		const hasQuery = query.trim().length > 0
 
 		
-		const requestUrl = (request: string) => {
+		const requestUrl = async (request: string) => {
 			console.log(request)
-			
+			setLoading(true)
 			let searchParams: URLSearchParams
 			try {
 				const u = new URL(request)
@@ -84,10 +92,7 @@ const SearchInputWithDropdown = forwardRef(
 
 			
 	
-			const code = searchParams.get("code")||''
-			const _note = searchParams.get("note")||''
-			const address = searchParams.get("address")||''
-			const amount = searchParams.get("amount")||''
+			let code = searchParams.get("code")||''
 			const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
 			const cashcode = searchParams.get("cashcode")||''
 			if (_secureCode) {
@@ -99,12 +104,22 @@ const SearchInputWithDropdown = forwardRef(
 			if (code) {
 
 				if (!code.startsWith('0x')) {
-					const _code = ethers.solidityPackedKeccak256(['string'], [code])
-					setPaymentLinkCode(_code)
-					return navigate('/browser')
+					code = ethers.solidityPackedKeccak256(['string'], [code])
+					
 				}
-				setPaymentLinkCode(code)
-				return navigate('/browser')
+				try {
+					const fx = await CoreContract.getLinkMemo(code)
+					if (fx.to !== ethers.ZeroAddress && fx.amount > BigInt(0)) {
+						setPaymentLinkCode(code)
+						return navigate('/browser')
+					}
+					
+				} catch (ex) {
+					console.log(`await CoreContract.getLinkMemo(code) Error`)
+				}
+				
+				setLoading(false)
+				setResults([])
 			}
 			
 
@@ -335,7 +350,7 @@ const SearchInputWithDropdown = forwardRef(
 								readOnly={readonly}
 								ref={inputRef}
 								className="flex-1 bg-transparent text-[13px] placeholder-slate-400 focus:outline-none"
-								placeholder="Search for @BeamioTag or wallet address"
+								placeholder="Search @BeamioTag, address, or paste link"
 								value={query}
 								onChange={e => setQuery(e.currentTarget.value)}
 							/>
@@ -544,6 +559,6 @@ const SearchInputWithDropdown = forwardRef(
 			</>
 		)
 	}
-)
+
 
 export default SearchInputWithDropdown

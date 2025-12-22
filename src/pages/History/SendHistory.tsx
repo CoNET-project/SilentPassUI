@@ -10,13 +10,13 @@ import {
 import { beamioConet } from "@/utils/constants"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from "ethers"
-import {HistoryFilterTabs, HistoryFilter} from './HistoryFilterTabs'
+import {HistoryFilterTabs} from './HistoryFilterTabs'
 import {RedeemOrLinkCard} from './showHistoryDetail'
-import { X } from 'lucide-react'
+
 import base_ex from '@/components/assets/base-ex.svg'
 import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
 import BallSequence from '@/components/loading/BallSequence'
-import { QrCode, Link as LinkIcon } from "lucide-react"
+import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle } from "lucide-react"
 import AccountBeo from './AccountBea'
 
 type Mode = "pay" | "request" | 'cashcode'
@@ -32,7 +32,7 @@ type Payed = {
 type TransferHistork = {
 	date: number
 	amount: number
-	account: string
+	address: string
 	hash: string
 	note: string
 	type: HistoryFilter
@@ -45,6 +45,8 @@ type TransferHistork = {
 	preAmount: number
 
 }
+
+const typeIconCls = "w-5 h-5"
 
 type LinksHistory = {
 	to: string
@@ -161,13 +163,12 @@ export const SendHistoryTable = (
   () => {
     const [items, setItems] = useState<TransferHistork[]>([])
     
-    const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress} = useDaemonContext()
+    const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress, } = useDaemonContext()
 	const [processing, setpProcessing] = useState(false)
 	const [activeFilter, setActiveFilter] = useState<HistoryFilter>('all')
 	const [loading, setLoading] = useState(false)
 	const [loadingFilter, setLoadingFilter] = useState<HistoryFilter | null>(null)
 	const [showDetail, setShowDEtail] = useState(false)
-	const [accounts, setAccounts] = useState <searchResult[]> ([])
 	const [isPay, setIsPay] = useState(false)
 	const [amt, setAmt] = useState(0)
 	const [successUrl, setSuccessUrl] = useState("")
@@ -236,19 +237,22 @@ export const SendHistoryTable = (
 			
 			const transfer: Transfer[] = _transfer[1]
 			
-			mapped = transfer.map(n => ({
-				date: Number(n.timestamp * BigInt(1000)),
-				amount: Number(ethers.formatUnits(n.amount, 6)),
-				account: n.from.toLowerCase() === myAddrLocal ? n.to : n.from,
-				hash: n.finisedHash,
-				from: n.from,
-				note: n.note,
-				type: myAddrLocal === n.to.toLowerCase() ? 'received' : 'sent',
-				mode: 'pay',
-				fee: 0,
-				type1: myAddrLocal === n.to.toLowerCase() ? 'received' : 'sent',
-				preAmount: Number(ethers.formatUnits(n.amount, 6))
-			}))
+			mapped = transfer.map(n => {
+				const ret: TransferHistork = {
+					date: Number(n.timestamp * BigInt(1000)),
+					amount: Number(ethers.formatUnits(n.amount, 6)),
+					address: n.from.toLowerCase() === myAddrLocal ? n.to.toLowerCase() : n.from.toLowerCase(),
+					hash: n.finisedHash,
+					
+					note: n.note,
+					type: myAddrLocal === n.to.toLowerCase() ? 'received' : 'sent',
+					mode: 'pay',
+					fee: 0,
+					type1: myAddrLocal === n.to.toLowerCase() ? 'received' : 'sent',
+					preAmount: Number(ethers.formatUnits(n.amount, 6))
+				}
+				return ret
+			})
 			
 			const links: LinksHistory[] = _links[1]
 			mappedLing = links.map(n => {
@@ -265,7 +269,7 @@ export const SendHistoryTable = (
 				const ret: TransferHistork = {
 					date: Number(n.issueTimestamp * BigInt(1000)),
 					amount,
-					account,
+					address: account,
 					hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
 					note: n.node,
 					type,
@@ -306,7 +310,7 @@ export const SendHistoryTable = (
 					const ret: TransferHistork = {
 						date: Number(n.createTimestamp * BigInt(1000)),
 						amount,
-						account: account.toLowerCase(),
+						address: account.toLowerCase(),
 						hash: type === 'pending'
 							? n.payHash
 							: n.depositHash,
@@ -342,21 +346,10 @@ export const SendHistoryTable = (
 			if (next && next !== 'all') {
 				filtered = filtered.filter(tx => tx.type === next)
 			}
-			const mapAccount: Map<string, searchResult|null> = new Map()
-			filtered.forEach(n => mapAccount.set(n.account, null))
 			
-			const promises = Array.from(mapAccount.keys()).map(async (key) => {
-				const data = await searchUsername(key)
-				return data?.results?.[0] ?? []
-			})
+	
 
-			const allResults = await Promise.all(promises)
-
-			// 🔒 一次性 setState（避免多次 render + 顺序错乱）
-			setAccounts(prev => [
-				...prev,
-				...allResults.flat()
-			])
+			
 
 			setItems([]) // 清掉旧的
 
@@ -415,7 +408,7 @@ export const SendHistoryTable = (
 									}`}
 								onClick={() => { setLocalMode("pay")}}
 							>
-								Send / Receive
+								Completed
 							</button>
 
 							{/* REQUEST */}
@@ -518,80 +511,102 @@ export const SendHistoryTable = (
 												: " cursor-default opacity-70" // 没有 hash 时，不能点，略微灰掉
 
 											const rowContent = (
-											<>
-												
-												{/* 整个 rowContent：全行宽，左自适应，中/右固定 */}
-													<div className="w-full flex items-center">
-														{/* 左侧：自适应（必须 min-w-0 才能被压缩） */}
-														<div className="flex-1 min-w-0 flex items-center gap-3">
-															
-															<AccountBeo
-																fromBeamio={accounts.find(n => n.address === tx.account)}
-																note={tx.note}
-																dateData={formatTimev2(tx.date)}
-															/>
-
-															{/* 这里如果还有额外文字块，务必包 min-w-0 + truncate */}
-															{/* <div className="min-w-0 flex-1">
-																<div className="truncate">...</div>
-															</div> */}
-														</div>
-
-														{/* 中间：固定宽度（badge / icon），靠右但在金额左边 */}
-														<div className="w-20 shrink-0 flex items-center justify-end gap-1 pl-2">
-															{(localMode === "pay" && tx.mode !== "pay") && (
-																<span
-																	className={[
-																		"w-[15px] h-[15px] rounded-full flex items-center justify-center",
-																		tx.mode === "cashcode"
-																			? "bg-sky-300/40 text-sky-800 dark:bg-sky-700/40 dark:text-sky-200"
-																			: "bg-fuchsia-300/40 text-fuchsia-800 dark:bg-fuchsia-700/40 dark:text-fuchsia-200"
-																	].join(" ")}
-																>
-																	{tx.mode === "cashcode" ? (
-																		<QrCode className="w-2.5 h-2.5" strokeWidth={2} />
-																	) : (
-																		<LinkIcon className="w-2.5 h-2.5" strokeWidth={2} />
-																	)}
-																</span>
-															)}
-
-															{localMode === "pay" && (
-																<button
-																	className="
-																		ml-2 shrink-0
-																		w-8 h-8 rounded-lg
-																		flex items-center justify-center
-																		bg-slate-100 dark:bg-slate-800
-																		border border-slate-200 dark:border-slate-700
-																		hover:bg-slate-200 dark:hover:bg-slate-700
-																		transition
-																	"
-																	onClick={() => {
-																		window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
-																	}}
-																>
-																	<img src={base_ex} alt="" className="w-4 h-4" />
-																</button>
-															)}
-														</div>
-
-														{/* 右侧：固定宽度金额（永远贴右） */}
-														<div
-															className={[
-																"w-16 shrink-0 text-right text-[11px] font-medium tabular-nums pl-2",
-																(tx.mode === "pay" ? tx.type === "sent" : tx.type1 === "sent")
-																	? "text-rose-600 dark:text-rose-400"
-																	: "text-slate-500 dark:text-slate-400"
-															].join(" ")}
-														>
-															{`${tx.mode === "pay"
-																? tx.type === "sent" ? "-" : "+"
-																: tx.type1 === "sent" ? "-" : "+"
-															} ${formatMoney(localMode === "pay" ? tx.amount : tx.preAmount)}`}
-														</div>
+												<div className="w-full flex items-center gap-2">
+													{/* 左侧：最大化占宽（从左开始吃满） */}
+													<div className="flex-1 min-w-0">
+														<AccountBeo
+															address={tx.address}
+															note=""
+															dateData={formatTimev2(tx.date)}
+														/>
 													</div>
-											</>
+
+													{/* 中间：全部都是 icon / badge，紧凑排列，占用最小空间 */}
+													<div className="shrink-0 flex items-center gap-1">
+														{/* tx.type icon badge（固定小尺寸，避免每行高宽抖动） */}
+														{localMode !== "pay" && (
+															<span
+																className={[
+																"inline-flex items-center justify-center",
+																"w-6 h-6 rounded-full",
+																// ❌ 删除这两行，它们污染了 icon 容器
+																// badgeBase,
+																// getBadgeClass(tx.type as HistoryFilter)
+																
+																// ✅ 只保留颜色，通过 getBadgeClass 获取
+																getBadgeClass(tx.type as HistoryFilter)
+																].join(" ")}
+																title={tx.type}
+															>
+																{tx.type === "pending" ? (
+																<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
+																) : tx.type === "completed" ? (
+																<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
+																) : tx.type === "paid" || tx.type === "deposited" ? (
+																<Banknote className="w-3.5 h-3.5" strokeWidth={2}/>
+																) : (
+																<HelpCircle className="w-3.5 h-3.5" strokeWidth={2} />
+																)}
+															</span>
+															)}
+
+														{/* pay 模式下的 mode icon（同样统一占位） */}
+														{localMode === "pay" && tx.mode !== "pay" && (
+															<span
+																className={[
+																	"inline-flex items-center justify-center",
+																	"w-6 h-6 rounded-full",
+																	tx.mode === "cashcode"
+																		? "bg-sky-300/40 text-sky-800 dark:bg-sky-700/40 dark:text-sky-200"
+																		: "bg-fuchsia-300/40 text-fuchsia-800 dark:bg-fuchsia-700/40 dark:text-fuchsia-200"
+																].join(" ")}
+															>
+																{tx.mode === "cashcode" ? (
+																	<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
+																) : (
+																	<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
+																)}
+															</span>
+														)}
+
+														{/* BaseScan：也统一占位，避免这一列宽度跳变 */}
+														{localMode === "pay" ? (
+															<button
+																type="button"
+																className="
+																	inline-flex items-center justify-center
+																	w-8 h-8 rounded-lg
+																	bg-slate-100 dark:bg-slate-800
+																	border border-slate-200 dark:border-slate-700
+																	hover:bg-slate-200 dark:hover:bg-slate-700
+																	active:scale-[0.98]
+																	transition
+																"
+																onClick={() => {
+																	window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
+																}}
+															>
+																<img src={base_ex} alt="" className="w-4 h-4" />
+															</button>
+														) : (<div className="shrink-0 w-12 h-6" />)}
+													</div>
+
+													{/* 右侧：金额 —— 不固定宽度，按内容最小占用，但永远贴右、不换行 */}
+													<div
+														className={[
+															"shrink-0 whitespace-nowrap text-right",
+															"text-[11px] font-medium tabular-nums",
+															(tx.mode === "pay" ? tx.type === "sent" : tx.type1 === "sent")
+																? "text-rose-600 dark:text-rose-400"
+																: "text-slate-500 dark:text-slate-400"
+														].join(" ")}
+													>
+														{`${tx.mode === "pay"
+															? tx.type === "sent" ? "-" : "+"
+															: tx.type1 === "sent" ? "-" : "+"
+														} ${formatMoney(localMode === "pay" ? tx.amount : tx.preAmount)}`}
+													</div>
+												</div>
 											)
 
 											// 有 hash：<a>，打开 BaseScan
@@ -612,7 +627,7 @@ export const SendHistoryTable = (
 																setType(tx.type)
 																setSuccessUrl(showUrl)
 																setShowDEtail(true)
-																setAccount(tx.account)
+																setAccount(tx.address)
 																setSecurityCode(tx.passcode||'')
 																setRedeemCode(tx.security||'')
 																setFee(tx.fee)
@@ -629,7 +644,7 @@ export const SendHistoryTable = (
 												}
 												return (
 													<div
-														key={`${tx.date}-${tx.account}`}
+														key={`${tx.date}-${tx.address}`}
 														className={baseRowClass + clickableClass}
 													>
 														{rowContent}
@@ -640,7 +655,7 @@ export const SendHistoryTable = (
 											// 没有 hash：<div>，只能看，不能点
 											return (
 												<div
-													key={`${tx.date}-${tx.account}`}
+													key={`${tx.date}-${tx.address}`}
 													className={baseRowClass + clickableClass}
 												>
 													{rowContent}

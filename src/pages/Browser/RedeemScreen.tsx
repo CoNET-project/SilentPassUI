@@ -163,9 +163,10 @@ const RedeemScreen = ({close}: Prof) => {
 			const _note = check.node.split('\r\n')[0]
 			setNote(_note)
 			setGenerateHash(check.payHash)
+
 			const _amount = Number(ethers.formatUnits(check.amount, 6))
 			const fee = calcFeeFromNumber(_amount)
-			setAmount(formatMoney(_amount))
+			setAmount(formatMoney(_amount-fee))
 			const _timestamp = Number(check.createTimestamp * BigInt(1000))
 			setCreateTimestamp(_timestamp)
 			
@@ -257,7 +258,7 @@ const RedeemScreen = ({close}: Prof) => {
 									fromBeamio && <SenderBmo />
 								}
 								{/* Cashcode input */}
-								<section className="space-y-1">
+								<section className="space-y-1 mt-4">
 									<div className="flex items-center justify-between">
 										<label className="text-sm font-medium text-slate-800">
 											Enter cashcode
@@ -291,13 +292,13 @@ const RedeemScreen = ({close}: Prof) => {
 								<Securitycode securityCodeDigits={securityCodeDigits} setSecurityCodeDigits={setSecurityCodeDigits} />
 
 								{/* Info */}
-								<section className="space-y-1 text-[11px] text-slate-500">
+								{/* <section className="space-y-1 text-[11px] text-slate-500">
 									<p>
 										When you redeem, <span className="font-mono font-bold">{amount}</span> will be released
 										from the Cashcode smart contract to your Beamio wallet on Base.
 										Beamio pays the network fee for this transaction.
 									</p>
-								</section>
+								</section> */}
 
 								{/* 错误提示条 */}
 								{processError && (

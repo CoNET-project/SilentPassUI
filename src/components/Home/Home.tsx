@@ -15,7 +15,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Search, Settings, Check, ArrowDownCircle, PlusCircle , X } 
+import { Search, Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw } 
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -57,6 +57,7 @@ const Home = ({}) => {
 	const [language, setLanguage] = useState<"en">("en")
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
 	const [openSearch, setOpenSearch]= useState(false)
+	const [reflash, setReflash] = useState(false)
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'>('')
 
@@ -134,6 +135,13 @@ const Home = ({}) => {
 		setCoNET_Data(temp)
 		storeSystemData()
 
+	}
+
+	const reflashProcess = async () => {
+		if (!myAddress) return
+		setReflash(true)
+		await getBalanceProcess(myAddress, setUsdcbalance, setUsdcToUSD)
+		setReflash(false)
 	}
 
 	const handleSaveAvatar = async (curr: ICurrency) => {
@@ -347,7 +355,7 @@ const Home = ({}) => {
 		const chooseCurrency = (v: ICurrency) => {
 
 			setCurrency(v)
-			handleSaveAvatar(v)
+			// handleSaveAvatar(v)
 			// 轻微延迟，保证点击反馈先出现
 			setTimeout(() => setShowSetup(false), 80)
 			
@@ -362,14 +370,35 @@ const Home = ({}) => {
 					</div>
 
 					<div className="flex items-center gap-1 text-white">
-						<span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/15">
+						
+						<button
+							type="button"
+							className="
+								inline-flex items-center justify-center
+								w-7 h-7
+								rounded-full
+								border border-white/60
+								bg-transparent
+								transition
+								hover:bg-white/10
+								active:scale-[0.95]
+								focus:outline-none
+								focus-visible:ring-2
+								focus-visible:ring-white/40
+							"
+							onClick={reflashProcess}
+							disabled={reflash}
+						>
 							<img
 								src={base_icon}
 								alt="Base"
-								className="w-3.5 h-3.5 object-contain"
+								className={[
+									"w-5 h-5 object-contain",
+									reflash ? "animate-spin opacity-80" : ""
+								].join(" ")}
 							/>
-						</span>
-						<span className="text-[11px] font-medium tracking-wide">
+						</button>
+						<span className="text-[15px] font-medium tracking-wide">
 							USDC on Base
 						</span>
 					</div>
@@ -390,9 +419,29 @@ const Home = ({}) => {
 							{/* 金额 + Setup（右侧） */}
 							<div className="mb-4 flex items-center justify-between">
 								<div>
-									<div className="text-3xl font-semibold text-white tabular-nums leading-tight">
-										{formatFiat()}
-									</div>
+									<button
+										type="button"
+										className="
+											inline-flex
+											items-center
+											rounded-full          /* ⭐ 半圆 / 胶囊 */
+											border border-white/30
+											bg-white/0
+											px-4 py-2
+											text-left
+											transition
+											hover:bg-white/10
+											active:scale-[0.98]
+											focus:outline-none
+											focus-visible:ring-2
+											focus-visible:ring-white/40
+										"
+										onClick={() => setShowSetup(true)}
+									>
+										<div className="text-3xl font-semibold text-white tabular-nums leading-tight">
+											{formatFiat()}
+										</div>
+									</button>
 
 									<div className="mt-1 flex items-center text-xs text-white/80">
 										<div className="relative mr-2 flex-shrink-0">
@@ -419,30 +468,17 @@ const Home = ({}) => {
 									</div>
 								</div>
 
-								<button
-									type="button"
-									onClick={() => setShowSetup(true)}
-									className="
-										w-9 h-9
-										flex items-center justify-center
-										rounded-full
-										bg-white/10 hover:bg-white/20
-										active:scale-95
-										transition-all
-										backdrop-blur
-									"
-									aria-label="Settings"
-								>
-									<Settings className="w-5 h-5 text-white" />
-								</button>
+								
 							</div>
 
 							{/* Gas sponsored */}
 							<div className="flex justify-end mb-4">
 								<div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 backdrop-blur-sm">
-									<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/80 text-[9px] text-[#1652f0] font-bold">
-										⚡
-									</span>
+									
+										<Sparkles
+											className="w-4 h-4 text-amber-500"
+											strokeWidth={2.2}
+										/>
 									<span className="text-[11px] font-medium text-white">
 										Gas sponsored
 									</span>
@@ -485,7 +521,7 @@ const Home = ({}) => {
 						</div>
 
 						{/* ===== Page B：Setup ===== */}
-						<div className="w-1/2 px-4 h-full overflow-y-auto">
+						<div className="w-1/2 px-4 h-full overflow-y-auto" data-ignore-footer-scroll="1">
 							
 
 							<div className="space-y-2">
@@ -736,7 +772,7 @@ const Home = ({}) => {
 
 						
 					<BalanceCard />
-					<ButtonArea />
+					
 
 					{/* Optional inline search bar, only when user taps search icon */}
 					{isSearchOpen && (

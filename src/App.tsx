@@ -104,15 +104,29 @@ function App() {
 
 		const onAnyScroll = (e: Event) => {
 			const target = e.target as HTMLElement | Document | Window | null
+
+			
+
 			if (bodyRef.current && target && target instanceof HTMLElement) {
 				if (!bodyRef.current.contains(target)) return
 			}
+
+			
 
 			if (ticking) return
 			ticking = true
 
 			requestAnimationFrame(() => {
 				const src = (e.target || window) as EventTarget
+				
+
+				// ✅ 新增：局部滚动不影响 Footer（BalanceCard 等）
+				if (src instanceof HTMLElement) {
+					if (src.closest('[data-ignore-footer-scroll="1"]')) {
+						ticking = false
+						return
+					}
+				}
 
 				const top = getScrollTop(src)
 				const lastTop = lastTopMap.get(src) ?? top

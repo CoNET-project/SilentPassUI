@@ -1,22 +1,19 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import {ConformSignInfo} from '@/pages/History/conformX402Sign'
 import base_ex from '@/components/assets/base-ex.svg'
 import {AppButton}  from '@/components/button/AppButton'
-import { CoNET_Data } from "@/utils/globals"
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import bIcon from '@/components/assets/32x32.svg'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {ethers} from 'ethers'
-
-import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign} from '@/services/beamio'
+import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign, searchUsername, getOracle, postBeamio, storeSystemData} from '@/services/beamio'
 
 type Step = "form" | "sign" | "processing" | "generated" | "x402Sign" | "success"
 
 type Props = {
 	
-	id?: string
-	amt: string
-	note?: string
-	recipient: string
 	code: string
 	  closeWin: () => void
 }
@@ -28,6 +25,57 @@ type TipInputProps = {
 	tipError: boolean
 
 }
+
+const beamioConetContract = {
+	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
+	network: 'CONET DePIN',
+	abi: beamioConetCoreABI,
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	
+}
+function formatAmount(v: number, c: ICurrency) {
+	if (!isFinite(v)) return `0 ${c}`
+	return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
+}
+
+const CURRENCY_META: Record<
+  ICurrency,
+  { flag: string; symbol: string; label: string }
+> = {
+  USD: { flag: "🇺🇸", symbol: "$", label: "USD" },
+  CAD: { flag: "🇨🇦", symbol: "$", label: "CAD" },
+  EUR: { flag: "🇪🇺", symbol: "€", label: "EUR" },
+  JPY: { flag: "🇯🇵", symbol: "¥", label: "JPY" },
+  CNY: { flag: "🇨🇳", symbol: "¥", label: "CNY" },
+  HKD: { flag: "🇭🇰", symbol: "$", label: "HKD" },
+  TWD: { flag: "🇹🇼", symbol: "$", label: "TWD" },
+  SGD: { flag: "🇸🇬", symbol: "$", label: "SGD" },
+  USDC: {flag:"", symbol: "", label: ""}
+};
+	
+function fiatPrefix(ccy: ICurrency) {
+	if (ccy === "CAD") return "CA$"
+	if (ccy === "USD") return "$"
+	if (ccy === "EUR") return "€"
+	if (ccy === "JPY") return "JP¥"
+	if (ccy==='TWD') return "NT$"
+	if (ccy==='CNY') return 'CN¥'
+	if (ccy==='HKD') return 'HK$'
+	if (ccy==='SGD') return 'SG$'
+
+  return CURRENCY_META[ccy].symbol;
+}
+
+const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
+const getImg = (avatarSeed: string) =>
+	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
+const displayName = (item: searchResult) => {
+	const lastname = item.last_name.split('\r\n')
+	const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
+	return fullName || item.username || item.address
+}
+
+
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
@@ -92,8 +140,17 @@ const TipInput = ({ tipAmount, setTipAmount, amt, tipError}: TipInputProps) => {
 	)
 }
 
-const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
-	const { darkModle, setDarkModle, setProfiles, setPower, profiles, usdcbalance, usdcToUSD, setMyAddress, myAddress } = useDaemonContext()
+const formatCurrencyAmount = (n: number, c: ICurrency) => {
+	const decimals = (c === "JPY" || c==='TWD') ? 0 : 2
+	if (!Number.isFinite(n)) return "0"
+	return n.toFixed(decimals)
+}
+
+
+
+const PayForm = ({code, closeWin}: Props) => {
+	const { darkModle, setDarkModle, setProfiles, setPower, profiles, usdcbalance, usdcToUSD, setMyAddress, myAddress, currencyData, setCurrencyData, beamio, setBeamio } = useDaemonContext()
+	const navigate = useNavigate()
 	const [successPayLink, setSuccessPayLink] = useState<string>('')
 	const [signx402Show, setSignx402Show] = useState(false)
 	const [messageData, setMessageData] = useState<any>()
@@ -102,11 +159,46 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 	const [tipAmount, setTipAmount] = useState("0.00"); // Request 模式的 tip
 	const [tipError, setTipError] = useState(false)
 	const [error, setError] = useState<string>("")
-	const [amount, setAmount] = useState<string|undefined>(amt)
+	const [amount, setAmount] = useState<string|undefined>('')
 	const [showPayButton, setShowPayButton] = useState(true)
 	const [step, setStep] = useState<Step>("form")
+	const [fromBeamio, setFromBeamio] = useState<searchResult|null>(null)
+	const [requestCurrency, setRequestCurrency] = useState<ICurrency>('USD')
+	const [crrency, setCurrency] = useState<ICurrency>('USD')
+	const [requestToUSDC, setRequestToUSDC] = useState('')
 
-	const totalAmount = Number(tipAmount) + Number(amount)
+	
+
+	const [note, setNote] = useState('')
+	const [amt, setAmt] = useState('')
+	const [recipient, setRecipient] = useState('')
+	const [successHash, setSuccessHash] = useState('')
+
+	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
+	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
+	const currencyToUsdcAmount = (cur: number, c: ICurrency) => {
+		const u2u = usdcUsd || 1
+		const u2c = usdToCur(c) || 1
+		if (!u2u || !u2c) return 0
+		return cur / u2c / u2u
+	}
+
+	const handleSaveAvatar = async (curr: ICurrency) => {
+		if (!CoNET_Data||!beamio ) return
+		
+		const tmpData = CoNET_Data
+		
+		const profile: profile = tmpData.profiles[0]
+		const bo = beamio
+		bo.currency = curr
+		await postBeamio(bo, profile.privateKeyArmor)
+
+		tmpData.beamio = bo
+		setCoNET_Data(tmpData)
+		
+		await storeSystemData()
+		setBeamio({...bo})
+	}
 
 	const ShowNode = () => {
 	
@@ -124,28 +216,36 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		return (
 
 			<>
-			<p>
-				Review the details and confirm this payment.
-			</p>
-			<div className="mb-3">
-				<div className="flex items-center justify-between mb-1">
-					<label className="block text-[11px] text-slate-500">Request Account</label>
-				</div>
-				<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+				
+				<div className="mb-3 mt-4">
+					<div className="flex items-center justify-between mb-1">
+						<label className="block text-[11px] text-slate-500">Request Amount</label>
+					</div>
+					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+						{/* 左侧：法币金额（放大） */}
+						<span className="text-[16px] font-semibold text-slate-900">
+							{fiatPrefix(requestCurrency)} {formatAmount(Number(amt), requestCurrency)}
+						</span>
+
+						{/* 右侧：USDC */}
+						<div className="flex flex-col items-end leading-tight">
+							<span className="font-mono font-semibold text-[14px] text-black/70">
+								{currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4)} USDC
+							</span>
+
+							{/* 预留副行（未来可开） */}
+							{/*
+							<span className="text-[12px] text-slate-500 tabular-nums">
+								≈ {payUsdc} USDC
+							</span>
+							*/}
+						</div>
+					</div>
+					{/* 右侧：两行，右对齐 */}
+						
 					
-					<span className="text-lg font-semibold text-slate-900 tracking-tight">{fmtAddr(recipient)}</span>
 				</div>
-			</div>
-			<div className="mb-3">
-				<div className="flex items-center justify-between mb-1">
-					<label className="block text-[11px] text-slate-500">Amount</label>
-					<span className="text-[11px] text-slate-400">USDC on Base</span>
-				</div>
-				<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
-					<span className="text-[12px] text-slate-500">You will pay</span>
-					<span className="text-lg font-semibold text-slate-900 tracking-tight">{amount}</span>
-				</div>
-			</div>
+				
 			</>
 
 				
@@ -153,35 +253,36 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 	}
 
 	const Paymentbreakdown = () => {
+		if (!messageData) {
+			return(<></>)
+		}
 		return (
-			<div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 space-y-1.5">
+			<div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 space-y-1.5 mt-4">
 				<div className="flex justify-between">
 					<span>Request amount</span>
-					<span className="text-slate-900 font-medium"> {amount} USDC</span>
+					<span className="text-slate-900 font-medium"> {currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4)} USDC</span>
 				</div>
-				<div className="flex justify-between">
+				{/* <div className="flex justify-between">
 					<span>Tip</span>
 					<span className="text-slate-900 font-medium">{tipAmount} USDC</span>
-				</div>
+				</div> */}
 				<div className="flex justify-between">
 					<span>Network Fee</span>
 					<span className="text-emerald-600 font-medium">Sponsored by Beamio</span>
 				</div>
 				<div className="flex justify-between pt-1 border-t border-slate-200 mt-1">
 					<span>Total from your wallet</span>
-					<span className="text-slate-900 font-semibold">{totalAmount.toFixed(2)} USDC</span>
+					<span className="text-slate-900 font-semibold">{currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4)} USDC</span>
 				</div>
-				<p>
-					Beamio service fee (0.8%) for this Payment Link is paid by the person who created it. You only pay the total shown above.
-				</p>
+				
           	</div>
 		)
 	}
 
 	const signRequest = async (messageDataRe: any) => {
 		setProcessing (true)
-		
-		const paymentHeader = await AuthorizationSign(messageDataRe.maxAmountRequired, messageDataRe.payTo)
+		const data = messageDataRe.data
+		const paymentHeader = await AuthorizationSign(data.amount, messageDataRe.payTo)
 		const newInit = {
 			method: 'GET',
 			headers: {
@@ -192,7 +293,7 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 			__is402Retry: true
 		}
 
-		const reqUrl = messageDataRe.reqUrl
+		const reqUrl = data.reqUrl
 		try {
 			const secondResponse = await fetch(reqUrl, newInit)
 			const body = await secondResponse.json()
@@ -201,10 +302,6 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 			if (!secondResponse.ok) {
 				return setProcessError('RPC Error!')
 			}
-			const _amount = Number(ethers.formatUnits(messageDataRe.maxAmountRequired, 6))
-			setAmount (formatMoney(_amount))
-
-			
 			setSignx402Show(false)
 			return setSuccessPayLink(body.USDC_tx)
 		} catch (ex) {
@@ -230,7 +327,26 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		setStep('form')
 	}
 
+	const oracle = async () => {
+		const data = await getOracle()
+		setCurrencyData({
+			CAD: Number(data.usdcad),
+			JPY: Number(data.usdjpy),
+			USD: 1,
+			CNY: Number(data.usdcny),
+			USDC: Number(data.usdc),
+			HKD: Number(data.usdhkd),
+			TWD: Number(data.usdtwd),
+			EUR: Number(data.usdeur),
+			SGD: Number(data.usdsgd),
+		})
+	}
+	let process = false
 	useEffect(() => {
+		if (process) {
+			return
+		}
+		process = true
 		if (!profiles?.length) {
 			return
 		}
@@ -238,78 +354,51 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		if (!myAddress) {
 			setMyAddress(profile.keyID)
 		}
+		getBeo()
 		
-		window.addEventListener("sign:final", onSignFinal)
-
-		return () => {
-			window.removeEventListener("sign:final", onSignFinal)
-		}
 	}, [])
 
 	useEffect(() => {
-		
-		if ( totalAmount > usdcbalance) {
-			return setError('Insufficient balance')
-		}
-		return setError('')
-	}, [tipAmount, usdcbalance])
-
-	useEffect(() => {
-		
-		if ( !error && !processError) {
-			return 
-		}
+		if (!processError) return
 		setTimeout(() => {
-			setError('')
+			setMessageData('')
 			setProcessError('')
-			setShowPayButton(true)
-		}, 4000)
+		}, 2000)
+	}, [processError])
 
-	}, [error, processError])
 
 
 	const Header = () => {
 		return (
-					<div className="flex items-center justify-between mb-3">
+				<div className="flex items-center justify-between mb-3">
 					<div className="flex flex-col">
 						<span className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
 							Beamio
 						</span>
 						<h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-							Payments
+							Payments Request
 						</h1>
 					</div>
 
 					<div className="text-right">
 						<p className="text-[12px] font-medium text-slate-900 dark:text-slate-100">
-							USDC {formatWithThousands(usdcToUSD)}
+							USDC {formatWithThousands(usdcbalance)}
 						</p>
 						<p className="text-[11px] text-slate-500 dark:text-slate-400">
 							Available on Base
 						</p>
 					</div>
 				</div>
-		)
+			)
 
 	}
 
-	const payLinkClick = async (reject: boolean) => {
-
-		if ( !reject && (!myAddress|| !amt ) || error) {
-			return
-		}
-
-		const total = Number(tipAmount) + Number(amount)
-		if ( !reject && total > usdcbalance) {
+	const payLinkClick = async () => {
+		const amount = Number(currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4))
+		if ( amount === 0 || amount > usdcbalance) {
 			return setError('Insufficient balance')
 		}
-		if (reject) {
-			setShowPayButton(false)
-
-			setPower(true)
-			closeWin()
-			return
-		}
+		
 
 		setProcessing(true)
 
@@ -330,8 +419,8 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		// }, 2000)
 
 		
-		const fixedAmount = ethers.parseUnits(totalAmount.toFixed(2), 6)
-		const params = new URLSearchParams({ amount: reject ? '0' : fixedAmount.toString(), code }).toString()
+		const fixedAmount = ethers.parseUnits(amount.toFixed(4), 6)
+		const params = new URLSearchParams({ amount: fixedAmount.toString(), code }).toString()
 		const path = `/api/BeamioPaymentLinkFinish?${params}`
 		const requestEndpoint = 'https://api.settleonbase.xyz' + path
 
@@ -343,7 +432,7 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 				method: 'GET'
 			})
 			
-			if (response.status == 200 && reject) {
+			if (response.status == 200) {
 				setProcessing(false)
 				setShowPayButton(true)
 				return setSuccessPayLink('success')
@@ -359,31 +448,35 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 
 			const { x402Version, accepts } = await response.json()
 			const MessageData = accepts[0]
-			MessageData.reqUrl = requestEndpoint
-			
+			const data = {
+				node: note,
+				sginTatle: 'Cashcode',
+				reqUrl: requestEndpoint,
+				amount: fixedAmount
 
-			const gas: any = await estimateGasUSDC (totalAmount, recipient)
-			if (!gas) {
-				setProcessing(false)
-				return setError('RPC Error!')
 			}
-
-			const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
-			
-			const ethPrice = gas.oracle.eth.eth
-			const price = Number(gasCostEth) * ethPrice
-			
-			
-			MessageData.gas = {
-				gasETH: gasCostEth.toFixed(7),
-				gasUSD: price.toFixed(5)
-			}
-
-			MessageData.showPayToAddress = recipient
-			
-			setProcessing(false)
-			setSignx402Show(true)
+			MessageData.data = data
 			setMessageData(MessageData)
+			setProcessing(false)
+			
+
+			// const gas: any = await estimateGasUSDC (totalAmount, recipient)
+			// if (!gas) {
+			// 	setProcessing(false)
+			// 	return setError('RPC Error!')
+			// }
+
+			// const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
+			
+			// const ethPrice = gas.oracle.eth.eth
+			// const price = Number(gasCostEth) * ethPrice
+			
+			
+			// MessageData.gas = {
+			// 	gasETH: gasCostEth.toFixed(7),
+			// 	gasUSD: price.toFixed(5)
+			// }
+
 			
 		} catch (ex) {
 			setProcessing(false)
@@ -393,7 +486,42 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		
 	}
 
+	const getBeo = async () => {
+		if (!beamio || !CoNET_Data) {
+			return
+		}
+		setCurrency(beamio.currency)
+		try {
+			const [fx] = await 
+			Promise.all([
+				CoreContract.getLinkMemo(code),
+				oracle()
+			])
+			
+			const amount = Number(ethers.formatUnits(fx.amount, 6))
+			const note: string = fx.node
+			const _currency: ICurrency = note.split('\r\n')[1] as ICurrency ||'USDC'
+			setRequestCurrency(_currency||'USDC')
+			setAmt(amount.toFixed(4))
+			setNote(note.split('\r\n')[0])
+			setRecipient(fx.to)
+			const data = await searchUsername(fx.to)||[]
+			if (data?.results?.length) {
+				setFromBeamio({...data.results[0]})
+			}
+
+			const requestUSDC = Number(currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4))
+			
+			setRequestToUSDC(requestUSDC.toString())
+
+		} catch (ex) {
+			console.log(``)
+		}
+		
+	}
+
 	const SuccessPayment = () => {
+		const data = messageData.data
 		return (
 			 <div className="flex flex-col bg-slate-50 text-slate-900">
 				{/* Header */}
@@ -421,14 +549,14 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 					</p>
 
 					<p className="text-3xl font-semibold text-slate-900 mb-2 text-center">
-						{amount} USDC
+						{Number(currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4))} USDC
 					</p>
 
-					<p className="text-[11px] text-slate-500 mb-6 text-center max-w-xs">
+					{/* <p className="text-[11px] text-slate-500 mb-6 text-center max-w-xs">
 						The recipient received {amount} USDC. Any Beamio service fee was
 						already handled in their Payment Link. Network fees were paid by
 						Beamio.
-					</p>
+					</p> */}
 
 					{/* 跟在说明文字下方 */}
 					<div className="w-full mt-4 flex flex-col gap-2">
@@ -457,6 +585,64 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		)
 	}
 
+	const SenderBmo = () => {
+		if (!fromBeamio) {
+			return (<></>)
+		}
+
+		const fallback = typeof getImg === 'function' ? getImg(fromBeamio?.image||'') : ''
+		return (
+				<button
+					key={fromBeamio?.username}
+					type="button"
+					className="
+						w-full
+						flex items-center gap-2
+						rounded-full
+						border border-slate-200
+						bg-slate-50
+						px-3 py-2
+						text-left
+						hover:bg-slate-100
+						active:scale-[0.98]
+						transition
+					"
+				>
+					{/* Avatar */}
+					<img
+						src={fromBeamio?.image || fallback}
+						alt={fromBeamio?.username}
+						className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-slate-200"
+					/>
+
+					{/* 左侧：用户名 / @handle（必须 flex-1 + min-w-0） */}
+					<span className="flex-1 min-w-0">
+						<span className="block text-[12px] text-slate-900 truncate">
+							{fromBeamio ? displayName(fromBeamio) : ""}
+						</span>
+						<span className="block text-[10px] text-slate-500 truncate">
+							@{fromBeamio?.username}
+						</span>
+					</span>
+
+					{/* 右侧：金额（整行最右 + 粗体） */}
+					{/* <span
+						className="
+							ml-auto
+							flex-shrink-0
+							text-right
+							text-[12px]
+							font-semibold
+							tabular-nums
+							text-slate-900
+							text-[16px]
+						"
+					>
+						{amount} USDC
+					</span> */}
+				</button>)
+	}
+
 	return (
 		
 		<div
@@ -464,9 +650,7 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 		>
 
 			{
-				signx402Show ?
-				<ConformSignInfo originUrl='https://beamio.app' messageData={messageData} processError={processError} processing={processing} /> 
-				: <div className="">
+				 <div className="">
 					{
 						successPayLink ?  <>
 							<SuccessPayment />
@@ -474,16 +658,19 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 						: <div >
 							<Header />
 							{
+								fromBeamio && <SenderBmo />
+							}
+							{
 								note && <ShowNode />
 							}
 							
 							<ShowAmount />
-							<TipInput
+							{/* <TipInput
 								tipAmount={tipAmount}
 								setTipAmount={setTipAmount}
 								amt={amt}
 								tipError={tipError}
-							 />
+							 /> */}
 							
 							{error ? (
 								<div className="mt-2 text-[13px] text-red-600" aria-live="polite">
@@ -495,14 +682,13 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 							<div className="flex items-center gap-3 mt-3 mb-6">
 							
 							{
-								(!processing || !showPayButton) &&  <AppButton
+								(!processing && !processError) &&  <AppButton
 									variant='secondary'
 									disabled={!!error}
 									fullWidth
-									errorText={processError}
 									loading={processing}
 									onClick={() => {
-										payLinkClick(true)
+										closeWin()
 									}}
 								>
 									Cancel
@@ -521,11 +707,14 @@ const PayForm = ({note, amt, recipient, code, closeWin}: Props) => {
 											if (!!error) {
 												return
 											}
-											payLinkClick(false)
-
+											if(!messageData) {
+												return payLinkClick()
+											}
+											
+											signRequest(messageData)
 										}}
 									>
-										Pay {formatMoney(totalAmount)} USDC with Beamio
+										{!messageData ? 'Continue' : 'Pay'}
 									</AppButton>
 							}
 							</div>

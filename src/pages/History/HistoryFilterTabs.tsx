@@ -1,12 +1,4 @@
-export type HistoryFilter =
-  | 'all'
-  | 'sent'
-  | 'received'
-  | 'pending'
-  | 'completed'
-  | 'reject'
-  | 'paid'
-  | 'deposited'
+
 
 type Mode = 'pay' | 'request' | 'cashcode'
 

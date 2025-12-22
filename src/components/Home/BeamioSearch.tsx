@@ -20,8 +20,8 @@ return (
 				readonly={false}
 				showHistory={true}
 				close={path => {
-				if (path) close(path)
-				else close('/')
+					if (path) close(path)
+					else close('/')
 				}}
 			/>
 			

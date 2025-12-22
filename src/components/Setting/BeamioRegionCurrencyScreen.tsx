@@ -197,7 +197,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 		setLoading(false)
 	}
   return (
-    <div className="flex flex-col min-h-[760px] bg-white mt-6">
+    <div className="flex flex-col min-h-[760px] bg-white mt-6 mb-12">
 
 
       {/* header */}
@@ -244,10 +244,16 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 			value={currency}
 			onChange={(v) => setCurrency(v as ICurrency)}
 			options={[
-				{ value: 'USD', label: 'USD · US Dollar' },
+				 { value: 'USD', label: 'USD · US Dollar' },
 				{ value: 'CAD', label: 'CAD · Canadian Dollar' },
+				{ value: 'EUR', label: 'EUR · Euro' },
 				{ value: 'JPY', label: 'JPY · Japanese Yen' },
-				{ value: 'CNY', label: 'CNY · Chinese Yuan' }
+				{ value: 'CNY', label: 'CNY · Chinese Yuan' },
+				{ value: 'HKD', label: 'HKD · Hong Kong Dollar' },
+				{ value: 'SGD', label: 'SGD · Singapore Dollar' },
+				{ value: 'TWD', label: 'TWD · New Taiwan Dollar' }
+				
+
 			]}
 		/>
 
@@ -299,6 +305,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
           Done
         </AppButton>
       </div>
+	  <div className="h-20" />
     </div>
   );
 }

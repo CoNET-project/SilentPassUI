@@ -55,7 +55,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 		}
 		
 		
-		if (pin.trim().length < 6 || pin.trim().length > 8 || !/^[0-9]+$/.test(pin.trim())) {
+		if (pin.trim().length < 6) {
 			setError('PIN must be 6–8 digits')
 			return
 		}
@@ -200,7 +200,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 										className="mt-3"
 										onClick={() => {
 											setError('')
-											if (pin.trim().length < 6 || pin.trim().length > 8 || !/^[0-9]+$/.test(pin.trim())) {
+											if (pin.trim().length < 6) {
 												setError('PIN must be 6–8 digits')
 												return
 											}

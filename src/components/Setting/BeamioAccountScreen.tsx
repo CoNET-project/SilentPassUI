@@ -2,9 +2,12 @@ import React, { useState, useEffect, useRef } from 'react'
 import { X, Camera, Trash2, Check } from "lucide-react";
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { storeSystemData, postBeamio } from '@/services/beamio'
+import { storeSystemData, postBeamio, postToIPFS } from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
+import {urlToObjectUrl} from '@/components/card/useObjectImgSrc'
 
+
+const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
 
 const defaultName = 'Beamio'
 
@@ -12,14 +15,46 @@ type prof = {
 	colse: (bo: beamio) => void
 }
 
+// ✅ Downscale helper：仅当 w>250 && h>250 才触发
+const downscaleTo250 = (img: HTMLImageElement) => {
+	const w = img.width
+	const h = img.height
+
+	// 仅当两边都超 250 才触发
+	if (!(w > 250 && h > 250)) {
+		return null // 表示不需要缩小
+	}
+
+	// 规则：先按高 250；若宽 < 250，则改按宽 250
+	let targetH = 250
+	let targetW = Math.round((w * 250) / h)
+
+	if (targetW < 250) {
+		targetW = 250
+		targetH = Math.round((h * 250) / w)
+	}
+
+	const canvas = document.createElement('canvas')
+	canvas.width = targetW
+	canvas.height = targetH
+
+	const ctx = canvas.getContext('2d')
+	if (!ctx) return null
+
+	ctx.clearRect(0, 0, targetW, targetH)
+	ctx.drawImage(img, 0, 0, targetW, targetH)
+
+	return canvas.toDataURL('image/png')
+}
+
 
 
 export default function BeamioAccountScreen({colse}:prof) {
-	const {beamio, setBeamio, setProfiles, setDarkModle, darkModle } = useDaemonContext()
+	const {beamio, setBeamio, setProfiles, setDarkModle, darkModle, profiles } = useDaemonContext()
 	const [avatarSeed, setAvatarSeed] = useState(beamio?.accountName||defaultName)
 	const [avatarName, setAvatarName] = useState(beamio?.accountName||defaultName)
 	const [firstName, setFirstName] = useState(beamio?.firstName)
-	const [lastName, setLastName] = useState(beamio?.lastName)
+	const [lastName, setLastName] = useState('')
 	const [avatarEditorVisible, setAvatarEditorVisible] = useState(false)
 	const [avatarImageDataTemp, setAvatarImageDataTemp] = useState<string | null>(null)
 	const [avatarFileUrl, setAvatarFileUrl] = useState<string | null>(null)
@@ -30,100 +65,89 @@ export default function BeamioAccountScreen({colse}:prof) {
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 
-	const currentAvatarSrcTemp = avatarUrl
+	// ✅ 用上传图优先，否则 fallback dicebear
+	const currentAvatarSrcTemp = avatarImageDataTemp || avatarUrl
+
+	
+	const initData = async (bo: beamio) => {
+		if (/ipfs/i.test(bo.image)) {
+			setAvatarImageDataTemp(await urlToObjectUrl(bo.image))
+		}
+		
+		const _last = bo.lastName||''
+		setLastName(_last.split('\r\n')[0])
+	}
 
 	useEffect(() => {
 		
 		if (!beamio) return
 	
-		if (beamio.image) {
-			setAvatarImageDataTemp(beamio.image)
-		}
+		
+		initData(beamio)
+			
+		
+		
+		
 	}, [])
 
-	
 	const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  		const file = e.target.files?.[0]
+		const file = e.target.files?.[0]
 		if (!file) return
 
-		// 可选：限制只接受图片
 		if (!file.type.startsWith('image/')) {
-			// 这里可以弹个 toast
 			console.warn('Only image files are allowed')
 			return
 		}
 
-		// 原始文件预览 URL（比如 <img src={avatarFileUrl} />）
+		// 允许重复选择同一张图也能触发 onChange
+		e.target.value = ''
+
 		const url = URL.createObjectURL(file)
 		setAvatarFileUrl(prev => {
 			if (prev) URL.revokeObjectURL(prev)
 			return url
 		})
-
 		setAvatarFileName(file.name)
 
 		const reader = new FileReader()
-
 		reader.onloadend = () => {
 			const dataUrl = reader.result as string
 			if (!dataUrl) return
 
 			const img = new Image()
 			img.onload = () => {
-				const maxSize = 256 // 最大边长 256
-
-				let width = img.width
-				let height = img.height
-
-				// 计算缩放比例（保持宽高比，最长边不超过 maxSize）
-				const scale = Math.min(maxSize / width, maxSize / height, 1) // 小图不放大
-				const targetWidth = Math.round(width * scale)
-				const targetHeight = Math.round(height * scale)
-
-				const canvas = document.createElement('canvas')
-				canvas.width = targetWidth
-				canvas.height = targetHeight
-
-				const ctx = canvas.getContext('2d')
-				if (!ctx) {
-					// 出错就 fallback 用原图
-					setAvatarImageDataTemp(dataUrl)
-					return
-				}
-
-				ctx.clearRect(0, 0, targetWidth, targetHeight)
-				ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
-
-				// 导出为 PNG base64（也可以用 'image/jpeg' 再配合质量参数）
-				const resizedDataUrl = canvas.toDataURL('image/png')
-
-				// 存压缩后的 base64
-				setAvatarImageDataTemp(resizedDataUrl)
+			const resized = downscaleTo250(img)
+			// resized 为 null => 不需要缩小，直接用原图
+			setAvatarImageDataTemp(resized || dataUrl)
 			}
-
-			img.onerror = () => {
-				// 如果加载失败就直接用原始 dataURL
-				setAvatarImageDataTemp(dataUrl)
-			}
-
+			img.onerror = () => setAvatarImageDataTemp(dataUrl)
 			img.src = dataUrl
 		}
 
 		reader.readAsDataURL(file)
 	}
 
+	
+	
 	const handleSaveAvatar = async () => {
-		if (!CoNET_Data) return
+		if (!CoNET_Data|| !profiles) return
 		setLoading(true)
 		const tmpData = CoNET_Data
 		setAvatarEditorVisible(false)
 		setAvatarName(avatarSeed||defaultName)
+		let hash = null
+		if (avatarImageDataTemp) {
+			hash = await postToIPFS(profiles[0], avatarImageDataTemp)
+			if (hash) {
+				hash = `${ipfsEndpoint}${hash}`
+			}
+		}
 		const profile: profile = tmpData.profiles[0]
 		const bo: beamio = {
 			firstName,
 			lastName,
 			accountName: avatarName || defaultName,
-			image: currentAvatarSrcTemp,
+			image: hash || currentAvatarSrcTemp,
 			darkTheme: darkModle,
 			isETHFaucet: beamio?.isETHFaucet|| false,
 			isUSDCFaucet: beamio?.isUSDCFaucet|| false,
@@ -162,7 +186,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 						<button
 							type="button"
 							onClick={() => {
-								// avatarInputRef.current?.click()
+								avatarInputRef.current?.click()
 							}}
 							className="
 								h-full w-full 
@@ -217,52 +241,56 @@ export default function BeamioAccountScreen({colse}:prof) {
 					<p className="text-lg text-slate-500">
 						Your Beamio avatar
 					</p>
+						{
+							!avatarImageDataTemp && (
+								<>
+									<div className="
+										flex items-center rounded-2xl bg-slate-50 border border-slate-200
+										focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100
+										overflow-hidden
+									">
+										<span className="px-3 text-sm text-slate-500">Avatar text </span>
+
+										<input
+											value={avatarSeed}
+											onChange={e => setAvatarSeed(e.target.value)}
+											type="text"
+											onFocus={() => setAvatarSeedConfirmed(false)}
+											placeholder="any word or phrase"
+											className="flex-1 bg-transparent outline-none text-sm py-3 pr-2 placeholder:text-slate-400"
+										/>
 
 
-					
-					
-						<div className="
-							flex items-center rounded-2xl bg-slate-50 border border-slate-200
-							focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100
-							overflow-hidden
-						">
-							<span className="px-3 text-sm text-slate-500">Avatar text </span>
+										{/* ✔️ 绿色确认按钮 */}
+										{
+											!avatarSeedConfirmed && (
+												<button
+													type="button"
+													onClick={() => {
+														setAvatarSeedConfirmed(true)
+													}}
+													className="
+														h-8 w-8 mr-2 flex items-center justify-center
+														rounded-full bg-emerald-500 hover:bg-emerald-600
+														text-white transition-all duration-150
+														active:scale-90 active:ring-4 active:ring-emerald-200
+													"
+												>
+													<Check className="w-4 h-4" strokeWidth={2} />
+												</button>
+											)
+										}
+										
+									</div>
+									<p className=" text-[12px] text-slate-500">
+										Change the letters to pick a different avatar.
+									</p>
 
-							<input
-								value={avatarSeed}
-								onChange={e => setAvatarSeed(e.target.value)}
-								type="text"
-								onFocus={() => setAvatarSeedConfirmed(false)}
-								placeholder="any word or phrase"
-								className="flex-1 bg-transparent outline-none text-sm py-3 pr-2 placeholder:text-slate-400"
-							/>
-
-
-							{/* ✔️ 绿色确认按钮 */}
-							{
-								!avatarSeedConfirmed && (
-									<button
-										type="button"
-										onClick={() => {
-											setAvatarSeedConfirmed(true)
-										}}
-										className="
-											h-8 w-8 mr-2 flex items-center justify-center
-											rounded-full bg-emerald-500 hover:bg-emerald-600
-											text-white transition-all duration-150
-											active:scale-90 active:ring-4 active:ring-emerald-200
-										"
-									>
-										<Check className="w-4 h-4" strokeWidth={2} />
-									</button>
-								)
-							}
-							
-						</div>
-						<p className=" text-[12px] text-slate-500">
-							Change the letters to pick a different avatar.
-						</p>
-				</div>
+								</>
+							)
+						}
+						
+					</div>
 				<input
 					ref={avatarInputRef}
 					id="avatarFileInput"
@@ -270,7 +298,7 @@ export default function BeamioAccountScreen({colse}:prof) {
 					accept="image/*"
 					capture="environment"
 					className="hidden"
-					// onChange={handleAvatarFileChange}
+					onChange={handleAvatarFileChange}
 				/>
 
 				{/* Form fields */}
@@ -334,20 +362,26 @@ export default function BeamioAccountScreen({colse}:prof) {
 					Beamio does not keep a centralized user database. Your account
 					information is stored on your device and/or on-chain.
 				</p>
+
+				
+
+				
 			</div>
 
 			{/* Footer actions */}
-			<footer className="mt-auto px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-4 bg-white/90 backdrop-blur ">
 			
-			<AppButton
-				onClick={handleSaveAvatar}
-				loading={loading}
-				fullWidth
-			>
-				Save
-			</AppButton>
 			
-			</footer>
+			<div className="mt-auto px-4 pb-6">
+				<AppButton
+					onClick={handleSaveAvatar}
+					loading={loading}
+					fullWidth
+				>
+					Save
+				</AppButton>
+			</div>
+			
+			<div className="h-20" />
 			
 		</aside>
 		</>

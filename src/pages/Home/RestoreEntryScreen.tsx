@@ -24,7 +24,7 @@ const RestoreEntryScreen = ({
 
 				{/* 副标题 */}
 				<p className="mt-1 text-[14px] text-slate-500 leading-snug">
-					Use your Recovery QR / code S, or restore via @username + PIN with our
+					Use your Recovery QR / code S, or restore via @BeamioTag + PIN with our
 					encrypted backup.
 				</p>
 
@@ -52,7 +52,7 @@ const RestoreEntryScreen = ({
 						className="rounded-[999px] py-3 text-[15px] font-semibold"
 						onClick={onUseUsernamePin}
 					>
-						Use @username + PIN
+						Use @BeamioTag + PIN
 					</AppButton>
 				</div>
 

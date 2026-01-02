@@ -1,5 +1,4 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
-
 import {AuthorizationSign, aesGcmEncrypt, generateCODE} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { AppButton } from "@/components/button/AppButton"

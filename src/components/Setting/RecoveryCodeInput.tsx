@@ -44,7 +44,7 @@ export const RecoveryInputs = ({pin}: prof) => {
 		>
 			{/* 左侧 label */}
 			<span className="px-3 text-sm text-slate-500 whitespace-nowrap">
-				PIN
+				password
 			</span>
 
 			{/* 输入框 */}
@@ -55,7 +55,7 @@ export const RecoveryInputs = ({pin}: prof) => {
 							setCodeValue(e.target.value)
 							setCodeStatus("idle")
 				}}
-				placeholder="Enter PIN"
+				placeholder="Enter password"
 				className="
 						flex-1 bg-transparent outline-none 
 						text-sm py-3 

@@ -1,3 +1,5 @@
+//		html5QrcodePlugin.module.scss
+
 .scanCamera{
     width: 100%;
     height: 100%;
@@ -34,10 +36,12 @@
     }
     .closeBtn{
         position: absolute;
-        left: 5vw;
-        top: 5vw;
-        z-index: 999999;
-        color: #fff;
-        font-size: 7vw;
+		z-index: 999999;
+		color: #fff;
+		font-size: 7vw;
+
+		/* ✅ 最小修复：避开刘海安全区 */
+		left: calc(env(safe-area-inset-left) + 5vw);
+		top: calc(env(safe-area-inset-top) + 5vw);
     }
 }

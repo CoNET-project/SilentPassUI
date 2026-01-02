@@ -474,6 +474,7 @@ type Argon2idHash = {
 		language: ILanguage
 		currency: ICurrency
 		address?: string
+		payme?: string
   }
 
 	type IMessageDataAccountInfo = {
@@ -496,6 +497,26 @@ type IMessageData = {
 
 type PaymentLinkLockMode = "FIAT_LOCKED" | "USDC_LOCKED";
 
+
+type HistoryFilter =
+  | 'all'
+  | 'sent'
+  | 'received'
+  | 'pending'
+  | 'completed'
+  | 'reject'
+  | 'paid'
+  | 'deposited'
+
+
+type IImageCard = {
+	title: string
+	detail: string
+	image: string,
+	currency: ICurrency
+	currencyAmount: string
+}
+
 type TransferHistork = {
 	date: number
 	amount: number
@@ -510,15 +531,6 @@ type TransferHistork = {
 	type1:HistoryFilter|''
 	fee: number
 	preAmount: number
+	card?: IImageCard
 
 }
-
-type HistoryFilter =
-  | 'all'
-  | 'sent'
-  | 'received'
-  | 'pending'
-  | 'completed'
-  | 'reject'
-  | 'paid'
-  | 'deposited'

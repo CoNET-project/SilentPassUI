@@ -41,7 +41,11 @@ const HomePage = ({}) => {
   	}, [])
 	
     return (
-        <>
+        <div
+			className="
+				pt-[calc(env(safe-area-inset-top)+0.2rem)]
+			"
+		>
 			{
 				showBeamioOnboardingModal ? <BeamioOnboardingModal home={() => {
 					storageInit()
@@ -49,7 +53,7 @@ const HomePage = ({}) => {
 				: <Home /> 
 			}
             
-        </>
+        </div>
     )
 }
 

@@ -1,5 +1,5 @@
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
-import {ethers} from 'ethers' 
+import {ethers, keccak256, toUtf8Bytes} from 'ethers' 
 import usdc_abi from './ABI/usdc_abi.json'
 import {
 	customJsonStringify,
@@ -93,6 +93,7 @@ const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
 const beamioApi = 'https://beamio.app'
+const ipfsEndpoint = `https://ipfs.conet.network/api/`
 
 const getOraclesEndPoint = `${beamioApi}/api/getOracle`
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`
@@ -1098,41 +1099,6 @@ const hashPasswordBrowser = (
 	}
 }
 
-const verifyPasswordBrowser = (
-	password: string,
-	stored: Argon2idHash
-): boolean => {
-	if (stored.algo !== 'argon2id') return false
-
-	const salt = b64decode(stored.salt)
-	const target = b64decode(stored.hash)
-
-	const hash = argon2id(
-		enc.encode(password),
-		salt,
-		{
-			m: stored.m,
-			t: stored.t,
-			p: stored.p,
-			dkLen: target.length
-		}
-	)
-
-	return timingSafeEqualUint8(hash, target)
-}
-
-function encodeStoredToBase64(stored: any): string {
-	const json = JSON.stringify(stored)
-	const bytes = new TextEncoder().encode(json)
-	return btoa(String.fromCharCode(...bytes))
-}
-
-function decodeStoredFromBase64(b64: string): any {
-	const binary = atob(b64)
-	const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
-	const json = new TextDecoder().decode(bytes)
-	return JSON.parse(json)
-}
 
 export const checkBeamioAccountAPI = async(preBeamio: string): Promise<boolean> => {
 	try {
@@ -1582,3 +1548,31 @@ export const getFololowsData = async (wallet: string) => {
 	
 }
 
+//		curl -v "https://ipfs.conet.network/api/getFragment?hash=0x5de59d1bc6d7e11ef2c304163773d80089f39802cc77a9b3944fa4ea8fdbe42c"
+
+export const postToIPFS = async (profile: profile, image: string) => {
+	const url = `${ipfsEndpoint}storageFragment`
+	const wallet = new ethers.Wallet(profile.privateKeyArmor)
+	const hash = keccak256(toUtf8Bytes(image))
+	try {
+		const body = {
+			wallet: wallet.address,
+			image,
+			signMessage: await wallet.signMessage(wallet.address)
+		}
+
+		const resp = await fetch(url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify(body)
+		})
+		
+		
+	} catch (err) {
+		console.error("addFollowing error:", err)
+		return null
+	}
+	return hash
+}

@@ -102,9 +102,9 @@ const BeamioInstallOnboarding: React.FC = () => {
 			{
 
 				installed ? <BeamioOnboardingModal home={() => {
-					if (MobileType() === 'desktop') {
-						navigate('/')
-					}
+					
+					navigate('/')
+					
 				}}/> : 
 				<div className="flex justify-center px-4 py-8">
 					{/* 滚动容器：限制最大高度 + 内部滚动 */}
@@ -113,12 +113,12 @@ const BeamioInstallOnboarding: React.FC = () => {
 					">
 						{/* Title + subtitle */}
 						<h1 className="text-2xl md:text-3xl font-semibold text-slate-900 mb-2">
-						Install Beamio before you start
+							Install Beamio before you start
 						</h1>
 						<p className="text-sm md:text-base text-slate-600 mb-5 md:mb-6 leading-relaxed">
-						To keep your wallet stable and avoid different wallet addresses, please install Beamio
-						on mobile or use Google Chrome on desktop. On mobile, your wallet will only be created
-						inside the installed Beamio app.
+							To keep your wallet stable and avoid different wallet addresses, please install Beamio
+							on mobile or use Google Chrome on desktop. On mobile, your wallet will only be created
+							inside the installed Beamio app.
 						</p>
 
 						{/* Tabs for iOS / Android / Desktop instructions */}
@@ -276,19 +276,22 @@ const BeamioInstallOnboarding: React.FC = () => {
 
 		{/* 安装后提示弹窗 */}
 		{showPostInstallTips && (
-			<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto">
-				<div className="w-[90%] max-w-sm rounded-2xl bg-white dark:bg-slate-900 shadow-xl p-4">
-				<div className="flex justify-between items-center mb-2">
-					<h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-					Beamio installed 🎉
-					</h2>
-					<button
-					className="text-xs text-slate-400 hover:text-slate-600"
-					onClick={() => setShowPostInstallTips(false)}
-					>
-					Close
-					</button>
-				</div>
+			<div className="
+
+				
+				">
+				<div className="min-h-full flex items-center justify-center">
+					<div className="flex justify-between items-center mb-2">
+						<h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+							Beamio installed 🎉
+						</h2>
+						<button
+						className="text-xs text-slate-400 hover:text-slate-600"
+						onClick={() => setShowPostInstallTips(false)}
+						>
+							Close
+						</button>
+					</div>
 
 				{isMac && (
 					<div className="text-xs leading-relaxed text-slate-700 dark:text-slate-300 space-y-1">
@@ -334,10 +337,10 @@ const BeamioInstallOnboarding: React.FC = () => {
 
 				<div className="mt-3 flex justify-end">
 					<button
-					onClick={() => setShowPostInstallTips(false)}
-					className="px-3 py-1.5 text-xs rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+						onClick={() => setShowPostInstallTips(false)}
+						className="px-3 py-1.5 text-xs rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
 					>
-					OK
+						OK
 					</button>
 				</div>
 				</div>

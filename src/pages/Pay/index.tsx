@@ -17,6 +17,11 @@ import {motion, AnimatePresence } from "framer-motion"
 import PayScreen from '@/pages/Pay/send'
 import PaymentLink from './PaymentLink'
 import Cashcode from './Cashcode'
+import PayMe from './PayMe'
+import { useNavigate } from "react-router-dom"
+import {ethers} from 'ethers'
+import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+
 type Props = {
 	amount: string
 	noteText: string
@@ -24,12 +29,21 @@ type Props = {
 	codeHASH: string
 }
 
+const beamioConetContract = {
+	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
+	network: 'CONET DePIN',
+	abi: beamioConetCoreABI,
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	
+}
+const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
+
 const Pay = ({}) => {
 	const spSendRef=useRef()
 	const solSendRef=useRef()
 	const usdtSendRef=useRef()
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Pay'|''|'PayRequest'|'Cashcode'>('')
-	const { darkModle, setDarkModle, setProfiles, power, setPower } = useDaemonContext()
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Pay'|''|'PayRequest'|'Cashcode'|'payme'>('')
+	const { darkModle, setDarkModle, setProfiles, power, setPower, setSendToMemo, setPaymentLink, setSecureCode, setRedeemCode, setPaymentLinkCode} = useDaemonContext()
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState('')
 	const [note, setNote] = useState('')
@@ -37,18 +51,80 @@ const Pay = ({}) => {
 	const [recipient, setRecipient] = useState('')
 	const [openSearch, setOpenSearch]= useState(false)
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
+	const navigate = useNavigate()
 	type Action = 'pay' | 'cashcode' | 'request-link' | 'payme-qr'
+
+	const checkUrl = async (url: string) => {
+	
+		const u = new URL(url)
+		let searchParams: URLSearchParams
+		try {
+			const u = new URL(url)
+			searchParams = u.searchParams
+		} catch {
+			searchParams = new URLSearchParams(url)
+		}
+
+		let code = searchParams.get("code")||''
+		const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
+		const cashcode = searchParams.get("cashcode")||''
+		if (_secureCode) {
+			setSecureCode (_secureCode)
+			setRedeemCode(cashcode)
+			return navigate('/browser')
+		}
+
+		if (code) {
+
+			if (!code.startsWith('0x')) {
+				code = ethers.solidityPackedKeccak256(['string'], [code])
+				
+			}
+			try {
+				const fx = await CoreContract.getLinkMemo(code)
+				if (fx.to !== ethers.ZeroAddress && fx.amount > BigInt(0)) {
+					setPaymentLinkCode(code)
+					return navigate('/browser')
+				}
+				
+			} catch (ex) {
+				console.log(`await CoreContract.getLinkMemo(code) Error`)
+			}
+			
+			
+		}
+
+
+	}
+
 	useEffect(() => {
 
+		const off = onWalletEvent("scan:url", (url: string) => {
+			if (/^0x/i.test(url)) {
+				setPaymentLink({code: '', note: '', address: url, amount: ''})
+				
+				setSendToMemo(url)
+				navigate('/Pay')
+				return 
+			}
+			checkUrl(url)
+		})
+				// 卸载时把监听取消，避免旧实例继续吃事件
+		return () => {
+			if (typeof off === 'function') off()
+		}
 	}, [])
 
 
 	return (
-		<div className={styles.home}>
-			
-			{/* Search */}
+		<div className="
+			flex justify-center
+			pt-[calc(env(safe-area-inset-top)+0.2rem)]
+		">
+			<div className="w-full max-w-[620px] px-4 flex flex-col">
+				{/* Search */}
 			<div className="flex items-center gap-2 mb-4 mt-4">
-					<button 
+				<button 
 					onClick={() => {
 						setOpenSearch(true)
 					}}
@@ -80,7 +156,7 @@ const Pay = ({}) => {
 							return setShowAlphaHowItWorks('Pay')
 						}
 						case 'payme-qr': {
-							return 
+							return setShowAlphaHowItWorks('payme')
 						}
 						default: {
 							setShowAlphaHowItWorks('PayRequest')
@@ -89,6 +165,9 @@ const Pay = ({}) => {
 					}
 				}} />
 			</div>
+			</div>
+			
+			
 			<div
 				className={`
 					fixed inset-0 z-50
@@ -125,7 +204,7 @@ const Pay = ({}) => {
 						title={
 							showAlphaHowItWorks === 'Pay' ? 'Pay':
 							showAlphaHowItWorks === 'PayRequest' ? 'Request' : 
-							showAlphaHowItWorks === 'Cashcode' ? 'Cashcode' : ''
+							showAlphaHowItWorks === 'Cashcode' ? 'Cashcode' : 'Pay Me'
 						}
 						onClose={() => {
 							setShowAlphaHowItWorks('')
@@ -144,6 +223,9 @@ const Pay = ({}) => {
 							}
 							{
 								showAlphaHowItWorks === 'Cashcode' && <Cashcode close={( )=> setShowAlphaHowItWorks('')} />
+							}
+							{
+								showAlphaHowItWorks === 'payme' && <PayMe />
 							}
 							
 						</div>

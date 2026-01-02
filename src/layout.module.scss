@@ -1,72 +1,17 @@
-/* layout.module.scss */
+//		layout.module.scss
 
 .app {
-  height: 100%;
-  max-width: 600px;
-  min-width: 320px;
-  margin: 0 auto;
-
-  padding-top: env(safe-area-inset-top);
-
+	height: 100dvh;
   display: flex;
   flex-direction: column;
-
   overflow: hidden;
 }
 
 /* ✅ 唯一滚动容器 */
 .body {
-  flex: 1;
-  min-height: 0;
-
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-
-  padding-bottom: calc(env(safe-area-inset-bottom));
-}
-
-/* ✅ 外层只负责 fixed，不做 transform（关键） */
-.bottom {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 50;
-
-  pointer-events: none; /* 交给 inner 决定 */
-}
-
-/* ✅ 真正画出来的底栏容器（动画都在这里做） */
-.bottomInner {
-  background: #0d0d0d;
-  box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.4);
-
-  padding-bottom: env(safe-area-inset-bottom);
-
-  will-change: opacity, transform;
-  transform: translate3d(0, 0, 0);
-
-  pointer-events: auto;
-}
-
-/* 最终显示态：缓慢回落到原位 */
-.bottomShow {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-  transition: transform 260ms cubic-bezier(.2, .8, .2, 1), opacity 180ms ease;
-}
-
-/* 过冲态：快速冲到更高一点（需要 JS 120ms 后切回 bottomShow） */
-.bottomPeek {
-  opacity: 1;
-  transform: translate3d(0, -12%, 0);
-  transition: transform 120ms cubic-bezier(.2, .9, .2, 1), opacity 80ms ease;
-}
-
-/* 隐藏态：下滑出屏幕 + 渐隐 */
-.bottomHide {
-  opacity: 0;
-  transform: translate3d(0, 120%, 0); /* 这里我加到 120% 更明显更保险 */
-  transition: transform 240ms cubic-bezier(.2, .8, .2, 1), opacity 160ms ease;
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	padding-bottom: 96px; /* 先别 + env(safe-area-inset-bottom) */
 }

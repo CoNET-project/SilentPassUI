@@ -9,7 +9,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign, searchUsername, getOracle, postBeamio, storeSystemData} from '@/services/beamio'
-
+import AmountCurrency from '@/components/input/AmountCurrencyV2'
 type Step = "form" | "sign" | "processing" | "generated" | "x402Sign" | "success"
 
 type Props = {
@@ -159,16 +159,16 @@ const PayForm = ({code, closeWin}: Props) => {
 	const [tipAmount, setTipAmount] = useState("0.00"); // Request 模式的 tip
 	const [tipError, setTipError] = useState(false)
 	const [error, setError] = useState<string>("")
-	const [amount, setAmount] = useState<string|undefined>('')
+	const [amount, setAmount] = useState<string>('')
 	const [showPayButton, setShowPayButton] = useState(true)
 	const [step, setStep] = useState<Step>("form")
 	const [fromBeamio, setFromBeamio] = useState<searchResult|null>(null)
 	const [requestCurrency, setRequestCurrency] = useState<ICurrency>('USD')
 	const [crrency, setCurrency] = useState<ICurrency>('USD')
 	const [requestToUSDC, setRequestToUSDC] = useState('')
-
-	
-
+	const [amountError, setAmountError]  = useState(false)
+	const [focusAmount, setFocusAmount] = useState(false)
+	const [lockMode, setLockMode] = useState<PaymentLinkLockMode>("FIAT_LOCKED")
 	const [note, setNote] = useState('')
 	const [amt, setAmt] = useState('')
 	const [recipient, setRecipient] = useState('')
@@ -216,35 +216,60 @@ const PayForm = ({code, closeWin}: Props) => {
 		return (
 
 			<>
-				
-				<div className="mb-3 mt-4">
-					<div className="flex items-center justify-between mb-1">
-						<label className="block text-[11px] text-slate-500">Request Amount</label>
-					</div>
-					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
-						{/* 左侧：法币金额（放大） */}
-						<span className="text-[16px] font-semibold text-slate-900">
-							{fiatPrefix(requestCurrency)} {formatAmount(Number(amt), requestCurrency)}
-						</span>
+				{
+					Number(amt) > 0 ? (
+						<div className="mb-3 mt-4">
+							<div className="flex items-center justify-between mb-1">
+								<label className="block text-[11px] text-slate-500">Request Amount</label>
+							</div>
+							<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+								{/* 左侧：法币金额（放大） */}
+								<span className="text-[16px] font-semibold text-slate-900">
+									{fiatPrefix(requestCurrency)} {formatAmount(Number(amt), requestCurrency)}
+								</span>
 
-						{/* 右侧：USDC */}
-						<div className="flex flex-col items-end leading-tight">
-							<span className="font-mono font-semibold text-[14px] text-black/70">
-								{currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4)} USDC
-							</span>
+								{/* 右侧：USDC */}
+								<div className="flex flex-col items-end leading-tight">
+									<span className="font-mono font-semibold text-[14px] text-black/70">
+										{currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4)} USDC
+									</span>
 
-							{/* 预留副行（未来可开） */}
-							{/*
-							<span className="text-[12px] text-slate-500 tabular-nums">
-								≈ {payUsdc} USDC
-							</span>
-							*/}
+									{/* 预留副行（未来可开） */}
+									{/*
+									<span className="text-[12px] text-slate-500 tabular-nums">
+										≈ {payUsdc} USDC
+									</span>
+									*/}
+								</div>
+							</div>
+							{/* 右侧：两行，右对齐 */}
+								
+							
 						</div>
-					</div>
-					{/* 右侧：两行，右对齐 */}
-						
-					
-				</div>
+					): (
+						<div className="mb-3 mt-4">
+							<div className="flex items-center justify-between mb-1">
+								<label className="block text-[11px] text-slate-500">Entry Amount</label>
+							</div>
+							<div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+								<AmountCurrency 
+										amount={tipAmount} 
+										setAmount={setTipAmount}
+										readOnly={processing} 
+										showLimit={0.02}
+										setError={setAmountError}
+										showMax={false}
+										needBalance={false}
+										focusSignal={focusAmount}
+										currencyUSDC={true}
+									/>
+								
+							</div>
+						</div>
+
+					)
+				}
+				
 				
 			</>
 
@@ -341,6 +366,7 @@ const PayForm = ({code, closeWin}: Props) => {
 			SGD: Number(data.usdsgd),
 		})
 	}
+
 	let process = false
 	useEffect(() => {
 		if (process) {
@@ -350,6 +376,7 @@ const PayForm = ({code, closeWin}: Props) => {
 		if (!profiles?.length) {
 			return
 		}
+		
 		const profile: profile = profiles[0]
 		if (!myAddress) {
 			setMyAddress(profile.keyID)

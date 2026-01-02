@@ -142,13 +142,34 @@ const SearchInputWithDropdown =
 				if (index < 0) {
 					setSearchKeysHistory(prev => [...prev, {keyward: q, type:'search'}])
 				}
+			} else {
+				if (ethers.isAddress(q)) {
+					const _item = makeOutlandItem(q)
+					filted.push(_item)
+				}
 			}
 			setResults(filted)
+
 			if (hasQuery) {
 				setShowDropdown(true)
 			} else {
+				
 				setShowDropdown(false)
 			}
+		}
+
+		const makeOutlandItem = (address: string) => {
+			const subitem: searchResult = {
+				username: 'unknow',
+				image: '',
+				address,
+				created_at: 0,
+				first_name: '',
+				last_name: '',
+				follow_count: '',
+				follower_count: ''
+			}
+			return subitem
 		}
 
 
@@ -184,8 +205,13 @@ const SearchInputWithDropdown =
 
 		// 下拉框显示/隐藏时，重新 focus input
 		useEffect(() => {
+			if (readonly) return
 			inputRef.current?.focus()
-		}, [showDropdown])
+		}, [showDropdown, readonly])
+
+		useEffect(() => {
+			if (readonly) setShowDropdown(false)
+		}, [readonly])
 
 		const handleSelect = (item: searchResult) => {
 			if (select) {
@@ -305,7 +331,8 @@ const SearchInputWithDropdown =
 		return (
 			<>
 				{/** Search List */}
-				<div className="relative w-full h-11">
+				<div className="relative w-full h-11"
+				>
 					{/* 没输入：普通 pill 输入框 */}
 					{!showDropdown && (
 						<>
@@ -346,15 +373,34 @@ const SearchInputWithDropdown =
 							/>
 
 							{/* 输入框 */}
+							
+							{readonly ? (
+							// ✅ Fake input：不是真 input，iOS 不会弹键盘
+							<div
+								role="button"
+								tabIndex={0}
+								onClick={() => close("/")}
+								onKeyDown={e => {
+								if (e.key === "Enter" || e.key === " ") close("/")
+								}}
+								className="
+								flex-1 bg-transparent text-left
+								text-[13px] text-slate-500
+								focus:outline-none
+								cursor-text
+								"
+							>
+								{query || "Search @BeamioTag, address, or paste link"}
+							</div>
+							) : (
 							<input
-								readOnly={readonly}
 								ref={inputRef}
 								className="flex-1 bg-transparent text-[13px] placeholder-slate-400 focus:outline-none"
 								placeholder="Search @BeamioTag, address, or paste link"
 								value={query}
 								onChange={e => setQuery(e.currentTarget.value)}
 							/>
-							
+							)}
 						</div>
 						
 							{!readonly && showHistory && (
@@ -553,9 +599,7 @@ const SearchInputWithDropdown =
 					</div>
 				</div>
 
-				{
-
-				}
+				
 			</>
 		)
 	}

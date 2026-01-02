@@ -21,30 +21,32 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
-	height: 100%;
-	margin: 0;
-	padding: 0;
-	overflow: hidden;              /* ✅ 关掉 window/html/body 的滚动条 */
-	overscroll-behavior: none;     /* ✅ 防止橡皮筋扩散到外层 */
+html,
+body,
+#root {
+  height: 100dvh;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
 }
-
 
 body {
   margin: 0;
-  background-color: #0D0D0D;
+  background-color: white;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
     "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow: hidden;              /* ✅ 关掉 window/html/body 的滚动条 */
-	overscroll-behavior: none;     /* ✅ 防止橡皮筋扩散到外层 */
-	/* iOS 上更稳：避免一些情况下 body 仍可滚 */
-	position: fixed;
-	inset: 0;
-	width: 100%;
+
+  overflow-x: hidden;          /* ✅ 只放 body */
+  overscroll-behavior-y: none; /* ✅ 可留可不留 */
+   padding-bottom: 0 !important; /* 覆盖 Tailwind 的安全区域设置 */
+  
 }
+
+
+
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",

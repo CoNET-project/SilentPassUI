@@ -25,16 +25,30 @@ import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import PayScreen from '@/pages/Pay/send'
+import {ethers} from 'ethers'
+import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+
+
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+
+const beamioConetContract = {
+	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
+	network: 'CONET DePIN',
+	abi: beamioConetCoreABI,
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	
+}
+const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
+
 const Home = ({}) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
-		currencyData
+		currencyData, setRedeemCode
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	const hasActivity = false;
@@ -88,9 +102,9 @@ const Home = ({}) => {
 		})
 	}
 
-	const checkUrl = (url: string) => {
+	const checkUrl = async (url: string) => {
 	
-		const u = new URL(url)
+		
 		let searchParams: URLSearchParams
 		try {
 			const u = new URL(url)
@@ -99,23 +113,32 @@ const Home = ({}) => {
 			searchParams = new URLSearchParams(url)
 		}
 
-		const code = searchParams.get("code")||''
-		const _note = searchParams.get("note")||''
-		const address = searchParams.get("address")||''
-		const amount = searchParams.get("amount")||''
-		const _secureCode = searchParams.get("secureCode")||''
-
+		let code = searchParams.get("code")||''
+		const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
+		const cashcode = searchParams.get("cashcode")||''
 		if (_secureCode) {
 			setSecureCode (_secureCode)
-			setShowLinkPay(true)
-			navigate('/Browser')
-			setPaymentLinkCode('')
-			return 
+			setRedeemCode(cashcode)
+			return navigate('/browser')
 		}
 
 		if (code) {
-			setPaymentLinkCode(code)
-			navigate('/Browser')
+
+			if (!code.startsWith('0x')) {
+				code = ethers.solidityPackedKeccak256(['string'], [code])
+				
+			}
+			try {
+				const fx = await CoreContract.getLinkMemo(code)
+				if (fx.to !== ethers.ZeroAddress) {
+					setPaymentLinkCode(code)
+					return navigate('/browser')
+				}
+				
+			} catch (ex) {
+				console.log(`await CoreContract.getLinkMemo(code) Error`)
+			}
+			
 			
 		}
 
@@ -163,15 +186,15 @@ const Home = ({}) => {
 	}
 
 	const init = async () => {
-		
 		const temp = CoNET_Data
-		if (!temp || !profiles ) {
+		if (!temp || !profiles) {
 			return
 		}
 
 		const bo: beamio = temp?.beamio || await getUserInfo(profiles[0].keyID)
 
-		
+		if (!bo) return
+
 		bo.initialLoading = true
 		
 		oracle()
@@ -316,6 +339,7 @@ const Home = ({}) => {
 				return `US$ ${formatWithThousands(v, 2)}`
 		}
 	}
+
 	const currentAvatarSrc = avatarImageData || avatarUrl
 
 	const claimFaucet = async () => {
@@ -364,7 +388,7 @@ const Home = ({}) => {
 		return (
 			<div className="rounded-3xl bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b] p-4 shadow-lg mb-4 overflow-hidden">
 				{/* 顶部：标题 + Base 标识 */}
-				<div className="flex items-center justify-between mb-4 w-full max-w-[540px] px-4">
+				<div className="flex items-center justify-between mb-4 w-full max-w-[640px] px-4">
 					<div className="text-xs font-medium text-white/80">
 						Beamio Balance
 					</div>
@@ -405,7 +429,7 @@ const Home = ({}) => {
 				</div>
 
 				{/* 固定高度视口 */}
-				<div className="relative h-[170px]">
+				<div className="relative">
 					<div
 						className={`
 							flex w-[200%] h-full
@@ -415,7 +439,7 @@ const Home = ({}) => {
 					>
 						{/* ===== Page A：主内容 ===== */}
 						<div className="w-1/2 h-full flex justify-center">
-  							<div className="w-full max-w-[540px] px-4">
+  							<div className="w-full max-w-[640px] px-4 mb-2">
 							{/* 金额 + Setup（右侧） */}
 							<div className="mb-4 flex items-center justify-between">
 								<div>
@@ -443,7 +467,7 @@ const Home = ({}) => {
 										</div>
 									</button>
 
-									<div className="mt-1 flex items-center text-xs text-white/80">
+									<div className="mt-1 flex items-center text-[16px] text-white/80">
 										<div className="relative mr-2 flex-shrink-0">
 											<img
 												src={usdcIcon}
@@ -461,9 +485,8 @@ const Home = ({}) => {
 												"
 											/>
 										</div>
-
 										<span>
-											{formatWithThousands(usdcbalance)}
+											{usdcbalance.toFixed(4)}
 										</span>
 									</div>
 								</div>
@@ -521,7 +544,8 @@ const Home = ({}) => {
 						</div>
 
 						{/* ===== Page B：Setup ===== */}
-						<div className="w-1/2 px-4 h-full overflow-y-auto" data-ignore-footer-scroll="1">
+						{
+							showSetup && <div className="w-1/2 px-4 overflow-y-auto h-[170px]" data-ignore-footer-scroll="1">
 							
 
 							<div className="space-y-2">
@@ -571,6 +595,8 @@ const Home = ({}) => {
 								})}
 							</div>
 						</div>
+						}
+						
 					</div>
 				</div>
 			</div>
@@ -671,7 +697,7 @@ const Home = ({}) => {
 
 
 	return (
-		<div className="h-full flex flex-col bg-slate-50 text-slate-900">
+		<div className="h-full flex flex-col text-slate-900">
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
 				<button
 					type="button"
@@ -777,25 +803,25 @@ const Home = ({}) => {
 					{/* Optional inline search bar, only when user taps search icon */}
 					{isSearchOpen && (
 						<div className="mb-3">
-						<div className="flex items-center gap-2 rounded-full bg-slate-50 border border-slate-200 px-3 py-2">
-							<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 24 24"
-							className="w-4 h-4 text-slate-400"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.8"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							>
-							<circle cx="11" cy="11" r="6" />
-							<path d="m16 16 3.5 3.5" />
-							</svg>
-							<input
-							className="flex-1 bg-transparent text-[11px] placeholder:text-slate-400 focus:outline-none"
-							placeholder="Find a person, @handle, or business"
-							/>
-						</div>
+							<div className="flex items-center gap-2 rounded-full bg-slate-50 border border-slate-200 px-3 py-2">
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 24 24"
+									className="w-4 h-4 text-slate-400"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.8"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									>
+									<circle cx="11" cy="11" r="6" />
+									<path d="m16 16 3.5 3.5" />
+								</svg>
+									<input
+									className="flex-1 bg-transparent text-[11px] placeholder:text-slate-400 focus:outline-none"
+									placeholder="Find a person, @handle, or business"
+								/>
+							</div>
 						</div>
 					)}
 					{
@@ -890,6 +916,7 @@ const Home = ({}) => {
 							/>
 							)}
 							{showAlphaHowItWorks === 'BeamioTestBalance' && <BeamioTestBalanceDetailsCard />}
+							
 							
 							{showAlphaHowItWorks === 'Pay' && <PayScreen 
 								beamioer={userPreviewItem||undefined}

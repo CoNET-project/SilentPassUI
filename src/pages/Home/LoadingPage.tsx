@@ -70,6 +70,7 @@ export default function BeamioOnboardingModal({home}: Props) {
 		})
 			
 		const userInfo = await loadUserInfo()
+		if (!userInfo) return
 		
 		const bo: beamio = userInfo
 
@@ -104,7 +105,14 @@ export default function BeamioOnboardingModal({home}: Props) {
 
 
 	const InitialEntryScreen = () => (
-		<div className="w-full h-screen flex">
+		<div className="
+			/* 👇 安全区补偿 */
+			pt-[env(safe-area-inset-top)]
+			pb-[env(safe-area-inset-bottom)]
+			pl-[env(safe-area-inset-left)]
+			pr-[env(safe-area-inset-right)]
+			w-full h-screen flex
+		">
 			<div className="overflow-y-auto p-6 md:p-8 mx-auto max-w-lg flex-1  ">
 				<div className="flex flex-col flex-1 
 				text-slate-900 text-[13px] 
@@ -135,7 +143,7 @@ export default function BeamioOnboardingModal({home}: Props) {
 						<li>Self-custodial USDC wallet on Base (no email login).</li>
 						<li>Gasless payments powered by Beamio infrastructure.</li>
 						<li>
-							@username + PIN with a Recovery QR instead of a seed phrase.
+							@BeamioTag + PIN with a Recovery QR instead of a seed phrase.
 						</li>
 					</ul>
 					</div>
@@ -191,12 +199,22 @@ export default function BeamioOnboardingModal({home}: Props) {
 
 	
 	return (
-		<div className="">
+		<div className="
+
+				/* 👇 安全区补偿 */
+				pt-[env(safe-area-inset-top)]
+				pb-[env(safe-area-inset-bottom)]
+				pl-[env(safe-area-inset-left)]
+				pr-[env(safe-area-inset-right)]
+		">
 			<div className="">
 				{
 					isInitialEntry ? <InitialEntryScreen /> : (<>
 						{/* Logo + label */}
-						<div className="w-full max-w-lg p-6 md:p-8 mx-auto">
+						<div className="
+						w-full max-w-lg p-6 md:p-8 mx-auto
+						
+						">
 							<div className="flex items-center gap-3 mb-6">
 							<div className="h-10 w-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl">
 								B

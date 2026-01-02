@@ -76,6 +76,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const totalDur = 0.62
 	const { hasNewVersion, darkModle, isInitialLoading } = useDaemonContext()
 	const [showBar, setShowBar] = useState(true)
+	
 
 	const dropletControls = useAnimation()
 	const [phase, setPhase] = useState<Phase>('idle')
@@ -331,70 +332,53 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 	return (
 		<motion.div
-			className="fixed left-0 right-0 z-50 px-4 pb-4"
+			className="fixed left-0 right-0 z-50"
 			animate={barControls}
 			initial={false}
-			style={{ 
-				bottom: 0,                 // ✅ 允许 framer 覆盖/动画 bottom
-    			willChange: 'bottom, opacity' // ✅ 不要 transform
+			style={{
+				bottom: '1rem',
+				willChange: 'bottom, opacity',
+				pointerEvents: 'none'
 			}}
 		>
 			 {/* ✅ 玻璃层：不做 transform，只负责 blur */}
-			<div
-				className="
-					mx-auto max-w-[800px]
-					rounded-[28px]
-					border border-white/60 dark:border-white/10
-					bg-slate-900/30
-					backdrop-blur-lg
-				"
-				style={{
-					backgroundColor: darkModle
-					? 'rgba(15, 23, 42, 0.25)'
-					: 'rgba(220, 220, 220, 0.75)',
-					WebkitBackdropFilter: 'blur(36px) saturate(150%)',
-					backdropFilter: 'blur(36px) saturate(150%)'
-				}}
-			>
-				{/* 下面内容保持你原样 */}
-				<motion.div
+			<div className="mx-auto max-w-[800px] px-4 pointer-events-auto">
+				<div
 					className="
 						rounded-[28px]
-						px-1 py-1.5
-						shadow-[0_14px_40px_rgba(0,0,0,0.36)]
+						overflow-hidden
+						border border-white/60 dark:border-white/10
+						backdrop-blur-lg
+						shadow-[0_10px_28px_rgba(0,0,0,0.18)]
+						pt-2 pb-2.5   // ✅ 内边距在这里
 					"
 					style={{
-						background: darkModle
-						? 'rgba(15, 23, 42, 0.25)'
-						: 'rgba(220, 220, 220, 0.5)',
+						backgroundColor: darkModle
+							? 'rgba(15, 23, 42, 0.25)'
+							: 'rgba(220, 220, 220, 0.75)',
+						WebkitBackdropFilter: 'blur(36px) saturate(150%)',
+						backdropFilter: 'blur(36px) saturate(150%)'
 					}}
-					animate={phase === 'moving' ? { scale: 1.03 } : { scale: 1 }}
-					transition={
-						phase === 'moving'
-							? { type: 'spring', stiffness: 520, damping: 34, mass: 0.7 }
-							: { duration: 0.45, ease: [0.2, 0.9, 0.2, 1] }
-					}
 				>
 					<div className="relative">
 						<motion.div
 							className="
-				absolute inset-y-0 left-0 w-1/5
-				overflow-hidden
-				-top-2 -bottom-2
-				shadow-[0_14px_36px_rgba(0,0,0,0.20)]
-				border border-white/60 dark:border-slate-700/70
-				pointer-events-none
-				"
+								absolute inset-y-0 left-0 w-1/5
+								overflow-hidden
+								-top-2 -bottom-2
+								border border-white/60 dark:border-slate-700/70
+								pointer-events-none
+							"
 							style={{
 								background: darkModle
 									? 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.12), rgba(15,23,42,0.78) 55%)'
-									: 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.98), rgba(255,255,255,0.70) 58%)',
+									: 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.98), rgba(255,255,255,0.70) 58%)'
 							}}
 							initial={{
 								x: `${activeIndex * 100}%`,
 								borderRadius: 26,
 								scaleX: 1.06,
-								scaleY: 0.96,
+								scaleY: 0.96
 							}}
 							animate={dropletControls}
 						>
@@ -404,8 +388,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 								transition={{ duration: 3.0, repeat: Infinity, ease: 'easeInOut' }}
 								style={{
 									background:
-										'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.36) 45%, transparent 60%)',
-									filter: 'blur(10px)',
+									'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.36) 45%, transparent 60%)',
+									filter: 'blur(10px)'
 								}}
 							/>
 						</motion.div>
@@ -423,10 +407,10 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 							))}
 						</div>
 					</div>
-
-					<div className="h-[env(safe-area-inset-bottom)]" />
-				</motion.div>
+				</div>
+				
 			</div>
+			
 		</motion.div>
 	)
 }

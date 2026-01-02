@@ -23,6 +23,7 @@ type Prof = {
 	focusSignal?: boolean
 	currencyUSDC?: boolean
 	feePlus?: boolean
+	currencyChange?: (val: ICurrency) => void
 }
 
 //@ts-ignore
@@ -51,7 +52,7 @@ const formatMoney = (n: number, fixed: number) =>
 const isCurrency = (v: any): v is ICurrency =>
 	['USD','CAD','EUR','JPY','CNY','HKD','TWD','SGD'].includes(String(v))
 
-const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal, currencyUSDC=false, feePlus=false }: Prof) => {
+const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal, currencyUSDC=false, feePlus=false, currencyChange}: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
@@ -184,8 +185,12 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	useEffect(() => {
 		const c = beamio?.currency
 		if (!c) return
-		setcurrentCurrency(isCurrency(c) ? c : 'USD')
-	}, [beamio?.currency])
+		const curr = isCurrency(c) ? c : 'USD'
+		setcurrentCurrency(curr)
+		if (currencyChange) {
+			currencyChange(curr)
+		}
+	}, [])
 
 	// ---------- Balance check (USDC truth) ----------
 	const checkBalance = (usdcToSend: number) => {
@@ -204,7 +209,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			return false
 		}
 		setSendError("")
-		setError(true)
+		setError(false)
 		return true
 	}
 
@@ -301,7 +306,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	// ---------- Pick currency (USDC truth stays) ----------
 	const pickCurrency = (next: ICurrency) => {
 		setcurrentCurrency(next)
-
+		if (currencyChange) {
+			currencyChange(next)
+		}
 		const usdc = Number(amount || 0)
 		const nextDisplay = usdcToCurrencyAmount(Number.isFinite(usdc) ? usdc : 0, next)
 		setDisplayAmount(formatCurrencyAmount(nextDisplay, next))

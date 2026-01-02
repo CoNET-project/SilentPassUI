@@ -9,7 +9,7 @@ import Privatekey from './PrivateKey/PrivateKey'
 import { Copy,Check, Bell, Settings, QrCode, Sun, Moon } from 'lucide-react'
 import BeamioSettingsScreen from './setup'
 import BeamioReceiveScreen from './BeamioReceiveScreen'
-import { getBalanceProcess, getMyFollowStatus } from '@/services/beamio'
+import { getBalanceProcess, getMyFollowStatus, postBeamio } from '@/services/beamio'
 import styles from './setting.module.scss'
 import { AppButton } from '../button/AppButton'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -17,9 +17,12 @@ import { BuyWithCoinbaseButton } from './BuyWithCoinbaseButton'
 import {SellWithCoinbaseButton} from './SellWithCoinbaseButton'
 import FollowListContainer from './followList/FollowListContainer'
 import CoinbaseRamps from './CoinbaseRamps'
+import {useObjectImgSrc} from '@/components/card/useObjectImgSrc'
+
+
+
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 
-//	https://beamio.app?amount=0.03&code=0x36a6200cec2fe34edb2f3b075af1d46645c54bb54a0abe0e97a265068773b3c4&note=test&address=0xc8f855ff966f6be05cd659a5c5c7495a66c5c015
 type prof = {
   	wallet: string
 }
@@ -107,7 +110,8 @@ export default function BeamioMeMainScreen() {
 			setAvatarName(beamio.accountName)
 			setAvatarSeed(beamio.accountName)
 			setFirstName(beamio.firstName || '')
-			setLastName(beamio.lastName || '')
+			const _lastName = beamio.lastName?.split('\r\n')[0]
+			setLastName(_lastName || '')
 			setCreatedAt(beamio.createdAt || 0)
 		}
 		setDarkModle(beamio.darkTheme)
@@ -143,7 +147,17 @@ export default function BeamioMeMainScreen() {
 		if (beamio) {
 			setAvatarName(beamio.accountName)
 			setFirstName(beamio.firstName || '')
-			setLastName(beamio.lastName || '')
+			const _last = beamio.lastName || ''
+			const __last = _last.split('\r\n')
+			if (__last.length < 2) {
+				beamio.lastName = ''
+				setLastName('')
+				setBeamio(beamio)
+				postBeamio(beamio, profile.privateKeyArmor)
+				
+			}
+			
+			
 			setCreatedAt(beamio.createdAt || 0)
 		}
 
@@ -266,12 +280,22 @@ export default function BeamioMeMainScreen() {
 		)
 	}
 
+	const imgSrc = useObjectImgSrc(beamio?.image)
+
 	const HeadArea = () => (
-		<div className="relative w-full h-11">
+		
+		<div
+
+			className="
+			relative w-full h-11
+			"
+		>
 			{/* 顶部蓝色区域：头像 + 名字 */}
 			<div 
 				className="
 					relative z-10
+					pt-[calc(env(safe-area-inset-top)+0.2rem)]
+			
 					bg-gradient-to-r from-sky-500 to-blue-600 text-white
 					px-5 pt-3 pb-10
 					rounded-b-[28px]
@@ -311,24 +335,24 @@ export default function BeamioMeMainScreen() {
 				<div className="flex flex-col items-center text-center">
 					{/* 头像 */}
 					<motion.button
-					type="button"
-					onClick={() => setReceiveOpen(true)}
-					whileTap={{ scale: 0.95 }}              // 点击动画（可选）
-					className="flex-shrink-0 mr-2"
+						type="button"
+						onClick={() => setReceiveOpen(true)}
+						whileTap={{ scale: 0.95 }}              // 点击动画（可选）
+						className="flex-shrink-0 mr-2"
 					>
-					{beamio?.image ? (
-						<img
-						src={beamio.image}
-						alt={beamio.accountName}
-						className="w-20 h-20 rounded-full object-cover"
-						/>
-					) : (
-						<img
-						src={getImg(beamio?.accountName)}
-						alt={beamio?.accountName}
-						className="w-20 h-20 rounded-full object-cover bg-slate-200"
-						/>
-					)}
+						{beamio?.image ? (
+							<img
+							src={imgSrc}
+							alt={beamio.accountName}
+							className="w-20 h-20 rounded-full object-cover"
+							/>
+						) : (
+							<img
+							src={getImg(beamio?.accountName)}
+							alt={beamio?.accountName}
+							className="w-20 h-20 rounded-full object-cover bg-slate-200"
+							/>
+						)}
 					</motion.button>
 
 				
@@ -544,6 +568,7 @@ export default function BeamioMeMainScreen() {
 			<div
 				className={[
 					"fixed inset-0 z-50 bg-white dark:bg-slate-900",
+					"pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]",
 					"transition-transform duration-300 ease-out flex flex-col",
 					receiveOpen ? "translate-x-0" : "translate-x-full",
 				].join(" ")}
@@ -574,7 +599,6 @@ export default function BeamioMeMainScreen() {
 
 			{showPrivateKeyPopup()}
 
-			
 		</div>
 	)
 }

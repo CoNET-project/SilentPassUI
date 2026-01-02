@@ -1,62 +1,62 @@
 import { useState, useRef, useEffect } from 'react';
 type Props = {
-  currentCurrency: ICurrency;
-  setCurrentCurrency: (val: ICurrency) => void;
+	currentCurrency: ICurrency;
+	setCurrentCurrency: (val: ICurrency) => void;
 };
 
 type CurrencyItem = {
-  c: ICurrency;
-  flag: string;
-  sym: string;
+	c: ICurrency;
+	flag: string;
+	sym: string;
 };
 
 const CurrencyPicker = ({ setCurrentCurrency, currentCurrency }: Props) => {
-  const [cols, setCols] = useState(3);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+	const [cols, setCols] = useState(3);
+	const containerRef = useRef<HTMLDivElement>(null);
+	const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const allCurrencies: CurrencyItem[] = [
-    { c: "USD", flag: "🇺🇸", sym: "$" },
-    { c: "CAD", flag: "🇨🇦", sym: "$" },
-    { c: "EUR", flag: "🇪🇺", sym: "€" },
-    { c: "JPY", flag: "🇯🇵", sym: "¥" },
-    { c: "CNY", flag: "🇨🇳", sym: "¥" },
-    { c: "HKD", flag: "🇭🇰", sym: "$" },
-    { c: "TWD", flag: "🇹🇼", sym: "NT$" },
-    { c: "SGD", flag: "🇸🇬", sym: "$" },
-  ];
+	const allCurrencies: CurrencyItem[] = [
+		{ c: "USD", flag: "🇺🇸", sym: "$" },
+		{ c: "CAD", flag: "🇨🇦", sym: "$" },
+		{ c: "EUR", flag: "🇪🇺", sym: "€" },
+		{ c: "JPY", flag: "🇯🇵", sym: "¥" },
+		{ c: "CNY", flag: "🇨🇳", sym: "¥" },
+		{ c: "HKD", flag: "🇭🇰", sym: "$" },
+		{ c: "TWD", flag: "🇹🇼", sym: "NT$" },
+		{ c: "SGD", flag: "🇸🇬", sym: "$" },
+	];
 
   // 当前选中的项永远放在首位
-  const currencies: CurrencyItem[] = [
-    allCurrencies.find(c => c.c === currentCurrency)!,
-    ...allCurrencies.filter(c => c.c !== currentCurrency)
-  ];
+	const currencies: CurrencyItem[] = [
+		allCurrencies.find(c => c.c === currentCurrency)!,
+		...allCurrencies.filter(c => c.c !== currentCurrency)
+	];
 
-  const pickCurrency = (currency: ICurrency) => {
-    setCurrentCurrency(currency);
-  };
+	const pickCurrency = (currency: ICurrency) => {
+		setCurrentCurrency(currency);
+	};
 
-  // 监听容器宽度变化，自适应列数
-  useEffect(() => {
-    const calculateCols = () => {
-      if (!containerRef.current) return;
+	// 监听容器宽度变化，自适应列数
+	useEffect(() => {
+		const calculateCols = () => {
+		if (!containerRef.current) return;
 
-      const width = containerRef.current.offsetWidth;
-      const itemWidth = 120; // 每个胶囊的估计宽度（包括间距）
-      const newCols = Math.max(2, Math.floor(width / itemWidth));
+		const width = containerRef.current.offsetWidth;
+		const itemWidth = 120; // 每个胶囊的估计宽度（包括间距）
+		const newCols = Math.max(2, Math.floor(width / itemWidth));
 
-      setCols(newCols);
-    };
+		setCols(newCols);
+		};
 
-    calculateCols();
+		calculateCols();
 
-    const resizeObserver = new ResizeObserver(calculateCols);
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
+		const resizeObserver = new ResizeObserver(calculateCols);
+		if (containerRef.current) {
+		resizeObserver.observe(containerRef.current);
+		}
 
-    return () => resizeObserver.disconnect();
-  }, []);
+		return () => resizeObserver.disconnect();
+	}, []);
 
   return (
     <div className=" ">

@@ -42,7 +42,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 	const [newRecoverUrl, setNewRecoverUrl] = useState('')
 	const [newCode, setNewCode] = useState('')
 	const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
-	const [pin, setPin] = useState('')
+	const [password, setpassword] = useState('')
 	const [error, setError] = useState('')
 	const [storeTemp, setStoreTemp] = useState()
 	
@@ -55,8 +55,9 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 		}
 		
 		
-		if (pin.trim().length < 6) {
-			setError('PIN must be 6–8 digits')
+		const pin = password.trim()
+		if (password.length < 6) {
+			setError('Password must be at least 6 characters')
 			return
 		}
 
@@ -64,7 +65,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 		const profile: profile = profiles[0]
 		setLoading(true)
 		
-		const kk = await RegenerateRecover(mnemonicPhrase, beamio,pin, profile.privateKeyArmor)
+		const kk = await RegenerateRecover(mnemonicPhrase, beamio, password, profile.privateKeyArmor)
 
 		setLoading(false)
 
@@ -85,7 +86,9 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 	return (
 		 <ScreenShell
 			title="Recovery & Backup"
-			subtitle="Beamio doesn't store your Recovery QR or PIN. You can view the ones you saved, or create a new Recovery QR + PIN pair if you want to change your PIN."
+			subtitle="
+			Beamio doesn't store your Recovery QR or password. You can view the ones you saved, or create a new Recovery QR + password pair if you want to change your password.
+			"
 			>
 			
 
@@ -100,12 +103,12 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 					<>
 						<Card
 							title="View your saved Recovery"
-							description="Enter your 6–8 digit PIN to decrypt the Recovery QR and recovery code (S) stored on this device. Beamio never sees or stores your PIN."
+							description="Enter your password (at least 6 characters) to decrypt the Recovery QR and recovery code (S) stored on this device. Beamio never sees or stores your password."
 						>
 							<div className="flex flex-col gap-2 mt-1">
 
 
-								<RecoveryInputs pin={(_pin => {
+								<RecoveryInputs pin={(_password => {
 									if (!CoNET_Data || !CoNET_Data.encryptedString) {
 										return
 									}
@@ -117,22 +120,22 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 							
 							</div>
 							<p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
-								If you can&apos;t view your Recovery because you forgot your PIN,
-								use &quot;Change PIN &amp; regenerate Recovery&quot; below. Your
+								If you can&apos;t view your Recovery because you forgot your password,
+								use &quot;Change password &amp; regenerate Recovery&quot; below. Your
 								wallet address and funds stay the same.
 							</p>
 						</Card>
 
 						<Card
-							title="Change PIN & regenerate Recovery"
-							description="Enter your 6–8 digit PIN to decrypt the Recovery QR and recovery code (S) stored on this device. Beamio never sees or stores your PIN."
+							title="Change password & regenerate Recovery"
+							description="Enter your password (at least 6 characters) to decrypt the Recovery QR and recovery code (S) stored on this device. Beamio never sees or stores your password."
 						>
 							<div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
 								<p className="text-xs font-semibold text-amber-900">
 								Before you continue
 								</p>
 								<p className="mt-1 text-[11px] text-amber-900 leading-relaxed">
-								Your old Recovery QR and PIN will no longer work. Only the new
+								Your old Recovery QR and password will no longer work. Only the new
 								pair you save will be valid. Beamio will not keep a copy, so make
 								sure you store them securely.
 								</p>
@@ -140,21 +143,25 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 
 							<div className="flex items-center mt-4">
 								<label className="text-[11px] font-medium text-slate-600 w-24 ">
-									New PIN
+									New Password
 								</label>
 
 								<input
-									inputMode="numeric"
+									type="password"
+									autoComplete="new-password"
+									autoCapitalize="none"
+									autoCorrect="off"
+									spellCheck={false}
 									className="
 										w-full rounded-[18px] border border-slate-200 bg-white
 										px-3 py-2.5 text-[13px] text-slate-900
 										placeholder:text-slate-400 outline-none
 										focus:border-sky-400 focus:ring-2 focus:ring-sky-100
 									"
-									placeholder="6–8 digit PIN"
-									value={pin}
-									onChange={e => setPin(e.target.value)}
-									/>
+									placeholder="At least 6 characters"
+									value={password}
+									onChange={e => setpassword(e.target.value)}
+								/>
 							</div>
 
 							{/* 错误信息 */}
@@ -175,8 +182,8 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 							
 
 							<p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
-								If you no longer remember your old PIN, you can still generate a new
-								Recovery QR and PIN — but the old encrypted backup cannot be
+								If you no longer remember your old password, you can still generate a new
+								Recovery QR and password — but the old encrypted backup cannot be
 								decrypted. Your wallet address and funds remain the same.
 							</p>
 
@@ -190,7 +197,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 										</p>
 										<ul className="mt-1 space-y-1.5 text-[11px] text-slate-600">
 										<li>• Your wallet address and on-chain funds do not change.</li>
-										<li>• You receive a new Recovery QR + PIN pair.</li>
+										<li>• You receive a new Recovery QR + password pair.</li>
 										<li>• Beamio never stores your old or new recovery data.</li>
 										</ul>
 									</div>
@@ -200,8 +207,8 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 										className="mt-3"
 										onClick={() => {
 											setError('')
-											if (pin.trim().length < 6) {
-												setError('PIN must be 6–8 digits')
+											if (password.trim().length < 6) {
+												setError('Password must be at least 6 characters')
 												return
 											}
 											setShowRegenerateConfirm(true)
@@ -221,9 +228,9 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 										Warning
 									</div>
 									<p className="text-[11px] text-amber-800 leading-snug">
-										If you continue, your previous Recovery QR and PIN will no longer be
+										If you continue, your previous Recovery QR and password will no longer be
 										able to restore your wallet. Your future recovery will use the newly
-										generated Recovery QR and PIN.
+										generated Recovery QR and password.
 									</p>
 								</div>
 

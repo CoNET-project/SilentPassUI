@@ -140,7 +140,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 	// 先准备默认的占位文案，用于 item 还没选中的时候
 	let displayName = "Contact"
 	let avatarText = "?"
-	let usernameLabel = "@username"
+	let usernameLabel = "@BeamioTag"
 	let createdAtLabel = ""
 	let itemAddress = ''
 

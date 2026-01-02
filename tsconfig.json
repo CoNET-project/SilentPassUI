@@ -3,7 +3,7 @@
 		"types": [
 			"node"
 		],
-		"target": "es2024",
+		"target": "esnext",
 		"lib": [
 			"dom",
 			"dom.iterable",

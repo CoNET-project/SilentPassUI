@@ -9,11 +9,20 @@ import {
 } from "react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
+import {urlToObjectUrl, useObjectImgSrc} from '@/components/card/useObjectImgSrc'
+import { User } from "lucide-react"
+import {ethers} from 'ethers'
+import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader, ArrowUpRight, } from "lucide-react"
+import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 
+
+type Mode = "pay" | "request" | 'cashcode'
 type Prof = {
 	address: string
 	note: string
 	dateData: string
+	tx: TransferHistork
+	localMode: Mode
 }
 
 const getImg = (avatarSeed: string) =>
@@ -25,32 +34,65 @@ const displayName = (item: searchResult) => {
 	return fullName || item.username || item.address
 }
 
-const SenderBmo = ({address, note, dateData}: Prof) => {
+const unknowAcc = (address: string):searchResult => {
+	const ret: searchResult = {
+		address,
+		created_at: 0,
+		first_name: '',
+		last_name: '',
+		follow_count: '',
+		follower_count: '',
+		username: 'Unknow',
+		image: ''
+	}
+	return ret
+}
+
+
+const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
+
+const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers } = useDaemonContext()
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
+	const [userImg, setUserImg] = useState('')
 
-	const findUser = async () => {
+	const findingRef = useRef(false)
+
+	const findUser = useCallback(async () => {
+		if (findingRef.current) return
 		if (fromBeamio) return
 
-		let account = beamioUsers.find(n => n?.address === address)
-		if (!account) {
+		findingRef.current = true
+		try {
+			let account = beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase())
+
+			if (!account) {
 			const _account = await searchUsername(address)
-			if (_account) {
-				const acc = _account.results
-				setbBeamioUsers([...beamioUsers, acc[0]])
-				setfromBeamio({...acc[0]})
+			if (_account?.results?.[0]) account = _account.results[0]
 			}
-			return
+
+			if (!account) {
+				account = unknowAcc(address) 
+			}
+			//@ts-ignore
+			setbBeamioUsers(prev => {
+			const addr = (account?.address || '').toLowerCase()
+			//@ts-ignore
+			if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
+				return [...prev, account!]
+			})
+
+			setfromBeamio(account)
+			account.image && setUserImg(await urlToObjectUrl(account.image))
+		} finally {
+			findingRef.current = false
+			
 		}
-		setfromBeamio({...account})
-		
-	}
+	}, [address, beamioUsers, fromBeamio, setbBeamioUsers])
+
 	useEffect(() => {
 		findUser()
-		
-	}, [])
-
-	const fallback = typeof getImg === 'function' ? getImg(fromBeamio?.image||'') : ''
+	}, [findUser])
 
 	
 	return (
@@ -68,22 +110,86 @@ const SenderBmo = ({address, note, dateData}: Prof) => {
 				"
 				>
 				{/* Avatar */}
-				<img
-					src={fromBeamio?.image || fallback}
-					alt={fromBeamio?.username}
-					className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-slate-200"
-				/>
+					{fromBeamio?.username !== 'Unknow' ? (
+						
+						<img
+							src={userImg}
+							className="w-10 h-10 rounded-full object-cover flex-shrink-0 bg-slate-200"
+						/>
+					) : (
+						<div
+						className="
+							w-10 h-10
+							rounded-full
+							flex items-center justify-center
+							flex-shrink-0
+							bg-slate-200
+							text-slate-400
+							font-semibold
+							text-base
+						"
+						aria-label="Default avatar"
+						>
+						?
+						</div>
+					)}
+				
 
 				{/* 左侧：用户名 / @handle */}
 				<span className="flex-1 min-w-0 leading-tight">
-					<span className="block text-[12px] text-slate-900 truncate leading-tight">
+					<span className="block text-[14px] text-slate-900 truncate leading-tight font-medium">
 						{fromBeamio ? displayName(fromBeamio) : ""}
 					</span>
-					<span className="block text-[10px] text-slate-500 truncate leading-tight">
-						@{fromBeamio?.username}
-					</span>
-					<span className="block text-[10px] text-slate-400 truncate leading-tight">
-						{dateData}
+					{
+						fromBeamio?.username !=='Unknow' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
+							@{fromBeamio?.username}
+						</span> : (
+							<span className="block text-[10px] text-slate-500 truncate leading-tight">
+								{fmtAddr(fromBeamio?.address)}
+							</span>
+						)
+					}
+					
+					<span className="inline-flex items-center gap-1 text-[10px] text-slate-400 truncate leading-tight">
+					<span>{dateData}</span>
+
+					{localMode === "pay" && tx.mode !== "pay" && (
+						<span
+							className={[
+								"inline-flex items-center justify-center",
+								"w-6 h-6",
+								tx.mode === "cashcode"
+								? "text-sky-600 dark:text-sky-300"
+								: "text-fuchsia-600 dark:text-fuchsia-300"
+							].join(" ")}
+						>
+						{tx.mode === "cashcode" ? (
+							<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
+						) : (
+							<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
+						)}
+						</span>
+					)}
+
+					{localMode === "pay" && tx?.card && (
+					<div className="relative w-fit">
+						<span
+						className={[
+							"inline-flex items-center justify-center",
+							"w-6 h-6",
+							tx.mode === "cashcode"
+							? "text-sky-600 dark:text-sky-300"
+							: "text-fuchsia-600 dark:text-fuchsia-300"
+						].join(" ")}
+						>
+						<img
+							src={giftEnvelope}
+							className="w-5 block pointer-events-none"
+							alt="Gift Envelope"
+						/>
+						</span>
+					</div>
+					)}
 					</span>
 				</span>
 

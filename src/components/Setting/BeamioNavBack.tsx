@@ -8,7 +8,7 @@ export default function BeamioNavBack({ title, onClose }: {title: string, onClos
 				sticky top-0 z-10
 				flex items-center
 				px-4
-				pt-[calc(env(safe-area-inset-top)+12px)]
+				pt-[calc(env(safe-area-inset-top)+0.2rem)]
 				pb-3
 				bg-white/90 dark:bg-slate-900/80
 				backdrop-blur-md

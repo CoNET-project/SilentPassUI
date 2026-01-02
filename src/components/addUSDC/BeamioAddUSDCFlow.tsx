@@ -19,8 +19,8 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { QRCodeCanvas } from "qrcode.react"
 import bIcon from '@/components/assets/32x32.svg'
 import StepAmount,{RampMode} from './StepAmount'
-
-
+import { AppButton } from "../button/AppButton";
+const remote = 'https://beamio.app'
 
 
 type Screen = "hub" | "coinbase" | "coinbase_error" | "transfer" | "receive" | "profile_qr" | 'coinbase_next'
@@ -41,6 +41,7 @@ export default function BeamioAddUSDCFlow() {
 	const [mode, setMode] = useState<RampMode>('onramp')
 	const [amount, setAmount] = useState('0')
 	const [coinbaseUrl, setCoinbaseUrl] = useState('')
+	const [loading, setLoading] = useState(false)
 
 	// Fee policy (only mention once, where it matters)
 	const feeText = "0.8% (min 0.02 USDC / max 2 USDC)";
@@ -60,6 +61,46 @@ export default function BeamioAddUSDCFlow() {
 		if (screen === "hub") return;
 		if (screen === "coinbase_error") return setScreen("coinbase");
 		return setScreen("hub");
+	}
+
+	const clickNext = async () => {
+		if (!myAddress) return
+		setLoading(true)
+		await new Promise(executor => setTimeout(() => executor(true), 500))
+		
+		const params = new URLSearchParams({address: myAddress}).toString()
+
+		try {
+			const res = mode === 'onramp' ? await fetch(`${remote}/api/coinbase-token?${params}`, {
+				method: 'GET',
+				headers: { 'Content-Type': 'application/json' }
+			}) : await fetch(`${remote}/api/coinbase-token?${params}`, {
+				method: 'GET',
+				headers: { 'Content-Type': 'application/json' }
+			})
+			
+			if (!res.ok) {
+				setLoading(false)
+				console.error('Failed to create onramp session', await res.text())
+				return 
+			}
+
+			const { onrampUrl } = await res.json() as { onrampUrl: string }
+			setLoading(false)
+			if (!onrampUrl) {
+				console.error('No onrampUrl in response')
+				return 
+			}
+			setCoinbaseUrl(onrampUrl)
+			setScreen('coinbase')
+			// ⭐ 直接打开 Coinbase 返回的安全 URL（已包含 sessionToken）
+			
+			
+		} catch (e) {
+			setLoading(false)
+			console.error('open coinbase onramp error', e)
+			return 
+		}
 	}
 
 	const openUrl = () => {
@@ -100,7 +141,12 @@ export default function BeamioAddUSDCFlow() {
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <PrimaryPill onClick={() => setScreen('coinbase_next')} label="Add funds" sub="via Coinbase" />
+                  <PrimaryPill
+				  	loading={loading}
+				   onClick={() => {
+						clickNext()
+				   }} label="Add funds" sub="via Coinbase" 
+				   />
                   <SecondaryPill onClick={() => setScreen("receive")} label="Receive" sub="from someone" />
                 </div>
               </div>
@@ -123,7 +169,7 @@ export default function BeamioAddUSDCFlow() {
                   <OptionRow
                     icon={<User className="h-5 w-5" />}
                     title="Ask a friend to send"
-                    desc="Share @username (direct send is 0 fee)"
+                    desc="Share @BeamioTag (direct send is 0 fee)"
                     tag="0 fee"
                     onClick={() => setScreen("receive")}
                   />
@@ -190,7 +236,7 @@ export default function BeamioAddUSDCFlow() {
               </div>
 
               <div className="mt-4 space-y-2">
-                <MiniCopy label="Copy @username" value={username} onCopy={() => copyText(username)} />
+                <MiniCopy label="Copy @BeamioTag" value={username} onCopy={() => copyText(username)} />
                 <MiniCopy label="Copy address" value={shortAddress} onCopy={() => copyText(address)} />
               </div>
 
@@ -248,11 +294,11 @@ export default function BeamioAddUSDCFlow() {
           <div className="px-4 pt-4">
             <Card>
               <div className="text-sm text-slate-600">
-                Share your <b>@username</b> for direct send (0 fee), or share address for other wallets.
+                Share your <b>@BeamioTag</b> for direct send (0 fee), or share address for other wallets.
               </div>
 
               <div className="mt-4 space-y-2">
-                <MiniCopy label="Your @username (Beamio direct send)" value={username} onCopy={() => copyText(username)} />
+                <MiniCopy label="Your @BeamioTag (Beamio direct send)" value={username} onCopy={() => copyText(username)} />
                 <MiniCopy label="Your address (other wallets/exchanges)" value={shortAddress} onCopy={() => copyText(address)} />
               </div>
 
@@ -480,16 +526,48 @@ function ButtonSecondary({ children, onClick }: { children: React.ReactNode; onC
   );
 }
 
-function PrimaryPill({ label, sub, onClick }: { label: string; sub: string; onClick: () => void }) {
+
+function PrimaryPill({
+  label,
+  sub,
+  loading = false,
+  onClick
+}: {
+  label: string
+  sub: string
+  loading?: boolean
+  onClick: () => void
+}) {
   return (
     <button
-      onClick={onClick}
-      className="h-[54px] rounded-[18px] bg-white text-slate-900 font-semibold shadow-sm active:scale-[0.99] flex flex-col items-center justify-center"
+      onClick={!loading ? onClick : undefined}
+      disabled={loading}
+      className={`
+        h-[54px]
+        rounded-[18px]
+        bg-white
+        text-slate-900
+        font-semibold
+        shadow-sm
+        flex flex-col
+        items-center
+        justify-center
+        transition
+        active:scale-[0.99]
+        ${loading ? 'opacity-80 cursor-not-allowed' : ''}
+      `}
     >
-      <div className="text-[15px]">{label}</div>
-      <div className="text-[11px] text-slate-500 -mt-0.5">{sub}</div>
+      {loading ? (
+        /* Loading spinner */
+        <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-900 rounded-full animate-spin" />
+      ) : (
+        <>
+          <div className="text-[15px]">{label}</div>
+          <div className="text-[11px] text-slate-500 -mt-0.5">{sub}</div>
+        </>
+      )}
     </button>
-  );
+  )
 }
 
 function SecondaryPill({ label, sub, onClick }: { label: string; sub: string; onClick: () => void }) {

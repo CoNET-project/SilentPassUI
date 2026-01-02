@@ -2,8 +2,8 @@ import { QRCodeCanvas } from 'qrcode.react'
 import { Copy, ExternalLink, Check } from 'lucide-react'
 import bIcon from '@/components/assets/32x32.svg'
 import { X } from 'lucide-react'
-import {useState} from 'react'
-import { HistoryFilter} from './HistoryFilterTabs'
+import {useState, useMemo} from 'react'
+
 import { ethers } from "ethers"
 import {AppButton} from '@/components/button/AppButton'
 
@@ -27,6 +27,7 @@ type RedeemOrLinkCardProps = {
 	account: string
 	hash: string
 	mode: Mode
+	preAmount: number
 }
 
 // 0.8% fee, min 0.02, max 2 USDC
@@ -35,6 +36,34 @@ function calcFeeFromNumber(base: number) {
 	const raw = base * 0.008;
 	const clamped = Math.min(Math.max(raw, 0.02), 2);
 	return Number(clamped.toFixed(2));
+}
+
+const CURRENCY_META: Record<
+  ICurrency,
+  { flag: string; symbol: string; label: string }
+> = {
+  USD: { flag: "🇺🇸", symbol: "$", label: "USD" },
+  CAD: { flag: "🇨🇦", symbol: "$", label: "CAD" },
+  EUR: { flag: "🇪🇺", symbol: "€", label: "EUR" },
+  JPY: { flag: "🇯🇵", symbol: "¥", label: "JPY" },
+  CNY: { flag: "🇨🇳", symbol: "¥", label: "CNY" },
+  HKD: { flag: "🇭🇰", symbol: "$", label: "HKD" },
+  TWD: { flag: "🇹🇼", symbol: "$", label: "TWD" },
+  SGD: { flag: "🇸🇬", symbol: "$", label: "SGD" },
+  USDC: {flag:"", symbol: "", label: ""}
+};
+
+function fiatPrefix(ccy: ICurrency) {
+	if (ccy === "CAD") return "CA$"
+	if (ccy === "USD") return "$"
+	if (ccy === "EUR") return "€"
+	if (ccy === "JPY") return "JP¥"
+	if (ccy==='TWD') return "NT$"
+	if (ccy==='CNY') return 'CN¥'
+	if (ccy==='HKD') return 'HK$'
+	if (ccy==='SGD') return 'SG$'
+
+  return CURRENCY_META[ccy].symbol;
 }
 
 const formatMoney = (n: number) =>
@@ -55,7 +84,8 @@ export const RedeemOrLinkCard = ({
 	fee,
 	account,
 	hash,
-	mode
+	mode,
+	preAmount
 }: RedeemOrLinkCardProps) => {
 	
 	const handleCopyLink = async () => {
@@ -72,7 +102,34 @@ export const RedeemOrLinkCard = ({
 			console.error('Failed to copy link', e)
 		}
 	}
+	const _note: string[] = note?.split('\r\n')||[]
+	const fixNode = _note[0]
+	const _currency: ICurrency = _note[1] as ICurrency || 'USDC'
 
+	function formatAmount(v: number, c: ICurrency) {
+		if (!isFinite(v)) return `0 ${c}`
+		return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
+	}
+
+
+	const displayForPaymentLink = useMemo(() => {
+		
+		
+		if (_currency === 'USDC') {
+			return {
+				pay: formatAmount(preAmount, 'USDC'),
+				fee: formatAmount(fee, 'USDC'),
+				receive: formatAmount(preAmount - fee, 'USDC'),
+			}
+		}
+
+		
+		return {
+			pay: `${fiatPrefix(_currency)} ${formatAmount(preAmount, _currency)}`,
+			fee: `${fiatPrefix(_currency)} ${formatAmount(fee, _currency)}`,
+			receive: `${fiatPrefix(_currency)} ${formatAmount(preAmount - fee, _currency)}`,
+		}
+	}, [_currency])
 
 	const handleCopyCode = async () => {
 		try {
@@ -88,18 +145,21 @@ export const RedeemOrLinkCard = ({
 	}
 
 	const handleOpenLink = () => {
-			if (!successUrl) return
-			window.open(successUrl, '_blank')
+		if (!successUrl) return
+		window.open(successUrl, '_blank')
 	}
-		const requestGross = amt + tip; // payer will pay
-		
-		const displayGeneratedAmount = isPay ? amt : requestGross;
-		
-		
-		const [copied, setCopied] = useState(false)
-		const [copied1, setCopied1] = useState(false)
 
-		function CopyLinkButton({ appUrl }: { appUrl: string }) {
+	const requestGross = amt + tip; // payer will pay
+	
+	const displayGeneratedAmount = isPay ? amt : requestGross;
+	
+	
+	const [copied, setCopied] = useState(false)
+	const [copied1, setCopied1] = useState(false)
+	const [currency, setCurrency] = useState<ICurrency>(_note[1] as ICurrency)
+	
+
+	function CopyLinkButton({ appUrl }: { appUrl: string }) {
 		const [copied, setCopied] = useState(false)
 
 		const handleCopy = async () => {
@@ -115,7 +175,7 @@ export const RedeemOrLinkCard = ({
 		}
 
 		return (
-			 <button
+			<button
 				type="button"
 				onClick={handleCopy}
 				className="
@@ -371,13 +431,13 @@ export const RedeemOrLinkCard = ({
 					</div>
 				</div>
 
-			{note && (
+			{fixNode && (
 				<section className="mb-3">
 					<span className="block text-[11px] font-medium text-slate-600 mb-1">
 						Notes
 					</span>
 					<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-900">
-						{note}
+						{fixNode}
 				</div>
 				</section>
 			)}
@@ -409,14 +469,14 @@ export const RedeemOrLinkCard = ({
 					<div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3 text-[11px] space-y-1">
 						<div className="flex items-center justify-between">
 						<span className="text-slate-500">{ type === 'paid' ? 'You paid' : type ==='completed'?  'Payer paid' : 'Payer will pay' } </span>
-						<span className="font-semibold text-slate-900">{formatMoney(type === 'paid' ? amt: amt + fee )} USDC</span>
+						<span className="font-semibold text-slate-900">{displayForPaymentLink.pay}</span>
 						</div>
 						{
 							type !== 'paid' && (
 								<>
 									<div className="flex items-center justify-between">
 										<span className="text-slate-500">{type === 'pending' ? 'You will receive' : 'You received' }</span>
-										<span className="font-semibold text-slate-900">{formatMoney(amt)} USDC</span>
+										<span className="font-semibold text-slate-900">{displayForPaymentLink.receive}</span>
 									</div>
 									<div className="flex items-center justify-between pt-1 border-t border-slate-200 mt-1">
 										<span className="text-slate-500">Beamio service fee (0.8%)</span>

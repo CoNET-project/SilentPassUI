@@ -84,8 +84,19 @@ function FeeInline({
 	}
 
 	function formatAmount(v: number, c: ICurrency) {
-		if (!isFinite(v)) return `0 ${c}`
-		return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
+		if (!isFinite(v)) return "0"
+
+		const decimals =
+			c === "TWD" || c === "JPY"
+				? 0
+				: c === "USDC"
+				? 4
+				: 2
+
+		return v.toLocaleString("en-US", {
+			minimumFractionDigits: decimals,
+			maximumFractionDigits: decimals
+		})
 	}
 
 	function usdcToCurrencyAmount(usdc: number, c: ICurrency) {

@@ -1,31 +1,44 @@
-import React from "react";
-import SearchInputWithDropdown from './SearchBarWithResults'
-import { ChevronLeft } from 'lucide-react'
+import React, { useState } from "react"
+import SearchInputWithDropdown from "./SearchBarWithResults"
+import { ChevronLeft } from "lucide-react"
 
 type Props = {
-	close: (path: string|searchResult) => void
+  close: (path: string | searchResult) => void
 }
 
-export default function BeamioSearch({close}: Props) {
+export default function BeamioSearch({ close }: Props) {
+  const [editing, setEditing] = useState(false)
 
-return (
-	<div className="mt-0 flex items-center px-6 pt-4 pb-3 border-slate-100">
-		<main className="flex-1">
-		<section className="relative">
+  return (
+    <div
+      className="
+        flex items-center
+        px-6 pb-3
+        border-slate-100
+      "
+      style={{
+        paddingTop: "calc(env(safe-area-inset-top) + 1rem)",
+      }}
+    >
+      <main className="flex-1">
+        <section className="relative">
+          <SearchInputWithDropdown
+            readonly={!editing}
+            showHistory={editing}
+            // ✅ readonly(假input) 时：先切到可输入模式，不要立刻 close
+            close={path => {
+              if (!editing) {
+                setEditing(true)
+                return
+              }
 
-
-			{/* SearchInput 占满整行 */}
-			
-			<SearchInputWithDropdown
-				readonly={false}
-				showHistory={true}
-				close={path => {
-					if (path) close(path)
-					else close('/')
-				}}
-			/>
-			
-		</section>
-		</main>
-	</div>
-)}
+              // ✅ 真输入模式下才走你原本的 close 逻辑
+              if (path) close(path)
+              else close("/")
+            }}
+          />
+        </section>
+      </main>
+    </div>
+  )
+}

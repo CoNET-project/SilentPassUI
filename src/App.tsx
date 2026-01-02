@@ -1,7 +1,5 @@
 // App.tsx
 import { useEffect, useRef, useState } from "react"
-import "./default.scss"
-import styles from "./layout.module.scss"
 import { Route, Routes, MemoryRouter as Router } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
@@ -13,11 +11,12 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
 import Browser from "@/pages/Browser"
+import layout from './layout.module.scss'
 
 global.Buffer = require("buffer").Buffer
 
 function App() {
-	const { isInitialLoading } = useDaemonContext()
+	const { isInitialLoading, showFooter,  } = useDaemonContext()
 	const bodyRef = useRef<HTMLDivElement | null>(null)
 
 	// Footer 是否显示（由滚动决定）
@@ -49,6 +48,10 @@ function App() {
 			const current = el
 			const touch = e.touches[0]
 			if (!touch) return
+
+			if (bodyRef.current && current === bodyRef.current) {
+			return
+			}
 
 			const anyEl = current as any
 			const lastY = anyEl.__lastTouchY as number | undefined
@@ -169,10 +172,12 @@ function App() {
 		return () => clearTimeout(t)
 	}, [])
 
+
+
 	return (
 		<Router initialEntries={["/Onboarding"]}>
-			<div className={styles.app}>
-				<div ref={bodyRef} className={styles.body}>
+			<div >
+				<div ref={bodyRef} >
 					<Routes>
 						<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
 						<Route path="/" element={<Home />} />
@@ -186,13 +191,7 @@ function App() {
 				</div>
 
 				{/* ✅ 外层只当占位（不再做 transform），动画全部在 Footer 自己的 motion.div 上做 */}
-				{!isInitialLoading && (
-					<div className={styles.bottom}>
-						<div className={styles.bottomInner}>
-							<Footer visible={footerVisible} peek={false} />
-						</div>
-					</div>
-				)}
+				{!isInitialLoading && showFooter && <Footer visible={footerVisible} peek={false} />}
 			</div>
 		</Router>
 	)

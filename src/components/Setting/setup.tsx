@@ -29,7 +29,6 @@ import RecoveryBackupScreen from './RecoveryBackupScreen'
 import RecoveryQRDetailScreen from './RecoveryQRDetailScreen'
 
 
-
 export type IMenu = ''|'Account'|'Region'|'Payment'|'Cashcodes'|'Passkey'|'Privacy'|'Notifications'|'Statement'|'Help'|'privateKey'|'backup'|'RecoveryBackupScreen'|'RecoveryQRDetailScreen'|'ChangePIN'
 
 export default function BeamioSettingsScreen({
@@ -63,108 +62,108 @@ export default function BeamioSettingsScreen({
 					<>
 						{/* Top nav */}
 						<header className="">
-								<BeamioNavBack title="Settings" onClose={() => onClose()} />
+							<BeamioNavBack title="Settings" onClose={() => onClose()} />
 						</header>
 
 						{/* 👇 这里是可以滚动的内容区域 */}
 						<div className="flex-1 min-h-0 overflow-y-auto">
-						{/* Brand strip */}
-						<section className="bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between">
-						<div>
-							<p className="text-sm font-semibold">Beamio · 0-gas USDC on Base</p>
-							<p className="text-xs text-slate-500">
-								Non-custodial passkey wallet · no centralized user database
-							</p>
-						</div>
-						<div className="flex flex-col items-end text-right text-[10px] text-slate-400 leading-tight">
-							<span>Version 0.1.6 · MVP</span>
-							<span>Early access · in testing</span>
-						</div>
-						</section>
+							{/* Brand strip */}
+							<section className="bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between">
+								<div>
+									<p className="text-sm font-semibold">Beamio · 0-gas USDC on Base</p>
+									<p className="text-xs text-slate-500">
+										Non-custodial passkey wallet · no centralized user database
+									</p>
+								</div>
+								<div className="flex flex-col items-end text-right text-[10px] text-slate-400 leading-tight">
+									<span>Version 0.2.10 · MVP</span>
+									<span>Early access · in testing</span>
+								</div>
+							</section>
 
 
-						{/* Preferences */}
-						<h2 className={sectionTitleClass}>Preferences</h2>
-						<div className="bg-white border-y border-slate-100">
-							<button 
-								className={rowClass}
-								onClick={() => {
-									setSettingsOpen('Account')
-								}}
-							>
-								<div className={leftClass}>
-									<span className={iconWrapperClass}>
-										<User className="h-4 w-4" />
-									</span>
-									<div className="flex flex-col items-start">
-										<span className="text-sm font-medium">Account</span>
-										<span className="text-xs text-slate-500">
-											Name, @handle, profile photo
+							{/* Preferences */}
+							<h2 className={sectionTitleClass}>Preferences</h2>
+							<div className="bg-white border-y border-slate-100">
+								<button 
+									className={rowClass}
+									onClick={() => {
+										setSettingsOpen('Account')
+									}}
+								>
+									<div className={leftClass}>
+										<span className={iconWrapperClass}>
+											<User className="h-4 w-4" />
 										</span>
+										<div className="flex flex-col items-start">
+											<span className="text-sm font-medium">Account</span>
+											<span className="text-xs text-slate-500">
+												Name, @handle, profile photo
+											</span>
+										</div>
 									</div>
-								</div>
-								<ChevronRight className="h-4 w-4 text-slate-300" />
-							</button>
+									<ChevronRight className="h-4 w-4 text-slate-300" />
+								</button>
 
-							<button 
-								className={rowClass}
-								onClick={() => {
-									setSettingsOpen('Region')
-								}}
-							>
-								<div className={leftClass}>
-									<span className={iconWrapperClass}>
-									<Globe2 className="h-4 w-4" />
-									</span>
-									<div className="flex flex-col items-start">
-									<span className="text-sm font-medium">Region &amp; currency</span>
-									<span className="text-xs text-slate-500">
-										Country, language, default stablecoin
-									</span>
-									</div>
-								</div>
-								<ChevronRight className="h-4 w-4 text-slate-300" />
-							</button>
-
-							<button className={rowClass}
-								onClick={() => {
-									setSettingsOpen('Payment')
-								}}
-							>
-								<div className={leftClass}>
-									<span className={iconWrapperClass}>
-									<CreditCard className="h-4 w-4" />
-									</span>
-									<div className="flex flex-col items-start">
-										<span className="text-sm font-medium">Payment methods</span>
-										<span className="text-xs text-slate-500">
-											Connect Coinbase, bank or cards
+								<button 
+									className={rowClass}
+									onClick={() => {
+										setSettingsOpen('Region')
+									}}
+								>
+									<div className={leftClass}>
+										<span className={iconWrapperClass}>
+										<Globe2 className="h-4 w-4" />
 										</span>
-									</div>
-								</div>
-								<ChevronRight className="h-4 w-4 text-slate-300" />
-							</button>
-
-							<button className={rowClass}
-								onClick={() => {
-									setSettingsOpen('Cashcodes')
-								}}
-							
-							>
-								<div className={leftClass}>
-									<span className={iconWrapperClass}>
-										<Smartphone className="h-4 w-4" />
-									</span>
-									<div className="flex flex-col items-start">
-										<span className="text-sm font-medium">Cashcodes &amp; links</span>
+										<div className="flex flex-col items-start">
+										<span className="text-sm font-medium">Region &amp; currency</span>
 										<span className="text-xs text-slate-500">
-											Default memo &amp; expiry for links
+											Country, language, default stablecoin
 										</span>
+										</div>
 									</div>
-								</div>
-								<ChevronRight className="h-4 w-4 text-slate-300" />
-							</button>
-						</div>
+									<ChevronRight className="h-4 w-4 text-slate-300" />
+								</button>
+
+								<button className={rowClass}
+									onClick={() => {
+										setSettingsOpen('Payment')
+									}}
+								>
+									<div className={leftClass}>
+										<span className={iconWrapperClass}>
+										<CreditCard className="h-4 w-4" />
+										</span>
+										<div className="flex flex-col items-start">
+											<span className="text-sm font-medium">Payment methods</span>
+											<span className="text-xs text-slate-500">
+												Connect Coinbase, bank or cards
+											</span>
+										</div>
+									</div>
+									<ChevronRight className="h-4 w-4 text-slate-300" />
+								</button>
+
+								<button className={rowClass}
+									onClick={() => {
+										setSettingsOpen('Cashcodes')
+									}}
+								
+								>
+									<div className={leftClass}>
+										<span className={iconWrapperClass}>
+											<Smartphone className="h-4 w-4" />
+										</span>
+										<div className="flex flex-col items-start">
+											<span className="text-sm font-medium">Cashcodes &amp; links</span>
+											<span className="text-xs text-slate-500">
+												Default memo &amp; expiry for links
+											</span>
+										</div>
+									</div>
+									<ChevronRight className="h-4 w-4 text-slate-300" />
+								</button>
+							</div>
 
 						{/* Security & BACKUP */}
 						<h2 className={sectionTitleClass}>SECURITY &amp; BACKUP</h2>

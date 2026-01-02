@@ -99,7 +99,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 				</section> */}
 
 				{/* Transaction details */}
-				<section className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
+				<section className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2 mb-4">
 					<div className="flex items-center justify-between text-sm">
 					<span className="font-medium text-slate-800">Transaction</span>
 					<span className="text-[11px] text-slate-500">Completed on Base</span>
@@ -136,7 +136,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 
 				
 				</div>
-				{/* <div className="px-6 pb-4 flex flex-col gap-3 max-w-xl w-full mx-auto">
+				<div className="pb-4 flex flex-col gap-3 max-w-xl w-full mx-auto">
 					<AppButton
 						fullWidth
 						onClick={() => {
@@ -147,7 +147,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 					</AppButton>
 					
 					
-				</div> */}
+				</div>
 			</div>
 
 			

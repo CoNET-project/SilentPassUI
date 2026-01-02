@@ -67,12 +67,16 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 			let account = beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase())
 
 			if (!account) {
-			const _account = await searchUsername(address)
-			if (_account?.results?.[0]) account = _account.results[0]
+				const _account = await searchUsername(address)
+				if (_account?.results?.[0]) account = _account.results[0]
 			}
 
 			if (!account) {
 				account = unknowAcc(address) 
+			} else {
+				if (!account?.image) {
+					account.image = getImg(account.username)
+				}
 			}
 			//@ts-ignore
 			setbBeamioUsers(prev => {
@@ -81,7 +85,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 			if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
 				return [...prev, account!]
 			})
-
+			
 			setfromBeamio(account)
 			account.image && setUserImg(await urlToObjectUrl(account.image))
 		} finally {

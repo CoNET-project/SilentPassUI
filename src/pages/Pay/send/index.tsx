@@ -10,6 +10,7 @@ import base_ex from '@/components/assets/base-ex.svg'
 import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import { X, Check, Plus } from "lucide-react"
+import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -119,6 +120,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 	const [showGiftImageError, setShowGiftImageError] = useState(false)
 	const [uploadingIPFS, setUploadingIPFS] = useState(false)
 	const [addedNote, setAddedNote] = useState("")
+	const [lockMode, setLockMode] = useState<PaymentLinkLockMode>("FIAT_LOCKED")
 
 	const selectItem = (item: searchResult) => {
 		setItem(item)
@@ -295,6 +297,10 @@ export default function PayScreen ({close, beamioer}: Props) {
 		let sendNote = note||defaultNodeText
 		if (addedNote) {
 			sendNote += `\r\n${addedNote}`
+		} else {
+			if (lockMode === 'FIAT_LOCKED') {
+				sendNote += `\r\n${currentCurrency}`
+			}
 		}
 		const params = new URLSearchParams({amount: sendAmount, toAddress: toAddress, note: sendNote }).toString()
 		const path = `/api/BeamioTransfer?${params}`
@@ -362,7 +368,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 				title: val.title,
 				detail: val.detail,
 				image: `${ipfsEndpoint}${result}`,
-				currency: currentCurrency,
+				currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
 				currencyAmount: currencyAmount
 			}
 		}
@@ -505,6 +511,16 @@ export default function PayScreen ({close, beamioer}: Props) {
 												</div>
 											)
 										}
+										<div className="mt-5 flex items-center gap-3">
+									
+
+											<LockModeSegmented
+												value={lockMode}
+												onChange={val => {
+												setLockMode(val)
+												}}
+											/>
+										</div>
 										<section className="input">
 											<AmountCurrency 
 												amount={sendAmount} 
@@ -517,6 +533,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 												needBalance={true}
 												focusSignal={focusAmount}
 												currencyChange={val => setCurrentCurrency(val)}
+												currencyUSDC={lockMode === 'USDC_LOCKED'}
 											/>
 										</section>
 										{showGiftImageError && (

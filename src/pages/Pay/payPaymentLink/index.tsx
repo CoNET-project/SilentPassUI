@@ -322,13 +322,11 @@ export default function PayMeLink ({close, code, address}: Props) {
 		const requestEndpoint = 'https://api.settleonbase.xyz' + path
 
 		
-		
 		try {
 			
 			const response = await fetch(requestEndpoint, {
 				method: 'GET'
 			})
-			
 			
 
 			if (response.status !== 402) {
@@ -396,7 +394,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 										<LockModeSegmented
 											value={lockMode}
 											onChange={val => {
-											setLockMode(val)
+												setLockMode(val)
 											}}
 										/>
 									</div>

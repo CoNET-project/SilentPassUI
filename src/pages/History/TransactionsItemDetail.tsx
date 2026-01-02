@@ -60,7 +60,33 @@ function formatTimeDetail(ts: number) {
 	return `${date} · ${time}`
 }
 
+const CURRENCY_META: Record<
+  ICurrency,
+  { flag: string; symbol: string; label: string }
+> = {
+  USD: { flag: "🇺🇸", symbol: "$", label: "USD" },
+  CAD: { flag: "🇨🇦", symbol: "$", label: "CAD" },
+  EUR: { flag: "🇪🇺", symbol: "€", label: "EUR" },
+  JPY: { flag: "🇯🇵", symbol: "¥", label: "JPY" },
+  CNY: { flag: "🇨🇳", symbol: "¥", label: "CNY" },
+  HKD: { flag: "🇭🇰", symbol: "$", label: "HKD" },
+  TWD: { flag: "🇹🇼", symbol: "$", label: "TWD" },
+  SGD: { flag: "🇸🇬", symbol: "$", label: "SGD" },
+  USDC: {flag:"", symbol: "", label: ""}
+};
 
+function fiatPrefix(ccy: ICurrency) {
+	if (ccy === "CAD") return "CA$"
+	if (ccy === "USD") return "$"
+	if (ccy === "EUR") return "€"
+	if (ccy === "JPY") return "JP¥"
+	if (ccy==='TWD') return "NT$"
+	if (ccy==='CNY') return 'CN¥'
+	if (ccy==='HKD') return 'HK$'
+	if (ccy==='SGD') return 'SG$'
+
+  return CURRENCY_META[ccy].symbol;
+}
 
 function formatUSDC(v: number) {
 	if (!isFinite(v)) return "0.0000"
@@ -173,7 +199,21 @@ const unknowAcc = (address: string):searchResult => {
 	return ret
 }
 
+	function formatAmount(v: number, c: ICurrency) {
+		if (!isFinite(v)) return "0"
 
+		const decimals =
+			c === "TWD" || c === "JPY"
+				? 0
+				: c === "USDC"
+				? 4
+				: 2
+
+		return v.toLocaleString("en-US", {
+			minimumFractionDigits: decimals,
+			maximumFractionDigits: decimals
+		})
+	}
 
 export function TransactionsItemDetail({
 	tx,
@@ -189,13 +229,15 @@ export function TransactionsItemDetail({
 	const isSponsored = (tx.fee || 0) <= 0
 	const timeText = useMemo(() => formatTimeDetail(tx.date), [tx.date])
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
-	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers } = useDaemonContext()
+	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, currencyData,} = useDaemonContext()
 	const [userImg, setUserImg] = useState('')
 	const amountText = useMemo(() => formatUSDC(tx.preAmount ?? tx.amount), [tx.preAmount, tx.amount])
 	const [copied, setCopied] = useState(false)
+	const [currency, setCurrency] = useState<ICurrency> ('USDC')
 
 	// ≈ $1.00：这里简单用 1:1 估算
-	const approxFiatText = useMemo(() => `≈ ${formatUSD(tx.preAmount ?? tx.amount)}`, [tx.preAmount, tx.amount])
+
+	const approxFiatText = useMemo(() => `≈ ${fiatPrefix(currency)} ${formatAmount(usdcToCurrencyAmount(tx.amount, currency), currency)}`, [tx.amount, currency])
 
 	const statusText: HistoryFilter = useMemo(() => {
 		return tx.type
@@ -231,10 +273,12 @@ export function TransactionsItemDetail({
 			})
 
 			setfromBeamio(account)
+			const _currency= tx?.note?.split('\r\n')
+			const _currency1: ICurrency = tx?.card?.currency as ICurrency||_currency[1]||'USDC'
+			setCurrency(_currency1)
 			account.image && setUserImg(await urlToObjectUrl(account.image))
 		} finally {
 			findingRef.current = false
-			
 		}
 	}, [ beamioUsers, fromBeamio, setbBeamioUsers])
 
@@ -270,6 +314,24 @@ export function TransactionsItemDetail({
 		}
 		navigator.vibrate?.(10)
 	}
+
+	function fxRateUSDCToCurrency(currency: ICurrency): number {
+		// 1 USDC = ? USD
+		const usdcToUSD = currencyData.USDC ?? 1
+
+		if (currency === 'USD') return usdcToUSD
+
+		const usdToCurrency = currencyData[currency]
+		if (typeof usdToCurrency !== 'number') return usdcToUSD
+
+		return usdcToUSD * usdToCurrency
+	}
+
+	function usdcToCurrencyAmount(usdc: number, c: ICurrency) {
+		const rate = fxRateUSDCToCurrency(c)
+		return usdc * rate
+	}
+
 	return (
 		<div className="min-h-screen">
 		<div className="mx-auto max-w-[520px] px-4 py-4">
@@ -541,17 +603,21 @@ export function TransactionsItemDetail({
 					type="button"
 					onClick={() => onSendAgain?.(tx)}
 					className="
-					flex-1 h-12
-					rounded-2xl
-					bg-slate-900 text-white
-					font-semibold
-					flex items-center justify-center gap-2
-					shadow-sm
-					active:scale-[0.99] transition
+						flex-1 h-12
+						rounded-2xl
+						bg-slate-900 text-white
+						font-semibold
+						flex items-center justify-center gap-2
+						shadow-sm
+						active:scale-[0.99] transition
 					"
 				>
 					<Repeat2 className="h-5 w-5" />
-					<span>Send again</span>
+					<span>
+						{
+							tx.type === 'sent' || tx.type === 'paid' ? 'Send again' : 'Send back'
+						}
+					</span>
 				</button>
 
 				<button

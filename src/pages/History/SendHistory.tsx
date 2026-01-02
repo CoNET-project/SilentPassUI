@@ -501,13 +501,13 @@ export const SendHistoryTable = (
 			min-h-0
 			overflow-visible
 			flex justify-center
-			pt-[calc(env(safe-area-inset-top)+0.2rem)]
+			pt-[calc(env(safe-area-inset-top)+0.5rem)]
 		">
         
           	{/* Header */}
 			{
 				!showDetail && 
-					<div className="flex items-center justify-between mb-3">
+					<div className="flex items-center justify-between mb-3 mt-4">
 						<div className="flex flex-col">
 							<span className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
 								Beamio
@@ -801,6 +801,10 @@ export const SendHistoryTable = (
 
 			<div
 				className={[
+					"pt-[env(safe-area-inset-top)]",
+					'pb-[env(safe-area-inset-bottom)]',
+					'pl-[env(safe-area-inset-left)]',
+					'pr-[env(safe-area-inset-right)]',
 					"fixed inset-0 z-40 flex-1 overflow-y-auto",
 					"transition-transform duration-300 ease-out",
 					showDetail ? "translate-x-0" : "translate-x-full",
@@ -814,7 +818,9 @@ export const SendHistoryTable = (
 						setShowFooter(true)
 					}}
 					className="
-						absolute top-4 left-4
+						 absolute
+						top-[calc(env(safe-area-inset-top)+1rem)]
+						left-[calc(env(safe-area-inset-left)+1rem)]
 						w-9 h-9
 						rounded-full
 						bg-white/70 dark:bg-slate-900/50

@@ -3,7 +3,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
 import {useObjectImgSrc} from './useObjectImgSrc'
 import { X } from "lucide-react"
-
+import { createPortal } from "react-dom"
 import {
   useState,
   useEffect,
@@ -51,49 +51,97 @@ function dataUrlToObjectUrl(dataUrl: string) {
 	return URL.createObjectURL(new Blob([arr], { type: mime }))
 }
 
+
 export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
- 
+	
+  	
 	const [fromBeamio, setfromBeamio] =  useState<searchResult|undefined> ()
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers} = useDaemonContext()
+	const imgSrc = useObjectImgSrc(card?.image)
+	const [bgSrc, setBgSrc] = useState<string>("")
+	const findUser = async () => {
+		if (fromBeamio) return
 
-		const findUser = async () => {
-			if (fromBeamio) return
-	
-			let account = beamioUsers.find(n => n?.address === address)
-			if (!account) {
-				const _account = await searchUsername(address)
-				if (_account) {
-					const acc = _account.results
-					setbBeamioUsers([...beamioUsers, acc[0]])
-					setfromBeamio({...acc[0]})
-				}
-				return
+		let account = beamioUsers.find(n => n?.address === address)
+		if (!account) {
+			const _account = await searchUsername(address)
+			if (_account) {
+				const acc = _account.results
+				setbBeamioUsers([...beamioUsers, acc[0]])
+				setfromBeamio({...acc[0]})
 			}
-			setfromBeamio({...account})
-			
+			return
 		}
+		setfromBeamio({...account})
 		
-		useEffect(() => {
-			findUser()
-			
-		}, [])
+	}
 
-		const imgSrc = useObjectImgSrc(card?.image)
-	return (
-		<div className="fixed inset-0 overflow-hidden">
+	useEffect(() => {
+		if (!imgSrc) {
+			setBgSrc("")
+			return
+		}
+
+		let cancelled = false
+		const img = new Image()
+		img.src = imgSrc
+
+		const done = async () => {
+			// ✅ iOS：尽量等 decode 完成再显示（避免“已加载但未绘制”）
+			try {
+			// decode 在部分环境可用
+			// @ts-ignore
+			if (img.decode) await img.decode()
+			} catch {}
+
+			if (cancelled) return
+
+			// ✅ 下一帧再 set，强制触发一次 repaint
+			requestAnimationFrame(() => {
+			if (!cancelled) setBgSrc(imgSrc)
+			})
+		}
+
+		img.onload = () => { void done() }
+		img.onerror = () => {
+			// 失败也给它渲染出来，至少不会一直空白
+			if (!cancelled) setBgSrc(imgSrc)
+		}
+
+		return () => {
+			cancelled = true
+		}
+	}, [imgSrc])
+	
+	useEffect(() => {
+		findUser()
+		
+	}, [address])
+
+	const el = document.getElementById("overlay-root")
+	if (!el) return null
+
+	return createPortal (
+		<div className="fixed inset-0 overflow-hidden z-[9999]">
 			{/* ===== 全屏背景 ===== */}
 			<div className="absolute inset-0">
-				<div className="absolute inset-0">
-					{imgSrc && (
+				<div className="absolute inset-0" style={{ transform: "translateZ(0)" }}>
+					{bgSrc && (
 						<img
-						src={imgSrc}
+						key={bgSrc}                 // ✅ 强制刷新 img 节点，iOS 更稳
+						src={bgSrc}
 						alt="card-bg"
 						className="w-full h-full object-cover"
 						draggable={false}
 						decoding="async"
+						loading="eager"             // ✅ 不要懒加载
+						// @ts-ignore
+						fetchPriority="high"        // ✅ Chrome/Safari 新一些版本有效，无害
+						style={{ transform: "translateZ(0)", willChange: "transform" }}
 						/>
 					)}
 				</div>
+
 
 				<div
 					className="absolute inset-0 bg-black/20"
@@ -168,6 +216,6 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 				)}
 				</div>
 			</div>
-		</div>
+		</div>, el
 	)
 }

@@ -55,23 +55,15 @@ function fiatPrefix(ccy: ICurrency) {
 
 function FeeInline({
   	payUsdc,
-	isUSDC,
-
+	currentCurrency
 }: {
   	payUsdc: number
-	isUSDC: boolean
+	currentCurrency: ICurrency
 }) {
 	const [open, setOpen] = useState(false)
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
-	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>('USDC')
 	const [openInof, setOpenInfo] = useState(false)
-	
 
-	useEffect (() => {
-		if (isUSDC||!beamio) return
-		const bo = beamio
-		setcurrentCurrency(bo.currency)
-	}, [beamio])
 
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
 	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
@@ -117,7 +109,7 @@ function FeeInline({
 	)
 
 	const display = useMemo(() => {
-		if (isUSDC) {
+		if (currentCurrency === 'USDC') {
 			return {
 				pay: formatAmount(payUsdc, 'USDC'),
 				fee: formatAmount(Number(feeUsdc), 'USDC'),
@@ -131,7 +123,7 @@ function FeeInline({
 			fee: formatAmount(usdcToCurrencyAmount(Number(feeUsdc), c), c),
 			receive: formatAmount(usdcToCurrencyAmount(receiveUsdc, c), c),
 		}
-	}, [isUSDC, payUsdc, feeUsdc, receiveUsdc, currentCurrency])
+	}, [payUsdc, feeUsdc, receiveUsdc, currentCurrency])
 
 	
 	return (
@@ -184,7 +176,7 @@ function FeeInline({
 										
 									</span>
 									<span className="font-semibold tabular-nums text-slate-900">
-										{isUSDC ? `${display.receive} USDC` : fiatPrefix(currentCurrency) + display.receive}
+										{currentCurrency === 'USDC' ? `${display.receive} USDC` : fiatPrefix(currentCurrency) + display.receive}
 									</span>
 								</div>
 							)
@@ -204,12 +196,12 @@ function FeeInline({
 							{/* 右侧：两行，右对齐 */}
 							<div className="flex flex-col items-end leading-snug">
 								<span className="font-mono font-medium text-[13px] text-black/60">
-									{ isUSDC ? `${display.pay} USDC` : fiatPrefix(currentCurrency) + display.pay}
+									{ currentCurrency === 'USDC' ? `${display.pay} USDC` : fiatPrefix(currentCurrency) + display.pay}
 								</span>
 
-								{!isUSDC && (
+								{currentCurrency !== 'USDC'  && (
 									<span className="text-xs text-slate-500 tabular-nums">
-										≈ {payUsdc} USDC
+										≈ {payUsdc.toFixed(4)} USDC
 									</span>
 								)}
 							</div>
@@ -224,10 +216,10 @@ function FeeInline({
 							{/* 右侧：两行，右对齐 */}
 							<div className="flex flex-col items-end leading-snug">
 								<span className="font-mono font-medium text-[13px] text-black/60">
-									{ isUSDC ? `${display.fee} USDC` : fiatPrefix(currentCurrency) + display.fee}
+									{ currentCurrency === 'USDC' ? `${display.fee} USDC` : fiatPrefix(currentCurrency) + display.fee}
 								</span>
 
-								{!isUSDC && (
+								{currentCurrency !== 'USDC' && (
 								<span className="text-xs text-slate-500 tabular-nums">
 									≈ {feeUsdc} USDC
 								</span>
@@ -244,10 +236,10 @@ function FeeInline({
 							{/* 右侧：两行，右对齐 */}
 							<div className="flex flex-col items-end leading-snug">
 								<span className="font-semibold tabular-nums text-slate-900">
-									{ isUSDC ? `${display.receive} USDC` : fiatPrefix(currentCurrency) + display.receive}
+									{ currentCurrency === 'USDC' ? `${display.receive} USDC` : fiatPrefix(currentCurrency) + display.receive}
 								</span>
 
-								{!isUSDC && (
+								{currentCurrency !== 'USDC' && (
 									<span className="text-xs text-slate-500 tabular-nums">
 										≈ {receiveUsdc.toFixed(4)} USDC
 									</span>
@@ -279,7 +271,7 @@ function FeeInline({
 					>
 					<FeeInfo 
 						close={() => setOpenInfo(false)}
-						isUSDCFixed={isUSDC}
+						isUSDCFixed={currentCurrency === 'USDC'}
 					/>
 					</div>
 				</div>

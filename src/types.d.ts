@@ -532,5 +532,6 @@ type TransferHistork = {
 	fee: number
 	preAmount: number
 	card?: IImageCard
+	requestCurrency?: ICurrency
 
 }

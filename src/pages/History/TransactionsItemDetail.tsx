@@ -8,7 +8,8 @@ import {
   Copy,
   ExternalLink,
   Repeat2,
-  MessageCircle
+  MessageCircle,
+  ShieldCheck
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {urlToObjectUrl, useObjectImgSrc} from '@/components/card/useObjectImgSrc'
@@ -16,6 +17,8 @@ import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import {ethers} from 'ethers'
 import ShowCard from '@/components/card/ShowCard'
 import baseIcon from '@/components/assets/base-logo.png'
+import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-blue.svg'
+import FeeInline from '@/pages/Pay/PaymentLink/FeeInline'
 
 type Mode = "pay" | "request" | 'cashcode'
 const baseIconImg = (
@@ -29,13 +32,10 @@ const baseIconImg = (
 type Props = {
 	tx: TransferHistork
 	localMode?: Mode
-	chainLabel?: string // default "On Base"
 	sponsoredByLabel?: string // default "Sponsored by Beamio"
 	onProfile?: (address: string) => void
 	onSendAgain?: (tx: TransferHistork) => void
 	onMessage?: (address: string) => void
-	onCopyTx?: (hash: string) => void
-	onOpenExplorer?: (hash: string) => void
 }
 
 const shortHash = (h: string) => (h ? `${h.slice(0, 6)}…${h.slice(-4)}` : "")
@@ -59,6 +59,8 @@ function formatTimeDetail(ts: number) {
 	const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
 	return `${date} · ${time}`
 }
+
+
 
 const CURRENCY_META: Record<
   ICurrency,
@@ -218,31 +220,100 @@ const unknowAcc = (address: string):searchResult => {
 export function TransactionsItemDetail({
 	tx,
 	localMode = "pay",
-	chainLabel = "On Base",
 	sponsoredByLabel = "Sponsored by Beamio",
 	onProfile,
 	onSendAgain,
 	onMessage,
-	onCopyTx,
-	onOpenExplorer
 }: Props) {
-	const isSponsored = (tx.fee || 0) <= 0
+	const isSponsored = true
 	const timeText = useMemo(() => formatTimeDetail(tx.date), [tx.date])
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, currencyData,} = useDaemonContext()
+
+	const amountText = useMemo(() => formatUSDC(tx.amount), [tx.amount])
+
 	const [userImg, setUserImg] = useState('')
-	const amountText = useMemo(() => formatUSDC(tx.preAmount ?? tx.amount), [tx.preAmount, tx.amount])
+	const AmountText = () => {
+		if (localMode !== 'pay') {
+			if (tx?.requestCurrency) {
+				const fiatText = fiatPrefix(currency)
+				const amt = formatAmount(tx.amount, tx.requestCurrency)
+				return (
+					<div className="flex items-baseline gap-2">
+						<span
+							className={[
+							"text-[28px] leading-none font-semibold",
+							amountColor,
+							].join(" ")}
+						>
+							{fiatText}
+						</span>
+						<span
+							className={[
+							"text-[44px] leading-none font-semibold tracking-tight tabular-nums",
+							amountColor,
+							].join(" ")}
+						>
+							{amt}
+						</span>
+
+						
+					</div>
+				)
+			}
+		}
+
+		const amt = formatUSDC(tx.amount)
+		const textColor = tx.type === 'paid'|| tx.type === 'sent' ? statusStyleMap['sent'].text : statusStyleMap['received'].text
+		return (
+			<div className="flex items-baseline gap-2">
+				<span
+					className={[
+					"text-[44px] leading-none font-semibold tracking-tight tabular-nums",
+					textColor,
+					].join(" ")}
+				>
+					{amt}
+				</span>
+
+				<span
+					className={[
+					"text-[28px] leading-none font-semibold",
+					textColor,
+					].join(" ")}
+				>
+					USDC
+				</span>
+			</div>
+		)
+	}
 	const [copied, setCopied] = useState(false)
 	const [currency, setCurrency] = useState<ICurrency> ('USDC')
+	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
+	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
 
 	// ≈ $1.00：这里简单用 1:1 估算
+	const currencyToUsdcAmount = (cur: number, c: ICurrency) => {
+		const u2u = usdcUsd || 1
+		const u2c = usdToCur(c) || 1
+		if (!u2u || !u2c) return 0
+		return cur / u2c / u2u
+	}
+	const approxFiatText = useMemo(() => {
+		if (localMode !== 'pay' && tx?.requestCurrency) {
+			
+			return `≈ ${currencyToUsdcAmount(tx.amount, tx.requestCurrency).toFixed(4)} USDC`
+		}
+		return `≈ ${fiatPrefix(currency)} ${formatAmount(usdcToCurrencyAmount(tx.amount, currency), currency)}`
 
-	const approxFiatText = useMemo(() => `≈ ${fiatPrefix(currency)} ${formatAmount(usdcToCurrencyAmount(tx.amount, currency), currency)}`, [tx.amount, currency])
+	}, [tx.amount, currency])
 
 	const statusText: HistoryFilter = useMemo(() => {
 		return tx.type
 	}, [localMode])
-		const style = statusStyleMap[statusText] ?? statusStyleMap.all
+
+	const style = statusStyleMap[statusText] ?? statusStyleMap.all
+
 	const findingRef = useRef(false)
 	const [showGiftCard, setShowGiftCard] = useState<IImageCard|null>(null)
 
@@ -287,9 +358,7 @@ export function TransactionsItemDetail({
 	}, [findUser])
 
 	const amountColor =
-		tx.type === "sent" || tx.type === "paid"
-			? "text-rose-600"
-			: "text-emerald-600"
+		style.text
 
 	
 	const copyTxHash = async (hash: string) => {
@@ -337,65 +406,60 @@ export function TransactionsItemDetail({
 		<div className="mx-auto max-w-[520px] px-4 py-4">
 			<div className="rounded-[28px] bg-white shadow-sm ring-1 ring-black/5 overflow-hidden">
 			<div className="px-5 pt-5">
-				{/* 顶部：状态 + Gas sponsored */}
-				<div className="flex items-center justify-between gap-3">
-				<div
-					className={[
-						"inline-flex items-center gap-2 rounded-full px-3 py-1",
-						style.container,
-					].join(" ")}
-					>
-					<span
-						className={[
-						"inline-flex h-5 w-5 items-center justify-center rounded-full",
-						style.iconBg,
-						].join(" ")}
-					>
-						<Check
-						className={["h-3.5 w-3.5", style.icon].join(" ")}
-						strokeWidth={2.5}
-						/>
-					</span>
+				{/* 顶部：状态 + Title + Gas sponsored */}
+					<div className="relative flex items-center justify-between gap-3">
+						{/* 左侧：状态 */}
+							<div
+							className={[
+								"inline-flex items-center gap-2 rounded-full px-3 py-1",
+								"bg-transparent border",
+								style.container.replace("bg-", "border-"),
+							].join(" ")}
+							>
+							<span
+								className={[
+								"inline-flex h-5 w-5 items-center justify-center rounded-full",
+								style.iconBg,
+								].join(" ")}
+							>
+								<Check
+								className={["h-3.5 w-3.5", style.icon].join(" ")}
+								strokeWidth={2.5}
+								/>
+							</span>
 
-					<span
-						className={[
-						"text-[13px] font-semibold capitalize",
-						style.text,
-						].join(" ")}
-					>
-						{statusText}
-					</span>
-					</div>
+							<span
+								className={[
+								"text-[13px] font-semibold capitalize",
+								style.text,
+								].join(" ")}
+							>
+								{statusText}
+							</span>
+						</div>
 
-				{isSponsored && (
-					<div className="inline-flex items-center gap-2 text-[13px] text-slate-500">
-					<Shield className="h-4 w-4" />
-					<span>Gas sponsored</span>
+						{/* 🔹 中央标题（绝对居中） */}
+						{/* <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
+							<span className="text-[24px] font-bold text-slate-900 dark:text-slate-100">
+								{tx.mode.charAt(0).toUpperCase() + tx.mode.slice(1)}
+							</span>
+						</div> */}
+
+						{/* 右侧：Gas sponsored */}
+						{isSponsored ? (
+							<div className="inline-flex items-center gap-2 text-[13px] text-blue-600">
+								<ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
+								<span>Gas sponsored</span>
+							</div>
+							) : (
+							/* 占位，防止布局抖动（可选） */
+							<div className="w-[110px]" />
+						)}
 					</div>
-				)}
-				</div>
 
 				{/* 金额 */}
 				<div className="mt-5">
-				<div className="flex items-baseline gap-2">
-					<span
-						className={[
-						"text-[44px] leading-none font-semibold tracking-tight tabular-nums",
-						amountColor,
-						].join(" ")}
-					>
-						{amountText}
-					</span>
-
-					<span
-						className={[
-						"text-[28px] leading-none font-semibold",
-						amountColor,
-						].join(" ")}
-					>
-						USDC
-					</span>
-				</div>
+					<AmountText />
 
 
 				<div className="mt-2 text-[16px] text-slate-500">
@@ -428,7 +492,7 @@ export function TransactionsItemDetail({
 							"
 							aria-label="Default avatar"
 							>
-							?
+								?
 							</div>
 						)}
 						</div>
@@ -506,26 +570,38 @@ export function TransactionsItemDetail({
 
 				{/* Network fee / Time */}
 				<div className="mt-4 rounded-2xl border border-slate-100 overflow-hidden">
-				<div className="flex items-center justify-between px-4 py-3 bg-white">
-					<span className="text-[15px] text-slate-500">Network fee</span>
-					<div className="flex items-center gap-3">
-					<span className="text-[15px] font-semibold text-slate-900 tabular-nums">
-						{isSponsored ? "$0" : formatUSD(tx.fee)}
-					</span>
-					<span className="text-[15px] text-slate-400">
-						{isSponsored ? sponsoredByLabel : ""}
-					</span>
+					{
+						tx.requestCurrency && <div className="flex items-center justify-between px-4 py-3 bg-white">
+						<span className="text-[15px] text-slate-500">Fee</span>
+						<div className="flex items-center gap-3">
+							<FeeInline
+								payUsdc={currencyToUsdcAmount(tx.amount, tx.requestCurrency)}
+								currentCurrency={tx.requestCurrency}
+							/>
+						</div>
 					</div>
-				</div>
+					}
+					
+					<div className="flex items-center justify-between px-4 py-3 bg-white">
+						<span className="text-[15px] text-slate-500">Network fee</span>
+						<div className="flex items-center gap-3">
+							<span className="text-[15px] font-semibold text-slate-900 tabular-nums">
+								{isSponsored ? "$0" : formatUSD(tx.fee)}
+							</span>
+							<span className="text-[15px] text-[rgb(0_122_255)]">
+								{isSponsored ? sponsoredByLabel : ""}
+							</span>
+						</div>
+					</div>
 
-				<div className="h-px bg-slate-100" />
+					<div className="h-px bg-slate-100" />
 
-				<div className="flex items-center justify-between px-4 py-3 bg-white">
-					<span className="text-[15px] text-slate-500">Time</span>
-					<span className="text-[15px] font-semibold text-slate-900">
-					{timeText}
-					</span>
-				</div>
+					<div className="flex items-center justify-between px-4 py-3 bg-white">
+						<span className="text-[15px] text-slate-500">Time</span>
+						<span className="text-[15px] font-semibold text-slate-900">
+						{timeText}
+						</span>
+					</div>
 				</div>
 
 				{/* On Base · Tx */}
@@ -605,11 +681,13 @@ export function TransactionsItemDetail({
 					className="
 						flex-1 h-12
 						rounded-2xl
-						bg-slate-900 text-white
+						bg-blue-600 hover:bg-blue-700
+						text-white
 						font-semibold
 						flex items-center justify-center gap-2
 						shadow-sm
-						active:scale-[0.99] transition
+						active:scale-[0.99]
+						transition
 					"
 				>
 					<Repeat2 className="h-5 w-5" />
@@ -633,7 +711,7 @@ export function TransactionsItemDetail({
 					active:scale-[0.99] transition
 					"
 				>
-					<MessageCircle className="h-5 w-5 text-slate-600" />
+					<ChatBlueIcon className="h-6 w-6 text-slate-600" />
 					<span>Message</span>
 				</button>
 				</div>

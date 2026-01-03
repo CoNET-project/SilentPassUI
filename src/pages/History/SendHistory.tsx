@@ -46,6 +46,7 @@ type LinksHistory = {
     payTimestamp: string
     from: string
     payAmount: string
+	
 }
 
 type CheckHistory = {
@@ -131,6 +132,7 @@ function formatAmount(v: number, c: ICurrency) {
     maximumFractionDigits: decimals
   })
 }
+
 const formatTime = (ts: number) => {
 	if (!ts) return "—"
 	const d = new Date(ts)
@@ -187,7 +189,7 @@ export const SendHistoryTable = (
   () => {
     const [items, setItems] = useState<TransferHistork[]>([])
     
-    const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress, setShowFooter} = useDaemonContext()
+    const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress, setShowFooter, currencyData} = useDaemonContext()
 	const [processing, setpProcessing] = useState(false)
 	const [activeFilter, setActiveFilter] = useState<HistoryFilter>('all')
 	const [loading, setLoading] = useState(false)
@@ -239,6 +241,16 @@ export const SendHistoryTable = (
 		} else {
 			setpProcessing(false)
 		}
+	}
+
+	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
+	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
+
+	const currencyToUsdcAmount = (cur: number, c: ICurrency) => {
+		const u2u = usdcUsd || 1
+		const u2c = usdToCur(c) || 1
+		if (!u2u || !u2c) return 0
+		return cur / u2c / u2u
 	}
 
 	const process = async (next: HistoryFilter | null) => {
@@ -307,13 +319,13 @@ export const SendHistoryTable = (
 				const isReject = isRequest ?  n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
 				const account = (isPending||isReject) ? '' : isRequest ? n.to : n.from
 				const type: HistoryFilter = isReject ? 'reject' : isPending ? 'pending' : isRequest ? 'paid' : 'completed'
-				const preAmount =  Number(ethers.formatUnits(n.amount, 6))
-				const fee = isRequest ?  0 : calcFeeFromNumber(preAmount)
+				const preAmount = Number(ethers.formatUnits(isPending? n.amount: n.payAmount, 6))
+				
+				
+				
+				const fee = isRequest|| isPending ? 0 : calcFeeFromNumber(preAmount)
 				const amount = preAmount - fee
-				
-				
-				
-
+			
 				const ret: TransferHistork = {
 					date: Number(n.issueTimestamp * BigInt(1000)),
 					amount,
@@ -324,7 +336,9 @@ export const SendHistoryTable = (
 					mode: 'request',
 					fee,
 					type1: type === 'paid' ? 'sent' :  type === 'completed' ? 'received' : '',
-					preAmount: preAmount
+					preAmount: preAmount,
+					requestCurrency: n?.node?.split('\r\n')[1] as ICurrency||'USDC'
+					
 				}
 				
 				return ret
@@ -597,7 +611,7 @@ export const SendHistoryTable = (
 																<HelpCircle className="w-3.5 h-3.5" strokeWidth={2} />
 																)}
 															</span>
-															)}
+														)}
 
 														{/* pay 模式下的 mode icon（同样统一占位） */}
 														{/* {localMode === "pay" && tx.mode !== "pay" && (
@@ -677,7 +691,7 @@ export const SendHistoryTable = (
 													<div
 														className={[
 															"shrink-0 whitespace-nowrap text-right",
-															"w-[92px]",
+															"w-[150px]",
 															"text-[11px] font-medium tabular-nums",
 															(tx.mode === "pay" ? tx.type === "sent" : tx.type1 === "sent")
 																? "text-rose-600 dark:text-rose-400"
@@ -694,20 +708,20 @@ export const SendHistoryTable = (
 
 														{/* amount */}
 														<span className="text-[14px] font-medium tabular-nums">
-															{tx.mode === "request" ? (
-																currency === "USDC" ? (
-																	<span>{tx.preAmount} USDC</span>
+															{
+															 	localMode !== 'pay' && tx?.requestCurrency ? (
+																	<span>
+																		{fiatPrefix(tx.requestCurrency)} {formatAmount(tx.amount, tx.requestCurrency)}
+																	</span>
 																) : (
 																	<span>
-																		{fiatPrefix(currency)}{" "}
-																		{formatAmount(tx.preAmount, currency)}
+																		{formatAmount(localMode === "pay" ? tx.amount : tx.preAmount, 'USDC')} USDC
 																	</span>
 																)
-															) : (
-																<span>
-																	{formatMoney(localMode === "pay" ? tx.amount : tx.preAmount)} USDC
-																</span>
-															)}
+															}
+
+
+															
 														</span>
 													</div>
 												</div>
@@ -715,39 +729,7 @@ export const SendHistoryTable = (
 
 											// 有 hash：<a>，打开 BaseScan
 											
-												
-												if (tx.mode !== 'pay') {
-													return (
-														<a
-															onClick={() => {
-
-																setIsPay (tx.mode === 'cashcode' ? true : false)
-																setTip(0)
-																setAmt(tx.amount)
-																setNote(tx.note)
-																const params = new URLSearchParams(tx.mode === 'request' ? {code: tx.hash}: {secureCode: tx.hash, cashcode: tx.security||''}).toString()
-																const showUrl = `${showPaylinkSite}?${params}`
-																setCreatedDate(tx.date)
-																setType(tx.type)
-																setSuccessUrl(showUrl)
-																setShowDEtail(true)
-																setAccount(tx.address)
-																setSecurityCode(tx.passcode||'')
-																setRedeemCode(tx.security||'')
-																setFee(tx.fee)
-																setHash(tx.hash)
-																setPreAmount(tx.preAmount)
-																setShowFooter(false)
-
-															}}
-															key={tx.hash}
-															rel="noreferrer"
-															className={baseRowClass + clickableClass}
-														>
-															{rowContent}
-														</a>
-													)
-												}
+											
 
 												return (
 													<a
@@ -780,7 +762,6 @@ export const SendHistoryTable = (
 													</a>
 												)
 											
-										
 										})
 									}
 								</div>
@@ -790,14 +771,6 @@ export const SendHistoryTable = (
 				)
 			}
 
-			{
-				showGiftCard && (
-					<ShowCard card={showGiftCard} address={account} usdcAmount={amt.toFixed(4)} cancel={() => {
-						setShowGiftCard (null)
-						setShowFooter(true)
-					}} /> 
-				)
-			}
 
 			<div
 				className={[
@@ -811,69 +784,61 @@ export const SendHistoryTable = (
 				].join(" ")}
 			>
 
-				{/* 关闭按钮：右上角 iOS 毛玻璃风格 */}
-				<button
-					onClick={() => {
-						setShowDEtail(false)
-						setShowFooter(true)
-					}}
+				{/* Header：返回 + 居中标题 */}
+				<div
 					className="
-						 absolute
-						top-[calc(env(safe-area-inset-top)+1rem)]
-						left-[calc(env(safe-area-inset-left)+1rem)]
-						w-9 h-9
-						rounded-full
-						bg-white/70 dark:bg-slate-900/50
-						backdrop-blur-md
-						shadow-sm
-						flex items-center justify-center
-						text-slate-800 dark:text-slate-100
-						active:scale-95
-						transition
+						absolute
+						top-[env(safe-area-inset-top)]
+						left-0 right-0
+						h-14
+						flex items-center
+						px-4
+						z-50
 					"
-					aria-label="Back"
 				>
-					<ChevronLeft className="w-5 h-5 stroke-[2.5]" />
-				</button>
+					{/* 左：返回按钮 */}
+					<button
+						onClick={() => {
+							setShowDEtail(false)
+							setShowFooter(true)
+						}}
+						className="
+							w-9 h-9
+							rounded-full
+							bg-white/70 dark:bg-slate-900/50
+							backdrop-blur-md
+							shadow-sm
+							flex items-center justify-center
+							text-slate-800 dark:text-slate-100
+							active:scale-95
+							transition
+						"
+						aria-label="Back"
+					>
+						<ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+					</button>
+
+					{/* 中：标题（绝对居中，不受左右影响） */}
+					<div className="absolute left-1/2 -translate-x-1/2 text-[24px] font-semibold text-slate-900 dark:text-slate-100">
+						Receipt
+					</div>
+
+					{/* 右：占位（保持对称，可将来放按钮） */}
+					<div className="w-9 h-9" />
+				</div>
 				<div className="flex-1 mt-10">
 					
 					{
 						showDetail && (
 							<>
-								{
-									localMode !== "pay" ? (
-										<div className="relative overflow-visible">
-											<RedeemOrLinkCard
-												createdAt={createdDate}
-												type={type}
-												isPay={isPay}
-												amt={amt} 
-												successUrl={successUrl} 
-												tip={tip} 
-												note={note} 
-												onReset={() => {
-													setShowDEtail(false)
-													setShowFooter(true)
-												}}
-												hash = {hash}
-												account={account}
-												fee={fee}
-												mode = {localMode}
-												securityCode={securityCode}
-												redeemCode={redeemCode}
-												preAmount={preAmount}
-											/>
-
-										</div>
-									) : (
-										<div className="relative overflow-visible">
-											{
-												itemTx && <TransactionsItemDetail localMode={localMode} tx={itemTx} />
-											}
-											
-										</div>
-									)
-								}
+								
+								<div className="relative overflow-visible">
+									{
+										itemTx && <TransactionsItemDetail localMode={localMode} tx={itemTx} />
+									}
+									
+								</div>
+									
 							</>
 
 						)

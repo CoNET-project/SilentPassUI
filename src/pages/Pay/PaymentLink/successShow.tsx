@@ -249,7 +249,7 @@ const SuccessShow = ({
 
 					<FeeInline
 						payUsdc={Number(creatorEstUsdcFromFiat)}
-						isUSDC={lockMode === 'USDC_LOCKED'}
+						currentCurrency={beamio?.currency||'USDC'}
 					/>
 				
 				</div>

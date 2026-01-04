@@ -69,8 +69,38 @@ function calcFeeFromNumber(base: number) {
 	if (!isFinite(base) || base <= 0) return 0;
 	const raw = base * 0.008;
 	const clamped = Math.min(Math.max(raw, 0.02), 2);
-	return Number(clamped.toFixed(2));
+	return Number(clamped.toFixed(4));
 }
+
+
+// 根据「到账金额 received」反推 fee
+function calcFeeFromReceived(received: number) {
+	if (!isFinite(received) || received <= 0) return 0
+
+	// 1️⃣ 尝试比例区间（最常见）
+	const baseByRatio = received / 0.992
+	const feeByRatio = baseByRatio - received
+
+	if (feeByRatio > 0.02 && feeByRatio < 2) {
+		return Number(feeByRatio.toFixed(4))
+	}
+
+	// 2️⃣ 尝试最小 fee
+	const baseMin = received + 0.02
+	if (baseMin * 0.008 <= 0.02) {
+		return 0.02
+	}
+
+	// 3️⃣ 尝试最大 fee
+	const baseMax = received + 2
+	if (baseMax * 0.008 >= 2) {
+		return 2
+	}
+
+	// 理论上不会到这里
+	return Number(feeByRatio.toFixed(4))
+}
+
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 type HistoryTableProps = {
@@ -146,6 +176,67 @@ const formatTimev2 = (ts: number) => {
 		month: "short",
 		day: "numeric"
 	})
+}
+
+const statusStyleMap: Record<
+	HistoryFilter,
+	{
+		container: string
+		iconBg: string
+		icon: string
+		text: string
+	}
+	> = {
+	sent: {
+		container: "bg-rose-100",
+		iconBg: "bg-rose-200",
+		icon: "text-rose-700",
+		text: "text-rose-600",
+	},
+	received: {
+		container: "bg-emerald-100",
+		iconBg: "bg-emerald-200",
+		icon: "text-emerald-700",
+		text: "text-emerald-600",
+	},
+	pending: {
+		container: "bg-amber-100",
+		iconBg: "bg-amber-200",
+		icon: "text-amber-700",
+		text: "text-amber-200",
+	},
+	paid: {
+		container: "bg-fuchsia-100",
+		iconBg: "bg-fuchsia-200",
+		icon: "text-fuchsia-700",
+		text: "text-fuchsia-800",
+	},
+	completed: {
+		container: "bg-sky-100",
+		iconBg: "bg-sky-200",
+		icon: "text-sky-700",
+		text: "text-sky-800",
+	},
+	deposited: {
+		container: "bg-indigo-100",
+		iconBg: "bg-indigo-200",
+		icon: "text-indigo-700",
+		text: "text-indigo-800",
+	},
+
+	// 兜底（all / reject / 其他）
+	all: {
+		container: "bg-slate-100",
+		iconBg: "bg-slate-200",
+		icon: "text-slate-500",
+		text: "text-slate-500",
+	},
+	reject: {
+		container: "bg-slate-100",
+		iconBg: "bg-slate-200",
+		icon: "text-slate-500",
+		text: "text-slate-500",
+	},
 }
 
 const badgeBase = "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border border-white/20"
@@ -316,6 +407,8 @@ export const SendHistoryTable = (
 				const isRequest = n.from.toLowerCase() === myAddrLocal
 				
 				const isPending = isRequest ? n.to === ethers.ZeroAddress : n.from === ethers.ZeroAddress
+
+				
 				const isReject = isRequest ?  n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
 				const account = (isPending||isReject) ? '' : isRequest ? n.to : n.from
 				const type: HistoryFilter = isReject ? 'reject' : isPending ? 'pending' : isRequest ? 'paid' : 'completed'
@@ -325,6 +418,37 @@ export const SendHistoryTable = (
 				
 				const fee = isRequest|| isPending ? 0 : calcFeeFromNumber(preAmount)
 				const amount = preAmount - fee
+				const requestCurrency = n?.node?.split('\r\n')[1] as ICurrency||'USDC'
+				let requestDetail:IRequestCurrencyDetail|undefined = undefined
+				
+				
+					
+				let totalPayUSDC = Number(ethers.formatUnits(n.payAmount, 6))
+				const totalPayCurrency = Number(ethers.formatUnits(n.amount, 6))
+				if (!isRequest||isPending) {
+					//		totalPayUSDC: totalPayCurrency = 1:x
+				
+					//		isRequest : calcFeeFromNumber(totalPayUSDC)
+					//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
+					const feeUSDC = calcFeeFromNumber(totalPayUSDC) 
+					
+					const currencyRate = totalPayCurrency / totalPayUSDC
+					const feeCurrency = feeUSDC * currencyRate
+					const receivedUSDC = totalPayUSDC - feeUSDC
+					const receivedCurrency = receivedUSDC * currencyRate
+
+					requestDetail = {
+						totalPayUSDC,
+						totalPayCurrency,
+						requestCurrency: requestCurrency as ICurrency,
+						feeUSDC,
+						feeCurrency,
+						receivedUSDC,
+						receivedCurrency
+					}
+				}
+				
+				
 			
 				const ret: TransferHistork = {
 					date: Number(n.issueTimestamp * BigInt(1000)),
@@ -337,12 +461,15 @@ export const SendHistoryTable = (
 					fee,
 					type1: type === 'paid' ? 'sent' :  type === 'completed' ? 'received' : '',
 					preAmount: preAmount,
-					requestCurrency: n?.node?.split('\r\n')[1] as ICurrency||'USDC'
-					
+					requestCurrency,
+					requestDetail,
 				}
 				
 				return ret
 			})
+
+			//	过滤PayME
+			mappedLing = mappedLing.filter (n => !!n?.requestDetail)
 		
 			const checks: CheckHistory[] = _checks[1]
 			mappedCheck = await Promise.all(
@@ -390,6 +517,8 @@ export const SendHistoryTable = (
 					return ret
 				})
 			)
+			
+
 
 			// 1️⃣ 先合并，再按 date 做倒序排序（新 -> 旧）
 			const alldatas: TransferHistork[] = [...mapped, ...mappedLing, ...mappedCheck].sort(
@@ -406,7 +535,7 @@ export const SendHistoryTable = (
 			})
 
 			if (next && next !== 'all') {
-				filtered = filtered.filter(tx => tx.type === next)
+				filtered = filtered.filter(tx => localMode === 'pay' ? tx.type1 === next : tx.type === next)
 			}
 			
 
@@ -421,6 +550,23 @@ export const SendHistoryTable = (
 		} catch (ex: any) {
 			console.log(ex.message)
 		}
+	}
+
+	function fxRateUSDCToCurrency(currency: ICurrency): number {
+		// 1 USDC = ? USD
+		const usdcToUSD = currencyData.USDC ?? 1
+
+		if (currency === 'USD') return usdcToUSD
+
+		const usdToCurrency = currencyData[currency]
+		if (typeof usdToCurrency !== 'number') return usdcToUSD
+
+		return usdcToUSD * usdToCurrency
+	}
+
+	function usdcToCurrencyAmount(usdc: number, c: ICurrency) {
+		const rate = fxRateUSDCToCurrency(c)
+		return usdc * rate
 	}
 
 	
@@ -570,7 +716,7 @@ export const SendHistoryTable = (
 											const currency: ICurrency = tx.note?.split('\r\n')[1] as ICurrency||'USDC'
 											const baseRowClass =
 												"block flex items-center px-2 py-2 text-[11px] border-b border-slate-200 dark:border-slate-800 transition"
-											
+											const plus = (tx.type1 === 'received')
 											const clickableClass = hasHash
 												? " cursor-pointer hover:bg-slate-100/70 dark:hover:bg-white/5"
 												: " cursor-default opacity-70" // 没有 hash 时，不能点，略微灰掉
@@ -693,25 +839,31 @@ export const SendHistoryTable = (
 															"shrink-0 whitespace-nowrap text-right",
 															"w-[150px]",
 															"text-[11px] font-medium tabular-nums",
-															(tx.mode === "pay" ? tx.type === "sent" : tx.type1 === "sent")
+															(!plus)
 																? "text-rose-600 dark:text-rose-400"
 																: "text-emerald-600 dark:text-emerald-400"
 														].join(" ")}
 													>
-														<span>
-															{tx.mode === "pay"
-															? (tx.type === "sent" ? "-" : "+")
-															: (tx.type1 === "sent" ? "-" : "+")}
-															{" "}
-														</span>
+														{
+															localMode === "pay" && 
+																<span>
+																	{ plus ? "+ " : "- "}
+																	
+																</span>
+														}
+														
 														
 
 														{/* amount */}
 														<span className="text-[14px] font-medium tabular-nums">
 															{
-															 	localMode !== 'pay' && tx?.requestCurrency ? (
-																	<span>
-																		{fiatPrefix(tx.requestCurrency)} {formatAmount(tx.amount, tx.requestCurrency)}
+															 	localMode !== 'pay' && tx?.requestDetail ? (
+																	<span
+																		className={statusStyleMap[tx.type].text}
+																	>
+
+																		{fiatPrefix(tx.requestDetail.requestCurrency)} {formatAmount(tx.requestDetail.totalPayCurrency, tx.requestDetail.requestCurrency)}
+																		
 																	</span>
 																) : (
 																	<span>
@@ -719,7 +871,6 @@ export const SendHistoryTable = (
 																	</span>
 																)
 															}
-
 
 															
 														</span>
@@ -820,7 +971,10 @@ export const SendHistoryTable = (
 
 					{/* 中：标题（绝对居中，不受左右影响） */}
 					<div className="absolute left-1/2 -translate-x-1/2 text-[24px] font-semibold text-slate-900 dark:text-slate-100">
-						Receipt
+						{
+							localMode === 'pay' ? 'Receipt' : localMode === 'request' ? 'Payment Link' : 'Cashcode'
+						
+						}
 					</div>
 
 					{/* 右：占位（保持对称，可将来放按钮） */}

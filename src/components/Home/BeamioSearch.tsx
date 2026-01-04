@@ -7,7 +7,6 @@ type Props = {
 }
 
 export default function BeamioSearch({ close }: Props) {
-  const [editing, setEditing] = useState(false)
 
   return (
     <div
@@ -23,19 +22,16 @@ export default function BeamioSearch({ close }: Props) {
       <main className="flex-1">
         <section className="relative">
           <SearchInputWithDropdown
-            readonly={!editing}
-            showHistory={editing}
+            showHistory={true}
             // ✅ readonly(假input) 时：先切到可输入模式，不要立刻 close
             close={path => {
-              if (!editing) {
-                setEditing(true)
-                return
-              }
-
+            
               // ✅ 真输入模式下才走你原本的 close 逻辑
               if (path) close(path)
               else close("/")
             }}
+			focus={true}
+			
           />
         </section>
       </main>

@@ -22,13 +22,13 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
     setError('')
     const trimmed = username.trim()
     if (!trimmed) {
-      setError('Please enter a username')
-      return ''
+		setError('Please enter a username')
+		return ''
     }
 
-    if (!/^[a-zA-Z0-9_\.]{3,20}$/.test(trimmed)) {
-      setError('Use 3–20 letters, numbers or dots')
-      return ''
+    if (!/^[a-zA-Z0-9_\-\.]{3,20}$/.test(trimmed)) {
+		setError('Use 3–20 letters, numbers or dots')
+		return ''
     }
     return trimmed
   }

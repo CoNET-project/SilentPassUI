@@ -405,8 +405,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 										{
 											!item && (
 												<section className="mb-4">
-													<SearchInputWithDropdown 
-														readonly={false}
+													<SearchInputWithDropdown
 														showHistory={false}
 														close={item => {
 															if (typeof item !== 'string') {

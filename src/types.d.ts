@@ -475,6 +475,9 @@ type Argon2idHash = {
 		currency: ICurrency
 		address?: string
 		payme?: string
+		pgpPublicKeyID?: string
+		pgpPublicKeyArmor?: string
+		
   }
 
 	type IMessageDataAccountInfo = {
@@ -517,6 +520,16 @@ type IImageCard = {
 	currencyAmount: string
 }
 
+type IRequestCurrencyDetail = {
+	requestCurrency: ICurrency
+	totalPayCurrency: number
+	totalPayUSDC: number
+	feeCurrency: number
+	feeUSDC: number
+	receivedCurrency: number
+	receivedUSDC: number
+}
+
 type TransferHistork = {
 	date: number
 	amount: number
@@ -528,10 +541,11 @@ type TransferHistork = {
 	passcode?: string
 	redeemHash?: string
 	mode: Mode
-	type1:HistoryFilter|''
+	type1: HistoryFilter|''
 	fee: number
 	preAmount: number
 	card?: IImageCard
 	requestCurrency?: ICurrency
+	requestDetail?: IRequestCurrencyDetail
 
 }

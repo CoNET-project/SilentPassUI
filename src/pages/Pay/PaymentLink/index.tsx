@@ -288,7 +288,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 
 									<FeeInline
 										payUsdc={Number(sendAmount)}
-										currentCurrency={beamio?.currency||'USDC'}
+										currentCurrency={lockMode === 'USDC_LOCKED' ? 'USDC' :beamio?.currency||'USDC'}
 									/>
 								
 								</div>

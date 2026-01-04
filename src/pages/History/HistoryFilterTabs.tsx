@@ -12,9 +12,9 @@ type HistoryFilterTabsProps = {
 
 // --- All moved to last position ---
 const TABS_BY_MODE: Record<Mode, HistoryFilter[]> = {
-  pay: ['sent', 'received', 'all'],
-  request: ['pending', 'paid', 'completed', 'all'],
-  cashcode: ['pending', 'deposited', 'completed', 'all'],
+	pay: ['sent', 'received', 'all'],
+	request: ['pending', 'completed', 'all'],
+	cashcode: ['pending', 'deposited', 'completed', 'all'],
 }
 
 export function HistoryFilterTabs({

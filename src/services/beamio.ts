@@ -22,7 +22,7 @@ import { randomBytes } from '@noble/hashes/utils.js'
 import contracts from "../utils/contracts"
 import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
-
+import {generateKey, readKey, } from 'openpgp'
 
 export type x402Response = {
 	timestamp: string
@@ -1153,6 +1153,8 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 	const Url = storageNewUser
 	const signWallet = new ethers.Wallet(privateKey)
 	const signMessage = await signWallet.signMessage(signWallet.address)
+
+
 	const lastname = `${beamio.lastName}\r\n${JSON.stringify({language:beamio.language,currency: beamio.currency})}` 
 	try {
 		const body = {
@@ -1575,4 +1577,45 @@ export const postToIPFS = async (profile: profile, image: string) => {
 		return null
 	}
 	return hash
+}
+
+//			pgp workflow
+//			regiest node				keyID to node KeyID	{hash: ethers.solidityPackedKeccak256(['string'], [keyID]), encrypto: nodeKeyID} 
+//			regiest publicKey			keyID to pgpKey		{hash: ethers.solidityPackedKeccak256(['string'], [keyID + 'armor']), encrypto: pgpKeyArmor}
+//			regiest keyID in beamio		
+
+type GenerateKeyArg = Parameters<typeof generateKey>[0]
+const generatePgpKey = async (walletAddr: string, passwd: string ) => {
+	const userIDs = [{ name: walletAddr }] // ✅ 单独声明，mutable
+
+	const option = {
+		type: 'ecc',
+		passphrase: passwd,
+		userIDs,
+		curve: 'curve25519',
+		format: 'armored'
+	} as const
+
+	// ✅ 这里 option.userIDs 仍会变 readonly（因为 as const 会冻结引用类型）
+	// 所以需要在调用点转回 generateKey 的参数类型：
+	const { privateKey, publicKey } = await generateKey(option as unknown as GenerateKeyArg)
+	const publicKeyArmored = publicKey as unknown as string
+	
+	const keyObj = await readKey ({armoredKey: publicKeyArmored})
+	const keyID = keyObj.getKeyIDs()[1].toHex().toUpperCase()
+	return { privateKey, publicKey, keyID }
+}
+
+type initBeamioPGPKeysRet = {
+	privateKey: string, publicKey: string, keyID: string
+}
+
+export const initBeamioPGPKeys = async (walletAddr: string): Promise<initBeamioPGPKeysRet> => {
+	const keys = await generatePgpKey(walletAddr,'')
+	const ret: initBeamioPGPKeysRet = {
+		privateKey: keys.privateKey as unknown as string,
+		publicKey: keys.publicKey as unknown as string,
+		keyID: keys.keyID
+	}
+	return ret
 }

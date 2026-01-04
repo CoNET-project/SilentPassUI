@@ -231,7 +231,7 @@ const PayForm = ({code, closeWin}: Props) => {
 								{/* 右侧：USDC */}
 								<div className="flex flex-col items-end leading-tight">
 									<span className="font-mono font-semibold text-[14px] text-black/70">
-										{currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4)} USDC
+										{requestCurrency !== 'USDC' ? currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4) : ''} USDC
 									</span>
 
 									{/* 预留副行（未来可开） */}
@@ -281,11 +281,12 @@ const PayForm = ({code, closeWin}: Props) => {
 		if (!messageData) {
 			return(<></>)
 		}
+		const data = messageData.data
 		return (
 			<div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 space-y-1.5 mt-4">
 				<div className="flex justify-between">
 					<span>Request amount</span>
-					<span className="text-slate-900 font-medium"> {currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4)} USDC</span>
+					<span className="text-slate-900 font-medium"> {data.amount} USDC</span>
 				</div>
 				{/* <div className="flex justify-between">
 					<span>Tip</span>
@@ -297,7 +298,7 @@ const PayForm = ({code, closeWin}: Props) => {
 				</div>
 				<div className="flex justify-between pt-1 border-t border-slate-200 mt-1">
 					<span>Total from your wallet</span>
-					<span className="text-slate-900 font-semibold">{currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4)} USDC</span>
+					<span className="text-slate-900 font-semibold">{requestCurrency !== 'USDC' ? currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4): amt} USDC</span>
 				</div>
 				
           	</div>
@@ -421,7 +422,7 @@ const PayForm = ({code, closeWin}: Props) => {
 	}
 
 	const payLinkClick = async () => {
-		const amount = Number(currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4))
+		const amount = Number(requestCurrency !== 'USDC' ? currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4): amt)
 		if ( amount === 0 || amount > usdcbalance) {
 			return setError('Insufficient balance')
 		}
@@ -537,9 +538,15 @@ const PayForm = ({code, closeWin}: Props) => {
 				setFromBeamio({...data.results[0]})
 			}
 
-			const requestUSDC = Number(currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4))
+			if (_currency !== 'USDC') {
+				const requestUSDC = Number(currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4))
+				setRequestToUSDC(requestUSDC.toString())
+			} else {
+				setRequestToUSDC(amount.toFixed(4))
+			}
+
 			
-			setRequestToUSDC(requestUSDC.toString())
+			
 
 		} catch (ex) {
 			console.log(``)
@@ -576,7 +583,7 @@ const PayForm = ({code, closeWin}: Props) => {
 					</p>
 
 					<p className="text-3xl font-semibold text-slate-900 mb-2 text-center">
-						{Number(currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4))} USDC
+						{data.amount} USDC
 					</p>
 
 					{/* <p className="text-[11px] text-slate-500 mb-6 text-center max-w-xs">
@@ -673,7 +680,10 @@ const PayForm = ({code, closeWin}: Props) => {
 	return (
 		
 		<div
-			className="px-6 pt-8 pb-16 overflow-auto"
+			className="
+				
+				px-6 pt-8 pb-16 overflow-auto
+			"
 		>
 
 			{

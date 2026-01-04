@@ -87,7 +87,8 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 			})
 			
 			setfromBeamio(account)
-			account.image && setUserImg(await urlToObjectUrl(account.image))
+
+			setUserImg(account.image||getImg(account.username))
 		} finally {
 			findingRef.current = false
 			

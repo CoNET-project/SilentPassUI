@@ -1,24 +1,27 @@
 import React, { useMemo, useCallback, useRef, useState, useEffect } from "react"
 import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
 import {
-  Check,
-  Shield,
-  Image as ImageIcon,
-  ChevronRight,
-  Copy,
-  ExternalLink,
-  Repeat2,
-  MessageCircle,
-  ShieldCheck
+	Check,
+	Shield,
+	Image as ImageIcon,
+	ChevronRight,
+	Copy,
+	ExternalLink,
+	Repeat2,
+	MessageCircle,
+	ShieldCheck,
+	QrCode, Link as LinkIcon
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {urlToObjectUrl, useObjectImgSrc} from '@/components/card/useObjectImgSrc'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import {ethers} from 'ethers'
 import ShowCard from '@/components/card/ShowCard'
 import baseIcon from '@/components/assets/base-logo.png'
 import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-blue.svg'
-import FeeInline from '@/pages/Pay/PaymentLink/FeeInline'
+import FeeInline from './payLinkFeeInline'
+import { QRCodeCanvas } from 'qrcode.react'
+import bIcon from '@/components/assets/32x32.svg'
+
 
 type Mode = "pay" | "request" | 'cashcode'
 const baseIconImg = (
@@ -37,7 +40,7 @@ type Props = {
 	onSendAgain?: (tx: TransferHistork) => void
 	onMessage?: (address: string) => void
 }
-
+const showPaylinkSite = 'https://beamio.app'
 const shortHash = (h: string) => (h ? `${h.slice(0, 6)}…${h.slice(-4)}` : "")
 const shortAddress = (a: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
 const displayName = (item: searchResult|undefined) => {
@@ -97,6 +100,9 @@ function formatUSDC(v: number) {
 		maximumFractionDigits: 4
 	})
 }
+
+const getImg = (avatarSeed: string) =>
+	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 
 function formatUSD(v: number) {
 	if (!isFinite(v)) return "$0"
@@ -201,21 +207,21 @@ const unknowAcc = (address: string):searchResult => {
 	return ret
 }
 
-	function formatAmount(v: number, c: ICurrency) {
-		if (!isFinite(v)) return "0"
+function formatAmount(v: number, c: ICurrency) {
+	if (!isFinite(v)) return "0"
 
-		const decimals =
-			c === "TWD" || c === "JPY"
-				? 0
-				: c === "USDC"
-				? 4
-				: 2
+	const decimals =
+		c === "TWD" || c === "JPY"
+			? 0
+			: c === "USDC"
+			? 4
+			: 2
 
-		return v.toLocaleString("en-US", {
-			minimumFractionDigits: decimals,
-			maximumFractionDigits: decimals
-		})
-	}
+	return v.toLocaleString("en-US", {
+		minimumFractionDigits: decimals,
+		maximumFractionDigits: decimals
+	})
+}
 
 export function TransactionsItemDetail({
 	tx,
@@ -229,21 +235,26 @@ export function TransactionsItemDetail({
 	const timeText = useMemo(() => formatTimeDetail(tx.date), [tx.date])
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, currencyData,} = useDaemonContext()
-
+	const [feeOpen, setFeeopen] = useState(false)
 	const amountText = useMemo(() => formatUSDC(tx.amount), [tx.amount])
+	const [payUrl, setPayUrl] = useState('')
+	const [txDetail, setTxDetail] = useState<IRequestCurrencyDetail|undefined>(tx?.requestDetail)
 
 	const [userImg, setUserImg] = useState('')
+
 	const AmountText = () => {
 		if (localMode !== 'pay') {
-			if (tx?.requestCurrency) {
-				const fiatText = fiatPrefix(currency)
-				const amt = formatAmount(tx.amount, tx.requestCurrency)
+
+			if (tx?.requestDetail) {
+				const detail = tx.requestDetail
+				const fiatText = fiatPrefix(detail.requestCurrency)
+				const amt = formatAmount( detail.totalPayCurrency, detail.requestCurrency)
 				return (
 					<div className="flex items-baseline gap-2">
 						<span
 							className={[
 							"text-[28px] leading-none font-semibold",
-							amountColor,
+								amountColor,
 							].join(" ")}
 						>
 							{fiatText}
@@ -264,7 +275,7 @@ export function TransactionsItemDetail({
 		}
 
 		const amt = formatUSDC(tx.amount)
-		const textColor = tx.type === 'paid'|| tx.type === 'sent' ? statusStyleMap['sent'].text : statusStyleMap['received'].text
+		const textColor = tx.type1 === 'sent' ? statusStyleMap['sent'].text : statusStyleMap['received'].text
 		return (
 			<div className="flex items-baseline gap-2">
 				<span
@@ -279,7 +290,7 @@ export function TransactionsItemDetail({
 				<span
 					className={[
 					"text-[28px] leading-none font-semibold",
-					textColor,
+						textColor,
 					].join(" ")}
 				>
 					USDC
@@ -289,6 +300,7 @@ export function TransactionsItemDetail({
 	}
 	const [copied, setCopied] = useState(false)
 	const [currency, setCurrency] = useState<ICurrency> ('USDC')
+	
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
 	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
 
@@ -299,17 +311,32 @@ export function TransactionsItemDetail({
 		if (!u2u || !u2c) return 0
 		return cur / u2c / u2u
 	}
+
+
 	const approxFiatText = useMemo(() => {
-		if (localMode !== 'pay' && tx?.requestCurrency) {
-			
-			return `≈ ${currencyToUsdcAmount(tx.amount, tx.requestCurrency).toFixed(4)} USDC`
+		if (localMode !== 'pay') {
+			const detail = tx?.requestDetail
+
+			if (tx?.requestCurrency && tx.requestCurrency !== 'USDC') {
+
+				return `≈ ${ tx?.type === 'pending' ? currencyToUsdcAmount(tx.amount, tx.requestCurrency).toFixed(4) : detail?.totalPayUSDC?.toFixed(4)} USDC`
+			}
+			return ''
+		}
+		if (!tx?.requestCurrency || tx.requestCurrency === 'USDC') {
+			return ''
 		}
 		return `≈ ${fiatPrefix(currency)} ${formatAmount(usdcToCurrencyAmount(tx.amount, currency), currency)}`
 
 	}, [tx.amount, currency])
 
 	const statusText: HistoryFilter = useMemo(() => {
+		if (localMode === 'pay') {
+			return tx.type1||'paid'
+		}
+
 		return tx.type
+		
 	}, [localMode])
 
 	const style = statusStyleMap[statusText] ?? statusStyleMap.all
@@ -328,8 +355,8 @@ export function TransactionsItemDetail({
 			let account = beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase())
 
 			if (!account) {
-			const _account = await searchUsername(address)
-			if (_account?.results?.[0]) account = _account.results[0]
+				const _account = await searchUsername(address)
+				if (_account?.results?.[0]) account = _account.results[0]
 			}
 
 			if (!account) {
@@ -347,10 +374,20 @@ export function TransactionsItemDetail({
 			const _currency= tx?.note?.split('\r\n')
 			const _currency1: ICurrency = tx?.card?.currency as ICurrency||_currency[1]||'USDC'
 			setCurrency(_currency1)
-			account.image && setUserImg(await urlToObjectUrl(account.image))
+			setUserImg(account.image||getImg(account.username))
+			if (tx.type === 'pending') {
+				if (tx.mode === 'request') {
+					const showparams = new URLSearchParams({code: tx.hash}).toString()
+					const showUrl = `${showPaylinkSite}?${showparams}`
+					setPayUrl(showUrl)
+				}
+			}
 		} finally {
 			findingRef.current = false
 		}
+
+
+
 	}, [ beamioUsers, fromBeamio, setbBeamioUsers])
 
 	useEffect(() => {
@@ -359,7 +396,6 @@ export function TransactionsItemDetail({
 
 	const amountColor =
 		style.text
-
 	
 	const copyTxHash = async (hash: string) => {
 		if (!hash) return
@@ -411,20 +447,20 @@ export function TransactionsItemDetail({
 						{/* 左侧：状态 */}
 							<div
 							className={[
-								"inline-flex items-center gap-2 rounded-full px-3 py-1",
-								"bg-transparent border",
-								style.container.replace("bg-", "border-"),
+									"inline-flex items-center gap-2 rounded-full px-3 py-1",
+									"bg-transparent border",
+									style.container.replace("bg-", "border-"),
 							].join(" ")}
 							>
 							<span
 								className={[
-								"inline-flex h-5 w-5 items-center justify-center rounded-full",
-								style.iconBg,
+									"inline-flex h-5 w-5 items-center justify-center rounded-full",
+									style.iconBg,
 								].join(" ")}
 							>
 								<Check
-								className={["h-3.5 w-3.5", style.icon].join(" ")}
-								strokeWidth={2.5}
+									className={["h-3.5 w-3.5", style.icon].join(" ")}
+									strokeWidth={2.5}
 								/>
 							</span>
 
@@ -436,6 +472,24 @@ export function TransactionsItemDetail({
 							>
 								{statusText}
 							</span>
+							{localMode === "pay" && tx.mode !== "pay" && (
+								<span
+									className={[
+										"inline-flex items-center justify-center",
+										"w-6 h-6",
+										tx.mode === "cashcode"
+										? "text-sky-600 dark:text-sky-300"
+										: "text-fuchsia-600 dark:text-fuchsia-300"
+									].join(" ")}
+								>
+								{tx.mode === "cashcode" ? (
+									<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
+								) : (
+									<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
+								)}
+								</span>
+							)}
+							
 						</div>
 
 						{/* 🔹 中央标题（绝对居中） */}
@@ -462,68 +516,73 @@ export function TransactionsItemDetail({
 					<AmountText />
 
 
-				<div className="mt-2 text-[16px] text-slate-500">
-					{approxFiatText}
-				</div>
+					<div className="mt-2 text-[16px] text-slate-500">
+						{approxFiatText}
+					</div>
 				</div>
 
 				{/* 收款人/对方信息 */}
-				<div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-				<div className="flex items-center justify-between gap-3">
-					<div className="flex items-center gap-3 min-w-0">
-						<div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold">
-							{fromBeamio?.username !== 'Unknow' ? (
-							
-							<img
-								src={userImg}
-								className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-200"
-							/>
-						) : (
-							<div
-							className="
-								w-10 h-10
-								rounded-full
-								flex items-center justify-center
-								flex-shrink-0
-								bg-slate-200
-								text-slate-400
-								font-semibold
-								text-base
-							"
-							aria-label="Default avatar"
-							>
-								?
-							</div>
-						)}
-						</div>
+				{
+					tx.type !== 'pending' && (
+						<div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+							<div className="flex items-center justify-between gap-3">
+								<div className="flex items-center gap-3 min-w-0">
+									<div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold">
+										{fromBeamio?.username !== 'Unknow' ? (
+										
+										<img
+											src={userImg}
+											className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-200"
+										/>
+									) : (
+										<div
+										className="
+											w-10 h-10
+											rounded-full
+											flex items-center justify-center
+											flex-shrink-0
+											bg-slate-200
+											text-slate-400
+											font-semibold
+											text-base
+										"
+										aria-label="Default avatar"
+										>
+											?
+										</div>
+									)}
+									</div>
 
-						<div className="min-w-0">
-							<div className="text-[16px] font-semibold text-slate-900 truncate">
-								{
-									tx.type === 'sent' || tx.type === 'paid' ? `To ${displayName(fromBeamio)}` : `From ${displayName(fromBeamio)}`
-								}
+									<div className="min-w-0">
+										<div className="text-[16px] font-semibold text-slate-900 truncate">
+											{
+												tx.type === 'sent' || tx.type === 'paid' ? `To ${displayName(fromBeamio)}` : `From ${displayName(fromBeamio)}`
+											}
+											
+										</div>
+										<div className="text-[13px] text-slate-500 truncate">
+											{fmtAddr(tx.address)}
+										</div>
+										{/* <div className="text-[13px] text-slate-500 truncate">
+											Since {buildCreatedAtLabel(fromBeamio?.created_at)}
+										</div> */}
+									</div>
+
+								</div>
+
+								<button
+									type="button"
+									onClick={() => onProfile?.(tx.address)}
+									className="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-700"
+								>
 								
-							</div>
-							<div className="text-[13px] text-slate-500 truncate">
-								{fmtAddr(tx.address)}
-							</div>
-							<div className="text-[13px] text-slate-500 truncate">
-								Since {buildCreatedAtLabel(fromBeamio?.created_at)}
+									<ChevronRight className="h-4 w-4" />
+								</button>
 							</div>
 						</div>
-
-					</div>
-
-					<button
-						type="button"
-						onClick={() => onProfile?.(tx.address)}
-						className="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-700"
-					>
-					
-					<ChevronRight className="h-4 w-4" />
-					</button>
-				</div>
-				</div>
+					)
+				}
+				
 
 				{/* Note */}
 				{!!tx.note && (
@@ -535,6 +594,7 @@ export function TransactionsItemDetail({
 
 				
 				{/* Card image preview */}
+				
 				<div className="mt-4 rounded-2xl overflow-hidden flex justify-center">
 					{cardSrc && (
 						<button
@@ -570,20 +630,18 @@ export function TransactionsItemDetail({
 
 				{/* Network fee / Time */}
 				<div className="mt-4 rounded-2xl border border-slate-100 overflow-hidden">
-					{
-						tx.requestCurrency && <div className="flex items-center justify-between px-4 py-3 bg-white">
-						<span className="text-[15px] text-slate-500">Fee</span>
-						<div className="flex items-center gap-3">
-							<FeeInline
-								payUsdc={currencyToUsdcAmount(tx.amount, tx.requestCurrency)}
-								currentCurrency={tx.requestCurrency}
-							/>
-						</div>
-					</div>
-					}
 					
 					<div className="flex items-center justify-between px-4 py-3 bg-white">
-						<span className="text-[15px] text-slate-500">Network fee</span>
+						<span className="text-[15px] text-slate-500">Time</span>
+						<span className="text-[15px] font-semibold text-slate-900">
+						{timeText}
+						</span>
+					</div>
+
+					<div className="h-px bg-slate-100" />
+
+					<div className="flex items-center justify-between px-4 py-3 bg-white">
+						<span className="text-[15px] text-slate-500">Network Fee</span>
 						<div className="flex items-center gap-3">
 							<span className="text-[15px] font-semibold text-slate-900 tabular-nums">
 								{isSponsored ? "$0" : formatUSD(tx.fee)}
@@ -596,126 +654,249 @@ export function TransactionsItemDetail({
 
 					<div className="h-px bg-slate-100" />
 
-					<div className="flex items-center justify-between px-4 py-3 bg-white">
-						<span className="text-[15px] text-slate-500">Time</span>
-						<span className="text-[15px] font-semibold text-slate-900">
-						{timeText}
-						</span>
-					</div>
+					
+					{
+						(tx.type === 'received' || tx.type === 'completed' || tx.type === 'pending') && tx.requestCurrency && 
+							<div
+							className={[
+								"flex items-center px-4 py-3 bg-white",
+								feeOpen ? "justify-center" : "justify-between"
+							].join(" ")}
+							>
+							{
+								!feeOpen && (
+								<span className="text-[15px] text-slate-500">
+									Beamio Fee
+								</span>
+								)
+							}
+
+							<div
+								className={[
+								"flex items-center",
+								feeOpen ? "w-full justify-center" : "gap-3"
+								].join(" ")}
+							>
+								<div className={feeOpen ? "w-full" : ""}>
+								<FeeInline
+									payUsdc={ tx.type === 'pending' ? currencyToUsdcAmount(tx.amount, tx.requestCurrency) : tx.preAmount}
+									currentCurrency={tx.requestCurrency}
+									detailOpen={val => setFeeopen(val)}
+									txDetail={txDetail}
+								/>
+								</div>
+							</div>
+							</div>
+					}
 				</div>
 
 				{/* On Base · Tx */}
-				<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-					<div className="flex items-center justify-between gap-3">
-						<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
-							
+				{
+					tx.type === 'pending' ? (
+						<>
+						<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 ">
+							<div className="flex items-center justify-between gap-3">
+								<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
+									
 
-							<span className="inline-flex items-center mx-1">
-								<img
-								src={baseIcon}
-								alt="Base"
-								className="w-4 h-4 relative top-[0.5px]"
-								/>
-							</span>
+									<span className="mx-1 text-slate-400">·</span>
 
-							<span 
-								className="font-semibold text-slate-700"
-								style={{ color: "rgb(0 0 255)" }}
-							>
-								Base
-							</span>
+									<span className="text-slate-500">Url: </span>
 
-							<span className="mx-1 text-slate-400">·</span>
+									<span className="ml-1 font-semibold text-slate-700">
+										{payUrl}
+									</span>
+								</div>
 
-							<span className="text-slate-500">Tx</span>
+								<div className="flex items-center gap-2 shrink-0">
+									<button
+										type="button"
+										onClick={() => copyTxHash(payUrl)}
+										className="
+											h-7	 w-7
+											rounded-full
+											hover:bg-black/5
+											active:scale-[0.98]
+											transition
+											flex items-center justify-center
+										"
+										aria-label="Copy transaction hash"
+										title="Copy"
+										>
+										{copied ? (
+										<Check className="h-4.5 w-4.5 text-emerald-600" />
+										) : (
+										<Copy className="h-4.5 w-4.5 text-slate-500" />
+										)}
+									</button>
 
-							<span className="ml-1 font-semibold text-slate-700">
-								{shortHash(tx.hash)}
-							</span>
+								</div>
+							</div>
 						</div>
+						{/* QR area */}
+							<div className="mt-4 flex flex-col items-center gap-2 mb-10">
+								
+								<div className="border border-black/20 rounded-xl p-3 bg-white text-center qrCard">
+								
+									<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
+										<span
+											className="uppercase font-medium tracking-wider text-[11px]"
+											style={{ color: '#c0c0c0ff' }}
+										>
+										</span>
+									</div>
+									<QRCodeCanvas
+										value={payUrl}
+										size={160}
+										level="H"
+										includeMargin
+										bgColor="transparent"
+										fgColor="#000000"
+										imageSettings={{
+											src: bIcon,
+											height: 40,
+											width: 40,
+											excavate: true,
+										}}
+										className="rounded-lg inline-block"
+									/>
 
-						<div className="flex items-center gap-2 shrink-0">
-							<button
-								type="button"
-								onClick={() => copyTxHash(tx.hash)}
-								className="
-									h-7	 w-7
-									rounded-full
-									hover:bg-black/5
-									active:scale-[0.98]
-									transition
-									flex items-center justify-center
-								"
-								aria-label="Copy transaction hash"
-								title="Copy"
-								>
-								{copied ? (
-								<Check className="h-4.5 w-4.5 text-emerald-600" />
-								) : (
-								<Copy className="h-4.5 w-4.5 text-slate-500" />
-								)}
-							</button>
+									<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
+										<span
+											className="uppercase font-medium tracking-wider text-[11px]"
+											style={{ color: '#c0c0c0ff' }}
+										>
+											Amount
+										</span>
 
-							<button
-								type="button"
-								onClick={() => {
-									window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
-								}}
-								className="h-7 w-7 rounded-full hover:bg-black/5 active:scale-[0.98] transition flex items-center justify-center"
-								aria-label="Open in explorer"
-								title="Open"
-							>
-								<ExternalLink className="h-4.5 w-4.5 text-slate-500" />
-							</button>
+										<span className="font-mono font-semibold text-[13px] text-black/60">
+											{/* {lockMode === 'FIAT_LOCKED' ? payAmount : `${creatorEstUsdcFromFiat} USDC` } */}
+										</span>
+									</div>
+								</div>
+							</div>
+						</>
+					) : (
+						<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+							<div className="flex items-center justify-between gap-3">
+								<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
+									
+
+									<span className="inline-flex items-center mx-1">
+										<img
+										src={baseIcon}
+										alt="Base"
+										className="w-4 h-4 relative top-[0.5px]"
+										/>
+									</span>
+
+									<span 
+										className="font-semibold text-slate-700"
+										style={{ color: "rgb(0 0 255)" }}
+									>
+										Base
+									</span>
+
+									<span className="mx-1 text-slate-400">·</span>
+
+									<span className="text-slate-500">Tx</span>
+
+									<span className="ml-1 font-semibold text-slate-700">
+										{shortHash(tx.hash)}
+									</span>
+								</div>
+
+								<div className="flex items-center gap-2 shrink-0">
+									<button
+										type="button"
+										onClick={() => copyTxHash(tx.hash)}
+										className="
+											h-7	 w-7
+											rounded-full
+											hover:bg-black/5
+											active:scale-[0.98]
+											transition
+											flex items-center justify-center
+										"
+										aria-label="Copy transaction hash"
+										title="Copy"
+										>
+										{copied ? (
+										<Check className="h-4.5 w-4.5 text-emerald-600" />
+										) : (
+										<Copy className="h-4.5 w-4.5 text-slate-500" />
+										)}
+									</button>
+
+									<button
+										type="button"
+										onClick={() => {
+											window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
+										}}
+										className="h-7 w-7 rounded-full hover:bg-black/5 active:scale-[0.98] transition flex items-center justify-center"
+										aria-label="Open in explorer"
+										title="Open"
+									>
+										<ExternalLink className="h-4.5 w-4.5 text-slate-500" />
+									</button>
+								</div>
+							</div>
 						</div>
-					</div>
-				</div>
+					)
+				}
+				
+				
 			</div>
 
 			{/* 底部按钮 */}
-			<div className="px-5 pb-5 pt-5">
-				<div className="flex items-center gap-3">
-				<button
-					type="button"
-					onClick={() => onSendAgain?.(tx)}
-					className="
-						flex-1 h-12
-						rounded-2xl
-						bg-blue-600 hover:bg-blue-700
-						text-white
-						font-semibold
-						flex items-center justify-center gap-2
-						shadow-sm
-						active:scale-[0.99]
-						transition
-					"
-				>
-					<Repeat2 className="h-5 w-5" />
-					<span>
-						{
-							tx.type === 'sent' || tx.type === 'paid' ? 'Send again' : 'Send back'
-						}
-					</span>
-				</button>
+			{
+				tx.type !== 'pending' && (
+					<div className="px-5 pb-5 pt-5">
+						<div className="flex items-center gap-3">
+						<button
+							type="button"
+							onClick={() => onSendAgain?.(tx)}
+							className="
+								flex-1 h-12
+								rounded-2xl
+								bg-blue-600 hover:bg-blue-700
+								text-white
+								font-semibold
+								flex items-center justify-center gap-2
+								shadow-sm
+								active:scale-[0.99]
+								transition
+							"
+						>
+							<Repeat2 className="h-5 w-5" />
+							<span>
+								{
+									tx.type === 'sent' || tx.type === 'paid' ? 'Send again' : 'Send back'
+								}
+							</span>
+						</button>
 
-				<button
-					type="button"
-					onClick={() => onMessage?.(tx.address)}
-					className="
-					flex-1 h-12
-					rounded-2xl
-					border border-slate-200
-					bg-white
-					font-semibold text-slate-900
-					flex items-center justify-center gap-2
-					active:scale-[0.99] transition
-					"
-				>
-					<ChatBlueIcon className="h-6 w-6 text-slate-600" />
-					<span>Message</span>
-				</button>
-				</div>
-			</div>
+						<button
+							type="button"
+							onClick={() => onMessage?.(tx.address)}
+							className="
+							flex-1 h-12
+							rounded-2xl
+							border border-slate-200
+							bg-white
+							font-semibold text-slate-900
+							flex items-center justify-center gap-2
+							active:scale-[0.99] transition
+							"
+						>
+							<ChatBlueIcon className="h-6 w-6 text-slate-600" />
+							<span>Message</span>
+						</button>
+						</div>
+					</div>
+				)
+			}
+			
 			</div>
 		</div>
 		{

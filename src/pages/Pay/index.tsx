@@ -133,7 +133,6 @@ const Pay = ({}) => {
 					<div className="pointer-events-none">
 						<SearchInputWithDropdown
 							showHistory={false}
-							readonly={true}
 							close={ path => {
 								setShowAlphaHowItWorks('')
 							}}

@@ -182,7 +182,13 @@ const Browser = ({}) => {
 	}
 
     return (
-        <div className='flex flex-col h-screen'>
+        <div className='
+		flex flex-col h-screen
+		pt-[env(safe-area-inset-top)]
+				pb-[env(safe-area-inset-bottom)]
+				pl-[env(safe-area-inset-left)]
+				pr-[env(safe-area-inset-right)]
+		'>
 			{
 				showLinkPay ? 
 					localSecureCode ? <RedeemScreen close={() => {

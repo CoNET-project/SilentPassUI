@@ -22,10 +22,10 @@ const beamioConetContract = {
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 type Props = {
 	close: (path: string | searchResult) => void
-	readonly: boolean
 	select?: boolean
 	showHistory: boolean
 	showBackIcon?: boolean
+	focus?: boolean
 }
 
 const displayName = (item: searchResult) => {
@@ -58,7 +58,7 @@ function formatUserDate(timestamp?: string | number): string {
 
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
-	({ close, readonly, select, showHistory, showBackIcon=true }: Props) => {
+	({ close, select, showHistory, showBackIcon=true, focus = false }: Props) => {
 		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode} = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
@@ -71,7 +71,7 @@ const SearchInputWithDropdown =
 		const [showDropdown, setShowDropdown] = useState(false)
 		const [searchBeamiosHistory, setSearchBeamiosHistory] = useState<searchkeywork[]>([])
 		const [searchKeysHistory, setSearchKeysHistory] = useState<searchkeywork[]>([])
-
+		const [readonly, setReadonly] = useState(!focus)
 		const hasQuery = query.trim().length > 0
 
 		
@@ -133,7 +133,7 @@ const SearchInputWithDropdown =
 			q = q.trim().replace('@', '').toLowerCase()
 			
 			const data = await searchUsername(q)
-			setLoading(false)
+			
 
 			const result: searchResult[] = data?.results || []
 			const filted = result.filter(n => n.address.toLowerCase() !== myAddress)
@@ -148,6 +148,22 @@ const SearchInputWithDropdown =
 					filted.push(_item)
 				}
 			}
+
+			// await Promise.all(
+			// 	filted.map(async n => {
+			// 		if ( /ipfs/i.test(n.image)) {
+
+			// 			const img = await urlToObjectUrl(n.image)
+			// 			console.log(img)
+			// 			n.image = img
+			// 		} else {
+			// 			n.image = 
+			// 		}
+					
+			// 	})
+			// )
+
+			setLoading(false)
 			setResults(filted)
 
 			if (hasQuery) {
@@ -205,7 +221,7 @@ const SearchInputWithDropdown =
 
 		// 下拉框显示/隐藏时，重新 focus input
 		useEffect(() => {
-			if (readonly) return
+			if (readonly||!focus) return
 			inputRef.current?.focus()
 		}, [showDropdown, readonly])
 
@@ -379,9 +395,11 @@ const SearchInputWithDropdown =
 							<div
 								role="button"
 								tabIndex={0}
-								onClick={() => close("/")}
+								onClick={() => {
+									setReadonly(false)
+								}}
 								onKeyDown={e => {
-								if (e.key === "Enter" || e.key === " ") close("/")
+									if (e.key === "Enter" || e.key === " ") close("/")
 								}}
 								className="
 								flex-1 bg-transparent text-left
@@ -393,13 +411,13 @@ const SearchInputWithDropdown =
 								{query || "Search @BeamioTag, address, or paste link"}
 							</div>
 							) : (
-							<input
-								ref={inputRef}
-								className="flex-1 bg-transparent text-[13px] placeholder-slate-400 focus:outline-none"
-								placeholder="Search @BeamioTag, address, or paste link"
-								value={query}
-								onChange={e => setQuery(e.currentTarget.value)}
-							/>
+								<input
+									ref={inputRef}
+									className="flex-1 bg-transparent text-[13px] placeholder-slate-400 focus:outline-none"
+									placeholder="Search @BeamioTag, address, or paste link"
+									value={query}
+									onChange={e => setQuery(e.currentTarget.value)}
+								/>
 							)}
 						</div>
 						
@@ -429,57 +447,57 @@ const SearchInputWithDropdown =
 						>
 							{/* 顶部：输入行 */}
 							<div className="flex items-center bg-slate-100 rounded-full px-2 h-11 flex-1">
-							{/* ← 返回按钮 */}
-							{
-								!readonly && showBackIcon && (
-									<button
-										type="button"
-										onClick={() => close('/')}
-										className="
-										w-7 h-7
-										mr-2
-										flex items-center justify-center
-										rounded-full
-										hover:bg-slate-200
-										active:scale-95
-										transition
-										flex-shrink-0
-										"
-									>
-										<ChevronLeft className="w-4 h-4 text-slate-700" />
-									</button>
-								)
-							}
-							
+								{/* ← 返回按钮 */}
+								{
+									!readonly && showBackIcon && (
+										<button
+											type="button"
+											onClick={() => close('/')}
+											className="
+											w-7 h-7
+											mr-2
+											flex items-center justify-center
+											rounded-full
+											hover:bg-slate-200
+											active:scale-95
+											transition
+											flex-shrink-0
+											"
+										>
+											<ChevronLeft className="w-4 h-4 text-slate-700" />
+										</button>
+									)
+								}
+								
 
-							{/* Beamio icon */}
-							<img
-								src={beamio_icon}
-								alt="Beamio"
-								className="w-5 h-5 mr-2 flex-shrink-0 opacity-80"
-							/>
+								{/* Beamio icon */}
+								<img
+									src={beamio_icon}
+									alt="Beamio"
+									className="w-5 h-5 mr-2 flex-shrink-0 opacity-80"
+								/>
 
-							{/* Search icon */}
-							<Search
-								className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0"
-								strokeWidth={2}
-							/>
+								{/* Search icon */}
+								<Search
+									className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0"
+									strokeWidth={2}
+								/>
 
-							{/* 输入框 */}
-							<input
-								ref={inputRef}
-								className="
-								flex-1
-								bg-transparent
-								text-[13px]
-								placeholder-slate-400
-								focus:outline-none
-								"
-								placeholder="Search for @BeamioTag or wallet address"
-								value={query}
-								readOnly={readonly}
-								onChange={e => setQuery(e.currentTarget.value)}
-							/>
+								{/* 输入框 */}
+								<input
+									ref={inputRef}
+									className="
+									flex-1
+									bg-transparent
+									text-[13px]
+									placeholder-slate-400
+									focus:outline-none
+									"
+									placeholder="Search for @BeamioTag or wallet address"
+									value={query}
+									readOnly={readonly}
+									onChange={e => setQuery(e.currentTarget.value)}
+								/>
 							</div>
 
 							{/* 下方：search 行 + 结果列表 */}
@@ -509,60 +527,57 @@ const SearchInputWithDropdown =
 
 								{/* 结果列表 */}
 								{!loading &&
-									results.map(item => (
-										<button
-											key={item.address}
-											type="button"
-											className="
-												w-full flex items-center
-												px-3 py-2.5 text-left
-												hover:bg-slate-50
-											"
-											onClick={() => handleSelect(item)}
-										>
-											{/* 头像 */}
-											{item.image ? (
-												<img
-													src={item.image}
-													alt={item.username}
-													className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0"
-												/>
-											) : (
-												<img
-													src={getImg(item.username)}
-													alt={item.username}
-													className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0 bg-slate-200"
-												/>
-											)}
+									results.map(item => {
+										
+										return (
+											<button
+												key={item.address}
+												type="button"
+												className="
+													w-full flex items-center
+													px-3 py-2.5 text-left
+													hover:bg-slate-50
+												"
+												onClick={() => handleSelect(item)}
+											>
+												{/* 头像 */}
+												
+													<img
+														src={item.image? item.image : getImg(item.username)}
+														alt={item.username}
+														className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0 bg-slate-200"
+													/>
+												
 
-											{/* 中间 + 右侧整体：左右布局 */}
-											<div className="flex-1 flex items-start justify-between gap-3 min-w-0">
-												{/* 文本区域（左侧） */}
-												<div className="flex flex-col min-w-0">
-													{/* 第一行：姓名 或 username */}
-													<span className="text-[13px] text-slate-900 truncate">
-														{displayName(item)}
-													</span>
+												{/* 中间 + 右侧整体：左右布局 */}
+												<div className="flex-1 flex items-start justify-between gap-3 min-w-0">
+													{/* 文本区域（左侧） */}
+													<div className="flex flex-col min-w-0">
+														{/* 第一行：姓名 或 username */}
+														<span className="text-[13px] text-slate-900 truncate">
+															{displayName(item)}
+														</span>
 
-													{/* 第二行：@username · 短地址 */}
-													<span className="text-[11px] text-slate-500 truncate">
-														@{item.username} · {shortAddress(item.address)}
-													</span>
+														{/* 第二行：@username · 短地址 */}
+														<span className="text-[11px] text-slate-500 truncate">
+															@{item.username} · {shortAddress(item.address)}
+														</span>
 
-													{/* 第三行：following / followers */}
-													<span className="text-[11px] text-slate-400 mt-0.5 truncate">
-														{Number(item.follow_count || '0').toLocaleString()} following ·{' '}
-														{Number(item.follower_count || '0').toLocaleString()} followers
+														{/* 第三行：following / followers */}
+														<span className="text-[11px] text-slate-400 mt-0.5 truncate">
+															{Number(item.follow_count || '0').toLocaleString()} following ·{' '}
+															{Number(item.follower_count || '0').toLocaleString()} followers
+														</span>
+													</div>
+
+													{/* 右侧：创建日期 */}
+													<span className="text-[10px] text-slate-400 whitespace-nowrap">
+														{formatUserDate(item.created_at)}
 													</span>
 												</div>
-
-												{/* 右侧：创建日期 */}
-												<span className="text-[10px] text-slate-400 whitespace-nowrap">
-													{formatUserDate(item.created_at)}
-												</span>
-											</div>
-										</button>
-									))}
+											</button>
+										)
+									})}
 
 								{!loading && results.length === 0 && (
 									<div className="px-3 py-2.5 text-[12px] text-slate-400">

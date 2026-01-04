@@ -1,7 +1,7 @@
 import BeamioDetail from "./beamioForShow"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
-import {useObjectImgSrc} from './useObjectImgSrc'
+
 import { X } from "lucide-react"
 import { createPortal } from "react-dom"
 import {
@@ -57,7 +57,7 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
   	
 	const [fromBeamio, setfromBeamio] =  useState<searchResult|undefined> ()
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers} = useDaemonContext()
-	const imgSrc = useObjectImgSrc(card?.image)
+	const imgSrc = card?.image
 	const [bgSrc, setBgSrc] = useState<string>("")
 	const findUser = async () => {
 		if (fromBeamio) return
@@ -128,16 +128,16 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 				<div className="absolute inset-0" style={{ transform: "translateZ(0)" }}>
 					{bgSrc && (
 						<img
-						key={bgSrc}                 // ✅ 强制刷新 img 节点，iOS 更稳
-						src={bgSrc}
-						alt="card-bg"
-						className="w-full h-full object-cover"
-						draggable={false}
-						decoding="async"
-						loading="eager"             // ✅ 不要懒加载
-						// @ts-ignore
-						fetchPriority="high"        // ✅ Chrome/Safari 新一些版本有效，无害
-						style={{ transform: "translateZ(0)", willChange: "transform" }}
+							key={bgSrc}                 // ✅ 强制刷新 img 节点，iOS 更稳
+							src={bgSrc}
+							alt="card-bg"
+							className="w-full h-full object-cover"
+							draggable={false}
+							decoding="async"
+							loading="eager"             // ✅ 不要懒加载
+							// @ts-ignore
+							fetchPriority="high"        // ✅ Chrome/Safari 新一些版本有效，无害
+							style={{ transform: "translateZ(0)", willChange: "transform" }}
 						/>
 					)}
 				</div>

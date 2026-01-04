@@ -45,7 +45,7 @@
 		"lodash": "^4.17.21",
 		"lucide-react": "^0.346.0",
 		"motion": "^12.23.7",
-		"openpgp": "6.2.0",
+		"openpgp": "6.3.0",
 		"pouchdb": "^9.0.0",
 		"qrcode.react": "^4.2.0",
 		"react": "^18.3.1",

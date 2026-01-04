@@ -293,6 +293,11 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		
 		const profile: profile = tmpData.profiles[0]
 		const bo = beamio
+
+		if (!beamio?.pgpPublicKeyID) {
+			
+		}
+
 		bo.currency = curr
 		await postBeamio(bo, profile.privateKeyArmor)
 

@@ -271,11 +271,6 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 					</>
 				)
 			}
-
-			
-
-			
-
 			
 			</ScreenShell>
 	)

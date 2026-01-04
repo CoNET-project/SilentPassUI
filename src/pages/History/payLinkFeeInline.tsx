@@ -15,7 +15,7 @@ import {
   ExternalLink,
 } from "lucide-react"
 
-import FeeInfo from './FeeInfo'
+import FeeInfo from '@/pages/Pay/PaymentLink/FeeInfo'
 
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
@@ -55,10 +55,14 @@ function fiatPrefix(ccy: ICurrency) {
 
 function FeeInline({
   	payUsdc,
-	currentCurrency
+	currentCurrency,
+	detailOpen,
+	txDetail
 }: {
   	payUsdc: number
 	currentCurrency: ICurrency
+	detailOpen:( val: boolean) => void
+	txDetail?: IRequestCurrencyDetail
 }) {
 	const [open, setOpen] = useState(false)
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
@@ -111,17 +115,17 @@ function FeeInline({
 	const display = useMemo(() => {
 		if (currentCurrency === 'USDC') {
 			return {
-				pay: formatAmount(payUsdc, 'USDC'),
-				fee: formatAmount(Number(feeUsdc), 'USDC'),
-				receive: formatAmount(receiveUsdc, 'USDC'),
+				pay: formatAmount( txDetail?.totalPayUSDC||payUsdc, 'USDC'),
+				fee: formatAmount(Number( txDetail?.feeUSDC|| feeUsdc), 'USDC'),
+				receive: formatAmount(txDetail?.receivedUSDC|| receiveUsdc, 'USDC'),
 			}
 		}
 
 		const c = currentCurrency
 		return {
-			pay: formatAmount(usdcToCurrencyAmount(payUsdc, c), c),
-			fee: formatAmount(usdcToCurrencyAmount(Number(feeUsdc), c), c),
-			receive: formatAmount(usdcToCurrencyAmount(receiveUsdc, c), c),
+			pay: formatAmount(txDetail?.totalPayCurrency||usdcToCurrencyAmount(payUsdc, c), c),
+			fee: formatAmount(txDetail?.feeCurrency|| usdcToCurrencyAmount(Number(feeUsdc), c), c),
+			receive: formatAmount( txDetail?.receivedCurrency|| usdcToCurrencyAmount(receiveUsdc, c), c),
 		}
 	}, [payUsdc, feeUsdc, receiveUsdc, currentCurrency])
 
@@ -147,19 +151,22 @@ function FeeInline({
 									origin-center
 								"
 							>
-							<IOSBlurPillButton
-								open={openInof}
-								onToggle={() => setOpenInfo(true)}
-							>
-								<Info className="w-4 h-4 text-yellow-500" />
-							</IOSBlurPillButton>
+								<IOSBlurPillButton
+									open={openInof}
+									onToggle={() => setOpenInfo(true)}
+								>
+									<Info className="w-4 h-4 text-yellow-500" />
+								</IOSBlurPillButton>
 							</div>
 
 
 						{/* 右侧开关 */}
 						<LockModeSwitch
 							value={open}
-							onChange={() => setOpen(!open)}
+							onChange={() => {
+								detailOpen(!open)
+								setOpen(!open)
+							}}
 						>
 							Detail
 						</LockModeSwitch>
@@ -172,10 +179,10 @@ function FeeInline({
 							!open && (
 								<div className="mt-2 flex items-center justify-between text-sm">
 									<span className="text-slate-500 mr-2">
-										You receive{" "}
+										{" "}
 									</span>
 									<span className="font-semibold tabular-nums text-slate-900">
-										{currentCurrency === 'USDC' ? `${display.receive} USDC` : fiatPrefix(currentCurrency) + display.receive}
+										{currentCurrency === 'USDC' ? `${display.fee} USDC` : fiatPrefix(currentCurrency) + display.fee}
 									</span>
 								</div>
 							)
@@ -250,30 +257,30 @@ function FeeInline({
 				</div>
 							{/* ✅ 只对弹出窗口本身做模糊 + 透明 */}
 				{openInof && (
-				<div
-					className="fixed inset-0 z-50 flex items-center justify-center px-4"
-					onClick={() => setOpenInfo(false)}
-				>
 					<div
-					className="
-						relative rounded-2xl shadow-2xl p-4
-						max-w-sm w-[90vw]
-						bg-white/12 backdrop-blur-xl border border-white/20
-						transition-all duration-300 ease-out
-						scale-100 translate-y-0
-					"
-					style={{
-						WebkitBackdropFilter: "blur(18px) saturate(160%)",
-						backdropFilter: "blur(18px) saturate(160%)"
-					}}
-					onClick={(e) => e.stopPropagation()}
+						className="fixed inset-0 z-50 flex items-center justify-center px-4"
+						onClick={() => setOpenInfo(false)}
 					>
-					<FeeInfo 
-						close={() => setOpenInfo(false)}
-						isUSDCFixed={currentCurrency === 'USDC'}
-					/>
+						<div
+						className="
+							relative rounded-2xl shadow-2xl p-4
+							max-w-sm w-[90vw]
+							bg-white/12 backdrop-blur-xl border border-white/20
+							transition-all duration-300 ease-out
+							scale-100 translate-y-0
+						"
+						style={{
+							WebkitBackdropFilter: "blur(18px) saturate(160%)",
+							backdropFilter: "blur(18px) saturate(160%)"
+						}}
+						onClick={(e) => e.stopPropagation()}
+						>
+						<FeeInfo 
+							close={() => setOpenInfo(false)}
+							isUSDCFixed={currentCurrency === 'USDC'}
+						/>
+						</div>
 					</div>
-				</div>
 				)}
 		</div>
 	);

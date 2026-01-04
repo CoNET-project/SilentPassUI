@@ -8,7 +8,7 @@ import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useNavigate } from "react-router-dom"
-import { createOrGetWallet, storeSystemData, getOracle, postBeamio} from "@/services/beamio"
+import { createOrGetWallet, storeSystemData, getOracle, postBeamio, initBeamioPGPKeys} from "@/services/beamio"
 import BeamioAlphaHowItWorks from './BeamioAlphaHowItWorks'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
@@ -196,6 +196,13 @@ const Home = ({}) => {
 		if (!bo) return
 
 		bo.initialLoading = true
+		if (!bo?.pgpPublicKeyID) {
+			const boo = await initBeamioPGPKeys(profiles[0].keyID)
+			bo.pgpPublicKeyID = boo.keyID
+			bo.pgpPublicKeyArmor = boo.publicKey
+
+		}
+		
 		
 		oracle()
 		if (bo.isUSDCFaucet) {
@@ -714,27 +721,29 @@ const Home = ({}) => {
 			<div className="flex-1 px-5 pb-3 overflow-y-auto">
 				
 				{/* Search */}
-				<div className="flex items-center gap-2 mb-4 mt-6">
-					 <button 
-						onClick={() => {
-							setOpenSearch(true)
-						}}
-						className="w-full"
-					>
-						<div className="pointer-events-none">
-							<SearchInputWithDropdown
-								showHistory={false}
-								readonly={true}
-								close={ path => {
-									setShowAlphaHowItWorks('')
-								}}
-							/>
+				{
+					!openSearch && <div className="flex items-center gap-2 mb-4 mt-6">
+						<div 
+							onClick={() => {
+								setOpenSearch(true)
+							}}
+							className="w-full"
+						>
+							<div className="pointer-events-none">
+								<SearchInputWithDropdown
+									showHistory={false}
+									close={ path => {
+										setShowAlphaHowItWorks('')
+									}}
+								/>
+							</div>
 						</div>
-					</button>
-					<div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
-						<ScanBtn />
+						<div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
+							<ScanBtn />
+						</div>
 					</div>
-				</div>
+				}
+				
 
 				{/* Content */}
 				<div className="">
@@ -939,15 +948,18 @@ const Home = ({}) => {
 					${ openSearch ? 'translate-y-0' : 'translate-y-full'}
 				`}
 			>
-				<BeamioSearch close={(item) => {
-					if (!item || typeof item === 'string') {
-						setOpenSearch(false)
-					} else {
-						setUserPreviewItem(item)
-						setShowAlphaHowItWorks('Pay')
-					}
-					
-				} }/>
+				{
+					openSearch && <BeamioSearch close={(item) => {
+						if (!item || typeof item === 'string') {
+							setOpenSearch(false)
+						} else {
+							setUserPreviewItem(item)
+							setShowAlphaHowItWorks('Pay')
+						}
+						
+					} }/>
+				}
+				
 			</div>
 		</div>
 	)

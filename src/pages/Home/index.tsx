@@ -12,6 +12,7 @@ const HomePage = ({}) => {
 	const init = async () => {
 		
 		const CoNETData: encrypt_keys_object = await checkStorage()
+		
 		if ( !CoNETData|| !CoNETData?.beamio?.initialLoading ) {
 			setIsInitialLoading(true)
 			setShowBeamioOnboardingModal(true)

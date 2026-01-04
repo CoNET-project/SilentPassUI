@@ -21,7 +21,7 @@ const BeamioInstallOnboarding: React.FC = () => {
   	const [activeTab, setActiveTab] = useState<"ios" | "android" | "desktop">(MobileType())
 	const [installed, setInstalled] = useState(MobileType() === 'desktop' ? true : false)
 	const [canInstall, setCanInstall] = useState(false)
-	    const [showPostInstallTips, setShowPostInstallTips] = useState(MobileType() === 'desktop' ? true : false)
+	    const [showPostInstallTips, setShowPostInstallTips] = useState(false) //useState(MobileType() === 'desktop' ? true : false)
 	const navigate = useNavigate()
 	const [installPromptEvent, setInstallPromptEvent] = 
 		useState<BeforeInstallPromptEvent | null>(null)

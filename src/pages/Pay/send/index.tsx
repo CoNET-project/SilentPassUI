@@ -295,8 +295,24 @@ export default function PayScreen ({close, beamioer}: Props) {
 		const toAddress = item.address
 
 		let sendNote = note||defaultNodeText
+		let _addnote = addedNote
 		if (addedNote) {
-			sendNote += `\r\n${addedNote}`
+			const tryAdd = JSON.parse(addedNote)
+			const card = tryAdd.card
+			const _data = {
+				card: {
+					title: card.title,
+					detail: card.detail,
+					image: card.image,
+					currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
+					currencyAmount: currencyAmount
+				}
+			}
+			_addnote = JSON.stringify(_data)
+		}
+
+		if (_addnote) {
+			sendNote += `\r\n${_addnote}`
 		} else {
 			if (lockMode === 'FIAT_LOCKED') {
 				sendNote += `\r\n${currentCurrency}`
@@ -672,7 +688,6 @@ export default function PayScreen ({close, beamioer}: Props) {
 												loading={processing}
 												errorText={sendError}
 											>
-
 												{message ? 'Conform': 'Send'}
 											</AppButton>
 										</div>

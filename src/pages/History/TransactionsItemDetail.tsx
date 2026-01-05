@@ -234,7 +234,7 @@ export function TransactionsItemDetail({
 	const isSponsored = true
 	const timeText = useMemo(() => formatTimeDetail(tx.date), [tx.date])
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
-	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, currencyData,} = useDaemonContext()
+	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, currencyData, profiles} = useDaemonContext()
 	const [feeOpen, setFeeopen] = useState(false)
 	const amountText = useMemo(() => formatUSDC(tx.amount), [tx.amount])
 	const [payUrl, setPayUrl] = useState('')
@@ -347,7 +347,7 @@ export function TransactionsItemDetail({
 	const cardSrc = tx?.card
 	
 	const findUser = useCallback(async () => {
-		if (findingRef.current) return
+		if (findingRef.current||!profiles) return
 		if (fromBeamio) return
 		const address = tx.address
 		findingRef.current = true
@@ -375,12 +375,32 @@ export function TransactionsItemDetail({
 			const _currency1: ICurrency = tx?.card?.currency as ICurrency||_currency[1]||'USDC'
 			setCurrency(_currency1)
 			setUserImg(account.image||getImg(account.username))
+			
 			if (tx.type === 'pending') {
 				if (tx.mode === 'request') {
 					const showparams = new URLSearchParams({code: tx.hash}).toString()
 					const showUrl = `${showPaylinkSite}?${showparams}`
 					setPayUrl(showUrl)
+					return
 				}
+				const codeString = tx.note.split('\r\n')
+				const encryptedText = codeString[1]
+				const profile: profile = profiles[0]
+				if (encryptedText && tx?.redeemHash) {
+					const _data = await aesGcmDecrypt(encryptedText, profile.privateKeyArmor)
+					try {
+						const data = JSON.parse(_data)
+						const showparams = new URLSearchParams({cashcode: data.secureCode, secureCode:tx.redeemHash}).toString()
+						const showUrl = `${showPaylinkSite}?${showparams}`
+						setPayUrl(showUrl)
+						console.log (data)
+					} catch (ex: any) {
+						console.log(`error`, ex.message)
+						return
+					}
+				}
+
+
 			}
 		} finally {
 			findingRef.current = false
@@ -439,473 +459,473 @@ export function TransactionsItemDetail({
 
 	return (
 		<div className="min-h-screen">
-		<div className="mx-auto max-w-[520px] px-4 py-4">
-			<div className="rounded-[28px] bg-white shadow-sm ring-1 ring-black/5 overflow-hidden">
-			<div className="px-5 pt-5">
-				{/* 顶部：状态 + Title + Gas sponsored */}
-					<div className="relative flex items-center justify-between gap-3">
-						{/* 左侧：状态 */}
-							<div
-							className={[
-									"inline-flex items-center gap-2 rounded-full px-3 py-1",
-									"bg-transparent border",
-									style.container.replace("bg-", "border-"),
-							].join(" ")}
-							>
-							<span
-								className={[
-									"inline-flex h-5 w-5 items-center justify-center rounded-full",
-									style.iconBg,
-								].join(" ")}
-							>
-								<Check
-									className={["h-3.5 w-3.5", style.icon].join(" ")}
-									strokeWidth={2.5}
-								/>
-							</span>
+			<div className="mx-auto max-w-[520px] px-4 py-4">
+				<div className="rounded-[28px] bg-white shadow-sm ring-1 ring-black/5 overflow-hidden">
+					{/**	content 底部 + 2rem = 8 × 0.25rem */}
+					<div className="pb-8">		
+						<div className="px-5 pt-5">
+							{/* 顶部：状态 + Title + Gas sponsored */}
+								<div className="relative flex items-center justify-between gap-3">
+									{/* 左侧：状态 */}
+										<div
+										className={[
+												"inline-flex items-center gap-2 rounded-full px-3 py-1",
+												"bg-transparent border",
+												style.container.replace("bg-", "border-"),
+										].join(" ")}
+										>
+										<span
+											className={[
+												"inline-flex h-5 w-5 items-center justify-center rounded-full",
+												style.iconBg,
+											].join(" ")}
+										>
+											<Check
+												className={["h-3.5 w-3.5", style.icon].join(" ")}
+												strokeWidth={2.5}
+											/>
+										</span>
 
-							<span
-								className={[
-								"text-[13px] font-semibold capitalize",
-								style.text,
-								].join(" ")}
-							>
-								{statusText}
-							</span>
-							{localMode === "pay" && tx.mode !== "pay" && (
-								<span
-									className={[
-										"inline-flex items-center justify-center",
-										"w-6 h-6",
-										tx.mode === "cashcode"
-										? "text-sky-600 dark:text-sky-300"
-										: "text-fuchsia-600 dark:text-fuchsia-300"
-									].join(" ")}
-								>
-								{tx.mode === "cashcode" ? (
-									<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
-								) : (
-									<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
-								)}
-								</span>
+										<span
+											className={[
+											"text-[13px] font-semibold capitalize",
+											style.text,
+											].join(" ")}
+										>
+											{statusText}
+										</span>
+										{localMode === "pay" && tx.mode !== "pay" && (
+											<span
+												className={[
+													"inline-flex items-center justify-center",
+													"w-6 h-6",
+													tx.mode === "cashcode"
+													? "text-sky-600 dark:text-sky-300"
+													: "text-fuchsia-600 dark:text-fuchsia-300"
+												].join(" ")}
+											>
+											{tx.mode === "cashcode" ? (
+												<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
+											) : (
+												<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
+											)}
+											</span>
+										)}
+										
+									</div>
+
+									{/* 🔹 中央标题（绝对居中） */}
+									{/* <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
+										<span className="text-[24px] font-bold text-slate-900 dark:text-slate-100">
+											{tx.mode.charAt(0).toUpperCase() + tx.mode.slice(1)}
+										</span>
+									</div> */}
+
+									{/* 右侧：Gas sponsored */}
+									{isSponsored ? (
+										<div className="inline-flex items-center gap-2 text-[13px] text-blue-600">
+											<ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
+											<span>Gas sponsored</span>
+										</div>
+										) : (
+										/* 占位，防止布局抖动（可选） */
+										<div className="w-[110px]" />
+									)}
+								</div>
+
+							{/* 金额 */}
+							<div className="mt-5">
+								<AmountText />
+								<div className="mt-2 text-[16px] text-slate-500">
+									{approxFiatText}
+								</div>
+							</div>
+
+							{/* 收款人/对方信息 */}
+							{
+								tx.type !== 'pending' && (
+									<div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+										<div className="flex items-center justify-between gap-3">
+											<div className="flex items-center gap-3 min-w-0">
+												<div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold">
+													{fromBeamio?.username !== 'Unknow' ? (
+													
+													<img
+														src={userImg}
+														className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-200"
+													/>
+												) : (
+													<div
+													className="
+														w-10 h-10
+														rounded-full
+														flex items-center justify-center
+														flex-shrink-0
+														bg-slate-200
+														text-slate-400
+														font-semibold
+														text-base
+													"
+													aria-label="Default avatar"
+													>
+														?
+													</div>
+												)}
+												</div>
+
+												<div className="min-w-0">
+													<div className="text-[16px] font-semibold text-slate-900 truncate">
+														{
+															tx.type1 ==='sent' ? `To ${displayName(fromBeamio)}` : `From ${displayName(fromBeamio)}`
+														}
+														
+													</div>
+													<div className="text-[13px] text-slate-500 truncate">
+														{fmtAddr(tx.address)}
+													</div>
+													{/* <div className="text-[13px] text-slate-500 truncate">
+														Since {buildCreatedAtLabel(fromBeamio?.created_at)}
+													</div> */}
+												</div>
+
+											</div>
+
+											<button
+												type="button"
+												onClick={() => onProfile?.(tx.address)}
+												className="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-700"
+											>
+											
+												<ChevronRight className="h-4 w-4" />
+											</button>
+										</div>
+									</div>
+								)
+							}
+							
+
+							{/* Note */}
+							{!!tx.note && (
+								<div className="mt-4 text-[15px] text-slate-600">
+									<span className="text-slate-400">Note:</span>{" "}
+									<span className="text-slate-700">{tx?.note?.split('\r\n')[0]}</span>
+								</div>
 							)}
+
+							
+							{/* Card image preview */}
+							
+							<div className="mt-4 rounded-2xl overflow-hidden flex justify-center">
+								{cardSrc && (
+									<button
+									type="button"
+									onClick={() => {
+										setShowGiftCard(cardSrc)
+									}} 
+									className="
+										group
+										flex items-center justify-center
+										p-2
+										rounded-xl
+										hover:bg-slate-100
+										active:scale-95
+										transition
+									"
+									aria-label="Open gift"
+									>
+									<img
+										src={giftEnvelope}
+										className="
+										w-14
+										block
+										transition
+										group-hover:opacity-90
+										group-active:opacity-80
+										"
+										alt="Gift Envelope"
+									/>
+									</button>
+								)}
+							</div>
+
+							{/* Network fee / Time */}
+							<div className="mt-4 rounded-2xl border border-slate-100 overflow-hidden">
+								
+								<div className="flex items-center justify-between px-4 py-3 bg-white">
+									<span className="text-[15px] text-slate-500">Time</span>
+									<span className="text-[15px] font-semibold text-slate-900">
+									{timeText}
+									</span>
+								</div>
+
+								<div className="h-px bg-slate-100" />
+
+								<div className="flex items-center justify-between px-4 py-3 bg-white">
+									<span className="text-[15px] text-slate-500">Network Fee</span>
+									<div className="flex items-center gap-3">
+										<span className="text-[15px] font-semibold text-slate-900 tabular-nums">
+											{isSponsored ? "$0" : formatUSD(tx.fee)}
+										</span>
+										<span className="text-[15px] text-[rgb(0_122_255)]">
+											{isSponsored ? sponsoredByLabel : ""}
+										</span>
+									</div>
+								</div>
+
+								<div className="h-px bg-slate-100" />
+
+								
+								{
+									(tx.type === 'received' || tx.type === 'completed' || tx.type === 'pending') && tx.requestCurrency && 
+										<div
+										className={[
+											"flex items-center px-4 py-3 bg-white",
+											feeOpen ? "justify-center" : "justify-between"
+										].join(" ")}
+										>
+										{
+											!feeOpen && (
+											<span className="text-[15px] text-slate-500">
+												Beamio Fee
+											</span>
+											)
+										}
+
+										<div
+											className={[
+											"flex items-center",
+											feeOpen ? "w-full justify-center" : "gap-3"
+											].join(" ")}
+										>
+											<div className={feeOpen ? "w-full" : ""}>
+											<FeeInline
+												payUsdc={ tx.type === 'pending' ? currencyToUsdcAmount(tx.amount, tx.requestCurrency) : tx.preAmount}
+												currentCurrency={tx.requestCurrency}
+												detailOpen={val => setFeeopen(val)}
+												txDetail={txDetail}
+											/>
+											</div>
+										</div>
+										</div>
+								}
+							</div>
+
+							{/* On Base · Tx */}
+							{
+								localMode !== 'pay'	&& tx.type === 'pending' ? (
+									<>
+									<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 ">
+										<div className="flex items-center justify-between gap-3">
+											<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
+												
+
+												<span className="mx-1 text-slate-400">·</span>
+
+												<span className="text-slate-500">Url: </span>
+
+												<span className="ml-1 font-semibold text-slate-700">
+													{payUrl}
+												</span>
+											</div>
+
+											<div className="flex items-center gap-2 shrink-0">
+												<button
+													type="button"
+													onClick={() => copyTxHash(payUrl)}
+													className="
+														h-7	 w-7
+														rounded-full
+														hover:bg-black/5
+														active:scale-[0.98]
+														transition
+														flex items-center justify-center
+													"
+													aria-label="Copy transaction hash"
+													title="Copy"
+													>
+													{copied ? (
+													<Check className="h-4.5 w-4.5 text-emerald-600" />
+													) : (
+													<Copy className="h-4.5 w-4.5 text-slate-500" />
+													)}
+												</button>
+
+											</div>
+										</div>
+									</div>
+									{/* QR area */}
+										<div className="mt-4 flex flex-col items-center gap-2 mb-10">
+											
+											<div className="border border-black/20 rounded-xl p-3 bg-white text-center qrCard">
+											
+												<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
+													<span
+														className="uppercase font-medium tracking-wider text-[11px]"
+														style={{ color: '#c0c0c0ff' }}
+													>
+													</span>
+												</div>
+												<QRCodeCanvas
+													value={payUrl}
+													size={160}
+													level="H"
+													includeMargin
+													bgColor="transparent"
+													fgColor="#000000"
+													imageSettings={{
+														src: bIcon,
+														height: 40,
+														width: 40,
+														excavate: true,
+													}}
+													className="rounded-lg inline-block"
+												/>
+
+												<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
+													<span
+														className="uppercase font-medium tracking-wider text-[11px]"
+														style={{ color: '#c0c0c0ff' }}
+													>
+														Amount
+													</span>
+
+													<span className="font-mono font-semibold text-[13px] text-black/60">
+														{/* {lockMode === 'FIAT_LOCKED' ? payAmount : `${creatorEstUsdcFromFiat} USDC` } */}
+													</span>
+												</div>
+											</div>
+										</div>
+									</>
+								) : (
+									<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+										<div className="flex items-center justify-between gap-3">
+											<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
+												
+
+												<span className="inline-flex items-center mx-1">
+													<img
+													src={baseIcon}
+													alt="Base"
+													className="w-4 h-4 relative top-[0.5px]"
+													/>
+												</span>
+
+												<span 
+													className="font-semibold text-slate-700"
+													style={{ color: "rgb(0 0 255)" }}
+												>
+													Base
+												</span>
+
+												<span className="mx-1 text-slate-400">·</span>
+
+												<span className="text-slate-500">Tx</span>
+
+												<span className="ml-1 font-semibold text-slate-700">
+													{shortHash(tx.hash)}
+												</span>
+											</div>
+
+											<div className="flex items-center gap-2 shrink-0">
+												<button
+													type="button"
+													onClick={() => copyTxHash(tx.hash)}
+													className="
+														h-7	 w-7
+														rounded-full
+														hover:bg-black/5
+														active:scale-[0.98]
+														transition
+														flex items-center justify-center
+													"
+													aria-label="Copy transaction hash"
+													title="Copy"
+													>
+													{copied ? (
+													<Check className="h-4.5 w-4.5 text-emerald-600" />
+													) : (
+													<Copy className="h-4.5 w-4.5 text-slate-500" />
+													)}
+												</button>
+
+												<button
+													type="button"
+													onClick={() => {
+														window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
+													}}
+													className="h-7 w-7 rounded-full hover:bg-black/5 active:scale-[0.98] transition flex items-center justify-center"
+													aria-label="Open in explorer"
+													title="Open"
+												>
+													<ExternalLink className="h-4.5 w-4.5 text-slate-500" />
+												</button>
+											</div>
+										</div>
+									</div>
+								)
+							}
+							
 							
 						</div>
 
-						{/* 🔹 中央标题（绝对居中） */}
-						{/* <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
-							<span className="text-[24px] font-bold text-slate-900 dark:text-slate-100">
-								{tx.mode.charAt(0).toUpperCase() + tx.mode.slice(1)}
-							</span>
-						</div> */}
-
-						{/* 右侧：Gas sponsored */}
-						{isSponsored ? (
-							<div className="inline-flex items-center gap-2 text-[13px] text-blue-600">
-								<ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
-								<span>Gas sponsored</span>
-							</div>
-							) : (
-							/* 占位，防止布局抖动（可选） */
-							<div className="w-[110px]" />
-						)}
-					</div>
-
-				{/* 金额 */}
-				<div className="mt-5">
-					<AmountText />
-
-
-					<div className="mt-2 text-[16px] text-slate-500">
-						{approxFiatText}
-					</div>
-				</div>
-
-				{/* 收款人/对方信息 */}
-				{
-					tx.type !== 'pending' && (
-						<div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-							<div className="flex items-center justify-between gap-3">
-								<div className="flex items-center gap-3 min-w-0">
-									<div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold">
-										{fromBeamio?.username !== 'Unknow' ? (
-										
-										<img
-											src={userImg}
-											className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-200"
-										/>
-									) : (
-										<div
+						{/* 底部按钮 */}
+						{
+							tx.type !== 'pending' && (
+								<div className="px-5 pb-5 pt-5">
+									<div className="flex items-center gap-3">
+									<button
+										type="button"
+										onClick={() => onSendAgain?.(tx)}
 										className="
-											w-10 h-10
-											rounded-full
-											flex items-center justify-center
-											flex-shrink-0
-											bg-slate-200
-											text-slate-400
+											flex-1 h-12
+											rounded-2xl
+											bg-blue-600 hover:bg-blue-700
+											text-white
 											font-semibold
-											text-base
+											flex items-center justify-center gap-2
+											shadow-sm
+											active:scale-[0.99]
+											transition
 										"
-										aria-label="Default avatar"
-										>
-											?
-										</div>
-									)}
-									</div>
-
-									<div className="min-w-0">
-										<div className="text-[16px] font-semibold text-slate-900 truncate">
+									>
+										<Repeat2 className="h-5 w-5" />
+										<span>
 											{
-												tx.type === 'sent' || tx.type === 'paid' ? `To ${displayName(fromBeamio)}` : `From ${displayName(fromBeamio)}`
+												tx.type === 'sent' || tx.type === 'paid' ? 'Send again' : 'Send back'
 											}
-											
-										</div>
-										<div className="text-[13px] text-slate-500 truncate">
-											{fmtAddr(tx.address)}
-										</div>
-										{/* <div className="text-[13px] text-slate-500 truncate">
-											Since {buildCreatedAtLabel(fromBeamio?.created_at)}
-										</div> */}
-									</div>
+										</span>
+									</button>
 
-								</div>
-
-								<button
-									type="button"
-									onClick={() => onProfile?.(tx.address)}
-									className="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-700"
-								>
-								
-									<ChevronRight className="h-4 w-4" />
-								</button>
-							</div>
-						</div>
-					)
-				}
-				
-
-				{/* Note */}
-				{!!tx.note && (
-					<div className="mt-4 text-[15px] text-slate-600">
-						<span className="text-slate-400">Note:</span>{" "}
-						<span className="text-slate-700">{tx?.note?.split('\r\n')[0]}</span>
-					</div>
-				)}
-
-				
-				{/* Card image preview */}
-				
-				<div className="mt-4 rounded-2xl overflow-hidden flex justify-center">
-					{cardSrc && (
-						<button
-						type="button"
-						onClick={() => {
-							setShowGiftCard(cardSrc)
-						}} 
-						className="
-							group
-							flex items-center justify-center
-							p-2
-							rounded-xl
-							hover:bg-slate-100
-							active:scale-95
-							transition
-						"
-						aria-label="Open gift"
-						>
-						<img
-							src={giftEnvelope}
-							className="
-							w-14
-							block
-							transition
-							group-hover:opacity-90
-							group-active:opacity-80
-							"
-							alt="Gift Envelope"
-						/>
-						</button>
-					)}
-				</div>
-
-				{/* Network fee / Time */}
-				<div className="mt-4 rounded-2xl border border-slate-100 overflow-hidden">
-					
-					<div className="flex items-center justify-between px-4 py-3 bg-white">
-						<span className="text-[15px] text-slate-500">Time</span>
-						<span className="text-[15px] font-semibold text-slate-900">
-						{timeText}
-						</span>
-					</div>
-
-					<div className="h-px bg-slate-100" />
-
-					<div className="flex items-center justify-between px-4 py-3 bg-white">
-						<span className="text-[15px] text-slate-500">Network Fee</span>
-						<div className="flex items-center gap-3">
-							<span className="text-[15px] font-semibold text-slate-900 tabular-nums">
-								{isSponsored ? "$0" : formatUSD(tx.fee)}
-							</span>
-							<span className="text-[15px] text-[rgb(0_122_255)]">
-								{isSponsored ? sponsoredByLabel : ""}
-							</span>
-						</div>
-					</div>
-
-					<div className="h-px bg-slate-100" />
-
-					
-					{
-						(tx.type === 'received' || tx.type === 'completed' || tx.type === 'pending') && tx.requestCurrency && 
-							<div
-							className={[
-								"flex items-center px-4 py-3 bg-white",
-								feeOpen ? "justify-center" : "justify-between"
-							].join(" ")}
-							>
-							{
-								!feeOpen && (
-								<span className="text-[15px] text-slate-500">
-									Beamio Fee
-								</span>
-								)
-							}
-
-							<div
-								className={[
-								"flex items-center",
-								feeOpen ? "w-full justify-center" : "gap-3"
-								].join(" ")}
-							>
-								<div className={feeOpen ? "w-full" : ""}>
-								<FeeInline
-									payUsdc={ tx.type === 'pending' ? currencyToUsdcAmount(tx.amount, tx.requestCurrency) : tx.preAmount}
-									currentCurrency={tx.requestCurrency}
-									detailOpen={val => setFeeopen(val)}
-									txDetail={txDetail}
-								/>
-								</div>
-							</div>
-							</div>
-					}
-				</div>
-
-				{/* On Base · Tx */}
-				{
-					tx.type === 'pending' ? (
-						<>
-						<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 ">
-							<div className="flex items-center justify-between gap-3">
-								<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
-									
-
-									<span className="mx-1 text-slate-400">·</span>
-
-									<span className="text-slate-500">Url: </span>
-
-									<span className="ml-1 font-semibold text-slate-700">
-										{payUrl}
-									</span>
-								</div>
-
-								<div className="flex items-center gap-2 shrink-0">
 									<button
 										type="button"
-										onClick={() => copyTxHash(payUrl)}
+										onClick={() => onMessage?.(tx.address)}
 										className="
-											h-7	 w-7
-											rounded-full
-											hover:bg-black/5
-											active:scale-[0.98]
-											transition
-											flex items-center justify-center
+										flex-1 h-12
+										rounded-2xl
+										border border-slate-200
+										bg-white
+										font-semibold text-slate-900
+										flex items-center justify-center gap-2
+										active:scale-[0.99] transition
 										"
-										aria-label="Copy transaction hash"
-										title="Copy"
-										>
-										{copied ? (
-										<Check className="h-4.5 w-4.5 text-emerald-600" />
-										) : (
-										<Copy className="h-4.5 w-4.5 text-slate-500" />
-										)}
+									>
+										<ChatBlueIcon className="h-6 w-6 text-slate-600" />
+										<span>Message</span>
 									</button>
-
-								</div>
-							</div>
-						</div>
-						{/* QR area */}
-							<div className="mt-4 flex flex-col items-center gap-2 mb-10">
-								
-								<div className="border border-black/20 rounded-xl p-3 bg-white text-center qrCard">
-								
-									<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
-										<span
-											className="uppercase font-medium tracking-wider text-[11px]"
-											style={{ color: '#c0c0c0ff' }}
-										>
-										</span>
-									</div>
-									<QRCodeCanvas
-										value={payUrl}
-										size={160}
-										level="H"
-										includeMargin
-										bgColor="transparent"
-										fgColor="#000000"
-										imageSettings={{
-											src: bIcon,
-											height: 40,
-											width: 40,
-											excavate: true,
-										}}
-										className="rounded-lg inline-block"
-									/>
-
-									<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
-										<span
-											className="uppercase font-medium tracking-wider text-[11px]"
-											style={{ color: '#c0c0c0ff' }}
-										>
-											Amount
-										</span>
-
-										<span className="font-mono font-semibold text-[13px] text-black/60">
-											{/* {lockMode === 'FIAT_LOCKED' ? payAmount : `${creatorEstUsdcFromFiat} USDC` } */}
-										</span>
 									</div>
 								</div>
-							</div>
-						</>
-					) : (
-						<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-							<div className="flex items-center justify-between gap-3">
-								<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
-									
-
-									<span className="inline-flex items-center mx-1">
-										<img
-										src={baseIcon}
-										alt="Base"
-										className="w-4 h-4 relative top-[0.5px]"
-										/>
-									</span>
-
-									<span 
-										className="font-semibold text-slate-700"
-										style={{ color: "rgb(0 0 255)" }}
-									>
-										Base
-									</span>
-
-									<span className="mx-1 text-slate-400">·</span>
-
-									<span className="text-slate-500">Tx</span>
-
-									<span className="ml-1 font-semibold text-slate-700">
-										{shortHash(tx.hash)}
-									</span>
-								</div>
-
-								<div className="flex items-center gap-2 shrink-0">
-									<button
-										type="button"
-										onClick={() => copyTxHash(tx.hash)}
-										className="
-											h-7	 w-7
-											rounded-full
-											hover:bg-black/5
-											active:scale-[0.98]
-											transition
-											flex items-center justify-center
-										"
-										aria-label="Copy transaction hash"
-										title="Copy"
-										>
-										{copied ? (
-										<Check className="h-4.5 w-4.5 text-emerald-600" />
-										) : (
-										<Copy className="h-4.5 w-4.5 text-slate-500" />
-										)}
-									</button>
-
-									<button
-										type="button"
-										onClick={() => {
-											window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
-										}}
-										className="h-7 w-7 rounded-full hover:bg-black/5 active:scale-[0.98] transition flex items-center justify-center"
-										aria-label="Open in explorer"
-										title="Open"
-									>
-										<ExternalLink className="h-4.5 w-4.5 text-slate-500" />
-									</button>
-								</div>
-							</div>
-						</div>
-					)
-				}
-				
-				
+							)
+						}
+					</div>
+				</div>
 			</div>
-
-			{/* 底部按钮 */}
 			{
-				tx.type !== 'pending' && (
-					<div className="px-5 pb-5 pt-5">
-						<div className="flex items-center gap-3">
-						<button
-							type="button"
-							onClick={() => onSendAgain?.(tx)}
-							className="
-								flex-1 h-12
-								rounded-2xl
-								bg-blue-600 hover:bg-blue-700
-								text-white
-								font-semibold
-								flex items-center justify-center gap-2
-								shadow-sm
-								active:scale-[0.99]
-								transition
-							"
-						>
-							<Repeat2 className="h-5 w-5" />
-							<span>
-								{
-									tx.type === 'sent' || tx.type === 'paid' ? 'Send again' : 'Send back'
-								}
-							</span>
-						</button>
-
-						<button
-							type="button"
-							onClick={() => onMessage?.(tx.address)}
-							className="
-							flex-1 h-12
-							rounded-2xl
-							border border-slate-200
-							bg-white
-							font-semibold text-slate-900
-							flex items-center justify-center gap-2
-							active:scale-[0.99] transition
-							"
-						>
-							<ChatBlueIcon className="h-6 w-6 text-slate-600" />
-							<span>Message</span>
-						</button>
-						</div>
-					</div>
+				showGiftCard && (
+					<ShowCard card={showGiftCard} address={tx.address} usdcAmount={amountText} cancel={() => {
+						setShowGiftCard (null)
+					}} /> 
 				)
 			}
-			
-			</div>
-		</div>
-		{
-			showGiftCard && (
-				<ShowCard card={showGiftCard} address={tx.address} usdcAmount={amountText} cancel={() => {
-					setShowGiftCard (null)
-				}} /> 
-			)
-		}
 		</div>
 	)
 }

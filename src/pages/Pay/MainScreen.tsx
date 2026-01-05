@@ -50,10 +50,10 @@ export default function MainScreen({
 
       <div className="text-left">
         <div className="text-[15px] font-semibold text-slate-900">
-          Pay someone
+          Send
         </div>
         <div className="text-[12px] text-slate-500">
-          Send money instantly
+          To @BeamioTag or address
         </div>
       </div>
     </div>
@@ -100,7 +100,7 @@ export default function MainScreen({
           Cashcode
         </div>
         <div className="text-[12px] text-slate-500">
-          Share a code — no recipient info needed
+          Refunds • vouchers • gifts
         </div>
       </div>
     </div>
@@ -144,10 +144,10 @@ export default function MainScreen({
 
       <div className="text-left">
         <div className="text-[14px] font-semibold text-slate-900">
-          Request Link / QR
+          Request (Link / QR)
         </div>
         <div className="text-[11px] text-slate-500">
-          Create a link or QR to get paid
+          Get paid (Any / Fixed)
         </div>
       </div>
     </div>
@@ -155,7 +155,7 @@ export default function MainScreen({
   </button>
 
   {/* Pay me QR */}
-  <button
+  {/* <button
     type="button"
     onClick={() => onAction?.('payme-qr')}
     className="
@@ -199,7 +199,7 @@ export default function MainScreen({
       </div>
     </div>
     <ChevronRight className="w-5 h-5 text-slate-400" />
-  </button>
+  </button> */}
 </div>
   )
 }

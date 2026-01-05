@@ -425,13 +425,16 @@ export const SendHistoryTable = (
 					
 				let totalPayUSDC = Number(ethers.formatUnits(n.payAmount, 6))
 				const totalPayCurrency = Number(ethers.formatUnits(n.amount, 6))
-				if (!isRequest||isPending) {
+				
 					//		totalPayUSDC: totalPayCurrency = 1:x
 				
 					//		isRequest : calcFeeFromNumber(totalPayUSDC)
 					//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
-					const feeUSDC = calcFeeFromNumber(totalPayUSDC) 
-					
+					const feeUSDC = !isRequest ? calcFeeFromNumber(totalPayUSDC) : calcFeeFromReceived(totalPayUSDC)
+					if (isRequest) {
+						totalPayUSDC += feeUSDC
+					}
+
 					const currencyRate = totalPayCurrency / totalPayUSDC
 					const feeCurrency = feeUSDC * currencyRate
 					const receivedUSDC = totalPayUSDC - feeUSDC
@@ -446,10 +449,8 @@ export const SendHistoryTable = (
 						receivedUSDC,
 						receivedCurrency
 					}
-				}
 				
 				
-			
 				const ret: TransferHistork = {
 					date: Number(n.issueTimestamp * BigInt(1000)),
 					amount,
@@ -469,8 +470,8 @@ export const SendHistoryTable = (
 			})
 
 			//	过滤PayME
-			mappedLing = mappedLing.filter (n => !!n?.requestDetail)
-		
+			// mappedLing = mappedLing.filter (n => !!n?.requestDetail)
+			const memoSelfDeposited: Map<string, boolean> = new Map()
 			const checks: CheckHistory[] = _checks[1]
 			mappedCheck = await Promise.all(
 				checks.map(async (n): Promise<TransferHistork> => {
@@ -484,7 +485,6 @@ export const SendHistoryTable = (
 						console.log (`${encryptedText} aesGcmDecrypt Error!`)
 					}
 					
-
 					let ce: { secureCode: string; passcode: string } | undefined;
 					if (cleanText) {
 						ce = JSON.parse(cleanText);
@@ -494,24 +494,62 @@ export const SendHistoryTable = (
 					const type: HistoryFilter = !account ? 'pending' : isSend ? 'completed' : 'deposited'
 					const preAmount = Number(ethers.formatUnits(n.amount, 6))
 					const fee = calcFeeFromNumber(preAmount)
-					const amount = preAmount - fee
+					let amount = preAmount
+					//		self cashcode
+					let hash = n.successAuthorizationHash
 					
+					let type1: HistoryFilter|'' = type === 'deposited' ? 'received' : 'sent'
+
+					if (account.toLowerCase() === myAddrLocal) {
+						const isMemo = memoSelfDeposited.get(n.depositHash)
+						//		first ?
+						if (!isMemo) {
+							memoSelfDeposited.set(n.depositHash, true)
+							type1 = 'sent'
+							
+						} else {
+							type1 = 'received'
+							hash = n.depositHash
+							amount = preAmount - fee
+						}
+					} else {
+						if (type1 === 'received') {
+							amount = amount - fee
+							hash = n.depositHash
+						}
+					}
+
+
+					let card: IImageCard|null = null
+					const nodeEX = n?.node?.split('\r\n')
+					try {
+						if (nodeEX[nodeEX.length - 1]) {
+							const _card = JSON.parse(nodeEX[nodeEX.length - 1])
+							if (_card?.card) {
+								card = _card.card
+							}
+						}
+					} catch (ex) {
+
+					}
 					const ret: TransferHistork = {
 						date: Number(n.createTimestamp * BigInt(1000)),
 						amount,
 						address: account.toLowerCase(),
-						hash: type === 'pending'
-							? n.payHash
-							: n.depositHash,
-						note: text[0],
+						hash,
+						note: n.node,
 						type,
 						security: ce?.secureCode,
 						passcode: ce?.passcode,
 						redeemHash: n.payHash,
 						mode: 'cashcode',
 						fee,
-						type1: type === 'deposited' ? 'received' : type === 'completed' ? 'sent' : '',
-						preAmount: amount
+						type1,
+						preAmount
+					}
+
+					if (card?.currency) {
+						ret.card = card
 					}
 					
 					return ret
@@ -528,15 +566,17 @@ export const SendHistoryTable = (
 			// 2️⃣ 基于已经排序好的 alldatas 做 mode 筛选
 			let filtered = alldatas.filter(tx => {
 				if (localMode !== 'pay') {
-					return tx.mode === localMode
+					return tx.mode === localMode && ((localMode === 'request' && tx.type !== 'paid') || (localMode === 'cashcode' && tx.type !== 'deposited'))
 				}
-				return tx.mode === localMode || (tx.type === 'paid' || tx.type === 'completed' || tx.type === 'deposited')
+				return tx.mode === localMode || (tx.type1 !== '')
 				
 			})
 
 			if (next && next !== 'all') {
 				filtered = filtered.filter(tx => localMode === 'pay' ? tx.type1 === next : tx.type === next)
 			}
+
+			
 			
 
 			setItems([]) // 清掉旧的

@@ -52,6 +52,34 @@ const formatMoney = (n: number, fixed: number) =>
 const isCurrency = (v: any): v is ICurrency =>
 	['USD','CAD','EUR','JPY','CNY','HKD','TWD','SGD'].includes(String(v))
 
+// 根据「到账金额 received」反推 fee
+function calcFeeFromReceived(received: number) {
+	if (!isFinite(received) || received <= 0) return 0
+
+	// 1️⃣ 尝试比例区间（最常见）
+	const baseByRatio = received / 0.992
+	const feeByRatio = baseByRatio - received
+
+	if (feeByRatio > 0.02 && feeByRatio < 2) {
+		return Number(feeByRatio.toFixed(4))
+	}
+
+	// 2️⃣ 尝试最小 fee
+	const baseMin = received + 0.02
+	if (baseMin * 0.008 <= 0.02) {
+		return 0.02
+	}
+
+	// 3️⃣ 尝试最大 fee
+	const baseMax = received + 2
+	if (baseMax * 0.008 >= 2) {
+		return 2
+	}
+
+	// 理论上不会到这里
+	return Number(feeByRatio.toFixed(4))
+}
+
 const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal, currencyUSDC=false, feePlus=false, currencyChange}: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
@@ -147,27 +175,18 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		if (prev === currencyUSDC) return
 		prevModeRef.current = currencyUSDC
 
-		// false -> true：把当前输入框里的法币 displayAmount 当作"最终值"，换算成 USDC 并回写给外部
-		if (currencyUSDC) {
-			const n = Number(displayAmount || 0)
-			const fiat = Number.isFinite(n) ? n : 0
-			const usdc = currencyToUsdcAmount(fiat, currentCurrency)
-			const usdcStr = formatUsdc(usdc)
+		firstEditArmedRef.current = true
 
-			lastSentUsdcRef.current = usdcStr
-			setAmount(usdcStr)                 // ✅ 外部拿到"刚刚键入的法币"对应的 USDC
-			setDisplayAmount(usdcStr)          // ✅ 输入框切到 USDC 显示
-			checkBalance(usdc)
-			return
-		}
+		// ✅ 对齐成 0，避免后续 sync effect “认为不是本组件刚发出的”
+		const zeroUsdcStr = formatUsdc(0)
+		lastSentUsdcRef.current = zeroUsdcStr
 
-		// true -> false：保持 amount(USDC) 不变，仅重算法币显示
-		const usdc = Number(amount || 0)
-		const safeUsdc = Number.isFinite(usdc) ? usdc : 0
-		const curValue = usdcToCurrencyAmount(safeUsdc, currentCurrency)
-		setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency))
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [currencyUSDC])
+		setAmount(zeroUsdcStr)
+		setDisplayAmount(currencyUSDC ? zeroUsdcStr : formatCurrencyAmount(0, currentCurrency))
+
+		setSendError("")
+		setError(false)
+	}, [currencyUSDC]) // 保持依赖不变即可
 	
 	useEffect(() => {
 		if (currencyUSDC) return // ✅ USDC 模式不改 currentCurrency（保留上一次法币）
@@ -234,8 +253,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			const curValue = usdcToCurrencyAmount(safeUsdc, currentCurrency)
 			setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency)) // ✅ 法币模式：显示法币
 		}
+		
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [amount, currentCurrency, currencyData, currencyUSDC])
+	}, [amount, currentCurrency, currencyData, currencyUSDC, showCurrencyPicker, displayAmount])
 
 	// ---------- Picker open/close ----------
 	const openPicker = () => {
@@ -356,6 +376,36 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 		return `${formatted}`
 	}, [displayAmount, currentCurrency, currencyData])
+
+	const onVChange = (n: number) => {
+
+		if (currencyUSDC) {
+			const fee = feePlus ? calcFeeFromReceived(n) :calcFeeFromNumber(n)
+
+			if (feePlus) {
+				n += fee
+			}
+			const usdc = Number.isFinite(n) ? n : 0
+			const usdcStr = formatUsdc(usdc)
+			lastSentUsdcRef.current = usdcStr
+			setAmount(usdcStr)
+			checkBalance(usdc)
+		} else {
+		
+			let usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, currentCurrency)
+			
+			const fee = feePlus ? calcFeeFromReceived(usdc) :calcFeeFromNumber(usdc)
+			if (feePlus) {
+				usdc += fee
+			}
+
+
+			const usdcStr = formatUsdc(usdc)
+			lastSentUsdcRef.current = usdcStr
+			setAmount(usdcStr)
+			checkBalance(usdc)
+		}
+	}
 
 	return (
 		<div className="mb-3 overflow-visible" onKeyDown={onPickerKeyDown}>
@@ -494,11 +544,8 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 								const next = k
 								setDisplayAmount(next)
 
-								const usdc = currencyUSDC ? Number(next) : currencyToUsdcAmount(Number(next), currentCurrency)
-								const usdcStr = formatUsdc(usdc)
-								lastSentUsdcRef.current = usdcStr
-								setAmount(usdcStr)
-								checkBalance(usdc)
+								// ✅ 关键：让 onVChange 统一处理 feePlus / 换算 / setAmount / checkBalance
+								onVChange(Number(next))
 
 								requestAnimationFrame(() => {
 									const el = amountInputRef.current
@@ -512,18 +559,12 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 							// 首次键入 "."：替换为 "0."
 							if (k === ".") {
-								if (currencyUSDC) {
-									return setAmount("0")
-								}
 								e.preventDefault()
 								const next = "0."
 								setDisplayAmount(next)
 
-								const usdc = currencyToUsdcAmount(0, currentCurrency)
-								const usdcStr = formatUsdc(usdc)
-								lastSentUsdcRef.current = usdcStr
-								setAmount(usdcStr)
-								checkBalance(usdc)
+								// 这里 Number("0.") === 0
+								onVChange(Number(next))
 
 								requestAnimationFrame(() => {
 									const el = amountInputRef.current
@@ -574,32 +615,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 							let n = Number(v)
 							
-							
-
-							if (currencyUSDC) {
-								const fee = calcFeeFromNumber(n)
-								if (feePlus) {
-									n += fee
-								}
-								const usdc = Number.isFinite(n) ? n : 0
-								const usdcStr = formatUsdc(usdc)
-								lastSentUsdcRef.current = usdcStr
-								setAmount(usdcStr)
-								checkBalance(usdc)
-							} else {
-							
-								let usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, currentCurrency)
-								const fee = calcFeeFromNumber(usdc)
-								if (feePlus) {
-									usdc += fee
-								}
-
-
-								const usdcStr = formatUsdc(usdc)
-								lastSentUsdcRef.current = usdcStr
-								setAmount(usdcStr)
-								checkBalance(usdc)
-							}
+							onVChange(n)
 						}}
 						readOnly={readOnly}
 						className="

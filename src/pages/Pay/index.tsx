@@ -145,25 +145,25 @@ const Pay = ({}) => {
 
 				
 			</div>
-			<div className="grid grid-cols-1 gap-3 mt-4">
-				<MainScreen onAction={val => {
-					switch(val) {
-						case 'cashcode': {
-							return setShowAlphaHowItWorks('Cashcode')
-						}
-						case 'pay': {
-							return setShowAlphaHowItWorks('Pay')
-						}
-						case 'payme-qr': {
-							return setShowAlphaHowItWorks('payme')
-						}
-						default: {
-							setShowAlphaHowItWorks('PayRequest')
-						}
+				<div className="grid grid-cols-1 gap-3 mt-4">
+					<MainScreen onAction={val => {
+						switch(val) {
+							case 'cashcode': {
+								return setShowAlphaHowItWorks('Cashcode')
+							}
+							case 'pay': {
+								return setShowAlphaHowItWorks('Pay')
+							}
+							case 'payme-qr': {
+								return setShowAlphaHowItWorks('payme')
+							}
+							default: {
+								setShowAlphaHowItWorks('PayRequest')
+							}
 
-					}
-				}} />
-			</div>
+						}
+					}} />
+				</div>
 			</div>
 			
 			

@@ -36,6 +36,7 @@ const formatMoney = (n: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
+  
 
 const CheckInputSection = forwardRef<CheckInputSectionHandle, CheckInputSectionProps>(
   (

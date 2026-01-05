@@ -1,14 +1,17 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
-import {AuthorizationSign, aesGcmEncrypt, generateCODE} from '@/services/beamio'
+import {AuthorizationSign, aesGcmEncrypt, generateCODE, postToIPFS} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {ethers} from 'ethers'
+import { X, Check, Plus } from "lucide-react"
 import LockModeSegmented from '@/pages/Pay/PaymentLink/LockModeSegmented'
+import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import FeeInline from './FeeInline'
 import SuccessShow from './successShow'
 import Securitycode from '@/components/input/Securitycode'
 import ConformView from '@/pages/Pay/send/ConformView'
+import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 function fiatPrefix(ccy: ICurrency) {
 	if (ccy === "CAD") return "CA$"
 	if (ccy === "USD") return "$"
@@ -21,7 +24,7 @@ function fiatPrefix(ccy: ICurrency) {
 	
   return '$';
 }
-
+const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const showPaylinkSite = 'https://beamio.app'
@@ -34,7 +37,7 @@ function calcFeeFromNumber(base: number) {
 	if (!isFinite(base) || base <= 0) return 0;
 	const raw = base * 0.008;
 	const clamped = Math.min(Math.max(raw, 0.02), 2);
-	return Number(clamped.toFixed(2));
+	return Number(clamped.toFixed(4));
 }
 
 
@@ -96,11 +99,52 @@ export default function PaymentLink ({close, beamioer}: Props) {
 	const [valueUSDCAmount, setValueUSDCAmount] = useState("")
 	const [payedUSDC, setPayedUSDC] = useState(0)
 	const [successHash, setSuccessHash] = useState("")
-
+	const [showGiftEnvelope, setShowGiftEnvelope] = useState(false)
 	const [valuecurrencyAmount, setValuecurrencyAmount] = useState("")
 	const [processError, setProcessError] = useState("")
 	const [securityCodeDigits, setSecurityCodeDigits] = useState("")
+	const [cardCreate, setCardCreate] = useState(false)
+	const [uploadingIPFS, setUploadingIPFS] = useState(false)
+	const [showGiftImageError, setShowGiftImageError] = useState(false)
+	const [currentCurrency, setCurrentCurrency] = useState<ICurrency>('USDC')
+	const [addedNote, setAddedNote] = useState("")
+	const [currencyAmount, setCurrencyAmount] = useState("")
+	const [usdcAmount, setUsdcAmount] = useState("")
 
+
+	useEffect(() => {
+		if (showGiftImageError) {
+			setTimeout(() => {
+				setShowGiftImageError(false)
+			}, 3000)
+		}
+	}, [showGiftImageError])
+
+	const tryPostToIPFS = async (val: ClosePayload) => {
+		if (!profiles) return
+		setUploadingIPFS(true)
+		const profile = profiles[0]
+		const result = await postToIPFS(profile, val.bgBase64)
+		setUploadingIPFS(false)
+		if (!result) {
+			setShowGiftImageError(true)
+			return console.log (`tryPostToIPFS Error!`)
+		}
+		
+			
+		setShowGiftEnvelope(true)
+		const addnote = {
+			card: {
+				title: val.title,
+				detail: val.detail,
+				image: `${ipfsEndpoint}${result}`,
+				currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
+				currencyAmount: currencyAmount
+			}
+		}
+		setAddedNote(JSON.stringify(addnote))
+
+	}
 
 	useEffect(() => {
 		if (sendError) {
@@ -123,6 +167,17 @@ export default function PaymentLink ({close, beamioer}: Props) {
 			
 		}
 	}, [item])
+
+	// useEffect(() => {
+	// 	const usdc = Number(sendAmount)
+	// 	const fee = calcFeeFromNumber(usdc)
+	// 	const receiveUSDC = usdc - fee
+	// 	setUsdcAmount(receiveUSDC.toFixed(4))
+	// 	const curr = formatAmount(usdcToCurrencyAmount(Number(receiveUSDC), currentCurrency), currentCurrency)
+	// 	const fiatText = `${fiatPrefix(currentCurrency)} ${curr}`
+	// 	setCurrencyAmount(fiatText)
+
+	// }, [sendAmount, currentCurrency, lockMode, beamio])
 
 
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
@@ -190,7 +245,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 
 	}
 
-	const issueRequestLink = async () => {
+	const issueCashcode = async () => {
 
 		if ( !profiles?.length || !beamio) {
 			return
@@ -237,15 +292,32 @@ export default function PaymentLink ({close, beamioer}: Props) {
 
 		const data = {secureCode: secureCode.code, securityCodeDigits}
 		const encryText = await aesGcmEncrypt(JSON.stringify(data), profile.privateKeyArmor)
-
+		let sendNote = note||defaultNodeText
+		
 
 		if (!encryText?.length) {
 			setProcessing(false)
 			return setProcessError('Generate Check error, try again!')
 		}
 
+		let _addnote = addedNote
+		if (addedNote) {
+			const tryAdd = JSON.parse(addedNote)
+			const card = tryAdd.card
+			const _data = {
+				card: {
+					title: card.title,
+					detail: card.detail,
+					image: card.image,
+					currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
+					currencyAmount: currencyAmount
+				}
+			}
+			_addnote = JSON.stringify(_data)
+		}
+		let postNode = `${note} \r\n${encryText}`
+		postNode += _addnote ? `\r\n${_addnote}`: ''
 
-		const postNode = (note) + '\r\n' + encryText
 		const params = new URLSearchParams({amount: display.pay.toFixed(4), note: postNode, secureCode: secureCode.hash}).toString()
 		const showpParams = new URLSearchParams({cashcode: secureCode.code, secureCode: secureCode.hash}).toString()
 		const path = `/api/generateCheck?${params}`
@@ -327,7 +399,18 @@ export default function PaymentLink ({close, beamioer}: Props) {
 								valueCurrencyAmount={valuecurrencyAmount}
 							/>
 						
-						 : (
+						 : cardCreate ? (<>
+						 	<DiceBearCard
+								onClose={val => {
+									setCardCreate(false)
+									if (val) {
+										tryPostToIPFS(val)
+									}
+								}}
+								usdcAmount={usdcAmount}
+								currencyText={currencyAmount}
+							/>
+						 </>):(
 							<div className="p-2 space-y-3 bg-transparent">
 								<div>
 									<div className="text-lg font-semibold">
@@ -422,12 +505,76 @@ export default function PaymentLink ({close, beamioer}: Props) {
 													focusSignal={focusAmount}
 													currencyUSDC={lockMode === 'USDC_LOCKED'}
 													feePlus={true}
+													currencyChange={val => setCurrentCurrency(val)}
 												/>
 											</section>
 
 												<Securitycode securityCodeDigits={securityCodeDigits} setSecurityCodeDigits={setSecurityCodeDigits} />
 													
 												{/* Note */}
+												{showGiftEnvelope && (
+													<div className="flex justify-center">
+														<div className="relative w-fit">
+															<img
+																src={giftEnvelope}
+																className="w-24 block"
+																alt="Gift Envelope"
+															/>
+
+															<button
+																type="button"
+																onClick={() => setShowGiftEnvelope(false)}
+																className="
+																absolute top-0 right-0 z-30
+																translate-x-1/2 -translate-y-1/8
+																w-7 h-7 rounded-full
+																bg-white/10
+																backdrop-blur-md
+																border border-white/20
+																shadow-[0_4px_10px_rgba(0,0,0,0.12)]
+																hover:bg-white/20
+																active:scale-95
+																transition
+																flex items-center justify-center
+																"
+																aria-label="Remove gift envelope"
+															>
+																<X className="w-4 h-4 text-black/30" />
+															</button>
+														</div>
+													</div>
+												)}
+												{showGiftImageError && (
+													<div className="flex justify-center">
+														<p className="text-sm text-rose-600">
+															An error occurred while uploading the image to IPFS. Please try again later.
+														</p>
+													</div>
+												)}
+
+												{uploadingIPFS && (
+													<div className="flex justify-center">
+														<p className="text-sm text-slate-600 flex items-center gap-1">
+															Uploading image to IPFS, please wait
+															<span className="inline-flex w-4">
+																<span className="animate-dot">.</span>
+																<span className="animate-dot delay-200">.</span>
+																<span className="animate-dot delay-400">.</span>
+															</span>
+														</p>
+
+														<style>{`
+															.animate-dot { animation: blink 1.4s infinite both; }
+															.delay-200 { animation-delay: 0.2s; }
+															.delay-400 { animation-delay: 0.4s; }
+															@keyframes blink {
+																0% { opacity: 0.2; }
+																20% { opacity: 1; }
+																100% { opacity: 0.2; }
+															}
+														`}</style>
+													</div>
+												)}
 												
 												<textarea
 													value={note}
@@ -455,10 +602,20 @@ export default function PaymentLink ({close, beamioer}: Props) {
 												</div>
 												
 												<div className="mt-3 flex gap-3 w-full">
-													
+													{
+														!showGiftEnvelope && !message && <AppButton
+															fullWidth
+															variant="secondary"
+															onClick={() => {
+																setCardCreate(true)
+															}}
+														>
+															Add Card image
+														</AppButton>
+													}
 													<AppButton
 														fullWidth
-														onClick={issueRequestLink}
+														onClick={issueCashcode}
 														loading={processing}
 														errorText={processError}
 													>
@@ -470,9 +627,6 @@ export default function PaymentLink ({close, beamioer}: Props) {
 										</>
 									)
 								}
-
-								
-
 								
 								
 							</div>

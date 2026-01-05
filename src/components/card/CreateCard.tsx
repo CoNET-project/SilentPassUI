@@ -8,7 +8,6 @@ export type ClosePayload = {
   title: string
   detail: string
   bgIndex: number
-  logoText: string
   // ✅ 父容器只接受 base64（data:image/...;base64,...）
   bgBase64: string
 }
@@ -20,7 +19,7 @@ type Props = {
   initialDetail?: string
   initialBgIndex?: number
   initialLogoText?: string
-  onClose: (payload: ClosePayload) => void
+  onClose: (payload: ClosePayload|null) => void
   currencyText: string
   usdcAmount: string
 }
@@ -205,9 +204,8 @@ export default function DiceBearCardFullscreenEditor({
   currencyText,
   usdcAmount
 }: Props) {
-  const [title, setTitle] = useState(initialTitle)
-  const [detail, setDetail] = useState(initialDetail)
-  const [logoText, setLogoText] = useState(initialLogoText)
+  const [title, setTitle] = useState('')
+  const [detail, setDetail] = useState('')
   const { beamio } = useDaemonContext()
 
   // ✅ 背景列表：从 cards.ts 的 images 初始化，然后允许追加用户上传/DB载入
@@ -222,13 +220,12 @@ export default function DiceBearCardFullscreenEditor({
   const initialSnapshotRef = useRef({
     title: initialTitle,
     detail: initialDetail,
-    logoText: initialLogoText,
     bgIndex: clampIndex(initialBgIndex, images)
   })
 
   /* ================== WYSIWYG 编辑状态 ================== */
   const [edit, setEdit] = useState<EditField>(null)
-  const beforeRef = useRef({ title: initialTitle, detail: initialDetail, logoText: initialLogoText })
+  const beforeRef = useRef({ title: initialTitle, detail: initialDetail })
 
   const titleRef = useRef<HTMLTextAreaElement | null>(null)
   const detailRef = useRef<HTMLTextAreaElement | null>(null)
@@ -264,6 +261,18 @@ export default function DiceBearCardFullscreenEditor({
   const bgSrc = bgList[currentIndex] || bgList[0] || ""
   const bgBreathing = thumbsMounted
 
+  const resetHideTimer = () => {
+		if (isPickingFile.current) return // ✅ 文件选择中，不允许隐藏
+
+		if (hideThumbTimer.current) window.clearTimeout(hideThumbTimer.current)
+
+		hideThumbTimer.current = window.setTimeout(() => {
+			setThumbsAnim("out")
+			hideThumbTimer.current = null
+		}, 3000)
+	}
+
+
   /* ================== 样式 ================== */
   const TITLE_CLASS = [
     "font-extrabold",
@@ -291,7 +300,7 @@ export default function DiceBearCardFullscreenEditor({
 
   /* ================== 编辑控制 ================== */
   const beginEdit = (field: Exclude<EditField, null>) => {
-    beforeRef.current = { title, detail, logoText }
+    beforeRef.current = { title, detail }
     setEdit(field)
 
     requestAnimationFrame(() => {
@@ -321,20 +330,12 @@ export default function DiceBearCardFullscreenEditor({
         return
       }
 
-      const el = logoRef.current
-      if (!el) return
-      el.focus()
-
-      const isDefault = isDefaultLike(logoText, initialLogoText)
-      if (isDefault) el.select()
-      else el.setSelectionRange(el.value.length, el.value.length)
     })
   }
 
   const cancelEdit = () => {
     setTitle(beforeRef.current.title)
     setDetail(beforeRef.current.detail)
-    setLogoText(beforeRef.current.logoText)
     setEdit(null)
   }
 
@@ -391,13 +392,9 @@ export default function DiceBearCardFullscreenEditor({
   /* ================== 背景切换 ================== */
   const showThumbsWithAutoHide = () => {
     setThumbsMounted(true)
-    setThumbsAnim("in")
+	setThumbsAnim("in")
 
-    if (hideThumbTimer.current) window.clearTimeout(hideThumbTimer.current)
-    hideThumbTimer.current = window.setTimeout(() => {
-      setThumbsAnim("out")
-      hideThumbTimer.current = null
-    }, 3000)
+	resetHideTimer()
   }
 
   const goIndex = (next: number) => {
@@ -416,50 +413,83 @@ export default function DiceBearCardFullscreenEditor({
 
   /* ================== 上传背景（降像素 + 写入 DB Blob + objectURL） ================== */
   const openFilePicker = () => {
-    showThumbsWithAutoHide()
-    fileInputRef.current?.click()
+      setThumbsMounted(true)
+		setThumbsAnim("in")
+
+		// ✅ 冻结 auto-hide
+		isPickingFile.current = true
+		if (hideThumbTimer.current) {
+			window.clearTimeout(hideThumbTimer.current)
+			hideThumbTimer.current = null
+		}
+
+		// ✅ 等用户从文件选择器回来（选完 or 取消），恢复计时
+		const onBack = () => {
+			window.removeEventListener("focus", onBack)
+			isPickingFile.current = false
+			resetHideTimer() // 回来后再等 3 秒隐藏
+		}
+
+		window.addEventListener("focus", onBack, { once: true })
+
+		// 触发系统选择器
+		fileInputRef.current?.click()
   }
 
-  const onPickFile: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = "" // 允许重复选择同一张
-    if (!file) return
-    if (!file.type.startsWith("image/")) return
+ const onPickFile: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+	const input = e.currentTarget
 
-    // 可选：限制大小（例如 12MB；降像素后会更小）
-    const MAX = 12 * 1024 * 1024
-    if (file.size > MAX) return
+	try {
+		const file = input.files?.[0]
+		if (!file) return
+		if (!file.type.startsWith("image/")) return
 
-    try {
-      // ✅ 1) 降像素（严格规则）
-      const blob = await maybeDownscaleToBlob(file)
+		// 可选：限制大小（例如 12MB；降像素后会更小）
+		const MAX = 12 * 1024 * 1024
+		if (file.size > MAX) return
 
-      // ✅ 2) 写入 IndexedDB（Blob）
-      await idbAddBlob(blob)
+		// ✅ 1) 降像素（严格规则）
+		const blob = await maybeDownscaleToBlob(file)
 
-      // ✅ 3) 生成 objectURL 加入 bgList
-      const url = URL.createObjectURL(blob)
-      objectUrlsRef.current.push(url)
-      bgBlobMapRef.current[url] = blob
+		// ✅ 2) 写入 IndexedDB（Blob）
+		await idbAddBlob(blob)
 
-      setBgList(prev => {
-        const next = prev.concat([url])
-        const newIndex = next.length - 1
+		// ✅ 3) 生成 objectURL 加入 bgList
+		const url = URL.createObjectURL(blob)
+		objectUrlsRef.current.push(url)
+		bgBlobMapRef.current[url] = blob
 
-        requestAnimationFrame(() => {
-          setBgIndex(newIndex)
-          showThumbsWithAutoHide()
-          requestAnimationFrame(() => {
-            thumbRefs.current[newIndex]?.scrollIntoView({ behavior: "smooth", inline: "center" })
-          })
-        })
+		setBgList(prev => {
+		const next = prev.concat([url])
+		const newIndex = next.length - 1
 
-        return next
-      })
-    } catch {
-      // ignore
-    }
-  }
+		requestAnimationFrame(() => {
+			setBgIndex(newIndex)
+
+			// 这里会触发 resetHideTimer（前提：isPickingFile 已经在 finally 里设回 false）
+			showThumbsWithAutoHide()
+
+			requestAnimationFrame(() => {
+			thumbRefs.current[newIndex]?.scrollIntoView({
+				behavior: "smooth",
+				inline: "center",
+			})
+			})
+		})
+
+		return next
+		})
+	} catch {
+		// ignore
+	} finally {
+		// ✅ 选完文件后：确保恢复（无论成功/失败/不合法 return）
+		isPickingFile.current = false
+		resetHideTimer()
+
+		// ✅ 允许重复选择同一张图
+		input.value = ""
+	}
+}
 
   // ✅ OK：提交当前（优先用预生成缓存）
   const ok = async () => {
@@ -471,29 +501,24 @@ export default function DiceBearCardFullscreenEditor({
       title,
       detail,
       bgIndex: currentIndex,
-      logoText,
       bgBase64
     })
   }
 
   // ✅ Cancel：丢弃所有更改，返回 initial（也回送 base64）
   const cancel = async () => {
-    const snap = initialSnapshotRef.current
-    const idx = clampIndex(snap.bgIndex, images)
-    const src = images[idx] || images[0] || ""
+		const snap = initialSnapshotRef.current
+		const idx = clampIndex(snap.bgIndex, images)
+		const src = images[idx] || images[0] || ""
 
-    const cached = cacheGet(src)
-    const bgBase64 = cached || (await srcToBase64(src, bgBlobMapRef.current))
-    if (!cached && bgBase64) cacheSetLRU(src, bgBase64)
+		const cached = cacheGet(src)
+		const bgBase64 = cached || (await srcToBase64(src, bgBlobMapRef.current))
+		if (!cached && bgBase64) cacheSetLRU(src, bgBase64)
 
-    onClose({
-      title: snap.title,
-      detail: snap.detail,
-      bgIndex: idx,
-      logoText: snap.logoText,
-      bgBase64
-    })
+		onClose(null)
   }
+  	const isPickingFile = useRef(false)
+	const resumeAfterPicker = useRef<null | (() => void)>(null)
 
   /* ================== 打开组件时：从 IndexedDB 读 Blob -> createObjectURL -> 追加 ================== */
   useEffect(() => {
@@ -670,7 +695,7 @@ export default function DiceBearCardFullscreenEditor({
               style={{ whiteSpace: "pre-wrap" }}
               aria-label="Edit title"
             >
-              {title || " "}
+              {title || initialTitle}
             </button>
           )}
 
@@ -709,7 +734,7 @@ export default function DiceBearCardFullscreenEditor({
                 style={{ whiteSpace: "pre-wrap" }}
                 aria-label="Edit detail"
               >
-                {detail || " "}
+                {detail || initialDetail}
               </button>
             )}
           </div>
@@ -787,7 +812,15 @@ export default function DiceBearCardFullscreenEditor({
               className="px-2 pt-3 bg-white/10 backdrop-blur-xl border-t border-white/20 shadow-[0_-10px_30px_rgba(0,0,0,0.25)]"
               style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)" }}
             >
-              <div className="flex gap-2 overflow-x-auto items-center">
+              <div 
+			  	
+				className="flex gap-2 overflow-x-auto items-center"
+				onScroll={resetHideTimer}
+				onTouchStart={resetHideTimer}
+				onTouchMove={resetHideTimer}
+				onPointerDown={resetHideTimer}
+				onPointerMove={resetHideTimer}
+				>
                 {/* ✅ + 上传按钮（放在缩略图列表最前） */}
                 <button
                   type="button"

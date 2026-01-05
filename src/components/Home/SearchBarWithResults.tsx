@@ -402,19 +402,21 @@ const SearchInputWithDropdown =
 									if (e.key === "Enter" || e.key === " ") close("/")
 								}}
 								className="
-								flex-1 bg-transparent text-left
-								text-[13px] text-slate-500
-								focus:outline-none
-								cursor-text
+									flex-1 min-w-0
+									bg-transparent text-left
+									text-[13px] text-slate-500
+									focus:outline-none
+									cursor-text
+									truncate
 								"
-							>
-								{query || "Search @BeamioTag, address, or paste link"}
-							</div>
+								>
+								{"@BeamioTag, address, or paste link"}
+								</div>
 							) : (
 								<input
 									ref={inputRef}
 									className="flex-1 bg-transparent text-[13px] placeholder-slate-400 focus:outline-none"
-									placeholder="Search @BeamioTag, address, or paste link"
+									placeholder="@BeamioTag, address, or paste link"
 									value={query}
 									onChange={e => setQuery(e.currentTarget.value)}
 								/>

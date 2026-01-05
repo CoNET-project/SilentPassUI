@@ -782,7 +782,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 				
 				</div>
 			</div>
-</div>
+		</div>
 
 			
 		

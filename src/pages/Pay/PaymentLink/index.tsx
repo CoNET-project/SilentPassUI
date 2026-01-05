@@ -89,6 +89,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 	const [payAmount, setPayAmount] = useState("")
 	const [requestNet, setRequestNet] = useState("")
 	const [processError, setProcessError] = useState("")
+	const [oneTimeMode, setOneTimeMode] = useState(false)
 
 
 	useEffect(() => {
@@ -234,7 +235,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 						 : (
 							<div className="p-4 space-y-4 bg-transparent">
 								<div>
-									<div className="text-lg font-semibold">Create Payment Link</div>
+									<div className="text-lg font-semibold">Create Invoice</div>
 									
 								</div>
 
@@ -293,7 +294,54 @@ export default function PaymentLink ({close, beamioer}: Props) {
 								
 								</div>
 									
-								
+								        <div className="
+										rounded-[20px]
+											bg-white/60
+											backdrop-blur-xl
+											ring-1 ring-white/50
+											shadow-[inset_0_1px_1px_rgba(255,255,255,0.8),_0_8px_20px_rgba(0,0,0,0.06)]
+											p-1
+										">
+											<div className="grid grid-cols-2 gap-1">
+												<button
+													type="button"
+													onClick={() => setOneTimeMode(true)}
+													className={[
+														"h-10 rounded-[16px] text-[14px] font-semibold transition-all duration-200",
+														oneTimeMode
+														? `
+															bg-white/90
+															backdrop-blur-xl
+															text-[rgb(0_0_255)]
+															shadow-[0_2px_6px_rgba(0,0,0,0.12)]
+															ring-1 ring-white/70
+														`
+														: "text-slate-500 hover:text-slate-700",
+													].join(" ")}
+													>
+													One-time
+													</button>
+
+												<button
+														type="button"
+														onClick={() => setOneTimeMode(false)}
+														className={[
+															"h-10 rounded-[16px] text-[14px] font-semibold transition-all duration-200",
+															!oneTimeMode
+															? `
+																bg-white/90
+																backdrop-blur-xl
+																text-[rgb(0_0_255)]
+																shadow-[0_2px_6px_rgba(0,0,0,0.12)]
+																ring-1 ring-white/70
+															`
+															: "text-slate-500 hover:text-slate-700",
+														].join(" ")}
+														>
+														Reusable
+														</button>
+											</div>
+										</div>
 								
 								<div className="mt-3 flex gap-3 w-full">
 									

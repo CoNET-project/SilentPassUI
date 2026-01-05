@@ -21,7 +21,7 @@ import PayMe from './PayMe'
 import { useNavigate } from "react-router-dom"
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
-
+import BeamioPayMe from './BeamioPayMe'
 type Props = {
 	amount: string
 	noteText: string
@@ -218,7 +218,7 @@ const Pay = ({}) => {
 								}}/>
 							}
 							{
-								showAlphaHowItWorks === 'PayRequest' && <PaymentLink close={() => setShowAlphaHowItWorks('')} />
+								showAlphaHowItWorks === 'PayRequest' && <BeamioPayMe payLink={''} />
 							}
 							{
 								showAlphaHowItWorks === 'Cashcode' && <Cashcode close={( )=> setShowAlphaHowItWorks('')} />

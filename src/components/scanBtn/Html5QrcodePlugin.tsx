@@ -19,6 +19,16 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
   const [redirecting, setRedirecting] = useState(false)
   const [uploading, setUploading] = useState(false)
 
+   // ✅ 打开文件选择器前就停掉摄像头 loop
+  const openFilePicker = () => {
+    stopScan()
+    setLoading(false)
+    setRedirecting(false)
+
+    const input = document.getElementById('qr-upload') as HTMLInputElement | null
+    input?.click()
+  }
+
   // 初始化 video，只建一次
   useEffect(() => {
     if (!videoRef.current) {
@@ -91,6 +101,9 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
   }
 
   const scanLoop = () => {
+    // ✅ guard：如果已经不该扫描了，就别继续 loop
+    if (!shouldStart || uploading || redirecting) return
+
     const canvas = canvasRef.current
     const video = videoRef.current
     if (!video || !canvas) return
@@ -244,54 +257,55 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
   }
 
   return (
-    <Popup
-      visible={shouldStart}
-      onMaskClick={() => onStop?.()}
-      onClose={() => onStop?.()}
-      bodyStyle={{ height: '100%' }}
-      style={{ '--z-index': '9999999' }}
-      forceRender
-    >
-      <div className={styles.scanCamera}>
-        <Button onClick={() => onStop?.()} className={styles.closeBtn} color='primary' fill='none'>
-          <CloseCircleOutline />
-        </Button>
+		<Popup
+			visible={shouldStart}
+			onMaskClick={() => onStop?.()}
+			onClose={() => onStop?.()}
+			bodyStyle={{ height: '100%' }}
+			style={{ '--z-index': '9999999' }}
+			forceRender
+			>
+			<div className={styles.scanCamera}>
+				<Button onClick={() => onStop?.()} className={styles.closeBtn} color='primary' fill='none'>
+				<CloseCircleOutline />
+				</Button>
 
-        <canvas ref={canvasRef} className={styles.reader} style={{ display: 'none' }} />
+				<canvas ref={canvasRef} className={styles.reader} style={{ display: 'none' }} />
 
-        {loading && (
-          <div className={styles.loading}>
-            <SpinLoading />
-            <div className={styles.loadingText}>Starting camera...</div>
-          </div>
-        )}
+				{loading && (
+				<div className={styles.loading}>
+					<SpinLoading />
+					<div className={styles.loadingText}>Starting camera...</div>
+				</div>
+				)}
 
-        {redirecting && (
-          <div className={styles.loading}>
-            <SpinLoading />
-            <div className={styles.loadingText}>跳转中...</div>
-          </div>
-        )}
+				{redirecting && (
+				<div className={styles.loading}>
+					<SpinLoading />
+					<div className={styles.loadingText}>跳转中...</div>
+				</div>
+				)}
 
-        <Button
-          className={styles.uploadBtn}
-          color='primary'
-          fill='outline'
-          loading={uploading}
-          onClick={() => document.getElementById('qr-upload')?.click()}
-        >
-          Choose File
-        </Button>
+				<Button
+				className={styles.uploadBtn}
+				color='primary'
+				fill='outline'
+				loading={uploading}
+				// ✅ 改这里：不再直接 click input
+				onClick={openFilePicker}
+				>
+				Choose File
+				</Button>
 
-        <input
-          type='file'
-          id='qr-upload'
-          accept='image/*'
-          style={{ display: 'none' }}
-          onChange={handleImageUpload}
-        />
-      </div>
-    </Popup>
+				<input
+				type='file'
+				id='qr-upload'
+				accept='image/*'
+				style={{ display: 'none' }}
+				onChange={handleImageUpload}
+				/>
+			</div>
+			</Popup>
   )
 }
 

@@ -2,6 +2,8 @@ import React, { createContext, useContext, ReactNode, useState, useEffect, useRe
 import packageData from '../../package.json'
 
 type DaemonContext = {
+	payMePayment: searchResult|null
+	setPayMePayment: Dispatch<SetStateAction<searchResult | null>>
 	showFooter: boolean
 	setShowFooter: (val: boolean) => void
 	beamioUsers: searchResult[]
@@ -139,6 +141,8 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	payMePayment:null,
+	setPayMePayment: () => {},
 	showFooter: true,
 	setShowFooter: (val: boolean) => {},
 	currencyData: {
@@ -288,6 +292,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	 const [payMePayment, setPayMePayment] = useState<searchResult | null>(null)
 	const [paymentLinkCode, setPaymentLinkCode] = useState('')
 
 	const [usdcToUSD, setUsdcToUSD] = useState(0)
@@ -426,7 +431,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
-				beamioUsers, setbBeamioUsers, showFooter, setShowFooter,
+				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment,
         	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 
       {children}

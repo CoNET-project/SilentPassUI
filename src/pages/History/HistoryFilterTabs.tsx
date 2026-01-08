@@ -13,8 +13,8 @@ type HistoryFilterTabsProps = {
 // --- All moved to last position ---
 const TABS_BY_MODE: Record<Mode, HistoryFilter[]> = {
 	pay: ['sent', 'received', 'all'],
-	request: ['pending', 'completed', 'all'],
-	cashcode: ['pending', 'deposited', 'completed', 'all'],
+	request: ['pending', 'completed', 'payme', 'active'],
+	cashcode: ['pending', 'completed', 'all'],
 }
 
 export function HistoryFilterTabs({
@@ -43,12 +43,30 @@ export function HistoryFilterTabs({
       ].join(' ')
     }
 
+	 if (key === 'payme') {
+      return [
+        baseBtn,
+        isActive || isLoading
+          ? 'bg-slate-400/70 text-slate-900 dark:bg-slate-500/60 dark:text-white'
+          : 'bg-slate-300/35 text-slate-700 dark:bg-slate-700/35 dark:text-slate-200',
+      ].join(' ')
+    }
+
     if (key === 'sent') {
       return [
         baseBtn,
         isActive || isLoading
           ? 'bg-slate-400/70 text-slate-900 dark:bg-slate-500/60 dark:text-white'
           : 'bg-slate-300/35 text-slate-700 dark:bg-slate-700/35 dark:text-slate-200',
+      ].join(' ')
+    }
+
+	if (key === 'active') {
+      return [
+        baseBtn,
+        isActive || isLoading
+          ? 'bg-emerald-300/80 text-emerald-900 dark:bg-emerald-500/70 dark:text-emerald-50'
+          : 'bg-emerald-300/35 text-emerald-700 dark:bg-emerald-700/35 dark:text-emerald-200',
       ].join(' ')
     }
 
@@ -123,6 +141,8 @@ export function HistoryFilterTabs({
         ? 'Paid'
         : key === 'deposited'
         ? 'Deposited'
+		: key === 'payme' ? 'Payme'
+		: key === 'active' ? 'Active'
         : 'All'
 
     if (!isLoading) return label

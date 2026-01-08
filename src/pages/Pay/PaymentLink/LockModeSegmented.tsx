@@ -9,9 +9,11 @@ import { Globe } from 'lucide-react'
 function LockModeSwitch({
   value,
   onChange,
+  readonly = false,
 }: {
   value: PaymentLinkLockMode
   onChange: (v: PaymentLinkLockMode) => void
+  readonly?: boolean
 }) {
   const isUSDC = value === 'USDC_LOCKED'
 
@@ -136,16 +138,22 @@ function LockModeSwitch({
         type="button"
         role="switch"
         aria-checked={isUSDC}
-        onClick={() => onChange(isUSDC ? 'FIAT_LOCKED' : 'USDC_LOCKED')}
+        onClick={() => {
+			if (readonly) return
+			onChange(isUSDC ? 'FIAT_LOCKED' : 'USDC_LOCKED')
+		}}
+		
         className={`
-          relative inline-flex
-          w-[44px] h-[26px]
-          flex-shrink-0
-          rounded-full
-          transition-colors duration-200
-          focus:outline-none
-          focus:ring-2 focus:ring-blue-300
-          ${isUSDC ? 'bg-blue-500' : 'bg-slate-300'}
+			relative inline-flex
+			w-[44px] h-[26px]
+			flex-shrink-0
+			rounded-full
+			transition-colors duration-200
+			focus:outline-none
+			focus:ring-2 focus:ring-blue-300
+			${readonly ? '' : 'focus:ring-2 focus:ring-blue-300'}
+			${isUSDC ? 'bg-blue-500' : 'bg-slate-300'}
+			${readonly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         `}
       >
         {/* 轨道高光（可选，让半透明更像 iOS） */}

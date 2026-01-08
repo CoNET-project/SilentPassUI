@@ -16,6 +16,8 @@ import {
 } from "lucide-react"
 
 import FeeInfo from '@/pages/Pay/PaymentLink/FeeInfo'
+import {fiatPrefix, formatTimeDetail} from '@/services/currency'
+
 
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
@@ -25,37 +27,11 @@ function calcFeeFromNumber(base: number) {
 	return Number(clamped)
 }
 
-const CURRENCY_META: Record<
-  ICurrency,
-  { flag: string; symbol: string; label: string }
-> = {
-  USD: { flag: "🇺🇸", symbol: "$", label: "USD" },
-  CAD: { flag: "🇨🇦", symbol: "$", label: "CAD" },
-  EUR: { flag: "🇪🇺", symbol: "€", label: "EUR" },
-  JPY: { flag: "🇯🇵", symbol: "¥", label: "JPY" },
-  CNY: { flag: "🇨🇳", symbol: "¥", label: "CNY" },
-  HKD: { flag: "🇭🇰", symbol: "$", label: "HKD" },
-  TWD: { flag: "🇹🇼", symbol: "$", label: "TWD" },
-  SGD: { flag: "🇸🇬", symbol: "$", label: "SGD" },
-  USDC: {flag:"", symbol: "", label: ""}
-};
 
-function fiatPrefix(ccy: ICurrency) {
-	if (ccy === "CAD") return "CA$"
-	if (ccy === "USD") return "$"
-	if (ccy === "EUR") return "€"
-	if (ccy === "JPY") return "JP¥"
-	if (ccy==='TWD') return "NT$"
-	if (ccy==='CNY') return 'CN¥'
-	if (ccy==='HKD') return 'HK$'
-	if (ccy==='SGD') return 'SG$'
-
-  return CURRENCY_META[ccy].symbol;
-}
 
 function FeeInline({
   	payUsdc,
-	currentCurrency,
+	currentCurrency='USDC',
 	detailOpen,
 	txDetail
 }: {

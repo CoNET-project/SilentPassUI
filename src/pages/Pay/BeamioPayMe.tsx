@@ -46,13 +46,10 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		if (!beamio||getBeamio||!profiles?.length) return
 		setGetBeamio({...beamio})
 		if (!beamio?.payme) {
-			const code = generateCODE ('')
-			const showparams = new URLSearchParams({code: code.code}).toString()
+			
+			const showparams = new URLSearchParams({beamio: beamio.accountName}).toString()
 			const showUrl = `${showPaylinkSite}?${showparams}`
 			setSuccessUrl(showUrl)
-			beamio.payme = code.code
-			setBeamio(beamio)
-			issueRequestLink(code, profiles[0], beamio)
 		} else {
 			const showparams = new URLSearchParams({code: beamio.payme}).toString()
 			const showUrl = `${showPaylinkSite}?${showparams}`
@@ -84,59 +81,10 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
     }
   }
 
-  	const issueRequestLink = async (code: {hash: string, code: string}, profile: profile, beamioData: beamio) => {
-		const currency = beamioData.currency
-		
-			/**
-			 * 
-			 * 		UI test
-			 * 
-			 */
-	
-		// setTimeout(() => {
-		// 	setProcessing(false)
-		// 	setProcessError('RPC ERROR!')
-		// }, 3000)
-
-		const note = 'Please Pay me with Beamio'
-		const showNote = note + `\r\n` + currency
-
-		const params = new URLSearchParams({amount: '0', code: code.hash, note:showNote, address: profile.keyID }).toString()
-		const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
-		
-
-		/**
-			 * 
-			 * 		UI test
-			 * 
-			 */
-		// setTimeout(() => {
-		// 	setProcessing(false)
-		// 	setSuccessUrl(showUrl)
-		// }, 1000)
-
-
-		try {
-			const res = await fetch(requestUrl, {method: 'GET'})
-
-			
-			if (res.status !== 200) {
-				return console.log(`Beamio RPC Error!`)
-
-			}
-			
-
-			
-
-		} catch (ex) {
-			
-			return console.log(`Beamio RPC Error!`)
-		}
-		
-	}
+  
 
   const onPrint = () => {
-    	setShowMode('Print')
+    	window.print()
   }
 
   const onMessage = async () => {
@@ -165,20 +113,33 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   }
 
   return (
-    <div className="min-h-screen bg-white flex justify-center overflow-y-auto">
+    <div className="min-h-screen bg-[#EDF2FE] flex justify-center overflow-y-auto">
       <div className="w-full max-w-[540px] px-4 py-4">
         {/* Segmented */}
-        <div className="rounded-[18px] bg-slate-100 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-black/5">
+        <div className="
+			rounded-[18px]
+				bg-white/20
+				backdrop-blur-xl
+				p-1
+				ring-1 ring-white/45
+				shadow-[inset_0_1px_1px_rgba(255,255,255,0.6)]
+		">
           <div className="grid grid-cols-2 gap-1">
             <button
               type="button"
               onClick={() => setShowMode('main')}
-              className={[
-                "h-12 rounded-[18px] text-[16px] font-semibold transition",
-                showMode === 'main'
-                  ? "bg-white text-blue-600 shadow-sm ring-1 ring-black/5"
-                  : "text-slate-500",
-              ].join(" ")}
+               className={[
+				"h-11 rounded-[16px] text-[15px] font-semibold transition-all duration-200",
+				showMode === 'main'
+				? `
+					bg-white/80
+					backdrop-blur-xl
+					text-[rgb(0_0_255)]
+					shadow-[0_2px_8px_rgba(0,0,0,0.12)]
+					ring-1 ring-white/70
+				`
+				: "text-black/20 hover:text-black/40",
+			].join(" ")}
             >
               Any amount (PayMe)
             </button>
@@ -186,12 +147,18 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
             <button
               type="button"
               onClick={() => setShowMode('PaymentLink')}
-              className={[
-                "h-12 rounded-[18px] text-[16px] font-semibold transition",
-                showMode === 'PaymentLink'
-                  ? "bg-white text-blue-600 shadow-sm ring-1 ring-black/5"
-                  : "text-slate-500",
-              ].join(" ")}
+				className={[
+					"h-11 rounded-[16px] text-[15px] font-semibold transition-all duration-200",
+					showMode === 'PaymentLink'
+					? `
+						bg-white/80
+						backdrop-blur-xl
+						text-[rgb(0_0_255)]
+						shadow-[0_2px_8px_rgba(0,0,0,0.12)]
+						ring-1 ring-white/70
+					`
+					: "text-black/20 hover:text-black/40",
+				].join(" ")}
             >
               Fixed amount (Invoice)
             </button>
@@ -211,65 +178,59 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						</div>
 
 						{/* QR Card */}
-						<div className="mt-4 flex justify-center">
-						<div className="w-[420px] max-w-full rounded-[22px] bg-white ring-1 ring-black/10 shadow-sm px-4 pt-5 pb-4">
-							<div className="relative flex justify-center">
-							<div className="relative">
-								<QRCodeCanvas
-									value={successUrl}
-										size={240}
-										level="H"
-										includeMargin
-										bgColor="white"
-										fgColor="#000000"
-										imageSettings={{
-											src: bIcon,
-											height: 88,
-											width: 88,
-											excavate: true,
-										}}
-										className="rounded-lg inline-block"
+							<div className="mt-4 flex justify-center">
+							<div className="relative isolate">
+								{/* glow：强制放到最底层 */}
+								<div
+								aria-hidden
+								className="
+									absolute inset-[-12px]
+									-z-10
+									rounded-[36px]
+									bg-[radial-gradient(60%_60%_at_50%_40%,rgba(132,120,255,0.18),rgba(132,120,255,0.05)_60%,transparent_75%)]
+									blur-xl
+									pointer-events-none
+								"
 								/>
 
-								{/* 中间 BE 徽章 */}
+								{/* QR 白底板：强制放到上层 */}
+								<div className="relative z-10 flex justify-center">
+								<div
+									className="
+									rounded-[28px]
+									bg-white
+									p-[18px]
+									shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+									"
+								>
+									<QRCodeCanvas
+									value={successUrl}
+									size={264}
+									level="H"
+									includeMargin={false}
+									bgColor="white"
+									fgColor="#000000"
+									imageSettings={{
+										src: bIcon,
+										height: 95,
+										width: 95,
+										excavate: true,
+									}}
+									className="block"
+									/>
+								</div>
+								</div>
 								
+								<div className="mt-6 text-center">
+								<div className="mt-3 text-[18px] font-semibold text-slate-500">
+									Scan to pay (Any amount)
+								</div>
+								</div>
+							
 							</div>
 							</div>
 
-							<div className="mt-0 text-center">
-							<div className="text-[0px] font-black italic tracking-tight text-[rgb(0_0_255)]">
-								beamio
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-500">
-								Scan to pay (Any amount)
-							</div>
-							</div>
-						</div>
-						</div>
 
-						{/* Actions */}
-						<div className="mt-10 flex items-center justify-center gap-16">
-						<button type="button" onClick={onPrint} className="group flex flex-col items-center">
-							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
-							<Printer className="h-7 w-7 text-slate-600" />
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-600">Print</div>
-						</button>
-
-						<button type="button" onClick={onMessage} className="group flex flex-col items-center">
-							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
-							<MessageCircle className="h-7 w-7 text-slate-600" />
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-600">Message</div>
-						</button>
-
-						<button type="button" onClick={onShare} className="group flex flex-col items-center">
-							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
-							<Share2 className="h-7 w-7 text-slate-600" />
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-600">Share</div>
-						</button>
-						</div>
 
 						{/* Payment link */}
 						<div className="mt-10">
@@ -294,6 +255,30 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 							Opens in browser or Beamio app
 						</div>
 						</div>
+						{/* Actions */}
+						<div className="mt-10 flex items-center justify-center gap-16">
+						<button type="button" onClick={onPrint} className="group flex flex-col items-center">
+							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
+							<Printer className="h-7 w-7 text-slate-600" />
+							</div>
+							<div className="mt-3 text-[18px] font-semibold text-slate-600">Print</div>
+						</button>
+
+						<button type="button" onClick={onMessage} className="group flex flex-col items-center">
+							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
+							<MessageCircle className="h-7 w-7 text-slate-600" />
+							</div>
+							<div className="mt-3 text-[18px] font-semibold text-slate-600">Message</div>
+						</button>
+
+						<button type="button" onClick={onShare} className="group flex flex-col items-center">
+							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
+							<Share2 className="h-7 w-7 text-slate-600" />
+							</div>
+							<div className="mt-3 text-[18px] font-semibold text-slate-600">Share</div>
+						</button>
+						</div>
+
 					</div>
 					</div>
 			)

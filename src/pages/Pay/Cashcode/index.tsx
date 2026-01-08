@@ -499,7 +499,8 @@ export default function PaymentLink ({close, beamioer}: Props) {
 													autoEntry={!!!item} 
 													readOnly={processing} 
 													showLimit={0.1}
-													setError={setAmountError}
+													sendError={sendError}
+													setSendError={setSendError}
 													showMax={true}
 													needBalance={true}
 													focusSignal={focusAmount}

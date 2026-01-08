@@ -145,15 +145,15 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		}
 		const currency = beamio.currency
 		const numberAmount = Number(sendAmount)
-		if (isNaN(numberAmount) || numberAmount <= 0.02) {
+		if (isNaN(numberAmount) || numberAmount <= 0) {
 			return 
 		}
 
-
+		
 		
 
 		const showCurrencyNumber = lockMode === 'USDC_LOCKED' ? numberAmount.toFixed(4) : formatCurrencyAmount(numberAmount * fxRateUSDCToCurrency(currency), currency)
-		console.log(showCurrencyNumber)
+		
 		
 		setProcessing(true)
 			/**
@@ -168,7 +168,15 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		// }, 3000)
 
 		const currencyData = lockMode === 'USDC_LOCKED' ? 'USDC': currency
-		const showNote = note + `\r\n` + currencyData
+
+		const paymeObj: payMe = {
+			currency: currencyData,
+			currencyAmount: showCurrencyNumber,
+			oneTimeMode,
+		}
+		
+
+		const showNote = note + `\r\n` + JSON.stringify(paymeObj)
 		
 		
 		const profile: profile = profiles[0]
@@ -176,7 +184,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 
 
 		const fixedAmount = ethers.parseUnits(showCurrencyNumber, 6).toString()
-		const params = new URLSearchParams({amount: fixedAmount, code: code.hash, note:showNote, address: profile.keyID }).toString()
+		const params = new URLSearchParams({amount: fixedAmount, code: code.hash, note:showNote, address: profile.keyID}).toString()
 		const net = numberAmount - calcFeeFromNumber(numberAmount)
 		const showNetCurrency = lockMode === 'USDC_LOCKED' ? net.toFixed(4) : formatCurrencyAmount(net * fxRateUSDCToCurrency(currency), currency)
 		const showparams = new URLSearchParams({code: code.code}).toString()
@@ -256,8 +264,9 @@ export default function PaymentLink ({close, beamioer}: Props) {
 										setAmount={setSendAmount} 
 										autoEntry={!!!item} 
 										readOnly={processing} 
-										showLimit={0.02}
-										setError={setAmountError}
+										showLimit={0}
+										setSendError={setSendError}
+										sendError={sendError}
 										showMax={false}
 										needBalance={false}
 										focusSignal={focusAmount}
@@ -338,8 +347,8 @@ export default function PaymentLink ({close, beamioer}: Props) {
 															: "text-slate-500 hover:text-slate-700",
 														].join(" ")}
 														>
-														Reusable
-														</button>
+															Reusable
+													</button>
 											</div>
 										</div>
 								

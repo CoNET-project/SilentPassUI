@@ -8,6 +8,7 @@ import baseIcon from '@/components/assets/base-logo.png'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import IOSGlassPillButton from '@/components/button/IOSButton'
 import CurrencyPicker from './SelectCurrent'
+import { getDecimals} from '@/services/currency'
 
 
 
@@ -19,7 +20,8 @@ type Prof = {
 	readOnly: boolean
 	needBalance: boolean
 	showLimit: number
-	setError: (val: boolean) => void
+	sendError: string
+	setSendError: (val: string) => void
 	focusSignal?: boolean
 	currencyUSDC?: boolean
 	feePlus?: boolean
@@ -80,12 +82,11 @@ function calcFeeFromReceived(received: number) {
 	return Number(feeByRatio.toFixed(4))
 }
 
-const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal, currencyUSDC=false, feePlus=false, currencyChange}: Prof) => {
+const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setSendError, sendError, focusSignal, currencyUSDC=false, feePlus=false, currencyChange}: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
 
-	const [sendError, setSendError] = useState("")
 	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>('USD')
 	const [showCurrencyPicker, setShowCurrencyPicker] = useState(false)
 
@@ -172,7 +173,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 	useEffect(() => {
 		const prev = prevModeRef.current
-		if (prev === currencyUSDC) return
+		
 		prevModeRef.current = currencyUSDC
 
 		firstEditArmedRef.current = true
@@ -185,14 +186,8 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		setDisplayAmount(currencyUSDC ? zeroUsdcStr : formatCurrencyAmount(0, currentCurrency))
 
 		setSendError("")
-		setError(false)
 	}, [currencyUSDC]) // 保持依赖不变即可
 	
-	useEffect(() => {
-		if (currencyUSDC) return // ✅ USDC 模式不改 currentCurrency（保留上一次法币）
-		if (beamio) return setcurrentCurrency(beamio.currency)
-		setcurrentCurrency('USD')
-	}, [currencyUSDC, beamio])
 
 	useEffect(() => {
 		if (!focusSignal) return
@@ -216,7 +211,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		if (showLimit) {
 			if (usdcToSend <= showLimit) {
 				setSendError(`The minimum amount must be greater than ${showLimit} threshold.`)
-				setError(true)
+				
 				return false
 			}
 		}
@@ -224,11 +219,11 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		const bal = Number(usdcbalance || 0)
 		if (bal - usdcToSend < 0) {
 			setSendError("Insufficient USDC balance")
-			setError(true)
+			
 			return false
 		}
 		setSendError("")
-		setError(false)
+		
 		return true
 	}
 
@@ -251,11 +246,11 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			setDisplayAmount(formatUsdc(safeUsdc)) // ✅ USDC 模式：显示 USDC
 		} else {
 			const curValue = usdcToCurrencyAmount(safeUsdc, currentCurrency)
-			setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency)) // ✅ 法币模式：显示法币
+			setDisplayAmount('0') // ✅ 法币模式：显示法币
 		}
 		
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [amount, currentCurrency, currencyData, currencyUSDC, showCurrencyPicker, displayAmount])
+	}, [amount, currentCurrency, currencyData, showCurrencyPicker, displayAmount])
 
 	// ---------- Picker open/close ----------
 	const openPicker = () => {
@@ -340,7 +335,6 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		
 		handleSaveAvatar(next)
 		setSendError("")
-		setError(false)
 		closePicker()
 	}
 
@@ -353,7 +347,6 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency))
 
 		setSendError("")
-		setError(false)
 	}
 
 	const approxUsdcText = useMemo(() => {
@@ -609,7 +602,6 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 							// 通过校验：清掉错误再更新
 							setSendError("")
-							setError(false)
 							
 							setDisplayAmount(v)
 
@@ -630,12 +622,12 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						"
 					/>
 					{
-						showLimit > 0 && (
-							<div className="flex items-center justify-between text-xs MT-6">
-								<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
-								<span className="text-slate-400">Min {'> ' + showLimit} USDC</span>
-							</div>
-						)
+						// showLimit > 0 && (
+						// 	<div className="flex items-center justify-between text-xs MT-6">
+						// 		<span className="text-xs text-slate-500 dark:text-slate-400">Amount (required)</span>
+						// 		<span className="text-slate-400">Min {'> ' + showLimit} USDC</span>
+						// 	</div>
+						// )
 					}
 
 					{/* ≈ USDC hint（右侧，20% 灰） */}

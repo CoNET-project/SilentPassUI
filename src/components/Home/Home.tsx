@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo, useLayoutEffect} from "react"
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, searchUsername} from '@/services/beamio'
 import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
@@ -48,7 +48,7 @@ const Home = ({}) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
-		currencyData, setRedeemCode
+		currencyData, setRedeemCode, setPayMePayment
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	const hasActivity = false;
@@ -116,6 +116,23 @@ const Home = ({}) => {
 		let code = searchParams.get("code")||''
 		const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
 		const cashcode = searchParams.get("cashcode")||''
+		const _beamio = searchParams.get("beamio")||''
+		if (_beamio) {
+			
+			const user = await searchUsername(_beamio)
+			const results: searchResult[] = user?.results
+			if (!results.length) {
+				return
+			}
+			const filtered = results.filter(n => n.username === _beamio)
+			if (!filtered.length) {
+				return
+			}
+
+			setPayMePayment(filtered[0])
+			return navigate('/browser')
+
+		}
 		if (_secureCode) {
 			setSecureCode (_secureCode)
 			setRedeemCode(cashcode)

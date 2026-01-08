@@ -5,7 +5,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { createPortal } from 'react-dom';
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
-import { onWalletEvent } from '@/services/beamio'
+import { onWalletEvent, searchUsername } from '@/services/beamio'
 import { Button,Modal,Toast } from "antd-mobile"
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
 import ScanBtn from '@/components/scanBtn/ScanButton'
@@ -43,7 +43,9 @@ const Pay = ({}) => {
 	const solSendRef=useRef()
 	const usdtSendRef=useRef()
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Pay'|''|'PayRequest'|'Cashcode'|'payme'>('')
-	const { darkModle, setDarkModle, setProfiles, power, setPower, setSendToMemo, setPaymentLink, setSecureCode, setRedeemCode, setPaymentLinkCode} = useDaemonContext()
+	const { darkModle, setDarkModle, setProfiles, power, setPower, setSendToMemo, setPaymentLink, setSecureCode, setRedeemCode, setPaymentLinkCode,
+		setPayMePayment
+	} = useDaemonContext()
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState('')
 	const [note, setNote] = useState('')
@@ -68,6 +70,24 @@ const Pay = ({}) => {
 		let code = searchParams.get("code")||''
 		const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
 		const cashcode = searchParams.get("cashcode")||''
+		const _beamio = searchParams.get("beamio")||''
+		if (_beamio) {
+			
+			const user = await searchUsername(_beamio)
+			const results: searchResult[] = user?.results
+			if (!results.length) {
+				return
+			}
+			const filtered = results.filter(n => n.username === _beamio)
+			if (!filtered.length) {
+				return
+			}
+
+			setPayMePayment(filtered[0])
+			return navigate('/browser')
+
+		}
+
 		if (_secureCode) {
 			setSecureCode (_secureCode)
 			setRedeemCode(cashcode)

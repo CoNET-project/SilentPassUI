@@ -22,7 +22,7 @@ const formatMoney = (n: number) =>
 
 const Browser = ({}) => {
 	const navigate = useNavigate()
-	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl, setSendToMemo, setRedeemCode, setPaymentLinkCode, paymentLinkCode} = useDaemonContext()
+	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl, setSendToMemo, setRedeemCode, setPaymentLinkCode, paymentLinkCode, payMePayment} = useDaemonContext()
 	
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState(paymentLink?.code)
@@ -74,6 +74,13 @@ const Browser = ({}) => {
 	}
 
 	const checkCodeBalance = async () => {
+
+		if (payMePayment) {
+			setAmt(0)
+			setRecipient(payMePayment.address)
+			setShowLinkPay(true)
+			return
+		}
 		try {
 			const fx = await CoreContract.getLinkMemo(paymentLinkCode)
 			const amount = Number(ethers.formatUnits(fx.amount, 6))
@@ -100,6 +107,7 @@ const Browser = ({}) => {
 		let code = searchParams.get("code")||''
 		const _secureCode = searchParams.get("secureCode")||''
 		const cashcode = searchParams.get("cashcode")||''
+		
 		if (_secureCode) {
 			setSecureCode (_secureCode)
 			setShowLinkPay(true)
@@ -129,7 +137,7 @@ const Browser = ({}) => {
 	}
 
 	const forwardFromHome = async () => {
-
+		
 		if (secureCode) {
 			setShowLinkPay(true)
 			setLocalSecureCode(secureCode)
@@ -185,9 +193,9 @@ const Browser = ({}) => {
         <div className='
 		flex flex-col h-screen
 		pt-[env(safe-area-inset-top)]
-				pb-[env(safe-area-inset-bottom)]
-				pl-[env(safe-area-inset-left)]
-				pr-[env(safe-area-inset-right)]
+		pb-[env(safe-area-inset-bottom)]
+		pl-[env(safe-area-inset-left)]
+		pr-[env(safe-area-inset-right)]
 		'>
 			{
 				showLinkPay ? 

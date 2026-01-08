@@ -616,8 +616,13 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 									<div>
 										{/**	金额输入 */}
 
-										<AmountCurrency readOnly={loading || showPayConfirm} setAmount={setAmount} amount={amount} autoEntry={true} 
-											showMax={!loading && !showPayConfirm} needBalance={true} showLimit={0} setError={setCanSend} />
+										<AmountCurrency 
+											readOnly={loading || showPayConfirm} 
+											setAmount={setAmount} amount={amount} autoEntry={true} 
+											showMax={!loading && !showPayConfirm} needBalance={true} showLimit={0} 
+											sendError={sendError}
+											setSendError={setSendError}
+										/>
 										<div className="mb-3">
 											{showPayConfirm ? (<>
 												<label className="block text-[11px] font-medium text-slate-700 mb-1">

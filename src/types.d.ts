@@ -496,6 +496,7 @@ type IMessageData = {
 	reqUrl: string
 	amount: string
 	fee?: string
+	usdcAmount?: string
 }
 
 type PaymentLinkLockMode = "FIAT_LOCKED" | "USDC_LOCKED";
@@ -510,6 +511,8 @@ type HistoryFilter =
   | 'reject'
   | 'paid'
   | 'deposited'
+  | 'payme'
+  | 'active'
 
 
 type IImageCard = {
@@ -520,6 +523,15 @@ type IImageCard = {
 	currencyAmount: string
 }
 
+type payMe = {
+	currency: ICurrency
+	currencyAmount: string
+	currencyTip?: string
+	tip?: number
+	parentHash?: string
+	oneTimeMode
+}
+
 type IRequestCurrencyDetail = {
 	requestCurrency: ICurrency
 	totalPayCurrency: number
@@ -528,6 +540,9 @@ type IRequestCurrencyDetail = {
 	feeUSDC: number
 	receivedCurrency: number
 	receivedUSDC: number
+	currencyTip: number
+	USDCTip: number
+	rate: number
 }
 
 type TransferHistork = {
@@ -547,5 +562,6 @@ type TransferHistork = {
 	card?: IImageCard
 	requestCurrency?: ICurrency
 	requestDetail?: IRequestCurrencyDetail
+	group?: 'payme'|'fixed'
 
 }

@@ -20,6 +20,7 @@ import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, 
 import AccountBeo from './AccountBea'
 import ShowCard from '@/components/card/ShowCard'
 import {TransactionsItemDetail} from './TransactionsItemDetail'
+import {fiatPrefix, formatAmount} from '@/services/currency'
 
 type Mode = "pay" | "request" | 'cashcode'
 
@@ -103,36 +104,14 @@ function calcFeeFromReceived(received: number) {
 
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+
+
+
 type HistoryTableProps = {
 }
 
-const CURRENCY_META: Record<
-  ICurrency,
-  { flag: string; symbol: string; label: string }
-> = {
-  USD: { flag: "🇺🇸", symbol: "$", label: "USD" },
-  CAD: { flag: "🇨🇦", symbol: "$", label: "CAD" },
-  EUR: { flag: "🇪🇺", symbol: "€", label: "EUR" },
-  JPY: { flag: "🇯🇵", symbol: "¥", label: "JPY" },
-  CNY: { flag: "🇨🇳", symbol: "¥", label: "CNY" },
-  HKD: { flag: "🇭🇰", symbol: "$", label: "HKD" },
-  TWD: { flag: "🇹🇼", symbol: "$", label: "TWD" },
-  SGD: { flag: "🇸🇬", symbol: "$", label: "SGD" },
-  USDC: {flag:"", symbol: "", label: ""}
-};
 
-function fiatPrefix(ccy: ICurrency) {
-	if (ccy === "CAD") return "CA$"
-	if (ccy === "USD") return "$"
-	if (ccy === "EUR") return "€"
-	if (ccy === "JPY") return "JP¥"
-	if (ccy==='TWD') return "NT$"
-	if (ccy==='CNY') return 'CN¥'
-	if (ccy==='HKD') return 'HK$'
-	if (ccy==='SGD') return 'SG$'
-
-  return CURRENCY_META[ccy].symbol;
-}
 
 const showPaylinkSite = 'https://beamio.app'
 
@@ -145,22 +124,6 @@ type Transfer = {
 	amount: string
 	finisedHash: string
 	note: string
-}
-
-function formatAmount(v: number, c: ICurrency) {
-  if (!isFinite(v)) return "0"
-
-  const decimals =
-    c === "TWD" || c === "JPY"
-      ? 0
-      : c === "USDC"
-      ? 4
-      : 2
-
-  return v.toLocaleString("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
-  })
 }
 
 const formatTime = (ts: number) => {
@@ -193,6 +156,12 @@ const statusStyleMap: Record<
 		icon: "text-rose-700",
 		text: "text-rose-600",
 	},
+	active: {
+		container: "bg-emerald-100",
+		iconBg: "bg-emerald-200",
+		icon: "text-emerald-700",
+		text: "text-emerald-600",
+	},
 	received: {
 		container: "bg-emerald-100",
 		iconBg: "bg-emerald-200",
@@ -204,6 +173,12 @@ const statusStyleMap: Record<
 		iconBg: "bg-amber-200",
 		icon: "text-amber-700",
 		text: "text-amber-200",
+	},
+	payme: {
+		container: "bg-fuchsia-100",
+		iconBg: "bg-fuchsia-200",
+		icon: "text-fuchsia-700",
+		text: "text-fuchsia-800",
 	},
 	paid: {
 		container: "bg-fuchsia-100",
@@ -368,18 +343,44 @@ export const SendHistoryTable = (
 			const transfer: Transfer[] = _transfer[1]
 			
 			mapped = transfer.map(n => {
-				let card:IImageCard|null = null
+				let requestDetail: IRequestCurrencyDetail|undefined = undefined
+				const amount = Number(ethers.formatUnits(n.amount, 6))
+				let card: IImageCard|null = null
+				let payme: payMe|null = null
 				const nodeEX = n?.note?.split('\r\n')
-				try {
-					if (nodeEX[1]) {
-						const _card = JSON.parse(nodeEX[1])
-						if (_card?.card) {
-							card = _card.card
-						}
 
-					}
+				//		try get currency data
+				let paymeData = nodeEX.length -1
+				try {
+					payme = JSON.parse(nodeEX[paymeData])
+					paymeData -=1
 				} catch (ex) {
 
+				}
+				//		try get card data
+				try {
+					const cardData = JSON.parse(nodeEX[paymeData])
+					card = cardData?.card||cardData
+				} catch (ex) {
+
+				}
+
+				const _amount = Number(payme?.currencyAmount)
+
+				if( payme?.currency && fiatPrefix(payme.currency) && !isNaN(_amount) && _amount > 0) {
+					const currencyRate = Number(payme.currencyAmount)/amount 
+					requestDetail = {
+						requestCurrency: payme.currency,
+						totalPayCurrency: Number(payme.currencyAmount),
+						totalPayUSDC: amount,
+						feeCurrency: 0,
+						feeUSDC: 0,
+						receivedCurrency: Number(payme.currencyAmount),
+						receivedUSDC: amount,
+						currencyTip: 0,
+						USDCTip: 0,
+						rate: currencyRate
+					}
 				}
 
 				const ret: TransferHistork = {
@@ -387,15 +388,16 @@ export const SendHistoryTable = (
 					amount: Number(ethers.formatUnits(n.amount, 6)),
 					address: n.from.toLowerCase() === myAddrLocal ? n.to.toLowerCase() : n.from.toLowerCase(),
 					hash: n.finisedHash,
-					
+					requestCurrency: payme?.currency||'USDC',
 					note: n.note,
 					type: myAddrLocal === n.to.toLowerCase() ? 'received' : 'sent',
 					mode: 'pay',
 					fee: 0,
 					type1: myAddrLocal === n.to.toLowerCase() ? 'received' : 'sent',
-					preAmount: Number(ethers.formatUnits(n.amount, 6))
+					preAmount: Number(ethers.formatUnits(n.amount, 6)),
+					requestDetail
 				}
-				if (card?.currency) {
+				if (card?.image) {
 					ret.card = card
 				}
 
@@ -407,53 +409,74 @@ export const SendHistoryTable = (
 				const isRequest = n.from.toLowerCase() === myAddrLocal
 				
 				const isPending = isRequest ? n.to === ethers.ZeroAddress : n.from === ethers.ZeroAddress
-
 				
 				const isReject = isRequest ?  n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
 				const account = (isPending||isReject) ? '' : isRequest ? n.to : n.from
-				const type: HistoryFilter = isReject ? 'reject' : isPending ? 'pending' : isRequest ? 'paid' : 'completed'
-				const preAmount = Number(ethers.formatUnits(isPending? n.amount: n.payAmount, 6))
 				
+				const preAmount = Number(ethers.formatUnits(n.amount, 6))
 				
-				
-				const fee = isRequest|| isPending ? 0 : calcFeeFromNumber(preAmount)
-				const amount = preAmount - fee
-				const requestCurrency = n?.node?.split('\r\n')[1] as ICurrency||'USDC'
-				let requestDetail:IRequestCurrencyDetail|undefined = undefined
-				
-				
+				const _requestCurrencyData = n?.node?.split('\r\n')
+				const ooo = _requestCurrencyData[_requestCurrencyData.length -1]
+				let requestCurrency: ICurrency = 'USDC'
+				let kkk: payMe|null
+				let group:"fixed" | "payme" | undefined = undefined
+				let requestDetail: IRequestCurrencyDetail|undefined = undefined
+				let type: HistoryFilter = isPending ? 'pending' : isRequest ? 'paid' : 'completed'
+
+				try {
+					kkk = JSON.parse(ooo)
+					if (kkk) {
+						requestCurrency = kkk.currency
+						group = kkk?.parentHash ? 'fixed' : 'payme'
+						if (localMode === 'request' && !isRequest ) {
+							type = 'payme'
+						}
+						
+					}
 					
-				let totalPayUSDC = Number(ethers.formatUnits(n.payAmount, 6))
-				const totalPayCurrency = Number(ethers.formatUnits(n.amount, 6))
 				
-					//		totalPayUSDC: totalPayCurrency = 1:x
-				
-					//		isRequest : calcFeeFromNumber(totalPayUSDC)
-					//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
-					const feeUSDC = !isRequest ? calcFeeFromNumber(totalPayUSDC) : calcFeeFromReceived(totalPayUSDC)
-					if (isRequest) {
-						totalPayUSDC += feeUSDC
-					}
+					let totalPayUSDC = Number(ethers.formatUnits(n.payAmount, 6))
+					
+					
+						//		totalPayUSDC: totalPayCurrency = 1:x
+					
+						//		isRequest : calcFeeFromNumber(totalPayUSDC)
+						//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
+					
+					
 
-					const currencyRate = totalPayCurrency / totalPayUSDC
-					const feeCurrency = feeUSDC * currencyRate
-					const receivedUSDC = totalPayUSDC - feeUSDC
-					const receivedCurrency = receivedUSDC * currencyRate
-
-					requestDetail = {
-						totalPayUSDC,
-						totalPayCurrency,
-						requestCurrency: requestCurrency as ICurrency,
-						feeUSDC,
-						feeCurrency,
-						receivedUSDC,
-						receivedCurrency
+					if (preAmount && totalPayUSDC) {
+						
+						const currencyRate = Number(kkk?.currencyAmount)/totalPayUSDC || preAmount / totalPayUSDC
+						
+						
+						const receivedCurrency = totalPayUSDC * currencyRate
+						const currencyTip = Number(kkk?.currencyTip)||0
+						const USDCTip = currencyTip/currencyRate
+						
+						requestDetail = {
+							totalPayUSDC,
+							totalPayCurrency: receivedCurrency,
+							requestCurrency,
+							feeUSDC:0,
+							feeCurrency:0,
+							receivedUSDC: totalPayUSDC,
+							receivedCurrency,
+							currencyTip,
+							USDCTip,
+							rate: currencyRate
+						}
+						
 					}
+					
+				} catch (ex) {
+					requestCurrency = ooo as ICurrency
+				}
 				
 				
 				const ret: TransferHistork = {
 					date: Number(n.issueTimestamp * BigInt(1000)),
-					amount,
+					amount: preAmount,
 					address: account,
 					hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
 					note: n.node,
@@ -464,13 +487,28 @@ export const SendHistoryTable = (
 					preAmount: preAmount,
 					requestCurrency,
 					requestDetail,
+					group
 				}
 				
 				return ret
 			})
 
+			if (localMode === 'request') {
+				if (next === 'payme') {
+					mappedLing = mappedLing.filter(n => n?.group === 'payme')
+				} else if (next === 'active') {
+					mappedLing = mappedLing.filter(n => n?.group === 'fixed')
+				} else {
+					mappedLing = mappedLing.filter(n => !n?.group )
+				}
+				
+				
+				
+				console.log(mappedLing.length)
+			}
+
 			//	过滤PayME
-			// mappedLing = mappedLing.filter (n => !!n?.requestDetail)
+			mappedLing = mappedLing.filter (n => !!n?.requestDetail)
 			const memoSelfDeposited: Map<string, boolean> = new Map()
 			const checks: CheckHistory[] = _checks[1]
 			mappedCheck = await Promise.all(
@@ -571,6 +609,8 @@ export const SendHistoryTable = (
 				return tx.mode === localMode || (tx.type1 !== '')
 				
 			})
+
+
 
 			if (next && next !== 'all') {
 				filtered = filtered.filter(tx => localMode === 'pay' ? tx.type1 === next : tx.type === next)
@@ -728,7 +768,6 @@ export const SendHistoryTable = (
 					</div>
 			}
 			
-
 			{
 				!showDetail && !showGiftCard && (
 					<>
@@ -875,45 +914,43 @@ export const SendHistoryTable = (
 
 													{/* 右侧：金额 —— 不固定宽度，按内容最小占用，但永远贴右、不换行 */}
 													<div
-														className={[
-															"shrink-0 whitespace-nowrap text-right",
-															"w-[150px]",
-															"text-[11px] font-medium tabular-nums",
-															(!plus)
-																? "text-rose-600 dark:text-rose-400"
-																: "text-emerald-600 dark:text-emerald-400"
-														].join(" ")}
+													className={[
+														"shrink-0 whitespace-nowrap text-right",
+														"w-[150px]",
+														"font-medium tabular-nums",
+														(!plus)
+														? "text-rose-600 dark:text-rose-400"
+														: "text-emerald-600 dark:text-emerald-400"
+													].join(" ")}
 													>
-														{
-															localMode === "pay" && 
-																<span>
-																	{ plus ? "+ " : "- "}
-																	
-																</span>
-														}
-														
-														
-
-														{/* amount */}
-														<span className="text-[14px] font-medium tabular-nums">
-															{
-															 	localMode !== 'pay' && tx?.requestDetail ? (
-																	<span
-																		className={statusStyleMap[tx.type].text}
-																	>
-
-																		{fiatPrefix(tx.requestDetail.requestCurrency)} {formatAmount(tx.requestDetail.totalPayCurrency, tx.requestDetail.requestCurrency)}
-																		
-																	</span>
-																) : (
-																	<span>
-																		{formatAmount(localMode === "pay" ? tx.amount : tx.preAmount, 'USDC')} USDC
-																	</span>
-																)
-															}
-
-															
+													{/* 关键：items-start -> 符号和主金额顶部对齐 */}
+													<div className="flex justify-end items-start gap-1.5">
+														{/* + / - 符号：对齐主金额行 */}
+														{localMode === "pay" && (
+														<span className="text-[14px] leading-[20px]">
+															{plus ? "+" : "−"}
 														</span>
+														)}
+
+														<div className="flex flex-col gap-0.5 text-right">
+														{/* 主金额：继承父级红/绿，不要写 text-slate-900 */}
+														<span className="text-[14px] font-medium tabular-nums leading-[20px]">
+															{formatAmount(localMode === "pay" ? tx.amount : tx.preAmount, "USDC")}{" "}
+															USDC
+														</span>
+
+														{/* 辅助金额：淡灰 */}
+														{tx?.requestDetail && (
+															<span className="text-[12px] tabular-nums text-slate-400 leading-[16px]">
+															{fiatPrefix(tx.requestDetail.requestCurrency)}{" "}
+															{formatAmount(
+																tx.requestDetail.totalPayCurrency,
+																tx.requestDetail.requestCurrency
+															)}
+															</span>
+														)}
+														</div>
+													</div>
 													</div>
 												</div>
 											)
@@ -998,7 +1035,8 @@ export const SendHistoryTable = (
 							rounded-full
 							bg-white/70 dark:bg-slate-900/50
 							backdrop-blur-md
-							shadow-sm
+							shadow-[0_4px_10px_rgba(0,0,0,0.12)]
+							ring-1 ring-black/5
 							flex items-center justify-center
 							text-slate-800 dark:text-slate-100
 							active:scale-95

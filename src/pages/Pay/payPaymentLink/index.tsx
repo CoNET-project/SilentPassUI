@@ -11,19 +11,11 @@ import Securitycode from '@/components/input/Securitycode'
 import ConformView from '@/pages/Pay/send/ConformView'
 import BeamioDetail from '../components/beamioer'
 import base_ex from '@/components/assets/base-ex.svg'
+import TipInput from '../components/TipInput'
+import ShowTotal from '../components/ShowTotal'
+import { fiatPrefix, formatAmount } from '@/services/currency'
+import NetworkFeeGas from '../components/networkFee'
 
-function fiatPrefix(ccy: ICurrency) {
-	if (ccy === "CAD") return "CA$"
-	if (ccy === "USD") return "$"
-	if (ccy === "EUR") return "€"
-	if (ccy === "JPY") return "JP¥"
-	if (ccy==='TWD') return "NT$"
-	if (ccy==='CNY') return 'CN¥'
-	if (ccy==='HKD') return 'HK$'
-	if (ccy==='SGD') return 'SG$'
-	
-  return '$';
-}
 const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
@@ -68,17 +60,6 @@ function formatUserDate(timestamp?: string | number): string {
 }
 
 
-function formatAmount(v: number, c: ICurrency) {
-	if (!isFinite(v)) return `0 ${c}`
-	return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
-}
-
-const formatCurrencyAmount = (n: number, c: ICurrency) => {
-	const decimals = (c === "JPY" || c==='TWD') ? 0 : 2
-	if (!Number.isFinite(n)) return "0"
-	return n.toFixed(decimals)
-}
-
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
 
@@ -86,6 +67,7 @@ type Props = {
 	close: (path: string) => void
 	code: string
 	address: string
+
 }
 
 const displayName = (item: searchResult) => {
@@ -112,7 +94,7 @@ const displayName = (item: searchResult) => {
 
 					{/* 金额 */}
 					<div className="text-2xl font-semibold text-blue-600 dark:text-blue-400 mb-2">
-						{data.amount} USDC
+						{data.usdcAmount} USDC
 					</div>
 
 					{/* 提示 */}
@@ -176,7 +158,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 	
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'ConformView'>('')
 	const [focusAmount, setFocusAmount] = useState(false)
-	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, } = useDaemonContext()
+	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, payMePayment} = useDaemonContext()
 	const [sendError, setSendError] = useState("")
 	const [message, senMessage] = useState<any>(null)
 	const [successUrl, setSuccessUrl] = useState("")
@@ -185,10 +167,42 @@ export default function PayMeLink ({close, code, address}: Props) {
 	const [successHash, setSuccessHash] = useState("")
 	const [item, setItem] = useState<searchResult>()
 	const [messageData, setMessageData] = useState<any>()
+	const [tip, setTip] = useState(0)
+	const [tipMode, setTipMode] = useState<"preset" | "custom">('preset')
+	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
+	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
+	const [itemNote, setItemNote] = useState("")
+
+	const currencyToUsdcAmount = (cur: number, c: ICurrency) => {
+		const u2u = usdcUsd || 1
+		const u2c = usdToCur(c) || 1
+		if (!u2u || !u2c) return 0
+		return cur / u2c / u2u
+	}
+
+	const totalAmountUSDC = useMemo(() => {
+		const amountUSDC = Number(sendAmount)
+		const tipTotalUSDC = tipMode === 'preset' ? (amountUSDC * tip)/100 : currencyToUsdcAmount(tip, currency)
+		const _totalAmount = tipTotalUSDC + amountUSDC
+		return _totalAmount
+	}, [currency, sendAmount, tip, tipMode])
+
+	const fiatAmount = useMemo(() => {
+		if (currency === 'USDC') return `${formatAmount(totalAmountUSDC,'USDC')} USDC`
+		const _fiatAmount = usdcToCurrencyAmount(totalAmountUSDC, currency)
+
+		return formatAmount(_fiatAmount, currency)
+	}, [currency, totalAmountUSDC])
+
 
 	
 	const getitem = async () => {
-		
+		if (payMePayment) {
+			setItem(payMePayment)
+			
+			return
+		}
+
 		try {
 
 			const [fx, item] = await Promise.all([
@@ -200,7 +214,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 			const _nodeArray: string = fx?.node||''
 
 			setNote(_nodeArray.split('\r\n')[0])
-			
+			setItemNote(fx?.node)
 		} catch (ex: any) {
 			console.log(`getInfo ex: ${ex.message}`)
 		}
@@ -209,6 +223,10 @@ export default function PayMeLink ({close, code, address}: Props) {
 	useEffect(() => {
 		getitem()
 	}, [])
+
+	useEffect(() => {
+		getitem()
+	}, [lockMode])
 
 
 	useEffect(() => {
@@ -220,21 +238,15 @@ export default function PayMeLink ({close, code, address}: Props) {
 	}, [sendError])
 
 	useEffect(() => {
+		
+		if (lockMode === 'USDC_LOCKED') return setCurrency('USDC')
 		if (!beamio) return
 		setCurrency(beamio.currency)
 		
-	}, [beamio])
+	}, [beamio, lockMode])
 
 
-	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
-	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
 
-	const currencyToUsdcAmount = (cur: number, c: ICurrency) => {
-		const u2u = usdcUsd || 1
-		const u2c = usdToCur(c) || 1
-		if (!u2u || !u2c) return 0
-		return cur / u2c / u2u
-	}
 
 	function fxRateUSDCToCurrency(currency: ICurrency): number {
 		// 1 USDC = ? USD
@@ -296,9 +308,17 @@ export default function PayMeLink ({close, code, address}: Props) {
 			return
 		}
 		
+		const _amountUSDC =  Number(sendAmount)
+		
+		
+		const totalUSDCTip = (_amountUSDC * tip)/100
+		const totalUSDCAmount = _amountUSDC + totalUSDCTip
 
+		if (!totalUSDCAmount || totalUSDCAmount > usdcbalance) {
+			return setSendError('Insufficient USDC balance')
+		}
+		
 		setProcessing(true)
-
 		/**
 		 * 			test uint
 		 */
@@ -314,11 +334,35 @@ export default function PayMeLink ({close, code, address}: Props) {
 		// 	setSuccessPayLink('0xb0be7e96fa60ca055c777884453270cecb82bc7ab237c6b831d98fb77b84ef0d')
 			
 		// }, 2000)
+		
+		
+		const payMeString = itemNote?.split('\r\n')
+		let paymeObj: payMe|null = null
+		if (payMeString?.length) {
+			try {
+				paymeObj = JSON.parse(payMeString[payMeString.length -1])
+			}catch(ex) {
+
+			}
+		}
+		const _code = generateCODE('')
+		const payMEMode = !code || !paymeObj?.oneTimeMode
+		const payMeCode = !code ? _code.code : code
+
+		const currencyAmount = lockMode === 'USDC_LOCKED' ? _amountUSDC.toFixed(4) : formatAmount(_amountUSDC * fxRateUSDCToCurrency(currency), currency)
+		const currencyTip = lockMode === 'USDC_LOCKED' ? totalUSDCTip.toFixed(4) : formatAmount(totalUSDCTip * fxRateUSDCToCurrency(currency), currency)
 
 		
-		const fixedAmount = ethers.parseUnits(sendAmount, 6)
-		const params = new URLSearchParams({ amount: fixedAmount.toString(), code }).toString()
-		const path = `/api/BeamioPaymentLinkFinish?${params}`
+		const fixedAmount = ethers.parseUnits(totalUSDCAmount.toFixed(4), 6)
+		
+		const currencyData = lockMode === 'USDC_LOCKED' ? 'USDC': currency
+		
+		const PayMe = {currency: currencyData, currencyAmount, tip, currencyTip, code: payMeCode}
+		
+		const showNote = note + '\r\n' + JSON.stringify(PayMe)
+		const params = payMEMode ? new URLSearchParams({ amount: totalUSDCAmount.toFixed(4), code: _code.hash, note: showNote, address }).toString() 
+			: new URLSearchParams({ amount: fixedAmount.toString(), code }).toString()
+		const path = payMEMode ? `/api/BeamioPayME?${params}` :  `/api/BeamioPaymentLinkFinish?${params}`
 		const requestEndpoint = 'https://api.settleonbase.xyz' + path
 
 		
@@ -343,7 +387,8 @@ export default function PayMeLink ({close, code, address}: Props) {
 				node: note,
 				sginTatle: 'Payment',
 				reqUrl: requestEndpoint,
-				amount: fixedAmount
+				amount: fixedAmount,
+				usdcAmount: totalUSDCAmount.toFixed(4)
 
 			}
 			MessageData.data = data
@@ -362,7 +407,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 
 
 	return (
-		<div className="mt-0 flex flex-col px-3 pt-3 pb-2 border-slate-100 bg-transparent">
+		<div className="mt-4 flex flex-col px-3 pt-3 pb-2 border-slate-100 bg-transparent">
   			<div className="mt-1 w-full bg-transparent">
 				<div className="rounded-2xl shadow-sm p-3 text-slate-800 leading-snug bg-gray-100">
 					{
@@ -388,7 +433,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 								<BeamioDetail item={item}  />
 								
 								<section className="input form">
-									<div className="mt-5 flex items-center gap-3">
+									<div className="mt-5 mb-5 flex items-center gap-3">
 									
 
 										<LockModeSegmented
@@ -404,50 +449,96 @@ export default function PayMeLink ({close, code, address}: Props) {
 											amount={sendAmount} 
 											setAmount={setSendAmount} 
 											autoEntry={true}
-											readOnly={processing} 
-											showLimit={0.02}
-											setError={setAmountError}
+											readOnly={processing||!!message}
+											showLimit={0}
+											sendError={sendError}
+											setSendError={setSendError}
 											showMax={true}
 											needBalance={true}
 											focusSignal={focusAmount}
 											currencyUSDC={lockMode === 'USDC_LOCKED'}
 										/>
 									</section>
-									<section className="mt-6">
-										<span className="block text-[11px] font-medium text-slate-600 mb-1">
-											Notes
-										</span>
-										<div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-slate-900">
-											{note}
-										</div>
-									</section>
+									
 										{/* Note */}
-										
 										{
-											message && (
-												
-													
-													<div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 space-y-1">
-														<div className="mt-2 w-full">
-															<div className="flex items-center justify-between">
-																<span>Network fee</span>
-																<span className="font-medium text-emerald-700">
-																	Paid by Beamio (0 gas)
-																</span>
-															</div>
-															
-															
-															<div className="pt-1 border-t border-dashed border-slate-200 text-[10px] text-slate-500">
-																This is a direct wallet-to-wallet send on Base. Beamio sponsors the
-																gas, so you only pay exactly {Number(sendAmount).toFixed(4)} USDC.
-															</div>
-															
-														</div>
-													</div>
-												
-											)
+											!message && <TipInput 
+													onChange={setTip} value={tip} className='mt-8' 
+													currentCurrency={currency}
+													modeChange={setTipMode}
+												/>
 										}
-										<div className="mt-3 flex gap-3 w-full">
+										
+										
+										{/* Note */}
+							
+										<textarea
+											value={note}
+											onFocus={(e) => {
+												if (note === defaultNodeText) {
+													setNote('') // 清空默认文本
+												}
+											}}
+
+											readOnly={!!message}
+											
+											placeholder="What's this for?"
+											onChange={(e) => {
+												setNote(e.target.value)
+											}}
+											rows={2}
+											className="w-full mt-6 rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+										/>
+
+										
+
+										<div className="mt-3">
+											<ShowTotal
+												fiatCurrency={fiatPrefix(currency)}
+												fiatAmount={fiatAmount}
+												usdcAmount={totalAmountUSDC}
+											 />
+											{/* {
+											message && (
+													
+														
+														<div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 space-y-1">
+															<div className="mt-2 w-full">
+																<div className="flex items-center justify-between">
+																	<span>Network fee</span>
+																	<span className="font-medium text-emerald-700">
+																		free
+																	</span>
+																</div>
+																<div className="flex items-center justify-between">
+																	<span>Total</span>
+																	<span className="font-medium text-emerald-700">
+																		{message.data.usdcAmount} USDC
+																	</span>
+																</div>
+																
+																
+															</div>
+														</div>
+													
+												)
+											} */}
+
+											{
+												message && (
+													<div className="mt-4">
+														<NetworkFeeGas Credits={true} />
+													</div>
+													
+												)
+											}
+										</div>
+
+											
+
+										<div className="mt-10 flex gap-3 w-full">
+
+										
 											{
 												message && 
 												<AppButton

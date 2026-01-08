@@ -11,6 +11,8 @@ import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import { X, Check, Plus } from "lucide-react"
 import LockModeSegmented from '../PaymentLink/LockModeSegmented'
+import NetworkFeeGas from '../components/networkFee'
+
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -254,8 +256,8 @@ export default function PayScreen ({close, beamioer}: Props) {
 	const signRequest = async () => {
 			
 		setProcessing(true)
-
-		const paymentHeader = await AuthorizationSign(message.maxAmountRequired, message.payTo)
+		const pay = BigInt(Number(message.maxAmountRequired).toFixed(0))
+		const paymentHeader = await AuthorizationSign(pay, message.payTo)
 		const newInit = {
 			method: 'GET',
 			headers: {
@@ -300,24 +302,25 @@ export default function PayScreen ({close, beamioer}: Props) {
 			const tryAdd = JSON.parse(addedNote)
 			const card = tryAdd.card
 			const _data = {
-				card: {
-					title: card.title,
-					detail: card.detail,
-					image: card.image,
-					currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
-					currencyAmount: currencyAmount
-				}
+				title: card.title,
+				detail: card.detail,
+				image: card.image,
+				currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
+				currencyAmount: currencyAmount
 			}
 			_addnote = JSON.stringify(_data)
 		}
+		const curr = formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
+		const PayMe = {currency: currentCurrency, currencyAmount: curr}
 
 		if (_addnote) {
 			sendNote += `\r\n${_addnote}`
-		} else {
-			if (lockMode === 'FIAT_LOCKED') {
-				sendNote += `\r\n${currentCurrency}`
-			}
 		}
+		
+		if (lockMode === 'FIAT_LOCKED') {
+			sendNote += `\r\n${JSON.stringify(PayMe)}`
+		}
+		
 		const params = new URLSearchParams({amount: sendAmount, toAddress: toAddress, note: sendNote }).toString()
 		const path = `/api/BeamioTransfer?${params}`
 		const requestEndpoint = aptEndpoint + path
@@ -531,8 +534,9 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 											<LockModeSegmented
 												value={lockMode}
+												readonly={!!message}
 												onChange={val => {
-												setLockMode(val)
+													setLockMode(val)
 												}}
 											/>
 										</div>
@@ -541,9 +545,10 @@ export default function PayScreen ({close, beamioer}: Props) {
 												amount={sendAmount} 
 												setAmount={setSendAmount} 
 												autoEntry={!!!item} 
-												readOnly={processing} 
+												readOnly={processing||!!message} 
 												showLimit={0}
-												setError={setAmountError}
+												sendError={sendError}
+												setSendError={setSendError}
 												showMax={true}
 												needBalance={true}
 												focusSignal={focusAmount}
@@ -590,26 +595,30 @@ export default function PayScreen ({close, beamioer}: Props) {
 														alt="Gift Envelope"
 													/>
 
-													<button
-														type="button"
-														onClick={() => setShowGiftEnvelope(false)}
-														className="
-														absolute top-0 right-0 z-30
-														translate-x-1/2 -translate-y-1/8
-														w-7 h-7 rounded-full
-														bg-white/10
-														backdrop-blur-md
-														border border-white/20
-														shadow-[0_4px_10px_rgba(0,0,0,0.12)]
-														hover:bg-white/20
-														active:scale-95
-														transition
-														flex items-center justify-center
-														"
-														aria-label="Remove gift envelope"
-													>
-														<X className="w-4 h-4 text-black/30" />
-													</button>
+													{
+														!message && <button
+															type="button"
+															onClick={() => setShowGiftEnvelope(false)}
+															className="
+															absolute top-0 right-0 z-30
+															translate-x-1/2 -translate-y-1/8
+															w-7 h-7 rounded-full
+															bg-white/10
+															backdrop-blur-md
+															border border-white/20
+															shadow-[0_4px_10px_rgba(0,0,0,0.12)]
+															hover:bg-white/20
+															active:scale-95
+															transition
+															flex items-center justify-center
+															"
+															aria-label="Remove gift envelope"
+														>
+															<X className="w-4 h-4 text-black/30" />
+														</button>
+													}
+
+													
 												</div>
 											</div>
 											)}
@@ -649,9 +658,9 @@ export default function PayScreen ({close, beamioer}: Props) {
 														</div>
 													}
 													
-													<div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 space-y-1">
-														<ConformView messageData={message}  />
-													</div>
+													
+													<NetworkFeeGas />
+													
 												</>
 											)
 										}
@@ -688,7 +697,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 												loading={processing}
 												errorText={sendError}
 											>
-												{message ? 'Conform': 'Send'}
+												{message ? 'Confirm': 'Send'}
 											</AppButton>
 										</div>
 										

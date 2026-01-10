@@ -12,7 +12,7 @@ import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import { X, Check, Plus } from "lucide-react"
 import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 import NetworkFeeGas from '../components/networkFee'
-
+import ShowTotal from '../components/ShowTotal_send'
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -123,6 +123,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 	const [uploadingIPFS, setUploadingIPFS] = useState(false)
 	const [addedNote, setAddedNote] = useState("")
 	const [lockMode, setLockMode] = useState<PaymentLinkLockMode>("FIAT_LOCKED")
+	const [showToError, setShowToError] = useState(false)
 
 	const selectItem = (item: searchResult) => {
 		setItem(item)
@@ -147,12 +148,13 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 
 	useEffect(() => {
-		if (sendError) {
+		if (sendError||showToError) {
 			setTimeout(() => {
 				setSendError('')
-			}, 2000)
+				setShowToError(false)
+			}, 3000)
 		}
-	}, [sendError])
+	}, [sendError, showToError])
 
 	useEffect(() => {
 		if (item) {
@@ -204,7 +206,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 					{/* 提示 */}
 					<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-						{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : 'This may take a few seconds to appear for the receiver.' } 
+						{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : 'It may take a few seconds to appear on-chain.' } 
 					</div>
 
 				
@@ -290,8 +292,11 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 	const onPay = async () => {
 		const amount = Number(sendAmount)
-		if ( amount <= 0 || amount > usdcbalance || !item ||!beamio ||!myAddress) {
-			return
+		if ( amount <= 0 || amount > usdcbalance) {
+			return 
+		}
+		if (!item ||!beamio ||!myAddress) {
+			return setShowToError(true)
 		}
 		const bo = beamio
 		const toAddress = item.address
@@ -398,7 +403,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 	return (
 		<div className="mt-0 flex flex-col items-center px-6 pt-4 pb-3 border-slate-100">
 			<div className="mt-6 mb-4 w-full flex justify-center gap-2">
-				<Card className="rounded-3xl border-zinc-200">
+				<Card className="w-full rounded-3xl border-zinc-200">
 					{
 						successHash ? (
 							<>
@@ -432,6 +437,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 															}
 														
 														}}
+														showError={showToError}
 														showBackIcon={false}
 														select={true}
 													/>
@@ -455,10 +461,10 @@ export default function PayScreen ({close, beamioer}: Props) {
 													"
 													onClick={() => {}}
 												>
-													{/* 右上角：X 关闭按钮 */}
+													{/* 右上角：X 关闭按钮 当确认模式时隐藏 */}
 													{
-														!message && (
-																<button
+														 (
+															!message &&	<button
 																	type="button"
 																	aria-label="Close"
 																	onClick={(e) => {
@@ -515,47 +521,63 @@ export default function PayScreen ({close, beamioer}: Props) {
 																@{item.username} · {shortAddress(item.address)}
 															</span>
 
-															<span className="text-[11px] text-slate-500 mt-0.5 truncate">
+															{/* <span className="text-[11px] text-slate-500 mt-0.5 truncate">
 																{Number(item.follow_count || '0').toLocaleString()} following ·{' '}
 																{Number(item.follower_count || '0').toLocaleString()} followers
-															</span>
+															</span> */}
 														</div>
 
 														{/* 右侧日期 */}
-														<span className="text-[10px] text-slate-400 whitespace-nowrap">
+														{/* <span className="text-[10px] text-slate-400 whitespace-nowrap">
 															{formatUserDate(item.created_at)}
-														</span>
+														</span> */}
 													</div>
 												</div>
 											)
 										}
-										<div className="mt-5 flex items-center gap-3">
+										{/**		INPUT & USDC Mode */}
+										{
+											!message && (<>
+												<div className="mt-5 flex items-center gap-3">
 									
 
-											<LockModeSegmented
-												value={lockMode}
-												readonly={!!message}
-												onChange={val => {
-													setLockMode(val)
-												}}
-											/>
-										</div>
-										<section className="input">
-											<AmountCurrency 
-												amount={sendAmount} 
-												setAmount={setSendAmount} 
-												autoEntry={!!!item} 
-												readOnly={processing||!!message} 
-												showLimit={0}
-												sendError={sendError}
-												setSendError={setSendError}
-												showMax={true}
-												needBalance={true}
-												focusSignal={focusAmount}
-												currencyChange={val => setCurrentCurrency(val)}
-												currencyUSDC={lockMode === 'USDC_LOCKED'}
-											/>
-										</section>
+													<LockModeSegmented
+														value={lockMode}
+														readonly={!!message}
+														onChange={val => {
+															setLockMode(val)
+														}}
+													/>
+												</div>
+												<section className="input">
+													<AmountCurrency 
+														amount={sendAmount} 
+														setAmount={setSendAmount} 
+														autoEntry={!!!item} 
+														readOnly={processing||!!message} 
+														showLimit={0}
+														sendError={sendError}
+														setSendError={setSendError}
+														showMax={true}
+														needBalance={true}
+														focusSignal={focusAmount}
+														currencyChange={val => setCurrentCurrency(val)}
+														currencyUSDC={lockMode === 'USDC_LOCKED'}
+													/>
+												</section>
+											</>)
+										}
+										{/**		Summer		 */}
+										{
+											message && (<>
+												<ShowTotal
+													usdcAmount={sendAmount}
+													fiatCurrency={currentCurrency}
+													fiatAmount={formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)}
+												 />
+											</>)
+										}
+										
 										{showGiftImageError && (
 											<div className="flex justify-center">
 												<p className="text-sm text-rose-600">
@@ -563,6 +585,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 												</p>
 											</div>
 										)}
+
 										{uploadingIPFS && (
 											<div className="flex justify-center">
 												<p className="text-sm text-slate-600 flex items-center gap-1">
@@ -586,6 +609,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 												`}</style>
 											</div>
 										)}
+
 										{showGiftEnvelope && (
 											<div className="flex justify-center">
 												<div className="relative w-fit">
@@ -621,7 +645,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 													
 												</div>
 											</div>
-											)}
+										)}
 
 										
 										{/* Note */}
@@ -687,7 +711,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 														setCardCreate(true)
 													}}
 												>
-													Add Card image
+													Add Photo
 												</AppButton>
 											}
 											

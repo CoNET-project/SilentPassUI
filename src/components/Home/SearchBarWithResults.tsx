@@ -26,6 +26,7 @@ type Props = {
 	showHistory: boolean
 	showBackIcon?: boolean
 	focus?: boolean
+	showError?: boolean
 }
 
 const displayName = (item: searchResult) => {
@@ -58,8 +59,8 @@ function formatUserDate(timestamp?: string | number): string {
 
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
-	({ close, select, showHistory, showBackIcon=true, focus = false }: Props) => {
-		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode} = useDaemonContext()
+	({ close, select, showHistory, showBackIcon=true, focus = false, showError = false }: Props) => {
+		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment} = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
 		const [results, setResults] = useState<searchResult[]>([])
@@ -73,34 +74,42 @@ const SearchInputWithDropdown =
 		const [searchKeysHistory, setSearchKeysHistory] = useState<searchkeywork[]>([])
 		const [readonly, setReadonly] = useState(!focus)
 		const hasQuery = query.trim().length > 0
+		const [internalError, setInternalError] = useState(showError)
 
 		
-		const requestUrl = async (request: string) => {
-			console.log(request)
-			setLoading(true)
-			let searchParams: URLSearchParams
-			try {
-				const u = new URL(request)
-
-				searchParams = u.searchParams
-				if (!u.host||!/beamio.app/i.test(u.host)) {
-					return
-				}
-			} catch {
-				searchParams = new URLSearchParams(request)
-			}
-
+		const requestUrl = async (url: URL) => {
 			
+			setLoading(true)
+			
+
+			const searchParams = url.searchParams
 	
 			let code = searchParams.get("code")||''
 			const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
 			const cashcode = searchParams.get("cashcode")||''
+			const _beamio = searchParams.get("beamio")||''
+			if (_beamio) {
+				
+				const user = await searchUsername(_beamio)
+				const results: searchResult[] = user?.results
+				if (!results.length) {
+					return
+				}
+				const filtered = results.filter(n => n.username === _beamio)
+				if (!filtered.length) {
+					return
+				}
+
+				setPayMePayment(filtered[0])
+				return navigate('/browser')
+
+			}
 			if (_secureCode) {
 				setSecureCode (_secureCode)
 				setRedeemCode(cashcode)
 				return navigate('/browser')
 			}
-	
+
 			if (code) {
 
 				if (!code.startsWith('0x')) {
@@ -109,7 +118,7 @@ const SearchInputWithDropdown =
 				}
 				try {
 					const fx = await CoreContract.getLinkMemo(code)
-					if (fx.to !== ethers.ZeroAddress && fx.amount > BigInt(0)) {
+					if (fx.to !== ethers.ZeroAddress) {
 						setPaymentLinkCode(code)
 						return navigate('/browser')
 					}
@@ -118,18 +127,25 @@ const SearchInputWithDropdown =
 					console.log(`await CoreContract.getLinkMemo(code) Error`)
 				}
 				
-				setLoading(false)
-				setResults([])
+				
 			}
+
 			
 
 		}
 
 		const search = async (q: string) => {
 			setLoading(true)
-			if (q.startsWith('http')) {
-				return requestUrl(q)
+			try {
+				const url = new URL(q.trim())
+				if (url.protocol === 'https:' || url.protocol === 'http:') {
+					return requestUrl(url)
+				}
+				return setInternalError(true)
+			} catch {
+				// 非 URL，忽略
 			}
+
 			q = q.trim().replace('@', '').toLowerCase()
 			
 			const data = await searchUsername(q)
@@ -188,7 +204,20 @@ const SearchInputWithDropdown =
 			return subitem
 		}
 
+		const pillClass = [
+		"flex items-center",
+		"bg-slate-100",
+		"rounded-full",
+		"px-2",
+		"h-11",
+		"flex-1",
+		"transition",
 
+		// ✅ 错误态：整条红色外框
+		internalError
+			? "ring-1 ring-red-500 focus-within:ring-2 focus-within:ring-red-500"
+			: "ring-1 ring-transparent focus-within:ring-slate-300",
+		].join(" ")
 
 		useEffect(() => {
 			if (!profiles?.length || !CoNET_Data||readonly) return
@@ -352,7 +381,7 @@ const SearchInputWithDropdown =
 					{/* 没输入：普通 pill 输入框 */}
 					{!showDropdown && (
 						<>
-						<div className="flex items-center bg-slate-100 rounded-full px-2 h-11 flex-1">
+						<div className={pillClass}>
 							{/* ← 返回按钮 */}
 							{
 								!readonly && showBackIcon && (
@@ -448,7 +477,9 @@ const SearchInputWithDropdown =
 							"
 						>
 							{/* 顶部：输入行 */}
-							<div className="flex items-center bg-slate-100 rounded-full px-2 h-11 flex-1">
+							<div 
+							className={pillClass}
+							>
 								{/* ← 返回按钮 */}
 								{
 									!readonly && showBackIcon && (
@@ -486,20 +517,22 @@ const SearchInputWithDropdown =
 								/>
 
 								{/* 输入框 */}
-								<input
-									ref={inputRef}
-									className="
-									flex-1
-									bg-transparent
-									text-[13px]
-									placeholder-slate-400
-									focus:outline-none
-									"
-									placeholder="Search for @BeamioTag or wallet address"
-									value={query}
-									readOnly={readonly}
-									onChange={e => setQuery(e.currentTarget.value)}
-								/>
+									<input
+										ref={inputRef}
+										className={[
+											"flex-1",
+											"bg-transparent",
+											"text-[13px]",
+											"placeholder-slate-400",
+											"focus:outline-none",
+
+											
+										].join(" ")}
+										placeholder="Search for @BeamioTag or wallet address"
+										value={query}
+										readOnly={readonly}
+										onChange={e => setQuery(e.currentTarget.value)}
+									/>
 							</div>
 
 							{/* 下方：search 行 + 结果列表 */}

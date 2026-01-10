@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Copy, MessageCircle, Printer, Share2 } from "lucide-react"
+import { Copy, Check, MessageCircle, Printer, Share2 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
 import bIcon from '@/components/assets/logo512.png'
@@ -34,6 +34,18 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
     activeTab = "payme",
     onTabChange,
   } = props
+
+	const [copied, setCopied] = useState(false)
+		useEffect(() => {
+		if (!copied) return
+		const t = window.setTimeout(() => setCopied(false), 3000)
+		return () => window.clearTimeout(t)
+	}, [copied])
+
+	const onCopyPayLink = async () => {
+		const ok = await copyText(successUrl)
+		if (ok) setCopied(true)
+	}
 
   const [qrDataUrl, setQrDataUrl] = useState<string>("")
   const [getBeamio, setGetBeamio] = useState<beamio|null>(null)
@@ -160,7 +172,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 					: "text-black/20 hover:text-black/40",
 				].join(" ")}
             >
-              Fixed amount (Invoice)
+              Fixed amount (Payment Link)
             </button>
           </div>
         </div>
@@ -236,18 +248,49 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						<div className="mt-10">
 						<div className="rounded-[14px] bg-slate-50 ring-1 ring-black/10 shadow-sm px-4 py-3 flex items-center justify-between gap-4">
 							<div className="min-w-0">
-							<div className="text-[14px] font-extrabold text-slate-700">Payment link</div>
-							<div className="mt-2 text-[12px] text-slate-700 break-all">{successUrl}</div>
+								<div className="text-[14px] font-extrabold text-slate-700">Payment link</div>
+								<div className="mt-2 text-[12px] text-slate-700 break-all">{successUrl}</div>
 							</div>
 
 							<button
-							type="button"
-							onClick={() => copyText(successUrl)}
-							className="shrink-0 w-[36px] h-[36px] rounded-[18px] bg-white ring-1 ring-black/10 shadow-sm flex items-center justify-center active:scale-[0.98] transition"
-							aria-label="Copy payment link"
-							title="Copy"
-							>
-							<Copy className="h-5 w-5 text-slate-700" />
+								type="button"
+								onClick={onCopyPayLink}
+								className={[
+									"shrink-0 w-[36px] h-[36px] rounded-[18px]",
+									"bg-white/85 backdrop-blur-md",
+									"ring-1 ring-black/10 shadow-sm",
+									"flex items-center justify-center",
+									"active:scale-[0.96] transition-transform duration-150",
+									copied ? "ring-1 ring-[rgba(0,0,255,0.25)] shadow-[0_10px_24px_rgba(0,0,255,0.12)]" : "",
+								].join(" ")}
+								aria-label="Copy payment link"
+								title={copied ? "Copied" : "Copy"}
+								>
+								<span className="relative w-5 h-5">
+									{/* Copy icon */}
+									<span
+									className={[
+										"absolute inset-0 flex items-center justify-center",
+										"transition-all duration-200 ease-out",
+										copied ? "opacity-0 scale-75" : "opacity-100 scale-100",
+									].join(" ")}
+									aria-hidden={copied}
+									>
+									<Copy className="h-5 w-5 text-slate-700" />
+									</span>
+
+									{/* Check icon */}
+									<span
+									className={[
+										"absolute inset-0 flex items-center justify-center",
+										"transition-all duration-200 ease-out",
+										copied ? "opacity-100 scale-100" : "opacity-0 scale-75",
+									].join(" ")}
+									aria-hidden={!copied}
+									>
+									<Check className="h-5 w-5 text-[rgb(0_0_255)]" />
+									</span>
+								</span>
 							</button>
 						</div>
 

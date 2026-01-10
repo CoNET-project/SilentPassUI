@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { motion, useAnimation } from 'framer-motion'
 import type { Transition } from 'framer-motion'
 
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
-import { Globe } from 'lucide-react'
+import { Globe, Info } from 'lucide-react'
 
 function LockModeSwitch({
   value,
@@ -16,6 +16,9 @@ function LockModeSwitch({
   readonly?: boolean
 }) {
   const isUSDC = value === 'USDC_LOCKED'
+
+  // ✅ info tip (only for local currency mode)
+  const [showInfo, setShowInfo] = useState(false)
 
   // knob 动画控制器
   const knob = useAnimation()
@@ -65,7 +68,7 @@ function LockModeSwitch({
 
       // 3) 最终恢复正常圆形
       await knob.start({
-		 opacity: 1,
+        opacity: 1,
         scaleX: 1,
         scaleY: 1,
         transition: { duration: 0.18, ease: 'easeOut' },
@@ -79,106 +82,137 @@ function LockModeSwitch({
     }
   }, [targetX, knob])
 
+  // ✅ mode changed -> hide info automatically (optional but feels right)
+  useEffect(() => {
+    if (isUSDC) setShowInfo(false)
+  }, [isUSDC])
+
   return (
-    <div className="flex items-center justify-between gap-3 w-full">
-      {/* 左侧内容（单层 DOM，opacity 切换） */}
-      <div className="flex items-center gap-2 min-w-0">
-			{/* Icon */}
-			<div className="relative w-6 h-6 flex-shrink-0">
-			<Globe
-				className={`
-					absolute inset-0 w-6 h-6
-					text-slate-500
-					transition-opacity duration-150
-					${isUSDC ? 'opacity-0 pointer-events-none' : 'opacity-100'}
-				`}
-				aria-hidden={isUSDC}
-			/>
+    <div className="w-full">
+      <div className="flex items-center justify-between gap-3 w-full">
+        {/* 左侧内容（单层 DOM，opacity 切换） */}
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Icon */}
+          <div className="relative w-6 h-6 flex-shrink-0">
+            <Globe
+              className={`
+                absolute inset-0 w-6 h-6
+                text-slate-500
+                transition-opacity duration-150
+                ${isUSDC ? 'opacity-0 pointer-events-none' : 'opacity-100'}
+              `}
+              aria-hidden={isUSDC}
+            />
 
-			<div
+            <div
+              className={`
+                absolute inset-0
+                transition-opacity duration-150
+                ${isUSDC ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+              `}
+              aria-hidden={!isUSDC}
+            >
+              <img
+                src={usdcIcon}
+                alt="USDC"
+                className="w-6 h-6 rounded-full object-contain"
+              />
+              <img
+                src={baseIcon}
+                alt="Base"
+                className="
+                  absolute -bottom-0.5 -right-0.5
+                  w-3 h-3
+                  rounded-full
+                  border border-white dark:border-slate-900
+                  bg-white
+                "
+              />
+            </div>
+          </div>
+
+          {/* Text（单层：内容直接切换，不叠） */}
+          <div className="min-w-0 transition-opacity duration-150">
+            <div className="text-sm font-semibold text-slate-900 leading-snug">
+              {isUSDC ? 'USDC' : 'Local currency'}
+            </div>
+            <div className="text-xs text-slate-500 leading-snug">
+              {!isUSDC ? 'USDC at checkout' : ''}
+            </div>
+          </div>
+
+          {/* ✅ Info button (only when !isUSDC) */}
+          {!isUSDC && (
+			<button
+				type="button"
+				onClick={() => setShowInfo(v => !v)}
 				className={`
-					absolute inset-0
-					transition-opacity duration-150
-					${isUSDC ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+				ml-1 h-7 w-7 rounded-full flex items-center justify-center transition
+				${showInfo
+					? 'text-amber-700 bg-amber-500/15'
+					: 'text-amber-600 hover:bg-amber-500/10 active:bg-amber-500/20'}
 				`}
-				aria-hidden={!isUSDC}
+				aria-label="Rate info"
+				title="Rate info"
 			>
-				<img
-					src={usdcIcon}
-					alt="USDC"
-					className="w-6 h-6 rounded-full object-contain"
-				/>
-				<img
-				src={baseIcon}
-				alt="Base"
-				className="
-					absolute -bottom-0.5 -right-0.5
-					w-3 h-3
-					rounded-full
-					border border-white dark:border-slate-900
-					bg-white
-				"
-				/>
-			</div>
+				<Info className="h-4 w-4" />
+			</button>
+			)}
         </div>
 
-        {/* Text（单层：内容直接切换，不叠） */}
-        <div className="min-w-0 transition-opacity duration-150">
-          <div className="text-sm font-semibold text-slate-900 leading-snug">
-            {isUSDC ? 'USDC' : 'Local currency'}
-          </div>
-          <div className="text-xs text-slate-500 leading-snug">
-            {!isUSDC ? 'USDC at checkout' : 'Fixed'}
-          </div>
-        </div>
+        {/* 右侧 iOS Switch + 水滴滑块 */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={isUSDC}
+          onClick={() => {
+            if (readonly) return
+            onChange(isUSDC ? 'FIAT_LOCKED' : 'USDC_LOCKED')
+          }}
+          className={`
+            relative inline-flex
+            w-[44px] h-[26px]
+            flex-shrink-0
+            rounded-full
+            transition-colors duration-200
+            focus:outline-none
+            ${readonly ? '' : 'focus:ring-2 focus:ring-blue-300'}
+            ${isUSDC ? 'bg-blue-500' : 'bg-slate-300'}
+            ${readonly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+          `}
+        >
+          {/* 轨道高光（可选，让半透明更像 iOS） */}
+          <span
+            aria-hidden
+            className="
+              absolute inset-0 rounded-full
+              shadow-inner
+              opacity-40
+            "
+          />
+
+          {/* 水滴滑块 */}
+          <motion.span
+            className="
+              absolute top-[2px] left-[2px]
+              w-[22px] h-[22px]
+              rounded-full
+              bg-white
+              shadow
+              will-change-transform
+            "
+            animate={knob}
+          />
+        </button>
       </div>
 
-      {/* 右侧 iOS Switch + 水滴滑块 */}
-      <button
-        type="button"
-        role="switch"
-        aria-checked={isUSDC}
-        onClick={() => {
-			if (readonly) return
-			onChange(isUSDC ? 'FIAT_LOCKED' : 'USDC_LOCKED')
-		}}
-		
-        className={`
-			relative inline-flex
-			w-[44px] h-[26px]
-			flex-shrink-0
-			rounded-full
-			transition-colors duration-200
-			focus:outline-none
-			focus:ring-2 focus:ring-blue-300
-			${readonly ? '' : 'focus:ring-2 focus:ring-blue-300'}
-			${isUSDC ? 'bg-blue-500' : 'bg-slate-300'}
-			${readonly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-        `}
-      >
-        {/* 轨道高光（可选，让半透明更像 iOS） */}
-        <span
-          aria-hidden
-          className="
-            absolute inset-0 rounded-full
-            shadow-inner
-            opacity-40
-          "
-        />
-
-        {/* 水滴滑块 */}
-        <motion.span
-          className="
-            absolute top-[2px] left-[2px]
-            w-[22px] h-[22px]
-            rounded-full
-            bg-white
-            shadow
-            will-change-transform
-          "
-          animate={knob}
-        />
-      </button>
+      {/* ✅ Yellow info text under the whole control */}
+      {!isUSDC && showInfo && (
+        <div className="mt-2 text-[12px] leading-snug text-amber-700">
+          <div>Estimates update until you confirm. Final amount is in USDC.</div>
+          <div>Rate source: Coinbase price feed</div>
+        </div>
+      )}
     </div>
   )
 }

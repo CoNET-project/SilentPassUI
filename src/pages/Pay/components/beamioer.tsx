@@ -82,16 +82,16 @@ const BeamioDetail = ({item}: Prof) => {
 						@{item.username} · {shortAddress(item.address)}
 					</span>
 
-					<span className="text-[11px] text-slate-500 mt-0.5 truncate">
+					{/* <span className="text-[11px] text-slate-500 mt-0.5 truncate">
 						{Number(item.follow_count || '0').toLocaleString()} following ·{' '}
 						{Number(item.follower_count || '0').toLocaleString()} followers
-					</span>
+					</span> */}
 				</div>
 
 				{/* 右侧日期 */}
-				<span className="text-[10px] text-slate-400 whitespace-nowrap">
+				{/* <span className="text-[10px] text-slate-400 whitespace-nowrap">
 					{formatUserDate(item.created_at)}
-				</span>
+				</span> */}
 			</div>
 		</div>
 	)

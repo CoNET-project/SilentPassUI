@@ -20,8 +20,8 @@ export default function NetworkFeeGas({
   sponsorName = "Beamio",
   Credits = false,
   networkName = "Base",
-  settlementText = "USDC transfer",
-  executionText = "Sponsored (0 gas)",
+  settlementText = "USDC",
+  executionText = "Sponsored Network Fee",
   className = ""
 }: NetworkFeeProps) {
   const [open, setOpen] = useState(defaultOpen)
@@ -49,68 +49,63 @@ export default function NetworkFeeGas({
         className
       ].join(" ")}
     >
-      {/* Header row */}
       <button 
-	  	className="w-full flex items-center gap-3 px-4 py-3"
-		
+		className="w-full flex items-center gap-3 px-4 py-3"
 		onClick={() => setOpen(v => !v)}
-	  >
-        <div className="text-[17px] font-semibold text-slate-900">
-          Network fee
-        </div>
-
-        <div 
-			className="ml-auto flex items-center justify-end gap-3"
-			
 		>
-          <div className="text-[18px] font-semibold text-slate-900 tabular-nums">
-            {feeText}
-          </div>
+		{/* 左侧：永不消失 */}
+		<div className="text-[14px] font-semibold text-slate-900 flex-shrink-0">
+			Network fee
+		</div>
 
-			
+		{/* 右侧：可收缩 */}
+		<div className="ml-auto flex items-center justify-end gap-3 min-w-0">
+			<div className="text-[12px] font-semibold text-slate-900 tabular-nums truncate max-w-[120px] text-right">
+			{/* fee */}
+			</div>
+
 			<div
 				className={[
-				"inline-flex items-center gap-2",
-				"h-9 px-3 rounded-full",
-				"bg-blue-50",
-				"ring-1 ring-blue-200/70",
-				"text-blue-600",
-				"font-semibold text-[16px]",
-				"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+					"inline-flex items-center gap-2",
+					"h-9 px-3 rounded-full",
+					"bg-blue-50",
+					"ring-1 ring-blue-200/70",
+					"text-blue-600",
+					"font-semibold text-[14px]",
+					"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
+					"flex-shrink-0",
+					"min-w-0"
 				].join(" ")}
-			>
-				<Sparkles className="w-5 h-5" />
-
-				{/* 文本仅在 ≥ sm 显示 */}
-				<span className="hidden sm:inline">
+				>
+				<Sparkles className="w-5 h-5 shrink-0" />
+				<span className="inline max-w-[110px] truncate">
 					Sponsored
 				</span>
 			</div>
-					
-        </div>
-      </button>
+		</div>
+		</button>
 
       {/* Divider */}
       <div className="h-px bg-slate-200/70" />
 
       {/* Body (collapsible) */}
       <div
-        className={[
-          "px-4",
-          "transition-[max-height,opacity,padding] duration-300 ease-out",
-          open ? "max-h-[260px] opacity-100 py-4" : "max-h-0 opacity-0 py-0",
-          "overflow-hidden"
-        ].join(" ")}
+		className={[
+			"px-4",
+			"transition-[max-height,opacity,padding] duration-300 ease-out",
+			open ? "max-h-[260px] opacity-100 py-4" : "max-h-0 opacity-0 py-0",
+			"overflow-hidden"
+		].join(" ")}
       >
-        <div
-          className={[
-            "rounded-2xl",
-            "bg-slate-50",
-            "ring-1 ring-slate-200/70",
-            "px-5 py-4"
-          ].join(" ")}
-        >
-          <div className="grid grid-cols-2 gap-x-10 gap-y-5">
+		<div
+			className={[
+				"rounded-2xl",
+				"bg-slate-50",
+				"ring-1 ring-slate-200/70",
+				"px-4 py-3"
+			].join(" ")}
+			>
+			<div className="grid grid-cols-2 gap-x-0 gap-y-2">
 			{cells.map((cell, idx) => {
 				const isLast = idx === cells.length - 1
 				const isOdd = cells.length % 2 === 1
@@ -126,8 +121,13 @@ export default function NetworkFeeGas({
 				)
 			})}
 			</div>
-        </div>
+		</div>
+		{/* iOS-style footnote */}
+		<div className="mt-1 text-[11px] leading-snug text-slate-400">
+			You authorize this transfer with your signature.<br/>Beamio does not custody funds.
+		</div>
       </div>
+	  
     </div>
   )
 }
@@ -147,10 +147,11 @@ function InfoCell({ label, value, full }: InfoCellProps) {
         full ? "col-span-2" : ""
       ].join(" ")}
     >
-      <div className="text-[12px] text-slate-400 mb-1">
+      <div className="text-[12px] text-slate-400 mb-0.5 leading-tight">
         {label}
       </div>
-      <div className="text-[14px] font-medium text-slate-700 truncate">
+
+      <div className="text-[10px] font-medium text-slate-700 truncate leading-tight">
         {value}
       </div>
     </div>

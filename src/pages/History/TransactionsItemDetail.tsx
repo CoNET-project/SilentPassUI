@@ -11,6 +11,7 @@ import {
 	MessageCircle,
 	ShieldCheck,
 	Receipt,
+	Sparkles,
 	QrCode, Link as LinkIcon
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -22,7 +23,7 @@ import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-
 import FeeInline from './payLinkFeeInline'
 import { QRCodeCanvas } from 'qrcode.react'
 import bIcon from '@/components/assets/32x32.svg'
-import {fiatPrefix, formatTimeDetail} from '@/services/currency'
+import {fiatPrefix, formatTimeDetail, statusStyleMap} from '@/services/currency'
 import PaymentReceipt from '@/pages/Pay/components/paymentReceipt'
 
 type Mode = "pay" | "request" | 'cashcode'
@@ -92,78 +93,6 @@ const buildCreatedAtLabel = (created_at?: number | string) => {
 	})
 }
 
-const statusStyleMap: Record<
-	HistoryFilter,
-	{
-		container: string
-		iconBg: string
-		icon: string
-		text: string
-	}
-	> = {
-	sent: {
-		container: "bg-rose-100",
-		iconBg: "bg-rose-200",
-		icon: "text-rose-700",
-		text: "text-rose-600",
-	},
-	active: {
-		container: "bg-emerald-100",
-		iconBg: "bg-emerald-200",
-		icon: "text-emerald-700",
-		text: "text-emerald-600",
-	},
-	received: {
-		container: "bg-emerald-100",
-		iconBg: "bg-emerald-200",
-		icon: "text-emerald-700",
-		text: "text-emerald-600",
-	},
-	pending: {
-		container: "bg-amber-100",
-		iconBg: "bg-amber-200",
-		icon: "text-amber-700",
-		text: "text-amber-200",
-	},
-	payme: {
-		container: "bg-fuchsia-100",
-		iconBg: "bg-fuchsia-200",
-		icon: "text-fuchsia-700",
-		text: "text-fuchsia-800",
-	},
-	paid: {
-		container: "bg-fuchsia-100",
-		iconBg: "bg-fuchsia-200",
-		icon: "text-fuchsia-700",
-		text: "text-fuchsia-800",
-	},
-	completed: {
-		container: "bg-sky-100",
-		iconBg: "bg-sky-200",
-		icon: "text-sky-700",
-		text: "text-sky-800",
-	},
-	deposited: {
-		container: "bg-indigo-100",
-		iconBg: "bg-indigo-200",
-		icon: "text-indigo-700",
-		text: "text-indigo-800",
-	},
-
-	// 兜底（all / reject / 其他）
-	all: {
-		container: "bg-slate-100",
-		iconBg: "bg-slate-200",
-		icon: "text-slate-500",
-		text: "text-slate-500",
-	},
-	reject: {
-		container: "bg-slate-100",
-		iconBg: "bg-slate-200",
-		icon: "text-slate-500",
-		text: "text-slate-500",
-	},
-}
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 
 const unknowAcc = (address: string):searchResult => {
@@ -206,7 +135,7 @@ export function TransactionsItemDetail({
 	const isSponsored = true
 	const timeText = useMemo(() => formatTimeDetail(tx.date), [tx.date])
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
-	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, currencyData, profiles} = useDaemonContext()
+	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, currencyData, profiles, setNavigateLeftButtonArray} = useDaemonContext()
 	const [feeOpen, setFeeopen] = useState(false)
 	const amountText = useMemo(() => formatUSDC(tx.amount), [tx.amount])
 	const [payUrl, setPayUrl] = useState('')
@@ -284,24 +213,35 @@ export function TransactionsItemDetail({
 		if (!u2u || !u2c) return 0
 		return cur / u2c / u2u
 	}
-
+	const txHashShort = useMemo(() => shortHash(tx.hash), [tx.hash])
 
 	const approxFiatText = useMemo(() => {
-		if (localMode !== 'pay') {
-			const detail = tx?.requestDetail
+		
+		const detail = tx?.requestDetail
 
-			if (tx?.requestCurrency && tx.requestCurrency !== 'USDC') {
+		if (tx?.requestCurrency && tx.requestCurrency !== 'USDC') {
 
-				return `≈ ${ tx?.type === 'pending' ? currencyToUsdcAmount(tx.amount, tx.requestCurrency).toFixed(4) : detail?.totalPayUSDC?.toFixed(4)} USDC`
-			}
-			return ''
+			return `≈ ${ detail?.totalPayUSDC?.toFixed(4)} USDC`
 		}
-		if (!tx?.requestCurrency || tx.requestCurrency === 'USDC') {
-			return ''
-		}
-		return `≈ ${fiatPrefix(currency)} ${formatAmount(usdcToCurrencyAmount(tx.amount, currency), currency)}`
+		return ''
+	
+		
 
 	}, [tx.amount, currency])
+
+	const approxTip = useMemo(() => {
+		
+		const detail = tx?.requestDetail
+		if (!detail || !tx?.requestCurrency || !detail?.currencyTip) return ''
+
+		return `Tip: ${fiatPrefix(detail.requestCurrency)} ${formatAmount( detail.currencyTip, detail.requestCurrency)} ≈ ${ detail.USDCTip.toFixed(4)} USDC`
+		
+	
+		
+
+	}, [tx.amount, currency])
+
+
 
 	const statusText: HistoryFilter = useMemo(() => {
 		if (localMode === 'pay') {
@@ -431,547 +371,425 @@ export function TransactionsItemDetail({
 
 	return (
 		<div className="min-h-screen">
-			{openReceipt && fromBeamio && (
-				<div className="mt-14">
-				<PaymentReceipt
-					data={tx}
-					open={true}
-					onClose={() => setOpenReceipt(false)}
-					fromBeamio={fromBeamio}
-				/>
-				</div>
-			)}
-			<div className="mx-auto max-w-[520px] px-4 py-4">
-				<div className="rounded-[28px] bg-white shadow-sm ring-1 ring-black/5 overflow-hidden">
-				{
-					!openReceipt && (
-						<>
-						{/**	content 底部 + 2rem = 8 × 0.25rem */}
-							<div className="pb-8">		
-								<div className="px-5 pt-5">
-									{/* 顶部：状态 + Title + Gas sponsored */}
-										<div className="relative flex items-center justify-between gap-3">
-											{/* 左侧：状态 */}
-												<div
-												className={[
-														"inline-flex items-center gap-2 rounded-full px-3 py-1",
-														"bg-transparent border",
-														style.container.replace("bg-", "border-"),
-												].join(" ")}
-												>
-												<span
-													className={[
-														"inline-flex h-5 w-5 items-center justify-center rounded-full",
-														style.iconBg,
-													].join(" ")}
-												>
-													<Check
-														className={["h-3.5 w-3.5", style.icon].join(" ")}
-														strokeWidth={2.5}
-													/>
-												</span>
+		{openReceipt && fromBeamio && (
+			<div className=""> {/* mt-14 -> mt-10 */}
+			<PaymentReceipt
+				data={tx}
+				open={true}
+				onClose={() => setOpenReceipt(false)}
+				fromBeamio={fromBeamio}
+			/>
+			</div>
+		)}
 
-												<span
-													className={[
-													"text-[13px] font-semibold capitalize",
-													style.text,
-													].join(" ")}
-												>
-													{statusText}
-												</span>
-												{localMode === "pay" && tx.mode !== "pay" && (
-													<span
-														className={[
-															"inline-flex items-center justify-center",
-															"w-6 h-6",
-															tx.mode === "cashcode"
-															? "text-sky-600 dark:text-sky-300"
-															: "text-fuchsia-600 dark:text-fuchsia-300"
-														].join(" ")}
-													>
-													{tx.mode === "cashcode" ? (
-														<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
-													) : (
-														<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
-													)}
-													</span>
-												)}
-												
-											</div>
+		<div className="w-full rounded-3xl border-zinc-200"> {/* py-4 -> py-3 */}
+			<div
+				className="
+					rounded-[14px]
+					bg-white
+					shadow-sm
+					ring-1 ring-black/5
+					overflow-hidden
+					text-[14px]  /* ✅ 全局字体小一号 */
+				"
+			>
+			{!openReceipt && (
+				<>
+				{/** content 底部 + 2rem = 8 × 0.25rem */}
+				<div className="pb-7"> {/* pb-8 -> pb-7 */}
+					<div className="px-4 pt-4"> {/* px-5 pt-5 -> px-4 pt-4 */}
+					{/* 顶部：状态 + Title + Gas sponsored */}
+					<div className="relative flex items-center justify-between gap-3">
+						{/* 左侧：状态 */}
+						<div
+						className={[
+							"inline-flex items-center gap-2 rounded-full px-3 py-1",
+							"bg-transparent border",
+							style.container.replace("bg-", "border-"),
+						].join(" ")}
+						>
+						<span
+							className={[
+							"inline-flex h-5 w-5 items-center justify-center rounded-full",
+							style.iconBg,
+							].join(" ")}
+						>
+							<Check className={["h-3.5 w-3.5", style.icon].join(" ")} strokeWidth={2.5} />
+						</span>
 
-											{/* 🔹 中央标题（绝对居中） */}
-											{/* <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
-												<span className="text-[24px] font-bold text-slate-900 dark:text-slate-100">
-													{tx.mode.charAt(0).toUpperCase() + tx.mode.slice(1)}
-												</span>
-											</div> */}
+						<span className={["text-[12px] font-semibold capitalize", style.text].join(" ")}>
+							{statusText}
+						</span>
 
-											{/* 右侧：Gas sponsored */}
-											{isSponsored ? (
-												<div className="inline-flex items-center gap-2 text-[13px] text-blue-600">
-													<ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
-													<span>Gas sponsored</span>
-												</div>
-												) : (
-												/* 占位，防止布局抖动（可选） */
-												<div className="w-[110px]" />
-											)}
-										</div>
+						{localMode === "pay" && tx.mode !== "pay" && (
+							<span
+							className={[
+								"inline-flex items-center justify-center",
+								"w-6 h-6",
+								tx.mode === "cashcode"
+								? "text-sky-600 dark:text-sky-300"
+								: "text-fuchsia-600 dark:text-fuchsia-300",
+							].join(" ")}
+							>
+							{tx.mode === "cashcode" ? (
+								<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
+							) : (
+								<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
+							)}
+							</span>
+						)}
+						</div>
 
-									<div className="mt-5 flex items-start justify-between gap-3">
-											{/* 金额（左） */}
-											<div className="min-w-0">
-												<AmountText />
-												<div className="mt-2 text-[16px] text-slate-500">
-												{approxFiatText}
-												</div>
-											</div>
+						{/* 右侧：Gas sponsored */}
+						{/* {isSponsored ? (
+						<div className="inline-flex items-center gap-2 text-[12px] text-blue-600">
+							<ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
+							<span>Gas sponsored</span>
+						</div>
+						) : (
+						<div className="w-[110px]" />
+						)} */}
+					</div>
 
-											{/* iOS 透明水滴 · Receipt（克制 / Apple Pay 风） */}
-											{
-												tx.mode === 'request' && 
-													<button
-														type="button"
-														onClick={() => setOpenReceipt(true)}
-														aria-label="Open receipt"
-														title="Receipt"
-														className="
-															shrink-0
-															relative
-															h-11 w-11
-															rounded-full
+					<div className="mt-4 flex items-start justify-between gap-3"> {/* mt-5 -> mt-4 */}
+						{/* 金额（左） */}
+						<div className="min-w-0">
+						<AmountText />
+						<div className="mt-1.5 text-[14px] text-slate-500"> {/* mt-2 text-16 -> mt-1.5 text-14 */}
+							{approxFiatText}
+						</div>
+						<div className="mt-1.5 text-[14px] text-slate-500"> {/* mt-2 text-16 -> mt-1.5 text-14 */}
+							{approxTip}
+						</div>
+						</div>
 
-															/* glass */
-															bg-white/30
-															backdrop-blur-xl
+						{/* iOS 透明水滴 · Receipt */}
+						{tx.mode === "request" && (
+						<button
+							type="button"
+							onClick={() => {
+								setNavigateLeftButtonArray(prof => [...prof, {
+									title: 'Receipt',
+									action:([
+										() => setOpenReceipt(false)
+									])
+								}])
+								setOpenReceipt(true)
+							}}
+							aria-label="Open receipt"
+							title="Receipt"
+							className="
+								shrink-0 relative
+								h-10 w-10   /* h-11 w-11 -> h-10 w-10 */
+								rounded-full
+								bg-white/30
+								backdrop-blur-xl
+								ring-2 ring-white/100  /* ring-3 -> ring-2 */
+								transition
+								active:scale-[0.96]
+								hover:bg-white/40
+								flex items-center justify-center
+								text-[rgb(0_122_255)]
+							"
+						>
+							<span
+							aria-hidden
+							className="
+								pointer-events-none
+								absolute inset-[3px]
+								rounded-full
+								bg-gradient-to-b
+								from-white/80
+								to-white/10
+							"
+							/>
+							<Receipt className="relative h-5 w-5" />
+						</button>
+						)}
+					</div>
 
-															/* white border 60% */
-															ring-3 ring-white/100
-
-															/* interaction */
-															transition
-															active:scale-[0.96]
-															hover:bg-white/40
-
-															flex items-center justify-center
-															text-[rgb(0_122_255)]
-														"
-														>
-														{/* inner gloss */}
-														<span
-															aria-hidden
-															className="
-															pointer-events-none
-															absolute inset-[3px]
-															rounded-full
-															bg-gradient-to-b
-															from-white/80
-															to-white/10
-															"
-														/>
-
-														<Receipt className="relative h-5 w-5" />
-													</button>
-											}
-											
-											</div>
-									{/* 收款人/对方信息 */}
-									{
-										tx.type !== 'pending' && (
-											<div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-												<div className="flex items-center justify-between gap-3">
-													<div className="flex items-center gap-3 min-w-0">
-														<div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold">
-															{fromBeamio?.username !== 'Unknow' ? (
-															
-															<img
-																src={userImg}
-																className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-200"
-															/>
-														) : (
-															<div
-															className="
-																w-10 h-10
-																rounded-full
-																flex items-center justify-center
-																flex-shrink-0
-																bg-slate-200
-																text-slate-400
-																font-semibold
-																text-base
-															"
-															aria-label="Default avatar"
-															>
-																?
-															</div>
-														)}
-														</div>
-
-														<div className="min-w-0">
-															<div className="text-[16px] font-semibold text-slate-900 truncate">
-																{
-																	tx.type1 ==='sent' ? `To ${displayName(fromBeamio)}` : `From ${displayName(fromBeamio)}`
-																}
-																
-															</div>
-															<div className="text-[13px] text-slate-500 truncate">
-																{fmtAddr(tx.address)}
-															</div>
-															{/* <div className="text-[13px] text-slate-500 truncate">
-																Since {buildCreatedAtLabel(fromBeamio?.created_at)}
-															</div> */}
-														</div>
-
-													</div>
-
-													<button
-														type="button"
-														onClick={() => onProfile?.(tx.address)}
-														className="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-700"
-													>
-													
-														<ChevronRight className="h-4 w-4" />
-													</button>
-												</div>
-											</div>
-										)
-									}
-									
-
-									{/* Note */}
-									{!!tx.note && (
-										<div className="mt-4 text-[15px] text-slate-600">
-											<span className="text-slate-400">Note:</span>{" "}
-											<span className="text-slate-700">{tx?.note?.split('\r\n')[0]}</span>
-										</div>
-									)}
-
-									
-									{/* Card image preview */}
-									
-									<div className="mt-4 rounded-2xl overflow-hidden flex justify-center">
-										{cardSrc && (
-											<button
-											type="button"
-											onClick={() => {
-												setShowGiftCard(cardSrc)
-											}} 
-											className="
-												group
-												flex items-center justify-center
-												p-2
-												rounded-xl
-												hover:bg-slate-100
-												active:scale-95
-												transition
-											"
-											aria-label="Open gift"
-											>
-											<img
-												src={giftEnvelope}
-												className="
-												w-14
-												block
-												transition
-												group-hover:opacity-90
-												group-active:opacity-80
-												"
-												alt="Gift Envelope"
-											/>
-											</button>
-										)}
-									</div>
-
-									{/* Network fee / Time */}
-									<div className="mt-4 rounded-2xl border border-slate-100 overflow-hidden">
-										
-										<div className="flex items-center justify-between px-4 py-3 bg-white">
-											<span className="text-[15px] text-slate-500">Time</span>
-											<span className="text-[15px] font-semibold text-slate-900">
-											{timeText}
-											</span>
-										</div>
-
-										<div className="h-px bg-slate-100" />
-
-										<div className="flex items-start justify-between px-4 py-3 bg-white">
-										{/* 左侧 */}
-										<span className="text-[15px] text-slate-500">
-											Network fee
-										</span>
-
-										{/* 右侧：纵向 + 右对齐 */}
-										<div className="flex flex-col items-end">
-											<span className="text-[15px] font-semibold text-slate-900 tabular-nums">
-											{isSponsored ? "$0.00" : formatUSD(tx.fee)}
-											</span>
-
-											{isSponsored && (
-											<span className="text-[13px] text-[rgb(0_122_255)] leading-tight">
-												Sponsored By @{fromBeamio?.username}
-											</span>
-											)}
-										</div>
-										</div>
-
-										<div className="h-px bg-slate-100" />
-
-										
-										{
-											(tx.type === 'received' || tx.type === 'completed' || tx.type === 'pending') && tx.requestCurrency && 
-												<div
-												className={[
-													"flex items-center px-4 py-3 bg-white",
-													feeOpen ? "justify-center" : "justify-between"
-												].join(" ")}
-												>
-												{
-													!feeOpen && (
-													<span className="text-[15px] text-slate-500">
-														Beamio Fee
-													</span>
-													)
-												}
-
-												<div
-													className={[
-													"flex items-center",
-													feeOpen ? "w-full justify-center" : "gap-3"
-													].join(" ")}
-												>
-													<div className={feeOpen ? "w-full" : ""}>
-													<FeeInline
-														payUsdc={ tx.type === 'pending' ? currencyToUsdcAmount(tx.amount, tx.requestCurrency) : tx.preAmount}
-														currentCurrency={tx.requestCurrency}
-														detailOpen={val => setFeeopen(val)}
-														txDetail={txDetail}
-													/>
-													</div>
-												</div>
-												</div>
-										}
-									</div>
-
-									{/* On Base · Tx */}
-									{
-										localMode !== 'pay'	&& tx.type === 'pending' ? (
-											<>
-											<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 ">
-												<div className="flex items-center justify-between gap-3">
-													<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
-														
-
-														<span className="mx-1 text-slate-400">·</span>
-
-														<span className="text-slate-500">Url: </span>
-
-														<span className="ml-1 font-semibold text-slate-700">
-															{payUrl}
-														</span>
-													</div>
-
-													<div className="flex items-center gap-2 shrink-0">
-														<button
-															type="button"
-															onClick={() => copyTxHash(payUrl)}
-															className="
-																h-7	 w-7
-																rounded-full
-																hover:bg-black/5
-																active:scale-[0.98]
-																transition
-																flex items-center justify-center
-															"
-															aria-label="Copy transaction hash"
-															title="Copy"
-															>
-															{copied ? (
-															<Check className="h-4.5 w-4.5 text-emerald-600" />
-															) : (
-															<Copy className="h-4.5 w-4.5 text-slate-500" />
-															)}
-														</button>
-
-													</div>
-												</div>
-											</div>
-											{/* QR area */}
-												<div className="mt-4 flex flex-col items-center gap-2 mb-10">
-													
-													<div className="border border-black/20 rounded-xl p-3 bg-white text-center qrCard">
-													
-														<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
-															<span
-																className="uppercase font-medium tracking-wider text-[11px]"
-																style={{ color: '#c0c0c0ff' }}
-															>
-															</span>
-														</div>
-														<QRCodeCanvas
-															value={payUrl}
-															size={160}
-															level="H"
-															includeMargin
-															bgColor="transparent"
-															fgColor="#000000"
-															imageSettings={{
-																src: bIcon,
-																height: 40,
-																width: 40,
-																excavate: true,
-															}}
-															className="rounded-lg inline-block"
-														/>
-
-														<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
-															<span
-																className="uppercase font-medium tracking-wider text-[11px]"
-																style={{ color: '#c0c0c0ff' }}
-															>
-																Amount
-															</span>
-
-															<span className="font-mono font-semibold text-[13px] text-black/60">
-																{/* {lockMode === 'FIAT_LOCKED' ? payAmount : `${creatorEstUsdcFromFiat} USDC` } */}
-															</span>
-														</div>
-													</div>
-												</div>
-											</>
-										) : (
-											<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-												<div className="flex items-center justify-between gap-3">
-													<div className="min-w-0 text-[15px] text-slate-600 truncate inline-flex items-center">
-														
-
-														<span className="inline-flex items-center mx-1">
-															<img
-															src={baseIcon}
-															alt="Base"
-															className="w-4 h-4 relative top-[0.5px]"
-															/>
-														</span>
-
-														<span 
-															className="font-semibold text-slate-700"
-															style={{ color: "rgb(0 0 255)" }}
-														>
-															Base
-														</span>
-
-														<span className="mx-1 text-slate-400">·</span>
-
-														<span className="text-slate-500">Tx</span>
-
-														<span className="ml-1 font-semibold text-slate-700">
-															{shortHash(tx.hash)}
-														</span>
-													</div>
-
-													<div className="flex items-center gap-2 shrink-0">
-														<button
-															type="button"
-															onClick={() => copyTxHash(tx.hash)}
-															className="
-																h-7	 w-7
-																rounded-full
-																hover:bg-black/5
-																active:scale-[0.98]
-																transition
-																flex items-center justify-center
-															"
-															aria-label="Copy transaction hash"
-															title="Copy"
-															>
-															{copied ? (
-															<Check className="h-4.5 w-4.5 text-emerald-600" />
-															) : (
-															<Copy className="h-4.5 w-4.5 text-slate-500" />
-															)}
-														</button>
-
-														<button
-															type="button"
-															onClick={() => {
-																window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
-															}}
-															className="h-7 w-7 rounded-full hover:bg-black/5 active:scale-[0.98] transition flex items-center justify-center"
-															aria-label="Open in explorer"
-															title="Open"
-														>
-															<ExternalLink className="h-4.5 w-4.5 text-slate-500" />
-														</button>
-													</div>
-												</div>
-											</div>
-										)
-									}
-									
-									
+					{/* 收款人/对方信息 */}
+					{tx.type !== "pending" && (
+						<div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-3.5"> {/* mt-5 p-4 -> mt-4 p-3.5 */}
+						<div className="flex items-center justify-between gap-3">
+							<div className="flex items-center gap-3 min-w-0">
+							<div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold">
+								{fromBeamio?.username !== "Unknow" ? (
+								<img
+									src={userImg}
+									className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-200"
+								/>
+								) : (
+								<div
+									className="
+									w-10 h-10
+									rounded-full
+									flex items-center justify-center
+									flex-shrink-0
+									bg-slate-200
+									text-slate-400
+									font-semibold
+									text-[14px]   /* text-base -> 14px */
+									"
+									aria-label="Default avatar"
+								>
+									?
 								</div>
+								)}
+							</div>
 
-								{/* 底部按钮 */}
-								{
-									tx.type !== 'pending' && (
-										<div className="px-5 pb-5 pt-5">
-											<div className="flex items-center gap-3">
+							<div className="min-w-0">
+								<div className="text-[15px] font-semibold text-slate-900 truncate"> {/* 16 -> 15 */}
+								{tx.type === 'sent' ? `To ${displayName(fromBeamio)}` : tx.type === 'received' ? `From ${displayName(fromBeamio)}` : ''}
+								</div>
+								<div className="text-[12px] text-slate-500 truncate"> {/* 13 -> 12 */}
+									@{fromBeamio?.username}
+								</div>
+								<div className="text-[12px] text-slate-500 truncate"> {/* 13 -> 12 */}
+								{fmtAddr(tx.address)}
+								</div>
+							</div>
+							</div>
+
+							{/* <button
+							type="button"
+							onClick={() => onProfile?.(tx.address)}
+							className="inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-700"
+							>
+							<ChevronRight className="h-4 w-4" />
+							</button> */}
+						</div>
+						</div>
+					)}
+
+					{/* Note */}
+					{!!tx.note && (
+						<div className="mt-3 text-[14px] text-slate-600"> {/* mt-4 15->14 */}
+						<span className="text-slate-400">Note:</span>{" "}
+						<span className="text-slate-700">{tx?.note?.split("\r\n")[0]}</span>
+						</div>
+					)}
+
+					{/* Card image preview */}
+					<div className="mt-3 rounded-2xl overflow-hidden flex justify-center"> {/* mt-4 -> mt-3 */}
+						{cardSrc && (
+						<button
+							type="button"
+							onClick={() => {
+							setShowGiftCard(cardSrc)
+							}}
+							className="
+							group
+							flex items-center justify-center
+							p-2
+							rounded-xl
+							hover:bg-slate-100
+							active:scale-95
+							transition
+							"
+							aria-label="Open gift"
+						>
+							<img
+							src={giftEnvelope}
+							className="
+								w-12   /* w-14 -> w-12 */
+								block
+								transition
+								group-hover:opacity-90
+								group-active:opacity-80
+							"
+							alt="Gift Envelope"
+							/>
+						</button>
+						)}
+					</div>
+
+					{/* Network fee / Time */}
+					<div className="mt-3 rounded-2xl border border-slate-100 overflow-hidden"> {/* mt-4 -> mt-3 */}
+						<div className="flex items-center justify-between px-4 py-2.5 bg-white"> {/* py-3 -> py-2.5 */}
+						<span className="text-[14px] text-slate-500">Time</span>
+						<span className="text-[14px] font-semibold text-slate-900">{timeText}</span>
+						</div>
+
+						<div className="h-px bg-slate-100" />
+
+						<div className="flex items-center justify-between px-4 py-2.5 bg-white"> {/* py-3 -> 2.5 */}
+							<span className="text-[14px] text-slate-500">Network fee</span>
+
+								<div className="flex flex-col items-end">
+									<div
+										className={[
+											"inline-flex items-center gap-2",
+											"h-9 px-3 rounded-full",
+											"bg-blue-50",
+											"ring-1 ring-blue-200/70",
+											"text-blue-600",
+											"font-semibold text-[14px]",
+											"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
+											"flex-shrink-0",
+											"min-w-0"
+										].join(" ")}
+										>
+										<Sparkles className="w-5 h-5 shrink-0" />
+										<span className="inline max-w-[110px] truncate">
+											Sponsored
+										</span>
+									</div>
+
+									{/* {isSponsored && (
+									<span className="text-[12px] text-[rgb(0_122_255)] leading-tight">
+										Sponsored By @{fromBeamio?.username}
+									</span>
+									)} */}
+								</div>
+						</div>
+
+						<div className="h-px bg-slate-100" />
+
+						{/* {(tx.type === "received" || tx.type === "completed" || tx.type === "pending") && tx.requestCurrency && (
+						<div
+							className={[
+							"flex items-center px-4 py-2.5 bg-white",
+							feeOpen ? "justify-center" : "justify-between",
+							].join(" ")}
+						>
+							{!feeOpen && <span className="text-[14px] text-slate-500">Beamio Fee</span>}
+
+							<div className={["flex items-center", feeOpen ? "w-full justify-center" : "gap-3"].join(" ")}>
+							<div className={feeOpen ? "w-full" : ""}>
+								<FeeInline
+								payUsdc={tx.type === "pending" ? currencyToUsdcAmount(tx.amount, tx.requestCurrency) : tx.preAmount}
+								currentCurrency={tx.requestCurrency}
+								detailOpen={val => setFeeopen(val)}
+								txDetail={txDetail}
+								/>
+							</div>
+							</div>
+						</div>
+
+						
+						)} */}
+
+
+
+						<div className="px-4 py-3 flex items-center justify-between gap-3">
+									<div className="text-[14px] text-slate-500">Tx hash</div>
+
+									<div className="flex items-center gap-2">
+										<div className="text-[14px] font-extrabold text-slate-900 tabular-nums">{txHashShort || "—"}</div>
+
 											<button
 												type="button"
-												onClick={() => onSendAgain?.(tx)}
+												onClick={async () => {
+												try {
+													await navigator.clipboard.writeText(tx.hash || "")
+													setCopied(true)
+													window.setTimeout(() => setCopied(false), 900)
+												} catch {}
+												}}
+												className={`
+													w-6 h-6 rounded-full flex items-center justify-center
+													transition-colors duration-150
+													${copied ? "bg-emerald-500" : "bg-black/20"}   /* ⬅️ 同样改为黑色透明度 */
+												`}
+												aria-label="Copy tx hash"
+												title={copied  ? "Copied" : "Copy"}
+											>
+												{copied ? (
+													<Check className="w-3.5 h-3.5 text-white" strokeWidth={2} />
+												) : (
+													<Copy className="w-3.5 h-3.5 text-white/95" strokeWidth={2} />
+												)}
+											</button>
+											{/* Open icon button */}
+											<button
+												type="button"
+												onClick={() => {
+													if (!tx.hash) return
+													window.open(`https://basescan.org/tx/${tx.hash}`, '_blank', 'noopener,noreferrer')
+													
+												}}
 												className="
-													flex-1 h-12
-													rounded-2xl
-													bg-blue-600 hover:bg-blue-700
-													text-white
-													font-semibold
-													flex items-center justify-center gap-2
-													shadow-sm
-													active:scale-[0.99]
+													w-6 h-6 rounded-full
+													flex items-center justify-center
+													bg-slate-200/70 text-slate-700 
+													dark:bg-slate-800/80 dark:text-slate-200
+													hover:bg-slate-300/80 dark:hover:bg-slate-700
 													transition
 												"
+												title="Open link"
 											>
-												<Repeat2 className="h-5 w-5" />
-												<span>
-													{
-														tx.type === 'sent' || tx.type === 'paid' ? 'Send again' : 'Send back'
-													}
-												</span>
+												<ExternalLink className="w-3.5 h-3.5" />
 											</button>
+									</div>
+								</div>
+					</div>
 
-											<button
-												type="button"
-												onClick={() => onMessage?.(tx.address)}
-												className="
-												flex-1 h-12
-												rounded-2xl
-												border border-slate-200
-												bg-white
-												font-semibold text-slate-900
-												flex items-center justify-center gap-2
-												active:scale-[0.99] transition
-												"
-											>
-												<ChatBlueIcon className="h-6 w-6 text-slate-600" />
-												<span>Message</span>
-											</button>
-											</div>
-										</div>
-									)
-								}
-							</div>
-						</>
-					)
-				}
-					
+					{/* On Base · Tx / Pending Url */}
+					{/* 这里你可以继续用同样套路：mt-4 -> mt-3, text-15 -> 14, py-3 -> 2.5 */}
+					              
+					</div>
+
+					{/* 底部按钮 */}
+					{tx.type !== "pending" && (
+					<div className="px-4 pb-4 pt-4"> {/* px-5 pb-5 pt-5 -> 4 */}
+						<div className="flex items-center gap-3">
+						<button
+							type="button"
+							onClick={() => onSendAgain?.(tx)}
+							className="
+							flex-1 h-11   /* h-12 -> h-11 */
+							rounded-2xl
+							bg-blue-600 hover:bg-blue-700
+							text-white
+							font-semibold
+							flex items-center justify-center gap-2
+							shadow-sm
+							active:scale-[0.99]
+							transition
+							text-[14px] /* ✅ 按钮文字更紧 */
+							"
+						>
+							<Repeat2 className="h-5 w-5" />
+							<span>{tx.type === "sent" || tx.type === "paid" ? "Send again" : "Send back"}</span>
+						</button>
+
+						<button
+							type="button"
+							onClick={() => onMessage?.(tx.address)}
+							className="
+							flex-1 h-11
+							rounded-2xl
+							border border-slate-200
+							bg-white
+							font-semibold text-slate-900
+							flex items-center justify-center gap-2
+							active:scale-[0.99] transition
+							text-[14px]
+							"
+						>
+							<ChatBlueIcon className="h-5 w-5 text-slate-600" /> {/* 6->5 更紧 */}
+							<span>Message</span>
+						</button>
+						</div>
+					</div>
+					)}
 				</div>
+				</>
+			)}
 			</div>
-			{
-				showGiftCard && (
-					<ShowCard card={showGiftCard} address={tx.address} usdcAmount={amountText} cancel={() => {
-						setShowGiftCard (null)
-					}} /> 
-				)
-			}
+		</div>
+
+		{showGiftCard && (
+			<ShowCard
+			card={showGiftCard}
+			address={tx.address}
+			usdcAmount={amountText}
+			cancel={() => {
+				setShowGiftCard(null)
+			}}
+			/>
+		)}
 		</div>
 	)
 }

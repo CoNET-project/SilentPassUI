@@ -60,52 +60,7 @@ export default function MainScreen({
     <ChevronRight className="w-5 h-5 text-slate-400" />
   </button>
 
-  {/* Cashcode */}
-  <button
-    type="button"
-    onClick={() => onAction?.('cashcode')}
-    className="
-      w-full flex items-center justify-between
-      rounded-2xl
-      bg-white
-      border border-slate-200
-      px-4 py-4
-      transition transition-colors duration-150
-      hover:bg-blue-50
-      active:bg-blue-100
-      active:scale-[0.99]
-    "
-  >
-    <div className="flex items-center gap-3">
-      <div
-        className="
-          w-11 h-11 rounded-full
-          bg-gradient-to-br from-[#2b6cff] via-[#6b4cff] to-[#ff4fa0]
-          flex items-center justify-center
-          flex-shrink-0
-          ring-1 ring-white/15
-          transition
-          active:scale-[0.98]
-        "
-      >
-        <img
-          src={cashcodeIcon}
-          alt="Cashcode"
-          className="w-5 h-5 filter brightness-0 invert"
-        />
-      </div>
 
-      <div className="text-left">
-        <div className="text-[15px] font-semibold text-slate-900">
-          Cashcode
-        </div>
-        <div className="text-[12px] text-slate-500">
-          Refunds • vouchers • gifts
-        </div>
-      </div>
-    </div>
-    <ChevronRight className="w-5 h-5 text-slate-400" />
-  </button>
 
   {/* Request Link / QR */}
   <button
@@ -154,6 +109,52 @@ export default function MainScreen({
     <ChevronRight className="w-5 h-5 text-slate-400" />
   </button>
 
+  {/* Cashcode */}
+  <button
+    type="button"
+    onClick={() => onAction?.('cashcode')}
+    className="
+      w-full flex items-center justify-between
+      rounded-2xl
+      bg-white
+      border border-slate-200
+      px-4 py-4
+      transition transition-colors duration-150
+      hover:bg-blue-50
+      active:bg-blue-100
+      active:scale-[0.99]
+    "
+  >
+    <div className="flex items-center gap-3">
+      <div
+        className="
+          w-11 h-11 rounded-full
+          bg-gradient-to-br from-[#2b6cff] via-[#6b4cff] to-[#ff4fa0]
+          flex items-center justify-center
+          flex-shrink-0
+          ring-1 ring-white/15
+          transition
+          active:scale-[0.98]
+        "
+      >
+        <img
+          src={cashcodeIcon}
+          alt="Cashcode"
+          className="w-5 h-5 filter brightness-0 invert"
+        />
+      </div>
+
+      <div className="text-left">
+        <div className="text-[15px] font-semibold text-slate-900">
+          Cashcode
+        </div>
+        <div className="text-[12px] text-slate-500">
+          Refunds • vouchers • gifts
+        </div>
+      </div>
+    </div>
+    <ChevronRight className="w-5 h-5 text-slate-400" />
+  </button>
   {/* Pay me QR */}
   {/* <button
     type="button"

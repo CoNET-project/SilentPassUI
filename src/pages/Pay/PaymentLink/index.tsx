@@ -90,6 +90,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 	const [requestNet, setRequestNet] = useState("")
 	const [processError, setProcessError] = useState("")
 	const [oneTimeMode, setOneTimeMode] = useState(false)
+	const [linkTitle, setLinkTitle] = useState("")
 
 
 	useEffect(() => {
@@ -224,9 +225,9 @@ export default function PaymentLink ({close, beamioer}: Props) {
 	}
 
 	return (
-		<div className="mt-0 flex flex-col px-6 pt-4 pb-3 border-slate-100 bg-transparent">
-			<div className="mt-2 w-full bg-transparent">
-				<div className="rounded-2xl shadow-sm p-4 text-slate-800 leading-snug bg-gray-100">
+		<div className="mt-6 rounded-[22px] bg-white shadow-[0_12px_35px_rgba(15,23,42,0.08)] ring-1 ring-black/10 overflow-hidden">
+			<div className="px-6 pt-4 pb-6 text-slate-800 leading-snug">
+				<div className="text-slate-800 leading-snug">
 					{
 						successUrl ? 
 							<SuccessShow note={note} successUrl={successUrl}
@@ -241,9 +242,9 @@ export default function PaymentLink ({close, beamioer}: Props) {
 							/>
 						
 						 : (
-							<div className="p-4 space-y-4 bg-transparent">
+							<div className="space-y-4">
 								<div>
-									<div className="text-lg font-semibold">Create Invoice</div>
+									<div className="text-lg font-semibold">Create Payment Link</div>
 									
 								</div>
 
@@ -274,34 +275,73 @@ export default function PaymentLink ({close, beamioer}: Props) {
 									/>
 								</section>
 									
-								{/* Note */}
-								
-								<textarea
-									value={note}
-									onFocus={(e) => {
-										if (note === defaultNodeText) {
-											setNote('') // 清空默认文本
-										}
-									}}
+								{/* Payment Link Title */}
+								<div className="space-y-1">
+									<div className="text-[13px] font-semibold text-slate-500">
+										Title
+									</div>
 
-									readOnly={!!message}
-									
-									placeholder="What's this for?"
-									onChange={(e) => {
-										setNote(e.target.value)
-									}}
-									rows={2}
-									className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-								/>
+									<input
+										type="text"
+										value={linkTitle}
+										onChange={e => setLinkTitle(e.target.value)}
+										placeholder="e.g. Coffee, Dinner, Invoice #1024"
+										className="
+										w-full
+										rounded-[18px]
+										bg-slate-50
+										ring-1 ring-black/10
+										px-4 py-3
+										text-[15px] text-slate-900
+										placeholder-slate-400
+										shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
+										focus:outline-none
+										focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]
+										transition
+										"
+									/>
+									</div>
 
-								<div className="mt-5">
+									{/* Note */}
+									<div className="space-y-1">
+									<div className="text-[13px] font-semibold text-slate-500">
+										Note (optional)
+									</div>
+
+									<textarea
+										value={note}
+										onFocus={() => {
+										if (note === defaultNodeText) setNote("")
+										}}
+										readOnly={!!message}
+										placeholder="What's this for?"
+										onChange={e => setNote(e.target.value)}
+										rows={2}
+										className="
+										w-full
+										rounded-[18px]
+										bg-slate-50
+										ring-1 ring-black/10
+										px-4 py-3
+										text-[14px] text-slate-900
+										placeholder-slate-400
+										shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
+										focus:outline-none
+										focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]
+										resize-none
+										transition
+										"
+									/>
+								</div>
+
+								{/* <div className="mt-5">
 
 									<FeeInline
 										payUsdc={Number(sendAmount)}
 										currentCurrency={lockMode === 'USDC_LOCKED' ? 'USDC' :beamio?.currency||'USDC'}
 									/>
 								
-								</div>
+								</div> */}
 									
 								        <div className="
 										rounded-[20px]
@@ -328,7 +368,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 														: "text-slate-500 hover:text-slate-700",
 													].join(" ")}
 													>
-													One-time
+														One-time
 													</button>
 
 												<button

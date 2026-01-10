@@ -529,7 +529,8 @@ type payMe = {
 	currencyTip?: string
 	tip?: number
 	parentHash?: string
-	oneTimeMode
+	oneTimeMode: boolean
+	code?: string
 }
 
 type IRequestCurrencyDetail = {
@@ -543,6 +544,17 @@ type IRequestCurrencyDetail = {
 	currencyTip: number
 	USDCTip: number
 	rate: number
+	taxCurrency?: number
+	taxUSDC?: number
+	code?: string
+}
+
+type paymentType = 'payme'|'onetime'|'reusable'
+
+
+type INavigateLeftButtonArray = {
+	title: string
+	action: Array<() => void>
 }
 
 type TransferHistork = {
@@ -562,6 +574,31 @@ type TransferHistork = {
 	card?: IImageCard
 	requestCurrency?: ICurrency
 	requestDetail?: IRequestCurrencyDetail
-	group?: 'payme'|'fixed'
+	group?: paymentType
 
+}
+
+type LinksHistory = {
+	to: string
+    successAuthorizationHash: string
+    chianID: bigint
+    erc3009Address: string
+    node: string
+    amount: bigint
+    decimals: bigint
+    issueTimestamp: bigint
+    payHash: string
+    payTimestamp: string
+    from: string
+    payAmount: string
+	
+}
+
+type Transfer = {
+	to: string
+	timestamp: bigint
+	from: string
+	amount: string
+	finisedHash: string
+	note: string
 }

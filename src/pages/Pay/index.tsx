@@ -221,7 +221,7 @@ const Pay = ({}) => {
 					{/* 顶部 Header */}
 					<BeamioNavBack
 						title={
-							showAlphaHowItWorks === 'Pay' ? 'Pay':
+							showAlphaHowItWorks === 'Pay' ? '':
 							showAlphaHowItWorks === 'PayRequest' ? 'Request' : 
 							showAlphaHowItWorks === 'Cashcode' ? 'Cashcode' : 'Pay Me'
 						}

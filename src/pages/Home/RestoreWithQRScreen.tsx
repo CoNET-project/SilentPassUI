@@ -38,17 +38,15 @@ const RestoreWithQRScreen = ({
 			setError('Please enter your recovery code.')
 			return
 		}
-		if (pin.trim().length < 6 || pin.trim().length > 8 || !/^[0-9]+$/.test(pin.trim())) {
-			setError('PIN must be 6–8 digits')
-			return
-		}
+		
 
 		setLoading(true)
 		
-		const canRestore  = await restoreWithRedeem (recoveryCode, pin.trim())
+		const canRestore  = await restoreWithRedeem (recoveryCode,'')
 		setLoading(false)
+
 		if (!canRestore) {
-			setError('Invalid recovery code or PIN.')
+			setError('Invalid recovery code')
 			return
 		}
 
@@ -91,13 +89,13 @@ const RestoreWithQRScreen = ({
 			</div>
 
 			{/* 标题 */}
-			<h1 className="text-[26px] font-semibold text-slate-900">
-				Use Recovery QR or code S
+			<h1 className="text-[22px] font-semibold text-slate-900">
+				Restore with Recovery QR
 			</h1>
 
 			{/* 说明文字 */}
 			<p className="mt-1 text-[14px] text-slate-500 leading-snug">
-				Scan your Recovery QR, or paste the recovery code S you saved as text.
+				Scan your QR or paste your recovery code.
 			</p>
 
 			{/* QR 相机区域（小正方形居中） */}
@@ -132,9 +130,7 @@ const RestoreWithQRScreen = ({
 
 			{/* Recovery code S */}
 			<div className="flex flex-col gap-1.5">
-				<label className="text-[12px] font-medium text-slate-700">
-					Recovery code S
-				</label>
+				
 				<textarea
 					className="
 						w-full rounded-[18px] border border-slate-200 bg-white
@@ -143,42 +139,22 @@ const RestoreWithQRScreen = ({
 						focus:border-sky-400 focus:ring-2 focus:ring-sky-100
 						min-h-[88px]
 					"
-					placeholder="Paste your recovery code here"
+					placeholder="Recovery code"
 					value={recoveryCode}
 					onChange={e => setRecoveryCode(e.target.value)}
 				/>
-				<p className="text-[11px] text-slate-500 leading-snug">
-					This is the long code that corresponds to your Recovery QR. It only
-					contains encrypted data, not your raw private key.
-				</p>
+				
 			</div>
 
-			{/* PIN */}
-			<div className="flex flex-col gap-1.5 mt-3">
-				<label className="text-[12px] font-medium text-slate-700">PIN</label>
-				<input
-					inputMode="numeric"
-					className="
-						w-full rounded-[18px] border border-slate-200 bg-white
-						px-3 py-2.5 text-[13px] text-slate-900
-						placeholder:text-slate-400 outline-none
-						focus:border-sky-400 focus:ring-2 focus:ring-sky-100
-					"
-					placeholder="Enter your PIN"
-					value={pin}
-					onChange={e => setPin(e.target.value)}
-				/>
-			</div>
+			
 
 			{/* 隐私说明卡片 */}
 			<div className="mt-4 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3">
 				<div className="text-[12px] font-semibold text-amber-900 mb-1">
-					Privacy
+					Note
 				</div>
 				<p className="text-[11px] leading-snug text-amber-900/90">
-					Whether you scan the QR or paste the code S, the encrypted data is
-					unlocked locally with your PIN. It never leaves your device
-					unencrypted, and Beamio never sees your PIN or private key.
+					Restores locally on this device.
 				</p>
 			</div>
 

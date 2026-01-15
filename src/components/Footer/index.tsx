@@ -348,17 +348,25 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 						rounded-[28px]
 						overflow-hidden
 						border border-white/60 dark:border-white/10
-						backdrop-blur-lg
+						
 						shadow-[0_10px_28px_rgba(0,0,0,0.18)]
 						pt-2 pb-2.5   // ✅ 内边距在这里
 					"
 					style={{
+						// 1. 确保背景色有足够的“介质感”。建议稍微提高一点不透明度 (0.1 -> 0.2 或 0.15)
 						backgroundColor: darkModle
-							? 'rgba(15, 23, 42, 0.25)'
-							: 'rgba(220, 220, 220, 0.75)',
-						WebkitBackdropFilter: 'blur(36px) saturate(150%)',
-						backdropFilter: 'blur(36px) saturate(150%)'
-					}}
+							? 'rgba(10, 10, 30, 0.4)'   // Dark: 深色玻璃通常需要更深一点的底色
+							: 'rgba(240, 240, 255, 0.95)', // Light: 浅色模式通常用半透白，而不是蓝。如果你坚持要蓝色，用 'rgba(0, 100, 255, 0.15)'
+						
+						// 2. 核心模糊属性
+						WebkitBackdropFilter: 'blur(36px) saturate(150%)', // 针对 Safari
+						backdropFilter: 'blur(36px) saturate(150%)',       // 标准属性
+						
+						// 3. ✅ 关键修复：强制 GPU 硬件加速
+						// 这能解决 iOS 上 overflow:hidden 和 backdrop-filter 同时使用导致的渲染 bug
+						transform: 'translate3d(0,0,0)',
+						WebkitTransform: 'translate3d(0,0,0)',
+					}}	
 				>
 					<div className="relative">
 						<motion.div

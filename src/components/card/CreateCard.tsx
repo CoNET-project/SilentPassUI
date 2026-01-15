@@ -196,13 +196,12 @@ async function maybeDownscaleToBlob(file: File) {
 }
 
 export default function DiceBearCardFullscreenEditor({
-  initialTitle = "Your dynamic text goes here",
-  initialDetail = "Write some detail…",
-  initialBgIndex = 0,
-  initialLogoText = "Your logo",
-  onClose,
-  currencyText,
-  usdcAmount
+	initialTitle = "Your dynamic text goes here",
+	initialDetail = "Write some detail…",
+	initialBgIndex = 0,
+	onClose,
+	currencyText,
+	usdcAmount
 }: Props) {
   const [title, setTitle] = useState('')
   const [detail, setDetail] = useState('')
@@ -218,9 +217,9 @@ export default function DiceBearCardFullscreenEditor({
 
   // ✅ 用于 Cancel（丢弃所有更改）
   const initialSnapshotRef = useRef({
-    title: initialTitle,
-    detail: initialDetail,
-    bgIndex: clampIndex(initialBgIndex, images)
+		title: initialTitle,
+		detail: initialDetail,
+		bgIndex: clampIndex(initialBgIndex, images)
   })
 
   /* ================== WYSIWYG 编辑状态 ================== */

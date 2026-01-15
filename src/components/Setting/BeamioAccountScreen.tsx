@@ -343,16 +343,16 @@ export default function BeamioAccountScreen({colse}:prof) {
 
 					{/* Last name */}
 					<div className="space-y-2">
-					<label className="block text-sm font-medium text-slate-800">Last name</label>
-					<input
-						value={lastName}
-						onChange={e => {
-							setLastName(e.target.value)
-						}}
-						type="text"
-						placeholder="Last name"
-						className="w-full rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3 text-sm outline-none placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-					/>
+						<label className="block text-sm font-medium text-slate-800">Last name</label>
+						<input
+							value={lastName}
+							onChange={e => {
+								setLastName(e.target.value)
+							}}
+							type="text"
+							placeholder="Last name"
+							className="w-full rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3 text-sm outline-none placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+						/>
 					</div>
 				</div>
 				<p className="mt-3 text-[10px] text-slate-500 leading-snug">

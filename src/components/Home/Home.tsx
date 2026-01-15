@@ -8,7 +8,7 @@ import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useNavigate } from "react-router-dom"
-import { createOrGetWallet, storeSystemData, getOracle, postBeamio, initBeamioPGPKeys} from "@/services/beamio"
+import { createOrGetWallet, storeSystemData, getOracle, postBeamio} from "@/services/beamio"
 import BeamioAlphaHowItWorks from './BeamioAlphaHowItWorks'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
@@ -213,12 +213,7 @@ const Home = ({}) => {
 		if (!bo) return
 
 		bo.initialLoading = true
-		if (!bo?.pgpPublicKeyID) {
-			const boo = await initBeamioPGPKeys(profiles[0].keyID)
-			bo.pgpPublicKeyID = boo.keyID
-			bo.pgpPublicKeyArmor = boo.publicKey
-
-		}
+		
 		
 		
 		oracle()

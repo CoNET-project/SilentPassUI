@@ -14,53 +14,106 @@ const RestoreEntryScreen = ({
 			<div className="flex flex-col gap-4 text-[13px] text-slate-900 flex-1">
 				{/* 小标题 */}
 				<div className="text-[11px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
-					Restore account
+					Restore wallet
 				</div>
 
 				{/* 标题 */}
 				<h1 className="text-[26px] font-semibold text-slate-900">
-					Restore your Beamio account
+					Restore your wallet
 				</h1>
 
 				{/* 副标题 */}
 				<p className="mt-1 text-[14px] text-slate-500 leading-snug">
-					Use your Recovery QR / code S, or restore via @BeamioTag + PIN with our
-					encrypted backup.
+					Choose a restore method.
 				</p>
 
-				{/* 按钮区域 */}
-				<div className="mt-6 flex flex-col gap-3">
-					{/* 主按钮 */}
-					<div className="flex flex-col gap-1.5">
-						<AppButton
-							fullWidth
-							className="rounded-[999px] py-3 text-[15px] font-semibold"
-							onClick={onUseRecoveryQR}
-						>
-							Use Recovery QR / code S
-						</AppButton>
-
-						<p className="text-[12px] text-slate-500">
-							Recommended if you have your Recovery QR saved.
-						</p>
+				{/* 按钮区域（按图：两张卡片 + 各自一个大按钮） */}
+				<div className="mt-6 space-y-5">
+				{/* Card 1 */}
+				<div
+					className="
+					rounded-[28px]
+					bg-white
+					border border-slate-200/70
+					shadow-[0_10px_24px_rgba(15,23,42,0.06)]
+					px-5 pt-5 pb-5
+					"
+				>
+					<div className="text-[14px] font-semibold text-slate-900">
+						Recovery QR / code
+					</div>
+					<div className="mt-2 text-[14px] leading-snug text-slate-500">
+						Scan QR or paste a recovery code.
 					</div>
 
-					{/* 次按钮 */}
+					<div className="mt-5">
 					<AppButton
 						fullWidth
-						variant="secondary"
-						className="rounded-[999px] py-3 text-[15px] font-semibold"
-						onClick={onUseUsernamePin}
+						className="rounded-[999px] h-14 text-[20px] font-semibold"
+						onClick={onUseRecoveryQR}
 					>
-						Use @BeamioTag + PIN
+						Scan QR / enter code
 					</AppButton>
+					</div>
 				</div>
 
-				{/* 底部说明文字 */}
-				<p className="mt-5 text-[11px] text-slate-500 leading-snug">
-					Beamio never stores your private key. Your PIN, processed with scrypt,
-					decrypts your encrypted backup locally on this device.
-				</p>
+				{/* Card 2 */}
+				<div
+					className="
+					rounded-[28px]
+					bg-white
+					border border-slate-200/70
+					shadow-[0_10px_24px_rgba(15,23,42,0.06)]
+					px-5 pt-5 pb-5
+					"
+				>
+					<div className="text-[14px] font-semibold text-slate-900">
+						BeamioTag + Password
+					</div>
+					<div className="mt-2 text-[14px] leading-snug text-slate-500">
+						Restore using your tag and password.
+					</div>
+
+					<div className="mt-5">
+					<button
+						type="button"
+						onClick={onUseUsernamePin}
+						className="
+						w-full h-14
+						rounded-[22px]
+						bg-white
+						border border-slate-200
+						text-[16px] font-semibold text-slate-900
+						shadow-[0_10px_22px_rgba(15,23,42,0.08)]
+						active:scale-[0.99]
+						transition
+						"
+					>
+						Use @BeamioTag + Password
+					</button>
+					</div>
+				</div>
+
+				{/* Card 2 */}
+				<div
+					className="
+					rounded-[28px]
+					bg-white
+					border border-slate-200/70
+					shadow-[0_10px_24px_rgba(15,23,42,0.06)]
+					px-5 pt-5 pb-5
+					"
+				>
+					<div className="text-[14px] font-semibold text-slate-900">
+						No centralized database
+					</div>
+					<div className="mt-2 text-[14px] leading-snug text-slate-500">
+						Beamio stores only an encrypted backup record on-chain. Your secrets decrypt it locally.
+					</div>
+
+				</div>
+				</div>
+
 			</div>
 		</div>
 	)

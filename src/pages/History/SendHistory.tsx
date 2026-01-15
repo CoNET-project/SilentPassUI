@@ -14,28 +14,16 @@ import {HistoryFilterTabs} from './HistoryFilterTabs'
 import {RedeemOrLinkCard} from './showHistoryDetail'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import base_ex from '@/components/assets/base-ex.svg'
-import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
+import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername, } from '@/services/beamio'
 import BallSequence from '@/components/loading/BallSequence'
 import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader, ArrowUpRight, ChevronLeft } from "lucide-react"
 import AccountBeo from './AccountBea'
 import ShowCard from '@/components/card/ShowCard'
 import {TransactionsItemDetail} from './TransactionsItemDetail'
-import {fiatPrefix, formatAmount, formatTimev2} from '@/services/currency'
+import {fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived} from '@/services/currency'
 import ShowPaymentLink from './PaymentLink/index'
 import NavigateLeftButton from '@/components/navigate'
 import { useNavigate, useLocation } from 'react-router-dom'
-
-type Mode = "pay" | "request" | 'cashcode'
-
-
-type Payed = {
-	payTimestamp: number
-	fromAddress: string
-	fromBeamioName: string
-	payAmount: number
-	hash: string
-}
-
 
 
 
@@ -64,133 +52,11 @@ function calcFeeFromNumber(base: number) {
 }
 
 
-// 根据「到账金额 received」反推 fee
-function calcFeeFromReceived(received: number) {
-	if (!isFinite(received) || received <= 0) return 0
 
-	// 1️⃣ 尝试比例区间（最常见）
-	const baseByRatio = received / 0.992
-	const feeByRatio = baseByRatio - received
-
-	if (feeByRatio > 0.02 && feeByRatio < 2) {
-		return Number(feeByRatio.toFixed(4))
-	}
-
-	// 2️⃣ 尝试最小 fee
-	const baseMin = received + 0.02
-	if (baseMin * 0.008 <= 0.02) {
-		return 0.02
-	}
-
-	// 3️⃣ 尝试最大 fee
-	const baseMax = received + 2
-	if (baseMax * 0.008 >= 2) {
-		return 2
-	}
-
-	// 理论上不会到这里
-	return Number(feeByRatio.toFixed(4))
-}
-
-const formatMoney = (n: number) =>
-		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-
-
-
-type HistoryTableProps = {
-}
 
 
 
 const showPaylinkSite = 'https://beamio.app'
-
-const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
-
-
-
-const formatTime = (ts: number) => {
-	if (!ts) return "—"
-	const d = new Date(ts)
-	return d.toLocaleString()
-}
-
-
-
-const statusStyleMap: Record<
-	HistoryFilter,
-	{
-		container: string
-		iconBg: string
-		icon: string
-		text: string
-	}
-	> = {
-	sent: {
-		container: "bg-rose-100",
-		iconBg: "bg-rose-200",
-		icon: "text-rose-700",
-		text: "text-rose-600",
-	},
-	active: {
-		container: "bg-emerald-100",
-		iconBg: "bg-emerald-200",
-		icon: "text-emerald-700",
-		text: "text-emerald-600",
-	},
-	received: {
-		container: "bg-emerald-100",
-		iconBg: "bg-emerald-200",
-		icon: "text-emerald-700",
-		text: "text-emerald-600",
-	},
-	pending: {
-		container: "bg-amber-100",
-		iconBg: "bg-amber-200",
-		icon: "text-amber-700",
-		text: "text-amber-200",
-	},
-	payme: {
-		container: "bg-fuchsia-100",
-		iconBg: "bg-fuchsia-200",
-		icon: "text-fuchsia-700",
-		text: "text-fuchsia-800",
-	},
-	paid: {
-		container: "bg-fuchsia-100",
-		iconBg: "bg-fuchsia-200",
-		icon: "text-fuchsia-700",
-		text: "text-fuchsia-800",
-	},
-	completed: {
-		container: "bg-sky-100",
-		iconBg: "bg-sky-200",
-		icon: "text-sky-700",
-		text: "text-sky-800",
-	},
-	deposited: {
-		container: "bg-indigo-100",
-		iconBg: "bg-indigo-200",
-		icon: "text-indigo-700",
-		text: "text-indigo-800",
-	},
-
-	// 兜底（all / reject / 其他）
-	all: {
-		container: "bg-slate-100",
-		iconBg: "bg-slate-200",
-		icon: "text-slate-500",
-		text: "text-slate-500",
-	},
-	reject: {
-		container: "bg-slate-100",
-		iconBg: "bg-slate-200",
-		icon: "text-slate-500",
-		text: "text-slate-500",
-	},
-}
-
-const badgeBase = "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border border-white/20"
 
 
 const getBadgeClass = (type: HistoryFilter) => {
@@ -327,20 +193,29 @@ export const SendHistoryTable = (
 
 				//		try get currency data
 				let paymeData = nodeEX.length -1
-				try {
-					payme = JSON.parse(nodeEX[paymeData])
-					paymeData -=1
-				} catch (ex) {
 
+				try {
+					if (paymeData > -1) {
+						payme = JSON.parse(nodeEX[paymeData--])
+					}
+					
+					
+				} catch (ex) {
+					paymeData ++
 				}
+
 				//		try get card data
 				try {
-					const cardData = JSON.parse(nodeEX[paymeData])
-					card = cardData?.card||cardData
+					if (paymeData > -1) {
+						const cardData = JSON.parse(nodeEX[paymeData --])
+						card = cardData?.card || cardData
+					}
+					
 				} catch (ex) {
-
+					paymeData ++
 				}
 
+				
 				const _amount = Number(payme?.currencyAmount)
 
 				if( payme?.currency && fiatPrefix(payme.currency) && !isNaN(_amount) && _amount > 0) {
@@ -355,7 +230,9 @@ export const SendHistoryTable = (
 						receivedUSDC: amount,
 						currencyTip: 0,
 						USDCTip: 0,
-						rate: currencyRate
+						rate: currencyRate,
+						title: payme?.title,
+						textNote: paymeData > -1 ? nodeEX[paymeData] : ''
 					}
 				}
 
@@ -389,16 +266,19 @@ export const SendHistoryTable = (
 				const isReject = isRequest ?  n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
 				const account = (isPending||isReject) ? '' : isRequest ? n.to : n.from
 				
-				const preAmount = Number(ethers.formatUnits(n.amount, 6))
-				
+				const payAmount = Number(ethers.formatUnits(n.payAmount, 6))
+				const _amount =  Number(ethers.formatUnits(n.amount, 6))
+
 				const _requestCurrencyData = n?.node?.split('\r\n')
-				const ooo = _requestCurrencyData[_requestCurrencyData.length -1]
+
+				const ooo = _requestCurrencyData[_requestCurrencyData.length - 1]
 				let requestCurrency: ICurrency = 'USDC'
 				let kkk: payMe|null
 				let group: paymentType = 'onetime'
 				let requestDetail: IRequestCurrencyDetail|undefined = undefined
-				let type: HistoryFilter = isPending ? 'pending' : isRequest ? 'paid' : 'completed'
-
+				let type: HistoryFilter = isPending ? 'pending' : isRequest ? 'sent' : 'received'
+				
+				
 				try {
 					kkk = JSON.parse(ooo)
 						if (kkk) {
@@ -412,7 +292,7 @@ export const SendHistoryTable = (
 						}
 						
 					
-						let totalPayUSDC = preAmount
+						let totalPayUSDC = payAmount
 						
 						
 							//		totalPayUSDC: totalPayCurrency = 1:x
@@ -421,30 +301,57 @@ export const SendHistoryTable = (
 							//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
 						
 						
+						//		n.amount 在request 时是 currency request，n.payAmount 是实际支付的USDC （没有扣除手续费）
+						//		payMe时 n.payAmount === n.amount
 
-						if (preAmount && totalPayUSDC) {
-							
-							const currencyRate = (Number(kkk?.currencyAmount)+Number(kkk?.currencyTip))/totalPayUSDC
-							
+						if (totalPayUSDC) {
+							const feeUSDC = calcFeeFromReceived(totalPayUSDC)
+							const requestCurrencyAmount = Number(kkk?.currencyAmount||0)
+							const currencyTip = Number(kkk?.currencyTip||0)
+							const taxCurrency = Number(kkk?.currencyTax||0)
+							const currencyRate = (requestCurrencyAmount + currencyTip + taxCurrency )/totalPayUSDC
+							const requestUSDAmount = currencyRate > 0 ? requestCurrencyAmount / currencyRate : 0
+
 							const totalPayCurrency = totalPayUSDC * currencyRate
 							
-							const currencyTip = Number(kkk?.currencyTip)||0
-							const USDCTip = currencyTip/currencyRate
-							const receivedUSDC = totalPayUSDC - USDCTip
+							const feeCurrency = feeUSDC * currencyRate
+							
+							const USDCTip = currencyRate ? currencyTip/currencyRate : 0
+							const receivedUSDC = totalPayUSDC - feeUSDC
 							const receivedCurrency = receivedUSDC * currencyRate
 							const code = kkk?.code
+							const taxUSDC = currencyRate ? taxCurrency/currencyRate : 0
+							const title = kkk?.title
+							const textNote = _requestCurrencyData.length - 2 > -1 ? _requestCurrencyData[_requestCurrencyData.length - 2] : ''
+
 							requestDetail = {
+								
+								requestCurrency,
 								totalPayUSDC,
 								totalPayCurrency,
-								requestCurrency,
-								feeUSDC:0,
-								feeCurrency:0,
-								receivedUSDC,
-								receivedCurrency,
+
+								requestCurrencyAmount,
+								requestUSDAmount,
+
+								
+
+								feeUSDC,
+								feeCurrency,
+
 								currencyTip,
 								USDCTip,
+
+								taxUSDC,
+								taxCurrency,
+
+								receivedUSDC,
+								receivedCurrency,
+								
 								rate: currencyRate,
-								code
+								code,
+								title,
+								textNote
+								
 							}
 							
 						}
@@ -456,15 +363,15 @@ export const SendHistoryTable = (
 				
 				const ret: TransferHistork = {
 					date: Number(n.issueTimestamp * BigInt(1000)),
-					amount: preAmount,
+					amount: payAmount - (requestDetail?.feeUSDC||0),
 					address: account,
 					hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
 					note: n.node,
 					type,
 					mode: 'request',
 					fee,
-					type1: type === 'paid' ? 'sent' :  type === 'completed' ? 'received' : '',
-					preAmount: preAmount,
+					type1: type === 'sent' ? 'paid' : type ==='pending' ? '' :'received',
+					preAmount: payAmount,
 					requestCurrency,
 					requestDetail,
 					group
@@ -750,7 +657,7 @@ export const SendHistoryTable = (
 						{/* Header */}
 						<div className="fixed top-0 left-0 right-0 z-50">
 							<div className="px-4 pt-[calc(env(safe-area-inset-top)+8px)] pb-2">
-							<NavigateLeftButton />
+								<NavigateLeftButton />
 							</div>
 						</div>
 
@@ -852,104 +759,32 @@ export const SendHistoryTable = (
 																	</span>
 																)}
 
-																{/* pay 模式下的 mode icon（同样统一占位） */}
-																{/* {localMode === "pay" && tx.mode !== "pay" && (
-																	<span
-																		className={[
-																			"inline-flex items-center justify-center",
-																			"w-6 h-6 rounded-full",
-																			tx.mode === "cashcode"
-																				? "bg-sky-300/40 text-sky-800 dark:bg-sky-700/40 dark:text-sky-200"
-																				: "bg-fuchsia-300/40 text-fuchsia-800 dark:bg-fuchsia-700/40 dark:text-fuchsia-200"
-																		].join(" ")}
-																	>
-																		{tx.mode === "cashcode" ? (
-																			<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
-																		) : (
-																			<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
-																		)}
-																	</span>
-																)} */}
-
-																{/* {localMode === "pay" && tx?.card && (
-																<div className="relative w-fit">
-																	<button
-																	type="button"
-																	aria-label="Open gift envelope"
-																	className="
-																		p-0
-																		bg-transparent
-																		border-none
-																		appearance-none
-																		cursor-pointer
-																		active:scale-95
-																		transition-transform
-																	"
-																	onClick={() => {
-																		if (tx.card) {
-																			setShowGiftCard(tx.card)
-																			setAccount(tx.address)
-																			setAmt(tx.amount)
-																			setShowFooter(false)
-																		}
-																		
-																	}}
-																	>
-																	<img
-																		src={giftEnvelope}
-																		className="w-7 block pointer-events-none"
-																		alt="Gift Envelope"
-																	/>
-																	</button>
-																</div>
-																)} */}
-
-																{/* BaseScan：也统一占位，避免这一列宽度跳变 */}
-																{/* {localMode === "pay" ? (
-																	<button
-																		type="button"
-																		className="
-																			inline-flex items-center justify-center
-																			w-8 h-8 rounded-lg
-																			bg-slate-100 dark:bg-slate-800
-																			border border-slate-200 dark:border-slate-700
-																			hover:bg-slate-200 dark:hover:bg-slate-700
-																			active:scale-[0.98]
-																			transition
-																		"
-																		onClick={() => {
-																			window.open(`https://basescan.org/tx/${tx.hash}`, "_blank", "noopener,noreferrer")
-																		}}
-																	>
-																		<img src={base_ex} alt="" className="w-4 h-4" />
-																	</button>
-																) : (<div className="shrink-0 w-12 h-6" />)} */}
 															</div>
 
 															{/* 右侧：金额 —— 不固定宽度，按内容最小占用，但永远贴右、不换行 */}
 															<div
-															className={[
-																"shrink-0 whitespace-nowrap text-right",
-																"w-[150px]",
-																"font-medium tabular-nums",
-																(!plus)
-																? "text-rose-600 dark:text-rose-400"
-																: "text-emerald-600 dark:text-emerald-400"
-															].join(" ")}
+																className={[
+																	"shrink-0 whitespace-nowrap text-right",
+																	"w-[150px]",
+																	"font-medium tabular-nums",
+																	(!plus)
+																	? "text-rose-600 dark:text-rose-400"
+																	: "text-emerald-600 dark:text-emerald-400"
+																].join(" ")}
 															>
 															{/* 关键：items-start -> 符号和主金额顶部对齐 */}
 															<div className="flex justify-end items-start gap-1.5">
 																{/* + / - 符号：对齐主金额行 */}
 																{localMode === "pay" && (
-																<span className="text-[14px] leading-[20px]">
-																	{plus ? "+" : "−"}
-																</span>
+																	<span className="text-[14px] leading-[20px]">
+																		{plus ? "+" : "−"}
+																	</span>
 																)}
 
 																<div className="flex flex-col gap-0.5 text-right">
 																{/* 主金额：继承父级红/绿，不要写 text-slate-900 */}
 																<span className="text-[14px] font-medium tabular-nums leading-[20px]">
-																	{formatAmount(localMode === "pay" ? tx.amount : tx.preAmount, "USDC")}{" "}
+																	{formatAmount(tx.type === 'sent' ? tx.preAmount : tx.amount, "USDC")}{" "}
 																	USDC
 																</span>
 
@@ -958,7 +793,7 @@ export const SendHistoryTable = (
 																	<span className="text-[12px] tabular-nums text-slate-400 leading-[16px]">
 																	{fiatPrefix(tx.requestDetail.requestCurrency)}{" "}
 																	{formatAmount(
-																		tx.requestDetail.totalPayCurrency,
+																		tx.type === 'sent' ? tx.requestDetail.totalPayCurrency :tx.requestDetail.receivedCurrency ,
 																		tx.requestDetail.requestCurrency
 																	)}
 																	</span>
@@ -995,6 +830,13 @@ export const SendHistoryTable = (
 																	setPreAmount(tx.preAmount)
 																	setItemtx(tx)
 																	setShowFooter(false)
+																	setNavigateLeftButtonArray(prof => [...prof, {
+																		title: '',
+																		action:([
+																			() => setShowDEtail(false),
+																			() => setShowFooter(true)
+																		])
+																	}])
 																}}
 																key={tx.hash}
 																rel="noreferrer"
@@ -1037,40 +879,13 @@ export const SendHistoryTable = (
 								z-50
 							"
 						>
-							{/* 左：返回按钮 */}
-							<button
-								onClick={() => {
-									
-									setShowDEtail(false)
-									setLocalMode('pay')
-									setShowFooter(true)
-								}}
-								className="
-									w-9 h-9
-									rounded-full
-									bg-white/70 dark:bg-slate-900/50
-									backdrop-blur-md
-									shadow-[0_4px_10px_rgba(0,0,0,0.12)]
-									ring-1 ring-black/5
-									flex items-center justify-center
-									text-slate-800 dark:text-slate-100
-									active:scale-95
-									transition
-								"
-								aria-label="Back"
-							>
-								<ChevronLeft className="w-5 h-5 stroke-[2.5]" />
-							</button>
-
-							{/* 中：标题（绝对居中，不受左右影响） */}
-							<div className="absolute left-1/2 -translate-x-1/2 text-[24px] font-semibold text-slate-900 dark:text-slate-100">
-								{
-									
-								}
+							<div className="fixed top-0 left-0 right-0 z-50">
+								<div className="px-4 pt-[calc(env(safe-area-inset-top)+8px)] pb-2">
+									<NavigateLeftButton />
+								</div>
 							</div>
 
-							{/* 右：占位（保持对称，可将来放按钮） */}
-							<div className="w-9 h-9" />
+							
 						</div>
 						<div className="flex-1 mt-10">
 							

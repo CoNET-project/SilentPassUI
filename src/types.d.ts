@@ -95,6 +95,7 @@ interface Region {
 	vpnTimeUsedInMin?: number;
 	silentPassPassports?: passportInfo[];
 	webFilter?: boolean
+	chat?: chat
   }
   
   interface SpClubReferees {
@@ -153,6 +154,7 @@ interface Region {
 	type beamioAddedSetup = {
 		language: ILanguage
 		currency: ICurrency
+		tax: string
 	}
 
 	type searchkeywork = {
@@ -477,6 +479,7 @@ type Argon2idHash = {
 		payme?: string
 		pgpPublicKeyID?: string
 		pgpPublicKeyArmor?: string
+		tax?: string
 		
   }
 
@@ -529,12 +532,17 @@ type payMe = {
 	currencyTip?: string
 	tip?: number
 	parentHash?: string
-	oneTimeMode: boolean
+	oneTimeMode?: boolean
 	code?: string
+	title?: string
+	currencyTax?: string
 }
 
 type IRequestCurrencyDetail = {
 	requestCurrency: ICurrency
+	requestCurrencyAmount?: number
+	requestUSDAmount?: number
+
 	totalPayCurrency: number
 	totalPayUSDC: number
 	feeCurrency: number
@@ -547,6 +555,8 @@ type IRequestCurrencyDetail = {
 	taxCurrency?: number
 	taxUSDC?: number
 	code?: string
+	title?: string
+	textNote?: string
 }
 
 type paymentType = 'payme'|'onetime'|'reusable'
@@ -555,6 +565,12 @@ type paymentType = 'payme'|'onetime'|'reusable'
 type INavigateLeftButtonArray = {
 	title: string
 	action: Array<() => void>
+}
+
+type Mode = "pay" | "request" | 'cashcode'
+
+type initBeamioPGPKeysRet = {
+	privateKey: string, publicKey: string, keyID: string
 }
 
 type TransferHistork = {

@@ -8,6 +8,7 @@ import {ethers} from 'ethers'
 import LockModeSegmented from './LockModeSegmented'
 import FeeInline from './FeeInline'
 import SuccessShow from './successShow'
+import {Onetime_reuse_Drag} from '../../Pay/components/onetimeReuseSwitch'
 
 function fiatPrefix(ccy: ICurrency) {
 	if (ccy === "CAD") return "CA$"
@@ -91,6 +92,9 @@ export default function PaymentLink ({close, beamioer}: Props) {
 	const [processError, setProcessError] = useState("")
 	const [oneTimeMode, setOneTimeMode] = useState(false)
 	const [linkTitle, setLinkTitle] = useState("")
+	const [titleTouched, setTitleTouched] = useState(false)
+	const titleError = titleTouched && linkTitle.trim().length === 0
+
 
 
 	useEffect(() => {
@@ -144,6 +148,11 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		if (!profiles?.length||!beamio) {
 			return
 		}
+		setTitleTouched(true)
+
+		if (linkTitle.trim().length === 0) {
+			return // ❌ 阻止提交
+		}
 		const currency = beamio.currency
 		const numberAmount = Number(sendAmount)
 		if (isNaN(numberAmount) || numberAmount <= 0) {
@@ -173,7 +182,8 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		const paymeObj: payMe = {
 			currency: currencyData,
 			currencyAmount: showCurrencyNumber,
-			oneTimeMode,
+			oneTimeMode: !oneTimeMode,			// true= reusable, false= one-time	
+			title: linkTitle.trim(),
 		}
 		
 
@@ -191,6 +201,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		const showparams = new URLSearchParams({code: code.code}).toString()
 		const requestUrl = `${aptEndpoint}/api/BeamioPaymentLink?${params}`
 		const showUrl = `${showPaylinkSite}?${showparams}`
+
 		setPayAmount(`${fiatPrefix(currency)} ${showCurrencyNumber}`)
 		setRequestNet(`${fiatPrefix(currency)} ${showNetCurrency}`)
 
@@ -278,29 +289,33 @@ export default function PaymentLink ({close, beamioer}: Props) {
 								{/* Payment Link Title */}
 								<div className="space-y-1">
 									<div className="text-[13px] font-semibold text-slate-500">
-										Title
+										Title <span className="text-red-500">*</span>
 									</div>
 
 									<input
 										type="text"
 										value={linkTitle}
 										onChange={e => setLinkTitle(e.target.value)}
+										onBlur={() => setTitleTouched(true)}
 										placeholder="e.g. Coffee, Dinner, Invoice #1024"
-										className="
-										w-full
-										rounded-[18px]
-										bg-slate-50
-										ring-1 ring-black/10
-										px-4 py-3
-										text-[15px] text-slate-900
-										placeholder-slate-400
-										shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
-										focus:outline-none
-										focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]
-										transition
-										"
+										className={[
+											"w-full rounded-[18px] px-4 py-3 text-[15px]",
+											"bg-slate-50 placeholder-slate-400",
+											"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
+											"focus:outline-none transition",
+											titleError
+												? "ring-2 ring-red-400 bg-red-50/40"
+												: "ring-1 ring-black/10 focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]"
+										].join(" ")}
 									/>
-									</div>
+									
+									{/* 错误提示 */}
+									{titleError && (
+										<div className="text-[12px] text-red-500 pl-1">
+											Title is required
+										</div>
+									)}
+								</div>
 
 									{/* Note */}
 									<div className="space-y-1">
@@ -311,25 +326,25 @@ export default function PaymentLink ({close, beamioer}: Props) {
 									<textarea
 										value={note}
 										onFocus={() => {
-										if (note === defaultNodeText) setNote("")
+											if (note === defaultNodeText) setNote("")
 										}}
 										readOnly={!!message}
 										placeholder="What's this for?"
 										onChange={e => setNote(e.target.value)}
 										rows={2}
 										className="
-										w-full
-										rounded-[18px]
-										bg-slate-50
-										ring-1 ring-black/10
-										px-4 py-3
-										text-[14px] text-slate-900
-										placeholder-slate-400
-										shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
-										focus:outline-none
-										focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]
-										resize-none
-										transition
+											w-full
+											rounded-[18px]
+											bg-slate-50
+											ring-1 ring-black/10
+											px-4 py-3
+											text-[14px] text-slate-900
+											placeholder-slate-400
+											shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
+											focus:outline-none
+											focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]
+											resize-none
+											transition
 										"
 									/>
 								</div>
@@ -342,55 +357,12 @@ export default function PaymentLink ({close, beamioer}: Props) {
 									/>
 								
 								</div> */}
+									<Onetime_reuse_Drag
+										value={oneTimeMode}
+										onChange={setOneTimeMode}
+									/>
 									
-								        <div className="
-										rounded-[20px]
-											bg-white/60
-											backdrop-blur-xl
-											ring-1 ring-white/50
-											shadow-[inset_0_1px_1px_rgba(255,255,255,0.8),_0_8px_20px_rgba(0,0,0,0.06)]
-											p-1
-										">
-											<div className="grid grid-cols-2 gap-1">
-												<button
-													type="button"
-													onClick={() => setOneTimeMode(true)}
-													className={[
-														"h-10 rounded-[16px] text-[14px] font-semibold transition-all duration-200",
-														oneTimeMode
-														? `
-															bg-white/90
-															backdrop-blur-xl
-															text-[rgb(0_0_255)]
-															shadow-[0_2px_6px_rgba(0,0,0,0.12)]
-															ring-1 ring-white/70
-														`
-														: "text-slate-500 hover:text-slate-700",
-													].join(" ")}
-													>
-														One-time
-													</button>
-
-												<button
-														type="button"
-														onClick={() => setOneTimeMode(false)}
-														className={[
-															"h-10 rounded-[16px] text-[14px] font-semibold transition-all duration-200",
-															!oneTimeMode
-															? `
-																bg-white/90
-																backdrop-blur-xl
-																text-[rgb(0_0_255)]
-																shadow-[0_2px_6px_rgba(0,0,0,0.12)]
-																ring-1 ring-white/70
-															`
-															: "text-slate-500 hover:text-slate-700",
-														].join(" ")}
-														>
-															Reusable
-													</button>
-											</div>
-										</div>
+						
 								
 								<div className="mt-3 flex gap-3 w-full">
 									

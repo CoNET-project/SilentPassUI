@@ -10,6 +10,10 @@ import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign, searchUsername, getOracle, postBeamio, storeSystemData} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrencyV2'
+import {CURRENCY_META, fiatPrefix} from '@/services/currency'
+
+
+
 type Step = "form" | "sign" | "processing" | "generated" | "x402Sign" | "success"
 
 type Props = {
@@ -38,33 +42,7 @@ function formatAmount(v: number, c: ICurrency) {
 	return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
 }
 
-const CURRENCY_META: Record<
-  ICurrency,
-  { flag: string; symbol: string; label: string }
-> = {
-  USD: { flag: "🇺🇸", symbol: "$", label: "USD" },
-  CAD: { flag: "🇨🇦", symbol: "$", label: "CAD" },
-  EUR: { flag: "🇪🇺", symbol: "€", label: "EUR" },
-  JPY: { flag: "🇯🇵", symbol: "¥", label: "JPY" },
-  CNY: { flag: "🇨🇳", symbol: "¥", label: "CNY" },
-  HKD: { flag: "🇭🇰", symbol: "$", label: "HKD" },
-  TWD: { flag: "🇹🇼", symbol: "$", label: "TWD" },
-  SGD: { flag: "🇸🇬", symbol: "$", label: "SGD" },
-  USDC: {flag:"", symbol: "", label: ""}
-};
-	
-function fiatPrefix(ccy: ICurrency) {
-	if (ccy === "CAD") return "CA$"
-	if (ccy === "USD") return "$"
-	if (ccy === "EUR") return "€"
-	if (ccy === "JPY") return "JP¥"
-	if (ccy==='TWD') return "NT$"
-	if (ccy==='CNY') return 'CN¥'
-	if (ccy==='HKD') return 'HK$'
-	if (ccy==='SGD') return 'SG$'
 
-  return CURRENCY_META[ccy].symbol;
-}
 
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 const getImg = (avatarSeed: string) =>

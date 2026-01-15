@@ -1,4 +1,4 @@
-import React, {useRef, useState, useEffect} from "react"
+import React, {useRef, useState, useEffect, useMemo} from "react"
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
 import { Card, CardContent } from "@/components/ui/card"
 import {AuthorizationSign, getBalanceProcess, postToIPFS} from '@/services/beamio'
@@ -13,6 +13,7 @@ import { X, Check, Plus } from "lucide-react"
 import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
+import {CURRENCY_META, fiatPrefix} from '@/services/currency'
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -26,60 +27,12 @@ const displayName = (item: searchResult) => {
 	return fullName || item.username || item.address
 }
 
-
-function formatUserDate(timestamp?: string | number): string {
-	if (!timestamp) return ""  // 无日期 → 空
-
-	const num = Number(timestamp)
-	if (!num) return ""        // 防止 NaN
-
-	// 判断是秒还是毫秒（简易方式）
-	const ms = num < 10_000_000_000 ? num * 1000 : num
-
-	const d = new Date(ms)
-	if (isNaN(d.getTime())) return ""  // 避免 Invalid Date
-
-	return d.toLocaleDateString("en-US", {
-		year: "numeric",
-		month: "short",
-		day: "numeric"
-	})
-}
-
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
 
 type Props = {
 	close: (path: string) => void
 	beamioer?: searchResult
-}
-
-const CURRENCY_META: Record<
-  ICurrency,
-  { flag: string; symbol: string; label: string }
-> = {
-  USD: { flag: "🇺🇸", symbol: "$", label: "USD" },
-  CAD: { flag: "🇨🇦", symbol: "$", label: "CAD" },
-  EUR: { flag: "🇪🇺", symbol: "€", label: "EUR" },
-  JPY: { flag: "🇯🇵", symbol: "¥", label: "JPY" },
-  CNY: { flag: "🇨🇳", symbol: "¥", label: "CNY" },
-  HKD: { flag: "🇭🇰", symbol: "$", label: "HKD" },
-  TWD: { flag: "🇹🇼", symbol: "$", label: "TWD" },
-  SGD: { flag: "🇸🇬", symbol: "$", label: "SGD" },
-  USDC: {flag:"", symbol: "", label: ""}
-};
-
-function fiatPrefix(ccy: ICurrency) {
-	if (ccy === "CAD") return "CA$"
-	if (ccy === "USD") return "$"
-	if (ccy === "EUR") return "€"
-	if (ccy === "JPY") return "JP¥"
-	if (ccy==='TWD') return "NT$"
-	if (ccy==='CNY') return 'CN¥'
-	if (ccy==='HKD') return 'HK$'
-	if (ccy==='SGD') return 'SG$'
-
-  return CURRENCY_META[ccy].symbol;
 }
 
 function formatAmount(v: number, c: ICurrency) {
@@ -98,8 +51,6 @@ function formatAmount(v: number, c: ICurrency) {
 	})
 }
 
-
-
 export default function PayScreen ({close, beamioer}: Props) {
 	
 	const [sendAmount, setSendAmount] = useState("")
@@ -115,8 +66,8 @@ export default function PayScreen ({close, beamioer}: Props) {
 	const [message, senMessage] = useState<any>(null)
 	const [successHash, setSuccessHash] = useState("")
 	const [cardCreate, setCardCreate] = useState(false)
-	const [usdcAmount, setUsdcAmount] = useState("")
-	const [currencyAmount, setCurrencyAmount] = useState("")
+	const [cardTitle, setCardTitle] = useState("Your dynamic text goes here")
+	const [cardDetail, setCardDetail] = useState("Write some detail…")
 	const [currentCurrency, setCurrentCurrency] = useState<ICurrency>('USDC')
 	const [showGiftEnvelope, setShowGiftEnvelope] = useState(false)
 	const [showGiftImageError, setShowGiftImageError] = useState(false)
@@ -156,11 +107,6 @@ export default function PayScreen ({close, beamioer}: Props) {
 		}
 	}, [sendError, showToError])
 
-	useEffect(() => {
-		if (item) {
-			setFocusAmount(true)
-		}
-	}, [item])
 
 	useEffect(() => {
 		if (showGiftImageError) {
@@ -170,16 +116,18 @@ export default function PayScreen ({close, beamioer}: Props) {
 		}
 	}, [showGiftImageError])
 
+	const usdcAmount = useMemo(() => {
+		return formatAmount(Number(sendAmount), "USDC")
+	}, [sendAmount])
 
+	const currencyAmountText = useMemo(() => {
+		const curr = formatAmount(
+			usdcToCurrencyAmount(Number(sendAmount), currentCurrency),
+			currentCurrency
+		)
+		return `${fiatPrefix(currentCurrency)} ${curr}`
+	}, [sendAmount, currentCurrency, currencyData]) // ✅ 把 currencyData 纳入
 
-	useEffect(() => {
-		const usdc = formatAmount(Number(sendAmount), 'USDC')
-		setUsdcAmount(usdc)
-		const curr = formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
-		const fiatText = `${fiatPrefix(currentCurrency)} ${curr}`
-		setCurrencyAmount(fiatText)
-
-	}, [sendAmount, currentCurrency])
 
 
 
@@ -301,8 +249,14 @@ export default function PayScreen ({close, beamioer}: Props) {
 		const bo = beamio
 		const toAddress = item.address
 
-		let sendNote = note||defaultNodeText
+		let data: payMe = {
+			currency: lockMode === 'FIAT_LOCKED' ? currentCurrency : 'USDC',
+			currencyAmount:  lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency) : sendAmount
+		}
+
+		let sendNote = note
 		let _addnote = addedNote
+
 		if (addedNote) {
 			const tryAdd = JSON.parse(addedNote)
 			const card = tryAdd.card
@@ -311,20 +265,18 @@ export default function PayScreen ({close, beamioer}: Props) {
 				detail: card.detail,
 				image: card.image,
 				currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
-				currencyAmount: currencyAmount
+				currencyAmount: currencyAmountText
 			}
+
 			_addnote = JSON.stringify(_data)
 		}
-		const curr = formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
-		const PayMe = {currency: currentCurrency, currencyAmount: curr}
 
 		if (_addnote) {
 			sendNote += `\r\n${_addnote}`
 		}
+
+		sendNote += `\r\n${JSON.stringify(data)}`
 		
-		if (lockMode === 'FIAT_LOCKED') {
-			sendNote += `\r\n${JSON.stringify(PayMe)}`
-		}
 		
 		const params = new URLSearchParams({amount: sendAmount, toAddress: toAddress, note: sendNote }).toString()
 		const path = `/api/BeamioTransfer?${params}`
@@ -384,16 +336,15 @@ export default function PayScreen ({close, beamioer}: Props) {
 			setShowGiftImageError(true)
 			return console.log (`tryPostToIPFS Error!`)
 		}
-		
+		setCardTitle(val.title)
+		setCardDetail(val.detail)
 			
 		setShowGiftEnvelope(true)
 		const addnote = {
 			card: {
 				title: val.title,
 				detail: val.detail,
-				image: `${ipfsEndpoint}${result}`,
-				currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
-				currencyAmount: currencyAmount
+				image: `${ipfsEndpoint}${result}`
 			}
 		}
 		setAddedNote(JSON.stringify(addnote))
@@ -412,20 +363,17 @@ export default function PayScreen ({close, beamioer}: Props) {
 								</CardContent>
 							</>
 						) : (
+							
 							<CardContent className="p-4 space-y-4">
 								{
-									cardCreate ? (<>
-										<DiceBearCard
-											onClose={val => {
-												setCardCreate(false)
-												if (val) {
-													tryPostToIPFS(val)
-												}
-											}}
-											usdcAmount={usdcAmount}
-											currencyText={currencyAmount}
-										 />
-									</>) : (<>
+
+									(
+										
+										<>
+
+										<div className={cardCreate ? "opacity-0 pointer-events-none select-none" : ""}>
+								
+							
 										{
 											!item && (
 												<section className="mb-4">
@@ -574,6 +522,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 													usdcAmount={sendAmount}
 													fiatCurrency={currentCurrency}
 													fiatAmount={formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)}
+													
 												 />
 											</>)
 										}
@@ -666,7 +615,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 														setNote(e.target.value)
 													}}
 													rows={2}
-													className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+													className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 mt-6"
 												/>
 											)
 										}
@@ -677,7 +626,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 											message && (
 												<>
 													{
-														note && <div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-[12px] text-yellow-900 space-y-1">
+														note && <div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-[12px] text-yellow-900 space-y-1 mt-6">
 															{note}
 														</div>
 													}
@@ -724,8 +673,9 @@ export default function PayScreen ({close, beamioer}: Props) {
 												{message ? 'Confirm': 'Send'}
 											</AppButton>
 										</div>
-										
-									</>)
+									</div>
+									</>
+									)
 								}
 								
 								
@@ -734,7 +684,32 @@ export default function PayScreen ({close, beamioer}: Props) {
 					}
 					
 				</Card>
+
 			</div>
+			{cardCreate && (
+				<div
+					className="
+						fixed inset-0 z-[999]
+						bg-black/20
+						backdrop-blur-[2px]
+						flex items-center justify-center
+						px-4
+					"
+				>
+					<div className="w-full max-w-[520px]">
+						<DiceBearCard
+							onClose={val => {
+								setCardCreate(false)
+								if (val) tryPostToIPFS(val)
+							}}
+							initialTitle={cardTitle}
+							initialDetail={cardDetail}
+							usdcAmount={usdcAmount}
+							currencyText={currencyAmountText}
+						/>
+					</div>
+				</div>
+			)}
 		</div>
 	)
 }

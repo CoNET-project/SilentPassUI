@@ -1,10 +1,12 @@
 import { AppButton } from '@/components/button/AppButton'
-import React, { useState,useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
 	checkBeamioAccountAPI,
 	createRecover,
 	storeSystemData
 } from '@/services/beamio'
+
+import { Eye } from "lucide-react"
 
 
 const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin: string, passcode: string, temp: encrypt_keys_object}) => void}) => {
@@ -15,6 +17,37 @@ const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin:
 	const [pinConfirm, setPinConfirm] = useState('')
 	const [pinError, setPinError] = useState('')
 	const [loading, setLoading] = useState(false)
+
+	const lastCheckedRef = useRef<string>("")
+
+	const [peekPinConfirm, setPeekPinConfirm] = useState(false)
+	const eyeBtnRef = useRef<HTMLButtonElement | null>(null)
+	const [peekPin, setPeekPin] = useState(false)
+
+	function startPeek(e: React.PointerEvent<HTMLButtonElement>) {
+		// 避免按钮抢走输入焦点/触发键盘闪动
+		e.preventDefault()
+		e.stopPropagation()
+
+		setPeekPinConfirm(true)
+
+		// 捕获指针：即使手指移出按钮，松开也能收到 pointerup
+		try {
+			e.currentTarget.setPointerCapture(e.pointerId)
+		} catch {}
+	}
+
+	function endPeek(e?: React.PointerEvent<HTMLButtonElement>) {
+		setPeekPinConfirm(false)
+
+		// 释放捕获（可选）
+		if (e) {
+			try {
+			e.currentTarget.releasePointerCapture(e.pointerId)
+			} catch {}
+		}
+	}
+
 
 	const formatBeamioName = () => {
 		setBeamioNameError('')
@@ -32,12 +65,31 @@ const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin:
 		return trimmed
 	}
 
+	useEffect (() => {
+		if (!beamioNameError) return
+		setTimeout (() => {
+			setBeamioNameError('')
+		}, 3000)
+	}, [beamioNameError])
+
+	const checkBeamioTag = async () => {
+		
+		const trimmed = formatBeamioName()
+		const isGood = await checkBeamioAccountAPI(trimmed)
+		
+		if (!isGood) {
+			
+			setBeamioNameError(`This @${trimmed} is already taken`)
+			return false
+		}
+		
+		return true
+	}
+
 
 	const handleContinue = async () => {
-		const trimmed = formatBeamioName()
-		if (!trimmed) {
-			return
-		}
+		
+		
 
 		setPinError("")
 
@@ -55,15 +107,12 @@ const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin:
 			return
 		}
 
-		setLoading(true)
-
-		const isGood = await checkBeamioAccountAPI(trimmed)
-
-		if (!isGood) {
-			setLoading(false)
-			setBeamioNameError(`This @${trimmed} is already taken`)
+		if (!checkBeamioTag()) {
 			return
 		}
+
+		setLoading(true)
+		const trimmed = formatBeamioName()
 
 		// ✅ 继续沿用原参数名 pin，但传入 password（避免影响现有 createRecover 签名）
 		const kks = await createRecover(trimmed, password)
@@ -85,18 +134,17 @@ const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin:
 			<div className="px-6 pt-8 pb-10">
 				{/* 顶部步骤标题 */}
 				<div className="text-[11px] font-semibold tracking-[0.18em] text-slate-400 uppercase mb-2">
-					Account · Step 1 of 2
+					WALLET · STEP 1 OF 2
 				</div>
 
 				{/* 主标题 */}
 				<h1 className="text-[26px] font-semibold text-slate-900">
-					Create your Beamio account
+					Create your wallet
 				</h1>
 
 				{/* 副标题 */}
 				<p className="mt-1 text-[14px] text-slate-500 leading-snug">
-					Pick a unique @BeamioTag for payments and a PIN to protect your wallet
-					backup.
+					Choose an @BeamioTag and set a password.
 				</p>
 
 				<div className="mt-6 space-y-5">
@@ -107,7 +155,6 @@ const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin:
 							<span className="ml-1">BeamioTag</span>
 						</div>
 						<input
-							
 							readOnly={loading}
 							className="
 								w-full h-11 px-4 rounded-2xl
@@ -121,45 +168,113 @@ const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin:
 							placeholder="myshop, myname ..."
 							onChange={e => {
 								setBeamioName(e.currentTarget.value)
-								setBeamioNameError('')
+								setBeamioNameError("")
+							}}
+
+							onBlur={async () => {
+								const v = (beamioName ?? "").trim()
+
+								// 空值：你可以选择不查，只给错误提示（按你业务需要）
+								if (!v) {
+									setBeamioNameError("Beamio Tag is required")
+									return
+								}
+
+								// 防止重复调用：值没变就不查
+								if (v === lastCheckedRef.current) return
+								lastCheckedRef.current = v
+
+								try {
+									await checkBeamioTag()
+								} catch (err) {
+									
+									
+								}
 							}}
 						/>
+
 						{beamioNameError && (
 							<p className="mt-1 text-[11px] text-rose-500">{beamioNameError}</p>
 						)}
+
 						<p className="mt-2 text-[11px] text-slate-500 leading-snug">
-							Friends and customers can pay you by typing{' '}
-							<span className="font-mono">@BeamioTag</span>, no wallet address
-							needed. This handle cannot be changed later.
+							People can pay you using your tag. You can’t change it later.
 						</p>
 					</div>
 
 					{/* PIN */}
 					<div>
 						<div className="text-xs font-semibold text-slate-600 mb-1.5">Password</div>
-						<input
-							readOnly={loading}
-							type="password"
-							autoComplete="new-password"
-							minLength={6}
-							spellCheck={false}
-							autoCapitalize="none"
-							autoCorrect="off"
-							className="
-								w-full h-11 px-4 rounded-2xl
+						{/* Password input */}
+							<div className="relative">
+							<input
+								readOnly={loading}
+								type={peekPin ? "text" : "password"}
+								autoComplete="new-password"
+								minLength={6}
+								spellCheck={false}
+								autoCapitalize="none"
+								autoCorrect="off"
+								className="
+								w-full h-11 px-4 pr-11 rounded-2xl
 								border border-slate-200 bg-slate-50/40
 								text-[15px] text-slate-900
 								placeholder:text-slate-400
 								outline-none
 								focus:border-sky-400 focus:ring-1 focus:ring-sky-300
-							"
-							value={pin}
-							placeholder="At least 6 characters"
-							onChange={e => {
+								"
+								value={pin}
+								placeholder="At least 6 characters"
+								onChange={e => {
 								setPin(e.currentTarget.value)
 								setPinError("")
-							}}
-						/>
+								}}
+							/>
+
+							{/* 👁 press-to-peek */}
+							<button
+								type="button"
+								tabIndex={-1}
+								aria-label="Press and hold to peek password"
+								className="
+								absolute
+								right-3
+								top-1/2
+								-translate-y-1/2
+								h-8 w-8
+								rounded-full
+								flex items-center justify-center
+								text-slate-400 hover:text-slate-600
+								active:bg-slate-200/50
+								transition
+								touch-manipulation
+								select-none
+								"
+								onPointerDown={e => {
+								e.preventDefault()
+								e.stopPropagation()
+								setPeekPin(true)
+								try {
+									e.currentTarget.setPointerCapture(e.pointerId)
+								} catch {}
+								}}
+								onPointerUp={e => {
+								setPeekPin(false)
+								try {
+									e.currentTarget.releasePointerCapture(e.pointerId)
+								} catch {}
+								}}
+								onPointerCancel={() => setPeekPin(false)}
+								onPointerLeave={() => setPeekPin(false)}
+							>
+								<Eye className="w-5 h-5" />
+							</button>
+							</div>
+
+							{/* helper text */}
+							<p className="mt-2 text-[13px] text-slate-500">
+							Use 6+ characters. Beamio doesn’t store your password.
+							</p>
 					</div>
 
 					{/* Confirm PIN */}
@@ -167,29 +282,61 @@ const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin:
 						<div className="text-xs font-semibold text-slate-600 mb-1.5">
 							Confirm Password
 						</div>
-						<input
-							readOnly={loading}
-							type="password"
-							autoComplete="new-password"
-							minLength={6}
-							spellCheck={false}
-							autoCapitalize="none"
-							autoCorrect="off"
-							className="
-								w-full h-11 px-4 rounded-2xl
+						<div className="relative">
+							<input
+								readOnly={loading}
+								type={peekPinConfirm ? "text" : "password"}
+								autoComplete="new-password"
+								minLength={6}
+								spellCheck={false}
+								autoCapitalize="none"
+								autoCorrect="off"
+								className="
+								w-full h-11 px-4 pr-11 rounded-2xl
 								border border-slate-200 bg-slate-50/40
 								text-[15px] text-slate-900
 								placeholder:text-slate-400
 								outline-none
 								focus:border-sky-400 focus:ring-1 focus:ring-sky-300
-							"
-							value={pinConfirm}
-							placeholder="Re-enter password"
-							onChange={e => {
+								"
+								value={pinConfirm}
+								placeholder="Re-enter password"
+								onChange={e => {
 								setPinConfirm(e.currentTarget.value)
 								setPinError("")
-							}}
-						/>
+								}}
+							/>
+
+							{/* 👁 press-to-peek */}
+							<button
+								ref={eyeBtnRef}
+								type="button"
+								tabIndex={-1}
+								aria-label="Press and hold to peek password"
+								className="
+								absolute right-3 top-1/2 -translate-y-1/2
+								h-8 w-8 rounded-full
+								flex items-center justify-center
+								text-slate-400 hover:text-slate-600
+								active:bg-slate-200/50
+								transition
+								touch-manipulation
+								select-none
+								"
+								onPointerDown={startPeek}
+								onPointerUp={endPeek}
+								onPointerCancel={endPeek}
+								onPointerLeave={() => setPeekPinConfirm(false)}
+								// 保险：某些环境下 pointer 事件缺失时，mouse/touch 兜底（可留可不留）
+								onMouseDown={e => {
+								e.preventDefault()
+								setPeekPinConfirm(true)
+								}}
+								onMouseUp={() => setPeekPinConfirm(false)}
+							>
+								<Eye className="w-5 h-5" />
+							</button>
+							</div>
 						{pinError && (
 							<p className="mt-1 text-[11px] text-rose-500">{pinError}</p>
 						)}
@@ -198,13 +345,10 @@ const CreateUsernamePinScreen = ({close}: {close: (val: {qrDataUrl: string, pin:
 					{/* PIN tips card */}
 					<div className="mt-1 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
 						<div className="text-xs font-semibold text-amber-800 mb-1">
-							Password tips
+							How Beamio restores wallets
 						</div>
 						<p className="text-[11px] leading-snug text-amber-900">
-							Use at least 6 characters that you can remember but others can’t guess.
-							Letters, numbers, and symbols are all supported. We use scrypt locally to
-							protect your password against offline attacks. Beamio never sends your
-							password to any server.
+							Beamio stores only an encrypted backup record on-chain. Your password decrypts it locally on your device.
 						</p>
 					</div>
 				</div>

@@ -22,7 +22,7 @@ import { randomBytes } from '@noble/hashes/utils.js'
 import contracts from "../utils/contracts"
 import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
-import {generateKey, readKey, } from 'openpgp'
+
 
 export type x402Response = {
 	timestamp: string
@@ -32,8 +32,6 @@ export type x402Response = {
 	USDC_tx?: string
 	SETTLE_tx?: string
 }
-
-
 
 const uuid62 = require('uuid62')
 const PouchDB = require("pouchdb").default
@@ -904,19 +902,21 @@ export const MobileType = () => {
 }
 
 export const isStandalone = (() => {
-	try {
-		// Android / Desktop PWA
-		if (window.matchMedia?.('(display-mode: standalone)').matches) {
-			return true
-		}
 
-		// iOS Safari PWA
-		if ((window.navigator as any).standalone === true) {
-			return true
-		}
-	} catch (e) {}
 
-	return false
+	// try {
+	// 	// Android / Desktop PWA
+	// 	if (window.matchMedia?.('(display-mode: standalone)').matches) {
+	// 		return true
+	// 	}
+
+	// 	// iOS Safari PWA
+	// 	if ((window.navigator as any).standalone === true) {
+	// 		return true
+	// 	}
+	// } catch (e) {}
+
+	return true
 })()
 
 
@@ -1155,7 +1155,7 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 	const signMessage = await signWallet.signMessage(signWallet.address)
 
 
-	const lastname = `${beamio.lastName}\r\n${JSON.stringify({language:beamio.language,currency: beamio.currency})}` 
+	const lastname = `${beamio.lastName}\r\n${JSON.stringify({language:beamio.language,currency: beamio.currency, tax: beamio.tax})}` 
 	try {
 		const body = {
 			accountName: beamio.accountName,
@@ -1240,7 +1240,7 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	
 	const phraseBase64 = toBase64(temp.mnemonicPhrase)
 	
-	const img = await aesGcmEncryptWithStored (phraseBase64, pin + recoverCode.code, stored)
+	const img = await aesGcmEncryptWithStored (phraseBase64, recoverCode.code, stored)
 	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)
 
 	const storageEncryptedImg = toBase64(JSON.stringify({stored, img}))
@@ -1298,8 +1298,13 @@ export const getUserInfo = async (keyID: string) => {
 		const userInfo = await beamioAccountSC.getAccount(keyID)
 		const lastNameArray: string = (userInfo?.lastName||'')
 		const lastName = lastNameArray.split('\r\n')
-
-		const addedSetup: beamioAddedSetup = lastName.length > 1 ? JSON.parse(lastName[1]) : {language: 'en', currency: 'USD'}
+		let addedSetup: beamioAddedSetup = {language: 'en', currency: 'USD', tax: '0'}
+		try {
+			addedSetup = JSON.parse(lastName[lastName.length - 1])
+		} catch (ex) {
+			
+		}
+		
 
 		const bo: beamio = {
 			accountName: userInfo?.accountName,
@@ -1312,7 +1317,8 @@ export const getUserInfo = async (keyID: string) => {
 			lastName: lastName[0],
 			createdAt: Number(userInfo?.createdAt),
 			language: addedSetup.language,
-			currency: addedSetup.currency
+			currency: addedSetup.currency,
+			tax: addedSetup.tax ||'0'
 		}
 		return bo
 	} catch (ex: any) {
@@ -1518,7 +1524,7 @@ export const RegenerateRecover = async (mnemonicPhrase: string, beamio: beamio, 
 	const recoverCode =  generateCODE('')
 	const stored = hashPasswordBrowser(pin)
 	const phraseBase64 = toBase64(mnemonicPhrase)
-	const img = await aesGcmEncryptWithStored (phraseBase64, pin + recoverCode.code, stored)
+	const img = await aesGcmEncryptWithStored (phraseBase64, recoverCode.code, stored)
 	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)
 
 	const storageEncryptedImg = toBase64(JSON.stringify({stored, img}))
@@ -1584,38 +1590,3 @@ export const postToIPFS = async (profile: profile, image: string) => {
 //			regiest publicKey			keyID to pgpKey		{hash: ethers.solidityPackedKeccak256(['string'], [keyID + 'armor']), encrypto: pgpKeyArmor}
 //			regiest keyID in beamio		
 
-type GenerateKeyArg = Parameters<typeof generateKey>[0]
-const generatePgpKey = async (walletAddr: string, passwd: string ) => {
-	const userIDs = [{ name: walletAddr }] // ✅ 单独声明，mutable
-
-	const option = {
-		type: 'ecc',
-		passphrase: passwd,
-		userIDs,
-		curve: 'curve25519',
-		format: 'armored'
-	} as const
-
-	// ✅ 这里 option.userIDs 仍会变 readonly（因为 as const 会冻结引用类型）
-	// 所以需要在调用点转回 generateKey 的参数类型：
-	const { privateKey, publicKey } = await generateKey(option as unknown as GenerateKeyArg)
-	const publicKeyArmored = publicKey as unknown as string
-	
-	const keyObj = await readKey ({armoredKey: publicKeyArmored})
-	const keyID = keyObj.getKeyIDs()[1].toHex().toUpperCase()
-	return { privateKey, publicKey, keyID }
-}
-
-type initBeamioPGPKeysRet = {
-	privateKey: string, publicKey: string, keyID: string
-}
-
-export const initBeamioPGPKeys = async (walletAddr: string): Promise<initBeamioPGPKeysRet> => {
-	const keys = await generatePgpKey(walletAddr,'')
-	const ret: initBeamioPGPKeysRet = {
-		privateKey: keys.privateKey as unknown as string,
-		publicKey: keys.publicKey as unknown as string,
-		keyID: keys.keyID
-	}
-	return ret
-}

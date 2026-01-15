@@ -16,13 +16,13 @@ import layout from './layout.module.scss'
 global.Buffer = require("buffer").Buffer
 
 function App() {
-	const { isInitialLoading, showFooter,  } = useDaemonContext()
+	const { isInitialLoading, showFooter, setShowFooter } = useDaemonContext()
 	const bodyRef = useRef<HTMLDivElement | null>(null)
 
 	// Footer 是否显示（由滚动决定）
 	const [footerVisible, setFooterVisible] = useState(true)
 
-	// 你原来的防橡皮筋 touchmove 逻辑（保留不动）
+	
 	useEffect(() => {
 		const canScroll = (el: HTMLElement) => {
 			const style = window.getComputedStyle(el)
@@ -172,6 +172,10 @@ function App() {
 		return () => clearTimeout(t)
 	}, [])
 
+	useEffect(() => {
+		if (isInitialLoading) setShowFooter (false)
+		setShowFooter(true)
+	},[isInitialLoading])
 
 
 	return (
@@ -191,7 +195,7 @@ function App() {
 				</div>
 
 				{/* ✅ 外层只当占位（不再做 transform），动画全部在 Footer 自己的 motion.div 上做 */}
-				{!isInitialLoading && showFooter && <Footer visible={footerVisible} peek={false} />}
+				{showFooter && <Footer visible={footerVisible} peek={false} />}
 			</div>
 		</Router>
 	)

@@ -258,6 +258,10 @@ const SearchInputWithDropdown =
 			if (readonly) setShowDropdown(false)
 		}, [readonly])
 
+		useEffect(() => {
+			setInternalError(showError)
+		}, [showError])
+
 		const handleSelect = (item: searchResult) => {
 			if (select) {
 				setQuery('')

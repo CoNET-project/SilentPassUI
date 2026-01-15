@@ -35,8 +35,6 @@ export const getDecimals = (c: ICurrency) => {
 	const decimals =
 		c === "TWD" || c === "JPY"
 		? 0
-		: c === "USDC"
-		? 4
 		: 2
 	return decimals
 }
@@ -140,8 +138,8 @@ export const statusStyleMap: Record<
 	pending: {
 		container: "bg-amber-100",
 		iconBg: "bg-amber-200",
-		icon: "text-amber-700",
-		text: "text-amber-200",
+		icon: "text-amber-500",
+		text: "text-amber-700",
 	},
 	payme: {
 		container: "bg-fuchsia-100",
@@ -181,4 +179,32 @@ export const statusStyleMap: Record<
 		icon: "text-slate-500",
 		text: "text-slate-500",
 	},
+}
+
+// 根据「到账金额 received」反推 fee
+export function calcFeeFromReceived(received: number) {
+	if (!isFinite(received) || received <= 0) return 0
+
+	// 1️⃣ 尝试比例区间（最常见）
+	const baseByRatio = received / 0.992
+	const feeByRatio = baseByRatio - received
+
+	if (feeByRatio > 0.02 && feeByRatio < 2) {
+		return Number(feeByRatio.toFixed(4))
+	}
+
+	// 2️⃣ 尝试最小 fee
+	const baseMin = received + 0.02
+	if (baseMin * 0.008 <= 0.02) {
+		return 0.02
+	}
+
+	// 3️⃣ 尝试最大 fee
+	const baseMax = received + 2
+	if (baseMax * 0.008 >= 2) {
+		return 2
+	}
+
+	// 理论上不会到这里
+	return Number(feeByRatio.toFixed(4))
 }

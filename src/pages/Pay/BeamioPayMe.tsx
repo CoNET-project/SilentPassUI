@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { Copy, Check, MessageCircle, Printer, Share2 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
@@ -6,18 +6,19 @@ import bIcon from '@/components/assets/logo512.png'
 import { QRCodeCanvas } from 'qrcode.react'
 import PaymentLink from './PaymentLink'
 import {ShowPrint} from './ShowPrint'
+import { motion, useMotionValue, animate } from 'framer-motion'
+import { QrCode, Link } from 'lucide-react'
+import { BeamioSegmentedDrag } from './components/beamioSegmented'
 
 const showPaylinkSite = 'https://beamio.app'
+type Mode = 'main' | 'PaymentLink'	|'Print'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 type BeamioPayMeProps = {
- 
-  payLink: string // https://beamio.app/pay/@BeamioDemo
-  // 你也可以直接传入现成的 QR 图片（优先使用）
-  qrImageUrl?: string
-  // tab 控制（如果你需要外部路由）
-  activeTab?: "payme" | "invoice"
-  onTabChange?: (v: "payme" | "invoice") => void
+
+	// tab 控制（如果你需要外部路由）
+	activeTab?: "payme" | "invoice"
+	onTabChange?: (v: "payme" | "invoice") => void
 }
 
 const displayName = (item: beamio|null) => {
@@ -29,8 +30,6 @@ const displayName = (item: beamio|null) => {
 
 export default function BeamioPayMe(props: BeamioPayMeProps) {
   const {
-    payLink,
-    qrImageUrl,
     activeTab = "payme",
     onTabChange,
   } = props
@@ -50,26 +49,21 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("")
   const [getBeamio, setGetBeamio] = useState<beamio|null>(null)
   	const [successUrl, setSuccessUrl] = useState("")
-	const [showMode, setShowMode] = useState<'Print'|'main'|'PaymentLink'>('main')
+	const [showMode, setShowMode] = useState<Mode>('main')
+	const [isUSDC, setIsUSDC] = useState(true)
 
 	
   const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress, setShowFooter, currencyData, beamio, setBeamio} = useDaemonContext()
 	useEffect(() => {
 		if (!beamio||getBeamio||!profiles?.length) return
 		setGetBeamio({...beamio})
-		if (!beamio?.payme) {
-			
-			const showparams = new URLSearchParams({beamio: beamio.accountName}).toString()
-			const showUrl = `${showPaylinkSite}?${showparams}`
-			setSuccessUrl(showUrl)
-		} else {
-			const showparams = new URLSearchParams({code: beamio.payme}).toString()
-			const showUrl = `${showPaylinkSite}?${showparams}`
-			setSuccessUrl(showUrl)
-		}
+		
+		const showparams = new URLSearchParams({beamio: beamio.accountName}).toString()
+		const showUrl = `${showPaylinkSite}?${showparams}`
+		setSuccessUrl(showUrl)
+		
 	},[])
 
-  const effectiveQr = useMemo(() => qrImageUrl || qrDataUrl, [qrImageUrl, qrDataUrl])
 
   const copyText = async (t: string) => {
     try {
@@ -103,79 +97,35 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
     // iOS/Android 上如果支持 share，会走系统消息/分享面板
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Beamio PayMe", text: payLink, url: payLink })
+        await navigator.share({ title: "Beamio PayMe", text: successUrl, url: successUrl })
         return
       } catch {
         // ignore
       }
     }
-    await copyText(payLink)
+    await copyText(successUrl)
   }
 
   const onShare = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Beamio PayMe", text: payLink, url: payLink })
+        await navigator.share({ title: "Beamio PayMe", text: successUrl, url: successUrl })
         return
       } catch {
         // ignore
       }
     }
-    await copyText(payLink)
+    await copyText(successUrl)
   }
 
   return (
     <div className="min-h-screen bg-[#EDF2FE] flex justify-center overflow-y-auto">
       <div className="w-full max-w-[540px] px-4 py-4">
         {/* Segmented */}
-        <div className="
-			rounded-[18px]
-				bg-white/20
-				backdrop-blur-xl
-				p-1
-				ring-1 ring-white/45
-				shadow-[inset_0_1px_1px_rgba(255,255,255,0.6)]
-		">
-          <div className="grid grid-cols-2 gap-1">
-            <button
-              type="button"
-              onClick={() => setShowMode('main')}
-               className={[
-				"h-11 rounded-[16px] text-[15px] font-semibold transition-all duration-200",
-				showMode === 'main'
-				? `
-					bg-white/80
-					backdrop-blur-xl
-					text-[rgb(0_0_255)]
-					shadow-[0_2px_8px_rgba(0,0,0,0.12)]
-					ring-1 ring-white/70
-				`
-				: "text-black/20 hover:text-black/40",
-			].join(" ")}
-            >
-              Any amount (PayMe)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowMode('PaymentLink')}
-				className={[
-					"h-11 rounded-[16px] text-[15px] font-semibold transition-all duration-200",
-					showMode === 'PaymentLink'
-					? `
-						bg-white/80
-						backdrop-blur-xl
-						text-[rgb(0_0_255)]
-						shadow-[0_2px_8px_rgba(0,0,0,0.12)]
-						ring-1 ring-white/70
-					`
-					: "text-black/20 hover:text-black/40",
-				].join(" ")}
-            >
-              Fixed amount (Payment Link)
-            </button>
-          </div>
-        </div>
+			<BeamioSegmentedDrag
+			value={showMode}
+			onChange={setShowMode}
+			/>
 
         {/* Main Card */}
         {
@@ -207,38 +157,38 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 
 								{/* QR 白底板：强制放到上层 */}
 								<div className="relative z-10 flex justify-center">
-								<div
-									className="
-									rounded-[28px]
-									bg-white
-									p-[18px]
-									shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
-									"
-								>
-									<QRCodeCanvas
-									value={successUrl}
-									size={264}
-									level="H"
-									includeMargin={false}
-									bgColor="white"
-									fgColor="#000000"
-									imageSettings={{
-										src: bIcon,
-										height: 95,
-										width: 95,
-										excavate: true,
-									}}
-									className="block"
-									/>
-								</div>
+									<div
+										className="
+										rounded-[28px]
+										bg-white
+										p-[18px]
+										shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+										"
+									>
+										<QRCodeCanvas
+										value={successUrl}
+										size={264}
+										level="H"
+										includeMargin={false}
+										bgColor="white"
+										fgColor="#000000"
+										imageSettings={{
+											src: bIcon,
+											height: 95,
+											width: 95,
+											excavate: true,
+										}}
+										className="block"
+										/>
+									</div>
 								</div>
 								
 								<div className="mt-6 text-center">
-								<div className="mt-3 text-[18px] font-semibold text-slate-500">
-									Scan to pay (Any amount)
+									<div className="mt-3 text-[18px] font-semibold text-slate-500">
+										Scan to pay (Any amount)
+									</div>
 								</div>
-								</div>
-							
+								{/* <TaxSwitch value={isUSDC} onChange={setIsUSDC} taxRate={getBeamio?.tax ? Number(getBeamio.tax):0} /> */}
 							</div>
 							</div>
 
@@ -341,8 +291,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 				handle={`@${beamio?.accountName || "BeamioDemo"}`}
 				payTitle="Beamio PayMe"
 				paySubtitle="USDC · Any amount"
-				payLink={successUrl || payLink}
-				qrValue={successUrl || payLink}
+				payLink={successUrl}
+				qrValue={successUrl}
 				onDone={() => setShowMode('main')}
 				onBack={() => setShowMode('main')}
 				onPrint={() => window.print()}

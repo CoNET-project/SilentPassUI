@@ -120,9 +120,9 @@ export default function BeamioOnboardingModal({home}: Props) {
 				pb-[calc(80px+env(safe-area-inset-bottom))]
 				">
 					{/* 顶部小标题 */}
-					<div className="text-[11px] font-semibold tracking-[0.18em] text-slate-400 uppercase">
+					{/* <div className="text-[11px] font-semibold tracking-[0.18em] text-slate-400 uppercase">
 						BEAMIO · USDC ON BASE
-					</div>
+					</div> */}
 
 					{/* 主标题 */}
 					<h1 className="mt-2 text-[26px] font-semibold text-slate-900">
@@ -131,35 +131,38 @@ export default function BeamioOnboardingModal({home}: Props) {
 
 					{/* 副标题 */}
 					<p className="mt-1 text-[14px] text-slate-500 leading-snug">
-						Create a gasless USDC account or restore an existing one.
+						Create a wallet — or restore one.
 					</p>
+
+					{/* 顶部小标题 */}
+					<div className="text-[11px] font-semibold tracking-[0.18em] text-slate-400 uppercase">
+						BEAMIO · USDC ON BASE
+					</div>
 
 					{/* What you get 卡片 */}
 					<div className="mt-5 rounded-[24px] border border-slate-200 bg-white px-4 py-4">
-					<div className="text-[13px] font-semibold text-slate-900 mb-2">
-						What you get
-					</div>
+						<div className="text-[13px] font-semibold text-slate-900 mb-2">
+							What you’ll get
+						</div>
 					<ul className="list-disc pl-5 space-y-1.5 text-[13px] text-slate-700">
-						<li>Self-custodial USDC wallet on Base (no email login).</li>
-						<li>Gasless payments powered by Beamio infrastructure.</li>
+						<li>A self-custodial USDC wallet on Base — you control your funds.</li>
+						<li>Gas sponsored for Beamio transfers.</li>
 						<li>
-							@BeamioTag + PIN with a Recovery QR instead of a seed phrase.
+							Two restore methods: @BeamioTag + Password, or Recovery QR/code.
 						</li>
 					</ul>
 					</div>
 
 					{/* 新建账号按钮 + 推荐文案 */}
 					<div className="mt-6">
-					<AppButton
-						fullWidth
-						className="rounded-[999px] py-3 text-[15px] font-semibold"
-						onClick={() => setSettingsOpen('CreateUsernamePinScreen')}
-					>
-						Set up new Beamio account
-					</AppButton>
-					<p className="mt-2 text-[11px] text-slate-500 leading-snug">
-						Recommended if this is your first time using Beamio.
-					</p>
+						<AppButton
+							fullWidth
+							className="rounded-[999px] py-3 text-[15px] font-semibold"
+							onClick={() => setSettingsOpen('CreateUsernamePinScreen')}
+						>
+							Create wallet
+						</AppButton>
+					
 					</div>
 
 					{/* 分割线 */}
@@ -167,12 +170,11 @@ export default function BeamioOnboardingModal({home}: Props) {
 
 					{/* 已有账号区域 */}
 					<div>
-					<div className="text-[13px] font-semibold text-slate-900">
-						Already use Beamio?
-					</div>
+						<div className="text-[13px] font-semibold text-slate-900">
+							Already have a wallet?
+						</div>
 					<p className="mt-1 text-[13px] text-slate-500 leading-snug">
-						If you've used Beamio before and already created an account, <br />you can
-						restore it with your Recovery QR or recovery code S.
+						Restore with your Recovery QR/code or @BeamioTag + Password.
 					</p>
 
 					<div className="mt-4">
@@ -183,14 +185,11 @@ export default function BeamioOnboardingModal({home}: Props) {
 							
 							onClick={() => setSettingsOpen('RestoreEntryScreen')}
 						>
-							I already have a Beamio account
+							Restore wallet
 						</AppButton>
 					</div>
 
-					<p className="mt-2 text-[11px] text-slate-500 leading-snug">
-						This will take you to <span className="font-medium">Restore your Beamio account</span><br />
-						(scan Recovery QR or enter recovery code S).
-					</p>
+					
 					</div>
 				</div>
 			</div>
@@ -212,34 +211,31 @@ export default function BeamioOnboardingModal({home}: Props) {
 					isInitialEntry ? <InitialEntryScreen /> : (<>
 						{/* Logo + label */}
 						<div className="
-						w-full max-w-lg p-6 md:p-8 mx-auto
+							w-full max-w-lg p-6 md:p-8 mx-auto
 						
 						">
-							<div className="flex items-center gap-3 mb-6">
-							<div className="h-10 w-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl">
-								B
-							</div>
-							<div>
-								<div className="text-[11px] font-semibold tracking-[0.18em] text-blue-600 uppercase">
-									Wallet created
+							<div className="flex items-center gap-3 mb-6 mt-8">
+								<div className="h-10 w-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl">
+									B
 								</div>
-								<div className="text-sm text-slate-500">Beamio · Zero-Gas USDC on Base</div>
-							</div>
+								<div>
+									
+									<div className="text-sm text-slate-500">Beamio</div>
+								</div>
 							</div>
 
 							{/* Title + subtitle */}
-							<h1 className="text-2xl md:text-3xl font-semibold text-slate-900 mb-2">
-								Your Beamio wallet is ready
+							<h1 className="text-2xl md:text-3xl font-semibold text-slate-900 mb-2 ">
+								Wallet ready
 							</h1>
 							<p className="text-sm md:text-base text-slate-600 mb-4 md:mb-5 leading-relaxed">
-								We&apos;ve created a self-custodial USDC wallet for you on Base. Only you can control this
-								wallet – Beamio can&apos;t move your funds.
+								Self-custodial USDC on Base — you control your funds.
 							</p>
 
 							{addressPreview && (
 								<div className="mb-5 md:mb-6">
 									<div className="text-[11px] font-semibold tracking-[0.16em] text-slate-500 uppercase mb-1">
-									Wallet address
+										Wallet address
 									</div>
 									<div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2.5">
 									<span className="font-mono text-xs md:text-sm text-slate-800 truncate mr-3">
@@ -256,34 +252,56 @@ export default function BeamioOnboardingModal({home}: Props) {
 							)}
 
 							{/* Bullets */}
-							<div className="space-y-2 mb-6 text-xs md:text-sm text-slate-600">
-								<div className="flex items-start gap-2">
-									<span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-400 text-[11px] font-semibold text-emerald-600">
-									✓
-									</span>
-									<p>
-										Built on <span className="font-medium">Base</span> for low-cost, gasless USDC payments.
-									</p>
+							<div className="mb-6 space-y-4">
+								{/* title */}
+								<div className="text-[12px] tracking-[0.28em] font-semibold text-slate-400">
+									WALLET READY
 								</div>
-								<div className="flex items-start gap-2">
-									<span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-[11px] font-semibold text-slate-500">
-									ⓘ
-									</span>
-									<p>
-										On this device, your wallet is stored locally inside this Beamio app. Clearing app
-										data or using a different environment may create a new wallet.
-									</p>
+
+								{/* bullets */}
+								<div className="space-y-3 text-[16px] leading-relaxed text-slate-700">
+									<div className="flex items-start gap-3">
+									<span
+										aria-hidden
+										className="
+										mt-[9px]
+										h-3 w-3
+										rounded-full
+										bg-[#1652F0]
+										flex-none
+										"
+									/>
+									<p>Gas is sponsored for Beamio transfers.</p>
+									</div>
+
+									<div className="flex items-start gap-3">
+									<span
+										aria-hidden
+										className="
+										mt-[9px]
+										h-3 w-3
+										rounded-full
+										bg-[#1652F0]
+										flex-none
+										"
+									/>
+									<p>Restore anytime with @BeamioTag + Password or Recovery QR/code.</p>
+									</div>
+									<div className="flex items-start gap-3">
+									<span
+										aria-hidden
+										className="
+										mt-[9px]
+										h-3 w-3
+										rounded-full
+										bg-[#1652F0]
+										flex-none
+										"
+									/>
+									<p>Beamio doesn't store your password, recovery code, or private key.</p>
+									</div>
 								</div>
-								<div className="flex items-start gap-2">
-									<span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-amber-400 text-[11px] font-semibold text-amber-600">
-									!
-									</span>
-									<p>
-										On mobile, always open Beamio from the <span className="font-medium">Home Screen / installed app icon</span>
-										for the most stable experience.
-									</p>
 								</div>
-							</div>
 
 							{/* Primary action */}
 							<AppButton
@@ -295,13 +313,13 @@ export default function BeamioOnboardingModal({home}: Props) {
 									home()
 								}}
 							>
-								Start using Beamio
+								Go To Home
 							</AppButton>
 							
 
 							{/* Secondary note */}
 							<p className="text-[11px] md:text-xs text-center text-slate-400">
-								You can view and manage your wallet details later in Settings.
+								Manage recovery rotation and exports later in Settings.
 							</p>
 						</div>
 					</>)

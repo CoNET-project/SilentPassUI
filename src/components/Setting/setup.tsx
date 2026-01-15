@@ -157,7 +157,7 @@ export default function BeamioSettingsScreen({
 										<div className="flex flex-col items-start">
 											<span className="text-sm font-medium">Cashcodes &amp; links</span>
 											<span className="text-xs text-slate-500">
-												Default memo &amp; expiry for links
+												Default for links
 											</span>
 										</div>
 									</div>
@@ -180,7 +180,7 @@ export default function BeamioSettingsScreen({
 									<div className="flex flex-col items-start">
 									<span className="text-sm font-medium">Passkey &amp; Face ID</span>
 									<span className="text-xs text-slate-500">
-										Sign-in passkey, Face ID, session timeout
+										Sign-in, session timeout
 									</span>
 									</div>
 								</div>
@@ -197,7 +197,7 @@ export default function BeamioSettingsScreen({
 										<Shield className="h-4 w-4" />
 									</span>
 									<div className="flex flex-col items-start">
-										<span className="text-sm font-medium">Recovery Backup</span>
+										<span className="text-sm font-medium">Backup & export</span>
 										<span className="text-xs text-slate-500">
 											Recovery QR, code (S), change PIN
 										</span>
@@ -217,9 +217,9 @@ export default function BeamioSettingsScreen({
 									<Shield className="h-4 w-4" />
 									</span>
 									<div className="flex flex-col items-start">
-									<span className="text-sm font-medium">Wallet backup & private key</span>
+									<span className="text-sm font-medium">private key</span>
 									<span className="text-xs text-slate-500">
-										Back up or export your private key (advanced)
+										export your private key (advanced)
 									</span>
 									</div>
 								</div>
@@ -244,7 +244,7 @@ export default function BeamioSettingsScreen({
 									<div className="flex flex-col items-start">
 									<span className="text-sm font-medium">Legal &amp; Privacy</span>
 									<span className="text-xs text-slate-500">
-										What Beamio can see, and legal documents
+										What Beamio can see, documents
 									</span>
 									</div>
 								</div>
@@ -263,7 +263,7 @@ export default function BeamioSettingsScreen({
 									<div className="flex flex-col items-start">
 									<span className="text-sm font-medium">Notifications</span>
 									<span className="text-xs text-slate-500">
-										Payment alerts, security alerts, email
+										Payment alerts, security alerts
 									</span>
 									</div>
 								</div>

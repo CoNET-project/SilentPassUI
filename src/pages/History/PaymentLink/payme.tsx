@@ -5,12 +5,11 @@ import { beamioConet } from "@/utils/constants"
 import { ethers } from "ethers"
 import AccountBeo from '../AccountBea'
 import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader, ArrowUpRight, ChevronLeft, X } from "lucide-react"
-import {fiatPrefix, formatAmount, formatTimev2, getBadgeClass, statusStyleMap} from '@/services/currency'
+import {fiatPrefix, formatAmount, formatTimev2, getBadgeClass, statusStyleMap, calcFeeFromReceived} from '@/services/currency'
 import {TransactionsItemDetail} from '../TransactionsItemDetail'
 
 type Props = {
   	setpProcessing: (val: boolean) => void
-
 }
 
 const PayMeGroup = ({ setpProcessing }: Props) =>  {
@@ -55,65 +54,95 @@ const PayMeGroup = ({ setpProcessing }: Props) =>  {
 					const isReject = isRequest ?  n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
 					const account = (isPending||isReject) ? '' : isRequest ? n.to : n.from
 					
-					const preAmount = Number(ethers.formatUnits(n.payAmount, 6))
-					
+					const payAmount = Number(ethers.formatUnits(n.payAmount, 6))
+					const _amount =  Number(ethers.formatUnits(n.amount, 6))
+
 					const _requestCurrencyData = n?.node?.split('\r\n')
-					const ooo = _requestCurrencyData[_requestCurrencyData.length -1]
+
+					const ooo = _requestCurrencyData[_requestCurrencyData.length - 1]
 					let requestCurrency: ICurrency = 'USDC'
 					let kkk: payMe|null
 					let group: paymentType = 'onetime'
 					let requestDetail: IRequestCurrencyDetail|undefined = undefined
-					let type: HistoryFilter = isPending ? 'pending' : isRequest ? 'completed' : 'paid' 
-
+					let type: HistoryFilter = isPending ? 'pending' : isRequest ? 'sent' : 'received'
+					
+					
 					try {
 						kkk = JSON.parse(ooo)
-						if (kkk) {
-							requestCurrency = kkk.currency
-							if (typeof kkk?.oneTimeMode === 'undefined') {
-								group = 'payme'
-							} else {
-								group = kkk.oneTimeMode ? 'onetime' : 'reusable'
+							if (kkk) {
+								requestCurrency = kkk.currency
+								if (typeof kkk?.oneTimeMode === 'undefined') {
+									group = 'payme'
+								} else {
+									group = kkk.oneTimeMode ? 'onetime' : 'reusable'
+								}
+								
 							}
 							
-						}
 						
-					
-						let totalPayUSDC = preAmount
-						
-						
-							//		totalPayUSDC: totalPayCurrency = 1:x
-						
-							//		isRequest : calcFeeFromNumber(totalPayUSDC)
-							//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
-						
-						
+							let totalPayUSDC = payAmount
+							
+							
+								//		totalPayUSDC: totalPayCurrency = 1:x
+							
+								//		isRequest : calcFeeFromNumber(totalPayUSDC)
+								//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
+							
+							
+							//		n.amount 在request 时是 currency request，n.payAmount 是实际支付的USDC （没有扣除手续费）
+							//		payMe时 n.payAmount === n.amount
 
-						if (preAmount && totalPayUSDC) {
-							
-							const currencyRate = (Number(kkk?.currencyAmount)+Number(kkk?.currencyTip))/totalPayUSDC
-							
-							const totalPayCurrency = totalPayUSDC * currencyRate
-							
-							const currencyTip = Number(kkk?.currencyTip)||0
-							const USDCTip = currencyTip/currencyRate
-							const receivedUSDC = totalPayUSDC - USDCTip
-							const receivedCurrency = receivedUSDC * currencyRate
-							const code = kkk?.code
-							requestDetail = {
-								totalPayUSDC,
-								totalPayCurrency,
-								requestCurrency,
-								feeUSDC:0,
-								feeCurrency:0,
-								receivedUSDC,
-								receivedCurrency,
-								currencyTip,
-								USDCTip,
-								rate: currencyRate,
-								code
+							if (totalPayUSDC) {
+								const feeUSDC = calcFeeFromReceived(totalPayUSDC)
+								const requestCurrencyAmount = Number(kkk?.currencyAmount||0)
+								const currencyTip = Number(kkk?.currencyTip||0)
+								const taxCurrency = Number(kkk?.currencyTax||0)
+								const currencyRate = (requestCurrencyAmount + currencyTip + taxCurrency )/totalPayUSDC
+								const requestUSDAmount = currencyRate > 0 ? requestCurrencyAmount / currencyRate : 0
+
+								const totalPayCurrency = totalPayUSDC * currencyRate
+								
+								const feeCurrency = feeUSDC * currencyRate
+								
+								const USDCTip = currencyRate ? currencyTip/currencyRate : 0
+								const receivedUSDC = totalPayUSDC - feeUSDC
+								const receivedCurrency = receivedUSDC * currencyRate
+								const code = kkk?.code
+								const taxUSDC = currencyRate ? taxCurrency/currencyRate : 0
+								const title = kkk?.title
+								const textNote = _requestCurrencyData.length - 2 > -1 ? _requestCurrencyData[_requestCurrencyData.length - 2] : ''
+
+								requestDetail = {
+									
+									requestCurrency,
+									totalPayUSDC,
+									totalPayCurrency,
+
+									requestCurrencyAmount,
+									requestUSDAmount,
+
+									
+
+									feeUSDC,
+									feeCurrency,
+
+									currencyTip,
+									USDCTip,
+
+									taxUSDC,
+									taxCurrency,
+
+									receivedUSDC,
+									receivedCurrency,
+									
+									rate: currencyRate,
+									code,
+									title,
+									textNote
+									
+								}
+								
 							}
-							
-						}
 						
 					} catch (ex) {
 						requestCurrency = ooo as ICurrency
@@ -122,15 +151,15 @@ const PayMeGroup = ({ setpProcessing }: Props) =>  {
 					
 					const ret: TransferHistork = {
 						date: Number(n.issueTimestamp * BigInt(1000)),
-						amount: preAmount,
+						amount: payAmount - (requestDetail?.feeUSDC||0),
 						address: account,
 						hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
 						note: n.node,
 						type,
 						mode: 'request',
-						fee:0,
-						type1: type === 'paid' ? 'sent' : 'pending',
-						preAmount: preAmount,
+						fee: requestDetail?.feeUSDC||0,
+						type1: type === 'sent' ? 'paid' : type ==='pending' ? '' :'received',
+						preAmount: payAmount,
 						requestCurrency,
 						requestDetail,
 						group
@@ -156,7 +185,7 @@ const PayMeGroup = ({ setpProcessing }: Props) =>  {
 				
 
 				//	过滤PayME
-				mappedLing = mappedLing.filter(n => n.group ==='payme' && n.type === 'paid' )
+				mappedLing = mappedLing.filter(n => n.group ==='payme' && n.type === 'received' )
 
 				// 1️⃣ 先合并，再按 date 做倒序排序（新 -> 旧）
 				const alldatas: TransferHistork[] = [ ...mappedLing].sort(
@@ -241,7 +270,7 @@ const PayMeGroup = ({ setpProcessing }: Props) =>  {
 								/>
 							</div>
 
-							<div className="shrink-0 flex items-center gap-1">
+							{/* <div className="shrink-0 flex items-center gap-1">
 								<span
 								className={[
 									"inline-flex items-center justify-center",
@@ -260,7 +289,7 @@ const PayMeGroup = ({ setpProcessing }: Props) =>  {
 									<HelpCircle className="w-3.5 h-3.5" strokeWidth={2} />
 								)}
 								</span>
-							</div>
+							</div> */}
 
 							<div
 								className={[

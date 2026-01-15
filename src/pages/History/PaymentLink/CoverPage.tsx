@@ -6,6 +6,11 @@ function formatUsdc4(n: number) {
   return v.toFixed(4)
 }
 
+function formatUsdc2(n: number) {
+  const v = Number.isFinite(n) ? n : 0
+  return v.toFixed(2)
+}
+
 function sumUsdc(list: TransferHistork[]) {
   return list.reduce((acc, tx) => {
     const v =
@@ -14,6 +19,27 @@ function sumUsdc(list: TransferHistork[]) {
         : Number.isFinite(tx.preAmount) && tx.preAmount > 0
           ? tx.preAmount
           : 0
+    return acc + v
+  }, 0)
+}
+
+function sumInvoicesPaidUsdc(list: TransferHistork[]) {
+	//		tx.preAmount is USDC based amount
+  return list.reduce((acc, tx) => {
+    const v =
+      tx.type !== 'pending' && Number.isFinite(tx.preAmount) && tx.preAmount > 0
+        ? tx.preAmount
+        : 0
+    return acc + v
+  }, 0)
+}
+
+function sumInvoicesPaddingUsdc(list: TransferHistork[]) {
+  return list.reduce((acc, tx) => {
+    const v =
+      tx.type === 'pending' && Number.isFinite(tx.preAmount) && tx.preAmount > 0
+        ? tx.preAmount
+        : 0
     return acc + v
   }, 0)
 }
@@ -173,8 +199,11 @@ export function InvoicesCoverPage(props: {
   query: string
   setQuery: (v: string) => void
 }) {
-  const count = props.onetimePayments.length
-  const receivedUsdc = useMemo(() => sumUsdc(props.onetimePayments), [props.onetimePayments])
+	const links = props.onetimePayments.length
+	const paidList = props.onetimePayments.filter(n => n.type !== 'pending')
+	const paidCount = paidList.length
+	const receivedUsdc = useMemo(() => sumInvoicesPaidUsdc(props.onetimePayments), [props.onetimePayments])
+	const peddings = links - paidCount
 
   return (
     <div className="px-4 pt-1.5 pb-4">
@@ -182,16 +211,19 @@ export function InvoicesCoverPage(props: {
 
       <div className="mt-2.5 flex flex-wrap gap-2.5">
         <StatCard
-          title="Count"
-          big={<div className="text-[24px] leading-none font-extrabold">{count}</div>}
+          title="Payments"
+          big={<div className="text-[24px] leading-none font-extrabold">{paidCount}</div>}
         />
 
         <StatCard
           title="Received"
-          big={<div className="text-[20px] leading-none font-extrabold">{formatUsdc4(receivedUsdc)}</div>}
+          big={<div className="text-[20px] leading-none font-extrabold">{formatUsdc2(receivedUsdc)}</div>}
           sub={<div className="text-[12px] font-medium text-slate-500">USDC</div>}
         />
-
+		<StatCard
+          title="Paddings"
+          big={<div className="text-[24px] leading-none font-extrabold">{peddings}</div>}
+        />
        
       </div>
 

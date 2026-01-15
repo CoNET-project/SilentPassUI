@@ -3,11 +3,13 @@ import { AppButton } from '../button/AppButton'
 import {IMenu} from './setup'
 import ScreenShell from './ScreenShell'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {RecoveryInputs} from './RecoveryCodeInput'
 import { getUserInfo, storeSystemData, RegenerateRecover } from "@/services/beamio"
 import RecoveryQRScreen from '@/pages/Home/RecoveryQRScreen'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { Eye } from "lucide-react"
+
 type prof = {
 	colse: (val: IMenu) => void
 }
@@ -45,6 +47,12 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 	const [password, setpassword] = useState('')
 	const [error, setError] = useState('')
 	const [storeTemp, setStoreTemp] = useState()
+	const [peekPinConfirm, setPeekPinConfirm] = useState(false)
+	const eyeBtnRef = useRef<HTMLButtonElement | null>(null)
+	const [peekPin, setPeekPin] = useState(false)
+	const [pin, setPin] = useState('')
+	const [pinError, setPinError] = useState('')
+	const [pinConfirm, setPinConfirm] = useState('')
 	
 
 	const handleSubmit = async () => {
@@ -55,10 +63,22 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 		}
 		
 		
-		const pin = password.trim()
+		const password = (pin || "").trim()
+		const confirm = (pinConfirm || "").trim()
+
+		// ✅ Password: 6+ 任意字符（字母/数字/符号都可）
 		if (password.length < 6) {
-			setError('Password must be at least 6 characters')
+			setPinError("Password must be at least 6 characters")
 			return
+		}
+
+		if (password !== confirm) {
+			setPinError("Passwords do not match")
+			return
+		}
+
+		if (!showRegenerateConfirm) {
+			return setShowRegenerateConfirm(true)
 		}
 
 		const mnemonicPhrase = CoNET_Data.mnemonicPhrase
@@ -83,11 +103,36 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 	}
 
 
+	function startPeek(e: React.PointerEvent<HTMLButtonElement>) {
+		// 避免按钮抢走输入焦点/触发键盘闪动
+		e.preventDefault()
+		e.stopPropagation()
+
+		setPeekPinConfirm(true)
+
+		// 捕获指针：即使手指移出按钮，松开也能收到 pointerup
+		try {
+			e.currentTarget.setPointerCapture(e.pointerId)
+		} catch {}
+	}
+
+	function endPeek(e?: React.PointerEvent<HTMLButtonElement>) {
+		setPeekPinConfirm(false)
+
+		// 释放捕获（可选）
+		if (e) {
+			try {
+			e.currentTarget.releasePointerCapture(e.pointerId)
+			} catch {}
+		}
+	}
+
+
 	return (
 		 <ScreenShell
-			title="Recovery & Backup"
+			title="Backup & export"
 			subtitle="
-			Beamio doesn't store your Recovery QR or password. You can view the ones you saved, or create a new Recovery QR + password pair if you want to change your password.
+				Rotate recovery or export your private key.
 			"
 			>
 			
@@ -101,7 +146,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 					}} />
 				) : (
 					<>
-						<Card
+						{/* <Card
 							title="View your saved Recovery"
 							description="Enter your password (at least 6 characters) to decrypt the Recovery QR and recovery code (S) stored on this device. Beamio never sees or stores your password."
 						>
@@ -124,13 +169,14 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 								use &quot;Change password &amp; regenerate Recovery&quot; below. Your
 								wallet address and funds stay the same.
 							</p>
-						</Card>
+						</Card> */}
 
 						<Card
-							title="Change password & regenerate Recovery"
-							description="Enter your password (at least 6 characters) to decrypt the Recovery QR and recovery code (S) stored on this device. Beamio never sees or stores your password."
+							title="Create a new Recovery QR"
+							description={showRegenerateConfirm ? "This will replace your current Recovery QR and recovery code." 
+								: "Generate a new Recovery QR + recovery code. Use this if you think your old recovery might be exposed."}
 						>
-							<div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+							{/* <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
 								<p className="text-xs font-semibold text-amber-900">
 								Before you continue
 								</p>
@@ -139,30 +185,9 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 								pair you save will be valid. Beamio will not keep a copy, so make
 								sure you store them securely.
 								</p>
-							</div>
+							</div> */}
 
-							<div className="flex items-center mt-4">
-								<label className="text-[11px] font-medium text-slate-600 w-24 ">
-									New Password
-								</label>
-
-								<input
-									type="password"
-									autoComplete="new-password"
-									autoCapitalize="none"
-									autoCorrect="off"
-									spellCheck={false}
-									className="
-										w-full rounded-[18px] border border-slate-200 bg-white
-										px-3 py-2.5 text-[13px] text-slate-900
-										placeholder:text-slate-400 outline-none
-										focus:border-sky-400 focus:ring-2 focus:ring-sky-100
-									"
-									placeholder="At least 6 characters"
-									value={password}
-									onChange={e => setpassword(e.target.value)}
-								/>
-							</div>
+						
 
 							{/* 错误信息 */}
 							{error && (
@@ -181,17 +206,166 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 							)}
 							
 
-							<p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
+							{/* <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
 								If you no longer remember your old password, you can still generate a new
 								Recovery QR and password — but the old encrypted backup cannot be
 								decrypted. Your wallet address and funds remain the same.
-							</p>
+							</p> */}
+
+							
 
 							{
 							!showRegenerateConfirm && (
 								<>
+	{/* PIN */}
+						<div>
+						
+						{/* Password input */}
+							<div className="relative">
+								<input
+									readOnly={loading}
+									type={peekPin ? "text" : "password"}
+									autoComplete="new-password"
+									minLength={6}
+									spellCheck={false}
+									autoCapitalize="none"
+									autoCorrect="off"
+									className="
+									w-full h-11 px-4 pr-11 rounded-2xl
+									border border-slate-200 bg-slate-50/40
+									text-[15px] text-slate-900
+									placeholder:text-slate-400
+									outline-none
+									focus:border-sky-400 focus:ring-1 focus:ring-sky-300
+									"
+									value={pin}
+									placeholder="At least 6 characters"
+									onChange={e => {
+									setPin(e.currentTarget.value)
+									setPinError("")
+									}}
+								/>
+
+								{/* 👁 press-to-peek */}
+								<button
+									type="button"
+									tabIndex={-1}
+									aria-label="Press and hold to peek password"
+									className="
+									absolute
+									right-3
+									top-1/2
+									-translate-y-1/2
+									h-8 w-8
+									rounded-full
+									flex items-center justify-center
+									text-slate-400 hover:text-slate-600
+									active:bg-slate-200/50
+									transition
+									touch-manipulation
+									select-none
+									"
+									onPointerDown={e => {
+									e.preventDefault()
+									e.stopPropagation()
+									setPeekPin(true)
+									try {
+										e.currentTarget.setPointerCapture(e.pointerId)
+									} catch {}
+									}}
+									onPointerUp={e => {
+									setPeekPin(false)
+									try {
+										e.currentTarget.releasePointerCapture(e.pointerId)
+									} catch {}
+									}}
+									onPointerCancel={() => setPeekPin(false)}
+									onPointerLeave={() => setPeekPin(false)}
+								>
+									<Eye className="w-5 h-5" />
+								</button>
+								</div>
+
+								{/* helper text */}
+								<p className="mt-2 text-[13px] text-slate-500">
+									Use 6+ characters. Beamio doesn’t store your password.
+								</p>
+							</div>
+
+							{/* Confirm PIN */}
+							<div>
+								{/* <div className="text-xs font-semibold text-slate-600 mb-1.5">
+									Confirm Password
+								</div> */}
+								<div className="relative mt-4">
+									<input
+										readOnly={loading}
+										type={peekPinConfirm ? "text" : "password"}
+										autoComplete="new-password"
+										minLength={6}
+										spellCheck={false}
+										autoCapitalize="none"
+										autoCorrect="off"
+										className="
+										w-full h-11 px-4 pr-11 rounded-2xl
+										border border-slate-200 bg-slate-50/40
+										text-[15px] text-slate-900
+										placeholder:text-slate-400
+										outline-none
+										focus:border-sky-400 focus:ring-1 focus:ring-sky-300
+										"
+										value={pinConfirm}
+										placeholder="Re-enter password"
+										onChange={e => {
+										setPinConfirm(e.currentTarget.value)
+										setPinError("")
+										}}
+									/>
+
+									{/* 👁 press-to-peek */}
+									<button
+										ref={eyeBtnRef}
+										type="button"
+										tabIndex={-1}
+										aria-label="Press and hold to peek password"
+										className="
+										absolute right-3 top-1/2 -translate-y-1/2
+										h-8 w-8 rounded-full
+										flex items-center justify-center
+										text-slate-400 hover:text-slate-600
+										active:bg-slate-200/50
+										transition
+										touch-manipulation
+										select-none
+										"
+										onPointerDown={startPeek}
+										onPointerUp={endPeek}
+										onPointerCancel={endPeek}
+										onPointerLeave={() => setPeekPinConfirm(false)}
+										// 保险：某些环境下 pointer 事件缺失时，mouse/touch 兜底（可留可不留）
+										onMouseDown={e => {
+										e.preventDefault()
+										setPeekPinConfirm(true)
+										}}
+										onMouseUp={() => setPeekPinConfirm(false)}
+									>
+										<Eye className="w-5 h-5" />
+									</button>
+									</div>
+								{pinError && (
+									<p className="mt-1 text-[11px] text-rose-500">{pinError}</p>
+								)}
+							</div>
+								<div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+									<p className="text-xs font-semibold text-amber-900">
+										What stays the same
+									</p>
+									<p className="mt-1 text-[11px] text-amber-900 leading-relaxed">
+										Your wallet address and on‑chain funds do not change. This only replaces your restore credentials.
+									</p>
+								</div>
 									{/* “What stays the same?” 列表 */}
-									<div className="mt-4 rounded-2xl bg-slate-50 px-3 py-3">
+									{/* <div className="mt-4 rounded-2xl bg-slate-50 px-3 py-3">
 										<p className="text-xs font-semibold text-slate-800">
 										What stays the same?
 										</p>
@@ -200,18 +374,14 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 										<li>• You receive a new Recovery QR + password pair.</li>
 										<li>• Beamio never stores your old or new recovery data.</li>
 										</ul>
-									</div>
+									</div> */}
 
 									<AppButton
 										fullWidth
 										className="mt-3"
 										onClick={() => {
 											setError('')
-											if (password.trim().length < 6) {
-												setError('Password must be at least 6 characters')
-												return
-											}
-											setShowRegenerateConfirm(true)
+											handleSubmit()
 										}}
 									>
 										Regenerate
@@ -225,12 +395,10 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 								{/* 警告文案 */}
 								<div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2">
 									<div className="text-[11px] font-semibold text-amber-800 mb-0.5">
-										Warning
+										Before you continue
 									</div>
 									<p className="text-[11px] text-amber-800 leading-snug">
-										If you continue, your previous Recovery QR and password will no longer be
-										able to restore your wallet. Your future recovery will use the newly
-										generated Recovery QR and password.
+										Save the new Recovery QR before you leave the next screen. Beamio does not store a copy.
 									</p>
 								</div>
 
@@ -243,7 +411,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 												className="flex-1"
 												onClick={() => {
 
-													setShowRegenerateConfirm(false)
+													handleSubmit()
 												}}
 											>
 												Cancel
@@ -262,6 +430,8 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 										Continue
 									</AppButton>
 								</div>
+
+								
 							</>
 						)}
 							

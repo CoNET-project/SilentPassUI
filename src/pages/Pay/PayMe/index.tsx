@@ -121,9 +121,7 @@ const PayMe = () => {
             
 		  	<div className=" mb-4 text-center">
 				<div className="text-[24px] font-extrabold text-white">
-					{
-						
-					}
+					
 					{displayName(getBeamio)}
 				</div>
 				<div className="text-[24px] font-extrabold text-white">

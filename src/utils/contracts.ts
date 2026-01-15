@@ -22,6 +22,7 @@ import {
 
   import beamioConetABI from '@/services/ABI/beamioConetABI.json'
   import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+  import CoNETPGP from '@/services/ABI/conetPgp.json'
   const contracts = {
 	GuardianNodesInfoV6: {
 	  address: "0x2DF3302d0c9aC19BE01Ee08ce3DDA841BdcF6F03",
@@ -117,6 +118,11 @@ import {
 		address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 		network: 'CONET DePIN',
 		abi: beamioConetCoreABI
+	},
+	constPgpManager: {
+		address: '0x456838C1eC30D52C49ad9AaD17fE026c27c43BEe',
+		network: 'CONET DePIN',
+		abi: CoNETPGP
 	}
 
   }

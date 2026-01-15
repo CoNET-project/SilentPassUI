@@ -6,7 +6,7 @@ import {
   Share2,
   Download,
 } from "lucide-react"
-import { CURRENCY_META } from "@/services/currency"
+import { CURRENCY_META, formatAmount, fiatPrefix } from "@/services/currency"
 import NetworkFeeGas from "./networkFee"
 
 type PaymentReceiptProps = {
@@ -114,16 +114,12 @@ const displayName = (item: searchResult | undefined) => {
 }
 
 export default function PaymentReceipt({
-  open,
-  onClose,
-  data,
-  onShare,
-  onPdf,
-  fromBeamio,
-  onChat,
-  sponsored = true,
-  networkFeeText = "0.00",
-  explorerBaseUrl = "https://basescan.org/tx/",
+	open,
+	data,
+	onShare,
+	onPdf,
+	fromBeamio,
+	explorerBaseUrl = "https://basescan.org/tx/",
 }: PaymentReceiptProps) {
   const [copied, setCopied] = useState<null | "receipt" | "hash">(null)
 
@@ -135,10 +131,13 @@ export default function PaymentReceipt({
   const totalUsdc = d ? d.totalPayUSDC : data.preAmount
   const rate = d?.rate
   const tax = d ? d?.taxCurrency : 0
+	const fiatText = useMemo(() => {
+		return fiatPrefix (currency)
+	},[currency])
 
-  const receivedCurrency = d ? d.receivedCurrency : totalCurrency
+  const receivedCurrency = d ? (d.receivedCurrency - (d.taxCurrency||0)) : 0
   const tipCurrency = d ? d.currencyTip : 0
-  const feeCurrency = d ? d.feeCurrency : data.fee
+  const feeCurrency = 0// d ? d.feeCurrency : data.fee
 
   const totalLineSub = useMemo(() => {
     const left = `≈ ${usdc(totalUsdc)} USDC`
@@ -153,16 +152,35 @@ export default function PaymentReceipt({
   }, [data.address])
 
   const datetimeText = useMemo(() => formatDateTime(data.date), [data.date])
+  const usdcToFiatRate = useMemo(() => {
+	const d = data?.requestDetail
+	if (!d || !d?.rate) return ''
+	return `1 USDC = ${symbol} ${formatAmount(d.rate, currency)}`
+  }, [data?.requestDetail])
 
   const receiptId = useMemo(() => d?.code||'', [data.hash])
   const txHashShort = useMemo(() => shortHash(data.hash), [data.hash])
+
   const explorerUrl = useMemo(
     () => (data.hash ? `${explorerBaseUrl}${data.hash}` : ""),
-    [explorerBaseUrl, data.hash]
-  )
+    [explorerBaseUrl, data.hash])
 
 
-  if (!open) return null
+
+  const title = useMemo(() => {
+	if (!d) return ''
+	return d?.title
+  }, [d])
+
+  const note = useMemo(() => {
+	if (!d) return ''
+	return d?.textNote
+  }, [d])
+
+    const isInfoNeedOpen = useMemo(() => {
+		return !!title || !!note
+	}, [title, note])
+
 
   return (
     
@@ -170,32 +188,47 @@ export default function PaymentReceipt({
         {/* top card */}
         <div className="mt-3 rounded-[18px] border border-slate-200/70 bg-white overflow-hidden mb-6">
           <div className="px-4 pt-4 pb-3">
+			<div className="text-[18px] font-extrabold text-slate-900 leading-[1.15] truncate mb-6">
+				From:
+			</div>
             <div className="flex items-start justify-between gap-3">
+				
               <div className="min-w-0">
-					<div className="text-[18px] font-extrabold text-slate-900 leading-[1.15] truncate">
-						{merchantName}
-					</div>
+				<div className="text-[18px] font-extrabold text-slate-900 leading-[1.15] truncate">
+					{merchantName}
+				</div>
 
-					<div className="mt-[1px] text-[12px] text-slate-500 leading-[1.25]">
-						@{fromBeamio.username} {merchantLine}
-					</div>
-
-					{!!datetimeText && (
-						<div className="mt-1 text-[13px] text-slate-500 leading-[1.25]">
-						{datetimeText}
-						</div>
-					)}
-					</div>
+				<div className="mt-[1px] text-[12px] text-slate-500 leading-[1.25]">
+					@{fromBeamio.username} {merchantLine}
+				</div>
+				</div>
 
               <div className="shrink-0">
                 <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 ring-1 ring-emerald-200 text-emerald-700 font-semibold text-[13px]">
                   <CheckCircle2 className="h-4 w-4" />
-                  Confirmed
+                  Successed
                 </span>
               </div>
             </div>
 
-            <div className="mt-3 rounded-[14px] border border-slate-200/70 bg-slate-50 px-4 py-3">
+
+			{(!!datetimeText || usdcToFiatRate) && (
+				<div className="mt-2 flex items-center text-[13px] text-slate-500 leading-[1.25]">
+					{/* 左：时间 */}
+					<div className="min-w-0 truncate">
+					{datetimeText}
+					</div>
+
+					{/* 右：汇率（贴最右） */}
+					{usdcToFiatRate && (
+					<div className="ml-auto flex-shrink-0 text-right tabular-nums text-[rgba(22,82,240,0.65)]">
+						{usdcToFiatRate}
+					</div>
+					)}
+				</div>
+				)}
+
+            <div className="mt-1 rounded-[14px] border border-slate-200/70 bg-slate-50 px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[13px] text-slate-500">Total</div>
 
@@ -207,8 +240,7 @@ export default function PaymentReceipt({
                       </>
                     ) : (
                       <>
-                        {symbol}
-                        {money(totalCurrency, 2)}
+                        {fiatText} {formatAmount(totalCurrency, currency)}
                       </>
                     )}
                   </div>
@@ -217,7 +249,53 @@ export default function PaymentReceipt({
                 </div>
               </div>
             </div>
+
+
           </div>
+
+					{
+						title && (
+							
+								<div className="px-4 pt-4 pb-3">
+									<div className="text-[16px] font-extrabold text-slate-900">{title}</div>
+								</div>
+
+							
+						)
+					}
+
+					
+										
+										{
+											note && 
+												<div className="px-4 pb-4">
+													<div
+														className="
+														rounded-2xl
+														bg-yellow-50/60
+														backdrop-blur-sm
+														ring-1 ring-yellow-200/40
+														px-4 py-3
+														"
+													>
+														<div className="flex items-start gap-2 text-[14px] leading-relaxed">
+														<span className="shrink-0 text-yellow-700/60 font-medium">
+															Note
+														</span>
+
+														<span className="text-slate-700 break-words">
+															{note}
+														</span>
+														</div>
+													</div>
+												</div>
+										}
+										
+									
+
+		  
+
+		  
 
           {/* breakdown */}
           <div className="border-t border-slate-100">
@@ -228,12 +306,12 @@ export default function PaymentReceipt({
 					<div>
 						{currency === "USDC"
 						? `${money(receivedCurrency, 4)} USDC`
-						: `${symbol}${money(receivedCurrency, 2)}`}
+						: `${fiatText}${formatAmount(receivedCurrency, currency)}`}
 					</div>
 
 					{currency !== "USDC" && d?.receivedUSDC && (
 						<div className="mt-0.5 text-[11px] text-slate-400">
-						≈ {money(d.receivedUSDC, 4)} USDC
+						≈ {money((d.receivedUSDC - (d.taxUSDC||0)), 2)} USDC
 						</div>
 					)}
 					</div>
@@ -251,7 +329,7 @@ export default function PaymentReceipt({
 						<div>
 							{currency === "USDC"
 							? `${money(tipCurrency, 2)} USDC`
-							: `${symbol}${money(tipCurrency, 2)}`}
+							: `${fiatText} ${formatAmount(tipCurrency, currency)}`}
 						</div>
 
 						{currency !== "USDC" && d?.USDCTip && (
@@ -271,7 +349,7 @@ export default function PaymentReceipt({
               <>
                 <Row
                   label="Fee"
-                  value={currency === "USDC" ? `${money(feeCurrency, 2)} USDC` : `${symbol}${money(feeCurrency, 2)}`}
+                  value={currency === "USDC" ? `${money(feeCurrency, 2)} USDC` : `${fiatText}${formatAmount(feeCurrency, currency)}`}
                   meta="Beamio service fee"
                 />
                 <Divider />
@@ -284,18 +362,20 @@ export default function PaymentReceipt({
 						<div className="flex flex-col items-end">
 						<div>
 							{currency === "USDC"
-							? `${money(0, 2)} USDC`
-							: `${symbol}${money(0, 2)}`}
+							? `${money(d?.taxUSDC||0, 2)} USDC`
+							: `${fiatText}${formatAmount(d?.taxCurrency||0, currency)}`}
 						</div>
 
 						{currency !== "USDC" && (
 							<div className="mt-0.5 text-[11px] text-slate-400">
-							≈ {money(0)} USDC
+							≈ {money(d?.taxUSDC||0)} USDC
 							</div>
 						)}
 						</div>
 					}
 				/>
+				<Divider />
+
 
             <NetworkFeeGas Credits={true} />
           </div>

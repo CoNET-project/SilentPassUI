@@ -4,7 +4,7 @@ import { beamioConet } from "@/utils/constants"
 import { ethers } from "ethers"
 import { useMemo, useState, useEffect, useCallback } from "react"
 import AccountBeo from '../AccountBea'
-import {fiatPrefix, formatAmount, formatTimev2} from '@/services/currency'
+import {fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived} from '@/services/currency'
 import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader, ArrowUpRight, ChevronLeft } from "lucide-react"
 import {TransactionsItemDetail} from '../TransactionsItemDetail'
 import PayMeGroup from './payme'
@@ -30,6 +30,19 @@ function sumUsdc(list: TransferHistork[]) {
 	}, 0)
 }
 
+function sumInvoicesPaidUsdc(list: TransferHistork[]) {
+	//		tx.preAmount is USDC based amount
+  return list.reduce((acc, tx) => {
+    const v =
+      tx.type !== 'pending' && Number.isFinite(tx.preAmount) && tx.preAmount > 0
+        ? tx.preAmount
+        : 0
+    return acc + v
+  }, 0)
+}
+
+
+
 function uniqCount(list: TransferHistork[], keyFn: (t: TransferHistork) => string) {
 	const set = new Set<string>()
 	for (const t of list) {
@@ -44,7 +57,7 @@ type Props = {
 }
 
 export default function ShowPaymentLink({ setpProcessing }: Props) {
-	const { profiles, usdcbalance, myAddress, setMyAddress, setNavigateLeftButtonArray } = useDaemonContext()
+	const { profiles, usdcbalance, myAddress, setMyAddress, setNavigateLeftButtonArray, currencyData } = useDaemonContext()
 
 	const [payMeArray, setPayMeArray] = useState<TransferHistork[]>([])
 	const [reusablePayments, setReusablePayments] = useState<TransferHistork[]>([])
@@ -56,6 +69,15 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 	// ✅ 使用 keyID 做依赖，避免 length 不变但账号变了不刷新
 	const addrKey = profiles?.[0]?.keyID
 
+	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
+	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
+
+	const currencyToUsdcAmount = (cur: number, c: ICurrency) => {
+		const u2u = usdcUsd || 1
+		const u2c = usdToCur(c) || 1
+		if (!u2u || !u2c) return 0
+		return cur / u2c / u2u
+	}
 	const process = useCallback(
 		async (address: string) => {
 			if (!address) return
@@ -82,62 +104,95 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 					const isReject = isRequest ?  n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
 					const account = (isPending||isReject) ? '' : isRequest ? n.to : n.from
 					
-					const preAmount = Number(ethers.formatUnits(n.amount, 6))
-					
+					const payAmount = Number(ethers.formatUnits(n.payAmount, 6))
+					const _amount =  Number(ethers.formatUnits(n.amount, 6))
+
 					const _requestCurrencyData = n?.node?.split('\r\n')
-					const ooo = _requestCurrencyData[_requestCurrencyData.length -1]
+
+					const ooo = _requestCurrencyData[_requestCurrencyData.length - 1]
 					let requestCurrency: ICurrency = 'USDC'
 					let kkk: payMe|null
 					let group: paymentType = 'onetime'
 					let requestDetail: IRequestCurrencyDetail|undefined = undefined
-					let type: HistoryFilter = isPending ? 'pending' : isRequest ? 'paid' : 'completed'
-
+					let type: HistoryFilter = isPending ? 'pending' : isRequest ? 'sent' : 'received'
+					
+					
 					try {
 						kkk = JSON.parse(ooo)
-						if (kkk) {
-							requestCurrency = kkk.currency
-							if (typeof kkk?.oneTimeMode === 'undefined') {
-								group = 'payme'
-							} else {
-								group = kkk.oneTimeMode ? 'onetime' : 'reusable'
+							if (kkk) {
+								requestCurrency = kkk.currency
+								if (typeof kkk?.oneTimeMode === 'undefined') {
+									group = 'payme'
+								} else {
+									group = kkk.oneTimeMode ? 'onetime' : 'reusable'
+								}
+								
 							}
 							
-						}
 						
-					
-						let totalPayUSDC = Number(ethers.formatUnits(n.payAmount, 6))
-						
-						
-							//		totalPayUSDC: totalPayCurrency = 1:x
-						
-							//		isRequest : calcFeeFromNumber(totalPayUSDC)
-							//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
-						
-						
+							let totalPayUSDC = payAmount
+							
+							
+								//		totalPayUSDC: totalPayCurrency = 1:x
+							
+								//		isRequest : calcFeeFromNumber(totalPayUSDC)
+								//		!isRequest :  totalPayUSDC + fee = realRequestAmount, fee = calcFeeFromNumber(realRequestAmount); realRequestAmount = 
+							
+							
+							//		n.amount 在request 时是 currency request，n.payAmount 是实际支付的USDC （没有扣除手续费）
+							//		payMe时 n.payAmount === n.amount
 
-						if (preAmount && totalPayUSDC) {
-							
-							const currencyRate = Number(kkk?.currencyAmount)/totalPayUSDC || preAmount / totalPayUSDC
-							
-							
-							const receivedCurrency = totalPayUSDC * currencyRate
-							const currencyTip = Number(kkk?.currencyTip)||0
-							const USDCTip = currencyTip/currencyRate
-							
-							requestDetail = {
-								totalPayUSDC,
-								totalPayCurrency: receivedCurrency,
-								requestCurrency,
-								feeUSDC:0,
-								feeCurrency:0,
-								receivedUSDC: totalPayUSDC,
-								receivedCurrency,
-								currencyTip,
-								USDCTip,
-								rate: currencyRate
+							if (totalPayUSDC) {
+								const feeUSDC = calcFeeFromReceived(totalPayUSDC)
+								const requestCurrencyAmount = Number(kkk?.currencyAmount||0)
+								const currencyTip = Number(kkk?.currencyTip||0)
+								const taxCurrency = Number(kkk?.currencyTax||0)
+								const currencyRate = (requestCurrencyAmount + currencyTip + taxCurrency )/totalPayUSDC
+								const requestUSDAmount = currencyRate > 0 ? requestCurrencyAmount / currencyRate : 0
+
+								const totalPayCurrency = totalPayUSDC * currencyRate
+								
+								const feeCurrency = feeUSDC * currencyRate
+								
+								const USDCTip = currencyRate ? currencyTip/currencyRate : 0
+								const receivedUSDC = totalPayUSDC - feeUSDC
+								const receivedCurrency = receivedUSDC * currencyRate
+								const code = kkk?.code
+								const taxUSDC = currencyRate ? taxCurrency/currencyRate : 0
+								const title = kkk?.title
+								const textNote = _requestCurrencyData.length - 2 > -1 ? _requestCurrencyData[_requestCurrencyData.length - 2] : ''
+
+								requestDetail = {
+									
+									requestCurrency,
+									totalPayUSDC,
+									totalPayCurrency,
+
+									requestCurrencyAmount,
+									requestUSDAmount,
+
+									
+
+									feeUSDC,
+									feeCurrency,
+
+									currencyTip,
+									USDCTip,
+
+									taxUSDC,
+									taxCurrency,
+
+									receivedUSDC,
+									receivedCurrency,
+									
+									rate: currencyRate,
+									code,
+									title,
+									textNote
+									
+								}
+								
 							}
-							
-						}
 						
 					} catch (ex) {
 						requestCurrency = ooo as ICurrency
@@ -146,15 +201,15 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 					
 					const ret: TransferHistork = {
 						date: Number(n.issueTimestamp * BigInt(1000)),
-						amount: preAmount,
+						amount: payAmount - (requestDetail?.feeUSDC||0),
 						address: account,
 						hash: (n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash),
 						note: n.node,
 						type,
 						mode: 'request',
-						fee:0,
-						type1: type === 'paid' ? 'sent' :  type === 'completed' ? 'received' : '',
-						preAmount: preAmount,
+						fee: requestDetail?.feeUSDC||0,
+						type1: type === 'sent' ? 'paid' : type ==='pending' ? '' :'received',
+						preAmount: payAmount,
 						requestCurrency,
 						requestDetail,
 						group
@@ -163,9 +218,13 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 					return ret
 				})
 
-				setPayMeArray(mappedLing.filter(n => n?.group === "payme" && n.type !== 'paid' ))
-				setReusablePayments(mappedLing.filter(n => n?.group === 'reusable'))
-				setOnetimePayments(mappedLing.filter(n => n.group === 'onetime'))
+				const paymeArray = mappedLing.filter(n => n?.group === "payme" && n.type === 'received' )
+				const reusablePayments = mappedLing.filter(n => n?.group === 'reusable')
+				const onetimePayments = mappedLing.filter(n => n.group === 'onetime')
+
+				setPayMeArray(paymeArray)
+				setReusablePayments(reusablePayments)
+				setOnetimePayments(onetimePayments)
 			} catch (ex: any) {
 				console.log(ex?.message || ex)
 			} finally {
@@ -188,17 +247,15 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 		const reusablePayCount = reusablePayments.length
 		const reusableTotalUsdc = sumUsdc(reusablePayments)
 
-		const onetimePayCount = onetimePayments.length
-		const onetimeTotalUsdc = sumUsdc(onetimePayments)
+		const onetimeLinks = onetimePayments.length
+		const onetimeTotalUsdc = sumInvoicesPaidUsdc(onetimePayments)
 
 		// ✅ Reusable links：优先 parentHash 去重（同一 link 不会因为 payer 地址不同被拆成多个）
 		const reusableLinks = uniqCount(reusablePayments, t => (t as any)?.parentHash || "")
 
 		// ✅ One-time links：若有 redeemHash 用它，否则退化到 hash（会更像 payments 数）
-		const onetimeLinks = uniqCount(
-		onetimePayments,
-		t => (t as any)?.redeemHash || t.hash || ""
-		)
+		const onetimePayCount = onetimePayments.filter(t => t.type !== 'pending')
+		
 
 		return {
 			paymePayments,
@@ -206,9 +263,9 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 			reusablePayments: reusablePayCount,
 			reusableTotalUsdc,
 			reusableLinks,
-			onetimePayments: onetimePayCount,
+			onetimePayments: onetimePayCount.length,
 			onetimeTotalUsdc,
-			onetimeLinks,
+			onetimeLinks
 		}
 	}, [payMeArray, reusablePayments, onetimePayments])
 
@@ -336,12 +393,12 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 
 							{/* One-time */}
 							<div className="mt-8 flex items-start justify-between gap-3">
-							<div>
-								<SectionTitle title="One-time" />
-								<SectionSub>
-								{stats.onetimePayments} payments · Total {formatUsdc4(stats.onetimeTotalUsdc)} USDC
-								</SectionSub>
-							</div>
+								<div>
+									<SectionTitle title="One-time" />
+									<SectionSub>
+										{stats.onetimePayments} payments · Total {formatUsdc4(stats.onetimeTotalUsdc)} USDC
+									</SectionSub>
+								</div>
 							<CountPill>{stats.onetimeLinks} links</CountPill>
 							</div>
 
@@ -391,8 +448,7 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 										{mode === 'invoices' && (
 											
 											<Invoices setpProcessing={setpProcessing}
-											setShowDetail={setShowDetail}
-												showDetail={showDetail}
+											
 											 />
 											
 										)}

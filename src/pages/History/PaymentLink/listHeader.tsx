@@ -12,18 +12,19 @@ import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} f
 import {urlToObjectUrl, useObjectImgSrc} from '@/components/card/useObjectImgSrc'
 import { User } from "lucide-react"
 import {ethers} from 'ethers'
-import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader, 
+import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader,ChevronLeft,
   ArrowUpRight, ArrowDownLeft,} from "lucide-react"
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 
+import {fiatPrefix, formatAmount, formatTimev2, statusStyleMap} from '@/services/currency'
 
-type Mode = "pay" | "request" | 'cashcode'
 type Prof = {
 	address: string
-	note: string
-	dateData: string
 	tx: TransferHistork
-	localMode: Mode
+}
+function formatUsdc2(n: number) {
+	const v = Number.isFinite(n) ? n : 0
+	return v.toFixed(2)
 }
 
 const getImg = (avatarSeed: string) =>
@@ -52,11 +53,11 @@ const unknowAcc = (address: string):searchResult => {
 
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 
-const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
+const ListHeader = ({address, tx}: Prof) => {
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers } = useDaemonContext()
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
 	const [userImg, setUserImg] = useState('')
-
+	const textColor = statusStyleMap[tx.type as HistoryFilter].text
 	const findingRef = useRef(false)
 
 	const findUser = useCallback(async () => {
@@ -100,7 +101,13 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 		findUser()
 	}, [findUser])
 
+	const d = tx.requestDetail
+	const currency: ICurrency = !d ? 'USDC' : d.requestCurrency
 	
+	const receivedCurrency = d ? (d.receivedCurrency - (d.taxCurrency||0)) : 0
+
+	const showAmount = tx.type === 'pending' ? d?.requestCurrencyAmount||0 : receivedCurrency
+
 	return (
 			<div
 				key={fromBeamio?.address}
@@ -116,37 +123,14 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 				"
 				>
 				{/* Avatar */}
-					{fromBeamio?.username !== 'Unknow' ? (
-						
-						<img
-							src={userImg}
-							className="w-10 h-10 rounded-full object-cover flex-shrink-0 bg-slate-200"
-						/>
-					) : (
-						<div
-						className="
-							w-10 h-10
-							rounded-full
-							flex items-center justify-center
-							flex-shrink-0
-							bg-slate-200
-							text-slate-400
-							font-semibold
-							text-base
-						"
-						aria-label="Default avatar"
-						>
-						?
-						</div>
-					)}
 				
 
 				{/* 左侧：用户名 / @handle */}
 				<span className="flex-1 min-w-0 leading-tight">
-					<span className="block text-[14px] text-slate-900 truncate leading-tight font-medium">
-						{fromBeamio ? displayName(fromBeamio) : ""}
+					<span className={`block text-[14px] ${textColor} truncate leading-tight font-medium`}>
+						{fiatPrefix(currency)} {formatAmount(showAmount, currency)} 
 					</span>
-					{
+					{/* {
 						fromBeamio?.username !=='Unknow' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
 							@{fromBeamio?.username}
 						</span> : (
@@ -154,32 +138,49 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 								{fmtAddr(fromBeamio?.address)}
 							</span>
 						)
-					}
+					} */}
 					
 					<span className="inline-flex items-center gap-1 text-[10px] text-slate-400 truncate leading-tight">
-					<span>{dateData}</span>
+						<span>{formatTimev2(tx.date)}</span>
 
-					{localMode === "pay" && (
-						<span
-							className={[
-								"inline-flex items-center justify-center",
-								"w-6 h-6",
-								tx.type === "sent"
-								? "text-rose-600 dark:text-rose-400"   // 🔴 sent
-								: "text-emerald-600 dark:text-emerald-400" // 🟢 received
-							].join(" ")}
+						{/* {localMode === "pay" && (
+							<span
+								className={[
+									"inline-flex items-center justify-center",
+									"w-6 h-6",
+									tx.type === "sent"
+									? "text-rose-600 dark:text-rose-400"   // 🔴 sent
+									: "text-emerald-600 dark:text-emerald-400" // 🟢 received
+								].join(" ")}
+								>
+								{tx.type === "sent" ? (
+									<ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.2} />
+								) : (
+									<ArrowDownLeft className="w-3.5 h-3.5" strokeWidth={2.2} />
+								)}
+								</span>
+
+						)} */}
+
+						
+							<span
+								className={[
+									"inline-flex items-center justify-center",
+									"w-6 h-6",
+									statusStyleMap[tx.type as HistoryFilter].text,
+								].join(" ")}
 							>
-							{tx.type === "sent" ? (
-								<ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.2} />
+							{tx.type === 'pending' ? (
+								<Loader className="w-3.5 h-3.5" strokeWidth={2} />
 							) : (
-								<ArrowDownLeft className="w-3.5 h-3.5" strokeWidth={2.2} />
+								<ChevronLeft className="w-3.5 h-3.5" strokeWidth={2} />
 							)}
 							</span>
+						
 
-					)}
-
-					{localMode === "pay" && tx.mode !== "pay" && (
-						<span
+						
+						{/* <div className="relative w-fit">
+							<span
 							className={[
 								"inline-flex items-center justify-center",
 								"w-6 h-6",
@@ -187,34 +188,15 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 								? "text-sky-600 dark:text-sky-300"
 								: "text-fuchsia-600 dark:text-fuchsia-300"
 							].join(" ")}
-						>
-						{tx.mode === "cashcode" ? (
-							<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
-						) : (
-							<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
-						)}
-						</span>
-					)}
-
-					{localMode === "pay" && tx?.card && (
-					<div className="relative w-fit">
-						<span
-						className={[
-							"inline-flex items-center justify-center",
-							"w-6 h-6",
-							tx.mode === "cashcode"
-							? "text-sky-600 dark:text-sky-300"
-							: "text-fuchsia-600 dark:text-fuchsia-300"
-						].join(" ")}
-						>
-						<img
-							src={giftEnvelope}
-							className="w-5 block pointer-events-none"
-							alt="Gift Envelope"
-						/>
-						</span>
-					</div>
-					)}
+							>
+							<img
+								src={giftEnvelope}
+								className="w-5 block pointer-events-none"
+								alt="Gift Envelope"
+							/>
+							</span>
+						</div> */}
+				
 					</span>
 				</span>
 
@@ -237,11 +219,11 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 								text-slate-500   /* 更淡的灰 */
 							"
 						>
-							{note}
+							{tx?.requestDetail?.title}
 						</span>
 					</div>
 				</div>
 			)
 }
 
-export default SenderBmo
+export default ListHeader

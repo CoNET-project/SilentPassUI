@@ -32,18 +32,17 @@ function calcFeeFromNumber(base: number) {
 function FeeInline({
   	payUsdc,
 	currentCurrency='USDC',
-	detailOpen,
+	
 	txDetail
 }: {
   	payUsdc: number
 	currentCurrency: ICurrency
-	detailOpen:( val: boolean) => void
+	
 	txDetail?: IRequestCurrencyDetail
 }) {
 	const [open, setOpen] = useState(false)
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
 	const [openInof, setOpenInfo] = useState(false)
-
 
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
 	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
@@ -107,62 +106,26 @@ function FeeInline({
 
 	
 	return (
-		<div className="relative w-full">
+		<div className="h-px bg-slate-100" >
 			
-			
-			
-				<div className="w-full">
-					<div className="flex items-center justify-end">
-						<div className="relative inline-flex items-center">
-							<div 
-								className="
-									absolute
-									left-[-3.3rem]
-									top-1/2
-									-translate-y-1/2
-									z-10
-									inline-flex
-									w-fit
-									scale-90
-									origin-center
-								"
-							>
-								<IOSBlurPillButton
-									open={openInof}
-									onToggle={() => setOpenInfo(true)}
-								>
-									<Info className="w-4 h-4 text-yellow-500" />
-								</IOSBlurPillButton>
-							</div>
+				<div className="flex items-center justify-between px-4 py-2.5 bg-white" >
+					
 
-
-						{/* 右侧开关 */}
-						<LockModeSwitch
-							value={open}
-							onChange={() => {
-								detailOpen(!open)
-								setOpen(!open)
-							}}
-						>
-							Detail
-						</LockModeSwitch>
-
-						</div>
-						
-					</div>
-
-						{
-							!open && (
-								<div className="mt-2 flex items-center justify-between text-sm">
-									<span className="text-slate-500 mr-2">
-										{" "}
-									</span>
-									<span className="font-semibold tabular-nums text-slate-900">
-										{currentCurrency === 'USDC' ? `${display.fee} USDC` : fiatPrefix(currentCurrency) + display.fee}
-									</span>
-								</div>
-							)
-						}
+					{
+						!open && (
+							<>
+								<span className="text-[14px] text-slate-500">Beamio fee</span>
+							</>
+							// <div className="mt-2 flex items-center justify-between text-sm">
+							// 	<span className="text-slate-500 mr-2">
+							// 		{" "}
+							// 	</span>
+							// 	<span className="font-semibold tabular-nums text-slate-900">
+							// 		{currentCurrency === 'USDC' ? `${display.fee} USDC` : fiatPrefix(currentCurrency) + display.fee}
+							// 	</span>
+							// </div>
+						)
+					}
 						
 					
 

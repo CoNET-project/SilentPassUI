@@ -22,6 +22,9 @@ import { useNavigate } from "react-router-dom"
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import BeamioPayMe from './BeamioPayMe'
+import Dashboard from './Dashboard'
+
+
 type Props = {
 	amount: string
 	noteText: string
@@ -165,7 +168,11 @@ const Pay = ({}) => {
 
 				
 			</div>
-				<div className="grid grid-cols-1 gap-3 mt-4">
+
+			<Dashboard 
+				setShowAlphaHowItWorks={setShowAlphaHowItWorks}
+			/>
+				{/* <div className="grid grid-cols-1 gap-3 mt-4">
 					<MainScreen onAction={val => {
 						switch(val) {
 							case 'cashcode': {
@@ -183,7 +190,7 @@ const Pay = ({}) => {
 
 						}
 					}} />
-				</div>
+				</div> */}
 			</div>
 			
 			
@@ -238,13 +245,10 @@ const Pay = ({}) => {
 								}}/>
 							}
 							{
-								showAlphaHowItWorks === 'PayRequest' && <BeamioPayMe payLink={''} />
+								showAlphaHowItWorks === 'PayRequest' && <BeamioPayMe />
 							}
 							{
 								showAlphaHowItWorks === 'Cashcode' && <Cashcode close={( )=> setShowAlphaHowItWorks('')} />
-							}
-							{
-								showAlphaHowItWorks === 'payme' && <PayMe />
 							}
 							
 						</div>

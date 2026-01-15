@@ -30,6 +30,7 @@ const Solana_SOL = 'So11111111111111111111111111111111111111112'
 const Solana_SP = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
 
 
+
 const sGB_ReadOnly = new ethers.Contract(
 	contracts.sGB.address,
 	contracts.sGB.abi,
@@ -51,6 +52,12 @@ const beamioConet = new ethers.Contract(
 const beamioCoreConet = new ethers.Contract(
 	contracts.beamioCoreConet.address,
 	contracts.beamioCoreConet.abi,
+	conetDepinProvider
+)
+
+const pgpCoNET = new ethers.Contract(
+	contracts.constPgpManager.address,
+	contracts.constPgpManager.abi,
 	conetDepinProvider
 )
 
@@ -82,5 +89,6 @@ export {
   sGB_ReadOnly,
   sGB_Dashboard_ReadOnly,
   beamioConet,
-  beamioCoreConet
+  beamioCoreConet,
+  pgpCoNET
 };

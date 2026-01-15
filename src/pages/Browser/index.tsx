@@ -205,19 +205,14 @@ const Browser = ({}) => {
 					}} /> :
 					
 					(<>
-						{
-							amt > 0 ? <PayForm code={paymentLinkCode} closeWin={()=> {
-									cancel()
-									navigate('/')
-								}} />
-								: <PayMeLink 
-									code={paymentLinkCode} 
-									address={recipient}
-									close={() => {
-									cancel()
-									navigate('/')
-								}} />
-						}
+						<PayMeLink 
+							code={paymentLinkCode} 
+							address={recipient}
+							close={() => {
+							cancel()
+							navigate('/')
+						}} />
+						
 					</>
 						
 						

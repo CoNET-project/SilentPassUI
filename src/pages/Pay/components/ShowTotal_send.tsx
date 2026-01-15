@@ -41,7 +41,7 @@ export default function ShowTotal({
         "backdrop-blur-md",
         "ring-1 ring-black/10",
         "shadow-[0_1px_0_rgba(255,255,255,0.9),0_8px_24px_rgba(15,23,42,0.06)]",
-        "px-5 py-4",
+        "px-5 py-4 mt-6",
         "flex items-center justify-between",
       ].join(" ")}
     >

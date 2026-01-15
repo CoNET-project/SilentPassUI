@@ -14,6 +14,7 @@ import {
   Wallet, X, Globe2, ChevronDown, Info,
   RefreshCw, // ✅ add
 } from "lucide-react"
+import baseIcon from '@/components/assets/base-logo.png'
 
 import {getOracle, postBeamio, storeSystemData} from '@/services/beamio'
 import { useDaemonContext} from '@/providers/DaemonProvider'
@@ -75,6 +76,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	const [fx, setFx] = useState<number>(fxRateUSDCToCurrency("USD"))
 	const [fxUpdatedAt, setFxUpdatedAt] = useState<Date | null>(null)
 	const [loading, setLoading] = useState(false)
+	const [tax, setTax] = useState('0')
 
 	const oracle = async () => {
 		getAccountData()
@@ -103,6 +105,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 		const bo = beamio
 		bo.currency = currency
 		bo.language = language
+		bo.tax = tax
 		await postBeamio(bo, profile.privateKeyArmor)
 
 		tmpData.beamio = bo
@@ -118,6 +121,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 		if (!beamio) return
 		setCurrency(beamio.currency)
 		setLanguage(beamio.language)
+		setTax(beamio.tax||'0')
 	}
 
 	useEffect(() => {
@@ -214,19 +218,24 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         </div>
       </div>
 
-      {/* minimal info box */}
-      <div className="px-4">
-        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 w-6 h-6 rounded-full bg-white border border-blue-100 flex items-center justify-center">
-              <Info className="h-4 w-4 text-blue-600" />
-            </div>
-            <div className="text-sm text-blue-900">
-              Payments settle in <span className="font-semibold">USDC</span> on Base.
-            </div>
-          </div>
-        </div>
-      </div>
+		{/* minimal info box */}
+		<div className="px-4">
+		<div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+			<div className="flex items-center gap-3">
+			<div className="w-6 h-6 rounded-full bg-white border border-blue-100 flex items-center justify-center">
+				<img
+				src={baseIcon}
+				alt="Base"
+				className="w-6 h-6"
+				/>
+			</div>
+
+			<div className="text-sm text-blue-900">
+				Payments settle in <span className="font-semibold">USDC</span> on Base.
+			</div>
+			</div>
+		</div>
+		</div>
 
       {/* form */}
       <div className="px-4 mt-5 space-y-6">
@@ -295,9 +304,43 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
           onChange={(v) => setStablecoin(v as any)}
           options={[{ value: "usdc_base", label: "USDC on Base" }]}
         />
+
+		{/* Tax % input */}
+			<div className="space-y-2">
+			<label className="block text-sm font-medium text-slate-800">
+				Tax %
+			</label>
+
+			<input
+				value={tax}
+				onChange={e => {
+				// 只允许数字和一个小数点
+				const v = e.target.value
+				if (/^\d*\.?\d*$/.test(v)) {
+					setTax(v)
+				}
+				}}
+				type="text"
+				inputMode="decimal"        // ✅ iOS / Android 数字键盘（含 .）
+				pattern="[0-9]*\.?[0-9]*"  // ✅ Web / PWA 兼容
+				placeholder="e.g. 8.25"
+				className="
+				w-full
+				rounded-2xl
+				bg-slate-50
+				border border-slate-200
+				px-4 py-3
+				text-sm
+				outline-none
+				placeholder:text-slate-400
+				focus:border-sky-500
+				focus:ring-2 focus:ring-sky-100
+				"
+			/>
+			</div>
       </div>
 
-      <div className="mt-auto px-4 pb-6">
+      <div className="mt-4	 px-4 pb-6">
         <AppButton
           className="w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700"
           onClick={handleSaveAvatar}

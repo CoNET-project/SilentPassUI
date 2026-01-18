@@ -105,96 +105,109 @@ export default function BeamioOnboardingModal({home}: Props) {
 
 
 	const InitialEntryScreen = () => (
-		<div className="
-			/* 👇 安全区补偿 */
-			pt-[env(safe-area-inset-top)]
-			pb-[env(safe-area-inset-bottom)]
-			pl-[env(safe-area-inset-left)]
-			pr-[env(safe-area-inset-right)]
-			w-full h-screen flex
-		">
-			<div className="overflow-y-auto p-6 md:p-8 mx-auto max-w-lg flex-1  ">
-				<div className="flex flex-col flex-1 
-				text-slate-900 text-[13px] 
-				min-h-0
-				pb-[calc(80px+env(safe-area-inset-bottom))]
-				">
-					{/* 顶部小标题 */}
-					{/* <div className="text-[11px] font-semibold tracking-[0.18em] text-slate-400 uppercase">
-						BEAMIO · USDC ON BASE
-					</div> */}
+  <div
+    className="
+      pt-[env(safe-area-inset-top)]
+      pb-[env(safe-area-inset-bottom)]
+      pl-[env(safe-area-inset-left)]
+      pr-[env(safe-area-inset-right)]
+      w-full h-screen bg-white
+    "
+  >
+    <div className="h-full max-w-lg mx-auto px-6 md:px-8">
+      <div className="h-full flex flex-col items-center">
+        {/* 上方留白（贴近截图的“更空”感觉） */}
+        <div className="flex-1" />
 
-					{/* 主标题 */}
-					<h1 className="mt-2 text-[26px] font-semibold text-slate-900">
-						Welcome to Beamio
-					</h1>
+        {/* Logo + 标题区 */}
+        <div className="flex flex-col items-center text-center">
+          {/* App icon */}
+          <div
+            className="
+              w-[86px] h-[86px] rounded-[26px]
+              bg-white
+              ring-1 ring-slate-200/70
+              shadow-[0_14px_28px_rgba(15,23,42,0.10)]
+              flex items-center justify-center
+            "
+          >
+            <span
+              className="text-[44px] font-extrabold leading-none"
+              style={{ color: "#1652f0" }} // Beamio Blue
+            >
+              B
+            </span>
+          </div>
 
-					{/* 副标题 */}
-					<p className="mt-1 text-[14px] text-slate-500 leading-snug">
-						Create a wallet — or restore one.
-					</p>
+          {/* Beamio */}
+          <div className="mt-6 text-[44px] font-extrabold tracking-[-0.02em] text-slate-900">
+            Beamio
+          </div>
 
-					{/* 顶部小标题 */}
-					<div className="text-[11px] font-semibold tracking-[0.18em] text-slate-400 uppercase">
-						BEAMIO · USDC ON BASE
-					</div>
+          {/* Slogan */}
+          <div className="mt-3 text-[22px] leading-snug text-slate-500">
+            The Commerce State Layer for
+            <br />
+            USDC.
+          </div>
+        </div>
 
-					{/* What you get 卡片 */}
-					<div className="mt-5 rounded-[24px] border border-slate-200 bg-white px-4 py-4">
-						<div className="text-[13px] font-semibold text-slate-900 mb-2">
-							What you’ll get
-						</div>
-					<ul className="list-disc pl-5 space-y-1.5 text-[13px] text-slate-700">
-						<li>A self-custodial USDC wallet on Base — you control your funds.</li>
-						<li>Gas sponsored for Beamio transfers.</li>
-						<li>
-							Two restore methods: @BeamioTag + Password, or Recovery QR/code.
-						</li>
-					</ul>
-					</div>
+        {/* 按钮区 */}
+        <div className="w-full mt-10">
+          <AppButton
+            fullWidth
+            className="
+              rounded-[999px] py-8 text-[18px] font-semibold
+              shadow-[0_14px_30px_rgba(22,82,240,0.28)]
+              active:shadow-[0_10px_20px_rgba(22,82,240,0.22)]
+            "
+            style={{ backgroundColor: "#1652f0" }}
+            onClick={() => setSettingsOpen("CreateUsernamePinScreen")}
+          >
+            Create Wallet
+          </AppButton>
 
-					{/* 新建账号按钮 + 推荐文案 */}
-					<div className="mt-6">
-						<AppButton
-							fullWidth
-							className="rounded-[999px] py-3 text-[15px] font-semibold"
-							onClick={() => setSettingsOpen('CreateUsernamePinScreen')}
-						>
-							Create wallet
-						</AppButton>
-					
-					</div>
+          <div className="mt-4">
+            <AppButton
+              fullWidth
+              variant="secondary"
+              className="
+                rounded-[999px] py-8 text-[18px] font-semibold
+                bg-white
+                border border-slate-200
+                text-slate-900
+                shadow-[0_10px_24px_rgba(15,23,42,0.08)]
+                active:shadow-[0_7px_16px_rgba(15,23,42,0.06)]
+              "
+              onClick={() => setSettingsOpen("RestoreEntryScreen")}
+            >
+              Restore Wallet
+            </AppButton>
+          </div>
+        </div>
 
-					{/* 分割线 */}
-					<hr className="mt-6 mb-4 border-slate-200" />
-
-					{/* 已有账号区域 */}
-					<div>
-						<div className="text-[13px] font-semibold text-slate-900">
-							Already have a wallet?
-						</div>
-					<p className="mt-1 text-[13px] text-slate-500 leading-snug">
-						Restore with your Recovery QR/code or @BeamioTag + Password.
-					</p>
-
-					<div className="mt-4">
-						<AppButton
-							fullWidth
-							variant="secondary"
-							className="rounded-[999px] py-3 text-[15px] font-semibold"
-							
-							onClick={() => setSettingsOpen('RestoreEntryScreen')}
-						>
-							Restore wallet
-						</AppButton>
-					</div>
-
-					
-					</div>
-				</div>
+        {/* 底部提示 */}
+        <div className="flex-1" />
+        {/* 底部提示（安全区感知） */}
+			<div
+			className="
+				sticky bottom-0
+				w-full
+				pt-4
+				pb-[calc(18px+env(safe-area-inset-bottom))]
+				text-[18px]
+				text-slate-400
+				text-center
+				bg-white
+			"
+			>
+			Gas Sponsored. Non-custodial.
 			</div>
-		</div>
-	)
+      </div>
+    </div>
+  </div>
+)
+
 
 	
 	return (

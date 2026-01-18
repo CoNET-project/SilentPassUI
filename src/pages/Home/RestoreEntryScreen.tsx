@@ -1,5 +1,5 @@
-import { AppButton } from '@/components/button/AppButton'
-
+import React from 'react'
+import { QrCode, User } from 'lucide-react'
 
 type RestoreEntryScreenProps = {
   onUseRecoveryQR: () => void
@@ -7,115 +7,79 @@ type RestoreEntryScreenProps = {
 }
 
 const RestoreEntryScreen = ({
-	onUseRecoveryQR,
-	onUseUsernamePin,
-	}: RestoreEntryScreenProps) => (
-		<div className="px-6 pt-8 pb-10">
-			<div className="flex flex-col gap-4 text-[13px] text-slate-900 flex-1">
-				{/* 小标题 */}
-				<div className="text-[11px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
-					Restore wallet
-				</div>
+  onUseRecoveryQR,
+  onUseUsernamePin,
+}: RestoreEntryScreenProps) => {
+  return (
+    <div className="flex flex-col h-full px-6 pt-6 pb-6 bg-white">
+      {/* 顶部标题 */}
+      <h1 className="text-[32px] md:text-[40px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-900 mb-8">
+        Restore Wallet
+      </h1>
 
-				{/* 标题 */}
-				<h1 className="text-[26px] font-semibold text-slate-900">
-					Restore your wallet
-				</h1>
+      <div className="flex flex-col gap-4">
+        {/* Card 1: Scan QR / Enter Code */}
+        <button
+          onClick={onUseRecoveryQR}
+          className="
+            w-full
+            p-6
+            bg-white
+            rounded-[32px]
+            border border-slate-100
+            shadow-[0_10px_30px_rgba(0,0,0,0.03)]
+            flex flex-col items-start gap-4
+            text-left
+            transition-transform active:scale-[0.98]
+          "
+        >
+          {/* Icon Container: Blue */}
+          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
+            <QrCode className="w-7 h-7 text-[#1652f0]" strokeWidth={2.5} />
+          </div>
 
-				{/* 副标题 */}
-				<p className="mt-1 text-[14px] text-slate-500 leading-snug">
-					Choose a restore method.
-				</p>
+          <div>
+            <div className="text-[18px] font-bold text-slate-900">
+              Scan QR / Enter Code
+            </div>
+            <div className="mt-1.5 text-[15px] font-medium text-slate-500 leading-snug">
+              Use your Recovery Image or Text Code.
+            </div>
+          </div>
+        </button>
 
-				{/* 按钮区域（按图：两张卡片 + 各自一个大按钮） */}
-				<div className="mt-6 space-y-5">
-				{/* Card 1 */}
-				<div
-					className="
-					rounded-[28px]
-					bg-white
-					border border-slate-200/70
-					shadow-[0_10px_24px_rgba(15,23,42,0.06)]
-					px-5 pt-5 pb-5
-					"
-				>
-					<div className="text-[14px] font-semibold text-slate-900">
-						Recovery QR / code
-					</div>
-					<div className="mt-2 text-[14px] leading-snug text-slate-500">
-						Scan QR or paste a recovery code.
-					</div>
+        {/* Card 2: Use @BeamioTag */}
+        <button
+          onClick={onUseUsernamePin}
+          className="
+            w-full
+            p-6
+            bg-white
+            rounded-[32px]
+            border border-slate-100
+            shadow-[0_10px_30px_rgba(0,0,0,0.03)]
+            flex flex-col items-start gap-4
+            text-left
+            transition-transform active:scale-[0.98]
+          "
+        >
+          {/* Icon Container: Grey */}
+          <div className="w-14 h-14 rounded-full bg-slate-50 flex items-center justify-center">
+            <User className="w-7 h-7 text-slate-600" strokeWidth={2.5} />
+          </div>
 
-					<div className="mt-5">
-					<AppButton
-						fullWidth
-						className="rounded-[999px] h-14 text-[20px] font-semibold"
-						onClick={onUseRecoveryQR}
-					>
-						Scan QR / enter code
-					</AppButton>
-					</div>
-				</div>
+          <div>
+            <div className="text-[18px] font-bold text-slate-900">
+              Use @BeamioTag
+            </div>
+            <div className="mt-1.5 text-[15px] font-medium text-slate-500 leading-snug">
+              Decrypt backup with Tag + Password.
+            </div>
+          </div>
+        </button>
+      </div>
+    </div>
+  )
+}
 
-				{/* Card 2 */}
-				<div
-					className="
-					rounded-[28px]
-					bg-white
-					border border-slate-200/70
-					shadow-[0_10px_24px_rgba(15,23,42,0.06)]
-					px-5 pt-5 pb-5
-					"
-				>
-					<div className="text-[14px] font-semibold text-slate-900">
-						BeamioTag + Password
-					</div>
-					<div className="mt-2 text-[14px] leading-snug text-slate-500">
-						Restore using your tag and password.
-					</div>
-
-					<div className="mt-5">
-					<button
-						type="button"
-						onClick={onUseUsernamePin}
-						className="
-						w-full h-14
-						rounded-[22px]
-						bg-white
-						border border-slate-200
-						text-[16px] font-semibold text-slate-900
-						shadow-[0_10px_22px_rgba(15,23,42,0.08)]
-						active:scale-[0.99]
-						transition
-						"
-					>
-						Use @BeamioTag + Password
-					</button>
-					</div>
-				</div>
-
-				{/* Card 2 */}
-				<div
-					className="
-					rounded-[28px]
-					bg-white
-					border border-slate-200/70
-					shadow-[0_10px_24px_rgba(15,23,42,0.06)]
-					px-5 pt-5 pb-5
-					"
-				>
-					<div className="text-[14px] font-semibold text-slate-900">
-						No centralized database
-					</div>
-					<div className="mt-2 text-[14px] leading-snug text-slate-500">
-						Beamio stores only an encrypted backup record on-chain. Your secrets decrypt it locally.
-					</div>
-
-				</div>
-				</div>
-
-			</div>
-		</div>
-	)
-
-	export default RestoreEntryScreen
+export default RestoreEntryScreen

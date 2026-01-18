@@ -1,157 +1,202 @@
 import React, { useState, useRef } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
+import { Download, Copy, Check } from 'lucide-react'
 import bIcon from '@/components/assets/logo512.png'
 
 const RecoveryQRScreen = ({
-	qrDataUrl,
-	recoveryCode,
-	close
+  qrDataUrl,
+  recoveryCode,
+  close
 }: {
-	qrDataUrl: string
-	recoveryCode: string
-	close: () => void
+  qrDataUrl: string
+  recoveryCode: string
+  close: () => void
 }) => {
-	const [copied, setCopied] = useState(false)
-	const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [isConfirmed, setIsConfirmed] = useState(false)
+  // 新增状态：是否已经执行过备份操作（保存或复制）
+  const [hasBackedUp, setHasBackedUp] = useState(false)
 
-	// ⭐ 绑定 QR 的 canvas
-	const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
-	const handleSaveImage = () => {
-		if (!qrCanvasRef.current) return
+  const handleSaveImage = () => {
+    if (!qrCanvasRef.current) return
+    const dataUrl = qrCanvasRef.current.toDataURL('image/png')
+    const link = document.createElement('a')
+    link.href = dataUrl
+    link.download = 'beamio-master-key.png'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    // 标记已备份，解锁复选框
+    setHasBackedUp(true)
+  }
 
-		// 从 canvas 导出 PNG
-		const dataUrl = qrCanvasRef.current.toDataURL('image/png')
-
-		const link = document.createElement('a')
-		link.href = dataUrl
-		link.download = 'beamio-recovery-qr.png'
-
-		// 兼容部分浏览器
-		document.body.appendChild(link)
-		link.click()
-		document.body.removeChild(link)
-	}
-
-	const handleCopyCode = async () => {
-		if (!recoveryCode) return
-		try {
-		await navigator.clipboard.writeText(recoveryCode)
-			setCopied(true)
-			setTimeout(() => setCopied(false), 1500)
-		} catch {
-		// ignore
-		}
-	}
-
+  const handleCopyCode = async () => {
+    if (!recoveryCode) return
+    try {
+      await navigator.clipboard.writeText(recoveryCode)
+      setCopied(true)
+      // 标记已备份，解锁复选框
+      setHasBackedUp(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // ignore
+    }
+  }
 
   return (
-    <div className="px-6 pt-8 pb-10">
-      {/* 顶部步骤标题 */}
-      <div className="text-[11px] font-semibold tracking-[0.18em] text-slate-400 uppercase mb-2">
-        WALLET · STEP 2 OF 2
-      </div>
+    <div className="flex flex-col h-full px-6 pt-6 pb-6 bg-white">
+      <div className="flex-1">
+        {/* Header */}
+        <h1 className="text-[32px] md:text-[40px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-900">
+          Master Key
+        </h1>
 
-      {/* 主标题 */}
-      <h1 className="text-[26px] font-semibold text-slate-900">
-        Recovery QR
-      </h1>
-
-      {/* 副标题 */}
-      <p className="mt-1 text-[14px] text-slate-500 leading-snug">
-        Save this to restore your wallet on a new device.
-      </p>
-
-      {/* QR 卡片 */}
-      <div className="mt-6 flex flex-col items-center">
-        {qrDataUrl ? (
-          <div className="relative z-10 flex justify-center">
-			<div
-										className="
-										rounded-[28px]
-										bg-white
-										p-[18px]
-										shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
-										"
-									>
-										<QRCodeCanvas
-										ref={qrCanvasRef}
-										value={qrDataUrl}
-										size={264}
-										level="H"
-										includeMargin
-										bgColor="#ffffff"      // ⬅ 这里改成白底
-										fgColor="#000000"
-										imageSettings={{
-											src: bIcon,
-											height: 60,
-											width: 60,
-											excavate: true,
-										}}
-										className="rounded-lg inline-block"
-										/>
-										</div>
-									</div>
-									) : (
-									<div className="w-40 h-40 rounded-xl bg-slate-200" />
-									)}
-
-									<p className="mt-4 text-[12px] text-slate-500 text-center leading-snug max-w-xs">
-										Anyone with this Recovery QR or recovery code can restore your wallet.
-									</p>
-									<p className="mt-4 text-[12px] text-slate-500 text-center leading-snug max-w-xs">
-										You won’t be able to view this again. Save it now.
-									</p>
-								</div>
-
-      {/* 中间两个按钮 */}
-      <div className="mt-6 space-y-3">
-        <button
-          onClick={handleSaveImage}
-          className="
-            w-full rounded-[999px] border border-slate-200
-            bg-white text-[15px] font-semibold text-slate-800
-            py-3
-          "
-        >
-          Save QR image
-        </button>
-
-        <button
-          onClick={handleCopyCode}
-          className="
-            w-full rounded-[999px] border border-slate-200
-            bg-white text-[15px] font-semibold text-slate-800
-            py-3
-          "
-        >
-          {copied
-            ? 'Copied!'
-            : `Copy recovery code`}
-        </button>
-      </div>
-
-      {/* Important 提示卡片 */}
-      <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
-        <div className="text-xs font-semibold text-amber-800 mb-1">Keep it safe</div>
-        <p className="text-[11px] leading-snug text-amber-900">
-          If you lose both your password and your Recovery QR/code, your wallet can’t be recovered.
+        <p className="mt-3 text-[18px] md:text-[20px] text-slate-500 font-medium leading-snug">
+          Your only backup to restore funds.
         </p>
+
+        {/* QR Card */}
+        <div className="mt-10 flex justify-center">
+          <div
+            className="
+              relative
+              p-6
+              bg-white
+              rounded-[32px]
+              
+			  shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+              border border-slate-100
+            "
+          >
+            {qrDataUrl ? (
+              <QRCodeCanvas
+                ref={qrCanvasRef}
+                value={qrDataUrl}
+                size={220}
+                level="H"
+                includeMargin
+                bgColor="#ffffff"
+                fgColor="#000000"
+                imageSettings={{
+                  src: bIcon,
+                  height: 48,
+                  width: 48,
+                  excavate: true,
+                }}
+                className="rounded-xl
+				"
+              />
+            ) : (
+              <div className="w-[220px] h-[220px] bg-slate-100 rounded-xl animate-pulse" />
+            )}
+          </div>
+        </div>
+
+        {/* Action Buttons Row (Save & Copy) */}
+        <div className="mt-10 grid grid-cols-2 gap-4">
+          <button
+            onClick={handleSaveImage}
+            className="
+              flex items-center justify-center gap-2
+              h-[64px] rounded-[20px]
+              bg-slate-100 hover:bg-slate-200 active:bg-slate-300
+              text-slate-900 text-[18px] font-bold
+              transition-colors
+            "
+          >
+            <Download className="w-6 h-6" strokeWidth={2.5} />
+            Save
+          </button>
+
+          <button
+            onClick={handleCopyCode}
+            className="
+              flex items-center justify-center gap-2
+              h-[64px] rounded-[20px]
+              bg-slate-100 hover:bg-slate-200 active:bg-slate-300
+              text-slate-900 text-[18px] font-bold
+              transition-colors
+            "
+          >
+            {copied ? (
+              <>
+                <Check className="w-6 h-6 text-emerald-600" strokeWidth={3} />
+                <span className="text-emerald-700">Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-6 h-6" strokeWidth={2.5} />
+                Copy
+              </>
+            )}
+          </button>
+        </div>
+        
+        {/* Checkbox Agreement - Logic Modified */}
+<div 
+          className={`
+            mt-8 flex items-center gap-4 transition-opacity duration-300
+            ${hasBackedUp ? 'opacity-100 cursor-pointer' : 'opacity-40 cursor-not-allowed'}
+          `}
+          onClick={() => {
+            if (hasBackedUp) {
+              setIsConfirmed(!isConfirmed)
+            }
+          }}
+        >
+          {/* 移除 pt-1，利用外层的 items-center 自动居中 */}
+          <div className="relative flex items-center pointer-events-none">
+            <input
+              type="checkbox"
+              className="peer sr-only"
+              checked={isConfirmed}
+              readOnly
+              disabled={!hasBackedUp}
+            />
+            <div 
+              className={`
+                w-6 h-6 rounded-[6px] border-2 transition-all
+                flex items-center justify-center
+                ${isConfirmed 
+                  ? 'bg-slate-900 border-slate-900' 
+                  : 'bg-transparent border-slate-300'}
+              `}
+            >
+              {isConfirmed && <Check className="w-4 h-4 text-white" strokeWidth={4} />}
+            </div>
+          </div>
+          <p className="flex-1 text-[16px] leading-snug text-slate-500 font-medium select-none">
+            I understand Beamio stores only an encrypted backup.
+          </p>
+        </div>
       </div>
 
-      {/* 底部主按钮 */}
-      <div className="mt-6">
+      {/* Footer Button: Open Wallet */}
+      <div className="pb-[env(safe-area-inset-bottom)] pt-4">
         <AppButton
           fullWidth
           onClick={() => {
-			setLoading(true);
-			close();
-		  }}
-		  loading={loading}
-          className="rounded-[999px] py-3 text-[15px] font-semibold"
+            setLoading(true)
+            close()
+          }}
+          loading={loading}
+          // 只有勾选确认后才启用（而确认本身需要先备份）
+          disabled={!isConfirmed}
+          className={`
+             h-[72px] rounded-full
+             text-[22px] font-bold
+             transition-all duration-200
+             ${isConfirmed
+               ? 'bg-[#1652f0] shadow-[0_12px_30px_rgba(22,82,240,0.3)] text-white' 
+               : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
+           `}
         >
-          I&apos;ve saved it
+          Open Wallet
         </AppButton>
       </div>
     </div>

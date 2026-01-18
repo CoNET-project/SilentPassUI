@@ -1,7 +1,7 @@
 import { FormEvent, useState, useEffect } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { restoreWithUserPin } from '@/services/beamio'
-import { Eye } from "lucide-react"
+import { Eye, EyeOff, AlertCircle } from "lucide-react"
 
 type RestoreWithUsernamePinScreenProps = {
   onRestore: (temp: encrypt_keys_object) => Promise<void> | void
@@ -9,7 +9,7 @@ type RestoreWithUsernamePinScreenProps = {
 
 const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScreenProps) => {
   const [username, setUsername] = useState('')
-  const [pin, setPin] = useState('') // ✅ 继续沿用 pin 变量名，最小改动（它现在承载 password）
+  const [pin, setPin] = useState('') 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [peekPin, setPeekPin] = useState(false)
@@ -20,28 +20,23 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
     return () => clearTimeout(t)
   }, [error])
 
-	const formatBeamioName = () => {
-		setError('')
+  const formatBeamioName = () => {
+    setError('')
+    let trimmed = username.trim()
+    trimmed = trimmed.replace(/^@+/, '')
 
-		// 1️⃣ trim 空格
-		let trimmed = username.trim()
+    if (!trimmed) {
+      setError('Please enter a username')
+      return ''
+    }
 
-		// 2️⃣ 允许 @username / @@username → 去掉所有前导 @
-		trimmed = trimmed.replace(/^@+/, '')
+    if (!/^[a-zA-Z0-9_.-]{3,20}$/.test(trimmed)) {
+      setError('Use 3–20 letters, numbers, dots, _ or -')
+      return ''
+    }
 
-		if (!trimmed) {
-			setError('Please enter a username')
-			return ''
-		}
-
-		// 3️⃣ 校验规则（不包含 @）
-		if (!/^[a-zA-Z0-9_.-]{3,20}$/.test(trimmed)) {
-			setError('Use 3–20 letters, numbers, dots, _ or -')
-			return ''
-		}
-
-		return trimmed
-	}
+    return trimmed
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -52,8 +47,6 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
     setError('')
 
     const password = pin.trim()
-
-    // ✅ Password: 至少 6 个字符（不限制数字）
     if (password.length < 6) {
       setError('Password must be at least 6 characters')
       return
@@ -74,131 +67,127 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-4 text-[13px] text-slate-900 flex-1 px-6 pt-8 pb-10"
+      className="flex flex-col h-full px-6 pt-6 pb-6 bg-white"
     >
-      <div className="text-[11px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
-        RESTORE · METHOD 2
-      </div>
+      <div className="flex-1">
+        {/* 标题 */}
+        <h1 className="text-[32px] md:text-[40px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-900">
+          Decrypt Backup
+        </h1>
+        
+        {/* 输入框区域 */}
+        <div className="mt-8 flex flex-col gap-4">
+          
+          {/* Username Input */}
+          <div className="relative">
+            {/* 固定前缀 @ */}
+            <div className="absolute left-6 top-1/2 -translate-y-1/2 text-[20px] font-bold text-slate-300 select-none pointer-events-none">
+              @
+            </div>
 
-      <h1 className="text-[26px] font-semibold text-slate-900">
-        Restore with @BeamioTag
-      </h1>
+            <input
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className={`
+                w-full h-[72px] pl-12 pr-6 rounded-[24px]
+                border border-slate-100 bg-white shadow-sm
+                text-[20px] font-bold text-slate-900
+                placeholder:text-slate-300 placeholder:font-bold
+                outline-none transition-all
+                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
+                ${error && !username ? 'border-red-200 ring-4 ring-red-50' : ''}
+              `}
+              placeholder="beamio" // 对应截图中的 placeholder
+              value={username}
+              onChange={e => {
+                // 自动移除用户输入的 @
+                setUsername(e.target.value.replace(/@/g, ''))
+                setError('')
+              }}
+            />
+          </div>
 
-      <p className="mt-1 text-[14px] text-slate-500 leading-snug">
-        Unlock your encrypted backup locally with your password.
-      </p>
+          {/* Password Input */}
+          <div className="relative">
+            <input
+              type={peekPin ? "text" : "password"}
+              autoComplete="current-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className={`
+                w-full h-[72px] pl-6 pr-16 rounded-[24px]
+                border border-slate-100 bg-white shadow-sm
+                text-[20px] font-bold text-slate-900
+                placeholder:text-slate-300 placeholder:font-bold placeholder:tracking-widest
+                outline-none transition-all
+                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
+                ${error && !pin ? 'border-red-200 ring-4 ring-red-50' : ''}
+              `}
+              placeholder="......" // 对应截图中的 dots
+              value={pin}
+              onChange={e => {
+                setPin(e.target.value)
+                setError('')
+              }}
+            />
 
-      {/* Username */}
-      <div className="flex flex-col gap-1.5 mt-2">
-        <label className="text-[12px] font-medium text-slate-700">@BeamioTag</label>
-        <input
-          type="text"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          className="
-            w-full rounded-[18px] border border-slate-200 bg-white
-            px-3 py-2.5 text-[13px] text-slate-900
-            placeholder:text-slate-400 outline-none
-            focus:border-sky-400 focus:ring-2 focus:ring-sky-100
-          "
-          placeholder="Your Beamio username"
-          value={username}
-          onChange={e => setUsername(e.target.value)}
-        />
-      </div>
+            {/* Eye Icon Button */}
+            <button
+              type="button"
+              tabIndex={-1}
+              className="
+                absolute right-4 top-1/2 -translate-y-1/2
+                w-12 h-12 rounded-full
+                flex items-center justify-center
+                text-slate-400 hover:text-slate-600
+                active:bg-slate-100 transition
+              "
+              onPointerDown={e => {
+                e.preventDefault()
+                setPeekPin(true)
+              }}
+              onPointerUp={() => setPeekPin(false)}
+              onPointerLeave={() => setPeekPin(false)}
+              onClick={() => {
+                  // 移动端兼容点击切换
+                  if(typeof window !== 'undefined' && 'ontouchstart' in window) {
+                      setPeekPin(!peekPin)
+                  }
+              }}
+            >
+              {peekPin ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
+            </button>
+          </div>
 
-		{/* Password */}
-		<div className="flex flex-col gap-1.5 mt-2">
-		<label className="text-[12px] font-medium text-slate-700">Password</label>
-
-		<div className="relative">
-			<input
-			type={peekPin ? "text" : "password"}
-			autoComplete="current-password"
-			autoCapitalize="none"
-			autoCorrect="off"
-			spellCheck={false}
-			className="
-				w-full rounded-[18px] border border-slate-200 bg-white
-				px-3 py-2.5 pr-11 text-[13px] text-slate-900
-				placeholder:text-slate-400 outline-none
-				focus:border-sky-400 focus:ring-2 focus:ring-sky-100
-			"
-			placeholder="At least 6 characters"
-			value={pin}
-			onChange={e => setPin(e.target.value)}
-			/>
-
-			{/* 👁 press-to-peek */}
-			<button
-			type="button"
-			tabIndex={-1}
-			aria-label="Press and hold to peek password"
-			className="
-				absolute right-2 top-1/2 -translate-y-1/2
-				h-8 w-8 rounded-full
-				flex items-center justify-center
-				text-slate-400 hover:text-slate-600
-				active:bg-slate-100
-				transition
-				touch-manipulation select-none
-			"
-			onPointerDown={e => {
-				e.preventDefault()
-				e.stopPropagation()
-				setPeekPin(true)
-				try {
-				e.currentTarget.setPointerCapture(e.pointerId)
-				} catch {}
-			}}
-			onPointerUp={e => {
-				setPeekPin(false)
-				try {
-				e.currentTarget.releasePointerCapture(e.pointerId)
-				} catch {}
-			}}
-			onPointerCancel={() => setPeekPin(false)}
-			onPointerLeave={() => setPeekPin(false)}
-			>
-			<Eye className="w-4 h-4" />
-			</button>
-		</div>
-		</div>
-
-      {/* How it works */}
-      <div className="mt-4 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3">
-        <div className="text-[12px] font-semibold text-amber-900 mb-1">
-          How this works
+          {/* Error Message */}
+          {error && (
+            <div className="mt-2 flex items-center gap-2 text-red-600 animate-in fade-in slide-in-from-top-1 px-1">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span className="text-[14px] font-semibold leading-snug">{error}</span>
+            </div>
+          )}
         </div>
-        <p className="text-[11px] leading-snug text-amber-900/90">
-          Your password decrypts the encrypted backup stored on-chain locally on your device. Beamio never sees your password or keys.
-        </p>
       </div>
 
-      {error && (
-        <div
-          className="
-            mt-4 mb-2 px-3 py-2
-            rounded-[12px]
-            text-[12px]
-            text-red-700
-            bg-red-50
-            border border-red-200
-          "
-        >
-          {error}
-        </div>
-      )}
-
-      <div className="mt-4">
+      {/* 底部按钮 */}
+      <div className="pb-[env(safe-area-inset-bottom)] pt-4">
         <AppButton
           type="submit"
           fullWidth
           disabled={loading}
-          className="rounded-[999px] py-3 text-[15px] font-semibold"
+          loading={loading}
+          className="
+            h-[64px] rounded-full
+            text-[20px] font-bold
+            bg-[#1652f0] hover:bg-[#1345ca]
+            shadow-[0_12px_30px_rgba(22,82,240,0.3)]
+            text-white
+          "
         >
-          {loading ? 'Restoring…' : 'Restore wallet'}
+          Restore
         </AppButton>
       </div>
     </form>

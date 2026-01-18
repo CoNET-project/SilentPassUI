@@ -120,7 +120,7 @@ import {
 		abi: beamioConetCoreABI
 	},
 	constPgpManager: {
-		address: '0x456838C1eC30D52C49ad9AaD17fE026c27c43BEe',
+		address: '0x84de3EA6446489E6a267B0AAD2fAe1462564C32E',
 		network: 'CONET DePIN',
 		abi: CoNETPGP
 	}

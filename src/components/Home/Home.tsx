@@ -25,6 +25,7 @@ import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import PayScreen from '@/pages/Pay/send'
+import {initChat} from '@/services/chat'
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 
@@ -48,7 +49,7 @@ const Home = ({}) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
-		currencyData, setRedeemCode, setPayMePayment
+		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	const hasActivity = false;
@@ -223,7 +224,7 @@ const Home = ({}) => {
 			setShowGetFaucet('Faucet')
 		}
 		
-		
+		await postBeamio(bo, profiles[0].privateKeyArmor)
 		setDarkModle(bo.darkTheme)
 		setBeamio ({...bo})
 		temp.beamio = bo
@@ -233,16 +234,15 @@ const Home = ({}) => {
 		
 		const profile = profiles[0]
 		setMyAddress (profile.keyID)
-		setTimeout(() => {
-			getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
-		}, 1500)
 		
+		initChat(setProfiles,setAllNodes, setGossip, gossip)
 		
 		if (ignoreUrl) {
 			return
 		}
 		checkUrl(window.location.href)
 
+		
   	}
 
   	let first = true

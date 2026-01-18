@@ -570,7 +570,10 @@ type INavigateLeftButtonArray = {
 type Mode = "pay" | "request" | 'cashcode'
 
 type initBeamioPGPKeysRet = {
-	privateKey: string, publicKey: string, keyID: string
+	privateKey: string
+	publicKey: string
+	keyID: string
+	routes: string
 }
 
 type TransferHistork = {
@@ -617,4 +620,27 @@ type Transfer = {
 	amount: string
 	finisedHash: string
 	note: string
+}
+
+interface nodeInfo {
+	region: string
+	ip_addr: string
+	armoredPublicKey: string
+	nftNumber: number
+	domain: string
+	lastEposh?: number
+    owner?: string
+}
+
+type IChat = {
+	pgpKey: initBeamioPGPKeysRet
+	router: string
+}
+
+type ChatMessage = {
+	id: string
+	from: "me" | "them"
+	text: string
+	createdAt: number
+	status?: "sending" | "sent" | "failed"
 }

@@ -12,7 +12,6 @@ import {
 import {
 	apiv4_endpoint,
 	conetDepinProvider,
-	conetProvider,
 	localDatabaseName,
 
 } from "../utils/constants"
@@ -105,7 +104,7 @@ const myFollowStatusUrl = `${beamioApi}/api/getMyFollowStatus`
 const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 
 
-const toBase64 = (s: string) => {
+export const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)
 	let binary = ''
 	for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
@@ -1217,7 +1216,7 @@ const aesGcmEncryptWithStored = async (
 	return bytesToB64(combined)
 }
 
-function fromBase64(b64: string): string {
+export function fromBase64(b64: string): string {
 	const bin = atob(b64)
 	const bytes = new Uint8Array(bin.length)
 	for (let i = 0; i < bin.length; i++) {

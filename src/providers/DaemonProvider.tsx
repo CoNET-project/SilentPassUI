@@ -5,6 +5,10 @@ import packageData from '../../package.json'
 
 
 type DaemonContext = {
+	gossip: boolean
+	setGossip: (val: boolean) => void
+	allNodes: nodeInfo[]
+	setAllNodes: (val: nodeInfo[]) => void
 	navigateLeftButtonArray: INavigateLeftButtonArray[]
 	setNavigateLeftButtonArray: Dispatch<SetStateAction<INavigateLeftButtonArray[]>>
 	payMePayment: searchResult|null
@@ -146,6 +150,10 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	gossip: false,
+	setGossip: (val: boolean) => {},
+	allNodes: [],
+	setAllNodes: (val) => {},
 	navigateLeftButtonArray: [],
 	setNavigateLeftButtonArray: (_value: React.SetStateAction<INavigateLeftButtonArray[]>) => {},
 	payMePayment:null,
@@ -299,6 +307,8 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [gossip, setGossip] = useState(false)
+	const [allNodes, setAllNodes] = useState<nodeInfo[]>([])
 	const [navigateLeftButtonArray, setNavigateLeftButtonArray] = useState<INavigateLeftButtonArray[]>([])
 	 const [payMePayment, setPayMePayment] = useState<searchResult | null>(null)
 	const [paymentLinkCode, setPaymentLinkCode] = useState('')
@@ -438,8 +448,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance, currencyData, setCurrencyData,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
-				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP,
-				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray,
+				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
+				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
         	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 
       {children}

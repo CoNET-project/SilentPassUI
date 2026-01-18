@@ -5,7 +5,7 @@ const apiv3_endpoint = `https://apiv3.conet.network/api/`;
 const apiv4_endpoint = `https://apiv4.conet.network/api/`;
 const payment_endpoint = `https://hooks.conet.network/api/`;
 const XMLHttpRequestTimeout = 90 * 1000;
-const conetRpc = "https://cancun-rpc.conet.network";
+// const conetRpc = "https://cancun-rpc.conet.network";
 const mainChain_rpc = "https://mainnet-rpc.conet.network";
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
 const _ethRpc = [
@@ -22,7 +22,7 @@ const stripe_pay_Annual ='https://buy.stripe.com/test_eVa2af5zqdmJ2Ri14b?client_
 const SilentPassOfficial = 'A8Vk2LsNqKktabs4xPY4YUmYxBoDqcTdxY5em4EQm8v1'
 
 
-const conetProvider = new ethers.JsonRpcProvider(conetRpc);
+
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());
 const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);
 const Solana_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
@@ -61,6 +61,12 @@ const pgpCoNET = new ethers.Contract(
 	conetDepinProvider
 )
 
+const GuardianNodesMainnet = new ethers.Contract(
+	contracts.GuardianNodesInfoV6.address,
+	contracts.GuardianNodesInfoV6.abi,
+	conetDepinProvider
+)
+
 
 const changeRPC = () => {
 	ethProvider = new ethers.JsonRpcProvider(ethRpc());
@@ -68,27 +74,27 @@ const changeRPC = () => {
 
 
 export {
-  localDatabaseName,
-  XMLHttpRequestTimeout,
-  apiv3_endpoint,
-  apiv4_endpoint,
-  conetRpc,
-  rewardWalletAddress,
-  conetProvider,
-  ethProvider,
-  SilentPassOfficial,
-  conetDepinProvider,
-  changeRPC,
-  stripe_pay_monthly,
-  stripe_pay_Annual,
-  payment_endpoint,
-  paypal_endpoint,
-  Solana_USDT,
-  Solana_SOL,
-  Solana_SP,
-  sGB_ReadOnly,
-  sGB_Dashboard_ReadOnly,
-  beamioConet,
-  beamioCoreConet,
-  pgpCoNET
+	localDatabaseName,
+	XMLHttpRequestTimeout,
+	apiv3_endpoint,
+	apiv4_endpoint,
+	rewardWalletAddress,
+
+	ethProvider,
+	SilentPassOfficial,
+	conetDepinProvider,
+	changeRPC,
+	stripe_pay_monthly,
+	stripe_pay_Annual,
+	payment_endpoint,
+	paypal_endpoint,
+	Solana_USDT,
+	Solana_SOL,
+	Solana_SP,
+	sGB_ReadOnly,
+	sGB_Dashboard_ReadOnly,
+	beamioConet,
+	beamioCoreConet,
+	pgpCoNET,
+	GuardianNodesMainnet
 };

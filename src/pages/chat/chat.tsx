@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import {checkSign} from '@/services/chat' 
 import {
@@ -10,31 +11,26 @@ import {
   Check,
   AlertTriangle
 } from "lucide-react"
-import {onGossipEvent, GOSSIP_MESSAGE} from '@/services/eventBus'
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
 import {
 	initBeamioPGPKeys,
 	regiestChatRoute,
 	getKeysFromCoNETPGPSC,
 	connectToGossipNode,
-	getRandomNode, sendMessage
-	
+	getRandomNode, sendMessage,
+	makeMessage
 
 } from '@/services/chat'
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {searchUsername} from '@/services/beamio'
+import {searchUsername, storeSystemData} from '@/services/beamio'
 
 
 
 type ChatProps = {
-	beamioer?: searchResult
 	onBack?: () => void
-	online: boolean
-		allNodes: nodeInfo[]
-	// 可选：如果你后面接入后端/链上消息
-	pgpPublickey: string
+	allNodes: nodeInfo[]
+	chatData: chatData
 	privateKey: string
-	chats: ChatMessage[]|undefined
 
 }
 
@@ -103,130 +99,91 @@ function BubbleCornerStatus({
   )
 }
 
+type message = {
+	from: string
+	signMessage: string
+	text: string
+	timestamp: number
+}
+
+type ChatMessage = {
+	id: string
+	from: "me" | "them"
+	text: string
+	createdAt: number
+	status?: "sending" | "sent" | "failed"
+}
 
 
-
-export default function Chat({ beamioer, onBack, pgpPublickey, online, privateKey, chats }: ChatProps) {
-  const [text, setText] = useState("")
-  const [openID, setOpenID] = useState(0)
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    
-    if (!beamioer?.address) return []
-    const now = Date.now()
-	if (chats?.length) {
-		return chats
-		
-	} else
-		return [
-		//   {
-		//     id: "m1",
-		//     from: "them",
-		//     text: "Hey 👋 这个是 Beamio 的 iOS Messages 风格聊天窗口。",
-		//     createdAt: now - 1000 * 60 * 12,
-		//     status: "sent"
-		//   },
-		//   {
-		//     id: "m2",
-		//     from: "me",
-		//     text: "Nice. 我准备接入链上/后端消息了。",
-		//     createdAt: now - 1000 * 60 * 10,
-		//     status: "sent"
-		//   }
-		]
-  })
-
- 
+export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
+	const [text, setText] = useState("")
+	 
   	const {
 		profiles,
 		setProfiles,
 		setShowFooter,
 		allNodes,
 		setGossip,
-		gossip
+		gossip,
+		charts
   	} = useDaemonContext()
 
-  const gotMessage = async (data: string) => {
-		if (!profiles) return
-		const profile = profiles[0]
-		try {
-			const message = JSON.parse(data)
-			if (message?.from && message?.text && message?.signMessage) {
-				const sign = checkSign(message.text, message.signMessage, message.from)
-				if (sign) {
-					const _account = await searchUsername(message.from)
-					if (_account?.results?.length) {
-						const acc: searchResult = _account.results[0]
-						const kk = await getKeysFromCoNETPGPSC (acc.address, profile.privateKeyArmor)
-						if (!kk?.publicArmored) {
-							return
-						}
-						
-							
-						
-						setOpenID(openID +1)
-						
-						
-						
-						
-
-						const chat: ChatMessage = {
-							from: 'them',
-							id: openID.toString(),
-							text: message.text,
-							createdAt: message.timestamp
-						}
-						
-						setMessages(prof => prof ? [...prof, chat] : [chat])
-						if (unsubscribeRef.current) {
-							unsubscribeRef.current()
-							unsubscribeRef.current = null
-						}
-					}
-				} else {
-					console.log(`Sign Error!`, message )
-				}
-			}
-			
-		} catch (ex: any) {
-			console.log(`gotMessage Error`)
-		}
-	}
-  const unsubscribeRef = useRef<(() => void) | null>(null)
-  	useEffect(() => {
-		// ✅ 立即注册监听器，不要延迟
-		if (!unsubscribeRef.current) {
-			unsubscribeRef.current = onGossipEvent(GOSSIP_MESSAGE, (payload) => {
-				console.log('Received payload:', payload)
-				if (payload?.raw) {
-					gotMessage(payload.raw)
-
-				}
-			})
-		}
-
-		// 清理函数
-		return () => {
-			if (unsubscribeRef.current) {
-				unsubscribeRef.current()
-				unsubscribeRef.current = null
-			}
-		}
-	}, []) // 空数组确保只运行一次
+	const [messages, setMessages] = useState<ChatMessage[]>(chatData.messages)
 
 	const scrollRef = useRef<HTMLDivElement | null>(null)
 	const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
-	const toAddress = beamioer?.address || ""
+	const toAddress = chatData.address
 
 	const canSend = useMemo(() => {
 		return !!toAddress && text.trim().length > 0
 	}, [toAddress, text])
 
+	const runningRef = useRef(false)
+
+	const reflashdata = async () => {
+		if (!profiles?.length) return
+		const profile: profile = profiles[0]
+		const chats = profile?.chats
+		if (!chats?.length) return
+		const myChat = chats.filter(n => n.address === chatData.address)[0]
+		if (!myChat) return
+		const mess = myChat.messages
+		setMessages(prof => [...mess])
+	}
+
+
+
+
+	useEffect(() => {
+		if (runningRef.current) return // ✅ 已在运行，直接忽略
+
+		runningRef.current = true
+
+		;(async () => {
+			try {
+				await reflashdata()
+			} finally {
+				runningRef.current = false // ✅ 确保释放锁
+			}
+		})()
+	}, [profiles])
+
   // 滚动到底部
 	useEffect(() => {
-		const el = scrollRef.current
+		 const el = scrollRef.current
 		if (!el) return
-		el.scrollTop = el.scrollHeight
+
+		// 只在用户本来就在底部时自动跟随到底（更像 iOS）
+		const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+		const wasAtBottom = distance <= 48
+
+		if (wasAtBottom) {
+			el.scrollTop = el.scrollHeight
+		}
+
+		// ✅ 渲染后如果在底部，清未读
+		clearUnreadIfNeeded()
 	}, [messages.length])
 
 	// textarea 自适应高度
@@ -238,65 +195,134 @@ export default function Chat({ beamioer, onBack, pgpPublickey, online, privateKe
 		el.style.height = `${next}px`
 	}, [text])
 
-  async function send() {
-    if (!canSend) return
-    const t = text.trim()
-
-
-
-    setText("")
-
-    const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
-    const now = Date.now()
-
-    setMessages(prev => [
-      ...prev,
-      {
-        id: tempId,
-        from: "me",
-        text: t,
-        createdAt: now,
-        status: "sending"
-      }
-    ])
-
-    
-      
-	const node = allNodes[0] //getRandomNode(allNodes)
-	if (!node) {
-		return setMessages(prev =>
-			prev.map(m =>
-			m.id === tempId ? { ...m, status: "failed" } : m
-			)
-		)
+	const storageData = async () => {
+		const temp = CoNET_Data
+		if (!temp||!profiles.length) return
+		const profile: profile = profiles[0]
+		if (!profile?.chats?.length) profile.chats = []
+		const index = profile.chats.findIndex(n => n.address === chatData.address)
+		profile.chats.splice(index, 1)
+		profile.chats.push(chatData)
+		setProfiles(profiles)
+		temp.profiles = profiles
+		setCoNET_Data(temp)
+		await storeSystemData()
 	}
 
-	const kkk = await sendMessage(pgpPublickey, t, privateKey, node)
-	if (!kkk) {
-		return setMessages(prev =>
+	async function send() {
+		const temp = CoNET_Data
+
+		if (!canSend || !temp||!profiles?.length) return
+		const t = text.trim()
+
+		setText("")
+
+		const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
+		const now = Date.now()
+		
+		setMessages(prev => [
+			...prev,
+			{
+				id: tempId,
+				from: "me",
+				text: t,
+				createdAt: now,
+				status: "sending"
+			}
+		])
+
+		
+
+		
+		const node = allNodes[0] //getRandomNode(allNodes)
+		if (!node) {
+			return setMessages(prev =>
+				prev.map(m =>
+				m.id === tempId ? { ...m, status: "failed" } : m
+				)
+			)
+		}
+
+		const kkk = await sendMessage(chatData.chatData.publicArmored, t, privateKey, node)
+		if (!kkk) {
+			return setMessages(prev =>
+				prev.map(m =>
+				m.id === tempId ? { ...m, status: "failed" } : m
+				)
+			)
+		}
+		
+		
+		
+
+		setMessages(prev =>
 			prev.map(m =>
-			m.id === tempId ? { ...m, status: "failed" } : m
+				m.id === tempId ? { ...m, status: "sent" } : m
 			)
 		)
+
+		chatData.messages = makeMessage(messages, t, now, 'me', 'sent')
+		await storageData()
 	}
 
+	useEffect(() => {
+		if (chatData.unreadCount > 0) {
+			clearedRef.current = false
+		}
+	}, [chatData.unreadCount])
 
-	setMessages(prev =>
-	prev.map(m =>
-		m.id === tempId ? { ...m, status: "sent" } : m
-	)
-	)
-    
-  }
+	const clearedRef = useRef(false)
+	// 距离底部多少 px 视为“已到最底”
+	const BOTTOM_EPS = 24
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
-  }
+	const isAtBottom = () => {
+	const el = scrollRef.current
+	if (!el) return false
+	const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+	return distance <= BOTTOM_EPS
+	}
 
+	const clearUnreadIfNeeded = () => {
+	if (!profiles?.length) return
+	if (!chatData?.address) return
 
+	// ✅ 已经清过一次，避免频繁 setProfiles（但当 unread 又变大时会自动解除）
+	if (clearedRef.current && chatData.unreadCount === 0) return
+
+	// ✅ 不在底部不清
+	if (!isAtBottom()) return
+
+	// ✅ 没未读不清
+	if (!chatData.unreadCount || chatData.unreadCount <= 0) return
+
+	clearedRef.current = true
+
+	// ✅ 不要直接改 chatData / profiles，做不可变更新
+	setProfiles(prev => {
+		if (!prev?.length) return prev
+		const p0 = prev[0]
+		const chats = Array.isArray(p0.chats) ? p0.chats : []
+		const idx = chats.findIndex(c => c.address?.toLowerCase() === chatData.address.toLowerCase())
+		if (idx < 0) return prev
+
+		const nextChats = chats.slice()
+		nextChats[idx] = { ...nextChats[idx], unreadCount: 0 }
+
+		const next = prev.slice()
+		next[0] = { ...p0, chats: nextChats }
+		return next
+	})
+
+	// ✅ 同步持久化（别阻塞 UI）
+	void storeSystemData()
+	}
+
+	function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault()
+			send()
+		}
+	}
 
   // textarea 自适应高度（1~3行），超过3行时只显示最后3行
 	useEffect(() => {
@@ -318,10 +344,12 @@ export default function Chat({ beamioer, onBack, pgpPublickey, online, privateKe
 	el.scrollTop = el.scrollHeight
 	}, [text])
 
+	
+
 
   return (
     <div className="fixed inset-0 bg-white">
-      <ChatHeaderIOS beamioer={beamioer} onBack={onBack} online={online} />
+      <ChatHeaderIOS beamioer={chatData.beamio} onBack={onBack} online={chatData.chatData.online} />
       
       {/* ✅ 渐变蒙版：从顶部100%不透明+模糊 -> 下方0%透明+无模糊，高度10rem */}
       <div
@@ -354,9 +382,13 @@ export default function Chat({ beamioer, onBack, pgpPublickey, online, privateKe
 		}}
       >
         <div
-          ref={scrollRef}
-          className="h-full overflow-y-auto px-4 py-4"
-        >
+		ref={scrollRef}
+		className="h-full overflow-y-auto px-4 py-4"
+		onScroll={() => {
+			clearUnreadIfNeeded()
+		}}
+		>
+			<div className="min-h-full flex flex-col justify-end">
           <div className="mx-auto w-full max-w-[820px]">
             <AnimatePresence initial={false}>
               {messages.map(m => (
@@ -442,13 +474,11 @@ export default function Chat({ beamioer, onBack, pgpPublickey, online, privateKe
               ))}
             </AnimatePresence>
 
-            {/* 空态 */}
-            {!beamioer?.address && (
-              <div className="mt-10 text-center text-slate-400 text-[13px]">
-                请选择一个 Beamioer 开始聊天
-              </div>
-            )}
+			  {/* ✅ 关键：底部 spacer */}
+      			<div aria-hidden className="h-[96px]" />
+            
           </div>
+		  </div>
         </div>
       </div>
 
@@ -482,8 +512,7 @@ export default function Chat({ beamioer, onBack, pgpPublickey, online, privateKe
     value={text}
     onChange={e => setText(e.target.value)}
     onKeyDown={onKeyDown}
-    placeholder={beamioer?.address ? "iMessage…" : "Select a user to start"}
-    disabled={!beamioer?.address}
+    placeholder={"iMessage…"}
     rows={1}
     className={[
       "w-full resize-none bg-transparent outline-none",
@@ -504,25 +533,25 @@ export default function Chat({ beamioer, onBack, pgpPublickey, online, privateKe
     ].join(" ")}
   />
 
-  {/* ✅ 按钮放进输入框内部，最右对齐 */}
-  <button
-    type="button"
-    onClick={send}
-    disabled={!canSend}
-    className={[
-      "absolute right-2 bottom-2",
-      "h-8 w-8 rounded-full",
-      "grid place-items-center",
-      "transition active:scale-[0.95]",
-      canSend
-        ? "bg-[rgba(22,82,240,0.40)] text-[#1652f0] shadow-[0_4px_12px_rgba(22,82,240,0.15)]"
-        : "bg-transparent text-slate-300"
-    ].join(" ")}
-    aria-label="Send"
-  >
-    <ArrowUp className="w-5 h-5" strokeWidth={2.8} />
-  </button>
-</div>
+				{/* ✅ 按钮放进输入框内部，最右对齐 */}
+				<button
+					type="button"
+					onClick={send}
+					disabled={!canSend}
+					className={[
+					"absolute right-2 bottom-2",
+					"h-8 w-8 rounded-full",
+					"grid place-items-center",
+					"transition active:scale-[0.95]",
+					canSend
+						? "bg-[rgba(22,82,240,0.40)] text-[#1652f0] shadow-[0_4px_12px_rgba(22,82,240,0.15)]"
+						: "bg-transparent text-slate-300"
+					].join(" ")}
+					aria-label="Send"
+				>
+					<ArrowUp className="w-5 h-5" strokeWidth={2.8} />
+				</button>
+				</div>
 
             </div>
 

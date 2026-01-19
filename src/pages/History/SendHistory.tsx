@@ -20,36 +20,11 @@ import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, 
 import AccountBeo from './AccountBea'
 import ShowCard from '@/components/card/ShowCard'
 import {TransactionsItemDetail} from './TransactionsItemDetail'
-import {fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived} from '@/services/currency'
+import {fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived, calcFeeFromNumber} from '@/services/currency'
 import ShowPaymentLink from './PaymentLink/index'
 import NavigateLeftButton from '@/components/navigate'
 import { useNavigate, useLocation } from 'react-router-dom'
 
-
-
-
-type CheckHistory = {
-	from: string
-    successAuthorizationHash: string
-    chianID: bigint
-    erc3009Address: string
-    node: string
-    amount: bigint
-    decimals: bigint
-    createTimestamp: bigint 
-    depositHash: string
-    depositTimestamp: bigint 
-    to: string
-    payHash: string
-}
-
-// 0.8% fee, min 0.02, max 2 USDC
-function calcFeeFromNumber(base: number) {
-	if (!isFinite(base) || base <= 0) return 0;
-	const raw = base * 0.008;
-	const clamped = Math.min(Math.max(raw, 0.02), 2);
-	return Number(clamped.toFixed(4));
-}
 
 
 

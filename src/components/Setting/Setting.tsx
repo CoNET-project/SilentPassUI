@@ -95,8 +95,12 @@ const Setting = ({}) => {
 		_beamio.darkTheme = darkModle
 		tmpData.beamio = _beamio
 		setCoNET_Data(tmpData)
-		setProfiles(CoNET_Data?.profiles)
-		storeSystemData()
+		if (CoNET_Data?.profiles) {
+			setProfiles(CoNET_Data.profiles)
+			storeSystemData()
+		}
+		
+		
 		setBeamio({..._beamio})
 	}
 

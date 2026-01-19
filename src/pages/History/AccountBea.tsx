@@ -53,7 +53,7 @@ const unknowAcc = (address: string):searchResult => {
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 
 const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
-	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers } = useDaemonContext()
+	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, beamio} = useDaemonContext()
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
 	const [userImg, setUserImg] = useState('')
 

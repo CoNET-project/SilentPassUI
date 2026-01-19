@@ -71,6 +71,24 @@ interface Region {
 	publicKey: string;
 	privateKey: string;
   }
+
+  type chatData = {
+		address: string
+		messages: ChatMessage[]
+		beamio: searchResult
+		chatData: {
+			privateArmored: string;
+			publicArmored: string;
+			routersArmoreds: string;
+			online: boolean;
+			routePgpKeyID: string;
+		}
+		pin: boolean
+		hide: boolean
+		unreadCount: number
+		tag: 'red'|'green'|'blue'|'grey'
+		muted: boolean
+	}
   
   interface profile extends keyPair {
 	isPrimary?: boolean;
@@ -95,7 +113,8 @@ interface Region {
 	vpnTimeUsedInMin?: number;
 	silentPassPassports?: passportInfo[];
 	webFilter?: boolean
-	chat?: chat
+	chats?: chatData[]
+	chatManager?: IChat
   }
   
   interface SpClubReferees {
@@ -643,4 +662,19 @@ type ChatMessage = {
 	text: string
 	createdAt: number
 	status?: "sending" | "sent" | "failed"
+}
+
+type CheckHistory = {
+	from: string
+    successAuthorizationHash: string
+    chianID: bigint
+    erc3009Address: string
+    node: string
+    amount: bigint
+    decimals: bigint
+    createTimestamp: bigint 
+    depositHash: string
+    depositTimestamp: bigint 
+    to: string
+    payHash: string
 }

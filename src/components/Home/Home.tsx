@@ -25,9 +25,11 @@ import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import PayScreen from '@/pages/Pay/send'
-import {initChat} from '@/services/chat'
+import {initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage} from '@/services/chat'
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import {getActiveArray} from '@/services/payment'
+import ActivePannel from '@/pages/History/components/activePannel'
 
 
 
@@ -45,14 +47,17 @@ const beamioConetContract = {
 }
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 
+	
+
+
 const Home = ({}) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
-		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip
+		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts
 	} = useDaemonContext()
 	const navigate = useNavigate()
-	const hasActivity = false;
+
 	
 	const [isSearchOpen, setIsSearchOpen] = useState(false)
 	const [avatarName, setAvatarName] = useState('')
@@ -60,11 +65,8 @@ const Home = ({}) => {
 	const [processing, setProcessing] = useState(false)
 	const [showGetFaucet, setShowGetFaucet] = useState<'Faucet'|'finished'|'sameIP'>('Faucet')
 	const [show200OK, setShow200OK] = useState(false)
-	const [show403, setShow403] = useState(false)
-	const [searchBeamioAccount, setSearchBeamioAccount] = useState('')
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState('')
-	const [note, setNote] = useState('')
 	const [amt, setAmt] = useState('')
 	const [recipient, setRecipient] = useState('')
 	const [claimLoading, setClaimLoading] = useState(false)
@@ -73,12 +75,16 @@ const Home = ({}) => {
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
 	const [openSearch, setOpenSearch]= useState(false)
 	const [reflash, setReflash] = useState(false)
+
+	const [activeItems, setActiveItems] = useState<TransferHistork[]>([])
+
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'>('')
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
 	)}`
+
 
 	const getAccountData = (bo: beamio) => {
 		if (!bo) return
@@ -209,7 +215,12 @@ const Home = ({}) => {
 			return
 		}
 
-		const bo: beamio = temp?.beamio || await getUserInfo(profiles[0].keyID)
+		const profile: profile = profiles[0]
+
+		const actives = await getActiveArray(profile)
+		setActiveItems(actives)
+
+		const bo: beamio = temp?.beamio || await getUserInfo(profile.keyID)
 
 		if (!bo) return
 
@@ -224,7 +235,7 @@ const Home = ({}) => {
 			setShowGetFaucet('Faucet')
 		}
 		
-		await postBeamio(bo, profiles[0].privateKeyArmor)
+		await postBeamio(bo, profile.privateKeyArmor)
 		setDarkModle(bo.darkTheme)
 		setBeamio ({...bo})
 		temp.beamio = bo
@@ -232,10 +243,12 @@ const Home = ({}) => {
 		setCoNET_Data(temp)
 		storeSystemData()
 		
-		const profile = profiles[0]
+		
 		setMyAddress (profile.keyID)
 		
-		initChat(setProfiles,setAllNodes, setGossip, gossip)
+		initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
+			setCharts((prev: string[]) => [...prev, message])
+		})
 		
 		if (ignoreUrl) {
 			return
@@ -245,13 +258,18 @@ const Home = ({}) => {
 		
   	}
 
-  	let first = true
+  	const firStartRef = useRef<boolean>(false)
+
 
   	useEffect(() => {
-		if (first) {
-			first = false
-			init()
+		if (firStartRef.current) {
+			return
 		}
+
+		firStartRef.current = true
+		init()
+		
+		
 
 				// 只在挂载时注册一次
 		const off = onWalletEvent("scan:url", (url: string) => {
@@ -270,6 +288,8 @@ const Home = ({}) => {
 		}
 
   	}, [])
+
+
 
 	/**
 	 * @returns 1 USDC ≈ X {currency}
@@ -716,7 +736,14 @@ const Home = ({}) => {
 
 
 	return (
-		<div className="h-full flex flex-col text-slate-900">
+		<div className="
+			pt-[env(safe-area-inset-top)]
+		pb-[env(safe-area-inset-bottom)]
+		pl-[env(safe-area-inset-left)]
+		pr-[env(safe-area-inset-right)]
+		w-full h-screen bg-white
+			h-full flex flex-col text-slate-900
+		">
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
 				<button
 					type="button"
@@ -730,11 +757,20 @@ const Home = ({}) => {
 				</button>
 			</div> */}
 			{/* Phone frame */}
-			<div className="flex-1 px-5 pb-3 overflow-y-auto">
+			<div className="
+				
+				flex-1 px-5 pb-3 overflow-y-auto
+			">
 				
 				{/* Search */}
 				{
-					!openSearch && <div className="flex items-center gap-2 mb-4 mt-6">
+					!openSearch && 
+					<>
+					
+					<div className="
+					
+						flex items-center gap-2 mb-4 mt-8
+					">
 						<div 
 							onClick={() => {
 								setOpenSearch(true)
@@ -753,11 +789,9 @@ const Home = ({}) => {
 						<div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
 							<ScanBtn />
 						</div>
+						
 					</div>
-				}
-				
-
-				{/* Content */}
+					{/* Content */}
 				<div className="">
 					{/* Hero card */}
 					{
@@ -867,28 +901,23 @@ const Home = ({}) => {
 					{/* Activity area */}
 					<div className="">
 					
-						{hasActivity ? (
-						<div className="space-y-2 overflow-y-auto pb-2">
-							{/* Example activity row */}
-							<div className="flex items-center justify-between py-2 border-b border-slate-100">
-							<div className="flex items-center gap-2">
-								<div className="w-7 h-7 rounded-full bg-slate-900/5 flex items-center justify-center text-[10px] font-medium text-slate-700">
-									A
-								</div>
-								<div>
-								<p className="text-[11px] text-slate-800">You paid Alice</p>
-								<p className="text-[10px] text-slate-400">Just now · Gasless on Base</p>
-								</div>
-							</div>
-							<p className="text-[11px] font-medium text-slate-900">-0.05 USDC</p>
-							</div>
-						</div>
+						{activeItems?.length ? (
+						
+							<ActivePannel
+								items ={activeItems}
+							 />
+						
 						) : (
 							<ActivityPreview />
 							
 						)}
 					</div>
 				</div>
+					</>
+				}
+				
+
+				
 			</div>
 			{showAlphaHowItWorks && createPortal(
 				<AnimatePresence>
@@ -952,27 +981,38 @@ const Home = ({}) => {
 				</AnimatePresence>
 				, document.body
 			)}
-			<div
-				className={`
-					fixed inset-0 z-50
-					bg-white
-					transition-transform duration-100 ease-out
-					${ openSearch ? 'translate-y-0' : 'translate-y-full'}
-				`}
-			>
-				{
-					openSearch && <BeamioSearch close={(item) => {
-						if (!item || typeof item === 'string') {
+
+			{createPortal(
+				<div
+        className={[
+            "fixed inset-0 z-[9998]", // 使用 inset-0 代替 top-0 right-0...
+            "bg-white",                // 確保背景色在這裡
+            "transition-transform duration-100 ease-out",
+            "h-[100dvh] w-screen",     // 使用 w-screen 確保寬度
+            // 防止 iOS 滾動穿透導致背景露餡
+            "overscroll-none",         
+            openSearch ? "translate-y-0" : "translate-y-full"
+        ].join(" ")}
+        // 防止觸控事件穿透到底層
+        onTouchMove={(e) => e.stopPropagation()} 
+    >
+        {openSearch && (
+            <div className="h-full w-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+						<BeamioSearch
+						close={(item) => {
+							if (!item || typeof item === "string") {
 							setOpenSearch(false)
-						} else {
+							} else {
 							setUserPreviewItem(item)
-							setShowAlphaHowItWorks('Pay')
-						}
-						
-					} }/>
-				}
-				
-			</div>
+							setShowAlphaHowItWorks("Pay")
+							}
+						}}
+						/>
+					</div>
+					)}
+				</div>,
+				document.body
+			)}
 		</div>
 	)
 }

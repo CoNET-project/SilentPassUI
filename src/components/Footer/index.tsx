@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, useAnimation } from 'framer-motion'
-
+import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { ReactComponent as HomeIconGrey } from './assets/home-icon-grey.svg'
 import { ReactComponent as HomeBlueIcon } from './assets/home-icon-blue.svg'
 import { ReactComponent as SendIconGrey } from './assets/send-icon-grey.svg'
@@ -15,9 +15,10 @@ import { ReactComponent as ChatGreyIcon } from './assets/chat-grey.svg'
 import { ReactComponent as BLogo } from './assets/B-icon.svg'
 import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
 
-import { isStandalone, MobileType } from '@/services/beamio'
+import { isStandalone, MobileType, searchUsername, storeSystemData} from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import type { Transition } from 'framer-motion'
+
 
 type TabKey = '/' | '/history' | '/pay' | '/chat' | '/settings'
 type Phase = 'idle' | 'moving' | 'settling' | 'impact'
@@ -25,59 +26,137 @@ type Phase = 'idle' | 'moving' | 'settling' | 'impact'
 const ICON_CLASS = 'w-11 h-11 block'
 const SLOT_H = 'h-12'
 
+
+
+
 const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const barControls = useAnimation()
 
 	useEffect(() => {
-		let cancelled = false
+	let cancelled = false
 
-		const run = async () => {
-			barControls.stop()
+	const run = async () => {
+		barControls.stop()
 
-			// ✅ 这个值要“足够”把整条 footer 推出屏幕
-			// 你的 bar 高度大概 48 + padding + safe-area，给个保守值 140
-			const HIDE_BOTTOM = -140
+		const HIDE_Y = 140 // ✅ 往下移出屏幕
 
-			if (!visible) {
-			await barControls.start({
-				bottom: HIDE_BOTTOM,
-				opacity: 0,
-				transition: { duration: 0.24, ease: [0.2, 0.8, 0.2, 1] }
-			})
-			return
-			}
-
-			// ✅ 显示：进场 -> overshoot -> 回落（bottom 方式）
-			barControls.set({ bottom: HIDE_BOTTOM, opacity: 0 })
-
-			await barControls.start({
-			bottom: [HIDE_BOTTOM, 12, 0],
-			opacity: [0, 1, 1],
-			transition: {
-				duration: 0.56,
-				times: [0, 0.40, 1],
-				ease: [0.2, 0.9, 0.2, 1]
-			}
-			})
-
-			if (cancelled) return
+		if (!visible) {
+		await barControls.start({
+			y: HIDE_Y,
+			opacity: 0,
+			transition: { duration: 0.24, ease: [0.2, 0.8, 0.2, 1] }
+		})
+		return
 		}
 
-		run()
+		// ✅ 显示：从下面上来 -> overshoot -> 回落
+		barControls.set({ y: HIDE_Y, opacity: 0 })
 
-		return () => {
-			cancelled = true
+		await barControls.start({
+		y: [HIDE_Y, -12, 0], // -12 = 轻微上冲
+		opacity: [0, 1, 1],
+		transition: {
+			duration: 0.56,
+			times: [0, 0.40, 1],
+			ease: [0.2, 0.9, 0.2, 1]
 		}
-		}, [visible, barControls])
+		})
+
+		if (cancelled) return
+	}
+
+	run()
+
+	return () => {
+		cancelled = true
+	}
+	}, [visible, barControls])
 
 	const navigate = useNavigate()
 	const { pathname } = useLocation()
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
-	const { hasNewVersion, darkModle, isInitialLoading } = useDaemonContext()
+	const { hasNewVersion, darkModle, isInitialLoading, charts, profiles, setCharts, setProfiles } = useDaemonContext()
+	const [messageCount, setMessageCount] = useState(0)
 	const [showBar, setShowBar] = useState(true)
-	
+	const runningRef = useRef(false)
+	const seenMsgRef = useRef<Set<string>>(new Set())
 
+	const getMsgKey = (raw: any) => {
+		// charts 可能是 string(JSON) 或对象
+		try {
+			const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
+			const ts = Number(obj?.timestamp)
+			const from = String(obj?.from || '')
+			// ✅ 只要 timestamp 有意义，就用 timestamp；更保险可以加 from
+			if (Number.isFinite(ts) && ts > 0) return `${ts}` // 或 `${from}_${ts}`
+		} catch {}
+		return null
+	}
+
+
+	useEffect(() => {
+		
+		if (!Array.isArray(charts) || charts.length === 0) return
+		if (runningRef.current) return
+
+		runningRef.current = true
+
+		try {
+			let delta = 0
+			const seen = seenMsgRef.current
+
+			for (const raw of charts) {
+			const key = getMsgKey(raw)
+			if (!key) continue
+			if (seen.has(key)) continue
+			seen.add(key)
+			delta += 1
+			}
+
+			if (delta > 0) {
+			// ✅ 用函数式更新，避免闭包旧值
+			setMessageCount(prev => {
+				const next = prev + delta
+
+				// ✅ badge 也用 next（而不是旧 messageCount）
+				setBadgeMap(v => ({
+				...v,
+				'/chat': next
+				}))
+
+				return next
+			})
+			}
+		} finally {
+			runningRef.current = false
+		}
+		
+	}, [charts])
+	
+	const [badgeMap, setBadgeMap] = useState<Record<TabKey, number>>({
+		'/': 0,
+		'/history': 0,
+		'/pay': 0,        // ✅ 中间 B icon 不用（即使有值也不会显示）
+		'/chat': 0,
+		'/settings': hasNewVersion ? 1 : 0
+	})
+
+	// 如果 hasNewVersion 变化，你希望 settings badge 跟着更新
+	useEffect(() => {
+		setBadgeMap(v => ({
+		...v,
+		'/settings': hasNewVersion ? Math.max(v['/settings'] || 0, 1) : 0
+		}))
+	}, [hasNewVersion])
+
+	const getBadge = React.useCallback((k: TabKey) => {
+		if (k === '/pay') return undefined
+		const n = badgeMap[k] || 0
+		if (n <= 0) return undefined
+		return n > 99 ? '99+' : String(n)
+	}, [badgeMap])
+	
 	const dropletControls = useAnimation()
 	const [phase, setPhase] = useState<Phase>('idle')
 
@@ -119,51 +198,70 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const go = (k: TabKey) => {
 		const el = document.activeElement as HTMLElement | null
 		el?.blur()
+
+		// ✅ 进入页面即清除该 tab badge（中间 /pay 跳过）
+		if (k !== '/pay') {
+			setBadgeMap(v => ({ ...v, [k]: 0 }))
+			if (k === '/chat') {
+				setMessageCount(0)
+				seenMsgRef.current.clear() // ✅ 需要“彻底重置计数”才开
+			}
+		}
+
 		navigate(k)
 	}
 
 	const tabs = useMemo(
 		() =>
-			([
-				{
-					key: '/' as const,
-					iconGrey: <HomeIconGrey className={ICON_CLASS} />,
-					iconBlue: <HomeBlueIcon className={ICON_CLASS} />,
-					title: 'Home',
-				},
-				{
-					key: '/history' as const,
-					iconGrey: <SendIconGrey className={ICON_CLASS} />,
-					iconBlue: <SendBlueIcon className={ICON_CLASS} />,
-					title: 'Transactions',
-				},
-				{
-					key: '/pay' as const,
-					iconGrey: darkModle ? <BLogo className={ICON_CLASS} /> : <BLogoLight className={ICON_CLASS} />,
-					iconBlue: darkModle ? <BLogo className={ICON_CLASS} /> : <BLogoLight className={ICON_CLASS} />,
-					title: '',
-				},
-				{
-					key: '/chat' as const,
-					iconGrey: <ChatGreyIcon className={ICON_CLASS} />,
-					iconBlue: <ChatBlueIcon className={ICON_CLASS} />,
-					title: 'Chat',
-				},
-				{
-					key: '/settings' as const,
-					iconGrey: <WalletIconGrey className={ICON_CLASS} />,
-					iconBlue: <WalletBlueIcon className={ICON_CLASS} />,
-					title: 'Me',
-					...(hasNewVersion ? { badge: '1' } : {}),
-				},
-			] as const),
-		[darkModle, hasNewVersion]
-	)
+		([
+			{
+			key: '/' as const,
+				iconGrey: <HomeIconGrey className={ICON_CLASS} />,
+				iconBlue: <HomeBlueIcon className={ICON_CLASS} />,
+				title: 'Home',
+				badge: getBadge('/'),
+			},
+			{
+			key: '/history' as const,
+				iconGrey: <SendIconGrey className={ICON_CLASS} />,
+				iconBlue: <SendBlueIcon className={ICON_CLASS} />,
+				title: 'Transactions',
+				badge: getBadge('/history'),
+			},
+			{
+				key: '/pay' as const,
+				iconGrey: darkModle ? <BLogo className={ICON_CLASS} /> : <BLogoLight className={ICON_CLASS} />,
+				iconBlue: darkModle ? <BLogo className={ICON_CLASS} /> : <BLogoLight className={ICON_CLASS} />,
+				title: '',
+				// ✅ 不要 badge
+			},
+			{
+				key: '/chat' as const,
+				iconGrey: <ChatGreyIcon className={ICON_CLASS} />,
+				iconBlue: <ChatBlueIcon className={ICON_CLASS} />,
+				title: 'Chat',
+				badge: getBadge('/chat'),
+			},
+			{
+				key: '/settings' as const,
+				iconGrey: <WalletIconGrey className={ICON_CLASS} />,
+				iconBlue: <WalletBlueIcon className={ICON_CLASS} />,
+				title: 'Me',
+				badge: getBadge('/settings') // ✅ charts.length 在这里生效
+			},
+		] as const),
+		// ✅ 依赖 getBadge / badgeMap / darkModle
+		// getBadge 是闭包函数，这里最简单就是把 badgeMap 放进依赖，并且保证 getBadge 不在 useMemo 外重建也行
+		// 你如果担心 eslint，可以把 getBadge 用 useCallback 包一下
+		[darkModle, badgeMap]
+  )
 
 	const activeIndex = useMemo(() => {
 		const i = tabs.findIndex(t => t.key === activeKey)
 		return i >= 0 ? i : 0
 	}, [tabs, activeKey])
+
+
 
 	useEffect(() => {
 		setAnimId(v => v + 1)
@@ -185,6 +283,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		return showBar && (isStandalone || MobileType() === 'desktop')
 	}, [showBar])
 
+
+	//					紅色氣泡表示
 	useEffect(() => {
 		if (!shouldRender) return
 
@@ -293,17 +393,19 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 					{badge && (
 						<span
-							className="
-								absolute -top-1 -right-1
-								min-w-[16px] h-[16px] px-1
-								rounded-full
-								bg-rose-500
-								text-[11px] leading-[16px]
-								text-white
-								flex items-center justify-center
-							"
+						className="
+							absolute top-[2px] right-[2px]
+							z-20
+							min-w-[16px] h-[16px] px-1
+							rounded-full
+							bg-rose-500
+							text-[11px] leading-[16px]
+							text-white
+							flex items-center justify-center
+							ring-2 ring-white/70 dark:ring-slate-900/60
+						"
 						>
-							{badge}
+						{badge}
 						</span>
 					)}
 				</motion.div>
@@ -336,7 +438,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			animate={barControls}
 			initial={false}
 			style={{
-				bottom: '1rem',
+				bottom: 'calc(1rem + env(safe-area-inset-bottom))',
 				willChange: 'bottom, opacity',
 				pointerEvents: 'none'
 			}}
@@ -345,77 +447,85 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			<div className="mx-auto max-w-[800px] px-4 pointer-events-auto">
 				<div
 					className="
+						relative
+						rounded-[28px]
+						overflow-visible
+						shadow-[0_10px_28px_rgba(0,0,0,0.18)]
+					"
+					>
+					{/* ✅ 背景玻璃层：负责圆角裁切 + blur */}
+					<div
+						className="
+						absolute inset-0
 						rounded-[28px]
 						overflow-hidden
 						border border-white/60 dark:border-white/10
-						
-						shadow-[0_10px_28px_rgba(0,0,0,0.18)]
-						pt-2 pb-2.5   // ✅ 内边距在这里
-					"
-					style={{
-						// 1. 确保背景色有足够的“介质感”。建议稍微提高一点不透明度 (0.1 -> 0.2 或 0.15)
+						pt-2 pb-2.5
+						"
+						style={{
 						backgroundColor: darkModle
-							? 'rgba(10, 10, 30, 0.4)'   // Dark: 深色玻璃通常需要更深一点的底色
-							: 'rgba(240, 240, 255, 0.95)', // Light: 浅色模式通常用半透白，而不是蓝。如果你坚持要蓝色，用 'rgba(0, 100, 255, 0.15)'
-						
-						// 2. 核心模糊属性
-						WebkitBackdropFilter: 'blur(36px) saturate(150%)', // 针对 Safari
-						backdropFilter: 'blur(36px) saturate(150%)',       // 标准属性
-						
-						// 3. ✅ 关键修复：强制 GPU 硬件加速
-						// 这能解决 iOS 上 overflow:hidden 和 backdrop-filter 同时使用导致的渲染 bug
+							? 'rgba(10, 10, 30, 0.4)'
+							: 'rgba(240, 240, 255, 0.95)',
+						WebkitBackdropFilter: 'blur(36px) saturate(150%)',
+						backdropFilter: 'blur(36px) saturate(150%)',
 						transform: 'translate3d(0,0,0)',
 						WebkitTransform: 'translate3d(0,0,0)',
-					}}	
-				>
-					<div className="relative">
+						pointerEvents: 'none'
+						}}
+					>
+						{/* ✅ droplet 放在背景层里（被圆角裁切没问题） */}
+						<div className="relative h-full">
 						<motion.div
 							className="
-								absolute inset-y-0 left-0 w-1/5
-								overflow-hidden
-								-top-2 -bottom-2
-								border border-white/60 dark:border-slate-700/70
-								pointer-events-none
+							absolute inset-y-0 left-0 w-1/5
+							overflow-hidden
+							-top-2 -bottom-2
+							border border-white/60 dark:border-slate-700/70
+							pointer-events-none
 							"
 							style={{
-								background: darkModle
-									? 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.12), rgba(15,23,42,0.78) 55%)'
-									: 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.98), rgba(255,255,255,0.70) 58%)'
+							background: darkModle
+								? 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.12), rgba(15,23,42,0.78) 55%)'
+								: 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.98), rgba(255,255,255,0.70) 58%)'
 							}}
 							initial={{
-								x: `${activeIndex * 100}%`,
-								borderRadius: 26,
-								scaleX: 1.06,
-								scaleY: 0.96
+							x: `${activeIndex * 100}%`,
+							borderRadius: 26,
+							scaleX: 1.06,
+							scaleY: 0.96
 							}}
 							animate={dropletControls}
 						>
 							<motion.div
-								className="absolute inset-0"
-								animate={{ x: ['-18%', '18%', '-18%'] }}
-								transition={{ duration: 3.0, repeat: Infinity, ease: 'easeInOut' }}
-								style={{
-									background:
-									'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.36) 45%, transparent 60%)',
-									filter: 'blur(10px)'
-								}}
+							className="absolute inset-0"
+							animate={{ x: ['-18%', '18%', '-18%'] }}
+							transition={{ duration: 3.0, repeat: Infinity, ease: 'easeInOut' }}
+							style={{
+								background:
+								'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.36) 45%, transparent 60%)',
+								filter: 'blur(10px)'
+							}}
 							/>
 						</motion.div>
-
-						<div className="relative grid grid-cols-5 items-center gap-0">
-							{tabs.map(t => (
-								<Item
-									key={t.key}
-									k={t.key}
-									iconGrey={t.iconGrey}
-									iconBlue={t.iconBlue}
-									title={t.title}
-									badge={(t as any).badge}
-								/>
-							))}
 						</div>
 					</div>
-				</div>
+
+					{/* ✅ 前景内容层：不裁切，所以 badge 可以越界 */}
+					<div className="relative pt-2 pb-2.5 overflow-visible pointer-events-auto">
+						<div className="relative grid grid-cols-5 items-center gap-0 overflow-visible">
+						{tabs.map(t => (
+							<Item
+							key={t.key}
+							k={t.key}
+							iconGrey={t.iconGrey}
+							iconBlue={t.iconBlue}
+							title={t.title}
+							badge={(t as any).badge}
+							/>
+						))}
+						</div>
+					</div>
+					</div>
 				
 			</div>
 			

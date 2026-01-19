@@ -123,7 +123,7 @@ const getAllNodes = (): Promise<nodeInfo[]> => new Promise(async resolve=> {
     resolve(Guardian_Nodes)
 })
 
-export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean) => {
+export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean, newMessage: (val: string) => void) => {
 	if (gossip) return
 	setGossip(true)
 	const allNodes = await getAllNodes()
@@ -135,21 +135,21 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	}
 	const profiles: profile[] =  temp.profiles
 	const profile = profiles[0]
-	let chat: IChat = profile?.chat as any
-	let routes: string = chat?.router||''
+	let chatManager: IChat|undefined = profile?.chatManager
+	let routes: string = chatManager?.router||''
 	//		本地非初始化
-	if (!chat) {
+	if (!chatManager) {
 		const pgpData = await initBeamioPGPKeys(profile)
 		if (!pgpData) {
 			setGossip(false)
 			return
 		}
 
-		chat = {
+		chatManager = {
 			pgpKey: pgpData,
 			router: ''
 		}
-		profile.chat = chat as any
+		profile.chatManager = chatManager
 		routes = pgpData.routes
 	}
 
@@ -162,7 +162,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	//	链上route信息
 	if (routes) {
 
-		chat.router = routes
+		chatManager.router = routes
 
 	}
 	if (!routes) {
@@ -170,17 +170,17 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		if (node) {
 			await regiestChatRoute(
 				profile.privateKeyArmor,
-				chat.pgpKey.publicKey,
-				chat.pgpKey.keyID,
-				chat.pgpKey.privateKey,
+				chatManager.pgpKey.publicKey,
+				chatManager.pgpKey.keyID,
+				chatManager.pgpKey.privateKey,
 				node.domain
 			)
-			chat.router = node.armoredPublicKey
+			chatManager.router = node.armoredPublicKey
 		}
 	}
 
 
-	profile.chat = chat as any
+	profile.chatManager = chatManager
 	temp.profiles[0] = profile
 	setProfiles(profiles)
 	setCoNET_Data(temp)
@@ -192,7 +192,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		return
 	}
 	
-	connectToGossipNode(chat.router, profile.privateKeyArmor, entryNode, chat.pgpKey.privateKey)
+	connectToGossipNode(chatManager.router, profile.privateKeyArmor, entryNode, chatManager.pgpKey.privateKey, newMessage)
 	
 }
 
@@ -723,10 +723,11 @@ startGossip(nodeInfo, body, callback, {
 
 
 export const connectToGossipNode = async (
-  nodeArmoredPublicKey: string,
-  privateKeyArmor: string,
-  entryNode: nodeInfo,
-  pgpPrivateKey: string
+	nodeArmoredPublicKey: string,
+	privateKeyArmor: string,
+	entryNode: nodeInfo,
+	pgpPrivateKey: string,
+	newMessage: (val: string) => void
 ) => {
   const wallet = new ethers.Wallet(privateKeyArmor)
 
@@ -786,14 +787,8 @@ export const connectToGossipNode = async (
           decryptionKeys: decryptedPrivateKey
         })
 		const kkk = fromBase64(decrypted)
-		const { emitGossipEvent, GOSSIP_MESSAGE } = await import('./eventBus')
-        emitGossipEvent(GOSSIP_MESSAGE, {
-			node: entryNode.domain,
-			raw: kkk,
-			decrypted,
-			ts: Date.now()
-		})
-		console.log ()
+		console.log(`message ${kkk}`)
+		newMessage(kkk)
 		
       } else {
 		console.log(data)
@@ -909,13 +904,13 @@ export const sendMessage = async (
 				continue;
 			}
 
-			const data = (await res.json().catch(() => null)) as NodePostResponse | null;
+			// const data = (await res.json().catch(() => null)) as NodePostResponse | null;
 			
-			// 更加鲁棒的检查
-			if (!data || (data.ok === false) || data.error) {
-				console.warn(`[Gossip] Server Error: ${data?.error || "Unknown error"}`);
-				continue;
-			}
+			// // 更加鲁棒的检查
+			// if (!data || (data.ok === false) || data.error) {
+			// 	console.warn(`[Gossip] Server Error: ${data?.error || "Unknown error"}`);
+			// 	continue;
+			// }
 
 			return true;
 		} catch (ex: any) {
@@ -948,6 +943,72 @@ export const checkSign = (message: string, signMess: string, signWallet: string)
 		return null
 	}
 	
-	return signWallet
+	return signWallet.toLowerCase()
 	
+}
+
+
+export const makeMessage = (
+  data: ChatMessage[],
+  newChatText: string,
+  timestamp: number,
+  from: "me" | "them",
+  status?: "sending" | "sent" | "failed"
+) => {
+  // 1) 先把已有消息“规范化”：用 createdAt(=timestamp) 生成稳定唯一 id
+  const normalized = (data || []).map(m => {
+    // ✅ 保留你本地临时消息 tmp_... 的 id（用于发送三态 UI）
+    if (m?.id?.startsWith("tmp_")) return m
+
+    const ts = Number(m?.createdAt)
+    const stableId = Number.isFinite(ts)
+      ? String(ts) // ✅ 用 timestamp 作为唯一性
+      : (m?.id || `msg_${Math.random().toString(16).slice(2)}`)
+
+    return {
+      ...m,
+      id: stableId
+    }
+  })
+
+  // 2) 建一个 Set 来做去重（以 id=timestamp 为唯一性）
+  const seen = new Set<string>()
+  const result: ChatMessage[] = []
+
+  for (const m of normalized) {
+    if (!m) continue
+
+    const key = m.id || String(m.createdAt || "")
+    if (!key) continue
+
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(m)
+  }
+
+  // 3) 集成“新来的消息”：newChatText + timestamp + from + status
+  //    ✅ 你要求：通过 timestamp 检查唯一性，可直接用 timestamp 作为 id
+  const ts = Number(timestamp)
+  const text = (newChatText || "").trim()
+
+  if (text && Number.isFinite(ts)) {
+    const incomingId = String(ts)
+
+    if (!seen.has(incomingId)) {
+      seen.add(incomingId)
+      result.push({
+        id: incomingId,
+        from,
+        text,
+        createdAt: ts,
+        // ✅ 对方消息默认 sent；自己消息如果你没传 status，也默认 sent（你也可以改成 sending）
+        status: status ?? (from === "me" ? "sent" : "sent")
+      })
+    }
+  }
+
+  // 4) 排序：按时间升序（iMessage 从上到下）
+  result.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+
+  return result
 }

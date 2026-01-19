@@ -731,7 +731,7 @@ const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_ob
 			keyID: result.status,
 			isNode: false,
 			index: 0,
-			hdPath: null
+			hdPath: null,
 		}
 		
 	} else {

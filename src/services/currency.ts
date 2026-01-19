@@ -208,3 +208,12 @@ export function calcFeeFromReceived(received: number) {
 	// 理论上不会到这里
 	return Number(feeByRatio.toFixed(4))
 }
+
+// 0.8% fee, min 0.02, max 2 USDC
+export function calcFeeFromNumber(base: number) {
+	if (!isFinite(base) || base <= 0) return 0;
+	const raw = base * 0.008;
+	const clamped = Math.min(Math.max(raw, 0.02), 2);
+	return Number(clamped.toFixed(4));
+}
+

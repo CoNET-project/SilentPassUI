@@ -5,6 +5,8 @@ import packageData from '../../package.json'
 
 
 type DaemonContext = {
+	charts: string[]
+	setCharts: React.Dispatch<React.SetStateAction<string[]>>
 	gossip: boolean
 	setGossip: (val: boolean) => void
 	allNodes: nodeInfo[]
@@ -45,7 +47,7 @@ type DaemonContext = {
   miningData: any;
   setMiningData: (data: any) => void;
   profiles: any;
-  setProfiles: (profiles: any) => void;
+  setProfiles: React.Dispatch<React.SetStateAction<profile[]>>
   isMiningUp: boolean;
   setIsMiningUp: (val: boolean) => void;
   setaAllNodes: (data: nodes_info[]) => void
@@ -150,6 +152,9 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+
+	charts: [],
+	setCharts: (_value: React.SetStateAction<string[]>) => {},
 	gossip: false,
 	setGossip: (val: boolean) => {},
 	allNodes: [],
@@ -211,7 +216,7 @@ const defaultContextValue: DaemonContext = {
   miningData: null,
   setMiningData: () => { },
   profiles: null,
-  setProfiles: () => { },
+  setProfiles: (_value: React.SetStateAction<profile[]>) => {},
   isMiningUp: false,
   setIsMiningUp: () => { },
   setaAllNodes: () => { },
@@ -307,6 +312,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [charts, setCharts] = useState<string[]>([])
 	const [gossip, setGossip] = useState(false)
 	const [allNodes, setAllNodes] = useState<nodeInfo[]>([])
 	const [navigateLeftButtonArray, setNavigateLeftButtonArray] = useState<INavigateLeftButtonArray[]>([])
@@ -446,7 +452,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,payTag, setPayTag, myAddress, setMyAddress,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput, usdcToUSD, setUsdcToUSD,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance, currencyData, setCurrencyData,
-				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo,
+				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo, charts, setCharts,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,

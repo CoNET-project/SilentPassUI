@@ -11,12 +11,109 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
 import Browser from "@/pages/Browser"
+import {initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage} from '@/services/chat'
+import { isStandalone, MobileType, searchUsername, storeSystemData} from '@/services/beamio'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import layout from './layout.module.scss'
 
 global.Buffer = require("buffer").Buffer
 
+type message = {
+	from: string
+	signMessage: string
+	text: string
+	timestamp: number
+}
+
+
+
+const addNewMessage = async (lines: string[], profiles: profile[], temp: encrypt_keys_object, setProfiles: React.Dispatch<React.SetStateAction<profile[]>>) => {
+		// ✅ 永远用“复制”的 chats 来做变更
+		const profile = profiles[0]
+		const chats: chatData[] = Array.isArray(profile.chats) ? [...profile.chats] : []
+
+		for (const raw of lines) {
+			try {
+			const msg: message = JSON.parse(raw)
+			if (!msg?.from || !msg?.text || !msg?.signMessage) continue
+
+			const sign = checkSign(msg.text, msg.signMessage, msg.from)
+			if (!sign) continue
+
+			let idx = chats.findIndex(n => n?.address?.toLowerCase() === sign.toLowerCase())
+			let chat = idx >= 0 ? { ...chats[idx] } : null
+
+			// ✅ 不存在：创建新 chat
+			if (!chat) {
+				const _account = await searchUsername(sign) // 这里用 sign 更合理
+				if (!_account?.results?.length) continue
+
+				const acc: searchResult = _account.results[0]
+				const kk = await getKeysFromCoNETPGPSC(acc.address, profile.privateKeyArmor)
+				if (!kk?.publicArmored) continue
+
+				chat = {
+					address: sign,
+					beamio: acc,
+					messages: [],
+					pin: false,
+					hide: false,
+					chatData: kk,
+					unreadCount: 0,
+					tag: "grey",
+					muted: false
+				}
+
+				chats.unshift(chat) // ✅ 新会话放到最上面（更像 Messages）
+				idx = 0
+			}
+
+			// ✅ 合并消息（去重 + 排序）
+			const nextMessages = makeMessage(
+				chat.messages || [],
+				msg.text,
+				msg.timestamp,
+				"them",
+				"sent"
+			)
+
+			// ✅ 未读 +1（仅当消息确实是新增的才加）
+			const wasLen = (chat.messages || []).length
+			const nowLen = nextMessages.length
+			const unreadNext =
+				nowLen > wasLen ? (Number(chat.unreadCount || 0) + 1) : Number(chat.unreadCount || 0)
+
+			const nextChat: chatData = {
+				...chat,
+				messages: nextMessages,
+				unreadCount: unreadNext
+			}
+
+			// ✅ 放回 chats（不可变）
+			if (idx === 0 && chats[0].address.toLowerCase() === nextChat.address.toLowerCase()) {
+				chats[0] = nextChat
+			} else {
+				const realIdx = chats.findIndex(n => n.address.toLowerCase() === nextChat.address.toLowerCase())
+				if (realIdx >= 0) chats[realIdx] = nextChat
+				else chats.unshift(nextChat)
+			}
+			} catch (ex) {
+			// 建议至少打印一次，方便你排查脏数据
+				console.log("addNewMessage JSON.parse error", ex)
+			}
+		}
+
+		profile.chats = chats
+
+		// ✅ 关键：setProfiles 必须不可变更新（复制 profile + 复制 profiles 数组）
+		setProfiles([...profiles])
+		temp.profiles = profiles
+		setCoNET_Data(temp)
+		await storeSystemData()
+	}
+
 function App() {
-	const { isInitialLoading, showFooter, setShowFooter } = useDaemonContext()
+	const { isInitialLoading, showFooter, setShowFooter, profiles, charts, setCharts, setProfiles } = useDaemonContext()
 	const bodyRef = useRef<HTMLDivElement | null>(null)
 
 	// Footer 是否显示（由滚动决定）
@@ -176,6 +273,30 @@ function App() {
 		if (isInitialLoading) setShowFooter (false)
 		setShowFooter(true)
 	},[isInitialLoading])
+
+	const runningRef = useRef(false)
+
+
+	useEffect(() => {
+		const profile = profiles
+		const temp = CoNET_Data
+		if (!profile||!temp||!charts?.length) return
+		if (!Array.isArray(charts) || charts.length === 0) return
+		if (runningRef.current) return // ✅ 已在运行，直接忽略
+
+		runningRef.current = true
+
+		
+		;(async () => {
+			try {
+				const messageLines = [...charts]
+				setCharts([]) // 清空队列
+				await addNewMessage(messageLines, profile, temp, setProfiles)
+			} finally {
+				runningRef.current = false // ✅ 确保释放锁
+			}
+		})()
+	}, [charts])
 
 
 	return (

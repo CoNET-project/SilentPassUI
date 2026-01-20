@@ -438,7 +438,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			animate={barControls}
 			initial={false}
 			style={{
-				bottom: 'calc(1rem + env(safe-area-inset-bottom))',
+				bottom: '1rem',//'calc(1rem + env(safe-area-inset-bottom))',
 				willChange: 'bottom, opacity',
 				pointerEvents: 'none'
 			}}

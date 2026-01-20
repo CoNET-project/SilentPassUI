@@ -1,6 +1,6 @@
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useDaemonContext } from "@/providers/DaemonProvider"
-
+import { createPortal } from 'react-dom'
 import {
 	initBeamioPGPKeys,
 	regiestChatRoute,
@@ -14,7 +14,6 @@ import { useEffect, useRef, useState } from "react"
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import Chat from './chat'
-import {checkSign} from '@/services/chat' 
 
 import ChatList from './components/ChatList'
 
@@ -67,7 +66,7 @@ const Home = () => {
   	} = useDaemonContext()
 	const [chatData, setChatData] = useState<chatData> ()
 	const [privateKey, setPrivate] = useState('')
-
+	const [openSearch, setOpenSearch]= useState(false)
 
 	useEffect(() => {
 		const profile: profile = profiles?.[0]
@@ -103,14 +102,17 @@ const Home = () => {
         <div className="relative mb-4 mt-4">
           <SearchInputWithDropdown
             showHistory={false}
-            close={item => {
+            closeWindow={item => {
               if (typeof item !== "string") {
                 selectedItemProcess(item)
+				setShowFooter(false)
               }
             }}
-            showBackIcon={false}
-            select={true}
+			showBackIcon={false}
+			select={true}
+			focus={true}
           />
+
 
           {/* 扫码按钮：浮在右侧 */}
           <div
@@ -155,6 +157,9 @@ const Home = () => {
       privateKey={privateKey}
     />
   )}
+
+
+  
 </div>
   )
 }

@@ -379,7 +379,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 												<section className="mb-4">
 													<SearchInputWithDropdown
 														showHistory={false}
-														close={item => {
+														closeWindow={item => {
 															if (typeof item !== 'string') {
 																selectItem(item)
 															}

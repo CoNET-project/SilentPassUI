@@ -21,7 +21,7 @@ const beamioConetContract = {
 }
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 type Props = {
-	close: (path: string | searchResult) => void
+	closeWindow: (path: string | searchResult) => void
 	select?: boolean
 	showHistory: boolean
 	showBackIcon?: boolean
@@ -59,7 +59,7 @@ function formatUserDate(timestamp?: string | number): string {
 
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
-	({ close, select, showHistory, showBackIcon=true, focus = false, showError = false }: Props) => {
+	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false }: Props) => {
 		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment} = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
@@ -75,6 +75,10 @@ const SearchInputWithDropdown =
 		const [readonly, setReadonly] = useState(!focus)
 		const hasQuery = query.trim().length > 0
 		const [internalError, setInternalError] = useState(showError)
+
+		// 1) 把 hasQuery 改成基于“去掉@并trim”的长度
+		const normalizedQuery = query.trim().replace('@', '')
+		const canSearch = normalizedQuery.length >= 2
 
 		
 		const requestUrl = async (url: URL) => {
@@ -134,61 +138,63 @@ const SearchInputWithDropdown =
 
 		}
 
-		const search = async (q: string) => {
-			setLoading(true)
-			try {
-				const url = new URL(q.trim())
-				if (url.protocol === 'https:' || url.protocol === 'http:') {
-					return requestUrl(url)
-				}
-				return setInternalError(true)
-			} catch {
-				// 非 URL，忽略
-			}
+		// 2) search() 内部不要再用 hasQuery（它是旧的 render 值），改成用传入 q 的长度控制 dropdown
+const search = async (q: string) => {
+  const qq = q.trim().replace('@', '')
 
-			q = q.trim().replace('@', '').toLowerCase()
-			
-			const data = await searchUsername(q)
-			
+  // ✅ 少于2个字符：不搜索，不显示下拉
+  if (qq.length < 2) {
+    setLoading(false)
+    setResults([])
+    setShowDropdown(false)
+    return
+  }
 
-			const result: searchResult[] = data?.results || []
-			const filted = result.filter(n => n.address.toLowerCase() !== myAddress)
-			if (filted.length) {
-				const index = searchKeysHistory.findIndex(n => n.type === 'search' && n.keyward.toLowerCase() === q)
-				if (index < 0) {
-					setSearchKeysHistory(prev => [...prev, {keyward: q, type:'search'}])
-				}
-			} else {
-				if (ethers.isAddress(q)) {
-					const _item = makeOutlandItem(q)
-					filted.push(_item)
-				}
-			}
+  setLoading(true)
 
-			// await Promise.all(
-			// 	filted.map(async n => {
-			// 		if ( /ipfs/i.test(n.image)) {
+  // URL 逻辑：只有长度>=2才会走到这里（符合你的要求）
+  try {
+    const url = new URL(qq)
+    if (url.protocol === 'https:' || url.protocol === 'http:') {
+      await requestUrl(url)
+      setLoading(false)
+      // URL 场景你现在是 navigate，不一定需要 dropdown
+      setShowDropdown(false)
+      return
+    }
+    setInternalError(true)
+    setLoading(false)
+    setShowDropdown(false)
+    return
+  } catch {
+    // 非 URL，继续走用户名/地址搜索
+  }
 
-			// 			const img = await urlToObjectUrl(n.image)
-			// 			console.log(img)
-			// 			n.image = img
-			// 		} else {
-			// 			n.image = 
-			// 		}
-					
-			// 	})
-			// )
+  const lower = qq.toLowerCase()
 
-			setLoading(false)
-			setResults(filted)
+  const data = await searchUsername(lower)
+  const result: searchResult[] = data?.results || []
+  const filted = result.filter(n => n.address.toLowerCase() !== myAddress)
 
-			if (hasQuery) {
-				setShowDropdown(true)
-			} else {
-				
-				setShowDropdown(false)
-			}
-		}
+  if (filted.length) {
+    const index = searchKeysHistory.findIndex(
+      n => n.type === 'search' && n.keyward.toLowerCase() === lower
+    )
+    if (index < 0) {
+      setSearchKeysHistory(prev => [...prev, { keyward: lower, type: 'search' }])
+    }
+  } else {
+    if (ethers.isAddress(lower)) {
+      filted.push(makeOutlandItem(lower))
+    }
+  }
+
+  setResults(filted)
+  setLoading(false)
+
+  // ✅ 只有 >=2 才打开 dropdown
+  setShowDropdown(true)
+}
 
 		const makeOutlandItem = (address: string) => {
 			const subitem: searchResult = {
@@ -212,7 +218,7 @@ const SearchInputWithDropdown =
 		"h-11",
 		"flex-1",
 		"transition",
-
+			
 		// ✅ 错误态：整条红色外框
 		internalError
 			? "ring-1 ring-red-500 focus-within:ring-2 focus-within:ring-red-500"
@@ -232,18 +238,28 @@ const SearchInputWithDropdown =
 			setSearchBeamiosHistory(search.searchBeamios)
 		}, [])
 
+		// 3) query effect：少于2就直接收起；>=2 才 search
 		useEffect(() => {
-			const q = query.trim().replace('@', '')
-			if (!q) {
-				if (select) {
-					setShowDropdown(false)
-				}
-				setResults([])
-				setLoading(false)
-				return
-			}
+		const q = query.trim().replace('@', '')
 
-			search(q)
+		// ✅ 清空：隐藏 dropdown & 清数据
+		if (!q) {
+			if (select) setShowDropdown(false)
+			setResults([])
+			setLoading(false)
+			setInternalError(false) // 可选：清空时顺便清错误
+			return
+		}
+
+		// ✅ 第1个字符：不搜索、不下拉
+		if (q.length < 2) {
+			setResults([])
+			setLoading(false)
+			setShowDropdown(false)
+			return
+		}
+
+		search(q)
 		}, [query])
 
 
@@ -267,7 +283,7 @@ const SearchInputWithDropdown =
 				setQuery('')
 				setResults([])
 				setShowDropdown(false)
-				return close(item)
+				return closeWindow(item)
 			}
 			setUserPreviewItem(item)
 			const index = searchBeamiosHistory.findIndex(n => n.beamio?.username === item.username.toLowerCase())
@@ -391,7 +407,9 @@ const SearchInputWithDropdown =
 								!readonly && showBackIcon && (
 									<button
 										type="button"
-										onClick={() => close('/')}
+										onClick={() => {
+											closeWindow('/')
+										}}
 										className="
 										w-7 h-7
 										mr-2
@@ -435,7 +453,7 @@ const SearchInputWithDropdown =
 									setReadonly(false)
 								}}
 								onKeyDown={e => {
-									if (e.key === "Enter" || e.key === " ") close("/")
+									if (e.key === "Enter" || e.key === " ") closeWindow("/")
 								}}
 								className="
 									flex-1 min-w-0
@@ -492,7 +510,7 @@ const SearchInputWithDropdown =
 									!readonly && showBackIcon && (
 										<button
 											type="button"
-											onClick={() => close('/')}
+											onClick={() => closeWindow('/')}
 											className="
 											w-7 h-7
 											mr-2
@@ -648,7 +666,7 @@ const SearchInputWithDropdown =
 										setUserPreviewItem(null)
 										setSideSlide('')
 									} else {
-										close(path)
+										closeWindow(path)
 									}
 								}}
 							/>

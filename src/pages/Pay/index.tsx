@@ -1,36 +1,19 @@
 
 import { useState, useRef, useEffect } from 'react'
-import styles from '@/pages/History/send.module.scss'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { createPortal } from 'react-dom';
-import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
-import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import { onWalletEvent, searchUsername } from '@/services/beamio'
-import { Button,Modal,Toast } from "antd-mobile"
-import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
-import ScanBtn from '@/components/scanBtn/ScanButton'
 import BeamioSearch from '@/components/Home/BeamioSearch'
-import { ChevronRight } from 'lucide-react'
-import MainScreen from './MainScreen'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import {motion, AnimatePresence } from "framer-motion"
 import PayScreen from '@/pages/Pay/send'
-import PaymentLink from './PaymentLink'
 import Cashcode from './Cashcode'
-import PayMe from './PayMe'
 import { useNavigate } from "react-router-dom"
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import BeamioPayMe from './BeamioPayMe'
 import Dashboard from './Dashboard'
 
-
-type Props = {
-	amount: string
-	noteText: string
-	recipientADDR: string
-	codeHASH: string
-}
 
 const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
@@ -141,12 +124,13 @@ const Pay = ({}) => {
 
 	return (
 		<div className="
+
 			flex justify-center
-			pt-[calc(env(safe-area-inset-top)+0.2rem)]
+			pt-[calc(env(safe-area-inset-top)+2rem)]
 		">
 			<div className="w-full max-w-[620px] px-4 flex flex-col">
 				{/* Search */}
-			<div className="flex items-center gap-2 mb-4 mt-4">
+			{/* <div className="flex items-center gap-2 mb-4 mt-4">
 				<button 
 					onClick={() => {
 						setOpenSearch(true)
@@ -156,7 +140,7 @@ const Pay = ({}) => {
 					<div className="pointer-events-none">
 						<SearchInputWithDropdown
 							showHistory={false}
-							close={ path => {
+							closeWindow={ path => {
 								setShowAlphaHowItWorks('')
 							}}
 						/>
@@ -167,7 +151,7 @@ const Pay = ({}) => {
 				</div>
 
 				
-			</div>
+			</div> */}
 
 			<Dashboard 
 				setShowAlphaHowItWorks={setShowAlphaHowItWorks}

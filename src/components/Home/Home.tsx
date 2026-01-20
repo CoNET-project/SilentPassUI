@@ -54,7 +54,7 @@ const Home = ({}) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
-		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts
+		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter
 	} = useDaemonContext()
 	const navigate = useNavigate()
 
@@ -185,9 +185,11 @@ const Home = ({}) => {
 	}
 
 	const reflashProcess = async () => {
-		if (!myAddress) return
+		if (reflash) return
+		const profile: profile = profiles[0]
 		setReflash(true)
-		await getBalanceProcess(myAddress, setUsdcbalance, setUsdcToUSD)
+
+		await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
 		setReflash(false)
 	}
 
@@ -216,7 +218,7 @@ const Home = ({}) => {
 		}
 
 		const profile: profile = profiles[0]
-
+		reflashProcess()
 		const actives = await getActiveArray(profile)
 		setActiveItems(actives)
 
@@ -254,8 +256,6 @@ const Home = ({}) => {
 			return
 		}
 		checkUrl(window.location.href)
-
-		
   	}
 
   	const firStartRef = useRef<boolean>(false)
@@ -742,7 +742,7 @@ const Home = ({}) => {
 		pl-[env(safe-area-inset-left)]
 		pr-[env(safe-area-inset-right)]
 		w-full h-screen bg-white
-			h-full flex flex-col text-slate-900
+		h-full flex flex-col text-slate-900
 		">
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
 				<button
@@ -768,8 +768,8 @@ const Home = ({}) => {
 					<>
 					
 					<div className="
-					
-						flex items-center gap-2 mb-4 mt-8
+						
+						flex items-center gap-2 mb-4 mt-3
 					">
 						<div 
 							onClick={() => {
@@ -780,7 +780,7 @@ const Home = ({}) => {
 							<div className="pointer-events-none">
 								<SearchInputWithDropdown
 									showHistory={false}
-									close={ path => {
+									closeWindow={ path => {
 										setShowAlphaHowItWorks('')
 									}}
 								/>
@@ -794,7 +794,7 @@ const Home = ({}) => {
 					{/* Content */}
 				<div className="">
 					{/* Hero card */}
-					{
+					{/* {
 						showGetFaucet === 'Faucet' ? (
 							<div className="mt-3 rounded-2xl bg-gradient-to-r from-orange-400 via-pink-500 to-purple-600 text-white px-4 py-3 mb-4">
 	
@@ -847,7 +847,7 @@ const Home = ({}) => {
 								<Claim02Pannel />
 							
 						)
-					}
+					} */}
 
 					
 
@@ -984,22 +984,23 @@ const Home = ({}) => {
 
 			{createPortal(
 				<div
-        className={[
-            "fixed inset-0 z-[9998]", // 使用 inset-0 代替 top-0 right-0...
-            "bg-white",                // 確保背景色在這裡
-            "transition-transform duration-100 ease-out",
-            "h-[100dvh] w-screen",     // 使用 w-screen 確保寬度
-            // 防止 iOS 滾動穿透導致背景露餡
-            "overscroll-none",         
-            openSearch ? "translate-y-0" : "translate-y-full"
-        ].join(" ")}
-        // 防止觸控事件穿透到底層
-        onTouchMove={(e) => e.stopPropagation()} 
-    >
+				className={[
+					"fixed inset-0 z-[9998]", // 使用 inset-0 代替 top-0 right-0...
+					"bg-white",                // 確保背景色在這裡
+					"transition-transform duration-100 ease-out",
+					"h-[100dvh] w-screen",     // 使用 w-screen 確保寬度
+					// 防止 iOS 滾動穿透導致背景露餡
+					"overscroll-none",         
+					openSearch ? "translate-y-0" : "translate-y-full"
+				].join(" ")}
+				// 防止觸控事件穿透到底層
+				onTouchMove={(e) => e.stopPropagation()} 
+			>
         {openSearch && (
             <div className="h-full w-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-						<BeamioSearch
+				<BeamioSearch
 						close={(item) => {
+							setShowFooter(true)
 							if (!item || typeof item === "string") {
 							setOpenSearch(false)
 							} else {

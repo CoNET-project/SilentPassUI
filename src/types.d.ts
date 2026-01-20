@@ -138,6 +138,16 @@ interface Region {
 	downloadhannelPartners: number
   }
 
+  
+type paymentCard = {
+		amount: number
+		token: ICurrency
+		approx: string
+		title: string
+		timeStamp: number
+	}
+
+
   interface SpClubPoints {
 	SPHolderPoint: number
 	RefferentSPHolderPoint: number
@@ -662,6 +672,7 @@ type ChatMessage = {
 	text: string
 	createdAt: number
 	status?: "sending" | "sent" | "failed"
+	paymentCard?: paymentCard
 }
 
 type CheckHistory = {

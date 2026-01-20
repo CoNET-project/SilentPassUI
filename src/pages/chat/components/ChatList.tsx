@@ -133,7 +133,6 @@ function Badge({
 }
 
 
-
 export default function ChatList({
 	title = "",
 	onOpen
@@ -194,7 +193,7 @@ export default function ChatList({
         className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
-        <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+        {/* <div className="px-4 pt-3 pb-2 flex items-center justify-between">
           <button
             type="button"
             onClick={onEdit}
@@ -211,7 +210,7 @@ export default function ChatList({
           >
             <Menu className="h-5 w-5 text-slate-800" strokeWidth={2.4} />
           </button>
-        </div>
+        </div> */}
 
         {title ? (
           <div className="px-5 pb-2">
@@ -266,13 +265,19 @@ export default function ChatList({
                       {/* 第一行：名字 + 时间 + chevron */}
                       <div className="flex items-center gap-2">
                         {/* tag 点 */}
-                        <span className={`h-2.5 w-2.5 rounded-full ${tagColor(it.tag)} flex-shrink-0`} />
+                        <span
+						className={[
+							"h-2.5 w-2.5 rounded-full flex-shrink-0",
+							unread > 0 ? tagColor(it.tag) : "bg-slate-300",
+							muted ? "opacity-70" : ""
+						].join(" ")}
+						/>
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 min-w-0">
                             <div
 							className={[
-								"truncate text-[22px] text-slate-900",
+								"truncate text-[16px] text-slate-900",
 								unread > 0
 								? "font-black"        // ✅ 未读：更重（iOS 行为）
 								: "font-extrabold"    // 已读：正常
@@ -302,7 +307,7 @@ export default function ChatList({
                         </div>
 
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-[18px] text-slate-400">{timeText}</span>
+                          <span className="text-[12px] text-slate-400">{timeText}</span>
                           <ChevronRight className="h-5 w-5 text-slate-300" strokeWidth={2.6} />
                         </div>
                       </div>
@@ -310,7 +315,7 @@ export default function ChatList({
                       {/* 第二行：预览 + 未读 badge */}
                       <div
 					className={[
-						"min-w-0 flex-1 text-[18px]",
+						"min-w-0 flex-1 text-[12px]",
 						unread > 0 ? "text-slate-600" : "text-slate-500"
 					].join(" ")}
 					>
@@ -320,11 +325,11 @@ export default function ChatList({
 						</span>
 
 						{/* ✅ 方向箭头：对方(in)=↙，自己(out)=↗ */}
-						<span className="flex-shrink-0 ml-2 text-[#1652f0]">
+						<span className="flex-shrink-0 ml-2 ">
 						{dir === "in" ? (
-							<ArrowDownLeft className="h-4 w-4" strokeWidth={2.6} />
+							<ArrowDownLeft className="h-4 w-4 text-[#1652f0]" strokeWidth={2.6} />
 						) : (
-							<ArrowUpRight className="h-4 w-4" strokeWidth={2.6} />
+							<ArrowUpRight className="h-4 w-4 text-slate-300" strokeWidth={2.6}  />
 						)}
 						</span>
 					</div>

@@ -1,5 +1,5 @@
 // App.tsx
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useLayoutEffect } from "react"
 import { Route, Routes, MemoryRouter as Router } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
@@ -14,7 +14,7 @@ import Browser from "@/pages/Browser"
 import {initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage} from '@/services/chat'
 import { isStandalone, MobileType, searchUsername, storeSystemData} from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
-import layout from './layout.module.scss'
+
 
 global.Buffer = require("buffer").Buffer
 
@@ -118,7 +118,13 @@ function App() {
 
 	// Footer 是否显示（由滚动决定）
 	const [footerVisible, setFooterVisible] = useState(true)
-
+	
+	  // ✅ showFooter 一旦变成 true，就强制让 footerVisible 显示
+	useLayoutEffect(() => {
+		if (showFooter) {
+		setFooterVisible(true)
+		}
+	}, [showFooter])
 	
 	useEffect(() => {
 		const canScroll = (el: HTMLElement) => {

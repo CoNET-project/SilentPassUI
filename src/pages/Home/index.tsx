@@ -44,7 +44,7 @@ const HomePage = ({}) => {
     return (
         <div
 			className="
-				pt-[calc(env(safe-area-inset-top)+0.2rem)]
+				w-full h-full
 			"
 		>
 			{

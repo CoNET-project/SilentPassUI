@@ -737,7 +737,7 @@ const Home = ({}) => {
 
 	return (
 		<div className="
-			pt-[env(safe-area-inset-top)]
+		pt-[env(safe-area-inset-top)]
 		pb-[env(safe-area-inset-bottom)]
 		pl-[env(safe-area-inset-left)]
 		pr-[env(safe-area-inset-right)]
@@ -769,7 +769,7 @@ const Home = ({}) => {
 					
 					<div className="
 						
-						flex items-center gap-2 mb-4 mt-3
+						flex items-center gap-2 mb-4 mt-4
 					">
 						<div 
 							onClick={() => {

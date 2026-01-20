@@ -172,8 +172,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const myChat = chats.filter(n => n.address === chatData.address)[0]
 		if (!myChat) return
 		const mess = myChat.messages
-		const card = emitReactionAsNewMessage()
-		mess.push(card)
+		// const card = emitReactionAsNewMessage()
+		// mess.push(card)
 		setMessages(prof => [...mess])
 	}
 
@@ -202,12 +202,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 
 type paymentCard = {
-		amount: number
-		token: ICurrency
-		approx: string
-		title: string
-		timeStamp: number
-	}
+	amount: number
+	token: ICurrency
+	approx: string
+	title: string
+	timeStamp: number
+}
 
 	function emitReactionAsNewMessage () {	//(targetMessageId: string, reaction: ReactionKey) {
 		// const reactionLabel = REACTIONS.find(r => r.key === reaction)?.label || "👍"

@@ -206,16 +206,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 
       {/* header */}
       <div className="px-4 pb-3">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center">
-            <Globe className="h-5 w-5 text-zinc-600" />
-          </div>
-          <div>
-            <div className="text-2xl font-semibold text-zinc-900">
-              Language & Currency
-            </div>
-          </div>
-        </div>
+       
       </div>
 
 		{/* minimal info box */}

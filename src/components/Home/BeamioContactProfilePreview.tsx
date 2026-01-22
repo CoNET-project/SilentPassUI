@@ -10,7 +10,7 @@ import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import PayScreen from '@/pages/Pay/send/index'
-
+import ChatHome from '@/pages/chat/index'
 
 type Props = {
   	item: searchResult
@@ -29,19 +29,7 @@ const shortenAddress = (addr: string) => {
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-const buildDisplayNameNew = (item: searchResult) => {
-	const first = item.first_name?.trim()
-	const last = item.last_name?.trim()
-	let fullName = ""
-	if (first || last) {
-		fullName = [first, last].filter(Boolean).join(" ")
-	}
-	if (item.username) {
-		fullName = fullName ? `${fullName} @${item.username}` : `@${item.username}`
-		return fullName
-	}
-	return shortenAddress(item.address)
-}
+
 
 const buildAvatarText = (item: searchResult) => {
 	const first = item.first_name?.trim()
@@ -54,15 +42,7 @@ const buildAvatarText = (item: searchResult) => {
 	return "?"
 }
 
-const formatCount = (value: string | undefined) => {
-	const n = Number(value ?? 0)
-	if (!Number.isFinite(n) || n <= 0) return "0"
-	if (n >= 1_000_000)
-		return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`
-	if (n >= 1_000)
-		return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`
-	return String(n)
-}
+
 
 const buildCreatedAtLabel = (created_at?: number | string) => {
 	if (!created_at) return ""
@@ -136,6 +116,7 @@ const getDisplayName = (item: searchResult) => {
 
 export default function BeamioContactProfilePreview({ item, close }: Props) {
 
+
 	const navigate = useNavigate()
 	// 先准备默认的占位文案，用于 item 还没选中的时候
 	let displayName = "Contact"
@@ -162,9 +143,10 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 	const [successHash, setSuccessHash] = useState('')
 	const amountInputRef = useAutoFocus<HTMLInputElement>(showChatSendAmount)
 	const [canSend, setCanSend] = useState(false)
+	const [openChat, setOpenChat] = useState(false)
 	
 
-	const { profiles, usdcbalance, beamio
+	const { profiles, usdcbalance, beamio, chatHomeItem,setChatHomeItem, setScanData
 	} = useDaemonContext()
 
 	const checkBalance = () => {
@@ -192,7 +174,6 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 	}
 
 	const catchClick = async () => {
-
 		//		reomve following
 		if (isFollowing) {
 			if (!removeFollowing) {
@@ -387,8 +368,11 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 			setLoading(false)
 			setComformError('RPC Error!')
 		}
+	}
 
-
+	const openChatProcess = () => {
+		setChatHomeItem(item)
+		navigate('/chat')
 	}
 
 	useEffect(() => {
@@ -418,7 +402,9 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 
 	return (
 		<>
-			{
+			{ openChat ? 
+			<ChatHome
+			 /> :
 				(
 					<>
 
@@ -434,7 +420,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 							">
 
 							{/* 导航 */}
-							{
+							{/* {
 								!showChatSendAmount &&
 								(
 									<div className="flex items-center justify-between mb-4">
@@ -452,7 +438,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 										</button>
 									</div>
 								)
-							}
+							} */}
 								
 
 							{/* 头像 + 名字 + username + Add friend */}
@@ -794,6 +780,9 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 												py-2.5 rounded-full
 												bg-slate-50 text-slate-800 text-[13px] font-medium border border-slate-200
 												"
+												onClick={() => {
+													openChatProcess()
+												}}
 											>
 												Chat
 											</AppButton>

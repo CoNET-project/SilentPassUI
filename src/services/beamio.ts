@@ -1180,7 +1180,7 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 			return false
 		}
 
-		const json = await resp.json()
+		
 		return true
 	} catch (err) {
 		console.error("newUser error:", err)
@@ -1575,6 +1575,8 @@ export const postToIPFS = async (profile: profile, image: string) => {
 			},
 			body: JSON.stringify(body)
 		})
+
+		
 		
 		
 	} catch (err) {

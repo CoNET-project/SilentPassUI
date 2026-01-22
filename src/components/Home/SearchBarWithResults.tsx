@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useNavigate, useLocation } from 'react-router-dom'
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import NavigateLeftButton from '@/components/navigate'
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
@@ -60,7 +61,7 @@ function formatUserDate(timestamp?: string | number): string {
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
 	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false }: Props) => {
-		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment} = useDaemonContext()
+		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter} = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
 		const [results, setResults] = useState<searchResult[]>([])
@@ -139,62 +140,62 @@ const SearchInputWithDropdown =
 		}
 
 		// 2) search() 内部不要再用 hasQuery（它是旧的 render 值），改成用传入 q 的长度控制 dropdown
-const search = async (q: string) => {
-  const qq = q.trim().replace('@', '')
+		const search = async (q: string) => {
+		const qq = q.trim().replace('@', '')
 
-  // ✅ 少于2个字符：不搜索，不显示下拉
-  if (qq.length < 2) {
-    setLoading(false)
-    setResults([])
-    setShowDropdown(false)
-    return
-  }
+		// ✅ 少于2个字符：不搜索，不显示下拉
+		if (qq.length < 2) {
+			setLoading(false)
+			setResults([])
+			setShowDropdown(false)
+			return
+		}
 
-  setLoading(true)
+		setLoading(true)
 
-  // URL 逻辑：只有长度>=2才会走到这里（符合你的要求）
-  try {
-    const url = new URL(qq)
-    if (url.protocol === 'https:' || url.protocol === 'http:') {
-      await requestUrl(url)
-      setLoading(false)
-      // URL 场景你现在是 navigate，不一定需要 dropdown
-      setShowDropdown(false)
-      return
-    }
-    setInternalError(true)
-    setLoading(false)
-    setShowDropdown(false)
-    return
-  } catch {
-    // 非 URL，继续走用户名/地址搜索
-  }
+		// URL 逻辑：只有长度>=2才会走到这里（符合你的要求）
+		try {
+			const url = new URL(qq)
+			if (url.protocol === 'https:' || url.protocol === 'http:') {
+			await requestUrl(url)
+			setLoading(false)
+			// URL 场景你现在是 navigate，不一定需要 dropdown
+			setShowDropdown(false)
+			return
+			}
+			setInternalError(true)
+			setLoading(false)
+			setShowDropdown(false)
+			return
+		} catch {
+			// 非 URL，继续走用户名/地址搜索
+		}
 
-  const lower = qq.toLowerCase()
+		const lower = qq.toLowerCase()
 
-  const data = await searchUsername(lower)
-  const result: searchResult[] = data?.results || []
-  const filted = result.filter(n => n.address.toLowerCase() !== myAddress)
+		const data = await searchUsername(lower)
+		const result: searchResult[] = data?.results || []
+		const filted = result.filter(n => n.address.toLowerCase() !== myAddress)
 
-  if (filted.length) {
-    const index = searchKeysHistory.findIndex(
-      n => n.type === 'search' && n.keyward.toLowerCase() === lower
-    )
-    if (index < 0) {
-      setSearchKeysHistory(prev => [...prev, { keyward: lower, type: 'search' }])
-    }
-  } else {
-    if (ethers.isAddress(lower)) {
-      filted.push(makeOutlandItem(lower))
-    }
-  }
+		if (filted.length) {
+			const index = searchKeysHistory.findIndex(
+			n => n.type === 'search' && n.keyward.toLowerCase() === lower
+			)
+			if (index < 0) {
+			setSearchKeysHistory(prev => [...prev, { keyward: lower, type: 'search' }])
+			}
+		} else {
+			if (ethers.isAddress(lower)) {
+			filted.push(makeOutlandItem(lower))
+			}
+		}
 
-  setResults(filted)
-  setLoading(false)
+		setResults(filted)
+		setLoading(false)
 
-  // ✅ 只有 >=2 才打开 dropdown
-  setShowDropdown(true)
-}
+		// ✅ 只有 >=2 才打开 dropdown
+		setShowDropdown(true)
+		}
 
 		const makeOutlandItem = (address: string) => {
 			const subitem: searchResult = {
@@ -267,6 +268,9 @@ const search = async (q: string) => {
 		// 下拉框显示/隐藏时，重新 focus input
 		useEffect(() => {
 			if (readonly||!focus) return
+			// ✅ FIX 1: 这里不要仅仅 focus，還要处理滚动，但主要逻辑放到 onFocus 里面更安全
+            // 仅仅 focus 可能会触发系统默认的 scroll 导致跳动
+            
 			inputRef.current?.focus()
 		}, [showDropdown, readonly])
 
@@ -296,9 +300,41 @@ const search = async (q: string) => {
 
 				setSearchBeamiosHistory((pre => [...pre, data]))
 			}
+
+			setNavigateLeftButtonArray([{
+											title: '',
+											action: [
+												// () => navigate('/History'),
+												() => setSideSlide(''),
+												
+											]
+
+										}])
+										setShowFooter(false)
 			
 			setSideSlide('BeamioContactProfilePreview')
 		}
+
+		const [initialHeight, setInitialHeight] = useState(window.innerHeight);
+
+		// ✅ FIX 2: 核心修复函数 - 处理 iOS 键盘弹起时的视口滚动
+        const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+            // 只有在移动端才需要修正，或者全局修正
+            // 延时 300ms 是为了等待 iOS 键盘完全弹起，视口高度变化完成
+           const checkHeight = () => {
+				if (window.innerHeight < initialHeight) {
+				// 键盘已弹起（视口高度变小）
+				if (inputRef.current) {
+					inputRef.current.scrollIntoView({ block: 'center' });
+				}
+				} else {
+				requestAnimationFrame(checkHeight);
+				}
+			};
+			requestAnimationFrame(checkHeight);
+        }
+
+
 
 		function recentBeamios() {
 			// 1) 取出 beamio 记录
@@ -396,10 +432,15 @@ const search = async (q: string) => {
 		return (
 			<>
 				{/** Search List */}
+				{/* ✅ FIX 3: 增加 z-50 确保层级
+                   ✅ FIX 4: 增加 pt-[env(safe-area-inset-top)] 确保不会被刘海遮挡
+                   如果这个组件是整个页面的顶部，必须加这个 padding
+                */}
+
 				<div className="relative w-full h-11"
 				>
 					{/* 没输入：普通 pill 输入框 */}
-					{!showDropdown && (
+					{!sideSlide && !showDropdown && (
 						<>
 						<div className={pillClass}>
 							{/* ← 返回按钮 */}
@@ -428,12 +469,12 @@ const search = async (q: string) => {
 							
 							{/* Beamio icon —— 在最左侧 */}
 							<img
-							src={beamio_icon}
-							alt="Beamio"
-							className={[
-								'w-5 h-5 mr-2 flex-shrink-0 opacity-80',
-								readonly ? 'ml-2' : ''
-							].join(' ')}
+								src={beamio_icon}
+								alt="Beamio"
+								className={[
+									'w-5 h-5 mr-2 flex-shrink-0 opacity-80',
+									readonly ? 'ml-2' : ''
+								].join(' ')}
 							/>
 
 							{/* Search icon —— 紧接 Beamio icon */}
@@ -469,9 +510,18 @@ const search = async (q: string) => {
 							) : (
 								<input
 									ref={inputRef}
+									type="text"
+									inputMode="search"
+									enterKeyHint="search"
+									autoCorrect="off"
+									autoCapitalize="none"
+									spellCheck={false}
+									autoComplete="off"
 									className="flex-1 bg-transparent text-[13px] placeholder-slate-400 focus:outline-none"
 									placeholder="@BeamioTag, address, or paste link"
 									value={query}
+									// ✅ FIX 5: 绑定 Focus 处理函数
+									onFocus={handleInputFocus}
 									onChange={e => setQuery(e.currentTarget.value)}
 								/>
 							)}
@@ -490,7 +540,7 @@ const search = async (q: string) => {
 					)}
 
 					{/* 有输入：Google 风格大卡片，input + 下拉合在一起 */}
-					{showDropdown && (
+					{!sideSlide && showDropdown && (
 						<div
 							className="
 								absolute inset-x-0 top-0
@@ -500,6 +550,10 @@ const search = async (q: string) => {
 								overflow-hidden
 								z-30
 							"
+							// ✅ FIX 6: 下拉框的定位也要考虑安全区域
+                            // 如果外层加了 padding，这里 top-0 可能是相对 padding box 的
+                            // 如果觉得位置不对，可以改成 top-[env(safe-area-inset-top)] 但通常 relative 父级处理了就行
+                            style={{ top: 0 }}
 						>
 							{/* 顶部：输入行 */}
 							<div 
@@ -555,8 +609,12 @@ const search = async (q: string) => {
 										].join(" ")}
 										placeholder="Search for @BeamioTag or wallet address"
 										value={query}
+										inputMode="search"
+										
 										readOnly={readonly}
 										onChange={e => setQuery(e.currentTarget.value)}
+										// ✅ FIX 7: 下拉模式下的 Input 也要绑定
+										onFocus={handleInputFocus}
 									/>
 							</div>
 
@@ -651,20 +709,62 @@ const search = async (q: string) => {
 
 				{/* Settings full-screen slide-over */}
 				<div
-					className={[
-						"fixed inset-0 z-40 flex-1 overflow-y-auto",
-						"transition-transform duration-300 ease-out",
-						sideSlide ? "translate-x-0" : "translate-x-full",
-					].join(" ")}
-				>
-					<div className="flex-1">
+						className={[
+							"pt-[env(safe-area-inset-top)]",
+							'pb-[env(safe-area-inset-bottom)]',
+							'pl-[env(safe-area-inset-left)]',
+							'pr-[env(safe-area-inset-right)]',
+							"fixed inset-0 z-40 flex-1 overflow-y-auto",
+							"transition-transform duration-300 ease-out",
+							(!!sideSlide) ? "translate-x-0" : "translate-x-full",
+						].join(" ")}
+					>
+
+						{/* Header：返回 + 居中标题 */}
+						<div
+							className="
+								absolute
+								top-[env(safe-area-inset-top)]
+								left-0 right-0
+								h-14
+								flex items-center
+								px-4
+								z-50
+								bg-transparent
+								pointer-events-none
+							"
+						>
+							<div className="
+							fixed
+							top-0 left-0 right-0
+							z-50
+							bg-transparent
+							pointer-events-none
+							">
+								<div className="
+								px-4
+								pt-[calc(env(safe-area-inset-top)+8px)]
+								pb-2
+								pointer-events-auto
+								">
+									<NavigateLeftButton />
+								</div>
+							</div>
+
+							
+						</div>
+
+					
+					<div className="flex-1 mt-14">
 						{sideSlide === 'BeamioContactProfilePreview' && userPreviewItem && (
 							<BeamioContactProfilePreview
 								item={userPreviewItem}
 								close={path => {
+									setSideSlide('')
 									if (!path) {
 										setUserPreviewItem(null)
-										setSideSlide('')
+										setShowFooter(true)
+										
 									} else {
 										closeWindow(path)
 									}

@@ -141,7 +141,9 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 
 			{
 				newRecoveryCode ? (
-					<RecoveryQRScreen qrDataUrl={newRecoverUrl} recoveryCode={newCode} close={() => {
+					<RecoveryQRScreen qrDataUrl={newRecoverUrl} recoveryCode={newCode} 
+					showButton={false}
+					close={() => {
 						colse('')
 					}} />
 				) : (

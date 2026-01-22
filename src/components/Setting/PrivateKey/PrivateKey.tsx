@@ -1,142 +1,283 @@
 // @/components/Setting/PrivateKey/PrivateKey.tsx
-import { useState } from 'react'
-import { Eye, EyeOff, Copy, Check } from 'lucide-react'
-import styles from '../setting.module.scss'
+import { useMemo, useState } from 'react'
+import { Eye, EyeOff, Copy, Check, AlertTriangle } from 'lucide-react'
+import { AppButton } from '@/components/button/AppButton'
+import { restoreWithUserPin } from '@/services/beamio'
+import { useDaemonContext } from '@/providers/DaemonProvider'
 
 type Props = {
-  privateKey: string
+  privateKey: string // 仍保留：可作为 fallback，但真正展示以解锁后的为准
   onClose: () => void
 }
 
+function maskKey(s: string) {
+  if (!s) return ''
+  return '•'.repeat(18)
+}
+
 export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
-	const [visible, setVisible] = useState(false)
-	const [copied, setCopied] = useState(false)
+  const { beamio, profiles } = useDaemonContext()
 
-	const onCopy = async () => {
-		if (!privateKey) return
-		await navigator.clipboard.writeText(privateKey)
-		setCopied(true)
-		setTimeout(() => setCopied(false), 1500)
-	}
+  const [step, setStep] = useState<'locked' | 'revealed'>('locked')
+  const [password, setPassword] = useState('')
+  const [pwVisible, setPwVisible] = useState(false)
 
-	return (
-		<div className={styles.avatarEditorPanel}>
-		{/* 头部：标题 + 关闭 */}
-		<div className={styles.avatarEditorHeader}>
-			<h3 className={styles.avatarEditorTitle}>Private key</h3>
-			<button
-			type="button"
-			onClick={onClose}
-			className={styles.avatarEditorClose}
-			>
-			✕
-			</button>
-		</div>
+  const [loading, setLoading] = useState(false)
+  const [errorText, setErrorText] = useState('')
 
-		{/* 警示文字 */}
-			<p>
-				For advanced users only. Anyone with this key can move your funds.
-			</p>
-			{/* Danger banner */}
-			<div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-				<div className="text-[12px] font-semibold text-rose-800 mb-0.5">
-				Handle with extreme care
-				</div>
-				<p className="text-[11px] text-rose-700 leading-snug">
-				Beamio cannot undo the exposure of your private key. Only view it in
-				a private place and never share it with anyone.
-				</p>
-			</div>
+  const [copied, setCopied] = useState(false)
+  const [keyVisible, setKeyVisible] = useState(true)
 
-		{/* 私钥容器 */}
-		
-			<div className="flex items-center justify-between">
-			<span className="text-[12px] font-semibold text-slate-800">
-				Wallet private key
-			</span>
-			<span className="text-[10px] text-slate-500">Base · EOA</span>
-			</div>
-			<div className={styles.privateKeyBox}>
-				<div className="mt-1 h-11 rounded-xl border border-slate-200 bg-white px-3 flex items-center justify-between">
-					{/* 真正的私钥文本 */}
-					<pre className={styles.privateKeyText}>
-					{privateKey || 'No private key found.'}
-					</pre>
-				</div>
-			{/* 遮罩层 */}
-			{!visible && (
-			<div className={styles.privateKeyMask}>
-				<div className={styles.privateKeyMaskBlur} />
-			</div>
-			)}
+  // ✅ 解锁后真正要展示的私钥
+  const [revealedKey, setRevealedKey] = useState<string>('')
 
-			{/* 右下角眼睛按钮 */}
-			<button
-			type="button"
-			onClick={() => setVisible(v => !v)}
-			className={styles.privateKeyToggle}
-			title={visible ? 'Hide' : 'Show'}
-			>
-			{visible ? (
-				<EyeOff className={styles.privateKeyToggleIcon} strokeWidth={2.5} />
-			) : (
-				<Eye className={styles.privateKeyToggleIcon} strokeWidth={2.5} />
-			)}
-			</button>
-			
-		</div>
-		<p className="text-[10px] text-slate-500 leading-snug mt-1">
-			This private key controls your Beamio wallet on Base. You can also
-			use your Recovery QR + PIN to restore this wallet. Exposing this key
-			is not required for normal Beamio usage.
-			</p>
-			{/* How to back this up safely */}
-			<div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-				<div className="text-[12px] font-semibold text-slate-800 mb-1">
-				How to back this up safely
-				</div>
-				<ul className="list-disc list-inside text-[11px] text-slate-600 space-y-1">
-				<li>Store it in a password manager you control.</li>
-				<li>Or write it down on paper and keep it in a safe place.</li>
-				<li>
-					Do not keep it in screenshots, email, cloud notes, or chat apps.
-				</li>
-				</ul>
-			</div>
-			<p className="mt-3 text-[10px] text-slate-500 leading-snug">
-				If you lose this private key and all other recovery methods (Recovery
-				QR + PIN), Beamio cannot recover this wallet or your funds.
-				</p>
-		{/* 底部按钮区：左 Close，右 Copy */}
-		<div className={styles.avatarEditorActions}>
-			<button
-			type="button"
-			className={styles.avatarEditorCancel}
-			onClick={onClose}
-			>
-			Close
-			</button>
+  const canReveal = password.trim().length > 0 && !loading
 
-			<button
-			type="button"
-			className={styles.avatarEditorSave}
-			onClick={onCopy}
-			>
-			<span className={styles.privateKeyCopyContent}>
-				{copied ? (
-				<>
-					<Check className={styles.privateKeyCopyIcon} />
-					<span>Copied</span>
-				</>
-				) : (
-				<>
-					<Copy className={styles.privateKeyCopyIcon} />
-					<span>Copy to clipboard</span>
-				</>
-				)}
-			</span>
-			</button>
-		</div>
-		</div>
-	)
+  const onCopy = async () => {
+    const k = revealedKey || privateKey || ''
+    if (!k) return
+    try {
+      await navigator.clipboard.writeText(k)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // ignore
+    }
+  }
+
+  const getPrivatekey = async () => {
+    setErrorText('')
+    if (!beamio?.accountName) {
+      setErrorText('Account not ready.')
+      return null
+    }
+    if (!profiles?.[0]?.privateKeyArmor) {
+      setErrorText('No local key found.')
+      return null
+    }
+
+    setLoading(true)
+    try {
+      const ok = await restoreWithUserPin(beamio.accountName, password)
+      if (!ok) {
+        setErrorText('Wrong password. Please try again.')
+        return null
+      }
+
+      // ✅ 你的逻辑：从 profiles[0].privateKeyArmor 取出并去掉 0x
+      const ret = profiles[0].privateKeyArmor.replace(/^0x/i, '')
+      return ret
+    } catch (e: any) {
+      setErrorText(e?.message || 'Failed to verify password.')
+      return null
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const displayedKey = revealedKey || privateKey || ''
+
+  const keyText = useMemo(() => {
+    if (!displayedKey) return 'No private key found.'
+    return keyVisible ? displayedKey : maskKey(displayedKey)
+  }, [displayedKey, keyVisible])
+
+  return (
+    <div className="min-h-screen w-full bg-white">
+      <div className="mx-auto w-full max-w-[560px] px-6 pt-8 pb-10">
+        {step === 'locked' ? (
+          <>
+            {/* Danger Zone */}
+            <div className="mt-2">
+              <div className="text-[30px] font-extrabold tracking-[-0.02em] text-red-600">
+                Danger Zone
+              </div>
+              <div className="mt-2 text-[16px] text-slate-500 leading-relaxed">
+                Never share your private key. Anyone with this key can steal your funds.
+              </div>
+            </div>
+
+            {/* Password input */}
+            <div className="mt-8">
+              <div
+                className={`
+                  w-full rounded-2xl bg-white
+                  ring-1 ${errorText ? 'ring-red-300' : 'ring-slate-200'}
+                  shadow-[0_10px_40px_rgba(15,23,42,0.06)]
+                  px-5 py-4
+                  flex items-center justify-between gap-4
+                `}
+              >
+                <input
+                  value={password}
+                  onChange={e => {
+                    setPassword(e.target.value)
+                    if (errorText) setErrorText('')
+                  }}
+                  type={pwVisible ? 'text' : 'password'}
+                  placeholder="Enter Wallet Password"
+                  className="
+                    w-full bg-transparent outline-none
+                    text-[18px] font-semibold text-slate-900
+                    placeholder:text-slate-300
+                  "
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setPwVisible(v => !v)}
+                  className="
+                    h-10 w-10 rounded-full
+                    grid place-items-center
+                    text-slate-400 hover:text-slate-600
+                    hover:bg-slate-100
+                    active:scale-95
+                    transition
+                  "
+                  aria-label={pwVisible ? 'Hide password' : 'Show password'}
+                >
+                  {pwVisible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+
+              {errorText ? (
+                <div className="mt-3 text-[13px] font-medium text-red-600">
+                  {errorText}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Bottom Reveal button */}
+            <div className="mt-10">
+              <AppButton
+                fullWidth
+                variant="danger"
+                loading={loading}
+                disabled={!canReveal}
+                onClick={async () => {
+                  if (!password.trim() || loading) return
+                  const k = await getPrivatekey()
+                  if (!k) return
+                  setRevealedKey(k)
+                  setKeyVisible(true)
+                  setStep('revealed')
+                }}
+                className={`
+                  ${!password.trim() ? 'bg-slate-300 hover:bg-slate-300 shadow-none' : ''}
+                  rounded-2xl h-14 text-[18px]
+                `}
+              >
+                Reveal Key
+              </AppButton>
+            </div>
+
+            
+          </>
+        ) : (
+          <>
+            {/* Handle with Care */}
+            <div className="mt-2 flex flex-col items-center text-center">
+              <div className="h-16 w-16 rounded-full bg-red-50 ring-1 ring-red-100 grid place-items-center">
+                <AlertTriangle className="h-7 w-7 text-red-500" strokeWidth={2.3} />
+              </div>
+
+              <div className="mt-6 text-[40px] leading-none font-extrabold tracking-[-0.03em] text-slate-900">
+                Handle with Care
+              </div>
+
+              <div className="mt-4 text-[20px] text-slate-500 leading-relaxed max-w-[40rem]">
+                Beamio cannot undo the exposure of your private key.
+              </div>
+            </div>
+
+            {/* Key box */}
+            <div className="mt-12 w-full">
+              <div
+                className="
+                  relative
+                  rounded-[28px]
+                  bg-white
+                  ring-1 ring-slate-200
+                  shadow-[0_18px_60px_rgba(15,23,42,0.10)]
+                  px-7 py-6
+                "
+              >
+                <div
+                  className="
+                    absolute right-6 top-[-14px]
+                    rounded-xl bg-red-600
+                    px-4 py-2
+                    text-[10px] font-extrabold tracking-[0.08em]
+                    text-white
+                    shadow-[0_10px_24px_rgba(239,68,68,0.20)]
+                  "
+                >
+                  UNENCRYPTED
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <pre
+                    className="
+                      m-0 flex-1
+                      whitespace-pre-wrap break-all
+                      font-mono
+                      text-[12px]
+                      leading-[1.35]
+                      text-slate-900
+                    "
+                  >
+                    {keyText}
+                  </pre>
+
+                  <button
+                    type="button"
+                    onClick={() => setKeyVisible(v => !v)}
+                    className="
+                      mt-1
+                      h-12 w-12 rounded-full
+                      grid place-items-center
+                      text-slate-400 hover:text-slate-600
+                      hover:bg-slate-50
+                      active:scale-95
+                      transition
+                    "
+                    aria-label={keyVisible ? 'Hide key' : 'Show key'}
+                    title={keyVisible ? 'Hide' : 'Show'}
+                  >
+                    {keyVisible ? <EyeOff className="h-6 w-6" /> : <Eye className="h-6 w-6" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="mt-10 w-full space-y-6">
+              <AppButton
+                fullWidth
+                variant="secondary"
+                onClick={onCopy}
+                className="
+                  rounded-[26px] h-20
+                  bg-white hover:bg-slate-50
+                  ring-1 ring-slate-200
+                  shadow-[0_18px_60px_rgba(15,23,42,0.10)]
+                  text-slate-900
+                  text-[24px] font-extrabold
+                "
+                leftIcon={
+                  copied ? (
+                    <Check className="h-7 w-7" strokeWidth={2.6} />
+                  ) : (
+                    <Copy className="h-7 w-7" strokeWidth={2.6} />
+                  )
+                }
+              >
+                {copied ? 'Copied' : 'Copy to Clipboard'}
+              </AppButton>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
 }

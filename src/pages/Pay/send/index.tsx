@@ -1,7 +1,7 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
 import { Card, CardContent } from "@/components/ui/card"
-import {AuthorizationSign, getBalanceProcess, postToIPFS} from '@/services/beamio'
+import {AuthorizationSign, getBalanceProcess, postToIPFS, storeSystemData} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -14,6 +14,8 @@ import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
+import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNode} from '@/services/chat'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -61,7 +63,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 	const [item, setItem] = useState<searchResult|null>(beamioer||null)
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'ConformView'>('')
 	const [focusAmount, setFocusAmount] = useState(false)
-	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles } = useDaemonContext()
+	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, allNodes, setProfiles, setCharts } = useDaemonContext()
 	const [sendError, setSendError] = useState("")
 	const [message, senMessage] = useState<any>(null)
 	const [successHash, setSuccessHash] = useState("")
@@ -132,74 +134,74 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 
 	const Success = ({messageData}: {messageData: any}) => {
-			const data: IMessageData =messageData.data
-			return (
-				<div className="flex-1 px-5 pt-6 pb-8 flex flex-col items-center justify-center
-								bg-transparent text-inherit">
+		const data: IMessageData =messageData.data
+		return (
+			<div className="flex-1 px-5 pt-6 pb-8 flex flex-col items-center justify-center
+							bg-transparent text-inherit">
 
-					{/* 蓝色圆圈 ✔ */}
-					<div className="h-14 w-14 rounded-full bg-blue-600 flex items-center justify-center text-white text-3xl">
-						✓
-					</div>
-
-					{/* 成功文字 */}
-					<div className="font-semibold text-slate-600 dark:text-slate-300 mb-2 mt-4">
-						{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode Created' : 'Successfully sent' } 
-					</div>
-
-					{/* 金额 */}
-					<div className="text-2xl font-semibold text-blue-600 dark:text-blue-400 mb-2">
-						{data.amount} USDC
-					</div>
-
-					{/* 提示 */}
-					<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-						{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : 'It may take a few seconds to appear on-chain.' } 
-					</div>
-
-				
-					
-
-					{/* 按钮组 */}
-					<div className="w-full space-y-3">
-
-						{/* 完成按钮 */}
-						<button
-							className="w-full h-11 rounded-full
-									bg-blue-600 text-white
-									text-sm font-medium"
-							onClick={() => {
-								close('/')
-							}}
-						>
-							Done
-						</button>
-
-						{/* 查看交易按钮 */}
-						<button
-							className="
-								w-full h-11 rounded-full
-								bg-black/5 text-slate-700
-								dark:bg-white/10 dark:text-slate-100
-								text-sm
-								flex items-center justify-center gap-2
-							"
-							onClick={() => {
-								window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
-							}}
-							>
-							<img
-								src={base_ex}
-								alt="Base Explorer"
-								className="w-4 h-4 object-contain"
-							/>
-							<span>
-								View transaction
-							</span>
-						</button>
-					</div>
+				{/* 蓝色圆圈 ✔ */}
+				<div className="h-14 w-14 rounded-full bg-blue-600 flex items-center justify-center text-white text-3xl">
+					✓
 				</div>
-			)
+
+				{/* 成功文字 */}
+				<div className="font-semibold text-slate-600 dark:text-slate-300 mb-2 mt-4">
+					{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode Created' : 'Successfully sent' } 
+				</div>
+
+				{/* 金额 */}
+				<div className="text-2xl font-semibold text-blue-600 dark:text-blue-400 mb-2">
+					{data.amount} USDC
+				</div>
+
+				{/* 提示 */}
+				<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+					{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : 'It may take a few seconds to appear on-chain.' } 
+				</div>
+
+			
+				
+
+				{/* 按钮组 */}
+				<div className="w-full space-y-3">
+
+					{/* 完成按钮 */}
+					<button
+						className="w-full h-11 rounded-full
+								bg-blue-600 text-white
+								text-sm font-medium"
+						onClick={() => {
+							close('/')
+						}}
+					>
+						Done
+					</button>
+
+					{/* 查看交易按钮 */}
+					<button
+						className="
+							w-full h-11 rounded-full
+							bg-black/5 text-slate-700
+							dark:bg-white/10 dark:text-slate-100
+							text-sm
+							flex items-center justify-center gap-2
+						"
+						onClick={() => {
+							window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
+						}}
+						>
+						<img
+							src={base_ex}
+							alt="Base Explorer"
+							className="w-4 h-4 object-contain"
+						/>
+						<span>
+							View transaction
+						</span>
+					</button>
+				</div>
+			</div>
+		)
 	}
 
 
@@ -227,7 +229,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 			if (!secondResponse.ok) {
 				return setSendError('RPC Error!')
 			}
-
+			await sendMessageToClient()
 			return setSuccessHash(body.USDC_tx)
 
 		} catch (ex) {
@@ -238,21 +240,58 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 	}
 
+	const sendMessageToClient = async () => {
+		const temp = CoNET_Data
+		if (!item || !beamio || !myAddress||!profiles?.length||!temp) {
+			return setShowToError(true)
+		}
+		const profile: profile = profiles[0]
+		const chatData = await initMessage(profile, item)
+		const node = getRandomNode(allNodes)
+		if (!chatData||!node) return
+		const chatDatas = profile?.chats || []
+		profile.chats = chatDatas
+
+		
+		const index = profile.chats.findIndex(n => n.address === chatData.address)
+		if (index > -1) {
+			profile.chats.splice(index, 1)
+		}
+		const sendAmountText = lockMode === 'USDC_LOCKED' ? usdcAmount : currentCurrency
+		const messageCard = emitReactionAsNewMessage(sendAmountText, lockMode === 'USDC_LOCKED' ? 'USDC' : currentCurrency, note, lockMode === 'USDC_LOCKED'? '': sendAmount)
+		chatData.messages.push(messageCard)
+		profile.chats.push(chatData)
+		setProfiles(profiles)
+		temp.profiles = profiles
+		setCoNET_Data(temp)
+		const cardText = JSON.stringify(messageCard)
+		// setCharts(prof => [...prof, cardText])
+		await Promise.all([
+			storeSystemData(),
+			sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, node )
+		])
+	}
+
 	const onPay = async () => {
+
 		const amount = Number(sendAmount)
 		if ( amount <= 0 || amount > usdcbalance) {
 			return 
 		}
-		if (!item ||!beamio ||!myAddress) {
+		const temp = CoNET_Data
+		if (!item || !beamio || !myAddress||!profiles?.length||!temp) {
 			return setShowToError(true)
 		}
 		const bo = beamio
 		const toAddress = item.address
 
+		
 		let data: payMe = {
 			currency: lockMode === 'FIAT_LOCKED' ? currentCurrency : 'USDC',
 			currencyAmount:  lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency) : sendAmount
 		}
+
+
 
 		let sendNote = note
 		let _addnote = addedNote
@@ -319,6 +358,8 @@ export default function PayScreen ({close, beamioer}: Props) {
 			MessageData.data = data
 			senMessage(MessageData)
 			setShowAlphaHowItWorks('ConformView')
+
+			
 		} catch (ex) {
 			setProcessing(false)
 			setSendError('RPC Error!')
@@ -344,7 +385,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 			card: {
 				title: val.title,
 				detail: val.detail,
-				image: `${ipfsEndpoint}${result}`
+				image: `${ipfsEndpoint}${result}&t=${Date.now()}`
 			}
 		}
 		setAddedNote(JSON.stringify(addnote))
@@ -352,7 +393,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 	}
 
 	return (
-		<div className="mt-0 flex flex-col items-center px-6 pt-4 pb-3 border-slate-100">
+		<div className="mt-2 flex flex-col items-center px-6 pt-4 pb-3 border-slate-100">
 			<div className="mt-6 mb-4 w-full flex justify-center gap-2">
 				<Card className="w-full rounded-3xl border-zinc-200">
 					{

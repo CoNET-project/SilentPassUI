@@ -111,7 +111,7 @@ const Pay = ({}) => {
 				
 				setSendToMemo(url)
 				navigate('/Pay')
-				return 
+				return
 			}
 			checkUrl(url)
 		})

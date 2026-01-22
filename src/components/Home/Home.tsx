@@ -30,9 +30,10 @@ import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {getActiveArray} from '@/services/payment'
 import ActivePannel from '@/pages/History/components/activePannel'
+import BeamioContactProfilePreview from './BeamioContactProfilePreview'
+import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 
-
-
+const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 const formatMoney = (n: number) =>
@@ -47,21 +48,18 @@ const beamioConetContract = {
 }
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 
-	
-
 
 const Home = ({}) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
-		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter
+		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData
 	} = useDaemonContext()
 	const navigate = useNavigate()
 
 	
 	const [isSearchOpen, setIsSearchOpen] = useState(false)
 	const [avatarName, setAvatarName] = useState('')
-	const [avatarImageData, setAvatarImageData] = useState<string | null>(null)
 	const [processing, setProcessing] = useState(false)
 	const [showGetFaucet, setShowGetFaucet] = useState<'Faucet'|'finished'|'sameIP'>('Faucet')
 	const [show200OK, setShow200OK] = useState(false)
@@ -79,7 +77,7 @@ const Home = ({}) => {
 	const [activeItems, setActiveItems] = useState<TransferHistork[]>([])
 
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|
-		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'>('')
+		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -136,8 +134,9 @@ const Home = ({}) => {
 				return
 			}
 
-			setPayMePayment(filtered[0])
-			return navigate('/browser')
+			setUserPreviewItem(filtered[0])
+			setScanData('')
+			return setShowAlphaHowItWorks('BeamioContactProfilePreview')
 
 		}
 		if (_secureCode) {
@@ -260,6 +259,21 @@ const Home = ({}) => {
 
   	const firStartRef = useRef<boolean>(false)
 
+	useEffect(() => {
+		if (!scanData) {
+			return
+		}
+		if (/^0x/i.test(scanData)) {
+			setPaymentLink({code: '', note: '', address: scanData, amount: ''})
+			
+			setSendToMemo(scanData)
+			navigate('/Pay')
+			return 
+		}
+		checkUrl(scanData)
+
+	}, [scanData])
+
 
   	useEffect(() => {
 		if (firStartRef.current) {
@@ -272,20 +286,20 @@ const Home = ({}) => {
 		
 
 				// 只在挂载时注册一次
-		const off = onWalletEvent("scan:url", (url: string) => {
-			if (/^0x/i.test(url)) {
-				setPaymentLink({code: '', note: '', address: url, amount: ''})
+		// const off = onWalletEvent("scan:url", (url: string) => {
+		// 	if (/^0x/i.test(url)) {
+		// 		setPaymentLink({code: '', note: '', address: url, amount: ''})
 				
-				setSendToMemo(url)
-				navigate('/Pay')
-				return 
-			}
-			checkUrl(url)
-		})
+		// 		setSendToMemo(url)
+		// 		navigate('/Pay')
+		// 		return 
+		// 	}
+		// 	checkUrl(url)
+		// })
 				// 卸载时把监听取消，避免旧实例继续吃事件
-		return () => {
-			if (typeof off === 'function') off()
-		}
+		// return () => {
+		// 	if (typeof off === 'function') off()
+		// }
 
   	}, [])
 
@@ -378,8 +392,6 @@ const Home = ({}) => {
 				return `US$ ${formatWithThousands(v, 2)}`
 		}
 	}
-
-	const currentAvatarSrc = avatarImageData || avatarUrl
 
 	const claimFaucet = async () => {
 		setShowAlphaHowItWorks('BeamioAlphaDropConfirm')
@@ -781,14 +793,42 @@ const Home = ({}) => {
 								<SearchInputWithDropdown
 									showHistory={false}
 									closeWindow={ path => {
-										setShowAlphaHowItWorks('')
+										
 									}}
 								/>
 							</div>
 						</div>
-						<div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
+						{beamio && (
+								<button
+									type="button"
+									onClick={() => {
+										setShowAlphaHowItWorks('PayMe')
+									}}
+									className="
+									h-11 w-12
+									rounded-full overflow-hidden
+									bg-slate-100
+									flex items-center justify-center
+									cursor-pointer
+									active:scale-95
+									transition-transform
+									focus:outline-none
+									focus-visible:ring-2 focus-visible:ring-slate-400/50
+									"
+									aria-label={`Open ${beamio.accountName}`}
+								>
+									<img
+									src={beamio.image ? beamio.image : getImg(beamio.accountName)}
+									alt={beamio.accountName}
+									className="w-full h-full object-cover"
+									draggable={false}
+									/>
+								</button>
+								)}
+						
+						{/* <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
 							<ScanBtn />
-						</div>
+						</div> */}
 						
 					</div>
 					{/* Content */}
@@ -919,7 +959,7 @@ const Home = ({}) => {
 
 				
 			</div>
-			{showAlphaHowItWorks && createPortal(
+			{!openSearch && showAlphaHowItWorks && createPortal(
 				<AnimatePresence>
 					<motion.div
 						key="modal-overlay"
@@ -939,7 +979,7 @@ const Home = ({}) => {
 							: showAlphaHowItWorks === 'BeamioLearnHowItWorksCard' ? 'How Beamio works'
 							: showAlphaHowItWorks === 'BeamioTestBalance' ? 'About this 0.2 USDC'
 							: showAlphaHowItWorks === 'Pay' ? 'Pay'
-							: 'Search'
+							: ''
 						}
 						onClose={() => {
 							setShowAlphaHowItWorks('')
@@ -975,6 +1015,14 @@ const Home = ({}) => {
 								}} />}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
 							{showAlphaHowItWorks === 'CoinbaseRamps' && <BeamioAddUSDCFlow />}
+							{showAlphaHowItWorks === 'BeamioContactProfilePreview' && userPreviewItem && <BeamioContactProfilePreview item={userPreviewItem} close={item => {
+								
+								setShowAlphaHowItWorks('Pay')
+							}} />}
+
+							{
+								showAlphaHowItWorks === 'PayMe' && <BeamioPayMe />
+							}
 							
 						</div>
 					</motion.div>
@@ -984,33 +1032,40 @@ const Home = ({}) => {
 
 			{createPortal(
 				<div
-				className={[
-					"fixed inset-0 z-[9998]", // 使用 inset-0 代替 top-0 right-0...
-					"bg-white",                // 確保背景色在這裡
-					"transition-transform duration-100 ease-out",
-					"h-[100dvh] w-screen",     // 使用 w-screen 確保寬度
-					// 防止 iOS 滾動穿透導致背景露餡
-					"overscroll-none",         
-					openSearch ? "translate-y-0" : "translate-y-full"
-				].join(" ")}
-				// 防止觸控事件穿透到底層
-				onTouchMove={(e) => e.stopPropagation()} 
-			>
-        {openSearch && (
-            <div className="h-full w-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-				<BeamioSearch
-						close={(item) => {
-							setShowFooter(true)
-							if (!item || typeof item === "string") {
-							setOpenSearch(false)
-							} else {
-							setUserPreviewItem(item)
-							setShowAlphaHowItWorks("Pay")
-							}
-						}}
+					className={[
+						"fixed inset-0 z-[9998] bg-white w-full h-full overscroll-none touch-action-none",
+						
+						// ✅ 修改点 1: 时间改为 500ms (0.5秒)，ease-in-out 让加减速更自然
+						"transition-opacity duration-500 ease-in-out",
+						
+						// 状态切换：控制透明度和点击穿透
+						openSearch ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+					].join(" ")}
+					style={{ top: 0, left: 0, bottom: 0, right: 0 }}
+				>
+					{/* ✅ 修改点 2: 移除了 {openSearch && (...)} 
+					让内容常驻 DOM，这样“关闭”时，内容会跟随背景一起慢慢淡出，
+					而不是瞬间消失只剩下背景在淡出。
+					
+					注意：如果 BeamioSearch 内部有需要每次打开都重置的逻辑（比如 useEffect），
+					请确保它监听了 openSearch 或者是通过 key={openSearch ? 'open' : 'closed'} 来强制刷新。
+					*/}
+					<div className="h-full w-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+						<BeamioSearch
+							// 如果需要每次打开都重置状态，可以加这个 key
+							// key={openSearch ? "active" : "inactive"} 
+							
+							close={(item) => {
+								setShowFooter(true)
+								if (!item || typeof item === "string") {
+									setOpenSearch(false)
+								} else {
+									setUserPreviewItem(item)
+									setShowAlphaHowItWorks("Pay")
+								}
+							}}
 						/>
 					</div>
-					)}
 				</div>,
 				document.body
 			)}

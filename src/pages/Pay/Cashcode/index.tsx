@@ -137,7 +137,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 			card: {
 				title: val.title,
 				detail: val.detail,
-				image: `${ipfsEndpoint}${result}`,
+				image: `${ipfsEndpoint}${result}&t=${Date.now()}`,
 				currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
 				currencyAmount: currencyAmount
 			}

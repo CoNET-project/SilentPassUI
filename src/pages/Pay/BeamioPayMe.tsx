@@ -17,7 +17,7 @@ const aptEndpoint = 'https://api.settleonbase.xyz'
 type BeamioPayMeProps = {
 
 	// tab 控制（如果你需要外部路由）
-	activeTab?: "payme" | "invoice"
+	activeTab?: "payme" | "invoice" | ''
 	onTabChange?: (v: "payme" | "invoice") => void
 }
 
@@ -121,11 +121,15 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   return (
     <div className="min-h-screen bg-[#EDF2FE] flex justify-center overflow-y-auto">
       <div className="w-full max-w-[540px] px-4 py-4">
+
         {/* Segmented */}
-			<BeamioSegmentedDrag
-			value={showMode}
-			onChange={setShowMode}
+		{
+			activeTab && <BeamioSegmentedDrag
+				value={showMode}
+				onChange={setShowMode}
 			/>
+		}
+			
 
         {/* Main Card */}
         {
@@ -183,11 +187,11 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 									</div>
 								</div>
 								
-								<div className="mt-6 text-center">
+								{/* <div className="mt-6 text-center">
 									<div className="mt-3 text-[18px] font-semibold text-slate-500">
 										Scan to pay (Any amount)
 									</div>
-								</div>
+								</div> */}
 								{/* <TaxSwitch value={isUSDC} onChange={setIsUSDC} taxRate={getBeamio?.tax ? Number(getBeamio.tax):0} /> */}
 							</div>
 							</div>
@@ -197,56 +201,64 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						{/* Payment link */}
 						<div className="mt-10">
 						<div className="rounded-[14px] bg-slate-50 ring-1 ring-black/10 shadow-sm px-4 py-3 flex items-center justify-between gap-4">
-							<div className="min-w-0">
-								<div className="text-[14px] font-extrabold text-slate-700">Payment link</div>
-								<div className="mt-2 text-[12px] text-slate-700 break-all">{successUrl}</div>
+  
+							{/* 左侧文字：真正上下居中 */}
+							<div className="min-w-0 flex flex-col justify-center">
+								<div className="text-[12px] leading-snug text-slate-700 break-all">
+								{successUrl}
+								</div>
 							</div>
 
+							{/* 右侧按钮 */}
 							<button
 								type="button"
 								onClick={onCopyPayLink}
 								className={[
-									"shrink-0 w-[36px] h-[36px] rounded-[18px]",
-									"bg-white/85 backdrop-blur-md",
-									"ring-1 ring-black/10 shadow-sm",
-									"flex items-center justify-center",
-									"active:scale-[0.96] transition-transform duration-150",
-									copied ? "ring-1 ring-[rgba(0,0,255,0.25)] shadow-[0_10px_24px_rgba(0,0,255,0.12)]" : "",
+								"shrink-0 w-[36px] h-[36px] rounded-[18px]",
+								"bg-white/85 backdrop-blur-md",
+								"ring-1 ring-black/10 shadow-sm",
+								"flex items-center justify-center",
+								"active:scale-[0.96] transition-transform duration-150",
+								copied
+									? "ring-[rgba(0,0,255,0.25)] shadow-[0_10px_24px_rgba(0,0,255,0.12)]"
+									: "",
 								].join(" ")}
 								aria-label="Copy payment link"
 								title={copied ? "Copied" : "Copy"}
-								>
-								<span className="relative w-5 h-5">
-									{/* Copy icon */}
-									<span
+							>
+								{/* icon 容器：严格几何居中 */}
+								<span className="relative w-5 h-5 leading-none">
+								
+								{/* Copy */}
+								<span
 									className={[
-										"absolute inset-0 flex items-center justify-center",
-										"transition-all duration-200 ease-out",
-										copied ? "opacity-0 scale-75" : "opacity-100 scale-100",
+									"absolute inset-0 flex items-center justify-center leading-none",
+									"transition-all duration-200 ease-out",
+									copied ? "opacity-0 scale-75" : "opacity-100 scale-100",
 									].join(" ")}
 									aria-hidden={copied}
-									>
-									<Copy className="h-5 w-5 text-slate-700" />
-									</span>
+								>
+									<Copy className="w-5 h-5 text-slate-700 leading-none" />
+								</span>
 
-									{/* Check icon */}
-									<span
+								{/* Check */}
+								<span
 									className={[
-										"absolute inset-0 flex items-center justify-center",
-										"transition-all duration-200 ease-out",
-										copied ? "opacity-100 scale-100" : "opacity-0 scale-75",
+									"absolute inset-0 flex items-center justify-center leading-none",
+									"transition-all duration-200 ease-out",
+									copied ? "opacity-100 scale-100" : "opacity-0 scale-75",
 									].join(" ")}
 									aria-hidden={!copied}
-									>
-									<Check className="h-5 w-5 text-[rgb(0_0_255)]" />
-									</span>
+								>
+									<Check className="w-5 h-5 text-[rgb(0_0_255)] leading-none" />
+								</span>
 								</span>
 							</button>
-						</div>
+							</div>
 
-						<div className="mt-4 text-center text-[12px] font-semibold text-slate-400">
+						{/* <div className="mt-4 text-center text-[12px] font-semibold text-slate-400">
 							Opens in browser or Beamio app
-						</div>
+						</div> */}
 						</div>
 						{/* Actions */}
 						<div className="mt-10 flex items-center justify-center gap-16">
@@ -257,12 +269,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 							<div className="mt-3 text-[18px] font-semibold text-slate-600">Print</div>
 						</button>
 
-						<button type="button" onClick={onMessage} className="group flex flex-col items-center">
-							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
-							<MessageCircle className="h-7 w-7 text-slate-600" />
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-600">Message</div>
-						</button>
+					
 
 						<button type="button" onClick={onShare} className="group flex flex-col items-center">
 							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">

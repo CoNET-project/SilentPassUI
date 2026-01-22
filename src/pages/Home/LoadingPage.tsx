@@ -374,7 +374,7 @@ export default function BeamioOnboardingModal({home}: Props) {
 							}
 
 							{
-								settingsOpen === 'RecoveryQRScreen' && <RecoveryQRScreen qrDataUrl={qrDataUrl} recoveryCode={recoveryCode} close={() => {
+								settingsOpen === 'RecoveryQRScreen' && <RecoveryQRScreen qrDataUrl={qrDataUrl} recoveryCode={recoveryCode} showButton={true} close={() => {
 									init(_temp)
 								}} />
 							}

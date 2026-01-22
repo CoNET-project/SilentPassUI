@@ -5,9 +5,9 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "danger"
 
 type AppButtonProps = {
   variant?: ButtonVariant
-  loading?: boolean          // 是否加载中
-  errorText?: string  // 如果传了 error 文案，会变成红色按钮
-  fullWidth?: boolean        // 是否占满一行
+  loading?: boolean
+  errorText?: string
+  fullWidth?: boolean
   leftIcon?: ReactNode
   rightIcon?: ReactNode
   children?: ReactNode
@@ -15,40 +15,43 @@ type AppButtonProps = {
 
 const baseClasses = `
   inline-flex items-center justify-center
-  rounded-xl text-sm font-medium
-  active:scale-[0.97] transition
-  focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400
+  rounded-2xl
+  font-semibold
+  active:scale-[0.98]
+  transition
+  focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300
+  shadow-[0_14px_40px_rgba(37,99,235,0.28)]
 `
 
+// 更像截图的大按钮
 const sizeClasses = `
-  h-11 px-4
+  h-14 px-6 text-[18px] tracking-[-0.01em]
 `
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary: `
     text-white
-    bg-gradient-to-r from-sky-500 to-blue-500
-    hover:from-sky-500 hover:to-blue-600
-    disabled:opacity-80 disabled:cursor-not-allowed
+    bg-blue-600 hover:bg-blue-700
+    disabled:opacity-60 disabled:cursor-not-allowed
   `,
   secondary: `
-    text-current
-    border border-current/30
-    bg-transparent
-    hover:bg-current/5
+    text-slate-900
+    bg-slate-100
+    hover:bg-slate-200
     disabled:opacity-60 disabled:cursor-not-allowed
   `,
   ghost: `
-    text-current
+    text-slate-900
     bg-transparent
-    hover:bg-current/5
+    hover:bg-slate-100
     disabled:opacity-60 disabled:cursor-not-allowed
   `,
   danger: `
     text-white
-    bg-red-700 hover:bg-red-700
-    disabled:opacity-80 disabled:cursor-not-allowed
-  `,
+    bg-red-600 hover:bg-red-700
+    disabled:opacity-60 disabled:cursor-not-allowed
+    shadow-[0_14px_40px_rgba(239,68,68,0.22)]
+  `
 }
 
 export function AppButton({
@@ -67,14 +70,13 @@ export function AppButton({
   const isDisabled = disabled || loading
   const widthClass = fullWidth ? "w-full" : ""
 
-  // 👇 各个 variant 对应的 loading 点颜色
   const loadingDotColor =
     finalVariant === "primary" || finalVariant === "danger"
-      ? "bg-white/80"
-      : "bg-slate-900 dark:bg-slate-100" // secondary / ghost：亮色和暗色都看得见
+      ? "bg-white/85"
+      : "bg-slate-900"
 
   return (
-    <div className={`${widthClass} my-1`}>
+    <div className={widthClass}>
       <button
         disabled={isDisabled}
         className={`
@@ -87,10 +89,10 @@ export function AppButton({
         {...rest}
       >
         {loading ? (
-          <span className="flex items-center justify-center gap-1">
-            <span className={`w-1.5 h-1.5 rounded-full ${loadingDotColor} animate-pulse`} />
-            <span className={`w-1.5 h-1.5 rounded-full ${loadingDotColor} animate-pulse [animation-delay:80ms]`} />
-            <span className={`w-1.5 h-1.5 rounded-full ${loadingDotColor} animate-pulse [animation-delay:160ms]`} />
+          <span className="flex items-center justify-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${loadingDotColor} animate-pulse`} />
+            <span className={`w-2 h-2 rounded-full ${loadingDotColor} animate-pulse [animation-delay:90ms]`} />
+            <span className={`w-2 h-2 rounded-full ${loadingDotColor} animate-pulse [animation-delay:180ms]`} />
           </span>
         ) : (
           <span className="flex items-center justify-center gap-2">

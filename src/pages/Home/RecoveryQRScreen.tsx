@@ -7,10 +7,12 @@ import bIcon from '@/components/assets/logo512.png'
 const RecoveryQRScreen = ({
   qrDataUrl,
   recoveryCode,
+  showButton,
   close
 }: {
   qrDataUrl: string
   recoveryCode: string
+  showButton: boolean
   close: () => void
 }) => {
   const [copied, setCopied] = useState(false)
@@ -138,7 +140,7 @@ const RecoveryQRScreen = ({
         </div>
         
         {/* Checkbox Agreement - Logic Modified */}
-<div 
+		<div 
           className={`
             mt-8 flex items-center gap-4 transition-opacity duration-300
             ${hasBackedUp ? 'opacity-100 cursor-pointer' : 'opacity-40 cursor-not-allowed'}
@@ -177,7 +179,9 @@ const RecoveryQRScreen = ({
       </div>
 
       {/* Footer Button: Open Wallet */}
-      <div className="pb-[env(safe-area-inset-bottom)] pt-4">
+	  {
+		showButton && 
+		<div className="pb-[env(safe-area-inset-bottom)] pt-4">
         <AppButton
           fullWidth
           onClick={() => {
@@ -199,6 +203,8 @@ const RecoveryQRScreen = ({
           Open Wallet
         </AppButton>
       </div>
+	  }
+      
     </div>
   )
 }

@@ -140,7 +140,7 @@ interface Region {
 
   
 type paymentCard = {
-		amount: number
+		amount: string
 		token: ICurrency
 		approx: string
 		title: string

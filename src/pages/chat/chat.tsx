@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState, useLayoutEffect} from "react"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import {checkSign} from '@/services/chat' 
@@ -139,7 +139,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		allNodes,
 		setGossip,
 		gossip,
-		charts
+		charts,
+		
   	} = useDaemonContext()
 
 	const [messages, setMessages] = useState<ChatMessage[]>(chatData.messages)
@@ -171,11 +172,35 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		if (!chats?.length) return
 		const myChat = chats.filter(n => n.address === chatData.address)[0]
 		if (!myChat) return
+
+		pendingInitialScrollRef.current = true // 👈 新增
 		const mess = myChat.messages
-		// const card = emitReactionAsNewMessage()
-		// mess.push(card)
-		setMessages(prof => [...mess])
+		setMessages(() => [...mess])
 	}
+
+	// ✅ 放在 Chat 组件内部，refs 声明处附近
+const didInitialScrollRef = useRef(false)     // 只允许“首次到底”执行一次
+const pendingInitialScrollRef = useRef(true)  // 用于 reflashdata 异步回来后也能触发一次
+
+const scrollToBottom = (mode: "auto" | "smooth" = "auto") => {
+	const el = scrollRef.current
+	if (!el) return
+	// 直接到底（不依赖 scrollHeight - clientHeight）
+	el.scrollTo({ top: el.scrollHeight, behavior: mode })
+	}
+
+	// ✅ 1) 首次进入：用 useLayoutEffect，避免初次渲染闪烁
+	useLayoutEffect(() => {
+	if (didInitialScrollRef.current) return
+	setShowFooter(false)
+	// 等这一帧 DOM 完整（包含 AnimatePresence 初次渲染）
+	requestAnimationFrame(() => {
+		scrollToBottom("auto")
+		didInitialScrollRef.current = true
+		pendingInitialScrollRef.current = false
+		clearUnreadIfNeeded()
+	})
+	}, [])
 
 	function openReactionBarForElement(messageId: string, el: HTMLElement) {
 		const r = el.getBoundingClientRect()
@@ -209,38 +234,6 @@ type paymentCard = {
 	timeStamp: number
 }
 
-	function emitReactionAsNewMessage () {	//(targetMessageId: string, reaction: ReactionKey) {
-		// const reactionLabel = REACTIONS.find(r => r.key === reaction)?.label || "👍"
-		const now = Date.now()
-		const tempId = `rx_${now}_${Math.random().toString(16).slice(2)}`
-
-		// ✅ 你可以换成只发 emoji：text: reactionLabel
-		// const text = reactionLabel
-		const card: paymentCard = {
-			amount: 10,
-			token: 'USD',
-			title: 'send USDC test',
-			approx: '10 USDC',
-			timeStamp: now
-		}
-		const mess: ChatMessage = 
-		 {
-				id: tempId,
-				from: 'me',
-				text:'',
-				createdAt: now,
-				status: "sent",
-				paymentCard: card
-			}
-		return mess
-
-		// 如果你要同步到 chatData/messages storage：
-		// chatData.messages = makeMessage(messages, text, now, 'me', 'sent')
-		// storageData()
-
-		// closeReactionBar()
-	}
-
 
 	useEffect(() => {
 		if (runningRef.current) return // ✅ 已在运行，直接忽略
@@ -258,19 +251,20 @@ type paymentCard = {
 
   // 滚动到底部
 	useEffect(() => {
-		 const el = scrollRef.current
-		if (!el) return
+		const el = scrollRef.current
+	if (!el) return
 
-		// 只在用户本来就在底部时自动跟随到底（更像 iOS）
-		const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-		const wasAtBottom = distance <= 48
+	// 如果还没执行过首次到底，就不要走这里（避免干扰）
+	if (!didInitialScrollRef.current) return
 
-		if (wasAtBottom) {
-			el.scrollTop = el.scrollHeight
-		}
+	const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+	const wasAtBottom = distance <= 48
 
-		// ✅ 渲染后如果在底部，清未读
-		clearUnreadIfNeeded()
+	if (wasAtBottom) {
+		el.scrollTop = el.scrollHeight
+	}
+
+	clearUnreadIfNeeded()
 	}, [messages.length])
 
 	// textarea 自适应高度
@@ -321,7 +315,7 @@ type paymentCard = {
 		
 
 		
-		const node = allNodes[0] //getRandomNode(allNodes)
+		const node = getRandomNode(allNodes)
 		if (!node) {
 			return setMessages(prev =>
 				prev.map(m =>
@@ -357,6 +351,22 @@ type paymentCard = {
 			clearedRef.current = false
 		}
 	}, [chatData.unreadCount])
+
+	// ✅ 2) messages 初次装载 / reflashdata 后：补一枪“首屏到底”（只做一次）
+useEffect(() => {
+  if (!pendingInitialScrollRef.current) return
+  // 只要有消息，就在下一帧到底
+  if (!messages?.length) return
+
+  requestAnimationFrame(() => {
+    scrollToBottom("auto")
+    pendingInitialScrollRef.current = false
+    didInitialScrollRef.current = true
+    clearUnreadIfNeeded()
+  })
+}, [messages.length])
+
+
 
 	const clearedRef = useRef(false)
 	// 距离底部多少 px 视为“已到最底”

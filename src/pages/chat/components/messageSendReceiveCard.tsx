@@ -5,7 +5,7 @@ type MessageSendReceiveCardProps = {
   variant: "sent" | "received"
   status?: "Completed" | "Pending" | "Failed" | string
   amount: string | number
-  token?: string
+  token?: ICurrency
   approx?: string
   title?: string
   timeLabel?: string
@@ -112,10 +112,11 @@ export function messageSendReceiveCard({
               isSent ? "text-white" : "text-slate-900"
             ].join(" ")}
           >
-            {fmtAmount(amount)}
+            {amount}
           </div>
-
-          <div
+		  {
+			token === 'USDC' && (<>
+			<div
             className={[
               "pb-0.5 text-[14px] font-extrabold tracking-[0.12em] leading-none",
               isSent ? "text-white/90" : "text-slate-600"
@@ -123,6 +124,17 @@ export function messageSendReceiveCard({
           >
             {token}
           </div>
+			</>)
+		  }
+
+          {/* <div
+            className={[
+              "pb-0.5 text-[14px] font-extrabold tracking-[0.12em] leading-none",
+              isSent ? "text-white/90" : "text-slate-600"
+            ].join(" ")}
+          >
+            {token}
+          </div> */}
         </div>
 
         {!!approx && (
@@ -132,7 +144,7 @@ export function messageSendReceiveCard({
               isSent ? "text-white/60" : "text-slate-500"
             ].join(" ")}
           >
-            ≈ {approx}
+            ≈ {approx} USDC
           </div>
         )}
 

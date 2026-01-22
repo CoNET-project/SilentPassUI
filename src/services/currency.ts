@@ -33,16 +33,17 @@ export const fiatPrefix = (ccy: ICurrency) => {
 
 export const getDecimals = (c: ICurrency) => {
 	const decimals =
+		c === 'USDC' ? 4 :
 		c === "TWD" || c === "JPY"
 		? 0
 		: 2
 	return decimals
 }
 
-export const formatAmount = (v: number, c: ICurrency) => {
+export const formatAmount = (v: number, c: ICurrency, fixed?: number) => {
 	if (!isFinite(v)) return "0"
 
-	const decimals = getDecimals(c)
+	const decimals = fixed||getDecimals(c)
 
 	return v.toLocaleString("en-US", {
 		minimumFractionDigits: decimals,

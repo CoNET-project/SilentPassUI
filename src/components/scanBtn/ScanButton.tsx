@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { Button, Modal, Toast } from "antd-mobile";
 import Html5QrcodePlugin from "./Html5QrcodePlugin";
 import styles from "./scanButton.module.scss";
-
-import { emitWalletEvent } from '@/services/beamio';
+import { useDaemonContext } from "@/providers/DaemonProvider"
 import { QrCode } from "lucide-react";
+import {emitWalletEvent} from '@/services/beamio'
 
 interface Props {
   iconSize?: number; // <----- 新增
@@ -14,7 +14,9 @@ const ScanButton = ({ iconSize = 18 }: Props) => {  // <----- 默认18
   const [scanning, setScanning] = useState(false);
   const [loading, setLoading] = useState(false);
 
-
+const { 
+		setScanData
+	} = useDaemonContext()
   const handleGoScan = async () => {
 		setLoading(true);
 
@@ -57,7 +59,7 @@ const ScanButton = ({ iconSize = 18 }: Props) => {  // <----- 默认18
 	};
 
 	const handleScanSuccess = (text: string) => {
-		
+			setScanData(text)
 			emitWalletEvent("scan:url", text);
 			return
 	}

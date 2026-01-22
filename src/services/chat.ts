@@ -949,66 +949,143 @@ export const checkSign = (message: string, signMess: string, signWallet: string)
 
 
 export const makeMessage = (
-  data: ChatMessage[],
-  newChatText: string,
-  timestamp: number,
-  from: "me" | "them",
-  status?: "sending" | "sent" | "failed"
+	data: ChatMessage[],
+	newChatText: string,
+	timestamp: number,
+	from: "me" | "them",
+	status?: "sending" | "sent" | "failed"
 ) => {
   // 1) 先把已有消息“规范化”：用 createdAt(=timestamp) 生成稳定唯一 id
-  const normalized = (data || []).map(m => {
-    // ✅ 保留你本地临时消息 tmp_... 的 id（用于发送三态 UI）
-    if (m?.id?.startsWith("tmp_")) return m
+	const normalized = (data || []).map(m => {
+		// ✅ 保留你本地临时消息 tmp_... 的 id（用于发送三态 UI）
+		if (m?.id?.startsWith("tmp_")) return m
 
-    const ts = Number(m?.createdAt)
-    const stableId = Number.isFinite(ts)
-      ? String(ts) // ✅ 用 timestamp 作为唯一性
-      : (m?.id || `msg_${Math.random().toString(16).slice(2)}`)
+		const ts = Number(m?.createdAt)
+		const stableId = Number.isFinite(ts)
+		? String(ts) // ✅ 用 timestamp 作为唯一性
+		: (m?.id || `msg_${Math.random().toString(16).slice(2)}`)
 
-    return {
-      ...m,
-      id: stableId
-    }
-  })
+		return {
+			...m,
+			id: stableId
+		}
+	})
 
-  // 2) 建一个 Set 来做去重（以 id=timestamp 为唯一性）
-  const seen = new Set<string>()
-  const result: ChatMessage[] = []
+	// 2) 建一个 Set 来做去重（以 id=timestamp 为唯一性）
+	const seen = new Set<string>()
+	const result: ChatMessage[] = []
 
-  for (const m of normalized) {
-    if (!m) continue
+	for (const m of normalized) {
+		if (!m) continue
 
-    const key = m.id || String(m.createdAt || "")
-    if (!key) continue
+		const key = m.id || String(m.createdAt || "")
+		if (!key) continue
 
-    if (seen.has(key)) continue
-    seen.add(key)
-    result.push(m)
-  }
+		if (seen.has(key)) continue
+		seen.add(key)
+		result.push(m)
+  	}
 
-  // 3) 集成“新来的消息”：newChatText + timestamp + from + status
-  //    ✅ 你要求：通过 timestamp 检查唯一性，可直接用 timestamp 作为 id
-  const ts = Number(timestamp)
-  const text = (newChatText || "").trim()
+	// 3) 集成“新来的消息”：newChatText + timestamp + from + status
+	//    ✅ 你要求：通过 timestamp 检查唯一性，可直接用 timestamp 作为 id
+	const ts = Number(timestamp)
+	const text = (newChatText || "").trim()
+  	try {
+		const card:ChatMessage  = JSON.parse(text)
+		if (card.paymentCard) {
+			card.from = 'them'
+			result.push(card)
+		} else throw new Error('')
+	} catch (ex) {
+		if (text && Number.isFinite(ts)) {
+		const incomingId = String(ts)
 
-  if (text && Number.isFinite(ts)) {
-    const incomingId = String(ts)
+		if (!seen.has(incomingId)) {
+			seen.add(incomingId)
+			result.push({
+				id: incomingId,
+				from,
+				text,
+				createdAt: ts,
+				// ✅ 对方消息默认 sent；自己消息如果你没传 status，也默认 sent（你也可以改成 sending）
+				status: status ?? (from === "me" ? "sent" : "sent")
+			})
+		}
+	}
+	}
 
-    if (!seen.has(incomingId)) {
-      seen.add(incomingId)
-      result.push({
-        id: incomingId,
-        from,
-        text,
-        createdAt: ts,
-        // ✅ 对方消息默认 sent；自己消息如果你没传 status，也默认 sent（你也可以改成 sending）
-        status: status ?? (from === "me" ? "sent" : "sent")
-      })
-    }
-  }
 
-  // 4) 排序：按时间升序（iMessage 从上到下）
-  result.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+	// 4) 排序：按时间升序（iMessage 从上到下）
+	result.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
 
-  return result
+	return result
+}
+
+export function emitReactionAsNewMessage (amount: string, token: ICurrency, title: string, approx: string, ) {	//(targetMessageId: string, reaction: ReactionKey) {
+	// const reactionLabel = REACTIONS.find(r => r.key === reaction)?.label || "👍"
+	const now = Date.now()
+	const tempId = new Date().getTime()
+
+	// ✅ 你可以换成只发 emoji：text: reactionLabel
+	// const text = reactionLabel
+	const card: paymentCard = {
+		amount,
+		token,
+		title,
+		approx,
+		timeStamp: new Date().getTime()
+	}
+	const mess: ChatMessage = 
+		{
+			id: tempId.toString(),
+			from: 'me',
+			text:'',
+			createdAt: now,
+			status: "sent",
+			paymentCard: card
+		}
+	return mess
+
+	// 如果你要同步到 chatData/messages storage：
+	// chatData.messages = makeMessage(messages, text, now, 'me', 'sent')
+	// storageData()
+
+	// closeReactionBar()
+}
+
+export const initMessage = async (profile: profile, beamioer: searchResult): Promise<chatData|null> => {
+	
+	const address = beamioer.address.toLowerCase()
+		
+	if (!profile?.chats?.length) {
+		profile.chats = []
+	}
+	
+	const index = profile.chats.findIndex(n => n.address.toLowerCase() === address)
+	let chatData: chatData|null = null
+
+	if (index < 0) {
+		const kk = await getKeysFromCoNETPGPSC (address, profile.privateKeyArmor)
+		if (!kk?.publicArmored) {
+			return null
+		}
+		
+		chatData = {
+			address: address,
+			messages: [],
+			chatData: kk,
+			beamio: beamioer,
+			pin: false,
+			hide: false,
+			muted: false,
+			tag: 'grey',
+			unreadCount: 1
+		}
+		profile.chats.push(chatData)
+
+	} else {
+		chatData = profile.chats[index]
+
+	}
+	return chatData
 }

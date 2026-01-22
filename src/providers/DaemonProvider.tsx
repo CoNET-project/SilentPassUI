@@ -5,6 +5,10 @@ import packageData from '../../package.json'
 
 
 type DaemonContext = {
+	scanData: string
+	setScanData: (val: string) => void
+	chatHomeItem: searchResult|null
+	setChatHomeItem: Dispatch<SetStateAction<searchResult | null>>
 	charts: string[]
 	setCharts: React.Dispatch<React.SetStateAction<string[]>>
 	gossip: boolean
@@ -152,7 +156,10 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
-
+	scanData: '',
+	setScanData: (val) => {},
+	chatHomeItem: null,
+	setChatHomeItem: (val) => {},
 	charts: [],
 	setCharts: (_value: React.SetStateAction<string[]>) => {},
 	gossip: false,
@@ -312,6 +319,8 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [scanData, setScanData] = useState('')
+	const [chatHomeItem,setChatHomeItem] = useState<searchResult | null>(null)
 	const [charts, setCharts] = useState<string[]>([])
 	const [gossip, setGossip] = useState(false)
 	const [allNodes, setAllNodes] = useState<nodeInfo[]>([])
@@ -456,7 +465,9 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
-        	setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
+				chatHomeItem,setChatHomeItem,scanData, setScanData,
+        		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
+				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 
       {children}
     </Daemon.Provider>

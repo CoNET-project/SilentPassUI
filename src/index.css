@@ -72,3 +72,7 @@ code {
   --footer-text: #e5e7eb;
   --scan-btn-icon: #ffffff;
 }
+/* 防止输入框触发滚动 */
+input:focus {
+  transform: translateZ(0);  /* 启用硬件加速 */
+}

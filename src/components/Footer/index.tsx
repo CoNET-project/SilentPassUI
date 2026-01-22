@@ -107,11 +107,11 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			const seen = seenMsgRef.current
 
 			for (const raw of charts) {
-			const key = getMsgKey(raw)
-			if (!key) continue
-			if (seen.has(key)) continue
-			seen.add(key)
-			delta += 1
+				const key = getMsgKey(raw)
+				if (!key) continue
+				if (seen.has(key)) continue
+				seen.add(key)
+				delta += 1
 			}
 
 			if (delta > 0) {
@@ -121,8 +121,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 				// ✅ badge 也用 next（而不是旧 messageCount）
 				setBadgeMap(v => ({
-				...v,
-				'/chat': next
+					...v,
+					'/chat': next
 				}))
 
 				return next

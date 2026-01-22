@@ -4,7 +4,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { storeSystemData, postBeamio, postToIPFS } from '@/services/beamio'
 import { AppButton } from '@/components/button/AppButton'
-
+import GetPicture from '@/components/GetPicture/GetPicture'
 const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
 const defaultName = 'Beamio'
 
@@ -53,6 +53,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
   const [avatarSeedConfirmed, setAvatarSeedConfirmed] = useState(false)
+  const [openGetPicture, setOpenGetPicture] = useState(false)
 
   const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
   const currentAvatarSrcTemp = avatarImageDataTemp || avatarUrl
@@ -199,7 +200,9 @@ export default function BeamioAccountScreen({ colse }: prof) {
 				) : (
 				<button
 						type="button"
-						onClick={() => avatarInputRef.current?.click()}
+						onClick={() => {
+							setOpenGetPicture(true)
+						}}
 						aria-label="Change avatar"
 						className="
 							absolute -right-1 -bottom-1
@@ -363,6 +366,16 @@ export default function BeamioAccountScreen({ colse }: prof) {
           </div>
         </div>
       </div>
+	  <GetPicture
+		open={openGetPicture}
+		onClose={() => setOpenGetPicture(false)}
+		downscaleTo250={downscaleTo250}
+		onPicked={(dataUrl) => {
+			setAvatarImageDataTemp(dataUrl)
+			setAvatarFileUrl(null)
+			setAvatarFileName('')
+		}}
+		/>
     </aside>
   )
 }

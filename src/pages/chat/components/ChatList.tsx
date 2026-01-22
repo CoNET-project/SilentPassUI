@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useRef } from "react"
-
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {
 	ChevronRight,
 	Menu,
@@ -20,6 +20,7 @@ type ChatListProps = {
   onMenu?: () => void
   title?: string
 }
+
 
 
 function fmtListTime(ts?: number) {
@@ -45,10 +46,13 @@ function fmtListTime(ts?: number) {
   return `${y}-${m}-${day}`
 }
 
-const displayName = (item: searchResult) => {
-	const lastname = item.last_name.split('\r\n')
-	const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
-	return fullName || item.username || item.address
+const displayName = (item: any) => {
+	const first = item.first_name ?? item.firstName ?? ""
+	const lastRaw = String(item.last_name ?? item.lastName ?? "")
+	const lastname = lastRaw.split("\r\n")
+	const last0 = lastname[0] || ""
+	const fullName = `${first} ${/^\{/.test(last0) ? "" : last0}`.trim()
+	return fullName || item.username || item.accountName || item.address
 }
 
 
@@ -101,53 +105,12 @@ function Avatar({
 	)
 }
 
-function Badge({
-  n,
-  muted
-}: {
-  n: number
-  muted?: boolean
-}) {
-  const text = n > 99 ? "99+" : String(n)
-
-  return (
-    <span
-      className={[
-        "inline-flex items-center justify-center",
-        "min-w-[22px] h-[22px] px-2",
-        "rounded-full",
-        muted
-          ? "bg-slate-300 text-white"              // 🔕 静音：灰色
-          : "bg-[#1652f0] text-white",              // 🔵 正常：Beamio Blue
-        "text-[12px] font-bold tabular-nums",
-        muted
-          ? "shadow-none"
-          : "shadow-[0_6px_18px_rgba(22,82,240,0.22)]",
-        "ring-1 ring-white/70"
-      ].join(" ")}
-      aria-label={`${n} unread`}
-    >
-      {text}
-    </span>
-  )
-}
-
 
 export default function ChatList({
 	title = "",
 	onOpen
 }: ChatListProps) {
-		const 
-		{
-		profiles,
-		setProfiles,
-		setShowFooter,
-		allNodes,
-		setGossip,
-		gossip,
-		charts,
-		setCharts
-  	} = useDaemonContext()
+		const { profiles, setProfiles } = useDaemonContext()
 
 	const items = useMemo(() => {
 		const profile: profile = profiles?.[0]
@@ -157,7 +120,8 @@ export default function ChatList({
 		const list: chatData[] = Array.isArray(profile.chats)
 			? profile.chats
 			: profile.chats
-			? Object.values(profile.chats as any)
+			? (Object.values(profile.chats as Record<string, unknown>)
+				.filter(Boolean) as chatData[])
 			: []
 
 		const filtered = list.filter(
@@ -177,14 +141,8 @@ export default function ChatList({
 			})
 	}, [profiles])
 
-
 	
 
-
-
-	const onEdit = () => {
-		
-	}
 
   return (
     <div className="bg-white">
@@ -224,7 +182,7 @@ export default function ChatList({
         <div className="mx-auto w-full max-w-[820px]">
           {items.map((it, idx) => {
             const last = it.messages?.[it.messages.length - 1]
-			const dir = last?.from === "me" ? "out" : "in"
+			const dir = last ? (last.from === "me" ? "out" : "in") : null
             const timeText = fmtListTime(
 			last?.createdAt || it.beamio?.created_at || 0
 			)
@@ -240,7 +198,39 @@ export default function ChatList({
               <button
                 key={it.address}
                 type="button"
-                onClick={() => onOpen?.(it)}
+                onClick={async () => {
+					const ps = Array.isArray(profiles) ? profiles : []
+					const p0: profile = ps[0]
+					const addr = String(it.address || "").toLowerCase()
+
+					if (p0 && Array.isArray(p0.chats)) {
+						const idx2 = p0.chats.findIndex(c => String(c?.address || "").toLowerCase() === addr)
+						if (idx2 >= 0) {
+						const nextChats = [...p0.chats]
+						nextChats[idx2] = { ...nextChats[idx2], unreadCount: 0, lastReadTs: Date.now() }
+
+						const nextProfile = { ...p0, chats: nextChats }
+						const nextProfiles = [...ps]
+						nextProfiles[0] = nextProfile
+
+						// 1) UI state
+						setProfiles(nextProfiles)
+
+						// 2) ✅ 同步全局快照（storeSystemData 读这个）
+						const temp = CoNET_Data
+						if (temp) {
+							temp.profiles = nextProfiles
+							setCoNET_Data(temp)
+						}
+
+						// 3) 持久化
+						await storeSystemData()
+						}
+					}
+
+					onOpen?.(it)
+				}}
+
                 className="w-full text-left active:bg-slate-50 transition"
               >
                 <div className="px-4">
@@ -325,13 +315,15 @@ export default function ChatList({
 						</span>
 
 						{/* ✅ 方向箭头：对方(in)=↙，自己(out)=↗ */}
-						<span className="flex-shrink-0 ml-2 ">
-						{dir === "in" ? (
-							<ArrowDownLeft className="h-4 w-4 text-[#1652f0]" strokeWidth={2.6} />
-						) : (
-							<ArrowUpRight className="h-4 w-4 text-slate-300" strokeWidth={2.6}  />
+						{dir && (
+							<span className="flex-shrink-0 ml-2">
+								{dir === "in" ? (
+								<ArrowDownLeft className="h-4 w-4 text-[#1652f0]" strokeWidth={2.6} />
+								) : (
+								<ArrowUpRight className="h-4 w-4 text-slate-300" strokeWidth={2.6} />
+								)}
+							</span>
 						)}
-						</span>
 					</div>
 					</div>
                     </div>

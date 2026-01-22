@@ -11,7 +11,7 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
 import Browser from "@/pages/Browser"
-import {initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage} from '@/services/chat'
+import {initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, currentGossipAbortController} from '@/services/chat'
 import { isStandalone, MobileType, searchUsername, storeSystemData} from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 
@@ -78,15 +78,25 @@ const addNewMessage = async (lines: string[], profiles: profile[], temp: encrypt
 			)
 
 			// ✅ 未读 +1（仅当消息确实是新增的才加）
+			
+			
 			const wasLen = (chat.messages || []).length
-			const nowLen = nextMessages.length
-			const unreadNext =
-				nowLen > wasLen ? (Number(chat.unreadCount || 0) + 1) : Number(chat.unreadCount || 0)
+				const nowLen = nextMessages.length
+
+				const lastReadTs = Number(chat.lastReadTs || 0)
+				const isNew = nowLen > wasLen
+
+				// ✅ 只有“对方发来的 & timestamp 比 lastReadTs 新” 才算未读
+				const shouldIncUnread = isNew && msg.timestamp > lastReadTs
+
+				const unreadNext = shouldIncUnread
+				? (Number(chat.unreadCount || 0) + 1)
+				: Number(chat.unreadCount || 0)
 
 			const nextChat: chatData = {
-				...chat,
-				messages: nextMessages,
-				unreadCount: unreadNext
+			...chat,
+			messages: nextMessages,
+			unreadCount: unreadNext
 			}
 
 			// ✅ 放回 chats（不可变）
@@ -113,11 +123,12 @@ const addNewMessage = async (lines: string[], profiles: profile[], temp: encrypt
 	}
 
 function App() {
-	const { isInitialLoading, showFooter, setShowFooter, profiles, charts, setCharts, setProfiles } = useDaemonContext()
+	const { isInitialLoading, showFooter, setShowFooter, seenMsgRef, charts, setMessageCount, setCharts, profiles, setProfiles, setAllNodes, setGossip, gossip } = useDaemonContext()
 	const bodyRef = useRef<HTMLDivElement | null>(null)
 
 	// Footer 是否显示（由滚动决定）
 	const [footerVisible, setFooterVisible] = useState(true)
+	const runningRef = useRef(false)
 	
 	  // ✅ showFooter 一旦变成 true，就强制让 footerVisible 显示
 	useLayoutEffect(() => {
@@ -271,8 +282,19 @@ function App() {
 
 	// 首次进入显示
 	useEffect(() => {
+
+		initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
+			setCharts((prev: string[]) => [...prev, message])
+		})
+
 		const t = setTimeout(() => setFooterVisible(true), 0)
-		return () => clearTimeout(t)
+		return () => {
+			clearTimeout(t)
+			console.log("🧹 Component unmounting, cleaning up gossip...");
+			if (currentGossipAbortController) {
+				currentGossipAbortController.abort("component_unmount");
+			}
+		}
 	}, [])
 
 	useEffect(() => {
@@ -280,26 +302,56 @@ function App() {
 		setShowFooter(true)
 	},[isInitialLoading])
 
-	const runningRef = useRef(false)
+
+	const getMsgKey = (raw: any) => {
+	try {
+		const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
+		const ts = Number(obj?.timestamp)
+		const from = String(obj?.from || '')
+		if (Number.isFinite(ts) && ts > 0 && from) return `${from}_${ts}`
+		if (Number.isFinite(ts) && ts > 0) return `${ts}`
+	} catch {}
+	return null
+	}
 
 
+	// ① 先统计（不要清 charts）
+	useEffect(() => {
+	if (!Array.isArray(charts) || charts.length === 0) return
+
+	let delta = 0
+	const seen = seenMsgRef.current
+
+	for (const raw of charts) {
+		const key = getMsgKey(raw)
+		if (!key) continue
+		if (seen.has(key)) continue
+		seen.add(key)
+		delta += 1
+	}
+
+	if (delta > 0) setMessageCount(prev => prev + delta)
+	}, [charts, setMessageCount, seenMsgRef])
+
+	
+
+
+	// ② 再消费队列写入 profiles（你原逻辑）
 	useEffect(() => {
 		const profile = profiles
 		const temp = CoNET_Data
-		if (!profile||!temp||!charts?.length) return
-		if (!Array.isArray(charts) || charts.length === 0) return
-		if (runningRef.current) return // ✅ 已在运行，直接忽略
+		if (!profile || !temp || !Array.isArray(charts) || charts.length === 0) return
+		if (runningRef.current) return
 
 		runningRef.current = true
 
-		
 		;(async () => {
 			try {
-				const messageLines = [...charts]
-				setCharts([]) // 清空队列
-				await addNewMessage(messageLines, profile, temp, setProfiles)
+			const messageLines = [...charts]
+			setCharts([])
+			await addNewMessage(messageLines, profile, temp, setProfiles)
 			} finally {
-				runningRef.current = false // ✅ 确保释放锁
+			runningRef.current = false
 			}
 		})()
 	}, [charts])

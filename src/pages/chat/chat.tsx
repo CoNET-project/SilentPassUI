@@ -142,6 +142,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		charts,
 		
   	} = useDaemonContext()
+	
 
 	const [messages, setMessages] = useState<ChatMessage[]>(chatData.messages)
 
@@ -150,6 +151,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const toAddress = chatData.address
 	const pressTimerRef = useRef<number | null>(null)
+	const messagesRef = useRef<ChatMessage[]>(chatData.messages || [])
+	const skipNextReflashdataRef = useRef(false)
 
 	const [reactionUI, setReactionUI] = useState<{
 		open: boolean
@@ -167,23 +170,70 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const reflashdata = async () => {
 		if (!profiles?.length) return
-		const profile: profile = profiles[0]
-		const chats = profile?.chats
-		if (!chats?.length) return
-		const myChat = chats.filter(n => n.address === chatData.address)[0]
+
+		const p0: profile = profiles[0]
+		const chats = Array.isArray(p0?.chats) ? p0.chats : []
+		if (!chats.length) return
+
+		const addr = String(chatData.address || "").toLowerCase()
+		if (!addr) return
+
+		const myChat = chats.find(n => String(n.address || "").toLowerCase() === addr)
 		if (!myChat) return
 
-		pendingInitialScrollRef.current = true // 👈 新增
-		const mess = myChat.messages
-		setMessages(() => [...mess])
+		// profiles/落盘的消息（“远端”）
+		const remote = Array.isArray(myChat.messages) ? myChat.messages : []
+
+		// 本地 UI 正在显示的消息（可能包含 tmp_ / 更先进的 status）
+		const local = Array.isArray(messagesRef.current) ? messagesRef.current : []
+
+		// 建索引：local by id
+		const localById = new Map<string, ChatMessage>()
+		for (const m of local) {
+			if (!m?.id) continue
+			localById.set(m.id, m)
+		}
+
+		// ✅ 1) 先以 remote 为基础，逐条 merge：如果 local 同 id 且 status 更“新”，用 local 覆盖
+		const merged: ChatMessage[] = remote.map(rm => {
+			const lm = localById.get(rm.id)
+			if (!lm) return rm
+
+			// status 更“新” => 用 local
+			if (statusRank(lm.status) > statusRank(rm.status)) {
+			return { ...rm, ...lm }
+			}
+
+			// status 一样但 local 有 paymentCard / text 等更完整，也可以选择补齐
+			// 这里保守：remote 为主，只用 local 补 status（避免把落盘 text 覆盖错）
+			if (statusRank(lm.status) === statusRank(rm.status) && lm.status && lm.status !== rm.status) {
+			return { ...rm, status: lm.status }
+			}
+
+			return rm
+		})
+
+		// ✅ 2) 把 local 里仍然存在但 remote 里没有的 tmp_ 消息追加回去（防止被冲掉）
+		const remoteIdSet = new Set(remote.map(m => m.id))
+		const localTempExtras = local.filter(m => isTempId(m.id) && !remoteIdSet.has(m.id))
+
+		const next = [...merged, ...localTempExtras]
+			.slice()
+			.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+
+		// ✅ 3) 刷 UI
+		pendingInitialScrollRef.current = true
+		messagesRef.current = next
+		setMessages(next)
 	}
 
 	// ✅ 放在 Chat 组件内部，refs 声明处附近
-const didInitialScrollRef = useRef(false)     // 只允许“首次到底”执行一次
-const pendingInitialScrollRef = useRef(true)  // 用于 reflashdata 异步回来后也能触发一次
+	const didInitialScrollRef = useRef(false)     // 只允许“首次到底”执行一次
+	const pendingInitialScrollRef = useRef(true)  // 用于 reflashdata 异步回来后也能触发一次
 
-const scrollToBottom = (mode: "auto" | "smooth" = "auto") => {
+	const scrollToBottom = (mode: "auto" | "smooth" = "auto") => {
 	const el = scrollRef.current
+	
 	if (!el) return
 	// 直接到底（不依赖 scrollHeight - clientHeight）
 	el.scrollTo({ top: el.scrollHeight, behavior: mode })
@@ -191,15 +241,14 @@ const scrollToBottom = (mode: "auto" | "smooth" = "auto") => {
 
 	// ✅ 1) 首次进入：用 useLayoutEffect，避免初次渲染闪烁
 	useLayoutEffect(() => {
-	if (didInitialScrollRef.current) return
-	setShowFooter(false)
-	// 等这一帧 DOM 完整（包含 AnimatePresence 初次渲染）
-	requestAnimationFrame(() => {
-		scrollToBottom("auto")
-		didInitialScrollRef.current = true
-		pendingInitialScrollRef.current = false
-		clearUnreadIfNeeded()
-	})
+		if (didInitialScrollRef.current) return
+
+		requestAnimationFrame(() => {
+			scrollToBottom("auto")
+			didInitialScrollRef.current = true
+			// 这里不要 pendingInitialScrollRef.current = false
+			// 让 pending 那个 effect 负责“最终一次的清 unread”
+		})
 	}, [])
 
 	function openReactionBarForElement(messageId: string, el: HTMLElement) {
@@ -226,45 +275,64 @@ const scrollToBottom = (mode: "auto" | "smooth" = "auto") => {
 	}
 
 
-type paymentCard = {
-	amount: number
-	token: ICurrency
-	approx: string
-	title: string
-	timeStamp: number
-}
+		type paymentCard = {
+			amount: number
+			token: ICurrency
+			approx: string
+			title: string
+			timeStamp: number
+		}
+
+	useEffect(() => {
+		messagesRef.current = messages
+	}, [messages])
+
+	useLayoutEffect(() => {
+		setShowFooter(false)
+		return () => setShowFooter(true)
+	}, [])
+
+	const statusRank = (s?: ChatMessage["status"]) => {
+	if (s === "sent") return 3
+	if (s === "failed") return 3
+	if (s === "sending") return 2
+	return 1 // undefined / 其它
+	}
+
+	const isTempId = (id: string) => /^tmp_/i.test(id || "")
 
 
 	useEffect(() => {
-		if (runningRef.current) return // ✅ 已在运行，直接忽略
+		// ✅ 如果这次 profiles 变化来自本组件 storageData()，跳过一次 reflashdata
+		if (skipNextReflashdataRef.current) {
+			skipNextReflashdataRef.current = false
+			return
+		}
 
+		if (runningRef.current) return
 		runningRef.current = true
 
 		;(async () => {
 			try {
-				await reflashdata()
+			await reflashdata()
 			} finally {
-				runningRef.current = false // ✅ 确保释放锁
+			runningRef.current = false
 			}
 		})()
 	}, [profiles])
 
   // 滚动到底部
 	useEffect(() => {
-		const el = scrollRef.current
-	if (!el) return
+		if (!pendingInitialScrollRef.current) return
+		if (!messages?.length) return
 
-	// 如果还没执行过首次到底，就不要走这里（避免干扰）
-	if (!didInitialScrollRef.current) return
+		requestAnimationFrame(() => {
+			scrollToBottom("auto")
+			didInitialScrollRef.current = true
+			pendingInitialScrollRef.current = false
+			forceClearUnread()
+		})
 
-	const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-	const wasAtBottom = distance <= 48
-
-	if (wasAtBottom) {
-		el.scrollTop = el.scrollHeight
-	}
-
-	clearUnreadIfNeeded()
 	}, [messages.length])
 
 	// textarea 自适应高度
@@ -276,74 +344,134 @@ type paymentCard = {
 		el.style.height = `${next}px`
 	}, [text])
 
-	const storageData = async () => {
+	const forceClearUnread = () => {
+		const ps = Array.isArray(profiles) ? profiles : []
+		if (ps.length === 0 || !chatData?.address) return
+
+		const addr = chatData.address.toLowerCase()
+		const now = Date.now()
+
+		// ✅ 先判断：当前 unread 是否真的 > 0，不需要清就直接退出
+		const p0 = ps[0]
+		const chats0: chatData[] = Array.isArray(p0?.chats) ? p0.chats : []
+		const idx0 = chats0.findIndex(c => c.address?.toLowerCase() === addr)
+		const cur = idx0 >= 0 ? chats0[idx0] : null
+		if (!cur || Number(cur.unreadCount || 0) <= 0) return
+
+		// ✅ 1) React state
+		setProfiles(prev => {
+			if (!prev?.length) return prev
+			const p = prev[0]
+			const chats = Array.isArray(p.chats) ? p.chats : []
+			const idx = chats.findIndex(c => c.address?.toLowerCase() === addr)
+			if (idx < 0) return prev
+
+			const nextChats = chats.slice()
+			const old = nextChats[idx]
+			nextChats[idx] = {
+			...old,
+			unreadCount: 0,
+			lastReadTs: Math.max(Number(old?.lastReadTs || 0), now)
+			}
+
+			const next = prev.slice()
+			next[0] = { ...p, chats: nextChats }
+			return next
+		})
+
+		// ✅ 2) CoNET_Data snapshot（让 storeSystemData 写到最新）
 		const temp = CoNET_Data
-		if (!temp||!profiles.length) return
-		const profile: profile = profiles[0]
-		if (!profile?.chats?.length) profile.chats = []
-		const index = profile.chats.findIndex(n => n.address === chatData.address)
-		profile.chats.splice(index, 1)
-		profile.chats.push(chatData)
-		setProfiles(profiles)
-		temp.profiles = profiles
-		setCoNET_Data(temp)
-		await storeSystemData()
+		if (temp) {
+			const nextChats = chats0.slice()
+			const old = nextChats[idx0]
+			nextChats[idx0] = {
+			...old,
+			unreadCount: 0,
+			lastReadTs: Math.max(Number(old?.lastReadTs || 0), now)
+			}
+			const nextProfiles = ps.slice()
+			nextProfiles[0] = { ...p0, chats: nextChats }
+			temp.profiles = nextProfiles
+			setCoNET_Data(temp)
+		}
+
+		void storeSystemData()
 	}
+
 
 	async function send() {
 		const temp = CoNET_Data
+		if (!canSend || !temp || !profiles?.length) return
 
-		if (!canSend || !temp||!profiles?.length) return
 		const t = text.trim()
+		if (!t) return
 
 		setText("")
 
 		const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
 		const now = Date.now()
-		
-		setMessages(prev => [
-			...prev,
-			{
-				id: tempId,
-				from: "me",
-				text: t,
-				createdAt: now,
-				status: "sending"
-			}
-		])
 
-		
+		// ✅ 1) 先插入 sending（同步构造 next）
+		const pendingMsg: ChatMessage = {
+			id: tempId,
+			from: "me",
+			text: t,
+			createdAt: now,
+			status: "sending"
+		}
 
-		
+		{
+			const next: ChatMessage[] = [...(messagesRef.current || []), pendingMsg]
+			messagesRef.current = next
+			setMessages(next)
+		}
+
+		// ✅ 2) 找节点
 		const node = getRandomNode(allNodes)
 		if (!node) {
-			return setMessages(prev =>
-				prev.map(m =>
-				m.id === tempId ? { ...m, status: "failed" } : m
-				)
+			const next: ChatMessage[] = (messagesRef.current || []).map(m =>
+			m.id === tempId ? { ...m, status: "failed" as const } : m
 			)
+			messagesRef.current = next
+			setMessages(next)
+
+			chatData.messages = next
+			await storageData()
+			return
 		}
 
-		const kkk = await sendMessage(chatData.chatData.publicArmored, t, privateKey, node)
-		if (!kkk) {
-			return setMessages(prev =>
-				prev.map(m =>
-				m.id === tempId ? { ...m, status: "failed" } : m
-				)
-			)
+		// ✅ 3) 发送
+		let ok = false
+		try {
+			const kkk = await sendMessage(chatData.chatData.publicArmored, t, privateKey, node)
+			ok = !!kkk
+		} catch {
+			ok = false
 		}
-		
-		
-		
 
-		setMessages(prev =>
-			prev.map(m =>
-				m.id === tempId ? { ...m, status: "sent" } : m
+		if (!ok) {
+			const next: ChatMessage[] = (messagesRef.current || []).map(m =>
+			m.id === tempId ? { ...m, status: "failed" as const } : m
 			)
-		)
+			messagesRef.current = next
+			setMessages(next)
 
-		chatData.messages = makeMessage(messages, t, now, 'me', 'sent')
-		await storageData()
+			chatData.messages = next
+			await storageData()
+			return
+		}
+
+		// ✅ 4) 标记 sent（同步构造 next），并用同一份 next 去落盘
+		{
+			const next: ChatMessage[] = (messagesRef.current || []).map(m =>
+			m.id === tempId ? { ...m, status: "sent" as const } : m
+			)
+			messagesRef.current = next
+			setMessages(next)
+
+			chatData.messages = next
+			await storageData()
+		}
 	}
 
 	useEffect(() => {
@@ -353,18 +481,18 @@ type paymentCard = {
 	}, [chatData.unreadCount])
 
 	// ✅ 2) messages 初次装载 / reflashdata 后：补一枪“首屏到底”（只做一次）
-useEffect(() => {
-  if (!pendingInitialScrollRef.current) return
-  // 只要有消息，就在下一帧到底
-  if (!messages?.length) return
+	useEffect(() => {
+		if (!pendingInitialScrollRef.current) return
+		// 只要有消息，就在下一帧到底
+		if (!messages?.length) return
 
-  requestAnimationFrame(() => {
-    scrollToBottom("auto")
-    pendingInitialScrollRef.current = false
-    didInitialScrollRef.current = true
-    clearUnreadIfNeeded()
-  })
-}, [messages.length])
+		requestAnimationFrame(() => {
+				scrollToBottom("auto")
+			didInitialScrollRef.current = true
+			pendingInitialScrollRef.current = false
+			forceClearUnread() // ✅ 替代 clearUnreadIfNeeded
+		})
+	}, [messages.length])
 
 
 
@@ -380,38 +508,48 @@ useEffect(() => {
 	}
 
 	const clearUnreadIfNeeded = () => {
-		if (!profiles?.length) return
-		if (!chatData?.address) return
-
-		// ✅ 已经清过一次，避免频繁 setProfiles（但当 unread 又变大时会自动解除）
-		if (clearedRef.current && chatData.unreadCount === 0) return
-
-		// ✅ 不在底部不清
+		if (!chatData?.unreadCount || chatData.unreadCount <= 0) return
 		if (!isAtBottom()) return
 
-		// ✅ 没未读不清
-		if (!chatData.unreadCount || chatData.unreadCount <= 0) return
-
+		// 避免在一次到底滚动中重复触发多次
+		if (clearedRef.current) return
 		clearedRef.current = true
 
-		// ✅ 不要直接改 chatData / profiles，做不可变更新
-		setProfiles(prev => {
-			if (!prev?.length) return prev
-			const p0 = prev[0]
-			const chats = Array.isArray(p0.chats) ? p0.chats : []
-			const idx = chats.findIndex(c => c.address?.toLowerCase() === chatData.address.toLowerCase())
-			if (idx < 0) return prev
+		forceClearUnread()
+	}
 
-			const nextChats = chats.slice()
-			nextChats[idx] = { ...nextChats[idx], unreadCount: 0 }
+	const storageData = async () => {
+		const temp = CoNET_Data
+		const ps = Array.isArray(profiles) ? profiles : []
+		if (!temp || ps.length === 0) return
 
-			const next = prev.slice()
-			next[0] = { ...p0, chats: nextChats }
-			return next
-		})
+		const p0: profile = ps[0]
+		const chats: chatData[] = Array.isArray(p0?.chats) ? p0.chats : []
 
-		// ✅ 同步持久化（别阻塞 UI）
-		void storeSystemData()
+		const addr = String(chatData?.address || "").toLowerCase()
+		if (!addr) return
+
+		const idx = chats.findIndex(c => String(c?.address || "").toLowerCase() === addr)
+
+		const nextChats =
+			idx >= 0
+			? chats.map((c, i) => (i === idx ? { ...c, ...chatData } : c))
+			: [...chats, { ...chatData }]
+
+		const nextProfile = { ...p0, chats: nextChats }
+		const nextProfiles = ps.slice()
+		nextProfiles[0] = nextProfile
+
+		// ✅ 关键：告诉 useEffect([profiles]) 这次更新是我自己触发的，不要 reflashdata 覆盖 messages
+		skipNextReflashdataRef.current = true
+
+		setProfiles(nextProfiles)
+
+		const nextTemp = temp
+		nextTemp.profiles = nextProfiles
+		setCoNET_Data(nextTemp)
+
+		await storeSystemData()
 	}
 
 	function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {

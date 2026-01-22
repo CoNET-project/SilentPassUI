@@ -5,14 +5,14 @@ import { motion, useAnimation } from 'framer-motion'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { ReactComponent as HomeIconGrey } from './assets/home-icon-grey.svg'
 import { ReactComponent as HomeBlueIcon } from './assets/home-icon-blue.svg'
-import { ReactComponent as SendIconGrey } from './assets/send-icon-grey.svg'
-import { ReactComponent as SendBlueIcon } from './assets/send-icon-blue.svg'
-import { ReactComponent as WalletBlueIcon } from './assets/wallet-icon-blue.svg'
-import { ReactComponent as WalletIconGrey } from './assets/wallet-icon-grey.svg'
+import { ReactComponent as ShoppingIconGrey } from './assets/shopping-1-icon.grey.svg'
+import { ReactComponent as ShoppingBlueIcon } from './assets/shopping-1-icon.blue.svg'
+import { ReactComponent as WalletBlueIcon } from './assets/wallet-1-icon-blue.svg'
+import { ReactComponent as WalletIconGrey } from './assets/wallet-1-icon-grey.svg'
 import { ReactComponent as ChatBlueIcon } from './assets/chat-blue.svg'
 import { ReactComponent as ChatGreyIcon } from './assets/chat-grey.svg'
 
-import { ReactComponent as BLogo } from './assets/B-icon.svg'
+import { ReactComponent as BLogo } from './assets/center-scan-icon.blue.svg'
 import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
 
 import { isStandalone, MobileType, searchUsername, storeSystemData} from '@/services/beamio'
@@ -76,11 +76,10 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const { pathname } = useLocation()
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
-	const { hasNewVersion, darkModle, isInitialLoading, charts, profiles, setCharts, setProfiles } = useDaemonContext()
-	const [messageCount, setMessageCount] = useState(0)
+	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, seenMsgRef } = useDaemonContext()
+
 	const [showBar, setShowBar] = useState(true)
-	const runningRef = useRef(false)
-	const seenMsgRef = useRef<Set<string>>(new Set())
+
 
 	const getMsgKey = (raw: any) => {
 		// charts 可能是 string(JSON) 或对象
@@ -95,44 +94,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	}
 
 
-	useEffect(() => {
-		
-		if (!Array.isArray(charts) || charts.length === 0) return
-		if (runningRef.current) return
 
-		runningRef.current = true
-
-		try {
-			let delta = 0
-			const seen = seenMsgRef.current
-
-			for (const raw of charts) {
-				const key = getMsgKey(raw)
-				if (!key) continue
-				if (seen.has(key)) continue
-				seen.add(key)
-				delta += 1
-			}
-
-			if (delta > 0) {
-			// ✅ 用函数式更新，避免闭包旧值
-			setMessageCount(prev => {
-				const next = prev + delta
-
-				// ✅ badge 也用 next（而不是旧 messageCount）
-				setBadgeMap(v => ({
-					...v,
-					'/chat': next
-				}))
-
-				return next
-			})
-			}
-		} finally {
-			runningRef.current = false
-		}
-		
-	}, [charts])
 	
 	const [badgeMap, setBadgeMap] = useState<Record<TabKey, number>>({
 		'/': 0,
@@ -175,6 +137,13 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		setShowBar(!isInitialLoading)
 	}, [isInitialLoading])
 
+	useEffect(() => {
+		setBadgeMap(v => ({
+			...v,
+			'/chat': messageCount
+		}))
+	}, [messageCount])
+
 
 	const activeKey = useMemo<TabKey>(() => {
 		requestAnimationFrame(() => {
@@ -204,7 +173,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			setBadgeMap(v => ({ ...v, [k]: 0 }))
 			if (k === '/chat') {
 				setMessageCount(0)
-				seenMsgRef.current.clear() // ✅ 需要“彻底重置计数”才开
+				// seenMsgRef.current.clear() // ✅ 需要“彻底重置计数”才开
 			}
 		}
 
@@ -218,20 +187,20 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			key: '/' as const,
 				iconGrey: <HomeIconGrey className={ICON_CLASS} />,
 				iconBlue: <HomeBlueIcon className={ICON_CLASS} />,
-				title: 'Home',
+				title: '', //'Home',
 				badge: getBadge('/'),
 			},
 			{
 			key: '/history' as const,
-				iconGrey: <SendIconGrey className={ICON_CLASS} />,
-				iconBlue: <SendBlueIcon className={ICON_CLASS} />,
-				title: 'Transactions',
+				iconGrey: <WalletIconGrey className={ICON_CLASS} />,
+				iconBlue: <WalletBlueIcon className={ICON_CLASS} />,
+				title: '',//'Transactions',
 				badge: getBadge('/history'),
 			},
 			{
 				key: '/pay' as const,
-				iconGrey: darkModle ? <BLogo className={ICON_CLASS} /> : <BLogoLight className={ICON_CLASS} />,
-				iconBlue: darkModle ? <BLogo className={ICON_CLASS} /> : <BLogoLight className={ICON_CLASS} />,
+				iconGrey:  <BLogo className={ICON_CLASS} />,
+				iconBlue: <BLogo className={ICON_CLASS} /> ,
 				title: '',
 				// ✅ 不要 badge
 			},
@@ -239,14 +208,14 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				key: '/chat' as const,
 				iconGrey: <ChatGreyIcon className={ICON_CLASS} />,
 				iconBlue: <ChatBlueIcon className={ICON_CLASS} />,
-				title: 'Chat',
+				title: '', //'Chat',
 				badge: getBadge('/chat'),
 			},
 			{
 				key: '/settings' as const,
-				iconGrey: <WalletIconGrey className={ICON_CLASS} />,
-				iconBlue: <WalletBlueIcon className={ICON_CLASS} />,
-				title: 'Me',
+				iconGrey: <ShoppingIconGrey className={ICON_CLASS} />,
+				iconBlue: <ShoppingBlueIcon className={ICON_CLASS} />,
+				title: '', //Me',
 				badge: getBadge('/settings') // ✅ charts.length 在这里生效
 			},
 		] as const),

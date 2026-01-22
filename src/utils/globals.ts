@@ -1,3 +1,6 @@
+//		globals.ts
+
+
 let CoNET_Data: encrypt_keys_object | null = null;
 let processingBlock: boolean = false;
 let currentPageInvitees: number = 0;

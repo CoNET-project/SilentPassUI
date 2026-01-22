@@ -1,3 +1,5 @@
+//			beamio.ts
+
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {ethers, keccak256, toUtf8Bytes} from 'ethers' 
 import usdc_abi from './ABI/usdc_abi.json'

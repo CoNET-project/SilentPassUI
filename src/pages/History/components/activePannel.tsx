@@ -68,24 +68,24 @@ const formatTimev2 = (ts: number) => {
 }
 
 function usePeerProfile(address: string) {
-  const { beamioUsers, setbBeamioUsers } = useDaemonContext()
+  const { beamioUsers, setbBeamioUsers, beamio } = useDaemonContext()
   const [peer, setPeer] = useState<searchResult>(() => unknowAcc(address))
   const [img, setImg] = useState("")
 
   const findingRef = useRef(false)
 
   const findUser = useCallback(async () => {
-    if (!address) return
+    
     if (findingRef.current) return
     findingRef.current = true
-
+	
     try {
-      const addr = address.toLowerCase()
+      const addr = address?.toLowerCase()|| beamio?.accountName||''
 
       let account = beamioUsers.find(n => (n?.address || "").toLowerCase() === addr)
-
+		
       if (!account) {
-        const _account = await searchUsername(address)
+        const _account = await searchUsername(addr)
         if (_account?.results?.[0]) account = _account.results[0]
       }
 
@@ -131,8 +131,9 @@ function ActiveCapsuleItem({
 	onOpen?: (tx: TransferHistork) => void
 }) {
 	// ✅ Hook 在组件顶层：合法
-	const { name: peerName, avatar } = usePeerProfile(tx.address)
-
+	
+	const { usdcToUSD, usdcbalance, beamio } = useDaemonContext()
+	const { name: peerName, avatar } = usePeerProfile( tx.type === "sent" ? beamio?.address||'' : tx.address)
 	const { memo, currency } = parseNote(tx)
 	const hasHash = !!tx.hash
 	const isSent = tx.type === "sent"
@@ -263,6 +264,14 @@ export default function ActivePannel({
           onOpen={onOpen}
         />
       ))}
+	   {/* bottom spacer: 避开 footer + iOS 安全区 */}
+		<div
+			className="
+			h-[96px]
+			pb-[env(safe-area-inset-bottom)]
+			pointer-events-none
+			"
+		/>
     </div>
   )
 }

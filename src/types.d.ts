@@ -88,6 +88,7 @@ interface Region {
 		unreadCount: number
 		tag: 'red'|'green'|'blue'|'grey'
 		muted: boolean
+		lastReadTs?: number
 	}
   
   interface profile extends keyPair {

@@ -5,6 +5,10 @@ import packageData from '../../package.json'
 
 
 type DaemonContext = {
+	msgCountLockRef: React.MutableRefObject<boolean>
+	seenMsgRef: React.MutableRefObject<Set<string>>
+	messageCount: number
+	setMessageCount: React.Dispatch<React.SetStateAction<number>>
 	scanData: string
 	setScanData: (val: string) => void
 	chatHomeItem: searchResult|null
@@ -156,6 +160,10 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	msgCountLockRef: { current: false },
+	seenMsgRef: { current: new Set() },
+	messageCount: 0,
+	setMessageCount: (val: React.SetStateAction<number>) => {},
 	scanData: '',
 	setScanData: (val) => {},
 	chatHomeItem: null,
@@ -319,6 +327,9 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const seenMsgRef = useRef<Set<string>>(new Set())
+	const msgCountLockRef = useRef(false) // 可选：避免同一帧重复统计
+	const [messageCount, setMessageCount] = useState(0)
 	const [scanData, setScanData] = useState('')
 	const [chatHomeItem,setChatHomeItem] = useState<searchResult | null>(null)
 	const [charts, setCharts] = useState<string[]>([])
@@ -465,7 +476,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
-				chatHomeItem,setChatHomeItem,scanData, setScanData,
+				chatHomeItem,setChatHomeItem,scanData, setScanData, messageCount, setMessageCount, msgCountLockRef, seenMsgRef,
         		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
 				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 

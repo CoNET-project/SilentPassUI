@@ -289,6 +289,7 @@ const SearchInputWithDropdown =
 				setShowDropdown(false)
 				return closeWindow(item)
 			}
+			
 			setUserPreviewItem(item)
 			const index = searchBeamiosHistory.findIndex(n => n.beamio?.username === item.username.toLowerCase())
 			if (index < 0) {
@@ -760,14 +761,8 @@ const SearchInputWithDropdown =
 							<BeamioContactProfilePreview
 								item={userPreviewItem}
 								close={path => {
-									setSideSlide('')
-									if (!path) {
-										setUserPreviewItem(null)
-										setShowFooter(true)
-										
-									} else {
-										closeWindow(path)
-									}
+									
+									
 								}}
 							/>
 						)}

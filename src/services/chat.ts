@@ -123,6 +123,8 @@ const getAllNodes = (): Promise<nodeInfo[]> => new Promise(async resolve=> {
     resolve(Guardian_Nodes)
 })
 
+
+
 export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean, newMessage: (val: string) => void) => {
 	if (gossip) return
 	setGossip(true)
@@ -147,7 +149,8 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 
 		chatManager = {
 			pgpKey: pgpData,
-			router: ''
+			router: '',
+
 		}
 		profile.chatManager = chatManager
 		routes = pgpData.routes
@@ -195,8 +198,6 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	connectToGossipNode(chatManager.router, profile.privateKeyArmor, entryNode, chatManager.pgpKey.privateKey, newMessage)
 	
 }
-
-
 
 export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGPKeysRet|null> => {
 	
@@ -449,9 +450,12 @@ function startGossip(
   node: nodeInfo,
   body: string,
   callback?: (err?: string, data?: string) => void,
+  rootSignal?: AbortSignal, // <--- 新增：用于外部强行停止整个递归链
   timeoutConfig?: Partial<TimeoutConfig>
 ) {
-  // 默认配置
+  // 【第一道防线】如果总开关已关，直接销毁，不准启动
+  if (rootSignal?.aborted) return;
+
   const config: TimeoutConfig = {
     connectTimeout: 5_000,
     idleTimeout: 60_000,
@@ -461,61 +465,49 @@ function startGossip(
   };
 
   const url = `https://${node.domain}.conet.network/post`;
-  
-  // 统一的 AbortController，用于管理本次连接的所有生命周期（连接、读取、空闲）
-  const controller = new AbortController();
-  
-  // 重连逻辑：使用闭包防止重叠调用
+  const controller = new AbortController(); 
+
+  // 绑定：如果 rootSignal 触发 abort，我们也 abort 本次 HTTP 请求
+  const onRootAbort = () => controller.abort("root_stop");
+  rootSignal?.addEventListener("abort", onRootAbort);
+
+  // --- 重连触发器 ---
   let isRelaunching = false;
   const triggerRelaunch = () => {
-    if (isRelaunching) return; // 防止多次重入
-    isRelaunching = true;
+    // 【第二道防线】再次检查总开关
+    if (rootSignal?.aborted) {
+        console.log("🛑 [Gossip] Relaunch prevented: Root signal aborted.");
+        return;
+    }
+    if (isRelaunching) return;
     
-    // 确保当前控制器已中止，释放资源
+    isRelaunching = true;
+    rootSignal?.removeEventListener("abort", onRootAbort);
     try { controller.abort("relaunching"); } catch {}
 
     setTimeout(() => {
-      startGossip(node, body, callback, timeoutConfig);
+        // 【第三道防线】在定时器触发时，最后检查一次
+        if (rootSignal?.aborted) return;
+        console.log("🔄 [Gossip] Reconnecting...");
+        startGossip(node, body, callback, rootSignal, timeoutConfig);
     }, config.retryDelay);
   };
 
-  // --- 1) 连接超时 ---
-  // 修正点：超时只负责 abort，不负责 relaunch，让 catch 块去处理 relaunch
   const connectTimer = setTimeout(() => {
-    console.warn(`[SSE] Connect timeout [${node.ip_addr}]`);
-    controller.abort(new Error("connect_timeout")); 
+    controller.abort("connect_timeout"); 
   }, config.connectTimeout);
 
-  // --- 2) Idle 超时管理 ---
   let idleTimer: number | null = null;
   const resetIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = window.setTimeout(() => {
-      console.warn(`[SSE] Idle timeout [${node.ip_addr}]`);
-      // 修正点：Idle 超时也只负责 abort
-      controller.abort(new Error("idle_timeout"));
+      controller.abort("idle_timeout");
     }, config.idleTimeout);
-  };
-
-  // --- 3) Read 超时 Promise ---
-  const createReadTimeout = () => {
-    return new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("read_operation_timeout")), config.readOperationTimeout);
-    });
-  };
-
-  // 错误分类器 (保持原逻辑不变)
-  const classifyError = (err: any) => {
-    const message = err?.message ?? String(err);
-    if (message.includes("connect_timeout") || message === "connect_timeout") return { type: "connect_timeout", retriable: true };
-    if (message.includes("idle_timeout") || message === "idle_timeout") return { type: "idle_timeout", retriable: true };
-    if (message.includes("read_operation_timeout")) return { type: "read_timeout", retriable: true };
-    if (message.includes("network") || message.includes("Failed to fetch") || message.includes("aborted")) return { type: "network_error", retriable: true };
-    return { type: "unknown", message, retriable: true };
   };
 
   (async () => {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -529,56 +521,56 @@ function startGossip(
         cache: "no-store",
       });
 
-      // 连接建立成功，清除连接定时器
       clearTimeout(connectTimer);
-
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP error ${res.status}`);
-      }
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
       console.log(`[SSE] Connected [${node.ip_addr}]`);
-      
       reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
       let first = true;
 
-      // 开始 Idle 监控
       resetIdle();
 
       while (true) {
-        // 使用 Race 机制处理单个 Read 超时
-        // 注意：这里需要 try-catch 是因为 Promise.race 中如果 timeout 会 reject
-        let readResult;
+        if (rootSignal?.aborted) throw "root_stop"; // 主动抛出异常以退出
+        if (controller.signal.aborted) throw controller.signal.reason;
+
+        let readResult: ReadableStreamReadResult<Uint8Array>;
+        let readTimer: number | undefined;
+
         try {
-            const readPromise = reader.read();
-            // 这里我们不直接 abort controller，因为 read 超时可能只是暂时的
-            // 如果要严格处理，可以在 createReadTimeout 里 reject 一个特定 error
-            readResult = await Promise.race([readPromise, createReadTimeout()]);
+            // 使用 Promise 构造器来手动管理 timeout，防止 Unhandled Rejection
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                readTimer = window.setTimeout(() => reject(new Error("read_operation_timeout")), config.readOperationTimeout);
+            });
+            
+            readResult = await Promise.race([reader.read(), timeoutPromise]);
+            
         } catch (readErr: any) {
             if (readErr.message === "read_operation_timeout") {
-                console.warn(`[SSE] Read op slow [${node.ip_addr}], continuing...`);
-                // 你的原始逻辑是 read 超时继续等待，这里保持一致
-                // 但要检查 controller 是否已经被其他原因 abort 了
-                if (controller.signal.aborted) throw controller.signal.reason;
+                // 超时通常只是没数据，不代表连接断了，我们在循环里 continue 即可
+                // 但要先检查是否被手动停止了
+                if (rootSignal?.aborted) throw "root_stop";
+                console.log(`[SSE] Silence (Keep-Alive)...`);
                 continue; 
             }
             throw readErr;
+        } finally {
+             if (readTimer) clearTimeout(readTimer); // 必须清理 timer
         }
 
         const { value, done } = readResult;
-        
         if (done) {
-          console.log(`[SSE] Stream done [${node.ip_addr}]`);
-          break; // 退出循环，进入 finally/catch 触发重连
+          console.log(`[SSE] Server closed stream.`);
+          break; // 退出 while，触发 relaunch
         }
 
-        resetIdle(); // 收到数据，重置 idle
-
+        resetIdle();
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
         
-        // --- 解析逻辑 (保持不变) ---
+        // 解析逻辑...
         let idx: number;
         while ((idx = buffer.indexOf("\r\n\r\n")) !== -1 || (idx = buffer.indexOf("\n\n")) !== -1) {
             const isFour = buffer.substring(idx, idx + 4) === "\r\n\r\n";
@@ -586,7 +578,6 @@ function startGossip(
             const separatorLen = isFour ? 4 : 2;
             const block = buffer.slice(0, blockEnd);
             buffer = buffer.slice(blockEnd + separatorLen);
-
             const lines = block.split("\n");
             const dataLines = lines.filter(l => l.startsWith("data:")).map(l => l.slice(5).trimStart());
             const payload = (dataLines.length ? dataLines.join("\n") : block).trim();
@@ -594,47 +585,41 @@ function startGossip(
             if (payload) {
                 if (first) {
                     first = false;
-                    try { console.log("[SSE] First msg:", JSON.parse(payload)); } catch {}
+                    try { console.log("[SSE] Handshake:", JSON.parse(payload)); } catch {}
                 } else {
                     callback?.("", payload);
                 }
             }
         }
       }
-      
-      // 正常结束（服务器关闭连接） -> 触发重连
+
+      // 循环正常结束（Server Done），触发重连
       triggerRelaunch();
 
     } catch (err: any) {
-      // 统一错误处理入口
       clearTimeout(connectTimer);
       if (idleTimer) clearTimeout(idleTimer);
 
-      // 如果是手动 abort (relaunching) 引起的，忽略
-      if (err === "relaunching") return;
+      const msg = typeof err === 'string' ? err : err?.message;
 
-      const errorInfo = classifyError(err);
+      // 1. 如果是手动停止，彻底终结，不调用 triggerRelaunch
+      if (msg === "root_stop" || msg === "replaced_by_new_connection") {
+          return; 
+      }
       
-      // 忽略 AbortError，因为这通常是我们自己调用的
-      if (err.name === 'AbortError' || errorInfo.message?.includes('aborted')) {
-          console.log(`[SSE] Connection aborted: ${errorInfo.type}`);
-      } else {
-          console.error(`[SSE] Error [${node.ip_addr}]:`, errorInfo.message);
-          callback?.(errorInfo.message);
-      }
+      // 2. 内部重连信号
+      if (msg === "relaunching") return;
 
-      // 决定是否重连
-      if (errorInfo.retriable) {
-        triggerRelaunch();
+      if (err.name !== 'AbortError') {
+          console.error(`[SSE] Connection Error:`, msg);
+          callback?.(msg);
       }
+      
+      triggerRelaunch();
+
     } finally {
-      // 修正点：显式关闭 reader，确保 Socket 断开
-      if (reader) {
-        try {
-           await reader.cancel(); 
-           reader.releaseLock();
-        } catch {}
-      }
+      rootSignal?.removeEventListener("abort", onRootAbort);
+      if (reader) { try { await reader.cancel(); reader.releaseLock(); } catch {} }
     }
   })();
 }
@@ -720,7 +705,7 @@ startGossip(nodeInfo, body, callback, {
   retryDelay: 2_000,
 })
 */
-
+export let currentGossipAbortController: AbortController | null = null;
 
 export const connectToGossipNode = async (
 	nodeArmoredPublicKey: string,
@@ -729,74 +714,76 @@ export const connectToGossipNode = async (
 	pgpPrivateKey: string,
 	newMessage: (val: string) => void
 ) => {
-  const wallet = new ethers.Wallet(privateKeyArmor)
-
-  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64')
-  const command = {
-    command: 'mining',
-    walletAddress: wallet.address,
-    algorithm: 'aes-256-cbc',
-    Securitykey: key
+  // ==========================================
+  // 2. 关键修复：清理旧连接
+  // ==========================================
+  // 无论是由 React 重复渲染还是用户手动点击触发，
+  // 只要进来，先无条件杀掉上一个进程。
+  if (currentGossipAbortController) {
+    console.log("🛑 [Gossip] Killing previous connection...");
+    currentGossipAbortController.abort("replaced_by_new_connection");
+    currentGossipAbortController = null;
   }
 
-  const message = JSON.stringify(command)
-  const signMessage = await wallet.signMessage(message)
+  // 创建新的控制器，代表本次“会话”的生命周期
+  const myController = new AbortController();
+  currentGossipAbortController = myController;
+  const rootSignal = myController.signal;
 
-  // 1) 先把 postData 做出来
-  const encryptionKeys = await readKey({ armoredKey: nodeArmoredPublicKey })
-  const pgpMsg = await createMessage({
-    text: Buffer.from(JSON.stringify({ message, signMessage })).toString('base64')
-  })
-  const postData = await encrypt({
-    message: pgpMsg,
-    encryptionKeys,
-    config: { preferredCompressionAlgorithm: enums.compression.zlib }
-  })
-
-  // 2) ✅ 关键：先把私钥“读出来并确保可用”
-  let decryptedPrivateKey: PrivateKey
   try {
-    const pk = await readPrivateKey({ armoredKey: pgpPrivateKey })
+      // ... (加密/准备逻辑保持不变) ...
+      const wallet = new ethers.Wallet(privateKeyArmor);
+      const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
+      const command = { command: 'mining', walletAddress: wallet.address, algorithm: 'aes-256-cbc', Securitykey: key };
+      const message = JSON.stringify(command);
+      const signMessage = await wallet.signMessage(message);
+      
+      const encryptionKeys = await readKey({ armoredKey: nodeArmoredPublicKey });
+      const pgpMsg = await createMessage({ text: Buffer.from(JSON.stringify({ message, signMessage })).toString('base64') });
+      const postData = await encrypt({ message: pgpMsg, encryptionKeys, config: { preferredCompressionAlgorithm: enums.compression.zlib }});
 
-    // 如果你的私钥根本没加密（无 passphrase），不要调用 decryptKey
-    // 但为了兼容两种情况，可以这样写：
-    decryptedPrivateKey = pk.isDecrypted()
-      ? pk
-      : await decryptKey({
-          privateKey: pk,
-          passphrase: "" // 你若确实有 passphrase 就填这里
-        })
+      let decryptedPrivateKey: PrivateKey;
+      const pk = await readPrivateKey({ armoredKey: pgpPrivateKey });
+      decryptedPrivateKey = pk.isDecrypted() ? pk : await decryptKey({ privateKey: pk, passphrase: "" });
+
+      console.log("🚀 [Gossip] Starting new connection...");
+
+      // 启动递归循环，传入 rootSignal
+      startGossip(
+        entryNode, 
+        JSON.stringify({ data: postData }), 
+        async (err, _data) => {
+            // 回调卫语句：如果总开关关了，不要处理任何数据
+            if (rootSignal.aborted) return;
+
+            if (err) return console.error("Gossip Error:", err);
+            if (!_data) return;
+
+            try {
+                // ... (解析逻辑保持不变) ...
+                const data = JSON.parse(_data);
+                if (data?.data && /^-----BEGIN PGP MESSAGE-----/i.test(data.data)) {
+                    const armoredMessage = data.data;
+                    const msg = await readMessage({ armoredMessage });
+                    const { data: decrypted } = await decrypt({ message: msg, decryptionKeys: decryptedPrivateKey });
+                    const decryptedString = typeof decrypted === 'string' ? decrypted : String(decrypted);
+                    const kkk = fromBase64(decryptedString);
+                    
+                    console.log(`✅ Message:`, kkk.slice(0, 50) + "..."); // 仅打印前50字符防止刷屏
+                    newMessage(kkk);
+                } else {
+					console.log(data)
+				}
+            } catch (ex: any) {
+                console.warn("Parse Error:", ex.message);
+            }
+        },
+        rootSignal // <--- 必须传入这个信号
+      );
+
   } catch (ex: any) {
-
+      console.error("Init Error:", ex);
   }
- 
-
-  // 3) 回调里直接用 const（闭包捕获的是值引用，且已初始化成功）
-  startGossip(entryNode, JSON.stringify({ data: postData }), async (err, _data) => {
-    if (!_data) return console.log("startGossip callback null")
-
-    try {
-      const data = JSON.parse(_data)
-
-      if (data?.data && /^-----BEGIN PGP MESSAGE-----/i.test(data.data)) {
-        const armoredMessage = data.data
-        const msg = await readMessage({ armoredMessage })
-
-        const { data: decrypted } = await decrypt({
-          message: msg,
-          decryptionKeys: decryptedPrivateKey
-        })
-		const kkk = fromBase64(decrypted)
-		console.log(`message ${kkk}`)
-		newMessage(kkk)
-		
-      } else {
-		console.log(data)
-	  }
-    } catch (ex: any) {
-      console.log("startGossip JSON.parse(_data) Error", ex.message)
-    }
-  })
 }
 
 type NodePostResponse =

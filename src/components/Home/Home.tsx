@@ -25,7 +25,7 @@ import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import PayScreen from '@/pages/Pay/send'
-import {initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage} from '@/services/chat'
+
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {getActiveArray} from '@/services/payment'
@@ -247,9 +247,6 @@ const Home = ({}) => {
 		
 		setMyAddress (profile.keyID)
 		
-		initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
-			setCharts((prev: string[]) => [...prev, message])
-		})
 		
 		if (ignoreUrl) {
 			return
@@ -793,7 +790,7 @@ const Home = ({}) => {
 								<SearchInputWithDropdown
 									showHistory={false}
 									closeWindow={ path => {
-										
+										console.log(path)
 									}}
 								/>
 							</div>
@@ -802,7 +799,7 @@ const Home = ({}) => {
 								<button
 									type="button"
 									onClick={() => {
-										setShowAlphaHowItWorks('PayMe')
+										navigate('/settings')
 									}}
 									className="
 									h-11 w-12
@@ -1010,6 +1007,7 @@ const Home = ({}) => {
 							
 							{showAlphaHowItWorks === 'Pay' && <PayScreen 
 								beamioer={userPreviewItem||undefined}
+
 								close={path => {
 									setShowAlphaHowItWorks('')
 								}} />}
@@ -1020,9 +1018,7 @@ const Home = ({}) => {
 								setShowAlphaHowItWorks('Pay')
 							}} />}
 
-							{
-								showAlphaHowItWorks === 'PayMe' && <BeamioPayMe />
-							}
+							
 							
 						</div>
 					</motion.div>
@@ -1056,13 +1052,15 @@ const Home = ({}) => {
 							// key={openSearch ? "active" : "inactive"} 
 							
 							close={(item) => {
-								setShowFooter(true)
+								
 								if (!item || typeof item === "string") {
-									setOpenSearch(false)
+									
 								} else {
 									setUserPreviewItem(item)
-									setShowAlphaHowItWorks("Pay")
+									setShowAlphaHowItWorks('BeamioContactProfilePreview')
 								}
+								setShowFooter(true)
+								setOpenSearch(false)
 							}}
 						/>
 					</div>

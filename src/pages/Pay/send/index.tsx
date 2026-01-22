@@ -225,11 +225,13 @@ export default function PayScreen ({close, beamioer}: Props) {
 			const secondResponse = await fetch(reqUrl, newInit)
 			const body = await secondResponse.json()
 			
-			setProcessing(false)
+			
 			if (!secondResponse.ok) {
+				setProcessing(false)
 				return setSendError('RPC Error!')
 			}
 			await sendMessageToClient()
+			setProcessing(false)
 			return setSuccessHash(body.USDC_tx)
 
 		} catch (ex) {

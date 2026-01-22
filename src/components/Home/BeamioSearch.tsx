@@ -30,7 +30,7 @@ export default function BeamioSearch({ close }: Props) {
               	else close("/")
             }}
 			focus={true}
-			
+			select={true}
           />
         </section>
       </main>

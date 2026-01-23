@@ -64,14 +64,7 @@ const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 
-const beamioConetContract = {
-	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-	network: 'CONET DePIN',
-	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
-	
-}
-const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
+
 
 
 const Home = ({}) => {
@@ -81,7 +74,7 @@ const Home = ({}) => {
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData
 	} = useDaemonContext()
 	const navigate = useNavigate()
-	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'>('')
+	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Pay'>('')
 	
 	const [isSearchOpen, setIsSearchOpen] = useState(false)
 	const [avatarName, setAvatarName] = useState('')
@@ -132,66 +125,7 @@ const Home = ({}) => {
 		})
 	}
 
-	const checkUrl = async (url: string) => {
-	
-		
-		let searchParams: URLSearchParams
-		try {
-			const u = new URL(url)
-			searchParams = u.searchParams
-		} catch {
-			searchParams = new URLSearchParams(url)
-		}
 
-		let code = searchParams.get("code")||''
-		const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
-		const cashcode = searchParams.get("cashcode")||''
-		const _beamio = searchParams.get("beamio")||''
-		if (_beamio) {
-			
-			const user = await searchUsername(_beamio)
-			const results: searchResult[] = user?.results
-			if (!results.length) {
-				return
-			}
-			const filtered = results.filter(n => n.username === _beamio)
-			if (!filtered.length) {
-				return
-			}
-
-			setUserPreviewItem(filtered[0])
-			setScanData('')
-			return setShowAlphaHowItWorks('BeamioContactProfilePreview')
-
-		}
-		if (_secureCode) {
-			setSecureCode (_secureCode)
-			setRedeemCode(cashcode)
-			return navigate('/browser')
-		}
-
-		if (code) {
-
-			if (!code.startsWith('0x')) {
-				code = ethers.solidityPackedKeccak256(['string'], [code])
-				
-			}
-			try {
-				const fx = await CoreContract.getLinkMemo(code)
-				if (fx.to !== ethers.ZeroAddress) {
-					setPaymentLinkCode(code)
-					return navigate('/browser')
-				}
-				
-			} catch (ex) {
-				console.log(`await CoreContract.getLinkMemo(code) Error`)
-			}
-			
-			
-		}
-
-
-	}
 
 	const storee = async () => {
 		const temp = CoNET_Data
@@ -276,25 +210,12 @@ const Home = ({}) => {
 		if (ignoreUrl) {
 			return
 		}
-		checkUrl(window.location.href)
+		//checkUrl(window.location.href)
   	}
 
   	const firStartRef = useRef<boolean>(false)
 
-	useEffect(() => {
-		if (!scanData) {
-			return
-		}
-		if (/^0x/i.test(scanData)) {
-			setPaymentLink({code: '', note: '', address: scanData, amount: ''})
-			
-			setSendToMemo(scanData)
-			navigate('/Pay')
-			return 
-		}
-		checkUrl(scanData)
 
-	}, [scanData])
 
 
   	useEffect(() => {
@@ -1045,9 +966,13 @@ const Home = ({}) => {
 								}} />}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
 							{showAlphaHowItWorks === 'CoinbaseRamps' && <BeamioAddUSDCFlow />}
-							{showAlphaHowItWorks === 'BeamioContactProfilePreview' && userPreviewItem && <BeamioContactProfilePreview item={userPreviewItem} close={item => {
-								
-								setShowAlphaHowItWorks('Pay')
+							{showAlphaHowItWorks === 'BeamioContactProfilePreview' && userPreviewItem && 
+								<BeamioContactProfilePreview 
+								item={userPreviewItem} 
+								close={item => {
+									setShowAlphaHowItWorks('')
+									setSettingsOpen('Pay')
+									setShowFooter(false)
 							}} />}
 
 							
@@ -1161,6 +1086,15 @@ const Home = ({}) => {
 								setShowFooter(true)
 								setSettingsOpen('')
 							}} />}
+
+							{ settingsOpen === 'Pay' && userPreviewItem &&
+								<PayScreen 
+									beamioer={userPreviewItem}
+									close={() => {
+										setShowAlphaHowItWorks('')
+										setShowFooter(true)
+								}}/>
+							}
 							<div
 								className="
 								h-[24px]

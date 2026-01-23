@@ -373,6 +373,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 	const openChatProcess = () => {
 		setChatHomeItem(item)
 		navigate('/chat')
+		close('/chat')
 	}
 
 	useEffect(() => {

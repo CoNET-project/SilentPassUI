@@ -181,6 +181,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			}
 		} else {
 			openPayWorkflow()
+			return
 		}
 
 		navigate(k)

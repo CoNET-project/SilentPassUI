@@ -1,34 +1,262 @@
 // App.tsx
 import { useEffect, useRef, useState, useLayoutEffect } from "react"
-import { Route, Routes, MemoryRouter as Router } from "react-router-dom"
+import { Route, Routes, MemoryRouter as Router, useNavigate } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
 import Home from "./pages/Home"
 import History from "./pages/History/History"
 import Pay from "./pages/Pay"
-import Settings from "./pages/Settings"
 import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
 import Browser from "@/pages/Browser"
-import {initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, currentGossipAbortController} from '@/services/chat'
-import { isStandalone, MobileType, searchUsername, storeSystemData} from '@/services/beamio'
-import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
-import {VouchersMockup} from '@/pages/Vouchers/VouchersMockup'
-import MyWallet from '@/pages/Settings/index'
+import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, currentGossipAbortController } from "@/services/chat"
+import { searchUsername, storeSystemData } from "@/services/beamio"
+import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { VouchersMockup } from "@/pages/Vouchers/VouchersMockup"
+import MyWallet from "@/pages/Settings/index"
+import { ethers } from "ethers"
+import beamioConetCoreABI from "@/services/ABI/beamioConetCoreABI.json"
+import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
+import { createPortal } from "react-dom"
+import { motion, AnimatePresence } from "framer-motion"
+import PayScreen from '@/pages/Pay/send'
+import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 
 global.Buffer = require("buffer").Buffer
 
-type message = {
-	from: string
-	signMessage: string
-	text: string
-	timestamp: number
+const beamioConetContract = {
+  address: "0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd",
+  network: "CONET DePIN",
+  abi: beamioConetCoreABI,
+  provider: new ethers.JsonRpcProvider("https://mainnet-rpc.conet.network"),
 }
 
+type message = {
+  from: string
+  signMessage: string
+  text: string
+  timestamp: number
+}
 
+const CoreContract = new ethers.Contract(
+  beamioConetContract.address,
+  beamioConetContract.abi,
+  beamioConetContract.provider
+)
 
-const addNewMessage = async (lines: string[], profiles: profile[], temp: encrypt_keys_object, setProfiles: React.Dispatch<React.SetStateAction<profile[]>>) => {
+// 你原来的 addNewMessage 保持不动（略）
+// ...
+
+function AppShell() {
+  const {
+    isInitialLoading,
+    showFooter,
+    setShowFooter,
+    seenMsgRef,
+    charts,
+    setMessageCount,
+    setCharts,
+    profiles,
+    setProfiles,
+    setAllNodes,
+    setGossip,
+    setSecureCode,
+    setRedeemCode,
+    setPaymentLinkCode,
+    gossip,
+    scanData,
+    setPaymentLink,
+    setSendToMemo,
+    setScanData,
+  } = useDaemonContext()
+
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const [footerVisible, setFooterVisible] = useState(true)
+  const [userPreviewItem, setUserPreviewItem] = useState<searchResult | null>()
+  const runningRef = useRef(false)
+
+  // ✅ 现在安全了：AppShell 已经在 <Router> 内
+  const navigate = useNavigate()
+
+  const [showAlphaHowItWorks, setShowAlphaHowItWorks] =
+    useState<"BeamioContactProfilePreview" | ""|'Pay'>("")
+
+  useLayoutEffect(() => {
+    if (showFooter) setFooterVisible(true)
+  }, [showFooter])
+
+	const getMsgKey = (raw: any) => {
+		try {
+			const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
+			const ts = Number(obj?.timestamp)
+			const from = String(obj?.from || '')
+			if (Number.isFinite(ts) && ts > 0 && from) return `${from}_${ts}`
+			if (Number.isFinite(ts) && ts > 0) return `${ts}`
+		} catch {}
+		return null
+	}
+
+  useEffect(() => {
+		const canScroll = (el: HTMLElement) => {
+			const style = window.getComputedStyle(el)
+			const overflowY = style.overflowY
+			if (overflowY !== "auto" && overflowY !== "scroll") return false
+			return el.scrollHeight > el.clientHeight
+		}
+
+		const handleTouchMove = (e: TouchEvent) => {
+			const target = e.target as HTMLElement | null
+			if (!target) return
+
+			let el: HTMLElement | null = target
+			const root = (document.scrollingElement as HTMLElement) || document.documentElement
+
+			while (el && el !== root && !canScroll(el)) el = el.parentElement
+
+			if (!el || el === root) {
+				e.preventDefault()
+				return
+			}
+
+			const current = el
+			const touch = e.touches[0]
+			if (!touch) return
+
+			if (bodyRef.current && current === bodyRef.current) {
+			return
+			}
+
+			const anyEl = current as any
+			const lastY = anyEl.__lastTouchY as number | undefined
+			anyEl.__lastTouchY = touch.clientY
+			if (lastY === undefined) return
+
+			const deltaY = touch.clientY - lastY
+			const atTop = current.scrollTop <= 0
+			const atBottom = current.scrollTop + current.clientHeight >= current.scrollHeight - 1
+
+			if ((atTop && deltaY > 0) || (atBottom && deltaY < 0)) {
+				e.preventDefault()
+			}
+		}
+
+		const handleTouchEnd = (e: TouchEvent) => {
+			const target = e.target as HTMLElement | null
+			if (!target) return
+
+			let el: HTMLElement | null = target
+			const root = (document.scrollingElement as HTMLElement) || document.documentElement
+
+			while (el && el !== root) {
+				if ((el as any).__lastTouchY !== undefined) delete (el as any).__lastTouchY
+				el = el.parentElement
+			}
+		}
+
+		document.addEventListener("touchmove", handleTouchMove, { passive: false })
+		document.addEventListener("touchend", handleTouchEnd, { passive: true })
+		document.addEventListener("touchcancel", handleTouchEnd, { passive: true })
+
+		return () => {
+			document.removeEventListener("touchmove", handleTouchMove as any)
+			document.removeEventListener("touchend", handleTouchEnd as any)
+			document.removeEventListener("touchcancel", handleTouchEnd as any)
+		}
+	}, [])
+
+	useEffect(() => {
+		const lastTopMap = new WeakMap<EventTarget, number>()
+		let ticking = false
+		const threshold = 6
+
+		const getScrollTop = (t: EventTarget) => {
+			if (t === window || t === document || t === document.documentElement || t === document.body) {
+				return window.scrollY || document.documentElement.scrollTop || (document.body as any).scrollTop || 0
+			}
+			const el = t as HTMLElement
+			return typeof (el as any).scrollTop === "number" ? (el as any).scrollTop : 0
+		}
+
+		const onAnyScroll = (e: Event) => {
+			const target = e.target as HTMLElement | Document | Window | null
+
+			
+
+			if (bodyRef.current && target && target instanceof HTMLElement) {
+				if (!bodyRef.current.contains(target)) return
+			}
+
+			
+
+			if (ticking) return
+			ticking = true
+
+			requestAnimationFrame(() => {
+				const src = (e.target || window) as EventTarget
+				
+
+				// ✅ 新增：局部滚动不影响 Footer（BalanceCard 等）
+				if (src instanceof HTMLElement) {
+					if (src.closest('[data-ignore-footer-scroll="1"]')) {
+						ticking = false
+						return
+					}
+				}
+
+				const top = getScrollTop(src)
+				const lastTop = lastTopMap.get(src) ?? top
+				const delta = top - lastTop
+
+				let nearBottom = false
+				if (src && (src as any).scrollHeight != null) {
+					const el = src as HTMLElement
+					const maxTop = Math.max(0, el.scrollHeight - el.clientHeight)
+					const bottomLockPx = 24
+					nearBottom = top >= maxTop - bottomLockPx
+				}
+
+				if (top <= 0) {
+					setFooterVisible(true)
+				} else if (Math.abs(delta) >= threshold) {
+					if (delta > 0) setFooterVisible(false)
+					else {
+						if (!nearBottom) setFooterVisible(true)
+					}
+				}
+
+				lastTopMap.set(src, top)
+				ticking = false
+			})
+		}
+
+		window.addEventListener("scroll", onAnyScroll, { passive: true })
+		document.addEventListener("scroll", onAnyScroll, { passive: true, capture: true })
+
+		return () => {
+			window.removeEventListener("scroll", onAnyScroll)
+			document.removeEventListener("scroll", onAnyScroll, true)
+		}
+	}, [])
+
+	// 首次进入显示
+	useEffect(() => {
+
+		initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
+			setCharts((prev: string[]) => [...prev, message])
+		})
+
+		const t = setTimeout(() => setFooterVisible(true), 0)
+		return () => {
+			clearTimeout(t)
+			console.log("🧹 Component unmounting, cleaning up gossip...");
+			if (currentGossipAbortController) {
+				currentGossipAbortController.abort("component_unmount");
+			}
+		}
+	}, [])
+
+	const addNewMessage = async (lines: string[], profiles: profile[], temp: encrypt_keys_object, setProfiles: React.Dispatch<React.SetStateAction<profile[]>>) => {
 		// ✅ 永远用“复制”的 chats 来做变更
 		const profile = profiles[0]
 		const chats: chatData[] = Array.isArray(profile.chats) ? [...profile.chats] : []
@@ -123,221 +351,106 @@ const addNewMessage = async (lines: string[], profiles: profile[], temp: encrypt
 		await storeSystemData()
 	}
 
-function App() {
-	const { isInitialLoading, showFooter, setShowFooter, seenMsgRef, charts, setMessageCount, setCharts, profiles, setProfiles, setAllNodes, setGossip, gossip } = useDaemonContext()
-	const bodyRef = useRef<HTMLDivElement | null>(null)
-
-	// Footer 是否显示（由滚动决定）
-	const [footerVisible, setFooterVisible] = useState(true)
-	const runningRef = useRef(false)
-	
-	  // ✅ showFooter 一旦变成 true，就强制让 footerVisible 显示
-	useLayoutEffect(() => {
-		if (showFooter) {
-		setFooterVisible(true)
-		}
-	}, [showFooter])
-	
-	useEffect(() => {
-		const canScroll = (el: HTMLElement) => {
-			const style = window.getComputedStyle(el)
-			const overflowY = style.overflowY
-			if (overflowY !== "auto" && overflowY !== "scroll") return false
-			return el.scrollHeight > el.clientHeight
-		}
-
-		const handleTouchMove = (e: TouchEvent) => {
-			const target = e.target as HTMLElement | null
-			if (!target) return
-
-			let el: HTMLElement | null = target
-			const root = (document.scrollingElement as HTMLElement) || document.documentElement
-
-			while (el && el !== root && !canScroll(el)) el = el.parentElement
-
-			if (!el || el === root) {
-				e.preventDefault()
-				return
-			}
-
-			const current = el
-			const touch = e.touches[0]
-			if (!touch) return
-
-			if (bodyRef.current && current === bodyRef.current) {
-			return
-			}
-
-			const anyEl = current as any
-			const lastY = anyEl.__lastTouchY as number | undefined
-			anyEl.__lastTouchY = touch.clientY
-			if (lastY === undefined) return
-
-			const deltaY = touch.clientY - lastY
-			const atTop = current.scrollTop <= 0
-			const atBottom = current.scrollTop + current.clientHeight >= current.scrollHeight - 1
-
-			if ((atTop && deltaY > 0) || (atBottom && deltaY < 0)) {
-				e.preventDefault()
-			}
-		}
-
-		const handleTouchEnd = (e: TouchEvent) => {
-			const target = e.target as HTMLElement | null
-			if (!target) return
-
-			let el: HTMLElement | null = target
-			const root = (document.scrollingElement as HTMLElement) || document.documentElement
-
-			while (el && el !== root) {
-				if ((el as any).__lastTouchY !== undefined) delete (el as any).__lastTouchY
-				el = el.parentElement
-			}
-		}
-
-		document.addEventListener("touchmove", handleTouchMove, { passive: false })
-		document.addEventListener("touchend", handleTouchEnd, { passive: true })
-		document.addEventListener("touchcancel", handleTouchEnd, { passive: true })
-
-		return () => {
-			document.removeEventListener("touchmove", handleTouchMove as any)
-			document.removeEventListener("touchend", handleTouchEnd as any)
-			document.removeEventListener("touchcancel", handleTouchEnd as any)
-		}
-	}, [])
-
-	// 你原来的滚动监听（保留，只是控制 footerVisible）
-	useEffect(() => {
-		const lastTopMap = new WeakMap<EventTarget, number>()
-		let ticking = false
-		const threshold = 6
-
-		const getScrollTop = (t: EventTarget) => {
-			if (t === window || t === document || t === document.documentElement || t === document.body) {
-				return window.scrollY || document.documentElement.scrollTop || (document.body as any).scrollTop || 0
-			}
-			const el = t as HTMLElement
-			return typeof (el as any).scrollTop === "number" ? (el as any).scrollTop : 0
-		}
-
-		const onAnyScroll = (e: Event) => {
-			const target = e.target as HTMLElement | Document | Window | null
-
-			
-
-			if (bodyRef.current && target && target instanceof HTMLElement) {
-				if (!bodyRef.current.contains(target)) return
-			}
-
-			
-
-			if (ticking) return
-			ticking = true
-
-			requestAnimationFrame(() => {
-				const src = (e.target || window) as EventTarget
-				
-
-				// ✅ 新增：局部滚动不影响 Footer（BalanceCard 等）
-				if (src instanceof HTMLElement) {
-					if (src.closest('[data-ignore-footer-scroll="1"]')) {
-						ticking = false
-						return
-					}
-				}
-
-				const top = getScrollTop(src)
-				const lastTop = lastTopMap.get(src) ?? top
-				const delta = top - lastTop
-
-				let nearBottom = false
-				if (src && (src as any).scrollHeight != null) {
-					const el = src as HTMLElement
-					const maxTop = Math.max(0, el.scrollHeight - el.clientHeight)
-					const bottomLockPx = 24
-					nearBottom = top >= maxTop - bottomLockPx
-				}
-
-				if (top <= 0) {
-					setFooterVisible(true)
-				} else if (Math.abs(delta) >= threshold) {
-					if (delta > 0) setFooterVisible(false)
-					else {
-						if (!nearBottom) setFooterVisible(true)
-					}
-				}
-
-				lastTopMap.set(src, top)
-				ticking = false
-			})
-		}
-
-		window.addEventListener("scroll", onAnyScroll, { passive: true })
-		document.addEventListener("scroll", onAnyScroll, { passive: true, capture: true })
-
-		return () => {
-			window.removeEventListener("scroll", onAnyScroll)
-			document.removeEventListener("scroll", onAnyScroll, true)
-		}
-	}, [])
-
-	// 首次进入显示
-	useEffect(() => {
-
-		initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
-			setCharts((prev: string[]) => [...prev, message])
-		})
-
-		const t = setTimeout(() => setFooterVisible(true), 0)
-		return () => {
-			clearTimeout(t)
-			console.log("🧹 Component unmounting, cleaning up gossip...");
-			if (currentGossipAbortController) {
-				currentGossipAbortController.abort("component_unmount");
-			}
-		}
-	}, [])
-
 	useEffect(() => {
 		if (isInitialLoading) setShowFooter (false)
 		setShowFooter(true)
 	},[isInitialLoading])
 
 
-	const getMsgKey = (raw: any) => {
-	try {
-		const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
-		const ts = Number(obj?.timestamp)
-		const from = String(obj?.from || '')
-		if (Number.isFinite(ts) && ts > 0 && from) return `${from}_${ts}`
-		if (Number.isFinite(ts) && ts > 0) return `${ts}`
-	} catch {}
-	return null
-	}
-
-
 	// ① 先统计（不要清 charts）
 	useEffect(() => {
-	if (!Array.isArray(charts) || charts.length === 0) return
+		if (!Array.isArray(charts) || charts.length === 0) return
 
-	let delta = 0
-	const seen = seenMsgRef.current
+		let delta = 0
+		const seen = seenMsgRef.current
 
-	for (const raw of charts) {
-		const key = getMsgKey(raw)
-		if (!key) continue
-		if (seen.has(key)) continue
-		seen.add(key)
-		delta += 1
-	}
+		for (const raw of charts) {
+			const key = getMsgKey(raw)
+			if (!key) continue
+			if (seen.has(key)) continue
+			seen.add(key)
+			delta += 1
+		}
 
-	if (delta > 0) setMessageCount(prev => prev + delta)
+		if (delta > 0) setMessageCount(prev => prev + delta)
 	}, [charts, setMessageCount, seenMsgRef])
 
-	
+  const checkUrl = async (url: string) => {
+    let searchParams: URLSearchParams
+    try {
+      const u = new URL(url)
+      searchParams = u.searchParams
+    } catch {
+      searchParams = new URLSearchParams(url)
+    }
 
+    let code = searchParams.get("code") || ""
+    const _secureCode =
+      searchParams.get("secureCode") || searchParams.get("securecode") || ""
+    const cashcode = searchParams.get("cashcode") || ""
+    const _beamio = searchParams.get("beamio") || ""
 
-	// ② 再消费队列写入 profiles（你原逻辑）
+    if (_beamio) {
+      const user = await searchUsername(_beamio)
+      const results: searchResult[] = user?.results
+      if (!results?.length) return
+
+      const filtered = results.filter(n => n.username === _beamio)
+      if (!filtered.length) return
+
+      setUserPreviewItem(filtered[0])
+      setScanData("")
+      setShowAlphaHowItWorks("BeamioContactProfilePreview")
+      return
+    }
+
+    if (_secureCode) {
+      setSecureCode(_secureCode)
+      setRedeemCode(cashcode)
+      navigate("/browser")
+      return
+    }
+
+    if (code) {
+      if (!code.startsWith("0x")) {
+        code = ethers.solidityPackedKeccak256(["string"], [code])
+      }
+      try {
+        const fx = await CoreContract.getLinkMemo(code)
+        if (fx.to !== ethers.ZeroAddress) {
+          setPaymentLinkCode(code)
+          navigate("/browser")
+          return
+        }
+      } catch (ex) {
+        console.log("await CoreContract.getLinkMemo(code) Error")
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!scanData) return
+
+    const run = async () => {
+      if (/^0x/i.test(scanData)) {
+        setPaymentLink({ code: "", note: "", address: scanData, amount: "" })
+        setSendToMemo(scanData)
+        setScanData("")
+        navigate("/Pay")
+        return
+      }
+	  navigate('/History')
+      try {
+        await checkUrl(scanData)
+      } finally {
+        setScanData("")
+      }
+    }
+
+    run()
+  }, [scanData])
+
+  // ② 再消费队列写入 profiles（你原逻辑）
 	useEffect(() => {
 		const profile = profiles
 		const temp = CoNET_Data
@@ -357,30 +470,178 @@ function App() {
 		})()
 	}, [charts])
 
+  return (
+    <div>
+      <div ref={bodyRef}>
+        <Routes>
+          <Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/History" element={<History />} />
+          <Route path="/Pay" element={<Pay />} />
+          <Route path="/Chat" element={<Chat />} />
+          <Route path="/chat/:id" element={<ChatDetail />} />
+          <Route path="/settings" element={<VouchersMockup />} />
+          <Route path="/browser" element={<Browser />} />
+          <Route path="/myWallet" element={<MyWallet />} />
+        </Routes>
+      </div>
 
-	return (
-		<Router initialEntries={["/Onboarding"]}>
-			<div >
-				<div ref={bodyRef} >
-					<Routes>
+      {showFooter && <Footer visible={footerVisible} peek={false} />}
+
+      {showAlphaHowItWorks === 'BeamioContactProfilePreview' && createPortal(
+		<AnimatePresence>
+			<motion.div
+				key="modal-overlay"
+				className="
+					fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col
+				"
+				initial={{ x: "100%" }}
+				animate={{ x: 0 }}
+				exit={{ x: "100%" }}
+				transition={{ duration: 0.2, ease: "easeOut" }}
+				onTouchMove={(e) => e.stopPropagation()}
+			>
+			{/* 顶部 Header */}
+			{/* <BeamioNavBack
+				title=''
+				onClose={() => {
+					setShowAlphaHowItWorks('')
+				}}
+			/> */}
+
+				{/* 内容区域 */}
+				<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+					{/* {
+						userPreviewItem && showAlphaHowItWorks === 'Pay' && 
+						<div
+								className="
+									w-full h-full min-h-0
+									flex flex-col
+									pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]
+									pt-[calc(env(safe-area-inset-top)+0.75rem)]
+									pb-[calc(env(safe-area-inset-bottom)+5.5rem)]
+								"
+							>
+										<div className="px-5 flex items-center justify-between">
+										<PayScreen 
+											beamioer={userPreviewItem}
+											close={() => {
+											setShowAlphaHowItWorks('')
+										}}/>
+								</div>
+							</div>
 						
-						<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
-						<Route path="/" element={<Home />} />
-						<Route path="/History" element={<History />} />
-						<Route path="/Pay" element={<Pay />} />
-						<Route path="/Chat" element={<Chat />} />
-						<Route path="/chat/:id" element={<ChatDetail />} />
-						<Route path="/settings" element={<VouchersMockup />} />
-						<Route path="/browser" element={<Browser />} />
-						<Route path="/myWallet" element={<MyWallet />} />
-					</Routes>
+					} */}
+					{
+						showAlphaHowItWorks === 'BeamioContactProfilePreview' && userPreviewItem &&
+						<>
+							
+							<BeamioContactProfilePreview
+								item={userPreviewItem}
+							close={item => {
+								if (typeof item === 'string') {
+									setShowAlphaHowItWorks('')
+									
+									return
+								}
+								setShowAlphaHowItWorks('Pay')
+								setShowFooter(false)
+							}}/>
+								
+						</>
+						
+					}
+					
 				</div>
+			</motion.div>
+		</AnimatePresence>
+		, document.body
+	)}
 
-				{/* ✅ 外层只当占位（不再做 transform），动画全部在 Footer 自己的 motion.div 上做 */}
-				{showFooter && <Footer visible={footerVisible} peek={false} />}
+			{/* Settings full-screen slide-over（你原样） */}
+			<div
+			className={[
+				"fixed inset-0 z-40",
+				showAlphaHowItWorks ? "pointer-events-auto" : "pointer-events-none"
+			].join(" ")}
+			>
+				{/* 灰色遮罩：父页面不可用 */}
+				<div
+					className={[
+					"absolute inset-0",
+					"bg-black/50 transition-opacity duration-300 ease-out",
+					showAlphaHowItWorks ? "opacity-100" : "opacity-0"
+					].join(" ")}
+					onClick={() => {
+						setShowFooter(true)
+						setShowAlphaHowItWorks('')
+					}}
+				/>
+
+				{/* Bottom Sheet：全宽，从底部上来 */}
+				<div
+					className={[
+					"absolute inset-x-0 bottom-0",
+					"transition-transform duration-300 ease-out",
+					showAlphaHowItWorks ? "translate-y-0" : "translate-y-full"
+					].join(" ")}
+					onTouchMove={(e) => e.stopPropagation()}
+				>
+					{/* Sheet 本体：h-auto 自适应内容高度 */}
+					<div
+					className={[
+						"w-full",
+						"bg-white dark:bg-slate-900",
+						"rounded-t-[22px]",
+						"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
+
+						// ✅ 自适应高度，但最多不超过屏幕（避免顶到状态栏）
+						// 你也可以改成 90dvh
+						"max-h-[calc(100dvh-env(safe-area-inset-top)-12px)]",
+						"h-auto",
+
+						// ✅ 安全区：底部留出 Home indicator
+						"pb-[env(safe-area-inset-bottom)]"
+					].join(" ")}
+					>
+						{/* 顶部拖拽条（可选） */}
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+						</div>
+
+
+						{/* 内容区：内容少就不滚动；内容多才滚动 */}
+						<div className="px-4 pb-4 overflow-y-auto">
+							{showAlphaHowItWorks === "Pay" && userPreviewItem &&(
+								<PayScreen 
+									beamioer={userPreviewItem}
+									close={() => {
+										setShowAlphaHowItWorks('')
+										setShowFooter(true)
+								}}/>
+							)}
+							
+							<div
+								className="
+								h-[24px]
+								pb-[env(safe-area-inset-bottom)]
+								pointer-events-none
+								"
+							/>
+						</div>
+					</div>
+				</div>
 			</div>
-		</Router>
-	)
+
+			
+    </div>
+  )
 }
 
-export default App
+export default function App() {
+  return (
+    <Router initialEntries={["/Onboarding"]}>
+      <AppShell />
+    </Router>
+  )
+}

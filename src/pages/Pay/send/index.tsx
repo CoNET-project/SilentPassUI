@@ -16,6 +16,8 @@ import ShowTotal from '../components/ShowTotal_send'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
 import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNode} from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
+
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -687,30 +689,64 @@ export default function PayScreen ({close, beamioer}: Props) {
 		</div>
 		</div>
 
-		{cardCreate && (
-		<div
-			className="
-			fixed inset-0 z-[999]
-			bg-black/20
-			backdrop-blur-[2px]
-			flex items-center justify-center
-			px-4
-			"
-		>
-			<div className="w-full max-w-[520px]">
-			<DiceBearCard
-				onClose={val => {
-				setCardCreate(false)
-				if (val) tryPostToIPFS(val)
-				}}
-				initialTitle={cardTitle}
-				initialDetail={cardDetail}
-				usdcAmount={usdcAmount}
-				currencyText={currencyAmountText}
-			/>
-			</div>
-		</div>
-		)}
+		{/* {cardCreate && (
+				<div
+				className="
+					fixed inset-0 z-[999]
+					bg-black/20
+					backdrop-blur-[2px]
+					flex
+					px-4
+					py-4
+					"
+				>
+				<div
+					className="
+					w-full
+					max-w-[520px]
+					mx-auto
+					flex
+					flex-col
+					h-full
+					"
+				>
+					<div
+					className="
+						flex-1
+						min-h-0
+						overflow-hidden
+						"
+					>
+					<DiceBearCard
+						onClose={val => {
+						setCardCreate(false)
+						if (val) tryPostToIPFS(val)
+						}}
+						initialTitle={cardTitle}
+						initialDetail={cardDetail}
+						usdcAmount={usdcAmount}
+						currencyText={currencyAmountText}
+					/>
+					</div>
+				</div>
+				</div>
+		)} */}
+		<OverlayPortal open={cardCreate}>
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]">
+          <div className="absolute inset-0">
+            <DiceBearCard
+              onClose={val => {
+                setCardCreate(false)
+                if (val) tryPostToIPFS(val)
+              }}
+              initialTitle={cardTitle}
+              initialDetail={cardDetail}
+              usdcAmount={usdcAmount}
+              currencyText={currencyAmountText}
+            />
+          </div>
+        </div>
+      </OverlayPortal>
 	</div>
 	)
 }

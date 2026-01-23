@@ -426,83 +426,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 				{/* Input row: fixed height so absolute elements never jump */}
 				<div className="relative h-12">
-					{/* Left */}
-					<div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
-						{/* Currency capsule */}
-						{
-							currencyUSDC ? (
-								<div
-									className="
-										relative
-										flex-shrink-0
-										w-4 h-4
-										min-w-[16px] min-h-[16px]
-									"
-								>
-									<img
-										src={usdcIcon}
-										alt="USDC"
-										className="
-											block
-											w-4 h-4
-											rounded-full
-											object-contain
-										"
-									/>
-									<img
-										src={baseIcon}
-										alt="Base"
-										className="
-											block
-											w-2.5 h-2.5
-											absolute -bottom-0.5 -right-0.5
-											rounded-full
-											border border-white dark:border-slate-900
-											bg-white
-										"
-									/>
-								</div>
-							) : (
-								<>
-									<IOSGlassPillButton open={showCurrencyPicker} onToggle={openPicker} >
-										<span className="text-[15px] leading-none">   
-											{currencyFlag(currentCurrency)}
-										</span>
-
-										<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
-											{currencySymbol(currentCurrency)}
-										</span>
-									</IOSGlassPillButton>
-									
-								</>
-								
-							)
-						}
-							
-
-						{/* MAX */}
-						{currencyUSDC && showMax && (
-							<button
-								type="button"
-								onClick={handleMax}
-								disabled={readOnly}
-								className="
-									px-1 py-1            
-									rounded-full
-									text-[10px] font-semibold 
-									text-sky-700 dark:text-sky-300
-									bg-sky-100/80 dark:bg-sky-900/40
-									hover:bg-sky-200/80 dark:hover:bg-sky-900/60
-									active:scale-95
-									transition-all duration-150
-
-									disabled:opacity-60 disabled:active:scale-100
-								"
-							>
-								MAX
-							</button>
-						)}
-					</div>
+					
 
 					{/* Input: binds to displayAmount, but outputs USDC */}
 					<input
@@ -685,6 +609,84 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							</span>
 						</div>
 					)}
+
+					{/* Left */}
+					<div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
+						{/* Currency capsule */}
+						{
+							currencyUSDC ? (
+								<div
+									className="
+										relative
+										flex-shrink-0
+										w-4 h-4
+										min-w-[16px] min-h-[16px]
+									"
+								>
+									<img
+										src={usdcIcon}
+										alt="USDC"
+										className="
+											block
+											w-4 h-4
+											rounded-full
+											object-contain
+										"
+									/>
+									<img
+										src={baseIcon}
+										alt="Base"
+										className="
+											block
+											w-2.5 h-2.5
+											absolute -bottom-0.5 -right-0.5
+											rounded-full
+											border border-white dark:border-slate-900
+											bg-white
+										"
+									/>
+								</div>
+							) : (
+								<>
+									<IOSGlassPillButton open={showCurrencyPicker} onToggle={openPicker} >
+										<span className="text-[15px] leading-none">   
+											{currencyFlag(currentCurrency)}
+										</span>
+
+										<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
+											{currencySymbol(currentCurrency)}
+										</span>
+									</IOSGlassPillButton>
+									
+								</>
+								
+							)
+						}
+							
+
+						{/* MAX */}
+						{currencyUSDC && showMax && (
+							<button
+								type="button"
+								onClick={handleMax}
+								disabled={readOnly}
+								className="
+									px-1 py-1            
+									rounded-full
+									text-[10px] font-semibold 
+									text-sky-700 dark:text-sky-300
+									bg-sky-100/80 dark:bg-sky-900/40
+									hover:bg-sky-200/80 dark:hover:bg-sky-900/60
+									active:scale-95
+									transition-all duration-150
+
+									disabled:opacity-60 disabled:active:scale-100
+								"
+							>
+								MAX
+							</button>
+						)}
+					</div>
 				</div>
 
 				{/* Error line: fixed height placeholder so layout never shifts */}

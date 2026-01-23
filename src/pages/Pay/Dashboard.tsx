@@ -8,6 +8,8 @@ import {
   Ticket,
   Gift
 } from "lucide-react"
+import PayScreen from '@/pages/Pay/send'
+
 
 type DashItem = {
   key: string
@@ -205,7 +207,7 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
     <div className="w-full">
       {/* ✅ 背景接近截图的浅灰 */}
       <div className="">
-        <div className="mx-auto max-w-[720px]">
+        <div className="w-full px-3 sm:px-4 md:mx-auto md:max-w-[720px]">
           <div className="grid grid-cols-2 gap-5">
             {items.map(it => (
               <DashboardTile

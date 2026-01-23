@@ -15,6 +15,8 @@ import BeamioPayMe from './BeamioPayMe'
 import Dashboard from './Dashboard'
 
 
+
+
 const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
@@ -128,7 +130,7 @@ const Pay = ({}) => {
 			flex justify-center
 			pt-[calc(env(safe-area-inset-top)+2rem)]
 		">
-			<div className="w-full max-w-[620px] px-4 flex flex-col">
+			<div className="">
 				{/* Search */}
 			{/* <div className="flex items-center gap-2 mb-4 mt-4">
 				<button 

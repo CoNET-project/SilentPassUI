@@ -401,7 +401,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}
 
 	return (
-		<div className="mb-3 overflow-visible" onKeyDown={onPickerKeyDown}>
+		<div className="mb-3 overflow-visible">
 			{/* ===================== Input view ===================== */}
 			<div>
 				{/**		Balance  */}
@@ -776,7 +776,6 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			</div>
 		</div>
 
-			
 		
 	)
 }

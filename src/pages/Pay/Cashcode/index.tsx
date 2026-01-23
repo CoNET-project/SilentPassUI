@@ -77,17 +77,15 @@ const shortAddress = (addr: string) =>
 
 type Props = {
 	close: (path: string) => void
-	beamioer?: searchResult
 }
 
-export default function PaymentLink ({close, beamioer}: Props) {
+export default function PaymentLink ({close}: Props) {
 	
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
 	const [amountError, setAmountError]  = useState(false)
 	const [note, setNote] = useState("");
 	const [defaultNodeText, setDefaultNodeText] = useState(defaultTextTemp)
-	const [item, setItem] = useState<searchResult|null>(beamioer||null)
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'ConformView'>('')
 	const [focusAmount, setFocusAmount] = useState(false)
 	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles } = useDaemonContext()
@@ -160,13 +158,6 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		
 	}, [beamio])
 
-	useEffect(() => {
-		if (item) {
-			setFocusAmount(true)
-		} else {
-			
-		}
-	}, [item])
 
 	// useEffect(() => {
 	// 	const usdc = Number(sendAmount)
@@ -383,260 +374,246 @@ export default function PaymentLink ({close, beamioer}: Props) {
 	}
 
 	return (
-		<div className="mt-0 flex flex-col px-3 pt-3 pb-2 border-slate-100 bg-transparent">
-  			<div className="mt-1 w-full bg-transparent">
-				<div className="rounded-2xl shadow-sm p-3 text-slate-800 leading-snug bg-gray-100">
-					{
-						successUrl ? 
-							<SuccessShow note={note} successUrl={successUrl}
-								security={!!securityCodeDigits}
-								lockMode={lockMode}
-								valueUSDCAmount = {valueUSDCAmount}
-								successHash={successHash}
-								onReset={() => {
-									close('')
-								}}
-								valueCurrencyAmount={valuecurrencyAmount}
-							/>
-						
-						 : cardCreate ? (<>
-						 	<DiceBearCard
-								onClose={val => {
-									setCardCreate(false)
-									if (val) {
-										tryPostToIPFS(val)
-									}
-								}}
-								usdcAmount={usdcAmount}
-								currencyText={currencyAmount}
-							/>
-						 </>):(
-							<div className="p-2 space-y-3 bg-transparent">
-								<div>
-									<div className="text-lg font-semibold">
-										{
-											message ? 'Confirm' : 'Create Cashcode'
-										}
-								
-									</div>
-								</div>
+  <div className="mt-0 flex flex-col bg-white px-3 pt-3 pb-2">
+    <div className="mt-1 w-full bg-white">
+      {/* ✅ 去掉外部圆角卡片：不再用 rounded/shadow/灰底 */}
+      <div className="text-slate-800 leading-snug bg-white">
+        {
+          successUrl ? (
+            <SuccessShow
+              note={note}
+              successUrl={successUrl}
+              security={!!securityCodeDigits}
+              lockMode={lockMode}
+              valueUSDCAmount={valueUSDCAmount}
+              successHash={successHash}
+              onReset={() => {
+                close('')
+              }}
+              valueCurrencyAmount={valuecurrencyAmount}
+            />
+          ) : cardCreate ? (
+            <>
+              <DiceBearCard
+                onClose={val => {
+                  setCardCreate(false)
+                  if (val) {
+                    tryPostToIPFS(val)
+                  }
+                }}
+                usdcAmount={usdcAmount}
+                currencyText={currencyAmount}
+              />
+            </>
+          ) : (
+            // ✅ 原来在灰卡片里的 padding，挪到这里保留间距
+            <div className="p-2 space-y-3 bg-white">
+              <div>
+                <div className="text-lg font-semibold">
+                  {message ? 'Confirm' : 'Create Cashcode'}
+                </div>
+              </div>
 
-								{
-									message ? (
-										<>
-											{/* Note */}
-												{
-													note && <textarea
-														value={note}
-														onFocus={(e) => {
-															if (note === defaultNodeText) {
-																setNote('') // 清空默认文本
-															}
-														}}
-														readOnly={true}
-														rows={2}
-														className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-													/>
-												}
+              {message ? (
+                <>
+                  {note && (
+                    <textarea
+                      value={note}
+                      onFocus={() => {
+                        if (note === defaultNodeText) setNote('')
+                      }}
+                      readOnly={true}
+                      rows={2}
+                      className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+                    />
+                  )}
 
-												<div className="mt-5">
+                  <div className="mt-5">
+                    <FeeInline
+                      payUsdc={Number(sendAmount)}
+                      isUSDC={lockMode === 'USDC_LOCKED'}
+                    />
+                  </div>
 
-													<FeeInline
-														payUsdc={Number(sendAmount)}
-														isUSDC={lockMode === 'USDC_LOCKED'}
-													/>
-												
-												</div>
-												
-											<ConformView
-												messageData={message}
-											 />
+                  <ConformView messageData={message} />
 
-											<div className="grid grid-cols-2 gap-3">
-												{!processing && (
-													<AppButton
-														fullWidth
-														variant="secondary"
-														onClick={() => {
-															senMessage('')
-														}}
-													>
-													Cancel
-													</AppButton>
-												)}
+                  <div className="grid grid-cols-2 gap-3">
+                    {!processing && (
+                      <AppButton
+                        fullWidth
+                        variant="secondary"
+                        onClick={() => {
+                          senMessage('')
+                        }}
+                      >
+                        Cancel
+                      </AppButton>
+                    )}
 
-												<div className={processing ? "col-span-2" : ""}>
-													<AppButton
-														fullWidth
-														loading={processing}
-														onClick={() => {
-															signRequest(message)
-														}}
-													>
-														Confirm
-													</AppButton>
-												</div>
-											</div>
-										</>
-									) : (
-										<>
-										<section className="input form">
-											<div className="mt-5 flex items-center gap-3">
-											
+                    <div className={processing ? "col-span-2" : ""}>
+                      <AppButton
+                        fullWidth
+                        loading={processing}
+                        onClick={() => {
+                          signRequest(message)
+                        }}
+                      >
+                        Confirm
+                      </AppButton>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <section className="input form">
+                    <div className="mt-5 flex items-center gap-3">
+                      <LockModeSegmented
+                        value={lockMode}
+                        onChange={val => {
+                          setLockMode(val)
+                        }}
+                      />
+                    </div>
 
-												<LockModeSegmented
-													value={lockMode}
-													onChange={val => {
-													setLockMode(val)
-													}}
-												/>
-											</div>
-												
-											<section className="input">
-												<AmountCurrency 
-													amount={sendAmount} 
-													setAmount={setSendAmount} 
-													autoEntry={!!!item} 
-													readOnly={processing} 
-													showLimit={0.1}
-													sendError={sendError}
-													setSendError={setSendError}
-													showMax={true}
-													needBalance={true}
-													focusSignal={focusAmount}
-													currencyUSDC={lockMode === 'USDC_LOCKED'}
-													feePlus={true}
-													currencyChange={val => setCurrentCurrency(val)}
-												/>
-											</section>
+                    <section className="input">
+                      <AmountCurrency
+                        amount={sendAmount}
+                        setAmount={setSendAmount}
+                        autoEntry={true}
+                        readOnly={processing}
+                        showLimit={0.1}
+                        sendError={sendError}
+                        setSendError={setSendError}
+                        showMax={true}
+                        needBalance={true}
+                        focusSignal={focusAmount}
+                        currencyUSDC={lockMode === 'USDC_LOCKED'}
+                        feePlus={true}
+                        currencyChange={val => setCurrentCurrency(val)}
+                      />
+                    </section>
 
-												<Securitycode securityCodeDigits={securityCodeDigits} setSecurityCodeDigits={setSecurityCodeDigits} />
-													
-												{/* Note */}
-												{showGiftEnvelope && (
-													<div className="flex justify-center">
-														<div className="relative w-fit">
-															<img
-																src={giftEnvelope}
-																className="w-24 block"
-																alt="Gift Envelope"
-															/>
+                    <Securitycode
+                      securityCodeDigits={securityCodeDigits}
+                      setSecurityCodeDigits={setSecurityCodeDigits}
+                    />
 
-															<button
-																type="button"
-																onClick={() => setShowGiftEnvelope(false)}
-																className="
-																absolute top-0 right-0 z-30
-																translate-x-1/2 -translate-y-1/8
-																w-7 h-7 rounded-full
-																bg-white/10
-																backdrop-blur-md
-																border border-white/20
-																shadow-[0_4px_10px_rgba(0,0,0,0.12)]
-																hover:bg-white/20
-																active:scale-95
-																transition
-																flex items-center justify-center
-																"
-																aria-label="Remove gift envelope"
-															>
-																<X className="w-4 h-4 text-black/30" />
-															</button>
-														</div>
-													</div>
-												)}
-												{showGiftImageError && (
-													<div className="flex justify-center">
-														<p className="text-sm text-rose-600">
-															An error occurred while uploading the image to IPFS. Please try again later.
-														</p>
-													</div>
-												)}
+                    {/* Note */}
+                    {showGiftEnvelope && (
+                      <div className="flex justify-center">
+                        <div className="relative w-fit">
+                          <img
+                            src={giftEnvelope}
+                            className="w-24 block"
+                            alt="Gift Envelope"
+                          />
 
-												{uploadingIPFS && (
-													<div className="flex justify-center">
-														<p className="text-sm text-slate-600 flex items-center gap-1">
-															Uploading image to IPFS, please wait
-															<span className="inline-flex w-4">
-																<span className="animate-dot">.</span>
-																<span className="animate-dot delay-200">.</span>
-																<span className="animate-dot delay-400">.</span>
-															</span>
-														</p>
+                          <button
+                            type="button"
+                            onClick={() => setShowGiftEnvelope(false)}
+                            className="
+                              absolute top-0 right-0 z-30
+                              translate-x-1/2 -translate-y-1/8
+                              w-7 h-7 rounded-full
+                              bg-white/10
+                              backdrop-blur-md
+                              border border-white/20
+                              shadow-[0_4px_10px_rgba(0,0,0,0.12)]
+                              hover:bg-white/20
+                              active:scale-95
+                              transition
+                              flex items-center justify-center
+                            "
+                            aria-label="Remove gift envelope"
+                          >
+                            <X className="w-4 h-4 text-black/30" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
-														<style>{`
-															.animate-dot { animation: blink 1.4s infinite both; }
-															.delay-200 { animation-delay: 0.2s; }
-															.delay-400 { animation-delay: 0.4s; }
-															@keyframes blink {
-																0% { opacity: 0.2; }
-																20% { opacity: 1; }
-																100% { opacity: 0.2; }
-															}
-														`}</style>
-													</div>
-												)}
-												
-												<textarea
-													value={note}
-													onFocus={(e) => {
-														if (note === defaultNodeText) {
-															setNote('') // 清空默认文本
-														}
-													}}
-													
-													placeholder="What's this for?"
-													onChange={(e) => {
-														setNote(e.target.value)
-													}}
-													rows={2}
-													className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-												/>
+                    {showGiftImageError && (
+                      <div className="flex justify-center">
+                        <p className="text-sm text-rose-600">
+                          An error occurred while uploading the image to IPFS. Please try again later.
+                        </p>
+                      </div>
+                    )}
 
-												<div className="mt-5">
+                    {uploadingIPFS && (
+                      <div className="flex justify-center">
+                        <p className="text-sm text-slate-600 flex items-center gap-1">
+                          Uploading image to IPFS, please wait
+                          <span className="inline-flex w-4">
+                            <span className="animate-dot">.</span>
+                            <span className="animate-dot delay-200">.</span>
+                            <span className="animate-dot delay-400">.</span>
+                          </span>
+                        </p>
 
-													<FeeInline
-														payUsdc={Number(sendAmount)}
-														isUSDC={lockMode === 'USDC_LOCKED'}
-													/>
-												
-												</div>
-												
-												<div className="mt-3 flex gap-3 w-full">
-													{
-														!showGiftEnvelope && !message && <AppButton
-															fullWidth
-															variant="secondary"
-															onClick={() => {
-																setCardCreate(true)
-															}}
-														>
-															Add Card image
-														</AppButton>
-													}
-													<AppButton
-														fullWidth
-														onClick={issueCashcode}
-														loading={processing}
-														errorText={processError}
-													>
+                        <style>{`
+                          .animate-dot { animation: blink 1.4s infinite both; }
+                          .delay-200 { animation-delay: 0.2s; }
+                          .delay-400 { animation-delay: 0.4s; }
+                          @keyframes blink {
+                            0% { opacity: 0.2; }
+                            20% { opacity: 1; }
+                            100% { opacity: 0.2; }
+                          }
+                        `}</style>
+                      </div>
+                    )}
 
-														Generate
-													</AppButton>
-												</div>
-										</section>
-										</>
-									)
-								}
-								
-								
-							</div>
-						)
-					}
-					
-				</div>
-			</div>
-			
-		</div>
-	)
+                    <textarea
+                      value={note}
+                      onFocus={() => {
+                        if (note === defaultNodeText) setNote('')
+                      }}
+                      placeholder="What's this for?"
+                      onChange={(e) => setNote(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+                    />
+
+                    <div className="mt-5">
+                      <FeeInline
+                        payUsdc={Number(sendAmount)}
+                        isUSDC={lockMode === 'USDC_LOCKED'}
+                      />
+                    </div>
+
+                    <div className="mt-3 flex gap-3 w-full">
+                      {!showGiftEnvelope && !message && (
+                        <AppButton
+                          fullWidth
+                          variant="secondary"
+						  className="!text-[16px]"
+                          onClick={() => {
+                            setCardCreate(true)
+                          }}
+                        >
+                          Add Card image
+                        </AppButton>
+                      )}
+
+                      <AppButton
+                        fullWidth
+                        onClick={issueCashcode}
+						className="!text-[16px]"
+                        loading={processing}
+                        errorText={processError}
+                      >
+                        Generate
+                      </AppButton>
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
+          )
+        }
+      </div>
+    </div>
+  </div>
+)
 }

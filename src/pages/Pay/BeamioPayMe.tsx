@@ -11,14 +11,14 @@ import { QrCode, Link } from 'lucide-react'
 import { BeamioSegmentedDrag } from './components/beamioSegmented'
 
 const showPaylinkSite = 'https://beamio.app'
-type Mode = 'main' | 'PaymentLink'	|'Print'
+type Mode = 'main' | 'PaymentLink'|'Print'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 type BeamioPayMeProps = {
 
 	// tab 控制（如果你需要外部路由）
-	activeTab?: "payme" | "invoice" | ''
-	onTabChange?: (v: "payme" | "invoice") => void
+	activeTab?: Mode
+	showActiveTab?: boolean
 }
 
 const displayName = (item: beamio|null) => {
@@ -30,8 +30,8 @@ const displayName = (item: beamio|null) => {
 
 export default function BeamioPayMe(props: BeamioPayMeProps) {
   const {
-    activeTab = "payme",
-    onTabChange,
+    activeTab = "main",
+	showActiveTab = true
   } = props
 
 	const [copied, setCopied] = useState(false)
@@ -49,7 +49,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("")
   const [getBeamio, setGetBeamio] = useState<beamio|null>(null)
   	const [successUrl, setSuccessUrl] = useState("")
-	const [showMode, setShowMode] = useState<Mode>('main')
+	const [showMode, setShowMode] = useState<Mode>(activeTab)
 	const [isUSDC, setIsUSDC] = useState(true)
 
 	
@@ -119,14 +119,16 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#EDF2FE] flex justify-center overflow-y-auto">
+    <div className="bg-[#EDF2FE] flex justify-center">
       <div className="w-full max-w-[540px] px-4 py-4">
 
         {/* Segmented */}
 		{
-			activeTab && <BeamioSegmentedDrag
+			showActiveTab && <BeamioSegmentedDrag
 				value={showMode}
-				onChange={setShowMode}
+				onChange={val => {
+					setShowMode(val)
+				}}
 			/>
 		}
 			

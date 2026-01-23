@@ -395,364 +395,322 @@ export default function PayScreen ({close, beamioer}: Props) {
 	}
 
 	return (
-		<div className="mt-2 flex flex-col items-center px-6 pt-4 pb-3 border-slate-100">
-			<div className="mt-6 mb-4 w-full flex justify-center gap-2">
-				<Card className="w-full rounded-3xl border-zinc-200">
-					{
-						successHash ? (
-							<>
-								<CardContent className="p-4 space-y-4">
-									<Success messageData={message} />
-								</CardContent>
-							</>
-						) : (
-							
-							<CardContent className="p-4 space-y-4">
-								{
-
-									(
-										
-										<>
-
-										<div className={cardCreate ? "opacity-0 pointer-events-none select-none" : ""}>
-								
-							
-										{
-											!item && (
-												<section className="mb-4">
-													<SearchInputWithDropdown
-														showHistory={false}
-														closeWindow={item => {
-															if (typeof item !== 'string') {
-																selectItem(item)
-															}
-														
-														}}
-														showError={showToError}
-														showBackIcon={false}
-														select={true}
-													/>
-												</section>
-											)
-										}
-
-										{
-											item && (
-												<div
-													className="
-														w-full flex items-center
-														px-3 py-2.5
-														text-left
-														rounded-2xl
-														bg-sky-50
-														hover:bg-sky-100
-														active:scale-[0.99]
-														transition
-														relative
-													"
-													onClick={() => {}}
-												>
-													{/* 右上角：X 关闭按钮 当确认模式时隐藏 */}
-													{
-														 (
-															!message &&	<button
-																	type="button"
-																	aria-label="Close"
-																	onClick={(e) => {
-																		e.stopPropagation()
-																		setItem(null)
-																	}}
-																	className="
-																		absolute top-1.5 right-1.5
-																		h-7 w-7
-																		rounded-full
-																		bg-white/70
-																		backdrop-blur
-																		border border-sky-200/60
-																		text-slate-500
-																		flex items-center justify-center
-																		shadow-sm
-																		transition
-																		hover:bg-white
-																		hover:text-slate-700
-																		active:scale-90
-																		active:ring-4 active:ring-sky-200/50
-																	"
-																>
-																	<span className="text-[16px] leading-none">×</span>
-																</button>
-														)
-													}
-													
-
-													{/* 头像 */}
-													{item.image ? (
-														<img
-															src={item.image}
-															alt={item.username}
-															className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0"
-														/>
-													) : (
-														<img
-															src={getImg(item.username)}
-															alt={item.username}
-															className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0 bg-sky-200"
-														/>
-													)}
-
-													{/* 中间 + 右侧整体 */}
-													<div className="flex-1 flex items-start justify-between gap-3 min-w-0 pr-7">
-														{/* 左侧文本 */}
-														<div className="flex flex-col min-w-0">
-															<span className="text-[13px] font-medium text-slate-900 truncate">
-																{displayName(item)}
-															</span>
-
-															<span className="text-[11px] text-slate-600 truncate">
-																@{item.username} · {shortAddress(item.address)}
-															</span>
-
-															{/* <span className="text-[11px] text-slate-500 mt-0.5 truncate">
-																{Number(item.follow_count || '0').toLocaleString()} following ·{' '}
-																{Number(item.follower_count || '0').toLocaleString()} followers
-															</span> */}
-														</div>
-
-														{/* 右侧日期 */}
-														{/* <span className="text-[10px] text-slate-400 whitespace-nowrap">
-															{formatUserDate(item.created_at)}
-														</span> */}
-													</div>
-												</div>
-											)
-										}
-										{/**		INPUT & USDC Mode */}
-										{
-											!message && (<>
-												<div className="mt-5 flex items-center gap-3">
-									
-
-													<LockModeSegmented
-														value={lockMode}
-														readonly={!!message}
-														onChange={val => {
-															setLockMode(val)
-														}}
-													/>
-												</div>
-												<section className="input">
-													<AmountCurrency 
-														amount={sendAmount} 
-														setAmount={setSendAmount} 
-														autoEntry={!!!item} 
-														readOnly={processing||!!message} 
-														showLimit={0}
-														sendError={sendError}
-														setSendError={setSendError}
-														showMax={true}
-														needBalance={true}
-														focusSignal={focusAmount}
-														currencyChange={val => setCurrentCurrency(val)}
-														currencyUSDC={lockMode === 'USDC_LOCKED'}
-													/>
-												</section>
-											</>)
-										}
-										{/**		Summer		 */}
-										{
-											message && (<>
-												<ShowTotal
-													usdcAmount={sendAmount}
-													fiatCurrency={currentCurrency}
-													fiatAmount={formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)}
-													
-												 />
-											</>)
-										}
-										
-										{showGiftImageError && (
-											<div className="flex justify-center">
-												<p className="text-sm text-rose-600">
-													An error occurred while uploading the image to IPFS. Please try again later.
-												</p>
-											</div>
-										)}
-
-										{uploadingIPFS && (
-											<div className="flex justify-center">
-												<p className="text-sm text-slate-600 flex items-center gap-1">
-													Uploading image to IPFS, please wait
-													<span className="inline-flex w-4">
-														<span className="animate-dot">.</span>
-														<span className="animate-dot delay-200">.</span>
-														<span className="animate-dot delay-400">.</span>
-													</span>
-												</p>
-
-												<style>{`
-													.animate-dot { animation: blink 1.4s infinite both; }
-													.delay-200 { animation-delay: 0.2s; }
-													.delay-400 { animation-delay: 0.4s; }
-													@keyframes blink {
-														0% { opacity: 0.2; }
-														20% { opacity: 1; }
-														100% { opacity: 0.2; }
-													}
-												`}</style>
-											</div>
-										)}
-
-										{showGiftEnvelope && (
-											<div className="flex justify-center">
-												<div className="relative w-fit">
-													<img
-														src={giftEnvelope}
-														className="w-24 block"
-														alt="Gift Envelope"
-													/>
-
-													{
-														!message && <button
-															type="button"
-															onClick={() => setShowGiftEnvelope(false)}
-															className="
-															absolute top-0 right-0 z-30
-															translate-x-1/2 -translate-y-1/8
-															w-7 h-7 rounded-full
-															bg-white/10
-															backdrop-blur-md
-															border border-white/20
-															shadow-[0_4px_10px_rgba(0,0,0,0.12)]
-															hover:bg-white/20
-															active:scale-95
-															transition
-															flex items-center justify-center
-															"
-															aria-label="Remove gift envelope"
-														>
-															<X className="w-4 h-4 text-black/30" />
-														</button>
-													}
-
-													
-												</div>
-											</div>
-										)}
-
-										
-										{/* Note */}
-										{
-											!message &&(
-												<textarea
-													value={note.split('\r\n')[0]}
-													onFocus={(e) => {
-														if (note === defaultNodeText) {
-															setNote('') // 清空默认文本
-														}
-													}}
-
-													readOnly={!!message}
-													
-													placeholder="What's this for?"
-													onChange={(e) => {
-														setNote(e.target.value)
-													}}
-													rows={2}
-													className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 mt-6"
-												/>
-											)
-										}
-
-										
-										
-										{
-											message && (
-												<>
-													{
-														note && <div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-[12px] text-yellow-900 space-y-1 mt-6">
-															{note}
-														</div>
-													}
-													
-													
-													<NetworkFeeGas />
-													
-												</>
-											)
-										}
-										<div className="mt-3 flex gap-3 w-full">
-											{
-												message && !processing && (
-													<AppButton
-														variant='secondary'
-														fullWidth
-														onClick={() => {
-															senMessage(null)
-														}}
-													>
-
-														Cancel
-													</AppButton>
-												)
-											}
-											{
-												!showGiftEnvelope && !message && <AppButton
-													fullWidth
-													variant="secondary"
-													onClick={() => {
-														setCardCreate(true)
-													}}
-												>
-													Add Photo
-												</AppButton>
-											}
-											
-											<AppButton
-												fullWidth
-												onClick={message ? signRequest : onPay}
-												loading={processing}
-												errorText={sendError}
-											>
-												{message ? 'Confirm': 'Send'}
-											</AppButton>
-										</div>
-									</div>
-									</>
-									)
+	// ✅ 白底容器，不再 items-center（避免“卡片居中感”）
+	<div className="">
+		{/* ✅ 不再 justify-center，不包 Card */}
+		<div className="mt-1 w-full">
+		{/* ✅ 原 CardContent 的 padding 交给这里 */}
+		<div className="">
+			{successHash ? (
+			<>
+				{/* 原来 CardContent className="p-4 space-y-4" */}
+				{/* 现在外层已经有 p-2 / space-y-4，你要更松就改成 p-4 */}
+				<Success messageData={message} />
+			</>
+			) : (
+			<>
+				{/* ====== 下面这一整段你原来的 CardContent 里面内容，原封不动贴进来 ====== */}
+				{
+				(
+					<>
+					<div className={cardCreate ? "opacity-0 pointer-events-none select-none" : ""}>
+						{!item && (
+						<section className="mb-4">
+							<SearchInputWithDropdown
+							showHistory={false}
+							closeWindow={item => {
+								if (typeof item !== 'string') {
+								selectItem(item)
 								}
-								
-								
-							</CardContent>
-						)
-					}
-					
-				</Card>
-
-			</div>
-			{cardCreate && (
-				<div
-					className="
-						fixed inset-0 z-[999]
-						bg-black/20
-						backdrop-blur-[2px]
-						flex items-center justify-center
-						px-4
-					"
-				>
-					<div className="w-full max-w-[520px]">
-						<DiceBearCard
-							onClose={val => {
-								setCardCreate(false)
-								if (val) tryPostToIPFS(val)
 							}}
-							initialTitle={cardTitle}
-							initialDetail={cardDetail}
-							usdcAmount={usdcAmount}
-							currencyText={currencyAmountText}
+							showError={showToError}
+							showBackIcon={false}
+							select={true}
+							/>
+						</section>
+						)}
+
+						{item && (
+						<div
+							className="
+							w-full flex items-center
+							px-3 py-2.5
+							text-left
+							rounded-2xl
+							bg-sky-50
+							hover:bg-sky-100
+							active:scale-[0.99]
+							transition
+							relative
+							"
+							onClick={() => {}}
+						>
+							{!message && (
+							<button
+								type="button"
+								aria-label="Close"
+								onClick={(e) => {
+								e.stopPropagation()
+								setItem(null)
+								}}
+								className="
+								absolute top-1.5 right-1.5
+								h-7 w-7
+								rounded-full
+								bg-white/70
+								backdrop-blur
+								border border-sky-200/60
+								text-slate-500
+								flex items-center justify-center
+								shadow-sm
+								transition
+								hover:bg-white
+								hover:text-slate-700
+								active:scale-90
+								active:ring-4 active:ring-sky-200/50
+								"
+							>
+								<span className="text-[16px] leading-none">×</span>
+							</button>
+							)}
+
+							{item.image ? (
+							<img
+								src={item.image}
+								alt={item.username}
+								className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0"
+							/>
+							) : (
+							<img
+								src={getImg(item.username)}
+								alt={item.username}
+								className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0 bg-sky-200"
+							/>
+							)}
+
+							<div className="flex-1 flex items-start justify-between gap-3 min-w-0 pr-7">
+							<div className="flex flex-col min-w-0">
+								<span className="text-[13px] font-medium text-slate-900 truncate">
+								{displayName(item)}
+								</span>
+
+								<span className="text-[11px] text-slate-600 truncate">
+								@{item.username} · {shortAddress(item.address)}
+								</span>
+							</div>
+							</div>
+						</div>
+						)}
+
+						{!message && (
+						<>
+							<div className="mt-5 flex items-center gap-3">
+							<LockModeSegmented
+								value={lockMode}
+								readonly={!!message}
+								onChange={val => {
+								setLockMode(val)
+								}}
+							/>
+							</div>
+
+							<section className="input">
+							<AmountCurrency
+								amount={sendAmount}
+								setAmount={setSendAmount}
+								autoEntry={!!!item}
+								readOnly={processing||!!message}
+								showLimit={0}
+								sendError={sendError}
+								setSendError={setSendError}
+								showMax={true}
+								needBalance={true}
+								focusSignal={focusAmount}
+								currencyChange={val => setCurrentCurrency(val)}
+								currencyUSDC={lockMode === 'USDC_LOCKED'}
+							/>
+							</section>
+						</>
+						)}
+
+						{message && (
+						<ShowTotal
+							usdcAmount={sendAmount}
+							fiatCurrency={currentCurrency}
+							fiatAmount={formatAmount(
+							usdcToCurrencyAmount(Number(sendAmount), currentCurrency),
+							currentCurrency
+							)}
 						/>
+						)}
+
+						{showGiftImageError && (
+						<div className="flex justify-center">
+							<p className="text-sm text-rose-600">
+							An error occurred while uploading the image to IPFS. Please try again later.
+							</p>
+						</div>
+						)}
+
+						{uploadingIPFS && (
+						<div className="flex justify-center">
+							<p className="text-sm text-slate-600 flex items-center gap-1">
+							Uploading image to IPFS, please wait
+							<span className="inline-flex w-4">
+								<span className="animate-dot">.</span>
+								<span className="animate-dot delay-200">.</span>
+								<span className="animate-dot delay-400">.</span>
+							</span>
+							</p>
+
+							<style>{`
+							.animate-dot { animation: blink 1.4s infinite both; }
+							.delay-200 { animation-delay: 0.2s; }
+							.delay-400 { animation-delay: 0.4s; }
+							@keyframes blink {
+								0% { opacity: 0.2; }
+								20% { opacity: 1; }
+								100% { opacity: 0.2; }
+							}
+							`}</style>
+						</div>
+						)}
+
+						{showGiftEnvelope && (
+						<div className="flex justify-center">
+							<div className="relative w-fit">
+							<img
+								src={giftEnvelope}
+								className="w-24 block"
+								alt="Gift Envelope"
+							/>
+
+							{!message && (
+								<button
+								type="button"
+								onClick={() => setShowGiftEnvelope(false)}
+								className="
+									absolute top-0 right-0 z-30
+									translate-x-1/2 -translate-y-1/8
+									w-7 h-7 rounded-full
+									bg-white/10
+									backdrop-blur-md
+									border border-white/20
+									shadow-[0_4px_10px_rgba(0,0,0,0.12)]
+									hover:bg-white/20
+									active:scale-95
+									transition
+									flex items-center justify-center
+								"
+								aria-label="Remove gift envelope"
+								>
+								<X className="w-4 h-4 text-black/30" />
+								</button>
+							)}
+							</div>
+						</div>
+						)}
+
+						{!message && (
+						<textarea
+							value={note.split('\r\n')[0]}
+							onFocus={() => {
+							if (note === defaultNodeText) setNote('')
+							}}
+							readOnly={!!message}
+							placeholder="What's this for?"
+							onChange={(e) => {
+								setNote(e.target.value)
+							}}
+							rows={2}
+							className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 mt-6"
+						/>
+						)}
+
+						{message && (
+						<>
+							{note && (
+							<div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-[12px] text-yellow-900 space-y-1 mt-6">
+								{note}
+							</div>
+							)}
+
+							<NetworkFeeGas />
+						</>
+						)}
+
+						<div className="mt-3 flex gap-3 w-full">
+						{message && !processing && (
+							<AppButton
+							variant='secondary'
+							fullWidth
+							// 如果你已经加 size="sm" 了，这里也可以用
+							// size="sm"
+							onClick={() => {
+								senMessage(null)
+							}}
+							>
+							Cancel
+							</AppButton>
+						)}
+
+						{!showGiftEnvelope && !message && (
+							<AppButton
+							fullWidth
+							variant="secondary"
+							// size="sm"
+							onClick={() => {
+								setCardCreate(true)
+							}}
+							>
+							Add Photo
+							</AppButton>
+						)}
+
+						<AppButton
+							fullWidth
+							// size="sm"
+							onClick={message ? signRequest : onPay}
+							loading={processing}
+							errorText={sendError}
+						>
+							{message ? 'Confirm': 'Send'}
+						</AppButton>
+						</div>
 					</div>
-				</div>
+					</>
+				)
+				}
+				{/* ====== 以上原内容结束 ====== */}
+			</>
 			)}
 		</div>
+		</div>
+
+		{cardCreate && (
+		<div
+			className="
+			fixed inset-0 z-[999]
+			bg-black/20
+			backdrop-blur-[2px]
+			flex items-center justify-center
+			px-4
+			"
+		>
+			<div className="w-full max-w-[520px]">
+			<DiceBearCard
+				onClose={val => {
+				setCardCreate(false)
+				if (val) tryPostToIPFS(val)
+				}}
+				initialTitle={cardTitle}
+				initialDetail={cardDetail}
+				usdcAmount={usdcAmount}
+				currencyText={currencyAmountText}
+			/>
+			</div>
+		</div>
+		)}
+	</div>
 	)
 }

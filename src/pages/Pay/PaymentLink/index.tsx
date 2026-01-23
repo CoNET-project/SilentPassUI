@@ -235,155 +235,141 @@ export default function PaymentLink ({close, beamioer}: Props) {
 		
 	}
 
-	return (
-		<div className="mt-6 rounded-[22px] bg-white shadow-[0_12px_35px_rgba(15,23,42,0.08)] ring-1 ring-black/10 overflow-hidden">
-			<div className="px-6 pt-4 pb-6 text-slate-800 leading-snug">
-				<div className="text-slate-800 leading-snug">
-					{
-						successUrl ? 
-							<SuccessShow note={note} successUrl={successUrl}
-								currency={currency}
-								lockMode={lockMode}
-								payAmount = {payAmount}
-								requestNet={requestNet}
-								onReset={() => {
-									close('')
-								}}
-								creatorEstUsdcFromFiat={sendAmount}
-							/>
-						
-						 : (
-							<div className="space-y-4">
-								<div>
-									<div className="text-lg font-semibold">Create Payment Link</div>
-									
-								</div>
+return (
+  // ✅ 去掉外部卡片：不再 rounded / shadow / ring / overflow-hidden
+  <div className="">
+    <div className="">
+      <div className="">
+        {
+          successUrl ? (
+            <SuccessShow
+              note={note}
+              successUrl={successUrl}
+              currency={currency}
+              lockMode={lockMode}
+              payAmount={payAmount}
+              requestNet={requestNet}
+              onReset={() => {
+                close('')
+              }}
+              creatorEstUsdcFromFiat={sendAmount}
+            />
+          ) : (
+            // ✅ 原来靠 px-6 pt-4 pb-6 的间距，这里用 p-2 保持不贴边
+            <div className="p-2 space-y-4 bg-white">
+              <div>
+                <div className="text-lg font-semibold">Create Payment Link</div>
+              </div>
 
-								<div className="mt-5 flex items-center gap-3">
-									
+              <div className="mt-5 flex items-center gap-3">
+                <LockModeSegmented
+                  value={lockMode}
+                  onChange={val => {
+                    setLockMode(val)
+                  }}
+                />
+              </div>
 
-									<LockModeSegmented
-										value={lockMode}
-										onChange={val => {
-										setLockMode(val)
-										}}
-									/>
-								</div>
-								
-								<section className="input">
-									<AmountCurrency 
-										amount={sendAmount} 
-										setAmount={setSendAmount} 
-										autoEntry={!!!item} 
-										readOnly={processing} 
-										showLimit={0}
-										setSendError={setSendError}
-										sendError={sendError}
-										showMax={false}
-										needBalance={false}
-										focusSignal={focusAmount}
-										currencyUSDC={lockMode === 'USDC_LOCKED'}
-									/>
-								</section>
-									
-								{/* Payment Link Title */}
-								<div className="space-y-1">
-									<div className="text-[13px] font-semibold text-slate-500">
-										Title <span className="text-red-500">*</span>
-									</div>
+              <section className="input">
+                <AmountCurrency
+                  amount={sendAmount}
+                  setAmount={setSendAmount}
+                  autoEntry={!!!item}
+                  readOnly={processing}
+                  showLimit={0}
+                  setSendError={setSendError}
+                  sendError={sendError}
+                  showMax={false}
+                  needBalance={false}
+                  focusSignal={focusAmount}
+                  currencyUSDC={lockMode === 'USDC_LOCKED'}
+                />
+              </section>
 
-									<input
-										type="text"
-										value={linkTitle}
-										onChange={e => setLinkTitle(e.target.value)}
-										onBlur={() => setTitleTouched(true)}
-										placeholder="e.g. Coffee, Dinner, Invoice #1024"
-										className={[
-											"w-full rounded-[18px] px-4 py-3 text-[15px]",
-											"bg-slate-50 placeholder-slate-400",
-											"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
-											"focus:outline-none transition",
-											titleError
-												? "ring-2 ring-red-400 bg-red-50/40"
-												: "ring-1 ring-black/10 focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]"
-										].join(" ")}
-									/>
-									
-									{/* 错误提示 */}
-									{titleError && (
-										<div className="text-[12px] text-red-500 pl-1">
-											Title is required
-										</div>
-									)}
-								</div>
+              {/* Payment Link Title */}
+              <div className="space-y-1">
+                <div className="text-[13px] font-semibold text-slate-500">
+                  Title <span className="text-red-500">*</span>
+                </div>
 
-									{/* Note */}
-									<div className="space-y-1">
-									<div className="text-[13px] font-semibold text-slate-500">
-										Note (optional)
-									</div>
+                <input
+                  type="text"
+                  value={linkTitle}
+                  onChange={e => setLinkTitle(e.target.value)}
+                  onBlur={() => setTitleTouched(true)}
+                  placeholder="e.g. Coffee, Dinner, Invoice #1024"
+                  className={[
+                    "w-full rounded-[18px] px-4 py-3 text-[15px]",
+                    "bg-slate-50 placeholder-slate-400",
+                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
+                    "focus:outline-none transition",
+                    titleError
+                      ? "ring-2 ring-red-400 bg-red-50/40"
+                      : "ring-1 ring-black/10 focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]"
+                  ].join(" ")}
+                />
 
-									<textarea
-										value={note}
-										onFocus={() => {
-											if (note === defaultNodeText) setNote("")
-										}}
-										readOnly={!!message}
-										placeholder="What's this for?"
-										onChange={e => setNote(e.target.value)}
-										rows={2}
-										className="
-											w-full
-											rounded-[18px]
-											bg-slate-50
-											ring-1 ring-black/10
-											px-4 py-3
-											text-[14px] text-slate-900
-											placeholder-slate-400
-											shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
-											focus:outline-none
-											focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]
-											resize-none
-											transition
-										"
-									/>
-								</div>
+                {titleError && (
+                  <div className="text-[12px] text-red-500 pl-1">
+                    Title is required
+                  </div>
+                )}
+              </div>
 
-								{/* <div className="mt-5">
+              {/* Note */}
+              <div className="space-y-1">
+                <div className="text-[13px] font-semibold text-slate-500">
+                  Note (optional)
+                </div>
 
-									<FeeInline
-										payUsdc={Number(sendAmount)}
-										currentCurrency={lockMode === 'USDC_LOCKED' ? 'USDC' :beamio?.currency||'USDC'}
-									/>
-								
-								</div> */}
-									<Onetime_reuse_Drag
-										value={oneTimeMode}
-										onChange={setOneTimeMode}
-									/>
-									
-						
-								
-								<div className="mt-3 flex gap-3 w-full">
-									
-									<AppButton
-										fullWidth
-										onClick={issueRequestLink}
-										loading={processing}
-										errorText={processError}
-									>
+                <textarea
+                  value={note}
+                  onFocus={() => {
+                    if (note === defaultNodeText) setNote("")
+                  }}
+                  readOnly={!!message}
+                  placeholder="What's this for?"
+                  onChange={e => setNote(e.target.value)}
+                  rows={2}
+                  className="
+                    w-full
+                    rounded-[18px]
+                    bg-slate-50
+                    ring-1 ring-black/10
+                    px-4 py-3
+                    text-[14px] text-slate-900
+                    placeholder-slate-400
+                    shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
+                    focus:outline-none
+                    focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]
+                    resize-none
+                    transition
+                  "
+                />
+              </div>
 
-										Generate
-									</AppButton>
-								</div>
-								
-							</div>
-						)
-					}
-					
-				</div>
-			</div>
-			
-		</div>
-	)
+              <Onetime_reuse_Drag
+                value={oneTimeMode}
+                onChange={setOneTimeMode}
+              />
+
+              <div className="mt-3 flex gap-3 w-full">
+                <AppButton
+                  fullWidth
+                  // 如果你已经加了 size="sm"，这里也可以顺便用：
+                  // size="sm"
+                  onClick={issueRequestLink}
+                  loading={processing}
+                  errorText={processError}
+                >
+                  Generate
+                </AppButton>
+              </div>
+            </div>
+          )
+        }
+      </div>
+    </div>
+  </div>
+)
 }

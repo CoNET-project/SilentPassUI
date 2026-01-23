@@ -20,6 +20,11 @@ import {
 import AccountBeo from "./AccountBea"
 import { fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived, calcFeeFromNumber } from "@/services/currency"
 import base_icon from '@/components/assets/base-logo.png'
+import PayScreen from '@/pages/Pay/send/index'
+import PaymentLink from '@/pages/Pay/PaymentLink/index'
+import NavigateLeftButton from '@/components/navigate'
+import Cashcode from '@/pages/Pay/Cashcode/index'
+import BankingBridge from './components/BankingBridge'
 
 type SectionTx = TransferHistork
 
@@ -182,6 +187,7 @@ export function MyWalletDashboard() {
   const [loading, setLoading] = useState(false)
   const [allItems, setAllItems] = useState<TransferHistork[]>([])
   const [reflash, setReflash] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState<''|'Pay'|'BeamioPayMe'|'Cashcode'|'BankingBridge'>('')
 
   const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
 
@@ -523,39 +529,7 @@ export function MyWalletDashboard() {
           My Wallet
         </div>
 
-        {/* <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate("/QR")}
-            className="
-              h-9 w-9 rounded-full
-              bg-white/80 dark:bg-slate-900/60
-              ring-1 ring-black/5 dark:ring-white/10
-              shadow-[0_8px_20px_rgba(0,0,0,0.10)]
-              flex items-center justify-center
-              active:scale-95 transition
-            "
-            aria-label="QR"
-          >
-            <QrCode className="w-4.5 h-4.5 text-slate-700 dark:text-slate-100" strokeWidth={2.2} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate("/Notifications")}
-            className="
-              h-9 w-9 rounded-full
-              bg-white/80 dark:bg-slate-900/60
-              ring-1 ring-black/5 dark:ring-white/10
-              shadow-[0_8px_20px_rgba(0,0,0,0.10)]
-              flex items-center justify-center
-              active:scale-95 transition
-            "
-            aria-label="Notifications"
-          >
-            <Bell className="w-4.5 h-4.5 text-slate-700 dark:text-slate-100" strokeWidth={2.2} />
-          </button>
-        </div> */}
+        
       </div>
 
 		{/* Balance card */}
@@ -645,27 +619,40 @@ export function MyWalletDashboard() {
 		</div>
 
       {/* Actions */}
-      <div className="px-5 mt-4">
+      <div className="px-8 mt-4">
         <div className="flex items-start justify-between">
           <MiniAction
             label="Send"
             icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-            onClick={() => navigate("/Pay")}
+            onClick={() => {
+				setSettingsOpen('Pay')
+				setShowFooter(false)
+				
+			}}
           />
           <MiniAction
             label="Request"
             icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-            onClick={() => navigate("/Request")}
+            onClick={() => {
+				setSettingsOpen('BeamioPayMe')
+				setShowFooter(false)
+			}}
           />
           <MiniAction
             label="Cashcode"
             icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-            onClick={() => navigate("/Cashcode")}
+            onClick={() => {
+				setSettingsOpen('Cashcode')
+				setShowFooter(false)
+			}}
           />
           <MiniAction
             label="Bank"
             icon={<Landmark className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-            onClick={() => navigate("/Bank")}
+            onClick={() => {
+				setSettingsOpen('BankingBridge')
+				setShowFooter(false)
+			}}
           />
         </div>
       </div>
@@ -674,7 +661,7 @@ export function MyWalletDashboard() {
       <div className="flex-1 min-h-0 overflow-y-auto mt-4">
         {/* Active & Pending */}
         <div className="px-5">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-2">
             <span className="h-1.5 w-1.5 rounded-full bg-[#2F78FF]" />
             <div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
               Active & Pending
@@ -705,7 +692,7 @@ export function MyWalletDashboard() {
 
         {/* History */}
         <div className="px-5 mt-5">
-          <div className="flex items-center justify-between">
+          <div className="px-2  flex items-center justify-between">
             <div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
               History
             </div>
@@ -748,6 +735,113 @@ export function MyWalletDashboard() {
 			pointer-events-none
 			"
 		/>
+		{/* Settings full-screen slide-over（你原样） */}
+			<div
+			className={[
+				"fixed inset-0 z-40",
+				settingsOpen ? "pointer-events-auto" : "pointer-events-none"
+			].join(" ")}
+			>
+				{/* 灰色遮罩：父页面不可用 */}
+				<div
+					className={[
+					"absolute inset-0",
+					"bg-black/50 transition-opacity duration-300 ease-out",
+					settingsOpen ? "opacity-100" : "opacity-0"
+					].join(" ")}
+					onClick={() => {
+						setShowFooter(true)
+						setSettingsOpen('')
+					}}
+				/>
+
+				{/* Bottom Sheet：全宽，从底部上来 */}
+				<div
+					className={[
+					"absolute inset-x-0 bottom-0",
+					"transition-transform duration-300 ease-out",
+					settingsOpen ? "translate-y-0" : "translate-y-full"
+					].join(" ")}
+					onTouchMove={(e) => e.stopPropagation()}
+				>
+					{/* Sheet 本体：h-auto 自适应内容高度 */}
+					<div
+					className={[
+						"w-full",
+						"bg-white dark:bg-slate-900",
+						"rounded-t-[22px]",
+						"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
+
+						// ✅ 自适应高度，但最多不超过屏幕（避免顶到状态栏）
+						// 你也可以改成 90dvh
+						"max-h-[calc(100dvh-env(safe-area-inset-top)-12px)]",
+						"h-auto",
+
+						// ✅ 安全区：底部留出 Home indicator
+						"pb-[env(safe-area-inset-bottom)]"
+					].join(" ")}
+					>
+						{/* 顶部拖拽条（可选） */}
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+						</div>
+
+
+						{/* 内容区：内容少就不滚动；内容多才滚动 */}
+						<div className="px-4 pb-4 overflow-y-auto">
+							{settingsOpen === "Pay" && (
+								<PayScreen
+									close={(path) => {
+										setShowFooter(true)
+										setSettingsOpen('')
+									}}
+								/>
+							)}
+							{
+								settingsOpen === 'BeamioPayMe' && 
+								<PaymentLink 
+									
+									close={() => {
+										setShowFooter(true)
+										setSettingsOpen('')
+									}}
+								/>
+							}
+
+							{
+								settingsOpen === 'Cashcode' && 
+								<Cashcode 
+									close={() => {
+										setShowFooter(true)
+										setSettingsOpen('')
+									}}
+									
+								/>
+							}
+							{
+								settingsOpen === 'BankingBridge' && 
+								<BankingBridge 
+									onAddCash={() => {
+
+									}}
+									onCashOut={() => {
+
+									}}
+									
+								/>
+							}
+							<div
+								className="
+								h-[24px]
+								pb-[env(safe-area-inset-bottom)]
+								pointer-events-none
+								"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+
       </div>
     </div>
   )

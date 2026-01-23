@@ -14,7 +14,8 @@ import Browser from "@/pages/Browser"
 import {initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, currentGossipAbortController} from '@/services/chat'
 import { isStandalone, MobileType, searchUsername, storeSystemData} from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
-
+import {VouchersMockup} from '@/pages/Vouchers/VouchersMockup'
+import MyWallet from '@/pages/Settings/index'
 
 global.Buffer = require("buffer").Buffer
 
@@ -362,14 +363,16 @@ function App() {
 			<div >
 				<div ref={bodyRef} >
 					<Routes>
+						
 						<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
 						<Route path="/" element={<Home />} />
 						<Route path="/History" element={<History />} />
 						<Route path="/Pay" element={<Pay />} />
 						<Route path="/Chat" element={<Chat />} />
 						<Route path="/chat/:id" element={<ChatDetail />} />
-						<Route path="/settings" element={<Settings />} />
+						<Route path="/settings" element={<VouchersMockup />} />
 						<Route path="/browser" element={<Browser />} />
+						<Route path="/myWallet" element={<MyWallet />} />
 					</Routes>
 				</div>
 

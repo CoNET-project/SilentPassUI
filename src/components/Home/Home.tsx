@@ -31,7 +31,32 @@ import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {getActiveArray} from '@/services/payment'
 import ActivePannel from '@/pages/History/components/activePannel'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
-import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
+import {BeamioBetaCard} from './components/BeamioBetaCard'
+import {TopUp} from './components/TopUp'
+import {ActivityFeed} from './components/ActivityFeed'
+import {BeamioBetaAccess} from './components/BeamioBetaAccess'
+export const EXCHANGE_PARTNERS = [
+  {
+    id: "kinbok",
+    name: "Kinbok Forex",
+    type: "fiat",
+    offer: "Cash to USDC",
+    location: "Local",
+    icon: "🏦",
+    color: "bg-yellow-50 border-yellow-100",
+    textColor: "text-yellow-700"
+  },
+  {
+    id: "coinbase",
+    name: "Coinbase",
+    type: "exchange",
+    offer: "Instant Buy",
+    location: "Global",
+    icon: "🌐",
+    color: "bg-blue-50 border-blue-100",
+    textColor: "text-blue-700"
+  }
+]
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
@@ -56,7 +81,7 @@ const Home = ({}) => {
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData
 	} = useDaemonContext()
 	const navigate = useNavigate()
-
+	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'>('')
 	
 	const [isSearchOpen, setIsSearchOpen] = useState(false)
 	const [avatarName, setAvatarName] = useState('')
@@ -799,7 +824,7 @@ const Home = ({}) => {
 								<button
 									type="button"
 									onClick={() => {
-										navigate('/settings')
+										navigate('/myWallet')
 									}}
 									className="
 									h-11 w-12
@@ -821,7 +846,7 @@ const Home = ({}) => {
 									draggable={false}
 									/>
 								</button>
-								)}
+						)}
 						
 						{/* <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
 							<ScanBtn />
@@ -829,7 +854,7 @@ const Home = ({}) => {
 						
 					</div>
 					{/* Content */}
-				<div className="">
+				<div className="mt-6">
 					{/* Hero card */}
 					{/* {
 						showGetFaucet === 'Faucet' ? (
@@ -889,8 +914,17 @@ const Home = ({}) => {
 					
 
 						
-					<BalanceCard />
-					
+					<BeamioBetaCard onLearnMore={() => {
+						setSettingsOpen('BeamioBetaAccess')
+						setShowFooter(false)
+					}}/>
+					<TopUp
+					partners={EXCHANGE_PARTNERS}
+					onPartnerClick={(p) => {
+						
+					}}
+					/>
+					<ActivityFeed />
 
 					{/* Optional inline search bar, only when user taps search icon */}
 					{isSearchOpen && (
@@ -936,7 +970,7 @@ const Home = ({}) => {
 					}
 
 					{/* Activity area */}
-					<div className="">
+					<div className="mt-6">
 					
 						{activeItems?.length ? (
 						
@@ -952,8 +986,6 @@ const Home = ({}) => {
 				</div>
 					</>
 				}
-				
-
 				
 			</div>
 			{!openSearch && showAlphaHowItWorks && createPortal(
@@ -1067,6 +1099,79 @@ const Home = ({}) => {
 				</div>,
 				document.body
 			)}
+
+			{/* Settings full-screen slide-over（你原样） */}
+			<div
+			className={[
+				"fixed inset-0 z-40",
+				settingsOpen ? "pointer-events-auto" : "pointer-events-none"
+			].join(" ")}
+			>
+				{/* 灰色遮罩：父页面不可用 */}
+				<div
+					className={[
+					"absolute inset-0",
+					"bg-black/50 transition-opacity duration-300 ease-out",
+					settingsOpen ? "opacity-100" : "opacity-0"
+					].join(" ")}
+					onClick={() => {
+						setShowFooter(true)
+						setSettingsOpen('')
+					}}
+				/>
+
+				{/* Bottom Sheet：全宽，从底部上来 */}
+				<div
+					className={[
+					"absolute inset-x-0 bottom-0",
+					"transition-transform duration-300 ease-out",
+					settingsOpen ? "translate-y-0" : "translate-y-full"
+					].join(" ")}
+					onTouchMove={(e) => e.stopPropagation()}
+				>
+					{/* Sheet 本体：h-auto 自适应内容高度 */}
+					<div
+					className={[
+						"w-full",
+						"bg-white dark:bg-slate-900",
+						"rounded-t-[22px]",
+						"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
+
+						// ✅ 自适应高度，但最多不超过屏幕（避免顶到状态栏）
+						// 你也可以改成 90dvh
+						"max-h-[calc(100dvh-env(safe-area-inset-top)-12px)]",
+						"h-auto",
+
+						// ✅ 安全区：底部留出 Home indicator
+						"pb-[env(safe-area-inset-bottom)]"
+					].join(" ")}
+					>
+						{/* 顶部拖拽条（可选） */}
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+						</div>
+
+
+						{/* 内容区：内容少就不滚动；内容多才滚动 */}
+						<div className="px-4 pb-4 overflow-y-auto">
+							{ settingsOpen === 'BeamioBetaAccess' && 
+							<BeamioBetaAccess 
+
+							onClose={() => {
+								setShowFooter(true)
+								setSettingsOpen('')
+							}} />}
+							<div
+								className="
+								h-[24px]
+								pb-[env(safe-area-inset-bottom)]
+								pointer-events-none
+								"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
 		</div>
 	)
 }

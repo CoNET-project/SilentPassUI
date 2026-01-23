@@ -1,10 +1,10 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
-
-
+import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanButton"
 
 
 type DaemonContext = {
+	scanRef: React.MutableRefObject<ScanButtonHandle | null>
 	msgCountLockRef: React.MutableRefObject<boolean>
 	seenMsgRef: React.MutableRefObject<Set<string>>
 	messageCount: number
@@ -160,6 +160,11 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
+	
+	// ...
+	scanRef: { current: null },
+	// ...
+	
 	msgCountLockRef: { current: false },
 	seenMsgRef: { current: new Set() },
 	messageCount: 0,
@@ -327,6 +332,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const scanRef = useRef<ScanButtonHandle | null>(null)
 	const seenMsgRef = useRef<Set<string>>(new Set())
 	const msgCountLockRef = useRef(false) // 可选：避免同一帧重复统计
 	const [messageCount, setMessageCount] = useState(0)
@@ -476,9 +482,13 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
-				chatHomeItem,setChatHomeItem,scanData, setScanData, messageCount, setMessageCount, msgCountLockRef, seenMsgRef,
+				chatHomeItem,setChatHomeItem,scanData, setScanData, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef,
         		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
 				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
+			{/* ✅ 常驻隐藏扫码组件：不占布局，但随时可 start */}
+			<div style={{ position: "absolute", width: 0, height: 0, overflow: "hidden", pointerEvents: "none" }}>
+			<ScanButton ref={scanRef} hidden />
+			</div>
 
       {children}
     </Daemon.Provider>

@@ -1,88 +1,108 @@
-import React, { useState } from "react";
-import { Button, Modal, Toast } from "antd-mobile";
-import Html5QrcodePlugin from "./Html5QrcodePlugin";
-import styles from "./scanButton.module.scss";
+import React, {
+  useState,
+  forwardRef,
+  useImperativeHandle,
+  useCallback
+} from "react"
+import { Button, Modal } from "antd-mobile"
+import Html5QrcodePlugin from "./Html5QrcodePlugin"
+import styles from "./scanButton.module.scss"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { QrCode } from "lucide-react";
-import {emitWalletEvent} from '@/services/beamio'
+import { QrCode } from "lucide-react"
+import { emitWalletEvent } from "@/services/beamio"
 
-interface Props {
-  iconSize?: number; // <----- 新增
+export type ScanButtonHandle = {
+  start: () => void
+  stop: () => void
+  isScanning: () => boolean
 }
 
-const ScanButton = ({ iconSize = 18 }: Props) => {  // <----- 默认18
-  const [scanning, setScanning] = useState(false);
-  const [loading, setLoading] = useState(false);
+interface Props {
+  iconSize?: number
+  hidden?: boolean // ✅ 新增：让它可以“看不见但常驻”
+}
 
-const { 
-		setScanData
-	} = useDaemonContext()
-  const handleGoScan = async () => {
-		setLoading(true);
+const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden }, ref) => {
+  const [scanning, setScanning] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-		try {
-		const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
+  const { setScanData } = useDaemonContext()
 
-		if (status.state === 'denied') {
-			Modal.show({
-			content: "Camera permission denied or unavailable",
-			closeOnAction: true,
-			actions: [
-				{ key: 'confirm', text: 'Confirm' },
-			],
-			});
-			setLoading(false);
-			return;
-		}
+  const handleGoScan = useCallback(async () => {
+    setLoading(true)
 
-		setScanning(true);
-		setLoading(false);
-		return;
+    try {
+      const status = await navigator.permissions.query({ name: "camera" as PermissionName })
 
-		} catch (err: any) {
-		// iOS 或 prompt 触发 getUserMedia
-		try {
-			await navigator.mediaDevices.getUserMedia({ video: true });
-			setScanning(true);
-			setLoading(false);
-		} catch (e: any) {
-			Modal.show({
-			content: "Camera permission denied or unavailable",
-			closeOnAction: true,
-			actions: [
-				{ key: 'confirm', text: 'Confirm' },
-			],
-			});
-			setLoading(false);
-		}
-		}
-	};
+      if (status.state === "denied") {
+        Modal.show({
+          content: "Camera permission denied or unavailable",
+          closeOnAction: true,
+          actions: [{ key: "confirm", text: "Confirm" }]
+        })
+        setLoading(false)
+        return
+      }
 
-	const handleScanSuccess = (text: string) => {
-			setScanData(text)
-			emitWalletEvent("scan:url", text);
-			return
-	}
+      setScanning(true)
+      setLoading(false)
+      return
+    } catch (err: any) {
+      // iOS 或 prompt 触发 getUserMedia
+      try {
+        await navigator.mediaDevices.getUserMedia({ video: true })
+        setScanning(true)
+        setLoading(false)
+      } catch (e: any) {
+        Modal.show({
+          content: "Camera permission denied or unavailable",
+          closeOnAction: true,
+          actions: [{ key: "confirm", text: "Confirm" }]
+        })
+        setLoading(false)
+      }
+    }
+  }, [])
+
+  const stopScan = useCallback(() => {
+    setScanning(false)
+  }, [])
+
+  useImperativeHandle(ref, () => ({
+    start: () => {
+      // 防抖：避免重复触发
+      if (!scanning && !loading) handleGoScan()
+    },
+    stop: () => stopScan(),
+    isScanning: () => scanning
+  }), [handleGoScan, scanning, loading, stopScan])
+
+  const handleScanSuccess = (text: string) => {
+    setScanData(text)
+    emitWalletEvent("scan:url", text)
+  }
 
   return (
-    <>
-      <Button
-        onClick={handleGoScan}
-        loading={loading}
-        className={styles.scanBtn}
-        color="primary"
-        fill="none"
-      >
-		
-        <QrCode
-			// stroke="currentColor"
-			className="text-slate-700"
-			style={{
-				width: iconSize,
-				height: iconSize,
-			}}
-		/>
-      </Button>
+    <div
+      // ✅ hidden 时不占布局、不响应点击，但组件仍挂载
+      style={hidden ? { position: "absolute", width: 0, height: 0, overflow: "hidden", pointerEvents: "none" } : undefined}
+      aria-hidden={hidden ? true : undefined}
+    >
+      {/* 你仍然可以保留按钮（非 hidden 时可见） */}
+      {!hidden && (
+        <Button
+          onClick={handleGoScan}
+          loading={loading}
+          className={styles.scanBtn}
+          color="primary"
+          fill="none"
+        >
+          <QrCode
+            className="text-slate-700"
+            style={{ width: iconSize, height: iconSize }}
+          />
+        </Button>
+      )}
 
       <Html5QrcodePlugin
         shouldStart={scanning}
@@ -90,8 +110,10 @@ const {
         onScanSuccess={handleScanSuccess}
         onStop={() => setScanning(false)}
       />
-    </>
-  );
-};
+    </div>
+  )
+})
 
-export default ScanButton;
+ScanButton.displayName = "ScanButton"
+
+export default ScanButton

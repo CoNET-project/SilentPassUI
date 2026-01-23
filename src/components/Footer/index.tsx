@@ -72,11 +72,15 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	}
 	}, [visible, barControls])
 
+	const openPayWorkflow = () => {
+		scanRef.current?.start()
+	}
+
 	const navigate = useNavigate()
 	const { pathname } = useLocation()
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
-	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, seenMsgRef } = useDaemonContext()
+	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, scanRef } = useDaemonContext()
 
 	const [showBar, setShowBar] = useState(true)
 
@@ -175,6 +179,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				setMessageCount(0)
 				// seenMsgRef.current.clear() // ✅ 需要“彻底重置计数”才开
 			}
+		} else {
+			openPayWorkflow()
 		}
 
 		navigate(k)

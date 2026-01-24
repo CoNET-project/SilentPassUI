@@ -7,6 +7,7 @@ import { createPortal } from "react-dom"
 import {
   useState,
   useEffect,
+  useLayoutEffect,
 } from "react"
 
 type Props = {
@@ -56,9 +57,12 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 	
   	
 	const [fromBeamio, setfromBeamio] =  useState<searchResult|undefined> ()
+	const [overlayEl, setOverlayEl] = useState<HTMLElement | null>(null)
+	const [imageError, setImageError] = useState(false)
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers} = useDaemonContext()
+	
 	const imgSrc = card?.image
-	const [bgSrc, setBgSrc] = useState<string>("")
+	const hasImage = !!imgSrc && !imageError
 	const findUser = async () => {
 		if (fromBeamio) return
 
@@ -76,60 +80,61 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 		
 	}
 
-	useEffect(() => {
-		if (!imgSrc) {
-			setBgSrc("")
-			return
+	useLayoutEffect(() => {
+		// 同步查找元素，确保在渲染前找到
+		const el = document.getElementById("overlay-root")
+		if (el) {
+			setOverlayEl(el)
+		} else {
+			// 如果立即找不到，尝试异步查找
+			const timer = setTimeout(() => {
+				const el = document.getElementById("overlay-root")
+				if (el) {
+					setOverlayEl(el)
+				} else {
+					console.warn("ShowCard: overlay-root element not found")
+				}
+			}, 100)
+			return () => clearTimeout(timer)
 		}
+	}, [])
 
-		let cancelled = false
-		const img = new Image()
-		img.src = imgSrc
-
-		const done = async () => {
-			// ✅ iOS：尽量等 decode 完成再显示（避免“已加载但未绘制”）
-			try {
-			// decode 在部分环境可用
-			// @ts-ignore
-			if (img.decode) await img.decode()
-			} catch {}
-
-			if (cancelled) return
-
-			// ✅ 下一帧再 set，强制触发一次 repaint
-			requestAnimationFrame(() => {
-			if (!cancelled) setBgSrc(imgSrc)
-			})
-		}
-
-		img.onload = () => { void done() }
-		img.onerror = () => {
-			// 失败也给它渲染出来，至少不会一直空白
-			if (!cancelled) setBgSrc(imgSrc)
-		}
-
-		return () => {
-			cancelled = true
-		}
-	}, [imgSrc])
 	
 	useEffect(() => {
 		findUser()
 		
 	}, [address])
 
-	const el = document.getElementById("overlay-root")
-	if (!el) return null
+	// 调试信息
+	useEffect(() => {
+		if (card && imgSrc) {
+			console.log("ShowCard render check:", {
+				hasOverlayEl: !!overlayEl,
+				hasCard: !!card,
+				hasImgSrc: !!imgSrc,
+				cardTitle: card.title,
+				imgSrc: imgSrc.substring(0, 50) + "..."
+			})
+		}
+	}, [overlayEl, card, imgSrc])
+
+	if (!overlayEl || !card) {
+		return null
+	}
 
 	return createPortal (
-		<div className="fixed inset-0 overflow-hidden z-[9999]">
+		<div className="fixed inset-0 overflow-hidden z-[99999] bg-white">
 			{/* ===== 全屏背景 ===== */}
 			<div className="absolute inset-0">
-				<div className="absolute inset-0" style={{ transform: "translateZ(0)" }}>
-					{bgSrc && (
+				{/* 白色背景层 - 始终显示，用于覆盖下层页面 */}
+				<div className="absolute inset-0 bg-white" />
+				
+				{/* 图片层 - 仅在图片存在且未加载失败时显示 */}
+				{hasImage && (
+					<div className="absolute inset-0" style={{ transform: "translateZ(0)" }}>
 						<img
-							key={bgSrc}                 // ✅ 强制刷新 img 节点，iOS 更稳
-							src={bgSrc}
+							key={imgSrc}                 // ✅ 强制刷新 img 节点，iOS 更稳
+							src={imgSrc}
 							alt="card-bg"
 							className="w-full h-full object-cover"
 							draggable={false}
@@ -138,40 +143,55 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 							// @ts-ignore
 							fetchPriority="high"        // ✅ Chrome/Safari 新一些版本有效，无害
 							style={{ transform: "translateZ(0)", willChange: "transform" }}
+							onError={(e) => {
+								console.error("ShowCard: Image load error", imgSrc, e)
+								setImageError(true)
+							}}
+							onLoad={() => {
+								console.log("ShowCard: Image loaded successfully", imgSrc)
+								setImageError(false)
+							}}
 						/>
-					)}
-				</div>
+					</div>
+				)}
 
-
-				<div
-					className="absolute inset-0 bg-black/20"
-					style={{
-						WebkitBackdropFilter: "blur(1px)",
-						backdropFilter: "blur(1px)"
-					}}
-				/>
+				{/* 遮罩层 - 仅在图片存在时显示 */}
+				{hasImage && (
+					<div
+						className="absolute inset-0 bg-black/20"
+						style={{
+							WebkitBackdropFilter: "blur(1px)",
+							backdropFilter: "blur(1px)"
+						}}
+					/>
+				)}
 			</div>
 
 			{/* ✅ iOS 顶部：左 Cancel(X) */}
 			<button
 				type="button"
 				onClick={cancel}
-				className="
-					absolute left-3 z-30
-					w-10 h-10 rounded-full
-					bg-white/20
-					backdrop-blur-md
-					border border-white/20
-					shadow-[0_6px_16px_rgba(0,0,0,0.06)]
-					hover:bg-white/20
-					active:scale-95
-					transition
-					mt-8
-				"
+				className={[
+					"absolute left-3 z-30",
+					"w-10 h-10 rounded-full",
+					"backdrop-blur-md",
+					"border",
+					"shadow-[0_6px_16px_rgba(0,0,0,0.06)]",
+					"hover:bg-opacity-80",
+					"active:scale-95",
+					"transition",
+					"mt-8",
+					hasImage 
+						? "bg-white/20 border-white/20" 
+						: "bg-slate-100 border-slate-200"
+				].join(" ")}
 				style={{ top: NAV_TOP }}
 				aria-label="Cancel"
 			>
-				<X className="w-5 h-5 mx-auto text-white/40 translate-y-[2px]" />
+				<X className={[
+					"w-5 h-5 mx-auto translate-y-[2px]",
+					hasImage ? "text-white/40" : "text-slate-600"
+				].join(" ")} />
 			</button>
 
 			{/* ===== 展示层 ===== */}
@@ -216,6 +236,6 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 				)}
 				</div>
 			</div>
-		</div>, el
+		</div>, overlayEl
 	)
 }

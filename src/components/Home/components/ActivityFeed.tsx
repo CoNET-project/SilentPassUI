@@ -120,6 +120,7 @@ function QuotePill({ children }: { children: React.ReactNode }) {
   )
 }
 
+
 export function ActivityFeed({ items, className }: ActivityFeedProps) {
   const demo: ActivityItem[] = [
     // {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { CheckCircle2 } from "lucide-react"
+import { CheckCircle2, QrCode } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername } from "@/services/beamio"
 import { ethers } from "ethers"
@@ -136,12 +136,16 @@ function ActiveCapsuleItem({
 	const { name: peerName, avatar } = usePeerProfile( tx.type === "sent" ? beamio?.address||'' : tx.address)
 	const { memo, currency } = parseNote(tx)
 	const hasHash = !!tx.hash
-	const isSent = tx.type === "sent"
-	const isReceived = tx.type === "received"
+	// ✅ 对于 cashcode，使用 type1 来判断；对于其他类型，使用 type
+	const isSent = tx.type1 === "sent" || tx.type === "sent"
+	const isReceived = tx.type === "received" || tx.type1 === "received"
+
+	// ✅ cashcode pending -> show QR icon instead of avatar
+	const isCashcodePending = tx.mode === "cashcode" && tx.type === "pending"
 
 	const title =
 		tx.mode === "cashcode"
-		? `${peerName} redeemed Cashcode`
+		? `You created Cashcode`
 		: isSent
 			? `${myName} paid ${peerName}`
 			: `${peerName} paid ${myName}`
@@ -167,9 +171,20 @@ function ActiveCapsuleItem({
 			].join(" ")}
 		>
 		<div className="flex items-start gap-3">
-			{/* avatar */}
+			{/* avatar / QR */}
 			<div className="shrink-0 w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden">
-			{avatar ? (
+			{isCashcodePending ? (
+				<span
+					className="
+						w-full h-full
+						flex items-center justify-center
+						bg-slate-900/5
+					"
+					aria-label="Cashcode pending"
+				>
+					<QrCode className="w-5 h-5 text-[#2E6BFF]" strokeWidth={2.2} />
+				</span>
+			) : avatar ? (
 				<img src={avatar} className="w-full h-full object-cover" alt="" />
 			) : (
 				<span className="text-slate-400 font-semibold">?</span>
@@ -264,14 +279,6 @@ export default function ActivePannel({
           onOpen={onOpen}
         />
       ))}
-	   {/* bottom spacer: 避开 footer + iOS 安全区 */}
-		<div
-			className="
-			h-[96px]
-			pb-[env(safe-area-inset-bottom)]
-			pointer-events-none
-			"
-		/>
     </div>
   )
 }

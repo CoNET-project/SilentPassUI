@@ -29,6 +29,7 @@ import NavigateLeftButton from '@/components/navigate'
 import Cashcode from '@/pages/Pay/Cashcode/index'
 import BankingBridge from './components/BankingBridge'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
+import ActivePannel from "./components/activePannel";
 
 type SectionTx = TransferHistork
 
@@ -657,7 +658,7 @@ export function MyWalletDashboard() {
       <div className="flex-1 min-h-0 overflow-y-auto mt-4">
         {/* Active & Pending */}
         <div className="px-5">
-          <div className="flex items-center gap-2 px-2">
+          <div className="flex items-center gap-2 px-2 mb-4">
             <span className="h-1.5 w-1.5 rounded-full bg-[#2F78FF]" />
             <div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
               Active & Pending
@@ -665,33 +666,31 @@ export function MyWalletDashboard() {
             {loading && <Loader className="w-3.5 h-3.5 text-slate-400 animate-spin" strokeWidth={2.2} />}
           </div>
 
-          <div
-            className="
-              mt-3 overflow-hidden
-              rounded-2xl
-              bg-white/85 dark:bg-slate-900/65
-              ring-1 ring-black/5 dark:ring-white/10
-              shadow-[0_10px_24px_rgba(0,0,0,0.08)]
-            "
-          >
+          
             {activePending.length ? (
-              activePending.map(tx => (
-                <Row key={`${tx.mode}-${tx.hash}-${tx.date}`} tx={tx} mode={tx.mode} onOpen={() => {
-					setShowAlphaHowItWorks('TransactionsItemDetail')
-					setItemtx(tx)
-					setShowFooter(false)
-				}} />
-              ))
+				<>
+				<ActivePannel
+					items ={activePending}
+					onOpen={tx => {
+						setItemtx(tx)
+						setShowAlphaHowItWorks('TransactionsItemDetail')
+						setShowFooter(false)
+						
+					}}
+				/>
+			
+              
+			  </>
             ) : (
               <div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
                 No active items
               </div>
             )}
-          </div>
+          
         </div>
 
         {/* History */}
-        <div className="px-5 mt-5">
+        <div className="px-5 mt-4">
           <div className="px-2  flex items-center justify-between">
             <div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
               History

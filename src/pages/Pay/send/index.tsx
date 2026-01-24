@@ -383,6 +383,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 		}
 
 	}
+	
 
 	const tryPostToIPFS = async (val: ClosePayload) => {
 		if (!profiles) return

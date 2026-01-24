@@ -867,6 +867,14 @@ export function TransactionsItemDetail({
 									</div>
 								) : (
 									<div className="mt-3 overflow-hidden flex flex-col items-center gap-3">
+										<div
+										className="
+										rounded-[28px]
+										bg-white
+										p-[18px]
+										shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+										"
+									>
 										<QRCodeCanvas
 											value={payUrl}
 											size={160}
@@ -882,6 +890,7 @@ export function TransactionsItemDetail({
 											}}
 											className="rounded-lg inline-block"
 										/>
+										</div>
 										<div className="px-4 py-3 flex items-center justify-between gap-3">
 										<div className="text-[14px] text-slate-500">Url</div>
 

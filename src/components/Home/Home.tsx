@@ -847,8 +847,8 @@ const Home = ({}) => {
 						setShowFooter(false)
 					}}/>
 					<TopUp
-					partners={EXCHANGE_PARTNERS}
-					onPartnerClick={(p) => {
+						partners={EXCHANGE_PARTNERS}
+						onPartnerClick={(p) => {
 						
 					}}
 					/>
@@ -899,7 +899,7 @@ const Home = ({}) => {
 
 					{/* Activity area */}
 					<div className="mt-6">
-					
+						{/** Active & Pending */}
 						{activeItems?.length ? (
 						
 							<ActivePannel
@@ -908,8 +908,6 @@ const Home = ({}) => {
 									setItemtx(tx)
 									setShowAlphaHowItWorks('TransactionsItemDetail')
 									setShowFooter(false)
-
-
 									
 								}}
 							 />

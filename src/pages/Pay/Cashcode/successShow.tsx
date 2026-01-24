@@ -96,7 +96,7 @@ const SuccessShow = ({
 						<div className="flex-1 text-right">
 							
 							<span className="text-amber-600 dark:text-amber-400 font-medium">
-								Pending
+								Active
 							</span>
 							
 						</div>

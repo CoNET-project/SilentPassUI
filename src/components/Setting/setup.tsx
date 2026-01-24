@@ -62,7 +62,12 @@ export default function BeamioSettingsScreen({
 					<>
 						{/* Top nav */}
 						<header className="">
-							<BeamioNavBack title="Settings" onClose={() => onClose()} />
+							<BeamioNavBack 
+							title="Settings" onClose={() => onClose()}
+							onMore={() => {
+
+							}}
+							 />
 						</header>
 
 						{/* 👇 这里是可以滚动的内容区域 */}
@@ -340,7 +345,10 @@ export default function BeamioSettingsScreen({
 							title={settingsOpen === 'Account' ? 'Account' : ''}
 							onClose={() => {
 								setSettingsOpen('')
-							}} 
+							}}
+							onMore={() => {
+								
+							}}
 						/>
 
 					{/* 内容区域：放你的 BeamioAccountScreen */}

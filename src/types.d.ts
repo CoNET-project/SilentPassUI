@@ -141,11 +141,11 @@ interface Region {
 
   
 type paymentCard = {
-		amount: string
-		token: ICurrency
-		approx: string
+		amount: number
+		currency: ICurrency
 		title: string
 		timeStamp: number
+		usdcAmount: number
 	}
 
 
@@ -530,6 +530,7 @@ type IMessageData = {
 	amount: string
 	fee?: string
 	usdcAmount?: string
+	currencyAmount: string
 }
 
 type PaymentLinkLockMode = "FIAT_LOCKED" | "USDC_LOCKED";

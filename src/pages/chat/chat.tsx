@@ -670,11 +670,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											variant: isMe ? "sent" : "received",
 											status: "Completed",
 											amount: m.paymentCard!.amount,
-											token: m.paymentCard!.token,
-											approx: m.paymentCard!.approx,
+											usdcAmount:  m.paymentCard!.usdcAmount,
+											
 											title: m.paymentCard!.title,
 											timeLabel: "Just now",
 											onMenu: () => {},
+											currency: m.paymentCard!.currency,
 											className: isMe ? "ml-auto" : "mr-auto"
 										})}
 

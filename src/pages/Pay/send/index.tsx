@@ -9,7 +9,7 @@ import ConformView from './ConformView'
 import base_ex from '@/components/assets/base-ex.svg'
 import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
-import { X, Check, Plus } from "lucide-react"
+import { X, Check, Plus, Camera } from "lucide-react"
 import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
@@ -17,6 +17,7 @@ import {CURRENCY_META, fiatPrefix} from '@/services/currency'
 import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNode} from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
+
 
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
@@ -136,7 +137,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 
 	const Success = ({messageData}: {messageData: any}) => {
-		const data: IMessageData =messageData.data
+		const data: IMessageData = messageData.data
 		return (
 			<div className="flex-1 px-5 pt-6 pb-8 flex flex-col items-center justify-center
 							bg-transparent text-inherit">
@@ -256,13 +257,13 @@ export default function PayScreen ({close, beamioer}: Props) {
 		const chatDatas = profile?.chats || []
 		profile.chats = chatDatas
 
-		
+		const currencyAmount = lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency) : sendAmount
 		const index = profile.chats.findIndex(n => n.address === chatData.address)
 		if (index > -1) {
 			profile.chats.splice(index, 1)
 		}
-		const sendAmountText = lockMode === 'USDC_LOCKED' ? usdcAmount : currentCurrency
-		const messageCard = emitReactionAsNewMessage(sendAmountText, lockMode === 'USDC_LOCKED' ? 'USDC' : currentCurrency, note, lockMode === 'USDC_LOCKED'? '': sendAmount)
+		
+		const messageCard = emitReactionAsNewMessage(Number(currencyAmount), lockMode === 'USDC_LOCKED' ? 'USDC' : currentCurrency, note, Number(sendAmount))
 		chatData.messages.push(messageCard)
 		profile.chats.push(chatData)
 		setProfiles(profiles)
@@ -289,10 +290,10 @@ export default function PayScreen ({close, beamioer}: Props) {
 		const bo = beamio
 		const toAddress = item.address
 
-		
-		let data: payMe = {
+		const currencyAmount = lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency) : sendAmount
+		let data1: payMe = {
 			currency: lockMode === 'FIAT_LOCKED' ? currentCurrency : 'USDC',
-			currencyAmount:  lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency) : sendAmount
+			currencyAmount,
 		}
 
 
@@ -318,7 +319,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 			sendNote += `\r\n${_addnote}`
 		}
 
-		sendNote += `\r\n${JSON.stringify(data)}`
+		sendNote += `\r\n${JSON.stringify(data1)}`
 		
 		
 		const params = new URLSearchParams({amount: sendAmount, toAddress: toAddress, note: sendNote }).toString()
@@ -357,8 +358,10 @@ export default function PayScreen ({close, beamioer}: Props) {
 				node: sendNote,
 				sginTatle: 'send',
 				reqUrl: requestEndpoint,
-				amount: sendAmount
+				amount: sendAmount,
+				currencyAmount
 			}
+			
 			MessageData.data = data
 			senMessage(MessageData)
 			setShowAlphaHowItWorks('ConformView')
@@ -433,104 +436,100 @@ export default function PayScreen ({close, beamioer}: Props) {
 						)}
 
 						{item && (
-						<div
-							className="
-							w-full flex items-center
-							px-3 py-2.5
-							text-left
-							rounded-2xl
-							bg-sky-50
-							hover:bg-sky-100
-							active:scale-[0.99]
-							transition
-							relative
-							"
-							onClick={() => {}}
-						>
-							{!message && (
-							<button
-								type="button"
-								aria-label="Close"
-								onClick={(e) => {
-								e.stopPropagation()
-								setItem(null)
-								}}
+							<div
 								className="
-								absolute top-1.5 right-1.5
-								h-7 w-7
-								rounded-full
-								bg-white/70
-								backdrop-blur
-								border border-sky-200/60
-								text-slate-500
-								flex items-center justify-center
-								shadow-sm
-								transition
-								hover:bg-white
-								hover:text-slate-700
-								active:scale-90
-								active:ring-4 active:ring-sky-200/50
+									w-full
+									flex justify-center
 								"
+								onClick={() => {}}
 							>
-								<span className="text-[16px] leading-none">×</span>
-							</button>
-							)}
+								{/* Centered content */}
+								<div
+									className="
+									inline-flex flex-col items-center
+									select-none
+									"
+								>
+									{/* Avatar */}
+									<div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center mt-4">
+									{item.image ? (
+										<img
+										src={item.image}
+										alt={item.username}
+										className="w-full h-full object-cover"
+										/>
+									) : (
+										<img
+										src={getImg(item.username)}
+										alt={item.username}
+										className="w-full h-full object-cover"
+										/>
+									)}
+									</div>
 
-							{item.image ? (
-							<img
-								src={item.image}
-								alt={item.username}
-								className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0"
-							/>
-							) : (
-							<img
-								src={getImg(item.username)}
-								alt={item.username}
-								className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0 bg-sky-200"
-							/>
-							)}
+									{/* Text under avatar (shadow only) */}
+									<div
+										className="
+											-mt-1
+											flex flex-col items-center
+											pointer-events-none
+										"
+									>
+										{/* beamioTag */}
+										<div
+											className="
+											text-[18px] leading-[18px]
+											font-semibold
+											text-blue-600
+											
+											"
+										>
+											@{item.username}
+										</div>
 
-							<div className="flex-1 flex items-start justify-between gap-3 min-w-0 pr-7">
-							<div className="flex flex-col min-w-0">
-								<span className="text-[13px] font-medium text-slate-900 truncate">
-								{displayName(item)}
-								</span>
-
-								<span className="text-[11px] text-slate-600 truncate">
-								@{item.username} · {shortAddress(item.address)}
-								</span>
+										{/* wallet address */}
+										<div
+											className="
+											mt-0.5
+											text-[12px] leading-[13px]
+											text-blue-600
+											
+											"
+										>
+											{shortAddress(item.address)}
+										</div>
+									</div>
+								</div>
 							</div>
-							</div>
-						</div>
 						)}
 
 						{!message && (
 						<>
 							<div className="mt-5 flex items-center gap-3">
-							<LockModeSegmented
-								value={lockMode}
-								readonly={!!message}
-								onChange={val => {
-								setLockMode(val)
-								}}
-							/>
+								<LockModeSegmented
+									value={lockMode}
+									readonly={!!message}
+									onChange={val => {
+									setLockMode(val)
+									}}
+								/>
 							</div>
 
 							<section className="input">
-							<AmountCurrency
-								amount={sendAmount}
-								setAmount={setSendAmount}
-								autoEntry={!!!item}
-								readOnly={processing||!!message}
-								showLimit={0}
-								sendError={sendError}
-								setSendError={setSendError}
-								showMax={true}
-								needBalance={true}
-								focusSignal={focusAmount}
-								currencyChange={val => setCurrentCurrency(val)}
-								currencyUSDC={lockMode === 'USDC_LOCKED'}
-							/>
+								<AmountCurrency
+									amount={sendAmount}
+									setAmount={setSendAmount}
+									autoEntry={!!!item}
+									readOnly={processing||!!message}
+									showLimit={0}
+									sendError={sendError}
+									setSendError={setSendError}
+									showMax={true}
+									needBalance={true}
+									focusSignal={focusAmount}
+									currencyChange={val => setCurrentCurrency(val)}
+									currencyUSDC={lockMode === 'USDC_LOCKED'}
+								/>
 							</section>
 						</>
 						)}
@@ -642,42 +641,51 @@ export default function PayScreen ({close, beamioer}: Props) {
 						)}
 
 						<div className="mt-3 flex gap-3 w-full">
-						{message && !processing && (
-							<AppButton
-							variant='secondary'
-							fullWidth
-							// 如果你已经加 size="sm" 了，这里也可以用
-							// size="sm"
-							onClick={() => {
-								senMessage(null)
-							}}
-							>
-							Cancel
-							</AppButton>
-						)}
+							
 
-						{!showGiftEnvelope && !message && (
-							<AppButton
-							fullWidth
-							variant="secondary"
-							// size="sm"
-							onClick={() => {
-								setCardCreate(true)
-							}}
-							>
-							Add Photo
-							</AppButton>
-						)}
+							{!showGiftEnvelope && !message && (
+								<>
+								{/* iOS glass camera button */}
+								<button
+									type="button"
+									onClick={() => {
+										setCardCreate(true)
+									}}
+									className="
+										shrink-0
+										w-12 h-12
+										rounded-full
+										flex items-center justify-center
 
-						<AppButton
-							fullWidth
-							// size="sm"
-							onClick={message ? signRequest : onPay}
-							loading={processing}
-							errorText={sendError}
-						>
-							{message ? 'Confirm': 'Send'}
-						</AppButton>
+										bg-white/30
+										backdrop-blur-md
+
+										shadow-[0_8px_20px_rgba(0,0,0,0.18)]
+										ring-1 ring-white/30
+
+										active:scale-95
+										transition
+										border border-white/50   /* ← 白色 1px 外框 */
+									"
+									aria-label="Open camera"
+								>
+									<Camera
+										className="w-6 h-6 text-slate-900/20 opacity-80"
+										strokeWidth={2.2}
+									/>
+								</button>
+								</>
+							)}
+
+							<AppButton
+								fullWidth
+								// size="sm"
+								onClick={message ? signRequest : onPay}
+								loading={processing}
+								errorText={sendError}
+							>
+								{message ? 'Confirm': 'Send'}
+							</AppButton>
 						</div>
 					</div>
 					</>
@@ -689,63 +697,22 @@ export default function PayScreen ({close, beamioer}: Props) {
 		</div>
 		</div>
 
-		{/* {cardCreate && (
-				<div
-				className="
-					fixed inset-0 z-[999]
-					bg-black/20
-					backdrop-blur-[2px]
-					flex
-					px-4
-					py-4
-					"
-				>
-				<div
-					className="
-					w-full
-					max-w-[520px]
-					mx-auto
-					flex
-					flex-col
-					h-full
-					"
-				>
-					<div
-					className="
-						flex-1
-						min-h-0
-						overflow-hidden
-						"
-					>
+		
+		<OverlayPortal open={cardCreate}>
+			<div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]">
+				<div className="absolute inset-0">
 					<DiceBearCard
-						onClose={val => {
+					onClose={val => {
 						setCardCreate(false)
 						if (val) tryPostToIPFS(val)
-						}}
-						initialTitle={cardTitle}
-						initialDetail={cardDetail}
-						usdcAmount={usdcAmount}
-						currencyText={currencyAmountText}
+					}}
+					initialTitle={cardTitle}
+					initialDetail={cardDetail}
+					usdcAmount={usdcAmount}
+					currencyText={currencyAmountText}
 					/>
-					</div>
 				</div>
-				</div>
-		)} */}
-		<OverlayPortal open={cardCreate}>
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]">
-          <div className="absolute inset-0">
-            <DiceBearCard
-              onClose={val => {
-                setCardCreate(false)
-                if (val) tryPostToIPFS(val)
-              }}
-              initialTitle={cardTitle}
-              initialDetail={cardDetail}
-              usdcAmount={usdcAmount}
-              currencyText={currencyAmountText}
-            />
-          </div>
-        </div>
+			</div>
       </OverlayPortal>
 	</div>
 	)

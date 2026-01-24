@@ -40,15 +40,33 @@ export const getDecimals = (c: ICurrency) => {
 	return decimals
 }
 
-export const formatAmount = (v: number, c: ICurrency, fixed?: number) => {
-	if (!isFinite(v)) return "0"
+export const formatAmount = (
+  v: number | string,
+  c: ICurrency,
+  fixed?: number
+): string => {
+  // 1️⃣ 统一转 number
+  const n =
+    typeof v === "number"
+      ? v
+      : typeof v === "string"
+        ? Number(v)
+        : NaN
 
-	const decimals = fixed||getDecimals(c)
+  // 2️⃣ 非法值兜底
+  if (!Number.isFinite(n)) return "0"
 
-	return v.toLocaleString("en-US", {
-		minimumFractionDigits: decimals,
-		maximumFractionDigits: decimals
-	})
+  // 3️⃣ decimals：fixed 优先，其次 currency
+  const decimals =
+    typeof fixed === "number"
+      ? fixed
+      : getDecimals(c)
+
+  // 4️⃣ 本地化格式化
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  })
 }
 
 function toMs(ts: number) {

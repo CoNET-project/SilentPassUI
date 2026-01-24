@@ -25,6 +25,8 @@ type Props = {
 	home: () => void
 }
 
+const TOP_OFFSET = "calc(env(safe-area-inset-top) + 4rem)"
+
 export default function BeamioOnboardingModal({home}: Props) {
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, setIsInitialLoading } = useDaemonContext()
 	const [addressPreview, SETaddressPreview] = useState('')
@@ -147,7 +149,6 @@ export default function BeamioOnboardingModal({home}: Props) {
           {/* Slogan */}
           <div className="mt-3 text-[22px] leading-snug text-slate-500">
             The Commerce State Layer for
-            <br />
             USDC.
           </div>
         </div>
@@ -218,6 +219,7 @@ export default function BeamioOnboardingModal({home}: Props) {
 				pb-[env(safe-area-inset-bottom)]
 				pl-[env(safe-area-inset-left)]
 				pr-[env(safe-area-inset-right)]
+
 		">
 			<div className="">
 				{
@@ -347,6 +349,7 @@ export default function BeamioOnboardingModal({home}: Props) {
 							bg-white dark:bg-slate-900
 							flex flex-col
 						"
+						
 						initial={{ x: "100%" }}
 						animate={{ x: 0 }}
 						exit={{ x: "100%" }}
@@ -357,11 +360,18 @@ export default function BeamioOnboardingModal({home}: Props) {
 							title=''
 							onClose={() => {
 								setSettingsOpen('')
-							}} 
+							}}
+							showMore={false}
+							onMore={() => {
+								
+							}}
 						/>
 
 					{/* 内容区域：放你的 BeamioAccountScreen */}
-						<div className="flex-1 overflow-y-auto">
+						<div 
+							className="flex-1 overflow-y-auto"
+							style={{ marginTop: TOP_OFFSET }}
+						>
 							
 							{
 								settingsOpen === 'CreateUsernamePinScreen' && <CreateUsernamePinScreen close={qr => {

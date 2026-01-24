@@ -443,7 +443,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 								
 
 							{/* 头像 + 名字 + username + Add friend */}
-							<div className="flex flex-col items-center text-center">
+							<div className="flex flex-col items-center text-center mt-10">
 							{/* 头像 */}
 							{item?.image ? (
 								<img

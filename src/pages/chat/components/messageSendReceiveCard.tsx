@@ -1,16 +1,17 @@
 import React from "react"
 import { MoreHorizontal } from "lucide-react"
+import {fiatPrefix, formatAmount} from '@/services/currency'
 
 type MessageSendReceiveCardProps = {
   variant: "sent" | "received"
   status?: "Completed" | "Pending" | "Failed" | string
-  amount: string | number
-  token?: ICurrency
-  approx?: string
-  title?: string
+  amount: number
+  title: string
   timeLabel?: string
   onMenu?: () => void
   className?: string
+  currency: ICurrency,
+  usdcAmount: number
 }
 
 const fmtAmount = (v: string | number) => {
@@ -23,10 +24,10 @@ export function messageSendReceiveCard({
   variant,
   status = "Completed",
   amount,
-  token = "USDC",
-  approx = "",
+  currency,
   title = "",
-  timeLabel = "",
+  timeLabel,
+  usdcAmount,
   onMenu,
   className = ""
 }: MessageSendReceiveCardProps) {
@@ -39,8 +40,8 @@ export function messageSendReceiveCard({
         "relative overflow-hidden rounded-[26px]",
         "shadow-[0_6px_18px_rgba(2,6,23,0.12)]",
         isSent
-          ? "bg-gradient-to-b from-[#2F63FF] to-[#0E43D8] text-white"
-          : "bg-white text-slate-900 ring-1 ring-black/5",
+           ? "bg-white text-slate-900 ring-1 ring-black/5"
+  			: "bg-gradient-to-b from-[#2F63FF] to-[#0E43D8] text-white",
         className
       ].join(" ")}
     >
@@ -106,23 +107,40 @@ export function messageSendReceiveCard({
 
         {/* amount */}
         <div className="mt-3 flex items-end gap-1.5">
-          <div
-            className={[
-              "text-[38px] font-extrabold tracking-[-0.02em] leading-[0.9]",
-              isSent ? "text-white" : "text-slate-900"
-            ].join(" ")}
-          >
-            {amount}
-          </div>
+			<div
+				className={[
+					"flex items-end gap-1",
+					isSent ? "text-white" : "text-slate-900"
+				].join(" ")}
+				>
+				{/* 前缀：仅非 USDC */}
+				{currency !== "USDC" && (
+					<span className="pb-0.5 text-[14px] font-semibold opacity-80">
+					{fiatPrefix(currency)}
+					</span>
+				)}
+
+				{/* 数字：30px */}
+				<span className="text-[30px] font-extrabold leading-[0.95] tracking-[-0.02em]">
+					{formatAmount(amount, currency)}
+				</span>
+
+				{/* 后缀：仅 USDC */}
+				{currency === "USDC" && (
+					<span className="pb-0.5 text-[14px] font-extrabold tracking-[0.12em] opacity-80">
+						USDC
+					</span>
+				)}
+			</div>
 		  {
-			token === 'USDC' && (<>
+			currency !== 'USDC' && (<>
 			<div
             className={[
               "pb-0.5 text-[14px] font-extrabold tracking-[0.12em] leading-none",
               isSent ? "text-white/90" : "text-slate-600"
             ].join(" ")}
           >
-            {token}
+            {usdcAmount} USDC
           </div>
 			</>)
 		  }
@@ -137,16 +155,6 @@ export function messageSendReceiveCard({
           </div> */}
         </div>
 
-        {!!approx && (
-          <div
-            className={[
-              "mt-1.5 text-[13px] font-medium leading-none",
-              isSent ? "text-white/60" : "text-slate-500"
-            ].join(" ")}
-          >
-            ≈ {approx} USDC
-          </div>
-        )}
 
         {!!title && (
           <div

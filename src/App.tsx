@@ -21,6 +21,7 @@ import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfileP
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import PayScreen from '@/pages/Pay/send'
+import HistoryAll from '@/pages/History/components/HistoryAll'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 
 global.Buffer = require("buffer").Buffer
@@ -429,7 +430,7 @@ function AppShell() {
   }
 
   useEffect(() => {
-    if (!scanData) return
+    if (!scanData||isInitialLoading) return
 
     const run = async () => {
       if (/^0x/i.test(scanData)) {
@@ -471,171 +472,152 @@ function AppShell() {
 	}, [charts])
 
   return (
-    <div>
-      <div ref={bodyRef}>
-        <Routes>
-          <Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
-          <Route path="/" element={<Home />} />
-          <Route path="/History" element={<History />} />
-          <Route path="/Pay" element={<Pay />} />
-          <Route path="/Chat" element={<Chat />} />
-          <Route path="/chat/:id" element={<ChatDetail />} />
-          <Route path="/settings" element={<VouchersMockup />} />
-          <Route path="/browser" element={<Browser />} />
-          <Route path="/myWallet" element={<MyWallet />} />
-        </Routes>
-      </div>
+		<div>
+		<div ref={bodyRef}>
+			<Routes>
+			<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
+			<Route path="/" element={<Home />} />
+			<Route path="/History" element={<History />} />
+			<Route path="/Pay" element={<Pay />} />
+			<Route path="/Chat" element={<Chat />} />
+			<Route path="/chat/:id" element={<ChatDetail />} />
+			<Route path="/settings" element={<VouchersMockup />} />
+			<Route path="/browser" element={<Browser />} />
+			<Route path="/myWallet" element={<MyWallet />} />
+			<Route path="/HistoryAll" element={<HistoryAll />} />
+			</Routes>
+		</div>
 
-      {showFooter && <Footer visible={footerVisible} peek={false} />}
+		{showFooter && <Footer visible={footerVisible} peek={false} />}
 
-      {showAlphaHowItWorks === 'BeamioContactProfilePreview' && createPortal(
-		<AnimatePresence>
-			<motion.div
-				key="modal-overlay"
-				className="
-					fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col
-				"
-				initial={{ x: "100%" }}
-				animate={{ x: 0 }}
-				exit={{ x: "100%" }}
-				transition={{ duration: 0.2, ease: "easeOut" }}
-				onTouchMove={(e) => e.stopPropagation()}
-			>
-			{/* 顶部 Header */}
-			{/* <BeamioNavBack
-				title=''
-				onClose={() => {
-					setShowAlphaHowItWorks('')
-				}}
-			/> */}
+		{/**	全画面 	 */}
+		{showAlphaHowItWorks === 'BeamioContactProfilePreview' && createPortal(
+			<AnimatePresence>
+				<motion.div
+					key="modal-overlay"
+					className="
+						fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col
+					"
+					initial={{ x: "100%" }}
+					animate={{ x: 0 }}
+					exit={{ x: "100%" }}
+					transition={{ duration: 0.2, ease: "easeOut" }}
+					onTouchMove={(e) => e.stopPropagation()}
+				>
+				{/* 顶部 Header */}
+				{/* <BeamioNavBack
+					title=''
+					onClose={() => {
+						setShowAlphaHowItWorks('')
+					}}
+				/> */}
 
-				{/* 内容区域 */}
-				<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-					{/* {
-						userPreviewItem && showAlphaHowItWorks === 'Pay' && 
-						<div
-								className="
-									w-full h-full min-h-0
-									flex flex-col
-									pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]
-									pt-[calc(env(safe-area-inset-top)+0.75rem)]
-									pb-[calc(env(safe-area-inset-bottom)+5.5rem)]
-								"
-							>
-										<div className="px-5 flex items-center justify-between">
-										<PayScreen 
-											beamioer={userPreviewItem}
-											close={() => {
-											setShowAlphaHowItWorks('')
-										}}/>
-								</div>
-							</div>
+					{/* 内容区域 */}
+					<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
 						
-					} */}
-					{
-						showAlphaHowItWorks === 'BeamioContactProfilePreview' && userPreviewItem &&
-						<>
+						{
+							showAlphaHowItWorks === 'BeamioContactProfilePreview' && userPreviewItem &&
 							
-							<BeamioContactProfilePreview
-								item={userPreviewItem}
-							close={item => {
-								if (typeof item === 'string') {
-									setShowAlphaHowItWorks('')
-									
-									return
-								}
-								setShowAlphaHowItWorks('Pay')
-								setShowFooter(false)
-							}}/>
 								
-						</>
-						
-					}
-					
-				</div>
-			</motion.div>
-		</AnimatePresence>
-		, document.body
-	)}
+								<BeamioContactProfilePreview
+									item={userPreviewItem}
+									close={item => {
+										if (typeof item === 'string') {
+											setShowAlphaHowItWorks('')
 
-			{/* Settings full-screen slide-over（你原样） */}
-			<div
+											return
+										}
+										setShowAlphaHowItWorks('Pay')
+										setShowFooter(false)
+									}}
+								/>
+									
+						}
+						
+					</div>
+				</motion.div>
+			</AnimatePresence>
+			, document.body
+		)}
+
+		{/* 全画面 从底部上来 */}
+		<div
 			className={[
 				"fixed inset-0 z-40",
 				showAlphaHowItWorks ? "pointer-events-auto" : "pointer-events-none"
 			].join(" ")}
-			>
-				{/* 灰色遮罩：父页面不可用 */}
-				<div
-					className={[
+		>
+			{/* 灰色遮罩：父页面不可用 */}
+			<div
+				className={[
 					"absolute inset-0",
 					"bg-black/50 transition-opacity duration-300 ease-out",
 					showAlphaHowItWorks ? "opacity-100" : "opacity-0"
-					].join(" ")}
-					onClick={() => {
-						setShowFooter(true)
-						setShowAlphaHowItWorks('')
-					}}
-				/>
+				].join(" ")}
+				onClick={() => {
+					setShowFooter(true)
+					setShowAlphaHowItWorks('')
+				}}
+			/>
 
-				{/* Bottom Sheet：全宽，从底部上来 */}
+			{/* Bottom Sheet：全宽，从底部上来 */}
+			<div
+				className={[
+				"absolute inset-x-0 bottom-0",
+				"transition-transform duration-300 ease-out",
+				showAlphaHowItWorks ? "translate-y-0" : "translate-y-full"
+				].join(" ")}
+				onTouchMove={(e) => e.stopPropagation()}
+			>
+				{/* Sheet 本体：h-auto 自适应内容高度 */}
 				<div
-					className={[
-					"absolute inset-x-0 bottom-0",
-					"transition-transform duration-300 ease-out",
-					showAlphaHowItWorks ? "translate-y-0" : "translate-y-full"
-					].join(" ")}
-					onTouchMove={(e) => e.stopPropagation()}
+				className={[
+					"w-full",
+					"bg-white dark:bg-slate-900",
+					"rounded-t-[22px]",
+					"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
+
+					// ✅ 自适应高度，但最多不超过屏幕（避免顶到状态栏）
+					// 你也可以改成 90dvh
+					"max-h-[calc(100dvh-env(safe-area-inset-top)-12px)]",
+					"h-auto",
+
+					// ✅ 安全区：底部留出 Home indicator
+					"pb-[env(safe-area-inset-bottom)]"
+				].join(" ")}
 				>
-					{/* Sheet 本体：h-auto 自适应内容高度 */}
-					<div
-					className={[
-						"w-full",
-						"bg-white dark:bg-slate-900",
-						"rounded-t-[22px]",
-						"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
-
-						// ✅ 自适应高度，但最多不超过屏幕（避免顶到状态栏）
-						// 你也可以改成 90dvh
-						"max-h-[calc(100dvh-env(safe-area-inset-top)-12px)]",
-						"h-auto",
-
-						// ✅ 安全区：底部留出 Home indicator
-						"pb-[env(safe-area-inset-bottom)]"
-					].join(" ")}
-					>
-						{/* 顶部拖拽条（可选） */}
-						<div className="pt-2 pb-1 flex justify-center">
-							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
-						</div>
+					{/* 顶部拖拽条（可选） */}
+					<div className="pt-2 pb-1 flex justify-center">
+						<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+					</div>
 
 
-						{/* 内容区：内容少就不滚动；内容多才滚动 */}
-						<div className="px-4 pb-4 overflow-y-auto">
-							{showAlphaHowItWorks === "Pay" && userPreviewItem &&(
-								<PayScreen 
-									beamioer={userPreviewItem}
-									close={() => {
-										setShowAlphaHowItWorks('')
-										setShowFooter(true)
-								}}/>
-							)}
-							
-							<div
-								className="
-								h-[24px]
-								pb-[env(safe-area-inset-bottom)]
-								pointer-events-none
-								"
-							/>
-						</div>
+					{/* 内容区：内容少就不滚动；内容多才滚动 */}
+					<div className="px-4 pb-4 overflow-y-auto">
+						{showAlphaHowItWorks === "Pay" && userPreviewItem &&(
+							<PayScreen 
+								beamioer={userPreviewItem}
+								close={() => {
+									setShowAlphaHowItWorks('')
+									setShowFooter(true)
+							}}/>
+						)}
+						
+						<div
+							className="
+							h-[24px]
+							pb-[env(safe-area-inset-bottom)]
+							pointer-events-none
+							"
+						/>
 					</div>
 				</div>
 			</div>
+		</div>
 
-			
-    </div>
-  )
+				
+		</div>
+	)
 }
 
 export default function App() {

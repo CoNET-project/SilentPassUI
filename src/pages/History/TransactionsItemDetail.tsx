@@ -13,6 +13,7 @@ import {
 	ShieldCheck,
 	Receipt,
 	Sparkles,
+	MoreVertical,
 	QrCode, Link as LinkIcon
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -385,7 +386,7 @@ export function TransactionsItemDetail({
 	}
 
 	return (
-		<div className="min-h-screen">
+		<div className="pt-[calc(env(safe-area-inset-top)+2rem)]">
 		{openReceipt && fromBeamio && (
 			<div className=""> {/* mt-14 -> mt-10 */}
 			<PaymentReceipt
@@ -411,145 +412,144 @@ export function TransactionsItemDetail({
 				{/** content 底部 + 2rem = 8 × 0.25rem */}
 				<div className="pb-7"> {/* pb-8 -> pb-7 */}
 					<div className="px-4 pt-4"> {/* px-5 pt-5 -> px-4 pt-4 */}
-						{/* 顶部：状态 + Title + Gas sponsored */}
-						<div className="relative flex items-center justify-between gap-3">
-							{/* 左侧：状态 */}
-							<div
-								className={[
-									"inline-flex items-center gap-2 rounded-full px-3 py-1",
-									"bg-transparent border",
-									style.container.replace("bg-", "border-"),
-								].join(" ")}
-							>
-								<span
-									className={[
-									"inline-flex h-5 w-5 items-center justify-center rounded-full",
-									style.iconBg,
-									].join(" ")}
-								>
-									<Check className={["h-3.5 w-3.5", style.icon].join(" ")} strokeWidth={2.5} />
-								</span>
+						
+{/* 中部：时间 + 金额 + 对方信息 */}
+<div className="mt-4 flex items-stretch justify-between gap-3">
+  {/* 金额（左） */}
+  <div className="min-w-0">
+    <AmountText />
+    <button
+      type="button"
+      onClick={() => setFxOpen(true)}
+      className={[
+        "mt-1.5",
+        "inline-flex items-center gap-2",
+        "text-[14px] text-slate-500",
+        "rounded-md",
+        "px-1 py-0.5",
+        "hover:bg-slate-100 active:bg-slate-200",
+        "transition",
+      ].join(" ")}
+      aria-label="FX details"
+      title="FX details"
+    >
+      <span className="truncate text-left">{approxFiatText}</span>
 
-								<span className={["text-[12px] font-semibold capitalize", style.text].join(" ")}>
-									{statusText}
-								</span>
+      <span
+        aria-hidden
+        className="
+          h-7 w-7
+          rounded-full
+          flex items-center justify-center
+          shrink-0
+        "
+      >
+        <Info className="h-4 w-4 text-yellow-500/90" strokeWidth={2} />
+      </span>
+    </button>
+  </div>
 
-								{localMode === "pay" && tx.mode !== "pay" && (
-									<span
-									className={[
-										"inline-flex items-center justify-center",
-										"w-6 h-6",
-										tx.mode === "cashcode"
-										? "text-sky-600 dark:text-sky-300"
-										: "text-fuchsia-600 dark:text-fuchsia-300",
-									].join(" ")}
-									>
-										{tx.mode === "cashcode" ? (
-											<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
-										) : (
-											<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
-										)}
-									</span>
-								)}
+  {/* 右侧：状态 + Receipt（整体在垂直方向向下对齐） */}
+  <div className="flex flex-col justify-end self-stretch gap-3">
+    {/* 顶部：状态 + Title + Gas sponsored */}
+    <div className="relative flex items-center justify-between gap-3">
+      {/* 左侧：状态 */}
+      <div
+        className={[
+          "inline-flex items-center gap-2 rounded-full px-3 py-1",
+          "bg-transparent border",
+          style.container.replace("bg-", "border-"),
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "inline-flex h-5 w-5 items-center justify-center rounded-full",
+            style.iconBg,
+          ].join(" ")}
+        >
+          <Check className={["h-3.5 w-3.5", style.icon].join(" ")} strokeWidth={2.5} />
+        </span>
 
-							</div>
+        <span className={["text-[12px] font-semibold capitalize", style.text].join(" ")}>
+          {statusText}
+        </span>
 
-							{/* 右侧：Gas sponsored */}
-							{/* {isSponsored ? (
-							<div className="inline-flex items-center gap-2 text-[12px] text-blue-600">
-								<ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
-								<span>Gas sponsored</span>
-							</div>
-							) : (
-							<div className="w-[110px]" />
-							)} */}
-						</div>
-						{/* 中部：时间 + 金额 + 对方信息 */}
-						<div className="mt-4 flex items-start justify-between gap-3"> {/* mt-5 -> mt-4 */}
-							{/* 金额（左） */}
-							<div className="min-w-0">
-								<AmountText />
-								<button
-									type="button"
-									onClick={() => setFxOpen(true)}
-									className={[
-										"mt-1.5",
-										"inline-flex items-center gap-2",
-										"text-[14px] text-slate-500",
-										"rounded-md",
-										"px-1 py-0.5",
-										"hover:bg-slate-100 active:bg-slate-200",
-										"transition",
-									].join(" ")}
-									aria-label="FX details"
-									title="FX details"
-								>
-									<span className="truncate text-left">
-										{approxFiatText}
-									</span>
+        {localMode === "pay" && tx.mode !== "pay" && (
+          <span
+            className={[
+              "inline-flex items-center justify-center",
+              "w-6 h-6",
+              tx.mode === "cashcode"
+                ? "text-sky-600 dark:text-sky-300"
+                : "text-fuchsia-600 dark:text-fuchsia-300",
+            ].join(" ")}
+          >
+            {tx.mode === "cashcode" ? (
+              <QrCode className="w-3.5 h-3.5" strokeWidth={2} />
+            ) : (
+              <LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
+            )}
+          </span>
+        )}
+      </div>
 
-									<span
-										aria-hidden
-										className="
-										h-7 w-7
-										rounded-full
-										flex items-center justify-center
-										shrink-0
-										"
-									>
-										<Info
-										className="h-4 w-4 text-yellow-500/90"
-										strokeWidth={2}
-										/>
-									</span>
-								</button>
-								
-							</div>
+      {/* 右侧：Gas sponsored */}
+      {/* {isSponsored ? (
+        <div className="inline-flex items-center gap-2 text-[12px] text-blue-600">
+          <ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
+          <span>Gas sponsored</span>
+        </div>
+      ) : (
+        <div className="w-[110px]" />
+      )} */}
+    </div>
 
-							{/* iOS 透明水滴 · Receipt */}
-							{tx.mode === "request" && (tx.type1 === 'paid' || tx.type1 === 'received') && (
-								<button
-									type="button"
-									onClick={() => {
-										setNavigateLeftButtonArray(prof => [...prof, {
-											title: 'Receipt',
-											action:([
-												() => setOpenReceipt(false)
-											])
-										}])
-										setOpenReceipt(true)
-									}}
-									aria-label="Open receipt"
-									title="Receipt"
-									className="
-										shrink-0 relative
-										h-10 w-10   /* h-11 w-11 -> h-10 w-10 */
-										rounded-full
-										bg-white/30
-										backdrop-blur-xl
-										ring-2 ring-white/100  /* ring-3 -> ring-2 */
-										transition
-										active:scale-[0.96]
-										hover:bg-white/40
-										flex items-center justify-center
-										text-[rgb(0_122_255)]
-									"
-								>
-									<span
-									aria-hidden
-									className="
-										pointer-events-none
-										absolute inset-[3px]
-										rounded-full
-										bg-gradient-to-b
-										from-white/80
-										to-white/10
-									"
-									/>
-									<Receipt className="relative h-5 w-5" />
-								</button>
-							)}
-						</div>
+    {/* iOS 透明水滴 · Receipt */}
+    {tx.mode === "request" && (tx.type1 === "paid" || tx.type1 === "received") && (
+      <button
+        type="button"
+        onClick={() => {
+          setNavigateLeftButtonArray(prof => [
+            ...prof,
+            {
+              title: "Receipt",
+              action: [() => setOpenReceipt(false)],
+            },
+          ])
+          setOpenReceipt(true)
+        }}
+        aria-label="Open receipt"
+        title="Receipt"
+        className="
+          shrink-0 relative
+          h-10 w-10
+          rounded-full
+          bg-white/30
+          backdrop-blur-xl
+          ring-2 ring-white/100
+          transition
+          active:scale-[0.96]
+          hover:bg-white/40
+          flex items-center justify-center
+          text-[rgb(0_122_255)]
+        "
+      >
+        <span
+          aria-hidden
+          className="
+            pointer-events-none
+            absolute inset-[3px]
+            rounded-full
+            bg-gradient-to-b
+            from-white/80
+            to-white/10
+          "
+        />
+        <Receipt className="relative h-5 w-5" />
+      </button>
+    )}
+  </div>
+</div>
 
 						{/* 收款人/对方信息 */}
 						{tx.type !== "pending" && (
@@ -622,30 +622,30 @@ export function TransactionsItemDetail({
 
 					
 										
-										{
-											note && 
-												<div className=" pb-4">
-													<div
-														className="
-														rounded-2xl
-														bg-yellow-50/60
-														backdrop-blur-sm
-														ring-1 ring-yellow-200/40
-														px-4 py-3
-														"
-													>
-														<div className="flex items-start gap-2 text-[14px] leading-relaxed">
-														<span className="shrink-0 text-yellow-700/60 font-medium">
-															Note
-														</span>
+						{
+							note && 
+								<div className="mt-4 pb-4">
+									<div
+										className="
+										rounded-2xl
+										bg-yellow-50/60
+										backdrop-blur-sm
+										ring-1 ring-yellow-200/40
+										px-4 py-3
+										"
+									>
+										<div className="flex items-start gap-2 text-[14px] leading-relaxed">
+										<span className="shrink-0 text-yellow-700/60 font-medium">
+											Note
+										</span>
 
-														<span className="text-slate-700 break-words">
-															{note}
-														</span>
-														</div>
-													</div>
-												</div>
-										}
+										<span className="text-slate-700 break-words">
+											{note}
+										</span>
+										</div>
+									</div>
+								</div>
+						}
 
 						{/* Card image preview */}
 						<div className="mt-3 rounded-2xl overflow-hidden flex justify-center"> {/* mt-4 -> mt-3 */}
@@ -928,7 +928,7 @@ export function TransactionsItemDetail({
 					</div>
 
 					{/* 底部按钮 */}
-					{tx.type !== "pending" && (
+					{false && (
 					<div className="px-4 pb-4 pt-4"> {/* px-5 pb-5 pt-5 -> 4 */}
 						<div className="flex items-center gap-3">
 						<button

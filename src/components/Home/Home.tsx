@@ -35,6 +35,10 @@ import {BeamioBetaCard} from './components/BeamioBetaCard'
 import {TopUp} from './components/TopUp'
 import {ActivityFeed} from './components/ActivityFeed'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
+import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
+
+
+
 export const EXCHANGE_PARTNERS = [
   {
     id: "kinbok",
@@ -91,10 +95,13 @@ const Home = ({}) => {
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
 	const [openSearch, setOpenSearch]= useState(false)
 	const [reflash, setReflash] = useState(false)
+	const [itemTx, setItemtx] = useState<TransferHistork>()
+
+
 
 	const [activeItems, setActiveItems] = useState<TransferHistork[]>([])
 
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
@@ -897,6 +904,14 @@ const Home = ({}) => {
 						
 							<ActivePannel
 								items ={activeItems}
+								onOpen={tx => {
+									setItemtx(tx)
+									setShowAlphaHowItWorks('TransactionsItemDetail')
+									setShowFooter(false)
+
+
+									
+								}}
 							 />
 						
 						) : (
@@ -909,6 +924,10 @@ const Home = ({}) => {
 				}
 				
 			</div>
+
+
+
+
 			{!openSearch && showAlphaHowItWorks && createPortal(
 				<AnimatePresence>
 					<motion.div
@@ -933,6 +952,10 @@ const Home = ({}) => {
 						}
 						onClose={() => {
 							setShowAlphaHowItWorks('')
+							setShowFooter(true)
+						}}
+						onMore={() => {
+
 						}}
 					/>
 
@@ -975,14 +998,22 @@ const Home = ({}) => {
 									setShowFooter(false)
 							}} />}
 
-							
-							
+							{
+								showAlphaHowItWorks === 'TransactionsItemDetail' && itemTx &&
+								<TransactionsItemDetail
+									localMode='pay' tx={itemTx}
+								/>
+							}
+
 						</div>
 					</motion.div>
 				</AnimatePresence>
 				, document.body
 			)}
 
+
+
+			{/**		检索	 */}
 			{createPortal(
 				<div
 					className={[
@@ -1025,7 +1056,7 @@ const Home = ({}) => {
 				document.body
 			)}
 
-			{/* Settings full-screen slide-over（你原样） */}
+			{/* 底部向上弹出窗口 */}
 			<div
 			className={[
 				"fixed inset-0 z-40",

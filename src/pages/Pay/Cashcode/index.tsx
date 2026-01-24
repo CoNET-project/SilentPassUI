@@ -1,10 +1,10 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
-import {AuthorizationSign, aesGcmEncrypt, generateCODE, postToIPFS} from '@/services/beamio'
+import {AuthorizationSign, aesGcmEncrypt, generateCODE, postToIPFS, storeSystemData} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {ethers} from 'ethers'
-import { X, Check, Plus } from "lucide-react"
+import { X, Camera, Check, Plus } from "lucide-react"
 import LockModeSegmented from '@/pages/Pay/PaymentLink/LockModeSegmented'
 import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import FeeInline from './FeeInline'
@@ -12,6 +12,10 @@ import SuccessShow from './successShow'
 import Securitycode from '@/components/input/Securitycode'
 import ConformView from '@/pages/Pay/send/ConformView'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
+import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
+import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNode} from '@/services/chat'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+
 function fiatPrefix(ccy: ICurrency) {
 	if (ccy === "CAD") return "CA$"
 	if (ccy === "USD") return "$"
@@ -88,7 +92,7 @@ export default function PaymentLink ({close}: Props) {
 	const [defaultNodeText, setDefaultNodeText] = useState(defaultTextTemp)
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'ConformView'>('')
 	const [focusAmount, setFocusAmount] = useState(false)
-	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles } = useDaemonContext()
+	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, allNodes, setProfiles } = useDaemonContext()
 	const [sendError, setSendError] = useState("")
 	const [message, senMessage] = useState<any>(null)
 	const [successUrl, setSuccessUrl] = useState("")
@@ -108,6 +112,8 @@ export default function PaymentLink ({close}: Props) {
 	const [addedNote, setAddedNote] = useState("")
 	const [currencyAmount, setCurrencyAmount] = useState("")
 	const [usdcAmount, setUsdcAmount] = useState("")
+	const [cardTitle, setCardTitle] = useState("Your dynamic text goes here")
+	const [cardDetail, setCardDetail] = useState("Write some detail…")
 
 
 	useEffect(() => {
@@ -235,6 +241,16 @@ export default function PaymentLink ({close}: Props) {
 		}
 
 	}
+
+	
+
+	const currencyAmountText = useMemo(() => {
+		const curr = formatAmount(
+			usdcToCurrencyAmount(Number(sendAmount), currentCurrency),
+			currentCurrency
+		)
+		return `${fiatPrefix(currentCurrency)} ${curr}`
+	}, [sendAmount, currentCurrency, currencyData]) // ✅ 把 currencyData 纳入
 
 	const issueCashcode = async () => {
 
@@ -392,19 +408,6 @@ export default function PaymentLink ({close}: Props) {
               }}
               valueCurrencyAmount={valuecurrencyAmount}
             />
-          ) : cardCreate ? (
-            <>
-              <DiceBearCard
-                onClose={val => {
-                  setCardCreate(false)
-                  if (val) {
-                    tryPostToIPFS(val)
-                  }
-                }}
-                usdcAmount={usdcAmount}
-                currencyText={currencyAmount}
-              />
-            </>
           ) : (
             // ✅ 原来在灰卡片里的 padding，挪到这里保留间距
             <div className="p-2 space-y-3 bg-white">
@@ -584,16 +587,37 @@ export default function PaymentLink ({close}: Props) {
 
                     <div className="mt-3 flex gap-3 w-full">
                       {!showGiftEnvelope && !message && (
-                        <AppButton
-                          fullWidth
-                          variant="secondary"
-						  className="!text-[16px]"
-                          onClick={() => {
-                            setCardCreate(true)
-                          }}
-                        >
-                          Add Card image
-                        </AppButton>
+                        <>
+							{/* iOS glass camera button */}
+							<button
+								type="button"
+								onClick={() => {
+									setCardCreate(true)
+								}}
+								className="
+									shrink-0
+									w-12 h-12
+									rounded-full
+									flex items-center justify-center
+
+									bg-white/30
+									backdrop-blur-md
+
+									shadow-[0_8px_20px_rgba(0,0,0,0.18)]
+									ring-1 ring-white/30
+
+									active:scale-95
+									transition
+									border border-white/50   /* ← 白色 1px 外框 */
+								"
+								aria-label="Open camera"
+							>
+								<Camera
+									className="w-6 h-6 text-slate-900/20 opacity-80"
+									strokeWidth={2.2}
+								/>
+							</button>
+							</>
                       )}
 
                       <AppButton
@@ -613,6 +637,24 @@ export default function PaymentLink ({close}: Props) {
           )
         }
       </div>
+	  	<OverlayPortal open={cardCreate}>
+			<div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]">
+				<div className="absolute inset-0">
+					<DiceBearCard
+						onClose={val => {
+							setCardCreate(false)
+							if (val) {
+								tryPostToIPFS(val)
+							}
+						}}
+						initialTitle={cardTitle}
+						initialDetail={cardDetail}
+						usdcAmount={usdcAmount}
+						currencyText={currencyAmountText}
+					/>
+				</div>
+			</div>
+      </OverlayPortal>
     </div>
   </div>
 )

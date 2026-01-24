@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
+import { createPortal } from 'react-dom';
 import { ethers } from "ethers"
 import { beamioConet } from "@/utils/constants"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import {motion, AnimatePresence } from "framer-motion"
+import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import { getBalanceProcess, formatWithThousands, aesGcmDecrypt } from "@/services/beamio"
 import {
   QrCode,
@@ -25,6 +28,7 @@ import PaymentLink from '@/pages/Pay/PaymentLink/index'
 import NavigateLeftButton from '@/components/navigate'
 import Cashcode from '@/pages/Pay/Cashcode/index'
 import BankingBridge from './components/BankingBridge'
+import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 
 type SectionTx = TransferHistork
 
@@ -171,315 +175,319 @@ const Row = ({
 }
 
 export function MyWalletDashboard() {
-  const navigate = useNavigate()
-  const {
-    profiles,
-    myAddress,
-    setMyAddress,
-    setUsdcbalance,
-    usdcbalance,
-    currencyData,
-    setUsdcToUSD,
-    setShowFooter,
-    setNavigateLeftButtonArray
-  } = useDaemonContext()
+	const navigate = useNavigate()
+	const {
+		profiles,
+		myAddress,
+		setMyAddress,
+		setUsdcbalance,
+		usdcbalance,
+		currencyData,
+		setUsdcToUSD,
+		setShowFooter,
+		setNavigateLeftButtonArray
+	} = useDaemonContext()
 
-  const [loading, setLoading] = useState(false)
-  const [allItems, setAllItems] = useState<TransferHistork[]>([])
-  const [reflash, setReflash] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState<''|'Pay'|'BeamioPayMe'|'Cashcode'|'BankingBridge'>('')
+	const [loading, setLoading] = useState(false)
+	const [allItems, setAllItems] = useState<TransferHistork[]>([])
+	const [reflash, setReflash] = useState(false)
+	const [settingsOpen, setSettingsOpen] = useState<''|'Pay'|'BeamioPayMe'|'Cashcode'|'BankingBridge'>('')
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
+			''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 
-  const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
+	const [itemTx, setItemtx] = useState<TransferHistork>()
 
-  const fxRateUSDCToCurrency = useCallback(
-    (currency: ICurrency) => {
-      const u2u = (currencyData as any)?.USDC ?? 1
-      if (currency === "USD") return u2u
-      const usdToCurrency = (currencyData as any)?.[currency]
-      if (typeof usdToCurrency !== "number") return u2u
-      return u2u * usdToCurrency
-    },
-    [currencyData]
-  )
+	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
 
-  const balanceFiat = useMemo(() => {
-    const c: ICurrency = "CAD"
-    const rate = fxRateUSDCToCurrency(c)
-    const n = Number(usdcbalance || 0)
-    if (!isFinite(rate) || !isFinite(n)) return 0
-    return n * rate
-  }, [usdcbalance, fxRateUSDCToCurrency])
+	const fxRateUSDCToCurrency = useCallback(
+		(currency: ICurrency) => {
+		const u2u = (currencyData as any)?.USDC ?? 1
+		if (currency === "USD") return u2u
+		const usdToCurrency = (currencyData as any)?.[currency]
+		if (typeof usdToCurrency !== "number") return u2u
+		return u2u * usdToCurrency
+		},
+		[currencyData]
+	)
 
-  const load = useCallback(async () => {
-    if (!profiles?.length) return
-    const profile: profile = profiles[0]
-    const address = profile.keyID
-    if (!myAddress) setMyAddress(address)
+	const balanceFiat = useMemo(() => {
+		const c: ICurrency = "CAD"
+		const rate = fxRateUSDCToCurrency(c)
+		const n = Number(usdcbalance || 0)
+		if (!isFinite(rate) || !isFinite(n)) return 0
+		return n * rate
+	}, [usdcbalance, fxRateUSDCToCurrency])
 
-    setLoading(true)
-    try {
-      const myAddrLocal = address.toLowerCase()
+	const load = useCallback(async () => {
+		if (!profiles?.length) return
+		const profile: profile = profiles[0]
+		const address = profile.keyID
+		if (!myAddress) setMyAddress(address)
 
-      const [_transfer, _links, _checks] = await Promise.all([
-        beamioConet.getTransferHistory(address, 0, 100),
-        beamioConet.getLinksHistory(address, 0, 100),
-        beamioConet.getCheckHistory(address, 0, 100)
-      ])
+		setLoading(true)
+		try {
+		const myAddrLocal = address.toLowerCase()
 
-      const transfer: Transfer[] = _transfer[1]
-      const mappedPay: TransferHistork[] = transfer.map(n => {
-        let requestDetail: IRequestCurrencyDetail | undefined = undefined
-        let card: IImageCard | null = null
-        let payme: payMe | null = null
+		const [_transfer, _links, _checks] = await Promise.all([
+			beamioConet.getTransferHistory(address, 0, 100),
+			beamioConet.getLinksHistory(address, 0, 100),
+			beamioConet.getCheckHistory(address, 0, 100)
+		])
 
-        const nodeEX = n?.note?.split("\r\n") || []
-        let paymeData = nodeEX.length - 1
+		const transfer: Transfer[] = _transfer[1]
+		const mappedPay: TransferHistork[] = transfer.map(n => {
+			let requestDetail: IRequestCurrencyDetail | undefined = undefined
+			let card: IImageCard | null = null
+			let payme: payMe | null = null
 
-        try {
-          if (paymeData > -1) payme = JSON.parse(nodeEX[paymeData--])
-        } catch {
-          paymeData++
-        }
+			const nodeEX = n?.note?.split("\r\n") || []
+			let paymeData = nodeEX.length - 1
 
-        try {
-          if (paymeData > -1) {
-            const cardData = JSON.parse(nodeEX[paymeData--])
-            card = cardData?.card || cardData
-          }
-        } catch {
-          paymeData++
-        }
+			try {
+			if (paymeData > -1) payme = JSON.parse(nodeEX[paymeData--])
+			} catch {
+			paymeData++
+			}
 
-        const amount = Number(ethers.formatUnits(n.amount, 6))
-        const _amount = Number((payme as any)?.currencyAmount)
+			try {
+			if (paymeData > -1) {
+				const cardData = JSON.parse(nodeEX[paymeData--])
+				card = cardData?.card || cardData
+			}
+			} catch {
+			paymeData++
+			}
 
-        if ((payme as any)?.currency && fiatPrefix((payme as any).currency) && !isNaN(_amount) && _amount > 0) {
-          const currencyRate = Number((payme as any).currencyAmount) / amount
-          requestDetail = {
-            requestCurrency: (payme as any).currency,
-            totalPayCurrency: Number((payme as any).currencyAmount),
-            totalPayUSDC: amount,
-            feeCurrency: 0,
-            feeUSDC: 0,
-            receivedCurrency: Number((payme as any).currencyAmount),
-            receivedUSDC: amount,
-            currencyTip: 0,
-            USDCTip: 0,
-            rate: currencyRate,
-            title: (payme as any)?.title,
-            textNote: paymeData > -1 ? nodeEX[paymeData] : ""
-          }
-        }
+			const amount = Number(ethers.formatUnits(n.amount, 6))
+			const _amount = Number((payme as any)?.currencyAmount)
 
-        const ret: TransferHistork = {
-          date: Number(n.timestamp * BigInt(1000)),
-          amount,
-          address: n.from.toLowerCase() === myAddrLocal ? n.to.toLowerCase() : n.from.toLowerCase(),
-          hash: n.finisedHash,
-          requestCurrency: (payme as any)?.currency || "USDC",
-          note: n.note,
-          type: myAddrLocal === n.to.toLowerCase() ? "received" : "sent",
-          mode: "pay",
-          fee: 0,
-          type1: myAddrLocal === n.to.toLowerCase() ? "received" : "sent",
-          preAmount: amount,
-          requestDetail
-        }
+			if ((payme as any)?.currency && fiatPrefix((payme as any).currency) && !isNaN(_amount) && _amount > 0) {
+			const currencyRate = Number((payme as any).currencyAmount) / amount
+			requestDetail = {
+				requestCurrency: (payme as any).currency,
+				totalPayCurrency: Number((payme as any).currencyAmount),
+				totalPayUSDC: amount,
+				feeCurrency: 0,
+				feeUSDC: 0,
+				receivedCurrency: Number((payme as any).currencyAmount),
+				receivedUSDC: amount,
+				currencyTip: 0,
+				USDCTip: 0,
+				rate: currencyRate,
+				title: (payme as any)?.title,
+				textNote: paymeData > -1 ? nodeEX[paymeData] : ""
+			}
+			}
 
-        if (card?.image) ret.card = card
-        return ret
-      })
+			const ret: TransferHistork = {
+			date: Number(n.timestamp * BigInt(1000)),
+			amount,
+			address: n.from.toLowerCase() === myAddrLocal ? n.to.toLowerCase() : n.from.toLowerCase(),
+			hash: n.finisedHash,
+			requestCurrency: (payme as any)?.currency || "USDC",
+			note: n.note,
+			type: myAddrLocal === n.to.toLowerCase() ? "received" : "sent",
+			mode: "pay",
+			fee: 0,
+			type1: myAddrLocal === n.to.toLowerCase() ? "received" : "sent",
+			preAmount: amount,
+			requestDetail
+			}
 
-      const links: LinksHistory[] = _links[1]
-      let mappedLinks: TransferHistork[] = links.map(n => {
-        const isRequest = n.from.toLowerCase() === myAddrLocal
-        const isPending = isRequest ? n.to === ethers.ZeroAddress : n.from === ethers.ZeroAddress
-        const isReject = isRequest
-          ? n.to === "0x1000000000000000000000000000000000000000"
-          : n.from === "0x1000000000000000000000000000000000000000"
+			if (card?.image) ret.card = card
+			return ret
+		})
 
-        const account = isPending || isReject ? "" : isRequest ? n.to : n.from
+		const links: LinksHistory[] = _links[1]
+		let mappedLinks: TransferHistork[] = links.map(n => {
+			const isRequest = n.from.toLowerCase() === myAddrLocal
+			const isPending = isRequest ? n.to === ethers.ZeroAddress : n.from === ethers.ZeroAddress
+			const isReject = isRequest
+			? n.to === "0x1000000000000000000000000000000000000000"
+			: n.from === "0x1000000000000000000000000000000000000000"
 
-        const payAmount = Number(ethers.formatUnits(n.payAmount, 6))
-        const _requestCurrencyData = (n?.node || "").split("\r\n")
-        const tail = _requestCurrencyData[_requestCurrencyData.length - 1]
+			const account = isPending || isReject ? "" : isRequest ? n.to : n.from
 
-        let requestCurrency: ICurrency = "USDC"
-        let group: paymentType = "onetime"
-        let requestDetail: IRequestCurrencyDetail | undefined = undefined
-        let type: HistoryFilter = isPending ? "pending" : isRequest ? "sent" : "received"
+			const payAmount = Number(ethers.formatUnits(n.payAmount, 6))
+			const _requestCurrencyData = (n?.node || "").split("\r\n")
+			const tail = _requestCurrencyData[_requestCurrencyData.length - 1]
 
-        try {
-          const kkk = JSON.parse(tail)
-          if (kkk) {
-            requestCurrency = kkk.currency
-            if (typeof kkk?.oneTimeMode === "undefined") group = "payme"
-            else group = kkk.oneTimeMode ? "onetime" : "reusable"
-          }
+			let requestCurrency: ICurrency = "USDC"
+			let group: paymentType = "onetime"
+			let requestDetail: IRequestCurrencyDetail | undefined = undefined
+			let type: HistoryFilter = isPending ? "pending" : isRequest ? "sent" : "received"
 
-          const totalPayUSDC = payAmount
-          if (totalPayUSDC) {
-            const feeUSDC = calcFeeFromReceived(totalPayUSDC)
-            const requestCurrencyAmount = Number(kkk?.currencyAmount || 0)
-            const currencyTip = Number(kkk?.currencyTip || 0)
-            const taxCurrency = Number(kkk?.currencyTax || 0)
-            const currencyRate = (requestCurrencyAmount + currencyTip + taxCurrency) / totalPayUSDC
-            const requestUSDAmount = currencyRate > 0 ? requestCurrencyAmount / currencyRate : 0
+			try {
+			const kkk = JSON.parse(tail)
+			if (kkk) {
+				requestCurrency = kkk.currency
+				if (typeof kkk?.oneTimeMode === "undefined") group = "payme"
+				else group = kkk.oneTimeMode ? "onetime" : "reusable"
+			}
 
-            const totalPayCurrency = totalPayUSDC * currencyRate
-            const feeCurrency = feeUSDC * currencyRate
-            const USDCTip = currencyRate ? currencyTip / currencyRate : 0
-            const receivedUSDC = totalPayUSDC - feeUSDC
-            const receivedCurrency = receivedUSDC * currencyRate
-            const taxUSDC = currencyRate ? taxCurrency / currencyRate : 0
-            const title = kkk?.title
-            const textNote =
-              _requestCurrencyData.length - 2 > -1 ? _requestCurrencyData[_requestCurrencyData.length - 2] : ""
+			const totalPayUSDC = payAmount
+			if (totalPayUSDC) {
+				const feeUSDC = calcFeeFromReceived(totalPayUSDC)
+				const requestCurrencyAmount = Number(kkk?.currencyAmount || 0)
+				const currencyTip = Number(kkk?.currencyTip || 0)
+				const taxCurrency = Number(kkk?.currencyTax || 0)
+				const currencyRate = (requestCurrencyAmount + currencyTip + taxCurrency) / totalPayUSDC
+				const requestUSDAmount = currencyRate > 0 ? requestCurrencyAmount / currencyRate : 0
 
-            requestDetail = {
-              requestCurrency,
-              totalPayUSDC,
-              totalPayCurrency,
-              requestCurrencyAmount,
-              requestUSDAmount,
-              feeUSDC,
-              feeCurrency,
-              currencyTip,
-              USDCTip,
-              taxUSDC,
-              taxCurrency,
-              receivedUSDC,
-              receivedCurrency,
-              rate: currencyRate,
-              code: kkk?.code,
-              title,
-              textNote
-            }
-          }
-        } catch {
-          requestCurrency = tail as ICurrency
-        }
+				const totalPayCurrency = totalPayUSDC * currencyRate
+				const feeCurrency = feeUSDC * currencyRate
+				const USDCTip = currencyRate ? currencyTip / currencyRate : 0
+				const receivedUSDC = totalPayUSDC - feeUSDC
+				const receivedCurrency = receivedUSDC * currencyRate
+				const taxUSDC = currencyRate ? taxCurrency / currencyRate : 0
+				const title = kkk?.title
+				const textNote =
+				_requestCurrencyData.length - 2 > -1 ? _requestCurrencyData[_requestCurrencyData.length - 2] : ""
 
-        const ret: TransferHistork = {
-          date: Number(n.issueTimestamp * BigInt(1000)),
-          amount: payAmount - (requestDetail?.feeUSDC || 0),
-          address: account,
-          hash: n.successAuthorizationHash.startsWith("0x00") ? n.payHash : n.successAuthorizationHash,
-          note: n.node,
-          type,
-          mode: "request",
-          fee: 0,
-          type1: type === "sent" ? "paid" : type === "pending" ? "" : "received",
-          preAmount: payAmount,
-          requestCurrency,
-          requestDetail,
-          group
-        }
+				requestDetail = {
+				requestCurrency,
+				totalPayUSDC,
+				totalPayCurrency,
+				requestCurrencyAmount,
+				requestUSDAmount,
+				feeUSDC,
+				feeCurrency,
+				currencyTip,
+				USDCTip,
+				taxUSDC,
+				taxCurrency,
+				receivedUSDC,
+				receivedCurrency,
+				rate: currencyRate,
+				code: kkk?.code,
+				title,
+				textNote
+				}
+			}
+			} catch {
+			requestCurrency = tail as ICurrency
+			}
 
-        return ret
-      })
+			const ret: TransferHistork = {
+			date: Number(n.issueTimestamp * BigInt(1000)),
+			amount: payAmount - (requestDetail?.feeUSDC || 0),
+			address: account,
+			hash: n.successAuthorizationHash.startsWith("0x00") ? n.payHash : n.successAuthorizationHash,
+			note: n.node,
+			type,
+			mode: "request",
+			fee: 0,
+			type1: type === "sent" ? "paid" : type === "pending" ? "" : "received",
+			preAmount: payAmount,
+			requestCurrency,
+			requestDetail,
+			group
+			}
 
-      mappedLinks = mappedLinks.filter(n => !!n?.requestDetail)
+			return ret
+		})
 
-      const checks: CheckHistory[] = _checks[1]
-      const memoSelfDeposited: Map<string, boolean> = new Map()
+		mappedLinks = mappedLinks.filter(n => !!n?.requestDetail)
 
-      const mappedChecks: TransferHistork[] = await Promise.all(
-        checks.map(async n => {
-          const text = (n.node || "").split("\r\n")
-          const encryptedText = text[1]
-          let cleanText = ""
+		const checks: CheckHistory[] = _checks[1]
+		const memoSelfDeposited: Map<string, boolean> = new Map()
 
-          try {
-            if (encryptedText) cleanText = await aesGcmDecrypt(encryptedText, profile.privateKeyArmor)
-          } catch {}
+		const mappedChecks: TransferHistork[] = await Promise.all(
+			checks.map(async n => {
+			const text = (n.node || "").split("\r\n")
+			const encryptedText = text[1]
+			let cleanText = ""
 
-          let ce: { secureCode: string; passcode: string } | undefined
-          if (cleanText) ce = JSON.parse(cleanText)
+			try {
+				if (encryptedText) cleanText = await aesGcmDecrypt(encryptedText, profile.privateKeyArmor)
+			} catch {}
 
-          const isSend = n.from.toLowerCase() === myAddrLocal
-          const account = isSend ? (n.to === ethers.ZeroAddress ? "" : n.to) : n.from === ethers.ZeroAddress ? "" : n.from
+			let ce: { secureCode: string; passcode: string } | undefined
+			if (cleanText) ce = JSON.parse(cleanText)
 
-          const type: HistoryFilter = !account ? "pending" : isSend ? "completed" : "deposited"
-          const preAmount = Number(ethers.formatUnits(n.amount, 6))
-          const fee = calcFeeFromNumber(preAmount)
+			const isSend = n.from.toLowerCase() === myAddrLocal
+			const account = isSend ? (n.to === ethers.ZeroAddress ? "" : n.to) : n.from === ethers.ZeroAddress ? "" : n.from
 
-          let amount = preAmount
-          let hash = n.successAuthorizationHash
-          let type1: HistoryFilter | "" = type === "deposited" ? "received" : "sent"
+			const type: HistoryFilter = !account ? "pending" : isSend ? "completed" : "deposited"
+			const preAmount = Number(ethers.formatUnits(n.amount, 6))
+			const fee = calcFeeFromNumber(preAmount)
 
-          if (account?.toLowerCase?.() === myAddrLocal) {
-            const isMemo = memoSelfDeposited.get(n.depositHash)
-            if (!isMemo) {
-              memoSelfDeposited.set(n.depositHash, true)
-              type1 = "sent"
-            } else {
-              type1 = "received"
-              hash = n.depositHash
-              amount = preAmount - fee
-            }
-          } else {
-            if (type1 === "received") {
-              amount = amount - fee
-              hash = n.depositHash
-            }
-          }
+			let amount = preAmount
+			let hash = n.successAuthorizationHash
+			let type1: HistoryFilter | "" = type === "deposited" ? "received" : "sent"
 
-          return {
-            date: Number(n.createTimestamp * BigInt(1000)),
-            amount,
-            address: account ? account.toLowerCase() : "",
-            hash,
-            note: n.node,
-            type,
-            security: ce?.secureCode,
-            passcode: ce?.passcode,
-            redeemHash: n.payHash,
-            mode: "cashcode",
-            fee,
-            type1,
-            preAmount
-          }
-        })
-      )
+			if (account?.toLowerCase?.() === myAddrLocal) {
+				const isMemo = memoSelfDeposited.get(n.depositHash)
+				if (!isMemo) {
+				memoSelfDeposited.set(n.depositHash, true)
+				type1 = "sent"
+				} else {
+				type1 = "received"
+				hash = n.depositHash
+				amount = preAmount - fee
+				}
+			} else {
+				if (type1 === "received") {
+				amount = amount - fee
+				hash = n.depositHash
+				}
+			}
 
-      const merged = [...mappedPay, ...mappedLinks, ...mappedChecks].sort((a, b) => b.date - a.date)
-      setAllItems(merged)
-    } finally {
-      setLoading(false)
-    }
-  }, [profiles, myAddress, setMyAddress])
+			return {
+				date: Number(n.createTimestamp * BigInt(1000)),
+				amount,
+				address: account ? account.toLowerCase() : "",
+				hash,
+				note: n.node,
+				type,
+				security: ce?.secureCode,
+				passcode: ce?.passcode,
+				redeemHash: n.payHash,
+				mode: "cashcode",
+				fee,
+				type1,
+				preAmount
+			}
+			})
+		)
 
-  useEffect(() => {
-    if (!myAddress && profiles?.[0]?.keyID) setMyAddress(profiles[0].keyID)
-    if (myAddress) getBalanceProcess(myAddress, setUsdcbalance, setUsdcToUSD)
-  }, [myAddress, profiles, setMyAddress, setUsdcbalance, setUsdcToUSD])
+		const merged = [...mappedPay, ...mappedLinks, ...mappedChecks].sort((a, b) => b.date - a.date)
+		setAllItems(merged)
+		} finally {
+		setLoading(false)
+		}
+	}, [profiles, myAddress, setMyAddress])
 
-  useEffect(() => {
-    load()
-  }, [load])
+	useEffect(() => {
+		if (!myAddress && profiles?.[0]?.keyID) setMyAddress(profiles[0].keyID)
+		if (myAddress) getBalanceProcess(myAddress, setUsdcbalance, setUsdcToUSD)
+	}, [myAddress, profiles, setMyAddress, setUsdcbalance, setUsdcToUSD])
 
-  const activePending = useMemo(() => {
-    return allItems
-      .filter(tx => {
-        const isPending = tx.type === "pending"
-        const isRequestActive = tx.mode === "request" && tx.type === "sent"
-        const isCashcodeReady = tx.mode === "cashcode" && tx.type === "pending"
-        return isPending || isRequestActive || isCashcodeReady
-      })
-      .slice(0, 3)
-  }, [allItems])
+	useEffect(() => {
+		load()
+	}, [load])
 
-  const history = useMemo(() => {
-    return allItems
-      .filter(tx => {
-        if (tx.mode === "pay") return tx.type1 !== ""
-        if (tx.mode === "request") return tx.type !== "pending"
-        if (tx.mode === "cashcode") return tx.type !== "pending"
-        return true
-      })
-      .slice(0, 6)
-  }, [allItems])
+	const activePending = useMemo(() => {
+		return allItems
+		.filter(tx => {
+			const isPending = tx.type === "pending"
+			const isRequestActive = tx.mode === "request" && tx.type === "sent"
+			const isCashcodeReady = tx.mode === "cashcode" && tx.type === "pending"
+			return isPending || isRequestActive || isCashcodeReady
+		})
+		.slice(0, 3)
+	}, [allItems])
+
+	const history = useMemo(() => {
+		return allItems
+		.filter(tx => {
+			if (tx.mode === "pay") return tx.type1 !== ""
+			if (tx.mode === "request") return tx.type !== "pending"
+			if (tx.mode === "cashcode") return tx.type !== "pending"
+			return true
+		})
+		.slice(0, 6)
+	}, [allItems])
 
   	const reflashProcess = async () => {
 		if (reflash) return
@@ -490,28 +498,6 @@ export function MyWalletDashboard() {
 		setReflash(false)
 	}
 
-  const openTxDetail = (tx: TransferHistork) => {
-    const params = new URLSearchParams(
-      tx.mode === "request"
-        ? { code: tx.hash }
-        : { secureCode: tx.hash, cashcode: tx.security || "" }
-    ).toString()
-
-    const showUrl = `${showPaylinkSite}?${params}`
-
-    setShowFooter(false)
-    setNavigateLeftButtonArray(prev => [
-      ...prev,
-      {
-        title: "",
-        action: [
-          () => setShowFooter(true)
-        ]
-      }
-    ])
-
-    navigate(`/History?detail=1&u=${encodeURIComponent(showUrl)}`)
-  }
 
   return (
     <div
@@ -680,7 +666,11 @@ export function MyWalletDashboard() {
           >
             {activePending.length ? (
               activePending.map(tx => (
-                <Row key={`${tx.mode}-${tx.hash}-${tx.date}`} tx={tx} mode={tx.mode} onOpen={openTxDetail} />
+                <Row key={`${tx.mode}-${tx.hash}-${tx.date}`} tx={tx} mode={tx.mode} onOpen={() => {
+					setShowAlphaHowItWorks('TransactionsItemDetail')
+					setItemtx(tx)
+					setShowFooter(false)
+				}} />
               ))
             ) : (
               <div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
@@ -698,7 +688,7 @@ export function MyWalletDashboard() {
             </div>
             <button
               type="button"
-              onClick={() => navigate("/History")}
+              onClick={() => navigate("/HistoryAll")}
               className="text-[12px] font-semibold text-[#2F78FF] active:opacity-70"
             >
               View All
@@ -716,7 +706,12 @@ export function MyWalletDashboard() {
           >
             {history.length ? (
               history.map(tx => (
-                <Row key={`${tx.mode}-${tx.hash}-${tx.date}`} tx={tx} mode={tx.mode} onOpen={openTxDetail} />
+                <Row key={`${tx.mode}-${tx.hash}-${tx.date}`} tx={tx} mode={tx.mode} onOpen={(tx) => {
+					setShowAlphaHowItWorks('TransactionsItemDetail')
+					setItemtx(tx)
+					setShowFooter(false)
+
+				}} />
               ))
             ) : (
               <div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
@@ -727,7 +722,54 @@ export function MyWalletDashboard() {
 
         </div>
 
-		{/* bottom spacer: 避开 footer + iOS 安全区 */}
+		{showAlphaHowItWorks && createPortal(
+			<AnimatePresence>
+				<motion.div
+					key="modal-overlay"
+					className="
+						fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col
+					"
+					initial={{ x: "100%" }}
+					animate={{ x: 0 }}
+					exit={{ x: "100%" }}
+					transition={{ duration: 0.28, ease: "easeOut" }}
+					onTouchMove={(e) => e.stopPropagation()}
+				>
+				{/* 顶部 Header */}
+				<BeamioNavBack
+					title=''
+					
+					onClose={() => {
+						
+						setShowAlphaHowItWorks('')
+						setShowFooter(true)
+					}}
+					onMore={() => {
+
+					}}
+				/>
+
+					{/* 内容区域 */}
+					<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+						
+						
+
+						{
+							showAlphaHowItWorks === 'TransactionsItemDetail' && itemTx &&
+							<TransactionsItemDetail
+								localMode='pay' tx={itemTx}
+							/>
+						}
+
+					</div>
+				</motion.div>
+			</AnimatePresence>
+			, document.body
+		)}
+
+
+
+		{/* bottom 向上弹出窗口: 避开 footer + iOS 安全区 */}
 		<div
 			className="
 			h-[96px]
@@ -735,7 +777,9 @@ export function MyWalletDashboard() {
 			pointer-events-none
 			"
 		/>
-		{/* Settings full-screen slide-over（你原样） */}
+
+
+		
 			<div
 			className={[
 				"fixed inset-0 z-40",
@@ -841,7 +885,6 @@ export function MyWalletDashboard() {
 					</div>
 				</div>
 			</div>
-
       </div>
     </div>
   )

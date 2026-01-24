@@ -221,6 +221,9 @@ const Pay = ({}) => {
 						onClose={() => {
 							setShowAlphaHowItWorks('')
 						}}
+						onMore={() => {
+							
+						}}
 					/>
 
 						{/* 内容区域 */}

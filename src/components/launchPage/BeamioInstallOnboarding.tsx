@@ -16,6 +16,7 @@ interface BeforeInstallPromptEvent extends Event {
   }>
 }
 
+const TOP_OFFSET = "calc(env(safe-area-inset-top) + 1rem)"
 const BeamioInstallOnboarding: React.FC = () => {
 	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPaymentLink, paymentLink, beamioAppInstalled} = useDaemonContext()
   	const [activeTab, setActiveTab] = useState<"ios" | "android" | "desktop">(MobileType())
@@ -106,7 +107,10 @@ const BeamioInstallOnboarding: React.FC = () => {
 					navigate('/')
 					
 				}}/> : 
-				<div className="flex justify-center px-4 py-8">
+				<div 
+					className="flex justify-center px-4 py-8"
+  					style={{ marginTop: TOP_OFFSET }}
+				>
 					{/* 滚动容器：限制最大高度 + 内部滚动 */}
 					<div className="w-full max-w-lg max-h-[calc(100vh-4rem)] overflow-y-auto p-6 md:p-8 
 						/* ⭐ 给 Footer 留出空间 */

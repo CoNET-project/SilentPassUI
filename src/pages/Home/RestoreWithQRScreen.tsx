@@ -3,7 +3,7 @@ import { AppButton } from '@/components/button/AppButton'
 import { onWalletEvent, restoreWithRedeem } from '@/services/beamio'
 import ScanBtn from '@/components/scanBtn/ScanButton' // 引入 ScanBtn
 import { Scan, AlertCircle } from 'lucide-react' 
-
+import { useDaemonContext } from '@/providers/DaemonProvider'
 type RestoreWithQRScreenProps = {
   onRestore: (temp: encrypt_keys_object) => void
 }
@@ -12,6 +12,23 @@ const RestoreWithQRScreen = ({ onRestore }: RestoreWithQRScreenProps) => {
   const [recoveryCode, setRecoveryCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const { scanRef } = useDaemonContext()
+		const { scanData } = useDaemonContext()
+
+  useEffect(() => {
+    
+
+    const run = async () => {
+		// 简单过滤 http 链接，保留纯 code
+		if (!scanData || /^http/i.test(scanData)) {
+				setError('Invalid recovery code format')
+				return
+		}
+       	setRecoveryCode(scanData)
+    }
+
+    run()
+  }, [scanData])
   
   // ⭐ 1. 创建 Ref 用于引用隐藏的 ScanBtn 容器
   const scanTriggerRef = useRef<HTMLDivElement>(null)
@@ -64,14 +81,7 @@ const RestoreWithQRScreen = ({ onRestore }: RestoreWithQRScreenProps) => {
 
   // ⭐ 3. 触发器：将点击事件传送到 ScanBtn
   const onOpenScanner = () => {
-    if (scanTriggerRef.current) {
-        // 尝试找到 ScanBtn 内部的可点击元素 (button 或 input) 并触发点击
-        // 如果 ScanBtn 本身就是 div 绑定了 onClick，则 click() 容器的首个子元素
-        const clickable = scanTriggerRef.current.firstElementChild as HTMLElement
-        if (clickable) {
-            clickable.click()
-        }
-    }
+	scanRef.current?.start()
   }
 
   return (
@@ -82,7 +92,7 @@ const RestoreWithQRScreen = ({ onRestore }: RestoreWithQRScreenProps) => {
       <div className="flex-1">
         {/* 标题区域 */}
         <h1 className="text-[32px] md:text-[40px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-900">
-          Enter Recovery <br /> Code
+          Enter Recovery Code
         </h1>
         <p className="mt-3 text-[18px] text-slate-500 font-medium">
           Scan QR or paste your code string.
@@ -109,7 +119,7 @@ const RestoreWithQRScreen = ({ onRestore }: RestoreWithQRScreenProps) => {
             "
           >
             <Scan className="w-6 h-6" strokeWidth={2.5} />
-            Scan QR
+            	Scan QR
           </button>
         </div>
 

@@ -407,21 +407,21 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 				{/**		Balance  */}
 				<div className="flex items-center justify-between text-[12px] tracking-wide text-slate-400 pr-1">
 					{/* 左侧：currentCurrency 计价 */}
-					<div className="leading-none opacity-70">
+					{/* <div className="leading-none opacity-70">
 						{typeof usdcbalance === "number" && (
 							<>
 								{currentCurrency}{" "}
 								{formatMoney(usdcbalance * fxRateUSDCToCurrency(currentCurrency), currentCurrency === "JPY" ? 0 : 2)}
 							</>
 						)}
-					</div>
+					</div> */}
 
 					{/* 右侧：USDC 余额（保持原样） */}
-					<div className="inline-flex items-center gap-1">
+					{/* <div className="inline-flex items-center gap-1">
 						<span className="leading-none">
 							{formatMoney(usdcbalance,4)} USDC
 						</span>
-					</div>
+					</div> */}
 				</div>
 
 				{/* Input row: fixed height so absolute elements never jump */}

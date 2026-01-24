@@ -1008,7 +1008,7 @@ export const makeMessage = (
 	return result
 }
 
-export function emitReactionAsNewMessage (amount: string, token: ICurrency, title: string, approx: string, ) {	//(targetMessageId: string, reaction: ReactionKey) {
+export function emitReactionAsNewMessage (amount: number, currency: ICurrency, title: string,usdcAmount: number ) {	//(targetMessageId: string, reaction: ReactionKey) {
 	// const reactionLabel = REACTIONS.find(r => r.key === reaction)?.label || "👍"
 	const now = Date.now()
 	const tempId = new Date().getTime()
@@ -1016,11 +1016,11 @@ export function emitReactionAsNewMessage (amount: string, token: ICurrency, titl
 	// ✅ 你可以换成只发 emoji：text: reactionLabel
 	// const text = reactionLabel
 	const card: paymentCard = {
-		amount,
-		token,
+		amount: amount,
+		currency,
 		title,
-		approx,
-		timeStamp: new Date().getTime()
+		usdcAmount,
+		timeStamp: new Date().getTime(),
 	}
 	const mess: ChatMessage = 
 		{

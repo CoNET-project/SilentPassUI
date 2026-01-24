@@ -440,20 +440,10 @@ export default function PaymentLink ({close}: Props) {
 
                   <ConformView messageData={message} />
 
-                  <div className="grid grid-cols-2 gap-3">
-                    {!processing && (
-                      <AppButton
-                        fullWidth
-                        variant="secondary"
-                        onClick={() => {
-                          senMessage('')
-                        }}
-                      >
-                        Cancel
-                      </AppButton>
-                    )}
+                  <div className="grid grid-cols-1 gap-3">
+                    
 
-                    <div className={processing ? "col-span-2" : ""}>
+                    
                       <AppButton
                         fullWidth
                         loading={processing}
@@ -463,7 +453,7 @@ export default function PaymentLink ({close}: Props) {
                       >
                         Confirm
                       </AppButton>
-                    </div>
+                    
                   </div>
                 </>
               ) : (

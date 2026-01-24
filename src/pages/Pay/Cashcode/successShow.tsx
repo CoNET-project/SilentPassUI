@@ -68,9 +68,7 @@ const SuccessShow = ({
 		>
 			{/* Close button: top-right, iOS frosted style */}
 				
-				<div className="absolute -top-4 -right-4 z-30">
-					<IOSBounceCloseButton onClick={onReset} />
-				</div>
+				
 
 			{/* Cashcode area */}
 			
@@ -155,11 +153,12 @@ const SuccessShow = ({
 					)}
 
 				</>
+
 			
 
 				{/* QR area */}
 				<div className="mt-4 flex flex-col items-center gap-2">
-					<div className="border border-black/20 rounded-xl p-3 bg-white text-center qrCard">
+					
 						<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
 							<span
 								className="uppercase font-medium tracking-wider text-[11px]"
@@ -168,6 +167,14 @@ const SuccessShow = ({
 								{username}
 							</span>
 						</div>
+						<div
+										className="
+										rounded-[28px]
+										bg-white
+										p-[18px]
+										shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+										"
+									>
 						<QRCodeCanvas
 							value={successUrl}
 							size={160}
@@ -183,6 +190,7 @@ const SuccessShow = ({
 							}}
 							className="rounded-lg inline-block"
 						/>
+						</div>
 
 						<div className="flex flex-col items-center gap-0.5 mt-0 pt-0 leading-tight">
 							<span
@@ -196,7 +204,7 @@ const SuccessShow = ({
 								{Number(valueUSDCAmount).toFixed(4)} USDC
 							</span>
 						</div>
-					</div>
+					
 				</div>
 				<div
 					className="

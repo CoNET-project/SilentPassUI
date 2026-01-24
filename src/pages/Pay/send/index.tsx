@@ -184,7 +184,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 								bg-blue-600 text-white
 								text-sm font-medium"
 						onClick={() => {
-							close('/')
+							close('')
 						}}
 					>
 						Done

@@ -146,7 +146,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 	const [openChat, setOpenChat] = useState(false)
 	
 
-	const { profiles, usdcbalance, beamio, chatHomeItem,setChatHomeItem, setScanData
+	const { profiles, usdcbalance, beamio, chatHomeItem,setChatHomeItem, setScanData, setHistoryPayData
 	} = useDaemonContext()
 
 	const checkBalance = () => {
@@ -768,7 +768,8 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 													bg-sky-600 text-white text-[13px] font-semibold shadow-sm
 												"
 												onClick={() => {
-													close(item)
+													navigate('/History')
+													setHistoryPayData(item)
 												}}
 											>
 												Pay
@@ -792,10 +793,10 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 											<div className="mt-2">
 											<div className="flex items-center justify-between mb-2">
 												<div className="text-[11px] font-medium tracking-[0.16em] uppercase text-slate-500">
-												Between you
+													Between you
 												</div>
 												<button className="text-[11px] text-sky-600 font-medium">
-												See all
+													See all
 												</button>
 											</div>
 

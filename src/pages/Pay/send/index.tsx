@@ -66,7 +66,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 	const [item, setItem] = useState<searchResult|null>(beamioer||null)
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'ConformView'>('')
 	const [focusAmount, setFocusAmount] = useState(false)
-	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, allNodes, setProfiles, setCharts } = useDaemonContext()
+	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, allNodes, setProfiles, setHistoryPayData, historyPayData } = useDaemonContext()
 	const [sendError, setSendError] = useState("")
 	const [message, senMessage] = useState<any>(null)
 	const [successHash, setSuccessHash] = useState("")
@@ -102,6 +102,11 @@ export default function PayScreen ({close, beamioer}: Props) {
 		return usdc * rate
 	}
 
+	useEffect(() => {
+		if (historyPayData) {
+			setHistoryPayData(null)
+		}
+	}, [])
 
 	useEffect(() => {
 		if (sendError||showToError) {
@@ -112,6 +117,11 @@ export default function PayScreen ({close, beamioer}: Props) {
 		}
 	}, [sendError, showToError])
 
+	useEffect(() => {
+		if (beamioer) {
+			setItem(beamioer)
+		}
+	}, [beamioer])
 
 	useEffect(() => {
 		if (showGiftImageError) {

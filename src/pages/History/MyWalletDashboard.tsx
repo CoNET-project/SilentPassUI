@@ -185,7 +185,8 @@ export function MyWalletDashboard() {
 		currencyData,
 		setUsdcToUSD,
 		setShowFooter,
-		setNavigateLeftButtonArray
+		setNavigateLeftButtonArray,
+		historyPayData,
 	} = useDaemonContext()
 
 	const [loading, setLoading] = useState(false)
@@ -196,6 +197,7 @@ export function MyWalletDashboard() {
 			''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 
 	const [itemTx, setItemtx] = useState<TransferHistork>()
+
 
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
 
@@ -209,6 +211,14 @@ export function MyWalletDashboard() {
 		},
 		[currencyData]
 	)
+
+	useEffect(() => {
+		if (historyPayData) {
+			setShowFooter(false)
+			setSettingsOpen('Pay')
+			
+		}
+	}, [])
 
 	const balanceFiat = useMemo(() => {
 		const c: ICurrency = "CAD"
@@ -835,6 +845,7 @@ export function MyWalletDashboard() {
 						<div className="px-4 pb-4 overflow-y-auto">
 							{settingsOpen === "Pay" && (
 								<PayScreen
+									beamioer={historyPayData||undefined}
 									close={(path) => {
 										setShowFooter(true)
 										setSettingsOpen('')

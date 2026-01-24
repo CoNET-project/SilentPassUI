@@ -4,6 +4,8 @@ import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanBut
 
 
 type DaemonContext = {
+	historyPayData: searchResult|null
+	setHistoryPayData: (val: searchResult|null) => void
 	scanRef: React.MutableRefObject<ScanButtonHandle | null>
 	msgCountLockRef: React.MutableRefObject<boolean>
 	seenMsgRef: React.MutableRefObject<Set<string>>
@@ -160,7 +162,8 @@ type DaemonProps = {
 };
 
 const defaultContextValue: DaemonContext = {
-	
+	historyPayData: null,
+	setHistoryPayData: (val: searchResult|null) => {},
 	// ...
 	scanRef: { current: null },
 	// ...
@@ -332,6 +335,7 @@ export function useDaemonContext() {
 }
 
 export function DaemonProvider({ children }: DaemonProps) {
+	const [historyPayData, setHistoryPayData] = useState<searchResult | null>(null)
 	const scanRef = useRef<ScanButtonHandle | null>(null)
 	const seenMsgRef = useRef<Set<string>>(new Set())
 	const msgCountLockRef = useRef(false) // 可选：避免同一帧重复统计
@@ -482,7 +486,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
-				chatHomeItem,setChatHomeItem,scanData, setScanData, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef,
+				chatHomeItem,setChatHomeItem,scanData, setScanData, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,
         		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
 				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 			{/* ✅ 常驻隐藏扫码组件：不占布局，但随时可 start */}

@@ -4,7 +4,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername } from "@/services/beamio"
 import { ethers } from "ethers"
 import {formatAmount, fiatPrefix} from '@/services/currency'
-
+import AccountBeo from '@/pages/History/AccountBea'
 
 
 const getImg = (avatarSeed: string) =>
@@ -173,22 +173,15 @@ function ActiveCapsuleItem({
 		<div className="flex items-start gap-3">
 			{/* avatar / QR */}
 			<div className="shrink-0 w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden">
-			{isCashcodePending ? (
-				<span
-					className="
-						w-full h-full
-						flex items-center justify-center
-						bg-slate-900/5
-					"
-					aria-label="Cashcode pending"
-				>
-					<QrCode className="w-5 h-5 text-[#2E6BFF]" strokeWidth={2.2} />
-				</span>
-			) : avatar ? (
-				<img src={avatar} className="w-full h-full object-cover" alt="" />
-			) : (
-				<span className="text-slate-400 font-semibold">?</span>
-			)}
+				<AccountBeo
+					address={tx.type === "sent" ? beamio?.address || '' : tx.address}
+					note=""
+					dateData=""
+					tx={tx}
+					localMode={tx.mode || "pay"}
+					isCashcodePending={isCashcodePending}
+					avatarOnly={true}
+				/>
 			</div>
 
 			{/* content */}

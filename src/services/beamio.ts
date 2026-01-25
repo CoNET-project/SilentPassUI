@@ -1578,11 +1578,20 @@ export const postToIPFS = async (profile: profile, image: string) => {
 			body: JSON.stringify(body)
 		})
 
-		
-		
+		if (!resp.ok) {
+			console.error("postToIPFS error: Response not OK", resp.status, resp.statusText)
+			return null
+		}
+
+		// 可选：检查响应数据
+		const responseData = await resp.json().catch(() => null)
+		if (responseData && responseData.error) {
+			console.error("postToIPFS error:", responseData.error)
+			return null
+		}
 		
 	} catch (err) {
-		console.error("addFollowing error:", err)
+		console.error("postToIPFS error:", err)
 		return null
 	}
 	return hash

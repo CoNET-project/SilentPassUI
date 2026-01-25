@@ -383,31 +383,56 @@ export default function PayScreen ({close, beamioer}: Props) {
 		}
 
 	}
-	
+
 
 	const tryPostToIPFS = async (val: ClosePayload) => {
-		if (!profiles) return
-		setUploadingIPFS(true)
-		const profile = profiles[0]
-		const result = await postToIPFS(profile, val.bgBase64)
-		setUploadingIPFS(false)
-		if (!result) {
+		if (!profiles) {
+			console.error("tryPostToIPFS: profiles not available")
+			return
+		}
+		
+		if (!val.bgBase64) {
+			console.error("tryPostToIPFS: bgBase64 is empty")
 			setShowGiftImageError(true)
-			return console.log (`tryPostToIPFS Error!`)
+			return
 		}
-		setCardTitle(val.title)
-		setCardDetail(val.detail)
-			
-		setShowGiftEnvelope(true)
-		const addnote = {
-			card: {
-				title: val.title,
-				detail: val.detail,
-				image: `${ipfsEndpoint}${result}&t=${Date.now()}`
-			}
-		}
-		setAddedNote(JSON.stringify(addnote))
 
+		setUploadingIPFS(true)
+		try {
+			const profile = profiles[0]
+			if (!profile) {
+				console.error("tryPostToIPFS: profile not found")
+				setShowGiftImageError(true)
+				setUploadingIPFS(false)
+				return
+			}
+
+			const result = await postToIPFS(profile, val.bgBase64)
+			setUploadingIPFS(false)
+			
+			if (!result) {
+				console.error("tryPostToIPFS: postToIPFS returned null or undefined")
+				setShowGiftImageError(true)
+				return
+			}
+
+			setCardTitle(val.title)
+			setCardDetail(val.detail)
+			
+			setShowGiftEnvelope(true)
+			const addnote = {
+				card: {
+					title: val.title,
+					detail: val.detail,
+					image: `${ipfsEndpoint}${result}&t=${Date.now()}`
+				}
+			}
+			setAddedNote(JSON.stringify(addnote))
+		} catch (error) {
+			console.error("tryPostToIPFS: Unexpected error", error)
+			setUploadingIPFS(false)
+			setShowGiftImageError(true)
+		}
 	}
 
 	return (
@@ -436,7 +461,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 							showHistory={false}
 							closeWindow={item => {
 								if (typeof item !== 'string') {
-								selectItem(item)
+									selectItem(item)
 								}
 							}}
 							showError={showToError}

@@ -24,6 +24,8 @@ type Prof = {
 	dateData: string
 	tx: TransferHistork
 	localMode: Mode
+	isCashcodePending?: boolean
+	avatarOnly?: boolean
 }
 
 const getImg = (avatarSeed: string) =>
@@ -52,7 +54,7 @@ const unknowAcc = (address: string):searchResult => {
 
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 
-const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
+const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, avatarOnly = false}: Prof) => {
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, beamio} = useDaemonContext()
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
 	const [userImg, setUserImg] = useState('')
@@ -100,6 +102,73 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 		findUser()
 	}, [findUser])
 
+	// Avatar component (reusable)
+	const AvatarComponent = () => {
+		const avatarSize = avatarOnly ? "w-11 h-11" : "w-10 h-10"
+		const iconSize = avatarOnly ? "w-5 h-5" : "w-5 h-5"
+		
+		if (isCashcodePending) {
+			return (
+				<div
+					className={`
+						${avatarSize}
+						rounded-full
+						flex items-center justify-center
+						flex-shrink-0
+						bg-slate-900/5
+					`}
+					aria-label="Cashcode pending"
+				>
+					<QrCode className={`${iconSize} text-[#2E6BFF]`} strokeWidth={2.2} />
+				</div>
+			)
+		}
+		// 如果有 userImg，优先显示 userImg（即使 fromBeamio 还没加载完成）
+		if (userImg) {
+			return (
+				<img
+					src={userImg}
+					className={`${avatarSize} rounded-full object-cover flex-shrink-0 bg-slate-200`}
+					alt=""
+				/>
+			)
+		}
+		// 如果 fromBeamio 已加载且不是 Unknow，显示头像
+		if (fromBeamio && fromBeamio.username !== 'Unknow') {
+			const imgSrc = fromBeamio.image || getImg(fromBeamio.username)
+			return (
+				<img
+					src={imgSrc}
+					className={`${avatarSize} rounded-full object-cover flex-shrink-0 bg-slate-200`}
+					alt=""
+				/>
+			)
+		}
+		// 默认显示 "?"
+		return (
+			<div
+				className={`
+					${avatarSize}
+					rounded-full
+					flex items-center justify-center
+					flex-shrink-0
+					bg-slate-200
+					text-slate-400
+					font-semibold
+					text-base
+				`}
+				aria-label="Default avatar"
+			>
+				?
+			</div>
+		)
+	}
+
+	// If avatarOnly mode, just return the avatar
+	if (avatarOnly) {
+		return <AvatarComponent />
+	}
+
 	
 	return (
 			<div
@@ -116,35 +185,13 @@ const SenderBmo = ({address, note, dateData, tx, localMode}: Prof) => {
 				"
 				>
 				{/* Avatar */}
-					{fromBeamio?.username !== 'Unknow' ? (
-						
-						<img
-							src={userImg}
-							className="w-10 h-10 rounded-full object-cover flex-shrink-0 bg-slate-200"
-						/>
-					) : (
-						<div
-						className="
-							w-10 h-10
-							rounded-full
-							flex items-center justify-center
-							flex-shrink-0
-							bg-slate-200
-							text-slate-400
-							font-semibold
-							text-base
-						"
-						aria-label="Default avatar"
-						>
-						?
-						</div>
-					)}
+				<AvatarComponent />
 				
 
 				{/* 左侧：用户名 / @handle */}
 				<span className="flex-1 min-w-0 leading-tight">
 					<span className="block text-[14px] text-slate-900 truncate leading-tight font-medium">
-						{fromBeamio ? displayName(fromBeamio) : ""}
+						{isCashcodePending ? "You created Cashcode" : (fromBeamio ? displayName(fromBeamio) : "")}
 					</span>
 					{
 						fromBeamio?.username !=='Unknow' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">

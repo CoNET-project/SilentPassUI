@@ -145,8 +145,9 @@ export function TransactionsItemDetail({
 		
 		const detail = tx?.requestDetail
 		if (detail) {
+			const kkk1 = tx.type1 === 'sent' ? (detail.totalPayCurrency|| 0 ): detail.requestCurrencyAmount|| 0
 			const kkk = tx.type === 'pending' ? detail.requestCurrencyAmount|| 0 : (tx.type === 'sent' ? detail.totalPayCurrency ||0 : detail.receivedCurrency||0)
-			const amt = formatAmount(kkk , receivedCurrency)
+			const amt = formatAmount(kkk1 , receivedCurrency)
 			return (
 				<div className="flex items-baseline gap-2">
 					<span
@@ -422,12 +423,12 @@ export function TransactionsItemDetail({
 		<div className="pt-[calc(env(safe-area-inset-top)+2rem)]">
 		{openReceipt && fromBeamio && (
 			<div className=""> {/* mt-14 -> mt-10 */}
-			<PaymentReceipt
-				data={tx}
-				open={true}
-				onClose={() => setOpenReceipt(false)}
-				fromBeamio={fromBeamio}
-			/>
+				<PaymentReceipt
+					data={tx}
+					open={true}
+					onClose={() => setOpenReceipt(false)}
+					fromBeamio={fromBeamio}
+				/>
 			</div>
 		)}
 
@@ -466,19 +467,19 @@ export function TransactionsItemDetail({
 							aria-label="FX details"
 							title="FX details"
 							>
-							<span className="truncate text-left">{approxFiatText}</span>
+								<span className="truncate text-left">{approxFiatText}</span>
 
-							<span
-								aria-hidden
-								className="
-								h-7 w-7
-								rounded-full
-								flex items-center justify-center
-								shrink-0
-								"
-							>
-								<Info className="h-4 w-4 text-yellow-500/90" strokeWidth={2} />
-							</span>
+								<span
+									aria-hidden
+									className="
+									h-7 w-7
+									rounded-full
+									flex items-center justify-center
+									shrink-0
+									"
+								>
+									<Info className="h-4 w-4 text-yellow-500/90" strokeWidth={2} />
+								</span>
 							</button>
 						</div>
 
@@ -721,58 +722,63 @@ export function TransactionsItemDetail({
 						<div className="mt-3 overflow-hidden"> {/* mt-4 -> mt-3 */}
 
 							{
-								tx.mode !== 'pay' && tx.type !== 'pending' && (<>
-								{/* Breakdown */}
-								<div className="px-5 py-4 bg-white">
-									<div className="text-[15px] font-semibold text-slate-900 mb-3">
-										Breakdown
+								(tx.mode === 'cashcode' && tx.type1 === 'sent' as HistoryFilter )&& (
+									<>
+									{/* Breakdown */}
+									<div className="px-5 py-4 bg-white">
+										<div className="text-[15px] font-semibold text-slate-900 mb-3">
+											Breakdown
+										</div>
+
+										<div className="space-y-2">
+										{/* Subtotal */}
+										<div className="flex items-center justify-between">
+											<span className="text-[14px] text-slate-500">
+												Subtotal
+											</span>
+											<span className="text-[15px] font-semibold text-slate-900">
+												{fiatText} {formatAmount(tx.requestDetail?.totalPayCurrency||0, receivedCurrency)} 
+											</span>
+										</div>
+
+										{/* Tax */}
+										{!!tx.requestDetail?.taxCurrency &&
+											tx.requestDetail.taxCurrency > 0 && (
+											<div className="flex items-center justify-between">
+												<span className="text-[14px] text-slate-500">Tax</span>
+												<span className="text-[15px] font-semibold text-slate-900">
+												{fiatText} {formatAmount(tx.requestDetail.taxCurrency, receivedCurrency)}
+												</span>
+											</div>
+										)}
+
+										{!!tx.requestDetail?.currencyTip &&
+										tx.requestDetail.currencyTip > 0 && (
+											<div className="flex items-center justify-between">
+												<span className="text-[14px] text-slate-500">Tip</span>
+												<span className="text-[15px] font-semibold text-slate-900">
+												{fiatText} {formatAmount(tx.requestDetail.currencyTip, receivedCurrency)}
+												</span>
+											</div>
+										)}
+
+										</div>
 									</div>
 
-									<div className="space-y-2">
-									{/* Subtotal */}
-									<div className="flex items-center justify-between">
-										<span className="text-[14px] text-slate-500">
-											Subtotal
-										</span>
-										<span className="text-[15px] font-semibold text-slate-900">
-											{fiatText} {formatAmount(subtotal, receivedCurrency)} 
-										</span>
-									</div>
+									{/* Divider */}
+									
+									{
+										!!tx?.requestDetail && tx.requestDetail?.feeUSDC > 0 && 
+										<BeamioFee
+											grossUSDC={tx.requestDetail.totalPayUSDC||0}
+											feeUSDC={tx.requestDetail.feeUSDC||0}
+											netUSDC={tx.requestDetail.receivedUSDC||0}
+										/>
+									}
+								
 
-									{/* Tax */}
-									<div className="flex items-center justify-between">
-										<span className="text-[14px] text-slate-500">
-											Tax
-										</span>
-										<span className="text-[15px] font-semibold text-slate-900">
-											{fiatText} {formatAmount(tx?.requestDetail?.taxCurrency||0, receivedCurrency)}
-										</span>
-									</div>
-
-									{/* Tip */}
-									<div className="flex items-center justify-between">
-										<span className="text-[14px] text-slate-500">
-											Tip
-										</span>
-										<span className="text-[15px] font-semibold text-slate-900">
-											{fiatText} {formatAmount(tx?.requestDetail?.currencyTip||0, receivedCurrency)}
-										</span>
-									</div>
-									</div>
-								</div>
-
-							{/* Divider */}
-							<div className="h-px bg-slate-100" />
-							{
-								tx?.requestDetail && tx.type1 === 'received' && <BeamioFee
-									grossUSDC={tx.requestDetail.totalPayUSDC||0}
-									feeUSDC={tx.requestDetail.feeUSDC||0}
-									netUSDC={tx.requestDetail.receivedUSDC||0}
-								/>
-							}
-							
-
-								</>)
+									</>
+								)
 							}
 							
 
@@ -820,29 +826,7 @@ export function TransactionsItemDetail({
 
 							<div className="h-px bg-slate-100" />
 
-							{/* {(tx.type === "received" || tx.type === "completed" || tx.type === "pending") && tx.requestCurrency && (
-							<div
-								className={[
-								"flex items-center px-4 py-2.5 bg-white",
-								feeOpen ? "justify-center" : "justify-between",
-								].join(" ")}
-							>
-								{!feeOpen && <span className="text-[14px] text-slate-500">Beamio Fee</span>}
-
-								<div className={["flex items-center", feeOpen ? "w-full justify-center" : "gap-3"].join(" ")}>
-								<div className={feeOpen ? "w-full" : ""}>
-									<FeeInline
-									payUsdc={tx.type === "pending" ? currencyToUsdcAmount(tx.amount, tx.requestCurrency) : tx.preAmount}
-									currentCurrency={tx.requestCurrency}
-									detailOpen={val => setFeeopen(val)}
-									txDetail={txDetail}
-									/>
-								</div>
-								</div>
-							</div>
-
 							
-							)} */}
 
 
 							{
@@ -927,7 +911,7 @@ export function TransactionsItemDetail({
 											/>
 										</div>
 										<div className="px-4 py-3 flex items-center justify-between gap-3">
-										<div className="text-[14px] text-slate-500">Url</div>
+										
 
 										<div className="flex items-center gap-2">
 											<div className="text-[14px] font-extrabold text-slate-900 tabular-nums truncate max-w-[220px]">

@@ -153,7 +153,7 @@ const Row = ({
         ].join(" ")}
       >
         <div className="flex justify-end items-start gap-1.5">
-          {mode === "pay" && <span className="text-[14px] leading-[20px]">{plus ? "+" : "−"}</span>}
+          <span className="text-[14px] leading-[20px]">{plus ? "+" : "−"}</span>
 
           <div className="flex flex-col gap-0.5 text-right">
             <span className="text-[14px] font-semibold tabular-nums leading-[20px]">
@@ -164,7 +164,7 @@ const Row = ({
               <span className="text-[12px] tabular-nums text-slate-400 leading-[16px]">
                 {fiatPrefix(tx.requestDetail.requestCurrency)}{" "}
                 {formatAmount(
-                  tx.type === "sent" ? tx.requestDetail.totalPayCurrency : tx.requestDetail.receivedCurrency,
+                  tx.type1 === "sent" ? tx.requestDetail.totalPayCurrency : tx.requestDetail.requestCurrencyAmount||0,
                   tx.requestDetail.requestCurrency
                 )}
               </span>
@@ -297,7 +297,8 @@ export function MyWalletDashboard() {
 					USDCTip: 0,
 					rate: currencyRate,
 					title: (payme as any)?.title,
-					textNote: paymeData > -1 ? nodeEX[paymeData] : ""
+					textNote: paymeData > -1 ? nodeEX[paymeData] : "",
+					requestCurrencyAmount: Number((payme as any).currencyAmount),
 				}
 			}
 
@@ -417,113 +418,114 @@ export function MyWalletDashboard() {
 
 		const mappedChecks: TransferHistork[] = await Promise.all(
 			checks.map(async n => {
-			const text = (n.node || "").split("\r\n")
-			const encryptedText = text[1]
-			
-			let requestDetail: IRequestCurrencyDetail | undefined
-			let ce: { secureCode: string; passcode: string } | undefined
-			try {
-				const cleanText = encryptedText ? await aesGcmDecrypt(encryptedText, profile.privateKeyArmor) : undefined
-				if (cleanText) ce = JSON.parse(cleanText)
-			} catch {}
+				const text = (n.node || "").split("\r\n")
+				const encryptedText = text[1]
+				
+				let requestDetail: IRequestCurrencyDetail | undefined
+				let ce: { secureCode: string; passcode: string } | undefined
+				try {
+					const cleanText = encryptedText ? await aesGcmDecrypt(encryptedText, profile.privateKeyArmor) : undefined
+					if (cleanText) ce = JSON.parse(cleanText)
+				} catch {}
 
-			const isCreator = n.from.toLowerCase() === myAddrLocal
-			const isreceiver = n.to.toLowerCase() === myAddrLocal
-			
+				const isCreator = n.from.toLowerCase() === myAddrLocal
+				const isreceiver = n.to.toLowerCase() === myAddrLocal
+				
 
-			const account = n.to.toLowerCase() !== ethers.ZeroAddress ? n.to.toLowerCase() : ''
+				const account = n.to.toLowerCase() !== ethers.ZeroAddress ? n.to.toLowerCase() : ''
 
-			const type: HistoryFilter = !account ? "pending" : isCreator ? "completed" : "deposited"
-
-
-			const totalPayUSDC = Number(ethers.formatUnits(n.amount, 6))
-			const costUSDC = calcFeeFromReceived(totalPayUSDC)
-			let amount = type === 'deposited' ? totalPayUSDC - costUSDC : totalPayUSDC
-
-			let hash = type === 'pending' ? n.successAuthorizationHash : n.depositHash
-
-			let type1: HistoryFilter = type === "deposited" ? "received" : "sent"
-
-			let card: IImageCard | undefined
-			let payme: payMe | undefined
-
-			const nodeEX = n?.node?.split("\r\n") || []
-			let paymeData = nodeEX.length - 1
+				const type: HistoryFilter = !account ? "pending" : isCreator ? "completed" : "deposited"
 
 
-			try {
-				if (paymeData > -1) {
-					const cardData = JSON.parse(nodeEX[paymeData--])
-					card = cardData?.card || cardData
+				const totalPayUSDC = Number(ethers.formatUnits(n.amount, 6))
+				const costUSDC = calcFeeFromReceived(totalPayUSDC)
+				let amount = type === 'deposited' ? totalPayUSDC - costUSDC : totalPayUSDC
+
+				let hash = type === 'pending' ? n.successAuthorizationHash : n.depositHash
+
+				let type1: HistoryFilter = type === "deposited" ? "received" : "sent"
+
+				let card: IImageCard | undefined
+				let payme: payMe | undefined
+
+				const nodeEX = n?.node?.split("\r\n") || []
+				let paymeData = nodeEX.length - 1
+
+
+				try {
+					if (paymeData > -1) {
+						const cardData = JSON.parse(nodeEX[paymeData--])
+						card = cardData?.card || cardData
+					}
+				} catch {
+					paymeData++
 				}
-			} catch {
-				paymeData++
-			}
-			
-			try {
-				if (paymeData > -1) payme = JSON.parse(nodeEX[paymeData--])
-			} catch {
-				paymeData++
-			}
-
-
-			
-				const feeUSDC = costUSDC
-				const requestCurrencyAmount = Number(payme?.currencyAmount || 0)
 				
-				
-				const currencyRate = requestCurrencyAmount / amount
-
-				const requestUSDAmount = amount
-
-				const totalPayCurrency = totalPayUSDC * currencyRate
-				const feeCurrency = costUSDC * currencyRate
-				const receivedUSDC = totalPayUSDC - feeUSDC
-				const receivedCurrency = requestCurrencyAmount
-				
-				const title = payme?.title
-				const textNote = nodeEX[0]||''
-				
-
-				requestDetail = {
-					requestCurrency: payme?.currency || "USDC",
-					totalPayUSDC,
-					totalPayCurrency,
-					requestCurrencyAmount,
-					requestUSDAmount,
-					feeUSDC,
-					feeCurrency,
-					currencyTip: 0,
-					USDCTip: 0,
-					taxUSDC: 0,
-					taxCurrency: 0,
-					receivedUSDC,
-					receivedCurrency,
-					rate: currencyRate,
-					title,
-					textNote
+				try {
+					if (paymeData > -1) payme = JSON.parse(nodeEX[paymeData--])
+				} catch {
+					paymeData++
 				}
-			
 
-			return {
-				date: Number(n.createTimestamp * BigInt(1000)),
-				amount,
-				address: account ? account.toLowerCase() : "",
-				hash,
-				note: n.node,
-				type,
-				security: ce?.secureCode,
-				passcode: ce?.passcode,
-				redeemHash: n.payHash,
-				mode: "cashcode",
-				fee: costUSDC,
-				type1,
-				preAmount: totalPayUSDC,
-				card,
-				payme,
-				requestDetail
-			}
-			})
+
+				
+					const feeUSDC = costUSDC
+					const requestCurrencyAmount = Number(payme?.currencyAmount || 0)
+					const requestUSDAmount = totalPayUSDC - feeUSDC
+					
+					
+					const currencyRate = requestCurrencyAmount / requestUSDAmount
+
+					const feeCurrency = feeUSDC * currencyRate
+
+					const totalPayCurrency = totalPayUSDC * currencyRate
+					
+					const receivedCurrency = requestCurrencyAmount
+					
+					const title = payme?.title
+					const textNote = nodeEX[0]||''
+					
+
+					requestDetail = {
+						requestCurrency: payme?.currency || "USDC",
+						totalPayUSDC,
+						totalPayCurrency,
+						requestCurrencyAmount,
+						requestUSDAmount,
+						feeUSDC: type === 'deposited' ? 0 : feeUSDC,
+						feeCurrency: type === 'deposited' ? 0 : feeCurrency,
+						currencyTip: 0,
+						USDCTip: 0,
+						taxUSDC: 0,
+						taxCurrency: 0,
+						receivedUSDC: type === 'deposited' ? 0 : requestUSDAmount,
+						receivedCurrency: type === 'deposited' ? 0 : receivedCurrency,
+						rate: currencyRate,
+						title,
+						textNote
+					}
+				
+
+					return {
+						date: Number(n.createTimestamp * BigInt(1000)),
+						amount,
+						address: account ? account.toLowerCase() : "",
+						hash,
+						note: n.node,
+						type,
+						security: ce?.secureCode,
+						passcode: ce?.passcode,
+						redeemHash: n.payHash,
+						mode: "cashcode",
+						fee: costUSDC,
+						type1,
+						preAmount: totalPayUSDC,
+						card,
+						payme,
+						requestDetail
+					}
+				}
+			)
 		)
 
 		const merged = [...mappedPay, ...mappedLinks, ...mappedChecks].sort((a, b) => b.date - a.date)
@@ -556,10 +558,10 @@ export function MyWalletDashboard() {
 	const history = useMemo(() => {
 		return allItems
 		.filter(tx => {
-			if (tx.mode === "pay") return tx.type1 !== ""
-			if (tx.mode === "request") return tx.type !== "pending"
-			if (tx.mode === "cashcode") return tx.type !== "pending"
-			return true
+			// if (tx.mode === "pay") return tx.type1 !== ""
+			// if (tx.mode === "request") return tx.type !== "pending"
+			// if (tx.mode === "cashcode") return tx.type !== "pending"
+			return tx.type1 ==='received' || tx.type1 === 'sent'
 		})
 		.slice(0, 6)
 	}, [allItems])

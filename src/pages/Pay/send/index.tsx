@@ -314,7 +314,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 		if (addedNote) {
 			const tryAdd = JSON.parse(addedNote)
 			const card = tryAdd.card
-			const _data = {
+			const _data: IImageCard = {
 				title: card.title,
 				detail: card.detail,
 				image: card.image,
@@ -325,12 +325,11 @@ export default function PayScreen ({close, beamioer}: Props) {
 			_addnote = JSON.stringify(_data)
 		}
 
+		sendNote += `\r\n${JSON.stringify(data1)}`
+
 		if (_addnote) {
 			sendNote += `\r\n${_addnote}`
 		}
-
-		sendNote += `\r\n${JSON.stringify(data1)}`
-		
 		
 		const params = new URLSearchParams({amount: sendAmount, toAddress: toAddress, note: sendNote }).toString()
 		const path = `/api/BeamioTransfer?${params}`

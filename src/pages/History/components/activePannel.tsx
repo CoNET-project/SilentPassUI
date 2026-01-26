@@ -176,7 +176,7 @@ function ActiveCapsuleItem({
 				<AccountBeo
 					address={tx.address}
 					note=""
-					dateData=""
+					dateData={formatTimev2(tx.date)}
 					tx={tx}
 					localMode={tx.mode || "pay"}
 					isCashcodePending={isCashcodePending}
@@ -225,9 +225,7 @@ function ActiveCapsuleItem({
 				</div>
 			)} */}
 
-			<div className="mt-1 text-[10px] text-slate-400">
-				{formatTimev2(tx.date)}
-			</div>
+			
 			</div>
 		</div>
 		</button>

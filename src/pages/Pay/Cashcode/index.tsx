@@ -15,6 +15,7 @@ import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
 import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNode} from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import { calcFeeFromReceived, formatAmount } from "@/services/currency"
 
 function fiatPrefix(ccy: ICurrency) {
 	if (ccy === "CAD") return "CA$"
@@ -64,17 +65,6 @@ function formatUserDate(timestamp?: string | number): string {
 	})
 }
 
-
-function formatAmount(v: number, c: ICurrency) {
-	if (!isFinite(v)) return `0 ${c}`
-	return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
-}
-
-const formatCurrencyAmount = (n: number, c: ICurrency) => {
-	const decimals = (c === "JPY" || c==='TWD') ? 0 : 2
-	if (!Number.isFinite(n)) return "0"
-	return n.toFixed(decimals)
-}
 
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
@@ -235,10 +225,20 @@ export default function PaymentLink ({close}: Props) {
 
 	}
 
+	const usdcAmountText = useMemo(() => {
+		const _totalUSDC = Number(sendAmount)
+		const fee = calcFeeFromReceived(_totalUSDC)
+		const _netUSDCAmount = _totalUSDC - fee
+		
+		return _netUSDCAmount
+	}, [sendAmount, currentCurrency, currencyData])
+
 
 	const currencyAmountText = useMemo(() => {
+		const _totalUSDC = Number(sendAmount)
+		const fee = calcFeeFromReceived(_totalUSDC)
 		const curr = formatAmount(
-			usdcToCurrencyAmount(Number(sendAmount), currentCurrency),
+			usdcToCurrencyAmount(_totalUSDC -fee, currentCurrency),
 			currentCurrency
 		)
 		return `${fiatPrefix(currentCurrency)} ${curr}`
@@ -332,7 +332,7 @@ export default function PaymentLink ({close}: Props) {
 
 		const fixedAmount = ethers.parseUnits(display.pay.toString(), 6).toString()
 		
-		const showNetCurrency = formatCurrencyAmount(display.receive * fxRateUSDCToCurrency(currency), currency)
+		const showNetCurrency = formatAmount(display.receive * fxRateUSDCToCurrency(currency), currency)
 		const showUrl = `${showPaylinkSite}?${showpParams}`
 
 
@@ -563,11 +563,11 @@ export default function PaymentLink ({close}: Props) {
 							)}
 
 							{showGiftImageError && (
-							<div className="flex justify-center">
-								<p className="text-sm text-rose-600">
-								An error occurred while uploading the image to IPFS. Please try again later.
-								</p>
-							</div>
+								<div className="flex justify-center">
+									<p className="text-sm text-rose-600">
+										An error occurred while uploading the image to IPFS. Please try again later.
+									</p>
+								</div>
 							)}
 
 							{uploadingIPFS && (
@@ -676,7 +676,7 @@ export default function PaymentLink ({close}: Props) {
 							}}
 							initialTitle={cardTitle}
 							initialDetail={cardDetail}
-							usdcAmount={usdcAmount}
+							usdcAmount={formatAmount(usdcAmountText, 'USDC')}
 							currencyText={currencyAmountText}
 						/>
 					</div>

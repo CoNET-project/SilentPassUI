@@ -918,6 +918,14 @@ const Home = ({}) => {
 						)}
 					</div>
 				</div>
+
+				<div
+					className="
+					h-[128px]
+					pb-[env(safe-area-inset-bottom)]
+					pointer-events-none
+					"
+				/>
 					</>
 				}
 				
@@ -1135,6 +1143,8 @@ const Home = ({}) => {
 					</div>
 				</div>
 			</div>
+
+			
 		</div>
 	)
 }

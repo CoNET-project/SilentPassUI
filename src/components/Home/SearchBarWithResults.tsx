@@ -112,7 +112,7 @@ const SearchInputWithDropdown =
 			if (_secureCode) {
 				setSecureCode (_secureCode)
 				setRedeemCode(cashcode)
-				return navigate('/browser')
+				return navigate('/History')
 			}
 
 			if (code) {
@@ -212,18 +212,18 @@ const SearchInputWithDropdown =
 		}
 
 		const pillClass = [
-		"flex items-center",
-		"bg-slate-100",
-		"rounded-full",
-		"px-2",
-		"h-11",
-		"flex-1",
-		"transition",
-			
-		// ✅ 错误态：整条红色外框
-		internalError
-			? "ring-1 ring-red-500 focus-within:ring-2 focus-within:ring-red-500"
-			: "ring-1 ring-transparent focus-within:ring-slate-300",
+			"flex items-center",
+			"bg-slate-100",
+			"rounded-full",
+			"px-2",
+			"h-11",
+			"flex-1",
+			"transition",
+				
+			// ✅ 错误态：整条红色外框
+			internalError
+				? "ring-1 ring-red-500 focus-within:ring-2 focus-within:ring-red-500"
+				: "ring-1 ring-transparent focus-within:ring-slate-300",
 		].join(" ")
 
 		useEffect(() => {

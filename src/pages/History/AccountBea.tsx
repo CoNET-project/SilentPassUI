@@ -191,7 +191,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 				{/* 左侧：用户名 / @handle */}
 				<span className="flex-1 min-w-0 leading-tight">
 					<span className="block text-[14px] text-slate-900 truncate leading-tight font-medium">
-						{isCashcodePending ? "You created Cashcode" : (fromBeamio ? displayName(fromBeamio) : "")}
+						{isCashcodePending ? "You Cashcode is Active" : (fromBeamio ? displayName(fromBeamio) : "")}
 					</span>
 					{
 						fromBeamio?.username !=='Unknow' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
@@ -243,7 +243,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 						</span>
 					)}
 
-					{localMode === "pay" && tx?.card && (
+					{tx?.card && (
 					<div className="relative w-fit">
 						<span
 						className={[

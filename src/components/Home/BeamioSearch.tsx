@@ -8,6 +8,7 @@ type Props = {
 
 export default function BeamioSearch({ close }: Props) {
 
+	
   return (
     <div
       className="

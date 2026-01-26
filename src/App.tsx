@@ -391,6 +391,8 @@ function AppShell() {
     const cashcode = searchParams.get("cashcode") || ""
     const _beamio = searchParams.get("beamio") || ""
 
+	setScanData("")
+
     if (_beamio) {
       const user = await searchUsername(_beamio)
       const results: searchResult[] = user?.results
@@ -405,11 +407,14 @@ function AppShell() {
       return
     }
 
+
     if (_secureCode) {
-      setSecureCode(_secureCode)
-      setRedeemCode(cashcode)
-      navigate("/browser")
-      return
+
+		setSecureCode (_secureCode)
+		setRedeemCode(cashcode)
+		navigate('/History')
+		return
+      
     }
 
     if (code) {

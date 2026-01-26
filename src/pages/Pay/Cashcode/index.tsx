@@ -114,6 +114,10 @@ export default function PaymentLink ({close}: Props) {
 	const [usdcAmount, setUsdcAmount] = useState("")
 	const [cardTitle, setCardTitle] = useState("Your dynamic text goes here")
 	const [cardDetail, setCardDetail] = useState("Write some detail…")
+	const [linkTitle, setLinkTitle] = useState("")
+	const [titleTouched, setTitleTouched] = useState(false)
+
+	const titleError = titleTouched && linkTitle.trim().length === 0
 
 
 	useEffect(() => {
@@ -164,17 +168,6 @@ export default function PaymentLink ({close}: Props) {
 		
 	}, [beamio])
 
-
-	// useEffect(() => {
-	// 	const usdc = Number(sendAmount)
-	// 	const fee = calcFeeFromNumber(usdc)
-	// 	const receiveUSDC = usdc - fee
-	// 	setUsdcAmount(receiveUSDC.toFixed(4))
-	// 	const curr = formatAmount(usdcToCurrencyAmount(Number(receiveUSDC), currentCurrency), currentCurrency)
-	// 	const fiatText = `${fiatPrefix(currentCurrency)} ${curr}`
-	// 	setCurrencyAmount(fiatText)
-
-	// }, [sendAmount, currentCurrency, lockMode, beamio])
 
 
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
@@ -242,7 +235,6 @@ export default function PaymentLink ({close}: Props) {
 
 	}
 
-	
 
 	const currencyAmountText = useMemo(() => {
 		const curr = formatAmount(
@@ -278,6 +270,14 @@ export default function PaymentLink ({close}: Props) {
 			pay: numberUSDCAmount,
 			fee: feeUsdc,
 			receive: numberUSDCAmount - feeUsdc,
+		}
+
+		const currencyAmount1 = lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(display.receive, currentCurrency), currentCurrency) : sendAmount
+
+		let data1: payMe = {
+			currency: lockMode === 'FIAT_LOCKED' ? currentCurrency : 'USDC',
+			currencyAmount: currencyAmount1,
+			title: linkTitle.trim(),
 		}
 
 		setProcessing(true)
@@ -317,12 +317,12 @@ export default function PaymentLink ({close}: Props) {
 					detail: card.detail,
 					image: card.image,
 					currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
-					currencyAmount: currencyAmount
+					currencyAmount: currencyAmount1
 				}
 			}
 			_addnote = JSON.stringify(_data)
 		}
-		let postNode = `${note} \r\n${encryText}`
+		let postNode = `${note}\r\n${encryText}\r\n${JSON.stringify(data1)}`
 		postNode += _addnote ? `\r\n${_addnote}`: ''
 
 		const params = new URLSearchParams({amount: display.pay.toFixed(4), note: postNode, secureCode: secureCode.hash}).toString()
@@ -390,262 +390,299 @@ export default function PaymentLink ({close}: Props) {
 	}
 
 	return (
-  <div className="mt-0 flex flex-col bg-white px-3 pt-3 pb-2">
-    <div className="mt-1 w-full bg-white">
-      {/* ✅ 去掉外部圆角卡片：不再用 rounded/shadow/灰底 */}
-      <div className="text-slate-800 leading-snug bg-white">
-        {
-          successUrl ? (
-            <SuccessShow
-              note={note}
-              successUrl={successUrl}
-              security={!!securityCodeDigits}
-              lockMode={lockMode}
-              valueUSDCAmount={valueUSDCAmount}
-              successHash={successHash}
-              onReset={() => {
-                close('')
-              }}
-              valueCurrencyAmount={valuecurrencyAmount}
-            />
-          ) : (
-            // ✅ 原来在灰卡片里的 padding，挪到这里保留间距
-            <div className="p-2 space-y-3 bg-white">
-              <div>
-                <div className="text-lg font-semibold">
-                  {message ? 'Confirm' : 'Create Cashcode'}
-                </div>
-              </div>
-
-              {message ? (
-                <>
-                  {note && (
-                    <textarea
-                      value={note}
-                      onFocus={() => {
-                        if (note === defaultNodeText) setNote('')
-                      }}
-                      readOnly={true}
-                      rows={2}
-                      className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                    />
-                  )}
-
-                  <div className="mt-5">
-                    <FeeInline
-                      payUsdc={Number(sendAmount)}
-                      isUSDC={lockMode === 'USDC_LOCKED'}
-                    />
-                  </div>
-
-                  <ConformView messageData={message} />
-
-                  <div className="grid grid-cols-1 gap-3">
-                    
-
-                    
-                      <AppButton
-                        fullWidth
-                        loading={processing}
-                        onClick={() => {
-                          signRequest(message)
-                        }}
-                      >
-                        Confirm
-                      </AppButton>
-                    
-                  </div>
-                </>
-              ) : (
-                <>
-                  <section className="input form">
-                    <div className="mt-5 flex items-center gap-3">
-                      <LockModeSegmented
-                        value={lockMode}
-                        onChange={val => {
-                          setLockMode(val)
-                        }}
-                      />
-                    </div>
-
-                    <section className="input">
-                      <AmountCurrency
-                        amount={sendAmount}
-                        setAmount={setSendAmount}
-                        autoEntry={true}
-                        readOnly={processing}
-                        showLimit={0.1}
-                        sendError={sendError}
-                        setSendError={setSendError}
-                        showMax={true}
-                        needBalance={true}
-                        focusSignal={focusAmount}
-                        currencyUSDC={lockMode === 'USDC_LOCKED'}
-                        feePlus={true}
-                        currencyChange={val => setCurrentCurrency(val)}
-                      />
-                    </section>
-
-                    <Securitycode
-                      securityCodeDigits={securityCodeDigits}
-                      setSecurityCodeDigits={setSecurityCodeDigits}
-                    />
-
-                    {/* Note */}
-                    {showGiftEnvelope && (
-                      <div className="flex justify-center">
-                        <div className="relative w-fit">
-                          <img
-                            src={giftEnvelope}
-                            className="w-24 block"
-                            alt="Gift Envelope"
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() => setShowGiftEnvelope(false)}
-                            className="
-                              absolute top-0 right-0 z-30
-                              translate-x-1/2 -translate-y-1/8
-                              w-7 h-7 rounded-full
-                              bg-white/10
-                              backdrop-blur-md
-                              border border-white/20
-                              shadow-[0_4px_10px_rgba(0,0,0,0.12)]
-                              hover:bg-white/20
-                              active:scale-95
-                              transition
-                              flex items-center justify-center
-                            "
-                            aria-label="Remove gift envelope"
-                          >
-                            <X className="w-4 h-4 text-black/30" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {showGiftImageError && (
-                      <div className="flex justify-center">
-                        <p className="text-sm text-rose-600">
-                          An error occurred while uploading the image to IPFS. Please try again later.
-                        </p>
-                      </div>
-                    )}
-
-                    {uploadingIPFS && (
-                      <div className="flex justify-center">
-                        <p className="text-sm text-slate-600 flex items-center gap-1">
-                          Uploading image to IPFS, please wait
-                          <span className="inline-flex w-4">
-                            <span className="animate-dot">.</span>
-                            <span className="animate-dot delay-200">.</span>
-                            <span className="animate-dot delay-400">.</span>
-                          </span>
-                        </p>
-
-                        <style>{`
-                          .animate-dot { animation: blink 1.4s infinite both; }
-                          .delay-200 { animation-delay: 0.2s; }
-                          .delay-400 { animation-delay: 0.4s; }
-                          @keyframes blink {
-                            0% { opacity: 0.2; }
-                            20% { opacity: 1; }
-                            100% { opacity: 0.2; }
-                          }
-                        `}</style>
-                      </div>
-                    )}
-
-                    <textarea
-                      value={note}
-                      onFocus={() => {
-                        if (note === defaultNodeText) setNote('')
-                      }}
-                      placeholder="What's this for?"
-                      onChange={(e) => setNote(e.target.value)}
-                      rows={2}
-                      className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                    />
-
-                    <div className="mt-5">
-                      <FeeInline
-                        payUsdc={Number(sendAmount)}
-                        isUSDC={lockMode === 'USDC_LOCKED'}
-                      />
-                    </div>
-
-                    <div className="mt-3 flex gap-3 w-full">
-                      {!showGiftEnvelope && !message && (
-                        <>
-							{/* iOS glass camera button */}
-							<button
-								type="button"
-								onClick={() => {
-									setCardCreate(true)
-								}}
-								className="
-									shrink-0
-									w-12 h-12
-									rounded-full
-									flex items-center justify-center
-
-									bg-white/30
-									backdrop-blur-md
-
-									shadow-[0_8px_20px_rgba(0,0,0,0.18)]
-									ring-1 ring-white/30
-
-									active:scale-95
-									transition
-									border border-white/50   /* ← 白色 1px 外框 */
-								"
-								aria-label="Open camera"
-							>
-								<Camera
-									className="w-6 h-6 text-slate-900/20 opacity-80"
-									strokeWidth={2.2}
-								/>
-							</button>
-							</>
-                      )}
-
-                      <AppButton
-                        fullWidth
-                        onClick={issueCashcode}
-						className="!text-[16px]"
-                        loading={processing}
-                        errorText={processError}
-                      >
-                        Generate
-                      </AppButton>
-                    </div>
-                  </section>
-                </>
-              )}
-            </div>
-          )
-        }
-      </div>
-	  	<OverlayPortal open={cardCreate}>
-			<div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]">
-				<div className="absolute inset-0">
-					<DiceBearCard
-						onClose={val => {
-							setCardCreate(false)
-							if (val) {
-								tryPostToIPFS(val)
-							}
-						}}
-						initialTitle={cardTitle}
-						initialDetail={cardDetail}
-						usdcAmount={usdcAmount}
-						currencyText={currencyAmountText}
+		<div className="mt-0 flex flex-col bg-white px-3 pt-3 pb-2">
+			<div className="mt-1 w-full bg-white">
+			{/* ✅ 去掉外部圆角卡片：不再用 rounded/shadow/灰底 */}
+			<div className="text-slate-800 leading-snug bg-white">
+				{
+				successUrl ? (
+					<SuccessShow
+					note={note}
+					successUrl={successUrl}
+					security={!!securityCodeDigits}
+					lockMode={lockMode}
+					valueUSDCAmount={valueUSDCAmount}
+					successHash={successHash}
+					linkTitle={linkTitle}
+					onReset={() => {
+						close('')
+					}}
+					valueCurrencyAmount={valuecurrencyAmount}
 					/>
-				</div>
+				) : (
+					// ✅ 原来在灰卡片里的 padding，挪到这里保留间距
+					<div className="p-2 space-y-3 bg-white">
+					<div>
+						<div className="text-lg font-semibold">
+						{message ? '' : 'Create Cashcode'}
+						</div>
+					</div>
+
+					{message ? (
+						<>
+
+						{linkTitle && (
+							<div className="text-lg font-semibold">
+								{linkTitle}
+							</div>
+						)}
+						{note && (
+							<textarea
+							value={note}
+							onFocus={() => {
+								if (note === defaultNodeText) setNote('')
+							}}
+							readOnly={true}
+							rows={2}
+							className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+							/>
+						)}
+
+						<div className="mt-5">
+							<FeeInline
+							payUsdc={Number(sendAmount)}
+							isUSDC={lockMode === 'USDC_LOCKED'}
+							/>
+						</div>
+
+						<ConformView messageData={message} />
+
+						<div className="grid grid-cols-1 gap-3">
+							
+
+							
+							<AppButton
+								fullWidth
+								loading={processing}
+								onClick={() => {
+								signRequest(message)
+								}}
+							>
+								Confirm
+							</AppButton>
+							
+						</div>
+						</>
+					) : (
+						<>
+						<section className="input form">
+							<div className="mt-5 flex items-center gap-3">
+							<LockModeSegmented
+								value={lockMode}
+								onChange={val => {
+								setLockMode(val)
+								}}
+							/>
+							</div>
+
+							<section className="input">
+							<AmountCurrency
+								amount={sendAmount}
+								setAmount={setSendAmount}
+								autoEntry={true}
+								readOnly={processing}
+								showLimit={0.1}
+								sendError={sendError}
+								setSendError={setSendError}
+								showMax={true}
+								needBalance={true}
+								focusSignal={focusAmount}
+								currencyUSDC={lockMode === 'USDC_LOCKED'}
+								feePlus={true}
+								currencyChange={val => setCurrentCurrency(val)}
+							/>
+							</section>
+
+							<Securitycode
+								securityCodeDigits={securityCodeDigits}
+								setSecurityCodeDigits={setSecurityCodeDigits}
+							/>
+
+							{/* Title */}
+							<div className="space-y-1 mb-4">
+								<div className="text-[13px] font-semibold text-slate-500">
+								Title <span className="text-red-500">*</span>
+								</div>
+
+								<input
+									type="text"
+									value={linkTitle}
+									onChange={e => setLinkTitle(e.target.value)}
+									onBlur={() => setTitleTouched(true)}
+									placeholder="e.g. Coffee, Dinner, Invoice #1024"
+									className={[
+										"w-full rounded-[18px] px-4 py-3 text-[15px]",
+										"bg-slate-50 placeholder-slate-400",
+										"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
+										"focus:outline-none transition",
+										titleError
+										? "ring-2 ring-red-400 bg-red-50/40"
+										: "ring-1 ring-black/10 focus:ring-2 focus:ring-[rgba(0,0,255,0.25)]"
+									].join(" ")}
+								/>
+
+								{titleError && (
+									<div className="text-[12px] text-red-500 pl-1">
+										Title is required
+									</div>
+								)}
+							</div>
+
+							{/* Note */}
+							{showGiftEnvelope && (
+								<div className="flex justify-center">
+									<div className="relative w-fit">
+									<img
+										src={giftEnvelope}
+										className="w-24 block"
+										alt="Gift Envelope"
+									/>
+
+										<button
+											type="button"
+											onClick={() => setShowGiftEnvelope(false)}
+											className="
+												absolute top-0 right-0 z-30
+												translate-x-1/2 -translate-y-1/8
+												w-7 h-7 rounded-full
+												bg-white/10
+												backdrop-blur-md
+												border border-white/20
+												shadow-[0_4px_10px_rgba(0,0,0,0.12)]
+												hover:bg-white/20
+												active:scale-95
+												transition
+												flex items-center justify-center
+											"
+											aria-label="Remove gift envelope"
+										>
+											<X className="w-4 h-4 text-black/30" />
+										</button>
+									</div>
+								</div>
+							)}
+
+							{showGiftImageError && (
+							<div className="flex justify-center">
+								<p className="text-sm text-rose-600">
+								An error occurred while uploading the image to IPFS. Please try again later.
+								</p>
+							</div>
+							)}
+
+							{uploadingIPFS && (
+								<div className="flex justify-center">
+									<p className="text-sm text-slate-600 flex items-center gap-1">
+									Uploading image to IPFS, please wait
+									<span className="inline-flex w-4">
+										<span className="animate-dot">.</span>
+										<span className="animate-dot delay-200">.</span>
+										<span className="animate-dot delay-400">.</span>
+									</span>
+									</p>
+
+									<style>{`
+									.animate-dot { animation: blink 1.4s infinite both; }
+									.delay-200 { animation-delay: 0.2s; }
+									.delay-400 { animation-delay: 0.4s; }
+									@keyframes blink {
+										0% { opacity: 0.2; }
+										20% { opacity: 1; }
+										100% { opacity: 0.2; }
+									}
+									`}</style>
+								</div>
+							)}
+
+							<textarea
+								value={note}
+								onFocus={() => {
+									if (note === defaultNodeText) setNote('')
+								}}
+								placeholder="What's this for?"
+								onChange={(e) => setNote(e.target.value)}
+								rows={2}
+								className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+							/>
+
+								<div className="mt-5">
+								<FeeInline
+									payUsdc={Number(sendAmount)}
+									isUSDC={lockMode === 'USDC_LOCKED'}
+								/>
+								</div>
+
+							<div className="mt-3 flex gap-3 w-full">
+							{!showGiftEnvelope && !message && (
+								<>
+									{/* iOS glass camera button */}
+									<button
+										type="button"
+										onClick={() => {
+											setCardCreate(true)
+										}}
+										className="
+											shrink-0
+											w-12 h-12
+											rounded-full
+											flex items-center justify-center
+
+											bg-white/30
+											backdrop-blur-md
+
+											shadow-[0_8px_20px_rgba(0,0,0,0.18)]
+											ring-1 ring-white/30
+
+											active:scale-95
+											transition
+											border border-white/50   /* ← 白色 1px 外框 */
+										"
+										aria-label="Open camera"
+									>
+										<Camera
+											className="w-6 h-6 text-slate-900/20 opacity-80"
+											strokeWidth={2.2}
+										/>
+									</button>
+									</>
+							)}
+
+							<AppButton
+								fullWidth
+								onClick={issueCashcode}
+								className="!text-[16px]"
+								loading={processing}
+								errorText={processError}
+							>
+								Generate
+							</AppButton>
+							</div>
+						</section>
+						</>
+					)}
+					</div>
+				)
+				}
 			</div>
-      </OverlayPortal>
-    </div>
-  </div>
+			<OverlayPortal open={cardCreate}>
+				<div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]">
+					<div className="absolute inset-0">
+						<DiceBearCard
+							onClose={val => {
+								setCardCreate(false)
+								if (val) {
+									tryPostToIPFS(val)
+								}
+							}}
+							initialTitle={cardTitle}
+							initialDetail={cardDetail}
+							usdcAmount={usdcAmount}
+							currencyText={currencyAmountText}
+						/>
+					</div>
+				</div>
+			</OverlayPortal>
+			</div>
+		</div>
 )
 }

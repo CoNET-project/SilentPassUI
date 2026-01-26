@@ -1,7 +1,7 @@
 import { QRCodeCanvas } from 'qrcode.react'
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import { Copy, ExternalLink, Check, Lock, Unlock } from 'lucide-react'
-import bIcon from '@/components/assets/32x32.svg'
+import bIcon from '@/components/assets/logo512.png'
 import { X } from 'lucide-react'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import base_ex from '@/components/assets/base-ex.svg'
@@ -15,6 +15,7 @@ type RedeemOrLinkCardProps = {
 	lockMode: PaymentLinkLockMode
 	security: boolean
 	successHash: string
+	linkTitle?: string
 }
 
 const displayName = (item: beamio) => {
@@ -30,7 +31,8 @@ const SuccessShow = ({
 	onReset,
 	lockMode,
 	security,
-	successHash
+	successHash,
+	linkTitle
 
 }: RedeemOrLinkCardProps) => {
 	
@@ -66,11 +68,7 @@ const SuccessShow = ({
 				flex-1 flex flex-col gap-4
 			"
 		>
-			{/* Close button: top-right, iOS frosted style */}
-				
-				
-
-			{/* Cashcode area */}
+			
 			
 				<>
 					
@@ -84,7 +82,7 @@ const SuccessShow = ({
 
 						{/* 左边：创建时间 */}
 						<div className="flex-1 text-left">
-							{new Date().toLocaleString()}
+							
 						</div>
 
 						{/* 中间：Payment link */}
@@ -116,12 +114,12 @@ const SuccessShow = ({
 									{security ? (
 										<span className="inline-flex items-center gap-1 text-rose-500">
 										<Lock className="w-4 h-4" />
-										on
+											on
 										</span>
 									) : (
 										<span className="inline-flex items-center gap-1 text-slate-400">
 										<Unlock className="w-4 h-4" />
-										off
+											off
 										</span>
 									)}
 									</div>
@@ -134,6 +132,11 @@ const SuccessShow = ({
 							</div>
 						)}
 					</div>
+					{linkTitle && (
+						<div className="text-lg font-semibold">
+							{linkTitle}
+						</div>
+					)}
 
 					{note && (
 						<div
@@ -177,15 +180,15 @@ const SuccessShow = ({
 									>
 						<QRCodeCanvas
 							value={successUrl}
-							size={160}
+							size={220}
 							level="H"
 							includeMargin
 							bgColor="transparent"
 							fgColor="#000000"
 							imageSettings={{
 								src: bIcon,
-								height: 40,
-								width: 40,
+								height: 80,
+								width: 80,
 								excavate: true,
 							}}
 							className="rounded-lg inline-block"
@@ -249,27 +252,27 @@ const SuccessShow = ({
 					
 				</div>
 				{/* 查看交易按钮 */}
-						<button
-							className="
-								w-full h-11 rounded-full
-								bg-black/5 text-slate-700
-								dark:bg-white/10 dark:text-slate-100
-								text-sm
-								flex items-center justify-center gap-2
-							"
-							onClick={() => {
-								window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
-							}}
-							>
-							<img
-								src={base_ex}
-								alt="Base Explorer"
-								className="w-4 h-4 object-contain"
-							/>
-							<span>
-								View transaction
-							</span>
-						</button>
+				<button
+					className="
+						w-full h-11 rounded-full
+						bg-black/5 text-slate-700
+						dark:bg-white/10 dark:text-slate-100
+						text-sm
+						flex items-center justify-center gap-2
+					"
+					onClick={() => {
+						window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
+					}}
+					>
+					<img
+						src={base_ex}
+						alt="Base Explorer"
+						className="w-4 h-4 object-contain"
+					/>
+					<span>
+						View transaction
+					</span>
+				</button>
 				
 			</div>
 		)

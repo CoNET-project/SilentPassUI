@@ -162,7 +162,7 @@ function ActiveCapsuleItem({
 			onClick={() => hasHash && onOpen?.(tx)}
 			className={[
 				"w-full text-left",
-				"rounded-[22px] px-5 py-3",
+				"rounded-[16px] px-3 py-3",
 				"bg-white",
 				"shadow-[0_10px_26px_rgba(15,23,42,0.08)]",
 				"ring-1 ring-black/5",
@@ -172,32 +172,22 @@ function ActiveCapsuleItem({
 		>
 		<div className="flex items-start gap-3">
 			{/* avatar / QR */}
-			<div className="shrink-0 w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden">
+			
 				<AccountBeo
-					address={tx.type === "sent" ? beamio?.address || '' : tx.address}
+					address={tx.address}
 					note=""
 					dateData=""
 					tx={tx}
 					localMode={tx.mode || "pay"}
 					isCashcodePending={isCashcodePending}
-					avatarOnly={true}
+					avatarOnly={false}
 				/>
-			</div>
+			
 
 			{/* content */}
-			<div className="flex-1 min-w-0">
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-				<div className="truncate text-[13px] leading-[20px] text-slate-900">
-					<span className="font-semibold">{title}</span>
-				</div>
-
-				{!!memo && (
-					<div className="truncate mt-0.5 text-[13px] leading-[18px] text-slate-500">
-						{memo}
-					</div>
-				)}
-				</div>
+			<div className="">
+			<div className="">
+				
 
 				
 				<div className="shrink-0 whitespace-nowrap tabular-nums text-right">
@@ -235,7 +225,7 @@ function ActiveCapsuleItem({
 				</div>
 			)} */}
 
-			<div className="mt-1 text-[11px] text-slate-400">
+			<div className="mt-1 text-[10px] text-slate-400">
 				{formatTimev2(tx.date)}
 			</div>
 			</div>

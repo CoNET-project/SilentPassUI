@@ -4,9 +4,14 @@ import { useState, useRef, useEffect } from 'react'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {ethers} from 'ethers'
 import {redeemCodeHash, searchUsername} from '@/services/beamio'
+
 import {AppButton} from '@/components/button/AppButton'
 import RedeemSuccessScreen from './RedeemSuccessScreen'
 import Securitycode from '@/components/input/Securitycode'
+import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
+import ShowCard from '@/components/card/ShowCard'
+import {fiatPrefix, formatTimeDetail, statusStyleMap, formatAmount} from '@/services/currency'
+
 
 type IGtCheckMemooo = {
 	payHash: string
@@ -58,7 +63,7 @@ const formatMoney = (n: number) =>
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 
 const RedeemScreen = ({close}: Prof) => {
-	const { profiles, secureCode, setSecureCode, beamio, ignoreUrl, setIgnoreUrl, redeemCode, setRedeemCode, myAddress } = useDaemonContext()
+	const { profiles, secureCode, setSecureCode, beamio, ignoreUrl, setIgnoreUrl, redeemCode, setRedeemCode, myAddress,setShowFooter } = useDaemonContext()
 
 	const [hashError, setHashError] = useState(false) 
 	const [note, setNote] = useState('')
@@ -71,6 +76,9 @@ const RedeemScreen = ({close}: Prof) => {
 	const [processing, setProcessing] = useState(false)
 	const [successHash, setSuccessHash] = useState("")
 	const [fromBeamio, setFromBeamio] = useState<searchResult|null>(null)
+	const [card, setCard] = useState<IImageCard|null>(null)
+	const [showGiftCard, setShowGiftCard] = useState(false)
+	const [title, setTitle] = useState('')
 
 	const formatSecurityCode = (value: string) => {
 		// 只保留数字
@@ -160,8 +168,41 @@ const RedeemScreen = ({close}: Prof) => {
 			}
 
 			await getBeo(check.from)
-			const _note = check.node.split('\r\n')[0]
-			setNote(_note)
+			const _note = check.node.split('\r\n')
+			
+				
+				
+
+				//		try get currency data
+			
+
+			let card: IImageCard | undefined
+			let payme: payMe | undefined
+
+			const nodeEX = check?.node?.split("\r\n") || []
+			let paymeData = nodeEX.length - 1
+
+
+			try {
+				if (paymeData > -1) {
+					const cardData = JSON.parse(nodeEX[paymeData--])
+					card = cardData?.card || cardData
+				}
+			} catch {
+				paymeData++
+			}
+			
+			try {
+				if (paymeData > -1) payme = JSON.parse(nodeEX[paymeData--])
+			} catch {
+				paymeData++
+			}
+			if (payme?.title) {
+				setTitle(payme.title)
+			}
+			setCard(card||null)
+
+			setNote(_note[0])
 			setGenerateHash(check.payHash)
 
 			const _amount = Number(ethers.formatUnits(check.amount, 6))
@@ -169,10 +210,11 @@ const RedeemScreen = ({close}: Prof) => {
 			setAmount(formatMoney(_amount-fee))
 			const _timestamp = Number(check.createTimestamp * BigInt(1000))
 			setCreateTimestamp(_timestamp)
+			setShowFooter(false)
 			
 		} catch (ex: any) {
 			setHashError(true)
-			setSecureCode('')
+			
 		}
 	}
 
@@ -241,7 +283,7 @@ const RedeemScreen = ({close}: Prof) => {
 
 	return (
 		
-		<div className="flex flex-col h-full pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+		<div className="">
 			{
 				successHash ? (
 					<RedeemSuccessScreen amount={amount} myAddress={myAddress} hash={successHash} note={note} viewClose={() => {
@@ -249,16 +291,96 @@ const RedeemScreen = ({close}: Prof) => {
 					}} />
 				) : (
 					<>
-						<div className="flex-1 px-6 pt-8 pb-20 overflow-auto">
+						<div className="">
 							<h1 className="text-center text-lg font-semibold text-slate-900 mb-1">
-								Redeem Cashcode
+								Cashcode
 							</h1>
-							<div className="rounded-2xl shadow-sm p-3 text-slate-800 leading-snug bg-gray-100">
+							<div className="p-3">
+								
 								{
-									fromBeamio && <SenderBmo />
+									Number(amount) > 0 && (
+										<div className="flex w-full items-end justify-center gap-1">
+										{/* 金额：蓝色大字 */}
+										<span className="text-[38px] font-extrabold leading-none text-[#2F63FF]">
+										  {formatAmount(Number(amount), "USDC")}
+										</span>
+									  
+										{/* USDC：灰色小字 */}
+										<span className="pb-[1px] text-[11px] font-semibold text-slate-400 tracking-wide">
+										  USDC
+										</span>
+									  </div>
+									)
 								}
-								{/* Cashcode input */}
-								<section className="space-y-1 mt-4">
+
+								{
+									title && (
+										<div className="mt-4 pb-4">
+											<div className="text-[22px] font-medium text-slate-900">
+												{title}
+											</div>
+										</div>
+									)
+								}
+									
+								{
+									note && 
+										<div className="mt-4 pb-4">
+											<div
+												className="
+												rounded-2xl
+												bg-yellow-50/60
+												backdrop-blur-sm
+												ring-1 ring-yellow-200/40
+												px-4 py-3
+												"
+											>
+												<div className="flex items-start gap-2 text-[14px] leading-relaxed">
+												<span className="shrink-0 text-yellow-700/60 font-medium">
+													Note
+												</span>
+
+												<span className="text-slate-700 break-words">
+													{note}
+												</span>
+												</div>
+											</div>
+										</div>
+								}
+
+							<div className=" overflow-hidden flex justify-center"> {/* mt-4 -> mt-3 */}
+							{card && (
+								<button
+									type="button"
+									onClick={() => {
+										setShowGiftCard(true)
+									}}
+									className="
+										group
+										flex items-center justify-center
+										p-2
+										rounded-xl
+										hover:bg-slate-100
+										active:scale-95
+										transition
+									"
+									aria-label="Open gift"
+								>
+									<img
+										src={giftEnvelope}
+										className="
+											w-12   /* w-14 -> w-12 */
+											block
+											transition
+											group-hover:opacity-90
+											group-active:opacity-80
+										"
+										alt="Gift Envelope"
+									/>
+								</button>
+							)}
+						</div>
+								<section className="space-y-1 mt-2">
 									<div className="flex items-center justify-between">
 										<label className="text-sm font-medium text-slate-800">
 											Enter cashcode
@@ -291,14 +413,7 @@ const RedeemScreen = ({close}: Prof) => {
 								{/* Security code input (optional) */}
 								<Securitycode securityCodeDigits={securityCodeDigits} setSecurityCodeDigits={setSecurityCodeDigits} />
 
-								{/* Info */}
-								{/* <section className="space-y-1 text-[11px] text-slate-500">
-									<p>
-										When you redeem, <span className="font-mono font-bold">{amount}</span> will be released
-										from the Cashcode smart contract to your Beamio wallet on Base.
-										Beamio pays the network fee for this transaction.
-									</p>
-								</section> */}
+								
 
 								{/* 错误提示条 */}
 								{processError && (
@@ -312,20 +427,7 @@ const RedeemScreen = ({close}: Prof) => {
 								<div className="flex gap-3 w-full">
 
 									{/* Cancel：只有在 !processing 时出现 */}
-									{!processing && (
-									<div className="flex-1">
-
-										<AppButton
-										variant='secondary'
-										fullWidth
-										onClick={() => {
-											close()
-										}}
-										>
-										Cancel
-										</AppButton>
-									</div>
-									)}
+									
 
 									{/* Redeem：processing 时自动占据整行 */}
 									<div className={`${processing ? 'flex-1' : 'flex-1'}`}>
@@ -342,59 +444,9 @@ const RedeemScreen = ({close}: Prof) => {
 								</div>
 							</div>
 
-							<div className="max-w-xl mx-auto space-y-6 text-sm">
-								{/* {
-									GenerateHash && (
-										<section className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-2">
-											
-											<div className="flex items-center justify-between">
-												<div className="flex flex-col gap-0.5">
-													<span className="text-[11px] tracking-[0.16em] text-slate-500 uppercase">
-														You will receive
-													</span>
-													<span className="text-xl font-semibold text-slate-900">
-														{amount}
-													</span>
-												</div>
-												<div className="flex flex-col items-end gap-0.5 text-[11px] text-slate-500">
-													<span>To: Your Beamio wallet</span>
-													<span className="font-mono text-xs text-slate-700">
-														{fmtAddr(myAddress)}
-													</span>
-												</div>
-											</div>
-											
-											<div className="mt-2 space-y-1">
-												<div className="flex items-center justify-between text-[11px] text-slate-500 uppercase tracking-wide">
-													<span>Note for you</span>
-													<span className="normal-case text-slate-400">Visible to you and the sender</span>
-												</div>
-												<div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800">
-													{note}
-												</div>
-											</div>
-											<p className="text-[11px] text-slate-500 pt-1">
-												The person who created this Cashcode pays the Beamio and network fees. Their wallet address is not shown to you.
-											</p>
-											
-											<div className="text-[10px] sm:text-[11px] text-slate-400 text-right">
-												Created: {new Date(createTimestamp).toLocaleString()}
-											</div>
-										</section>
-
-									)
-								} */}
-
-
-
-
-							</div>
+							
 
 							<div className="px-6 pb-6 max-w-xl mx-auto w-full">
-
-								
-
-								
 							</div>
 						</div>
 
@@ -402,7 +454,16 @@ const RedeemScreen = ({close}: Prof) => {
 					</>
 				)
 			}
-			
+			{showGiftCard && card &&(
+				<ShowCard
+					card={card}
+					address={fromBeamio?.username||fromBeamio?.address||''}
+					usdcAmount={amount}
+					cancel={() => {
+						setShowGiftCard(false)
+					}}
+				/>
+			)}
 		</div>
 	)
 }

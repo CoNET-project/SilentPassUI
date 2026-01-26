@@ -625,7 +625,7 @@ type TransferHistork = {
 	requestCurrency?: ICurrency
 	requestDetail?: IRequestCurrencyDetail
 	group?: paymentType
-
+	payme?: payMe
 }
 
 type LinksHistory = {

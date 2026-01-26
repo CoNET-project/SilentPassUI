@@ -389,15 +389,15 @@ export default function BeamioReceiveScreen() {
 										onFocus={() => setIsFocused(true)}
 										onBlur={() => setIsFocused(false)}
 										className="
-										w-full
-										bg-transparent
-										text-base
-										tracking-[0.35em]
-										text-center
-										outline-none
-										text-slate-900
-										font-mono
-										px-2
+											w-full
+											bg-transparent
+											text-base
+											tracking-[0.35em]
+											text-center
+											outline-none
+											text-slate-900
+											font-mono
+											px-2
 										"
 										placeholder="•••-•••"
 									/>
@@ -460,5 +460,5 @@ export default function BeamioReceiveScreen() {
 			
 		</div>
 
-	);
+	)
 }

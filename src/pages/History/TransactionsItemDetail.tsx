@@ -24,7 +24,7 @@ import baseIcon from '@/components/assets/base-logo.png'
 import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-blue.svg'
 import FeeInline from './payLinkFeeInline'
 import { QRCodeCanvas } from 'qrcode.react'
-import bIcon from '@/components/assets/32x32.svg'
+import bIcon from '@/components/assets/logo512.png'
 import {fiatPrefix, formatTimeDetail, statusStyleMap, formatAmount} from '@/services/currency'
 import PaymentReceipt from '@/pages/Pay/components/paymentReceipt'
 import BeamioFee from './BeamioFee'
@@ -126,8 +126,9 @@ export function TransactionsItemDetail({
 	const [fxOpen, setFxOpen] = useState(false)
 	const [userImg, setUserImg] = useState('')
 	const [openReceipt, setOpenReceipt] = useState(false)
-	
-	
+	const [title, setTitle] = useState('')
+	const [note, setNote] = useState('')
+	const [payme, setPayme] = useState<payMe|null>(null)
 
 	const receivedCurrency = useMemo(() => {
 		const detail = tx?.requestDetail
@@ -144,7 +145,7 @@ export function TransactionsItemDetail({
 		
 		const detail = tx?.requestDetail
 		if (detail) {
-			const kkk = tx.type === 'pending' ? detail.requestCurrencyAmount||0 : (tx.type === 'sent' ? detail.totalPayCurrency||0 : detail.receivedCurrency||0)
+			const kkk = tx.type === 'pending' ? detail.requestCurrencyAmount|| 0 : (tx.type === 'sent' ? detail.totalPayCurrency ||0 : detail.receivedCurrency||0)
 			const amt = formatAmount(kkk , receivedCurrency)
 			return (
 				<div className="flex items-baseline gap-2">
@@ -230,15 +231,7 @@ export function TransactionsItemDetail({
 
 	}, [tx])
 
-	const title = useMemo(() => {
-		if (!d) return ''
-		return d?.title
-	}, [d])
 
-	const note = useMemo(() => {
-		if (!d) return ''
-		return d?.textNote
-	}, [d])
 
 	const approxTip = useMemo(() => {
 		
@@ -307,6 +300,44 @@ export function TransactionsItemDetail({
 			setCurrency(_currency1)
 			setUserImg(account.image||getImg(account.username))
 
+			//		try get payme data
+			let card: IImageCard|null = null
+			let payme: payMe|null = null
+			const nodeEX =  tx.note.split('\r\n')
+
+			//		try get currency data
+			let paymeData = nodeEX.length -1
+
+
+			//		try get card data
+			try {
+				if (paymeData > -1) {
+					const cardData = JSON.parse(nodeEX[paymeData --])
+					card = cardData?.card || cardData
+				}
+				
+			} catch (ex) {
+				paymeData ++
+			}
+
+
+			try {
+				if (paymeData > -1) {
+					payme = JSON.parse(nodeEX[paymeData--])
+				}
+				
+				
+			} catch (ex) {
+				paymeData ++
+			}
+
+			if (payme?.title) {
+				setTitle(payme.title)
+				setPayme(payme)	
+			}
+
+			setNote(nodeEX[0]||'')
+
 			if (tx.type === 'pending') {
 				if (tx.mode === 'request') {
 					const showparams = new URLSearchParams({code: tx.hash}).toString()
@@ -314,25 +345,27 @@ export function TransactionsItemDetail({
 					setPayUrl(showUrl)
 					return
 				}
-				const codeString = tx.note.split('\r\n')
-				const encryptedText = codeString[1]
-				const profile: profile = profiles[0]
-				if (encryptedText && tx?.redeemHash) {
-					const _data = await aesGcmDecrypt(encryptedText, profile.privateKeyArmor)
-					try {
-						const data = JSON.parse(_data)
-						const showparams = new URLSearchParams({cashcode: data.secureCode, secureCode:tx.redeemHash}).toString()
-						const showUrl = `${showPaylinkSite}?${showparams}`
-						setPayUrl(showUrl)
-						console.log (data)
-					} catch (ex: any) {
-						console.log(`error`, ex.message)
-						return
+				if (paymeData > -1) {
+					const encryptedText = nodeEX[paymeData--]
+					const profile: profile = profiles[0]
+					if (encryptedText && tx?.redeemHash) {
+						
+						try {
+							const _data = await aesGcmDecrypt(encryptedText, profile.privateKeyArmor)
+							const data = JSON.parse(_data)
+							const showparams = new URLSearchParams({cashcode: data.secureCode, secureCode:tx.redeemHash}).toString()
+							const showUrl = `${showPaylinkSite}?${showparams}`
+							setPayUrl(showUrl)
+							console.log (data)
+						} catch (ex: any) {
+							console.log(`error`, ex.message)
+							return
+						}
 					}
 				}
-
-
 			}
+
+			
 		} finally {
 			findingRef.current = false
 		}
@@ -413,143 +446,143 @@ export function TransactionsItemDetail({
 				<div className="pb-7"> {/* pb-8 -> pb-7 */}
 					<div className="px-4 pt-4"> {/* px-5 pt-5 -> px-4 pt-4 */}
 						
-{/* 中部：时间 + 金额 + 对方信息 */}
-<div className="mt-4 flex items-stretch justify-between gap-3">
-  {/* 金额（左） */}
-  <div className="min-w-0">
-    <AmountText />
-    <button
-      type="button"
-      onClick={() => setFxOpen(true)}
-      className={[
-        "mt-1.5",
-        "inline-flex items-center gap-2",
-        "text-[14px] text-slate-500",
-        "rounded-md",
-        "px-1 py-0.5",
-        "hover:bg-slate-100 active:bg-slate-200",
-        "transition",
-      ].join(" ")}
-      aria-label="FX details"
-      title="FX details"
-    >
-      <span className="truncate text-left">{approxFiatText}</span>
+						{/* 中部：时间 + 金额 + 对方信息 */}
+						<div className="mt-4 flex items-stretch justify-between gap-3">
+						{/* 金额（左） */}
+						<div className="min-w-0">
+							<AmountText />
+							<button
+							type="button"
+							onClick={() => setFxOpen(true)}
+							className={[
+								"mt-1.5",
+								"inline-flex items-center gap-2",
+								"text-[14px] text-slate-500",
+								"rounded-md",
+								"px-1 py-0.5",
+								"hover:bg-slate-100 active:bg-slate-200",
+								"transition",
+							].join(" ")}
+							aria-label="FX details"
+							title="FX details"
+							>
+							<span className="truncate text-left">{approxFiatText}</span>
 
-      <span
-        aria-hidden
-        className="
-          h-7 w-7
-          rounded-full
-          flex items-center justify-center
-          shrink-0
-        "
-      >
-        <Info className="h-4 w-4 text-yellow-500/90" strokeWidth={2} />
-      </span>
-    </button>
-  </div>
+							<span
+								aria-hidden
+								className="
+								h-7 w-7
+								rounded-full
+								flex items-center justify-center
+								shrink-0
+								"
+							>
+								<Info className="h-4 w-4 text-yellow-500/90" strokeWidth={2} />
+							</span>
+							</button>
+						</div>
 
-  {/* 右侧：状态 + Receipt（整体在垂直方向向下对齐） */}
-  <div className="flex flex-col justify-end self-stretch gap-3">
-    {/* 顶部：状态 + Title + Gas sponsored */}
-    <div className="relative flex items-center justify-between gap-3">
-      {/* 左侧：状态 */}
-      <div
-        className={[
-          "inline-flex items-center gap-2 rounded-full px-3 py-1",
-          "bg-transparent border",
-          style.container.replace("bg-", "border-"),
-        ].join(" ")}
-      >
-        <span
-          className={[
-            "inline-flex h-5 w-5 items-center justify-center rounded-full",
-            style.iconBg,
-          ].join(" ")}
-        >
-          <Check className={["h-3.5 w-3.5", style.icon].join(" ")} strokeWidth={2.5} />
-        </span>
+						{/* 右侧：状态 + Receipt（整体在垂直方向向下对齐） */}
+						<div className="flex flex-col justify-end self-stretch gap-3">
+							{/* 顶部：状态 + Title + Gas sponsored */}
+							<div className="relative flex items-center justify-between gap-3">
+							{/* 左侧：状态 */}
+							<div
+								className={[
+								"inline-flex items-center gap-2 rounded-full px-3 py-1",
+								"bg-transparent border",
+								style.container.replace("bg-", "border-"),
+								].join(" ")}
+							>
+								<span
+								className={[
+									"inline-flex h-5 w-5 items-center justify-center rounded-full",
+									style.iconBg,
+								].join(" ")}
+								>
+									<Check className={["h-3.5 w-3.5", style.icon].join(" ")} strokeWidth={2.5} />
+								</span>
 
-        <span className={["text-[12px] font-semibold capitalize", style.text].join(" ")}>
-          {statusText}
-        </span>
+								<span className={["text-[12px] font-semibold capitalize", style.text].join(" ")}>
+									{tx.mode === 'cashcode' && tx.type === 'pending' ? 'Active' : statusText}
+								</span>
 
-        {localMode === "pay" && tx.mode !== "pay" && (
-          <span
-            className={[
-              "inline-flex items-center justify-center",
-              "w-6 h-6",
-              tx.mode === "cashcode"
-                ? "text-sky-600 dark:text-sky-300"
-                : "text-fuchsia-600 dark:text-fuchsia-300",
-            ].join(" ")}
-          >
-            {tx.mode === "cashcode" ? (
-              <QrCode className="w-3.5 h-3.5" strokeWidth={2} />
-            ) : (
-              <LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
-            )}
-          </span>
-        )}
-      </div>
+								{localMode === "pay" && tx.mode !== "pay" && (
+								<span
+									className={[
+									"inline-flex items-center justify-center",
+									"w-6 h-6",
+									tx.mode === "cashcode"
+										? "text-sky-600 dark:text-sky-300"
+										: "text-fuchsia-600 dark:text-fuchsia-300",
+									].join(" ")}
+								>
+									{tx.mode === "cashcode" ? (
+									<QrCode className="w-3.5 h-3.5" strokeWidth={2} />
+									) : (
+									<LinkIcon className="w-3.5 h-3.5" strokeWidth={2} />
+									)}
+								</span>
+								)}
+							</div>
 
-      {/* 右侧：Gas sponsored */}
-      {/* {isSponsored ? (
-        <div className="inline-flex items-center gap-2 text-[12px] text-blue-600">
-          <ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
-          <span>Gas sponsored</span>
-        </div>
-      ) : (
-        <div className="w-[110px]" />
-      )} */}
-    </div>
+							{/* 右侧：Gas sponsored */}
+							{/* {isSponsored ? (
+								<div className="inline-flex items-center gap-2 text-[12px] text-blue-600">
+								<ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
+								<span>Gas sponsored</span>
+								</div>
+							) : (
+								<div className="w-[110px]" />
+							)} */}
+							</div>
 
-    {/* iOS 透明水滴 · Receipt */}
-    {tx.mode === "request" && (tx.type1 === "paid" || tx.type1 === "received") && (
-      <button
-        type="button"
-        onClick={() => {
-          setNavigateLeftButtonArray(prof => [
-            ...prof,
-            {
-              title: "Receipt",
-              action: [() => setOpenReceipt(false)],
-            },
-          ])
-          setOpenReceipt(true)
-        }}
-        aria-label="Open receipt"
-        title="Receipt"
-        className="
-          shrink-0 relative
-          h-10 w-10
-          rounded-full
-          bg-white/30
-          backdrop-blur-xl
-          ring-2 ring-white/100
-          transition
-          active:scale-[0.96]
-          hover:bg-white/40
-          flex items-center justify-center
-          text-[rgb(0_122_255)]
-        "
-      >
-        <span
-          aria-hidden
-          className="
-            pointer-events-none
-            absolute inset-[3px]
-            rounded-full
-            bg-gradient-to-b
-            from-white/80
-            to-white/10
-          "
-        />
-        <Receipt className="relative h-5 w-5" />
-      </button>
-    )}
-  </div>
-</div>
+							{/* iOS 透明水滴 · Receipt */}
+							{tx.mode === "request" && (tx.type1 === "paid" || tx.type1 === "received") && (
+							<button
+								type="button"
+								onClick={() => {
+								setNavigateLeftButtonArray(prof => [
+									...prof,
+									{
+									title: "Receipt",
+									action: [() => setOpenReceipt(false)],
+									},
+								])
+								setOpenReceipt(true)
+								}}
+								aria-label="Open receipt"
+								title="Receipt"
+								className="
+								shrink-0 relative
+								h-10 w-10
+								rounded-full
+								bg-white/30
+								backdrop-blur-xl
+								ring-2 ring-white/100
+								transition
+								active:scale-[0.96]
+								hover:bg-white/40
+								flex items-center justify-center
+								text-[rgb(0_122_255)]
+								"
+							>
+								<span
+								aria-hidden
+								className="
+									pointer-events-none
+									absolute inset-[3px]
+									rounded-full
+									bg-gradient-to-b
+									from-white/80
+									to-white/10
+								"
+								/>
+								<Receipt className="relative h-5 w-5" />
+							</button>
+							)}
+						</div>
+						</div>
 
 						{/* 收款人/对方信息 */}
 						{tx.type !== "pending" && (
@@ -685,7 +718,7 @@ export function TransactionsItemDetail({
 						
 						{/* Network fee / Time */}
 						
-						<div className="mt-3 rounded-2xl border border-slate-100 overflow-hidden"> {/* mt-4 -> mt-3 */}
+						<div className="mt-3 overflow-hidden"> {/* mt-4 -> mt-3 */}
 
 							{
 								tx.mode !== 'pay' && tx.type !== 'pending' && (<>
@@ -866,62 +899,74 @@ export function TransactionsItemDetail({
 										</div>
 									</div>
 								) : (
-									<div className="mt-3 overflow-hidden flex flex-col items-center gap-3">
+									<div className="mt-10 overflow-hidden flex flex-col items-center gap-4">
 										<div
-										className="
-										rounded-[28px]
-										bg-white
-										p-[18px]
-										shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
-										"
-									>
-										<QRCodeCanvas
-											value={payUrl}
-											size={160}
-											level="H"
-											includeMargin
-											bgColor="transparent"
-											fgColor="#000000"
-											imageSettings={{
-												src: bIcon,
-												height: 40,
-												width: 40,
-												excavate: true,
-											}}
-											className="rounded-lg inline-block"
-										/>
+											className="
+												mt-4
+												rounded-[28px]
+												bg-white
+												p-[18px]
+												
+												shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+											"
+										>
+											<QRCodeCanvas
+												value={payUrl}
+												size={220}
+												level="H"
+												includeMargin
+												bgColor="transparent"
+												fgColor="#000000"
+												imageSettings={{
+													src: bIcon,
+													height: 80,
+													width: 80,
+													excavate: true,
+												}}
+												className="rounded-lg inline-block"
+											/>
 										</div>
 										<div className="px-4 py-3 flex items-center justify-between gap-3">
 										<div className="text-[14px] text-slate-500">Url</div>
 
 										<div className="flex items-center gap-2">
 											<div className="text-[14px] font-extrabold text-slate-900 tabular-nums truncate max-w-[220px]">
-											{payUrl}
+												{payUrl}
 											</div>
 
-												<button
-													type="button"
-													onClick={async () => {
+											<button
+												type="button"
+												onClick={async () => {
 													try {
 														await navigator.clipboard.writeText(payUrl)
 														setCopied(true)
 														window.setTimeout(() => setCopied(false), 900)
 													} catch {}
-													}}
-													className={`
-														w-6 h-6 rounded-full flex items-center justify-center
-														transition-colors duration-150
-														${copied ? "bg-emerald-500" : "bg-black/20"}   /* ⬅️ 同样改为黑色透明度 */
-													`}
-													aria-label="Copy tx hash"
-													title={copied  ? "Copied" : "Copy"}
-												>
-													{copied ? (
-														<Check className="w-3.5 h-3.5 text-white" strokeWidth={2} />
-													) : (
-														<Copy className="w-3.5 h-3.5 text-white/95" strokeWidth={2} />
-													)}
-												</button>
+												}}
+											className={[
+												"relative w-9 h-9 rounded-full",
+												"flex items-center justify-center",
+												"backdrop-blur-md",
+												"transition-all duration-150",
+												"active:scale-[0.94]",
+												"ring-1 ring-white/5",
+												// ✅ 1px 白色圆形外框
+  												"outline outline-1 outline-slate-900/10 outline-offset-0",
+												copied
+												? "bg-emerald-500/90 shadow-[0_6px_16px_rgba(16,185,129,0.45)]"
+												: "shadow-[0_12px_20px_rgba(132,120,255,0.22),0_5px_12px_rgba(0,0,0,0.08)]"
+											].join(" ")}
+												aria-label="Copy tx hash"
+												title={copied ? "Copied" : "Copy"}
+											>
+											
+
+											{copied ? (
+												<Check className="relative w-3.5 h-3.5 text-slate-900/10" strokeWidth={2.2} />
+											) : (
+												<Copy className="relative w-3.5 h-3.5 text-slate-900/10" strokeWidth={2.2} />
+											)}
+											</button>
 												
 										</div>
 									</div>

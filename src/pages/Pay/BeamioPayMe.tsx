@@ -172,19 +172,19 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 										"
 									>
 										<QRCodeCanvas
-										value={successUrl}
-										size={264}
-										level="H"
-										includeMargin={false}
-										bgColor="white"
-										fgColor="#000000"
-										imageSettings={{
-											src: bIcon,
-											height: 95,
-											width: 95,
-											excavate: true,
-										}}
-										className="block"
+											value={successUrl}
+											size={264}
+											level="H"
+											includeMargin={false}
+											bgColor="white"
+											fgColor="#000000"
+											imageSettings={{
+												src: bIcon,
+												height: 95,
+												width: 95,
+												excavate: true,
+											}}
+											className="block"
 										/>
 									</div>
 								</div>

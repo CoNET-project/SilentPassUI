@@ -28,7 +28,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 				</div>
 				<div className="text-center space-y-1">
 					<div className="text-sm font-medium text-slate-600">Redeemed</div>
-					<div className="text-2xl font-semibold text-slate-900">{amount} USDC received</div>
+					<div className="text-2xl font-semibold text-[#2F63FF]">{amount} USDC</div>
 					
 				</div>
 				</div>
@@ -99,54 +99,52 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 				</section> */}
 
 				{/* Transaction details */}
-				<section className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2 mb-4">
-					<div className="flex items-center justify-between text-sm">
-					<span className="font-medium text-slate-800">Transaction</span>
-					<span className="text-[11px] text-slate-500">Completed on Base</span>
-					</div>
-					<div className="flex items-center justify-between text-xs text-slate-500">
-  
-					{/* 左侧标签 */}
-					<span>Tx hash</span>
+				<section className="">
+				<div className="mb-4 text-xs text-center text-slate-500 dark:text-slate-400">
+					It may take a few seconds to appear on-chain.
+				</div>
+					{/* 按钮组 */}
+				<div className="w-full space-y-3">
 
-					{/* 右侧：哈希 + 按钮同行 */}
-					<div className="flex items-center gap-1">
-						<span className="font-mono text-[11px] text-slate-800">{fmtAddr(hash)}</span>
+				{/* 完成按钮 */}
+				<button
+					className="w-full h-11 rounded-full
+							bg-blue-600 text-white
+							text-sm font-medium"
+					onClick={() => {
+						viewClose()
+					}}
+				>
+					Done
+				</button>
 
-						<a
-						href={`https://basescan.org/tx/${hash}`}
-						target="_blank"
-						rel="noreferrer"
-						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-						aria-label="View on BaseScan"
-						title="View on BaseScan"
-						>
-						<img
-							src={darkModle ? base_ex_dark : base_ex}
-							alt=""
-							className="w-4 h-4"
-						/>
-						<span className="sr-only">View on BaseScan</span>
-						</a>
-					</div>
-
-					</div>
+				{/* 查看交易按钮 */}
+				<button
+					className="
+						w-full h-11 rounded-full
+						bg-black/5 text-slate-700
+						dark:bg-white/10 dark:text-slate-100
+						text-sm
+						flex items-center justify-center gap-2
+					"
+					onClick={() => {
+						window.open(`https://basescan.org/tx/${hash}`, '_blank', 'noopener,noreferrer')
+					}}
+					>
+					<img
+						src={base_ex}
+						alt="Base Explorer"
+						className="w-4 h-4 object-contain"
+					/>
+					<span>
+						View transaction
+					</span>
+				</button>
+				</div>
 					
 				</section>
 
 				
-				</div>
-				<div className="pb-4 flex flex-col gap-3 max-w-xl w-full mx-auto">
-					<AppButton
-						fullWidth
-						onClick={() => {
-							viewClose()
-						}}
-					>
-						Done
-					</AppButton>
-					
-					
 				</div>
 			</div>
 

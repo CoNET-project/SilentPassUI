@@ -76,11 +76,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 
 			if (!account) {
 				account = unknowAcc(address) 
-			} else {
-				if (!account?.image) {
-					account.image = getImg(account.username)
-				}
-			}
+			} 
 			//@ts-ignore
 			setbBeamioUsers(prev => {
 			const addr = (account?.address || '').toLowerCase()

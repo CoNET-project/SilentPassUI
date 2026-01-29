@@ -1,5 +1,6 @@
-import React, { useMemo, useEffect, useRef } from "react"
+import React, { useMemo, useEffect, useRef, useCallback, useState } from "react"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import {ethers} from 'ethers'
 import {
 	ChevronRight,
 	Menu,
@@ -21,7 +22,7 @@ type ChatListProps = {
   title?: string
 }
 
-
+const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
 
 function fmtListTime(ts?: number) {
   if (!ts) return ""
@@ -46,24 +47,30 @@ function fmtListTime(ts?: number) {
   return `${y}-${m}-${day}`
 }
 
-const displayName = (item: any) => {
-	const first = item.first_name ?? item.firstName ?? ""
-	const lastRaw = String(item.last_name ?? item.lastName ?? "")
-	const lastname = lastRaw.split("\r\n")
-	const last0 = lastname[0] || ""
-	const fullName = `${first} ${/^\{/.test(last0) ? "" : last0}`.trim()
-	return fullName || item.username || item.accountName || item.address
+const getImg = (avatarSeed: string) =>
+	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
+
+const displayName = (item: searchResult) => {
+	const lastname = item?.last_name?.split('\r\n')||[]
+	const fullName = `${item?.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
+	return fullName || item.username || item.address
+}
+
+const unknowAcc = (address: string):searchResult => {
+	const ret: searchResult = {
+		address,
+		created_at: 0,
+		first_name: '',
+		last_name: '',
+		follow_count: '',
+		follower_count: '',
+		username: 'Unknow',
+		image: ''
+	}
+	return ret
 }
 
 
-
-function initialLetters(b: searchResult) {
-	const n = displayName(b)
-	const parts = n.split(" ").filter(Boolean)
-	const a = (parts[0]?.[0] || n[0] || "U").toUpperCase()
-	const b2 = (parts[1]?.[0] || n[1] || "").toUpperCase()
-	return (a + b2).slice(0, 2)
-}
 
 function tagColor(tag: chatData["tag"]) {
 	if (tag === "red") return "bg-rose-500"
@@ -72,28 +79,76 @@ function tagColor(tag: chatData["tag"]) {
 }
 
 function Avatar({
-	beamio,
-	online
+	address
 }: {
-	beamio: searchResult
+	address: string
 	online?: boolean
 }) {
-	const img = beamio.image?.trim()
-	const initials = initialLetters(beamio)
+	const {beamioUsers, setbBeamioUsers} = useDaemonContext()
+	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
+	const [userImg, setUserImg] = useState('')
+	const [online, setOnline] = useState(false)
 
+	const avatarSrc = useMemo(() => {
+		if (!fromBeamio) return ""
+		const img = (fromBeamio.image || "").trim()
+		if (img) return img
+		const seed = (fromBeamio.username || fromBeamio.address || "beamio").trim()
+		return getImg(seed)
+	  }, [fromBeamio])
+
+	const findingRef = useRef(false)
+	const findUser = useCallback(async () => {
+		if (findingRef.current) return
+		if (fromBeamio) return
+
+		findingRef.current = true
+		try {
+			let account: searchResult|undefined = beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase())
+
+			if (!account) {
+				const _account = await searchUsername(address)
+				if (_account?.results?.[0]) account = _account.results[0]
+			}
+
+			if (!account) {
+				account = unknowAcc(address) 
+			} 
+			//@ts-ignore
+			setbBeamioUsers(prev => {
+			const addr = (account?.address || '').toLowerCase()
+			//@ts-ignore
+			if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
+				return [...prev, account!]
+			})
+			
+			setfromBeamio(account)
+
+			setUserImg(account.image||getImg(account.username))
+		} finally {
+			findingRef.current = false
+			
+		}
+	}, [address])
+
+	useEffect(() => {
+		findUser()
+	}, [findUser])
 	return (
 		<div className="relative h-12 w-12 flex-shrink-0">
-		{img ? (
+		{userImg ? (
 			<img
-			src={img}
-			alt={displayName(beamio)}
-			className="h-12 w-12 rounded-full object-cover ring-1 ring-black/5"
+				src={avatarSrc}
+				
+				className="h-12 w-12 rounded-full object-cover ring-1 ring-black/5"
 			/>
 		) : (
 			<div className="h-12 w-12 rounded-full bg-[linear-gradient(180deg,#9db3d9_0%,#6f88be_100%)] grid place-items-center ring-1 ring-black/5">
 			<span className="text-white font-semibold text-[16px] tracking-wide">
-				{initials}
+				{displayName(fromBeamio||unknowAcc(address))}
 			</span>
+			
+			
 			</div>
 		)}
 
@@ -128,17 +183,22 @@ export default function ChatList({
 			x => x && !x.hide && typeof x.address === "string" && x.address.length > 0
 		)
 
-		return filtered
+		const sorted = filtered
 			.slice()
 			.sort((a, b) => {
-			const pa = a.pin ? 1 : 0
-			const pb = b.pin ? 1 : 0
-			if (pa !== pb) return pb - pa
+				const pa = a.pin ? 1 : 0
+				const pb = b.pin ? 1 : 0
+				if (pa !== pb) return pb - pa
 
-			const ta = a.messages?.[a.messages.length - 1]?.createdAt || a.beamio?.created_at || 0
-			const tb = b.messages?.[b.messages.length - 1]?.createdAt || b.beamio?.created_at || 0
-			return tb - ta
+				const ta = a.messages?.[a.messages.length - 1]?.createdAt || a.beamio?.created_at || 0
+				const tb = b.messages?.[b.messages.length - 1]?.createdAt || b.beamio?.created_at || 0
+				return tb - ta
 			})
+		
+
+	return sorted
+
+
 	}, [profiles])
 
 	
@@ -184,7 +244,7 @@ export default function ChatList({
             const last = it.messages?.[it.messages.length - 1]
 			const dir = last ? (last.from === "me" ? "out" : "in") : null
             const timeText = fmtListTime(
-			last?.createdAt || it.beamio?.created_at || 0
+				last?.createdAt || it.beamio?.created_at || 0
 			)
             const name = it.beamio ? displayName(it.beamio) : `${it.address.slice(0, 6)}…${it.address.slice(-4)}`
 
@@ -206,25 +266,25 @@ export default function ChatList({
 					if (p0 && Array.isArray(p0.chats)) {
 						const idx2 = p0.chats.findIndex(c => String(c?.address || "").toLowerCase() === addr)
 						if (idx2 >= 0) {
-						const nextChats = [...p0.chats]
-						nextChats[idx2] = { ...nextChats[idx2], unreadCount: 0, lastReadTs: Date.now() }
+							const nextChats = [...p0.chats]
+							nextChats[idx2] = { ...nextChats[idx2], unreadCount: 0, lastReadTs: Date.now() }
 
-						const nextProfile = { ...p0, chats: nextChats }
-						const nextProfiles = [...ps]
-						nextProfiles[0] = nextProfile
+							const nextProfile = { ...p0, chats: nextChats }
+							const nextProfiles = [...ps]
+							nextProfiles[0] = nextProfile
 
-						// 1) UI state
-						setProfiles(nextProfiles)
+							// 1) UI state
+							setProfiles(nextProfiles)
 
-						// 2) ✅ 同步全局快照（storeSystemData 读这个）
-						const temp = CoNET_Data
-						if (temp) {
-							temp.profiles = nextProfiles
-							setCoNET_Data(temp)
-						}
+							// 2) ✅ 同步全局快照（storeSystemData 读这个）
+							const temp = CoNET_Data
+							if (temp) {
+								temp.profiles = nextProfiles
+								setCoNET_Data(temp)
+							}
 
-						// 3) 持久化
-						await storeSystemData()
+							// 3) 持久化
+							await storeSystemData()
 						}
 					}
 
@@ -236,19 +296,8 @@ export default function ChatList({
                 <div className="px-4">
                   <div className="flex items-center gap-3 py-3.5">
                     <Avatar
-					beamio={
-						it.beamio || {
-						address: it.address,
-						created_at: 0,
-						first_name: "",
-						last_name: "",
-						username: "",
-						image: "",
-						follow_count: "0",
-						follower_count: "0"
-						}
-					}
-					online={it.chatData?.online}
+						address={it.address}
+					
 					/>
 
                     <div className="min-w-0 flex-1">

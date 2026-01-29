@@ -236,3 +236,85 @@ export function calcFeeFromNumber(base: number) {
 	return Number(clamped.toFixed(4));
 }
 
+
+export type ParsedNote = {
+	noteText: string
+	card?: IImageCard
+	payme?: payMe
+  }
+  
+  const isObj = (v: any): v is Record<string, any> => v && typeof v === "object"
+  
+  const pickCard = (raw: any): IImageCard | undefined => {
+	if (!isObj(raw)) return
+  
+	// 兼容 { card: {...} } 或直接就是 card
+	const c = isObj(raw.card) ? raw.card : raw
+  
+	// 以 image 作为 card 的强特征
+	if (typeof c?.image === "string" && c.image.length > 0) return c as IImageCard
+	return
+  }
+  
+  const pickPayme = (raw: any): payMe | undefined => {
+	if (!isObj(raw)) return
+  
+	// 兼容 { payme: {...} }（如果你未来会这样包）
+	const p = isObj((raw as any).payme) ? (raw as any).payme : raw
+  
+	// payme 的弱特征：usdcAmount / currency / currencyAmount（按你项目里习惯）
+	const hasUSDC = typeof (p as any).usdcAmount === "number" && isFinite((p as any).usdcAmount)
+	const hasCurrency = typeof (p as any).currency === "string"
+	const hasCurrencyAmount =
+	  (typeof (p as any).currencyAmount === "number" && isFinite((p as any).currencyAmount)) ||
+	  (typeof (p as any).currencyAmount === "string" && (p as any).currencyAmount.length > 0)
+  
+	if (hasUSDC || (hasCurrency && hasCurrencyAmount)) return p as payMe
+	return
+  }
+  
+  export function parseNodeEX(note?: string): ParsedNote {
+	const nodeEX = String(note || "").split("\r\n")
+	const noteText = nodeEX[0] || ""
+  
+	// 只允许最多两段 JSON（第二、第三段）
+	const candidates = nodeEX.slice(1, 3)
+  
+	const parsed: any[] = []
+	for (const s of candidates) {
+	  if (!s) continue
+	  try {
+		const obj = JSON.parse(s)
+		if (obj != null) parsed.push(obj)
+	  } catch {}
+	}
+  
+	let card: IImageCard | undefined
+	let payme: payMe | undefined
+  
+	for (const obj of parsed) {
+	  // 先看是不是 card（更强特征）
+	  const c = pickCard(obj)
+	  if (c && !card) {
+		card = c
+		continue
+	  }
+  
+	  // 再看是不是 payme
+	  const p = pickPayme(obj)
+	  if (p && !payme) {
+		payme = p
+		continue
+	  }
+  
+	  // 兜底：如果是 {card:...} 但 image 不在 card 里，仍可能是 payme 被误当 card 包装
+	  // 例如你之前遇到的 (card as any).usdcAmount > 0
+	  if (!payme && isObj(obj)) {
+		const maybe = isObj(obj.card) ? obj.card : obj
+		const p2 = pickPayme(maybe)
+		if (p2) payme = p2
+	  }
+	}
+  
+	return { noteText, card, payme }
+  }

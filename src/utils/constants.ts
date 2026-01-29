@@ -40,6 +40,7 @@ const sGB_ReadOnly = new ethers.Contract(
 const sGB_Dashboard_ReadOnly = new ethers.Contract(
 	contracts.sGB_Dashboard.address,
 	contracts.sGB_Dashboard.abi,
+	
 	conetDepinProvider
 )
 

@@ -23,6 +23,8 @@ import { randomBytes } from '@noble/hashes/utils.js'
 import contracts from "../utils/contracts"
 import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
+import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import { parseNodeEX,ParsedNote } from "@/services/currency"
 
 
 export type x402Response = {
@@ -1228,8 +1230,6 @@ export function fromBase64(b64: string): string {
 }
 
 
-
-
 export const createRecover = async (BeamioName: string, pin: string) => {
 	const temp = await createOrGetWallet('')
 	if (!temp|| !temp?.mnemonicPhrase|| !temp?.profiles?.length) {
@@ -1600,5 +1600,69 @@ export const postToIPFS = async (profile: profile, image: string) => {
 //			pgp workflow
 //			regiest node				keyID to node KeyID	{hash: ethers.solidityPackedKeccak256(['string'], [keyID]), encrypto: nodeKeyID} 
 //			regiest publicKey			keyID to pgpKey		{hash: ethers.solidityPackedKeccak256(['string'], [keyID + 'armor']), encrypto: pgpKeyArmor}
-//			regiest keyID in beamio		
+//			regiest keyID in beamio	
 
+const beamioConetContract = {
+	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
+	network: 'CONET DePIN',
+	abi: beamioConetCoreABI,
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	
+}
+
+const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
+export const getCashcodeData = async (cashcodeUrl: string) => {	
+
+	
+		if (!cashcodeUrl || typeof cashcodeUrl !== "string") return
+	  
+		let searchParams: URLSearchParams
+	  
+		try {
+			// 尝试作为完整 URL 解析
+			const u = new URL(cashcodeUrl)
+			searchParams = u.searchParams
+		} catch {
+			// 再尝试作为 query string 解析
+			try {
+				searchParams = new URLSearchParams(cashcodeUrl)
+			} catch {
+				// 两种都失败 → 非 URL
+				return
+			}
+		}
+	  
+		const secureCode =
+		  searchParams.get("secureCode") ||""
+		const cashcode = searchParams.get("cashcode") || ""
+		
+		if (!secureCode || !cashcode) return 
+		
+	  
+	try {
+		const check: IGtCheckMemooo = await CoreContract.getCheckMemo(secureCode)
+
+		if (!check.payHash || check.from === ethers.ZeroAddress) {
+			
+			return 
+		}
+
+		const {noteText, card, payme}:ParsedNote = parseNodeEX(check.node)
+
+		
+	
+		
+		
+		if (check.depositHash !== ethers.ZeroHash && payme) {
+			payme.depositHash = check.depositHash
+		}
+		
+
+		return {card, payme}
+		
+		
+	} catch (ex: any) {
+		return
+		
+	}
+}

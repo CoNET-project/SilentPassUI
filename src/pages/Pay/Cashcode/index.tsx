@@ -278,6 +278,7 @@ export default function PaymentLink ({close}: Props) {
 			currency: lockMode === 'FIAT_LOCKED' ? currentCurrency : 'USDC',
 			currencyAmount: currencyAmount1,
 			title: linkTitle.trim(),
+			usdcAmount: numberUSDCAmount,
 		}
 
 		setProcessing(true)

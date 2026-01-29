@@ -1008,7 +1008,7 @@ export const makeMessage = (
 	return result
 }
 
-export function emitReactionAsNewMessage (amount: number, currency: ICurrency, title: string,usdcAmount: number ) {	//(targetMessageId: string, reaction: ReactionKey) {
+export function emitReactionAsNewMessage (amount: number, currency: ICurrency, title: string,usdcAmount: number, cashcodeUrl: string ) {	//(targetMessageId: string, reaction: ReactionKey) {
 	// const reactionLabel = REACTIONS.find(r => r.key === reaction)?.label || "👍"
 	const now = Date.now()
 	const tempId = new Date().getTime()
@@ -1021,6 +1021,7 @@ export function emitReactionAsNewMessage (amount: number, currency: ICurrency, t
 		title,
 		usdcAmount,
 		timeStamp: new Date().getTime(),
+		cashcodeUrl
 	}
 	const mess: ChatMessage = 
 		{

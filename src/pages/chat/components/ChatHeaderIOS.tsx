@@ -12,6 +12,7 @@ export type searchResult = {
   username: string
   follow_count: string
   follower_count: string
+  
 }
 
 const getImg = (avatarSeed: string) =>
@@ -24,22 +25,19 @@ export function ChatHeaderIOS({
   beamioer,
   onBack,
   onCenterClick,
-  online
+  online,
+  avatarSrc
 }: {
   beamioer?: searchResult
   onBack?: () => void
   onCenterClick?: () => void
   online: boolean
+  avatarSrc: string
 }) {
   const isUnknown = !beamioer || beamioer.username === "Unknow"
 
-  const avatarSrc = useMemo(() => {
-    if (!beamioer) return ""
-    const img = (beamioer.image || "").trim()
-    if (img) return img
-    const seed = (beamioer.username || beamioer.address || "beamio").trim()
-    return getImg(seed)
-  }, [beamioer])
+
+
 
   const tagText = useMemo(() => {
     if (!beamioer) return ""

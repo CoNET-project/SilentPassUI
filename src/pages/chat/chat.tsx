@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState, useLayoutEffect} from "react"
+import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback} from "react"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
-import {checkSign} from '@/services/chat' 
+import {checkSign, emitReactionAsNewMessage} from '@/services/chat' 
 import {
   ArrowUp,
   ChevronLeft,
@@ -9,8 +9,14 @@ import {
   Phone,
   Video,
   Check,
+  Plus,
   Mic,
-  AlertTriangle
+  AlertTriangle,
+  Camera,
+  ImageIcon,
+  Clock,
+  BarChart3,
+  Sticker
 } from "lucide-react"
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
 import {
@@ -22,9 +28,10 @@ import {
 	makeMessage
 
 } from '@/services/chat'
+import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {searchUsername, storeSystemData} from '@/services/beamio'
-import { messageSendReceiveCard } from "./components/messageSendReceiveCard"
+import {getCashcodeData, searchUsername, storeSystemData} from '@/services/beamio'
+import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 
 const REACTIONS = [
   { key: "like", label: "👍" },
@@ -41,6 +48,132 @@ type ReactionKey = typeof REACTIONS[number]["key"]
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
+
+const getImg = (avatarSeed: string) =>
+	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
+
+const unknowAcc = (address: string):searchResult => {
+	const ret: searchResult = {
+		address,
+		created_at: 0,
+		first_name: '',
+		last_name: '',
+		follow_count: '',
+		follower_count: '',
+		username: 'Unknow',
+		image: ''
+	}
+	return ret
+}
+
+
+type ChatSection = {
+	key: string
+	title: string
+	kind: "day" | "month" | "year"
+	items: ChatMessage[]
+  }
+  
+  function startOfDay(d: Date) {
+	return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  }
+  
+  function dayDiff(today0: Date, d0: Date) {
+	return Math.floor((today0.getTime() - d0.getTime()) / 86_400_000)
+  }
+  
+  function fmtMonthYear(d: Date) {
+	return d.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase()
+  }
+  
+  function fmtWeekday(d: Date) {
+	return d.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase()
+  }
+  
+  function getMsgTs(m: ChatMessage) {
+	const ts = Number(m?.paymentCard?.timeStamp || m?.createdAt || 0)
+	return isFinite(ts) ? ts : 0
+  }
+  
+  function groupChatMessages(items: ChatMessage[], now = new Date()): ChatSection[] {
+	const today0 = startOfDay(now)
+	const currentYear = now.getFullYear()
+  
+	// ✅ Chat 建议升序显示（旧 -> 新），但分组标题从旧到新/新到旧都可以
+	// 这里用升序，配合你 UI 最底部显示更自然
+	const sorted = [...items].sort((a, b) => getMsgTs(a) - getMsgTs(b))
+  
+	const map = new Map<string, ChatSection>()
+  
+	for (const m of sorted) {
+	  const ts = getMsgTs(m)
+	  const d = new Date(ts)
+	  const d0 = startOfDay(d)
+	  const diff = dayDiff(today0, d0)
+  
+	  // 1) 一周内：按天
+	  if (diff >= 0 && diff <= 6) {
+		let title = fmtWeekday(d0)
+		if (diff === 0) title = "TODAY"
+		if (diff === 1) title = "YESTERDAY"
+  
+		const key = `day:${d0.getFullYear()}-${d0.getMonth()}-${d0.getDate()}`
+		let sec = map.get(key)
+		if (!sec) {
+		  sec = { key, title, kind: "day", items: [] }
+		  map.set(key, sec)
+		}
+		sec.items.push(m)
+		continue
+	  }
+  
+	  // 2) 超过一周：今年内按月
+	  if (d.getFullYear() === currentYear) {
+		const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+		const key = `month:${ym}`
+		const title = fmtMonthYear(new Date(d.getFullYear(), d.getMonth(), 1))
+  
+		let sec = map.get(key)
+		if (!sec) {
+		  sec = { key, title, kind: "month", items: [] }
+		  map.set(key, sec)
+		}
+		sec.items.push(m)
+		continue
+	  }
+  
+	  // 3) 跨年：按年
+	  {
+		const y = String(d.getFullYear())
+		const key = `year:${y}`
+		const title = y
+  
+		let sec = map.get(key)
+		if (!sec) {
+		  sec = { key, title, kind: "year", items: [] }
+		  map.set(key, sec)
+		}
+		sec.items.push(m)
+	  }
+	}
+  
+	// ✅ sections 顺序：跟你显示方向一致
+	// 这里用 “按最早消息时间升序” 排（老分组在上，新分组在下）
+	const sections = Array.from(map.values())
+	sections.sort((a, b) => (getMsgTs(a.items[0]) || 0) - (getMsgTs(b.items[0]) || 0))
+	return sections
+  }
+  
+  function ChatSectionHeader({ title }: { title: string }) {
+	return (
+	  <div className="px-1 pt-3 pb-2">
+		<div className="text-[11px] tracking-[0.22em] font-extrabold text-slate-300 text-center">
+		  {title}
+		</div>
+	  </div>
+	)
+  }
+
 
 type ChatProps = {
 	onBack?: () => void
@@ -89,9 +222,12 @@ function BubbleCornerStatus({
 
   if (status === "sent") {
     return (
-      <span className={shell} aria-label="Delivered">
-        <Check className="h-3 w-3 text-[#1652f0]" strokeWidth={3} />
-      </span>
+		<>
+		{/* <span className={shell} aria-label="Delivered">
+			<Check className="h-3 w-3 text-[#1652f0]" strokeWidth={3} />
+		</span> */}
+		</>
+      
     )
   }
 
@@ -114,6 +250,7 @@ function BubbleCornerStatus({
     </button>
   )
 }
+
 
 
 // ---------- Your existing Chat messages render (patched) ----------
@@ -140,6 +277,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		setGossip,
 		gossip,
 		charts,
+		setbBeamioUsers
 		
   	} = useDaemonContext()
 	
@@ -153,7 +291,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const pressTimerRef = useRef<number | null>(null)
 	const messagesRef = useRef<ChatMessage[]>(chatData.messages || [])
 	const skipNextReflashdataRef = useRef(false)
-
+	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
+	const [userImg, setUserImg] = useState('')
+	const [plusOpen, setPlusOpen] = useState(false)
+	const plusBtnRef = useRef<HTMLButtonElement | null>(null)
 	const [reactionUI, setReactionUI] = useState<{
 		open: boolean
 		messageId?: string
@@ -161,6 +302,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		y: number
 		placement: "top"
 	}>(() => ({ open: false, x: 0, y: 0, placement: "top" }))
+
+	const sections = useMemo(() => {
+		return groupChatMessages(messages || [], new Date())
+	  }, [messages])
+
 
 	const canSend = useMemo(() => {
 		return !!toAddress && text.trim().length > 0
@@ -275,13 +421,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}
 
 
-		type paymentCard = {
-			amount: number
-			token: ICurrency
-			approx: string
-			title: string
-			timeStamp: number
-		}
+	type paymentCard = {
+		amount: number
+		token: ICurrency
+		approx: string
+		title: string
+		timeStamp: number
+	}
 
 	useEffect(() => {
 		messagesRef.current = messages
@@ -321,19 +467,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		})()
 	}, [profiles])
 
-  // 滚动到底部
-	useEffect(() => {
-		if (!pendingInitialScrollRef.current) return
-		if (!messages?.length) return
 
-		requestAnimationFrame(() => {
-			scrollToBottom("auto")
-			didInitialScrollRef.current = true
-			pendingInitialScrollRef.current = false
-			forceClearUnread()
-		})
-
-	}, [messages.length])
 
 	// textarea 自适应高度
 	useEffect(() => {
@@ -398,6 +532,43 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		void storeSystemData()
 	}
 
+	type UrlKind = "cashcode" | "paymentlink" | "beamio" | "url"
+
+	const isUrl = (input: string): UrlKind | undefined => {
+		if (!input || typeof input !== "string") return
+	  
+		let searchParams: URLSearchParams
+	  
+		try {
+		  // 尝试作为完整 URL 解析
+		  const u = new URL(input)
+		  searchParams = u.searchParams
+		} catch {
+		  // 再尝试作为 query string 解析
+		  try {
+			searchParams = new URLSearchParams(input)
+		  } catch {
+			// 两种都失败 → 非 URL
+			return
+		  }
+		}
+	  
+		const code = searchParams.get("code") || ""
+		const secureCode =
+		  searchParams.get("secureCode") ||""
+		const cashcode = searchParams.get("cashcode") || ""
+		const beamio = searchParams.get("beamio") || ""
+	  
+		if (beamio) return "beamio"
+		if (secureCode || cashcode) return "cashcode"
+		if (code) return "paymentlink"
+	  
+		// 是 URL，但不属于你关心的类型
+		return "url"
+	  }
+
+	 
+
 
 	async function send() {
 		const temp = CoNET_Data
@@ -408,6 +579,20 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 		setText("")
 
+		const mode = isUrl(t)
+		let cashcodeCard: ChatMessage | undefined
+		if (mode === 'cashcode') {
+			const cashcodeUrl = t
+			const res = await getCashcodeData(cashcodeUrl)
+			const { card, payme } = res ?? { card: undefined, payme: undefined }
+			if (!payme) return
+			cashcodeCard = emitReactionAsNewMessage(Number(payme.currencyAmount), payme.currency, card?.title || '',payme.usdcAmount||0, cashcodeUrl)
+
+			
+		}
+		
+
+
 		const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
 		const now = Date.now()
 
@@ -417,9 +602,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			from: "me",
 			text: t,
 			createdAt: now,
-			status: "sending"
+			status: "sending",
+			paymentCard: cashcodeCard ? cashcodeCard.paymentCard : undefined
 		}
 
+		
 		{
 			const next: ChatMessage[] = [...(messagesRef.current || []), pendingMsg]
 			messagesRef.current = next
@@ -443,7 +630,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		// ✅ 3) 发送
 		let ok = false
 		try {
-			const kkk = await sendMessage(chatData.chatData.publicArmored, t, privateKey, node)
+			const kkk = await sendMessage(chatData.chatData.publicArmored, cashcodeCard ? JSON.stringify(cashcodeCard) : t, privateKey, node)
 			ok = !!kkk
 		} catch {
 			ok = false
@@ -494,7 +681,42 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		})
 	}, [messages.length])
 
+	const findingRef = useRef(false)
 
+	const findUser = useCallback(async () => {
+		if (findingRef.current) return
+		if (fromBeamio) return
+
+		findingRef.current = true
+		try {
+			let account: searchResult|undefined = undefined
+				const _account = await searchUsername(chatData.address)
+				if (_account?.results?.[0]) account = _account.results[0]
+			
+
+			if (!account) {
+				account = unknowAcc(chatData.address) 
+			} 
+			//@ts-ignore
+			setbBeamioUsers(prev => {
+			const addr = (account?.address || '').toLowerCase()
+			//@ts-ignore
+			if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
+				return [...prev, account!]
+			})
+			
+			setfromBeamio(account)
+
+			setUserImg(account.image||getImg(account.username))
+		} finally {
+			findingRef.current = false
+			
+		}
+	}, [chatData])
+
+	useEffect(() => {
+		findUser()
+	}, [chatData])
 
 	const clearedRef = useRef(false)
 	// 距离底部多少 px 视为“已到最底”
@@ -585,9 +807,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
   return (
 		<div className="fixed inset-0 bg-white">
 			<ChatHeaderIOS
-				beamioer={chatData.beamio}
+				beamioer={fromBeamio}
 				onBack={onBack}
 				online={chatData.chatData.online}
+				avatarSrc={userImg}
 			/>
 
 			{/* ✅ 渐变蒙版：从顶部100%不透明+模糊 -> 下方0%透明+无模糊，高度10rem */}
@@ -622,159 +845,171 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			>
 				<div className="min-h-full flex flex-col justify-end">
 				<div className="mx-auto w-full max-w-[820px]">
+					<div aria-hidden className="h-[96px]" />
 					<AnimatePresence initial={false}>
-							{messages.map(m => {
-								const isMe = m.from === "me"
-								const hasCard = !!m.paymentCard
+							{sections.map(sec => (
+									<div key={sec.key}>
+									<ChatSectionHeader title={sec.title} />
 
-								return (
-								<motion.div
-									key={m.id}
-									initial={{ opacity: 0, y: 6 }}
-									animate={{ opacity: 1, y: 0 }}
-									exit={{ opacity: 0, y: 6 }}
-									transition={{ type: "spring", stiffness: 520, damping: 40 }}
-									className={["w-full flex mb-2", isMe ? "justify-end" : "justify-start"].join(" ")}
-								>
-									<div className="max-w-[78%] sm:max-w-[62%]">
-									{/* ✅ 分支：有 paymentCard -> Send/Receive Card；否则普通 message */}
-									{hasCard ? (
-										<div
-										className="relative"
-										onPointerDown={e => {
-											if (e.pointerType === "mouse" && e.button !== 0) return
-											if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
-											const target = e.currentTarget as HTMLElement
-											pressTimerRef.current = window.setTimeout(() => {
-											openReactionBarForElement(m.id, target)
-											}, 450)
-										}}
-										onPointerUp={() => {
-											if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
-											pressTimerRef.current = null
-										}}
-										onPointerCancel={() => {
-											if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
-											pressTimerRef.current = null
-										}}
-										onPointerLeave={() => {
-											if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
-											pressTimerRef.current = null
-										}}
-										onContextMenu={e => {
-											e.preventDefault()
-											openReactionBarForElement(m.id, e.currentTarget as HTMLElement)
-										}}
+									{sec.items.map(m => {
+										const isMe = m.from === "me"
+										const hasCard = !!m.paymentCard
+
+										return (
+										<motion.div
+											key={m.id}
+											initial={{ opacity: 0, y: 6 }}
+											animate={{ opacity: 1, y: 0 }}
+											exit={{ opacity: 0, y: 6 }}
+											transition={{ type: "spring", stiffness: 520, damping: 40 }}
+											className={["w-full flex mb-2", isMe ? "justify-end" : "justify-start"].join(" ")}
 										>
-										{messageSendReceiveCard({
-											variant: isMe ? "sent" : "received",
-											status: "Completed",
-											amount: m.paymentCard!.amount,
-											usdcAmount:  m.paymentCard!.usdcAmount,
-											
-											title: m.paymentCard!.title,
-											timeLabel: "Just now",
-											onMenu: () => {},
-											currency: m.paymentCard!.currency,
-											className: isMe ? "ml-auto" : "mr-auto"
-										})}
+											<div className="max-w-[78%] sm:max-w-[62%]">
+											{hasCard ? (
+												<div
+													className="relative"
+													onPointerDown={e => {
+														if (e.pointerType === "mouse" && e.button !== 0) return
+														if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+														const target = e.currentTarget as HTMLElement
+														pressTimerRef.current = window.setTimeout(() => {
+														openReactionBarForElement(m.id, target)
+														}, 450)
+													}}
+													onPointerUp={() => {
+														if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+														pressTimerRef.current = null
+													}}
+													onPointerCancel={() => {
+														if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+														pressTimerRef.current = null
+													}}
+													onPointerLeave={() => {
+														if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+														pressTimerRef.current = null
+													}}
+													onContextMenu={e => {
+														e.preventDefault()
+														openReactionBarForElement(m.id, e.currentTarget as HTMLElement)
+													}}
+												>
+												<MessageSendReceiveCard
+													variant= {isMe ? "sent" : "received"}
+													status= "Completed"
+													amount={ m.paymentCard!.amount}
+													usdcAmount= {m.paymentCard!.usdcAmount}
+													cashcodeUrl={m.paymentCard!.cashcodeUrl}
+													title = {m.paymentCard!.title}
+													timeLabel={"Just now"}
+													onMenu ={() => {
 
-										{/* ✅ 卡片也可以挂三态角标（只对我方消息） */}
-										{isMe && (
-											<div className="absolute -bottom-2 -right-2">
-											<BubbleCornerStatus
-												status={m.status}
-												onRetry={() => {
-												if (m.status !== "failed") return
-												setText(m.text)
-												setMessages(prev => prev.filter(x => x.id !== m.id))
+													}}
+													currency= {m.paymentCard!.currency}
+													className= {isMe ? "ml-auto" : "mr-auto"}
+												/>
+
+													{isMe && (
+														<div className="absolute -bottom-2 -right-2">
+														<BubbleCornerStatus
+															status={m.status}
+															onRetry={() => {
+															if (m.status !== "failed") return
+															setText(m.text)
+															setMessages(prev => prev.filter(x => x.id !== m.id))
+															}}
+														/>
+														</div>
+													)}
+												</div>
+											) : (
+												<div
+												className={[
+													"relative",
+													"px-3.5 py-2.5",
+													"rounded-[18px]",
+													"shadow-[0_8px_22px_rgba(15,23,42,0.08)]",
+													isMe
+													? "bg-[#1652f0] text-white rounded-br-[10px]"
+													: "bg-white text-slate-900 ring-1 ring-black/5 rounded-bl-[10px]"
+												].join(" ")}
+												onPointerDown={e => {
+													if (e.pointerType === "mouse" && e.button !== 0) return
+													if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+													const target = e.currentTarget as HTMLElement
+													pressTimerRef.current = window.setTimeout(() => {
+													openReactionBarForElement(m.id, target)
+													}, 450)
 												}}
-											/>
-											</div>
-										)}
-										</div>
-									) : (
-										<div
-										className={[
-											"relative",
-											"px-3.5 py-2.5",
-											"rounded-[18px]",
-											"shadow-[0_8px_22px_rgba(15,23,42,0.08)]",
-											isMe
-											? "bg-[#1652f0] text-white rounded-br-[10px]"
-											: "bg-white text-slate-900 ring-1 ring-black/5 rounded-bl-[10px]"
-										].join(" ")}
-										onPointerDown={e => {
-											if (e.pointerType === "mouse" && e.button !== 0) return
-											if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
-											const target = e.currentTarget as HTMLElement
-											pressTimerRef.current = window.setTimeout(() => {
-											openReactionBarForElement(m.id, target)
-											}, 450)
-										}}
-										onPointerUp={() => {
-											if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
-											pressTimerRef.current = null
-										}}
-										onPointerCancel={() => {
-											if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
-											pressTimerRef.current = null
-										}}
-										onPointerLeave={() => {
-											if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
-											pressTimerRef.current = null
-										}}
-										onContextMenu={e => {
-											e.preventDefault()
-											openReactionBarForElement(m.id, e.currentTarget as HTMLElement)
-										}}
-										>
-										<div className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">
-											{m.text}
-										</div>
-
-										{isMe && (
-											<BubbleCornerStatus
-											status={m.status}
-											onRetry={() => {
-												if (m.status !== "failed") return
-												setText(m.text)
-												setMessages(prev => prev.filter(x => x.id !== m.id))
-											}}
-											/>
-										)}
-										</div>
-									)}
-
-									{/* 时间 & 状态（两种都显示） */}
-									<div className={["mt-1 flex items-center gap-2", isMe ? "justify-end" : "justify-start"].join(" ")}>
-										<span className="text-[11px] text-slate-400">
-										{fmtTime(hasCard ? (m.paymentCard!.timeStamp || m.createdAt) : m.createdAt)}
-										</span>
-
-										{isMe && (
-										<span className="text-[11px]">
-											{m.status === "sending" && <span className="text-slate-400">Sending…</span>}
-											{m.status === "sent" && <span className="text-slate-400">Delivered</span>}
-											{m.status === "failed" && (
-											<button
-												type="button"
-												onClick={() => {
-												setText(m.text)
-												setMessages(prev => prev.filter(x => x.id !== m.id))
+												onPointerUp={() => {
+													if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+													pressTimerRef.current = null
 												}}
-												className="text-rose-600 underline underline-offset-2"
-											>
-												Failed · Tap to retry
-											</button>
+												onPointerCancel={() => {
+													if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+													pressTimerRef.current = null
+												}}
+												onPointerLeave={() => {
+													if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+													pressTimerRef.current = null
+												}}
+												onContextMenu={e => {
+													e.preventDefault()
+													openReactionBarForElement(m.id, e.currentTarget as HTMLElement)
+												}}
+												>
+												<div className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">
+													{m.text}
+												</div>
+
+												{isMe && (
+													<BubbleCornerStatus
+													status={m.status}
+													onRetry={() => {
+														if (m.status !== "failed") return
+														setText(m.text)
+														setMessages(prev => prev.filter(x => x.id !== m.id))
+													}}
+													/>
+												)}
+												</div>
 											)}
-										</span>
-										)}
+
+											<div className={["mt-1 flex items-center gap-2", isMe ? "justify-end" : "justify-start"].join(" ")}>
+												<span className="text-[11px] text-slate-400">
+												{fmtTime(getMsgTs(m))}
+												</span>
+
+												{isMe && (
+												<span className="text-[11px]">
+													{m.status === "sending" && <span className="text-slate-400">Sending…</span>}
+													{
+														m.status === "sent" && (
+															<>
+															<span className="text-slate-400">Delivered</span>
+															</>
+														)
+													}
+													{m.status === "failed" && (
+													<button
+														type="button"
+														onClick={() => {
+														setText(m.text)
+														setMessages(prev => prev.filter(x => x.id !== m.id))
+														}}
+														className="text-rose-600 underline underline-offset-2"
+													>
+														Failed · Tap to retry
+													</button>
+													)}
+												</span>
+												)}
+											</div>
+											</div>
+										</motion.div>
+										)
+									})}
 									</div>
-									</div>
-								</motion.div>
-								)
-							})}
+								))}
 							</AnimatePresence>
 
 					{/* ✅ 关键：底部 spacer */}
@@ -786,86 +1021,109 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 			{/* 底部：输入栏（iOS 毛玻璃 + pill） */}
 			<div
-			className={[
-				"fixed left-0 right-0 bottom-0 z-50",
-				"pb-[env(safe-area-inset-bottom)]"
-			].join(" ")}
+				className={[
+					"fixed left-0 right-0 bottom-0 z-50",
+					"pb-[env(safe-area-inset-bottom)]"
+				].join(" ")}
 			>
-			<div className={["bg-white/0"].join(" ")}>
-				<div className="relative">
-				<div className="mx-auto w-full max-w-[820px] px-3 pt-3 pb-4">
-					<div className="flex items-end">
-					{/* ✅ 输入框：内部放 send 按钮 */}
-					<div
-						className={[
-						"relative flex-1",
-						"rounded-[22px]",
-						"bg-white/60 backdrop-blur-xl",
-						"ring-1 ring-black/5",
-						"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
-						].join(" ")}
-					>
-						<textarea
-						ref={inputRef}
-						value={text}
-						onChange={e => setText(e.target.value)}
-						onKeyDown={onKeyDown}
-						placeholder={"iMessage…"}
-						rows={1}
-						className={[
-							"w-full resize-none bg-transparent outline-none",
-							"px-4 py-3",
-							"pr-14",
-							"text-[15px] leading-[20px]",
-							"placeholder:text-slate-400",
-							"disabled:opacity-60",
-							"overflow-y-auto",
-							"[scrollbar-width:none]",
-							"[-ms-overflow-style:none]",
-							"[&::-webkit-scrollbar]:hidden"
-						].join(" ")}
-						/>
+				<div className={["bg-white/0"].join(" ")}>
+					<div className="relative">
+						<div className="mx-auto w-full max-w-[820px] px-3 pt-3 pb-4">
+						<div className="flex items-center gap-2">
+							<PlusActionMenu
+								open={plusOpen}
+								onClose={() => setPlusOpen(false)}
+								anchorRef={plusBtnRef}
+								
+							/>
+							 {/* ✅ 左侧：+ 透明圆圈按钮（与右侧同风格） */}
+							<button
+								ref={plusBtnRef}
+								type="button"
+								onClick={() => setPlusOpen(true)}
+								className={[
+								"h-9 w-9 rounded-full",
+								"grid place-items-center",
+								"transition active:scale-[0.95]",
+								"bg-transparent",
+								"ring-1 ring-slate-300/70",
+								"backdrop-blur-xl"
+								].join(" ")}
+								aria-label="More actions"
+							>
+								<Plus className="h-4 w-4 text-slate-500" strokeWidth={2.6} />
+							</button>
+								{/* ✅ 输入框：内部放 send 按钮 */}
+								<div
+									className={[
+									"relative flex-1",
+									"rounded-[22px]",
+									"bg-white/60 backdrop-blur-xl",
+									"ring-1 ring-black/5",
+									"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+									].join(" ")}
+								>
+									<textarea
+									ref={inputRef}
+									value={text}
+									onChange={e => setText(e.target.value)}
+									onKeyDown={onKeyDown}
+									placeholder={"iMessage…"}
+									rows={1}
+									className={[
+										"w-full resize-none bg-transparent outline-none",
+										"px-4 py-3",
+										"pr-14",
+										"text-[15px] leading-[20px]",
+										"placeholder:text-slate-400",
+										"disabled:opacity-60",
+										"overflow-y-auto",
+										"[scrollbar-width:none]",
+										"[-ms-overflow-style:none]",
+										"[&::-webkit-scrollbar]:hidden"
+									].join(" ")}
+									/>
 
-						{/* ✅ 按钮放进输入框内部，最右对齐 */}
-						<button
-						type="button"
-						onClick={canSend ? send : undefined}
-						disabled={false}
-						onMouseDown={() => {
-							if (!canSend) {
-							console.log("start voice message")
-							}
-						}}
-						onTouchStart={() => {
-							if (!canSend) {
-							console.log("start voice message (touch)")
-							}
-						}}
-						className={[
-							"absolute right-2 bottom-2",
-							"h-8 w-8 rounded-full",
-							"grid place-items-center",
-							"transition active:scale-[0.95]",
-							canSend
-							? [
-								"bg-[rgba(22,82,240,0.60)]",
-								"shadow-[0_4px_12px_rgba(22,82,240,0.15)]"
-								].join(" ")
-							: ["bg-transparent", "ring-1 ring-slate-300/70"].join(" ")
-						].join(" ")}
-						aria-label={canSend ? "Send" : "Voice message"}
-						>
-						{canSend ? (
-							<ArrowUp className="h-4 w-4 text-white/70" strokeWidth={2.8} />
-						) : (
-							<Mic className="h-4 w-4 text-slate-400" strokeWidth={2.4} />
-						)}
-						</button>
-					</div>
+									{/* ✅ 按钮放进输入框内部，最右对齐 */}
+									<button
+									type="button"
+									onClick={canSend ? send : undefined}
+									disabled={false}
+									onMouseDown={() => {
+										if (!canSend) {
+										console.log("start voice message")
+										}
+									}}
+									onTouchStart={() => {
+										if (!canSend) {
+										console.log("start voice message (touch)")
+										}
+									}}
+									className={[
+										"absolute right-2 bottom-2",
+										"h-8 w-8 rounded-full",
+										"grid place-items-center",
+										"transition active:scale-[0.95]",
+										canSend
+										? [
+											"bg-[rgba(22,82,240,0.60)]",
+											"shadow-[0_4px_12px_rgba(22,82,240,0.15)]"
+											].join(" ")
+										: ["bg-transparent", "ring-1 ring-slate-300/70"].join(" ")
+									].join(" ")}
+									aria-label={canSend ? "Send" : "Voice message"}
+									>
+									{canSend ? (
+										<ArrowUp className="h-4 w-4 text-white/70" strokeWidth={2.8} />
+									) : (
+										<Mic className="h-4 w-4 text-slate-400" strokeWidth={2.4} />
+									)}
+									</button>
+								</div>
+							</div>
+						</div>
 					</div>
 				</div>
-				</div>
-			</div>
 			</div>
 
 			{/* ✅ 渐变蒙版：顶部0%透明+无模糊 -> 下方100%不透明+模糊，高度10rem（固定在底部，不考虑安全区） */}

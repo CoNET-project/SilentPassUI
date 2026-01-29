@@ -161,7 +161,7 @@ export function TransactionsItemDetail({
 					<span
 						className={[
 						"text-[44px] leading-none font-semibold tracking-tight tabular-nums",
-						amountColor,
+							amountColor,
 						].join(" ")}
 					>
 						{amt}
@@ -226,7 +226,7 @@ export function TransactionsItemDetail({
 		//		USDC 时不表示
 		if (!d || tx.requestCurrency === 'USDC') return ''
 
-		const am = tx.type1 === 'paid' ? d.totalPayUSDC :  tx.type === 'pending' ? d.requestUSDAmount ||0 : d.receivedUSDC
+		const am = tx.type1 === 'paid' ? tx.preAmount : tx.amount
 		return `${ am.toFixed(4)} USDC`
 		
 
@@ -255,10 +255,8 @@ export function TransactionsItemDetail({
 
 
 	const statusText: HistoryFilter = useMemo(() => {
-		if (localMode === 'pay') {
-			return tx.type
-		}
-
+		
+		
 		return tx.type
 		
 	}, [localMode])
@@ -453,19 +451,19 @@ export function TransactionsItemDetail({
 						<div className="min-w-0">
 							<AmountText />
 							<button
-							type="button"
-							onClick={() => setFxOpen(true)}
-							className={[
-								"mt-1.5",
-								"inline-flex items-center gap-2",
-								"text-[14px] text-slate-500",
-								"rounded-md",
-								"px-1 py-0.5",
-								"hover:bg-slate-100 active:bg-slate-200",
-								"transition",
-							].join(" ")}
-							aria-label="FX details"
-							title="FX details"
+								type="button"
+								onClick={() => setFxOpen(true)}
+								className={[
+									"mt-1.5",
+									"inline-flex items-center gap-2",
+									"text-[14px] text-slate-500",
+									"rounded-md",
+									"px-1 py-0.5",
+									"hover:bg-slate-100 active:bg-slate-200",
+									"transition",
+								].join(" ")}
+								aria-label="FX details"
+								title="FX details"
 							>
 								<span className="truncate text-left">{approxFiatText}</span>
 
@@ -505,7 +503,7 @@ export function TransactionsItemDetail({
 								</span>
 
 								<span className={["text-[12px] font-semibold capitalize", style.text].join(" ")}>
-									{tx.mode === 'cashcode' && tx.type === 'pending' ? 'Active' : statusText}
+									{tx.mode === 'cashcode' && tx.type === 'pending' ? 'Active' : statusText === 'deposited' ? 'Redeemed' : statusText}
 								</span>
 
 								{localMode === "pay" && tx.mode !== "pay" && (

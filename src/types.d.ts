@@ -146,6 +146,7 @@ type paymentCard = {
 		title: string
 		timeStamp: number
 		usdcAmount: number
+		cashcodeUrl: string
 	}
 
 
@@ -567,6 +568,8 @@ type payMe = {
 	code?: string
 	title?: string
 	currencyTax?: string
+	usdcAmount?: number
+	depositHash?: string
 }
 
 type IRequestCurrencyDetail = {
@@ -690,4 +693,16 @@ type CheckHistory = {
     depositTimestamp: bigint 
     to: string
     payHash: string
+}
+
+type IGtCheckMemooo = {
+	payHash: string
+	from: string
+	amount: bigint
+	depositHash: string
+	chianID: bigint
+	erc3009Address: string
+	decimals: bigint
+	node: string
+	createTimestamp: bigint
 }

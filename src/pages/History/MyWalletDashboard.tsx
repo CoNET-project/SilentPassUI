@@ -8,6 +8,7 @@ import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import { getBalanceProcess, formatWithThousands, aesGcmDecrypt } from "@/services/beamio"
 import RedeemScreen from '@/pages/Browser/RedeemScreen'
+import { parseNodeEX,ParsedNote } from "@/services/currency"
 import {
   QrCode,
   Bell,
@@ -257,28 +258,7 @@ export function MyWalletDashboard() {
 		const transfer: Transfer[] = _transfer[1]
 		const mappedPay: TransferHistork[] = transfer.map(n => {
 			let requestDetail: IRequestCurrencyDetail | undefined = undefined
-			let card: IImageCard | null = null
-			let payme: payMe | null = null
-
-			const nodeEX = n?.note?.split("\r\n") || []
-			let paymeData = nodeEX.length - 1
-
-			
-
-			try {
-				if (paymeData > -1) {
-					const cardData = JSON.parse(nodeEX[paymeData--])
-					card = cardData?.card || cardData
-				}
-			} catch {
-				paymeData++
-			}
-			
-			try {
-				if (paymeData > -1) payme = JSON.parse(nodeEX[paymeData--])
-			} catch {
-				paymeData++
-			}
+			const {noteText, card, payme}:ParsedNote = parseNodeEX(n.note)
 
 			const amount = Number(ethers.formatUnits(n.amount, 6))
 			const _amount = Number((payme as any)?.currencyAmount)
@@ -297,7 +277,7 @@ export function MyWalletDashboard() {
 					USDCTip: 0,
 					rate: currencyRate,
 					title: (payme as any)?.title,
-					textNote: paymeData > -1 ? nodeEX[paymeData] : "",
+					textNote: noteText,
 					requestCurrencyAmount: Number((payme as any).currencyAmount),
 				}
 			}
@@ -445,27 +425,7 @@ export function MyWalletDashboard() {
 
 				let type1: HistoryFilter = type === "deposited" ? "received" : "sent"
 
-				let card: IImageCard | undefined
-				let payme: payMe | undefined
-
-				const nodeEX = n?.node?.split("\r\n") || []
-				let paymeData = nodeEX.length - 1
-
-
-				try {
-					if (paymeData > -1) {
-						const cardData = JSON.parse(nodeEX[paymeData--])
-						card = cardData?.card || cardData
-					}
-				} catch {
-					paymeData++
-				}
-				
-				try {
-					if (paymeData > -1) payme = JSON.parse(nodeEX[paymeData--])
-				} catch {
-					paymeData++
-				}
+				const {noteText, card, payme}:ParsedNote = parseNodeEX(n.node)
 
 
 				
@@ -483,7 +443,7 @@ export function MyWalletDashboard() {
 					const receivedCurrency = requestCurrencyAmount
 					
 					const title = payme?.title
-					const textNote = nodeEX[0]||''
+					
 					
 
 					requestDetail = {
@@ -502,7 +462,7 @@ export function MyWalletDashboard() {
 						receivedCurrency: type === 'deposited' ? 0 : receivedCurrency,
 						rate: currencyRate,
 						title,
-						textNote
+						textNote: noteText
 					}
 				
 

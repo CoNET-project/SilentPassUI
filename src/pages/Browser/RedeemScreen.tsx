@@ -13,17 +13,7 @@ import ShowCard from '@/components/card/ShowCard'
 import {fiatPrefix, formatTimeDetail, statusStyleMap, formatAmount} from '@/services/currency'
 
 
-type IGtCheckMemooo = {
-	payHash: string
-	from: string
-	amount: bigint
-	depositHash: string
-	chianID: bigint
-	erc3009Address: string
-	decimals: bigint
-	node: string
-	createTimestamp: bigint
-}
+
 type Prof = {
 	close: () => void
 }

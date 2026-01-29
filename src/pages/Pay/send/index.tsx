@@ -273,7 +273,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 			profile.chats.splice(index, 1)
 		}
 		
-		const messageCard = emitReactionAsNewMessage(Number(currencyAmount), lockMode === 'USDC_LOCKED' ? 'USDC' : currentCurrency, note, Number(sendAmount))
+		const messageCard = emitReactionAsNewMessage(Number(currencyAmount), lockMode === 'USDC_LOCKED' ? 'USDC' : currentCurrency, note, Number(sendAmount), '')
 		chatData.messages.push(messageCard)
 		profile.chats.push(chatData)
 		setProfiles(profiles)

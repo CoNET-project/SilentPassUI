@@ -59,7 +59,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
   const currentAvatarSrcTemp = avatarImageDataTemp || avatarUrl
   const isDicebear = (src?: string | null) =>
   	!!src && src.includes("api.dicebear.com/8.x/fun-emoji/svg?seed=")
-  const usingUploadedAvatar = !!avatarImageDataTemp && !isDicebear(avatarImageDataTemp)
+  const usingUploadedAvatar = !!avatarImageDataTemp && !isDicebear(currentAvatarSrcTemp)
   const checkLastName = (lastname: string|undefined) => {
 	if (!lastname) return ''
 	const spl = lastname.split('\r\n')[0]
@@ -84,35 +84,54 @@ export default function BeamioAccountScreen({ colse }: prof) {
   }, [])
 
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.type.startsWith('image/')) return
-
-    e.target.value = ''
-
-    const url = URL.createObjectURL(file)
-    setAvatarFileUrl(prev => {
-      if (prev) URL.revokeObjectURL(prev)
-      return url
-    })
-    setAvatarFileName(file.name)
-
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string
-      if (!dataUrl) return
-
-      const img = new Image()
-      img.onload = () => {
-        const resized = downscaleTo250(img)
-        setAvatarImageDataTemp(resized || dataUrl)
-      }
-      img.onerror = () => setAvatarImageDataTemp(dataUrl)
-      img.src = dataUrl
-    }
-
-    reader.readAsDataURL(file)
+	const file = e.target.files?.[0]
+	if (!file) return
+	if (!file.type.startsWith("image/")) return
+  
+	// 允许重复选择同一个文件也触发 onChange
+	e.target.value = ""
+  
+	// ✅ 1) 先用 objectURL 立即预览（avatarImageDataTemp 只存 URL）
+	const blobUrl = URL.createObjectURL(file)
+  
+	setAvatarFileUrl(prev => {
+	  if (prev) URL.revokeObjectURL(prev)
+	  return blobUrl
+	})
+  
+	setAvatarImageDataTemp(blobUrl)
+	setAvatarFileName(file.name)
+  
+	// ✅ 2) 然后异步转成 dataUrl 做 downscale + 上传 IPFS（不把 dataUrl 存进 state）
+	const reader = new FileReader()
+	reader.onloadend = () => {
+	  const dataUrl = reader.result as string
+	  if (!dataUrl) return
+  
+	  const img = new Image()
+	  img.onload = async () => {
+		if (!profiles?.[0]) return
+  
+		// 大图 downscale，小图直接用原 dataUrl
+		const resized = downscaleTo250(img) || dataUrl
+  
+		const hash = await postToIPFS(profiles[0], resized)
+		if (!hash) return
+  
+		// ✅ 上传成功后，把展示 URL 切换为 ipfs URL（仍然是 URL 字符串）
+		const ipfsUrl = `${ipfsEndpoint}${hash}&t=${Date.now()}`
+		setAvatarImageDataTemp(ipfsUrl)
+  
+		// ✅ 既然已经换成 ipfs url，就可以释放 blobUrl
+		setAvatarFileUrl(prev => {
+		  if (prev) URL.revokeObjectURL(prev)
+		  return null
+		})
+	  }
+	  img.src = dataUrl
+	}
+  
+	reader.readAsDataURL(file)
   }
 
   const handleSaveAvatar = async () => {
@@ -315,7 +334,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
 				<div className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2">
 				<div>
 					<div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">
-					FIRST NAME
+						FIRST NAME
 					</div>
 					<input
 					value={firstName}

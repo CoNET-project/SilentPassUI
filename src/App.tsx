@@ -13,7 +13,7 @@ import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, currentGossipAbortController } from "@/services/chat"
 import { searchUsername, storeSystemData } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
-import { VouchersMockup } from "@/pages/Vouchers/VouchersMockup"
+import Vouchers from "@/pages/Vouchers/index"
 import MyWallet from "@/pages/Settings/index"
 import { ethers } from "ethers"
 import beamioConetCoreABI from "@/services/ABI/beamioConetCoreABI.json"
@@ -394,17 +394,17 @@ function AppShell() {
 	setScanData("")
 
     if (_beamio) {
-      const user = await searchUsername(_beamio)
-      const results: searchResult[] = user?.results
-      if (!results?.length) return
+		const user = await searchUsername(_beamio)
+		const results: searchResult[] = user?.results
+		if (!results?.length) return
 
-      const filtered = results.filter(n => n.username === _beamio)
-      if (!filtered.length) return
+		const filtered = results.filter(n => n.username === _beamio)
+		if (!filtered.length) return
 
-      setUserPreviewItem(filtered[0])
-      setScanData("")
-      setShowAlphaHowItWorks("BeamioContactProfilePreview")
-      return
+		setUserPreviewItem(filtered[0])
+		setScanData("")
+		setShowAlphaHowItWorks("BeamioContactProfilePreview")
+		return
     }
 
 
@@ -486,7 +486,7 @@ function AppShell() {
 				<Route path="/Pay" element={<Pay />} />
 				<Route path="/Chat" element={<Chat />} />
 				<Route path="/chat/:id" element={<ChatDetail />} />
-				<Route path="/settings" element={<VouchersMockup />} />
+				<Route path="/settings" element={<Vouchers />} />
 				<Route path="/browser" element={<Browser />} />
 				<Route path="/myWallet" element={<MyWallet />} />
 				<Route path="/HistoryAll" element={<HistoryAll />} />

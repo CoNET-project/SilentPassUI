@@ -151,7 +151,7 @@ export default function Vouchers() {
         <LargeTitle title="Membership" subtitle="Exclusive access & rewards" />
 
         <CCSACardVisual
-          balance={hasMembershipPass ? ccsaBalance : 100}
+          balance={0}
           hasPass={false}
           onTopUp={() => setShowTopUp(true)}
           onQR={() => setShowQR(true)}
@@ -159,7 +159,7 @@ export default function Vouchers() {
 			setShowAlphaHowItWorks('cardDetail')
 			setShowFooter(false)
           }}
-          showBuy
+          showBuy='buy'
           onBuy={() => {
 			setShowFooter(false)
 			setSettingsOpen('Pay')
@@ -284,6 +284,7 @@ export default function Vouchers() {
 							
 								<TopUpAccount 
 								flow="PURCHASE"
+								beamioBalanceText={`Balance: ${usdcbalance.toFixed(2)} USDC`}
 								onClose={() => {
 									setSettingsOpen('')
 									setShowFooter(true)

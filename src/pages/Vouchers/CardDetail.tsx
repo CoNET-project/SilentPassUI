@@ -15,36 +15,51 @@ type CardDetailProps = {
 export default function CardDetail({ onPurchase }: CardDetailProps) {
   return (
     <div className="w-full min-h-screen bg-white flex justify-center">
-      <div className="w-full max-w-[420px] px-5 pt-8 pb-10">
+      <div 
+        className="w-full max-w-[420px] px-5 pb-10"
+        style={{
+          paddingTop: `calc(env(safe-area-inset-top) + 3rem)`
+        }}
+      >
         {/* Card Image */}
         <div
 			className="
-				
+				flex
+				justify-center
+				items-start
 				rounded-[30px]
-				overflow-hidden
-				shadow-[0_26px_50px_rgba(132,120,255,0.62),0_10px_22px_rgba(0,0,0,0.08)]
+				overflow-visible
 			"
 			>
-			<CCSACardVisual
-				balance={100}
-				hasPass={false}
-				showBuy
-				onBuy={onPurchase}
-				onTopUp={() => {}}
-				onQR={() => {}}
-				onCardClick={() => {}}
-				memberNo="M-000000"
-				year="2026"
-			/>
+			<div
+				className="
+					rounded-[30px]
+					overflow-hidden
+					shadow-[0_26px_50px_rgba(132,120,255,0.62),0_10px_22px_rgba(0,0,0,0.08)]
+				"
+				style={{ transform: 'scale(0.9)', transformOrigin: 'center top' }}
+			>
+				<CCSACardVisual
+					balance={100}
+					hasPass={false}
+					showBuy='join'
+					onBuy={onPurchase}
+					onTopUp={() => {}}
+					onQR={() => {}}
+					onCardClick={() => {}}
+					memberNo="M-000000"
+					year="2026"
+				/>
+			</div>
 			</div>
 
         {/* Title */}
-        <h1 className="mt-8 text-center text-[28px] font-extrabold text-slate-900">
+        <h1 className="mt-8 text-center text-[22px] font-extrabold text-slate-900">
           CCSA Membership
         </h1>
 
         {/* Price */}
-        <div className="mt-3 text-center text-[34px] font-extrabold text-blue-600">
+        <div className="mt-3 text-center text-[28px] font-extrabold text-blue-600">
           Price: 100 CAD
         </div>
 
@@ -114,10 +129,10 @@ function BenefitItem({
       </div>
 
       <div className="flex flex-col">
-        <span className="text-[16px] font-semibold text-slate-900">
+        <span className="text-[14px] font-semibold text-slate-900">
           {title}
         </span>
-        <span className="text-[14px] text-slate-500">
+        <span className="text-[12px] text-slate-500">
           {desc}
         </span>
       </div>

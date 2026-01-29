@@ -3,7 +3,7 @@ import ccsabackphoto from "./assets/ccsacard.avif"
 import { motion } from "framer-motion"
 import React, { useMemo, useState, useEffect,useRef } from "react"
 import { Plus } from "lucide-react"
-
+import { JoinNowPill } from "./assets/JoinNowPill"
 
 const cls = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ")
 
@@ -83,6 +83,58 @@ function CCSAHeaderBadge() {
 	)
   }
 
+  function CCSAPriceBlock({
+	price,
+	currencyPrefix = "CA$",
+  }: {
+	price: number
+	currencyPrefix?: string
+  }) {
+	const numberBoxRef = useRef<HTMLDivElement | null>(null)
+	const numberTextRef = useRef<HTMLSpanElement | null>(null)
+	const fit = useFitScaleX(numberBoxRef, numberTextRef)
+  
+	const numberStr = useMemo(() => price.toFixed(2), [price])
+  
+	// ✅ base 缩小到 80%，并且 clamp 仍会随视口继续缩小
+	const BASE_SCALE = 0.8
+  
+	return (
+	  <div className="mt-auto pb-1 origin-left" style={{ transform: `scale(${BASE_SCALE})` }}>
+		<div className="text-white/40 text-[14px] tracking-[0.22em] uppercase">
+		  PRICE
+		</div>
+  
+		{/* PRICE ROW */}
+		<div className="mt-1 flex items-baseline gap-3 min-w-0 overflow-hidden">
+		  <div ref={numberBoxRef} className="min-w-0 flex-1 overflow-hidden">
+			<div
+			  className="origin-left"
+			  style={{
+				// ✅ 你的 fit.scaleX 继续生效，但乘上 0.8
+				transform: `scaleX(${fit.scaleX * BASE_SCALE})`,
+				filter: fit.scaleX < 0.92 ? "contrast(1.02)" : undefined,
+			  }}
+			>
+			  <span
+				ref={numberTextRef}
+				className="block whitespace-nowrap text-white font-black leading-none font-mono tabular-nums"
+				style={{
+				  fontSize: "clamp(30px, 8.6vw, 40px)",
+				  letterSpacing: "-0.005em",
+				}}
+			  >
+				{currencyPrefix} {numberStr}
+			  </span>
+			</div>
+		  </div>
+		</div>
+	  </div>
+	)
+  }
+  
+  
+
 // 让内容在容器内永不溢出：只压 X 方向（数字会“变窄”，高度不变）
 function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: React.RefObject<HTMLElement>) {
 	const [fit, setFit] = useState<FitResult>({ scaleX: 1, ready: false })
@@ -139,6 +191,7 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
   
 	return fit
   }
+
   function CCSABalanceRow({
 	balance,
 	prefix = "$CCSA",
@@ -198,7 +251,7 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 	)
   }
 
-  
+
   function CCSAQRButton({ onClick }: { onClick?: () => void }) {
 	return (
 	  <button
@@ -284,7 +337,7 @@ export default function CCSACardVisual({
   onTopUp?: () => void
   onQR?: () => void
   onCardClick?: () => void
-  showBuy?: boolean
+  showBuy: 'join' | 'buy' | ''
   onBuy?: () => void
   memberNo?: string
   year?: string
@@ -307,63 +360,83 @@ export default function CCSACardVisual({
 
       <div className="relative z-10 h-full px-7 pt-6 pb-6 flex flex-col">
         {/* top row */}
-        <div className="flex items-start justify-between">
-          <CCSAHeaderBadge />
-
-          <div className="flex items-center gap-3">
-		  {!hasPass && showBuy ? (
-			<CCSABuySquareButton onClick={onBuy} />
-		) : null}
-            {hasPass ? (
-              <CCSAActionPill onClick={onTopUp} icon={<Plus className="h-4 w-4 text-white/92" />}>
-                TOP UP
-              </CCSAActionPill>
-            ) : null}
-
-            <CCSAQRButton onClick={onQR} />
-          </div>
-        </div>
+		{
+			showBuy === 'buy' ? (
+				<>
+				<div className="flex items-start justify-between">
+					<CCSAHeaderBadge />
+					
+					<div className="flex items-center gap-5">
+						<JoinNowPill onClick={onBuy}/>
+							
+					</div>
+					</div>
+				</>
+			) : (<div className="flex items-start justify-between px-7 pt-6">
+					<CCSAHeaderBadge/>
+				</div>
+					
+			)
+		}
+        
 
         {/* balance block */}
-        <div className="mt-auto pb-1">
-          <div className="text-[#dffcf7]/70 text-[13px] font-black tracking-[0.26em] uppercase">
-            BALANCE
-          </div>
+		<div className="mt-auto pb-1">
+		{
+			!showBuy ? (
+				<>
+				
+					<div className="text-[#dffcf7]/70 text-[13px] font-black tracking-[0.26em] uppercase">
+						BALANCE
+					</div>
 
-          <CCSABalanceRow balance={balance} prefix="$CCSA" />
+					{  <CCSABalanceRow balance={balance} prefix="$CCSA" />}
 
-          {/* bottom row */}
-          <div className="mt-6 flex items-end justify-between">
-            <div className="text-[#dffcf7]/55 text-[12px] font-mono tracking-[0.24em] uppercase">
-              MEMBER NO. {memberNo}
-            </div>
+					{/* bottom row */}
+					<div className="mt-6 flex items-end justify-between">
+						<div className="text-[#dffcf7]/55 text-[12px] font-mono tracking-[0.24em] uppercase">
+							MEMBER NO. {memberNo}
+						</div>
 
-            <div className="text-white/50 text-[14px] font-mono tracking-[0.28em]">
-              {year}
-            </div>
-          </div>
+						<div className="text-white/50 text-[14px] font-mono tracking-[0.28em]">
+						{year}
+						</div>
+					</div>
 
-          {/* {showBuy && !hasPass ? (
-            <div className="mt-5">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onBuy?.()
-                }}
-                className={cls(
-                  "h-11 w-full rounded-[18px]",
-                  "bg-white/16 backdrop-blur-xl border border-white/14",
-                  "text-white font-extrabold tracking-wide",
-                  "shadow-[0_16px_28px_rgba(0,0,0,0.22)]",
-                  "active:scale-[0.99] transition"
-                )}
-              >
-                Buy Now
-              </button>
-            </div>
-          ) : null} */}
-        </div>
+					{/* {showBuy && !hasPass ? (
+						<div className="mt-5">
+						<button
+							type="button"
+							onClick={(e) => {
+							e.stopPropagation()
+							onBuy?.()
+							}}
+							className={cls(
+							"h-11 w-full rounded-[18px]",
+							"bg-white/16 backdrop-blur-xl border border-white/14",
+							"text-white font-extrabold tracking-wide",
+							"shadow-[0_16px_28px_rgba(0,0,0,0.22)]",
+							"active:scale-[0.99] transition"
+							)}
+						>
+							Buy Now
+						</button>
+						</div>
+					) : null} */}
+					
+				
+				</>
+			) : (
+				<>
+				{
+					showBuy === 'buy' && <CCSAPriceBlock price={100}  />
+				}
+				
+				</>
+			)
+		}
+		</div>
+        
       </div>
     </motion.div>
   )

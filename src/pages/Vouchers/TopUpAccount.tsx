@@ -1,7 +1,7 @@
 // TopUpAccount.tsx
 import React, { useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Sparkles, CreditCard, DollarSign, Check } from "lucide-react"
+import { X, Sparkles, CreditCard, DollarSign, Check, RefreshCw } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { formatAmount } from "@/services/currency"
 
@@ -73,6 +73,15 @@ export default function TopUpAccount({
     const usdc = effectiveAmount / u2c / u2u
     return formatAmount(usdc, "USDC")
   }, [effectiveAmount, currencyCode, currencyData])
+
+  // 计算汇率显示（1 CAD/USD ≈ X USDC）
+  const exchangeRate = useMemo(() => {
+    const u2u = currencyData?.USDC ?? 1
+    const u2c = currencyCode === "USD" ? 1 : (currencyData?.[currencyCode] ?? 1)
+    if (!u2u || !u2c) return "0.0000"
+    const rate = 1 / u2c / u2u
+    return formatAmount(rate, "USDC")
+  }, [currencyCode, currencyData])
 
   return (
     
@@ -158,31 +167,102 @@ export default function TopUpAccount({
 			].map((item) => {
 			  const active = method === item.id
 			  return (
-				<button
-				  key={item.id}
-				  onClick={() => setMethod(item.id as PayMethod)}
-				  className={cx(
-					"w-full flex items-center gap-4 p-3 rounded-xl border transition-all",
-					active ? "border-[#1D5BFF] bg-blue-50/20" : "border-slate-100 bg-white hover:border-slate-200"
-				  )}
-				>
-				  <div className={cx("h-10 w-10 rounded-full flex items-center justify-center shrink-0", item.color)}>
-					<item.icon className={item.iconSize} strokeWidth={2.2} />
-				  </div>
-				  <div className="flex-1 text-left min-w-0">
-					<div className="text-[14px] font-bold text-slate-800">{item.label}</div>
-					<div className="text-[12px] text-slate-400 truncate">{item.sub}</div>
-				  </div>
-				  <div className={cx(
-					"h-5 w-5 rounded-full flex items-center justify-center border transition-all",
-					active ? "bg-[#1D5BFF] border-[#1D5BFF]" : "border-slate-200"
-				  )}>
-					{active && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
-				  </div>
-				</button>
+
+				<div key={item.id}>
+					<button
+						
+						onClick={() => setMethod(item.id as PayMethod)}
+						className={cx(
+							"w-full flex items-center gap-4 p-3 rounded-xl border transition-all",
+							active ? "border-[#1D5BFF] bg-blue-50/20" : "border-slate-100 bg-white hover:border-slate-200"
+						)}
+						>
+						<div className={cx("h-10 w-10 rounded-full flex items-center justify-center shrink-0", item.color)}>
+							<item.icon className={item.iconSize} strokeWidth={2.2} />
+						</div>
+						<div className="flex-1 text-left min-w-0">
+							<div className="text-[14px] font-bold text-slate-800">{item.label}</div>
+							<div className="text-[12px] text-slate-400 truncate">{item.sub}</div>
+						</div>
+						<div className={cx(
+							"h-5 w-5 rounded-full flex items-center justify-center border transition-all",
+							active ? "bg-[#1D5BFF] border-[#1D5BFF]" : "border-slate-200"
+						)}>
+							{active && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+						</div>
+					</button>
+					{active && item.id === 'beamio' && (
+						<>
+							<AnimatePresence>
+							
+								<motion.div
+								initial={{ opacity: 0, height: 0 }}
+								animate={{ opacity: 1, height: "auto" }}
+								exit={{ opacity: 0, height: 0 }}
+								transition={{ duration: 0.2 }}
+								className="mt-3 overflow-hidden"
+								>
+								<div
+									className="
+									rounded-2xl
+									border border-[#d9e7ff]
+									bg-[#eef5ff]
+									px-5 py-4
+									"
+								>
+									{/* top row */}
+									<div className="flex items-center justify-between">
+									<button
+										type="button"
+										onClick={() => {
+										// refresh logic here
+										}}
+										className="
+										inline-flex items-center gap-2
+										text-[13px] font-medium
+										text-[#1D5BFF]
+										hover:opacity-90
+										active:scale-[0.99]
+										transition
+										"
+										aria-label="Refresh rate"
+									>
+										<RefreshCw className="h-4 w-4" strokeWidth={2.2} />
+										<span>Exchange Rate</span>
+									</button>
+
+									<div className="text-[13px] font-medium text-[#1D5BFF] tabular-nums">
+										1 {currencyCode} ≈ {exchangeRate} USDC
+									</div>
+									</div>
+
+									{/* you pay row */}
+									<div className="mt-3 flex items-baseline justify-between">
+									<div className="text-[15px] font-extrabold text-[#1D5BFF]">
+										You Pay
+									</div>
+
+									<div className="text-[18px] font-extrabold text-[#1D5BFF] tabular-nums">
+										{usdcAmount} USDC
+									</div>
+									</div>
+
+									<div className="mt-1 text-right text-[12px] text-[#8aa6e8]">
+									Via Coinbase Oracle
+									</div>
+								</div>
+								</motion.div>
+							
+							</AnimatePresence>
+						</>
+					)}
+				</div>
+				
 			  )
 			})}
 		  </div>
+
+		  
 		</div>
 
 		{/* Action Button - 紧凑型大按钮 */}
@@ -195,7 +275,12 @@ export default function TopUpAccount({
 			  <Sparkles className="h-4 w-4" />
 			  <span>Pay {totalText}</span>
 			</div>
-			<span className="text-[12px] font-medium text-white/80">≈ {usdcAmount} USDC</span>
+			{
+				method === 'beamio' && (
+					<span className="text-[12px] font-medium text-white/80">≈ {usdcAmount} USDC</span>
+				)
+			}
+			
 		  </button>
 		  <p className="text-center text-[11px] text-slate-400 mt-4">
 			Secure encrypted transaction

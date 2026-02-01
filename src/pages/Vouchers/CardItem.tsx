@@ -113,7 +113,7 @@ function LargeTitle({ title, subtitle }: { title: string; subtitle?: string }) {
 
 
 // --- Main: Vouchers page ---
-export default function CardItem({cardAddress}: {cardAddress: string}) {
+export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
   // mock state (wire to your real acct later)
   const [hasMembershipPass, setHasMembershipPass] = useState(false)
   const [ccsaBalance, setCcsaBalance] = useState(100)
@@ -151,13 +151,16 @@ export default function CardItem({cardAddress}: {cardAddress: string}) {
   const [settingsOpen, setSettingsOpen] = useState<''|'PurchaseAccount'|'TopUP'|'showPayQR'>('')
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'cardDetail'>('')
   const [selectedActionItem, setSelectedActionItem] = useState<BeamioActionResponse | null>(null)
-  const [myAssets, setMyAssets] = useState<any>(null)
+  const [myAssets, setMyAssets] = useState<MyCardAssets>(cardItem)
 
   const flash = async () => {
 	if (profiles?.length) {
 		await new Promise(resolve => setTimeout(resolve, 500))
 		getMyAssets(profiles[0], CCSA_Card_Address).then((res) => {
-		  setMyAssets(res)
+			if (res) {
+				setMyAssets({...res, nfts: [...res.nfts, ...cardItem.nfts]})
+			}
+		  
 		}).catch(e => {
 		  console.log(e)
 		})

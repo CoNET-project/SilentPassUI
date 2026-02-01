@@ -193,7 +193,8 @@ export default function Vouchers() {
         <LargeTitle title="Membership" subtitle="Exclusive access & rewards" />
 
         <CCSACardVisual
-			balance={0}
+			balance={Number(myAssets?.points || 0)}
+			memberNo={numOfNfts.toString()}
 			hasPass={false}
 			showBuy={isMember ? 'Member':'join'}
 			
@@ -246,7 +247,7 @@ export default function Vouchers() {
 						{
 						showAlphaHowItWorks === 'cardDetail' && (
 							<>
-							{isMember ? <CardItem cardAddress={CCSA_Card_Address} /> : (<>
+							{isMember ? <CardItem cardItem={myAssets} /> : (<>
 								<CardDetail
 									isMember={isMember}
 									onPurchase={() => {

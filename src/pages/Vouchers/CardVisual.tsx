@@ -365,7 +365,7 @@ export default function CCSACardVisual({
 				<div className="flex items-start justify-between gap-2">
 					<CCSAHeaderBadge />
 					<div className="flex items-center shrink-0">
-						<JoinNowPill onClick={onBuy} label={showBuy === 'Member' ? 'MEMBER' : 'JOIN'} />
+						<JoinNowPill onClick={onBuy} label={showBuy === 'Member' ? 'Active' : 'JOIN'} />
 					</div>
 				</div>
 				</>
@@ -416,7 +416,7 @@ export default function CCSACardVisual({
         {/* balance block */}
 		<div className="mt-auto pb-0.5 sm:pb-1 min-h-0">
 		{
-			!showBuy ? (
+			(balance > 0  && memberNo ) ? (
 				<>
 					<div className="text-[#dffcf7]/70 text-[11px] sm:text-[13px] font-black tracking-[0.2em] sm:tracking-[0.26em] uppercase">
 						BALANCE
@@ -429,10 +429,10 @@ export default function CCSACardVisual({
 						{/* MEMBER NO */}
 						<div className="relative font-mono text-[10px] sm:text-[13px] tracking-[0.2em] sm:tracking-[0.36em] uppercase font-semibold min-w-0 truncate">
 							<span className="absolute inset-0 text-black/45 translate-y-[1px] sm:translate-y-[1.5px]">
-							MEMBER&nbsp;NO.&nbsp;{memberNo}
+								MEMBER&nbsp;NO.&nbsp;{memberNo}
 							</span>
 							<span className="relative text-[#f5fffd] block truncate">
-							MEMBER&nbsp;NO.&nbsp;{memberNo}
+								MEMBER&nbsp;NO.&nbsp;{memberNo}
 							</span>
 						</div>
 

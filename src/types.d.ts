@@ -152,6 +152,8 @@ type paymentCard = {
 		cardType?: "payment" | "cashcode" | "membershipActivated"
 		/** 仅 membershipActivated：状态胶囊文案，如 "Confirmed on-chain" */
 		statusLabel?: string
+		/** 辅助字段：交易 hash（如链上 tx hash），可用于 View Invoice 等 */
+		hash?: string
 	}
 
 

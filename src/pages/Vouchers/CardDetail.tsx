@@ -30,15 +30,15 @@ export default function CardDetail({ onPurchase, isMember }: CardDetailProps) {
             style={{ transform: "scale(0.9)", transformOrigin: "center top" }}
           >
             <CCSACardVisual
-              balance={0}
-              hasPass={false}
-              showBuy="buy"
-              onBuy={onPurchase}
-              onTopUp={() => {}}
-              onQR={() => {}}
-              onCardClick={() => {}}
-              memberNo="M-000000"
-              year="2026"
+				balance={0}
+				hasPass={false}
+				showBuy="buy"
+				onBuy={onPurchase}
+				onTopUp={() => {}}
+				onQR={() => {}}
+				onCardClick={() => {}}
+				memberNo="M-000000"
+				year="2026"
             />
           </div>
         </div>

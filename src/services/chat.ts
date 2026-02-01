@@ -1051,6 +1051,8 @@ export function createMembershipActivatedCard(params: {
 	title?: string
 	usdcAmount?: number
 	statusLabel?: string
+	/** 辅助字段：交易 hash（如链上 tx hash），可用于 View Invoice 等 */
+	hash?: string
 }): ChatMessage {
 	const now = Date.now()
 	const tempId = now
@@ -1063,6 +1065,7 @@ export function createMembershipActivatedCard(params: {
 		cashcodeUrl: "",
 		cardType: "membershipActivated",
 		statusLabel: params.statusLabel ?? "Confirmed on-chain",
+		hash: params.hash,
 	}
 	return {
 		id: tempId.toString(),

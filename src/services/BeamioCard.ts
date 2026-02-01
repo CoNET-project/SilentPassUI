@@ -293,7 +293,7 @@ const mapActionToBeamioResponse = (
   
 	  payMe: payMeParsed,
 	};
-  };
+};
 
 export const getLatest20UserActions_Lite = async (
 	profile: profile

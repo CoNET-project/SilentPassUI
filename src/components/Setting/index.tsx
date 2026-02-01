@@ -20,7 +20,7 @@ import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import Security from './Security'
 
-const version = 'Version 0.14.·'
+const version = 'Version 0.14.3'
 
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
@@ -354,10 +354,9 @@ export default function BeamioMeMainScreen() {
 			"
 			>
 			{/* 顶部右侧（你如果要放设置按钮，在这里恢复即可） */}
-			<div className="-mx-5 flex items-start justify-between px-5">
-				<div />
-				<div className="flex items-center gap-2 mt-2">
-					<span className="text-white/15">{version}</span>
+			<div className="-mx-5 flex items-start justify-end gap-3 px-5 min-w-0">
+				<div className="flex items-center gap-2 mt-2 min-w-0 max-w-full">
+					<span className="text-white/15 text-right break-all">{version}</span>
 				</div>
 			</div>
 

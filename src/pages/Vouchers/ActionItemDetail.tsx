@@ -128,8 +128,9 @@ function DetailRow({
 }
 
 export default function ActionItemDetail({ item, memberNo, onClose }: ActionItemDetailProps) {
-  const isCredit = Number(item.action) === TOKEN_MINT
-  const title = item.payMe?.title ?? item.title ?? (isCredit ? 'CCSA Membership' : 'Purchase')
+  
+  const title = item.title 
+  const isCredit = !/top up/i.test(title)
   const totalFiat = totalPaidFiat(item)
   const totalUsdc = totalPaidUsdc(item)
   const exchangeRate = exchangeRateText(item)

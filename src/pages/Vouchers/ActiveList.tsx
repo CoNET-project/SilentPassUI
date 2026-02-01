@@ -114,9 +114,10 @@ function ActionItem({ item, onItemClick }: ActionItemProps) {
 
 type ActiveListProps = {
   onItemClick?: (item: BeamioActionResponse) => void
+  MyCardAssets: MyCardAssets
 }
 
-const ActiveList = ({ onItemClick }: ActiveListProps) => {
+const ActiveList = ({ onItemClick, MyCardAssets }: ActiveListProps) => {
   const { profiles } = useDaemonContext()
   const [actions, setActions] = useState<BeamioActionResponse[]>([])
 
@@ -127,7 +128,7 @@ const ActiveList = ({ onItemClick }: ActiveListProps) => {
         setActions(val)
       }
     })
-  }, [profiles])
+  }, [profiles, MyCardAssets])
 
   return (
     <div className="space-y-3">

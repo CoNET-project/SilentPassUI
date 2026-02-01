@@ -10,7 +10,8 @@ import base_ex from "@/components/assets/base-ex.svg"
 import usdcIcon from "@/components/assets/usdc.png"
 import baseIcon from "@/components/assets/base-logo.png"
 import { CCSA_Card_Address } from "@/utils/constants"
-import {CoNET_Data, setCoNET_Data} from "@/utils/globals"
+import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import CardPurchaseProcessing from "./CardPurchaseProcessing"
 
 type PayMethod = "beamio" | "card"
 type Flow = "PURCHASE" | "TOP_UP"
@@ -247,6 +248,15 @@ export default function PurchaseAccount({
 		}
 	  }
 	  
+
+	// loading 时只显示处理中界面，隐藏其余内容（不改变父容器高度，在父容器内展示）
+	if (loading) {
+		return (
+			<div className="flex justify-center sm:items-center w-full h-full min-h-0">
+				<CardPurchaseProcessing />
+			</div>
+		)
+	}
 
   return (
     

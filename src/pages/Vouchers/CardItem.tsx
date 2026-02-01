@@ -226,6 +226,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 					setSelectedActionItem(item)
 					setShowFooter(false)
 				}}
+				MyCardAssets={myAssets}
 			/>
 		</div>
       </div>
@@ -308,7 +309,9 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 					setSettingsOpen('')
 					setSecureCode('')
 					setRedeemCode('')
-
+					setTimeout(() => {
+						flash()
+					}, 5000);
 
 
 				}}
@@ -363,11 +366,12 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 										if (val) {
 											setMyAssets({...val})
 										}
+										setTimeout(() => {
+											flash()
+										}, 3000)
 										setShowAlphaHowItWorks('')
 										setSettingsOpen('')
 										setShowFooter(true)
-										setSettingsOpen('')
-										flash()
 									}}
 								/>
 							
@@ -383,7 +387,9 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 										setShowAlphaHowItWorks('')
 										setSettingsOpen('')
 										setShowFooter(true)
-										flash()
+										setTimeout(() => {
+											flash()
+										}, 5000);
 
 									}}
 								/>

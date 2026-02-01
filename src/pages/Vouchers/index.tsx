@@ -356,10 +356,11 @@ export default function Vouchers() {
 											setMyAssets({...val})
 										}
 										setShowAlphaHowItWorks('')
-										setSettingsOpen('')
 										setShowFooter(true)
 										setSettingsOpen('')
-										flash()
+										setTimeout(() => {
+											flash()
+										}, 5000)
 									}}
 								/>
 							

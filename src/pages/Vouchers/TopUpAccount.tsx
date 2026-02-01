@@ -10,6 +10,7 @@ import { CCSA_Card_Address } from "@/utils/constants"
 import { CoNET_Data } from "@/utils/globals"
 import usdcIcon from "@/components/assets/usdc.png"
 import baseIcon from "@/components/assets/base-logo.png"
+import CardPurchaseProcessing from "./CardPurchaseProcessing"
 type PayMethod = "beamio" | "card"
 
 type Props = {
@@ -122,7 +123,7 @@ useEffect(() => {
 		  setLoading(true)
 		  await new Promise(resolve => setTimeout(resolve, 300))
 		  const requestData = await postBuyCardPoints(requiredAmount, profiles[0], CCSA_Card_Address)
-		  setLoading(false)
+		 
 		  if (requestData.success) {
 			await new Promise(resolve => setTimeout(resolve, 3000))
 			  if (requestData.assets) {
@@ -131,9 +132,10 @@ useEffect(() => {
 			  
 		  } else {
 			  setError(requestData.error ?? "Failed to purchase. Please try again.")
-			  
+			  setLoading(false)
 			  return
 		  }
+		  setLoading(false)
       } catch {
         setError("Failed to refresh balance. Please try again.")
         setLoading(false)
@@ -142,6 +144,15 @@ useEffect(() => {
 		setLoading(true)
       window.location.href = "https://stripe.com"
     }
+  }
+
+  // loading 时只显示处理中界面，隐藏其余内容（不改变父容器高度，在父容器内展示）
+  if (loading) {
+    return (
+      <div className="flex justify-center sm:items-center w-full h-full min-h-0">
+        <CardPurchaseProcessing />
+      </div>
+    )
   }
 
   return (

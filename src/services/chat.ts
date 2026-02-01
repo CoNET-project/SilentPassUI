@@ -1041,6 +1041,39 @@ export function emitReactionAsNewMessage (amount: number, currency: ICurrency, t
 	// closeReactionBar()
 }
 
+/**
+ * 创建用于 Chat 的 Membership Activated 卡片消息。
+ * 对应 MessageSendReceiveCard 的 variant="membershipActivated"。
+ */
+export function createMembershipActivatedCard(params: {
+	amount: number
+	currency: ICurrency
+	title?: string
+	usdcAmount?: number
+	statusLabel?: string
+}): ChatMessage {
+	const now = Date.now()
+	const tempId = now
+	const card: paymentCard = {
+		amount: params.amount,
+		currency: params.currency,
+		title: params.title ?? "Membership Activated",
+		timeStamp: now,
+		usdcAmount: params.usdcAmount ?? params.amount,
+		cashcodeUrl: "",
+		cardType: "membershipActivated",
+		statusLabel: params.statusLabel ?? "Confirmed on-chain",
+	}
+	return {
+		id: tempId.toString(),
+		from: "me",
+		text: "",
+		createdAt: now,
+		status: "sent",
+		paymentCard: card,
+	}
+}
+
 export const initMessage = async (profile: profile, beamioer: searchResult): Promise<chatData|null> => {
 	
 	const address = beamioer.address.toLowerCase()

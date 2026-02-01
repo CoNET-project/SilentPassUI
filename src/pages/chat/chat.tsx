@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback} from "react"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
-import {checkSign, emitReactionAsNewMessage} from '@/services/chat' 
+import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat' 
 import {
   ArrowUp,
   ChevronLeft,
@@ -93,6 +93,19 @@ type ChatSection = {
   function getMsgTs(m: ChatMessage) {
 	const ts = Number(m?.paymentCard?.timeStamp || m?.createdAt || 0)
 	return isFinite(ts) ? ts : 0
+  }
+
+  function formatTimeLabel(ts: number): string {
+	const t = typeof ts === "number" && ts > 0 && ts < 1e12 ? ts * 1000 : ts
+	const d = new Date(t)
+	if (!isFinite(d.getTime())) return "Just now"
+	const now = Date.now()
+	if (now - t < 60 * 1000) return "Just now"
+	const h = d.getHours()
+	const m = d.getMinutes()
+	const ampm = h >= 12 ? "p.m." : "a.m."
+	const h12 = h % 12 || 12
+	return `${h12}:${String(m).padStart(2, "0")} ${ampm}`
   }
   
   function groupChatMessages(items: ChatMessage[], now = new Date()): ChatSection[] {
@@ -281,6 +294,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		
   	} = useDaemonContext()
 	
+
 
 	const [messages, setMessages] = useState<ChatMessage[]>(chatData.messages)
 
@@ -894,18 +908,26 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													}}
 												>
 												<MessageSendReceiveCard
-													variant= {isMe ? "sent" : "received"}
-													status= "Completed"
-													amount={ m.paymentCard!.amount}
-													usdcAmount= {m.paymentCard!.usdcAmount}
+													variant={
+														m.paymentCard!.cardType === "membershipActivated"
+															? "membershipActivated"
+															: m.paymentCard!.cashcodeUrl
+																? "cashcode"
+																: isMe
+																	? "sent"
+																	: "received"
+													}
+													status="Completed"
+													amount={m.paymentCard!.amount}
+													usdcAmount={m.paymentCard!.usdcAmount}
 													cashcodeUrl={m.paymentCard!.cashcodeUrl}
-													title = {m.paymentCard!.title}
-													timeLabel={"Just now"}
-													onMenu ={() => {
-
-													}}
-													currency= {m.paymentCard!.currency}
-													className= {isMe ? "ml-auto" : "mr-auto"}
+													title={m.paymentCard!.title}
+													timeLabel={formatTimeLabel(m.paymentCard!.timeStamp)}
+													onMenu={() => {}}
+													currency={m.paymentCard!.currency}
+													className={isMe ? "ml-auto" : "mr-auto"}
+													statusLabel={m.paymentCard!.cardType === "membershipActivated" ? m.paymentCard!.statusLabel : undefined}
+													onViewInvoice={m.paymentCard!.cardType === "membershipActivated" ? () => { /* TODO: 跳转发票/详情 */ } : undefined}
 												/>
 
 													{isMe && (

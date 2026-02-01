@@ -118,7 +118,7 @@ function DetailRow({
 }) {
   if (value == null || value === '') return null
   return (
-    <div className="flex justify-between items-center gap-3 py-2.5">
+    <div className="flex justify-between items-center">
       <span className={`text-[13px] ${labelClassName}`}>{label}</span>
       <span className={`text-[14px] font-medium text-right break-all ${valueClassName}`}>
         {value}
@@ -207,9 +207,7 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
           labelClassName="text-emerald-600"
           valueClassName="text-slate-900 font-medium"
         />
-        {isCCSACard(item.cardAddress) && (
-          <p className="text-[11px] text-slate-500 mt-1">1 $CCSA = 1 CAD</p>
-        )}
+        
         {isCredit && (
           <DetailRow
             label="In (NFT)"
@@ -226,12 +224,13 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
           label="Network"
           value={
             <span className="inline-flex items-center gap-1.5">
+				<span className="w-2 h-2 rounded-full bg-blue-500" aria-hidden />
               Base Mainnet
-              <span className="w-2 h-2 rounded-full bg-blue-500" aria-hidden />
+              
             </span>
           }
         />
-        <div className="flex justify-between items-center gap-3 py-2.5">
+        <div className="flex justify-between items-center gap-3">
           <span className="text-[13px] text-slate-500">Transaction ID</span>
           <div className="inline-flex items-center gap-1.5">
             {txIdFull ? (
@@ -266,11 +265,11 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
         <p className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">
           Grand Total Paid
         </p>
-        <p className="text-[24px] font-bold text-blue-600 mt-1">{totalFiat}</p>
+        <p className="text-[24px] font-bold text-blue-600">{totalFiat}</p>
       </div>
 
       {/* Close 按钮 */}
-      {onClose && (
+      {/* {onClose && (
         <button
           type="button"
           onClick={onClose}
@@ -285,7 +284,7 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
           <X className="w-5 h-5" strokeWidth={2} />
           Close
         </button>
-      )}
+      )} */}
     </div>
   )
 }

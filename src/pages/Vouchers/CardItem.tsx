@@ -16,9 +16,8 @@ import TopUpAccount from "@/pages/Vouchers/TopUpAccount"
 import ShowPayQR from "@/pages/Vouchers/showPayQR"
 import ActiveList from "./ActiveList"
 import ActionItemDetail from "./ActionItemDetail"
-import CardSmallItem from "./components/CardSmallItem"
-import smallcardBackground from "./assets/background.avif"
-import CardItem from "./CardItem"
+
+
 // --- Theme & Helpers ---
 const THEME = {
   blue: "#1652f0",
@@ -114,7 +113,7 @@ function LargeTitle({ title, subtitle }: { title: string; subtitle?: string }) {
 
 
 // --- Main: Vouchers page ---
-export default function Vouchers() {
+export default function CardItem({cardAddress}: {cardAddress: string}) {
   // mock state (wire to your real acct later)
   const [hasMembershipPass, setHasMembershipPass] = useState(false)
   const [ccsaBalance, setCcsaBalance] = useState(100)
@@ -188,31 +187,45 @@ export default function Vouchers() {
   return (
     <AppShell>
       
-
-      <div className="px-4">
-        <LargeTitle title="Membership" subtitle="Exclusive access & rewards" />
+      <div className="px-4 pb-24 mt-12">
+       
 
         <CCSACardVisual
-			balance={0}
-			hasPass={false}
-			showBuy={isMember ? 'Member':'join'}
+          balance={Number(myAssets?.points || 0)}
+          hasPass={isMember}
+          onTopUp={() => {
+			setShowTopUp(true)
+		  }}
+          onQR={() => {
+
+			setSettingsOpen('showPayQR')
+			setShowFooter(false)
+		  }}
+          onCardClick={() => {
+			setShowAlphaHowItWorks('cardDetail')
+			setShowFooter(false)
+          }}
+		  memberNo={numOfNfts.toString()}
+          showBuy= {myAssets?.nfts && myAssets.nfts.length > 0 ? '' : 'buy'}
+          onBuy={() => {
+			setShowFooter(false)
+			if (isMember) {
+				setSettingsOpen('TopUP')
+				return
+			}
+			setShowAlphaHowItWorks('cardDetail')
 			
-			onCardClick={() => {
-				
-				setShowAlphaHowItWorks('cardDetail')
-				setShowFooter(false)
-			}}
-			
+          }}
         />
-      </div>
-		<div className="grid grid-cols-2 gap-3 px-4 mt-4">
-			<div className="min-w-0">
-				<CardSmallItem backgroundImg={smallcardBackground} title="Membership" subtitle="Exclusive access & rewards" amount="100" />
-			</div>
-			<div className="min-w-0">
-				
-			</div>
+		<div className="mt-6">
+			<ActiveList
+				onItemClick={(item) => {
+					setSelectedActionItem(item)
+					setShowFooter(false)
+				}}
+			/>
 		</div>
+      </div>
 
 
 	  {(showAlphaHowItWorks || selectedActionItem) && 
@@ -243,26 +256,19 @@ export default function Vouchers() {
 
 					{/* 内容区域 */}
 					<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-						{
-						showAlphaHowItWorks === 'cardDetail' && (
-							<>
-							{isMember ? <CardItem cardAddress={CCSA_Card_Address} /> : (<>
-								<CardDetail
-									isMember={isMember}
-									onPurchase={() => {
-										setShowFooter(false)
-										if (isMember) {
-											setSettingsOpen('TopUP')
-											return
-										}
-										setSettingsOpen('PurchaseAccount')
-									}}
-								/>
-							</>)}
-							
-							</>
+						{showAlphaHowItWorks === 'cardDetail' && (
+							<CardDetail
+								isMember={isMember}
+								onPurchase={() => {
+									setShowFooter(false)
+									if (isMember) {
+										setSettingsOpen('TopUP')
+										return
+									}
+									setSettingsOpen('PurchaseAccount')
+								}}
+							/>
 						)}
-
 						{selectedActionItem != null && (
 							<ActionItemDetail
 								item={selectedActionItem}

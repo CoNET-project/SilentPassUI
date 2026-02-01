@@ -1,11 +1,12 @@
 import React from "react"
-import { MoreHorizontal, Sparkles } from "lucide-react"
+import { MoreHorizontal, Sparkles, Infinity, FileText } from "lucide-react"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, storeSystemData } from "@/services/beamio"
 import { useNavigate } from "react-router-dom"
+
 type MessageSendReceiveCardProps = {
-	variant: "sent" | "received" | "cashcode"
+	variant: "sent" | "received" | "cashcode" | "membershipActivated"
 	status?: "Completed" | "Pending" | "Failed" | string
 	amount: number
 	title: string
@@ -16,6 +17,10 @@ type MessageSendReceiveCardProps = {
 	usdcAmount: number
 	note?: string
 	cashcodeUrl: string
+	/** 仅 membershipActivated：状态胶囊文案，如 "Confirmed on-chain" */
+	statusLabel?: string
+	/** 仅 membershipActivated：点击「View Invoice」回调 */
+	onViewInvoice?: () => void
 }
 
 export function MessageSendReceiveCard({
@@ -29,11 +34,14 @@ export function MessageSendReceiveCard({
 	note,
 	cashcodeUrl,
 	onMenu,
-	className = ""
+	className = "",
+	statusLabel = "Confirmed on-chain",
+	onViewInvoice,
 }: MessageSendReceiveCardProps) {
 	
 	const isSent = variant === "sent"
 	const isCashcodeCard = !!cashcodeUrl
+	const isMembershipActivated = variant === "membershipActivated"
 	const navigate = useNavigate()
 	const sign = isCashcodeCard ? "" : isSent ? "-" : "+"
 	const displayCurrency: ICurrency = isCashcodeCard ? "USDC" : currency
@@ -169,6 +177,67 @@ export function MessageSendReceiveCard({
 				<div className="pointer-events-none absolute inset-0 rounded-[22px] shadow-[inset_0_0_0_1px_rgba(124,58,237,0.10)]" />
 				<div className="pointer-events-none absolute -top-10 -right-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
 			</button>
+		)
+	}
+
+	// ===================== Membership Activated 卡片（Chat 内固定格式） =====================
+	if (isMembershipActivated) {
+		const amountText = `+${fiatPrefix(currency)}${formatAmount(Number(amount), currency)}`
+		return (
+			<div
+				className={[
+					"inline-block w-[260px] max-w-full align-top text-left",
+					"relative overflow-hidden rounded-2xl",
+					"bg-white text-slate-900 ring-1 ring-black/5",
+					"shadow-[0_6px_18px_rgba(2,6,23,0.10)]",
+					className
+				].join(" ")}
+			>
+				<div className="p-4">
+					{/* Header: 图标 + 标题 + 时间 */}
+					<div className="flex items-center justify-between gap-3">
+						<div className="flex items-center gap-3 min-w-0">
+							<div className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+								<Infinity className="w-3 h-3 text-emerald-600" strokeWidth={2.5} />
+							</div>
+							<span className="text-[10px] font-bold text-slate-900 truncate">
+								{title || "Membership Activated"}
+							</span>
+						</div>
+						{timeLabel && (
+							<span className="shrink-0 text-[10px] text-slate-400">
+								{timeLabel}
+							</span>
+						)}
+					</div>
+
+					{/* 金额：大号绿色，左右居中 */}
+					<div className="mt-4 tabular-nums text-[20px] font-bold leading-none text-emerald-600 text-center">
+						{amountText}
+					</div>
+
+					{/* 状态胶囊，左右居中 */}
+					<div className="mt-2 flex justify-center">
+						<span className="inline-flex items-center px-3 py-1 rounded-full text-[8px] font-semibold bg-emerald-500/80 text-white">
+							{statusLabel}
+						</span>
+					</div>
+
+					{/* View Invoice 按钮 */}
+					<button
+						type="button"
+						onClick={() => onViewInvoice?.()}
+						className={[
+							"mt-4 w-full flex items-center justify-center gap-2",
+							"py-2.5 rounded-xl text-[10px] font-semibold text-slate-700",
+							"bg-slate-100 hover:bg-slate-200/90 active:scale-[0.99] transition"
+						].join(" ")}
+					>
+						<FileText className="w-4 h-4 shrink-0" strokeWidth={2} />
+							View Invoice
+					</button>
+				</div>
+			</div>
 		)
 	}
 

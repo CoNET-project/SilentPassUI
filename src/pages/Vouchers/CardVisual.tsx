@@ -336,7 +336,7 @@ export default function CCSACardVisual({
   onTopUp?: () => void
   onQR?: () => void
   onCardClick?: () => void
-  showBuy: 'join' | 'buy' | ''
+  showBuy: 'join' | 'buy' | 'Member' | ''
   onBuy?: () => void
   memberNo?: string
   year?: string
@@ -360,12 +360,12 @@ export default function CCSACardVisual({
       <div className="relative z-10 h-full px-4 pt-4 pb-4 sm:px-6 sm:pt-5 sm:pb-5 md:px-7 md:pt-6 md:pb-6 flex flex-col min-h-0">
         {/* top row */}
 		{
-			showBuy === 'buy' ? (
+			(showBuy === 'buy' || showBuy === 'Member')  ? (
 				<>
 				<div className="flex items-start justify-between gap-2">
 					<CCSAHeaderBadge />
 					<div className="flex items-center shrink-0">
-						<JoinNowPill onClick={onBuy}/>
+						<JoinNowPill onClick={onBuy} label={showBuy === 'Member' ? 'MEMBER' : 'JOIN'} />
 					</div>
 				</div>
 				</>
@@ -450,7 +450,7 @@ export default function CCSACardVisual({
 			) : (
 				<>
 				{
-					showBuy === 'buy' && <CCSAPriceBlock price={100}  />
+					<CCSAPriceBlock price={100}  />
 				}
 				
 				</>

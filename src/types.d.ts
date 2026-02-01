@@ -116,6 +116,7 @@ interface Region {
 	webFilter?: boolean
 	chats?: chatData[]
 	chatManager?: IChat
+	aaAccount?: string
   }
   
   interface SpClubReferees {
@@ -705,4 +706,64 @@ type IGtCheckMemooo = {
 	decimals: bigint
 	node: string
 	createTimestamp: bigint
+}
+
+type MyCardAssets = {
+	address: string
+	cardAddress: string
+	points: string
+	nfts: {
+		tokenId: string
+		attribute: string
+		tier: string
+		expiry: string
+		isExpired: boolean
+	}[]
+}
+
+type BeamioAction = {
+	actionId: bigint,
+    actionType: bigint, // mint | burn | transfer
+    card: string,
+    from: string,
+    to: string,
+    amount: bigint,
+    timestamp: bigint,
+    title: string,
+    note: string,
+    tax: bigint,
+    tip: bigint,
+    beamioFee1: bigint,
+    beamioFee2: bigint,
+    cardServiceFee: bigint,
+    afterTatchNoteByFrom: string,
+    afterTatchNoteByTo: string,
+    afterTatchNoteByCardOwner: string
+}
+
+
+enum BeamioActionTypeEnum {
+	TOKEN_MINT = 1,
+	TOKEN_BURN = 2,
+	TOKEN_TRANSFER = 3
+}
+
+type BeamioActionResponse = {
+	action: BeamioActionType
+	cardAddress: string
+	from: string
+	to: string
+	amount: string
+	timestamp: number
+	title: string
+	note: string
+	tax: number
+	tip: number
+	beamioFee1: number
+	beamioFee2: number
+	cardServiceFee: number
+	afterTatchNoteByFrom: string
+	afterTatchNoteByTo: string
+	afterTatchNoteByCardOwner: string
+	payMe: payMe|undefined
 }

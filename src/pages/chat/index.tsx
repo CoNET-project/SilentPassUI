@@ -22,22 +22,22 @@ const Home = () => {
 	const didInitRef = useRef(false)
 
 
-useEffect(() => {
-	if (didInitRef.current) return
+	useEffect(() => {
+		if (didInitRef.current) return
 
-	const profile: profile | undefined = profiles?.[0]
-	if (!profile) return
+		const profile: profile | undefined = profiles?.[0]
+		if (!profile) return
 
-	didInitRef.current = true
+		didInitRef.current = true
 
-	setPrivate(profile.privateKeyArmor)
-	setShowFooter(true)
+		setPrivate(profile.privateKeyArmor)
+		setShowFooter(true)
 
-	if (chatHomeItem) {
-		selectedItemProcess(chatHomeItem)
-		setChatHomeItem(null)
-	}
-}, [profiles, chatHomeItem, setShowFooter])
+		if (chatHomeItem) {
+			selectedItemProcess(chatHomeItem)
+			setChatHomeItem(null)
+		}
+	}, [profiles, chatHomeItem, setShowFooter])
 
 	const selectedItemProcess = async (item11: searchResult) => {
 		const profile: profile = profiles?.[0]

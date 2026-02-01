@@ -25,7 +25,7 @@ import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
-
+import { baseEndpoint, USDCContract_BASE } from "../utils/constants"
 
 export type x402Response = {
 	timestamp: string
@@ -39,14 +39,8 @@ export type x402Response = {
 const uuid62 = require('uuid62')
 const PouchDB = require("pouchdb").default
 
-const USDCContract_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
-const baseEndpoint = new ethers.JsonRpcProvider(
-	'https://1rpc.io/base',
-	{
-		name: "base",
-		chainId: 8453
-	}
-)
+
+
 const SC= new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
 export type IBalance= {
 	usdc: string

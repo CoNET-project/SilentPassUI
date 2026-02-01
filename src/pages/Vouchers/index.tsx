@@ -4,12 +4,19 @@ import { motion } from "framer-motion"
 import { Coins, QrCode, Plus, Globe, ChevronLeft } from "lucide-react"
 
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import TopUpAccount from "./TopUpAccount"
+import PurchaseAccount from "./PurchaseAccount"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import { createPortal } from 'react-dom'
 import { AnimatePresence } from "framer-motion"
 import CardDetail from "./CardDetail"
 import CCSACardVisual from "./CardVisual"
+import { getMyAssets } from "@/services/BeamioCard"
+import { CCSA_Card_Address } from "@/utils/constants"
+import TopUpAccount from "@/pages/Vouchers/TopUpAccount"
+import ShowPayQR from "@/pages/Vouchers/showPayQR"
+import ActiveList from "./ActiveList"
+import ActionItemDetail from "./ActionItemDetail"
+
 
 // --- Theme & Helpers ---
 const THEME = {
@@ -17,6 +24,7 @@ const THEME = {
   bgTop: "#f7f9ff",
   bgBottom: "#f4f6fb",
 }
+
 
 
 
@@ -104,8 +112,6 @@ function LargeTitle({ title, subtitle }: { title: string; subtitle?: string }) {
 }
 
 
-
-
 // --- Main: Vouchers page ---
 export default function Vouchers() {
   // mock state (wire to your real acct later)
@@ -137,12 +143,47 @@ export default function Vouchers() {
 	setShowFooter,
 	setNavigateLeftButtonArray,
 	historyPayData,
-	setSecureCode,	
+	setSecureCode,
+	beamio,
 	redeemCode,
 	setRedeemCode,
 } = useDaemonContext()
-  const [settingsOpen, setSettingsOpen] = useState<''|'Pay'>('')
+  const [settingsOpen, setSettingsOpen] = useState<''|'PurchaseAccount'|'TopUP'|'showPayQR'>('')
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'cardDetail'>('')
+  const [selectedActionItem, setSelectedActionItem] = useState<BeamioActionResponse | null>(null)
+  const [myAssets, setMyAssets] = useState<any>(null)
+
+  const flash = async () => {
+	if (profiles?.length) {
+		await new Promise(resolve => setTimeout(resolve, 500))
+		getMyAssets(profiles[0], CCSA_Card_Address).then((res) => {
+		  setMyAssets(res)
+		}).catch(e => {
+		  console.log(e)
+		})
+	  }
+  }
+
+  useEffect(() => {
+    flash()
+  }, [myAddress])
+
+  const numOfNfts = useMemo(() => {
+	if (!myAssets) {
+		return 0
+	}
+	const nft = myAssets.nfts[0]
+	if (!nft) {
+		return 0
+	}
+	return nft.tokenId
+	
+  }, [myAssets])
+
+  const isMember = useMemo(() => {
+	return myAssets?.nfts && myAssets.nfts.length > 0
+  }, [myAssets])
+
   return (
     <AppShell>
       
@@ -151,26 +192,44 @@ export default function Vouchers() {
         <LargeTitle title="Membership" subtitle="Exclusive access & rewards" />
 
         <CCSACardVisual
-          balance={0}
-          hasPass={false}
-          onTopUp={() => setShowTopUp(true)}
-          onQR={() => setShowQR(true)}
+          balance={Number(myAssets?.points || 0)}
+          hasPass={isMember}
+          onTopUp={() => {
+			setShowTopUp(true)
+		  }}
+          onQR={() => {
+
+			setSettingsOpen('showPayQR')
+			setShowFooter(false)
+		  }}
           onCardClick={() => {
 			setShowAlphaHowItWorks('cardDetail')
 			setShowFooter(false)
           }}
-          showBuy='buy'
+		  memberNo={numOfNfts.toString()}
+          showBuy= {myAssets?.nfts && myAssets.nfts.length > 0 ? '' : 'buy'}
           onBuy={() => {
 			setShowFooter(false)
-			setSettingsOpen('Pay')
-        
+			if (isMember) {
+				setSettingsOpen('TopUP')
+				return
+			}
+			setShowAlphaHowItWorks('cardDetail')
+			
           }}
         />
-
+		<div className="mt-6">
+			<ActiveList
+				onItemClick={(item) => {
+					setSelectedActionItem(item)
+					setShowFooter(false)
+				}}
+			/>
+		</div>
       </div>
 
 
-	  {showAlphaHowItWorks && 
+	  {(showAlphaHowItWorks || selectedActionItem) && 
 			<AnimatePresence>
 				<motion.div
 					key="modal-overlay"
@@ -185,33 +244,44 @@ export default function Vouchers() {
 				>
 				{/* 顶部 Header */}
 				<BeamioNavBack
-					title=''
-					
+					title=''						
 					onClose={() => {
-						
+						flash()
 						setShowAlphaHowItWorks('')
+						setSelectedActionItem(null)
 						setShowFooter(true)
+						flash()
 					}}
-					onMore={() => {
-
-					}}
+					onMore={() => {}}
 				/>
 
 					{/* 内容区域 */}
 					<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-						
-						
-
-						{
-							showAlphaHowItWorks === 'cardDetail' &&
+						{showAlphaHowItWorks === 'cardDetail' && (
 							<CardDetail
+								isMember={isMember}
 								onPurchase={() => {
-									setSettingsOpen('Pay')
-									
+									setShowFooter(false)
+									if (isMember) {
+										setSettingsOpen('TopUP')
+										return
+									}
+									setSettingsOpen('PurchaseAccount')
 								}}
 							/>
-						}
-
+						)}
+						{selectedActionItem != null && (
+							<ActionItemDetail
+								item={selectedActionItem}
+								memberNo={numOfNfts.toString()}
+								onClose={() => {
+									flash()
+									setSelectedActionItem(null)
+									setShowFooter(true)
+									flash()
+								}}
+							/>
+						)}
 					</div>
 				</motion.div>
 			</AnimatePresence>
@@ -280,18 +350,48 @@ export default function Vouchers() {
 						
 
 						{
-							settingsOpen === 'Pay' && 
+							settingsOpen === 'PurchaseAccount' && 
 							
-								<TopUpAccount 
-								flow="PURCHASE"
-								beamioBalanceText={`Balance: ${usdcbalance.toFixed(2)} USDC`}
-								onClose={() => {
-									setSettingsOpen('')
-									setShowFooter(true)
-									setSettingsOpen('')
+								<PurchaseAccount 
+									flow="PURCHASE"
+									beamioBalanceText={`Balance: ${usdcbalance.toFixed(2)} USDC`}
+									defaultAmount={100}
+									purchasePrice={0.01}
+									onClose={(val) => {
+										if (val) {
+											setMyAssets({...val})
+										}
+										setShowAlphaHowItWorks('')
+										setSettingsOpen('')
+										setShowFooter(true)
+										setSettingsOpen('')
+										flash()
 									}}
 								/>
 							
+						}
+						{
+							settingsOpen === 'TopUP' && 
+								<TopUpAccount
+									beamioBalanceText={`Balance: ${usdcbalance.toFixed(4)} USDC`}
+									onClose={(val) => {
+										if (val) {
+											setMyAssets({...val})
+										}
+										setShowAlphaHowItWorks('')
+										setSettingsOpen('')
+										setShowFooter(true)
+										flash()
+
+									}}
+								/>
+						}
+						{
+							settingsOpen === 'showPayQR' && 
+								<ShowPayQR
+								successUrl={'https://beamio.app?beamio=' + (beamio?.accountName || '')} 
+								beamio={beamio} 
+								/>
 						}
 						<div
 							className="

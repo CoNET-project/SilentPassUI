@@ -116,10 +116,10 @@ function Avatar({
 			} 
 			//@ts-ignore
 			setbBeamioUsers(prev => {
-			const addr = (account?.address || '').toLowerCase()
-			//@ts-ignore
-			if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
-				return [...prev, account!]
+				const addr = (account?.address || '').toLowerCase()
+				//@ts-ignore
+				if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
+					return [...prev, account!]
 			})
 			
 			setfromBeamio(account)

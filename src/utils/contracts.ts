@@ -17,12 +17,16 @@ import {
 	Duplicate,
 	sGB,
 	sGB_Dashboard,
-	
+	BeamioAAAcountFactoryAbi,
+	cardAbi,
+	BeamioCardFactoryAbi
   } from "./abis"
+
 
   import beamioConetABI from '@/services/ABI/beamioConetABI.json'
   import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
   import CoNETPGP from '@/services/ABI/conetPgp.json'
+  import ActionFacetAbi from '@/services/ABI/ActionFacetAbi.json'
   const contracts = {
 	GuardianNodesInfoV6: {
 	  address: "0x2DF3302d0c9aC19BE01Ee08ce3DDA841BdcF6F03",
@@ -123,8 +127,33 @@ import {
 		address: '0x84de3EA6446489E6a267B0AAD2fAe1462564C32E',
 		network: 'CONET DePIN',
 		abi: CoNETPGP
-	}
+	},
 
+	BeamioCardCCSA: {
+		address: '0xfB804b423d27968336263c0CEF581Fbcd51D93B9',
+		network: 'Base',
+		abi: cardAbi
+	},
+
+	BeamioAAAcountFactory: {
+		address: '0xF036E570D5811a16A29C072528b7ceBF9933f7BD',
+		network: 'Base',
+		abi: BeamioAAAcountFactoryAbi
+	},
+
+	BeamioCardFactory: {
+		address: '0x05e6a8f53b096f44928670C431F78e1F75E232bA',
+		network: 'Base',
+		abi: BeamioCardFactoryAbi
+	},
+
+	BeamioDiamond: {
+		address: '0x083AE5AC063a55dBA769Ba71Cd301d5FC5896D5b',
+		network: 'CONET DePIN',
+		abi: {
+			ActionFacet: ActionFacetAbi,
+		}
+	},
   }
   
   export default contracts;

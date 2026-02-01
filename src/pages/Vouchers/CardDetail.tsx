@@ -10,9 +10,10 @@ import CCSACardVisual from "./CardVisual"
 
 type CardDetailProps = {
   onPurchase?: () => void
+  isMember?: boolean
 }
 
-export default function CardDetail({ onPurchase }: CardDetailProps) {
+export default function CardDetail({ onPurchase, isMember }: CardDetailProps) {
   return (
     <div className="w-full min-h-screen bg-white flex justify-center">
       <div 
@@ -40,9 +41,9 @@ export default function CardDetail({ onPurchase }: CardDetailProps) {
 				style={{ transform: 'scale(0.9)', transformOrigin: 'center top' }}
 			>
 				<CCSACardVisual
-					balance={100}
+					balance={0}
 					hasPass={false}
-					showBuy='join'
+					showBuy='buy'
 					onBuy={onPurchase}
 					onTopUp={() => {}}
 					onQR={() => {}}
@@ -106,7 +107,7 @@ export default function CardDetail({ onPurchase }: CardDetailProps) {
           "
         >
           <Sparkles className="h-5 w-5" />
-          Purchase Membership
+          {isMember ? 'Top Up' : 'Purchase Membership'}
         </button>
       </div>
     </div>

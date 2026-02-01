@@ -8,12 +8,30 @@ const XMLHttpRequestTimeout = 90 * 1000;
 // const conetRpc = "https://cancun-rpc.conet.network";
 const mainChain_rpc = "https://mainnet-rpc.conet.network";
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
+
+const beamioApi = 'https://beamio.app'
+
 const _ethRpc = [
   "http://rpc.ankr.com/eth",
   "https://eth.llamarpc.com",
   "https://ethereum-rpc.publicnode.com",
   "https://eth-mainnet.public.blastapi.io"
 ];
+const USDCContract_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const baseEndpoint = new ethers.JsonRpcProvider(
+	'https://1rpc.io/base',
+	{
+		name: "base",
+		chainId: 8453
+	}
+)
+
+const BeamioCardFactorySC = new ethers.Contract(
+	contracts.BeamioCardFactory.address,
+	contracts.BeamioCardFactory.abi,
+	baseEndpoint
+)
+
 
 const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
 const rewardWalletAddress = "GUq7PhyAUZko2mPhv3CupmdJKQ61LH8VyrdsRL25q7zg";
@@ -21,7 +39,7 @@ const stripe_pay_monthly = 'https://buy.stripe.com/test_9AQ16b6Du82p0Ja9AG?clien
 const stripe_pay_Annual ='https://buy.stripe.com/test_eVa2af5zqdmJ2Ri14b?client_reference_id='
 const SilentPassOfficial = 'A8Vk2LsNqKktabs4xPY4YUmYxBoDqcTdxY5em4EQm8v1'
 
-
+const CCSA_Card_Address = contracts.BeamioCardCCSA.address
 
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());
 const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);
@@ -97,5 +115,10 @@ export {
 	beamioConet,
 	beamioCoreConet,
 	pgpCoNET,
-	GuardianNodesMainnet
+	GuardianNodesMainnet,
+	baseEndpoint,
+	USDCContract_BASE,
+	beamioApi,
+	CCSA_Card_Address,
+	BeamioCardFactorySC
 };

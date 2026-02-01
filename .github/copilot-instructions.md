@@ -3,42 +3,58 @@
 
 This file gives focused, actionable context so an AI developer can be productive quickly.
 
-- **Project type:** React (CRA with CRACO) TypeScript single-page app. See [package.json](package.json).
-- **Dev / build commands:** `npm run start` (dev via `craco start`), `npm run build` (uses `craco build`). Tests: `npm test`.
+- **Project type:** React (CRA with CRACO) TypeScript single-page app for Silent Pass VPN UI, integrated with Beamio for decentralized payments, chat, and blockchain interactions. See [package.json](package.json).
+- **Dev / build commands:** `npm run start` (dev via `craco start`), `npm run build` (uses `craco build`, removes console/debugger in production). Tests: `npm test` (uses @testing-library).
 - **CRACO + alias:** `craco.config.js` adds an alias `@` -> `src`. TS `baseUrl` and `paths` mirror this in `tsconfig.json` (imports use `@/...`).
 - **Entrypoints:** App bootstraps in [src/index.tsx](src/index.tsx#L1) and uses `DaemonProvider` from [src/providers/DaemonProvider.tsx](src/providers/DaemonProvider.tsx#L1).
 - **Routing:** Uses `MemoryRouter` in `App.tsx` (client-side routing); initial entry `/Onboarding` (see [src/App.tsx](src/App.tsx#L1)).
 
-- **Global state pattern:** `DaemonProvider` is the central context for app state. Use `useDaemonContext()` to read/set global flags like `isInitialLoading`, `showFooter`, `profiles`, `isIOS`, `isLocalProxy`, server addresses, and many UI flags. See [src/providers/DaemonProvider.tsx](src/providers/DaemonProvider.tsx#L1).
+- **Global state pattern:** `DaemonProvider` is the central context for app state. Use `useDaemonContext()` to read/set global flags like `isInitialLoading`, `showFooter`, `profiles`, `isIOS`, `isLocalProxy`, server addresses, VPN states, and many UI flags. See [src/providers/DaemonProvider.tsx](src/providers/DaemonProvider.tsx#L1).
 
-- **Native / backend integration:** Frontend talks to a local backend and native bridges:
-  - Local HTTP server endpoints used in code: `http://127.0.0.1:3001` and `http://127.0.0.1:8888` (see [src/api/index.ts](src/api/index.ts#L1)).
-  - Window events are used for VPN lifecycle (`vpn:start:request`, `vpn:start:result`, `vpn:status`). Search in [src/api/index.ts](src/api/index.ts#L1).
-  - WebView/Electron/Android bridges are referenced (e.g., `Bridge.send(...)`, `window.webkit.messageHandlers`, `AndroidBridge.receiveMessageFromJS`). Inspect `src/api/index.ts` and bridge files under `src/bridge/`.
+- **Native / backend integration:** Frontend talks to local backend and native bridges:
+  - Local HTTP server endpoints: `http://127.0.0.1:3001` (VPN control) and `http://127.0.0.1:8888` (see [src/api/index.ts](src/api/index.ts#L1)).
+  - Window events for VPN lifecycle (`vpn:start:request`, `vpn:start:result`, `vpn:status`). Search in [src/api/index.ts](src/api/index.ts#L1).
+  - WebView/Electron/Android bridges: `Bridge.send(...)`, `window.webkit.messageHandlers`, `AndroidBridge.receiveMessageFromJS`. Inspect `src/api/index.ts` and `src/bridge/`.
 
-- **Services & external systems:** Heavy logic in `src/services/` integrates with blockchain providers, IPFS, Beamio APIs, and local PouchDB. Notable files:
-  - [src/services/beamio.ts](src/services/beamio.ts#L1) — lots of crypto, CBOR, and on-chain helpers.
-  - `src/utils/constants.ts` and `src/utils/utils.ts` hold endpoints and helper functions used across services.
+- **Blockchain integrations:** 
+  - Ethereum on Base network using ethers.js, contracts in `src/utils/contracts.ts`, USDC on Base.
+  - Solana using @coral-xyz/anchor, @jup-ag/api for swaps, tokens like USDT, SOL, SP.
+  - Crypto helpers: @noble/hashes (argon2id, ed25519), cbor-x for encoding, bs58, tweetnacl.
 
-- **Event-driven UI flows:** Many service functions dispatch window CustomEvents to communicate state; check `startVPN`, `stopVPN`, and `getiOSVPNStatus` in [src/api/index.ts](src/api/index.ts#L1).
+- **Services & external systems:** Heavy logic in `src/services/` integrates with Beamio APIs, IPFS, local PouchDB. Notable files:
+  - [src/services/beamio.ts](src/services/beamio.ts#L1) — crypto, CBOR, on-chain helpers, user search/follow, balances.
+  - `src/utils/constants.ts` — endpoints (beamio.app, apiv4.conet.network, ipfs.conet.network), RPCs, contract addresses.
+  - `src/utils/utils.ts` — helpers like postToEndpoint, customJsonStringify.
 
-- **Asset & public folders:** Static output is under `build/` (production bundle). `homepage` in `package.json` is set to `/app`, so production assets assume the app is served under `/app`.
+- **Local storage:** PouchDB with database "conet" for local data persistence (see [src/services/beamio.ts](src/services/beamio.ts#L1)).
 
-- **Styling:** Tailwind classes and SASS are used. Global styles: `index.css`, plus SCSS modules (e.g., `layout.module.scss`). Keep an eye on Tailwind utility classes used across components.
+- **Event-driven UI flows:** Many service functions dispatch window CustomEvents to communicate state; check `startVPN`, `stopVPN` in [src/api/index.ts](src/api/index.ts#L1).
+
+- **Asset & public folders:** Static output under `build/` (production bundle). `homepage` in `package.json` is `/app`, so assets served under `/app`.
+
+- **Styling:** Tailwind CSS classes and SASS modules. Global styles: `index.css`, SCSS modules (e.g., `layout.module.scss`).
+
+- **Localization:** Supports en, jp, zh in `src/locales/`.
+
+- **Types:** Global types in `src/types/global-types.ts`, `src/types.d.ts`.
 
 - **Common repo conventions to follow:**
-  - Use the `@/` alias for imports (e.g., `@/components/...`).
+  - Use `@/` alias for imports (e.g., `@/components/...`).
   - Prefer `useDaemonContext()` for global state instead of ad-hoc window globals.
-  - Respect privacy/security: many services handle private keys and profiles — do not log secrets or commit them.
+  - Respect privacy/security: handle private keys, profiles — do not log secrets or commit them.
+  - Use ethers for Ethereum interactions, anchor for Solana.
 
 - **Where to look first when changing behavior:**
   - UI: `src/components/` and `src/pages/`.
   - App shell / routing: `src/App.tsx` and `src/index.tsx`.
   - Global state & integration: `src/providers/DaemonProvider.tsx` and `src/api/index.ts`.
-  - Native/bridge code: `src/bridge/` and occurrences in `src/api/index.ts` and service files.
+  - Blockchain/crypto: `src/services/beamio.ts`, `src/utils/contracts.ts`.
+  - Native/bridge code: `src/bridge/` and occurrences in `src/api/index.ts`.
 
 - **Quick examples of actionable patterns:**
-  - To trigger a VPN start flow, services call `window.dispatchEvent(new CustomEvent('vpn:start:request', { detail }))` — consumers should listen for `vpn:start:result`.
-  - Use `Bridge.send('openUrl', {...})` for WebView-native open-url flows; fallback to `window.open(...)` when not native.
+  - To trigger VPN start: `window.dispatchEvent(new CustomEvent('vpn:start:request', { detail }))` — listen for `vpn:start:result`.
+  - Use `Bridge.send('openUrl', {...})` for WebView-native open-url; fallback to `window.open(...)`.
+  - Fetch balance: `getBalance(address)` in [src/services/beamio.ts](src/services/beamio.ts#L1).
+  - Search users: `searchUsername(query)` in [src/services/beamio.ts](src/services/beamio.ts#L1).
 
 If anything is unclear or you want more detail on a specific integration (e.g., Beamio on-chain flows, local native server API, or how `DaemonProvider` state is consumed), tell me which area and I will expand or adjust this file.

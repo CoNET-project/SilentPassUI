@@ -59,23 +59,23 @@ function CCSAWaveBg() {
   
 function CCSAHeaderBadge() {
 	return (
-	  <div className="flex items-center gap-3">
+	  <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
 		<div
-		  className="h-12 w-12 rounded-full grid place-items-center"
+		  className="h-9 w-9 sm:h-12 sm:w-12 rounded-full grid place-items-center shrink-0"
 		  style={{
 			background: "linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)",
 			boxShadow:
 			  "0 14px 30px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,255,255,0.38)",
 		  }}
 		>
-		  <Globe className="h-6 w-6 text-white drop-shadow" />
+		  <Globe className="h-4 w-4 sm:h-6 sm:w-6 text-white drop-shadow" />
 		</div>
   
-		<div className="leading-tight">
-		  <div className="text-[24px] font-black tracking-wide text-[#fff2c6] drop-shadow-sm font-serif">
+		<div className="leading-tight min-w-0">
+		  <div className="text-[18px] sm:text-[24px] font-black tracking-wide text-[#fff2c6] drop-shadow-sm font-serif truncate">
 			CCSA
 		  </div>
-		  <div className="text-[24px] font-black tracking-wide text-[#fff2c6] -mt-1 drop-shadow-sm font-serif">
+		  <div className="text-[18px] sm:text-[24px] font-black tracking-wide text-[#fff2c6] -mt-0.5 sm:-mt-1 drop-shadow-sm font-serif truncate">
 			CARD
 		  </div>
 		</div>
@@ -212,12 +212,12 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 	const numberStr = useMemo(() => balance.toFixed(2), [balance])
   
 	return (
-	  <div ref={rowRef} className="mt-3 flex items-baseline gap-4 min-w-0 overflow-hidden">
+	  <div ref={rowRef} className="mt-2 sm:mt-3 flex items-baseline gap-2 sm:gap-4 min-w-0 overflow-hidden">
 		{/* 左侧固定前缀 */}
 		<div
 		  className="shrink-0 text-white font-black leading-none font-mono tabular-nums"
 		  style={{
-			fontSize: "clamp(20px, 4.6vw, 20px)",
+			fontSize: "clamp(14px, 3.5vw, 20px)",
 			letterSpacing: "-0.01em",
 		  }}
 		>
@@ -231,7 +231,6 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 			className="origin-left"
 			style={{
 			  transform: `scaleX(${fit.scaleX})`,
-			  // scaleX 会让看起来“变细”，稍微加粗一点抵消（可选）
 			  filter: fit.scaleX < 0.92 ? "contrast(1.02)" : undefined,
 			}}
 		  >
@@ -239,7 +238,7 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 			  ref={numberTextRef}
 			  className="block whitespace-nowrap text-white font-black leading-none font-mono tabular-nums"
 			  style={{
-				fontSize: "clamp(28px, 11.8vw, 40px)",
+				fontSize: "clamp(20px, 8vw, 40px)",
 				letterSpacing: "0.02em",
 			  }}
 			>
@@ -358,73 +357,95 @@ export default function CCSACardVisual({
     >
       <CCSAWaveBg />
 
-      <div className="relative z-10 h-full px-7 pt-6 pb-6 flex flex-col">
+      <div className="relative z-10 h-full px-4 pt-4 pb-4 sm:px-6 sm:pt-5 sm:pb-5 md:px-7 md:pt-6 md:pb-6 flex flex-col min-h-0">
         {/* top row */}
 		{
 			showBuy === 'buy' ? (
 				<>
-				<div className="flex items-start justify-between">
+				<div className="flex items-start justify-between gap-2">
 					<CCSAHeaderBadge />
-					
-					<div className="flex items-center gap-5">
+					<div className="flex items-center shrink-0">
 						<JoinNowPill onClick={onBuy}/>
-							
 					</div>
-					</div>
-				</>
-			) : (<div className="flex items-start justify-between px-7 pt-6">
-					<CCSAHeaderBadge/>
 				</div>
+				</>
+			) : (
+			<div className="flex items-start justify-between gap-2">
+				<CCSAHeaderBadge />
+				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+					<button
+					  type="button"
+					  onClick={(e) => {
+						e.stopPropagation()
+						onBuy?.()
+					  }}
+					  className={cls(
+						"h-9 rounded-[14px] px-3 sm:h-11 sm:rounded-[18px] sm:px-6",
+						"bg-black/20 backdrop-blur-xl border border-white/20",
+						"text-white font-extrabold tracking-wide text-[13px] sm:text-[15px] whitespace-nowrap",
+						"shadow-[0_16px_28px_rgba(0,0,0,0.12)]",
+						"active:scale-[0.99] transition"
+					  )}
+					>
+					  +Top Up
+					</button>
+					<button
+					  type="button"
+					  onClick={(e) => {
+						e.stopPropagation()
+						onQR?.()
+					  }}
+					  className={cls(
+						"h-9 w-9 rounded-[14px] sm:h-11 sm:w-11 sm:rounded-[18px]",
+						"bg-black/20 backdrop-blur-xl border border-white/20",
+						"text-white grid place-items-center shrink-0",
+						"shadow-[0_16px_28px_rgba(0,0,0,0.12)]",
+						"active:scale-[0.99] transition"
+					  )}
+					  aria-label="Show QR"
+					>
+					  <QrCode className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.2} />
+					</button>
+				</div>
+			  </div>
 					
 			)
 		}
         
 
         {/* balance block */}
-		<div className="mt-auto pb-1">
+		<div className="mt-auto pb-0.5 sm:pb-1 min-h-0">
 		{
 			!showBuy ? (
 				<>
-				
-					<div className="text-[#dffcf7]/70 text-[13px] font-black tracking-[0.26em] uppercase">
+					<div className="text-[#dffcf7]/70 text-[11px] sm:text-[13px] font-black tracking-[0.2em] sm:tracking-[0.26em] uppercase">
 						BALANCE
 					</div>
 
 					{  <CCSABalanceRow balance={balance} prefix="$CCSA" />}
 
 					{/* bottom row */}
-					<div className="mt-6 flex items-end justify-between">
-						<div className="text-[#dffcf7]/55 text-[12px] font-mono tracking-[0.24em] uppercase">
-							MEMBER NO. {memberNo}
+					<div className="mt-3 sm:mt-6 flex items-end justify-between gap-2 min-w-0">
+						{/* MEMBER NO */}
+						<div className="relative font-mono text-[10px] sm:text-[13px] tracking-[0.2em] sm:tracking-[0.36em] uppercase font-semibold min-w-0 truncate">
+							<span className="absolute inset-0 text-black/45 translate-y-[1px] sm:translate-y-[1.5px]">
+							MEMBER&nbsp;NO.&nbsp;{memberNo}
+							</span>
+							<span className="relative text-[#f5fffd] block truncate">
+							MEMBER&nbsp;NO.&nbsp;{memberNo}
+							</span>
 						</div>
 
-						<div className="text-white/50 text-[14px] font-mono tracking-[0.28em]">
-						{year}
+						{/* YEAR */}
+						<div className="relative font-mono text-[13px] sm:text-[16px] tracking-[0.3em] sm:tracking-[0.45em] font-bold shrink-0">
+							<span className="absolute inset-0 text-black/45 translate-y-[1px] sm:translate-y-[1.5px]">
+							{year}
+							</span>
+							<span className="relative text-[#f5fffd]">
+							{year}
+							</span>
 						</div>
 					</div>
-
-					{/* {showBuy && !hasPass ? (
-						<div className="mt-5">
-						<button
-							type="button"
-							onClick={(e) => {
-							e.stopPropagation()
-							onBuy?.()
-							}}
-							className={cls(
-							"h-11 w-full rounded-[18px]",
-							"bg-white/16 backdrop-blur-xl border border-white/14",
-							"text-white font-extrabold tracking-wide",
-							"shadow-[0_16px_28px_rgba(0,0,0,0.22)]",
-							"active:scale-[0.99] transition"
-							)}
-						>
-							Buy Now
-						</button>
-						</div>
-					) : null} */}
-					
-				
 				</>
 			) : (
 				<>

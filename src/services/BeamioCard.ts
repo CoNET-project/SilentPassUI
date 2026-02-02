@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC,conetDepinProvider } from "../utils/constants";
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
-
+import { searchUsername} from "./beamio"
 
 type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
 
@@ -195,13 +195,16 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 
         // 2. 调用合约方法
         const [pointsBalance, nfts] = await cardContract.getOwnership(profile.aaAccount);
+		const currency =  getICurrency(await cardContract.currency())
 
         // 3. 格式化数据并返回
         const result = {
             address: profile.aaAccount,
             cardAddress: cardAddress,
+			cardOwner: await getCardOwnerByCardAddress(cardAddress),
             // 积分余额（从 1e6 格式化回人类可读数值）
             points: ethers.formatUnits(pointsBalance, 6),
+
             // NFT 列表处理
             nfts: nfts.map((nft: any) => ({
                 tokenId: nft.tokenId.toString(),
@@ -209,7 +212,8 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
                 tier: nft.tierIndexOrMax === ethers.MaxUint256 ? "Default/Max" : nft.tierIndexOrMax.toString(),
                 expiry: nft.expiry === 0n ? "Never" : new Date(Number(nft.expiry) * 1000).toLocaleString(),
                 isExpired: nft.isExpired
-            }))
+            })),
+			cardCurrency: currency
         }
 
         // 打印结果
@@ -221,6 +225,31 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
     
         throw error;
     }
+}
+
+const getICurrency = (currency: BigInt): ICurrency => {
+	switch (currency) {
+		case 0n:
+			return 'CAD'
+		case 1n:
+			return 'USD'
+		case 2n:
+			return 'JPY'
+		case 3n:
+			return 'CNY'
+		case 4n:
+			return 'USDC'
+		case 5n:
+			return 'HKD'
+		case 6n:
+			return 'EUR'
+		case 7n:
+			return 'SGD'
+		case 8n:
+			return 'TWD'
+		default:
+			return 'USDC'
+	}
 }
 
 export const getAAAccount = async (profile: profile): Promise<string | null> => {
@@ -297,7 +326,7 @@ const mapActionToBeamioResponse = (
 
 export const getLatest20UserActions_Lite = async (
 	profile: profile
-  ) => {
+) => {
 	const facet = new ethers.Contract(contracts.BeamioDiamond.address, contracts.BeamioDiamond.abi.ActionFacet, conetDepinProvider);
   
 	const total: bigint = await facet.getUserActionsCount(profile.keyID);
@@ -319,4 +348,23 @@ export const getLatest20UserActions_Lite = async (
   
 
 	return rows;
-  };
+};
+
+export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<searchResult | null> => {
+    try {
+        const card = new ethers.Contract(cardAddress, cardAbi, baseEndpoint)
+        const owner = await card.owner()
+		if (owner === ethers.ZeroAddress) {
+			return null
+		}
+		const account = await searchUsername(owner)
+		if (account?.results?.[0]) {
+			return account.results[0]
+		}	
+		return null
+        return owner
+    } catch (error: any) {
+        console.log(`❌ getCardOwnerByCardAddress Failed: ${error.message}`);
+        return null
+    }
+}

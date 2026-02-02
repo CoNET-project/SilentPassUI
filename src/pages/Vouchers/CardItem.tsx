@@ -380,6 +380,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 							settingsOpen === 'TopUP' && 
 								<TopUpAccount
 									beamioBalanceText={`Balance: ${usdcbalance.toFixed(4)} USDC`}
+									myAssets={myAssets}
 									onClose={(val) => {
 										if (val) {
 											setMyAssets({...val})

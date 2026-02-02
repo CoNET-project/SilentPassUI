@@ -379,6 +379,7 @@ export default function Vouchers() {
 										flash()
 
 									}}
+									myAssets={myAssets}
 								/>
 						}
 						{

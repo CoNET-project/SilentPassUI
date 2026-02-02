@@ -4,13 +4,19 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Sparkles, CreditCard, Check, RefreshCw } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { formatAmount } from "@/services/currency"
-import { getBalanceProcess } from "@/services/beamio"
+import { getBalanceProcess, storeSystemData } from "@/services/beamio"
 import { postBuyCardPoints } from "@/services/BeamioCard"
 import { CCSA_Card_Address } from "@/utils/constants"
-import { CoNET_Data } from "@/utils/globals"
+import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import usdcIcon from "@/components/assets/usdc.png"
 import baseIcon from "@/components/assets/base-logo.png"
 import CardPurchaseProcessing from "./CardPurchaseProcessing"
+import { ethers } from "ethers"
+import { createMessage, readKey, enums, encrypt } from "openpgp"
+import { getRandomNode, initMessage, createMembershipActivatedCard, sendMessage } from "@/services/chat"
+
+
+
 type PayMethod = "beamio" | "card"
 
 type Props = {
@@ -24,6 +30,7 @@ type Props = {
     currencyCode: "CAD" | "USD"
     method: PayMethod
   }) => void
+  myAssets: MyCardAssets
 }
 
 const NAV_TOP = "env(safe-area-inset-top)"
@@ -39,17 +46,20 @@ function cx(...v: Array<string | false | undefined | null>) {
   return v.filter(Boolean).join(" ")
 }
 
+
+
 export default function TopUpAccount({
   onClose,
   currencyCode = "CAD",
   presetAmounts = [50, 100, 0.1],
   defaultAmount = 100,
   beamioBalanceText = "Balance: 0.00 USDC",
+  myAssets,
   onPay,
 }: Props) {
   const [amount, setAmount] = useState(defaultAmount)
   const [method, setMethod] = useState<PayMethod>("beamio")
-  const { currencyData, profiles, setUsdcbalance, setUsdcToUSD, usdcbalance } = useDaemonContext()
+  const { currencyData, profiles, setUsdcbalance, setUsdcToUSD, usdcbalance, allNodes, setProfiles } = useDaemonContext()
   const [error, setError] = useState<string>("")
   const [loading, setLoading] = useState(false)
 
@@ -125,6 +135,9 @@ useEffect(() => {
 		  const requestData = await postBuyCardPoints(requiredAmount, profiles[0], CCSA_Card_Address)
 		 
 		  if (requestData.success) {
+			if (requestData.txHash) {
+				await sendMessageToClient(requiredAmount, requestData.txHash)
+			}
 			await new Promise(resolve => setTimeout(resolve, 3000))
 			  if (requestData.assets) {
 				  onClose?.(requestData.assets ?? null)
@@ -145,6 +158,34 @@ useEffect(() => {
       window.location.href = "https://stripe.com"
     }
   }
+
+  const sendMessageToClient = async (requiredAmount: number, hash: string) => {
+	const temp = CoNET_Data
+	if ( !profiles?.length||!temp||!myAssets||!myAssets.cardOwner) {
+		return 
+	}
+	const profile: profile = profiles[0]
+	
+	const chatData = await initMessage(profile, myAssets.cardOwner)
+	const node = getRandomNode(allNodes)
+	if (!chatData||!node) return
+	const chatDatas = profile?.chats || []
+	profile.chats = chatDatas
+
+	
+	const messageCard = createMembershipActivatedCard({amount: amount, currency: myAssets.cardCurrency, usdcAmount: requiredAmount, hash: hash})
+	chatData.messages.push(messageCard)
+	profile.chats.push(chatData)
+	setProfiles(profiles)
+	temp.profiles = profiles
+	setCoNET_Data(temp)
+	const cardText = JSON.stringify(messageCard)
+	// setCharts(prof => [...prof, cardText])
+	await Promise.all([
+		storeSystemData(),
+		sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, node )
+	])
+}
 
   // loading 时只显示处理中界面，隐藏其余内容（不改变父容器高度，在父容器内展示）
   if (loading) {

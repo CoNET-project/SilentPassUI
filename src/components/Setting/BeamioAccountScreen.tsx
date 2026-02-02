@@ -52,8 +52,11 @@ export default function BeamioAccountScreen({ colse }: prof) {
   const [avatarFileName, setAvatarFileName] = useState<string>('')
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
+  const [avatarUploadingIpfs, setAvatarUploadingIpfs] = useState(false)
   const [avatarSeedConfirmed, setAvatarSeedConfirmed] = useState(false)
   const [openGetPicture, setOpenGetPicture] = useState(false)
+  /** 上传完成后得到的 IPFS URL，保存账户时用此值作为 image，避免使用 blob/data URL */
+  const [ipfsImageUrl, setIpfsImageUrl] = useState<string | null>(null)
 
   const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
   const currentAvatarSrcTemp = avatarImageDataTemp || avatarUrl
@@ -70,9 +73,11 @@ export default function BeamioAccountScreen({ colse }: prof) {
 	const initData = async (bo: beamio) => {
 		const img = bo.image || ''
 		if (img && !isDicebear(img)) {
-			setAvatarImageDataTemp(img) // 上传图 / ipfs 图
+			setAvatarImageDataTemp(img)
+			setIpfsImageUrl(img)
 		} else {
-			setAvatarImageDataTemp(null) // ✅ 用 dicebear
+			setAvatarImageDataTemp(null)
+			setIpfsImageUrl(null)
 		}
 
 		setLastName(checkLastName(bo?.lastName))
@@ -101,65 +106,78 @@ export default function BeamioAccountScreen({ colse }: prof) {
   
 	setAvatarImageDataTemp(blobUrl)
 	setAvatarFileName(file.name)
-  
-	// ✅ 2) 然后异步转成 dataUrl 做 downscale + 上传 IPFS（不把 dataUrl 存进 state）
+	setIpfsImageUrl(null)
+	setAvatarUploadingIpfs(true)
+
+	// ✅ 2) 异步转成 dataUrl → downscale → 上传 IPFS，成功后展示 IPFS URL
 	const reader = new FileReader()
 	reader.onloadend = () => {
 	  const dataUrl = reader.result as string
-	  if (!dataUrl) return
-  
+	  if (!dataUrl) {
+		setAvatarUploadingIpfs(false)
+		return
+	  }
+
 	  const img = new Image()
 	  img.onload = async () => {
-		if (!profiles?.[0]) return
-  
-		// 大图 downscale，小图直接用原 dataUrl
+		if (!profiles?.[0]) {
+		  setAvatarUploadingIpfs(false)
+		  return
+		}
 		const resized = downscaleTo250(img) || dataUrl
-  
 		const hash = await postToIPFS(profiles[0], resized)
+		setAvatarUploadingIpfs(false)
 		if (!hash) return
-  
-		// ✅ 上传成功后，把展示 URL 切换为 ipfs URL（仍然是 URL 字符串）
+
 		const ipfsUrl = `${ipfsEndpoint}${hash}&t=${Date.now()}`
 		setAvatarImageDataTemp(ipfsUrl)
-  
-		// ✅ 既然已经换成 ipfs url，就可以释放 blobUrl
+		setIpfsImageUrl(ipfsUrl)
 		setAvatarFileUrl(prev => {
 		  if (prev) URL.revokeObjectURL(prev)
 		  return null
 		})
 	  }
+	  img.onerror = () => setAvatarUploadingIpfs(false)
 	  img.src = dataUrl
 	}
-  
 	reader.readAsDataURL(file)
   }
 
   const handleSaveAvatar = async () => {
     if (!CoNET_Data || !profiles) return
+    if (avatarUploadingIpfs) return
     setLoading(true)
 
     const tmpData = CoNET_Data
     setAvatarName(avatarSeed || defaultName)
 
-    let hash = null as null | string
-    if (avatarImageDataTemp) {
-      hash = await postToIPFS(profiles[0], avatarImageDataTemp)
-      if (hash) hash = `${ipfsEndpoint}${hash}&t=${Date.now()}`
+    // image 仅使用 IPFS URL；优先用当前展示的 avatarImageDataTemp（已是 IPFS 时），避免 setState 未提交导致 ipfsImageUrl 滞后
+    let imageForSave = beamio?.image || ''
+    const isIpfsUrl = (url: string) =>
+      url.includes('getFragment?hash=') || url.startsWith(ipfsEndpoint)
+    if (avatarImageDataTemp && isIpfsUrl(avatarImageDataTemp)) {
+      imageForSave = avatarImageDataTemp
+    } else if (ipfsImageUrl) {
+      imageForSave = ipfsImageUrl
+    } else if (avatarImageDataTemp && !avatarImageDataTemp.startsWith('blob:') && !isDicebear(avatarImageDataTemp)) {
+      // 例如从 GetPicture 来的 data URL 尚未完成上传，保存时再上传一次
+      const hash = await postToIPFS(profiles[0], avatarImageDataTemp)
+      if (hash) imageForSave = `${ipfsEndpoint}${hash}&t=${Date.now()}`
     }
 
     const profile: profile = tmpData.profiles[0]
     const bo: beamio = {
-      firstName,
-      lastName,
-      accountName: avatarName || defaultName,
-      image: hash || currentAvatarSrcTemp,
-      darkTheme: darkModle,
-      isETHFaucet: beamio?.isETHFaucet || false,
-      isUSDCFaucet: beamio?.isUSDCFaucet || false,
-      initialLoading: beamio?.initialLoading || false,
-      createdAt: beamio?.createdAt || Date.now(),
-      currency: 'USD',
-      language: 'en'
+		firstName,
+		lastName,
+		accountName: avatarName || defaultName,
+		image: imageForSave,
+		darkTheme: darkModle,
+		isETHFaucet: beamio?.isETHFaucet || false,
+		isUSDCFaucet: beamio?.isUSDCFaucet || false,
+		initialLoading: beamio?.initialLoading || false,
+		createdAt: beamio?.createdAt || Date.now(),
+		currency: 'USD',
+		language: 'en'
     }
 
     await postBeamio(bo, profile.privateKeyArmor)
@@ -186,6 +204,11 @@ export default function BeamioAccountScreen({ colse }: prof) {
 					alt="Avatar"
 					className="h-full w-full object-cover"
 				/>
+				{avatarUploadingIpfs && (
+					<div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+						<div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+					</div>
+				)}
 				</div>
 
 				{/* 右下角按钮：相机(选图) / 删除(恢复 dicebear) */}
@@ -196,6 +219,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
 						setAvatarImageDataTemp(null)
 						setAvatarFileUrl(null)
 						setAvatarFileName('')
+						setIpfsImageUrl(null)
 					}}
 					aria-label="Remove avatar image"
 					className="
@@ -379,7 +403,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
         <div className="mt-10">
           {/* 如果你 AppButton 支持 className，建议给它这个样式；否则就包一层 div */}
           <div className="rounded-2xl shadow-[0_18px_50px_rgba(37,99,235,0.28)]">
-            <AppButton onClick={handleSaveAvatar} loading={loading} fullWidth>
+            <AppButton onClick={handleSaveAvatar} loading={loading} disabled={avatarUploadingIpfs} fullWidth>
               Save Changes
             </AppButton>
           </div>
@@ -389,10 +413,19 @@ export default function BeamioAccountScreen({ colse }: prof) {
 		open={openGetPicture}
 		onClose={() => setOpenGetPicture(false)}
 		downscaleTo250={downscaleTo250}
-		onPicked={(dataUrl) => {
+		onPicked={async (dataUrl) => {
 			setAvatarImageDataTemp(dataUrl)
 			setAvatarFileUrl(null)
 			setAvatarFileName('')
+			if (!profiles?.[0] || !dataUrl) return
+			setAvatarUploadingIpfs(true)
+			const hash = await postToIPFS(profiles[0], dataUrl)
+			setAvatarUploadingIpfs(false)
+			if (hash) {
+				const ipfsUrl = `${ipfsEndpoint}${hash}&t=${Date.now()}`
+				setAvatarImageDataTemp(ipfsUrl)
+				setIpfsImageUrl(ipfsUrl)
+			}
 		}}
 		/>
     </aside>

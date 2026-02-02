@@ -10,9 +10,10 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, currentGossipAbortController } from "@/services/chat"
+import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNode, currentGossipAbortController } from "@/services/chat"
 import { searchUsername, storeSystemData } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import Vouchers from "@/pages/Vouchers/index"
 import MyWallet from "@/pages/Settings/index"
 import { ethers } from "ethers"
@@ -60,6 +61,7 @@ function AppShell() {
     setCharts,
     profiles,
     setProfiles,
+    allNodes,
     setAllNodes,
     setGossip,
     setSecureCode,
@@ -257,10 +259,122 @@ function AppShell() {
 		}
 	}, [])
 
-	const addNewMessage = async (lines: string[], profiles: profile[], temp: encrypt_keys_object, setProfiles: React.Dispatch<React.SetStateAction<profile[]>>) => {
+	const autoReplayMessage = async (text: string, chatData: chatData) => {
+		const profile = profiles?.[0]
+		if (!profile?.chats || !chatData?.chatData?.publicArmored) return
+
+		const now = Date.now()
+		const nextMessages = makeMessage(chatData.messages || [], text, now, "me", "sent")
+
+		// 更新该会话的 messages，并写回 profile.chats
+		const chats = [...profile.chats]
+		const idx = chats.findIndex((c) => c.address.toLowerCase() === chatData.address.toLowerCase())
+		if (idx < 0) return
+		chats[idx] = { ...chatData, messages: nextMessages }
+		profile.chats = chats
+
+		const temp = CoNET_Data
+		if (temp?.profiles?.length) temp.profiles[0].chats = chats
+		setCoNET_Data(temp)
+		setProfiles([...profiles])
+		await storeSystemData()
+
+		// 送出 message 到对方
+		const node = getRandomNode(allNodes)
+		if (node) {
+			await sendMessage(chatData.chatData.publicArmored, text, profile.privateKeyArmor, node)
+		}
+	}
+
+
+
+	const AUTO_REPLY_TEXT = "这是自动回复测试"
+	const AUTO_REPLY_TEXT_WITH_HASH = "这是自动回复测试，已确认 on-chain"
+	const AUTO_REPLY_TEXT_WITHOUT_HASH = "这是自动回复测试，未确认 on-chain"
+
+	/** 在 Base 链上根据 tx hash 查该笔记录：只要存在 USDC 转账且金额 > 0 即承认该记录（contractCallSuccess）；或返回 USDC 转账的受益人 */
+	const getUsdcTransferRecipientOnBase = async (
+		txHash: string
+	): Promise<{
+		isUsdcTransfer: boolean
+		recipient: string | null
+		/** 该 tx 中存在 USDC 转账且金额 > 0 时为 true，承认这条记录 */
+		contractCallSuccess?: boolean
+	}> => {
+		const logPrefix = "[getUsdcTransferRecipientOnBase]"
+		try {
+			console.log(logPrefix, "start", { txHash })
+
+			const receipt = await baseEndpoint.getTransactionReceipt(txHash)
+			console.log(logPrefix, "fetched receipt", {
+				hasReceipt: !!receipt,
+				receiptStatus: receipt?.status,
+				logsLength: receipt?.logs?.length,
+			})
+
+			if (!receipt?.logs?.length) {
+				console.log(logPrefix, "result: no logs", { isUsdcTransfer: false, recipient: null })
+				return { isUsdcTransfer: false, recipient: null }
+			}
+			if (receipt.status !== 1) {
+				console.log(logPrefix, "result: tx failed", { receiptStatus: receipt.status })
+				return { isUsdcTransfer: false, recipient: null }
+			}
+
+			const usdcAddr = USDCContract_BASE.toLowerCase()
+			const transferTopic = ethers.id("Transfer(address,address,uint256)")
+			const transferIface = new ethers.Interface([
+				"event Transfer(address indexed from, address indexed to, uint256 value)",
+			])
+			for (const log of receipt.logs) {
+				if (log.address.toLowerCase() !== usdcAddr || log.topics[0] !== transferTopic)
+					continue
+				const parsed = transferIface.parseLog({ topics: log.topics, data: log.data })
+				if (parsed?.name === "Transfer") {
+					const value = BigInt(parsed.args[2])
+					const recipient = parsed.args[1] as string
+					console.log(logPrefix, "USDC Transfer found", {
+						value: value.toString(),
+						valueGt0: value > 0n,
+						recipient,
+					})
+					if (value > 0n) {
+						console.log(logPrefix, "result: contractCallSuccess=true (USDC > 0)")
+						return { isUsdcTransfer: false, recipient: null, contractCallSuccess: true }
+					}
+					console.log(logPrefix, "result: USDC Transfer (value=0)", { isUsdcTransfer: true, recipient })
+					return { isUsdcTransfer: true, recipient }
+				}
+			}
+			console.log(logPrefix, "result: no USDC Transfer in logs", { isUsdcTransfer: false, recipient: null })
+			return { isUsdcTransfer: false, recipient: null }
+		} catch (err) {
+			console.warn(logPrefix, "error", err)
+			return { isUsdcTransfer: false, recipient: null }
+		}
+	}
+
+	/** 进入的 message 是否为附带 Membership Activated 卡片且带 hash 字段（才触发自动回复） */
+	const isMembershipActivatedWithHash = (text: string): boolean => {
+		try {
+			const obj = JSON.parse(text) as { paymentCard?: { cardType?: string; hash?: string } }
+			return !!(obj?.paymentCard?.cardType === "membershipActivated" && obj?.paymentCard?.hash)
+		} catch {
+			return false
+		}
+	}
+
+	const addNewMessage = async (
+		lines: string[],
+		profiles: profile[],
+		temp: encrypt_keys_object,
+		setProfiles: React.Dispatch<React.SetStateAction<profile[]>>,
+		onAutoReply?: (chatData: chatData) => Promise<void>
+	) => {
 		// ✅ 永远用“复制”的 chats 来做变更
 		const profile = profiles[0]
 		const chats: chatData[] = Array.isArray(profile.chats) ? [...profile.chats] : []
+		const chatsToAutoReply: chatData[] = []
 
 		for (const raw of lines) {
 			try {
@@ -324,10 +438,12 @@ function AppShell() {
 				: Number(chat.unreadCount || 0)
 
 			const nextChat: chatData = {
-			...chat,
-			messages: nextMessages,
-			unreadCount: unreadNext
+				...chat,
+				messages: nextMessages,
+				unreadCount: unreadNext
 			}
+
+			if (isNew && isMembershipActivatedWithHash(msg.text)) chatsToAutoReply.push(nextChat)
 
 			// ✅ 放回 chats（不可变）
 			if (idx === 0 && chats[0].address.toLowerCase() === nextChat.address.toLowerCase()) {
@@ -350,6 +466,17 @@ function AppShell() {
 		temp.profiles = profiles
 		setCoNET_Data(temp)
 		await storeSystemData()
+
+		// ✅ 聆听进入的新 message 后自动回复
+		if (onAutoReply && chatsToAutoReply.length > 0) {
+			for (const chat of chatsToAutoReply) {
+				try {
+					await onAutoReply(chat)
+				} catch (e) {
+					console.warn("autoReplayMessage error", e)
+				}
+			}
+		}
 	}
 
 	useEffect(() => {
@@ -469,7 +596,34 @@ function AppShell() {
 			try {
 			const messageLines = [...charts]
 			setCharts([])
-			await addNewMessage(messageLines, profile, temp, setProfiles)
+			await addNewMessage(messageLines, profile, temp, setProfiles, async (chatData) => {
+				const lastMsg = chatData.messages[chatData.messages.length - 1]
+				const msgText = (lastMsg as { text?: string })?.text
+				let hash: string | undefined
+				try {
+					const obj = JSON.parse(msgText ?? "") as { paymentCard?: { hash?: string } }
+					hash = obj?.paymentCard?.hash
+				} catch {}
+				let text: string
+				if (!hash) {
+					text = AUTO_REPLY_TEXT_WITHOUT_HASH
+				} else {
+					const result = await getUsdcTransferRecipientOnBase(hash)
+					if (result.contractCallSuccess) {
+						text = AUTO_REPLY_TEXT_WITH_HASH
+					} else {
+						const myAddress = new ethers.Wallet(profiles[0].privateKeyArmor).address
+						const isBeneficiaryMe = !!(
+							result.isUsdcTransfer &&
+							result.recipient &&
+							myAddress &&
+							result.recipient.toLowerCase() === myAddress.toLowerCase()
+						)
+						text = isBeneficiaryMe ? AUTO_REPLY_TEXT_WITH_HASH : AUTO_REPLY_TEXT_WITHOUT_HASH
+					}
+				}
+				await autoReplayMessage(text, chatData)
+			})
 			} finally {
 			runningRef.current = false
 			}

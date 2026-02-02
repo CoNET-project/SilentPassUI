@@ -10,8 +10,8 @@ import CCSACardVisual from "./CardVisual"
 const CCSA_WEBSITE = "https://www.canadaccsa.com"
 
 type CardDetailProps = {
-  onPurchase?: () => void
-  isMember?: boolean
+	onPurchase?: () => void
+	isMember?: boolean
 }
 
 export default function CardDetail({ onPurchase, isMember }: CardDetailProps) {
@@ -50,7 +50,7 @@ export default function CardDetail({ onPurchase, isMember }: CardDetailProps) {
 
         {/* Issuer */}
         <p className="mt-2 text-center text-[14px] text-slate-500">
-          Issuer: Canadian Community Service Association (CCSA)
+          	Issuer: Canadian Community Service Association (CCSA)
         </p>
 
         {/* Website Link */}

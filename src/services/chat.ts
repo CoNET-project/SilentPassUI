@@ -1078,38 +1078,43 @@ export function createMembershipActivatedCard(params: {
 }
 
 export const initMessage = async (profile: profile, beamioer: searchResult): Promise<chatData|null> => {
-	
 	const address = beamioer.address.toLowerCase()
-		
-	if (!profile?.chats?.length) {
+
+	if (!profile.chats) {
 		profile.chats = []
 	}
-	
-	const index = profile.chats.findIndex(n => n.address.toLowerCase() === address)
-	let chatData: chatData|null = null
+	// 按 address 去重，保留首次出现的项
+	const seenAddress = new Set<string>()
+	profile.chats = profile.chats.filter(chat => {
+		const key = chat.address?.toLowerCase() ?? ''
+		if (seenAddress.has(key)) return false
+		seenAddress.add(key)
+		return true
+	})
 
-	if (index < 0) {
-		const kk = await getKeysFromCoNETPGPSC (address, profile.privateKeyArmor)
-		if (!kk?.publicArmored) {
-			return null
-		}
-		
-		chatData = {
-			address: address,
-			messages: [],
-			chatData: kk,
-			beamio: beamioer,
-			pin: false,
-			hide: false,
-			muted: false,
-			tag: 'grey',
-			unreadCount: 1
-		}
-		profile.chats.push(chatData)
-
-	} else {
-		chatData = profile.chats[index]
-
+	// 先检查 beamioer（按 address）是否已存在于 profile.chats 中
+	const existingIndex = profile.chats.findIndex(n => n.address.toLowerCase() === address)
+	if (existingIndex >= 0) {
+		return profile.chats[existingIndex]
 	}
-	return chatData
+
+	// 不存在则创建新 chat，放入 profile.chats 并返回
+	const kk = await getKeysFromCoNETPGPSC(address, profile.privateKeyArmor)
+	if (!kk?.publicArmored) {
+		return null
+	}
+
+	const newChat: chatData = {
+		address,
+		messages: [],
+		chatData: kk,
+		beamio: beamioer,
+		pin: false,
+		hide: false,
+		muted: false,
+		tag: 'grey',
+		unreadCount: 1,
+	}
+	profile.chats.push(newChat)
+	return newChat
 }

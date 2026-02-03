@@ -130,7 +130,7 @@ import {
 	},
 
 	BeamioCardCCSA: {
-		address: '0xfB804b423d27968336263c0CEF581Fbcd51D93B9',
+		address: '0xaf98059ef326cab38cba85d2a83c930466c9baf2',
 		network: 'Base',
 		abi: cardAbi
 	},
@@ -153,6 +153,12 @@ import {
 		abi: {
 			ActionFacet: ActionFacetAbi,
 		}
+	},
+
+	BeamioGateway: {
+		address: '0x3298414',
+		network: 'CONET DePIN',
+	
 	},
   }
   

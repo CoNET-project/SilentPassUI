@@ -4,6 +4,7 @@ import { motion } from "framer-motion"
 import React, { useMemo, useState, useEffect,useRef } from "react"
 import { Plus } from "lucide-react"
 import { JoinNowPill } from "./assets/JoinNowPill"
+import { fiatPrefix } from "@/services/currency"
 
 const cls = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ")
 
@@ -118,11 +119,7 @@ function CCSAHeaderBadge() {
 			>
 			  <span
 				ref={numberTextRef}
-				className="block whitespace-nowrap text-white font-black leading-none font-mono tabular-nums"
-				style={{
-				  fontSize: "clamp(30px, 8.6vw, 40px)",
-				  letterSpacing: "-0.005em",
-				}}
+				className="block whitespace-nowrap text-white text-4xl sm:text-5xl md:text-6xl font-bold leading-none tabular-nums"
 			  >
 				{currencyPrefix} {numberStr}
 			  </span>
@@ -236,11 +233,7 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 		  >
 			<span
 			  ref={numberTextRef}
-			  className="block whitespace-nowrap text-white font-black leading-none font-mono tabular-nums"
-			  style={{
-				fontSize: "clamp(20px, 8vw, 40px)",
-				letterSpacing: "0.02em",
-			  }}
+			  className="block whitespace-nowrap text-white text-4xl sm:text-5xl md:text-6xl font-bold leading-none tabular-nums"
 			>
 			  {numberStr}
 			</span>
@@ -360,12 +353,37 @@ export default function CCSACardVisual({
       <div className="relative z-10 h-full px-4 pt-4 pb-4 sm:px-6 sm:pt-5 sm:pb-5 md:px-7 md:pt-6 md:pb-6 flex flex-col min-h-0">
         {/* top row */}
 		{
-			(showBuy === 'buy' || showBuy === 'Member')  ? (
+			showBuy === 'buy' ? (
 				<>
 				<div className="flex items-start justify-between gap-2">
 					<CCSAHeaderBadge />
 					<div className="flex items-center shrink-0">
-						<JoinNowPill onClick={onBuy} label={showBuy === 'Member' ? 'Active' : 'JOIN'} />
+						<JoinNowPill onClick={onBuy} label="JOIN" />
+					</div>
+				</div>
+				</>
+			) : showBuy === 'Member' ? (
+				<>
+				<div className="flex items-start justify-between gap-2">
+					<CCSAHeaderBadge />
+					<div className="flex items-center shrink-0">
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation()
+								onQR?.()
+							}}
+							className={cls(
+								"h-9 w-9 rounded-[14px] sm:h-11 sm:w-11 sm:rounded-[18px]",
+								"bg-black/20 backdrop-blur-xl border border-white/20",
+								"text-white grid place-items-center shrink-0",
+								"shadow-[0_16px_28px_rgba(0,0,0,0.12)]",
+								"active:scale-[0.99] transition"
+							)}
+							aria-label="Show QR"
+						>
+							<QrCode className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.2} />
+						</button>
 					</div>
 				</div>
 				</>
@@ -422,7 +440,7 @@ export default function CCSACardVisual({
 						BALANCE
 					</div>
 
-					{  <CCSABalanceRow balance={balance} prefix="$CCSA" />}
+					{  <CCSABalanceRow balance={balance} prefix={'CAD'} />}
 
 					{/* bottom row */}
 					<div className="mt-3 sm:mt-6 flex items-end justify-between gap-2 min-w-0">

@@ -1,7 +1,7 @@
 // TopUpAccount.tsx
 import React, { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Sparkles, CreditCard, Check, RefreshCw } from "lucide-react"
+import { X, Sparkles, CreditCard, Check, RefreshCw, ChevronRight } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { formatAmount } from "@/services/currency"
 import { getBalanceProcess, storeSystemData } from "@/services/beamio"
@@ -12,6 +12,7 @@ import baseIcon from "@/components/assets/base-logo.png"
 import { CCSA_Card_Address } from "@/utils/constants"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import CardPurchaseProcessing from "./CardPurchaseProcessing"
+import CCSACardVisual from "./CardVisual"
 
 type PayMethod = "beamio" | "card"
 type Flow = "PURCHASE" | "TOP_UP"
@@ -27,6 +28,7 @@ type Props = {
   purchaseTitle?: string
   defaultMethod?: PayMethod
   beamioBalanceText?: string
+  cardOwner?: searchResult | null
   onPay?: (p: {
     flow: Flow
     amount: number
@@ -57,9 +59,10 @@ export default function PurchaseAccount({
 	presetAmounts = [50, 100, 200],
 	defaultAmount = 100,
 	purchasePrice = 100,
-	purchaseTitle = "Purchase Membership",
+	purchaseTitle = "Purchase",
 	defaultMethod = "beamio",
 	beamioBalanceText = "Balance: 0.00 USDC",
+	cardOwner,
 	onPay,
 }: Props) {
 	const isPurchase = flow === "PURCHASE"
@@ -85,6 +88,8 @@ export default function PurchaseAccount({
 	const totalText = subtotalText
 	const title = isPurchase ? purchaseTitle : "Top Up Account"
 	const [loading, setLoading] = useState(false)
+	const [refreshingRate, setRefreshingRate] = useState(false)
+	const [successData, setSuccessData] = useState<{ assets: MyCardAssets; amount: number } | null>(null)
 
 	// 计算USDC金额（字符串格式用于显示）
 	const usdcAmount = useMemo(() => {
@@ -113,80 +118,67 @@ export default function PurchaseAccount({
 		return formatAmount(rate, "USDC")
 	}, [currencyCode, currencyData])
 
-	const Success = ({amount, successHash}: {amount: string, successHash: string}) => {
+	const SuccessView = ({ assets, amount }: { assets: MyCardAssets; amount: number }) => {
+		const balance = Number(assets?.points || 0)
+		const hasPass = assets?.nfts && assets.nfts.length > 0
+		const numOfNfts = assets?.nfts?.length || 0
 		
 		return (
-			<div className="flex-1 px-5 pt-6 pb-8 flex flex-col items-center justify-center
-							bg-transparent text-inherit">
-
-				{/* 蓝色圆圈 ✔ */}
-				<div className="h-14 w-14 rounded-full bg-blue-600 flex items-center justify-center text-white text-3xl">
-					✓
+			<div className="flex-1 flex flex-col items-center justify-center px-6 py-8 min-h-0">
+				{/* CCSA Card */}
+				<div className="w-full max-w-[420px] mb-8">
+					<CCSACardVisual
+						balance={balance}
+						hasPass={hasPass}
+						showBuy={hasPass ? 'Member' : ''}
+						memberNo={numOfNfts > 0 ? `M-${String(numOfNfts).padStart(6, '0')}` : "M-000128"}
+					/>
 				</div>
 
-				{/* 成功文字 */}
-				<div className="font-semibold text-slate-600 dark:text-slate-300 mb-2 mt-4">
-					{'Successfully purchased' } 
+				{/* Success Message */}
+				<div className="text-2xl font-bold text-slate-900 mb-8 text-center">
+					Top-up Successful!
 				</div>
 
-				{/* 金额 */}
-				<div className="text-2xl font-semibold text-blue-600 dark:text-blue-400 mb-2">
-					{amount} USDC
-				</div>
-
-				{/* 提示 */}
-				<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-					{'It may take a few seconds to appear on-chain.' } 
-				</div>
-
-			
-				
-
-				{/* 按钮组 */}
-				<div className="w-full space-y-3">
-
-					{/* 完成按钮 */}
-					<button
-						className="w-full h-11 rounded-full
-								bg-blue-600 text-white
-								text-sm font-medium"
-						onClick={() => {
-							onClose(null)
-						}}
-					>
-						Done
-					</button>
-
-					{/* 查看交易按钮 */}
-					<button
-						className="
-							w-full h-11 rounded-full
-							bg-black/5 text-slate-700
-							dark:bg-white/10 dark:text-slate-100
-							text-sm
-							flex items-center justify-center gap-2
-						"
-						onClick={() => {
-							window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
-						}}
-						>
-						<img
-							src={base_ex}
-							alt="Base Explorer"
-							className="w-4 h-4 object-contain"
-						/>
-						<span>
-							View transaction
-						</span>
-					</button>
-				</div>
+				{/* Done Button */}
+				<button
+					className="w-full max-w-[420px] h-12 rounded-xl bg-[#1D5BFF] text-white font-bold text-[15px] shadow-lg shadow-blue-100 dark:shadow-blue-900/30 active:scale-[0.99] transition-transform"
+					onClick={() => {
+						setSuccessData(null)
+						onClose(assets)
+					}}
+				>
+					Done
+				</button>
 			</div>
 		)
 	}
 
+	const refreshRateAndBalance = async () => {
+		if (refreshingRate) return
+		const temp = CoNET_Data
+		if (!profiles?.length || !profiles[0]?.keyID || !temp || !temp.profiles?.length || !temp.profiles[0]) {
+			return
+		}
+		setRefreshingRate(true)
+		try {
+			await getBalanceProcess(
+				profiles[0].keyID,
+				(balance) => {
+					setUsdcbalance(balance)
+				},
+				setUsdcToUSD
+			)
+		} catch (err) {
+			console.error("Failed to refresh balance:", err)
+		} finally {
+			setRefreshingRate(false)
+		}
+	}
+
 	const payUSDCProcess = async () => {
-		
 		setError("")
+		setLoading(true)
 	  
 		if (method === "beamio") {
 		  // Refresh USDC balance
@@ -223,14 +215,24 @@ export default function PurchaseAccount({
 			  return
 			}
 
-			setLoading(true)
 			const requestData = await postBuyCardPoints(requiredAmount, profiles[0], CCSA_Card_Address)
 			if (requestData.success) {
 				await new Promise(resolve => setTimeout(resolve, 3000))
+				// 支付成功后更新 USDC 余额
+				await getBalanceProcess(
+				  profiles[0].keyID,
+				  (balance) => {
+					setUsdcbalance(balance)
+				  },
+				  setUsdcToUSD
+				)
 				setLoading(false)
-				onClose(requestData.assets)
-				
-				
+				// 显示成功页面
+				if (requestData.assets) {
+					setSuccessData({ assets: requestData.assets, amount: effectiveAmount })
+				} else {
+					onClose(null)
+				}
 			} else {
 				setError(requestData.error ?? "Failed to purchase. Please try again.")
 				setLoading(false)
@@ -254,6 +256,15 @@ export default function PurchaseAccount({
 		return (
 			<div className="flex justify-center sm:items-center w-full h-full min-h-0">
 				<CardPurchaseProcessing />
+			</div>
+		)
+	}
+
+	// 成功页面
+	if (successData) {
+		return (
+			<div className="flex justify-center sm:items-center w-full h-full min-h-0">
+				<SuccessView assets={successData.assets} amount={successData.amount} />
 			</div>
 		)
 	}
@@ -288,46 +299,56 @@ export default function PurchaseAccount({
 		</div>
 	  </div>
 
-	  <div className="px-6 pb-4">
-		{/* Summary Card - 调整内部间距与字体 */}
-		<div className="rounded-xl border border-slate-100 bg-white p-4">
-		  {!isPurchase ? (
-			<>
-			  <div className="text-[10px] tracking-[0.1em] font-bold text-slate-400 uppercase mb-3">
-				Amount
-			  </div>
-			  <div className="grid grid-cols-3 gap-3 mb-5">
-				{presetAmounts.map((v) => {
-				  const active = v === amount
-				  return (
-					<button
-					  key={v}
-					  onClick={() => setAmount(v)}
-					  className={cx(
-						"h-10 rounded-lg border text-[14px] font-bold transition-all",
-						active
-						  ? "bg-[#1D5BFF] border-[#1D5BFF] text-white"
-						  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-					  )}
-					>
-					  ${v}
-					</button>
-				  )
-				})}
-			  </div>
-			</>
-		  ) : null}
-
-		  <div className={cx(isPurchase ? "py-1" : "pt-4 border-t border-slate-100")}>
-			<div className="flex justify-between text-[13px] text-slate-500">
-			  <span>Subtotal</span>
-			  <span className="font-medium text-slate-700">{subtotalText}</span>
+		{/** show card creater beamio avatar image */}
+		{cardOwner && (
+		  <div className="px-6 pb-4 flex flex-col items-center gap-1">
+			<div className="relative z-10">
+			  {cardOwner.image ? (
+				<img
+				  src={cardOwner.image}
+				  alt="card creator"
+				  className="w-[44px] h-[44px] rounded-full object-cover bg-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+				/>
+			  ) : (
+				<div className="w-[44px] h-[44px] rounded-full bg-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.18)]" />
+			  )}
 			</div>
-			<div className="mt-2 flex justify-between items-baseline">
-			  <span className="text-[16px] font-bold text-slate-900">Total</span>
-			  <span className="text-[20px] font-black text-[#1D5BFF]">{totalText}</span>
+			<div
+			  className={[
+				"inline-flex items-center gap-1",
+				"px-2 py-1 rounded-full",
+				"bg-white/60 backdrop-blur-xl ring-1 ring-white/70",
+				"shadow-[0_14px_30px_rgba(15,23,42,0.12)]",
+			  ].join(" ")}
+			>
+			  <span
+				className="text-[15px] font-semibold"
+				style={{ color: "rgba(22,82,240,0.6)" }}
+			  >
+				@
+				{cardOwner.username && cardOwner.username !== "Unknow"
+				  ? cardOwner.username
+				  : cardOwner.address
+					? `${cardOwner.address.slice(0, 6)}…${cardOwner.address.slice(-4)}`
+					: "—"}
+			  </span>
+			  <ChevronRight
+				className="w-4 h-4 shrink-0"
+				strokeWidth={2.6}
+				style={{ color: "rgba(22,82,240,0.6)" }}
+			  />
 			</div>
 		  </div>
+		)}
+
+	  <div className="px-6 pb-4 ">
+		{/* Card Owner Title */}
+		<div className="text-[16px] text-center font-bold text-slate-900 leading-tight ">
+			CCSA Membership
+		</div>
+		{/* Card Owner sub Title */}
+		<div className="text-[14px] text-center text-slate-500 leading-tight">
+		Includes CA$100 Balance • VIP
 		</div>
 
 		{/* Payment Method - 列表更加精致 */}
@@ -388,11 +409,11 @@ export default function PurchaseAccount({
 							<AnimatePresence>
 							
 								<motion.div
-								initial={{ opacity: 0, height: 0 }}
-								animate={{ opacity: 1, height: "auto" }}
-								exit={{ opacity: 0, height: 0 }}
-								transition={{ duration: 0.2 }}
-								className="mt-3 overflow-hidden"
+									initial={{ opacity: 0, height: 0 }}
+									animate={{ opacity: 1, height: "auto" }}
+									exit={{ opacity: 0, height: 0 }}
+									transition={{ duration: 0.2 }}
+									className="mt-3 overflow-hidden"
 								>
 								<div
 									className="
@@ -406,9 +427,8 @@ export default function PurchaseAccount({
 									<div className="flex items-center justify-between">
 									<button
 										type="button"
-										onClick={() => {
-										// refresh logic here
-										}}
+										onClick={refreshRateAndBalance}
+										disabled={refreshingRate}
 										className="
 										inline-flex items-center gap-2
 										text-[13px] font-medium
@@ -416,10 +436,15 @@ export default function PurchaseAccount({
 										hover:opacity-90
 										active:scale-[0.99]
 										transition
+										disabled:opacity-60
+										disabled:cursor-not-allowed
 										"
 										aria-label="Refresh rate"
 									>
-										<RefreshCw className="h-4 w-4" strokeWidth={2.2} />
+										<RefreshCw 
+											className={`h-4 w-4 ${refreshingRate ? 'animate-spin' : ''}`} 
+											strokeWidth={2.2} 
+										/>
 										<span>Exchange Rate</span>
 									</button>
 
@@ -434,7 +459,7 @@ export default function PurchaseAccount({
 										You Pay
 									</div>
 
-									<div className="text-[18px] font-extrabold text-[#1D5BFF] tabular-nums">
+									<div className="text-2xl font-bold text-[#1D5BFF]">
 										{usdcAmount} USDC
 									</div>
 									</div>

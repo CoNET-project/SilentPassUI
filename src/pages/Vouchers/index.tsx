@@ -1,6 +1,7 @@
 // Vouchers.tsx
-import React, { useMemo, useState, useEffect,useRef } from "react"
+import React, { useMemo, useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
+import { useLocation } from "react-router-dom"
 import { Coins, QrCode, Plus, Globe, ChevronLeft } from "lucide-react"
 
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -152,7 +153,7 @@ export default function Vouchers() {
   const [settingsOpen, setSettingsOpen] = useState<''|'PurchaseAccount'|'TopUP'|'showPayQR'>('')
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'cardDetail'>('')
   const [selectedActionItem, setSelectedActionItem] = useState<BeamioActionResponse | null>(null)
-  const [myAssets, setMyAssets] = useState<any>(null)
+  const [myAssets, setMyAssets] = useState<MyCardAssets|null>(null)
 
   const flash = async () => {
 	if (profiles?.length) {
@@ -168,6 +169,19 @@ export default function Vouchers() {
   useEffect(() => {
     flash()
   }, [myAddress])
+
+  const location = useLocation()
+  useEffect(() => {
+    const state = location.state as { openCardDetail?: boolean; openPurchase?: string } | null
+    if (state?.openCardDetail) {
+      setShowAlphaHowItWorks("cardDetail")
+      setShowFooter(false)
+    }
+    if (state?.openPurchase) {
+      setShowFooter(false)
+      setSettingsOpen("PurchaseAccount")
+    }
+  }, [location.state])
 
   const numOfNfts = useMemo(() => {
 	if (!myAssets) {
@@ -247,9 +261,11 @@ export default function Vouchers() {
 						{
 						showAlphaHowItWorks === 'cardDetail' && (
 							<>
-							{isMember ? <CardItem cardItem={myAssets} /> : (<>
+							{/* {isMember ? <CardItem cardItem={myAssets ?? {}} /> : (<>
+
 								<CardDetail
 									isMember={isMember}
+									beamio={myAssets ?? myAssets.owner}
 									onPurchase={() => {
 										setShowFooter(false)
 										if (isMember) {
@@ -259,7 +275,7 @@ export default function Vouchers() {
 										setSettingsOpen('PurchaseAccount')
 									}}
 								/>
-							</>)}
+							</>)} */}
 							
 							</>
 						)}
@@ -351,6 +367,7 @@ export default function Vouchers() {
 									beamioBalanceText={`Balance: ${usdcbalance.toFixed(2)} USDC`}
 									defaultAmount={100}
 									purchasePrice={0.01}
+									cardOwner={myAssets?.cardOwner ?? null}
 									onClose={(val) => {
 										if (val) {
 											setMyAssets({...val})
@@ -365,7 +382,7 @@ export default function Vouchers() {
 								/>
 							
 						}
-						{
+						{/* {
 							settingsOpen === 'TopUP' && 
 								<TopUpAccount
 									beamioBalanceText={`Balance: ${usdcbalance.toFixed(4)} USDC`}
@@ -381,7 +398,7 @@ export default function Vouchers() {
 									}}
 									myAssets={myAssets}
 								/>
-						}
+						} */}
 						{
 							settingsOpen === 'showPayQR' && 
 								<ShowPayQR

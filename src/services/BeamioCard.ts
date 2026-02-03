@@ -7,6 +7,46 @@ import { searchUsername} from "./beamio"
 type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
 
 
+export const signOfflineTransferERC3009 = async (
+    userPrivateKey: string,
+    pointsHuman: string,
+    cardAddress: string,
+) => {
+	const BeamioUserCardGatewayAddress = '0x5b24729E66f13BaB19F763f7aE7A35C881D3d858'
+	const signer = new ethers.Wallet(userPrivateKey)
+     // 用本机时间生成窗口（注意：链上用 block.timestamp 校验；建议留点容错）
+	const now = Math.floor(Date.now() / 1000);
+	const validAfter = BigInt(now);                 // 立即生效
+	const validBefore = BigInt(now + 3600);   // 3分钟后过期
+
+	// bytes32 nonce：强烈建议每次唯一
+	const nonce = ethers.hexlify(ethers.randomBytes(32));
+	const tokenID = 0
+	const maxAmount = ethers.parseUnits(pointsHuman, 6); // => 1000000n
+
+	// 关键：要和 Solidity abi.encode(...) 一致（这里用 solidityPackedKeccak256）
+	// 对应 abi.encode("OpenTransfer", gateway, card, fromEOA, id, maxAmount, validAfter, validBefore, nonce)
+	// 注意 string "OpenTransfer" 在 packed 里用 "string"
+	const digest = ethers.solidityPackedKeccak256(
+		["string", "address", "address", "address", "uint256", "uint256", "uint256", "uint256", "bytes32"],
+		["OpenTransfer", BeamioUserCardGatewayAddress, cardAddress, signer.address, tokenID, 1, validAfter, validBefore, nonce]
+	);
+
+	// 合约端用了 toEthSignedMessageHash，所以这里用 signMessage(bytes)（EIP-191）
+	const signature = await signer.signMessage(ethers.getBytes(digest));
+
+	return {
+		fromEOA: signer.address,
+		id: tokenID.toString(),
+		maxAmount: maxAmount.toString(),
+		validAfter: validAfter.toString(),
+		validBefore: validBefore.toString(),
+		nonce,
+		signature,
+		digest,
+	};
+}
+
 export const USDC2Token = async (
     userPrivateKey: string,
     amount: number,
@@ -252,6 +292,8 @@ const getICurrency = (currency: BigInt): ICurrency => {
 	}
 }
 
+
+
 export const getAAAccount = async (profile: profile): Promise<string | null> => {
     try {
         const accountFactory = new ethers.Contract(
@@ -325,7 +367,8 @@ const mapActionToBeamioResponse = (
 };
 
 export const getLatest20UserActions_Lite = async (
-	profile: profile
+	profile: profile,
+	cardAddress: string
 ) => {
 	const facet = new ethers.Contract(contracts.BeamioDiamond.address, contracts.BeamioDiamond.abi.ActionFacet, conetDepinProvider);
   
@@ -339,15 +382,15 @@ export const getLatest20UserActions_Lite = async (
 	// ethers 返回的 Result 为只读，需复制为可变数组再 reverse
 	const ids: bigint[] = [...idsRaw].reverse(); // 最新在前
 
-	const rows:BeamioActionResponse[] = await Promise.all(
+	const rows: BeamioActionResponse[] = await Promise.all(
 		ids.map(async (id) => {
 			const [action, meta] = await facet.getActionWithMeta(id);
 			return mapActionToBeamioResponse({ action, meta });
 		})
 	);
-  
 
-	return rows;
+	const cardLower = cardAddress.toLowerCase();
+	return rows.filter((r) => (r.cardAddress || "").toLowerCase() === cardLower);
 };
 
 export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<searchResult | null> => {

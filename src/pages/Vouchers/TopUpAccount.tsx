@@ -1,7 +1,7 @@
 // TopUpAccount.tsx - Top Up 流程，依据图片完成，样式参考 PurchaseAccount.tsx
 import React, { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Sparkles, CreditCard, Check, RefreshCw } from "lucide-react"
+import { Sparkles, CreditCard, Check, RefreshCw, ChevronRight } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { formatAmount } from "@/services/currency"
 import { getBalanceProcess, storeSystemData } from "@/services/beamio"
@@ -11,6 +11,7 @@ import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import usdcIcon from "@/components/assets/usdc.png"
 import baseIcon from "@/components/assets/base-logo.png"
 import CardPurchaseProcessing from "./CardPurchaseProcessing"
+import CCSACardVisual from "./CardVisual"
 import { ethers } from "ethers"
 import { createMessage, readKey, enums, encrypt } from "openpgp"
 import { getRandomNode, initMessage, createMembershipActivatedCard, sendMessage } from "@/services/chat"
@@ -62,6 +63,7 @@ export default function TopUpAccount({
   const { currencyData, profiles, setUsdcbalance, setUsdcToUSD, usdcbalance, allNodes, setProfiles } = useDaemonContext()
   const [error, setError] = useState<string>("")
   const [loading, setLoading] = useState(false)
+  const [successData, setSuccessData] = useState<{ assets: MyCardAssets; amount: number } | null>(null)
 
   const subtotalText = useMemo(() => formatMoney(amount, currencyCode), [amount, currencyCode])
   const totalText = subtotalText
@@ -96,10 +98,46 @@ export default function TopUpAccount({
 	}, 3000)
 }, [error])
 
-useEffect(() => {	
+  useEffect(() => {	
 	if (!error) return
 	setError('')
 }, [method])
+
+  const SuccessView = ({ assets, amount }: { assets: MyCardAssets; amount: number }) => {
+	const balance = Number(assets?.points || 0)
+	const hasPass = assets?.nfts && assets.nfts.length > 0
+	const numOfNfts = assets?.nfts?.length || 0
+	
+	return (
+		<div className="flex-1 flex flex-col items-center justify-center px-6 py-8 min-h-0">
+			{/* CCSA Card */}
+			<div className="w-full max-w-[420px] mb-8">
+				<CCSACardVisual
+					balance={balance}
+					hasPass={hasPass}
+					showBuy='Member'
+					memberNo={numOfNfts > 0 ? `${assets?.nfts[0].tokenId}` : "M-000128"}
+				/>
+			</div>
+
+			{/* Success Message */}
+			<div className="text-2xl font-bold text-slate-900 mb-8 text-center">
+				Top-up Successful!
+			</div>
+
+			{/* Done Button */}
+			<button
+				className="w-full max-w-[420px] h-12 rounded-xl bg-[#1D5BFF] text-white font-bold text-[15px] shadow-lg shadow-blue-100 dark:shadow-blue-900/30 active:scale-[0.99] transition-transform"
+				onClick={() => {
+					setSuccessData(null)
+					onClose?.(assets)
+				}}
+			>
+				Done
+			</button>
+		</div>
+	)
+  }
 
   const payUSDCProcess = async () => {
     setError("")
@@ -139,16 +177,18 @@ useEffect(() => {
 				await sendMessageToClient(requiredAmount, requestData.txHash)
 			}
 			await new Promise(resolve => setTimeout(resolve, 3000))
-			  if (requestData.assets) {
-				  onClose?.(requestData.assets ?? null)
-			  }
-			  
+			setLoading(false)
+			// 显示成功页面
+			if (requestData.assets) {
+				setSuccessData({ assets: requestData.assets, amount: amount })
+			} else {
+				onClose?.(null)
+			}
 		  } else {
 			  setError(requestData.error ?? "Failed to purchase. Please try again.")
 			  setLoading(false)
 			  return
 		  }
-		  setLoading(false)
       } catch {
         setError("Failed to refresh balance. Please try again.")
         setLoading(false)
@@ -196,6 +236,15 @@ useEffect(() => {
     )
   }
 
+  // 成功页面
+  if (successData) {
+    return (
+      <div className="flex justify-center sm:items-center w-full h-full min-h-0">
+        <SuccessView assets={successData.assets} amount={successData.amount} />
+      </div>
+    )
+  }
+
   return (
     <div className="flex justify-center sm:items-center">
       <div className={cx("relative w-full max-w-[560px] mx-auto", "rounded-t-[20px] sm:rounded-[24px]")}>
@@ -205,6 +254,47 @@ useEffect(() => {
             Top Up Account
           </div>
         </div>
+		{/** show card creater beamio avatar image */}
+		{myAssets?.cardOwner && (
+          <div className="px-6 pb-4 flex flex-col items-center gap-1">
+            <div className="relative z-10">
+              {myAssets.cardOwner.image ? (
+                <img
+                  src={myAssets.cardOwner.image}
+                  alt="card creator"
+                  className="w-[44px] h-[44px] rounded-full object-cover bg-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+                />
+              ) : (
+                <div className="w-[44px] h-[44px] rounded-full bg-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.18)]" />
+              )}
+            </div>
+            <div
+              className={[
+                "inline-flex items-center gap-1",
+                "px-2 py-1 rounded-full",
+                "bg-white/60 backdrop-blur-xl ring-1 ring-white/70",
+                "shadow-[0_14px_30px_rgba(15,23,42,0.12)]",
+              ].join(" ")}
+            >
+              <span
+                className="text-[15px] font-semibold"
+                style={{ color: "rgba(22,82,240,0.6)" }}
+              >
+                @
+                {myAssets.cardOwner.username && myAssets.cardOwner.username !== "Unknow"
+                  ? myAssets.cardOwner.username
+                  : myAssets.cardOwner.address
+                    ? `${myAssets.cardOwner.address.slice(0, 6)}…${myAssets.cardOwner.address.slice(-4)}`
+                    : "—"}
+              </span>
+              <ChevronRight
+                className="w-4 h-4 shrink-0"
+                strokeWidth={2.6}
+                style={{ color: "rgba(22,82,240,0.6)" }}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="px-6 pb-4">
           {/* AMOUNT */}
@@ -238,7 +328,7 @@ useEffect(() => {
               </div>
               <div className="mt-2 flex justify-between items-baseline">
                 <span className="text-[16px] font-bold text-slate-900">Total</span>
-                <span className="text-[20px] font-black text-slate-900">{totalText}</span>
+                <span className="text-2xl font-bold text-slate-900">{totalText}</span>
               </div>
             </div>
           </div>
@@ -348,7 +438,7 @@ useEffect(() => {
                                 <span className="text-[15px] font-extrabold text-[#1D5BFF]">
                                   You Pay
                                 </span>
-                                <span className="text-[18px] font-extrabold text-[#1D5BFF] tabular-nums">
+                                <span className="text-2xl font-bold text-[#1D5BFF]">
                                   {usdcAmount} USDC
                                 </span>
                               </div>

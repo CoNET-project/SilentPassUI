@@ -122,16 +122,18 @@ const ActiveList = ({ onItemClick, MyCardAssets }: ActiveListProps) => {
   const [actions, setActions] = useState<BeamioActionResponse[]>([])
 
   useEffect(() => {
-    if (!profiles?.[0]) return
-    getLatest20UserActions_Lite(profiles[0]).then((val) => {
+    if (!profiles?.[0] || !MyCardAssets?.cardAddress) return
+    getLatest20UserActions_Lite(profiles[0], MyCardAssets.cardAddress).then((val) => {
       if (val && val.length > 0) {
         setActions(val)
+      } else {
+        setActions([])
       }
     })
-  }, [profiles, MyCardAssets])
+  }, [profiles, MyCardAssets?.cardAddress])
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 mt-4">
       {actions.length === 0 ? (
         <div className="rounded-2xl bg-white/80 shadow-[0_10px_26px_rgba(15,23,42,0.06)] px-4 py-6 text-center text-[14px] text-slate-500">
           No activity yet

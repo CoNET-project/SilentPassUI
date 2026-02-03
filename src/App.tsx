@@ -24,7 +24,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import PayScreen from '@/pages/Pay/send'
 import HistoryAll from '@/pages/History/components/HistoryAll'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
-
+import Market from "@/pages/Vouchers/Market"
+import VouchersExample from "@/pages/Vouchers/example/index"
 global.Buffer = require("buffer").Buffer
 
 const beamioConetContract = {
@@ -252,10 +253,12 @@ function AppShell() {
 		const t = setTimeout(() => setFooterVisible(true), 0)
 		return () => {
 			clearTimeout(t)
-			console.log("🧹 Component unmounting, cleaning up gossip...");
+			console.log("🧹 Component unmounting, cleaning up gossip...")
 			if (currentGossipAbortController) {
-				currentGossipAbortController.abort("component_unmount");
+				currentGossipAbortController.abort("component_unmount")
 			}
+			// 必须重置 gossip 状态，否则重挂载时 initChat 会因 if (gossip) return 直接返回，无法恢复聆听
+			setGossip(false)
 		}
 	}, [])
 
@@ -503,7 +506,40 @@ function AppShell() {
 		if (delta > 0) setMessageCount(prev => prev + delta)
 	}, [charts, setMessageCount, seenMsgRef])
 
+  /**
+   * 检查字符串是否是 signOfflineTransferERC3009 产生的 JSON 结构
+   * ERC3009 签名数据应包含：fromEOA, id, maxAmount, validAfter, validBefore, nonce, signature, digest
+   */
+  const isERC3009SignatureData = (str: string): boolean => {
+    try {
+      const parsed = JSON.parse(str)
+      // 检查是否包含 ERC3009 签名数据的所有必需字段
+	  
+      return (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        typeof parsed.fromEOA === 'string' &&
+        typeof parsed.id === 'string' &&
+        typeof parsed.maxAmount === 'string' &&
+        typeof parsed.validAfter === 'string' &&
+        typeof parsed.validBefore === 'string' &&
+        typeof parsed.nonce === 'string' &&
+        typeof parsed.signature === 'string' &&
+        typeof parsed.digest === 'string'
+      )
+    } catch {
+      return false
+    }
+  }
+
   const checkUrl = async (url: string) => {
+    // 首先检查是否是 ERC3009 签名数据的 JSON 字符串
+    if (isERC3009SignatureData(url)) {
+		const parsed = JSON.parse(url) as { fromEOA: string, id: string, maxAmount: string, validAfter: string, validBefore: string, nonce: string, signature: string, digest: string }
+		console.log("parsed", parsed)
+		return
+    }
+
     let searchParams: URLSearchParams
     try {
       const u = new URL(url)
@@ -640,10 +676,11 @@ function AppShell() {
 				<Route path="/Pay" element={<Pay />} />
 				<Route path="/Chat" element={<Chat />} />
 				<Route path="/chat/:id" element={<ChatDetail />} />
-				<Route path="/settings" element={<Vouchers />} />
+				<Route path="/settings" element={<Market />} />
 				<Route path="/browser" element={<Browser />} />
 				<Route path="/myWallet" element={<MyWallet />} />
 				<Route path="/HistoryAll" element={<HistoryAll />} />
+				<Route path="/vouchers-example" element={<VouchersExample />} />
 				</Routes>
 			</div>
 
@@ -774,7 +811,6 @@ function AppShell() {
 				</div>
 			</div>
 
-				
 		</div>
 	)
 }

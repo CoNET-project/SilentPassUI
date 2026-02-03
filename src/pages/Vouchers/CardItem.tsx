@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence } from "framer-motion"
 import CardDetail from "./CardDetail"
 import CCSACardVisual from "./CardVisual"
-import { getMyAssets } from "@/services/BeamioCard"
+import { getMyAssets, signOfflineTransferERC3009 } from "@/services/BeamioCard"
 import { CCSA_Card_Address } from "@/utils/constants"
 import TopUpAccount from "@/pages/Vouchers/TopUpAccount"
 import ShowPayQR from "@/pages/Vouchers/showPayQR"
@@ -152,6 +152,8 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'cardDetail'>('')
   const [selectedActionItem, setSelectedActionItem] = useState<BeamioActionResponse | null>(null)
   const [myAssets, setMyAssets] = useState<MyCardAssets>(cardItem)
+  const [detailTab, setDetailTab] = useState<"activity" | "perks">("activity")
+  const [qrPayload, setQrPayload] = useState<string>("")
 
   const flash = async () => {
 	if (profiles?.length) {
@@ -170,6 +172,10 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
   useEffect(() => {
     flash()
   }, [myAddress])
+
+  useEffect(() => {
+    if (settingsOpen !== "showPayQR") setQrPayload("")
+  }, [settingsOpen])
 
   const numOfNfts = useMemo(() => {
 	if (!myAssets) {
@@ -192,22 +198,29 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
       
       <div className="px-4 pb-24 mt-12">
        
-
+	  <div className="px-4 pb-10 max-w-[420px] mx-auto">
         <CCSACardVisual
           balance={Number(myAssets?.points || 0)}
           hasPass={isMember}
           onTopUp={() => {
 			setShowTopUp(true)
 		  }}
-          onQR={() => {
-
-			setSettingsOpen('showPayQR')
+          onQR={async () => {
 			setShowFooter(false)
+			if (!profiles?.[0]?.privateKeyArmor || !myAssets?.cardAddress) return
+			try {
+				const pointsHuman = (myAssets?.points ?? 0).toString()
+				const data = await signOfflineTransferERC3009(
+					profiles[0].privateKeyArmor,
+					pointsHuman,
+					myAssets.cardAddress
+				)
+				setQrPayload(JSON.stringify(data))
+				setSettingsOpen("showPayQR")
+			} catch (e) {
+				console.error("signOfflineTransferERC3009 failed", e)
+			}
 		  }}
-          onCardClick={() => {
-			setShowAlphaHowItWorks('cardDetail')
-			setShowFooter(false)
-          }}
 		  memberNo={numOfNfts.toString()}
           showBuy= {myAssets?.nfts && myAssets.nfts.length > 0 ? '' : 'buy'}
           onBuy={() => {
@@ -220,14 +233,66 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 			
           }}
         />
+		</div>
+		{/* Tab: Activity | Perks & Rules */}
 		<div className="mt-6">
-			<ActiveList
-				onItemClick={(item) => {
-					setSelectedActionItem(item)
-					setShowFooter(false)
-				}}
-				MyCardAssets={myAssets}
-			/>
+			<div className="flex gap-4 border-b border-black/[0.06]">
+				<button
+					type="button"
+					onClick={() => setDetailTab("activity")}
+					className={`pb-3 text-sm font-bold px-2 relative ${
+						detailTab === "activity" ? "text-blue-600" : "text-slate-400"
+					}`}
+				>
+					Activity
+					{detailTab === "activity" && (
+						<motion.div
+							layoutId="carditem-tab-underline"
+							className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+							transition={{ type: "spring", damping: 25, stiffness: 300 }}
+						/>
+					)}
+				</button>
+				<button
+					type="button"
+					onClick={() => setDetailTab("perks")}
+					className={`pb-3 text-sm font-bold px-2 relative ${
+						detailTab === "perks" ? "text-blue-600" : "text-slate-400"
+					}`}
+				>
+					Perks & Rules
+					{detailTab === "perks" && (
+						<motion.div
+							layoutId="carditem-tab-underline"
+							className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+							transition={{ type: "spring", damping: 25, stiffness: 300 }}
+						/>
+					)}
+				</button>
+			</div>
+			{detailTab === "activity" && (
+				<ActiveList
+					onItemClick={(item) => {
+						setSelectedActionItem(item)
+						setShowFooter(false)
+					}}
+					MyCardAssets={myAssets}
+				/>
+			)}
+			{detailTab === "perks" && (
+				<CardDetail
+					isMember={isMember}
+					beamio={myAssets.cardOwner}
+					onPurchase={() => {
+						setShowFooter(false)
+						if (isMember) {
+							setSettingsOpen("TopUP")
+							return
+						}
+						setSettingsOpen("PurchaseAccount")
+					}}
+				/>
+			)}
 		</div>
       </div>
 
@@ -263,6 +328,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 						{showAlphaHowItWorks === 'cardDetail' && (
 							<CardDetail
 								isMember={isMember}
+								beamio={myAssets.cardOwner}
 								onPurchase={() => {
 									setShowFooter(false)
 									if (isMember) {
@@ -362,6 +428,8 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 									beamioBalanceText={`Balance: ${usdcbalance.toFixed(2)} USDC`}
 									defaultAmount={100}
 									purchasePrice={0.01}
+									cardOwner={myAssets?.cardOwner ?? null}
+									purchaseTitle="CCSA Membership"
 									onClose={(val) => {
 										if (val) {
 											setMyAssets({...val})
@@ -396,11 +464,13 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 								/>
 						}
 						{
-							settingsOpen === 'showPayQR' && 
+							settingsOpen === "showPayQR" && (
 								<ShowPayQR
-								successUrl={'https://beamio.app?beamio=' + (beamio?.accountName || '')} 
-								beamio={beamio} 
+									successUrl={"https://beamio.app?beamio=" + (beamio?.accountName || "")}
+									beamio={beamio}
+									qrValue={qrPayload || undefined}
 								/>
+							)
 						}
 						<div
 							className="

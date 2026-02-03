@@ -1,25 +1,77 @@
 import { QRCodeCanvas } from "qrcode.react"
 import bIcon from "@/components/assets/logo512.png"
-import { Copy, Check, Printer, Share2 } from "lucide-react"
+import { Copy, Check, Printer, Share2, Clock } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
-
-const displayName = (item: beamio|null) => {
-	if (!item) return ''
-	const lastname = item.lastName?.split('\r\n')||[]
-	const fullName = `${item.firstName || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
+const displayName = (item: beamio | null) => {
+	if (!item) return ""
+	const lastname = item.lastName?.split("\r\n") || []
+	const fullName = `${item.firstName || ""} ${/^\{/.test(lastname[0]) ? "" : lastname[0] || ""}`.trim()
 	return fullName || item.accountName || item.address
 }
 
 function cx(...v: Array<string | false | undefined | null>) {
 	return v.filter(Boolean).join(" ")
-  }
-  
-export default function ShowPayQR({ successUrl, beamio }: { successUrl: string, beamio: beamio|null }) {
+}
+
+/** 判断是否为“数据 JSON”模式（非 http URL）：用于隐藏 Print/Share 和文字内容、显示倒计时 */
+function isDataMode(value: string): boolean {
+	const trimmed = value.trim()
+	return trimmed.startsWith("{") || (!trimmed.startsWith("http://") && !trimmed.startsWith("https://"))
+}
+
+function formatCountdown(secondsLeft: number): string {
+	if (secondsLeft <= 0) return "0:00"
+	const m = Math.floor(secondsLeft / 60)
+	const s = secondsLeft % 60
+	return `${m}:${s.toString().padStart(2, "0")}`
+}
+
+export default function ShowPayQR({
+	successUrl,
+	beamio,
+	qrValue,
+}: {
+	successUrl: string
+	beamio: beamio | null
+	/** 当为卡 QR（ERC3009 离线签名数据）时传入，QR 与复制内容以此为准 */
+	qrValue?: string
+}) {
 	const [copied, setCopied] = useState(false)
-	
+	const valueForQR = qrValue ?? successUrl
+	const isData = useMemo(() => isDataMode(valueForQR), [valueForQR])
+
+	// 从 JSON 中解析 validBefore（unix 秒），用于倒计时
+	const validBeforeSec = useMemo(() => {
+		if (!qrValue || !isData) return null
+		try {
+			const parsed = JSON.parse(qrValue) as { validBefore?: string }
+			const v = parsed?.validBefore
+			return v != null ? parseInt(String(v), 10) : null
+		} catch {
+			return null
+		}
+	}, [qrValue, isData])
+
+	const [secondsLeft, setSecondsLeft] = useState<number>(() => {
+		if (validBeforeSec == null) return 0
+		return Math.max(0, validBeforeSec - Math.floor(Date.now() / 1000))
+	})
+
+	useEffect(() => {
+		if (validBeforeSec == null) return
+		setSecondsLeft(Math.max(0, validBeforeSec - Math.floor(Date.now() / 1000)))
+		const timer = setInterval(() => {
+			setSecondsLeft((prev) => {
+				const next = Math.max(0, validBeforeSec - Math.floor(Date.now() / 1000))
+				return next
+			})
+		}, 1000)
+		return () => clearInterval(timer)
+	}, [validBeforeSec])
+
 	const onCopyPayLink = async () => {
-		const ok = await copyText(successUrl)
+		const ok = await copyText(valueForQR)
 		if (ok) setCopied(true)
 	}
 
@@ -35,7 +87,8 @@ export default function ShowPayQR({ successUrl, beamio }: { successUrl: string, 
 		window.print()
 	}
 	const onShare = () => {
-		window.open(successUrl, '_blank')
+		if (qrValue) return
+		window.open(successUrl, "_blank")
 	}
 
 	useEffect(() => {
@@ -100,7 +153,7 @@ export default function ShowPayQR({ successUrl, beamio }: { successUrl: string, 
 										"
 									>
 										<QRCodeCanvas
-											value={successUrl}
+											value={valueForQR}
 											size={264}
 											level="H"
 											includeMargin={false}
@@ -126,88 +179,89 @@ export default function ShowPayQR({ successUrl, beamio }: { successUrl: string, 
 							</div>
 							</div>
 
-
-
-						{/* Payment link */}
-						<div className="mt-10">
-						<div className="rounded-[14px] bg-slate-50 ring-1 ring-black/10 shadow-sm px-4 py-3 flex items-center justify-between gap-4">
-  
-							{/* 左侧文字：真正上下居中 */}
-							<div className="min-w-0 flex flex-col justify-center">
-								<div className="text-[12px] leading-snug text-slate-700 break-all">
-								{successUrl}
+						{/* 数据模式：有效期倒计时（3 分钟） */}
+						{isData && validBeforeSec != null && (
+							<div className="mt-6 flex flex-col items-center gap-2">
+								<div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2">
+									<Clock className="h-5 w-5 text-slate-600" />
+									<span className="text-[15px] font-semibold text-slate-700">
+										{secondsLeft > 0
+											? `Valid for ${formatCountdown(secondsLeft)}`
+											: "Expired"}
+									</span>
 								</div>
 							</div>
+						)}
 
-							{/* 右侧按钮 */}
+						{/* Payment link / 文字内容：仅 URL 模式显示 */}
+						{!isData && (
+						<div className="mt-10">
+						<div className="rounded-[14px] bg-slate-50 ring-1 ring-black/10 shadow-sm px-4 py-3 flex items-center justify-between gap-4">
+							<div className="min-w-0 flex flex-col justify-center">
+								<div className="text-[12px] leading-snug text-slate-700 break-all">
+									{valueForQR}
+								</div>
+							</div>
 							<button
 								type="button"
 								onClick={onCopyPayLink}
 								className={[
-								"shrink-0 w-[36px] h-[36px] rounded-[18px]",
-								"bg-white/85 backdrop-blur-md",
-								"ring-1 ring-black/10 shadow-sm",
-								"flex items-center justify-center",
-								"active:scale-[0.96] transition-transform duration-150",
-								copied
-									? "ring-[rgba(0,0,255,0.25)] shadow-[0_10px_24px_rgba(0,0,255,0.12)]"
-									: "",
+									"shrink-0 w-[36px] h-[36px] rounded-[18px]",
+									"bg-white/85 backdrop-blur-md",
+									"ring-1 ring-black/10 shadow-sm",
+									"flex items-center justify-center",
+									"active:scale-[0.96] transition-transform duration-150",
+									copied
+										? "ring-[rgba(0,0,255,0.25)] shadow-[0_10px_24px_rgba(0,0,255,0.12)]"
+										: "",
 								].join(" ")}
 								aria-label="Copy payment link"
 								title={copied ? "Copied" : "Copy"}
 							>
-								{/* icon 容器：严格几何居中 */}
 								<span className="relative w-5 h-5 leading-none">
-								
-								{/* Copy */}
-								<span
-									className={[
-									"absolute inset-0 flex items-center justify-center leading-none",
-									"transition-all duration-200 ease-out",
-									copied ? "opacity-0 scale-75" : "opacity-100 scale-100",
-									].join(" ")}
-									aria-hidden={copied}
-								>
-									<Copy className="w-5 h-5 text-slate-700 leading-none" />
-								</span>
-
-								{/* Check */}
-								<span
-									className={[
-									"absolute inset-0 flex items-center justify-center leading-none",
-									"transition-all duration-200 ease-out",
-									copied ? "opacity-100 scale-100" : "opacity-0 scale-75",
-									].join(" ")}
-									aria-hidden={!copied}
-								>
-									<Check className="w-5 h-5 text-[rgb(0_0_255)] leading-none" />
-								</span>
+									<span
+										className={[
+											"absolute inset-0 flex items-center justify-center leading-none",
+											"transition-all duration-200 ease-out",
+											copied ? "opacity-0 scale-75" : "opacity-100 scale-100",
+										].join(" ")}
+										aria-hidden={copied}
+									>
+										<Copy className="w-5 h-5 text-slate-700 leading-none" />
+									</span>
+									<span
+										className={[
+											"absolute inset-0 flex items-center justify-center leading-none",
+											"transition-all duration-200 ease-out",
+											copied ? "opacity-100 scale-100" : "opacity-0 scale-75",
+										].join(" ")}
+										aria-hidden={!copied}
+									>
+										<Check className="w-5 h-5 text-[rgb(0_0_255)] leading-none" />
+									</span>
 								</span>
 							</button>
-							</div>
-
-						{/* <div className="mt-4 text-center text-[12px] font-semibold text-slate-400">
-							Opens in browser or Beamio app
-						</div> */}
 						</div>
-						{/* Actions */}
+						</div>
+						)}
+
+						{/* Actions：仅 URL 模式显示 Print / Share */}
+						{!isData && (
 						<div className="mt-10 flex items-center justify-center gap-16">
-						<button type="button" onClick={onPrint} className="group flex flex-col items-center">
-							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
-							<Printer className="h-7 w-7 text-slate-600" />
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-600">Print</div>
-						</button>
-
-					
-
-						<button type="button" onClick={onShare} className="group flex flex-col items-center">
-							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
-							<Share2 className="h-7 w-7 text-slate-600" />
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-600">Share</div>
-						</button>
+							<button type="button" onClick={onPrint} className="group flex flex-col items-center">
+								<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
+									<Printer className="h-7 w-7 text-slate-600" />
+								</div>
+								<div className="mt-3 text-[18px] font-semibold text-slate-600">Print</div>
+							</button>
+							<button type="button" onClick={onShare} className="group flex flex-col items-center">
+								<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
+									<Share2 className="h-7 w-7 text-slate-600" />
+								</div>
+								<div className="mt-3 text-[18px] font-semibold text-slate-600">Share</div>
+							</button>
 						</div>
+						)}
 
 					</div>
 					</div>

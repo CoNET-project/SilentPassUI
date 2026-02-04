@@ -26,6 +26,11 @@ import HistoryAll from '@/pages/History/components/HistoryAll'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import Market from "@/pages/Vouchers/Market"
 import VouchersExample from "@/pages/Vouchers/example/index"
+import Express from "@/pages/Vouchers/example/express"
+
+
+
+
 global.Buffer = require("buffer").Buffer
 
 const beamioConetContract = {
@@ -681,6 +686,7 @@ function AppShell() {
 				<Route path="/myWallet" element={<MyWallet />} />
 				<Route path="/HistoryAll" element={<HistoryAll />} />
 				<Route path="/vouchers-example" element={<VouchersExample />} />
+				<Route path="/express" element={<Express />} />
 				</Routes>
 			</div>
 

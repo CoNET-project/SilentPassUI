@@ -246,6 +246,10 @@ export default function Market() {
       navigate("/vouchers-example")
       return
     }
+	if (item.id === 'm9' || item.name === "Spotify") {
+		navigate("/express")
+		return
+	}
     if (item.id === "m1" || item.name === "CCSA Membership") {
       setShowFooter(false)
 	  if (isMember) {

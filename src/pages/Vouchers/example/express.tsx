@@ -22,6 +22,7 @@ import {
   CreditCard,
   Check
 } from 'lucide-react';
+import { useDaemonContext } from '@/providers/DaemonProvider';
 
 // 模拟数据
 const INITIAL_EOA_BALANCE = 5.72;
@@ -32,7 +33,17 @@ const INITIAL_AA_BALANCE = 42.30;
 const EOA_ADDRESS = "0x71C...9A21";
 const SA_ADDRESS = "0x34F...B702";
 
-export default function App() {
+export default function WalletExample() {
+  const { setShowFooter } = useDaemonContext();
+
+  // 隐藏全局 footer（与 BeamioExample 一致）
+  useEffect(() => {
+    setShowFooter(false);
+    return () => {
+      setShowFooter(true);
+    };
+  }, [setShowFooter]);
+
   // 状态管理
   const [hasSmartAccount, setHasSmartAccount] = useState(false); 
   const [activeSlide, setActiveSlide] = useState(0); // 0: EOA, 1: Smart Account

@@ -20,7 +20,7 @@ import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import Security from './Security'
 
-const version = 'Version 0.167'
+const version = 'Version 0.17.1'
 
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`

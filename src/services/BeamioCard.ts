@@ -7,45 +7,64 @@ import { searchUsername} from "./beamio"
 type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
 
 
+
+/**
+ * 
+ * 	const now = BigInt(Math.floor(Date.now() / 1000))
+	const validAfter = now - BigInt(60)
+	const validBefore = now + BigInt(60)   
+ */
+const BeamioUserCardGatewayAddress = '0x4637C267f5096C11A658cf0b0Dcdb8a89ce2F7EB'
+const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
-    userPrivateKey: string,
-    pointsHuman: string,
-    cardAddress: string,
-) => {
-	const BeamioUserCardGatewayAddress = '0x5b24729E66f13BaB19F763f7aE7A35C881D3d858'
+	userPrivateKey: string,
+	pointsHuman: string,
+	cardAddress: string
+  ) => {
 	const signer = new ethers.Wallet(userPrivateKey)
-     // 用本机时间生成窗口（注意：链上用 block.timestamp 校验；建议留点容错）
-	const now = Math.floor(Date.now() / 1000);
-	const validAfter = BigInt(now);                 // 立即生效
-	const validBefore = BigInt(now + 3600);   // 3分钟后过期
-
-	// bytes32 nonce：强烈建议每次唯一
-	const nonce = ethers.hexlify(ethers.randomBytes(32));
-	const tokenID = 0
-	const maxAmount = ethers.parseUnits(pointsHuman, 6); // => 1000000n
-
-	// 关键：要和 Solidity abi.encode(...) 一致（这里用 solidityPackedKeccak256）
-	// 对应 abi.encode("OpenTransfer", gateway, card, fromEOA, id, maxAmount, validAfter, validBefore, nonce)
-	// 注意 string "OpenTransfer" 在 packed 里用 "string"
-	const digest = ethers.solidityPackedKeccak256(
-		["string", "address", "address", "address", "uint256", "uint256", "uint256", "uint256", "bytes32"],
-		["OpenTransfer", BeamioUserCardGatewayAddress, cardAddress, signer.address, tokenID, 1, validAfter, validBefore, nonce]
-	);
-
-	// 合约端用了 toEthSignedMessageHash，所以这里用 signMessage(bytes)（EIP-191）
-	const signature = await signer.signMessage(ethers.getBytes(digest));
-
-	return {
-		fromEOA: signer.address,
-		id: tokenID.toString(),
-		maxAmount: maxAmount.toString(),
-		validAfter: validAfter.toString(),
-		validBefore: validBefore.toString(),
+  
+	const now = Math.floor(Date.now() / 1000)
+	const validAfter = BigInt(now - 60)          // 给 30s 容错
+	const validBefore = BigInt(now + 360)        // 3 分钟
+  
+	const nonce = ethers.hexlify(ethers.randomBytes(32)) as `0x${string}`
+  
+	const tokenID = 0n // 这里必须等于合约的 POINTS_ID（你现在用 0，确认一下确实是 0）
+	const maxAmount = ethers.parseUnits(pointsHuman, 6)
+  
+	// 1) 对齐 Solidity: keccak256(abi.encode(...))
+	const encoded = ethers.AbiCoder.defaultAbiCoder().encode(
+	  ["string","address","address","uint256","address","uint256","uint256","uint256","uint256","bytes32"],
+	  [
+		"OpenTransfer",
+		BeamioUserCardGatewayAddress,
+		cardAddress,
+		chainId8453,
+		signer.address,
+		tokenID,
+		maxAmount,
+		validAfter,
+		validBefore,
 		nonce,
-		signature,
-		digest,
-	};
-}
+	  ]
+	)
+  
+	const hash = ethers.keccak256(encoded)
+  
+	// 2) 对齐 Solidity: toEthSignedMessageHash(hash) + recover
+	const signature = await signer.signMessage(ethers.getBytes(hash))
+  
+	return {
+	  fromEOA: signer.address,
+	  id: tokenID.toString(),
+	  maxAmount: maxAmount.toString(),
+	  validAfter: validAfter.toString(),
+	  validBefore: validBefore.toString(),
+	  nonce,
+	  signature,
+	  digest: hash,
+	}
+  }
 
 export const USDC2Token = async (
     userPrivateKey: string,

@@ -130,7 +130,7 @@ import {
 	},
 
 	BeamioCardCCSA: {
-		address: '0xaf98059ef326cab38cba85d2a83c930466c9baf2',
+		address: '0x71e36b58fc9a3fecdff5a40d6d44a47d6c3b973e',
 		network: 'Base',
 		abi: cardAbi
 	},

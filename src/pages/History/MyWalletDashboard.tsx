@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react"
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { createPortal } from 'react-dom';
 import { ethers } from "ethers"
@@ -19,8 +19,11 @@ import {
   Loader,
   CalendarCheck,
   Banknote,
-  HelpCircle,Sparkles,
-  Zap
+  HelpCircle,
+  Sparkles,
+  Zap,
+  Plus,
+  Copy,
 } from "lucide-react"
 import AccountBeo from "./AccountBea"
 import { fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived, calcFeeFromNumber } from "@/services/currency"
@@ -198,11 +201,129 @@ export function MyWalletDashboard() {
 	const [loading, setLoading] = useState(false)
 	const [allItems, setAllItems] = useState<TransferHistork[]>([])
 	const [reflash, setReflash] = useState(false)
+	const [activeSlide, setActiveSlide] = useState(0) // 0: USDC on Base, 1: Smart Account
+	const [touchStart, setTouchStart] = useState<number | null>(null)
+	const [touchEnd, setTouchEnd] = useState<number | null>(null)
+	const [mouseStart, setMouseStart] = useState<number | null>(null)
+	const [mouseEnd, setMouseEnd] = useState<number | null>(null)
+	const [isDragging, setIsDragging] = useState(false)
+	const [wheelDelta, setWheelDelta] = useState(0)
+	const carouselRef = useRef<HTMLDivElement>(null)
 	const [settingsOpen, setSettingsOpen] = useState<''|'Pay'|'BeamioPayMe'|'Cashcode'|'BankingBridge'|'RedeemScreen'>('')
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
 			''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 
 	const [itemTx, setItemtx] = useState<TransferHistork>()
+
+	// 触摸滑动处理
+	const minSwipeDistance = 50
+
+	const onTouchStart = (e: React.TouchEvent) => {
+		setTouchEnd(null)
+		setTouchStart(e.targetTouches[0].clientX)
+	}
+
+	const onTouchMove = (e: React.TouchEvent) => {
+		setTouchEnd(e.targetTouches[0].clientX)
+	}
+
+	const onTouchEnd = () => {
+		if (!touchStart || !touchEnd) return
+		const distance = touchStart - touchEnd
+		const isLeftSwipe = distance > minSwipeDistance
+		const isRightSwipe = distance < -minSwipeDistance
+
+		if (isLeftSwipe && activeSlide < 1) {
+			setActiveSlide(1)
+		}
+		if (isRightSwipe && activeSlide > 0) {
+			setActiveSlide(0)
+		}
+	}
+
+	// 鼠标拖动处理
+	const onMouseDown = (e: React.MouseEvent) => {
+		setIsDragging(true)
+		setMouseEnd(null)
+		setMouseStart(e.clientX)
+	}
+
+	const onMouseMove = (e: React.MouseEvent) => {
+		if (!isDragging) return
+		setMouseEnd(e.clientX)
+	}
+
+	const onMouseUp = () => {
+		if (!isDragging) return
+		if (!mouseStart || !mouseEnd) {
+			setIsDragging(false)
+			return
+		}
+		const distance = mouseStart - mouseEnd
+		const isLeftDrag = distance > minSwipeDistance
+		const isRightDrag = distance < -minSwipeDistance
+
+		if (isLeftDrag && activeSlide < 1) {
+			setActiveSlide(1)
+		}
+		if (isRightDrag && activeSlide > 0) {
+			setActiveSlide(0)
+		}
+		setIsDragging(false)
+		setMouseStart(null)
+		setMouseEnd(null)
+	}
+
+	const onMouseLeave = () => {
+		if (isDragging) {
+			setIsDragging(false)
+			setMouseStart(null)
+			setMouseEnd(null)
+		}
+	}
+
+	// Trackpad 水平滑动处理 - 使用原生事件监听器确保正确阻止默认行为
+	useEffect(() => {
+		const carousel = carouselRef.current
+		if (!carousel) return
+
+		const handleWheel = (e: WheelEvent) => {
+			// 当鼠标在卡片区域时，阻止所有滚动事件的默认行为
+			e.preventDefault()
+			e.stopPropagation()
+			e.stopImmediatePropagation()
+			
+			// 只处理水平滚动（deltaX）
+			if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+				setWheelDelta((prevDelta) => {
+					const newDelta = prevDelta + e.deltaX
+
+					// 当累积滚动量达到阈值时切换卡片
+					if (Math.abs(newDelta) >= minSwipeDistance) {
+						setActiveSlide((prevSlide) => {
+							if (newDelta > 0 && prevSlide < 1) {
+								// 向右滚动（deltaX > 0）切换到下一个
+								return 1
+							} else if (newDelta < 0 && prevSlide > 0) {
+								// 向左滚动（deltaX < 0）切换到上一个
+								return 0
+							}
+							return prevSlide
+						})
+						return 0
+					}
+					return newDelta
+				})
+			}
+		}
+
+		// 使用 { passive: false } 和 capture: true 确保在捕获阶段就阻止事件
+		carousel.addEventListener('wheel', handleWheel, { passive: false, capture: true })
+
+		return () => {
+			carousel.removeEventListener('wheel', handleWheel, { capture: true } as EventListenerOptions)
+		}
+	}, [])
 
 
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
@@ -555,256 +676,354 @@ export function MyWalletDashboard() {
         
       </div>
 
-		{/* Balance card */}
-		<div className="px-5 mt-4">
-		<div
-			className="
-			relative
-			min-h-[14rem]
-			rounded-[26px]
-			bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b]
-			p-4
-			shadow-lg
-			mb-4
-			overflow-hidden
-			"
-		>
-			{/* badges */}
-			<div className="flex items-center justify-between">
-			{/* Left */}
-			<div className="flex items-center gap-1 text-white">
+		{/* 钱包卡片轮播区 */}
+		<div className="relative px-6 mt-4 mb-6">
+			<div
+				ref={carouselRef}
+				className="flex gap-4 overflow-x-hidden snap-x snap-mandatory cursor-grab active:cursor-grabbing select-none"
+				onTouchStart={onTouchStart}
+				onTouchMove={onTouchMove}
+				onTouchEnd={onTouchEnd}
+				onMouseDown={onMouseDown}
+				onMouseMove={onMouseMove}
+				onMouseUp={onMouseUp}
+				onMouseLeave={onMouseLeave}
+				onMouseEnter={(e) => {
+					// 鼠标进入时，阻止事件冒泡
+					e.stopPropagation()
+				}}
+				onWheel={(e) => {
+					// React 合成事件层面也阻止默认行为
+					e.preventDefault()
+					e.stopPropagation()
+				}}
+			>
+				{/* Card 1: USDC on Base */}
+				<div
+					className={`w-full flex-shrink-0 transition-transform duration-500 ease-out ${activeSlide === 1 ? '-translate-x-[105%]' : 'translate-x-0'}`}
+					onClick={() => setActiveSlide(0)}
+				>
+					<div
+						className="
+						relative
+						w-full
+						h-[15rem]
+						rounded-3xl
+						bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b]
+						p-6
+						shadow-xl
+						overflow-hidden
+						text-white
+						flex flex-col justify-between
+						"
+					>
+						<div className="absolute -top-10 -right-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl pointer-events-none" aria-hidden />
+						
+						<div className="flex justify-between items-start z-10">
+							<div className="flex items-center gap-2">
+								<button
+									type="button"
+									className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
+									onClick={(e) => {
+										e.stopPropagation()
+										reflashProcess()
+									}}
+									disabled={reflash}
+									aria-label="Refresh"
+								>
+									<img
+										src={base_icon}
+										alt="Base"
+										className={["w-5 h-5 object-contain", reflash ? "animate-spin opacity-80" : ""].join(" ")}
+									/>
+								</button>
+								<span className="font-medium">USDC on Base</span>
+							</div>
+							<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
+								<Sparkles size={10} className="text-amber-500" strokeWidth={2.2} />
+								Gas Sponsored
+							</div>
+						</div>
+
+						<div className="text-center z-10 mt-4">
+							<div className="text-5xl font-bold tracking-tight tabular-nums">
+								{formatWithThousands(usdcbalance)} <span className="text-2xl font-normal opacity-80">USDC</span>
+							</div>
+							<div className="text-white/70 mt-1 text-sm tabular-nums">
+								≈ {fiatPrefix("CAD")} {formatWithThousands(balanceFiat)}
+							</div>
+						</div>
+
+						{/* 地址显示 - 右下角 */}
+						{myAddress && (
+							<div className="flex justify-end mt-auto z-10">
+								<div className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors">
+									{`${myAddress.slice(0, 6)}...${myAddress.slice(-4)}`}
+									<Copy size={10} />
+								</div>
+							</div>
+						)}
+					</div>
+				</div>
+
+				{/* Card 2: Smart Account 钱包卡片 */}
+				<div
+					className={`absolute top-0 left-6 right-6 transition-transform duration-500 ease-out ${activeSlide === 1 ? 'translate-x-0' : 'translate-x-[105%]'}`}
+					onClick={() => setActiveSlide(1)}
+				>
+					{!profiles?.[0]?.aaAccount ? (
+						// 未激活状态
+						<button
+							type="button"
+							onClick={() => navigate("/express")}
+							className="relative w-full h-[15rem] rounded-3xl p-6 text-white shadow-lg bg-gradient-to-br from-slate-800 to-slate-900 flex flex-col justify-center items-center cursor-pointer overflow-hidden border-2 border-dashed border-slate-600 group hover:border-purple-400 transition-colors"
+						>
+							<div className="absolute inset-0 bg-purple-600/10 group-hover:bg-purple-600/20 transition-colors pointer-events-none" aria-hidden />
+							<div className="z-10 bg-white/10 p-4 rounded-full mb-3 backdrop-blur-sm group-hover:scale-110 transition-transform">
+								<Plus size={32} className="text-purple-300" />
+							</div>
+							<h3 className="text-xl font-bold z-10">Create Smart Account</h3>
+							<p className="text-slate-400 text-sm mt-2 z-10 text-center px-8">Unlock gas-free payments & exclusive vouchers</p>
+						</button>
+					) : (
+						// 已激活状态
+						<div className="relative w-full h-[15rem] rounded-3xl p-6 text-white shadow-xl bg-gradient-to-br from-purple-600 via-violet-500 to-fuchsia-500 flex flex-col justify-between overflow-hidden">
+							<div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl pointer-events-none" aria-hidden />
+							
+							<div className="flex justify-between items-start z-10">
+								<div className="flex items-center gap-2">
+									<div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+										<div className="w-4 h-1 bg-white rounded-full"></div>
+									</div>
+									<span className="font-medium">Smart Account</span>
+								</div>
+								<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
+									<Zap size={10} className="fill-yellow-300 text-yellow-300" />
+									Gas Sponsored
+								</div>
+							</div>
+
+							<div className="text-center z-10 mt-4">
+								<div className="text-5xl font-bold tracking-tight tabular-nums">
+									{formatWithThousands(usdcbalance)} <span className="text-2xl font-normal opacity-80">USDC</span>
+								</div>
+								<div className="text-white/70 mt-1 text-sm tabular-nums">
+									≈ {fiatPrefix("CAD")} {formatWithThousands(balanceFiat)}
+								</div>
+							</div>
+
+							{/* 地址显示 - 右下角 */}
+							{profiles?.[0]?.aaAccount && (
+								<div className="flex justify-end mt-auto z-10">
+									<div className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors">
+										{`${profiles[0].aaAccount.slice(0, 6)}...${profiles[0].aaAccount.slice(-4)}`}
+										<Copy size={10} />
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			</div>
+
+			{/* 分页指示器 */}
+			<div className="flex justify-center gap-2 mt-6">
 				<button
-				type="button"
-				className="
-					inline-flex items-center justify-center
-					w-7 h-7
-					rounded-full
-					border border-white/60
-					bg-transparent
-					transition
-					hover:bg-white/10
-					active:scale-[0.95]
-					focus:outline-none
-					focus-visible:ring-2
-					focus-visible:ring-white/40
-					disabled:opacity-60
-					disabled:active:scale-100
-				"
-				onClick={reflashProcess}
-				disabled={reflash}
-				aria-label="Refresh"
-				>
-				<img
-					src={base_icon}
-					alt="Base"
-					className={[
-					"w-5 h-5 object-contain",
-					reflash ? "animate-spin opacity-80" : ""
-					].join(" ")}
+					type="button"
+					onClick={() => setActiveSlide(0)}
+					className={`h-2 rounded-full transition-all duration-300 ${activeSlide === 0 ? 'w-8 bg-blue-600' : 'w-2 bg-slate-300'}`}
+					aria-label="USDC on Base"
 				/>
-				</button>
-
-				<span className="text-[15px] font-medium tracking-wide">
-				USDC on Base
-				</span>
+				<button
+					type="button"
+					onClick={() => setActiveSlide(1)}
+					className={`h-2 rounded-full transition-all duration-300 ${activeSlide === 1 ? 'w-8 bg-purple-600' : 'w-2 bg-slate-300'}`}
+					aria-label="Smart Account"
+				/>
 			</div>
-
-			{/* Right — Gas sponsored */}
-			<div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 backdrop-blur-sm">
-				<Sparkles className="w-4 h-4 text-amber-500" strokeWidth={2.2} />
-				<span className="text-[11px] font-medium text-white">
-				Gas sponsored
-				</span>
-			</div>
-			</div>
-
-			{/* centered balance (leave room for top badges) */}
-			<div className="absolute inset-x-0 inset-y-0 flex items-center justify-center text-center pointer-events-none pt-10">
-			<div>
-				<div className="flex items-end justify-center gap-2">
-				<div className="text-[44px] leading-[44px] font-extrabold tracking-[-0.02em] text-white tabular-nums">
-					{formatWithThousands(usdcbalance)}
-				</div>
-				<div className="pb-[6px] text-[14px] font-semibold text-white/85">
-					USDC
-				</div>
-				</div>
-
-				<div className="mt-2 text-[13px] text-white/80 tabular-nums">
-				≈ {fiatPrefix("CAD")} {formatWithThousands(balanceFiat)}
-				</div>
-			</div>
-			</div>
-
-			{/* soft glow */}
-			<div className="pointer-events-none absolute -bottom-24 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-white/18 blur-3xl" />
-		</div>
 		</div>
 
-      {/* Actions */}
-      <div className="px-8 mt-4">
-        <div className="flex items-start justify-between">
-          <MiniAction
-            label="Send"
-            icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-            onClick={() => {
-				setSettingsOpen('Pay')
-				setShowFooter(false)
-				
-			}}
-          />
-          <MiniAction
-            label="Request"
-            icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-            onClick={() => {
-				setSettingsOpen('BeamioPayMe')
-				setShowFooter(false)
-			}}
-          />
-          <MiniAction
-            label="Cashcode"
-            icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-            onClick={() => {
-				setSettingsOpen('Cashcode')
-				setShowFooter(false)
-			}}
-          />
-          <MiniAction
-            label="Bank"
-            icon={<Landmark className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-            onClick={() => {
-				setSettingsOpen('BankingBridge')
-				setShowFooter(false)
-			}}
-          />
-        </div>
-      </div>
-
-      {/* Lists */}
-      <div className="flex-1 min-h-0 overflow-y-auto mt-4">
-        {/* Active & Pending */}
-        <div className="px-5">
-          <div className="flex items-center gap-2 px-2 mb-4">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#2F78FF]" />
-            <div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-              Active & Pending
-            </div>
-            {loading && <Loader className="w-3.5 h-3.5 text-slate-400 animate-spin" strokeWidth={2.2} />}
-          </div>
-
-          
-            {activePending.length ? (
-				<>
-				<ActivePannel
-					items ={activePending}
-					onOpen={tx => {
-						setItemtx(tx)
-						setShowAlphaHowItWorks('TransactionsItemDetail')
-						setShowFooter(false)
-						
-					}}
-				/>
-			
-              
-			  </>
-            ) : (
-              <div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
-                No active items
-              </div>
-            )}
-          
-        </div>
-
-        {/* History */}
-        <div className="px-5 mt-4">
-          <div className="px-2  flex items-center justify-between">
-            <div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-              History
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate("/HistoryAll")}
-              className="text-[12px] font-semibold text-[#2F78FF] active:opacity-70"
-            >
-              View All
-            </button>
-          </div>
-
-          <div
-            className="
-              mt-3 overflow-hidden
-              rounded-2xl
-              bg-white/85 dark:bg-slate-900/65
-              ring-1 ring-black/5 dark:ring-white/10
-              shadow-[0_10px_24px_rgba(0,0,0,0.08)]
-            "
-          >
-            {history.length ? (
-              history.map(tx => (
-                <Row key={`${tx.mode}-${tx.hash}-${tx.date}`} tx={tx} mode={tx.mode} onOpen={(tx) => {
-					setShowAlphaHowItWorks('TransactionsItemDetail')
-					setItemtx(tx)
-					setShowFooter(false)
-
-				}} />
-              ))
-            ) : (
-              <div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
-                No history yet
-              </div>
-            )}
-          </div>
-
-        </div>
-
-		{showAlphaHowItWorks && createPortal(
-			<AnimatePresence>
+		
+		{/* Tab 内容区域 - 根据 activeSlide 显示对应内容，带淡入淡出动画 */}
+		<AnimatePresence mode="wait">
+			{activeSlide === 0 ? (
+				/** tab1 container */
 				<motion.div
-					key="modal-overlay"
-					className="
-						fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col
-					"
-					initial={{ x: "100%" }}
-					animate={{ x: 0 }}
-					exit={{ x: "100%" }}
-					transition={{ duration: 0.28, ease: "easeOut" }}
-					onTouchMove={(e) => e.stopPropagation()}
+					key="tab1"
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					transition={{ duration: 0.3 }}
 				>
-				{/* 顶部 Header */}
-				<BeamioNavBack
-					title=''
+				{/* Actions */}
+				<div className="px-8 mt-4">
+					<div className="flex items-start justify-between">
+					<MiniAction
+						label="Send"
+						icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+						onClick={() => {
+							setSettingsOpen('Pay')
+							setShowFooter(false)
+							
+						}}
+					/>
+					<MiniAction
+						label="Request"
+						icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+						onClick={() => {
+							setSettingsOpen('BeamioPayMe')
+							setShowFooter(false)
+						}}
+					/>
+					<MiniAction
+						label="Cashcode"
+						icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+						onClick={() => {
+							setSettingsOpen('Cashcode')
+							setShowFooter(false)
+						}}
+					/>
+					<MiniAction
+						label="Bank"
+						icon={<Landmark className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+						onClick={() => {
+							setSettingsOpen('BankingBridge')
+							setShowFooter(false)
+						}}
+					/>
+					</div>
+				</div>
+
+				{/* Lists */}
+				<div className="flex-1 min-h-0 overflow-y-auto mt-4">
+					{/* Active & Pending */}
+					<div className="px-5">
+					<div className="flex items-center gap-2 px-2 mb-4">
+						<span className="h-1.5 w-1.5 rounded-full bg-[#2F78FF]" />
+						<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
+						Active & Pending
+						</div>
+						{loading && <Loader className="w-3.5 h-3.5 text-slate-400 animate-spin" strokeWidth={2.2} />}
+					</div>
+
 					
-					onClose={() => {
-						
-						setShowAlphaHowItWorks('')
-						setShowFooter(true)
-					}}
-					onMore={() => {
-
-					}}
-				/>
-
-					{/* 内容区域 */}
-					<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-						
-						
-
-						{
-							showAlphaHowItWorks === 'TransactionsItemDetail' && itemTx &&
-							<TransactionsItemDetail
-								localMode='pay' tx={itemTx}
+						{activePending.length ? (
+							<>
+							<ActivePannel
+								items ={activePending}
+								onOpen={tx => {
+									setItemtx(tx)
+									setShowAlphaHowItWorks('TransactionsItemDetail')
+									setShowFooter(false)
+									
+								}}
 							/>
-						}
+						
+						
+						</>
+						) : (
+						<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
+							No active items
+						</div>
+						)}
+					
+					</div>
+
+					{/* History */}
+					<div className="px-5 mt-4">
+					<div className="px-2  flex items-center justify-between">
+						<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
+						History
+						</div>
+						<button
+						type="button"
+						onClick={() => navigate("/HistoryAll")}
+						className="text-[12px] font-semibold text-[#2F78FF] active:opacity-70"
+						>
+						View All
+						</button>
+					</div>
+
+					<div
+						className="
+						mt-3 overflow-hidden
+						rounded-2xl
+						bg-white/85 dark:bg-slate-900/65
+						ring-1 ring-black/5 dark:ring-white/10
+						shadow-[0_10px_24px_rgba(0,0,0,0.08)]
+						"
+					>
+						{history.length ? (
+						history.map(tx => (
+							<Row key={`${tx.mode}-${tx.hash}-${tx.date}`} tx={tx} mode={tx.mode} onOpen={(tx) => {
+								setShowAlphaHowItWorks('TransactionsItemDetail')
+								setItemtx(tx)
+								setShowFooter(false)
+
+							}} />
+						))
+						) : (
+						<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
+							No history yet
+						</div>
+						)}
+					</div>
 
 					</div>
-				</motion.div>
-			</AnimatePresence>
-			, document.body
-		)}
 
+				</div>
+			</motion.div>
+			) : (
+				/** tab2 container */
+				<motion.div
+					key="tab2"
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					transition={{ duration: 0.3 }}
+				>
+				{/* Tab 2 内容 - Smart Account 相关内容 */}
+				<div className="px-8 mt-4">
+					<div className="flex items-start justify-between">
+						<MiniAction
+							label="Transfer"
+							icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+							onClick={() => {
+								// TODO: 实现 Smart Account 转账功能
+							}}
+						/>
+						<MiniAction
+							label="Pay"
+							icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+							onClick={() => {
+								// TODO: 实现 Smart Account 支付功能
+							}}
+						/>
+						<MiniAction
+							label="Vouchers"
+							icon={<QrCode className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+							onClick={() => {
+								navigate("/vouchers-example")
+							}}
+						/>
+					</div>
+				</div>
 
+				{/* Smart Account 相关内容区域 */}
+				<div className="flex-1 min-h-0 overflow-y-auto mt-4">
+					<div className="px-5">
+						<div className="px-4 py-8 text-center">
+							<div className="text-slate-400 text-sm">
+								Smart Account content coming soon
+							</div>
+						</div>
+					</div>
+				</div>
+			</motion.div>
+			)}
+		</AnimatePresence>
 
-		{/* bottom 向上弹出窗口: 避开 footer + iOS 安全区 */}
+	  {/* bottom 向上弹出窗口: 避开 footer + iOS 安全区 */}
 		<div
 			className="
 			h-[96px]
@@ -938,7 +1157,54 @@ export function MyWalletDashboard() {
 					</div>
 				</div>
 			</div>
-      </div>
+
+	  {showAlphaHowItWorks && createPortal(
+			<AnimatePresence>
+				<motion.div
+					key="modal-overlay"
+					className="
+						fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col
+					"
+					initial={{ x: "100%" }}
+					animate={{ x: 0 }}
+					exit={{ x: "100%" }}
+					transition={{ duration: 0.28, ease: "easeOut" }}
+					onTouchMove={(e) => e.stopPropagation()}
+				>
+				{/* 顶部 Header */}
+				<BeamioNavBack
+					title=''
+					
+					onClose={() => {
+						
+						setShowAlphaHowItWorks('')
+						setShowFooter(true)
+					}}
+					onMore={() => {
+
+					}}
+				/>
+
+					{/* 内容区域 */}
+					<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+						
+						
+
+						{
+							showAlphaHowItWorks === 'TransactionsItemDetail' && itemTx &&
+							<TransactionsItemDetail
+								localMode='pay' tx={itemTx}
+							/>
+						}
+
+					</div>
+				</motion.div>
+			</AnimatePresence>
+			, document.body
+		)}
+
+
+
     </div>
   )
 }

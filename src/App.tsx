@@ -27,8 +27,9 @@ import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import Market from "@/pages/Vouchers/Market"
 import VouchersExample from "@/pages/Vouchers/example/index"
 import Express from "@/pages/Vouchers/example/express"
-
-
+import ExampleExpress from "@/pages/Vouchers/example/exampleExpress"
+import ExampleExpress2 from "@/pages/Vouchers/example/ExampleExpress2"
+import TenKeyInput from "@/pages/Pay/components/TenKeyInput"
 
 
 global.Buffer = require("buffer").Buffer
@@ -687,6 +688,8 @@ function AppShell() {
 				<Route path="/HistoryAll" element={<HistoryAll />} />
 				<Route path="/vouchers-example" element={<VouchersExample />} />
 				<Route path="/express" element={<Express />} />
+				<Route path="/example-express" element={<ExampleExpress2 />} />
+				<Route path="/ten-key-input" element={<TenKeyInput />} />
 				</Routes>
 			</div>
 

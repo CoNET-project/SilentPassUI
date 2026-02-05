@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { createPortal } from 'react-dom';
 import { ethers } from "ethers"
-import { beamioConet } from "@/utils/constants"
+import { beamioConet, baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import usdc_abi from '@/services/ABI/usdc_abi.json'
 import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import { getBalanceProcess, formatWithThousands, aesGcmDecrypt } from "@/services/beamio"
@@ -201,6 +202,7 @@ export function MyWalletDashboard() {
 	const [loading, setLoading] = useState(false)
 	const [allItems, setAllItems] = useState<TransferHistork[]>([])
 	const [reflash, setReflash] = useState(false)
+	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
 	const [activeSlide, setActiveSlide] = useState(0) // 0: USDC on Base, 1: Smart Account
 	const [touchStart, setTouchStart] = useState<number | null>(null)
 	const [touchEnd, setTouchEnd] = useState<number | null>(null)
@@ -616,10 +618,28 @@ export function MyWalletDashboard() {
 		}
 	}, [profiles, myAddress, setMyAddress])
 
+	// 获取 AA 账号的 USDC balance
+	const loadAaAccountBalance = useCallback(async () => {
+		if (!profiles?.[0]?.aaAccount) {
+			setAaAccountUsdcBalance('0')
+			return
+		}
+		try {
+			const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
+			const balanceRaw = await usdcContract.balanceOf(profiles[0].aaAccount)
+			const balance = ethers.formatUnits(balanceRaw, 6)
+			setAaAccountUsdcBalance(balance)
+		} catch (error: any) {
+			console.error('Failed to load AA account USDC balance:', error)
+			setAaAccountUsdcBalance('0')
+		}
+	}, [profiles])
+
 	useEffect(() => {
 		if (!myAddress && profiles?.[0]?.keyID) setMyAddress(profiles[0].keyID)
 		if (myAddress) getBalanceProcess(myAddress, setUsdcbalance, setUsdcToUSD)
-	}, [myAddress, profiles, setMyAddress, setUsdcbalance, setUsdcToUSD])
+		loadAaAccountBalance()
+	}, [myAddress, profiles, setMyAddress, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance])
 
 	useEffect(() => {
 		load()
@@ -653,6 +673,7 @@ export function MyWalletDashboard() {
 		setReflash(true)
 
 		await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+		await loadAaAccountBalance()
 		setReflash(false)
 	}
 
@@ -754,9 +775,9 @@ export function MyWalletDashboard() {
 							</div>
 						</div>
 
-						{/* 地址显示 - 右下角 */}
+						{/* 地址显示 - 左下角 */}
 						{myAddress && (
-							<div className="flex justify-end mt-auto z-10">
+							<div className="flex justify-start mt-auto z-10">
 								<div className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors">
 									{`${myAddress.slice(0, 6)}...${myAddress.slice(-4)}`}
 									<Copy size={10} />
@@ -792,9 +813,22 @@ export function MyWalletDashboard() {
 							
 							<div className="flex justify-between items-start z-10">
 								<div className="flex items-center gap-2">
-									<div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
-										<div className="w-4 h-1 bg-white rounded-full"></div>
-									</div>
+									<button
+										type="button"
+										className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
+										onClick={(e) => {
+											e.stopPropagation()
+											reflashProcess()
+										}}
+										disabled={reflash}
+										aria-label="Refresh"
+									>
+										<img
+											src={base_icon}
+											alt="Base"
+											className={["w-5 h-5 object-contain", reflash ? "animate-spin opacity-80" : ""].join(" ")}
+										/>
+									</button>
 									<span className="font-medium">Smart Account</span>
 								</div>
 								<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
@@ -805,16 +839,16 @@ export function MyWalletDashboard() {
 
 							<div className="text-center z-10 mt-4">
 								<div className="text-5xl font-bold tracking-tight tabular-nums">
-									{formatWithThousands(usdcbalance)} <span className="text-2xl font-normal opacity-80">USDC</span>
+									{formatWithThousands(aaAccountUsdcBalance)} <span className="text-2xl font-normal opacity-80">USDC</span>
 								</div>
 								<div className="text-white/70 mt-1 text-sm tabular-nums">
-									≈ {fiatPrefix("CAD")} {formatWithThousands(balanceFiat)}
+									≈ {fiatPrefix("CAD")} {formatWithThousands(Number(aaAccountUsdcBalance) * fxRateUSDCToCurrency("CAD"))}
 								</div>
 							</div>
 
-							{/* 地址显示 - 右下角 */}
+							{/* 地址显示 - 左下角 */}
 							{profiles?.[0]?.aaAccount && (
-								<div className="flex justify-end mt-auto z-10">
+								<div className="flex justify-start mt-auto z-10">
 									<div className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors">
 										{`${profiles[0].aaAccount.slice(0, 6)}...${profiles[0].aaAccount.slice(-4)}`}
 										<Copy size={10} />
@@ -1003,7 +1037,7 @@ export function MyWalletDashboard() {
 							label="Vouchers"
 							icon={<QrCode className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 							onClick={() => {
-								navigate("/vouchers-example")
+								navigate("/ten-key-input")
 							}}
 						/>
 					</div>

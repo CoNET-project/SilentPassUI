@@ -3,6 +3,7 @@ import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC,conetDepinProvider } from "../utils/constants";
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
+import usdc_abi from './ABI/usdc_abi.json'
 
 type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
 
@@ -256,7 +257,12 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
         const [pointsBalance, nfts] = await cardContract.getOwnership(profile.aaAccount);
 		const currency =  getICurrency(await cardContract.currency())
 
-        // 3. 格式化数据并返回
+        // 3. 获取 aaAccount 的 USDC balance
+        const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint);
+        const usdcBalanceRaw = await usdcContract.balanceOf(profile.aaAccount);
+        const usdcBalance = ethers.formatUnits(usdcBalanceRaw, 6);
+
+        // 4. 格式化数据并返回
         const result = {
             address: profile.aaAccount,
             cardAddress: cardAddress,
@@ -272,7 +278,8 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
                 expiry: nft.expiry === 0n ? "Never" : new Date(Number(nft.expiry) * 1000).toLocaleString(),
                 isExpired: nft.isExpired
             })),
-			cardCurrency: currency
+			cardCurrency: currency,
+			usdcBalance: usdcBalance
         }
 
         // 打印结果

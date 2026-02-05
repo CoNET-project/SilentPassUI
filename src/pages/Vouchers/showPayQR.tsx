@@ -2,6 +2,8 @@ import { QRCodeCanvas } from "qrcode.react"
 import bIcon from "@/components/assets/logo512.png"
 import { Copy, Check, Printer, Share2, Clock } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { ethers } from "ethers"
+import { formatAmount } from "@/services/currency"
 
 const displayName = (item: beamio | null) => {
 	if (!item) return ""
@@ -31,27 +33,62 @@ export default function ShowPayQR({
 	successUrl,
 	beamio,
 	qrValue,
+	amount,
+	currency,
+	hideActions,
+	hideUrl,
 }: {
 	successUrl: string
 	beamio: beamio | null
 	/** 当为卡 QR（ERC3009 离线签名数据）时传入，QR 与复制内容以此为准 */
 	qrValue?: string
+	/** 显示的金额值 */
+	amount?: string
+	/** 货币符号 */
+	currency?: string
+	/** 是否隐藏 Print 和 Share 按钮 */
+	hideActions?: boolean
+	/** 是否隐藏 URL 显示区域 */
+	hideUrl?: boolean
 }) {
 	const [copied, setCopied] = useState(false)
 	const valueForQR = qrValue ?? successUrl
 	const isData = useMemo(() => isDataMode(valueForQR), [valueForQR])
 
-	// 从 JSON 中解析 validBefore（unix 秒），用于倒计时
-	const validBeforeSec = useMemo(() => {
+	// 从 JSON 中解析 ERC3009 数据
+	const erc3009Data = useMemo(() => {
 		if (!qrValue || !isData) return null
 		try {
-			const parsed = JSON.parse(qrValue) as { validBefore?: string }
-			const v = parsed?.validBefore
-			return v != null ? parseInt(String(v), 10) : null
+			const parsed = JSON.parse(qrValue) as { 
+				validBefore?: string
+				maxAmount?: string
+			}
+			return parsed
 		} catch {
 			return null
 		}
 	}, [qrValue, isData])
+
+	// 从 JSON 中解析 validBefore（unix 秒），用于倒计时
+	const validBeforeSec = useMemo(() => {
+		if (!erc3009Data) return null
+		const v = erc3009Data.validBefore
+		return v != null ? parseInt(String(v), 10) : null
+	}, [erc3009Data])
+
+	// 解析最大可使用金额（maxAmount 是 wei 格式，USDC 使用 6 位小数）
+	const maxUsableAmount = useMemo(() => {
+		if (!erc3009Data?.maxAmount) return null
+		try {
+			// maxAmount 是字符串格式的 wei（6位小数）
+			const amountWei = BigInt(erc3009Data.maxAmount)
+			// 转换为 USDC 金额（除以 10^6）
+			const amountUSDC = Number(ethers.formatUnits(amountWei, 6))
+			return formatAmount(amountUSDC, "USDC")
+		} catch {
+			return null
+		}
+	}, [erc3009Data])
 
 	const [secondsLeft, setSecondsLeft] = useState<number>(() => {
 		if (validBeforeSec == null) return 0
@@ -124,6 +161,12 @@ export default function ShowPayQR({
 							{displayName(beamio)}
 						</div>
 						<div className="mt-1 text-[20px] font-semibold text-slate-500">@{beamio?.accountName}</div>
+						{/* 显示金额 */}
+						{amount && (
+							<div className="mt-3 text-[24px] font-bold text-slate-900">
+								{currency}{amount}
+							</div>
+						)}
 						</div>
 
 						{/* QR Card */}
@@ -179,9 +222,18 @@ export default function ShowPayQR({
 							</div>
 							</div>
 
-						{/* 数据模式：有效期倒计时（3 分钟） */}
+						{/* 数据模式：有效期倒计时和最大可使用金额 */}
 						{isData && validBeforeSec != null && (
-							<div className="mt-6 flex flex-col items-center gap-2">
+							<div className="mt-6 flex flex-col items-center gap-3">
+								{/* 最大可使用金额 */}
+								{maxUsableAmount && (
+									<div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 border border-blue-200">
+										<span className="text-[15px] font-semibold text-blue-700">
+											Max Amount: {maxUsableAmount} USDC
+										</span>
+									</div>
+								)}
+								{/* 有效期倒计时 */}
 								<div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2">
 									<Clock className="h-5 w-5 text-slate-600" />
 									<span className="text-[15px] font-semibold text-slate-700">
@@ -194,7 +246,7 @@ export default function ShowPayQR({
 						)}
 
 						{/* Payment link / 文字内容：仅 URL 模式显示 */}
-						{!isData && (
+						{!isData && !hideUrl && (
 						<div className="mt-10">
 						<div className="rounded-[14px] bg-slate-50 ring-1 ring-black/10 shadow-sm px-4 py-3 flex items-center justify-between gap-4">
 							<div className="min-w-0 flex flex-col justify-center">
@@ -246,7 +298,7 @@ export default function ShowPayQR({
 						)}
 
 						{/* Actions：仅 URL 模式显示 Print / Share */}
-						{!isData && (
+						{!isData && !hideActions && (
 						<div className="mt-10 flex items-center justify-center gap-16">
 							<button type="button" onClick={onPrint} className="group flex flex-col items-center">
 								<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">

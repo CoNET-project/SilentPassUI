@@ -720,6 +720,7 @@ type MyCardAssets = {
 	points: string
 	cardOwner: searchResult | null
 	cardCurrency: ICurrency
+	usdcBalance?: string
 	nfts: {
 		tokenId: string
 		attribute: string

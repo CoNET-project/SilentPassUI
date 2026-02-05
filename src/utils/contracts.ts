@@ -130,19 +130,20 @@ import {
 	},
 
 	BeamioCardCCSA: {
-		address: '0x71e36b58fc9a3fecdff5a40d6d44a47d6c3b973e',
+		address: '0x1Dc8c473fc67358357E90636AE8607229d5e9f92',
 		network: 'Base',
 		abi: cardAbi
 	},
 
+	// Base Mainnet 固定地址，与 config/base-addresses.ts、deployments/BASE_MAINNET_FACTORIES.md 保持一致
 	BeamioAAAcountFactory: {
-		address: '0xF036E570D5811a16A29C072528b7ceBF9933f7BD',
+		address: '0xFD48F7a6bBEb0c0C1ff756C38cA7fE7544239767',
 		network: 'Base',
 		abi: BeamioAAAcountFactoryAbi
 	},
 
 	BeamioCardFactory: {
-		address: '0x05e6a8f53b096f44928670C431F78e1F75E232bA',
+		address: '0x7Ec828BAbA1c58C5021a6E7D29ccDDdB2d8D84bd',
 		network: 'Base',
 		abi: BeamioCardFactoryAbi
 	},

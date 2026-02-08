@@ -5,7 +5,7 @@ import { X, Sparkles, CreditCard, Check, RefreshCw, ChevronRight } from "lucide-
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { formatAmount } from "@/services/currency"
 import { getBalanceProcess, storeSystemData } from "@/services/beamio"
-import { getAAAccount, postBuyCardPoints } from "@/services/BeamioCard"
+import { getAAAccount, postBuyCardPoints, quoteCurrencyAmountInUSDC } from "@/services/BeamioCard"
 import base_ex from "@/components/assets/base-ex.svg"
 import usdcIcon from "@/components/assets/usdc.png"
 import baseIcon from "@/components/assets/base-logo.png"
@@ -181,7 +181,6 @@ export default function PurchaseAccount({
 		setLoading(true)
 	  
 		if (method === "beamio") {
-		  // Refresh USDC balance
 		  const temp = CoNET_Data
 		  if (!profiles?.length || !profiles[0]?.keyID || !temp || !temp.profiles?.length || !temp.profiles[0]) {
 			setError("Unable to retrieve account information.")
@@ -190,9 +189,15 @@ export default function PurchaseAccount({
 		  }
 		  
 		  try {
-			// Get latest balance
+			// 链上报价：显示货币 → USD → USDC（与 Oracle/QuoteHelper 设计一致）
+			const { usdc: usdcStr } = await quoteCurrencyAmountInUSDC(
+			  CCSA_Card_Address,
+			  currencyCode,
+			  String(effectiveAmount)
+			)
+			const requiredUsdcNumber = Number(usdcStr)
+
 			let latestBalance = 0
-	  
 			await getBalanceProcess(
 			  profiles[0].keyID,
 			  (balance) => {
@@ -202,20 +207,18 @@ export default function PurchaseAccount({
 			  setUsdcToUSD
 			)
 	  
-			const requiredAmount = effectiveAmount
-	  
-			if (latestBalance < requiredAmount) {
+			if (latestBalance < requiredUsdcNumber) {
 			  setError(
 				`Insufficient balance. Current balance: ${formatAmount(
 				  latestBalance,
 				  "USDC"
-				)} USDC. Required: ${usdcAmount} USDC.`
+				)} USDC. Required: ${usdcStr} USDC (${formatMoney(effectiveAmount, currencyCode)} at chain rate).`
 			  )
 			  setLoading(false)
 			  return
 			}
 
-			const requestData = await postBuyCardPoints(requiredAmount, profiles[0], CCSA_Card_Address)
+			const requestData = await postBuyCardPoints(usdcStr, profiles[0], CCSA_Card_Address)
 			if (requestData.success) {
 				await new Promise(resolve => setTimeout(resolve, 3000))
 				// 支付成功后更新 USDC 余额

@@ -5,7 +5,7 @@ import { Sparkles, CreditCard, Check, RefreshCw, ChevronRight } from "lucide-rea
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { formatAmount } from "@/services/currency"
 import { getBalanceProcess, storeSystemData } from "@/services/beamio"
-import { postBuyCardPoints } from "@/services/BeamioCard"
+import { postBuyCardPoints, quoteCurrencyAmountInUSDC } from "@/services/BeamioCard"
 import { CCSA_Card_Address } from "@/utils/constants"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import usdcIcon from "@/components/assets/usdc.png"
@@ -141,60 +141,79 @@ export default function TopUpAccount({
 
   const payUSDCProcess = async () => {
     setError("")
-	if (loading) return
+    setLoading(true)
+
     if (method === "beamio") {
-		const temp = CoNET_Data
-		if (!profiles?.length || !profiles[0]?.keyID || !temp || !temp.profiles?.length || !temp.profiles[0]) {
-		  setError("Unable to retrieve account information.")
-		  return
-		}
-		
-		try {
-		  // Get latest balance
-		  let latestBalance = usdcbalance
-	
-		  await getBalanceProcess(
-			profiles[0].keyID, setUsdcbalance, setUsdcToUSD
-		  )
-	
-		  const requiredAmount = amount
-	
-		  if (latestBalance < requiredAmount) {
-			setError(
-			  `Insufficient balance. Current balance: ${formatAmount(
-				latestBalance,
-				"USDC"
-			  )} USDC. Required: ${usdcAmount} USDC.`
-			)
-			return
-		  }
-		  setLoading(true)
-		  await new Promise(resolve => setTimeout(resolve, 300))
-		  const requestData = await postBuyCardPoints(requiredAmount, profiles[0], CCSA_Card_Address)
-		 
-		  if (requestData.success) {
-			if (requestData.txHash) {
-				await sendMessageToClient(requiredAmount, requestData.txHash)
-			}
-			await new Promise(resolve => setTimeout(resolve, 3000))
-			setLoading(false)
-			// 显示成功页面
-			if (requestData.assets) {
-				setSuccessData({ assets: requestData.assets, amount: amount })
-			} else {
-				onClose?.(null)
-			}
-		  } else {
-			  setError(requestData.error ?? "Failed to purchase. Please try again.")
-			  setLoading(false)
-			  return
-		  }
-      } catch {
-        setError("Failed to refresh balance. Please try again.")
+      const temp = CoNET_Data
+      if (!profiles?.length || !profiles[0]?.keyID || !temp || !temp.profiles?.length || !temp.profiles[0]) {
+        setError("Unable to retrieve account information.")
         setLoading(false)
+        return
+      }
+
+      try {
+        // 链上报价：显示货币 → USD → USDC（与 Oracle/QuoteHelper 设计一致，与 PurchaseAccount 一致）
+        const { usdc: usdcStr } = await quoteCurrencyAmountInUSDC(
+          CCSA_Card_Address,
+          currencyCode,
+          String(amount)
+        )
+        const requiredUsdcNumber = Number(usdcStr)
+
+        let latestBalance = 0
+        await getBalanceProcess(
+          profiles[0].keyID,
+          (balance: number) => {
+            latestBalance = balance
+            setUsdcbalance(balance)
+          },
+          setUsdcToUSD
+        )
+
+        if (latestBalance < requiredUsdcNumber) {
+          setError(
+            `Insufficient balance. Current balance: ${formatAmount(
+              latestBalance,
+              "USDC"
+            )} USDC. Required: ${usdcStr} USDC (${formatMoney(amount, currencyCode)} at chain rate).`
+          )
+          setLoading(false)
+          return
+        }
+
+        const requestData = await postBuyCardPoints(usdcStr, profiles[0], CCSA_Card_Address)
+
+        if (requestData.success) {
+          if (requestData.txHash) {
+            await sendMessageToClient(requiredUsdcNumber, requestData.txHash)
+          }
+          await new Promise((resolve) => setTimeout(resolve, 3000))
+          // 支付成功后更新 USDC 余额（与 PurchaseAccount 一致）
+          await getBalanceProcess(
+            profiles[0].keyID,
+            (balance: number) => {
+              setUsdcbalance(balance)
+            },
+            setUsdcToUSD
+          )
+          setLoading(false)
+          if (requestData.assets) {
+            setSuccessData({ assets: requestData.assets, amount: amount })
+          } else {
+            onClose?.(null)
+          }
+        } else {
+          setError(requestData.error ?? "Failed to purchase. Please try again.")
+          setLoading(false)
+          return
+        }
+      } catch {
+        setError("Failed to purchase. Please try again.")
+        setLoading(false)
+        return
       }
     } else {
-		setLoading(true)
+      // Pay via Stripe（与 PurchaseAccount 一致，不在此处 setLoading）
       window.location.href = "https://stripe.com"
     }
   }

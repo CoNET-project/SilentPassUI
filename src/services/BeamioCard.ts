@@ -5,7 +5,8 @@ import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
 
-type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
+/** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
+export type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
 
 
 
@@ -15,7 +16,8 @@ type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAm
 	const validAfter = now - BigInt(60)
 	const validBefore = now + BigInt(60)   
  */
-const BeamioUserCardGatewayAddress = '0x4637C267f5096C11A658cf0b0Dcdb8a89ce2F7EB'
+/** AA Factory 作为 UserCard gateway（与 config/base-addresses AA_FACTORY 一致） */
+const BeamioUserCardGatewayAddress = '0xD4759c85684e47A02223152b85C25D2E5cD2E738'.toLowerCase()
 const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,
@@ -67,18 +69,19 @@ export const signOfflineTransferERC3009 = async (
 	}
   }
 
+/**
+ * 构造购卡请求：用户支付 usdcAmountHuman USDC（该 USDC 已由链上 currency→USD→USDC 得到）。
+ * 后端用 quotePointsForUSDC(cardAddress, usdcAmount) 得到应铸造的 points。
+ */
 export const USDC2Token = async (
     userPrivateKey: string,
-    amount: number,
+    usdcAmountHuman: string,
     cardAddress: string
 ) => {
-
-	const _quoteUsdcAmount = await quoteUSDCForPoints(cardAddress, amount.toString())
+	const usdcAmount6 = ethers.parseUnits(usdcAmountHuman, 6)
+	if (usdcAmount6 <= 0n) throw new Error("usdcAmount must be > 0")
     try {
-
-
         const userWallet = new ethers.Wallet(userPrivateKey, baseEndpoint);
-        const usdcAmount6 = _quoteUsdcAmount.usdc6
         const chainId = (await baseEndpoint.getNetwork()).chainId;
       
 
@@ -127,7 +130,7 @@ export const USDC2Token = async (
 			usdcAmount: usdcAmount6.toString(),
 			from: userWallet.address,
 			validAfter: 0,
-			validBefore: validBefore
+			validBefore: Number(validBefore)
 		}
 
         return ret;
@@ -138,16 +141,19 @@ export const USDC2Token = async (
     }
 }
 
+/** 当前使用的 Card Factory 地址（须与 contracts.BeamioCardFactory 一致，为新部署 0x7Ec82...） */
+const CARD_FACTORY_ADDRESS = contracts.BeamioCardFactory.address;
+
 export const quoteUSDCForPoints = async (
 	cardAddress: string,
 	pointsHuman: string   // ✅ 人类可读，例如 "10" / "1.5"
   ) => {
-	const factory = BeamioCardFactorySC
-  
+	const factory = BeamioCardFactorySC;
+
 	if (!pointsHuman || Number(pointsHuman) <= 0) {
 	  throw new Error("points must be > 0 (human readable)");
 	}
-  
+
 	// 1️⃣ 人类可读 → 6 位 points（链上单位）
 	let points6: bigint;
 	try {
@@ -155,48 +161,110 @@ export const quoteUSDCForPoints = async (
 	} catch {
 	  throw new Error(`invalid points format: ${pointsHuman}`);
 	}
-  
+
 	if (points6 <= 0n) {
 	  throw new Error("points6 must be > 0");
 	}
-  
-	// 2️⃣ quote 总价（USDC 6 decimals）
-	const usdc6: bigint = await factory.quotePointsInUSDC6(cardAddress, points6);
-	if (usdc6 === 0n) {
-	  throw new Error("quote=0 (oracle not configured or card invalid)");
+
+	try {
+	  // 2️⃣ 单价（1e6 points 对应 USDC6）；当前 Factory 无 quotePointsInUSDC6，用单价×数量计算
+	  const unitPriceUSDC6: bigint =
+	    await factory.quoteUnitPointInUSDC6(cardAddress);
+	  if (unitPriceUSDC6 === 0n) {
+	    throw new Error("quote=0 (oracle not configured or card invalid). Ensure BeamioOracle has CAD rate set (e.g. npm run set:oracle-cad:base).");
+	  }
+
+	  // 3️⃣ 总价 USDC6 = points6 * unitPriceUSDC6 / 1e6
+	  const POINTS_ONE = 1_000_000n;
+	  const usdc6: bigint = (points6 * unitPriceUSDC6) / POINTS_ONE;
+
+	  return {
+	    points: pointsHuman,
+	    points6,
+	    usdc6,
+	    usdc: ethers.formatUnits(usdc6, 6),
+	    unitPriceUSDC6,
+	    unitPriceUSDC: ethers.formatUnits(unitPriceUSDC6, 6),
+	  };
+	} catch (err: unknown) {
+	  const msg = err instanceof Error ? err.message : String(err);
+	  if (msg.includes("quote=0") || msg.includes("oracle") || msg.includes("card invalid")) {
+	    throw err;
+	  }
+	  throw new Error(
+	    `quoteUSDCForPoints failed: ${msg}. ` +
+	    `Ensure cardAddress is a card from the current Card Factory (${CARD_FACTORY_ADDRESS}) and uses E6 pricing.`
+	  );
 	}
-  
-	// 3️⃣ 单价（1 token = 1e6 points）
-	const unitPriceUSDC6: bigint =
-	  await factory.quoteUnitPointInUSDC6(cardAddress);
-  
-	const ret = {
-	  // 原始输入
-	  points: pointsHuman,
-  
-	  // 链上单位
-	  points6,                     // bigint (1e6)
-  
-	  // 总价
-	  usdc6,                       // bigint (1e6)
-	  usdc: ethers.formatUnits(usdc6, 6),
-  
-	  // 单价
-	  unitPriceUSDC6,              // bigint
-	  unitPriceUSDC: ethers.formatUnits(unitPriceUSDC6, 6),
-	};
-  
-	
-	return ret;
   }
+
+const POINTS_ONE = 1_000_000n
+
+/** 链上货币 id（与 BeamioCurrency 一致）：全部汇率经 USD，再经 USD-USDC 换算。 */
+const CURRENCY_TO_ENUM: Record<string, number> = { CAD: 0, USD: 1, JPY: 2, CNY: 3, USDC: 4, HKD: 5, EUR: 6, SGD: 7, TWD: 8 }
+
+/**
+ * 链上报价：显示货币金额 → USDC（设计：currency → USD → USDC，与 Oracle/QuoteHelper 一致）。
+ * 用于 payUSDCProcess：用户输入 X CAD/USD，用此函数得到应付 USDC 数量。
+ */
+export const quoteCurrencyAmountInUSDC = async (
+	cardAddress: string,
+	currencyCode: string,
+	amountHuman: string
+): Promise<{ usdc6: bigint; usdc: string }> => {
+	const factory = BeamioCardFactorySC
+	const cur = CURRENCY_TO_ENUM[currencyCode.toUpperCase()]
+	if (cur === undefined) throw new Error(`Unsupported currency: ${currencyCode}`)
+	const amount6 = ethers.parseUnits(amountHuman, 6)
+	if (amount6 <= 0n) throw new Error("amount must be > 0")
+	const usdc6 = await factory.quoteCurrencyAmountInUSDC6(cur, amount6)
+	return { usdc6, usdc: ethers.formatUnits(usdc6, 6) }
+}
+
+/**
+ * Given a required USDC amount (e.g. from TenKeyInput), returns the equivalent ERC1155 points (points6)
+ * needed on a CCSA card. Uses the card's currency and current oracle rate via factory.quoteUnitPointInUSDC6.
+ * Formula: points6 = requiredUSDC6 * POINTS_ONE / unitPriceUSDC6 (inverse of quoteUSDCForPoints).
+ */
+export const quotePointsForUSDC = async (
+	cardAddress: string,
+	usdcAmountHuman: string
+): Promise<{ points6: bigint; points: string; usdc6: bigint; unitPriceUSDC6: bigint }> => {
+	const factory = BeamioCardFactorySC
+	const amount = Number(usdcAmountHuman)
+	if (!usdcAmountHuman || Number.isNaN(amount) || amount <= 0) {
+		throw new Error("usdcAmountHuman must be a positive number string")
+	}
+	let usdc6: bigint
+	try {
+		usdc6 = ethers.parseUnits(usdcAmountHuman, 6)
+	} catch {
+		throw new Error(`invalid USDC amount format: ${usdcAmountHuman}`)
+	}
+	if (usdc6 <= 0n) throw new Error("usdc6 must be > 0")
+
+	const unitPriceUSDC6: bigint = await factory.quoteUnitPointInUSDC6(cardAddress)
+	if (unitPriceUSDC6 === 0n) {
+		throw new Error("quote=0 (oracle not configured or card invalid). Ensure BeamioOracle has CAD rate set (e.g. npm run set:oracle-cad:base).")
+	}
+	// points6 = requiredUSDC6 * (1e6 points) / unitPriceUSDC6
+	const points6 = (usdc6 * POINTS_ONE) / unitPriceUSDC6
+	return {
+		points6,
+		points: ethers.formatUnits(points6, 6),
+		usdc6,
+		unitPriceUSDC6,
+	}
+}
 
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 
 /** 互斥锁：同一时间只允许一个 postBuyCardPoints 执行 */
 let postBuyCardPointsLock = false
 
+/** @param usdcAmount 应付 USDC 数量（人类可读，如 "10.5"），须由链上 currency→USD→USDC 得到（quoteCurrencyAmountInUSDC） */
 export const postBuyCardPoints = async (
-    amount: number,
+    usdcAmount: number | string,
     profile: profile,
     cardAddress: string
 ) => {
@@ -209,13 +277,16 @@ export const postBuyCardPoints = async (
         }
         postBuyCardPointsLock = true
         try {
-            const request = await USDC2Token(profile.privateKeyArmor, amount, cardAddress)
+            const usdcStr = typeof usdcAmount === "number" ? String(usdcAmount) : usdcAmount
+            const request = await USDC2Token(profile.privateKeyArmor, usdcStr, cardAddress)
+            // 请求体禁止 BigInt，确保 JSON 可序列化（与 Icard 类型一致）
+            const body = JSON.stringify(request, (_k, v) => (typeof v === 'bigint' ? String(v) : v))
             const response = await fetch(purchasingCardEndpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(request)
+                body
             })
             const data: {
 				error: string, USDC_tx: string, success: boolean
@@ -244,22 +315,33 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 			}
 			profile.aaAccount = aa
 		}
-        // 1. 实例化合约（只需要 getOwnership 函数的定义）
+        // 1. 实例化卡合约（用 getOwnershipByEOA 由卡按自身 gateway 的 AA Factory 解析 EOA→AA，与购卡时一致）
         const cardContract = new ethers.Contract(
             cardAddress,
-            cardAbi,
-            baseEndpoint // 使用你之前的 provider
+            [
+                'function getOwnershipByEOA(address userEOA) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
+                'function currency() view returns (uint8)',
+            ],
+            baseEndpoint
         );
 
-        
+        const eoa = profile.keyID;
+        if (!eoa || !ethers.isAddress(eoa)) {
+            throw new Error('getMyAssets: profile.keyID (EOA) is required');
+        }
 
-        // 2. 调用合约方法
-        const [pointsBalance, nfts] = await cardContract.getOwnership(profile.aaAccount);
-		const currency =  getICurrency(await cardContract.currency())
+        // 2. 用 EOA 查资产，由卡合约内部 _resolveAccount(EOA) 得到 AA，与购卡/发 NFT 时一致
+        const [pointsBalance, nfts] = await cardContract.getOwnershipByEOA(eoa);
+        const currency = getICurrency(await cardContract.currency());
 
-        // 3. 获取 aaAccount 的 USDC balance
+        // 3. 确保前端使用的 AA 与卡内解析一致；无 AA 时不把 aaAccount 设为 EOA（AA→EOA 要求 sender 为合约）
+        if (!profile.aaAccount) {
+            const aa = await getAAAccount(profile)
+            if (aa) profile.aaAccount = aa
+        }
         const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint);
-        const usdcBalanceRaw = await usdcContract.balanceOf(profile.aaAccount);
+        const balanceAddress = profile.aaAccount ?? eoa;
+        const usdcBalanceRaw = await usdcContract.balanceOf(balanceAddress);
         const usdcBalance = ethers.formatUnits(usdcBalanceRaw, 6);
 
         // 4. 格式化数据并返回
@@ -321,29 +403,46 @@ const getICurrency = (currency: BigInt): ICurrency => {
 
 
 export const getAAAccount = async (profile: profile): Promise<string | null> => {
-    try {
-        const accountFactory = new ethers.Contract(
-            contracts.BeamioAAAcountFactory.address,
-            BeamioAAAcountFactoryAbi,
-            baseEndpoint
-        )
-        const account = await accountFactory.primaryAccountOf(profile.keyID)
-		if (account === ethers.ZeroAddress) {
-			return null
-		}
-		const code = await baseEndpoint.getCode(account);
-        if (code === "0x") {
-            return null
-        }
-
-        return account
-    } catch (error: any) {
-        console.log(`❌ getAAAccount Failed: ${error.message}`);
+	try {
+	  const accountFactory = new ethers.Contract(
+			contracts.BeamioAAAcountFactory.address,
+			BeamioAAAcountFactoryAbi,
+			baseEndpoint
+	  )
+  
+	  const account = await accountFactory.primaryAccountOf(profile.keyID)
+	  if (account === ethers.ZeroAddress) {
+		console.log(`[getAAAccount] no primary AA for ${profile.keyID}`)
 		return null
-    }
-
-}
-
+	  }
+  
+	  const code = await baseEndpoint.getCode(account)
+	  if (code === '0x') {
+		console.log(`[getAAAccount] AA address has no code: ${account}`)
+		return null
+	  }
+  
+	  // 👇 新增：读取 AA.account.factory
+	  try {
+		const aa = new ethers.Contract(
+		  account,
+		  ['function factory() view returns (address)'],
+		  baseEndpoint
+		)
+		const factory = await aa.factory()
+		console.log(`[getAAAccount] AA=${account} factory=${factory}`)
+	  } catch (e: any) {
+		console.log(
+		  `[getAAAccount] AA=${account} factory() not available: ${e?.shortMessage || e?.message}`
+		)
+	  }
+  
+	  return account
+	} catch (error: any) {
+	  console.log(`❌ getAAAccount Failed: ${error.message}`)
+	  return null
+	}
+  }
 
 const mapActionToBeamioResponse = (
 	raw: {
@@ -416,7 +515,7 @@ export const getLatest20UserActions_Lite = async (
 	);
 
 	const cardLower = cardAddress.toLowerCase();
-	return rows.filter((r) => (r.cardAddress || "").toLowerCase() === cardLower);
+	return rows.filter((r) => (r.cardAddress).toLowerCase() === cardLower);
 };
 
 export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<searchResult | null> => {

@@ -9468,6 +9468,30 @@ export const BeamioCardFactoryAbi = [
 	{
 		"inputs": [
 			{
+				"internalType": "uint8",
+				"name": "cur",
+				"type": "uint8"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount6",
+				"type": "uint256"
+			}
+		],
+		"name": "quoteCurrencyAmountInUSDC6",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
 				"internalType": "address",
 				"name": "card",
 				"type": "address"

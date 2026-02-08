@@ -58,7 +58,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 	const handleSubmit = async () => {
 		setError('')
 		if (!beamio||!CoNET_Data||!profiles) {
-			setError('beamio APP unknow error, try again late!')
+			setError('Beamio app unknown error. Please try again later.')
 			return
 		}
 		
@@ -90,7 +90,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 		setLoading(false)
 
 		if (!kk) {
-			setError('RegenerateRecover had RPC error, try again late!')
+			setError('Regenerate recovery failed due to RPC error. Please try again later.')
 			return
 		}
 

@@ -25,6 +25,7 @@ import {
   Zap,
   Plus,
   Copy,
+  Check,
 } from "lucide-react"
 import AccountBeo from "./AccountBea"
 import { fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived, calcFeeFromNumber } from "@/services/currency"
@@ -35,7 +36,14 @@ import NavigateLeftButton from '@/components/navigate'
 import Cashcode from '@/pages/Pay/Cashcode/index'
 import BankingBridge from './components/BankingBridge'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
-import ActivePannel from "./components/activePannel";
+import ActivePannel from "./components/activePannel"
+import ActiveList from '@/pages/Vouchers/ActiveList'
+import ActionItemDetail from '@/pages/Vouchers/ActionItemDetail'
+import { getMyAssets } from '@/services/BeamioCard'
+import { CCSA_Card_Address } from '@/utils/constants'
+import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
+import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
+import TenKeyInput from '@/pages/Pay/components/TenKeyInput'
 
 type SectionTx = TransferHistork
 
@@ -211,11 +219,34 @@ export function MyWalletDashboard() {
 	const [isDragging, setIsDragging] = useState(false)
 	const [wheelDelta, setWheelDelta] = useState(0)
 	const carouselRef = useRef<HTMLDivElement>(null)
-	const [settingsOpen, setSettingsOpen] = useState<''|'Pay'|'BeamioPayMe'|'Cashcode'|'BankingBridge'|'RedeemScreen'>('')
+	const [settingsOpen, setSettingsOpen] = useState<''|'Pay'|'BeamioPayMe'|'BeamioPayMeQR'|'Cashcode'|'BankingBridge'|'RedeemScreen'>('')
+	const [openRelayPayload, setOpenRelayPayload] = useState<OpenContainerRelayPayload | null>(null)
+	const [payMeSigning, setPayMeSigning] = useState(false)
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
 			''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 
 	const [itemTx, setItemtx] = useState<TransferHistork>()
+	const [smartAccountCardAssets, setSmartAccountCardAssets] = useState<MyCardAssets | null>(null)
+	const [selectedActionItem, setSelectedActionItem] = useState<BeamioActionResponse | null>(null)
+	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | null>(null)
+	const copyAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const [payScreenMode, setPayScreenMode] = useState<'eoa-pay' | 'aa-eoa-transfer'>('eoa-pay')
+	const [showTenKeySlide, setShowTenKeySlide] = useState(false)
+
+	const copyAddress = useCallback((address: string, which: 'eoa' | 'aa') => {
+		navigator.clipboard?.writeText(address).then(() => {
+			if (copyAddressTimeoutRef.current) clearTimeout(copyAddressTimeoutRef.current)
+			setAddressCopied(which)
+			copyAddressTimeoutRef.current = setTimeout(() => {
+				setAddressCopied(null)
+				copyAddressTimeoutRef.current = null
+			}, 3000)
+		})
+	}, [])
+
+	useEffect(() => () => {
+		if (copyAddressTimeoutRef.current) clearTimeout(copyAddressTimeoutRef.current)
+	}, [])
 
 	// 触摸滑动处理
 	const minSwipeDistance = 50
@@ -343,6 +374,7 @@ export function MyWalletDashboard() {
 
 	useEffect(() => {
 		if (historyPayData) {
+			setPayScreenMode('eoa-pay')
 			setShowFooter(false)
 			setSettingsOpen('Pay')
 			return
@@ -645,6 +677,14 @@ export function MyWalletDashboard() {
 		load()
 	}, [load])
 
+	// Tab 2 (Smart Account)：拉取 CCSA 卡资产，供 ActiveList 展示活动
+	useEffect(() => {
+		if (activeSlide !== 1 || !profiles?.[0] || !CCSA_Card_Address) return
+		getMyAssets(profiles[0], CCSA_Card_Address)
+			.then((assets) => { if (assets) setSmartAccountCardAssets(assets) })
+			.catch(() => setSmartAccountCardAssets(null))
+	}, [activeSlide, profiles])
+
 	const activePending = useMemo(() => {
 		return allItems
 		.filter(tx => {
@@ -740,7 +780,7 @@ export function MyWalletDashboard() {
 					>
 						<div className="absolute -top-10 -right-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl pointer-events-none" aria-hidden />
 						
-						<div className="flex justify-between items-start z-10">
+						<div className="flex justify-between items-center z-10">
 							<div className="flex items-center gap-2">
 								<button
 									type="button"
@@ -778,10 +818,18 @@ export function MyWalletDashboard() {
 						{/* 地址显示 - 左下角 */}
 						{myAddress && (
 							<div className="flex justify-start mt-auto z-10">
-								<div className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors">
+								<button
+									type="button"
+									onClick={() => copyAddress(myAddress, 'eoa')}
+									className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors"
+								>
 									{`${myAddress.slice(0, 6)}...${myAddress.slice(-4)}`}
-									<Copy size={10} />
-								</div>
+									{addressCopied === 'eoa' ? (
+										<Check size={10} className="text-emerald-400 shrink-0" />
+									) : (
+										<Copy size={10} />
+									)}
+								</button>
 							</div>
 						)}
 					</div>
@@ -811,7 +859,7 @@ export function MyWalletDashboard() {
 						<div className="relative w-full h-[15rem] rounded-3xl p-6 text-white shadow-xl bg-gradient-to-br from-purple-600 via-violet-500 to-fuchsia-500 flex flex-col justify-between overflow-hidden">
 							<div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl pointer-events-none" aria-hidden />
 							
-							<div className="flex justify-between items-start z-10">
+							<div className="flex justify-between items-center z-10">
 								<div className="flex items-center gap-2">
 									<button
 										type="button"
@@ -849,10 +897,18 @@ export function MyWalletDashboard() {
 							{/* 地址显示 - 左下角 */}
 							{profiles?.[0]?.aaAccount && (
 								<div className="flex justify-start mt-auto z-10">
-									<div className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors">
+									<button
+										type="button"
+										onClick={() => copyAddress(profiles[0].aaAccount, 'aa')}
+										className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors"
+									>
 										{`${profiles[0].aaAccount.slice(0, 6)}...${profiles[0].aaAccount.slice(-4)}`}
-										<Copy size={10} />
-									</div>
+										{addressCopied === 'aa' ? (
+											<Check size={10} className="text-emerald-400 shrink-0" />
+										) : (
+											<Copy size={10} />
+										)}
+									</button>
 								</div>
 							)}
 						</div>
@@ -896,9 +952,9 @@ export function MyWalletDashboard() {
 						label="Send"
 						icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 						onClick={() => {
+							setPayScreenMode('eoa-pay')
 							setSettingsOpen('Pay')
 							setShowFooter(false)
-							
 						}}
 					/>
 					<MiniAction
@@ -967,14 +1023,14 @@ export function MyWalletDashboard() {
 					<div className="px-5 mt-4">
 					<div className="px-2  flex items-center justify-between">
 						<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-						History
+							History
 						</div>
 						<button
 						type="button"
 						onClick={() => navigate("/HistoryAll")}
 						className="text-[12px] font-semibold text-[#2F78FF] active:opacity-70"
 						>
-						View All
+							View All
 						</button>
 					</div>
 
@@ -1023,34 +1079,59 @@ export function MyWalletDashboard() {
 							label="Transfer"
 							icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 							onClick={() => {
-								// TODO: 实现 Smart Account 转账功能
+								setPayScreenMode('aa-eoa-transfer')
+								setShowFooter(false)
+								setSettingsOpen('Pay')
 							}}
 						/>
 						<MiniAction
 							label="Pay"
-							icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-							onClick={() => {
-								// TODO: 实现 Smart Account 支付功能
+							icon={payMeSigning ? <Loader className="w-5 h-5 text-slate-800 dark:text-slate-100 animate-spin" strokeWidth={2.4} /> : <ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+							onClick={async () => {
+								if (payMeSigning || !profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor) return
+								setPayMeSigning(true)
+								try {
+									const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], '10000', { deadlineSeconds: 3 * 60 })
+									setOpenRelayPayload(payload)
+									setShowFooter(false)
+									setSettingsOpen('BeamioPayMeQR')
+								} catch (e) {
+									console.error('Pay Me signature failed', e)
+								} finally {
+									setPayMeSigning(false)
+								}
 							}}
 						/>
 						<MiniAction
 							label="Vouchers"
 							icon={<QrCode className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 							onClick={() => {
-								navigate("/ten-key-input")
+								setShowFooter(false)
+								setShowTenKeySlide(true)
 							}}
 						/>
 					</div>
 				</div>
 
-				{/* Smart Account 相关内容区域 */}
+				{/* Smart Account 活动列表（与 CardItem 中 ActiveList 一致） */}
 				<div className="flex-1 min-h-0 overflow-y-auto mt-4">
 					<div className="px-5">
-						<div className="px-4 py-8 text-center">
-							<div className="text-slate-400 text-sm">
-								Smart Account content coming soon
-							</div>
-						</div>
+						<ActiveList
+							MyCardAssets={
+								smartAccountCardAssets ?? {
+									address: '',
+									cardAddress: CCSA_Card_Address,
+									points: '0',
+									cardOwner: null,
+									cardCurrency: 'USDC',
+									nfts: [],
+								}
+							}
+							onItemClick={(item) => {
+								setSelectedActionItem(item)
+								setShowFooter(false)
+							}}
+						/>
 					</div>
 				</div>
 			</motion.div>
@@ -1084,11 +1165,9 @@ export function MyWalletDashboard() {
 					onClick={() => {
 						setShowFooter(true)
 						setSettingsOpen('')
+						setOpenRelayPayload(null)
 						setSecureCode('')
 						setRedeemCode('')
-
-
-
 					}}
 				/>
 
@@ -1128,6 +1207,7 @@ export function MyWalletDashboard() {
 						<div className="px-4 pb-4 overflow-y-auto">
 							{settingsOpen === "Pay" && (
 								<PayScreen
+									mode={payScreenMode}
 									beamioer={historyPayData||undefined}
 									close={(path) => {
 										setShowFooter(true)
@@ -1144,6 +1224,19 @@ export function MyWalletDashboard() {
 										setSettingsOpen('')
 									}}
 								/>
+							}
+							{
+								settingsOpen === 'BeamioPayMeQR' && openRelayPayload != null && (
+									<BeamioPayMe
+										showActiveTab={false}
+										relayPayload={openRelayPayload}
+										onClose={() => {
+											setOpenRelayPayload(null)
+											setShowFooter(true)
+											setSettingsOpen('')
+										}}
+									/>
+								)
 							}
 
 							{
@@ -1192,7 +1285,34 @@ export function MyWalletDashboard() {
 				</div>
 			</div>
 
-	  {showAlphaHowItWorks && createPortal(
+	  {showTenKeySlide && createPortal(
+			<AnimatePresence>
+				<motion.div
+					key="tenkey-slide"
+					className="fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col"
+					initial={{ x: "100%" }}
+					animate={{ x: 0 }}
+					exit={{ x: "100%" }}
+					transition={{ duration: 0.28, ease: "easeOut" }}
+					onTouchMove={(e) => e.stopPropagation()}
+				>
+					<BeamioNavBack
+						title=""
+						onClose={() => {
+							setShowTenKeySlide(false)
+							setShowFooter(true)
+						}}
+						onMore={() => {}}
+					/>
+					<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+						<TenKeyInput />
+					</div>
+				</motion.div>
+			</AnimatePresence>
+			, document.body
+		)}
+
+	  {(showAlphaHowItWorks || selectedActionItem) && createPortal(
 			<AnimatePresence>
 				<motion.div
 					key="modal-overlay"
@@ -1208,29 +1328,31 @@ export function MyWalletDashboard() {
 				{/* 顶部 Header */}
 				<BeamioNavBack
 					title=''
-					
 					onClose={() => {
-						
 						setShowAlphaHowItWorks('')
+						setSelectedActionItem(null)
 						setShowFooter(true)
 					}}
-					onMore={() => {
-
-					}}
+					onMore={() => {}}
 				/>
 
 					{/* 内容区域 */}
 					<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-						
-						
-
-						{
-							showAlphaHowItWorks === 'TransactionsItemDetail' && itemTx &&
+						{showAlphaHowItWorks === 'TransactionsItemDetail' && itemTx && (
 							<TransactionsItemDetail
 								localMode='pay' tx={itemTx}
 							/>
-						}
-
+						)}
+						{selectedActionItem != null && (
+							<ActionItemDetail
+								item={selectedActionItem}
+								memberNo={String(smartAccountCardAssets?.nfts?.length ?? 0)}
+								onClose={() => {
+									setSelectedActionItem(null)
+									setShowFooter(true)
+								}}
+							/>
+						)}
 					</div>
 				</motion.div>
 			</AnimatePresence>

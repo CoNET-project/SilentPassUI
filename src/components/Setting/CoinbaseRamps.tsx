@@ -122,7 +122,7 @@ const CoinbaseRamps: React.FC = () => {
 					{
 						error && (
 							<p className="text-[11px] text-rose-500">
-								发生错误，请稍后再试
+								An error occurred. Please try again later.
 							</p>
 						)
 					}

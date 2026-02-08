@@ -63,7 +63,7 @@ export async function generateDiceBearCardPng(opts: DiceBearCardOptions) {
 
   const images = opts.images ?? []
   if (!images.length) {
-    throw new Error("images[] 不能为空：请传入本地 assets 的图片 url 列表")
+    throw new Error("images[] cannot be empty: please pass a list of local asset image URLs")
   }
 
   const bgIndex =
@@ -76,7 +76,7 @@ export async function generateDiceBearCardPng(opts: DiceBearCardOptions) {
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext("2d")
-  if (!ctx) throw new Error("Canvas 2D context 不可用")
+  if (!ctx) throw new Error("Canvas 2D context is not available")
 
   // 2) 背景图（cover 填充）
   const bg = await loadImage(images[bgIndex])

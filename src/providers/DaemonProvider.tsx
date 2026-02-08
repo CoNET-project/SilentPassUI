@@ -13,6 +13,14 @@ type DaemonContext = {
 	setMessageCount: React.Dispatch<React.SetStateAction<number>>
 	scanData: string
 	setScanData: (val: string) => void
+	scanIntent: '' | 'voucherPay'
+	setScanIntent: (val: '' | 'voucherPay') => void
+	voucherPayAmount: string
+	setVoucherPayAmount: (val: string) => void
+	voucherPayToAA: string
+	setVoucherPayToAA: (val: string) => void
+	voucherPayError: string
+	setVoucherPayError: (val: string) => void
 	chatHomeItem: searchResult|null
 	setChatHomeItem: Dispatch<SetStateAction<searchResult | null>>
 	charts: string[]
@@ -174,6 +182,14 @@ const defaultContextValue: DaemonContext = {
 	setMessageCount: (val: React.SetStateAction<number>) => {},
 	scanData: '',
 	setScanData: (val) => {},
+	scanIntent: '',
+	setScanIntent: () => {},
+	voucherPayAmount: '',
+	setVoucherPayAmount: () => {},
+	voucherPayToAA: '',
+	setVoucherPayToAA: () => {},
+	voucherPayError: '',
+	setVoucherPayError: () => {},
 	chatHomeItem: null,
 	setChatHomeItem: (val) => {},
 	charts: [],
@@ -341,6 +357,10 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const msgCountLockRef = useRef(false) // 可选：避免同一帧重复统计
 	const [messageCount, setMessageCount] = useState(0)
 	const [scanData, setScanData] = useState('')
+	const [scanIntent, setScanIntent] = useState<'' | 'voucherPay'>('')
+	const [voucherPayAmount, setVoucherPayAmount] = useState('')
+	const [voucherPayToAA, setVoucherPayToAA] = useState('')
+	const [voucherPayError, setVoucherPayError] = useState('')
 	const [chatHomeItem,setChatHomeItem] = useState<searchResult | null>(null)
 	const [charts, setCharts] = useState<string[]>([])
 	const [gossip, setGossip] = useState(false)
@@ -486,7 +506,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
-				chatHomeItem,setChatHomeItem,scanData, setScanData, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,
+				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,
         		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
 				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 			{/* ✅ 常驻隐藏扫码组件：不占布局，但随时可 start */}

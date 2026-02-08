@@ -95,6 +95,8 @@ export default function ShowPayQR({
 		return Math.max(0, validBeforeSec - Math.floor(Date.now() / 1000))
 	})
 
+	const expired = isData && validBeforeSec != null && secondsLeft <= 0
+
 	useEffect(() => {
 		if (validBeforeSec == null) return
 		setSecondsLeft(Math.max(0, validBeforeSec - Math.floor(Date.now() / 1000)))
@@ -157,10 +159,15 @@ export default function ShowPayQR({
 			<div className="mt-6">
 					<div className="px-6 pt-4 pb-6">
 						<div className="text-center">
-						<div className="text-[20px] font-extrabold tracking-tight text-slate-900">
-							{displayName(beamio)}
-						</div>
-						<div className="mt-1 text-[20px] font-semibold text-slate-500">@{beamio?.accountName}</div>
+						<div className="flex items-baseline justify-center gap-2 text-[20px] font-extrabold tracking-tight text-slate-900">
+						<span className="truncate">
+						{displayName(beamio)}
+						</span>
+
+						<span className="font-semibold text-[var(--beamio-brand,#2F78FF)]">
+						@{beamio?.accountName}
+						</span>
+					</div>
 						{/* 显示金额 */}
 						{amount && (
 							<div className="mt-3 text-[24px] font-bold text-slate-900">
@@ -185,15 +192,13 @@ export default function ShowPayQR({
 								"
 								/>
 
-								{/* QR 白底板：强制放到上层 */}
+								{/* QR 白底板：强制放到上层；过期时加模糊层 + 中央 "Expired" */}
 								<div className="relative z-10 flex justify-center">
 									<div
-										className="
-										rounded-[28px]
-										bg-white
-										p-[18px]
-										shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
-										"
+										className={cx(
+											"relative rounded-[28px] bg-white p-[18px]",
+											"shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]",
+										)}
 									>
 										<QRCodeCanvas
 											value={valueForQR}
@@ -210,6 +215,16 @@ export default function ShowPayQR({
 											}}
 											className="block"
 										/>
+										{expired && (
+											<div
+												className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-white/10 backdrop-blur-md"
+												aria-label="Voucher expired"
+											>
+												<span className="text-3xl font-bold tracking-wide text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.25)]">
+													Expired
+												</span>
+											</div>
+										)}
 									</div>
 								</div>
 								

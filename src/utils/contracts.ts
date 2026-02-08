@@ -21,7 +21,7 @@ import {
 	cardAbi,
 	BeamioCardFactoryAbi
   } from "./abis"
-
+import { BASE_MAINNET_FACTORIES } from '../config/chainAddresses'
 
   import beamioConetABI from '@/services/ABI/beamioConetABI.json'
   import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
@@ -130,20 +130,20 @@ import {
 	},
 
 	BeamioCardCCSA: {
-		address: '0x1Dc8c473fc67358357E90636AE8607229d5e9f92',
+		address: BASE_MAINNET_FACTORIES.BeamioCardCCSA_ADDRESS,
 		network: 'Base',
 		abi: cardAbi
-	},
+  },
 
-	// Base Mainnet 固定地址，与 config/base-addresses.ts、deployments/BASE_MAINNET_FACTORIES.md 保持一致
+	// Base Mainnet：与 config/base-addresses.ts 保持一致（AA Factory 重部署后由该配置决定）
 	BeamioAAAcountFactory: {
-		address: '0xFD48F7a6bBEb0c0C1ff756C38cA7fE7544239767',
-		network: 'Base',
+		address: BASE_MAINNET_FACTORIES.AA_FACTORY,
+		network: 'Base' as const,
 		abi: BeamioAAAcountFactoryAbi
 	},
 
 	BeamioCardFactory: {
-		address: '0x7Ec828BAbA1c58C5021a6E7D29ccDDdB2d8D84bd',
+		address: BASE_MAINNET_FACTORIES.CARD_FACTORY,
 		network: 'Base',
 		abi: BeamioCardFactoryAbi
 	},

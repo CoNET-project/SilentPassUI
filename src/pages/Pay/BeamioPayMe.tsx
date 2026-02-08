@@ -9,6 +9,9 @@ import {ShowPrint} from './ShowPrint'
 import { motion, useMotionValue, animate } from 'framer-motion'
 import { QrCode, Link } from 'lucide-react'
 import { BeamioSegmentedDrag } from './components/beamioSegmented'
+import type { OpenContainerRelayPayload } from '@/services/AAaccount'
+import { X } from 'lucide-react'
+import ShowPayQR from '@/pages/Vouchers/showPayQR'
 
 const showPaylinkSite = 'https://beamio.app'
 type Mode = 'main' | 'PaymentLink'|'Print'
@@ -19,6 +22,10 @@ type BeamioPayMeProps = {
 	// tab 控制（如果你需要外部路由）
 	activeTab?: Mode
 	showActiveTab?: boolean
+	/** Smart Account 发行的 3 分钟 Open Relay 签名，在此页展示 */
+	relayPayload?: OpenContainerRelayPayload | null
+	/** 从弹窗关闭时回调（如从 MyWalletDashboard 底部 sheet 打开） */
+	onClose?: () => void
 }
 
 const displayName = (item: beamio|null) => {
@@ -31,15 +38,23 @@ const displayName = (item: beamio|null) => {
 export default function BeamioPayMe(props: BeamioPayMeProps) {
   const {
     activeTab = "main",
-	showActiveTab = true
+	showActiveTab = true,
+	relayPayload = null,
+	onClose
   } = props
 
 	const [copied, setCopied] = useState(false)
+	const [copiedSig, setCopiedSig] = useState(false)
 		useEffect(() => {
 		if (!copied) return
 		const t = window.setTimeout(() => setCopied(false), 3000)
 		return () => window.clearTimeout(t)
 	}, [copied])
+	useEffect(() => {
+		if (!copiedSig) return
+		const t = window.setTimeout(() => setCopiedSig(false), 3000)
+		return () => window.clearTimeout(t)
+	}, [copiedSig])
 
 	const onCopyPayLink = async () => {
 		const ok = await copyText(successUrl)
@@ -119,8 +134,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   }
 
   return (
-    <div className="bg-[#EDF2FE] flex justify-center">
-      <div className="w-full max-w-[540px] px-4 py-4">
+    <div className="flex justify-center">
+      <div className="w-full max-w-[540px] px-4 py-4 relative">
 
         {/* Segmented */}
 		{
@@ -133,16 +148,27 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		}
 			
 
-        {/* Main Card */}
+        {/* Main Card：有 relayPayload 时用带倒计时的 ShowPayQR */}
         {
-				showMode === 'main' && (
+				showMode === 'main' && relayPayload ? (
+					<ShowPayQR
+						successUrl={successUrl}
+						beamio={beamio}
+						qrValue={JSON.stringify({ ...relayPayload, validBefore: relayPayload.deadline })}
+						hideActions
+						hideUrl
+					/>
+				) : showMode === 'main' && (
 				<div className="mt-6 rounded-[22px] bg-white shadow-[0_12px_35px_rgba(15,23,42,0.08)] ring-1 ring-black/10 overflow-hidden">
 					<div className="px-6 pt-4 pb-6">
-						<div className="text-center">
-						<div className="text-[20px] font-extrabold tracking-tight text-slate-900">
+					<div className="text-center">
+						<div className="flex items-baseline justify-center gap-2 text-[20px] font-extrabold tracking-tight text-slate-900">
+							<span className="truncate">
 							{displayName(beamio)}
+							</span>
+
+							<span className="font-semibold text-beamio">@{beamio?.accountName}</span>
 						</div>
-						<div className="mt-1 text-[20px] font-semibold text-slate-500">@{beamio?.accountName}</div>
 						</div>
 
 						{/* QR Card */}

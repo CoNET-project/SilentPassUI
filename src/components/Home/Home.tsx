@@ -26,9 +26,11 @@ import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import PayScreen from '@/pages/Pay/send'
 
-import {ethers} from 'ethers'
+import { ethers } from 'ethers'
+import { baseEndpoint } from '@/utils/constants'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
-import {getActiveArray} from '@/services/payment'
+import { getActiveArray } from '@/services/payment'
+import { getAAAccount } from '@/services/BeamioCard'
 import ActivePannel from '@/pages/History/components/activePannel'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaCard} from './components/BeamioBetaCard'
@@ -183,6 +185,36 @@ const Home = ({}) => {
 		}
 
 		const profile: profile = profiles[0]
+		// 以当前 AA Factory（config 中 0xFD48...）的链上结果为唯一依据，覆盖本地 aaAccount，避免显示旧 Factory 的地址
+		try {
+			const chainAa = await getAAAccount(profile)
+			const nextAa = chainAa ?? undefined
+			const currentAa = profile.aaAccount?.toLowerCase()
+			if (currentAa !== (nextAa?.toLowerCase() ?? '')) {
+				const nextProfiles = profiles.map((p: profile, i: number) => i === 0 ? { ...p, aaAccount: nextAa } : p)
+				setProfiles(nextProfiles)
+				if (temp.profiles) temp.profiles = nextProfiles
+				setCoNET_Data(temp)
+				await storeSystemData()
+			}
+		} catch {
+			// 网络失败时再校验：若本地是 EOA 或无 code 则清除
+			if (profile.aaAccount) {
+				try {
+					const code = await baseEndpoint.getCode(profile.aaAccount)
+					const isEOA = profile.keyID && profile.aaAccount.toLowerCase() === profile.keyID.toLowerCase()
+					if (!code || code === '0x' || code.length <= 2 || isEOA) {
+						const nextProfiles = profiles.map((p: profile, i: number) => i === 0 ? { ...p, aaAccount: undefined } : p)
+						setProfiles(nextProfiles)
+						if (temp.profiles) temp.profiles = nextProfiles
+						setCoNET_Data(temp)
+						await storeSystemData()
+					}
+				} catch {
+					// 忽略
+				}
+			}
+		}
 		reflashProcess()
 		const actives = await getActiveArray(profile)
 		setActiveItems(actives)

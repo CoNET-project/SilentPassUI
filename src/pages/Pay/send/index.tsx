@@ -1,4 +1,5 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
 import { Card, CardContent } from "@/components/ui/card"
 import {AuthorizationSign, getBalanceProcess, postToIPFS, storeSystemData} from '@/services/beamio'
@@ -9,7 +10,7 @@ import ConformView from './ConformView'
 import base_ex from '@/components/assets/base-ex.svg'
 import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
-import { X, Check, Plus, Camera } from "lucide-react"
+import { X, Check, Plus, Camera, ArrowRight, ArrowLeft } from "lucide-react"
 import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
@@ -17,6 +18,10 @@ import {CURRENCY_META, fiatPrefix} from '@/services/currency'
 import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNode} from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
+import { ethers } from 'ethers'
+import { beamioApiBase, signAAtoEOA_USDC_with_BeamioContainerMainRelayed } from '@/services/AAaccount'
+import { getAAAccount } from '@/services/BeamioCard'
+import { baseEndpoint } from '@/utils/constants'
 
 
 
@@ -35,9 +40,13 @@ const displayName = (item: searchResult) => {
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
 
+export type PayScreenMode = 'eoa-pay' | 'aa-eoa-transfer'
+
 type Props = {
 	close: (path: string) => void
 	beamioer?: searchResult
+	/** 从 Smart Account 进入时为 aa-eoa-transfer（AA 与 EOA 互转）；否则为 eoa-pay（普通付款） */
+	mode?: PayScreenMode
 }
 
 function formatAmount(v: number, c: ICurrency) {
@@ -56,7 +65,7 @@ function formatAmount(v: number, c: ICurrency) {
 	})
 }
 
-export default function PayScreen ({close, beamioer}: Props) {
+export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 	
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
@@ -67,6 +76,8 @@ export default function PayScreen ({close, beamioer}: Props) {
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'ConformView'>('')
 	const [focusAmount, setFocusAmount] = useState(false)
 	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, allNodes, setProfiles, setHistoryPayData, historyPayData } = useDaemonContext()
+	const isAaEoaTransfer = mode === 'aa-eoa-transfer'
+	const [transferDirection, setTransferDirection] = useState<'eoa-to-aa' | 'aa-to-eoa'>('aa-to-eoa')
 	const [sendError, setSendError] = useState("")
 	const [message, senMessage] = useState<any>(null)
 	const [successHash, setSuccessHash] = useState("")
@@ -102,6 +113,13 @@ export default function PayScreen ({close, beamioer}: Props) {
 		return usdc * rate
 	}
 
+	/** 将所选 currency 的金额按即时汇率换算为 USDC（1 USDC = fxRateUSDCToCurrency(c) 的 currency） */
+	function currencyAmountToUSDC(amountInCurrency: number, c: ICurrency): number {
+		const rate = fxRateUSDCToCurrency(c)
+		if (rate <= 0) return 0
+		return amountInCurrency / rate
+	}
+
 	useEffect(() => {
 		if (historyPayData) {
 			setHistoryPayData(null)
@@ -122,6 +140,26 @@ export default function PayScreen ({close, beamioer}: Props) {
 			setItem(beamioer)
 		}
 	}, [beamioer])
+
+	// AA/EOA 模式：根据方向同步收款人 item（用于提交）；AA→EOA 固定为 myAddress
+	useEffect(() => {
+		if (!isAaEoaTransfer || !profiles?.[0]) return
+		if (transferDirection === 'eoa-to-aa' && profiles[0].aaAccount) {
+			setItem({
+				address: profiles[0].aaAccount,
+				username: 'Smart Account',
+				first_name: '',
+				last_name: JSON.stringify({}),
+				image: '',
+			} as searchResult)
+			return
+		}
+		if (transferDirection === 'aa-to-eoa' && myAddress) {
+			setItem({ address: myAddress, username: shortAddress(myAddress), first_name: '', last_name: JSON.stringify({}), image: '' } as searchResult)
+		} else if (transferDirection === 'aa-to-eoa') {
+			setItem(null)
+		}
+	}, [isAaEoaTransfer, transferDirection, profiles?.[0]?.aaAccount, myAddress])
 
 	useEffect(() => {
 		if (showGiftImageError) {
@@ -290,15 +328,121 @@ export default function PayScreen ({close, beamioer}: Props) {
 	const onPay = async () => {
 
 		const amount = Number(sendAmount)
-		if ( amount <= 0 || amount > usdcbalance) {
-			return 
-		}
 		const temp = CoNET_Data
-		if (!item || !beamio || !myAddress||!profiles?.length||!temp) {
+		if (!beamio || !profiles?.length || !temp) {
 			return setShowToError(true)
 		}
+
+		// AA→EOA：用户输入为 currentCurrency 金额，按即时汇率换算为 USDC 后打包；提交 containerPayload + currency + currencyAmount 到 /api/AAtoEOA
+		if (isAaEoaTransfer && transferDirection === 'aa-to-eoa') {
+			const toEOA = myAddress ?? ''
+			if (!toEOA || amount <= 0) {
+				setShowToError(true)
+				return
+			}
+			const profile = profiles[0]
+			if (!profile?.keyID || !profile?.privateKeyArmor) {
+				setShowToError(true)
+				return
+			}
+			const rate = fxRateUSDCToCurrency(currentCurrency)
+			if (rate <= 0) {
+				setSendError('Exchange rate not available for ' + currentCurrency)
+				return
+			}
+			// 用户输入是 currentCurrency 的金额，换算为 USDC（6 位小数字符串）
+			const usdcAmountNum = currencyAmountToUSDC(amount, currentCurrency)
+			const usdcAmountStr = usdcAmountNum > 0 ? usdcAmountNum.toFixed(6) : '0'
+			const currencyAmountDisplay = formatAmount(amount, currentCurrency)
+
+			// 发送前必须用链上查到的 AA 地址，不信任 profile.aaAccount（可能为旧缓存或误设为 EOA）
+			let aaAccount: string
+			try {
+				const fromChain = await getAAAccount(profile)
+				if (!fromChain || !fromChain.startsWith('0x')) {
+					setSendError('No Smart Account found. Please create or link a Smart Account first.')
+					return
+				}
+				if (myAddress && fromChain.toLowerCase() === myAddress.toLowerCase()) {
+					setSendError('Smart Account address cannot be the same as your EOA. Please create or link a Smart Account first.')
+					return
+				}
+				aaAccount = fromChain
+			} catch (e: any) {
+				setSendError(e?.message ?? 'Failed to get Smart Account address')
+				return
+			}
+			setProcessing(true)
+			try {
+				// 使用 containerMainRelayed 签名（绑定 to = owner EOA），金额为换算后的 USDC
+				const profileWithAA = { ...profile, aaAccount }
+				const containerPayload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayed(
+					profileWithAA,
+					usdcAmountStr,
+					toEOA
+				)
+				// 提交 containerPayload + currency / currencyAmount 到 /api/AAtoEOA（服务端记账用）
+				const url = `${beamioApiBase.replace(/\/$/, '')}/api/AAtoEOA`
+				const res = await fetch(url, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						containerPayload,
+						currency: currentCurrency,
+						currencyAmount: currencyAmountDisplay,
+					}),
+				})
+				const result = await res.json().catch(() => ({})) as { success: boolean; USDC_tx?: string; error?: string }
+				setProcessing(false)
+				if (result.success && result.USDC_tx) {
+					senMessage({
+						data: {
+							receive: { accountName: shortAddress(toEOA), firstName: '', lastName: JSON.stringify({}), address: toEOA, image: '' },
+							sender: { accountName: beamio?.accountName ?? '', firstName: beamio?.firstName ?? '', lastName: beamio?.language ?? '', address: aaAccount, image: beamio?.image ?? '' },
+							node: note,
+							sginTatle: 'send',
+							amount: usdcAmountStr,
+							currencyAmount: currencyAmountDisplay,
+						},
+						reqUrl: `${beamioApiBase}/api/AAtoEOA`,
+						amount: usdcAmountStr,
+						currencyAmount: currencyAmountDisplay,
+					})
+					setSuccessHash(result.USDC_tx)
+				} else {
+					setSendError(result.error || 'AAtoEOA failed')
+				}
+			} catch (e: any) {
+				setProcessing(false)
+				setSendError(e?.message || 'AAtoEOA request failed')
+			}
+			return
+		}
+
+		// aa-eoa-transfer EOA→AA 或普通付款：按方向确定收款地址（To）与余额校验
+		let toAddress: string
+		if (isAaEoaTransfer) {
+			if (transferDirection === 'eoa-to-aa') {
+				toAddress = profiles[0]?.aaAccount ?? ''
+				if (!toAddress) {
+					setShowToError(true)
+					return
+				}
+				if (amount <= 0 || amount > usdcbalance) return // EOA 转出，用 EOA 余额
+			} else {
+				toAddress = myAddress ?? ''
+				if (!toAddress) { setShowToError(true); return }
+				if (amount <= 0) return
+			}
+		} else {
+			// 普通付款：必须有选中的收款人
+			if (!item || !myAddress) {
+				return setShowToError(true)
+			}
+			toAddress = item.address
+			if (amount <= 0 || amount > usdcbalance) return
+		}
 		const bo = beamio
-		const toAddress = item.address
 
 		const currencyAmount = lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency) : sendAmount
 		let data1: payMe = {
@@ -349,13 +493,15 @@ export default function PayScreen ({close, beamioer}: Props) {
 
 			const { x402Version, accepts } = await response.json()
 			const MessageData = accepts[0]
+			// 收款人信息：以 toAddress 为准，保证与请求参数一致（EOA/AA 地址）
+			const receiveName = item?.username ?? (toAddress === profiles?.[0]?.aaAccount ? 'Smart Account' : shortAddress(toAddress))
 			const data: IMessageData = {
 				receive: {
-					accountName: item.username,
-					firstName: item.first_name,
-					lastName: item.last_name,
-					address: item.address,
-					image: item.image
+					accountName: receiveName,
+					firstName: item?.first_name ?? '',
+					lastName: item?.last_name ?? JSON.stringify({}),
+					address: toAddress,
+					image: item?.image ?? ''
 				},
 				sender: {
 					accountName: bo.accountName||'',
@@ -438,7 +584,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 	// ✅ 白底容器，不再 items-center（避免“卡片居中感”）
 	<div className="">
 		{/* ✅ 不再 justify-center，不包 Card */}
-		<div className="mt-1 w-full">
+		<div className="mt-1 w-full mt-8">
 		{/* ✅ 原 CardContent 的 padding 交给这里 */}
 		<div className="">
 			{successHash ? (
@@ -454,7 +600,63 @@ export default function PayScreen ({close, beamioer}: Props) {
 				(
 					<>
 					<div className={cardCreate ? "opacity-0 pointer-events-none select-none" : ""}>
-						{!item && (
+						{/* AA ⇄ EOA 方向切换（仅 Smart Account 进入时显示） */}
+						{isAaEoaTransfer && (
+							<button
+								type="button"
+								onClick={() => setTransferDirection(d => d === 'eoa-to-aa' ? 'aa-to-eoa' : 'eoa-to-aa')}
+								className="w-full flex items-center justify-center gap-2 py-3 px-4 mb-4 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700"
+							>
+								<AnimatePresence mode="wait">
+									{transferDirection === 'eoa-to-aa' ? (
+										<motion.span
+											key="eoa-aa"
+											initial={{ opacity: 0, x: -8 }}
+											animate={{ opacity: 1, x: 0 }}
+											exit={{ opacity: 0, x: 8 }}
+											transition={{ duration: 0.2 }}
+											className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200"
+										>
+											<span className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700">EOA {shortAddress(myAddress)}</span>
+											<ArrowRight className="w-4 h-4 shrink-0" />
+											<span className="px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">Smart Account {shortAddress(profiles[0].aaAccount)}</span>
+										</motion.span>
+									) : (
+										<motion.span
+											key="aa-eoa"
+											initial={{ opacity: 0, x: 8 }}
+											animate={{ opacity: 1, x: 0 }}
+											exit={{ opacity: 0, x: -8 }}
+											transition={{ duration: 0.2 }}
+											className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200"
+										>
+											<span className="px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">Smart Account {shortAddress(profiles[0].aaAccount)}</span>
+											<ArrowRight className="w-4 h-4 shrink-0" />
+											<span className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700">EOA {shortAddress(myAddress)}</span>
+										</motion.span>
+									)}
+								</AnimatePresence>
+							</button>
+						)}
+
+						{/* 收款人：普通模式用 Search；AA→EOA 用地址输入；EOA→AA 用固定 “To: Smart Account” */}
+						{/* {isAaEoaTransfer && transferDirection === 'eoa-to-aa' && (
+							<div className="mb-4 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+								<span className="text-sm font-medium text-violet-800 dark:text-violet-200">To: Smart Account</span>
+								{profiles?.[0]?.aaAccount && (
+									<span className="text-xs font-mono text-violet-600 dark:text-violet-400">{shortAddress(profiles[0].aaAccount)}</span>
+								)}
+							</div>
+						)}
+						{isAaEoaTransfer && transferDirection === 'aa-to-eoa' && (
+							<div className="mb-4 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+								<span className="text-sm font-medium text-violet-800 dark:text-violet-200">To: EOA</span>
+								{myAddress && (
+									<span className="text-xs font-mono text-violet-600 dark:text-violet-400">{shortAddress(myAddress)}</span>
+								)}
+							</div>
+						)} */}
+						{!isAaEoaTransfer && !item && (
 						<section className="mb-4">
 							<SearchInputWithDropdown
 							showHistory={false}
@@ -470,7 +672,7 @@ export default function PayScreen ({close, beamioer}: Props) {
 						</section>
 						)}
 
-						{item && (
+						{item && !isAaEoaTransfer && (
 							<div
 								className="
 									w-full

@@ -14,6 +14,7 @@ import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, g
 import { searchUsername, storeSystemData } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
+import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
 import MyWallet from "@/pages/Settings/index"
 import { ethers } from "ethers"
@@ -30,6 +31,7 @@ import Express from "@/pages/Vouchers/example/express"
 import ExampleExpress from "@/pages/Vouchers/example/exampleExpress"
 import ExampleExpress2 from "@/pages/Vouchers/example/ExampleExpress2"
 import TenKeyInput from "@/pages/Pay/components/TenKeyInput"
+import { Toast } from "antd-mobile"
 
 
 global.Buffer = require("buffer").Buffer
@@ -79,6 +81,8 @@ function AppShell() {
     setPaymentLink,
     setSendToMemo,
     setScanData,
+    scanIntent,
+    setScanIntent,
   } = useDaemonContext()
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -605,6 +609,8 @@ function AppShell() {
 
   useEffect(() => {
     if (!scanData||isInitialLoading) return
+    // voucherPay 全流程由 TenKeyInputComponent 内的 Smart Routing Analysis 处理，此处不消费 scanData
+    if (scanIntent === 'voucherPay') return
 
     const run = async () => {
       if (/^0x/i.test(scanData)) {
@@ -623,7 +629,7 @@ function AppShell() {
     }
 
     run()
-  }, [scanData])
+  }, [scanData, scanIntent])
 
   // ② 再消费队列写入 profiles（你原逻辑）
 	useEffect(() => {

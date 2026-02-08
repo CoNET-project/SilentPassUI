@@ -10,6 +10,8 @@ const mainChain_rpc = "https://mainnet-rpc.conet.network";
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
 
 const beamioApi = 'https://beamio.app'
+/** API 端点：提交 Open Relay 支付（扫码得到的 payload + 金额 + 收款 AA） */
+const voucherRelayApi = `${beamioApi}/api/voucher/relay`
 
 const _ethRpc = [
   "http://rpc.ankr.com/eth",
@@ -39,7 +41,7 @@ const stripe_pay_monthly = 'https://buy.stripe.com/test_9AQ16b6Du82p0Ja9AG?clien
 const stripe_pay_Annual ='https://buy.stripe.com/test_eVa2af5zqdmJ2Ri14b?client_reference_id='
 const SilentPassOfficial = 'A8Vk2LsNqKktabs4xPY4YUmYxBoDqcTdxY5em4EQm8v1'
 
-const CCSA_Card_Address = contracts.BeamioCardCCSA.address
+const CCSA_Card_Address = contracts.BeamioCardCCSA.address.toLowerCase()
 
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());
 const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);
@@ -119,6 +121,7 @@ export {
 	baseEndpoint,
 	USDCContract_BASE,
 	beamioApi,
+	voucherRelayApi,
 	CCSA_Card_Address,
 	BeamioCardFactorySC
 };

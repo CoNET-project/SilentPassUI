@@ -222,6 +222,21 @@ export const quoteCurrencyAmountInUSDC = async (
 }
 
 /**
+ * Convert USDC amount (human-readable string) to CAD using chain oracle.
+ * Uses quoteCurrencyAmountInUSDC(CARD, 'CAD', '1') to get USDC per 1 CAD, then CAD = usdcAmount / thatRate.
+ */
+export const quoteUSDCToCAD = async (
+	cardAddress: string,
+	usdcAmountHuman: string
+): Promise<string> => {
+	const { usdc: usdcPer1Cad } = await quoteCurrencyAmountInUSDC(cardAddress, 'CAD', '1')
+	const rate = Number(usdcPer1Cad)
+	if (!rate || Number.isNaN(rate)) return usdcAmountHuman
+	const cad = Number(usdcAmountHuman) / rate
+	return cad.toFixed(2)
+}
+
+/**
  * Given a required USDC amount (e.g. from TenKeyInput), returns the equivalent ERC1155 points (points6)
  * needed on a CCSA card. Uses the card's currency and current oracle rate via factory.quoteUnitPointInUSDC6.
  * Formula: points6 = requiredUSDC6 * POINTS_ONE / unitPriceUSDC6 (inverse of quoteUSDCForPoints).

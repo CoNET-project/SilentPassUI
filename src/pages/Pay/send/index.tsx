@@ -147,7 +147,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 		if (transferDirection === 'eoa-to-aa' && profiles[0].aaAccount) {
 			setItem({
 				address: profiles[0].aaAccount,
-				username: 'Smart Account',
+				username: 'Express Pay',
 				first_name: '',
 				last_name: JSON.stringify({}),
 				image: '',
@@ -360,16 +360,16 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 			try {
 				const fromChain = await getAAAccount(profile)
 				if (!fromChain || !fromChain.startsWith('0x')) {
-					setSendError('No Smart Account found. Please create or link a Smart Account first.')
+					setSendError('No Express Pay found. Please create or link a Express Pay first.')
 					return
 				}
 				if (myAddress && fromChain.toLowerCase() === myAddress.toLowerCase()) {
-					setSendError('Smart Account address cannot be the same as your EOA. Please create or link a Smart Account first.')
+					setSendError('Express Pay address cannot be the same as your EOA. Please create or link a Express Pay first.')
 					return
 				}
 				aaAccount = fromChain
 			} catch (e: any) {
-				setSendError(e?.message ?? 'Failed to get Smart Account address')
+				setSendError(e?.message ?? 'Failed to get Express Pay address')
 				return
 			}
 			setProcessing(true)
@@ -494,7 +494,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 			const { x402Version, accepts } = await response.json()
 			const MessageData = accepts[0]
 			// 收款人信息：以 toAddress 为准，保证与请求参数一致（EOA/AA 地址）
-			const receiveName = item?.username ?? (toAddress === profiles?.[0]?.aaAccount ? 'Smart Account' : shortAddress(toAddress))
+			const receiveName = item?.username ?? (toAddress === profiles?.[0]?.aaAccount ? 'Express Pay' : shortAddress(toAddress))
 			const data: IMessageData = {
 				receive: {
 					accountName: receiveName,
@@ -619,7 +619,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 										>
 											<span className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700">EOA {shortAddress(myAddress)}</span>
 											<ArrowRight className="w-4 h-4 shrink-0" />
-											<span className="px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">Smart Account {shortAddress(profiles[0].aaAccount)}</span>
+											<span className="px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">Express Pay {shortAddress(profiles[0].aaAccount)}</span>
 										</motion.span>
 									) : (
 										<motion.span
@@ -630,7 +630,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 											transition={{ duration: 0.2 }}
 											className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200"
 										>
-											<span className="px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">Smart Account {shortAddress(profiles[0].aaAccount)}</span>
+											<span className="px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">Express Pay {shortAddress(profiles[0].aaAccount)}</span>
 											<ArrowRight className="w-4 h-4 shrink-0" />
 											<span className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700">EOA {shortAddress(myAddress)}</span>
 										</motion.span>
@@ -814,7 +814,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 						</div>
 						)}
 
-						{showGiftEnvelope && (
+						{showGiftEnvelope && !isAaEoaTransfer && (
 						<div className="flex justify-center">
 							<div className="relative w-fit">
 							<img
@@ -849,7 +849,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 						</div>
 						)}
 
-						{!message && (
+						{!message && !isAaEoaTransfer && (
 						<textarea
 							value={note.split('\r\n')[0]}
 							onFocus={() => {
@@ -877,12 +877,12 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 						</>
 						)}
 
-						<div className="mt-3 flex gap-3 w-full">
+						<div className="mt-6 flex gap-3 w-full">
 							
 
-							{!showGiftEnvelope && !message && (
+							{!showGiftEnvelope && !message && !isAaEoaTransfer && (
 								<>
-								{/* iOS glass camera button */}
+								{/* iOS glass camera button - 仅在 eoa-pay 模式显示 */}
 								<button
 									type="button"
 									onClick={() => {

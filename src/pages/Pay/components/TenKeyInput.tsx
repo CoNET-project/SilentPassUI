@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, QrCode, Loader, Check, X } from 'lucide-react'
+import { Camera, QrCode, Loader, Check, X, RefreshCw, Zap, Copy, ExternalLink } from 'lucide-react'
 import ShowPayQR from "@/pages/Vouchers/showPayQR"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from 'ethers'
 import type { OpenContainerRelayPayload } from '@/services/AAaccount'
 import { beamioApiBase, readContainerNonceFromAAStorage } from '@/services/AAaccount'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
-import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE } from '@/utils/constants'
+import contracts from '@/utils/contracts'
+import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC } from '@/utils/constants'
+import { quoteCurrencyAmountInUSDC, quoteUSDCToCAD } from '@/services/BeamioCard'
+import { searchUsername } from '@/services/beamio'
 
 
 //		
@@ -131,17 +134,16 @@ const TenKeyInput = ({
 type StepStatus = 'pending' | 'loading' | 'success' | 'error'
 type RoutingStep = { id: string; label: string; detail: string; status: StepStatus }
 
+// 4 steps shown in design; sendTx/waitTx shown only when loading or error (hidden when passed)
 const ROUTING_STEPS: Omit<RoutingStep, 'status'>[] = [
-	{ id: 'parse', label: 'Validating QR format', detail: 'Checking payload structure' },
-	{ id: 'nonce', label: 'Checking nonce', detail: 'AA storage openRelayed nonce' },
-	{ id: 'deadline', label: 'Checking validity period', detail: 'QR code expiry' },
-	{ id: 'maxAmount', label: 'Checking max amount', detail: 'QR max vs entered amount' },
-	{ id: 'balance', label: 'Checking account balance', detail: 'Sufficient funds' },
-	{ id: 'ccsaCard', label: 'CCSA card', detail: 'Payment account CCSA NFT card number' },
-	{ id: 'submit', label: 'Submitting payment', detail: 'Sending to server' },
-	{ id: 'sendTx', label: 'Sending transaction', detail: 'Sending transaction' },
-	{ id: 'waitTx', label: 'Waiting for transaction to complete', detail: 'Waiting for server 200' },
+	{ id: 'detectingUser', label: 'Detecting User', detail: '' },
+	{ id: 'membership', label: 'Checking Membership', detail: '' },
+	{ id: 'analyzingAssets', label: 'Analyzing Assets', detail: '' },
+	{ id: 'optimizingRoute', label: 'Optimizing Route', detail: '' },
+	{ id: 'sendTx', label: 'Sending transaction', detail: '' },
+	{ id: 'waitTx', label: 'Waiting for transaction', detail: '' },
 ]
+const VISIBLE_STEP_IDS = ['detectingUser', 'membership', 'analyzingAssets', 'optimizingRoute']
 
 const STEP_ORDER = ROUTING_STEPS.map((s) => s.id)
 
@@ -150,10 +152,16 @@ const BASE_EXPLORER_TX = 'https://basescan.org/tx/'
 function SmartRoutingAnalysis({ steps, onAbandon, successTxHash }: { steps: RoutingStep[]; onAbandon?: () => void; successTxHash?: string }) {
 	const hasError = steps.some((s) => s.status === 'error')
 
-	// 独立的已完成列表：新完成的步骤在已完成列表顶部追加一条，已有记录永不重排
+	// Steps not in the 4-panel design: show only when loading or error (hide when passed)
+	const displaySteps = useMemo(() => {
+		return steps.filter(
+			(s) => VISIBLE_STEP_IDS.includes(s.id) || s.status === 'loading' || s.status === 'error'
+		)
+	}, [steps])
+
 	const [completedIdsOrder, setCompletedIdsOrder] = useState<string[]>([])
 	useEffect(() => {
-		const allPending = steps.every((s) => s.status === 'pending')
+		const allPending = displaySteps.every((s) => s.status === 'pending')
 		if (allPending) {
 			setCompletedIdsOrder([])
 			return
@@ -161,25 +169,24 @@ function SmartRoutingAnalysis({ steps, onAbandon, successTxHash }: { steps: Rout
 		setCompletedIdsOrder((prev) => {
 			const next = [...prev]
 			for (const id of STEP_ORDER) {
-				const step = steps.find((s) => s.id === id)
+				const step = displaySteps.find((s) => s.id === id)
 				if (step && step.status !== 'pending' && !next.includes(id)) next.unshift(id)
 			}
 			return next
 		})
-	}, [steps])
+	}, [displaySteps])
 
 	const displayOrder = useMemo(() => {
-		const visible = steps.filter((s) => s.status !== 'pending')
+		const visible = displaySteps.filter((s) => s.status !== 'pending')
 		if (visible.length === 0) return []
 		const loadingOrError = visible.find((s) => s.status === 'loading' || s.status === 'error')
 		const current = loadingOrError ?? visible[visible.length - 1]
-		// 已完成部分严格按 completedIdsOrder 顺序，且不包含当前项
 		const completedSteps = completedIdsOrder
 			.filter((id) => id !== current.id)
-			.map((id) => steps.find((s) => s.id === id))
+			.map((id) => displaySteps.find((s) => s.id === id))
 			.filter((s): s is RoutingStep => s != null)
 		return [current, ...completedSteps]
-	}, [steps, completedIdsOrder])
+	}, [displaySteps, completedIdsOrder])
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 pt-[6rem]">
@@ -218,29 +225,29 @@ function SmartRoutingAnalysis({ steps, onAbandon, successTxHash }: { steps: Rout
 								<p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
 									{step.detail}
 								</p>
-								{step.id === 'waitTx' && step.status === 'success' && successTxHash && (
-									<p className="text-sm mt-2">
-										<span className="text-slate-500 dark:text-slate-400 font-mono">
-											{successTxHash.slice(0, 10)}…{successTxHash.slice(-8)}
-										</span>
-										{' · '}
-										<a
-											href={`${BASE_EXPLORER_TX}${successTxHash}`}
-											target="_blank"
-											rel="noopener noreferrer"
-											className="text-blue-600 dark:text-blue-400 hover:underline"
-										>
-											View on BaseScan
-										</a>
-									</p>
-								)}
 							</div>
 						</motion.div>
 					))}
 				</AnimatePresence>
 			</div>
 			{(hasError || steps.some((s) => (s.id === 'sendTx' || s.id === 'waitTx') && (s.status === 'success' || s.status === 'error'))) && onAbandon && (
-				<div className="shrink-0 px-6 pb-6 pt-4">
+				<div className="shrink-0 px-6 pb-6 pt-4 space-y-3">
+					{successTxHash && (
+						<p className="text-sm text-center">
+							<span className="text-slate-500 dark:text-slate-400 font-mono">
+								{successTxHash.slice(0, 10)}…{successTxHash.slice(-8)}
+							</span>
+							{' · '}
+							<a
+								href={`${BASE_EXPLORER_TX}${successTxHash}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-blue-600 dark:text-blue-400 hover:underline"
+							>
+								View on BaseScan
+							</a>
+						</p>
+					)}
 					<button
 						type="button"
 						onClick={onAbandon}
@@ -254,16 +261,27 @@ function SmartRoutingAnalysis({ steps, onAbandon, successTxHash }: { steps: Rout
 	)
 }
 
-/** 提交前确认：展示扣款组合（USDC 余额 + CCSA 折算），受益方确认或取消 */
+/** 提交前确认：展示扣款组合（USDC 余额 + CCSA 折算），受益方确认或取消。金额展示用 CAD（换算自链上汇率）。 */
 export type ConfirmDeductionPayload = {
 	payload: OpenContainerRelayPayload
 	amountStr: string
-	/** 从客户 USDC 余额扣款（已格式化的金额，如 "1.00"） */
 	usdcFromBalance: string
-	/** 从 CCSA 折算成 USDC 的金额（已格式化） */
 	usdcFromCCSA: string
-	/** 客户 QR 展示的 USDC 余额（已格式化，仅说明用） */
 	customerUsdcBalance: string
+	totalRequestedStr?: string
+	hasDiscount?: boolean
+	/** 展示用：换算后的 CAD 金额（链上 USDC→CAD） */
+	amountStrCAD?: string
+	usdcFromBalanceCAD?: string
+	usdcFromCCSACAD?: string
+	customerUsdcBalanceCAD?: string
+	totalRequestedStrCAD?: string
+	/** 顶部展示：扣款者（QR 持有者）Beamio 名称，无则用短地址 */
+	payerDisplayName?: string
+	/** 扣款者会员标签，如 CCSA Member (Genesis) */
+	payerMemberLabel?: string
+	usdcFromBalanceWeiStr?: string
+	ccsaPointsWeiStr?: string
 }
 
 function ConfirmDeductionView({
@@ -277,55 +295,236 @@ function ConfirmDeductionView({
 	onCancel: () => void
 	submitting: boolean
 }) {
+	const totalReq = data.totalRequestedStrCAD ?? data.totalRequestedStr ?? data.amountStr
+	const amount = data.amountStrCAD ?? data.amountStr
+	const fromBal = data.usdcFromBalanceCAD ?? data.usdcFromBalance
+	const fromCCSA = data.usdcFromCCSACAD ?? data.usdcFromCCSA
+	const discountVal = data.hasDiscount && data.totalRequestedStr != null && data.amountStr != null
+		? (data.totalRequestedStrCAD != null && data.amountStrCAD != null
+			? (Number(data.totalRequestedStrCAD) - Number(data.amountStrCAD)).toFixed(2)
+			: (Number(data.totalRequestedStr) - Number(data.amountStr)).toFixed(2))
+		: null
+	const hasCCSA = Number(fromCCSA) > 0
+	const hasUSDC = Number(fromBal) > 0
+	const payerName = data.payerDisplayName ?? (data.payload?.account
+		? `${data.payload.account.slice(0, 6)}…${data.payload.account.slice(-4)}`
+		: 'Payer')
+
 	return (
-		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6">
-			<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 text-center pt-8 pb-4">
-				Confirm deduction
-			</h2>
-			<p className="text-sm text-slate-600 dark:text-slate-400 text-center mb-6">
-				You (beneficiary) will receive the amount below by deducting from the customer (QR holder). Please confirm the deduction breakdown.
-			</p>
-			<div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-4 space-y-3 mb-6">
-				<div className="flex justify-between text-sm">
-					<span className="text-slate-500 dark:text-slate-400">Total to receive (USDC)</span>
-					<span className="font-semibold text-slate-900 dark:text-slate-100">${data.amountStr}</span>
+		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-16">
+			{/* Payer (扣款者 / QR holder) info header */}
+			<div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-4 flex items-center gap-4 mb-6">
+				<div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
+					Payer
 				</div>
-				<div className="flex justify-between text-sm">
-					<span className="text-slate-500 dark:text-slate-400">From customer USDC balance</span>
-					<span className="font-medium text-slate-800 dark:text-slate-200">${data.usdcFromBalance}</span>
-				</div>
-				<div className="flex justify-between text-sm">
-					<span className="text-slate-500 dark:text-slate-400">From CCSA (converted to USDC)</span>
-					<span className="font-medium text-slate-800 dark:text-slate-200">${data.usdcFromCCSA}</span>
-				</div>
-				<div className="text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200 dark:border-slate-700">
-					Customer QR USDC balance: ${data.customerUsdcBalance}
+				<div className="min-w-0 flex-1">
+					<p className="font-bold text-slate-900 dark:text-slate-100 text-base truncate">
+						{data.payerDisplayName ? `@${data.payerDisplayName}` : payerName}
+					</p>
+					{data.payerMemberLabel && (
+						<p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+							<span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+								<Check className="w-2.5 h-2.5 text-white" strokeWidth={2.5} />
+							</span>
+							{data.payerMemberLabel}
+						</p>
+					)}
 				</div>
 			</div>
-			<div className="grid grid-cols-2 gap-3 mt-auto pb-6">
-				<button
-					type="button"
-					onClick={onCancel}
-					disabled={submitting}
-					className="h-12 rounded-xl border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-semibold disabled:opacity-50"
-				>
-					Cancel
-				</button>
+
+			{/* Bill Amount */}
+			<div className="flex justify-between items-center mb-2">
+				<span className="text-slate-500 dark:text-slate-400 text-sm">Bill Amount</span>
+				<span className="font-bold text-slate-900 dark:text-slate-100">CA${totalReq}</span>
+			</div>
+
+			{/* Member Discount (only if has discount) */}
+			{data.hasDiscount && discountVal != null && (
+				<div className="flex justify-between items-center mb-4 pl-1">
+					<span className="text-slate-500 dark:text-slate-400 text-sm">Member Discount (10%)</span>
+					<span className="font-bold text-blue-600 dark:text-blue-400">-CA${discountVal}</span>
+				</div>
+			)}
+
+			{/* $CCSA Balance (only if deduction from CCSA > 0) */}
+			{hasCCSA && (
+				<div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-4 flex items-center justify-between gap-3 mb-3">
+					<div className="flex items-center gap-3 min-w-0">
+						<div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">
+							C
+						</div>
+						<span className="text-emerald-700 dark:text-emerald-400 font-medium text-sm">$CCSA Balance</span>
+					</div>
+					<span className="font-bold text-emerald-700 dark:text-emerald-400 text-sm flex-shrink-0">-CA${fromCCSA}</span>
+				</div>
+			)}
+
+			{/* USDC Top-up (only if deduction from USDC balance > 0) */}
+			{hasUSDC && (
+				<div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-4 flex items-center justify-between gap-3 mb-4">
+					<div className="flex items-center gap-3 min-w-0">
+						<div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">
+							$
+						</div>
+						<span className="text-blue-700 dark:text-blue-400 font-medium text-sm">USDC Top-up</span>
+					</div>
+					<span className="font-bold text-blue-700 dark:text-blue-400 text-sm flex-shrink-0">-CA${fromBal}</span>
+				</div>
+			)}
+
+			{/* Total Charge - prominent */}
+			<div className="flex justify-between items-baseline mt-2 mb-6">
+				<span className="text-slate-500 dark:text-slate-400 text-sm">Total Charge</span>
+				<span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">CA${amount}</span>
+			</div>
+
+			{/* Actions */}
+			<div className="mt-auto pt-4 pb-6 flex flex-col items-center gap-3">
 				<button
 					type="button"
 					onClick={onConfirm}
 					disabled={submitting}
-					className="h-12 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+					className="w-full h-12 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
 				>
 					{submitting ? <Loader className="w-5 h-5 animate-spin" /> : null}
-					Confirm
+					Confirm Charge
+				</button>
+				<button
+					type="button"
+					onClick={onCancel}
+					disabled={submitting}
+					className="text-slate-500 dark:text-slate-400 text-sm font-normal hover:underline disabled:opacity-50"
+				>
+					Cancel
 				</button>
 			</div>
 		</div>
 	)
 }
 
-const TenKeyInputComponent = () => {
+export type PaymentSuccessData = {
+	txHash: string
+	amountCAD: string
+	amountUSDC: string
+	exchangeRateCADtoUSDC?: string
+	paidWithCCSACAD?: string
+	recipientName?: string
+}
+
+function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone: () => void }) {
+	const [copied, setCopied] = useState(false)
+	const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const rate = data.exchangeRateCADtoUSDC ?? (data.amountUSDC && data.amountCAD ? (Number(data.amountUSDC) / Number(data.amountCAD)).toFixed(4) : '—')
+	const copyTx = () => {
+		if (!data.txHash) return
+		navigator.clipboard.writeText(`${BASE_EXPLORER_TX}${data.txHash}`)
+		setCopied(true)
+		if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+		copyTimeoutRef.current = setTimeout(() => {
+			setCopied(false)
+			copyTimeoutRef.current = null
+		}, 2000)
+	}
+	useEffect(() => () => { if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current) }, [])
+	return (
+		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-16 pb-6">
+			<h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 text-center mb-1">
+				Payment Successful
+			</h1>
+			<p className="text-lg font-bold text-slate-800 dark:text-slate-200 text-center">
+				{data.recipientName ? `@${data.recipientName}` : 'Payment'}
+			</p>
+			<p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6">
+				{data.txHash ? `${data.txHash.slice(0, 6)}…${data.txHash.slice(-4)} • ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+			</p>
+
+			<div className="flex justify-between items-center mb-4">
+				<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid</span>
+				<span className="font-bold text-slate-900 dark:text-slate-100">CA${data.amountCAD}</span>
+			</div>
+
+			<div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-4 mb-3">
+				<div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-semibold text-sm mb-3">
+					<RefreshCw className="w-4 h-4" />
+					PAYMENT DETAILS
+				</div>
+				<div className="flex justify-between text-sm mb-1">
+					<span className="text-slate-600 dark:text-slate-400">Exchange Rate</span>
+					<span className="text-slate-800 dark:text-slate-200">1 CAD ≈ {rate} USDC</span>
+				</div>
+				<div className="flex justify-between items-center mt-2">
+					<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid in USDC</span>
+					<span className="font-bold text-blue-600 dark:text-blue-400">{data.amountUSDC} USDC</span>
+				</div>
+			</div>
+
+			{data.paidWithCCSACAD != null && Number(data.paidWithCCSACAD) > 0 && (
+				<div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-4 mb-4">
+					<div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-semibold text-sm mb-3">
+						<Zap className="w-4 h-4" />
+						PAYMENT SOURCE
+					</div>
+					<div className="flex justify-between items-center">
+						<span className="font-bold text-emerald-700 dark:text-emerald-600">Paid with $CCSA</span>
+						<span className="font-bold text-emerald-700 dark:text-emerald-600">$CCSA {data.paidWithCCSACAD}</span>
+					</div>
+					<p className="text-xs text-slate-500 dark:text-slate-400 mt-1">1 $CCSA = 1.00 CAD</p>
+				</div>
+			)}
+
+			<div className="flex justify-between text-sm mb-1">
+				<span className="text-slate-500 dark:text-slate-400">Network</span>
+				<span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
+					<span className="w-2 h-2 rounded-full bg-blue-500" />
+					Base Mainnet
+				</span>
+			</div>
+			<div className="flex justify-between items-center text-sm mb-6">
+				<span className="text-slate-500 dark:text-slate-400">Transaction ID</span>
+				<div className="flex items-center gap-2">
+					<button type="button" onClick={copyTx} className="font-mono text-slate-700 dark:text-slate-300 flex items-center gap-1.5 hover:underline">
+						{data.txHash ? `${data.txHash.slice(0, 6)}…${data.txHash.slice(-4)}` : '—'}
+						{copied ? (
+							<Check className="w-4 h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" strokeWidth={2.5} />
+						) : (
+							<Copy className="w-3.5 h-3.5 flex-shrink-0" />
+						)}
+					</button>
+					{data.txHash && (
+						<a
+							href={`${BASE_EXPLORER_TX}${data.txHash}`}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+							title="View on BaseScan"
+						>
+							<ExternalLink className="w-4 h-4" />
+						</a>
+					)}
+				</div>
+			</div>
+
+			<p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-1">GRAND TOTAL PAID</p>
+			<p className="text-3xl font-bold text-blue-600 dark:text-blue-400 text-center mb-6">CA${data.amountCAD}</p>
+
+			<button
+				type="button"
+				onClick={onDone}
+				className="w-full h-14 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-base"
+			>
+				Done & Go to Chat
+			</button>
+		</div>
+	)
+}
+
+export type TenKeyInputComponentProps = {
+	/** 支付成功并点击 Done 后调用，用于关闭本组件并回到父页面（父页面可在此安排刷新 AA 资产等） */
+	onPaymentSuccess?: () => void
+}
+
+const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
+	const { onPaymentSuccess } = props
 	const [value, setValue] = useState('')
 	const [showQRSheet, setShowQRSheet] = useState(false)
 	const [routingSteps, setRoutingSteps] = useState<RoutingStep[]>(() =>
@@ -334,6 +533,7 @@ const TenKeyInputComponent = () => {
 	const [confirmDeduction, setConfirmDeduction] = useState<ConfirmDeductionPayload | null>(null)
 	const [submitting, setSubmitting] = useState(false)
 	const [successTxHash, setSuccessTxHash] = useState<string | null>(null)
+	const [paymentSuccessData, setPaymentSuccessData] = useState<PaymentSuccessData | null>(null)
 	const routingDoneRef = useRef(false)
 	const {
 		beamio,
@@ -394,7 +594,7 @@ const TenKeyInputComponent = () => {
 			routingDoneRef.current = false
 		}
 
-		/** 某步失败：显示红色 X，由用户点击底部 OK 后关闭 */
+		/** 某步失败：显示红色 X 及错误信息（图中没有的 step 失败时也显示该 step 的错误） */
 		const failStep = (stepId: string, detail: string) => {
 			setStepError(stepId, detail)
 		}
@@ -407,8 +607,8 @@ const TenKeyInputComponent = () => {
 		;(async () => {
 			let payload: OpenContainerRelayPayload
 
-			// Step 1: Parse QR
-			setStepLoading('parse')
+			// Step 1: Detecting User (parse + beneficiary AA + nonce + deadline + maxAmount; failures show under this step)
+			setStepLoading('detectingUser')
 			await loadingDelay()
 			try {
 				const parsed = JSON.parse(scanData) as unknown
@@ -424,68 +624,108 @@ const TenKeyInputComponent = () => {
 					typeof (parsed as OpenContainerRelayPayload).deadline !== 'string' ||
 					typeof (parsed as OpenContainerRelayPayload).signature !== 'string'
 				) {
-					failStep('parse', 'Invalid Open Relay payload')
+					failStep('detectingUser', 'Invalid Open Relay payload')
 					return
 				}
 				payload = parsed as OpenContainerRelayPayload
 			} catch {
-				failStep('parse', 'Invalid Open Relay payload')
+				failStep('detectingUser', 'Invalid Open Relay payload')
 				return
 			}
-			setStepSuccess('parse', 'Valid payload')
-			await doneDelay()
-
-			// Step 2: Nonce — 用 readContainerNonceFromAAStorage 检查 payload.nonce 与 AA 当前 openRelayed nonce 一致
-			setStepLoading('nonce')
-			await loadingDelay()
+			try {
+				const aaFactory = new ethers.Contract(
+					contracts.BeamioAAAcountFactory.address,
+					contracts.BeamioAAAcountFactory.abi,
+					baseEndpoint
+				)
+				const primary = await aaFactory.primaryAccountOf(payload.to)
+				if (!primary || primary === ethers.ZeroAddress) {
+					failStep('detectingUser', 'Beneficiary has no AA account')
+					return
+				}
+			} catch (e) {
+				failStep('detectingUser', (e as Error)?.message ?? 'Could not verify beneficiary AA')
+				return
+			}
 			try {
 				const storedNonce = await readContainerNonceFromAAStorage(baseEndpoint, payload.account, 'openRelayed')
 				const payloadNonce = BigInt(payload.nonce)
 				if (storedNonce !== payloadNonce) {
-					failStep('nonce', `Nonce mismatch: expected ${storedNonce}, got ${payloadNonce}`)
+					failStep('detectingUser', `Nonce mismatch: expected ${storedNonce}, got ${payloadNonce}`)
 					return
 				}
-				setStepSuccess('nonce', `Nonce ${payload.nonce} OK`)
 			} catch (e) {
-				console.warn('Nonce check failed', e)
-				failStep('nonce', (e as Error)?.message ?? 'Could not read nonce')
+				failStep('detectingUser', (e as Error)?.message ?? 'Could not read nonce')
 				return
 			}
-			await doneDelay()
-
-			// Step 3: Deadline
-			setStepLoading('deadline')
-			await loadingDelay()
 			const nowSec = Math.floor(Date.now() / 1000)
 			const deadlineSec = parseInt(payload.deadline, 10)
 			if (Number.isNaN(deadlineSec) || nowSec >= deadlineSec) {
-				failStep('deadline', 'QR code has expired')
+				failStep('detectingUser', 'QR code has expired')
 				return
 			}
-			setStepSuccess('deadline', 'Within validity period')
-			await doneDelay()
-
-			// Step 4: Max amount
-			setStepLoading('maxAmount')
-			await loadingDelay()
 			let enteredWei: bigint
 			try {
-				enteredWei = ethers.parseUnits(voucherPayAmount || '0', 6)
+				if (voucherPayAmount && Number(voucherPayAmount) > 0) {
+					const { usdc6 } = await quoteCurrencyAmountInUSDC(CCSA_Card_Address, 'CAD', voucherPayAmount)
+					enteredWei = usdc6
+				} else {
+					enteredWei = 0n
+				}
 				const maxWei = BigInt(payload.maxAmount ?? '0')
-				if (maxWei < enteredWei) {
-					failStep('maxAmount', `Max ${ethers.formatUnits(maxWei, 6)} USDC`)
+				if (maxWei > 0n && maxWei < enteredWei) {
+					failStep('detectingUser', `Max ${ethers.formatUnits(maxWei, 6)} USDC`)
 					return
 				}
-			} catch {
+			} catch (e) {
+				console.warn('CAD to USDC quote or maxAmount check failed', e)
 				enteredWei = 0n
 			}
-			setStepSuccess('maxAmount', 'Amount within limit')
+			setStepSuccess('detectingUser', 'User validated')
 			await doneDelay()
 
-			// Step 5: Balance（并计算扣款组合：USDC 余额 + CCSA 折算）
+			// Step 2: Checking Membership (CCSA card; 10% off for cardholder)
+			setStepLoading('membership')
+			await loadingDelay()
+			let cardNumbers: string[] = []
+			let pointsBalanceWei = 0n
+			try {
+				const cardContract = new ethers.Contract(
+					CCSA_Card_Address,
+					['function getOwnership(address user) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)'],
+					baseEndpoint
+				)
+				const [pt, nfts] = await cardContract.getOwnership(payload.account)
+				pointsBalanceWei = BigInt(pt?.toString() ?? 0)
+				cardNumbers = (nfts || []).map((n: { tokenId: bigint }) => n.tokenId.toString()).filter(Boolean)
+				const detail = cardNumbers.length > 0 ? 'Cardholder (10% OFF)' : 'No membership discount'
+				setStepSuccess('membership', detail)
+			} catch (e) {
+				console.warn('CCSA card check failed', e)
+				failStep('membership', 'Could not read CCSA card')
+				return
+			}
+			await doneDelay()
+
+			// 持卡者 10% 折扣：受益人实收 = 输入金额 * 0.9
+			const effectiveWei = cardNumbers.length > 0 ? (enteredWei * 9n) / 10n : enteredWei
+
+			// CCSA 可折算 USDC 容量（点数 × 单价，6 位小数）；保留 unitPriceUSDC6 供后续折算扣款点数量
+			let ccsaCapacityUsdcWei = 0n
+			let unitPriceUSDC6 = 0n
+			if (pointsBalanceWei > 0n) {
+				try {
+					unitPriceUSDC6 = BigInt((await BeamioCardFactorySC.quoteUnitPointInUSDC6(CCSA_Card_Address))?.toString() ?? 0)
+					ccsaCapacityUsdcWei = (pointsBalanceWei * unitPriceUSDC6) / 1_000_000n
+				} catch (e) {
+					console.warn('CCSA quote UnitPointInUSDC6 failed', e)
+				}
+			}
+
+			// Step 3: Analyzing Assets (balance check; show CCSA amount or sufficient)
 			let balanceWei = 0n
-			if (enteredWei > 0n) {
-				setStepLoading('balance')
+			if (effectiveWei > 0n) {
+				setStepLoading('analyzingAssets')
 				await loadingDelay()
 				try {
 					const usdcAsset = payload.items?.find((it: { kind: number }) => it.kind === 0)?.asset ?? USDCContract_BASE
@@ -496,51 +736,93 @@ const TenKeyInputComponent = () => {
 					)
 					const bal = await tokenContract.balanceOf(payload.account)
 					balanceWei = BigInt(bal.toString())
-					if (balanceWei < enteredWei) {
-						failStep('balance', 'Insufficient balance')
+					const totalAvailableWei = balanceWei + ccsaCapacityUsdcWei
+					if (totalAvailableWei < effectiveWei) {
+						failStep('analyzingAssets', 'Insufficient balance')
 						return
 					}
-					setStepSuccess('balance', 'Sufficient')
+					const ccsaFormatted = ethers.formatUnits(ccsaCapacityUsdcWei, 6)
+					const detail = ccsaCapacityUsdcWei > 0n
+						? `$CCSA: ${Number(ccsaFormatted).toFixed(2)} (Partial)`
+						: 'USDC sufficient'
+					setStepSuccess('analyzingAssets', detail)
 				} catch (e) {
 					console.warn('Balance check failed', e)
-					failStep('balance', 'Could not verify balance')
+					failStep('analyzingAssets', 'Could not verify balance')
 					return
 				}
 			} else {
-				setStepSuccess('balance', 'Skipped (zero amount)')
+				setStepSuccess('analyzingAssets', 'Skipped (zero amount)')
 			}
 			await doneDelay()
 
-			// Step 6: 支付账号所持 CCSA 卡 NFT 卡号
-			setStepLoading('ccsaCard')
+			// Step 4: Optimizing Route (deduction split: CCSA + USDC)
+			setStepLoading('optimizingRoute')
 			await loadingDelay()
+			const usdcFromCCSAWei = effectiveWei <= ccsaCapacityUsdcWei ? effectiveWei : ccsaCapacityUsdcWei
+			const usdcFromBalanceWei = effectiveWei - usdcFromCCSAWei
+			const amountStr = ethers.formatUnits(effectiveWei, 6)
+			const ccsaPointsWei = usdcFromCCSAWei > 0n && unitPriceUSDC6 > 0n
+				? (usdcFromCCSAWei * 1_000_000n) / unitPriceUSDC6
+				: 0n
+			setStepSuccess('optimizingRoute', usdcFromCCSAWei > 0n && usdcFromBalanceWei > 0n ? 'Hybrid: CCSA + USDC' : usdcFromCCSAWei > 0n ? 'CCSA only' : 'USDC only')
+			await doneDelay()
+
+			const usdcFromBalanceStr = ethers.formatUnits(usdcFromBalanceWei, 6)
+			const usdcFromCCSAStr = ethers.formatUnits(usdcFromCCSAWei, 6)
+			const customerUsdcBalanceStr = ethers.formatUnits(balanceWei, 6)
+			const totalRequestedStrVal = ethers.formatUnits(enteredWei, 6)
+			let amountStrCAD: string | undefined
+			let usdcFromBalanceCAD: string | undefined
+			let usdcFromCCSACAD: string | undefined
+			let customerUsdcBalanceCAD: string | undefined
+			let totalRequestedStrCAD: string | undefined
 			try {
-				const cardContract = new ethers.Contract(
-					CCSA_Card_Address,
-					['function getOwnership(address user) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)'],
+				amountStrCAD = await quoteUSDCToCAD(CCSA_Card_Address, amountStr)
+				usdcFromBalanceCAD = await quoteUSDCToCAD(CCSA_Card_Address, usdcFromBalanceStr)
+				usdcFromCCSACAD = await quoteUSDCToCAD(CCSA_Card_Address, usdcFromCCSAStr)
+				customerUsdcBalanceCAD = await quoteUSDCToCAD(CCSA_Card_Address, customerUsdcBalanceStr)
+				totalRequestedStrCAD = await quoteUSDCToCAD(CCSA_Card_Address, totalRequestedStrVal)
+			} catch (e) {
+				console.warn('USDC to CAD quote failed, Confirm deduction will show USDC amounts', e)
+			}
+
+			// 付款人 Beamio 信息：通过 AA.owner() 得到付款人 EOA，再 searchUsername(EOA) 获取
+			let payerDisplayName: string | undefined
+			try {
+				const aaContract = new ethers.Contract(
+					payload.account,
+					['function owner() view returns (address)'],
 					baseEndpoint
 				)
-				const [, nfts] = await cardContract.getOwnership(payload.account)
-				const cardNumbers = (nfts || []).map((n: { tokenId: bigint }) => n.tokenId.toString()).filter(Boolean)
-				const detail = cardNumbers.length > 0 ? `Card #${cardNumbers.join(', #')}` : 'No CCSA card'
-				setStepSuccess('ccsaCard', detail)
+				const payerEOA = await aaContract.owner() as string
+				if (payerEOA && payerEOA !== ethers.ZeroAddress) {
+					const account = await searchUsername(payerEOA)
+					if (account?.results?.[0]?.username) {
+						payerDisplayName = account.results[0].username
+					}
+				}
 			} catch (e) {
-				console.warn('CCSA card check failed', e)
-				setStepError('ccsaCard', 'Could not read CCSA card')
-				return
+				console.warn('Payer Beamio lookup failed (searchUsername by EOA)', e)
 			}
-			await doneDelay()
 
-			// 扣款组合：从客户 USDC 余额扣多少，其余由 CCSA 折算成 USDC
-			const usdcFromBalanceWei = enteredWei <= balanceWei ? enteredWei : balanceWei
-			const usdcFromCCSAWei = enteredWei - usdcFromBalanceWei
-			const amountStr = voucherPayAmount || ethers.formatUnits(enteredWei, 6)
 			setConfirmDeduction({
 				payload,
 				amountStr,
-				usdcFromBalance: ethers.formatUnits(usdcFromBalanceWei, 6),
-				usdcFromCCSA: ethers.formatUnits(usdcFromCCSAWei, 6),
-				customerUsdcBalance: ethers.formatUnits(balanceWei, 6),
+				usdcFromBalance: usdcFromBalanceStr,
+				usdcFromCCSA: usdcFromCCSAStr,
+				customerUsdcBalance: customerUsdcBalanceStr,
+				totalRequestedStr: totalRequestedStrVal,
+				hasDiscount: cardNumbers.length > 0,
+				amountStrCAD,
+				usdcFromBalanceCAD,
+				usdcFromCCSACAD,
+				customerUsdcBalanceCAD,
+				totalRequestedStrCAD,
+				payerDisplayName,
+				payerMemberLabel: cardNumbers.length > 0 ? 'CCSA Member (Genesis)' : undefined,
+				usdcFromBalanceWeiStr: usdcFromBalanceWei > 0n ? usdcFromBalanceWei.toString() : undefined,
+				ccsaPointsWeiStr: ccsaPointsWei > 0n ? ccsaPointsWei.toString() : undefined,
 			})
 			// 不在此处 submit；等用户确认后再提交
 			return
@@ -564,20 +846,39 @@ const TenKeyInputComponent = () => {
 
 	const handleConfirmDeduction = async () => {
 		if (!confirmDeduction || submitting) return
+		const data = confirmDeduction
 		setSubmitting(true)
 		setConfirmDeduction(null)
-		// 使用用户输入的金额（amountStr，USDC 6 位小数）覆盖 payload.items 中的 amount；open relay 签名不包含 itemsHash/to，受益人可任意填写
-		const amountWeiStr = ethers.parseUnits(confirmDeduction.amountStr, 6).toString()
+		// Build items from deduction split: only include items with amount > 0; do not add zero-amount items.
+		// ERC1155 asset uses the same CCSA card as Step 6 (balance check): the account’s balance is on this card; factory.beamioUserCard() must be set to this address on-chain.
+		const usdcWei = data.usdcFromBalanceWeiStr ? BigInt(data.usdcFromBalanceWeiStr) : 0n
+		const ccsaPointsWei = data.ccsaPointsWeiStr ? BigInt(data.ccsaPointsWeiStr) : 0n
+		const items: { kind: number; asset: string; amount: string; tokenId: string; data: string }[] = []
+		if (usdcWei > 0n) {
+			items.push({ kind: 0, asset: USDCContract_BASE, amount: usdcWei.toString(), tokenId: '0', data: '0x' })
+		}
+		if (ccsaPointsWei > 0n) {
+			items.push({ kind: 1, asset: CCSA_Card_Address, amount: ccsaPointsWei.toString(), tokenId: '0', data: '0x' })
+		}
+		if (items.length === 0) {
+			const amountWeiStr = ethers.parseUnits(data.amountStr, 6).toString()
+			items.push({ kind: 0, asset: USDCContract_BASE, amount: amountWeiStr, tokenId: '0', data: '0x' })
+		}
+		// openContainerPayload.to 填受益人 AA = 自己（当前扫码确认的用户），非 QR 里的签字人（被扣款人）
+		const beneficiaryAA = voucherPayToAA || profiles?.[0]?.aaAccount || ''
+		if (!beneficiaryAA || !ethers.isAddress(beneficiaryAA)) {
+			setSubmitting(false)
+			setVoucherPayError('Beneficiary AA not found. Please use the account that will receive the payment.')
+			return
+		}
+		const toAddress = ethers.getAddress(beneficiaryAA)
 		const payload: OpenContainerRelayPayload = {
-			...confirmDeduction.payload,
-			items: confirmDeduction.payload.items.map((it: { kind: number; asset: string; amount: string; tokenId: string; data: string }) =>
-				it.kind === 0 ? { ...it, amount: amountWeiStr } : it
-			),
+			...data.payload,
+			to: toAddress,
+			items,
 		}
 
-		// 仅使用 /api/AAtoEOA（openContainerPayload），不再调用 voucher/relay
 		setStepById('sendTx', 'loading', 'Submitting…')
-		setStepById('waitTx', 'loading', 'Waiting for server…')
 		try {
 			const url = `${beamioApiBase.replace(/\/$/, '')}/api/AAtoEOA`
 			const res = await fetch(url, {
@@ -589,10 +890,21 @@ const TenKeyInputComponent = () => {
 			})
 			const apiResult = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; USDC_tx?: string }
 			setStepById('sendTx', 'success', 'Sent')
-			// 以 body.success 为准：服务端失败时应返回 500，若误返回 200 也按失败处理
 			if (res.ok && apiResult.success !== false) {
 				if (apiResult.USDC_tx) setSuccessTxHash(apiResult.USDC_tx)
 				setStepById('waitTx', 'success', 'Transaction complete')
+				// 仅设置 paymentSuccessData，下一帧渲染 PaymentSuccessView；不在此处关闭或调用 onPaymentSuccess，需用户点击「Done & Go to Chat」后才回到父页面
+				const amountCAD = data.amountStrCAD ?? data.amountStr
+				const amountUSDC = data.amountStr
+				const rate = amountCAD && amountUSDC ? (Number(amountUSDC) / Number(amountCAD)).toFixed(4) : undefined
+				setPaymentSuccessData({
+					txHash: apiResult.USDC_tx ?? '',
+					amountCAD,
+					amountUSDC,
+					exchangeRateCADtoUSDC: rate,
+					paidWithCCSACAD: data.usdcFromCCSACAD && Number(data.usdcFromCCSACAD) > 0 ? data.usdcFromCCSACAD : undefined,
+					recipientName: data.payerDisplayName,
+				})
 			} else {
 				setSubmitting(false)
 				setStepById('waitTx', 'error', apiResult.error ?? `HTTP ${res.status}`)
@@ -621,9 +933,15 @@ const TenKeyInputComponent = () => {
 		routingDoneRef.current = false
 	}
 
-	/** 放弃 Smart Routing Analysis（有错误时点 OK 关闭并回到数字键盘） */
-	const handleAbandonRouting = () => {
+	/**
+	 * 放弃当前流程：Smart Routing 错误时点 OK，或 Payment Success 时点「Done & Go to Chat」.
+	 * Workflow：Submitting 成功后仅设置 paymentSuccessData，显示 PaymentSuccessView；不在此处关闭或回调。
+	 * 只有用户点击「Done & Go to Chat」时传入 fromPaymentSuccess=true，才调用 onPaymentSuccess() 回到父页面。
+	 */
+	const handleAbandonRouting = (fromPaymentSuccess?: boolean) => {
+		if (fromPaymentSuccess && onPaymentSuccess) onPaymentSuccess()
 		setSuccessTxHash(null)
+		setPaymentSuccessData(null)
 		setScanData('')
 		setScanIntent('')
 		setVoucherPayAmount('')
@@ -649,8 +967,18 @@ const TenKeyInputComponent = () => {
 
 	const paymentUrl = value ? `http://beamio.app/Vouchers?Amount=${value}` : ''
 
-	// QR 扫描开始后（scanIntent === 'voucherPay'）即刻显示 Smart Routing Analysis，错误时该项左侧红 X，底部显示 OK，点击后关闭并回到数字键盘
+	// voucherPay workflow：Confirm → Submitting 成功 → 显示 PaymentSuccessView；仅当用户点击「Done & Go to Chat」才 onPaymentSuccess 回到父页面（不在此前关闭）
 	if (scanIntent === 'voucherPay') {
+		if (paymentSuccessData) {
+			return (
+				<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+					<PaymentSuccessView
+						data={paymentSuccessData}
+						onDone={() => handleAbandonRouting(true)}
+					/>
+				</div>
+			)
+		}
 		if (confirmDeduction) {
 			return (
 				<div className="flex-1 min-h-0 flex flex-col overflow-hidden">

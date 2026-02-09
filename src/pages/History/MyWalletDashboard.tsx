@@ -30,6 +30,7 @@ import {
 import AccountBeo from "./AccountBea"
 import { fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived, calcFeeFromNumber } from "@/services/currency"
 import base_icon from '@/components/assets/base-logo.png'
+import usdc_icon from '@/components/assets/usdc.png'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
 import NavigateLeftButton from '@/components/navigate'
@@ -211,7 +212,7 @@ export function MyWalletDashboard() {
 	const [allItems, setAllItems] = useState<TransferHistork[]>([])
 	const [reflash, setReflash] = useState(false)
 	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
-	const [activeSlide, setActiveSlide] = useState(0) // 0: USDC on Base, 1: Smart Account
+	const [activeSlide, setActiveSlide] = useState(0) // 0: USDC on Base, 1: Express Pay
 	const [touchStart, setTouchStart] = useState<number | null>(null)
 	const [touchEnd, setTouchEnd] = useState<number | null>(null)
 	const [mouseStart, setMouseStart] = useState<number | null>(null)
@@ -230,6 +231,7 @@ export function MyWalletDashboard() {
 	const [selectedActionItem, setSelectedActionItem] = useState<BeamioActionResponse | null>(null)
 	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | null>(null)
 	const copyAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const refreshAAAssetsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const [payScreenMode, setPayScreenMode] = useState<'eoa-pay' | 'aa-eoa-transfer'>('eoa-pay')
 	const [showTenKeySlide, setShowTenKeySlide] = useState(false)
 
@@ -246,6 +248,7 @@ export function MyWalletDashboard() {
 
 	useEffect(() => () => {
 		if (copyAddressTimeoutRef.current) clearTimeout(copyAddressTimeoutRef.current)
+		if (refreshAAAssetsTimeoutRef.current) clearTimeout(refreshAAAssetsTimeoutRef.current)
 	}, [])
 
 	// 触摸滑动处理
@@ -677,7 +680,7 @@ export function MyWalletDashboard() {
 		load()
 	}, [load])
 
-	// Tab 2 (Smart Account)：拉取 CCSA 卡资产，供 ActiveList 展示活动
+	// Tab 2 (Express Pay)：拉取 CCSA 卡资产，供 ActiveList 展示活动
 	useEffect(() => {
 		if (activeSlide !== 1 || !profiles?.[0] || !CCSA_Card_Address) return
 		getMyAssets(profiles[0], CCSA_Card_Address)
@@ -717,6 +720,19 @@ export function MyWalletDashboard() {
 		setReflash(false)
 	}
 
+	/** 延迟 5 秒后刷新 AA 资产（USDC 余额 + CCSA 卡资产），用于支付成功返回父页面后更新展示 */
+	const scheduleRefreshAAAssets = useCallback(() => {
+		if (refreshAAAssetsTimeoutRef.current) clearTimeout(refreshAAAssetsTimeoutRef.current)
+		refreshAAAssetsTimeoutRef.current = setTimeout(() => {
+			refreshAAAssetsTimeoutRef.current = null
+			loadAaAccountBalance()
+			if (profiles?.[0] && CCSA_Card_Address) {
+				getMyAssets(profiles[0], CCSA_Card_Address)
+					.then((assets) => { if (assets) setSmartAccountCardAssets(assets) })
+					.catch(() => setSmartAccountCardAssets(null))
+			}
+		}, 5000)
+	}, [loadAaAccountBalance, profiles])
 
   return (
     <div
@@ -851,7 +867,7 @@ export function MyWalletDashboard() {
 							<div className="z-10 bg-white/10 p-4 rounded-full mb-3 backdrop-blur-sm group-hover:scale-110 transition-transform">
 								<Plus size={32} className="text-purple-300" />
 							</div>
-							<h3 className="text-xl font-bold z-10">Create Smart Account</h3>
+							<h3 className="text-xl font-bold z-10">Create Express Pay</h3>
 							<p className="text-slate-400 text-sm mt-2 z-10 text-center px-8">Unlock gas-free payments & exclusive vouchers</p>
 						</button>
 					) : (
@@ -877,7 +893,7 @@ export function MyWalletDashboard() {
 											className={["w-5 h-5 object-contain", reflash ? "animate-spin opacity-80" : ""].join(" ")}
 										/>
 									</button>
-									<span className="font-medium">Smart Account</span>
+									<span className="font-medium">Express Pay</span>
 								</div>
 								<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
 									<Zap size={10} className="fill-yellow-300 text-yellow-300" />
@@ -928,7 +944,7 @@ export function MyWalletDashboard() {
 					type="button"
 					onClick={() => setActiveSlide(1)}
 					className={`h-2 rounded-full transition-all duration-300 ${activeSlide === 1 ? 'w-8 bg-purple-600' : 'w-2 bg-slate-300'}`}
-					aria-label="Smart Account"
+					aria-label="Express Pay"
 				/>
 			</div>
 		</div>
@@ -1113,25 +1129,75 @@ export function MyWalletDashboard() {
 					</div>
 				</div>
 
-				{/* Smart Account 活动列表（与 CardItem 中 ActiveList 一致） */}
+				{/* Smart Account Account Assets */}
+				<div className="px-5 mt-4">
+					<div className="flex items-center gap-2 px-2 mb-3">
+						<span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+						<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-700 dark:text-slate-200">ACCOUNT ASSETS</span>
+					</div>
+					<div className="rounded-2xl bg-white dark:bg-slate-900 ring-1 ring-black/5 dark:ring-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.08)] overflow-hidden">
+						<div className="p-4 space-y-4">
+							{/* USDC */}
+							<div className="flex items-center gap-3">
+								<div className="flex-shrink-0 w-11 h-11 flex items-center justify-center">
+									<div className="relative flex-shrink-0 min-w-[16px] min-h-[16px]">
+										<img src={usdc_icon} alt="USDC" className="block w-8 h-8 rounded-full object-contain" />
+										<img src={base_icon} alt="Base" className="block w-5 h-5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
+									</div>
+								</div>
+								<div className="flex-1 min-w-0">
+									<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">USDC</p>
+									<p className="text-sm text-slate-500 dark:text-slate-400">Base Network</p>
+								</div>
+								<div className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums text-[15px]">{formatWithThousands(aaAccountUsdcBalance)}</div>
+							</div>
+							{/* CCSA */}
+							<div className="flex items-center gap-3 pt-0">
+								<div className="w-11 h-11 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+									<Banknote className="w-5 h-5 text-amber-600 dark:text-amber-400" strokeWidth={2} />
+								</div>
+								<div className="flex-1 min-w-0">
+									<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">$CCSA</p>
+									<p className="text-sm text-slate-500 dark:text-slate-400">Base Network · Payment card</p>
+								</div>
+								<div className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums text-[15px]">{formatWithThousands(smartAccountCardAssets?.points ?? '0')}</div>
+							</div>
+							<p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">No vouchers yet. Visit Market to buy.</p>
+						</div>
+					</div>
+				</div>
+
+				{/* Smart Account HISTORY（与 CardItem 中 ActiveList 一致） */}
 				<div className="flex-1 min-h-0 overflow-y-auto mt-4">
 					<div className="px-5">
-						<ActiveList
-							MyCardAssets={
-								smartAccountCardAssets ?? {
-									address: '',
-									cardAddress: CCSA_Card_Address,
-									points: '0',
-									cardOwner: null,
-									cardCurrency: 'USDC',
-									nfts: [],
+						<div className="flex items-center justify-between px-2 mb-3">
+							<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-700 dark:text-slate-200">HISTORY</span>
+							<button
+								type="button"
+								onClick={() => navigate('/HistoryAll')}
+								className="text-[12px] font-semibold text-violet-600 dark:text-violet-400 active:opacity-70"
+							>
+								View All
+							</button>
+						</div>
+						<div>
+							<ActiveList
+								MyCardAssets={
+									smartAccountCardAssets ?? {
+										address: '',
+										cardAddress: CCSA_Card_Address,
+										points: '0',
+										cardOwner: null,
+										cardCurrency: 'USDC',
+										nfts: [],
+									}
 								}
-							}
-							onItemClick={(item) => {
-								setSelectedActionItem(item)
-								setShowFooter(false)
-							}}
-						/>
+								onItemClick={(item) => {
+									setSelectedActionItem(item)
+									setShowFooter(false)
+								}}
+							/>
+						</div>
 					</div>
 				</div>
 			</motion.div>
@@ -1305,7 +1371,13 @@ export function MyWalletDashboard() {
 						onMore={() => {}}
 					/>
 					<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-						<TenKeyInput />
+						<TenKeyInput
+							onPaymentSuccess={() => {
+								setShowTenKeySlide(false)
+								setShowFooter(true)
+								scheduleRefreshAAAssets()
+							}}
+						/>
 					</div>
 				</motion.div>
 			</AnimatePresence>

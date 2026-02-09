@@ -583,7 +583,7 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 	]
 
 	const currencyType = 4 // USDC（与 BeamioCurrency 一致）
-	const maxAmount = amountWei
+	const maxAmount = 0n // 0 = no max limit（合约 maxAmount==0 表示不限制）
 
 	const domain = {
 	  name: DOMAIN_NAME,

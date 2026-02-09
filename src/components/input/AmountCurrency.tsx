@@ -614,39 +614,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 					<div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
 						{/* Currency capsule */}
 						{
-							currencyUSDC ? (
-								<div
-									className="
-										relative
-										flex-shrink-0
-										w-4 h-4
-										min-w-[16px] min-h-[16px]
-									"
-								>
-									<img
-										src={usdcIcon}
-										alt="USDC"
-										className="
-											block
-											w-4 h-4
-											rounded-full
-											object-contain
-										"
-									/>
-									<img
-										src={baseIcon}
-										alt="Base"
-										className="
-											block
-											w-2.5 h-2.5
-											absolute -bottom-0.5 -right-0.5
-											rounded-full
-											border border-white dark:border-slate-900
-											bg-white
-										"
-									/>
-								</div>
-							) : (
+							!currencyUSDC && (
 								<>
 									<IOSGlassPillButton open={showCurrencyPicker} onToggle={openPicker} >
 										<span className="text-[15px] leading-none">   

@@ -3,7 +3,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { getLatest20UserActions_Lite } from '@/services/BeamioCard'
 import { Minus, Plus } from 'lucide-react'
 import { fiatPrefix, formatAmount } from '@/services/currency'
-import { CCSA_Card_Address } from '@/utils/constants'
+import { CCSA_Card_Address, USDCContract_BASE } from '@/utils/constants'
 
 /** action 枚举：1=mint(收入), 2=burn, 3=transfer(支出) */
 const TOKEN_MINT = 1
@@ -57,7 +57,15 @@ type ActionItemProps = {
 }
 
 function ActionItem({ item, onItemClick }: ActionItemProps) {
-  const isCredit = Number(item.action) === TOKEN_MINT
+  const { profiles } = useDaemonContext()
+  // 判断受益人是自己：检查 to 地址是否匹配当前用户的 EOA 或 AA 账号
+  const currentUserEOA = profiles?.[0]?.keyID?.toLowerCase()
+  const currentUserAA = profiles?.[0]?.aaAccount?.toLowerCase()
+  const itemToLower = item.to?.toLowerCase()
+  const isBeneficiary = itemToLower && (itemToLower === currentUserEOA || itemToLower === currentUserAA)
+  
+  // 如果受益人是自己，显示 +；否则根据 actionType 判断（TOKEN_MINT = 收入）
+  const isCredit = isBeneficiary || Number(item.action) === TOKEN_MINT
   const title = item.payMe?.title ?? item.title
   const amountText = formatAmountText(item, isCredit)
 
@@ -123,12 +131,20 @@ const ActiveList = ({ onItemClick, MyCardAssets }: ActiveListProps) => {
 
   useEffect(() => {
     if (!profiles?.[0] || !MyCardAssets?.cardAddress) return
-    getLatest20UserActions_Lite(profiles[0], CCSA_Card_Address).then((val) => {
-      if (val && val.length > 0) {
-        setActions(val)
-      } else {
-        setActions([])
-      }
+    // 同时查询 USDC 和 CCSA 的活动记录
+    Promise.all([
+      getLatest20UserActions_Lite(profiles[0], USDCContract_BASE),
+      getLatest20UserActions_Lite(profiles[0], CCSA_Card_Address, MyCardAssets.cardAddress),
+    ]).then(([usdcActions, ccsacActions]) => {
+      // 合并结果并按时间戳排序
+      const allActions = [...(usdcActions || []), ...(ccsacActions || [])]
+      allActions.sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+      // 取最新的 20 条
+      const latest20 = allActions.slice(0, 20)
+      setActions(latest20)
+    }).catch((error) => {
+      console.warn('[ActiveList] Failed to load actions:', error)
+      setActions([])
     })
   }, [profiles, MyCardAssets?.cardAddress])
 

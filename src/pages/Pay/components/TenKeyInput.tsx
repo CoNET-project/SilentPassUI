@@ -11,6 +11,7 @@ import contracts from '@/utils/contracts'
 import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC } from '@/utils/constants'
 import { quoteCurrencyAmountInUSDC, quoteUSDCToCAD } from '@/services/BeamioCard'
 import { searchUsername } from '@/services/beamio'
+import { formatAmount } from '@/services/currency'
 
 
 //		
@@ -301,8 +302,8 @@ function ConfirmDeductionView({
 	const fromCCSA = data.usdcFromCCSACAD ?? data.usdcFromCCSA
 	const discountVal = data.hasDiscount && data.totalRequestedStr != null && data.amountStr != null
 		? (data.totalRequestedStrCAD != null && data.amountStrCAD != null
-			? (Number(data.totalRequestedStrCAD) - Number(data.amountStrCAD)).toFixed(2)
-			: (Number(data.totalRequestedStr) - Number(data.amountStr)).toFixed(2))
+			? Number(data.totalRequestedStrCAD) - Number(data.amountStrCAD)
+			: Number(data.totalRequestedStr) - Number(data.amountStr))
 		: null
 	const hasCCSA = Number(fromCCSA) > 0
 	const hasUSDC = Number(fromBal) > 0
@@ -333,16 +334,16 @@ function ConfirmDeductionView({
 			</div>
 
 			{/* Bill Amount */}
-			<div className="flex justify-between items-center mb-2">
+			<div className="flex justify-between items-center mb-2 leading-[1.375rem]">
 				<span className="text-slate-500 dark:text-slate-400 text-sm">Bill Amount</span>
-				<span className="font-bold text-slate-900 dark:text-slate-100">CA${totalReq}</span>
+				<span className="font-bold text-slate-900 dark:text-slate-100">CA${formatAmount(data.totalRequestedStrCAD ?? data.totalRequestedStr ?? '', 'CAD')}</span>
 			</div>
 
 			{/* Member Discount (only if has discount) */}
 			{data.hasDiscount && discountVal != null && (
-				<div className="flex justify-between items-center mb-4 pl-1">
+				<div className="flex justify-between items-center mb-4 leading-[1.375rem]">
 					<span className="text-slate-500 dark:text-slate-400 text-sm">Member Discount (10%)</span>
-					<span className="font-bold text-blue-600 dark:text-blue-400">-CA${discountVal}</span>
+					<span className="font-bold text-blue-600 dark:text-blue-400">-CA${formatAmount(discountVal, 'CAD')}</span>
 				</div>
 			)}
 
@@ -355,7 +356,7 @@ function ConfirmDeductionView({
 						</div>
 						<span className="text-emerald-700 dark:text-emerald-400 font-medium text-sm">$CCSA Balance</span>
 					</div>
-					<span className="font-bold text-emerald-700 dark:text-emerald-400 text-sm flex-shrink-0">-CA${fromCCSA}</span>
+					<span className="font-bold text-emerald-700 dark:text-emerald-400 text-sm flex-shrink-0">-CA${formatAmount(fromCCSA, 'CAD')}</span>
 				</div>
 			)}
 
@@ -368,14 +369,14 @@ function ConfirmDeductionView({
 						</div>
 						<span className="text-blue-700 dark:text-blue-400 font-medium text-sm">USDC Top-up</span>
 					</div>
-					<span className="font-bold text-blue-700 dark:text-blue-400 text-sm flex-shrink-0">-CA${fromBal}</span>
+					<span className="font-bold text-blue-700 dark:text-blue-400 text-sm flex-shrink-0">-CA${formatAmount(fromBal, 'CAD')}</span>
 				</div>
 			)}
 
 			{/* Total Charge - prominent */}
-			<div className="flex justify-between items-baseline mt-2 mb-6">
+			<div className="flex justify-between items-baseline mt-2 mb-6 leading-[1.375rem]">
 				<span className="text-slate-500 dark:text-slate-400 text-sm">Total Charge</span>
-				<span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">CA${amount}</span>
+				<span className="text-4xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">CA${formatAmount(amount, 'CAD')}</span>
 			</div>
 
 			{/* Actions */}
@@ -426,6 +427,18 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 		}, 2000)
 	}
 	useEffect(() => () => { if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current) }, [])
+	// 判断是否需要从 USDC 扣款：如果完全用 CCSA 支付（paidWithCCSACAD 等于 amountCAD），则不需要显示 PAYMENT DETAILS
+	const needsUSDCCharge = !(data.paidWithCCSACAD != null && Number(data.paidWithCCSACAD) > 0 && Math.abs(Number(data.paidWithCCSACAD) - Number(data.amountCAD)) < 0.01)
+	
+	// 计算从 USDC 扣款的金额：总金额（USDC）- CCSA 支付的金额（转换为 USDC）
+	// rate 是 1 CAD = rate USDC，所以 CCSA 支付的 USDC = paidWithCCSACAD * rate
+	const paidWithCCSAUSDC = data.paidWithCCSACAD && rate && Number(rate) > 0
+		? (Number(data.paidWithCCSACAD) * Number(rate)).toFixed(6)
+		: '0'
+	const usdcFromBalance = data.amountUSDC && paidWithCCSAUSDC
+		? (Number(data.amountUSDC) - Number(paidWithCCSAUSDC)).toFixed(6)
+		: data.amountUSDC
+	
 	return (
 		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-16 pb-6">
 			<h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 text-center mb-1">
@@ -438,25 +451,27 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 				{data.txHash ? `${data.txHash.slice(0, 6)}…${data.txHash.slice(-4)} • ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
 			</p>
 
-			<div className="flex justify-between items-center mb-4">
+			<div className="flex justify-between items-center mb-4 leading-[1.5rem]">
 				<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid</span>
 				<span className="font-bold text-slate-900 dark:text-slate-100">CA${data.amountCAD}</span>
 			</div>
 
-			<div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-4 mb-3">
-				<div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-semibold text-sm mb-3">
-					<RefreshCw className="w-4 h-4" />
-					PAYMENT DETAILS
+			{needsUSDCCharge && (
+				<div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-4 mb-3">
+					<div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-semibold text-sm mb-3">
+						<RefreshCw className="w-4 h-4" />
+						PAYMENT DETAILS
+					</div>
+					<div className="flex justify-between text-sm mb-1">
+						<span className="text-slate-600 dark:text-slate-400">Exchange Rate</span>
+						<span className="text-slate-800 dark:text-slate-200">1 CAD ≈ {rate} USDC</span>
+					</div>
+					<div className="flex justify-between items-center mt-2">
+						<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid in USDC</span>
+						<span className="font-bold text-blue-600 dark:text-blue-400">{usdcFromBalance} USDC</span>
+					</div>
 				</div>
-				<div className="flex justify-between text-sm mb-1">
-					<span className="text-slate-600 dark:text-slate-400">Exchange Rate</span>
-					<span className="text-slate-800 dark:text-slate-200">1 CAD ≈ {rate} USDC</span>
-				</div>
-				<div className="flex justify-between items-center mt-2">
-					<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid in USDC</span>
-					<span className="font-bold text-blue-600 dark:text-blue-400">{data.amountUSDC} USDC</span>
-				</div>
-			</div>
+			)}
 
 			{data.paidWithCCSACAD != null && Number(data.paidWithCCSACAD) > 0 && (
 				<div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-4 mb-4">
@@ -472,14 +487,14 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 				</div>
 			)}
 
-			<div className="flex justify-between text-sm mb-1">
+			<div className="flex justify-between text-sm mb-1 leading-[1.375rem]">
 				<span className="text-slate-500 dark:text-slate-400">Network</span>
 				<span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
 					<span className="w-2 h-2 rounded-full bg-blue-500" />
 					Base Mainnet
 				</span>
 			</div>
-			<div className="flex justify-between items-center text-sm mb-6">
+			<div className="flex justify-between items-center text-sm mb-6 leading-[1.375rem]">
 				<span className="text-slate-500 dark:text-slate-400">Transaction ID</span>
 				<div className="flex items-center gap-2">
 					<button type="button" onClick={copyTx} className="font-mono text-slate-700 dark:text-slate-300 flex items-center gap-1.5 hover:underline">
@@ -505,7 +520,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 			</div>
 
 			<p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-1">GRAND TOTAL PAID</p>
-			<p className="text-3xl font-bold text-blue-600 dark:text-blue-400 text-center mb-6">CA${data.amountCAD}</p>
+			<p className="text-4xl font-bold text-blue-600 dark:text-blue-400 text-center mb-6">CA${data.amountCAD}</p>
 
 			<button
 				type="button"
@@ -881,12 +896,61 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		setStepById('sendTx', 'loading', 'Submitting…')
 		try {
 			const url = `${beamioApiBase.replace(/\/$/, '')}/api/AAtoEOA`
+			// currency 和 currencyAmount 用于服务器端记账：按 item 拆分
+			// 如果 items.length > 1，需要发送数组形式的 currency 和 currencyAmount
+			const USDCContract_BASE_lower = USDCContract_BASE.toLowerCase()
+			const CCSA_Card_Address_lower = CCSA_Card_Address.toLowerCase()
+			let currency: string | string[]
+			let currencyAmount: string | string[]
+			
+			if (items.length > 1) {
+				// 多个 items：构建数组
+				const currencyArray: string[] = []
+				const currencyAmountArray: string[] = []
+				for (const item of items) {
+					const itemAssetLower = item.asset.toLowerCase()
+					if (item.kind === 0 && itemAssetLower === USDCContract_BASE_lower) {
+						// USDC item
+						currencyArray.push('CAD')
+						currencyAmountArray.push(data.usdcFromBalanceCAD ?? data.amountStrCAD ?? data.amountStr)
+					} else if (item.kind === 1 && itemAssetLower === CCSA_Card_Address_lower) {
+						// CCSA item
+						currencyArray.push('CAD')
+						currencyAmountArray.push(data.usdcFromCCSACAD ?? data.amountStrCAD ?? data.amountStr)
+					} else {
+						// 其他类型（不应该发生，但兜底）
+						currencyArray.push('CAD')
+						currencyAmountArray.push(data.amountStrCAD ?? data.amountStr)
+					}
+				}
+				currency = currencyArray
+				currencyAmount = currencyAmountArray
+			} else {
+				// 单个 item：使用单个值
+				currency = 'CAD'
+				currencyAmount = data.totalRequestedStrCAD ?? data.amountStrCAD ?? data.amountStr
+			}
+
+			// 会员折扣：送出 currencyDiscount（折扣金额）和 currencyDiscountAmount（折后实付），供服务器记账
+			const discountVal = data.hasDiscount && data.totalRequestedStr != null && data.amountStr != null
+				? (data.totalRequestedStrCAD != null && data.amountStrCAD != null
+					? Number(data.totalRequestedStrCAD) - Number(data.amountStrCAD)
+					: Number(data.totalRequestedStr) - Number(data.amountStr))
+				: null
+			const currencyDiscount = discountVal != null ? String(discountVal) : undefined
+			const currencyDiscountAmount = data.hasDiscount ? (data.amountStrCAD ?? data.amountStr) : undefined
+			const bodyPayload: Record<string, unknown> = {
+				openContainerPayload: payload,
+				currency,
+				currencyAmount,
+			}
+			if (currencyDiscount != null) bodyPayload.currencyDiscount = currencyDiscount
+			if (currencyDiscountAmount != null) bodyPayload.currencyDiscountAmount = currencyDiscountAmount
+
 			const res = await fetch(url, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					openContainerPayload: payload,
-				}),
+				body: JSON.stringify(bodyPayload),
 			})
 			const apiResult = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; USDC_tx?: string }
 			setStepById('sendTx', 'success', 'Sent')

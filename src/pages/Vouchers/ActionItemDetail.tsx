@@ -4,6 +4,7 @@ import { fiatPrefix, formatAmount } from '@/services/currency'
 import { CCSA_Card_Address } from '@/utils/constants'
 
 const TOKEN_MINT = 1
+const TOKEN_TRANSFER = 3
 
 function formatDateShort(ts: number): string {
   const d = new Date(typeof ts === 'number' && ts < 1e12 ? ts * 1000 : ts)
@@ -127,18 +128,34 @@ function DetailRow({
   )
 }
 
+/** 从 item 还原 payMe：优先用 item.payMe，否则从 item.note 解析 */
+function resolvePayMe(item: BeamioActionResponse): payMe | undefined {
+  if (item.payMe) return item.payMe
+  if (!item.note || typeof item.note !== 'string') return undefined
+  try {
+    const parsed = JSON.parse(item.note) as payMe
+    if (parsed && typeof parsed.currency === 'string' && parsed.currencyAmount != null) return parsed
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
 export default function ActionItemDetail({ item, memberNo, onClose }: ActionItemDetailProps) {
-  
+  const payMe = resolvePayMe(item)
+  const itemWithPayMe: BeamioActionResponse = payMe ? { ...item, payMe } : item
+
   const title = item.title 
   const isCredit = !/top up/i.test(title)
-  const totalFiat = totalPaidFiat(item)
-  const totalUsdc = totalPaidUsdc(item)
-  const exchangeRate = exchangeRateText(item)
-  const refDate = refAndDate(item)
-  const txId = txIdDisplay(item)
+  const isTransfer = Number(item.action) === TOKEN_TRANSFER
+  const totalFiat = totalPaidFiat(itemWithPayMe)
+  const totalUsdc = totalPaidUsdc(itemWithPayMe)
+  const exchangeRate = exchangeRateText(itemWithPayMe)
+  const refDate = refAndDate(itemWithPayMe)
+  const txId = txIdDisplay(itemWithPayMe)
   const [copied, setCopied] = useState(false)
 
-  const txIdFull = fullTxId(item)
+  const txIdFull = fullTxId(itemWithPayMe)
   const handleCopyTxId = () => {
     const full = txIdFull || item.cardAddress || ''
     if (full) {
@@ -166,7 +183,7 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
         <span className="text-[16px] font-semibold text-slate-900">{totalFiat}</span>
       </div>
 
-      {/* Payment Details 卡片：标题与 Total Paid 为亮蓝，Exchange Rate 为灰蓝 */}
+      {/* Payment Details 卡片：标题与 Total Paid 为亮蓝，Exchange Rate 为灰蓝；TOKEN_TRANSFER 时从 note 还原的 payMe 显示 currency/currencyAmount */}
       <div className="mt-4 rounded-2xl bg-blue-50/80 dark:bg-blue-950/20 px-4 py-4">
         <div className="flex items-center gap-2 mb-3">
           <Link2 className="w-4 h-4 text-blue-600" strokeWidth={2} />
@@ -174,6 +191,22 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
             Payment Details
           </span>
         </div>
+        {payMe?.currency != null && (
+          <DetailRow
+            label="Currency"
+            value={payMe.currency}
+            labelClassName="text-slate-500"
+            valueClassName="text-slate-700"
+          />
+        )}
+        {payMe?.currencyAmount != null && payMe.currencyAmount !== '' && (
+          <DetailRow
+            label="Amount"
+            value={`${fiatPrefix(payMe.currency as ICurrency) ?? ''} ${formatAmount(payMe.currencyAmount, payMe.currency as ICurrency)}`}
+            labelClassName="text-slate-500"
+            valueClassName="text-slate-700"
+          />
+        )}
         <DetailRow
           label="Exchange Rate"
           value={exchangeRate}
@@ -188,7 +221,7 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
         />
       </div>
 
-      {/* Smart Contract Execution 卡片：标题浅灰，Out 标签红/数值黑，In 标签绿/数值黑 */}
+      {/* Smart Contract Execution 卡片：TOKEN_TRANSFER 时不显示 In (Mint) / In (NFT) */}
       <div className="mt-4 rounded-2xl bg-slate-100/90 dark:bg-slate-800/40 px-4 py-4">
         <div className="flex items-center gap-2 mb-3">
           <Layers className="w-4 h-4 text-slate-500" strokeWidth={2} />
@@ -202,20 +235,23 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
           labelClassName="text-red-600"
           valueClassName="text-slate-900 font-medium"
         />
-        <DetailRow
-          label="In (Mint)"
-          value={`$CCSA ${formatAmount(item.amount, 'USDC')}`}
-          labelClassName="text-emerald-600"
-          valueClassName="text-slate-900 font-medium"
-        />
-        
-        {isCredit && (
-          <DetailRow
-            label="In (NFT)"
-            value={`Membership Pass #${memberNo ?? '—'}`}
-            labelClassName="text-emerald-600"
-            valueClassName="text-slate-900 font-medium"
-          />
+        {!isTransfer && (
+          <>
+            <DetailRow
+              label="In (Mint)"
+              value={`$CCSA ${formatAmount(item.amount, 'USDC')}`}
+              labelClassName="text-emerald-600"
+              valueClassName="text-slate-900 font-medium"
+            />
+            {isCredit && (
+              <DetailRow
+                label="In (NFT)"
+                value={`Membership Pass #${memberNo ?? '—'}`}
+                labelClassName="text-emerald-600"
+                valueClassName="text-slate-900 font-medium"
+              />
+            )}
+          </>
         )}
       </div>
 

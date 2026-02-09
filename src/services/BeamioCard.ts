@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
-import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC,conetDepinProvider } from "../utils/constants";
+import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC,conetDepinProvider, CCSA_Card_Address } from "../utils/constants";
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
@@ -508,29 +508,92 @@ const mapActionToBeamioResponse = (
 
 export const getLatest20UserActions_Lite = async (
 	profile: profile,
-	cardAddress: string
+	cardAddress: string,
+	currentCCSAAddress?: string
 ) => {
 	const facet = new ethers.Contract(contracts.BeamioDiamond.address, contracts.BeamioDiamond.abi.ActionFacet, conetDepinProvider);
   
-	const total: bigint = await facet.getUserActionsCount(profile.keyID);
-	if (total === 0n) return [];
+	// 获取 AA 账号（如果存在）
+	let aaAccount: string | null = null
+	if (!profile.aaAccount) {
+		aaAccount = await getAAAccount(profile)
+	} else {
+		aaAccount = profile.aaAccount
+	}
 
-	const limit = 20n;
-	const offset = total > limit ? total - limit : 0n;
+	// 查询 EOA 和 AA 账号的记录
+	const addressesToQuery: string[] = [profile.keyID]
+	if (aaAccount && ethers.isAddress(aaAccount)) {
+		addressesToQuery.push(aaAccount)
+	}
 
-	const idsRaw = await facet.getUserActionIdsPaged(profile.keyID, offset, limit);
-	// ethers 返回的 Result 为只读，需复制为可变数组再 reverse
-	const ids: bigint[] = [...idsRaw].reverse(); // 最新在前
+	const allRows: BeamioActionResponse[] = []
 
-	const rows: BeamioActionResponse[] = await Promise.all(
-		ids.map(async (id) => {
-			const [action, meta] = await facet.getActionWithMeta(id);
-			return mapActionToBeamioResponse({ action, meta });
+	// 为每个地址查询记录
+	for (const address of addressesToQuery) {
+		try {
+			const total: bigint = await facet.getUserActionsCount(address)
+			if (total === 0n) continue
+
+			const limit = 20n
+			const offset = total > limit ? total - limit : 0n
+
+			const idsRaw = await facet.getUserActionIdsPaged(address, offset, limit)
+			// ethers 返回的 Result 为只读，需复制为可变数组再 reverse
+			const ids: bigint[] = [...idsRaw].reverse() // 最新在前
+
+			const rows: BeamioActionResponse[] = await Promise.all(
+				ids.map(async (id) => {
+					const [action, meta] = await facet.getActionWithMeta(id)
+					return mapActionToBeamioResponse({ action, meta })
+				})
+			)
+
+			allRows.push(...rows)
+		} catch (error) {
+			console.warn(`[getLatest20UserActions_Lite] Failed to query actions for ${address}:`, error)
+		}
+	}
+
+	// 按 cardAddress 过滤
+	const cardLower = cardAddress.toLowerCase()
+	let filtered = allRows.filter((r) => (r.cardAddress).toLowerCase() === cardLower)
+	
+	// 如果查询的是 CCSA 卡地址，并且提供了 currentCCSAAddress，则过滤不符合当前 CCSA 地址的 1155 转账记录
+	// 注意：当查询 CCSA 卡时，cardAddress 参数是 CCSA_Card_Address（合约地址），
+	// 但实际记录中的 cardAddress 可能是不同的 CCSA 卡实例地址
+	// 因此需要过滤，只保留 cardAddress 等于 currentCCSAAddress 的记录
+	if (CCSA_Card_Address && cardLower === CCSA_Card_Address.toLowerCase() && currentCCSAAddress) {
+		const currentCCSAAddressLower = currentCCSAAddress.toLowerCase()
+		filtered = filtered.filter((action) => {
+			const actionCardAddress = action.cardAddress?.toLowerCase()
+			// 对于 CCSA 卡（ERC-1155）转账记录，cardAddress 必须匹配当前 CCSA 地址
+			return actionCardAddress === currentCCSAAddressLower
 		})
-	);
-
-	const cardLower = cardAddress.toLowerCase();
-	return rows.filter((r) => (r.cardAddress).toLowerCase() === cardLower);
+	}
+	
+	filtered.sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+	
+	// 去重：基于 cardAddress + from + to + amount + timestamp 的组合
+	// 如果 payMe 中有 parentHash，优先使用 parentHash 去重
+	const seen = new Set<string>()
+	const uniqueFiltered = filtered.filter((action) => {
+		// 优先使用 parentHash（如果存在）
+		if (action.payMe?.parentHash) {
+			const key = action.payMe.parentHash.toLowerCase()
+			if (seen.has(key)) return false
+			seen.add(key)
+			return true
+		}
+		
+		// 否则使用 cardAddress + from + to + amount + timestamp 组合
+		const key = `${action.cardAddress.toLowerCase()}-${action.from.toLowerCase()}-${action.to.toLowerCase()}-${action.amount}-${action.timestamp}`
+		if (seen.has(key)) return false
+		seen.add(key)
+		return true
+	})
+	
+	return uniqueFiltered.slice(0, 20)
 };
 
 export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<searchResult | null> => {

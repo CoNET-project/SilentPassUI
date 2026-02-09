@@ -52,8 +52,8 @@ function cx(...v: Array<string | false | undefined | null>) {
 export default function TopUpAccount({
   onClose,
   currencyCode = "CAD",
-  presetAmounts = [50, 100, 0.1],
-  defaultAmount = 100,
+  presetAmounts = [50, 1, 0.1],
+  defaultAmount = 1,
   beamioBalanceText = "Balance: 0.00 USDC",
   myAssets,
   onPay,

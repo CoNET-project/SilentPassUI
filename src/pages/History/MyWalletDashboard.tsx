@@ -717,6 +717,16 @@ export function MyWalletDashboard() {
 
 		await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
 		await loadAaAccountBalance()
+		// 刷新 CCSA 资产
+		if (profiles?.[0] && CCSA_Card_Address) {
+			try {
+				const assets = await getMyAssets(profiles[0], CCSA_Card_Address)
+				if (assets) setSmartAccountCardAssets(assets)
+			} catch (e) {
+				console.error('Failed to refresh CCSA assets:', e)
+				setSmartAccountCardAssets(null)
+			}
+		}
 		setReflash(false)
 	}
 
@@ -1129,43 +1139,66 @@ export function MyWalletDashboard() {
 					</div>
 				</div>
 
-				{/* Smart Account Account Assets */}
-				<div className="px-5 mt-4">
-					<div className="flex items-center gap-2 px-2 mb-3">
-						<span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-						<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-700 dark:text-slate-200">ACCOUNT ASSETS</span>
-					</div>
-					<div className="rounded-2xl bg-white dark:bg-slate-900 ring-1 ring-black/5 dark:ring-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.08)] overflow-hidden">
-						<div className="p-4 space-y-4">
-							{/* USDC */}
-							<div className="flex items-center gap-3">
-								<div className="flex-shrink-0 w-11 h-11 flex items-center justify-center">
-									<div className="relative flex-shrink-0 min-w-[16px] min-h-[16px]">
-										<img src={usdc_icon} alt="USDC" className="block w-8 h-8 rounded-full object-contain" />
-										<img src={base_icon} alt="Base" className="block w-5 h-5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
+				{/* Smart Account Account Assets - only show if AA account exists */}
+				{profiles?.[0]?.aaAccount && (
+					<div className="px-5 mt-4">
+						<div className="flex items-center gap-2 px-2 mb-3">
+							<span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+							<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-700 dark:text-slate-200">ACCOUNT ASSETS</span>
+						</div>
+						<div className="rounded-2xl bg-white dark:bg-slate-900 ring-1 ring-black/5 dark:ring-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.08)] overflow-hidden">
+							<div className="p-4 space-y-4">
+								{/* USDC */}
+								<div className="flex items-center gap-3">
+									<div className="flex-shrink-0 w-11 h-11 flex items-center justify-center">
+										<div className="relative flex-shrink-0 min-w-[16px] min-h-[16px]">
+											<img src={usdc_icon} alt="USDC" className="block w-8 h-8 rounded-full object-contain" />
+											<img src={base_icon} alt="Base" className="block w-5 h-5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
+										</div>
 									</div>
+									<div className="flex-1 min-w-0">
+										<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">USDC</p>
+										<p className="text-sm text-slate-500 dark:text-slate-400">Base Network</p>
+									</div>
+									<div className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums text-[15px]">{formatWithThousands(aaAccountUsdcBalance)}</div>
 								</div>
-								<div className="flex-1 min-w-0">
-									<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">USDC</p>
-									<p className="text-sm text-slate-500 dark:text-slate-400">Base Network</p>
-								</div>
-								<div className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums text-[15px]">{formatWithThousands(aaAccountUsdcBalance)}</div>
+								{/* CCSA - show if CCSA assets exist (points > 0) or if there are NFTs */}
+								{smartAccountCardAssets && (
+									(smartAccountCardAssets.points && Number(smartAccountCardAssets.points) > 0) ||
+									(smartAccountCardAssets.nfts && smartAccountCardAssets.nfts.length > 0)
+								) && (() => {
+									// 查找 tokenId > 0 的 NFT
+									const nftWithIdGreaterThanZero = smartAccountCardAssets.nfts?.find(nft => Number(nft.tokenId) > 0)
+									const hasActiveNFT = !!nftWithIdGreaterThanZero
+									return (
+										<div className="flex items-start justify-between gap-3 pt-0">
+											<div className="flex-1 min-w-0 leading-[1rem]">
+												<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">CCSA Membership</p>
+												<p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+													Balance: CA$ {formatAmount(smartAccountCardAssets.points || '0', 'CAD')}
+												</p>
+											</div>
+											{hasActiveNFT && (
+												<div className="flex flex-col items-end shrink-0">
+													<p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">Active</p>
+													<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+														#{nftWithIdGreaterThanZero.tokenId}
+													</p>
+												</div>
+											)}
+										</div>
+									)
+								})()}
+								{/* No vouchers yet - only show if no CCSA assets and no NFTs */}
+								{(!smartAccountCardAssets || 
+									((!smartAccountCardAssets.points || Number(smartAccountCardAssets.points) === 0) && 
+									 (!smartAccountCardAssets.nfts || smartAccountCardAssets.nfts.length === 0))) && (
+									<p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">No vouchers yet. Visit Market to buy.</p>
+								)}
 							</div>
-							{/* CCSA */}
-							<div className="flex items-center gap-3 pt-0">
-								<div className="w-11 h-11 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
-									<Banknote className="w-5 h-5 text-amber-600 dark:text-amber-400" strokeWidth={2} />
-								</div>
-								<div className="flex-1 min-w-0">
-									<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">$CCSA</p>
-									<p className="text-sm text-slate-500 dark:text-slate-400">Base Network · Payment card</p>
-								</div>
-								<div className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums text-[15px]">{formatWithThousands(smartAccountCardAssets?.points ?? '0')}</div>
-							</div>
-							<p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">No vouchers yet. Visit Market to buy.</p>
 						</div>
 					</div>
-				</div>
+				)}
 
 				{/* Smart Account HISTORY（与 CardItem 中 ActiveList 一致） */}
 				<div className="flex-1 min-h-0 overflow-y-auto mt-4">

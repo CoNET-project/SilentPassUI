@@ -34,13 +34,14 @@ import {getCashcodeData, searchUsername, storeSystemData} from '@/services/beami
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 
 const REACTIONS = [
-  { key: "like", label: "👍" },
   { key: "love", label: "❤️" },
-  { key: "ok", label: "👌" },
+  { key: "like", label: "👍" },
+  { key: "bad", label: "👎" },
+  { key: "laugh", label: "😂" },
   { key: "exclamation", label: "❗️" },
   { key: "question", label: "❓" },
-  { key: "laugh", label: "😂" },
-  { key: "bad", label: "👎" }
+  { key: "sweat", label: "😅" },
+  { key: "ok", label: "👌" },
 ] as const
 
 type ReactionKey = typeof REACTIONS[number]["key"]
@@ -317,9 +318,49 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		placement: "top"
 	}>(() => ({ open: false, x: 0, y: 0, placement: "top" }))
 
+	/** 仅展示“正文”消息（含文字或 paymentCard）；带 reply 的 reaction 消息不单独成行，用于在目标消息上显示 icon */
+	const displayableMessages = useMemo(() => {
+		return (messages || []).filter(m => !m.reply || !!m.text || !!m.paymentCard)
+	}, [messages])
+
 	const sections = useMemo(() => {
-		return groupChatMessages(messages || [], new Date())
-	  }, [messages])
+		return groupChatMessages(displayableMessages, new Date())
+	}, [displayableMessages])
+
+	/** messageId（或时间戳字符串）-> 该条消息收到的 reaction 列表。对方 reaction 的 messageId 为时间戳，可能与本地 createdAt 有毫秒级差异，需容差匹配。 */
+	const reactionsByMessageId = useMemo(() => {
+		const map = new Map<string, { reactionKey: string; from: 'me' | 'them' }[]>()
+		for (const m of messages || []) {
+			if (!m.reply) continue
+			const list = map.get(m.reply.messageId) || []
+			list.push({ reactionKey: m.reply.reactionKey, from: m.from })
+			map.set(m.reply.messageId, list)
+		}
+		return map
+	}, [messages])
+
+	/** 取某条消息对应的 reaction 列表：优先 sendId（reply 必须指向 sendId），再 id/createdAt/时间戳容差（兼容旧数据） */
+	const getReactionsForMessage = useCallback(
+		(m: ChatMessage) => {
+			if (m.sendId) {
+				const bySendId = reactionsByMessageId.get(m.sendId)
+				if (bySendId?.length) return bySendId
+			}
+			const byId = reactionsByMessageId.get(m.id ?? '')
+			if (byId?.length) return byId
+			const byCreated = reactionsByMessageId.get(String(m.createdAt ?? ''))
+			if (byCreated?.length) return byCreated
+			const ts = Number(m.createdAt)
+			if (!Number.isFinite(ts)) return undefined
+			const tolerance = 15000
+			for (const [key, list] of reactionsByMessageId) {
+				const keyNum = Number(key)
+				if (Number.isFinite(keyNum) && Math.abs(keyNum - ts) <= tolerance) return list
+			}
+			return undefined
+		},
+		[reactionsByMessageId]
+	)
 
 
 	const canSend = useMemo(() => {
@@ -347,16 +388,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		// 本地 UI 正在显示的消息（可能包含 tmp_ / 更先进的 status）
 		const local = Array.isArray(messagesRef.current) ? messagesRef.current : []
 
-		// 建索引：local by id
+		// 建索引：local by id 与 sendId（远端可能用任一来匹配）
 		const localById = new Map<string, ChatMessage>()
 		for (const m of local) {
-			if (!m?.id) continue
-			localById.set(m.id, m)
+			if (m?.id) localById.set(m.id, m)
+			if (m?.sendId) localById.set(m.sendId, m)
 		}
 
 		// ✅ 1) 先以 remote 为基础，逐条 merge：如果 local 同 id 且 status 更“新”，用 local 覆盖
 		const merged: ChatMessage[] = remote.map(rm => {
-			const lm = localById.get(rm.id)
+			const lm = localById.get(rm.id ?? rm.sendId ?? '')
 			if (!lm) return rm
 
 			// status 更“新” => 用 local
@@ -374,8 +415,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		})
 
 		// ✅ 2) 把 local 里仍然存在但 remote 里没有的 tmp_ 消息追加回去（防止被冲掉）
-		const remoteIdSet = new Set(remote.map(m => m.id))
-		const localTempExtras = local.filter(m => isTempId(m.id) && !remoteIdSet.has(m.id))
+		const remoteIdSet = new Set(remote.map(m => m.id ?? m.sendId ?? '').filter(Boolean))
+		const localTempExtras = local.filter(m => (m.id && isTempId(m.id)) && !remoteIdSet.has(m.id))
 
 		const next = [...merged, ...localTempExtras]
 			.slice()
@@ -413,14 +454,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	function openReactionBarForElement(messageId: string, el: HTMLElement) {
 		const r = el.getBoundingClientRect()
-
-		// bar 大约宽度：7 个按钮 * 36 + padding ≈ 7*36 + 16 = 268
-		const approxW = 280
-		const x = clamp(r.left + r.width / 2 - approxW / 2, 8, window.innerWidth - approxW - 8)
-
-		// 放在气泡上方 8px
-		const y = clamp(r.top - 52, 8, window.innerHeight - 80)
-
+		// iOS 风格：菜单宽度适中，可横向滚动显示更多
+		const menuWidth = Math.min(280, window.innerWidth - 24)
+		const x = clamp(r.left + r.width / 2 - menuWidth / 2, 12, window.innerWidth - menuWidth - 12)
+		// 放在气泡上方，留出小间隙
+		const y = clamp(r.top - 48, 12, window.innerHeight - 120)
 		setReactionUI({
 			open: true,
 			messageId,
@@ -428,12 +466,56 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			y,
 			placement: "top"
 		})
-		}
+	}
 
 		function closeReactionBar() {
 		setReactionUI(prev => ({ ...prev, open: false, messageId: undefined }))
 	}
 
+	/** 发送 reaction：带 reply 指针的消息，对方可根据 messageId 找到原消息并显示 icon */
+	async function sendReaction(targetMessageId: string, reactionKey: string) {
+		closeReactionBar()
+		if (!profiles?.length || !chatData?.chatData?.publicArmored) return
+		const tempId = `tmp_reaction_${Date.now()}_${Math.random().toString(16).slice(2)}`
+		const now = Date.now()
+		const payload: ChatMessage = {
+			id: tempId,
+			from: 'me',
+			text: '',
+			createdAt: now,
+			status: 'sending',
+			reply: { messageId: targetMessageId, reactionKey },
+		}
+		{
+			const next: ChatMessage[] = [...(messagesRef.current || []), payload]
+			messagesRef.current = next
+			setMessages(next)
+		}
+		const node = getRandomNode(allNodes)
+		if (!node) {
+			const next = (messagesRef.current || []).map(m =>
+				m.id === tempId ? { ...m, status: 'failed' as const } : m
+			)
+			messagesRef.current = next
+			setMessages(next)
+			chatData.messages = next
+			await storageData()
+			return
+		}
+		let ok = false
+		try {
+			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, node))
+		} catch {
+			ok = false
+		}
+		const next: ChatMessage[] = (messagesRef.current || []).map(m =>
+			m.id === tempId ? { ...m, status: (ok ? 'sent' : 'failed') as 'sent' | 'failed' } : m
+		)
+		messagesRef.current = next
+		setMessages(next)
+		chatData.messages = next
+		await storageData()
+	}
 
 	type paymentCard = {
 		amount: number
@@ -591,7 +673,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const t = text.trim()
 		if (!t) return
 
+		// 立即清空输入：状态 + DOM 双清，避免残留
 		setText("")
+		if (inputRef.current) inputRef.current.value = ""
 
 		const mode = isUrl(t)
 		let cashcodeCard: ChatMessage | undefined
@@ -609,10 +693,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 		const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
 		const now = Date.now()
+		const sendId = crypto.randomUUID()
 
-		// ✅ 1) 先插入 sending（同步构造 next）
+		// ✅ 1) 先插入 sending（同步构造 next），带 sendId 供对方 reply 时引用
 		const pendingMsg: ChatMessage = {
 			id: tempId,
+			sendId,
 			from: "me",
 			text: t,
 			createdAt: now,
@@ -620,7 +706,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			paymentCard: cashcodeCard ? cashcodeCard.paymentCard : undefined
 		}
 
-		
 		{
 			const next: ChatMessage[] = [...(messagesRef.current || []), pendingMsg]
 			messagesRef.current = next
@@ -641,11 +726,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			return
 		}
 
-		// ✅ 3) 发送
+		// ✅ 3) 发送：统一发 JSON 包，带 sendId，对方据此可 reply
+		const payload = cashcodeCard
+			? { ...cashcodeCard, sendId, from: 'me' as const, text: t, createdAt: now }
+			: { sendId, from: 'me' as const, text: t, createdAt: now }
 		let ok = false
 		try {
-			const kkk = await sendMessage(chatData.chatData.publicArmored, cashcodeCard ? JSON.stringify(cashcodeCard) : t, privateKey, node)
-			ok = !!kkk
+			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, node))
 		} catch {
 			ok = false
 		}
@@ -694,6 +781,20 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			forceClearUnread() // ✅ 替代 clearUnreadIfNeeded
 		})
 	}, [messages.length])
+
+	// 当用户发送新消息后，视图自动滚动到最底部
+	const prevMessagesLengthRef = useRef(messages.length)
+	useEffect(() => {
+		if (messages.length > prevMessagesLengthRef.current) {
+			const last = messages[messages.length - 1]
+			if (last?.from === 'me') {
+				requestAnimationFrame(() => scrollToBottom('smooth'))
+			}
+			prevMessagesLengthRef.current = messages.length
+		} else {
+			prevMessagesLengthRef.current = messages.length
+		}
+	}, [messages])
 
 	const findingRef = useRef(false)
 
@@ -842,6 +943,64 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				}}
 			/>
 
+			{/* iOS 风格 Message Reaction 菜单：仅对收到的消息显示，在 message 上方，内容可左右滚动；一点展开/收缩动画 */}
+			<AnimatePresence>
+			{reactionUI.open && (
+				<motion.div
+					key="reaction-menu-layer"
+					className="fixed inset-0 z-[200]"
+					initial={{ scale: 0, opacity: 0 }}
+					animate={{ scale: 1, opacity: 1 }}
+					exit={{ scale: 0, opacity: 0 }}
+					transition={{
+						duration: 0.28,
+						ease: [0.22, 0.61, 0.36, 1],
+					}}
+					style={{
+						transformOrigin: `${reactionUI.x}px ${reactionUI.y}px`,
+					}}
+				>
+					<div
+						className="absolute inset-0"
+						aria-hidden
+						onClick={closeReactionBar}
+						onTouchStart={closeReactionBar}
+					/>
+					<div
+						className="fixed z-[201] flex flex-col items-center pointer-events-none ml-4"
+						style={{
+							left: reactionUI.x,
+							top: reactionUI.y,
+							width: Math.min(280, typeof window !== 'undefined' ? window.innerWidth - 24 : 280),
+						}}
+					>
+						{/* 主菜单：毛玻璃椭圆（恢复点击以操作内部按钮） */}
+						<div
+							className="relative flex items-center rounded-full bg-black/5 shadow-lg ring-1 ring-black/5 backdrop-blur-sm py-2 px-3 min-w-0 pointer-events-auto"
+							style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+							onClick={e => e.stopPropagation()}
+						>
+							<div className="flex gap-0.5 overflow-x-auto overflow-y-hidden scrollbar-hide w-full max-w-[280px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+								{REACTIONS.map(({ key, label }) => (
+									<button
+										key={key}
+										type="button"
+										className="flex-shrink-0 w-9 h-9 rounded-full grid place-items-center text-xl active:scale-95 transition-transform hover:bg-black/5"
+										onClick={() => {
+											if (reactionUI.messageId) sendReaction(reactionUI.messageId, key)
+										}}
+										aria-label={key}
+									>
+										{label}
+									</button>
+								))}
+							</div>
+						</div>
+					</div>
+				</motion.div>
+			)}
+			</AnimatePresence>
+
 			{/* 内容区：消息列表 */}
 			<div
 				className={["absolute inset-0", "bg-white"].join(" ")}
@@ -887,7 +1046,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 														if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
 														const target = e.currentTarget as HTMLElement
 														pressTimerRef.current = window.setTimeout(() => {
-														openReactionBarForElement(m.id, target)
+															if (!isMe) openReactionBarForElement(m.sendId ?? m.id ?? '', target)
 														}, 450)
 													}}
 													onPointerUp={() => {
@@ -904,9 +1063,27 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													}}
 													onContextMenu={e => {
 														e.preventDefault()
-														openReactionBarForElement(m.id, e.currentTarget as HTMLElement)
+														if (!isMe) openReactionBarForElement(m.sendId ?? m.id ?? '', e.currentTarget as HTMLElement)
 													}}
 												>
+												{(() => {
+													const reactions = getReactionsForMessage(m)
+													const show = reactions?.slice(-2) ?? []
+													if (!show.length) return null
+													const hasMyReply = show.some(r => r.from === 'me')
+													return (
+														<div
+															className={["absolute -top-2 -left-2 z-10 flex items-center gap-0.5 rounded-tl-xl rounded-tr-xl rounded-br-xl rounded-bl-[6px] px-1.5 py-1 shadow-lg ring-1 ring-black/5", hasMyReply ? "bg-[#1652f0]/80" : "bg-slate-100/15"].join(" ")}
+															style={{ boxShadow: '0 3px 12px rgba(0,0,0,0.2)' }}
+															aria-hidden
+														>
+															{show.map((r, i) => {
+																const label = REACTIONS.find(x => x.key === r.reactionKey)?.label ?? r.reactionKey
+																return <span key={`${r.reactionKey}-${i}`} className="text-base leading-none" title={r.reactionKey}>{label}</span>
+															})}
+														</div>
+													)
+												})()}
 												<MessageSendReceiveCard
 													variant={
 														m.paymentCard!.cardType === "membershipActivated"
@@ -959,7 +1136,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
 													const target = e.currentTarget as HTMLElement
 													pressTimerRef.current = window.setTimeout(() => {
-													openReactionBarForElement(m.id, target)
+														if (!isMe) openReactionBarForElement(m.sendId ?? m.id ?? '', target)
 													}, 450)
 												}}
 												onPointerUp={() => {
@@ -976,9 +1153,27 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 												}}
 												onContextMenu={e => {
 													e.preventDefault()
-													openReactionBarForElement(m.id, e.currentTarget as HTMLElement)
+													if (!isMe) openReactionBarForElement(m.sendId ?? m.id ?? '', e.currentTarget as HTMLElement)
 												}}
 												>
+												{(() => {
+													const reactions = getReactionsForMessage(m)
+													const show = reactions?.slice(-2) ?? []
+													if (!show.length) return null
+													const hasMyReply = show.some(r => r.from === 'me')
+													return (
+														<div
+															className={["absolute -top-2 -left-2 z-10 flex items-center gap-0.5 rounded-tl-xl rounded-tr-xl rounded-br-xl rounded-bl-[6px] px-1.5 py-1 shadow-lg ring-1 ring-black/5", hasMyReply ? "bg-[#1652f0]/30" : "bg-slate-100/25"].join(" ")}
+															style={{ boxShadow: '0 3px 12px rgba(0,0,0,0.2)' }}
+															aria-hidden
+														>
+															{show.map((r, i) => {
+																const label = REACTIONS.find(x => x.key === r.reactionKey)?.label ?? r.reactionKey
+																return <span key={`${r.reactionKey}-${i}`} className="text-base leading-none" title={r.reactionKey}>{label}</span>
+															})}
+														</div>
+													)
+												})()}
 												<div className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">
 													{m.text}
 												</div>

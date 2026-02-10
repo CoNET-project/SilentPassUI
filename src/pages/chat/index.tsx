@@ -1,7 +1,7 @@
 
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {
-	initMessage
+	initMessage, dedupeChatsByAddress
 } from '@/services/chat'
 
 import { useEffect, useRef, useState } from "react"
@@ -20,6 +20,7 @@ const Home = () => {
 	const [chatData, setChatData] = useState<chatData> ()
 	const [privateKey, setPrivate] = useState('')
 	const didInitRef = useRef(false)
+
 
 
 	useEffect(() => {

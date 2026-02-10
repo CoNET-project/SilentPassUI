@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ethers } from 'ethers'
 import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
@@ -11,32 +13,44 @@ import {
 	Check,
 	ScanLine,
 	Plus,
-	Receipt,
 	Globe,
+	ArrowUpRight,
+	Landmark,
+	Loader,
+	Banknote,
+	QrCode,
 } from 'lucide-react'
-import { formatWithThousands } from '@/services/beamio'
+import PayScreen from '@/pages/Pay/send/index'
+import BankingBridge from './components/BankingBridge'
+import BeamioNavBack from '@/components/Setting/BeamioNavBack'
+import TenKeyInput from '@/pages/Pay/components/TenKeyInput'
+import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
+import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
+import { getBalanceProcess, formatWithThousands } from '@/services/beamio'
+import { getMyAssets } from '@/services/BeamioCard'
 import { fiatPrefix } from '@/services/currency'
+import { CCSA_Card_Address } from '@/utils/constants'
 import base_icon from '@/components/assets/base-logo.png'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 
-interface ActionButtonProps {
+const MiniAction = ({
+	icon,
+	label,
+	onClick,
+}: {
 	icon: React.ReactNode
 	label: string
-	primary?: boolean
 	onClick?: () => void
-}
-
-const ActionButton = ({ icon, label, primary = false, onClick }: ActionButtonProps) => (
+}) => (
 	<button
+		type="button"
 		onClick={onClick}
-		className={`flex flex-col items-center gap-3 py-4 rounded-2xl active:scale-95 transition-transform ${
-			primary
-				? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
-				: 'bg-gray-50 text-slate-900 hover:bg-gray-100'
-		}`}
+		className="flex flex-col items-center gap-2 active:scale-[0.98] transition select-none"
 	>
-		<div className={primary ? 'text-emerald-400' : 'text-slate-900'}>{icon}</div>
-		<span className="text-xs font-bold">{label}</span>
+		<div className="h-14 w-14 rounded-2xl bg-white/90 dark:bg-slate-900/70 shadow-[0_10px_24px_rgba(0,0,0,0.12)] ring-1 ring-black/5 dark:ring-white/10 flex items-center justify-center">
+			{icon}
+		</div>
+		<div className="text-[11px] font-medium text-slate-600 dark:text-slate-300">{label}</div>
 	</button>
 )
 
@@ -60,7 +74,15 @@ export default function MyWalletDashboardNew() {
 		myAddress,
 		setMyAddress,
 		usdcbalance,
+		setUsdcbalance,
+		setUsdcToUSD,
 		currencyData,
+		setShowFooter,
+		setScanData,
+		setVoucherPayAmount,
+		setVoucherPayToAA,
+		setVoucherPayError,
+		setScanIntent,
 	} = useDaemonContext()
 
 	const [activeView, setActiveView] = useState<string | null>(null) // 'eoa' | 'aa' | 'ccsa' | null
@@ -68,7 +90,14 @@ export default function MyWalletDashboardNew() {
 	const [ccsaBalance, setCcsaBalance] = useState<string>('0')
 	const [reflash, setReflash] = useState(false)
 	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | 'ccsa' | null>(null)
+	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge'>('')
+	const [aaPanelOpen, setAaPanelOpen] = useState<'' | 'Pay' | 'BeamioPayMeQR'>('')
+	const [payScreenMode, setPayScreenMode] = useState<'eoa-pay' | 'aa-eoa-transfer'>('eoa-pay')
+	const [openRelayPayload, setOpenRelayPayload] = useState<OpenContainerRelayPayload | null>(null)
+	const [showTenKeySlide, setShowTenKeySlide] = useState(false)
+	const [payMeSigning, setPayMeSigning] = useState(false)
 	const copyAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const refreshAAAssetsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	// 计算汇率
 	const fxRateUSDCToCurrency = useCallback(
@@ -102,44 +131,55 @@ export default function MyWalletDashboardNew() {
 		return n * rate
 	}, [ccsaBalance, fxRateUSDCToCurrency])
 
-	// 加载 AA 账户余额
-	useEffect(() => {
+	// 从 detail 内操作返回时恢复全局 footer（所有 detail 按钮操作的共同规则）
+	const closeEoaPanel = useCallback(() => {
+		setShowFooter(true)
+		setEoaPanelOpen('')
+	}, [setShowFooter])
+
+	const closeAaPanel = useCallback(() => {
+		setShowFooter(true)
+		setAaPanelOpen('')
+		setOpenRelayPayload(null)
+	}, [setShowFooter])
+
+	// 获取 AA 账号的 USDC 余额（与 MyWalletDashboard 一致）
+	const loadAaAccountBalance = useCallback(async () => {
 		if (!profiles?.[0]?.aaAccount) {
 			setAaAccountUsdcBalance('0')
 			return
 		}
-
-		const loadAABalance = async () => {
-			try {
-				const usdcContract = new ethers.Contract(
-					USDCContract_BASE,
-					usdc_abi as ethers.InterfaceAbi,
-					baseEndpoint
-				)
-				const balanceRaw = await usdcContract.balanceOf(profiles[0].aaAccount)
-				const balance = ethers.formatUnits(balanceRaw, 6)
-				setAaAccountUsdcBalance(balance)
-			} catch (e) {
-				console.warn('Failed to load AA balance', e)
-				setAaAccountUsdcBalance('0')
-			}
+		try {
+			const usdcContract = new ethers.Contract(
+				USDCContract_BASE,
+				usdc_abi as ethers.InterfaceAbi,
+				baseEndpoint
+			)
+			const balanceRaw = await usdcContract.balanceOf(profiles[0].aaAccount)
+			const balance = ethers.formatUnits(balanceRaw, 6)
+			setAaAccountUsdcBalance(balance)
+		} catch (e) {
+			console.warn('Failed to load AA balance', e)
+			setAaAccountUsdcBalance('0')
 		}
-
-		loadAABalance()
 	}, [profiles])
 
-	// 初始化 myAddress
+	// 初始化：EOA 余额、AA 余额、myAddress
 	useEffect(() => {
 		if (!profiles?.length) return
 		const profile = profiles[0]
-		const address = profile.keyID
-		if (!myAddress) setMyAddress(address)
-	}, [profiles, myAddress, setMyAddress])
+		if (!myAddress) setMyAddress(profile.keyID)
+		if (profile.keyID) getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+		loadAaAccountBalance()
+	}, [profiles, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance])
 
-	// 模拟 CCSA 余额（实际应该从服务获取）
+	// 拉取 CCSA 卡资产（points 用作 CCSA 卡片展示余额）
 	useEffect(() => {
-		setCcsaBalance('120.00')
-	}, [])
+		if (!profiles?.[0] || !CCSA_Card_Address) return
+		getMyAssets(profiles[0], CCSA_Card_Address)
+			.then((assets) => { if (assets?.points != null) setCcsaBalance(assets.points) })
+			.catch(() => setCcsaBalance('0'))
+	}, [profiles])
 
 	const copyAddress = useCallback(
 		(address: string, which: 'eoa' | 'aa' | 'ccsa') => {
@@ -162,12 +202,44 @@ export default function MyWalletDashboardNew() {
 		[]
 	)
 
-	const reflashProcess = async () => {
+	// 刷新资产：EOA USDC、AA USDC、CCSA 卡资产（与 MyWalletDashboard 一致）
+	const reflashProcess = useCallback(async () => {
 		if (reflash) return
+		const profile = profiles?.[0]
+		if (!profile) return
 		setReflash(true)
-		// 刷新逻辑可以在这里添加
-		setTimeout(() => setReflash(false), 1000)
-	}
+		try {
+			await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+			await loadAaAccountBalance()
+			if (CCSA_Card_Address) {
+				try {
+					const assets = await getMyAssets(profile, CCSA_Card_Address)
+					if (assets?.points != null) setCcsaBalance(assets.points)
+				} catch (e) {
+					console.error('Failed to refresh CCSA assets:', e)
+					setCcsaBalance('0')
+				}
+			}
+		} finally {
+			setReflash(false)
+		}
+	}, [reflash, profiles, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance])
+
+	/** 延迟 5 秒后刷新 AA 资产（与 MyWalletDashboard 一致） */
+	const scheduleRefreshAAAssets = useCallback(() => {
+		if (refreshAAAssetsTimeoutRef.current) clearTimeout(refreshAAAssetsTimeoutRef.current)
+		refreshAAAssetsTimeoutRef.current = setTimeout(() => {
+			refreshAAAssetsTimeoutRef.current = null
+			reflashProcess()
+		}, 5000)
+	}, [reflashProcess])
+
+	useEffect(
+		() => () => {
+			if (refreshAAAssetsTimeoutRef.current) clearTimeout(refreshAAAssetsTimeoutRef.current)
+		},
+		[]
+	)
 
 	// 卡片数据
 	const cards: Card[] = [
@@ -541,34 +613,90 @@ export default function MyWalletDashboardNew() {
 							<span className="text-sm font-bold text-gray-900">Card Details</span>
 						</div>
 
-						{/* Action Grid */}
+						{/* Action Grid：EOA 仅 Send / Bank；其余卡片为 Pay / Top Up / Receipts */}
 						{selectedCard && (
 							<>
-								<div className="px-6 py-6 grid grid-cols-3 gap-4">
-									<ActionButton
-										icon={<ScanLine size={24} />}
-										label="Pay / Redeem"
-										primary={true}
-										onClick={() => {
-											// TODO: 实现支付功能
-										}}
-									/>
-									<ActionButton
-										icon={<Plus size={24} />}
-										label="Top Up"
-										primary={false}
-										onClick={() => {
-											// TODO: 实现充值功能
-										}}
-									/>
-									<ActionButton
-										icon={<Receipt size={24} />}
-										label="Receipts"
-										primary={false}
-										onClick={() => {
-											// TODO: 实现收据查看
-										}}
-									/>
+								<div className="px-6 py-6">
+									{selectedCard.id === 'eoa' ? (
+										<div className="flex items-start justify-between gap-4">
+											<MiniAction
+												label="Send"
+												icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setShowFooter(false)
+													setEoaPanelOpen('Pay')
+												}}
+											/>
+											<MiniAction
+												label="Bank"
+												icon={<Landmark className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setShowFooter(false)
+													setEoaPanelOpen('BankingBridge')
+												}}
+											/>
+										</div>
+									) : selectedCard.id === 'aa' ? (
+										/* Express Pay：Transfer / Pay / Pay bill / Vouchers（与 MyWalletDashboard Tab 2 一致） */
+										<div className="flex items-start justify-between flex-wrap gap-4">
+											<MiniAction
+												label="Transfer"
+												icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setPayScreenMode('aa-eoa-transfer')
+													setShowFooter(false)
+													setAaPanelOpen('Pay')
+												}}
+											/>
+											<MiniAction
+												label="Pay"
+												icon={payMeSigning ? <Loader className="w-5 h-5 text-slate-800 dark:text-slate-100 animate-spin" strokeWidth={2.4} /> : <ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={async () => {
+													if (payMeSigning || !profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor) return
+													setPayMeSigning(true)
+													try {
+														const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], '10000', { deadlineSeconds: 3 * 60 })
+														setOpenRelayPayload(payload)
+														setShowFooter(false)
+														setAaPanelOpen('BeamioPayMeQR')
+													} catch (e) {
+														console.error('Pay Me signature failed', e)
+													} finally {
+														setPayMeSigning(false)
+													}
+												}}
+											/>
+											<MiniAction
+												label="Pay bill"
+												icon={<Banknote className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setScanData('')
+													setVoucherPayAmount('')
+													setVoucherPayToAA('')
+													setVoucherPayError('')
+													setScanIntent('payBill')
+													setShowFooter(false)
+													setShowTenKeySlide(true)
+												}}
+											/>
+											<MiniAction
+												label="Vouchers"
+												icon={<QrCode className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setScanData('')
+													setVoucherPayAmount('')
+													setVoucherPayToAA('')
+													setVoucherPayError('')
+													setScanIntent('')
+													setShowFooter(false)
+													setShowTenKeySlide(true)
+												}}
+											/>
+										</div>
+									) : (
+										/* CCSA Card：暂无操作按钮 */
+										<p className="text-sm text-slate-500 dark:text-slate-400 py-2">Card details. Actions coming soon.</p>
+									)}
 								</div>
 
 								<div className="flex-1 overflow-y-auto px-6 pb-24">
@@ -585,6 +713,105 @@ export default function MyWalletDashboardNew() {
 						)}
 					</div>
 				</div>
+
+				{/* EOA Send / Bank 底部浮层（z-[100] 高于卡片 z-60，确保盖住 card） */}
+				<div
+					className={`fixed inset-0 z-[100] ${eoaPanelOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+					aria-hidden={!eoaPanelOpen}
+				>
+					<div
+						className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${eoaPanelOpen ? 'opacity-100' : 'opacity-0'}`}
+						onClick={closeEoaPanel}
+					/>
+					<div
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${eoaPanelOpen ? 'translate-y-0' : 'translate-y-full'}`}
+					>
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+						</div>
+						<div className="px-4 pb-4 overflow-y-auto">
+							{eoaPanelOpen === 'Pay' && (
+								<PayScreen
+									mode="eoa-pay"
+									close={closeEoaPanel}
+								/>
+							)}
+							{eoaPanelOpen === 'BankingBridge' && (
+								<BankingBridge
+									onAddCash={() => {}}
+									onCashOut={() => {}}
+								/>
+							)}
+						</div>
+					</div>
+				</div>
+
+				{/* Express Pay：Transfer / Pay / Pay Me 底部浮层（z-[100] 高于卡片 z-60，确保盖住 card） */}
+				<div
+					className={`fixed inset-0 z-[100] ${aaPanelOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+					aria-hidden={!aaPanelOpen}
+				>
+					<div
+						className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${aaPanelOpen ? 'opacity-100' : 'opacity-0'}`}
+						onClick={closeAaPanel}
+					/>
+					<div
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${aaPanelOpen ? 'translate-y-0' : 'translate-y-full'}`}
+					>
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+						</div>
+						<div className="px-4 pb-4 overflow-y-auto">
+							{aaPanelOpen === 'Pay' && (
+								<PayScreen
+									mode={payScreenMode}
+									close={() => closeAaPanel()}
+								/>
+							)}
+							{aaPanelOpen === 'BeamioPayMeQR' && openRelayPayload != null && (
+								<BeamioPayMe
+									showActiveTab={false}
+									relayPayload={openRelayPayload}
+									onClose={() => closeAaPanel()}
+								/>
+							)}
+						</div>
+					</div>
+				</div>
+
+				{/* Pay bill / Vouchers：TenKeyInput 全屏滑入 */}
+				{showTenKeySlide && createPortal(
+					<AnimatePresence>
+						<motion.div
+							key="tenkey-slide"
+							className="fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col"
+							initial={{ x: '100%' }}
+							animate={{ x: 0 }}
+							exit={{ x: '100%' }}
+							transition={{ duration: 0.28, ease: 'easeOut' }}
+							onTouchMove={(e) => e.stopPropagation()}
+						>
+							<BeamioNavBack
+								title=""
+								onClose={() => {
+									setShowTenKeySlide(false)
+									setShowFooter(true)
+								}}
+								onMore={() => {}}
+							/>
+							<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+								<TenKeyInput
+									onPaymentSuccess={() => {
+										setShowTenKeySlide(false)
+										setShowFooter(true)
+										scheduleRefreshAAAssets()
+									}}
+								/>
+							</div>
+						</motion.div>
+					</AnimatePresence>,
+					document.body
+				)}
 			</div>
 		</div>
 	)

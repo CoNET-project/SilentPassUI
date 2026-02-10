@@ -978,9 +978,28 @@ export const makeMessage = (
 	const ts = Number(timestamp)
 	const text = (newChatText || "").trim()
   	try {
-		const card:ChatMessage  = JSON.parse(text)
-		if (card.paymentCard) {
+		const card: ChatMessage = JSON.parse(text)
+		const dedupKey = card.sendId || card.id || String(ts)
+		if (seen.has(dedupKey)) {
+			// 已存在则不再追加（如重复推送）
+		} else if (card.paymentCard) {
 			card.from = 'them'
+			if (!card.id) card.id = String(ts)
+			if (card.createdAt == null) card.createdAt = ts
+			seen.add(dedupKey)
+			result.push(card)
+		} else if (card.reply) {
+			card.from = 'them'
+			if (!card.id) card.id = String(ts)
+			if (card.createdAt == null) card.createdAt = ts
+			seen.add(dedupKey)
+			result.push(card)
+		} else if (card.sendId != null) {
+			// 发送方带 sendId 的正文消息（对方发来的普通文字）
+			card.from = 'them'
+			if (!card.id) card.id = String(ts)
+			if (card.createdAt == null) card.createdAt = ts
+			seen.add(dedupKey)
 			result.push(card)
 		} else throw new Error('')
 	} catch (ex) {
@@ -994,7 +1013,6 @@ export const makeMessage = (
 				from,
 				text,
 				createdAt: ts,
-				// ✅ 对方消息默认 sent；自己消息如果你没传 status，也默认 sent（你也可以改成 sending）
 				status: status ?? (from === "me" ? "sent" : "sent")
 			})
 		}
@@ -1077,29 +1095,36 @@ export function createMembershipActivatedCard(params: {
 	}
 }
 
+/** 按 address 去重：规范化小写，每个 address 只保留一项（保留首次出现的） */
+export function dedupeChatsByAddress(chats: chatData[]): chatData[] {
+	const seen = new Set<string>()
+	return chats.filter(chat => {
+		const key = (chat.address ?? '').trim().toLowerCase()
+		if (!key) return false
+		if (seen.has(key)) return false
+		seen.add(key)
+		return true
+	})
+}
+
 export const initMessage = async (profile: profile, beamioer: searchResult): Promise<chatData|null> => {
-	const address = beamioer.address.toLowerCase()
+	const address = (beamioer.address ?? '').trim().toLowerCase()
+	if (!address) return null
 
 	if (!profile.chats) {
 		profile.chats = []
 	}
 	// 按 address 去重，保留首次出现的项
-	const seenAddress = new Set<string>()
-	profile.chats = profile.chats.filter(chat => {
-		const key = chat.address?.toLowerCase() ?? ''
-		if (seenAddress.has(key)) return false
-		seenAddress.add(key)
-		return true
-	})
+	profile.chats = dedupeChatsByAddress(profile.chats)
 
 	// 先检查 beamioer（按 address）是否已存在于 profile.chats 中
-	const existingIndex = profile.chats.findIndex(n => n.address.toLowerCase() === address)
+	const existingIndex = profile.chats.findIndex(n => (n.address ?? '').toLowerCase() === address)
 	if (existingIndex >= 0) {
 		return profile.chats[existingIndex]
 	}
 
 	// 不存在则创建新 chat，放入 profile.chats 并返回
-	const kk = await getKeysFromCoNETPGPSC(address, profile.privateKeyArmor)
+	const kk = await getKeysFromCoNETPGPSC(beamioer.address, profile.privateKeyArmor)
 	if (!kk?.publicArmored) {
 		return null
 	}
@@ -1116,5 +1141,7 @@ export const initMessage = async (profile: profile, beamioer: searchResult): Pro
 		unreadCount: 1,
 	}
 	profile.chats.push(newChat)
+	// 再次去重，避免并发或其它路径导致同 address 出现多次
+	profile.chats = dedupeChatsByAddress(profile.chats)
 	return newChat
 }

@@ -241,13 +241,13 @@ export default function ShowPayQR({
 						{isData && validBeforeSec != null && (
 							<div className="mt-6 flex flex-col items-center gap-3">
 								{/* 最大可使用金额 */}
-								{maxUsableAmount && (
+								{/* {maxUsableAmount && (
 									<div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 border border-blue-200">
 										<span className="text-[15px] font-semibold text-blue-700">
 											Max Amount: {maxUsableAmount} USDC
 										</span>
 									</div>
-								)}
+								)} */}
 								{/* 有效期倒计时 */}
 								<div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2">
 									<Clock className="h-5 w-5 text-slate-600" />

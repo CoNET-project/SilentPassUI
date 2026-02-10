@@ -202,7 +202,7 @@ function SmartRoutingAnalysis({ steps, onAbandon, successTxHash }: { steps: Rout
 							initial={index === 0 ? { x: '100%', opacity: 0 } : false}
 							animate={{ x: 0, opacity: 1 }}
 							transition={{ type: 'tween', duration: 0.3, ease: 'easeOut' }}
-							className="flex items-start gap-4 flex-shrink-0"
+							className="flex items-start gap-4 flex-shrink-0 ml-4"
 						>
 							<div
 								className={[

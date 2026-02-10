@@ -11,7 +11,7 @@ import {
 
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {checkSign, getKeysFromCoNETPGPSC, makeMessage} from '@/services/chat' 
+import { checkSign, getKeysFromCoNETPGPSC, makeMessage, dedupeChatsByAddress } from '@/services/chat' 
 import {searchUsername, storeSystemData} from '@/services/beamio'
 
 type ChatListProps = {
@@ -165,40 +165,40 @@ export default function ChatList({
 	title = "",
 	onOpen
 }: ChatListProps) {
-		const { profiles, setProfiles } = useDaemonContext()
+	const { profiles, setProfiles } = useDaemonContext()
 
 	const items = useMemo(() => {
 		const profile: profile = profiles?.[0]
 		if (!profile) return []
 
-		// ✅ profile.chat 可能不是数组，先规范化成 chatData[]
+		// ✅ profile.chats 可能不是数组，先规范化成 chatData[]
 		const list: chatData[] = Array.isArray(profile.chats)
 			? profile.chats
 			: profile.chats
-			? (Object.values(profile.chats as Record<string, unknown>)
-				.filter(Boolean) as chatData[])
-			: []
+				? (Object.values(profile.chats as Record<string, unknown>).filter(Boolean) as chatData[])
+				: []
 
+		// 过滤：有效、未隐藏、有 address
 		const filtered = list.filter(
-			x => x && !x.hide && typeof x.address === "string" && x.address.length > 0
+			x => x && !x.hide && typeof x.address === "string" && x.address.trim().length > 0
 		)
 
-		const sorted = filtered
+		// 与 chat.ts 一致：按 address 去重（小写、每地址只保留一项）
+		const deduped = dedupeChatsByAddress(filtered)
+
+		// 排序：置顶优先，再按最后一条消息时间倒序
+		const sorted = deduped
 			.slice()
 			.sort((a, b) => {
 				const pa = a.pin ? 1 : 0
 				const pb = b.pin ? 1 : 0
 				if (pa !== pb) return pb - pa
-
-				const ta = a.messages?.[a.messages.length - 1]?.createdAt || a.beamio?.created_at || 0
-				const tb = b.messages?.[b.messages.length - 1]?.createdAt || b.beamio?.created_at || 0
+				const ta = a.messages?.[a.messages.length - 1]?.createdAt ?? a.beamio?.created_at ?? 0
+				const tb = b.messages?.[b.messages.length - 1]?.createdAt ?? b.beamio?.created_at ?? 0
 				return tb - ta
 			})
-		
 
-	return sorted
-
-
+		return sorted
 	}, [profiles])
 
 	

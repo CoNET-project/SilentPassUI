@@ -680,13 +680,24 @@ type IChat = {
 	router: string
 }
 
+/** 针对某条消息的 reaction：messageId 必须为目标消息的 sendId，对方据此找到原消息并显示 reactionKey */
+type ChatMessageReply = {
+	messageId: string
+	reactionKey: string
+}
+
 type ChatMessage = {
-	id: string
+	/** 本地列表唯一标识（如 tmp_xxx 或时间戳字符串） */
+	id?: string
+	/** 发送方指定的唯一 UUID，发送方为自己时即“我发给对方这条”的 id；reply 时必须用此 id 指向目标消息 */
+	sendId?: string
 	from: "me" | "them"
 	text: string
 	createdAt: number
 	status?: "sending" | "sent" | "failed"
 	paymentCard?: paymentCard
+	/** 本条为 reaction 时，messageId 为目标消息的 sendId */
+	reply?: ChatMessageReply
 }
 
 type CheckHistory = {

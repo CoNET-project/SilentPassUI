@@ -10,7 +10,7 @@ import ConformView from './ConformView'
 import base_ex from '@/components/assets/base-ex.svg'
 import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
-import { X, Check, Plus, Camera, ArrowRight, ArrowLeft } from "lucide-react"
+import { X, Check, Plus, Camera, ArrowRight, ArrowLeft, Wallet, CreditCard } from "lucide-react"
 import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
@@ -617,9 +617,15 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 											transition={{ duration: 0.2 }}
 											className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200"
 										>
-											<span className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700">EOA {shortAddress(myAddress)}</span>
+											<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+												<Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />
+												{shortAddress(myAddress)}
+											</span>
 											<ArrowRight className="w-4 h-4 shrink-0" />
-											<span className="px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">Express Pay {shortAddress(profiles[0].aaAccount)}</span>
+											<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
+												<CreditCard className="w-4 h-4 shrink-0" strokeWidth={2.2} />
+												{shortAddress(profiles[0].aaAccount)}
+											</span>
 										</motion.span>
 									) : (
 										<motion.span
@@ -630,9 +636,15 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 											transition={{ duration: 0.2 }}
 											className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200"
 										>
-											<span className="px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">Express Pay {shortAddress(profiles[0].aaAccount)}</span>
+											<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
+												<CreditCard className="w-4 h-4 shrink-0" strokeWidth={2.2} />
+												{shortAddress(profiles[0].aaAccount)}
+											</span>
 											<ArrowRight className="w-4 h-4 shrink-0" />
-											<span className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700">EOA {shortAddress(myAddress)}</span>
+											<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+												<Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />
+												{shortAddress(myAddress)}
+											</span>
 										</motion.span>
 									)}
 								</AnimatePresence>

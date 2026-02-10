@@ -207,6 +207,22 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
             valueClassName="text-slate-700"
           />
         )}
+        {payMe?.currencyDiscount != null && payMe.currencyDiscount !== '' && (
+          <DetailRow
+            label="Discount"
+            value={`-${fiatPrefix(payMe.currency as ICurrency) ?? ''} ${formatAmount(payMe.currencyDiscount, payMe.currency as ICurrency)}`}
+            labelClassName="text-slate-500"
+            valueClassName="text-emerald-600"
+          />
+        )}
+        {payMe?.currencyDiscountAmount != null && payMe.currencyDiscountAmount !== '' && (
+          <DetailRow
+            label="Amount after discount"
+            value={`${fiatPrefix(payMe.currency as ICurrency) ?? ''} ${formatAmount(payMe.currencyDiscountAmount, payMe.currency as ICurrency)}`}
+            labelClassName="text-slate-500"
+            valueClassName="text-slate-700"
+          />
+        )}
         <DetailRow
           label="Exchange Rate"
           value={exchangeRate}

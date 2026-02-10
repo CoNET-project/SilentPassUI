@@ -4,7 +4,7 @@ import { Route, Routes, MemoryRouter as Router, useNavigate } from "react-router
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
 import Home from "./pages/Home"
-import History from "./pages/History/History"
+import History from "./pages/History/MyWalletDashboardNew"
 import Pay from "./pages/Pay"
 import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
@@ -32,7 +32,7 @@ import ExampleExpress from "@/pages/Vouchers/example/exampleExpress"
 import ExampleExpress2 from "@/pages/Vouchers/example/ExampleExpress2"
 import TenKeyInput from "@/pages/Pay/components/TenKeyInput"
 import { Toast } from "antd-mobile"
-
+import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
 
 global.Buffer = require("buffer").Buffer
 
@@ -542,6 +542,23 @@ function AppShell() {
     }
   }
 
+  /** 商家发行的 bill paymentUrl：Amount=、currency=、acceptTokens= 为必选项，缺一视为非法 bill 不处理；路径为 /Vouchers 或域名含 beamio */
+  const isPaymentUrl = (raw: string): boolean => {
+    try {
+      if (!raw || typeof raw !== 'string') return false
+      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
+      const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
+      const currency = u.searchParams.get('currency') ?? u.searchParams.get('Currency') ?? ''
+      const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
+      if (!amount || Number(amount) <= 0) return false
+      if (!currency || !acceptTokens) return false
+      if (u.pathname === '/Vouchers' || /beamio\.app/i.test(u.origin)) return true
+      return /\/Vouchers/i.test(u.pathname)
+    } catch {
+      return false
+    }
+  }
+
   const checkUrl = async (url: string) => {
     // 首先检查是否是 ERC3009 签名数据的 JSON 字符串
     if (isERC3009SignatureData(url)) {
@@ -609,10 +626,16 @@ function AppShell() {
 
   useEffect(() => {
     if (!scanData||isInitialLoading) return
-    // voucherPay 全流程由 TenKeyInputComponent 内的 Smart Routing Analysis 处理，此处不消费 scanData
-    if (scanIntent === 'voucherPay') return
+    // voucherPay / payBill 全流程由 TenKeyInputComponent 内的 Smart Routing Analysis 处理，此处不消费 scanData
+    if (scanIntent === 'voucherPay' || scanIntent === 'payBill') return
 
     const run = async () => {
+      // 符合 paymentUrl 的扫码结果交给 TenKeyInputComponent 处理（进入 Smart Routing → 确认 → 支付）
+      if (isPaymentUrl(scanData)) {
+        setScanIntent('voucherPay')
+        navigate('/ten-key-input')
+        return
+      }
       if (/^0x/i.test(scanData)) {
         setPaymentLink({ code: "", note: "", address: scanData, amount: "" })
         setSendToMemo(scanData)
@@ -696,6 +719,7 @@ function AppShell() {
 				<Route path="/express" element={<Express />} />
 				<Route path="/example-express" element={<ExampleExpress2 />} />
 				<Route path="/ten-key-input" element={<TenKeyInput />} />
+				<Route path="/example-card" element={<EmapmpleCard />} />
 				</Routes>
 			</div>
 

@@ -5,12 +5,11 @@ import ShowPayQR from "@/pages/Vouchers/showPayQR"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from 'ethers'
 import type { OpenContainerRelayPayload } from '@/services/AAaccount'
-import { beamioApiBase, readContainerNonceFromAAStorage } from '@/services/AAaccount'
+import { beamioApiBase, readContainerNonceFromAAStorage, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from '@/services/AAaccount'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import contracts from '@/utils/contracts'
 import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC } from '@/utils/constants'
-import { quoteCurrencyAmountInUSDC, quoteUSDCToCAD } from '@/services/BeamioCard'
-import { searchUsername } from '@/services/beamio'
+import { searchUsername, getOracle } from '@/services/beamio'
 import { formatAmount } from '@/services/currency'
 
 
@@ -281,8 +280,17 @@ export type ConfirmDeductionPayload = {
 	payerDisplayName?: string
 	/** 扣款者会员标签，如 CCSA Member (Genesis) */
 	payerMemberLabel?: string
+	/** 扣款者 Beamio 标签/全名（first_name + last_name），用于 Payer 区块展示 */
+	payerBeamioTag?: string
 	usdcFromBalanceWeiStr?: string
 	ccsaPointsWeiStr?: string
+	/** Bill 支付：无预签 payload，确认时由付款人签名；to 为 bill 的 AA */
+	isBillPay?: boolean
+	billPayeeAA?: string
+	/** Bill 支付时：请求方商家展示名（Beamio 名），无则用短地址 */
+	payeeDisplayName?: string
+	/** Bill 支付时：商家会员标签（可选） */
+	payeeMemberLabel?: string
 }
 
 function ConfirmDeductionView({
@@ -296,8 +304,9 @@ function ConfirmDeductionView({
 	onCancel: () => void
 	submitting: boolean
 }) {
-	const totalReq = data.totalRequestedStrCAD ?? data.totalRequestedStr ?? data.amountStr
+	// 仅使用真实 container item 数据，与 POST/链上一致，不做多余再计算
 	const amount = data.amountStrCAD ?? data.amountStr
+	const totalReq = data.totalRequestedStrCAD ?? data.totalRequestedStr ?? data.amountStr ?? ''
 	const fromBal = data.usdcFromBalanceCAD ?? data.usdcFromBalance
 	const fromCCSA = data.usdcFromCCSACAD ?? data.usdcFromCCSA
 	const discountVal = data.hasDiscount && data.totalRequestedStr != null && data.amountStr != null
@@ -310,36 +319,75 @@ function ConfirmDeductionView({
 	const payerName = data.payerDisplayName ?? (data.payload?.account
 		? `${data.payload.account.slice(0, 6)}…${data.payload.account.slice(-4)}`
 		: 'Payer')
+	const isBillPay = !!data.isBillPay
+	const payeeAddr = data.billPayeeAA ?? data.payload?.to ?? ''
+	const payeeName = data.payeeDisplayName ?? (payeeAddr ? `${payeeAddr.slice(0, 6)}…${payeeAddr.slice(-4)}` : 'Merchant')
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-16">
-			{/* Payer (扣款者 / QR holder) info header */}
+			{/* 标题：Pay bill 时显示 */}
+			{isBillPay && (
+				<h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 text-center mb-4">
+					Pay bill
+				</h1>
+			)}
+			{/* Bill 时显示请求方商家信息，否则显示 Payer (扣款者 / QR holder) 信息 */}
 			<div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-4 flex items-center gap-4 mb-6">
 				<div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
-					Payer
+					{isBillPay ? 'Pay to' : 'Payer'}
 				</div>
 				<div className="min-w-0 flex-1">
-					<p className="font-bold text-slate-900 dark:text-slate-100 text-base truncate">
-						{data.payerDisplayName ? `@${data.payerDisplayName}` : payerName}
-					</p>
-					{data.payerMemberLabel && (
-						<p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
-							<span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-								<Check className="w-2.5 h-2.5 text-white" strokeWidth={2.5} />
-							</span>
-							{data.payerMemberLabel}
-						</p>
+					{isBillPay ? (
+						<>
+							<p className="font-bold text-slate-900 dark:text-slate-100 text-base truncate">
+								{data.payeeDisplayName ? `@${data.payeeDisplayName}` : payeeName}
+							</p>
+							{payeeAddr ? (
+								<p className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+									{payeeAddr.slice(0, 6)}…{payeeAddr.slice(-4)}
+								</p>
+							) : null}
+							{data.payeeMemberLabel && (
+								<p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+									<span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+										<Check className="w-2.5 h-2.5 text-white" strokeWidth={2.5} />
+									</span>
+									{data.payeeMemberLabel}
+								</p>
+							)}
+						</>
+					) : (
+						<>
+							<p className="font-bold text-slate-900 dark:text-slate-100 text-base truncate">
+								{data.payerDisplayName ? `@${data.payerDisplayName}` : payerName}
+							</p>
+							{(data.payerBeamioTag || data.payerMemberLabel) && (
+								<p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5 flex-wrap">
+									{data.payerMemberLabel && (
+										<>
+											<span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+												<Check className="w-2.5 h-2.5 text-white" strokeWidth={2.5} />
+											</span>
+											<span>{data.payerMemberLabel}</span>
+										</>
+									)}
+									{data.payerBeamioTag && (
+										<span>{data.payerMemberLabel ? ` · ${data.payerBeamioTag}` : data.payerBeamioTag}</span>
+									)}
+								</p>
+							)}
+						</>
 					)}
 				</div>
 			</div>
 
-			{/* Bill Amount */}
+			{/* Bill Amount：真实 totalRequested（与 POST/链上 container 一致） */}
 			<div className="flex justify-between items-center mb-2 leading-[1.375rem]">
 				<span className="text-slate-500 dark:text-slate-400 text-sm">Bill Amount</span>
-				<span className="font-bold text-slate-900 dark:text-slate-100">CA${formatAmount(data.totalRequestedStrCAD ?? data.totalRequestedStr ?? '', 'CAD')}</span>
+				<span className="font-bold text-slate-900 dark:text-slate-100">CA${formatAmount(totalReq, 'CAD')}</span>
 			</div>
 
-			{/* Member Discount (only if has discount) */}
+			{/* Member Discount (10%)：真实 totalRequested − amount（与 POST/链上一致） */}
 			{data.hasDiscount && discountVal != null && (
 				<div className="flex justify-between items-center mb-4 leading-[1.375rem]">
 					<span className="text-slate-500 dark:text-slate-400 text-sm">Member Discount (10%)</span>
@@ -564,28 +612,83 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		setVoucherPayToAA,
 		voucherPayError,
 		setVoucherPayError,
+		currencyData,
+		setCurrencyData,
 	} = useDaemonContext()
 	const maxLength = 10
 	const allowDecimal = true
 
-	// 每次挂载时清空上一次遗留的 scan/voucher 状态，避免复用旧 scan 数据导致 QR code has expired
+	// 与 AmountCurrency 共用同一套 Beamio app 共享 oracle（getOracle），避免 TenKeyInput 单独链上询价导致免费 RPC 被限流
+	type OracleRates = { USDC: number; CAD: number }
+	const ensureOracle = async (): Promise<OracleRates> => {
+		const usdc = Number((currencyData as any)?.USDC)
+		const cad = Number((currencyData as any)?.CAD)
+		if (usdc && cad) return { USDC: usdc, CAD: cad }
+		const data = await getOracle()
+		if (data) {
+			const next = {
+				CAD: Number(data.usdcad),
+				JPY: Number(data.usdjpy),
+				USD: 1,
+				CNY: Number(data.usdcny),
+				USDC: Number(data.usdc),
+				HKD: Number(data.usdhkd),
+				TWD: Number(data.usdtwd),
+				EUR: Number(data.usdeur),
+				SGD: Number(data.usdsgd),
+			}
+			setCurrencyData(next as any)
+			return { USDC: next.USDC, CAD: next.CAD }
+		}
+		return { USDC: 1, CAD: 1 }
+	}
+	const cadToUsdc6 = (rates: OracleRates, cadStr: string): bigint => {
+		if (!rates.USDC || !rates.CAD) return 0n
+		const cad = Number(cadStr)
+		if (!Number.isFinite(cad) || cad <= 0) return 0n
+		const usdc = cad / rates.CAD / rates.USDC
+		try {
+			return ethers.parseUnits(usdc.toFixed(6), 6)
+		} catch {
+			return 0n
+		}
+	}
+	const usdcToCadStr = (rates: OracleRates, usdcStr: string): string => {
+		if (!rates.USDC || !rates.CAD) return usdcStr
+		const n = Number(usdcStr)
+		if (!Number.isFinite(n)) return '0.00'
+		return (n * rates.USDC * rates.CAD).toFixed(2)
+	}
+
+	// 每次挂载时清空上一次遗留的 scan/voucher 状态；若已是 voucherPay/payBill 则保留 scanData/scanIntent 及金额（voucherPayAmount）供本组件消费
+	// 仅当不在 voucherPay/payBill 时清空，避免用户点击 Scan User 后 setScanIntent('voucherPay') 触发本 effect 把刚设的 voucherPayAmount 清掉导致 Analyzing Assets 出现 Skipped (zero amount)
 	useEffect(() => {
-		setScanData('')
-		setScanIntent('')
-		setVoucherPayAmount('')
-		setVoucherPayToAA('')
-		setVoucherPayError('')
-		routingDoneRef.current = false
-	}, [setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
+		if (scanIntent !== 'voucherPay' && scanIntent !== 'payBill') {
+			setScanData('')
+			setScanIntent('')
+			setVoucherPayAmount('')
+			setVoucherPayToAA('')
+			setVoucherPayError('')
+			routingDoneRef.current = false
+		}
+	}, [scanIntent, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
 
 	// 输入变化时清除扫码错误提示
 	useEffect(() => {
 		if (voucherPayError) setVoucherPayError('')
 	}, [value])
 
-	// voucherPay 流程：当 scanIntent === 'voucherPay' 且 scanData 到位时执行步骤并更新 UI
+	// payBill：进入后自动打开扫描，让用户扫商家的 bill paymentUrl
 	useEffect(() => {
-		if (scanIntent !== 'voucherPay' || !scanData || routingDoneRef.current) return
+		if (scanIntent === 'payBill') {
+			scanRef.current?.start()
+		}
+	}, [scanIntent, scanRef])
+
+	// voucherPay 流程：当 scanIntent === 'voucherPay' 且 scanData 到位时执行步骤并更新 UI；也处理 payBill 扫到的 paymentUrl
+	useEffect(() => {
+		const isVoucherOrBill = scanIntent === 'voucherPay' || scanIntent === 'payBill'
+		if (!isVoucherOrBill || !scanData || routingDoneRef.current) return
 		routingDoneRef.current = true
 
 		const setStep = (id: string, status: StepStatus, detail?: string) => {
@@ -621,6 +724,215 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 
 		;(async () => {
 			let payload: OpenContainerRelayPayload
+			const payerAA = profiles?.[0]?.aaAccount ?? ''
+
+			// --- Bill paymentUrl 分支：Amount、currency、acceptTokens、to 均为必选项，缺一视为非法 bill ---
+			try {
+				const u = scanData.startsWith('http') ? new URL(scanData) : new URL(scanData, 'http://beamio.app')
+				const amountParam = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
+				const currencyParam = u.searchParams.get('currency') ?? u.searchParams.get('Currency') ?? ''
+				const acceptTokensParam = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
+				const toParam = u.searchParams.get('to') ?? u.searchParams.get('payee') ?? ''
+				// 有金额即视为 bill URL：必须带 currency 和 acceptTokens，否则非法
+				if (amountParam && Number(amountParam) > 0) {
+					if (!currencyParam || !acceptTokensParam) {
+						setStepLoading('detectingUser')
+						await loadingDelay()
+						failStep('detectingUser', 'Invalid bill: missing currency or acceptTokens')
+						return
+					}
+					if (!toParam || !ethers.isAddress(toParam)) {
+						setStepLoading('detectingUser')
+						await loadingDelay()
+						failStep('detectingUser', 'Invalid bill: missing or invalid payee (to)')
+						return
+					}
+					const billPayeeAA = ethers.getAddress(toParam)
+					setVoucherPayAmount(amountParam)
+					setVoucherPayToAA(billPayeeAA)
+					setStepLoading('detectingUser')
+					await loadingDelay()
+					// 使用 Beamio Account Factory 校验 to 是否为合法 BeamioAccount（getCode 仅能说明是合约，不能区分 BeamioAccount）
+					try {
+						const aaFactory = new ethers.Contract(
+							contracts.BeamioAAAcountFactory.address,
+							contracts.BeamioAAAcountFactory.abi,
+							baseEndpoint
+						)
+						const isBeamio = await aaFactory.isBeamioAccount(billPayeeAA)
+						if (!isBeamio) {
+							failStep('detectingUser', 'Bill payee is not a Beamio AA account')
+							return
+						}
+					} catch (e) {
+						failStep('detectingUser', (e as Error)?.message ?? 'Could not verify bill payee AA')
+						return
+					}
+					if (!payerAA || !ethers.isAddress(payerAA)) {
+						failStep('detectingUser', 'Payer AA not found')
+						return
+					}
+					setStepSuccess('detectingUser', 'Bill payee validated')
+					await doneDelay()
+
+					let enteredWei: bigint
+					try {
+						const rates = await ensureOracle()
+						enteredWei = cadToUsdc6(rates, amountParam)
+					} catch (e) {
+						console.warn('Bill CAD to USDC (shared oracle) failed', e)
+						enteredWei = 0n
+					}
+
+					setStepLoading('membership')
+					await loadingDelay()
+					let cardNumbers: string[] = []
+					let pointsBalanceWei = 0n
+					try {
+						const cardContract = new ethers.Contract(
+							CCSA_Card_Address,
+							['function getOwnership(address user) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)'],
+							baseEndpoint
+						)
+						const [pt, nfts] = await cardContract.getOwnership(payerAA)
+						pointsBalanceWei = BigInt(pt?.toString() ?? 0)
+						cardNumbers = (nfts || []).map((n: { tokenId: bigint }) => n.tokenId.toString()).filter(Boolean)
+						setStepSuccess('membership', cardNumbers.length > 0 ? 'Cardholder (10% OFF)' : 'No membership discount')
+					} catch (e) {
+						console.warn('CCSA card check failed', e)
+						failStep('membership', 'Could not read CCSA card')
+						return
+					}
+					await doneDelay()
+
+					const effectiveWei = cardNumbers.length > 0 ? (enteredWei * 9n) / 10n : enteredWei
+					let ccsaCapacityUsdcWei = 0n
+					let unitPriceUSDC6 = 0n
+					if (pointsBalanceWei > 0n) {
+						try {
+							unitPriceUSDC6 = BigInt((await BeamioCardFactorySC.quoteUnitPointInUSDC6(CCSA_Card_Address))?.toString() ?? 0)
+							ccsaCapacityUsdcWei = (pointsBalanceWei * unitPriceUSDC6) / 1_000_000n
+						} catch (e) {
+							console.warn('CCSA quote UnitPointInUSDC6 failed', e)
+						}
+					}
+
+					setStepLoading('analyzingAssets')
+					await loadingDelay()
+					let balanceWei = 0n
+					try {
+						const tokenContract = new ethers.Contract(
+							USDCContract_BASE,
+							usdc_abi as ethers.InterfaceAbi,
+							baseEndpoint
+						)
+						const bal = await tokenContract.balanceOf(payerAA)
+						balanceWei = BigInt(bal.toString())
+						const totalAvailableWei = balanceWei + ccsaCapacityUsdcWei
+						if (effectiveWei > 0n && totalAvailableWei < effectiveWei) {
+							failStep('analyzingAssets', 'Insufficient balance')
+							return
+						}
+						const detail = ccsaCapacityUsdcWei >= effectiveWei
+							? '$CCSA: (Sufficient)'
+							: ccsaCapacityUsdcWei > 0n
+								? '$CCSA: (Partial)'
+								: 'USDC sufficient'
+						setStepSuccess('analyzingAssets', detail)
+					} catch (e) {
+						console.warn('Balance check failed', e)
+						failStep('analyzingAssets', 'Could not verify balance')
+						return
+					}
+					await doneDelay()
+
+					setStepLoading('optimizingRoute')
+					await loadingDelay()
+					const usdcFromCCSAWei = effectiveWei <= ccsaCapacityUsdcWei ? effectiveWei : ccsaCapacityUsdcWei
+					const usdcFromBalanceWei = effectiveWei - usdcFromCCSAWei
+					const amountStr = ethers.formatUnits(effectiveWei, 6)
+					const ccsaPointsWei = usdcFromCCSAWei > 0n && unitPriceUSDC6 > 0n
+						? (usdcFromCCSAWei * 1_000_000n) / unitPriceUSDC6
+						: 0n
+					setStepSuccess('optimizingRoute', usdcFromCCSAWei > 0n && usdcFromBalanceWei > 0n ? 'Hybrid: CCSA + USDC' : usdcFromCCSAWei > 0n ? 'CCSA only' : 'USDC only')
+					await doneDelay()
+
+					const usdcFromBalanceStr = ethers.formatUnits(usdcFromBalanceWei, 6)
+					const usdcFromCCSAStr = ethers.formatUnits(usdcFromCCSAWei, 6)
+					const customerUsdcBalanceStr = ethers.formatUnits(balanceWei, 6)
+					const totalRequestedStrVal = ethers.formatUnits(enteredWei, 6)
+					let amountStrCAD: string | undefined
+					let usdcFromBalanceCAD: string | undefined
+					let usdcFromCCSACAD: string | undefined
+					let customerUsdcBalanceCAD: string | undefined
+					let totalRequestedStrCAD: string | undefined
+					try {
+						const rates = await ensureOracle()
+						amountStrCAD = usdcToCadStr(rates, amountStr)
+						usdcFromBalanceCAD = usdcToCadStr(rates, usdcFromBalanceStr)
+						usdcFromCCSACAD = usdcToCadStr(rates, usdcFromCCSAStr)
+						customerUsdcBalanceCAD = usdcToCadStr(rates, customerUsdcBalanceStr)
+						totalRequestedStrCAD = usdcToCadStr(rates, totalRequestedStrVal)
+					} catch (e) {
+						console.warn('USDC to CAD (shared oracle) failed', e)
+					}
+
+					// Bill 请求方商家展示名：通过 AA.owner() 得 EOA，再 searchUsername 获取
+					let payeeDisplayName: string | undefined
+					try {
+						const aaContract = new ethers.Contract(
+							billPayeeAA,
+							['function owner() view returns (address)'],
+							baseEndpoint
+						)
+						const merchantEOA = (await aaContract.owner()) as string
+						if (merchantEOA && merchantEOA !== ethers.ZeroAddress) {
+							const account = await searchUsername(merchantEOA)
+							if (account?.results?.[0]?.username) {
+								payeeDisplayName = account.results[0].username
+							}
+						}
+					} catch (e) {
+						console.warn('Bill payee Beamio lookup failed (searchUsername by EOA)', e)
+					}
+
+					const syntheticPayload: OpenContainerRelayPayload = {
+						account: payerAA,
+						to: billPayeeAA,
+						items: [],
+						currencyType: 4,
+						maxAmount: '0',
+						nonce: '0',
+						deadline: String(Math.floor(Date.now() / 1000) + 300),
+						signature: '0x',
+					}
+					setConfirmDeduction({
+						payload: syntheticPayload,
+						amountStr,
+						usdcFromBalance: usdcFromBalanceStr,
+						usdcFromCCSA: usdcFromCCSAStr,
+						customerUsdcBalance: customerUsdcBalanceStr,
+						totalRequestedStr: totalRequestedStrVal,
+						hasDiscount: cardNumbers.length > 0,
+						amountStrCAD,
+						usdcFromBalanceCAD,
+						usdcFromCCSACAD,
+						customerUsdcBalanceCAD,
+						totalRequestedStrCAD,
+						payerDisplayName: undefined,
+						payerMemberLabel: cardNumbers.length > 0 ? 'CCSA Member (Genesis)' : undefined,
+						usdcFromBalanceWeiStr: usdcFromBalanceWei > 0n ? usdcFromBalanceWei.toString() : undefined,
+						ccsaPointsWeiStr: ccsaPointsWei > 0n ? ccsaPointsWei.toString() : undefined,
+						isBillPay: true,
+						billPayeeAA,
+						payeeDisplayName,
+						payeeMemberLabel: undefined,
+					})
+					return
+				}
+			} catch (_) {
+				/* not a bill URL, fall through to JSON payload */
+			}
 
 			// Step 1: Detecting User (parse + beneficiary AA + nonce + deadline + maxAmount; failures show under this step)
 			setStepLoading('detectingUser')
@@ -679,11 +991,13 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 				failStep('detectingUser', 'QR code has expired')
 				return
 			}
+			// 金额优先用 voucherPayAmount（Scan User 时设置），若无则用本页数字键输入的 value，避免被 effect 清空或其它入口未设导致 zero amount
+			const amountSource = (voucherPayAmount && Number(voucherPayAmount) > 0) ? voucherPayAmount : (value && Number(value) > 0 ? value : '')
 			let enteredWei: bigint
 			try {
-				if (voucherPayAmount && Number(voucherPayAmount) > 0) {
-					const { usdc6 } = await quoteCurrencyAmountInUSDC(CCSA_Card_Address, 'CAD', voucherPayAmount)
-					enteredWei = usdc6
+				if (amountSource) {
+					const rates = await ensureOracle()
+					enteredWei = cadToUsdc6(rates, amountSource)
 				} else {
 					enteredWei = 0n
 				}
@@ -737,35 +1051,45 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 				}
 			}
 
-			// Step 3: Analyzing Assets (balance check; show CCSA amount or sufficient)
+			// Step 3: Analyzing Assets (balance check; USDC + CCSA 合计，CCSA 不足时用 USDC 补足)
 			let balanceWei = 0n
 			if (effectiveWei > 0n) {
 				setStepLoading('analyzingAssets')
 				await loadingDelay()
+				const usdcAsset = payload.items?.find((it: { kind: number }) => it.kind === 0)?.asset ?? USDCContract_BASE
+				const usdcContract = new ethers.Contract(
+					USDCContract_BASE,
+					usdc_abi as ethers.InterfaceAbi,
+					baseEndpoint
+				)
 				try {
-					const usdcAsset = payload.items?.find((it: { kind: number }) => it.kind === 0)?.asset ?? USDCContract_BASE
-					const tokenContract = new ethers.Contract(
-						usdcAsset,
-						usdc_abi as ethers.InterfaceAbi,
-						baseEndpoint
-					)
-					const bal = await tokenContract.balanceOf(payload.account)
-					balanceWei = BigInt(bal.toString())
-					const totalAvailableWei = balanceWei + ccsaCapacityUsdcWei
-					if (totalAvailableWei < effectiveWei) {
-						failStep('analyzingAssets', 'Insufficient balance')
+					const bal = await usdcContract.balanceOf(payload.account)
+					balanceWei = BigInt(bal?.toString?.() ?? String(bal ?? 0))
+				} catch (e1) {
+					console.warn('USDC balanceOf failed, retry with payload asset', e1)
+					try {
+						const altContract = usdcAsset && usdcAsset.toLowerCase() !== USDCContract_BASE.toLowerCase()
+							? new ethers.Contract(usdcAsset, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
+							: usdcContract
+						const bal = await altContract.balanceOf(payload.account)
+						balanceWei = BigInt(bal?.toString?.() ?? String(bal ?? 0))
+					} catch (e2) {
+						console.warn('Balance check failed', e2)
+						failStep('analyzingAssets', (e2 as Error)?.message ?? 'Could not verify balance')
 						return
 					}
-					const ccsaFormatted = ethers.formatUnits(ccsaCapacityUsdcWei, 6)
-					const detail = ccsaCapacityUsdcWei > 0n
-						? `$CCSA: ${Number(ccsaFormatted).toFixed(2)} (Partial)`
-						: 'USDC sufficient'
-					setStepSuccess('analyzingAssets', detail)
-				} catch (e) {
-					console.warn('Balance check failed', e)
-					failStep('analyzingAssets', 'Could not verify balance')
+				}
+				const totalAvailableWei = balanceWei + ccsaCapacityUsdcWei
+				if (totalAvailableWei < effectiveWei) {
+					failStep('analyzingAssets', 'Insufficient balance')
 					return
 				}
+				const detail = ccsaCapacityUsdcWei >= effectiveWei
+					? '$CCSA: (Sufficient)'
+					: ccsaCapacityUsdcWei > 0n
+						? '$CCSA: (Partial)'
+						: 'USDC sufficient'
+				setStepSuccess('analyzingAssets', detail)
 			} else {
 				setStepSuccess('analyzingAssets', 'Skipped (zero amount)')
 			}
@@ -793,17 +1117,19 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 			let customerUsdcBalanceCAD: string | undefined
 			let totalRequestedStrCAD: string | undefined
 			try {
-				amountStrCAD = await quoteUSDCToCAD(CCSA_Card_Address, amountStr)
-				usdcFromBalanceCAD = await quoteUSDCToCAD(CCSA_Card_Address, usdcFromBalanceStr)
-				usdcFromCCSACAD = await quoteUSDCToCAD(CCSA_Card_Address, usdcFromCCSAStr)
-				customerUsdcBalanceCAD = await quoteUSDCToCAD(CCSA_Card_Address, customerUsdcBalanceStr)
-				totalRequestedStrCAD = await quoteUSDCToCAD(CCSA_Card_Address, totalRequestedStrVal)
+				const rates = await ensureOracle()
+				amountStrCAD = usdcToCadStr(rates, amountStr)
+				usdcFromBalanceCAD = usdcToCadStr(rates, usdcFromBalanceStr)
+				usdcFromCCSACAD = usdcToCadStr(rates, usdcFromCCSAStr)
+				customerUsdcBalanceCAD = usdcToCadStr(rates, customerUsdcBalanceStr)
+				totalRequestedStrCAD = usdcToCadStr(rates, totalRequestedStrVal)
 			} catch (e) {
-				console.warn('USDC to CAD quote failed, Confirm deduction will show USDC amounts', e)
+				console.warn('USDC to CAD (shared oracle) failed, Confirm deduction will show USDC amounts', e)
 			}
 
-			// 付款人 Beamio 信息：通过 AA.owner() 得到付款人 EOA，再 searchUsername(EOA) 获取
+			// 付款人 Beamio 信息：通过 AA.owner() 得到付款人 EOA，再 searchUsername(EOA) 获取 username / first_name+last_name
 			let payerDisplayName: string | undefined
+			let payerBeamioTag: string | undefined
 			try {
 				const aaContract = new ethers.Contract(
 					payload.account,
@@ -813,8 +1139,13 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 				const payerEOA = await aaContract.owner() as string
 				if (payerEOA && payerEOA !== ethers.ZeroAddress) {
 					const account = await searchUsername(payerEOA)
-					if (account?.results?.[0]?.username) {
-						payerDisplayName = account.results[0].username
+					const peer = account?.results?.[0]
+					if (peer) {
+						if (peer.username) payerDisplayName = peer.username
+						const lastname = (peer as { last_name?: string }).last_name?.split?.('\r\n')?.[0] ?? ''
+						const firstName = (peer as { first_name?: string }).first_name ?? ''
+						const fullName = `${firstName || ''} ${/^\{/.test(String(lastname)) ? '' : lastname || ''}`.trim()
+						if (fullName) payerBeamioTag = fullName
 					}
 				}
 			} catch (e) {
@@ -836,17 +1167,18 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 				totalRequestedStrCAD,
 				payerDisplayName,
 				payerMemberLabel: cardNumbers.length > 0 ? 'CCSA Member (Genesis)' : undefined,
+				payerBeamioTag,
 				usdcFromBalanceWeiStr: usdcFromBalanceWei > 0n ? usdcFromBalanceWei.toString() : undefined,
 				ccsaPointsWeiStr: ccsaPointsWei > 0n ? ccsaPointsWei.toString() : undefined,
 			})
 			// 不在此处 submit；等用户确认后再提交
 			return
 		})()
-	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
+	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, profiles, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
 
-	// 进入 voucherPay 时重置步骤为 pending（等待 scanData），并清空确认
+	// 进入 voucherPay / payBill 时重置步骤为 pending（等待 scanData），并清空确认
 	useEffect(() => {
-		if (scanIntent === 'voucherPay') {
+		if (scanIntent === 'voucherPay' || scanIntent === 'payBill') {
 			setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
 			setConfirmDeduction(null)
 			routingDoneRef.current = false
@@ -865,7 +1197,6 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		setSubmitting(true)
 		setConfirmDeduction(null)
 		// Build items from deduction split: only include items with amount > 0; do not add zero-amount items.
-		// ERC1155 asset uses the same CCSA card as Step 6 (balance check): the account’s balance is on this card; factory.beamioUserCard() must be set to this address on-chain.
 		const usdcWei = data.usdcFromBalanceWeiStr ? BigInt(data.usdcFromBalanceWeiStr) : 0n
 		const ccsaPointsWei = data.ccsaPointsWeiStr ? BigInt(data.ccsaPointsWeiStr) : 0n
 		const items: { kind: number; asset: string; amount: string; tokenId: string; data: string }[] = []
@@ -879,18 +1210,26 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 			const amountWeiStr = ethers.parseUnits(data.amountStr, 6).toString()
 			items.push({ kind: 0, asset: USDCContract_BASE, amount: amountWeiStr, tokenId: '0', data: '0x' })
 		}
-		// openContainerPayload.to 填受益人 AA = 自己（当前扫码确认的用户），非 QR 里的签字人（被扣款人）
-		const beneficiaryAA = voucherPayToAA || profiles?.[0]?.aaAccount || ''
-		if (!beneficiaryAA || !ethers.isAddress(beneficiaryAA)) {
-			setSubmitting(false)
-			setVoucherPayError('Beneficiary AA not found. Please use the account that will receive the payment.')
-			return
-		}
-		const toAddress = ethers.getAddress(beneficiaryAA)
-		const payload: OpenContainerRelayPayload = {
-			...data.payload,
-			to: toAddress,
-			items,
+
+		let payload: OpenContainerRelayPayload
+		if (data.isBillPay && data.billPayeeAA && profiles?.[0]) {
+			// Bill 支付：由付款人签名 Open Container，to 指向 bill 的 AA
+			try {
+				const signed = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], data.amountStr, { to: data.billPayeeAA })
+				payload = { ...signed, to: ethers.getAddress(data.billPayeeAA), items }
+			} catch (e) {
+				setSubmitting(false)
+				setVoucherPayError((e as Error)?.message ?? 'Sign failed')
+				return
+			}
+		} else {
+			const beneficiaryAA = voucherPayToAA || profiles?.[0]?.aaAccount || ''
+			if (!beneficiaryAA || !ethers.isAddress(beneficiaryAA)) {
+				setSubmitting(false)
+				setVoucherPayError('Beneficiary AA not found. Please use the account that will receive the payment.')
+				return
+			}
+			payload = { ...data.payload, to: ethers.getAddress(beneficiaryAA), items }
 		}
 
 		setStepById('sendTx', 'loading', 'Submitting…')
@@ -1029,10 +1368,14 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		setShowQRSheet(true)
 	}
 
-	const paymentUrl = value ? `http://beamio.app/Vouchers?Amount=${value}` : ''
+	// 商家 bill 必选项：Amount、currency、acceptTokens、to（收款方 AA）；to 为当前商家 AA，支付方扫码后款项转入此地址
+	const merchantAA = profiles?.[0]?.aaAccount
+	const paymentUrl = value && merchantAA && ethers.isAddress(merchantAA)
+		? `http://beamio.app/Vouchers?Amount=${encodeURIComponent(value)}&currency=CAD&acceptTokens=USDC,CCSA&to=${encodeURIComponent(merchantAA)}`
+		: ''
 
-	// voucherPay workflow：Confirm → Submitting 成功 → 显示 PaymentSuccessView；仅当用户点击「Done & Go to Chat」才 onPaymentSuccess 回到父页面（不在此前关闭）
-	if (scanIntent === 'voucherPay') {
+	// voucherPay / payBill workflow：Confirm → Submitting 成功 → 显示 PaymentSuccessView；仅当用户点击「Done & Go to Chat」才 onPaymentSuccess 回到父页面（不在此前关闭）
+	if (scanIntent === 'voucherPay' || scanIntent === 'payBill') {
 		if (paymentSuccessData) {
 			return (
 				<div className="flex-1 min-h-0 flex flex-col overflow-hidden">

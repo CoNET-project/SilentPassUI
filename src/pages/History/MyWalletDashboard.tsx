@@ -203,9 +203,14 @@ export function MyWalletDashboard() {
 		setShowFooter,
 		setNavigateLeftButtonArray,
 		historyPayData,
-		setSecureCode,	
+		setSecureCode,
 		redeemCode,
 		setRedeemCode,
+		setScanIntent,
+		setScanData,
+		setVoucherPayAmount,
+		setVoucherPayToAA,
+		setVoucherPayError,
 	} = useDaemonContext()
 
 	const [loading, setLoading] = useState(false)
@@ -1129,9 +1134,27 @@ export function MyWalletDashboard() {
 							}}
 						/>
 						<MiniAction
+							label="Pay bill"
+							icon={<Banknote className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+							onClick={() => {
+								setScanData('')
+								setVoucherPayAmount('')
+								setVoucherPayToAA('')
+								setVoucherPayError('')
+								setScanIntent('payBill')
+								setShowFooter(false)
+								setShowTenKeySlide(true)
+							}}
+						/>
+						<MiniAction
 							label="Vouchers"
 							icon={<QrCode className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 							onClick={() => {
+								setScanData('')
+								setVoucherPayAmount('')
+								setVoucherPayToAA('')
+								setVoucherPayError('')
+								setScanIntent('')
 								setShowFooter(false)
 								setShowTenKeySlide(true)
 							}}

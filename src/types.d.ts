@@ -569,6 +569,8 @@ type payMe = {
 	currency: ICurrency
 	currencyAmount: string
 	currencyTip?: string
+	currencyDiscount?: string
+	currencyDiscountAmount?: string
 	tip?: number
 	parentHash?: string
 	oneTimeMode?: boolean

@@ -6,7 +6,7 @@ import { CoNET_Data } from '@/utils/globals'
 import {AuthorizationSign, getBalanceProcess} from '@/services/beamio'
 
 import {SendHistoryTable} from './SendHistory'
-import {MyWalletDashboard} from './MyWalletDashboard'
+import MyWalletDashboardNew from './MyWalletDashboardNew'
 
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
@@ -208,7 +208,7 @@ const History = ({}) => {
 			 */}
 			
 		
-			<MyWalletDashboard />
+			<MyWalletDashboardNew />
 		
       </div>
    

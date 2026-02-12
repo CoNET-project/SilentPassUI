@@ -4,6 +4,7 @@ import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC,conetDe
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
+import { Theater } from "lucide-react";
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
 export type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
@@ -273,6 +274,107 @@ export const quotePointsForUSDC = async (
 }
 
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
+const createCardEndpoint = `${beamioApi}/api/createCard`
+
+/** 用户拥有的 BeamioUserCard 详情（来自 cardsOfOwner + 链上 currency/price） */
+export type UserCardInfo = {
+	cardAddress: string
+	name: string
+	currency: string
+	priceHuman: string
+}
+
+/** 通过 factory.cardsOfOwner 检测用户是否拥有 BeamioUserCard，若有则返回卡列表及详情 */
+export const getCardsOfOwnerWithDetails = async (
+	ownerAddress: string,
+	ccsaCardAddress?: string
+): Promise<UserCardInfo[]> => {
+	if (!ownerAddress || !ethers.isAddress(ownerAddress)) return []
+	try {
+		const cards: string[] = await BeamioCardFactorySC.cardsOfOwner(ownerAddress)
+		if (!cards?.length) return []
+
+		const cardAbiSlice = [
+			'function currency() view returns (uint8)',
+			'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
+		]
+		const results: UserCardInfo[] = []
+		const ccsaLower = (ccsaCardAddress ?? CCSA_Card_Address).toLowerCase()
+
+		for (const addr of cards) {
+			const card = new ethers.Contract(addr, cardAbiSlice, baseEndpoint)
+			const [currencyNum, priceE6] = await Promise.all([
+				card.currency(),
+				card.pointsUnitPriceInCurrencyE6(),
+			])
+			const currency = getICurrency(BigInt(currencyNum))
+			const priceHuman = (Number(priceE6) / 1_000_000).toFixed(2)
+			const name = addr.toLowerCase() === ccsaLower ? 'CCSA Card' : `User Card`
+			results.push({ cardAddress: addr, name, currency, priceHuman })
+		}
+		return results
+	} catch {
+		return []
+	}
+}
+
+/** ERC-1155 shareTokenMetadata，写入 0x{owner}.json */
+export type ShareTokenMetadata = {
+	name: string
+	description?: string
+	image?: string
+}
+
+/** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含 */
+export type TierMetadata = {
+	index: number
+	minUsdc6: string
+	attr: number
+	name?: string
+	description?: string
+}
+
+/** createCardCollectionWithInitCode 所需关键参数 */
+export type CreateBeamioCardParams = {
+	/** 卡归属地址（cardOwner） */
+	cardOwner: string
+	/** 币种：CAD | USD | JPY | CNY | USDC | HKD | EUR | SGD | TWD */
+	currency: 'CAD' | 'USD' | 'JPY' | 'CNY' | 'USDC' | 'HKD' | 'EUR' | 'SGD' | 'TWD'
+	/** Human-readable: X currency units = 1 point. e.g. 1 means "1 CAD = 1 point". Backend converts to priceInCurrencyE6. */
+	unitPriceHuman: string | number
+	/** metadata URI（可选），默认 0x{owner}.json 由后端生成 */
+	uri?: string
+	/** ERC-1155 shareTokenMetadata，用于创建 0x{owner}.json */
+	shareTokenMetadata?: ShareTokenMetadata
+	/** Tier 类型 metadata（如 Gold Card 说明），存于 0x{owner}.json，回送 NFT metadata 时包含 */
+	tiers?: TierMetadata[]
+}
+
+/** 创建 BeamioUserCard，调用后端 /api/createCard。Cluster 预检后转发 master 排队，daemon 上链后回传 cardAddress 和 hash。 */
+export const createBeamioCard = async (params: CreateBeamioCardParams): Promise<{ success: boolean; cardAddress?: string; hash?: string; error?: string }> => {
+	try {
+		const body = JSON.stringify({
+			cardOwner: params.cardOwner,
+			currency: params.currency,
+			unitPriceHuman: String(params.unitPriceHuman),
+			...(params.uri && { uri: params.uri }),
+			...(params.shareTokenMetadata && { shareTokenMetadata: params.shareTokenMetadata }),
+			...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
+		})
+		const response = await fetch(createCardEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body,
+		})
+		const data = await response.json()
+		if (response.ok && data.success) {
+			return { success: true, cardAddress: data.cardAddress, hash: data.hash }
+		}
+		return { success: false, error: data.error ?? 'Create card failed' }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
 
 /** 互斥锁：同一时间只允许一个 postBuyCardPoints 执行 */
 let postBuyCardPointsLock = false
@@ -321,17 +423,48 @@ export const postBuyCardPoints = async (
         }
     }
 
+const GET_MY_ASSETS_CACHE_TTL_MS = 15 * 1000
+const getMyAssetsCache = new Map<string, { result: MyCardAssets; timestamp: number }>()
+let getMyAssetsMutex = Promise.resolve<void>(undefined)
+
+const getMyAssetsCacheKey = (profile: profile, cardAddress: string) =>
+	`${profile.keyID ?? ''}-${cardAddress}`
+
+async function withGetMyAssetsMutex<T>(fn: () => Promise<T>): Promise<T> {
+	const prev = getMyAssetsMutex
+	let resolveMutex: () => void
+	getMyAssetsMutex = new Promise<void>((r) => { resolveMutex = r })
+	await prev
+	try {
+		return await fn()
+	} finally {
+		resolveMutex!()
+	}
+}
+
 export const getMyAssets = async (profile: profile, cardAddress: string): Promise<MyCardAssets | null> => {
-    try {
-		if (!profile.aaAccount) {
-			const aa = await getAAAccount(profile)
-			if (!aa) {
-				return null
-			}
-			profile.aaAccount = aa
+	const key = getMyAssetsCacheKey(profile, cardAddress)
+	const cached = getMyAssetsCache.get(key)
+	if (cached && Date.now() - cached.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
+		return cached.result
+	}
+
+	return withGetMyAssetsMutex(async () => {
+		const cachedAgain = getMyAssetsCache.get(key)
+		if (cachedAgain && Date.now() - cachedAgain.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
+			return cachedAgain.result
 		}
-        // 1. 实例化卡合约（用 getOwnershipByEOA 由卡按自身 gateway 的 AA Factory 解析 EOA→AA，与购卡时一致）
-        const cardContract = new ethers.Contract(
+
+		try {
+			if (!profile.aaAccount) {
+				const aa = await getAAAccount(profile)
+				if (!aa) {
+					return null
+				}
+				profile.aaAccount = aa
+			}
+			// 1. 实例化卡合约（用 getOwnershipByEOA 由卡按自身 gateway 的 AA Factory 解析 EOA→AA，与购卡时一致）
+			const cardContract = new ethers.Contract(
             cardAddress,
             [
                 'function getOwnershipByEOA(address userEOA) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
@@ -379,19 +512,20 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 			usdcBalance: usdcBalance
         }
 
-        // 打印结果
-        console.table(result.nfts)
-        
-        return result;
+			// 打印结果
+			console.table(result.nfts)
 
-    } catch (error: any) {
-    
-        throw error;
-    }
+			getMyAssetsCache.set(key, { result, timestamp: Date.now() })
+			return result
+		} catch (error: any) {
+			throw error
+		}
+	})
 }
 
-const getICurrency = (currency: BigInt): ICurrency => {
-	switch (currency) {
+const getICurrency = (currency: bigint | number): ICurrency => {
+	const n = typeof currency === 'number' ? BigInt(currency) : currency
+	switch (n) {
 		case 0n:
 			return 'CAD'
 		case 1n:
@@ -450,12 +584,14 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 		console.log(
 		  `[getAAAccount] AA=${account} factory() not available: ${e?.shortMessage || e?.message}`
 		)
+		throw(`[getAAAccount] AA=${account} factory() not available: ${e?.shortMessage || e?.message}`)
 	  }
   
 	  return account
 	} catch (error: any) {
 	  console.log(`❌ getAAAccount Failed: ${error.message}`)
-	  return null
+	  
+	  throw(error)
 	}
   }
 

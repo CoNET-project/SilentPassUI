@@ -18,7 +18,7 @@ export type Icard = { cardAddress: string, userSignature: string, nonce: string,
 	const validBefore = now + BigInt(60)   
  */
 /** AA Factory 作为 UserCard gateway（与 config/base-addresses AA_FACTORY 一致） */
-const BeamioUserCardGatewayAddress = '0xD4759c85684e47A02223152b85C25D2E5cD2E738'.toLowerCase()
+const BeamioUserCardGatewayAddress = '0xD86403DD1755F7add19540489Ea10cdE876Cc1CE'.toLowerCase()
 const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,

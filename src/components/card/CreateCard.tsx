@@ -2,14 +2,19 @@ import React, { useEffect, useMemo, useRef, useState } from "react"
 import { images } from "./cards"
 import BeamioDetail from "./beamioCard"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { postToIPFS } from "@/services/beamio"
 import { X, Check, Plus } from "lucide-react"
+
+const IPFS_GET_FRAGMENT = "https://ipfs.conet.network/api/getFragment?hash="
 
 export type ClosePayload = {
   title: string
   detail: string
   bgIndex: number
-  // ✅ 父容器只接受 base64（data:image/...;base64,...）
+  // ✅ 父容器只接受 base64（data:image/...;base64,...），或优先使用 imageUrl（即刻上传后已有）
   bgBase64: string
+  /** 选择图片后即刻上传得到的 IPFS URL，作为 image 前缀（参照 PayScreen） */
+  imageUrl?: string
 }
 
 type EditField = null | "title" | "detail" | "logo"
@@ -205,7 +210,8 @@ export default function DiceBearCardFullscreenEditor({
 }: Props) {
   const [title, setTitle] = useState('')
   const [detail, setDetail] = useState('')
-  const { beamio } = useDaemonContext()
+  const { beamio, profiles } = useDaemonContext()
+  const [uploadingIPFS, setUploadingIPFS] = useState(false)
 
   // ✅ 背景列表：从 cards.ts 的 images 初始化，然后允许追加用户上传/DB载入
   const [bgList, setBgList] = useState<string[]>(() => images.slice())
@@ -245,6 +251,8 @@ export default function DiceBearCardFullscreenEditor({
 
   // ✅ objectURL -> Blob：用于把用户上传/DB 的图片变 base64（避免 fetch objectURL）
   const bgBlobMapRef = useRef<Record<string, Blob>>({})
+  // ✅ objectURL -> IPFS URL：客户按下 img 后即刻上传得到的回执
+  const bgIpfsUrlMapRef = useRef<Record<string, string>>({})
 
   // ✅ 背景 base64 缓存（LRU）
   const bgBase64CacheRef = useRef<Map<string, string>>(new Map())
@@ -410,6 +418,27 @@ export default function DiceBearCardFullscreenEditor({
   const goPrev = () => goIndex(currentIndex - 1)
   const goNext = () => goIndex(currentIndex + 1)
 
+  /* ================== 删除用户上传的背景 ================== */
+  const deleteCurrentBackground = () => {
+    if (!bgSrc.startsWith("blob:")) return // 仅可删除用户上传的
+    const idx = bgList.indexOf(bgSrc)
+    if (idx < 0) return
+
+    URL.revokeObjectURL(bgSrc)
+    objectUrlsRef.current = objectUrlsRef.current.filter((u) => u !== bgSrc)
+    delete bgBlobMapRef.current[bgSrc]
+    delete bgIpfsUrlMapRef.current[bgSrc]
+    bgBase64CacheRef.current.delete(bgSrc)
+
+    setBgList((prev) => prev.filter((_, i) => i !== idx))
+    setBgIndex(Math.max(0, idx - 1))
+    if (idx === currentIndex) {
+      requestAnimationFrame(() => thumbRefs.current[Math.max(0, idx - 1)]?.scrollIntoView({ behavior: "smooth", inline: "center" }))
+    }
+  }
+
+  const isCurrentUserUploaded = bgSrc.startsWith("blob:")
+
   /* ================== 上传背景（降像素 + 写入 DB Blob + objectURL） ================== */
   const openFilePicker = () => {
       setThumbsMounted(true)
@@ -447,6 +476,9 @@ export default function DiceBearCardFullscreenEditor({
 		const MAX = 12 * 1024 * 1024
 		if (file.size > MAX) return
 
+		const profile = profiles?.[0]
+		if (!profile?.privateKeyArmor) return
+
 		// ✅ 1) 降像素（严格规则）
 		const blob = await maybeDownscaleToBlob(file)
 
@@ -478,6 +510,18 @@ export default function DiceBearCardFullscreenEditor({
 
 		return next
 		})
+
+		// ✅ 4) 即刻上传到 IPFS（参照 PayScreen），拿到回执 URL 作为图片前缀
+		setUploadingIPFS(true)
+		try {
+			const dataUrl = await blobToDataURL(blob)
+			const hash = await postToIPFS(profile, dataUrl)
+			if (hash) {
+				bgIpfsUrlMapRef.current[url] = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`
+			}
+		} finally {
+			setUploadingIPFS(false)
+		}
 	} catch {
 		// ignore
 	} finally {
@@ -490,17 +534,20 @@ export default function DiceBearCardFullscreenEditor({
 	}
 }
 
-  // ✅ OK：提交当前（优先用预生成缓存）
+  // ✅ OK：提交当前（优先用预生成缓存）；若有即刻上传的 imageUrl 则优先传递
   const ok = async () => {
     const cached = cacheGet(bgSrc)
     const bgBase64 = cached || (await srcToBase64(bgSrc, bgBlobMapRef.current))
     if (!cached && bgBase64) cacheSetLRU(bgSrc, bgBase64)
 
+    const imageUrl = bgIpfsUrlMapRef.current[bgSrc]
+
     onClose({
       title,
       detail,
       bgIndex: currentIndex,
-      bgBase64
+      bgBase64,
+      ...(imageUrl && { imageUrl })
     })
   }
 
@@ -551,6 +598,7 @@ export default function DiceBearCardFullscreenEditor({
       for (const u of objectUrlsRef.current) URL.revokeObjectURL(u)
       objectUrlsRef.current = []
       bgBlobMapRef.current = {}
+      bgIpfsUrlMapRef.current = {}
       bgBase64CacheRef.current.clear()
     }
   }, [])
@@ -604,6 +652,29 @@ export default function DiceBearCardFullscreenEditor({
           style={{ WebkitBackdropFilter: "blur(1px)", backdropFilter: "blur(1px)" }}
         />
       </div>
+
+      {uploadingIPFS && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30">
+          <p className="text-sm text-white drop-shadow flex items-center gap-1">
+            Uploading image to IPFS, please wait
+            <span className="inline-flex w-4">
+              <span className="animate-dot">.</span>
+              <span className="animate-dot delay-200">.</span>
+              <span className="animate-dot delay-400">.</span>
+            </span>
+          </p>
+          <style>{`
+            .animate-dot { animation: blink 1.4s infinite both; }
+            .delay-200 { animation-delay: 0.2s; }
+            .delay-400 { animation-delay: 0.4s; }
+            @keyframes blink {
+              0% { opacity: 0.2; }
+              20% { opacity: 1; }
+              100% { opacity: 0.2; }
+            }
+          `}</style>
+        </div>
+      )}
 
       {/* ✅ iOS 顶部：左 Cancel(X) + 右 OK(Check) */}
       <button
@@ -841,6 +912,21 @@ export default function DiceBearCardFullscreenEditor({
                 >
                   <Plus className="w-4 h-4 text-white/70" />
                 </button>
+
+                {/* ✅ 已上传图片缩略图 + 删除键（在 + 右边，用户可删除来更换新图） */}
+                {isCurrentUserUploaded && bgSrc && (
+                  <div className="shrink-0 relative">
+                    <img src={bgSrc} alt="uploaded" className="w-16 h-10 rounded-xl object-cover border border-white/40" draggable={false} />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); deleteCurrentBackground() }}
+                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500/90 flex items-center justify-center hover:bg-red-500 transition opacity-90 hover:opacity-100"
+                      aria-label="Delete uploaded image"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
 
                 {/* ✅ 其余缩略图（来自 bgList，含用户上传/DB载入） */}
                 {bgList.map((src, i) => (

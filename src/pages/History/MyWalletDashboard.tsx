@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { createPortal } from 'react-dom';
 import { ethers } from "ethers"
-import { beamioConet, baseEndpoint, USDCContract_BASE } from "@/utils/constants"
+import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import {motion, AnimatePresence } from "framer-motion"
@@ -412,11 +412,10 @@ export function MyWalletDashboard() {
 		try {
 		const myAddrLocal = address.toLowerCase()
 
-		const [_transfer, _links, _checks] = await Promise.all([
-			beamioConet.getTransferHistory(address, 0, 100),
-			beamioConet.getLinksHistory(address, 0, 100),
-			beamioConet.getCheckHistory(address, 0, 100)
-		])
+		// 旧合约 getTransferHistory/getLinksHistory/getCheckHistory 已停用
+		const _transfer: [string[], Transfer[]] = [[], []]
+		const _links: [string[], LinksHistory[]] = [[], []]
+		const _checks: [string[], any[]] = [[], []]
 
 		const transfer: Transfer[] = _transfer[1]
 		const mappedPay: TransferHistork[] = transfer.map(n => {
@@ -760,12 +759,14 @@ export function MyWalletDashboard() {
       "
     >
       {/* Top bar */}
-      <div className="px-5 flex items-center justify-between">
-        <div className="text-[18px] font-semibold text-slate-900 dark:text-slate-100">
+      <div className="px-5 flex items-center justify-between min-h-[2.125rem]">
+        <div className="text-[18px] font-semibold text-slate-900 dark:text-slate-100 leading-none">
           My Wallet
         </div>
-
-        
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm ring-1 ring-black/5 dark:ring-white/10 shrink-0">
+          <Zap size={14} className="fill-amber-400 text-amber-400" />
+          <span>Gas Sponsored</span>
+        </div>
       </div>
 
 		{/* 钱包卡片轮播区 */}
@@ -830,10 +831,6 @@ export function MyWalletDashboard() {
 									/>
 								</button>
 								<span className="font-medium">USDC on Base</span>
-							</div>
-							<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
-								<Sparkles size={10} className="text-amber-500" strokeWidth={2.2} />
-								Gas Sponsored
 							</div>
 						</div>
 
@@ -909,10 +906,6 @@ export function MyWalletDashboard() {
 										/>
 									</button>
 									<span className="font-medium">Express Pay</span>
-								</div>
-								<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
-									<Zap size={10} className="fill-yellow-300 text-yellow-300" />
-									Gas Sponsored
 								</div>
 							</div>
 

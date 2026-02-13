@@ -275,47 +275,85 @@ export const quotePointsForUSDC = async (
 
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
+const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 
 /** 用户拥有的 BeamioUserCard 详情（来自 cardsOfOwner + 链上 currency/price） */
 export type UserCardInfo = {
 	cardAddress: string
 	name: string
 	currency: string
-	priceHuman: string
+	/** pointsUnitPriceInCurrencyE6：1 pt 对应多少 currency（E6），用于推导汇率 */
+	priceE6: string
+	/** 1 单位 currency 可换多少 pts（人类可读，token 数位 10**6） */
+	ptsPer1Currency: string
 }
 
-/** 通过 factory.cardsOfOwner 检测用户是否拥有 BeamioUserCard，若有则返回卡列表及详情 */
-export const getCardsOfOwnerWithDetails = async (
-	ownerAddress: string,
-	ccsaCardAddress?: string
-): Promise<UserCardInfo[]> => {
+const cardAbiSlice = [
+	'function currency() view returns (uint8)',
+	'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
+]
+
+async function fetchCardsForOwner(ownerAddress: string): Promise<UserCardInfo[]> {
 	if (!ownerAddress || !ethers.isAddress(ownerAddress)) return []
 	try {
 		const cards: string[] = await BeamioCardFactorySC.cardsOfOwner(ownerAddress)
 		if (!cards?.length) return []
-
-		const cardAbiSlice = [
-			'function currency() view returns (uint8)',
-			'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
-		]
 		const results: UserCardInfo[] = []
-		const ccsaLower = (ccsaCardAddress ?? CCSA_Card_Address).toLowerCase()
-
 		for (const addr of cards) {
 			const card = new ethers.Contract(addr, cardAbiSlice, baseEndpoint)
-			const [currencyNum, priceE6] = await Promise.all([
+			const [currencyNum, priceE6Raw] = await Promise.all([
 				card.currency(),
 				card.pointsUnitPriceInCurrencyE6(),
 			])
 			const currency = getICurrency(BigInt(currencyNum))
-			const priceHuman = (Number(priceE6) / 1_000_000).toFixed(2)
-			const name = addr.toLowerCase() === ccsaLower ? 'CCSA Card' : `User Card`
-			results.push({ cardAddress: addr, name, currency, priceHuman })
+			const priceE6 = Number(priceE6Raw)
+			const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
+			results.push({
+				cardAddress: addr,
+				name: 'User Card',
+				currency,
+				priceE6: String(priceE6),
+				ptsPer1Currency: String(ptsPer1Currency),
+			})
 		}
 		return results
 	} catch {
 		return []
 	}
+}
+
+/** 通过 factory.cardsOfOwner 检测用户是否拥有 BeamioUserCard，若有则返回卡列表及详情 */
+export const getCardsOfOwnerWithDetails = async (ownerAddress: string): Promise<UserCardInfo[]> =>
+	fetchCardsForOwner(ownerAddress)
+
+/** 同时查询 aaAccount 与 keyID 下的卡（去重合并）。用于 CardManager：展示用户自己发行的 BeamioUserCard，不耦合 CCSA。
+ * 当 keyID 缺失时，会从 privateKeyArmor 推导 EOA 地址作为 fallback。 */
+export const getCardsOfOwnerWithDetailsForProfile = async (
+	profile: { aaAccount?: string | null; keyID?: string | null; privateKeyArmor?: string | null }
+): Promise<UserCardInfo[]> => {
+	const aa = profile?.aaAccount?.trim()
+	let eoa = profile?.keyID?.trim()
+	if (!eoa && profile?.privateKeyArmor) {
+		try {
+			const w = new ethers.Wallet(profile.privateKeyArmor)
+			eoa = w.address
+		} catch (_) {}
+	}
+	const owners: string[] = []
+	if (aa && ethers.isAddress(aa)) owners.push(ethers.getAddress(aa))
+	if (eoa && ethers.isAddress(eoa)) owners.push(ethers.getAddress(eoa))
+	const seen = new Set<string>()
+	const merged: UserCardInfo[] = []
+	for (const owner of owners) {
+		const list = await fetchCardsForOwner(owner)
+		for (const c of list) {
+			const key = c.cardAddress.toLowerCase()
+			if (seen.has(key)) continue
+			seen.add(key)
+			merged.push(c)
+		}
+	}
+	return merged
 }
 
 /** ERC-1155 shareTokenMetadata，写入 0x{owner}.json */
@@ -422,6 +460,94 @@ export const postBuyCardPoints = async (
             postBuyCardPointsLock = false
         }
     }
+
+/** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。 */
+export const signExecuteForOwner = async (
+    ownerPrivateKey: string,
+    cardAddress: string,
+    data: string,
+    deadline: number,
+    nonce: string
+): Promise<string> => {
+    const wallet = new ethers.Wallet(ownerPrivateKey, baseEndpoint)
+    const factoryAddress = contracts.BeamioCardFactory.address
+    const domain = {
+        name: 'BeamioUserCardFactory',
+        version: '1',
+        chainId: 8453,
+        verifyingContract: factoryAddress,
+    }
+    const types = {
+        ExecuteForOwner: [
+            { name: 'cardAddress', type: 'address' },
+            { name: 'dataHash', type: 'bytes32' },
+            { name: 'deadline', type: 'uint256' },
+            { name: 'nonce', type: 'bytes32' },
+        ],
+    }
+    const dataHash = ethers.keccak256(data)
+    const value = { cardAddress, dataHash, deadline, nonce }
+    return wallet.signTypedData(domain, types, value)
+}
+
+const createRedeemInterface = new ethers.Interface([
+    'function createRedeem(bytes32 hash,uint256 points6,uint256 attr,uint64 validAfter,uint64 validBefore,uint256[] tokenIds,uint256[] amounts)',
+])
+
+/** 构建 createRedeem 的 calldata（供 executeForOwner 使用）。hash 来自 generateCODE(passcode)，普通 redeem 用 passcode="" */
+export const encodeCreateRedeem = (
+    hash: string,
+    points6: bigint,
+    validAfter: number,
+    validBefore: number
+): string => {
+    const tokenIds = [0n]
+    const amounts = [points6]
+    return createRedeemInterface.encodeFunctionData('createRedeem', [
+        hash,
+        points6,
+        0n,
+        validAfter,
+        validBefore,
+        tokenIds,
+        amounts,
+    ])
+}
+
+/** 提交 owner 签名的 executeForOwner 请求。可选 redeemCode+toUserEOA：空投场景下 API 会额外执行 redeemForUser。 */
+export const postExecuteForOwner = async (payload: {
+    cardAddress: string
+    data: string
+    deadline: number
+    nonce: string
+    ownerSignature: string
+    redeemCode?: string
+    toUserEOA?: string
+}): Promise<{ success: boolean; error?: string; code?: string }> => {
+    try {
+        const body: Record<string, unknown> = {
+            cardAddress: payload.cardAddress,
+            data: payload.data,
+            deadline: payload.deadline,
+            nonce: payload.nonce,
+            ownerSignature: payload.ownerSignature,
+        }
+        if (payload.redeemCode != null && payload.toUserEOA != null) {
+            body.redeemCode = payload.redeemCode
+            body.toUserEOA = payload.toUserEOA
+        }
+        const res = await fetch(executeForOwnerEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'executeForOwner failed' }
+        return { success: true, code: data.code }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
 
 const GET_MY_ASSETS_CACHE_TTL_MS = 15 * 1000
 const getMyAssetsCache = new Map<string, { result: MyCardAssets; timestamp: number }>()

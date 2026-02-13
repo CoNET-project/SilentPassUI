@@ -69,6 +69,10 @@ export const formatAmount = (
   })
 }
 
+/** Token pts 人类可读：链上数位永远 10**6 */
+export const formatPts = (ptsRaw: number | string | bigint): string =>
+  formatAmount(Number(ptsRaw) / 1_000_000, "USDC", 6)
+
 function toMs(ts: number) {
 	// 秒/毫秒兼容
 	return ts < 10_000_000_000 ? ts * 1000 : ts

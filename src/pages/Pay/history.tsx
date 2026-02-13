@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react"
-import {beamioConet} from '@/utils/constants'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {ethers} from 'ethers'
 type Payed = {
@@ -62,7 +61,8 @@ export const LinkHistoryTable: React.FC<HistoryTableProps> = ({itemClock}: Histo
     const address = profile.keyID
 
     try {
-      const [linkHashes, _links] = await beamioConet.getLinksHistory(address, 0, 100)
+      // 旧合约 getLinksHistory 已停用
+      const [linkHashes, _links] = [[], []] as [string[], links[]]
       const links: links[] = _links
 
       const mapped: LinkHistork[] = links.map(n => ({

@@ -4,7 +4,7 @@ import {
 import {generateKey, readKey, createMessage, enums, encrypt, decryptKey, readPrivateKey, readMessage, decrypt, PrivateKey} from 'openpgp'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 
-import {GuardianNodesMainnet, conetDepinProvider} from '@/utils/constants'
+import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/constants'
 import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
@@ -34,6 +34,12 @@ const generatePgpKey = async (walletAddr: string, passwd: string ) => {
 	const keyID = keyObj.getKeyIDs()[1].toHex().toUpperCase()
 	return { privateKey, publicKey, keyID }
 }
+
+/** 从公钥 Armored 获取 KeyID，与整个 CONET 一致的格式 */
+export const getPublicKeyArmoredKeyID = async (publicKeyArmored: string): Promise<string> => {
+	const keyObj = await readKey({ armoredKey: publicKeyArmored })
+	return keyObj.getKeyIDs()[1].toHex().toUpperCase()
+}
 /**
  * userPgpKeyID (string) : 
 
@@ -60,13 +66,44 @@ export const getRandomNode = (allNodes: nodeInfo[]): nodeInfo|null => {
 	return node
 }
 
-export const getKeysFromCoNETPGPSC = async (keyID: string, privateKeyArmor: string) => {
-	const Wallet = new ethers.Wallet (privateKeyArmor, conetDepinProvider)
+/** 随机抽取 n 个不重复的 node（用于 sendMessage 双节点并行 post） */
+export const getRandomNodes = (allNodes: nodeInfo[], n: number): nodeInfo[] => {
+	if (!allNodes.length || n <= 0) return []
+	const shuffled = [...allNodes].sort(() => Math.random() - 0.5)
+	return shuffled.slice(0, Math.min(n, shuffled.length))
+}
+
+/** 检查是否为有效的 ethers 私钥（64 位 hex，可选 0x 前缀） */
+const isValidEthersPrivateKey = (pk: unknown): pk is string => {
+	if (!pk || typeof pk !== 'string') return false
+	const s = String(pk).trim().replace(/^0x/i, '')
+	return /^[0-9a-fA-F]{64}$/.test(s)
+}
+
+/** 按钱包地址从 AddressPGP 获取 PGP（searchKey 接受 address） */
+export const getKeysFromCoNETPGPSCByAddress = async (walletAddress: string, privateKeyArmor: string) => {
+	return getKeysFromCoNETPGPSC(walletAddress, privateKeyArmor)
+}
+
+export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyArmor: string) => {
+	if (!isValidEthersPrivateKey(privateKeyArmor)) {
+		console.warn('[getKeysFromCoNETPGPSC] invalid privateKeyArmor format, skipping')
+		return null
+	}
+	let Wallet: ethers.Wallet
+	try {
+		Wallet = new ethers.Wallet(privateKeyArmor, conetDepinProvider)
+	} catch (ex: any) {
+		console.warn('[getKeysFromCoNETPGPSC] Wallet creation failed:', ex?.message || ex)
+		return null
+	}
 	const contract = contracts.constPgpManager
 	const SC = new ethers.Contract(contract.address, contract.abi, Wallet)
+	// searchKey 接受 address；若传入 keyID，可用 pgpKeyIDHash2Wallet 查 address，此处简化为：若为有效 address 则用，否则用 Wallet.address
+	const lookupAddr = ethers.isAddress(keyIDOrAddress) ? keyIDOrAddress : Wallet.address
 	try {
 		const [info, privateKey] : [searchKeyPGP, string] = await Promise.all([
-			SC.searchKey(keyID),
+			SC.searchKey(lookupAddr),
 			SC.getEncryptedPrivateKey()
 		])
 		let privateArmored = ''
@@ -83,9 +120,9 @@ export const getKeysFromCoNETPGPSC = async (keyID: string, privateKeyArmor: stri
 		if (info.userPublicKeyArmored) {
 			publicArmored = fromBase64(info.userPublicKeyArmored)
 		}
+		const routersArmoreds = info.routePublicKeyArmored ? fromBase64(info.routePublicKeyArmored) : ''
 
-		
-		return {privateArmored, publicArmored, routersArmoreds: info.routePublicKeyArmored, online: info.routeOnline, routePgpKeyID: info.routePgpKeyID}
+		return {privateArmored, publicArmored, routersArmoreds, online: info.routeOnline, routePgpKeyID: info.routePgpKeyID, userPgpKeyID: info.userPgpKeyID}
 	} catch (ex) {
 		return null
 	}
@@ -125,6 +162,12 @@ const getAllNodes = (): Promise<nodeInfo[]> => new Promise(async resolve=> {
 
 
 
+const isPgpKeyComplete = (pgp: initBeamioPGPKeysRet | undefined): boolean => {
+	if (!pgp) return false
+	// keyID、privateKey、publicKey 必填；routes 可为空（后续从链上拉取）
+	return !!(pgp.keyID?.trim() && pgp.privateKey?.trim() && pgp.publicKey?.trim() && typeof pgp.routes === 'string')
+}
+
 export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean, newMessage: (val: string) => void) => {
 	if (gossip) return
 	setGossip(true)
@@ -136,11 +179,20 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		return
 	}
 	const profiles: profile[] =  temp.profiles
-	const profile = profiles[0]
+	let profile = profiles[0]
+	if (!profile) {
+		setGossip(false)
+		return
+	}
+	if (!profile.privateKeyArmor || !isValidEthersPrivateKey(profile.privateKeyArmor)) {
+		console.warn('[initChat] profile.privateKeyArmor invalid or missing, cannot init')
+		setGossip(false)
+		return
+	}
 	let chatManager: IChat|undefined = profile?.chatManager
 	let routes: string = chatManager?.router||''
-	//		本地非初始化
-	if (!chatManager) {
+	//		本地非初始化 或 pgpKey 不完整则重新生成
+	if (!chatManager || !isPgpKeyComplete(chatManager.pgpKey)) {
 		const pgpData = await initBeamioPGPKeys(profile)
 		if (!pgpData) {
 			setGossip(false)
@@ -149,11 +201,11 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 
 		chatManager = {
 			pgpKey: pgpData,
-			router: '',
+			router: chatManager?.router || '',
 
 		}
 		profile.chatManager = chatManager
-		routes = pgpData.routes
+		routes = pgpData.routes || chatManager.router || ''
 	}
 
 
@@ -164,10 +216,42 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 
 	//	链上route信息
 	if (routes) {
-
 		chatManager.router = routes
-
 	}
+
+	// 检测：本地 PGP 与链上不一致时，说明用户在本地更换了密钥对但未重新登记，需调用 regiestChatRoute 同步
+	if (rr?.userPgpKeyID && chatManager.pgpKey.publicKey) {
+		try {
+			const localKeyID = await getPublicKeyArmoredKeyID(chatManager.pgpKey.publicKey)
+			const chainKeyID = (rr.userPgpKeyID || '').toUpperCase()
+			if (localKeyID && chainKeyID && localKeyID !== chainKeyID) {
+				console.warn('[initChat] 本地 PGP KeyID 与链上不一致，重新登记', { localKeyID, chainKeyID })
+				const node = getRandomNode(allNodes)
+				if (node) {
+					const ok = await regiestChatRoute(
+						profile.privateKeyArmor,
+						chatManager.pgpKey.publicKey,
+						localKeyID,
+						chatManager.pgpKey.privateKey,
+						node.domain
+					)
+					if (ok) {
+						await new Promise(r => setTimeout(r, 5000))
+						const rr2 = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
+						const chainKeyID2 = (rr2?.userPgpKeyID || '').toUpperCase()
+						if (chainKeyID2 === localKeyID) {
+							console.log('[initChat] 重新登记验证成功', { localKeyID, chainKeyID2 })
+						} else {
+							console.warn('[initChat] 重新登记 5 秒后验证失败：链上仍为', chainKeyID2, '，期望', localKeyID)
+						}
+					}
+				}
+			}
+		} catch (e: any) {
+			console.warn('[initChat] 检测 PGP KeyID 时出错', e?.message ?? e)
+		}
+	}
+
 	if (!routes) {
 		const node = getRandomNode(allNodes)
 		if (node) {
@@ -189,13 +273,12 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	setCoNET_Data(temp)
 	storeSystemData()
 
-	const entryNode = getRandomNode(allNodes)
-	if (!entryNode) {
+	if (!allNodes?.length) {
 		setGossip(false)
 		return
 	}
 	
-	connectToGossipNode(chatManager.router, profile.privateKeyArmor, entryNode, chatManager.pgpKey.privateKey, newMessage)
+	connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
 	
 }
 
@@ -206,7 +289,7 @@ export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGP
 		return {
 			privateKey: keyInfo.privateArmored,
 			publicKey: keyInfo.publicArmored,
-			keyID: '',
+			keyID: profile.keyID || keyInfo.userPgpKeyID || '',
 			routes: keyInfo.routersArmoreds
 		}
 	}
@@ -222,216 +305,32 @@ export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGP
 }
 
 export const regiestChatRoute = async (privateKey: string, pubArmor: string, keyID: string, priArmor: string, routeKeyID: string) => {
-	const Wallet = new ethers.Wallet (privateKey, conetDepinProvider)
-	const contract = contracts.constPgpManager
-	const SC = new ethers.Contract(contract.address, contract.abi, Wallet)
+	const Wallet = new ethers.Wallet(privateKey, conetDepinProvider)
 	const encryptPri = await aesGcmEncrypt(priArmor, privateKey)
-	const publicKey = toBase64(pubArmor)
-	const h = ethers.keccak256(ethers.toUtf8Bytes(routeKeyID))
+	const publicKeyArmored = toBase64(pubArmor)
 	try {
-		const tx = await SC.addPublicPGP(
-			Wallet.address,
-			keyID,
-			publicKey,
-			encryptPri,
-			routeKeyID
-		)
-		await tx.wait()
-		return true
+		const res = await fetch(`${beamioApi}/api/regiestChatRoute`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				wallet: Wallet.address,
+				keyID,
+				publicKeyArmored,
+				encrypKeyArmored: encryptPri,
+				routeKeyID
+			})
+		})
+		const json = await res.json()
+		if (!res.ok) {
+			console.error('[regiestChatRoute]', res.status, json?.error ?? json)
+		}
+		return !!json?.ok
 	} catch (ex: any) {
+		console.error('[regiestChatRoute]', ex?.message ?? ex)
 		return false
 	}
-
 }
 
-function startGossip_old(
-  node: nodeInfo,
-  body: string,
-  callback?: (err?: string, data?: string) => void
-) {
-  const relaunch = () => {
-    setTimeout(() => startGossip(node, body, callback), 1000)
-  }
-
-  const url = `https://${node.domain}.conet.network/post`
-
-  // 连接超时（3s，浏览器可能需要更长时间建立 TLS）
-  const connectAbort = new AbortController()
-  const connectTimer = window.setTimeout(() => {
-    console.log(`startGossip connect timeout [${node.ip_addr}:${node.nftNumber}]`)
-    connectAbort.abort(new Error("connect timeout"))
-    relaunch()
-  }, 3000) // 改为 3s
-
-  // idle 超时（30s）
-  let idleTimer: number | null = null
-  const resetIdle = (aborter: AbortController) => {
-    if (idleTimer != null) window.clearTimeout(idleTimer)
-    idleTimer = window.setTimeout(() => {
-      console.log(`startGossip idle timeout [${node.ip_addr}] -> restart`)
-      aborter.abort(new Error("idle timeout"))
-      relaunch()
-    }, 30_000) // 改为 30s
-  }
-
-  ;(async () => {
-    let first = true
-    try {
-      // 关键改动 1：添加必要的 fetch 选项
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json;charset=UTF-8",
-          Accept: "text/event-stream",
-          // 明确告诉服务器我们期望长连接
-          Connection: "keep-alive",
-        },
-        body,
-        signal: connectAbort.signal,
-        // 关键改动 2：跨域请求如需凭证，打开这个
-        // credentials: "include",
-        // 关键改动 3：防止浏览器缓存 SSE 响应
-        cache: "no-store",
-      })
-
-      window.clearTimeout(connectTimer)
-
-      if (!res.ok) {
-        console.log(`startGossip status != 200 [${res.status}] -> relaunch`)
-        try {
-          await res.body?.cancel()
-        } catch {}
-        relaunch()
-        return
-      }
-
-      if (!res.body) {
-        console.log(`startGossip no body -> relaunch`)
-        relaunch()
-        return
-      }
-
-      // 连接成功，开始 idle watchdog
-      const streamAbort = new AbortController()
-      resetIdle(streamAbort)
-
-      const abortForward = () =>
-        streamAbort.abort(connectAbort.signal.reason as any)
-      connectAbort.signal.addEventListener("abort", abortForward, { once: true })
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder("utf-8")
-      let buffer = ""
-
-      const handleBlock = (block: string) => {
-        // 兼容 SSE 标准 "data:" 行
-        const lines = block.split("\n")
-        const dataLines = lines
-          .filter(l => l.startsWith("data:"))
-          .map(l => l.slice(5).trimStart())
-
-        // 如果有 data: 前缀，使用 dataLines；否则用原 block
-        const payload = (dataLines.length ? dataLines.join("\n") : block).trim()
-
-        if (!payload) return
-
-        if (first) {
-          first = false
-          try {
-            const data = JSON.parse(payload)
-            console.log("First message:", data)
-          } catch (e) {
-            console.log("First message parse error:", payload, e)
-          }
-          return
-        }
-
-        // 后续消息回调
-        callback?.("", payload)
-      }
-
-      // 关键改动 4：改进的流读取逻辑
-      while (true) {
-        // 设置读取操作的超时（额外保险）
-        let value: Uint8Array | undefined
-        let done = false
-
-        try {
-          // 使用 Promise.race 给单次读取加超时
-          const readPromise = reader.read()
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error("read timeout")),
-              35_000 // 比 idle 超时稍长
-            )
-          )
-
-          const result = await Promise.race([readPromise, timeoutPromise])
-          value = result.value
-          done = result.done
-        } catch (readErr: any) {
-          if (readErr?.message === "read timeout") {
-            console.log("Read operation timeout")
-            streamAbort.abort(new Error("read timeout"))
-            break
-          }
-          throw readErr
-        }
-
-        if (done) {
-          if (idleTimer != null) window.clearTimeout(idleTimer)
-          console.log(`startGossip stream end [${node.ip_addr}] -> relaunch`)
-          relaunch()
-          return
-        }
-
-        // 只要有任何 chunk，就视为连接活跃
-        resetIdle(streamAbort)
-
-        // 关键改动 5：更严格的换行处理
-        // 先转换为 UTF-8 字符串
-        const chunk = decoder.decode(value, { stream: true })
-        buffer += chunk
-
-        // 处理 \r\n\r\n, \n\n, \r\r 三种分隔符
-        let idx: number
-        while (
-          (idx = buffer.indexOf("\n\n")) !== -1 ||
-          (idx = buffer.indexOf("\r\n\r\n")) !== -1 ||
-          (idx = buffer.indexOf("\r\r")) !== -1
-        ) {
-          let blockEnd: number
-          let separatorLen: number
-
-          if (buffer.substring(idx, idx + 4) === "\r\n\r\n") {
-            blockEnd = idx
-            separatorLen = 4
-          } else if (buffer.substring(idx, idx + 2) === "\n\n") {
-            blockEnd = idx
-            separatorLen = 2
-          } else if (buffer.substring(idx, idx + 2) === "\r\r") {
-            blockEnd = idx
-            separatorLen = 2
-          } else {
-            break
-          }
-
-          const block = buffer.slice(0, blockEnd)
-          buffer = buffer.slice(blockEnd + separatorLen)
-          handleBlock(block)
-        }
-      }
-    } catch (err: any) {
-      window.clearTimeout(connectTimer)
-      if (idleTimer != null) window.clearTimeout(idleTimer)
-
-      const msg = err?.message ?? String(err)
-      console.log(`startGossip fetch error [${node.ip_addr}]`, msg)
-      callback?.(msg)
-      relaunch()
-    }
-  })()
-}
 
 interface TimeoutConfig {
   connectTimeout: number        // 连接阶段超时
@@ -447,15 +346,17 @@ interface SSEErrorType {
 }
 
 function startGossip(
-  node: nodeInfo,
+  nodes: nodeInfo[],
   body: string,
   callback?: (err?: string, data?: string) => void,
-  rootSignal?: AbortSignal, // <--- 新增：用于外部强行停止整个递归链
+  rootSignal?: AbortSignal, // <--- 用于外部强行停止整个递归链
   timeoutConfig?: Partial<TimeoutConfig>
 ) {
   // 【第一道防线】如果总开关已关，直接销毁，不准启动
   if (rootSignal?.aborted) return;
+  if (!nodes?.length) return;
 
+  const node = getRandomNode(nodes)!
   const config: TimeoutConfig = {
     connectTimeout: 5_000,
     idleTimeout: 60_000,
@@ -471,7 +372,7 @@ function startGossip(
   const onRootAbort = () => controller.abort("root_stop");
   rootSignal?.addEventListener("abort", onRootAbort);
 
-  // --- 重连触发器 ---
+  // --- 重连触发器：每次随机换一个 node ---
   let isRelaunching = false;
   const triggerRelaunch = () => {
     // 【第二道防线】再次检查总开关
@@ -488,8 +389,8 @@ function startGossip(
     setTimeout(() => {
         // 【第三道防线】在定时器触发时，最后检查一次
         if (rootSignal?.aborted) return;
-        console.log("🔄 [Gossip] Reconnecting...");
-        startGossip(node, body, callback, rootSignal, timeoutConfig);
+        console.log("🔄 [Gossip] Reconnecting... (random node)");
+        startGossip(nodes, body, callback, rootSignal, timeoutConfig);
     }, config.retryDelay);
   };
 
@@ -710,8 +611,9 @@ export let currentGossipAbortController: AbortController | null = null;
 export const connectToGossipNode = async (
 	nodeArmoredPublicKey: string,
 	privateKeyArmor: string,
-	entryNode: nodeInfo,
+	nodes: nodeInfo[],
 	pgpPrivateKey: string,
+	pgpPublicArmored: string,
 	newMessage: (val: string) => void
 ) => {
   // ==========================================
@@ -746,11 +648,13 @@ export const connectToGossipNode = async (
       const pk = await readPrivateKey({ armoredKey: pgpPrivateKey });
       decryptedPrivateKey = pk.isDecrypted() ? pk : await decryptKey({ privateKey: pk, passphrase: "" });
 
+      const userPgpKeyID = pgpPublicArmored ? await getPublicKeyArmoredKeyID(pgpPublicArmored) : '';
+
       console.log("🚀 [Gossip] Starting new connection...");
 
-      // 启动递归循环，传入 rootSignal
+      // 启动递归循环，传入 nodes 数组，重连时随机换 node
       startGossip(
-        entryNode, 
+        nodes, 
         JSON.stringify({ data: postData }), 
         async (err, _data) => {
             // 回调卫语句：如果总开关关了，不要处理任何数据
@@ -765,6 +669,15 @@ export const connectToGossipNode = async (
                 if (data?.data && /^-----BEGIN PGP MESSAGE-----/i.test(data.data)) {
                     const armoredMessage = data.data;
                     const msg = await readMessage({ armoredMessage });
+                    const encrypKeyIDs = msg.getEncryptionKeyIDs?.();
+                    if (encrypKeyIDs?.length) {
+                        const customerKeyID = encrypKeyIDs[0].toHex().toUpperCase();
+                        const ourKeyIDs = decryptedPrivateKey.getKeyIDs?.()?.map(k => k.toHex().toUpperCase()) ?? [];
+                        const match = ourKeyIDs.includes(customerKeyID) || (userPgpKeyID && customerKeyID.endsWith(userPgpKeyID));
+                        console.debug(`[Gossip Debug] msgEncryptKeyID=${customerKeyID} | ourKeyIDs=[${ourKeyIDs.join(',')}] | userPgpKeyID=${userPgpKeyID} | match=${match}`);
+                    } else {
+                        console.debug(`[Gossip Debug] msg has no encryption key packets`);
+                    }
                     const { data: decrypted } = await decrypt({ message: msg, decryptionKeys: decryptedPrivateKey });
                     const decryptedString = typeof decrypted === 'string' ? decrypted : String(decrypted);
                     const kkk = fromBase64(decryptedString);
@@ -775,7 +688,9 @@ export const connectToGossipNode = async (
 					console.log(data)
 				}
             } catch (ex: any) {
-                console.warn("Parse Error:", ex.message);
+                // "No decryption key packets found" = 消息不是发给我们的（gossip 广播了发给其他用户的消息），静默跳过
+                if (ex?.message?.includes?.("No decryption key packets found")) return;
+                console.warn("Parse Error:", ex?.message ?? ex);
             }
         },
         rootSignal // <--- 必须传入这个信号
@@ -821,14 +736,12 @@ export const sendMessage = async (
 	pgpPublic: string,
 	text: string,
 	privateKeyArmor: string,
-	entryNode: nodeInfo
+	entryNodes: nodeInfo[]
 ): Promise<boolean> => {
+	if (!entryNodes?.length) return false
+
 	const wallet = new ethers.Wallet(privateKeyArmor)
-
-	
-
 	const signMessage = await wallet.signMessage(text)
-
 	const message = {
 		timestamp: Date.now(),
 		text,
@@ -858,56 +771,23 @@ export const sendMessage = async (
 		return false
 	}
 
-	const nodeUrl = `https://${entryNode.domain}.conet.network/post`
-
-	// ✅ 推荐：统一用 JSON 包一层，后端更稳定
-	const payload = {
-		data: postData
+	const payload = { data: postData }
+	const postOpts = {
+		method: "POST" as const,
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload)
 	}
 
-	// 可选：简单重试一次（网络波动时很有用）
-	// 重试逻辑
-	for (let attempt = 0; attempt < 2; attempt++) {
-		try {
-			const res = await postWithTimeout(
-				nodeUrl,
-				{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json", // charset=UTF-8 是 fetch 默认行为，可省略
-				},
-				body: JSON.stringify(payload)
-				},
-				12_000
-			);
+	const results = await Promise.all(
+		entryNodes.map(node => {
+			const url = `https://${node.domain}.conet.network/post`
+			return postWithTimeout(url, postOpts, 12_000)
+				.then(res => res.ok)
+				.catch(() => false)
+		})
+	)
 
-			if (!res.ok) {
-				// 4xx 错误通常重试也没用，可以根据 status 决定是否 continue
-				if (res.status >= 400 && res.status < 500) {
-					console.error(`[Gossip] Client Error (${res.status}), giving up.`);
-					return false;
-				}
-				console.warn(`[Gossip] Attempt ${attempt + 1} failed: ${res.status}`);
-				continue;
-			}
-
-			// const data = (await res.json().catch(() => null)) as NodePostResponse | null;
-			
-			// // 更加鲁棒的检查
-			// if (!data || (data.ok === false) || data.error) {
-			// 	console.warn(`[Gossip] Server Error: ${data?.error || "Unknown error"}`);
-			// 	continue;
-			// }
-
-			return true;
-		} catch (ex: any) {
-			const isTimeout = ex.message === "Timeout" || ex.name === "AbortError";
-			console.warn(`[Gossip] Network/Timeout Error (Attempt ${attempt + 1}):`, isTimeout ? "Timeout" : ex.message);
-			// Loop 继续
-		}
-	}
-
-	return false
+	return results.some(ok => ok)
 }
 
 
@@ -1051,12 +931,41 @@ export function emitReactionAsNewMessage (amount: number, currency: ICurrency, t
 			paymentCard: card
 		}
 	return mess
+}
 
-	// 如果你要同步到 chatData/messages storage：
-	// chatData.messages = makeMessage(messages, text, now, 'me', 'sent')
-	// storageData()
-
-	// closeReactionBar()
+/** 创建 Payment Request 卡片消息（共通的 payMe 数据 + 展示用 requestUrl/walletLabel/memo）。fiat 请求不传 usdcAmount，接收方点 Pay 时再按当时汇率换算。 */
+export function createPaymentRequestCard(opts: {
+	amount: number
+	currency: ICurrency
+	title: string
+	/** 仅 USDC 请求传入；fiat 请求不传，接收方点 Pay 时按当时汇率换算 */
+	usdcAmount?: number
+	requestUrl: string
+	walletLabel?: string
+	memo?: string
+}): ChatMessage {
+	const now = Date.now()
+	const sendId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `pr_${now}_${Math.random().toString(36).slice(2)}`
+	const card: paymentCard = {
+		amount: opts.amount,
+		currency: opts.currency,
+		title: opts.title,
+		usdcAmount: opts.usdcAmount ?? 0,
+		timeStamp: now,
+		cashcodeUrl: opts.requestUrl,
+		cardType: 'paymentRequest',
+		requestUrl: opts.requestUrl,
+		walletLabel: opts.walletLabel ?? 'Main Wallet • EOA',
+		memo: opts.memo ?? opts.title,
+	}
+	return {
+		sendId,
+		from: 'me',
+		text: '',
+		createdAt: now,
+		status: 'sent',
+		paymentCard: card,
+	}
 }
 
 /**
@@ -1105,6 +1014,43 @@ export function dedupeChatsByAddress(chats: chatData[]): chatData[] {
 		seen.add(key)
 		return true
 	})
+}
+
+/** 刷新每个 chat 的链上路由信息（routersArmoreds, routePgpKeyID, online），用于 ChatList 进入时更新 */
+export const refreshChatRoutes = async (profile: profile): Promise<profile> => {
+	if (!profile?.chats?.length || !profile.privateKeyArmor) return profile
+	const chats = [...profile.chats]
+	let changed = false
+	for (let i = 0; i < chats.length; i++) {
+		const c = chats[i]
+		const addr = (c.address ?? '').trim()
+		if (!addr || !ethers.isAddress(addr)) continue
+		try {
+			const kk = await getKeysFromCoNETPGPSC(addr, profile.privateKeyArmor)
+			if (!kk) continue
+			const cd = c.chatData
+			const nextRouters = kk.routersArmoreds || cd?.routersArmoreds || ''
+			const nextRouteKeyID = kk.routePgpKeyID || cd?.routePgpKeyID || ''
+			const nextOnline = kk.online ?? cd?.online ?? false
+			if (nextRouters !== (cd?.routersArmoreds ?? '') || nextRouteKeyID !== (cd?.routePgpKeyID ?? '') || nextOnline !== (cd?.online ?? false)) {
+				chats[i] = {
+					...c,
+					chatData: {
+						privateArmored: cd?.privateArmored ?? '',
+						publicArmored: kk.publicArmored || cd?.publicArmored || '',
+						routersArmoreds: nextRouters,
+						routePgpKeyID: nextRouteKeyID,
+						online: nextOnline
+					}
+				}
+				changed = true
+			}
+		} catch (_) { /* 单条失败不影响其他 */ }
+	}
+	if (changed) {
+		profile.chats = dedupeChatsByAddress(chats)
+	}
+	return profile
 }
 
 export const initMessage = async (profile: profile, beamioer: searchResult): Promise<chatData|null> => {

@@ -3,6 +3,8 @@ import { Camera, Check, Trash2,  } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { storeSystemData, postBeamio, postToIPFS } from '@/services/beamio'
+import { getKeysFromCoNETPGPSCByAddress } from '@/services/chat'
+import { ethers } from 'ethers'
 import { AppButton } from '@/components/button/AppButton'
 import GetPicture from '@/components/GetPicture/GetPicture'
 const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
@@ -78,6 +80,14 @@ export default function BeamioAccountScreen({ colse }: prof) {
 		} else {
 			setAvatarImageDataTemp(null)
 			setIpfsImageUrl(null)
+			if (img && isDicebear(img)) {
+				const m = img.match(/[?&]seed=([^&]+)/)
+				if (m) {
+					const seed = decodeURIComponent(m[1])
+					setAvatarSeed(seed)
+					setAvatarName(seed)
+				}
+			}
 		}
 
 		setLastName(checkLastName(bo?.lastName))
@@ -149,7 +159,8 @@ export default function BeamioAccountScreen({ colse }: prof) {
     setLoading(true)
 
     const tmpData = CoNET_Data
-    setAvatarName(avatarSeed || defaultName)
+    const accountNameToSave = avatarSeed?.trim() || avatarName || defaultName
+    setAvatarName(accountNameToSave)
 
     // image 仅使用 IPFS URL；优先用当前展示的 avatarImageDataTemp（已是 IPFS 时），避免 setState 未提交导致 ipfsImageUrl 滞后
     let imageForSave = beamio?.image || ''
@@ -163,13 +174,27 @@ export default function BeamioAccountScreen({ colse }: prof) {
       // 例如从 GetPicture 来的 data URL 尚未完成上传，保存时再上传一次
       const hash = await postToIPFS(profiles[0], avatarImageDataTemp)
       if (hash) imageForSave = `${ipfsEndpoint}${hash}&t=${Date.now()}`
+    } else {
+      // 使用 DiceBear 时，保存带当前 avatarSeed 的 URL，确保 AVATAR TEXT 生效
+      imageForSave = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || defaultName)}`
     }
 
     const profile: profile = tmpData.profiles[0]
+    let pgpPublicKeyID = (profile.chatManager as any)?.pgpKey?.keyID ?? beamio?.pgpPublicKeyID ?? ''
+    let pgpPublicKeyArmor = (profile.chatManager as any)?.pgpKey?.publicKey ?? beamio?.pgpPublicKeyArmor ?? ''
+    // 若 pgpKeys 为空，尝试从 AddressPGP 链上拉取（如 Beamio Official 等先通过 regiestChatRoute 登记的情况）
+    if ((!pgpPublicKeyID || !pgpPublicKeyArmor) && profile.privateKeyArmor) {
+      try {
+        const walletAddr = new ethers.Wallet(profile.privateKeyArmor).address
+        const keyInfo = await getKeysFromCoNETPGPSCByAddress(walletAddr, profile.privateKeyArmor)
+        if (keyInfo?.userPgpKeyID) pgpPublicKeyID = pgpPublicKeyID || keyInfo.userPgpKeyID
+        if (keyInfo?.publicArmored) pgpPublicKeyArmor = pgpPublicKeyArmor || keyInfo.publicArmored
+      } catch (_) { /* 链上无则保持空 */ }
+    }
     const bo: beamio = {
 		firstName,
 		lastName,
-		accountName: avatarName || defaultName,
+		accountName: accountNameToSave,
 		image: imageForSave,
 		darkTheme: darkModle,
 		isETHFaucet: beamio?.isETHFaucet || false,
@@ -177,7 +202,9 @@ export default function BeamioAccountScreen({ colse }: prof) {
 		initialLoading: beamio?.initialLoading || false,
 		createdAt: beamio?.createdAt || Date.now(),
 		currency: 'USD',
-		language: 'en'
+		language: 'en',
+		pgpPublicKeyID,
+		pgpPublicKeyArmor
     }
 
     await postBeamio(bo, profile.privateKeyArmor)
@@ -200,6 +227,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
 			<div className="relative">
 				<div className="h-[118px] w-[118px] rounded-full bg-white shadow-[0_16px_40px_rgba(15,23,42,0.10)] ring-1 ring-slate-200 overflow-hidden">
 				<img
+					key={avatarSeed}
 					src={currentAvatarSrcTemp}
 					alt="Avatar"
 					className="h-full w-full object-cover"

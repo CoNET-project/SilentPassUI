@@ -15,7 +15,7 @@ import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
-import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNode} from '@/services/chat'
+import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNodes} from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
 import { ethers } from 'ethers'
@@ -300,8 +300,8 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 		}
 		const profile: profile = profiles[0]
 		const chatData = await initMessage(profile, item)
-		const node = getRandomNode(allNodes)
-		if (!chatData||!node) return
+		const nodes = getRandomNodes(allNodes, 2)
+		if (!chatData||!nodes.length) return
 		const chatDatas = profile?.chats || []
 		profile.chats = chatDatas
 
@@ -321,7 +321,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 		// setCharts(prof => [...prof, cardText])
 		await Promise.all([
 			storeSystemData(),
-			sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, node )
+			sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, nodes )
 		])
 	}
 
@@ -531,6 +531,21 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 
 
 	const tryPostToIPFS = async (val: ClosePayload) => {
+		// ✅ 若 CreateCard 已即刻上传得到 imageUrl，直接使用
+		if (val.imageUrl) {
+			setCardTitle(val.title)
+			setCardDetail(val.detail)
+			setShowGiftEnvelope(true)
+			setAddedNote(JSON.stringify({
+				card: {
+					title: val.title,
+					detail: val.detail,
+					image: val.imageUrl
+				}
+			}))
+			return
+		}
+
 		if (!profiles) {
 			console.error("tryPostToIPFS: profiles not available")
 			return
@@ -584,7 +599,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 	// ✅ 白底容器，不再 items-center（避免“卡片居中感”）
 	<div className="">
 		{/* ✅ 不再 justify-center，不包 Card */}
-		<div className="mt-1 w-full mt-8">
+		<div className="w-full mt-8 mb-16">
 		{/* ✅ 原 CardContent 的 padding 交给这里 */}
 		<div className="">
 			{successHash ? (

@@ -1,4 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react'
+import usdcIcon from '@/components/assets/usdc.png'
+import baseIcon from '@/components/assets/base-logo.png'
+
 type Props = {
 	currentCurrency: ICurrency;
 	setCurrentCurrency: (val: ICurrency) => void;
@@ -18,6 +21,7 @@ const CurrencyPicker = ({ setCurrentCurrency, currentCurrency }: Props) => {
 	const allCurrencies: CurrencyItem[] = [
 		{ c: "USD", flag: "🇺🇸", sym: "$" },
 		{ c: "CAD", flag: "🇨🇦", sym: "$" },
+		{ c: "USDC", flag: "🪙", sym: "$" },
 		{ c: "EUR", flag: "🇪🇺", sym: "€" },
 		{ c: "JPY", flag: "🇯🇵", sym: "¥" },
 		{ c: "CNY", flag: "🇨🇳", sym: "¥" },
@@ -91,10 +95,19 @@ const CurrencyPicker = ({ setCurrentCurrency, currentCurrency }: Props) => {
 					}
 				`}
 			>
-				{/* Flag */}
-				<span className="flex-none text-[18px] leading-none">
-					{item.flag}
-				</span>
+				{/* Flag or USDC on Base icon */}
+				{item.c === "USDC" ? (
+					<div className="relative flex-shrink-0 w-4 h-4 min-w-[16px] min-h-[16px]">
+						<img src={usdcIcon} alt="USDC" className="block w-4 h-4 rounded-full object-contain" />
+						<img
+							src={baseIcon}
+							alt="Base"
+							className="block w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white"
+						/>
+					</div>
+				) : (
+					<span className="flex-none text-[18px] leading-none">{item.flag}</span>
+				)}
 
 				{/* Currency code */}
 				<span className="flex-none text-xs font-bold text-slate-700 dark:text-slate-200">

@@ -7,11 +7,11 @@ import {
 	Pin as PinIcon,
 	BellOff,
 	ArrowUpRight,
-	ArrowDownLeft
-
+	ArrowDownLeft,
+	AlertTriangle
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { checkSign, getKeysFromCoNETPGPSC, makeMessage, dedupeChatsByAddress } from '@/services/chat' 
+import { checkSign, getKeysFromCoNETPGPSC, makeMessage, dedupeChatsByAddress, refreshChatRoutes } from '@/services/chat' 
 import {searchUsername, storeSystemData} from '@/services/beamio'
 
 type ChatListProps = {
@@ -79,13 +79,15 @@ function tagColor(tag: chatData["tag"]) {
 }
 
 function Avatar({
-	address
+	address,
+	beamio: beamioProp
 }: {
 	address: string
+	beamio?: searchResult
 	online?: boolean
 }) {
 	const {beamioUsers, setbBeamioUsers} = useDaemonContext()
-	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
+	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> (beamioProp)
 	const [userImg, setUserImg] = useState('')
 	const [online, setOnline] = useState(false)
 
@@ -99,47 +101,50 @@ function Avatar({
 
 	const findingRef = useRef(false)
 	const findUser = useCallback(async () => {
-		if (findingRef.current) return
-		if (fromBeamio) return
-
+		if (findingRef.current || !address) return
 		findingRef.current = true
 		try {
-			let account: searchResult|undefined = beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase())
-
-			if (!account) {
-				const _account = await searchUsername(address)
-				if (_account?.results?.[0]) account = _account.results[0]
+			// 与 Chat 一致：始终从 searchUsername 获取最新，不依赖 beamioUsers 缓存
+			let account: searchResult|undefined
+			const _account = await searchUsername(address)
+			if (_account?.results?.[0]) {
+				account = _account.results[0]
+			} else {
+				account = beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase()) ?? beamioProp ?? unknowAcc(address)
 			}
+			if (!account) account = unknowAcc(address)
 
-			if (!account) {
-				account = unknowAcc(address) 
-			} 
 			//@ts-ignore
 			setbBeamioUsers(prev => {
-				const addr = (account?.address || '').toLowerCase()
+				const addr = (account!.address || '').toLowerCase()
 				//@ts-ignore
 				if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
-					return [...prev, account!]
+				return [...prev, account!]
 			})
-			
-			setfromBeamio(account)
 
-			setUserImg(account.image||getImg(account.username))
+			setfromBeamio(account)
+			const img = (account.image || "").trim()
+			setUserImg(img || getImg(account.username || account.address || "beamio"))
 		} finally {
 			findingRef.current = false
-			
 		}
-	}, [address])
+	}, [address, beamioProp])
 
 	useEffect(() => {
+		if (beamioProp && (beamioProp.address || '').toLowerCase() === (address || '').toLowerCase()) {
+			setfromBeamio(beamioProp)
+			const img = (beamioProp.image || "").trim()
+			setUserImg(img || getImg(beamioProp.username || beamioProp.address || "beamio"))
+		}
 		findUser()
-	}, [findUser])
+	}, [address, findUser, beamioProp])
 	return (
 		<div className="relative h-12 w-12 flex-shrink-0">
-		{userImg ? (
+		{avatarSrc ? (
 			<img
+				key={avatarSrc}
 				src={avatarSrc}
-				
+				alt=""
 				className="h-12 w-12 rounded-full object-cover ring-1 ring-black/5"
 			/>
 		) : (
@@ -166,6 +171,26 @@ export default function ChatList({
 	onOpen
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
+
+	// 每次进入时刷新每个 chat 的链上路由信息
+	useEffect(() => {
+		const p0 = profiles?.[0]
+		if (!p0?.chats?.length || !p0.privateKeyArmor) return
+		;(async () => {
+			const updated = await refreshChatRoutes({ ...p0 })
+			if (updated.chats !== p0.chats) {
+				const next = Array.isArray(profiles) ? [...profiles] : []
+				if (next[0]) next[0] = updated
+				setProfiles(next)
+				const temp = CoNET_Data
+				if (temp?.profiles) {
+					temp.profiles = next
+					setCoNET_Data(temp)
+					await storeSystemData()
+				}
+			}
+		})()
+	}, [profiles, setProfiles])
 
 	const items = useMemo(() => {
 		const profile: profile = profiles?.[0]
@@ -250,6 +275,7 @@ export default function ChatList({
 
             const unread = Math.max(0, Number(it.unreadCount || 0))
             const muted = !!it.muted
+            const noRoute = !(it.chatData?.routersArmoreds?.trim())
 
             const isFailed = last?.from === "me" && last?.status === "failed"
             const subtitle = isFailed ? "Message Send Failure" : (last?.text?.trim() || "")
@@ -290,14 +316,16 @@ export default function ChatList({
 
 					onOpen?.(it)
 				}}
-
-                className="w-full text-left active:bg-slate-50 transition"
+                className={[
+                  "w-full text-left active:bg-slate-50 transition",
+                  noRoute ? "border-l-4 border-l-amber-400 bg-amber-50/50" : ""
+                ].filter(Boolean).join(" ")}
               >
                 <div className="px-4">
                   <div className="flex items-center gap-3 py-3.5">
                     <Avatar
 						address={it.address}
-					
+						beamio={it.beamio}
 					/>
 
                     <div className="min-w-0 flex-1">
@@ -340,6 +368,17 @@ export default function ChatList({
                             {it.pin && (
                               <span className="inline-flex items-center text-slate-400 flex-shrink-0" title="Pinned">
                                 <PinIcon className="h-4 w-4" strokeWidth={2.6} />
+                              </span>
+                            )}
+
+                            {/* ✅ 无路由信息：黄色警告 */}
+                            {noRoute && (
+                              <span
+                                className="inline-flex items-center text-amber-500 flex-shrink-0"
+                                aria-label="No route"
+                                title="No route info – message may not be delivered"
+                              >
+                                <AlertTriangle className="h-4 w-4" strokeWidth={2.4} />
                               </span>
                             )}
                           </div>

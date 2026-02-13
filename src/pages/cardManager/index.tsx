@@ -102,9 +102,11 @@ type CardManagerProps = {
 	onClose?: () => void
 	/** Embedded: do not render top header (provided by parent drawer) */
 	embedded?: boolean
+	/** Called when card is created successfully (parent can refetch My BeamioUserCards list) */
+	onCreated?: () => void
 }
 
-export default function CardManager({ onClose, embedded }: CardManagerProps = {}) {
+export default function CardManager({ onClose, embedded, onCreated }: CardManagerProps = {}) {
 	const navigate = useNavigate()
 	const { profiles, beamio } = useDaemonContext()
 	const [cardOwner, setCardOwner] = useState("")
@@ -204,6 +206,7 @@ export default function CardManager({ onClose, embedded }: CardManagerProps = {}
 			if (res.success && res.cardAddress) {
 				setResult({ cardAddress: res.cardAddress, hash: res.hash })
 				Toast.show({ content: "Card created successfully", icon: "success" })
+				onCreated?.()
 			} else {
 				setError(res.error ?? "Create failed")
 				Toast.show({ content: res.error ?? "Create failed", icon: "fail" })
@@ -523,20 +526,22 @@ export default function CardManager({ onClose, embedded }: CardManagerProps = {}
 						</div>
 					)}
 
-					<button
-						type="submit"
-						disabled={loading || !cardOwner}
-						className="w-full py-4 rounded-xl bg-[#6f4de7] text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed hover:bg-[#7f5df7] transition-colors"
-					>
-						{loading ? (
-							<>
-								<Loader2 size={20} className="animate-spin" />
-								Creating…
-							</>
-						) : (
-							"Create BeamioUserCard"
-						)}
-					</button>
+					{!result && (
+						<button
+							type="submit"
+							disabled={loading || !cardOwner}
+							className="w-full py-4 rounded-xl bg-[#6f4de7] text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed hover:bg-[#7f5df7] transition-colors"
+						>
+							{loading ? (
+								<>
+									<Loader2 size={20} className="animate-spin" />
+									Creating…
+								</>
+							) : (
+								"Create BeamioUserCard"
+							)}
+						</button>
+					)}
 				</form>
 			</div>
 		</div>

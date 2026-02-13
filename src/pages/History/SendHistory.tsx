@@ -7,7 +7,6 @@ import {
   useImperativeHandle,
   useCallback,
 } from "react"
-import { beamioConet } from "@/utils/constants"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from "ethers"
 import {HistoryFilterTabs} from './HistoryFilterTabs'
@@ -151,11 +150,10 @@ export const SendHistoryTable = (
 		let mapped: TransferHistork[], mappedLing: TransferHistork[], mappedCheck: TransferHistork[]
 		try {
 			
-			const [_transfer, _links, _checks] = await Promise.all([
-				beamioConet.getTransferHistory(address, 0, 100),
-				beamioConet.getLinksHistory(address, 0, 100),
-				beamioConet.getCheckHistory(address, 0, 100)
-			])
+			// 旧合约 getTransferHistory/getLinksHistory/getCheckHistory 已停用
+			const _transfer: [string[], Transfer[]] = [[], []]
+			const _links: [string[], LinksHistory[]] = [[], []]
+			const _checks: [string[], any[]] = [[], []]
 			
 			const transfer: Transfer[] = _transfer[1]
 			

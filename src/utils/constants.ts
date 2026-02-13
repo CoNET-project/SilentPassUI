@@ -6,7 +6,7 @@ const apiv4_endpoint = `https://apiv4.conet.network/api/`;
 const payment_endpoint = `https://hooks.conet.network/api/`;
 const XMLHttpRequestTimeout = 90 * 1000;
 // const conetRpc = "https://cancun-rpc.conet.network";
-const mainChain_rpc = "https://mainnet-rpc.conet.network";
+const mainChain_rpc = "https://mainnet-rpc1.conet.network";
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
 
 const beamioApi = 'https://beamio.app'

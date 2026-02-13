@@ -865,11 +865,20 @@ const storageHashData = async (docId: string, data: string) => {
   }
 }
 
+const ensureFlatProfiles = (p: any): profile[] => {
+  if (!p || !Array.isArray(p)) return []
+  if (p.length === 0) return []
+  const first = p[0]
+  if (Array.isArray(first)) return p.flat()
+  return p
+}
+
 export const storeSystemData = async () => {
   if (!CoNET_Data) {
     return;
   }
-  const temp = CoNET_Data
+  const temp = { ...CoNET_Data }
+  if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
 
   try {
     await storageHashData(
@@ -1048,10 +1057,10 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x09dfed722FBD199E9EC6ece19630DE02692eF572',
+	address: '0x3E15607BCf98B01e6C7dF834a2CEc7B8B6aFb1BC',
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc1.conet.network'),
 	
 }
 
@@ -1146,9 +1155,25 @@ const newUser = async (BeamioName: string, recoverData:IAccountRecover[], privat
 	return false
 }
 
+const isValidEthersPrivateKey = (pk: unknown): pk is string => {
+	if (!pk || typeof pk !== 'string') return false
+	const s = String(pk).trim().replace(/^0x/i, '')
+	return /^[0-9a-fA-F]{64}$/.test(s)
+}
+
 export const postBeamio = async (beamio: beamio, privateKey: string) => {
+	if (!isValidEthersPrivateKey(privateKey)) {
+		console.warn('[postBeamio] invalid privateKey, skipping')
+		return false
+	}
 	const Url = storageNewUser
-	const signWallet = new ethers.Wallet(privateKey)
+	let signWallet: ethers.Wallet
+	try {
+		signWallet = new ethers.Wallet(privateKey)
+	} catch (ex: any) {
+		console.warn('[postBeamio] Wallet creation failed:', ex?.message || ex)
+		return false
+	}
 	const signMessage = await signWallet.signMessage(signWallet.address)
 
 
@@ -1163,6 +1188,8 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 			isETHFaucet: beamio.isETHFaucet,
 			firstName: beamio.firstName,
 			lastName: lastname,
+			pgpKeyID: beamio.pgpPublicKeyID ?? '',
+			pgpKey: beamio.pgpPublicKeyArmor ?? '',
 			signMessage
 		}
 
@@ -1491,7 +1518,9 @@ const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], pri
 			darkTheme: beamio.darkTheme,
 			isETHFaucet: beamio.isETHFaucet,
 			firstName: beamio.firstName,
-			lastName: lastName
+			lastName: lastName,
+			pgpKeyID: beamio.pgpPublicKeyID ?? '',
+			pgpKey: beamio.pgpPublicKeyArmor ?? ''
 		}
 
 		const resp = await fetch(Url, {
@@ -1600,7 +1629,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc1.conet.network'),
 	
 }
 

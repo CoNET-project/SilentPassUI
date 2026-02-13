@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
+import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanButton"
 
@@ -384,7 +384,19 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [allRegions, setAllRegions] = useState<Region[]>([]);
   const [closestRegion, setClosestRegion] = useState<any>(null);
   const [miningData, setMiningData] = useState<any>(null);
-  const [profiles, setProfiles] = useState<any>(null);
+  const [profilesState, setProfilesState] = useState<any>(null);
+  const setProfiles = useCallback((value: React.SetStateAction<profile[]>) => {
+    setProfilesState((prev: profile[] | null) => {
+      const next = typeof value === 'function' ? (value as (prev: profile[] | null) => profile[])(prev) : value
+      if (!next || !Array.isArray(next)) return next
+      const first = next[0]
+      if (next.length > 0 && Array.isArray(first) && typeof (first as any)?.keyID === 'undefined') {
+        return (next as any[]).flat()
+      }
+      return next
+    })
+  }, [])
+  const profiles = profilesState
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [getAllNodes, setaAllNodes] = useState<nodes_info[]>([]);
   const [serverIpAddress, setServerIpAddress] = useState<string>(defaultContextValue.serverIpAddress);

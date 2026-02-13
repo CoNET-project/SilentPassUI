@@ -179,6 +179,10 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				setMessageCount(0)
 				// seenMsgRef.current.clear() // ✅ 需要“彻底重置计数”才开
 			}
+			// ✅ 从 /chat 离开时也清除 messageCount
+			if (pathname.startsWith('/chat')) {
+				setMessageCount(0)
+			}
 		} else {
 			openPayWorkflow()
 			return

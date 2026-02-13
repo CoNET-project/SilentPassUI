@@ -29,7 +29,7 @@ import { BASE_MAINNET_FACTORIES } from '../config/chainAddresses'
   import ActionFacetAbi from '@/services/ABI/ActionFacetAbi.json'
   const contracts = {
 	GuardianNodesInfoV6: {
-	  address: "0x2DF3302d0c9aC19BE01Ee08ce3DDA841BdcF6F03",
+	  address: "0xCd68C3FFFE403f9F26081807c77aB29a4DF6940D",
 	  abi: GuardianNodesInfoV6Abi,
 	  network: "CONET DePIN",
 	},
@@ -113,7 +113,7 @@ import { BASE_MAINNET_FACTORIES } from '../config/chainAddresses'
 		abi: sGB_Dashboard
 	},
 	beamioConet: {
-		address: '0x404EEE7B7A3e31F9b8D6d6a8E76B3E601f2C4Ce1',
+		address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 		network: 'CONET DePIN',
 		abi: beamioConetABI
 	},
@@ -124,7 +124,7 @@ import { BASE_MAINNET_FACTORIES } from '../config/chainAddresses'
 		abi: beamioConetCoreABI
 	},
 	constPgpManager: {
-		address: '0x84de3EA6446489E6a267B0AAD2fAe1462564C32E',
+		address: '0x13A96Bcd6aB010619d1004A1Cb4f5FE149e0F4c4',
 		network: 'CONET DePIN',
 		abi: CoNETPGP
 	},
@@ -149,7 +149,7 @@ import { BASE_MAINNET_FACTORIES } from '../config/chainAddresses'
 	},
 
 	BeamioDiamond: {
-		address: '0x083AE5AC063a55dBA769Ba71Cd301d5FC5896D5b',
+		address: '0x43b25Da1d5516E98D569C1848b84d74B4b8cA6ad',
 		network: 'CONET DePIN',
 		abi: {
 			ActionFacet: ActionFacetAbi,

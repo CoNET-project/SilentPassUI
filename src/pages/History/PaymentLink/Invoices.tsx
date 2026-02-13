@@ -1,7 +1,6 @@
 import { InvoicesCoverPage} from './CoverPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { useMemo, useState, useEffect, useCallback } from "react"
-import { beamioConet } from "@/utils/constants"
 import { ethers } from "ethers"
 import AccountBeo from '../AccountBea'
 import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader, ArrowUpRight, ChevronLeft } from "lucide-react"
@@ -64,7 +63,8 @@ const Invoices = ({ setpProcessing}: Props) =>  {
 			const myAddrLocal = address.toLowerCase()
 
 			try {
-				const [_links] = await Promise.all([beamioConet.getLinksHistory(address, 0, 100)])
+				// 旧合约 getLinksHistory 已停用
+				const _links: [string[], LinksHistory[]] = [[], []]
 				const links: LinksHistory[] = _links[1] || []
 
 				const mappedLing = links.map(n => {

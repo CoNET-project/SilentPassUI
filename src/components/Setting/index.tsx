@@ -20,7 +20,7 @@ import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import Security from './Security'
 
-const version = 'Version 0.22.1'
+const version = 'Version 0.24.2'
 
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
@@ -125,15 +125,13 @@ export default function BeamioMeMainScreen() {
 		profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, 
 		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray } = useDaemonContext()
 
-	const [avatarSeed, setAvatarSeed] = useState('NY')
+	const [avatarSeed, setAvatarSeed] = useState('')
 	const [avatarName, setAvatarName] = useState('')
 	const [avatarImageData, setAvatarImageData] = useState<string | null>(null)
 	const [avatarImageDataTemp, setAvatarImageDataTemp] = useState<string | null>(null)
 
 	const [privatekeyVisible, setPrivatekeyVisible] = useState(false)
 	const [avatarEditorVisible, setAvatarEditorVisible] = useState(false)
-
-	const currentAvatarSrc = beamio?.image
 
 	const [settingsOpen, setSettingsOpen] = useState<''|'BeamioSettings'|'FollowList'|'CoinbaseRamp'|'Region'|'Account'|'Notifications'|'Help'|'RecoveryBackupScreen'|'PayRequest'>('')
 	const [setFollowOpen, setSetFollowOpen] = useState<'following' | 'followers'|''>('')
@@ -145,7 +143,11 @@ export default function BeamioMeMainScreen() {
 	const [lastName, setLastName] = useState('')
 	const [createAt, setCreatedAt] = useState(0)
 	const [copiedUsername, setCopiedUsername] = useState(false)
-		const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
+
+	// 头像：优先使用 beamio.image（自定义/IPFS/DiceBear URL），否则用 accountName 生成 DiceBear
+	const displayAvatarSrc = beamio?.image?.trim()
+		? beamio.image
+		: getImg(beamio?.accountName || defaultName)
 	const handleCopyUsername = async () => {
 		const username = beamio?.accountName
 		if (!username) return
@@ -160,28 +162,21 @@ export default function BeamioMeMainScreen() {
 	}
 
 	useEffect(() => {
-		if (!currentAvatarSrc||!beamio) {
-			return
-		}
-
-
+		if (!beamio) return
 		if (beamio.accountName) {
 			setAvatarName(beamio.accountName)
 			setAvatarSeed(beamio.accountName)
 			setFirstName(beamio.firstName || '')
 			const _lastName = beamio.lastName?.split('\r\n')[0]
 			setLastName(_lastName || '')
-			setAvatarImageDataTemp(beamio.image||avatarUrl)
+			const img = beamio.image?.trim()
+			setAvatarImageDataTemp(img || getImg(beamio.accountName))
 			setCreatedAt(beamio.createdAt || 0)
 		}
 		setDarkModle(beamio.darkTheme)
-
 		if (beamio.image && !/^http/.test(beamio.image)) {
 			setAvatarImageData(beamio.image)
 		}
-
-		
-
 	}, [receiveOpen, beamio])
 
 	
@@ -204,9 +199,11 @@ export default function BeamioMeMainScreen() {
 		}
 		if (beamio) {
 			setAvatarName(beamio.accountName)
+			setAvatarSeed(beamio.accountName)
 			setFirstName(beamio.firstName || '')
 			const _last = beamio.lastName || ''
-			setAvatarImageDataTemp(beamio.image||avatarUrl)
+			const img = beamio.image?.trim()
+			setAvatarImageDataTemp(img || getImg(beamio.accountName))
 			setCreatedAt(beamio.createdAt || 0)
 		}
 
@@ -381,9 +378,10 @@ export default function BeamioMeMainScreen() {
 					whileTap={{ scale: 0.95 }}
 					className="flex-shrink-0 mr-2"
 				>
-				{avatarImageDataTemp &&  (
+				{displayAvatarSrc && (
 					<img
-						src={avatarImageDataTemp}
+						key={displayAvatarSrc}
+						src={displayAvatarSrc}
 						alt={beamio?.accountName}
 						className="w-20 h-20 rounded-full object-cover"
 					/>

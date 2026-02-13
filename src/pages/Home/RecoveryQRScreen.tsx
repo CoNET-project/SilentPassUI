@@ -3,7 +3,7 @@ import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
 import { Download, Copy, Check } from 'lucide-react'
 import bIcon from '@/components/assets/logo512.png'
-
+import { useNavigate } from 'react-router-dom'
 const RecoveryQRScreen = ({
   qrDataUrl,
   recoveryCode,
@@ -15,6 +15,7 @@ const RecoveryQRScreen = ({
   showButton: boolean
   close: () => void
 }) => {
+  const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [isConfirmed, setIsConfirmed] = useState(false)
@@ -184,9 +185,9 @@ const RecoveryQRScreen = ({
 		<div className="pb-[env(safe-area-inset-bottom)] pt-4">
         <AppButton
           fullWidth
-          onClick={() => {
+          onClick={async () => {
             setLoading(true)
-            close()
+            await Promise.resolve(close?.())
           }}
           loading={loading}
           // 只有勾选确认后才启用（而确认本身需要先备份）

@@ -13,25 +13,38 @@ import {
 	Check,
 	ScanLine,
 	Plus,
+	CreditCard,
 	Globe,
 	ArrowUpRight,
+	ArrowDownLeft,
+	ArrowLeftRight,
 	Landmark,
 	Loader,
 	Banknote,
 	QrCode,
+	Calculator,
+	CalendarCheck,
+	HelpCircle,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
+import PaymentLink from '@/pages/Pay/PaymentLink/index'
 import BankingBridge from './components/BankingBridge'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import TenKeyInput from '@/pages/Pay/components/TenKeyInput'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
+import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
-import { getBalanceProcess, formatWithThousands } from '@/services/beamio'
-import { getMyAssets } from '@/services/BeamioCard'
-import { fiatPrefix } from '@/services/currency'
+import { getBalanceProcess, formatWithThousands, aesGcmDecrypt } from '@/services/beamio'
+import { getMyAssets, getCardsOfOwnerWithDetailsForProfile, type UserCardInfo } from '@/services/BeamioCard'
+import { fiatPrefix, parseNodeEX, calcFeeFromReceived, formatTimev2, formatAmount, type ParsedNote } from '@/services/currency'
 import { CCSA_Card_Address } from '@/utils/constants'
 import base_icon from '@/components/assets/base-logo.png'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
+import ActivePannel from './components/activePannel'
+import AccountBeo from './AccountBea'
+import { TransactionsItemDetail } from '@/pages/History/TransactionsItemDetail'
+import CardManager from '@/pages/cardManager'
+import TopUpRedeemForm from '@/pages/Vouchers/TopUpRedeemForm'
 
 const MiniAction = ({
 	icon,
@@ -53,6 +66,66 @@ const MiniAction = ({
 		<div className="text-[11px] font-medium text-slate-600 dark:text-slate-300">{label}</div>
 	</button>
 )
+
+const getBadgeClass = (type: HistoryFilter) => {
+	switch (type) {
+		case 'sent': return 'bg-slate-300/35 text-slate-700 dark:text-slate-700/35 dark:text-slate-200'
+		case 'received': return 'bg-emerald-300/35 text-emerald-700 dark:text-emerald-700/35 dark:text-emerald-200'
+		case 'pending': return 'bg-amber-200/40 text-amber-700 dark:text-amber-700/35 dark:text-amber-200'
+		case 'completed': return 'bg-sky-300/35 text-sky-800 dark:text-sky-700/35 dark:text-sky-200'
+		case 'reject': return 'bg-rose-300/35 text-rose-700 dark:text-rose-700/35 dark:text-rose-200'
+		case 'paid': return 'bg-fuchsia-300/35 text-fuchsia-800 dark:text-fuchsia-700/35 dark:text-fuchsia-200'
+		case 'deposited': return 'bg-indigo-300/35 text-indigo-800 dark:text-indigo-700/35 dark:text-indigo-200'
+		default: return 'bg-slate-700/20 text-slate-800 dark:text-white/10 dark:text-slate-200'
+	}
+}
+
+const Row = ({
+	tx,
+	mode,
+	onOpen,
+}: {
+	tx: TransferHistork
+	mode: Mode
+	onOpen?: (tx: TransferHistork) => void
+}) => {
+	const hasHash = !!tx.hash
+	const clickableClass = hasHash ? 'cursor-pointer hover:bg-slate-100/70 dark:hover:bg-white/5' : 'cursor-default opacity-70'
+	const plus = tx.type1 === 'received'
+	return (
+		<div
+			onClick={() => hasHash && onOpen?.(tx)}
+			className={['flex items-center gap-2 px-3 py-3', 'border-b border-slate-200/70 dark:border-slate-800/70', 'transition', clickableClass].join(' ')}
+		>
+			<div className="flex-1 min-w-0">
+				<AccountBeo address={tx.address} note="" dateData={formatTimev2(tx.date)} tx={tx} localMode={mode} />
+			</div>
+			<div className="shrink-0 flex items-center gap-1">
+				{mode !== 'pay' && (
+					<span className={['inline-flex justify-center items-center', 'w-7 h-7 rounded-full', getBadgeClass(tx.type as HistoryFilter)].join(' ')} title={tx.type}>
+						{tx.type === 'pending' ? <Loader className="w-4 h-4" strokeWidth={2} /> : tx.type === 'completed' ? <CalendarCheck className="w-4 h-4" strokeWidth={2} /> : tx.type === 'paid' || tx.type === 'deposited' ? <Banknote className="w-4 h-4" strokeWidth={2} /> : <HelpCircle className="w-4 h-4" strokeWidth={2} />}
+					</span>
+				)}
+			</div>
+			<div className={['shrink-0 whitespace-nowrap text-right w-[150px] font-medium tabular-nums', plus ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-slate-100'].join(' ')}>
+				<div className="flex justify-end items-start gap-1.5">
+					<span className="text-[14px] leading-[20px]">{plus ? '+' : '−'}</span>
+					<div className="flex flex-col gap-0.5 text-right">
+						<span className="text-[14px] font-semibold tabular-nums leading-[20px]">
+							{formatAmount(tx.type === 'sent' ? tx.preAmount : tx.amount, 'USDC')} USDC
+						</span>
+						{tx?.requestDetail && (
+							<span className="text-[12px] tabular-nums text-slate-400 leading-[16px]">
+								{fiatPrefix(tx.requestDetail.requestCurrency)}{' '}
+								{formatAmount(tx.type1 === 'sent' ? tx.requestDetail.totalPayCurrency : tx.requestDetail.requestCurrencyAmount || 0, tx.requestDetail.requestCurrency)}
+							</span>
+						)}
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
 
 interface Card {
 	id: string
@@ -83,16 +156,29 @@ export default function MyWalletDashboardNew() {
 		setVoucherPayToAA,
 		setVoucherPayError,
 		setScanIntent,
+		beamio,
+		historyPayData,
+		setHistoryPayData,
 	} = useDaemonContext()
 
 	const [activeView, setActiveView] = useState<string | null>(null) // 'eoa' | 'aa' | 'ccsa' | null
+	const [allItems, setAllItems] = useState<TransferHistork[]>([])
+	const [loading, setLoading] = useState(false)
+	const [itemTx, setItemTx] = useState<TransferHistork>()
+	const [showTxDetail, setShowTxDetail] = useState(false)
 	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
 	const [ccsaBalance, setCcsaBalance] = useState<string>('0')
+	const [ccsaAssets, setCcsaAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
 	const [reflash, setReflash] = useState(false)
 	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | 'ccsa' | null>(null)
-	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge'>('')
+	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
 	const [aaPanelOpen, setAaPanelOpen] = useState<'' | 'Pay' | 'BeamioPayMeQR'>('')
+	const [ccsaCreateCardOpen, setCcsaCreateCardOpen] = useState(false)
+	const [topUpRedeemOpen, setTopUpRedeemOpen] = useState(false)
+	const [userCards, setUserCards] = useState<UserCardInfo[]>([])
 	const [payScreenMode, setPayScreenMode] = useState<'eoa-pay' | 'aa-eoa-transfer'>('eoa-pay')
+	/** 从 historyPayData 进入时暂存，传入 PayScreen 后清除 historyPayData */
+	const [pendingPayTarget, setPendingPayTarget] = useState<searchResult | null>(null)
 	const [openRelayPayload, setOpenRelayPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [showTenKeySlide, setShowTenKeySlide] = useState(false)
 	const [payMeSigning, setPayMeSigning] = useState(false)
@@ -131,10 +217,22 @@ export default function MyWalletDashboardNew() {
 		return n * rate
 	}, [ccsaBalance, fxRateUSDCToCurrency])
 
+	// 进入时检查 historyPayData：若有 searchResult 则打开 PayScreen 并传入
+	useEffect(() => {
+		if (historyPayData) {
+			setPendingPayTarget(historyPayData)
+			setHistoryPayData(null)
+			setEoaPanelOpen('Pay')
+			setPayScreenMode('eoa-pay')
+			setShowFooter(false)
+		}
+	}, [historyPayData, setHistoryPayData, setShowFooter])
+
 	// 从 detail 内操作返回时恢复全局 footer（所有 detail 按钮操作的共同规则）
 	const closeEoaPanel = useCallback(() => {
 		setShowFooter(true)
 		setEoaPanelOpen('')
+		setPendingPayTarget(null)
 	}, [setShowFooter])
 
 	const closeAaPanel = useCallback(() => {
@@ -142,6 +240,21 @@ export default function MyWalletDashboardNew() {
 		setAaPanelOpen('')
 		setOpenRelayPayload(null)
 	}, [setShowFooter])
+
+	// 拉取用户拥有的 BeamioUserCard 列表（同时查 aaAccount 与 keyID，keyID 缺时从 privateKeyArmor 推导）
+	const refetchUserCards = useCallback(() => {
+		const profile = profiles?.[0]
+		if (!profile || (!profile.aaAccount && !profile.keyID && !profile.privateKeyArmor)) return
+		getCardsOfOwnerWithDetailsForProfile(profile)
+			.then(setUserCards)
+			.catch(() => setUserCards([]))
+	}, [profiles])
+
+	const closeCcsaCreateCard = useCallback(() => {
+		setShowFooter(true)
+		setCcsaCreateCardOpen(false)
+		refetchUserCards()
+	}, [setShowFooter, refetchUserCards])
 
 	// 获取 AA 账号的 USDC 余额（与 MyWalletDashboard 一致）
 	const loadAaAccountBalance = useCallback(async () => {
@@ -164,6 +277,216 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [profiles])
 
+	// 拉取 EOA 交易历史（与 MyWalletDashboard 一致，供 Active & Pending / History 展示）
+	const loadEoaHistory = useCallback(async () => {
+		if (!profiles?.length) return
+		const profile: profile = profiles[0]
+		const address = profile.keyID
+		if (!myAddress) setMyAddress(address)
+		setLoading(true)
+		try {
+			const myAddrLocal = address.toLowerCase()
+			// 旧合约 getTransferHistory/getLinksHistory/getCheckHistory 已停用，直接使用空数据
+			const _transfer: [string[], Transfer[]] = [[], []]
+			const _links: [string[], LinksHistory[]] = [[], []]
+			const _checks: [string[], any[]] = [[], []]
+			const transfer: Transfer[] = _transfer[1]
+			const mappedPay: TransferHistork[] = transfer.map((n) => {
+				let requestDetail: IRequestCurrencyDetail | undefined
+				const { noteText, card, payme }: ParsedNote = parseNodeEX(n.note)
+				const amount = Number(ethers.formatUnits(n.amount, 6))
+				const _amount = Number((payme as any)?.currencyAmount)
+				if ((payme as any)?.currency && fiatPrefix((payme as any).currency) && !isNaN(_amount) && _amount > 0) {
+					const currencyRate = Number((payme as any).currencyAmount) / amount
+					requestDetail = {
+						requestCurrency: (payme as any).currency,
+						totalPayCurrency: Number((payme as any).currencyAmount),
+						totalPayUSDC: amount,
+						feeCurrency: 0,
+						feeUSDC: 0,
+						receivedCurrency: Number((payme as any).currencyAmount),
+						receivedUSDC: amount,
+						currencyTip: 0,
+						USDCTip: 0,
+						rate: currencyRate,
+						title: (payme as any)?.title,
+						textNote: noteText,
+						requestCurrencyAmount: Number((payme as any).currencyAmount),
+					}
+				}
+				const ret: TransferHistork = {
+					date: Number(n.timestamp * BigInt(1000)),
+					amount,
+					address: n.from.toLowerCase() === myAddrLocal ? n.to.toLowerCase() : n.from.toLowerCase(),
+					hash: n.finisedHash,
+					requestCurrency: (payme as any)?.currency || 'USDC',
+					note: n.note,
+					type: myAddrLocal === n.to.toLowerCase() ? 'received' : 'sent',
+					mode: 'pay',
+					fee: 0,
+					type1: myAddrLocal === n.to.toLowerCase() ? 'received' : 'sent',
+					preAmount: amount,
+					requestDetail,
+				}
+				if (card?.image) ret.card = card
+				return ret
+			})
+			const links: LinksHistory[] = _links[1]
+			let mappedLinks: TransferHistork[] = links.map((n) => {
+				const isRequest = n.from.toLowerCase() === myAddrLocal
+				const isPending = isRequest ? n.to === ethers.ZeroAddress : n.from === ethers.ZeroAddress
+				const isReject = isRequest ? n.to === '0x1000000000000000000000000000000000000000' : n.from === '0x1000000000000000000000000000000000000000'
+				const account = isPending || isReject ? '' : isRequest ? n.to : n.from
+				const payAmount = Number(ethers.formatUnits(n.payAmount, 6))
+				const _requestCurrencyData = (n?.node || '').split('\r\n')
+				const tail = _requestCurrencyData[_requestCurrencyData.length - 1]
+				let requestCurrency: ICurrency = 'USDC'
+				let group: paymentType = 'onetime'
+				let requestDetail: IRequestCurrencyDetail | undefined
+				let type: HistoryFilter = isPending ? 'pending' : isRequest ? 'sent' : 'received'
+				try {
+					const kkk = JSON.parse(tail)
+					if (kkk) {
+						requestCurrency = kkk.currency
+						if (typeof kkk?.oneTimeMode === 'undefined') group = 'payme'
+						else group = kkk.oneTimeMode ? 'onetime' : 'reusable'
+					}
+					if (payAmount) {
+						const feeUSDC = calcFeeFromReceived(payAmount)
+						const requestCurrencyAmount = Number(kkk?.currencyAmount || 0)
+						const currencyTip = Number(kkk?.currencyTip || 0)
+						const taxCurrency = Number(kkk?.currencyTax || 0)
+						const currencyRate = (requestCurrencyAmount + currencyTip + taxCurrency) / payAmount
+						const requestUSDAmount = currencyRate > 0 ? requestCurrencyAmount / currencyRate : 0
+						requestDetail = {
+							requestCurrency,
+							totalPayUSDC: payAmount,
+							totalPayCurrency: payAmount * currencyRate,
+							requestCurrencyAmount,
+							requestUSDAmount,
+							feeUSDC,
+							feeCurrency: feeUSDC * currencyRate,
+							currencyTip,
+							USDCTip: currencyRate ? currencyTip / currencyRate : 0,
+							taxUSDC: currencyRate ? taxCurrency / currencyRate : 0,
+							taxCurrency,
+							receivedUSDC: payAmount - feeUSDC,
+							receivedCurrency: (payAmount - feeUSDC) * currencyRate,
+							rate: currencyRate,
+							code: kkk?.code,
+							title: kkk?.title,
+							textNote: _requestCurrencyData.length - 2 > -1 ? _requestCurrencyData[_requestCurrencyData.length - 2] : '',
+						}
+					}
+				} catch {
+					requestCurrency = tail as ICurrency
+				}
+				return {
+					date: Number(n.issueTimestamp * BigInt(1000)),
+					amount: payAmount - (requestDetail?.feeUSDC || 0),
+					address: account,
+					hash: n.successAuthorizationHash.startsWith('0x00') ? n.payHash : n.successAuthorizationHash,
+					note: n.node,
+					type,
+					mode: 'request',
+					fee: 0,
+					type1: type === 'sent' ? 'paid' : type === 'pending' ? '' : 'received',
+					preAmount: payAmount,
+					requestCurrency,
+					requestDetail,
+					group,
+				}
+			})
+			mappedLinks = mappedLinks.filter((n) => !!n?.requestDetail)
+			const checks: CheckHistory[] = _checks[1]
+			const mappedChecks: TransferHistork[] = await Promise.all(
+				checks.map(async (n) => {
+					const text = (n.node || '').split('\r\n')
+					const encryptedText = text[1]
+					let requestDetail: IRequestCurrencyDetail | undefined
+					let ce: { secureCode: string; passcode: string } | undefined
+					try {
+						const cleanText = encryptedText ? await aesGcmDecrypt(encryptedText, profile.privateKeyArmor) : undefined
+						if (cleanText) ce = JSON.parse(cleanText)
+					} catch {}
+					const isCreator = n.from.toLowerCase() === myAddrLocal
+					const account = n.to.toLowerCase() !== ethers.ZeroAddress ? n.to.toLowerCase() : ''
+					const type: HistoryFilter = !account ? 'pending' : isCreator ? 'completed' : 'deposited'
+					const totalPayUSDC = Number(ethers.formatUnits(n.amount, 6))
+					const costUSDC = calcFeeFromReceived(totalPayUSDC)
+					let amount = type === 'deposited' ? totalPayUSDC - costUSDC : totalPayUSDC
+					let hash = type === 'pending' ? n.successAuthorizationHash : n.depositHash
+					let type1: HistoryFilter = type === 'deposited' ? 'received' : 'sent'
+					const { noteText, card, payme }: ParsedNote = parseNodeEX(n.node)
+					const requestCurrencyAmount = Number(payme?.currencyAmount || 0)
+					const requestUSDAmount = totalPayUSDC - costUSDC
+					const currencyRate = requestCurrencyAmount / requestUSDAmount
+					requestDetail = {
+						requestCurrency: (payme?.currency || 'USDC') as ICurrency,
+						totalPayUSDC,
+						totalPayCurrency: totalPayUSDC * currencyRate,
+						requestCurrencyAmount,
+						requestUSDAmount,
+						feeUSDC: type === 'deposited' ? 0 : costUSDC,
+						feeCurrency: type === 'deposited' ? 0 : costUSDC * currencyRate,
+						currencyTip: 0,
+						USDCTip: 0,
+						taxUSDC: 0,
+						taxCurrency: 0,
+						receivedUSDC: type === 'deposited' ? 0 : requestUSDAmount,
+						receivedCurrency: type === 'deposited' ? 0 : requestCurrencyAmount,
+						rate: currencyRate,
+						title: payme?.title,
+						textNote: noteText,
+					}
+					return {
+						date: Number(n.createTimestamp * BigInt(1000)),
+						amount,
+						address: account,
+						hash,
+						note: n.node,
+						type,
+						security: ce?.secureCode,
+						passcode: ce?.passcode,
+						redeemHash: n.payHash,
+						mode: 'cashcode',
+						fee: costUSDC,
+						type1,
+						preAmount: totalPayUSDC,
+						card,
+						payme,
+						requestDetail,
+					}
+				})
+			)
+			const merged = [...mappedPay, ...mappedLinks, ...mappedChecks].sort((a, b) => b.date - a.date)
+			setAllItems(merged)
+		} finally {
+			setLoading(false)
+		}
+	}, [profiles, myAddress, setMyAddress])
+
+	useEffect(() => {
+		loadEoaHistory()
+	}, [loadEoaHistory])
+
+	const activePending = useMemo(() => {
+		return allItems
+			.filter((tx) => {
+				const isPending = tx.type === 'pending'
+				const isRequestActive = tx.mode === 'request' && tx.type === 'sent'
+				const isCashcodeReady = tx.mode === 'cashcode' && tx.type === 'pending'
+				return isPending || isRequestActive || isCashcodeReady
+			})
+			.slice(0, 3)
+	}, [allItems])
+
+	const history = useMemo(() => {
+		return allItems
+			.filter((tx) => tx.type1 === 'received' || tx.type1 === 'sent')
+			.slice(0, 6)
+	}, [allItems])
+
 	// 初始化：EOA 余额、AA 余额、myAddress
 	useEffect(() => {
 		if (!profiles?.length) return
@@ -177,9 +500,17 @@ export default function MyWalletDashboardNew() {
 	useEffect(() => {
 		if (!profiles?.[0] || !CCSA_Card_Address) return
 		getMyAssets(profiles[0], CCSA_Card_Address)
-			.then((assets) => { if (assets?.points != null) setCcsaBalance(assets.points) })
-			.catch(() => setCcsaBalance('0'))
+			.then((assets) => {
+				if (assets?.points != null) setCcsaBalance(assets.points)
+				setCcsaAssets(assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null)
+			})
+			.catch(() => { setCcsaBalance('0'); setCcsaAssets(null) })
 	}, [profiles])
+
+	useEffect(() => {
+		if (activeView !== 'ccsa') return
+		refetchUserCards()
+	}, [activeView, refetchUserCards])
 
 	const copyAddress = useCallback(
 		(address: string, which: 'eoa' | 'aa' | 'ccsa') => {
@@ -202,7 +533,7 @@ export default function MyWalletDashboardNew() {
 		[]
 	)
 
-	// 刷新资产：EOA USDC、AA USDC、CCSA 卡资产（与 MyWalletDashboard 一致）
+	// 刷新资产：EOA USDC、AA USDC、CCSA 卡资产、EOA 交易历史（与 MyWalletDashboard 一致）
 	const reflashProcess = useCallback(async () => {
 		if (reflash) return
 		const profile = profiles?.[0]
@@ -211,19 +542,23 @@ export default function MyWalletDashboardNew() {
 		try {
 			await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
 			await loadAaAccountBalance()
+			await loadEoaHistory()
 			if (CCSA_Card_Address) {
 				try {
 					const assets = await getMyAssets(profile, CCSA_Card_Address)
 					if (assets?.points != null) setCcsaBalance(assets.points)
+					setCcsaAssets(assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null)
 				} catch (e) {
 					console.error('Failed to refresh CCSA assets:', e)
 					setCcsaBalance('0')
+					setCcsaAssets(null)
 				}
 			}
+			refetchUserCards()
 		} finally {
 			setReflash(false)
 		}
-	}, [reflash, profiles, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance])
+	}, [reflash, profiles, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
 
 	/** 延迟 5 秒后刷新 AA 资产（与 MyWalletDashboard 一致） */
 	const scheduleRefreshAAAssets = useCallback(() => {
@@ -250,8 +585,8 @@ export default function MyWalletDashboardNew() {
 			balanceFiat: balanceFiat,
 			address: myAddress || '',
 			gradient: 'bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b]',
-			badge: 'Gas Sponsored',
-			badgeIcon: <Sparkles size={10} className="text-amber-500" strokeWidth={2.2} />,
+			badge: '',
+			badgeIcon: null,
 		},
 		{
 			id: 'aa',
@@ -260,8 +595,8 @@ export default function MyWalletDashboardNew() {
 			balanceFiat: aaBalanceFiat,
 			address: profiles?.[0]?.aaAccount || '',
 			gradient: 'bg-gradient-to-br from-purple-600 via-violet-500 to-fuchsia-500',
-			badge: 'Gas Sponsored',
-			badgeIcon: <Zap size={10} className="fill-yellow-300 text-yellow-300" />,
+			badge: '',
+			badgeIcon: null,
 			isAA: true,
 		},
 		{
@@ -289,8 +624,12 @@ export default function MyWalletDashboardNew() {
 				{/* 未选中：显示 Header；选中：不占位，卡片+内容从容器顶部开始 */}
 				{!activeView && (
 					<header className="px-5 pt-14 pb-2 bg-[#F2F2F7]/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
-						<div className="flex justify-between items-center mb-1">
-							<h1 className="text-[34px] font-bold text-black tracking-tight">My Wallet</h1>
+						<div className="flex justify-between items-center mb-1 min-h-[2.125rem]">
+							<h1 className="text-[34px] font-bold text-black tracking-tight leading-none">My Wallet</h1>
+							<div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 backdrop-blur-md rounded-full text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-black/5 shrink-0">
+								<Zap size={14} className="fill-amber-400 text-amber-400" />
+								<span>Gas Sponsored</span>
+							</div>
 						</div>
 					</header>
 				)}
@@ -320,7 +659,7 @@ export default function MyWalletDashboardNew() {
 						>
 							<div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl pointer-events-none" />
 							<div className="p-5 h-full flex flex-col justify-between relative z-10">
-								<div className="flex justify-between items-start">
+									<div className="flex justify-between items-start">
 									<div className="flex items-center gap-2">
 										<button
 											type="button"
@@ -340,10 +679,18 @@ export default function MyWalletDashboardNew() {
 										</button>
 										<span className="font-medium">USDC on Base</span>
 									</div>
-									<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
-										<Sparkles size={10} className="text-amber-500" strokeWidth={2.2} />
-										Gas Sponsored
-									</div>
+									<button
+										type="button"
+										className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+										onClick={(e) => {
+											e.stopPropagation()
+											setShowFooter(false)
+											setEoaPanelOpen('ShowPayQR')
+										}}
+										aria-label="Show Pay QR"
+									>
+										<QrCode size={18} className="text-white" />
+									</button>
 								</div>
 
 								<div className="text-center mt-4">
@@ -399,6 +746,7 @@ export default function MyWalletDashboardNew() {
 						<div className="relative transition-all duration-500">
 							{cards
 								.filter((c) => c.id !== 'eoa')
+								.filter((c) => c.id !== 'ccsa' || !!profiles?.[0]?.aaAccount)
 								.map((card, index) => {
 									const isSelected = activeView === card.id
 
@@ -428,7 +776,7 @@ export default function MyWalletDashboardNew() {
 											>
 												<button
 													type="button"
-													onClick={() => navigate('/express')}
+													onClick={() => navigate('/settings')}
 													className="relative w-full h-full p-6 flex flex-col justify-center items-center cursor-pointer overflow-hidden border-2 border-dashed border-slate-600 group hover:border-purple-400 transition-colors"
 												>
 													<div className="absolute inset-0 bg-purple-600/10 group-hover:bg-purple-600/20 transition-colors pointer-events-none" />
@@ -539,7 +887,7 @@ export default function MyWalletDashboardNew() {
 										>
 											<div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl pointer-events-none" />
 											<div className="p-5 h-full flex flex-col justify-between relative z-10">
-												<div className="flex justify-between items-start">
+													<div className="flex justify-between items-start">
 													<div className="flex items-center gap-2">
 														<button
 															type="button"
@@ -559,18 +907,42 @@ export default function MyWalletDashboardNew() {
 														</button>
 														<span className="font-medium">Express Pay</span>
 													</div>
-													<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
-														<Zap size={10} className="fill-yellow-300 text-yellow-300" />
-														Gas Sponsored
-													</div>
+													<button
+														type="button"
+														className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm px-3 py-1.5 transition hover:bg-white/30 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
+														onClick={async (e) => {
+															e.stopPropagation()
+															if (payMeSigning || !profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor) return
+															setPayMeSigning(true)
+															try {
+																const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], '10000', { deadlineSeconds: 3 * 60 })
+																setOpenRelayPayload(payload)
+																setShowFooter(false)
+																setAaPanelOpen('BeamioPayMeQR')
+															} catch (err) {
+																console.error('Pay Me signature failed', err)
+															} finally {
+																setPayMeSigning(false)
+															}
+														}}
+														disabled={payMeSigning}
+														aria-label="Pay QR"
+													>
+														{payMeSigning ? (
+															<Loader size={16} className="text-white shrink-0 animate-spin" strokeWidth={2.4} />
+														) : (
+															<QrCode size={16} className="text-white shrink-0" />
+														)}
+														<span className="text-xs font-semibold text-white tracking-wide">PAY CODE</span>
+													</button>
 												</div>
 
 												<div className="text-center mt-4">
-													<div className="text-5xl font-bold tracking-tight tabular-nums">
+													<div className={`text-5xl font-bold tracking-tight tabular-nums ${card.id === 'aa' ? 'text-green-400' : 'text-white'}`}>
 														{formatWithThousands(card.balance)}{' '}
 														<span className="text-2xl font-normal opacity-80">USDC</span>
 													</div>
-													<div className="text-white/70 mt-1 text-sm tabular-nums">
+													<div className={card.id === 'aa' ? 'text-green-300/90 mt-1 text-sm tabular-nums' : 'text-white/70 mt-1 text-sm tabular-nums'}>
 														≈ {fiatPrefix('CAD')} {formatWithThousands(card.balanceFiat)}
 													</div>
 												</div>
@@ -609,8 +981,8 @@ export default function MyWalletDashboardNew() {
 							activeView ? 'translate-y-0' : 'translate-y-[1000px]'
 						}`}
 					>
-						<div className="px-6 pt-14 pb-4 border-b border-gray-50">
-							<span className="text-sm font-bold text-gray-900">Card Details</span>
+						<div className="px-6 pt-6 pb-4 border-b border-gray-50">
+							<span className="text-sm font-bold text-gray-900"></span>
 						</div>
 
 						{/* Action Grid：EOA 仅 Send / Bank；其余卡片为 Pay / Top Up / Receipts */}
@@ -618,13 +990,21 @@ export default function MyWalletDashboardNew() {
 							<>
 								<div className="px-6 py-6">
 									{selectedCard.id === 'eoa' ? (
-										<div className="flex items-start justify-between gap-4">
+										<div className="flex items-start justify-between flex-wrap gap-4">
 											<MiniAction
 												label="Send"
 												icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setShowFooter(false)
 													setEoaPanelOpen('Pay')
+												}}
+											/>
+											<MiniAction
+												label="Request"
+												icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setShowFooter(false)
+													setEoaPanelOpen('PaymentLink')
 												}}
 											/>
 											<MiniAction
@@ -641,34 +1021,17 @@ export default function MyWalletDashboardNew() {
 										<div className="flex items-start justify-between flex-wrap gap-4">
 											<MiniAction
 												label="Transfer"
-												icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												icon={<ArrowLeftRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setPayScreenMode('aa-eoa-transfer')
 													setShowFooter(false)
 													setAaPanelOpen('Pay')
 												}}
 											/>
-											<MiniAction
-												label="Pay"
-												icon={payMeSigning ? <Loader className="w-5 h-5 text-slate-800 dark:text-slate-100 animate-spin" strokeWidth={2.4} /> : <ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-												onClick={async () => {
-													if (payMeSigning || !profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor) return
-													setPayMeSigning(true)
-													try {
-														const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], '10000', { deadlineSeconds: 3 * 60 })
-														setOpenRelayPayload(payload)
-														setShowFooter(false)
-														setAaPanelOpen('BeamioPayMeQR')
-													} catch (e) {
-														console.error('Pay Me signature failed', e)
-													} finally {
-														setPayMeSigning(false)
-													}
-												}}
-											/>
+											
 											<MiniAction
 												label="Pay bill"
-												icon={<Banknote className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setScanData('')
 													setVoucherPayAmount('')
@@ -679,9 +1042,10 @@ export default function MyWalletDashboardNew() {
 													setShowTenKeySlide(true)
 												}}
 											/>
+											
 											<MiniAction
-												label="Vouchers"
-												icon={<QrCode className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												label="Charge"
+												icon={<Calculator className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setScanData('')
 													setVoucherPayAmount('')
@@ -692,22 +1056,159 @@ export default function MyWalletDashboardNew() {
 													setShowTenKeySlide(true)
 												}}
 											/>
+											<MiniAction
+												label="Vouchers"
+												icon={<Banknote className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={async () => {
+													navigate('/settings')
+												}}
+											/>
+
 										</div>
 									) : (
-										/* CCSA Card：暂无操作按钮 */
-										<p className="text-sm text-slate-500 dark:text-slate-400 py-2">Card details. Actions coming soon.</p>
+										/* CCSA Card：无卡时才显示 Create Card 按钮 */
+										userCards.length === 0 && (
+											<div className="flex items-start justify-between flex-wrap gap-4">
+												<MiniAction
+													label="Create Card"
+													icon={<CreditCard className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+													onClick={() => {
+														setShowFooter(false)
+														setCcsaCreateCardOpen(true)
+													}}
+												/>
+											</div>
+										)
 									)}
 								</div>
 
-								<div className="flex-1 overflow-y-auto px-6 pb-24">
-									<h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-										Activity Log
-									</h4>
-									<div className="space-y-2">
-										<p className="text-xs text-gray-400 italic text-center py-4">
-											No recent activity.
-										</p>
-									</div>
+								<div className="flex-1 min-h-0 overflow-y-auto px-6 pb-24">
+									{selectedCard.id === 'eoa' ? (
+										<>
+											{/* Active & Pending（与 MyWalletDashboard Lists 一致） */}
+											<div className=" mt-4">
+												<div className="flex items-center gap-2 px-2 mb-4">
+													<span className="h-1.5 w-1.5 rounded-full bg-[#2F78FF]" />
+													<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
+														Active & Pending
+													</div>
+													{loading && <Loader className="w-3.5 h-3.5 text-slate-400 animate-spin" strokeWidth={2.2} />}
+												</div>
+												{activePending.length ? (
+													<ActivePannel
+														items={activePending}
+														onOpen={(tx) => {
+															setItemTx(tx)
+															setShowTxDetail(true)
+															setShowFooter(false)
+														}}
+													/>
+												) : (
+													<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
+														No active items
+													</div>
+												)}
+											</div>
+
+											{/* History（与 MyWalletDashboard Lists 一致） */}
+											<div className=" mt-4">
+												<div className="px-2 flex items-center justify-between">
+													<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
+														History
+													</div>
+													<button
+														type="button"
+														onClick={() => navigate('/HistoryAll')}
+														className="text-[12px] font-semibold text-[#2F78FF] active:opacity-70"
+													>
+														View All
+													</button>
+												</div>
+												<div className="mt-3 overflow-hidden rounded-2xl bg-white/85 dark:bg-slate-900/65 ring-1 ring-black/5 dark:ring-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.08)]">
+													{history.length ? (
+														history.map((tx) => (
+															<Row
+																key={`${tx.mode}-${tx.hash}-${tx.date}`}
+																tx={tx}
+																mode={tx.mode}
+																onOpen={(tx) => {
+																	setItemTx(tx)
+																	setShowTxDetail(true)
+																	setShowFooter(false)
+																}}
+															/>
+														))
+													) : (
+														<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
+															No history yet
+														</div>
+													)}
+												</div>
+											</div>
+										</>
+									) : selectedCard.id === 'ccsa' ? (
+										/* My BeamioUserCards：普通发卡 owner 流程，与 CCSA 卡无关系 */
+										<div className="mt-4 space-y-3">
+											<div className="flex items-center justify-between px-2 mb-4">
+												<div className="flex items-center gap-2">
+													<span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+													<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
+														My BeamioUserCards
+													</div>
+												</div>
+												{userCards.length > 0 && (
+													<button
+														type="button"
+														onClick={() => {
+															setShowFooter(false)
+															setTopUpRedeemOpen(true)
+														}}
+														className="text-[12px] font-semibold text-[#1D5BFF] active:opacity-70 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30"
+													>
+														Top Up
+													</button>
+												)}
+											</div>
+											{userCards.length > 0 ? (
+												<div className="space-y-3">
+													{userCards.map((card) => (
+														<div
+															key={card.cardAddress}
+															className="flex items-start justify-between gap-3 p-4 rounded-2xl bg-white/85 dark:bg-slate-900/65 ring-1 ring-black/5 dark:ring-white/10"
+														>
+															<div className="flex-1 min-w-0">
+																<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">
+																	{card.name}
+																</p>
+																<p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate" title={card.cardAddress}>
+																	{card.cardAddress.slice(0, 10)}...{card.cardAddress.slice(-8)}
+																</p>
+																<div className="flex items-center gap-2 mt-1.5 text-sm text-slate-600 dark:text-slate-300">
+																	<span>{card.currency}</span>
+																	<span>·</span>
+																	<span>
+																		1 {fiatPrefix(card.currency as any)} = {formatAmount(Number(card.ptsPer1Currency), card.currency as any)} pts
+																	</span>
+																</div>
+															</div>
+														</div>
+													))}
+												</div>
+											) : (
+												<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400 rounded-2xl bg-white/85 dark:bg-slate-900/65 ring-1 ring-black/5 dark:ring-white/10">
+													No BeamioUserCards yet. Create one with the button above.
+												</div>
+											)}
+										</div>
+									) : (
+										/* AA (Express Pay)：Activity Log */
+										<>
+											<h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Activity Log</h4>
+											<div className="space-y-2">
+												<p className="text-xs text-gray-400 italic text-center py-4">No recent activity.</p>
+											</div>
+										</>
+									)}
 								</div>
 							</>
 						)}
@@ -733,6 +1234,7 @@ export default function MyWalletDashboardNew() {
 							{eoaPanelOpen === 'Pay' && (
 								<PayScreen
 									mode="eoa-pay"
+									beamioer={pendingPayTarget ?? undefined}
 									close={closeEoaPanel}
 								/>
 							)}
@@ -741,6 +1243,25 @@ export default function MyWalletDashboardNew() {
 									onAddCash={() => {}}
 									onCashOut={() => {}}
 								/>
+							)}
+							{eoaPanelOpen === 'PaymentLink' && (
+								<PaymentLink
+									close={() => closeEoaPanel()}
+								/>
+							)}
+							{eoaPanelOpen === 'ShowPayQR' && (
+								<>
+									<BeamioNavBack
+										title=""
+										onClose={closeEoaPanel}
+										onMore={() => {}}
+									/>
+									<ShowPayQR
+										successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
+										beamio={beamio ?? null}
+										qrValue={undefined}
+									/>
+								</>
 							)}
 						</div>
 					</div>
@@ -779,6 +1300,59 @@ export default function MyWalletDashboardNew() {
 					</div>
 				</div>
 
+				{/* CCSA Create Card：底部滑出窗口 */}
+				<div
+					className={`fixed inset-0 z-[100] ${ccsaCreateCardOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+					aria-hidden={!ccsaCreateCardOpen}
+				>
+					<div
+						className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${ccsaCreateCardOpen ? 'opacity-100' : 'opacity-0'}`}
+						onClick={closeCcsaCreateCard}
+					/>
+					<div
+						className={`absolute inset-x-0 bottom-0 bg-[#0f0f12] rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${ccsaCreateCardOpen ? 'translate-y-0' : 'translate-y-full'}`}
+					>
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-500/70" />
+						</div>
+						<div className="overflow-y-auto max-h-[calc(100dvh-60px)]">
+							<CardManager
+								embedded
+								onClose={closeCcsaCreateCard}
+								onCreated={() => {
+									refetchUserCards()
+									setTimeout(() => refetchUserCards(), 4000)
+								}}
+							/>
+						</div>
+					</div>
+				</div>
+
+				{/* Top Up Redeem：Owner 免 gas 空投 pts */}
+				<div
+					className={`fixed inset-0 z-[100] ${topUpRedeemOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+					aria-hidden={!topUpRedeemOpen}
+				>
+					<div
+						className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${topUpRedeemOpen ? 'opacity-100' : 'opacity-0'}`}
+						onClick={() => { setTopUpRedeemOpen(false); setShowFooter(true) }}
+					/>
+					<div
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${topUpRedeemOpen ? 'translate-y-0' : 'translate-y-full'}`}
+					>
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-500/70" />
+						</div>
+						<div className="overflow-y-auto max-h-[calc(100dvh-60px)] flex flex-col">
+							<TopUpRedeemForm
+								userCards={userCards}
+								onClose={() => { setTopUpRedeemOpen(false); setShowFooter(true) }}
+								onSuccess={() => refetchUserCards()}
+							/>
+						</div>
+					</div>
+				</div>
+
 				{/* Pay bill / Vouchers：TenKeyInput 全屏滑入 */}
 				{showTenKeySlide && createPortal(
 					<AnimatePresence>
@@ -807,6 +1381,35 @@ export default function MyWalletDashboardNew() {
 										scheduleRefreshAAAssets()
 									}}
 								/>
+							</div>
+						</motion.div>
+					</AnimatePresence>,
+					document.body
+				)}
+
+				{/* EOA 交易详情：Active & Pending / History 项点击后滑入 */}
+				{showTxDetail && itemTx && createPortal(
+					<AnimatePresence>
+						<motion.div
+							key="tx-detail"
+							className="fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col"
+							initial={{ x: '100%' }}
+							animate={{ x: 0 }}
+							exit={{ x: '100%' }}
+							transition={{ duration: 0.28, ease: 'easeOut' }}
+							onTouchMove={(e) => e.stopPropagation()}
+						>
+							<BeamioNavBack
+								title=""
+								onClose={() => {
+									setShowTxDetail(false)
+									setItemTx(undefined)
+									setShowFooter(true)
+								}}
+								onMore={() => {}}
+							/>
+							<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+								<TransactionsItemDetail localMode={itemTx.mode} tx={itemTx} />
 							</div>
 						</motion.div>
 					</AnimatePresence>,

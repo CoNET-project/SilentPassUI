@@ -6,6 +6,7 @@ import { X } from 'lucide-react'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import FeeInline from './FeeInline'
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { PaymentRequestCard } from '@/pages/chat/components/PaymentRequestCard'
 
 type RedeemOrLinkCardProps = {
 	payAmount: string                  // 金额（用于 Redeem 侧显示）
@@ -16,6 +17,12 @@ type RedeemOrLinkCardProps = {
 	currency: ICurrency
 	requestNet: string
 	creatorEstUsdcFromFiat?: string
+	/** 为 true 时表示本次成功是「Payment Request 已通过 message 送出」，只显示发送成功状态，不显示二维码/复制链接 */
+	sentViaMessage?: boolean
+	/** sentViaMessage 时卡片用的数字金额（与 message 中卡片格式一致） */
+	paymentRequestAmount?: number
+	/** sentViaMessage 时卡片显示的 wallet 标签，如 "Main Wallet • EOA" */
+	paymentRequestWalletLabel?: string
 }
 
 const displayName = (item: beamio) => {
@@ -32,7 +39,10 @@ const SuccessShow = ({
 	lockMode,
 	requestNet,
 	currency,
-	creatorEstUsdcFromFiat
+	creatorEstUsdcFromFiat,
+	sentViaMessage = false,
+	paymentRequestAmount = 0,
+	paymentRequestWalletLabel = "Main Wallet • EOA"
 }: RedeemOrLinkCardProps) => {
 	
 	const handleCopyLink = async () => {
@@ -67,7 +77,8 @@ const SuccessShow = ({
 				flex-1 flex flex-col gap-4
 			"
 		>
-			{/* Close button: top-right, iOS frosted style */}
+			{/* Close button: top-right, only when not sentViaMessage */}
+			{!sentViaMessage && (
 				<div className="absolute -top-4 -right-4 z-30">
 					<button
 						type="button"
@@ -89,7 +100,29 @@ const SuccessShow = ({
 						<X className="w-4 h-4" />
 					</button>
 				</div>
+			)}
 
+			{sentViaMessage ? (
+				<div className="flex flex-col items-center py-6 px-4">
+					<h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">
+						Payment Request Sent
+					</h2>
+					<p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+						Sent via chat. The recipient will see the Payment Request card in the conversation.
+					</p>
+					<PaymentRequestCard
+						amount={paymentRequestAmount}
+						currency={currency}
+						title={note ?? ''}
+						timeStamp={Date.now()}
+						walletType={paymentRequestWalletLabel}
+						requestUrl={successUrl}
+						isMe
+						className="mx-auto"
+					/>
+				</div>
+			) : (
+				<>
 			{/* Cashcode area */}
 			
 				<>
@@ -253,6 +286,8 @@ const SuccessShow = ({
 					/>
 				
 				</div>
+				</>
+			)}
 				
 			</div>
 		)

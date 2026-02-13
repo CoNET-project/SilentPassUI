@@ -1,7 +1,6 @@
 import {PayMeCoverPage, ReusableCoverPage, InvoicesCoverPage} from './CoverPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { useMemo, useState, useEffect, useCallback } from "react"
-import { beamioConet } from "@/utils/constants"
 import { ethers } from "ethers"
 import AccountBeo from '../AccountBea'
 import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader, ArrowUpRight, ChevronLeft, X } from "lucide-react"
@@ -36,15 +35,8 @@ const PayMeGroup = ({ setpProcessing }: Props) =>  {
 			const myAddrLocal = address.toLowerCase()
 			let mapped: TransferHistork[], mappedLing: TransferHistork[], mappedCheck: TransferHistork[]
 			try {
-				
-				const [_links, ] = await Promise.all([
-					
-					beamioConet.getLinksHistory(address, 0, 100),
-					
-				])
-				
-			
-				
+				// 旧合约 getLinksHistory 已停用
+				const _links: [string[], LinksHistory[]] = [[], []]
 				const links: LinksHistory[] = _links[1]
 				mappedLing = links.map(n => {
 					const isRequest = n.from.toLowerCase() === myAddrLocal

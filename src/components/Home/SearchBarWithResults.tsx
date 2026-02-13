@@ -17,7 +17,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc1.conet.network'),
 	
 }
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
@@ -31,7 +31,7 @@ type Props = {
 }
 
 const displayName = (item: searchResult) => {
-	const lastname = item.last_name.split('\r\n')
+	const lastname = (item.last_name ?? '').split('\r\n')
 	const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
 	return fullName || item.username || item.address
 }
@@ -229,7 +229,8 @@ const SearchInputWithDropdown =
 		useEffect(() => {
 			if (!profiles?.length || !CoNET_Data||readonly) return
 			const profile: profile = profiles[0]
-			setMyAddress(profile.keyID.toLowerCase())
+			const addr = profile?.keyID || profile?.aaAccount
+			if (addr) setMyAddress(String(addr).toLowerCase())
 			const search = CoNET_Data?.search|| {
 				searchBeamios: [],
 				searchKeywords: []

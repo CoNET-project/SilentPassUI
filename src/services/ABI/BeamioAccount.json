@@ -185,9 +185,9 @@
     {
       "inputs": [
         {
-          "internalType": "bytes32",
-          "name": "passwordHash",
-          "type": "bytes32"
+          "internalType": "string",
+          "name": "code",
+          "type": "string"
         }
       ],
       "name": "cancelFaucetPool",
@@ -198,9 +198,9 @@
     {
       "inputs": [
         {
-          "internalType": "bytes32",
-          "name": "passwordHash",
-          "type": "bytes32"
+          "internalType": "string",
+          "name": "code",
+          "type": "string"
         }
       ],
       "name": "cancelRedeem",

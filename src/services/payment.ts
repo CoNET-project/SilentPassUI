@@ -1,23 +1,19 @@
-import { beamioConet } from "@/utils/constants"
 import {ethers} from 'ethers'
 import {fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived, calcFeeFromNumber} from '@/services/currency'
 import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername, } from '@/services/beamio'
 
 export const getActiveArray = async (profile: profile): Promise<TransferHistork[]> => {
-		
-		let address = profile.keyID
-	
+		let address = profile?.keyID || profile?.aaAccount
+		if (!address || typeof address !== 'string') return []
 
 		const myAddrLocal = address.toLowerCase()
 
 		let mapped: TransferHistork[], mappedLing: TransferHistork[], mappedCheck: TransferHistork[]
 		try {
-			
-			const [_transfer, _links, _checks] = await Promise.all([
-				beamioConet.getTransferHistory(address, 0, 100),
-				beamioConet.getLinksHistory(address, 0, 100),
-				beamioConet.getCheckHistory(address, 0, 100)
-			])
+			// 旧合约 getTransferHistory/getLinksHistory/getCheckHistory 已停用
+			const _transfer: [string[], Transfer[]] = [[], []]
+			const _links: [string[], LinksHistory[]] = [[], []]
+			const _checks: [string[], any[]] = [[], []]
 			
 			const transfer: Transfer[] = _transfer[1]
 			

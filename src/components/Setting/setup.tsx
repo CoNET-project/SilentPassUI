@@ -26,7 +26,6 @@ import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import PrivateKey from './PrivateKey/PrivateKey'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import RecoveryBackupScreen from './RecoveryBackupScreen'
-import RecoveryQRDetailScreen from './RecoveryQRDetailScreen'
 
 
 export type IMenu = ''|'Account'|'Region'|'Payment'|'Cashcodes'|'Passkey'|'Privacy'|'Notifications'|'Statement'|'Help'|'privateKey'|'backup'|'RecoveryBackupScreen'|'RecoveryQRDetailScreen'|'ChangePIN'
@@ -354,9 +353,9 @@ export default function BeamioSettingsScreen({
 					{/* 内容区域：放你的 BeamioAccountScreen */}
 						<div className="flex-1 overflow-y-auto ">
 							
-							{
+							{/* {
 								settingsOpen === 'RecoveryQRDetailScreen' && <RecoveryQRDetailScreen colse={() => setSettingsOpen('')} />
-							}
+							} */}
 							{
 								settingsOpen === 'RecoveryBackupScreen' && <RecoveryBackupScreen colse={(val) => {
 									setSettingsOpen(val)

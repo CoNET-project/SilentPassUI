@@ -6,7 +6,7 @@ import { RegenerateRecover } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { CoNET_Data } from '@/utils/globals'
 import RecoveryQRScreen from '@/pages/Home/RecoveryQRScreen'
-
+import { useNavigate } from 'react-router-dom'
 type Result = {
   pin: string
   recoverCode: string
@@ -18,8 +18,8 @@ type Props = {
 }
 
 export default function RecoverQRReveal({ close }: Props) {
-  const { beamio, profiles } = useDaemonContext()
-
+  const { beamio, profiles, navigateLeftButtonArray, setNavigateLeftButtonArray } = useDaemonContext()
+  const navigate = useNavigate()
   const [step, setStep] = useState<'locked' | 'revealed'>('locked')
   const [password, setPassword] = useState('')
   const [pwVisible, setPwVisible] = useState(false)
@@ -87,9 +87,16 @@ export default function RecoverQRReveal({ close }: Props) {
       <RecoveryQRScreen
         qrDataUrl={qrDataUrl}
         recoveryCode={recoveryCode}
-        showButton={false}
+        showButton={true}
 		close={() => {
-			
+			const next = [...navigateLeftButtonArray]
+			const obj = next.pop()
+			if (obj) {
+				setNavigateLeftButtonArray(next)
+				;(obj.action ?? []).forEach(fn => fn())
+			} else {
+				navigate('/myWallet')
+			}
 		}}
       />
     )

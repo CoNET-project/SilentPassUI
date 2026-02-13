@@ -1,6 +1,5 @@
 import { ChevronRight } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { beamioConet } from "@/utils/constants"
 import { ethers } from "ethers"
 import { useMemo, useState, useEffect, useCallback } from "react"
 import AccountBeo from '../AccountBea'
@@ -93,7 +92,8 @@ export default function ShowPaymentLink({ setpProcessing }: Props) {
 			const myAddrLocal = address.toLowerCase()
 
 			try {
-				const [_links] = await Promise.all([beamioConet.getLinksHistory(address, 0, 100)])
+				// 旧合约 getLinksHistory 已停用
+				const _links: [string[], LinksHistory[]] = [[], []]
 				const links: LinksHistory[] = _links[1] || []
 
 				const mappedLing = links.map(n => {

@@ -180,11 +180,11 @@ const Home = ({}) => {
 
 	const init = async () => {
 		const temp = CoNET_Data
-		if (!temp || !profiles) {
+		if (!temp || !profiles?.length) {
 			return
 		}
-
 		const profile: profile = profiles[0]
+		if (!profile) return
 		// 以当前 AA Factory（config 中 0xFD48...）的链上结果为唯一依据，覆盖本地 aaAccount，避免显示旧 Factory 的地址
 		try {
 			const chainAa = await getAAAccount(profile)

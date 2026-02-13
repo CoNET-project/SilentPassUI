@@ -148,12 +148,18 @@ type paymentCard = {
 		timeStamp: number
 		usdcAmount: number
 		cashcodeUrl: string
-		/** 卡片类型：不传或 payment 为普通支付，cashcode 由 cashcodeUrl 决定，membershipActivated 为会员已激活 */
-		cardType?: "payment" | "cashcode" | "membershipActivated"
+		/** 卡片类型：不传或 payment 为普通支付，cashcode 由 cashcodeUrl 决定，membershipActivated 为会员已激活，paymentRequest 为收款请求卡 */
+		cardType?: "payment" | "cashcode" | "membershipActivated" | "paymentRequest"
 		/** 仅 membershipActivated：状态胶囊文案，如 "Confirmed on-chain" */
 		statusLabel?: string
 		/** 辅助字段：交易 hash（如链上 tx hash），可用于 View Invoice 等 */
 		hash?: string
+		/** 仅 paymentRequest：支付链接（Pay 按钮打开） */
+		requestUrl?: string
+		/** 仅 paymentRequest：来源钱包文案，如 "Main Wallet • EOA" */
+		walletLabel?: string
+		/** 仅 paymentRequest：备注/原因，如 "Dinner Split" */
+		memo?: string
 	}
 
 
@@ -680,10 +686,16 @@ type IChat = {
 	router: string
 }
 
-/** 针对某条消息的 reaction：messageId 必须为目标消息的 sendId，对方据此找到原消息并显示 reactionKey */
+/** 针对某条消息的 reaction、payment request 终止或已支付：messageId 必须为目标消息的 sendId */
 type ChatMessageReply = {
 	messageId: string
-	reactionKey: string
+	/** reaction 时必填；paymentRequestCancel / paymentRequestPaid 时可不填 */
+	reactionKey?: string
+	/** 为 'paymentRequestCancel' 时表示发送方终止了该 Payment Request */
+	/** 为 'paymentRequestPaid' 时表示接收方已支付，paymentHash 为链上 tx hash */
+	replyType?: 'reaction' | 'paymentRequestCancel' | 'paymentRequestPaid'
+	/** 仅 paymentRequestPaid：Base 链上 USDC 转账交易 hash */
+	paymentHash?: string
 }
 
 type ChatMessage = {

@@ -390,7 +390,9 @@ export default function CCSACardVisual({
 			) : (
 			<div className="flex items-start justify-between gap-2">
 				<CCSAHeaderBadge />
-				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+				{
+					hasPass && (
+						<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
 					<button
 					  type="button"
 					  onClick={(e) => {
@@ -425,6 +427,9 @@ export default function CCSACardVisual({
 					  <QrCode className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.2} />
 					</button>
 				</div>
+					)
+				}
+				
 			  </div>
 					
 			)

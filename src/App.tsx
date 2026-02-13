@@ -10,8 +10,8 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNode, currentGossipAbortController } from "@/services/chat"
-import { searchUsername, storeSystemData } from "@/services/beamio"
+import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
+import { checkStorage, searchUsername, storeSystemData } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
@@ -33,6 +33,8 @@ import ExampleExpress2 from "@/pages/Vouchers/example/ExampleExpress2"
 import TenKeyInput from "@/pages/Pay/components/TenKeyInput"
 import { Toast } from "antd-mobile"
 import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
+import CardManager from '@/pages/cardManager'
+import { getUserInfo } from "@/services/beamio"
 
 global.Buffer = require("buffer").Buffer
 
@@ -40,7 +42,7 @@ const beamioConetContract = {
   address: "0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd",
   network: "CONET DePIN",
   abi: beamioConetCoreABI,
-  provider: new ethers.JsonRpcProvider("https://mainnet-rpc.conet.network"),
+  provider: new ethers.JsonRpcProvider("https://mainnet-rpc1.conet.network"),
 }
 
 type message = {
@@ -83,12 +85,16 @@ function AppShell() {
     setScanData,
     scanIntent,
     setScanIntent,
+	setIsInitialLoading,
+	setBeamio
   } = useDaemonContext()
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [footerVisible, setFooterVisible] = useState(true)
   const [userPreviewItem, setUserPreviewItem] = useState<searchResult | null>()
   const runningRef = useRef(false)
+  const pendingQueueRef = useRef<string[]>([])
+  const processedIdsRef = useRef<Set<string>>(new Set())
 
   // ✅ 现在安全了：AppShell 已经在 <Router> 内
   const navigate = useNavigate()
@@ -100,11 +106,20 @@ function AppShell() {
     if (showFooter) setFooterVisible(true)
   }, [showFooter])
 
+	/** 消息唯一键：优先 sendId，否则 from_timestamp，用于去重与角标 */
 	const getMsgKey = (raw: any) => {
 		try {
 			const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
-			const ts = Number(obj?.timestamp)
 			const from = String(obj?.from || '')
+			const ts = Number(obj?.timestamp)
+			const text = obj?.text
+			// 优先用内层 sendId（发送方已用 crypto.randomUUID）
+			if (text && typeof text === 'string') {
+				try {
+					const inner = JSON.parse(text)
+					if (inner?.sendId) return String(inner.sendId)
+				} catch {}
+			}
 			if (Number.isFinite(ts) && ts > 0 && from) return `${from}_${ts}`
 			if (Number.isFinite(ts) && ts > 0) return `${ts}`
 		} catch {}
@@ -253,12 +268,65 @@ function AppShell() {
 		}
 	}, [])
 
-	// 首次进入显示
-	useEffect(() => {
+	const init = async (temp?: encrypt_keys_object) => {
 
-		initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
+		const isAcc = await checkStorage()
+		if (!isAcc) {
+			setIsInitialLoading(true)
+			return 
+		}
+
+		temp = temp||isAcc
+	
+		const profiles = temp?.profiles
+		
+
+		
+		if (!temp || !profiles ) {
+			setIsInitialLoading(true)
+			return 
+		}
+
+		setProfiles(profiles)
+
+		
+		const loadUserInfo = (): Promise<beamio> => new Promise(async (resolve) => {
+			const userInfo = await getUserInfo(profiles[0].keyID)
+			if (!userInfo) {
+				return setTimeout(async () => {
+					return resolve(await loadUserInfo())
+				}, 1000)
+			}
+			return resolve(userInfo)
+		})
+			
+		const userInfo = await loadUserInfo()
+		if (!userInfo) return
+		
+		const bo: beamio = userInfo
+
+		await initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
 			setCharts((prev: string[]) => [...prev, message])
 		})
+		
+		
+		bo.initialLoading = true
+		
+		
+		
+		setBeamio (bo)
+		temp.beamio = bo
+		
+		setCoNET_Data(temp)
+		await storeSystemData()
+		setIsInitialLoading(false)
+
+  	}
+
+	// 首次进入显示
+	useEffect(() => {
+		init()
+		
 
 		const t = setTimeout(() => setFooterVisible(true), 0)
 		return () => {
@@ -292,10 +360,10 @@ function AppShell() {
 		setProfiles([...profiles])
 		await storeSystemData()
 
-		// 送出 message 到对方
-		const node = getRandomNode(allNodes)
-		if (node) {
-			await sendMessage(chatData.chatData.publicArmored, text, profile.privateKeyArmor, node)
+		// 送出 message 到对方（随机 2 节点并行 post）
+		const nodes = getRandomNodes(allNodes, 2)
+		if (nodes.length) {
+			await sendMessage(chatData.chatData.publicArmored, text, profile.privateKeyArmor, nodes)
 		}
 	}
 
@@ -384,12 +452,23 @@ function AppShell() {
 		setProfiles: React.Dispatch<React.SetStateAction<profile[]>>,
 		onAutoReply?: (chatData: chatData) => Promise<void>
 	) => {
-		// ✅ 永远用“复制”的 chats 来做变更
+		// profile 为空说明 init 还未完成
+		if (!profiles?.length || !profiles[0]) return
+		// ✅ 去重：double post 时同一消息可能从不同节点到达两次
+		const seenRaw = new Set<string>()
+		const uniqLines: string[] = []
+		for (const raw of lines) {
+			const key = raw.trim()
+			if (!key || seenRaw.has(key)) continue
+			seenRaw.add(key)
+			uniqLines.push(raw)
+		}
+
 		const profile = profiles[0]
 		const chats: chatData[] = Array.isArray(profile.chats) ? [...profile.chats] : []
 		const chatsToAutoReply: chatData[] = []
 
-		for (const raw of lines) {
+		for (const raw of uniqLines) {
 			try {
 			const msg: message = JSON.parse(raw)
 			if (!msg?.from || !msg?.text || !msg?.signMessage) continue
@@ -654,52 +733,77 @@ function AppShell() {
     run()
   }, [scanData, scanIntent])
 
-  // ② 再消费队列写入 profiles（你原逻辑）
+  // ② 入站 chat 串行队列处理：避免并行 addNewMessage 导致同一消息被处理两次
 	useEffect(() => {
-		const profile = profiles
 		const temp = CoNET_Data
-		if (!profile || !temp || !Array.isArray(charts) || charts.length === 0) return
-		if (runningRef.current) return
+		// profile 为空说明 init 还未完成，不处理
+		if (!profiles?.length || !profiles[0] || !temp || !Array.isArray(charts) || charts.length === 0) return
 
-		runningRef.current = true
+		// 新消息入队
+		pendingQueueRef.current.push(...charts)
+		setCharts([])
 
-		;(async () => {
+		const processQueue = async () => {
+			if (runningRef.current) return
+			runningRef.current = true
 			try {
-			const messageLines = [...charts]
-			setCharts([])
-			await addNewMessage(messageLines, profile, temp, setProfiles, async (chatData) => {
-				const lastMsg = chatData.messages[chatData.messages.length - 1]
-				const msgText = (lastMsg as { text?: string })?.text
-				let hash: string | undefined
-				try {
-					const obj = JSON.parse(msgText ?? "") as { paymentCard?: { hash?: string } }
-					hash = obj?.paymentCard?.hash
-				} catch {}
-				let text: string
-				if (!hash) {
-					text = AUTO_REPLY_TEXT_WITHOUT_HASH
-				} else {
-					const result = await getUsdcTransferRecipientOnBase(hash)
-					if (result.contractCallSuccess) {
-						text = AUTO_REPLY_TEXT_WITH_HASH
-					} else {
-						const myAddress = new ethers.Wallet(profiles[0].privateKeyArmor).address
-						const isBeneficiaryMe = !!(
-							result.isUsdcTransfer &&
-							result.recipient &&
-							myAddress &&
-							result.recipient.toLowerCase() === myAddress.toLowerCase()
-						)
-						text = isBeneficiaryMe ? AUTO_REPLY_TEXT_WITH_HASH : AUTO_REPLY_TEXT_WITHOUT_HASH
-					}
+				const batch = pendingQueueRef.current.splice(0)
+				if (batch.length === 0) {
+					runningRef.current = false
+					return
 				}
-				await autoReplayMessage(text, chatData)
-			})
+
+				// 全局去重：按 sendId 或 from_timestamp 过滤已处理
+				const toProcess: string[] = []
+				for (const raw of batch) {
+					const key = getMsgKey(raw)
+					if (!key || processedIdsRef.current.has(key)) continue
+					processedIdsRef.current.add(key)
+					toProcess.push(raw)
+				}
+				if (toProcess.length === 0) {
+					runningRef.current = false
+					if (pendingQueueRef.current.length > 0) setTimeout(processQueue, 0)
+					return
+				}
+
+				await addNewMessage(toProcess, profiles, temp, setProfiles, async (chatData) => {
+					const p0 = profiles?.[0]
+					if (!p0?.privateKeyArmor) return
+					const lastMsg = chatData.messages[chatData.messages.length - 1]
+					const msgText = (lastMsg as { text?: string })?.text
+					let hash: string | undefined
+					try {
+						const obj = JSON.parse(msgText ?? "") as { paymentCard?: { hash?: string } }
+						hash = obj?.paymentCard?.hash
+					} catch {}
+					let text: string
+					if (!hash) {
+						text = AUTO_REPLY_TEXT_WITHOUT_HASH
+					} else {
+						const result = await getUsdcTransferRecipientOnBase(hash)
+						if (result.contractCallSuccess) {
+							text = AUTO_REPLY_TEXT_WITH_HASH
+						} else {
+							const myAddress = new ethers.Wallet(p0.privateKeyArmor).address
+							const isBeneficiaryMe = !!(
+								result.isUsdcTransfer &&
+								result.recipient &&
+								myAddress &&
+								result.recipient.toLowerCase() === myAddress.toLowerCase()
+							)
+							text = isBeneficiaryMe ? AUTO_REPLY_TEXT_WITH_HASH : AUTO_REPLY_TEXT_WITHOUT_HASH
+						}
+					}
+					await autoReplayMessage(text, chatData)
+				})
 			} finally {
-			runningRef.current = false
+				runningRef.current = false
+				if (pendingQueueRef.current.length > 0) setTimeout(processQueue, 0)
 			}
-		})()
-	}, [charts])
+		}
+		processQueue()
+	}, [charts, profiles])
 
   return (
 		<div>
@@ -720,6 +824,7 @@ function AppShell() {
 				<Route path="/example-express" element={<ExampleExpress2 />} />
 				<Route path="/ten-key-input" element={<TenKeyInput />} />
 				<Route path="/example-card" element={<EmapmpleCard />} />
+				<Route path="/cardManager" element={<CardManager />} />
 				</Routes>
 			</div>
 

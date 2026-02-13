@@ -9278,6 +9278,25 @@ export const BeamioCardFactoryAbi = [
 		"inputs": [
 			{
 				"internalType": "address",
+				"name": "cardOwner",
+				"type": "address"
+			}
+		],
+		"name": "cardsOfOwner",
+		"outputs": [
+			{
+				"internalType": "address[]",
+				"name": "",
+				"type": "address[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
 				"name": "a",
 				"type": "address"
 			},
@@ -9527,6 +9546,19 @@ export const BeamioCardFactoryAbi = [
 			}
 		],
 		"name": "redeemForUser",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{ "internalType": "address", "name": "cardAddr", "type": "address" },
+			{ "internalType": "bytes", "name": "data", "type": "bytes" },
+			{ "internalType": "uint256", "name": "deadline", "type": "uint256" },
+			{ "internalType": "bytes32", "name": "nonce", "type": "bytes32" },
+			{ "internalType": "bytes", "name": "ownerSignature", "type": "bytes" }
+		],
+		"name": "executeForOwner",
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"

@@ -436,7 +436,7 @@ function ConfirmDeductionView({
 					className="w-full h-12 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
 				>
 					{submitting ? <Loader className="w-5 h-5 animate-spin" /> : null}
-					Confirm Charge
+					Confirm
 				</button>
 				<button
 					type="button"

@@ -15,6 +15,7 @@ const Home = () => {
 	const {
 		profiles,
 		setShowFooter,
+		setMessageCount,
 		allNodes, chatHomeItem,setChatHomeItem,
   	} = useDaemonContext()
 	const [chatData, setChatData] = useState<chatData> ()
@@ -50,7 +51,7 @@ const Home = () => {
 		if (!chatData1) return
 
 		setChatData({...chatData1})
-
+		setShowFooter(false)
 	}
 
 
@@ -66,8 +67,8 @@ const Home = () => {
 						showHistory={false}
 						closeWindow={item => {
 						if (typeof item !== "string") {
-							selectedItemProcess(item)
 							setShowFooter(false)
+							selectedItemProcess(item)
 						}
 						}}
 						showBackIcon={false}
@@ -113,6 +114,7 @@ const Home = () => {
 				onBack={() => {
 					setChatData(undefined)
 					setShowFooter(true)
+					setMessageCount(0)
 				}}
 				chatData={chatData}
 				allNodes={allNodes}

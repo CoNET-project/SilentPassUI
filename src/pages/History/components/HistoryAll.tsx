@@ -3,7 +3,6 @@ import { createPortal } from "react-dom"
 import { ethers } from "ethers"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { beamioConet } from "@/utils/constants"
 import { getBalanceProcess, aesGcmDecrypt } from "@/services/beamio"
 import { fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived, calcFeeFromNumber } from "@/services/currency"
 import AccountBeo from "../AccountBea"
@@ -273,11 +272,10 @@ export default function HistoryAll() {
     try {
       const myAddrLocal = address.toLowerCase()
 
-      const [_transfer, _links, _checks] = await Promise.all([
-        beamioConet.getTransferHistory(address, 0, 200),
-        beamioConet.getLinksHistory(address, 0, 200),
-        beamioConet.getCheckHistory(address, 0, 200)
-      ])
+      // 旧合约 getTransferHistory/getLinksHistory/getCheckHistory 已停用
+      const _transfer: [string[], Transfer[]] = [[], []]
+      const _links: [string[], LinksHistory[]] = [[], []]
+      const _checks: [string[], any[]] = [[], []]
 
       // ===== pay =====
       const transfer: Transfer[] = _transfer[1]

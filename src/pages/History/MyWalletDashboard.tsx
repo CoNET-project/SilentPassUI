@@ -7,7 +7,8 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
-import { getBalanceProcess, formatWithThousands, aesGcmDecrypt } from "@/services/beamio"
+import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt } from '@/services/beamio'
+import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import RedeemScreen from '@/pages/Browser/RedeemScreen'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
 import {
@@ -657,21 +658,36 @@ export function MyWalletDashboard() {
 		}
 	}, [profiles, myAddress, setMyAddress])
 
-	// 获取 AA 账号的 USDC balance
+	// 获取 AA 账号的 USDC balance。RPC 熔断或失败时走 API
+	const loadAaAccountBalanceInFlightRef = useRef<Promise<void> | null>(null)
 	const loadAaAccountBalance = useCallback(async () => {
-		if (!profiles?.[0]?.aaAccount) {
+		const aa = profiles?.[0]?.aaAccount
+		if (!aa) {
 			setAaAccountUsdcBalance('0')
 			return
 		}
-		try {
-			const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
-			const balanceRaw = await usdcContract.balanceOf(profiles[0].aaAccount)
-			const balance = ethers.formatUnits(balanceRaw, 6)
-			setAaAccountUsdcBalance(balance)
-		} catch (error: any) {
-			console.error('Failed to load AA account USDC balance:', error)
-			setAaAccountUsdcBalance('0')
+		if (loadAaAccountBalanceInFlightRef.current) {
+			await loadAaAccountBalanceInFlightRef.current
+			return
 		}
+		const run = async () => {
+			try {
+				if (isRpcDegraded()) {
+					setAaAccountUsdcBalance(await getUsdcBalanceFromApi(aa))
+					return
+				}
+				const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
+				const balanceRaw = await usdcContract.balanceOf(aa)
+				setAaAccountUsdcBalance(ethers.formatUnits(balanceRaw, 6))
+			} catch (e) {
+				if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+				setAaAccountUsdcBalance(await getUsdcBalanceFromApi(aa))
+			} finally {
+				loadAaAccountBalanceInFlightRef.current = null
+			}
+		}
+		loadAaAccountBalanceInFlightRef.current = run()
+		await loadAaAccountBalanceInFlightRef.current
 	}, [profiles])
 
 	useEffect(() => {

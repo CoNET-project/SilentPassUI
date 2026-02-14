@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC,conetDepinProvider, CCSA_Card_Address } from "../utils/constants";
+import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
@@ -276,6 +277,51 @@ export const quotePointsForUSDC = async (
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
+const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
+const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
+
+/** 用户兑换 redeem 码：提交到 API，服务端调用 redeemForUser，将点数 mint 到用户 AA */
+export const postCardRedeem = async (
+	cardAddress: string,
+	redeemCode: string,
+	toUserEOA: string
+): Promise<{ success: boolean; tx?: string; error?: string; status?: number }> => {
+	if (!cardAddress || !redeemCode?.trim() || !toUserEOA || !ethers.isAddress(toUserEOA) || !ethers.isAddress(cardAddress)) {
+		return { success: false, error: 'Invalid cardAddress, redeemCode, or toUserEOA' }
+	}
+	const trimmedCode = redeemCode.trim()
+	try {
+		const res = await fetch(cardRedeemEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ cardAddress, redeemCode: trimmedCode, toUserEOA }),
+		})
+		let data: { success?: boolean; error?: string; tx?: string } = {}
+		try {
+			const text = await res.text()
+			if (text) data = JSON.parse(text) as typeof data
+		} catch {
+			// response might be HTML (e.g. 404 page)
+		}
+		if (!res.ok) {
+			const errMsg = data.error ?? (data as { message?: string }).message ?? `HTTP ${res.status}`
+			if (typeof console !== 'undefined' && console.warn) {
+				console.warn('[postCardRedeem] failed:', { status: res.status, url: cardRedeemEndpoint, error: errMsg })
+			}
+			return { success: false, error: errMsg, status: res.status }
+		}
+		if (data.success !== false && data.tx) {
+			return { success: true, tx: data.tx }
+		}
+		return { success: false, error: data.error ?? 'Redeem failed (no tx returned)', status: res.status }
+	} catch (e) {
+		const msg = (e as Error)?.message ?? 'Redeem request failed'
+		if (typeof console !== 'undefined' && console.error) {
+			console.error('[postCardRedeem] fetch error:', e)
+		}
+		return { success: false, error: msg }
+	}
+}
 
 /** 用户拥有的 BeamioUserCard 详情（来自 cardsOfOwner + 链上 currency/price） */
 export type UserCardInfo = {
@@ -295,42 +341,56 @@ const cardAbiSlice = [
 
 async function fetchCardsForOwner(ownerAddress: string): Promise<UserCardInfo[]> {
 	if (!ownerAddress || !ethers.isAddress(ownerAddress)) return []
-	try {
-		const cards: string[] = await BeamioCardFactorySC.cardsOfOwner(ownerAddress)
-		if (!cards?.length) return []
-		const results: UserCardInfo[] = []
-		for (const addr of cards) {
-			const card = new ethers.Contract(addr, cardAbiSlice, baseEndpoint)
-			const [currencyNum, priceE6Raw] = await Promise.all([
-				card.currency(),
-				card.pointsUnitPriceInCurrencyE6(),
-			])
-			const currency = getICurrency(BigInt(currencyNum))
-			const priceE6 = Number(priceE6Raw)
-			const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
-			results.push({
-				cardAddress: addr,
-				name: 'User Card',
-				currency,
-				priceE6: String(priceE6),
-				ptsPer1Currency: String(ptsPer1Currency),
-			})
-		}
-		return results
-	} catch {
-		return []
+	const cards: string[] = await BeamioCardFactorySC.cardsOfOwner(ownerAddress)
+	if (!cards?.length) return []
+	const results: UserCardInfo[] = []
+	for (const addr of cards) {
+		const card = new ethers.Contract(addr, cardAbiSlice, baseEndpoint)
+		const [currencyNum, priceE6Raw] = await Promise.all([
+			card.currency(),
+			card.pointsUnitPriceInCurrencyE6(),
+		])
+		const currency = getICurrency(BigInt(currencyNum))
+		const priceE6 = Number(priceE6Raw)
+		const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
+		results.push({
+			cardAddress: addr,
+			name: 'User Card',
+			currency,
+			priceE6: String(priceE6),
+			ptsPer1Currency: String(ptsPer1Currency),
+		})
 	}
+	return results
 }
 
 /** 通过 factory.cardsOfOwner 检测用户是否拥有 BeamioUserCard，若有则返回卡列表及详情 */
 export const getCardsOfOwnerWithDetails = async (ownerAddress: string): Promise<UserCardInfo[]> =>
 	fetchCardsForOwner(ownerAddress)
 
+/** 从 API 拉取 myCards。!res.ok 时抛出，不可将空 [] 当作成功。 */
+async function fetchMyCardsFromApi(owners: string[]): Promise<UserCardInfo[]> {
+	const qs = owners.length === 1 ? `owner=${encodeURIComponent(owners[0])}` : `owners=${owners.map((o) => encodeURIComponent(o)).join(',')}`
+	const res = await fetch(`${beamioApi}/api/myCards?${qs}`)
+	if (!res.ok) {
+		const err = await res.text().catch(() => '') || `HTTP ${res.status}`
+		throw new Error(`myCards API error: ${err}`)
+	}
+	const data = await res.json().catch(() => ({}))
+	const items = data?.items ?? []
+	return items as UserCardInfo[]
+}
+
+export type GetCardsResult = { cards: UserCardInfo[]; trusted: boolean }
+
 /** 同时查询 aaAccount 与 keyID 下的卡（去重合并）。用于 CardManager：展示用户自己发行的 BeamioUserCard，不耦合 CCSA。
- * 当 keyID 缺失时，会从 privateKeyArmor 推导 EOA 地址作为 fallback。 */
+ * 当 keyID 缺失时，会从 privateKeyArmor 推导 EOA 地址作为 fallback。
+ * 若 CCSA 的 owner 与用户 EOA 匹配，则始终包含 CCSA（兜底：cardsOfOwner 有时因链上/格式问题不返回）。
+ * - trusted=true：RPC 或 API 明确成功，可更新 profile.issuedCards。
+ * - trusted=false：RPC 与 API 均失败，返回 profile.issuedCards 作为缓存，UI 不可信空 []。 */
 export const getCardsOfOwnerWithDetailsForProfile = async (
-	profile: { aaAccount?: string | null; keyID?: string | null; privateKeyArmor?: string | null }
-): Promise<UserCardInfo[]> => {
+	profile: { aaAccount?: string | null; keyID?: string | null; privateKeyArmor?: string | null; issuedCards?: UserCardInfo[] }
+): Promise<GetCardsResult> => {
 	const aa = profile?.aaAccount?.trim()
 	let eoa = profile?.keyID?.trim()
 	if (!eoa && profile?.privateKeyArmor) {
@@ -342,18 +402,72 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 	const owners: string[] = []
 	if (aa && ethers.isAddress(aa)) owners.push(ethers.getAddress(aa))
 	if (eoa && ethers.isAddress(eoa)) owners.push(ethers.getAddress(eoa))
+	if (owners.length === 0) return { cards: [], trusted: false }
+
+	const cached = profile?.issuedCards ?? []
 	const seen = new Set<string>()
 	const merged: UserCardInfo[] = []
-	for (const owner of owners) {
-		const list = await fetchCardsForOwner(owner)
-		for (const c of list) {
-			const key = c.cardAddress.toLowerCase()
-			if (seen.has(key)) continue
-			seen.add(key)
-			merged.push(c)
+
+	// 0. RPC 熔断期：跳过 RPC，直走 API，避免雪崩式重试
+	if (isRpcDegraded()) {
+		try {
+			const apiItems = await fetchMyCardsFromApi(owners)
+			return { cards: apiItems, trusted: true }
+		} catch {
+			return { cards: cached, trusted: false }
 		}
 	}
-	return merged
+
+	// 1. 尝试 RPC
+	try {
+		for (const owner of owners) {
+			const list = await fetchCardsForOwner(owner)
+			for (const c of list) {
+				const key = c.cardAddress.toLowerCase()
+				if (seen.has(key)) continue
+				seen.add(key)
+				merged.push(c)
+			}
+		}
+		// Fallback: 若用户 EOA 为 CCSA owner，但 cardsOfOwner 未返回 CCSA，则显式加入
+		if (CCSA_Card_Address && eoa && ethers.isAddress(eoa)) {
+			try {
+				const ccsaLower = CCSA_Card_Address.toLowerCase()
+				if (!seen.has(ccsaLower)) {
+					const owner = await BeamioCardFactorySC.beamioUserCardOwner(CCSA_Card_Address)
+					if (owner && ethers.getAddress(owner).toLowerCase() === ethers.getAddress(eoa).toLowerCase()) {
+						const card = new ethers.Contract(CCSA_Card_Address, cardAbiSlice, baseEndpoint)
+						const [currencyNum, priceE6Raw] = await Promise.all([
+							card.currency(),
+							card.pointsUnitPriceInCurrencyE6(),
+						])
+						const currency = getICurrency(BigInt(currencyNum))
+						const priceE6 = Number(priceE6Raw)
+						const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
+						merged.unshift({
+							cardAddress: CCSA_Card_Address,
+							name: 'CCSA',
+							currency,
+							priceE6: String(priceE6),
+							ptsPer1Currency: String(ptsPer1Currency),
+						})
+						seen.add(ccsaLower)
+					}
+				}
+			} catch (_) {}
+		}
+		return { cards: merged, trusted: true }
+	} catch (e) {
+		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+		// 2. RPC 失败，尝试 API
+		try {
+			const apiItems = await fetchMyCardsFromApi(owners)
+			return { cards: apiItems, trusted: true }
+		} catch {
+			// 3. RPC 与 API 均失败，返回 profile 缓存的卡，不信任空 []
+			return { cards: cached, trusted: false }
+		}
+	}
 }
 
 /** ERC-1155 shareTokenMetadata，写入 0x{owner}.json */
@@ -494,6 +608,23 @@ const createRedeemInterface = new ethers.Interface([
     'function createRedeem(bytes32 hash,uint256 points6,uint256 attr,uint64 validAfter,uint64 validBefore,uint256[] tokenIds,uint256[] amounts)',
 ])
 
+const createRedeemBatchInterface = new ethers.Interface([
+    'function createRedeemBatch(bytes32[] hashes,uint256 points6,uint256 attr,uint64 validAfter,uint64 validBefore,uint256[] tokenIds,uint256[] amounts)',
+])
+
+/** 构建 createRedeemBatch 的 calldata（供 executeForOwner 使用）。codes 经 keccak256 得到 hashes，与 API cardCreateRedeemPreCheck 一致 */
+export const encodeCreateRedeemBatch = (
+    codes: string[],
+    points6: bigint,
+    validAfter: number,
+    validBefore: number
+): string => {
+    const hashes = codes.map((c) => ethers.keccak256(ethers.toUtf8Bytes(c)))
+    const tokenIds = [0n]
+    const amounts = [points6]
+    return createRedeemBatchInterface.encodeFunctionData('createRedeemBatch', [hashes, points6, 0n, validAfter, validBefore, tokenIds, amounts])
+}
+
 /** 构建 createRedeem 的 calldata（供 executeForOwner 使用）。hash 来自 generateCODE(passcode)，普通 redeem 用 passcode="" */
 export const encodeCreateRedeem = (
     hash: string,
@@ -512,6 +643,128 @@ export const encodeCreateRedeem = (
         tokenIds,
         amounts,
     ])
+}
+
+/** 提交批量创建 redeem 到 API cardCreateRedeem。使用 createRedeemBatch，无需 toUserEOA。 */
+export const postCardCreateRedeem = async (payload: {
+    cardAddress: string
+    codes: string[]
+    points6: string | number
+    validAfter: number
+    validBefore: number
+    deadline: number
+    nonce: string
+    ownerSignature: string
+}): Promise<{ success: boolean; error?: string; codes?: string[] }> => {
+    try {
+        const body = {
+            cardAddress: payload.cardAddress,
+            codes: payload.codes,
+            points6: String(payload.points6),
+            attr: 0,
+            validAfter: payload.validAfter,
+            validBefore: payload.validBefore,
+            tokenIds: ['0'],
+            amounts: [String(payload.points6)],
+            deadline: payload.deadline,
+            nonce: payload.nonce,
+            ownerSignature: payload.ownerSignature,
+        }
+        const res = await fetch(cardCreateRedeemEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'cardCreateRedeem failed' }
+        return { success: true, codes: payload.codes }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
+
+const cancelRedeemInterface = new ethers.Interface([
+    'function cancelRedeem(string code)',
+])
+
+/** 构建 cancelRedeem 的 calldata（供 executeForOwner 使用） */
+export const encodeCancelRedeem = (code: string): string =>
+    cancelRedeemInterface.encodeFunctionData('cancelRedeem', [code])
+
+const getRedeemStatusAbi = ['function getRedeemStatus(bytes32 hash) view returns (bool active, uint128 points6)']
+
+/** 通过 BeamioUserCard.getRedeemStatus(bytes32) 从合约直接读取 RedeemStorage，无需扫描区块或事件 */
+function _decodeRedeemStatus(active: boolean): 'redeemed' | 'cancelled' | 'pending' {
+    if (active) return 'pending'
+    // active=false：已结束（redeemed 或 cancelled），合约不区分，统一返回 cancelled
+    return 'cancelled'
+}
+
+/** 单次查询：通过 getRedeemStatus(bytes32) 从合约直接读取，不做区块/事件扫描 */
+export const getRedeemStatusFromChain = async (
+    cardAddress: string,
+    hash: string
+): Promise<'redeemed' | 'cancelled' | 'pending'> => {
+    if (isRpcDegraded()) return 'pending'
+    const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
+    try {
+        const card = new ethers.Contract(cardAddress, getRedeemStatusAbi, baseEndpoint)
+        const [active] = await card.getRedeemStatus(hashBytes32)
+        return _decodeRedeemStatus(active)
+    } catch (e) {
+        if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+        return 'pending'
+    }
+}
+
+/** Multicall3 地址（Base 等链通用） */
+const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11'
+
+/**
+ * 批量查询 redeem 状态：使用 Multicall3.aggregate3 将多次 getRedeemStatus 合并为一次 RPC，
+ * 避免 RedeemActiveList 对每个 item 单独调用造成的 RPC 风暴与主线程阻塞。
+ */
+export const getRedeemStatusBatchFromChain = async (
+    items: { cardAddress: string; hash: string }[]
+): Promise<Record<string, 'redeemed' | 'cancelled' | 'pending'>> => {
+    const result: Record<string, 'redeemed' | 'cancelled' | 'pending'> = {}
+    if (items.length === 0) return result
+    if (isRpcDegraded()) {
+        items.forEach(({ hash }) => { result[hash] = 'pending' })
+        return result
+    }
+    const iface = new ethers.Interface(getRedeemStatusAbi)
+    const calls: { target: string; allowFailure: boolean; callData: string }[] = items.map(({ cardAddress, hash }) => {
+        const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
+        const callData = iface.encodeFunctionData('getRedeemStatus', [hashBytes32])
+        return { target: cardAddress, allowFailure: true, callData }
+    })
+    try {
+        const mc = new ethers.Contract(
+            MULTICALL3_ADDRESS,
+            ['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnDatas)'],
+            baseEndpoint
+        )
+        const returnDatas = await mc.aggregate3(calls)
+        returnDatas.forEach((rd: { success: boolean; returnData: string }, i: number) => {
+            const hash = items[i].hash
+            if (!rd.success || rd.returnData === '0x') {
+                result[hash] = 'pending'
+                return
+            }
+            try {
+                const [active] = iface.decodeFunctionResult('getRedeemStatus', rd.returnData)
+                result[hash] = _decodeRedeemStatus(active)
+            } catch {
+                result[hash] = 'pending'
+            }
+        })
+        return result
+    } catch (e) {
+        if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+        items.forEach(({ hash }) => { result[hash] = 'pending' })
+        return result
+    }
 }
 
 /** 提交 owner 签名的 executeForOwner 请求。可选 redeemCode+toUserEOA：空投场景下 API 会额外执行 redeemForUser。 */
@@ -574,6 +827,8 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 	if (cached && Date.now() - cached.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
 		return cached.result
 	}
+	// RPC 熔断期：避免雪崩式重试，无 API fallback 时直接失败
+	if (isRpcDegraded()) return null
 
 	return withGetMyAssetsMutex(async () => {
 		const cachedAgain = getMyAssetsCache.get(key)
@@ -643,7 +898,8 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 
 			getMyAssetsCache.set(key, { result, timestamp: Date.now() })
 			return result
-		} catch (error: any) {
+		} catch (error: unknown) {
+			if (isRpcQuotaOrNetworkError(error)) reportRpcFailure()
 			throw error
 		}
 	})
@@ -677,49 +933,43 @@ const getICurrency = (currency: bigint | number): ICurrency => {
 
 
 
-export const getAAAccount = async (profile: profile): Promise<string | null> => {
+/** RPC 失败时从 API 获取 AA 地址 */
+async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
 	try {
-	  const accountFactory = new ethers.Contract(
+		const res = await fetch(`${beamioApi}/api/getAAAccount?eoa=${encodeURIComponent(eoa)}`)
+		if (!res.ok) return null
+		const data = await res.json().catch(() => ({}))
+		return data?.account ?? null
+	} catch {
+		return null
+	}
+}
+
+export const getAAAccount = async (profile: profile): Promise<string | null> => {
+	const eoa = profile?.keyID?.trim()
+	if (!eoa || !ethers.isAddress(eoa)) return null
+	try {
+		const accountFactory = new ethers.Contract(
 			contracts.BeamioAAAcountFactory.address,
 			BeamioAAAcountFactoryAbi,
 			baseEndpoint
-	  )
-  
-	  const account = await accountFactory.primaryAccountOf(profile.keyID)
-	  if (account === ethers.ZeroAddress) {
-		console.log(`[getAAAccount] no primary AA for ${profile.keyID}`)
-		return null
-	  }
-  
-	  const code = await baseEndpoint.getCode(account)
-	  if (code === '0x') {
-		console.log(`[getAAAccount] AA address has no code: ${account}`)
-		return null
-	  }
-  
-	  // 👇 新增：读取 AA.account.factory
-	  try {
-		const aa = new ethers.Contract(
-		  account,
-		  ['function factory() view returns (address)'],
-		  baseEndpoint
 		)
-		const factory = await aa.factory()
-		console.log(`[getAAAccount] AA=${account} factory=${factory}`)
-	  } catch (e: any) {
-		console.log(
-		  `[getAAAccount] AA=${account} factory() not available: ${e?.shortMessage || e?.message}`
-		)
-		throw(`[getAAAccount] AA=${account} factory() not available: ${e?.shortMessage || e?.message}`)
-	  }
-  
-	  return account
+		const account = await accountFactory.primaryAccountOf(eoa)
+		if (account === ethers.ZeroAddress) return null
+		const code = await baseEndpoint.getCode(account)
+		if (code === '0x') return null
+		try {
+			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
+			await aa.factory()
+		} catch (e: any) {
+			throw new Error(`getAAAccount: factory() not available: ${e?.shortMessage ?? e?.message}`)
+		}
+		return account
 	} catch (error: any) {
-	  console.log(`❌ getAAAccount Failed: ${error.message}`)
-	  
-	  throw(error)
+		console.warn(`[getAAAccount] RPC failed: ${error.message}, fallback to API`)
+		return fetchAAAccountFromApi(eoa)
 	}
-  }
+}
 
 const mapActionToBeamioResponse = (
 	raw: {

@@ -282,7 +282,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
 				{redirecting && (
 				<div className={styles.loading}>
 					<SpinLoading />
-					<div className={styles.loadingText}>跳转中...</div>
+					<div className={styles.loadingText}>Redirecting...</div>
 				</div>
 				)}
 

@@ -14,6 +14,8 @@ import {
 	ScanLine,
 	Plus,
 	CreditCard,
+	Gift,
+	Ticket,
 	Globe,
 	ArrowUpRight,
 	ArrowDownLeft,
@@ -29,15 +31,19 @@ import {
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
 import BankingBridge from './components/BankingBridge'
-import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import TenKeyInput from '@/pages/Pay/components/TenKeyInput'
+import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
-import { getBalanceProcess, formatWithThousands, aesGcmDecrypt } from '@/services/beamio'
-import { getMyAssets, getCardsOfOwnerWithDetailsForProfile, type UserCardInfo } from '@/services/BeamioCard'
+import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt } from '@/services/beamio'
+import { getMyAssets, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, type UserCardInfo } from '@/services/BeamioCard'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import { storeSystemData } from '@/services/beamio'
 import { fiatPrefix, parseNodeEX, calcFeeFromReceived, formatTimev2, formatAmount, type ParsedNote } from '@/services/currency'
 import { CCSA_Card_Address } from '@/utils/constants'
+import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
+import { getRedeemStatusBatchFromChain } from '@/services/BeamioCard'
 import base_icon from '@/components/assets/base-logo.png'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import ActivePannel from './components/activePannel'
@@ -45,6 +51,86 @@ import AccountBeo from './AccountBea'
 import { TransactionsItemDetail } from '@/pages/History/TransactionsItemDetail'
 import CardManager from '@/pages/cardManager'
 import TopUpRedeemForm from '@/pages/Vouchers/TopUpRedeemForm'
+import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
+
+/** Redeem Active List：显示 owner 已创建的 redeem  batches 一览 */
+const RedeemActiveList = ({
+	batches,
+	onManageClick,
+}: {
+	batches: CardRedeemBatch[]
+	onManageClick: () => void
+}) => {
+	const [itemStatuses, setItemStatuses] = useState<Record<string, 'redeemed' | 'cancelled' | 'pending'>>({})
+
+	const refreshStatuses = useCallback(async () => {
+		const items = batches.flatMap((b) => b.items.map((item) => ({ cardAddress: b.cardAddress, hash: item.hash })))
+		if (items.length === 0) return
+		const next = await getRedeemStatusBatchFromChain(items)
+		setItemStatuses((prev) => ({ ...prev, ...next }))
+	}, [batches])
+
+	const batchIds = useMemo(() => batches.map((b) => b.batchId).join(','), [batches])
+	useEffect(() => {
+		if (batches.length > 0) refreshStatuses()
+	}, [batchIds, refreshStatuses])
+
+	return (
+		<div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+			<div className="flex items-center justify-between px-2 mb-3">
+				<div className="flex items-center gap-2">
+					<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+					<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
+						Redeem Active List
+					</span>
+				</div>
+				<button
+					type="button"
+					onClick={onManageClick}
+					className="text-[12px] font-semibold text-[#1D5BFF] active:opacity-70 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30"
+				>
+					Manage
+				</button>
+			</div>
+			<div className="space-y-3">
+				{[...batches].reverse().slice(0, 10).map((batch) => {
+					const redeemed = batch.items.filter((i) => itemStatuses[i.hash] === 'redeemed').length
+					const pending = batch.items.filter((i) => itemStatuses[i.hash] === 'pending').length
+					const cancelled = batch.items.filter((i) => itemStatuses[i.hash] === 'cancelled').length
+					return (
+						<div
+							key={batch.batchId}
+							onClick={onManageClick}
+							className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/85 dark:bg-slate-900/65 ring-1 ring-black/5 dark:ring-white/10 cursor-pointer active:opacity-80"
+						>
+							<div className="flex-1 min-w-0">
+								<p className="text-[13px] font-medium text-slate-800 dark:text-slate-200 truncate">
+									{batch.cardName ?? batch.cardAddress.slice(0, 8) + '…'}
+								</p>
+								<p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+									{formatAmount(Number(batch.pointsHuman), batch.currency as any)} pts × {batch.items.length}
+									<span className="ml-2">
+										{redeemed > 0 && <span className="text-emerald-600 dark:text-emerald-400">{redeemed} ✓</span>}
+										{redeemed > 0 && pending > 0 && ' · '}
+										{pending > 0 && <span className="text-amber-600 dark:text-amber-400">{pending} pending</span>}
+										{(redeemed > 0 || pending > 0) && cancelled > 0 && ' · '}
+										{cancelled > 0 && <span className="text-slate-400">{cancelled} cancelled</span>}
+									</span>
+								</p>
+							</div>
+							<span className="text-[10px] text-slate-400 shrink-0">
+								{new Date(batch.createdAt).toLocaleDateString()}
+							</span>
+						</div>
+					)
+				})}
+				{batches.length > 10 && (
+					<p className="text-[11px] text-slate-400 px-2">+ {batches.length - 10} more · tap Manage for full list</p>
+				)}
+			</div>
+		</div>
+	)
+}
 
 const MiniAction = ({
 	icon,
@@ -144,6 +230,7 @@ export default function MyWalletDashboardNew() {
 	const navigate = useNavigate()
 	const {
 		profiles,
+		setProfiles,
 		myAddress,
 		setMyAddress,
 		usdcbalance,
@@ -171,10 +258,18 @@ export default function MyWalletDashboardNew() {
 	const [ccsaAssets, setCcsaAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
 	const [reflash, setReflash] = useState(false)
 	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | 'ccsa' | null>(null)
+	const [copiedCardAddress, setCopiedCardAddress] = useState<string | null>(null)
 	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
 	const [aaPanelOpen, setAaPanelOpen] = useState<'' | 'Pay' | 'BeamioPayMeQR'>('')
 	const [ccsaCreateCardOpen, setCcsaCreateCardOpen] = useState(false)
 	const [topUpRedeemOpen, setTopUpRedeemOpen] = useState(false)
+	const [showRedeemListOpen, setShowRedeemListOpen] = useState(false)
+	const [ccsaRedeemOpen, setCcsaRedeemOpen] = useState(false)
+	const [redeemCodeInput, setRedeemCodeInput] = useState('')
+	const [redeemCardNumberInput, setRedeemCardNumberInput] = useState('')
+	const [redeemLoading, setRedeemLoading] = useState(false)
+	const [redeemError, setRedeemError] = useState<string | null>(null)
+	const [redeemSuccessTx, setRedeemSuccessTx] = useState<string | null>(null)
 	const [userCards, setUserCards] = useState<UserCardInfo[]>([])
 	const [payScreenMode, setPayScreenMode] = useState<'eoa-pay' | 'aa-eoa-transfer'>('eoa-pay')
 	/** 从 historyPayData 进入时暂存，传入 PayScreen 后清除 historyPayData */
@@ -183,6 +278,7 @@ export default function MyWalletDashboardNew() {
 	const [showTenKeySlide, setShowTenKeySlide] = useState(false)
 	const [payMeSigning, setPayMeSigning] = useState(false)
 	const copyAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const copiedCardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const refreshAAAssetsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	// 计算汇率
@@ -241,14 +337,34 @@ export default function MyWalletDashboardNew() {
 		setOpenRelayPayload(null)
 	}, [setShowFooter])
 
-	// 拉取用户拥有的 BeamioUserCard 列表（同时查 aaAccount 与 keyID，keyID 缺时从 privateKeyArmor 推导）
+	// 拉取用户拥有的 BeamioUserCard 列表。RPC/API 成功时更新 profile.issuedCards；失败时使用 profile.issuedCards 缓存，不信任空 []
 	const refetchUserCards = useCallback(() => {
 		const profile = profiles?.[0]
 		if (!profile || (!profile.aaAccount && !profile.keyID && !profile.privateKeyArmor)) return
 		getCardsOfOwnerWithDetailsForProfile(profile)
-			.then(setUserCards)
-			.catch(() => setUserCards([]))
-	}, [profiles])
+			.then(({ cards, trusted }) => {
+				setUserCards(cards)
+				if (trusted) {
+					setProfiles((prev: profile[]) => {
+						if (!prev?.length) return prev
+						const next = [...prev]
+						next[0] = { ...next[0], issuedCards: cards }
+						return next
+					})
+					const temp = CoNET_Data
+					if (temp?.profiles?.[0]) {
+						temp.profiles[0] = { ...temp.profiles[0], issuedCards: cards }
+						setCoNET_Data(temp)
+						storeSystemData()
+					}
+				}
+			})
+			.catch(() => {
+				// 异常时使用 profile 缓存
+				const cached = profile?.issuedCards ?? []
+				setUserCards(cached)
+			})
+	}, [profiles, setProfiles])
 
 	const closeCcsaCreateCard = useCallback(() => {
 		setShowFooter(true)
@@ -256,25 +372,39 @@ export default function MyWalletDashboardNew() {
 		refetchUserCards()
 	}, [setShowFooter, refetchUserCards])
 
-	// 获取 AA 账号的 USDC 余额（与 MyWalletDashboard 一致）
+	// 获取 AA 账号的 USDC 余额。RPC 熔断或失败时走 API，避免雪崩式重试
+	const loadAaAccountBalanceInFlightRef = useRef<Promise<void> | null>(null)
 	const loadAaAccountBalance = useCallback(async () => {
-		if (!profiles?.[0]?.aaAccount) {
+		const aa = profiles?.[0]?.aaAccount
+		if (!aa) {
 			setAaAccountUsdcBalance('0')
 			return
 		}
-		try {
-			const usdcContract = new ethers.Contract(
-				USDCContract_BASE,
-				usdc_abi as ethers.InterfaceAbi,
-				baseEndpoint
-			)
-			const balanceRaw = await usdcContract.balanceOf(profiles[0].aaAccount)
-			const balance = ethers.formatUnits(balanceRaw, 6)
-			setAaAccountUsdcBalance(balance)
-		} catch (e) {
-			console.warn('Failed to load AA balance', e)
-			setAaAccountUsdcBalance('0')
+		// 单飞：相同请求不重复发出
+		if (loadAaAccountBalanceInFlightRef.current) {
+			await loadAaAccountBalanceInFlightRef.current
+			return
 		}
+		const run = async () => {
+			try {
+				if (isRpcDegraded()) {
+					const bal = await getUsdcBalanceFromApi(aa)
+					setAaAccountUsdcBalance(bal)
+					return
+				}
+				const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
+				const balanceRaw = await usdcContract.balanceOf(aa)
+				setAaAccountUsdcBalance(ethers.formatUnits(balanceRaw, 6))
+			} catch (e) {
+				if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+				const bal = await getUsdcBalanceFromApi(aa)
+				setAaAccountUsdcBalance(bal)
+			} finally {
+				loadAaAccountBalanceInFlightRef.current = null
+			}
+		}
+		loadAaAccountBalanceInFlightRef.current = run()
+		await loadAaAccountBalanceInFlightRef.current
 	}, [profiles])
 
 	// 拉取 EOA 交易历史（与 MyWalletDashboard 一致，供 Active & Pending / History 展示）
@@ -466,8 +596,12 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [profiles, myAddress, setMyAddress])
 
+	// 延迟一帧再拉取历史，让首屏先可交互（避免与 balance/refetchUserCards 等同时阻塞主线程）
 	useEffect(() => {
-		loadEoaHistory()
+		const id = requestAnimationFrame(() => {
+			loadEoaHistory()
+		})
+		return () => cancelAnimationFrame(id)
 	}, [loadEoaHistory])
 
 	const activePending = useMemo(() => {
@@ -487,26 +621,33 @@ export default function MyWalletDashboardNew() {
 			.slice(0, 6)
 	}, [allItems])
 
-	// 初始化：EOA 余额、AA 余额、myAddress
+	// 初始化：EOA 余额、AA 余额、myAddress（延迟一帧，让首屏先可交互）
 	useEffect(() => {
 		if (!profiles?.length) return
 		const profile = profiles[0]
 		if (!myAddress) setMyAddress(profile.keyID)
-		if (profile.keyID) getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
-		loadAaAccountBalance()
+		const id = requestAnimationFrame(() => {
+			if (profile.keyID) getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+			loadAaAccountBalance()
+		})
+		return () => cancelAnimationFrame(id)
 	}, [profiles, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance])
 
-	// 拉取 CCSA 卡资产（points 用作 CCSA 卡片展示余额）
+	// 拉取 CCSA 卡资产（延迟执行，避免首屏加载阻塞 Footer 等交互）
 	useEffect(() => {
 		if (!profiles?.[0] || !CCSA_Card_Address) return
-		getMyAssets(profiles[0], CCSA_Card_Address)
-			.then((assets) => {
-				if (assets?.points != null) setCcsaBalance(assets.points)
-				setCcsaAssets(assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null)
-			})
-			.catch(() => { setCcsaBalance('0'); setCcsaAssets(null) })
+		const id = setTimeout(() => {
+			getMyAssets(profiles[0], CCSA_Card_Address)
+				.then((assets) => {
+					if (assets?.points != null) setCcsaBalance(assets.points)
+					setCcsaAssets(assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null)
+				})
+				.catch(() => { setCcsaBalance('0'); setCcsaAssets(null) })
+		}, 150)
+		return () => clearTimeout(id)
 	}, [profiles])
 
+	// 仅在进入 CCSA 视图时拉取 userCards，避免首屏 5+ 个 RPC 并发阻塞主线程和 Footer 交互
 	useEffect(() => {
 		if (activeView !== 'ccsa') return
 		refetchUserCards()
@@ -526,9 +667,21 @@ export default function MyWalletDashboardNew() {
 		[]
 	)
 
+	const copyCardAddress = useCallback((address: string) => {
+		navigator.clipboard?.writeText(address).then(() => {
+			if (copiedCardTimeoutRef.current) clearTimeout(copiedCardTimeoutRef.current)
+			setCopiedCardAddress(address)
+			copiedCardTimeoutRef.current = setTimeout(() => {
+				setCopiedCardAddress(null)
+				copiedCardTimeoutRef.current = null
+			}, 3000)
+		})
+	}, [])
+
 	useEffect(
 		() => () => {
 			if (copyAddressTimeoutRef.current) clearTimeout(copyAddressTimeoutRef.current)
+			if (copiedCardTimeoutRef.current) clearTimeout(copiedCardTimeoutRef.current)
 		},
 		[]
 	)
@@ -1015,6 +1168,17 @@ export default function MyWalletDashboardNew() {
 													setEoaPanelOpen('BankingBridge')
 												}}
 											/>
+											<MiniAction
+												label="Redeem"
+												icon={<Ticket className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setShowFooter(false)
+													setCcsaRedeemOpen(true)
+													setRedeemCodeInput('')
+													setRedeemError(null)
+													setRedeemSuccessTx(null)
+												}}
+											/>
 										</div>
 									) : selectedCard.id === 'aa' ? (
 										/* Express Pay：Transfer / Pay / Pay bill / Vouchers（与 MyWalletDashboard Tab 2 一致） */
@@ -1149,6 +1313,19 @@ export default function MyWalletDashboardNew() {
 									) : selectedCard.id === 'ccsa' ? (
 										/* My BeamioUserCards：普通发卡 owner 流程，与 CCSA 卡无关系 */
 										<div className="mt-4 space-y-3">
+											{/* Card owner create redeem（空投）icon 按钮 */}
+											{userCards.length > 0 && (
+												<div className="flex justify-end mb-1">
+													<MiniAction
+														label="Airdrop"
+														icon={<Gift className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+														onClick={() => {
+															setShowFooter(false)
+															setTopUpRedeemOpen(true)
+														}}
+													/>
+												</div>
+											)}
 											<div className="flex items-center justify-between px-2 mb-4">
 												<div className="flex items-center gap-2">
 													<span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
@@ -1180,9 +1357,41 @@ export default function MyWalletDashboardNew() {
 																<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">
 																	{card.name}
 																</p>
-																<p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate" title={card.cardAddress}>
-																	{card.cardAddress.slice(0, 10)}...{card.cardAddress.slice(-8)}
-																</p>
+																<div className="flex items-center gap-1.5 mt-0.5">
+																	<p className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate" title={card.cardAddress}>
+																		{card.cardAddress.slice(0, 10)}...{card.cardAddress.slice(-8)}
+																	</p>
+																	<button
+																		type="button"
+																		onClick={(e) => {
+																			e.stopPropagation()
+																			copyCardAddress(card.cardAddress)
+																		}}
+																		className="shrink-0 p-1 rounded-md hover:bg-slate-200/70 dark:hover:bg-slate-700/50 transition-colors active:scale-95"
+																		aria-label="Copy address"
+																	>
+																		<AnimatePresence mode="wait">
+																			{copiedCardAddress === card.cardAddress ? (
+																				<motion.span
+																					key="check"
+																					initial={{ scale: 0, opacity: 0 }}
+																					animate={{ scale: 1, opacity: 1 }}
+																					transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+																				>
+																					<Check size={14} className="text-emerald-500 dark:text-emerald-400" strokeWidth={2.5} />
+																				</motion.span>
+																			) : (
+																				<motion.span
+																					key="copy"
+																					initial={{ opacity: 1 }}
+																					exit={{ opacity: 0 }}
+																				>
+																					<Copy size={14} className="text-slate-500 dark:text-slate-400" strokeWidth={2} />
+																				</motion.span>
+																			)}
+																		</AnimatePresence>
+																	</button>
+																</div>
 																<div className="flex items-center gap-2 mt-1.5 text-sm text-slate-600 dark:text-slate-300">
 																	<span>{card.currency}</span>
 																	<span>·</span>
@@ -1198,6 +1407,17 @@ export default function MyWalletDashboardNew() {
 												<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400 rounded-2xl bg-white/85 dark:bg-slate-900/65 ring-1 ring-black/5 dark:ring-white/10">
 													No BeamioUserCards yet. Create one with the button above.
 												</div>
+											)}
+
+											{/* Redeem Active List：owner 已创建的 redeem 一览 */}
+											{(CoNET_Data?.cardRedeems?.length ?? 0) > 0 && (
+												<RedeemActiveList
+													batches={CoNET_Data?.cardRedeems ?? []}
+													onManageClick={() => {
+														setShowFooter(false)
+														setShowRedeemListOpen(true)
+													}}
+												/>
 											)}
 										</div>
 									) : (
@@ -1328,6 +1548,159 @@ export default function MyWalletDashboardNew() {
 					</div>
 				</div>
 
+				{/* CCSA Redeem：用户输入 redeem 码，API 执行 redeemForUser */}
+				<div
+					className={`fixed inset-0 z-[100] ${ccsaRedeemOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+					aria-hidden={!ccsaRedeemOpen}
+				>
+					<div
+						className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${ccsaRedeemOpen ? 'opacity-100' : 'opacity-0'}`}
+						onClick={() => {
+							setCcsaRedeemOpen(false)
+							setShowFooter(true)
+							setRedeemError(null)
+							setRedeemSuccessTx(null)
+						}}
+					/>
+					<div
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${ccsaRedeemOpen ? 'translate-y-0' : 'translate-y-full'}`}
+					>
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-500/70" />
+						</div>
+						<div className="px-6 py-6 overflow-y-auto">
+							<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">Redeem</h3>
+							<div className="mb-4">
+								<label htmlFor="redeem-card-number" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+									卡号
+								</label>
+								<input
+									id="redeem-card-number"
+									type="text"
+									value={redeemCardNumberInput}
+									onChange={(e) => setRedeemCardNumberInput(e.target.value)}
+									placeholder="输入卡号"
+									className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-[#2F78FF] focus:border-transparent"
+									disabled={redeemLoading}
+									autoComplete="off"
+								/>
+							</div>
+							<p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+								Enter your redeem code to receive $CCSA points to your account.
+							</p>
+							{redeemSuccessTx ? (
+								<div className="space-y-4">
+									<div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800">
+										<p className="text-emerald-700 dark:text-emerald-300 font-medium">Redeem successful!</p>
+										<a
+											href={`https://basescan.org/tx/${redeemSuccessTx}`}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="text-sm text-[#2F78FF] underline mt-1 inline-block"
+										>
+											View transaction
+										</a>
+									</div>
+									<button
+										type="button"
+										onClick={() => {
+											setCcsaRedeemOpen(false)
+											setShowFooter(true)
+											setRedeemSuccessTx(null)
+											refetchUserCards()
+											if (profiles?.[0]) getMyAssets(profiles[0], CCSA_Card_Address).then(setCcsaAssets)
+										}}
+										className="w-full py-3 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-semibold"
+									>
+										Done
+									</button>
+								</div>
+							) : (
+								<form
+									onSubmit={async (e) => {
+										e.preventDefault()
+										const code = redeemCodeInput.trim()
+										if (!code) return
+										const profile = profiles?.[0]
+										let toUserEOA = ''
+										if (profile?.keyID && ethers.isAddress(profile.keyID)) {
+											toUserEOA = profile.keyID
+										} else if (profile?.privateKeyArmor) {
+											try {
+												toUserEOA = new ethers.Wallet(profile.privateKeyArmor).address
+											} catch {
+												setRedeemError('Could not resolve your address')
+												return
+											}
+										}
+										if (!toUserEOA || !ethers.isAddress(toUserEOA)) {
+											setRedeemError('Please connect your wallet first')
+											return
+										}
+										setRedeemLoading(true)
+										setRedeemError(null)
+										const cardAddr = redeemCardNumberInput.trim() || CCSA_Card_Address
+										if (!ethers.isAddress(cardAddr)) {
+											setRedeemError('Invalid card address')
+											return
+										}
+										const result = await postCardRedeem(cardAddr, code, toUserEOA)
+										setRedeemLoading(false)
+										if (result.success && result.tx) {
+											setRedeemSuccessTx(result.tx)
+										} else {
+											let err = result.error ?? 'Redeem failed'
+											if (result.status === 404) err = 'API endpoint not found (404). The cardRedeem API may not be deployed yet.'
+											else if (result.status && result.status >= 400) err = `Redeem failed: ${err}${result.status ? ` [HTTP ${result.status}]` : ''}`
+											setRedeemError(err)
+										}
+									}}
+									className="space-y-4"
+								>
+									<div>
+										<label htmlFor="redeem-code" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+											Redeem code
+										</label>
+										<input
+											id="redeem-code"
+											type="text"
+											value={redeemCodeInput}
+											onChange={(e) => setRedeemCodeInput(e.target.value)}
+											placeholder="Paste your redeem code"
+											className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-[#2F78FF] focus:border-transparent"
+											disabled={redeemLoading}
+											autoComplete="off"
+										/>
+									</div>
+									{redeemError && (
+										<p className="text-sm text-rose-600 dark:text-rose-400">{redeemError}</p>
+									)}
+									<div className="flex gap-3">
+										<button
+											type="button"
+											onClick={() => {
+												setCcsaRedeemOpen(false)
+												setShowFooter(true)
+											}}
+											className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-slate-600 font-semibold text-slate-700 dark:text-slate-300"
+										>
+											Cancel
+										</button>
+										<button
+											type="submit"
+											disabled={redeemLoading || !redeemCodeInput.trim()}
+											className="flex-1 py-3 rounded-xl bg-[#2F78FF] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+										>
+											{redeemLoading ? <Loader className="w-5 h-5 animate-spin" strokeWidth={2} /> : null}
+											Redeem
+										</button>
+									</div>
+								</form>
+							)}
+						</div>
+					</div>
+				</div>
+
 				{/* Top Up Redeem：Owner 免 gas 空投 pts */}
 				<div
 					className={`fixed inset-0 z-[100] ${topUpRedeemOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
@@ -1373,7 +1746,7 @@ export default function MyWalletDashboardNew() {
 								}}
 								onMore={() => {}}
 							/>
-							<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+							<div className="flex-1 min-h-0 flex flex-col overflow-hidden pt-[calc(env(safe-area-inset-top)+20rem)]">
 								<TenKeyInput
 									onPaymentSuccess={() => {
 										setShowTenKeySlide(false)
@@ -1408,8 +1781,41 @@ export default function MyWalletDashboardNew() {
 								}}
 								onMore={() => {}}
 							/>
-							<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+							<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain pt-[calc(env(safe-area-inset-top)+20rem)]">
 								<TransactionsItemDetail localMode={itemTx.mode} tx={itemTx} />
+							</div>
+						</motion.div>
+					</AnimatePresence>,
+					document.body
+				)}
+
+				{/* Redeem Active List：从右滑入的独立窗口，查看完整 redeem 并执行 Cancel */}
+				{showRedeemListOpen && createPortal(
+					<AnimatePresence>
+						<motion.div
+							key="redeem-list"
+							className="fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col"
+							initial={{ x: '100%' }}
+							animate={{ x: 0 }}
+							exit={{ x: '100%' }}
+							transition={{ duration: 0.28, ease: 'easeOut' }}
+							onTouchMove={(e) => e.stopPropagation()}
+						>
+							<BeamioNavBack
+								title=""
+								onClose={() => {
+									setShowRedeemListOpen(false)
+									setShowFooter(true)
+								}}
+								onMore={() => {}}
+							/>
+							<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain pt-[calc(env(safe-area-inset-top)+3rem)]">
+								<RedeemListScreen
+									onClose={() => {
+										setShowRedeemListOpen(false)
+										setShowFooter(true)
+									}}
+								/>
 							</div>
 						</motion.div>
 					</AnimatePresence>,

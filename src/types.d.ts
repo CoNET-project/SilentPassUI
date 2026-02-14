@@ -117,6 +117,8 @@ interface Region {
 	chats?: chatData[]
 	chatManager?: IChat
 	aaAccount?: string
+	/** 用户发行的 BeamioUserCard 列表，仅当 RPC/API 明确成功时更新。错误时不可信空 [] */
+	issuedCards?: Array<{ cardAddress: string; name: string; currency: string; priceE6: string; ptsPer1Currency: string }>
   }
   
   interface SpClubReferees {
@@ -225,6 +227,24 @@ type paymentCard = {
 
 
   
+  /** 单张 redeem 记录：code + 链上状态 */
+  type CardRedeemItem = {
+	code: string
+	hash: string  // keccak256(toUtf8Bytes(code))
+  }
+
+  /** 批量创建的 redeem batch，存于 CoNET_Data */
+  type CardRedeemBatch = {
+	batchId: string
+	cardAddress: string
+	cardName?: string
+	currency?: string
+	points6: string
+	pointsHuman: string
+	createdAt: number
+	items: CardRedeemItem[]
+  }
+
   type encrypt_keys_object = {
 	profiles: profile[];
 	isReady: boolean;
@@ -249,6 +269,7 @@ type paymentCard = {
 	referrals?: string
 	beamio: beamio
 	search?: ISearch
+	cardRedeems?: CardRedeemBatch[]
   }
   
   interface passportInfoFromChain {

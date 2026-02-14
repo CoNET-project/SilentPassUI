@@ -25,7 +25,8 @@ import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
-import { baseEndpoint, USDCContract_BASE } from "../utils/constants"
+import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
+import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 
 export type x402Response = {
 	timestamp: string
@@ -52,33 +53,56 @@ export type IBalance= {
 	}
 }
 
+/** RPC 失败时从 API 获取余额（30s 缓存由服务端负责） */
+const fetchBalanceFromApi = async (address: string): Promise<IBalance | null> => {
+	try {
+		const res = await fetch(`${beamioApi}/api/getBalance?address=${encodeURIComponent(address)}`)
+		if (!res.ok) return null
+		const data = await res.json().catch(() => ({}))
+		if (data?.eth != null && data?.usdc != null) {
+			return {
+				eth: String(data.eth),
+				usdc: String(data.usdc),
+				oracle: data?.oracle ?? { bnb: '', eth: '', usdc: '1' },
+			}
+		}
+		return null
+	} catch {
+		return null
+	}
+}
+
+/** 从 API 获取指定地址 USDC 余额（RPC 熔断或失败时使用） */
+export const getUsdcBalanceFromApi = async (address: string): Promise<string> => {
+	const b = await fetchBalanceFromApi(address)
+	return b?.usdc ?? '0'
+}
+
 const getBalance = async (address: string) => {
 	if (!address) return null
-
+	// 熔断期直接走 API，避免重复失败请求
+	if (isRpcDegraded()) {
+		return fetchBalanceFromApi(address)
+	}
 	try {
-
-
 		const [usdc, eth, req] = await Promise.all([
 			SC.balanceOf(address),
 			baseEndpoint.getBalance(address),
-			fetch(getOraclesEndPoint, {method: 'GET'})
+			fetch(getOraclesEndPoint, { method: 'GET' }),
 		])
-		if (req.status == 200 ) {
+		if (req.status === 200) {
 			const oracle = await req.json()
-			const ret = {
+			return {
 				eth: ethers.formatUnits(eth, 18).toString(),
 				usdc: ethers.formatUnits(usdc, 6).toString(),
-				oracle
-				
+				oracle,
 			}
-			return ret
 		}
-		
-
 	} catch (err) {
-		console.error('getBalance fetch error:', err)
-		return null
+		if (isRpcQuotaOrNetworkError(err)) reportRpcFailure()
+		return fetchBalanceFromApi(address)
 	}
+	return null
 }
 
 const duplicate = contracts.Duplicate
@@ -842,25 +866,33 @@ export const checkStorage = async () => {
 
 const storageHashData = async (docId: string, data: string) => {
   const database = PouchDB(localDatabaseName, { auto_compaction: true });
+  const putWithRev = (rev: string) => database.put({ _id: docId, title: data, _rev: rev });
 
-  let doc: any;
-  try {
-    doc = await database.get(docId, { latest: true });
-
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      await database.put({ _id: docId, title: data, _rev: doc._rev });
-    } catch (ex) {
-      console.log(`put doc storageHashData Error!`, ex);
-    }
-  } catch (ex: any) {
-    if (/^not_found/.test(ex.name)) {
-      try {
-        await database.post({ _id: docId, title: data });
-      } catch (ex) {
-        console.log(`create new doc storageHashData Error!`, ex);
+      const doc = await database.get(docId, { latest: true });
+      await putWithRev(doc._rev);
+      return;
+    } catch (ex: any) {
+      if (ex?.status === 409 || ex?.name === 'conflict') {
+        await new Promise((r) => setTimeout(r, 30 + attempt * 50));
+        continue;
       }
-    } else {
-      console.log(`get doc storageHashData Error!`, ex);
+      if (/^not_found/.test(ex?.name ?? '')) {
+        try {
+          await database.post({ _id: docId, title: data });
+          return;
+        } catch (postEx: any) {
+          if (postEx?.status === 409 || postEx?.name === 'conflict') {
+            await new Promise((r) => setTimeout(r, 30));
+            continue;
+          }
+          console.warn(`[storageHashData] post Error:`, postEx?.message ?? postEx);
+          return;
+        }
+      }
+      console.warn(`[storageHashData] Error:`, ex?.message ?? ex);
+      return;
     }
   }
 }
@@ -873,21 +905,20 @@ const ensureFlatProfiles = (p: any): profile[] => {
   return p
 }
 
+let storeSystemDataTimer: ReturnType<typeof setTimeout> | null = null
 export const storeSystemData = async () => {
-  if (!CoNET_Data) {
-    return;
-  }
-  const temp = { ...CoNET_Data }
-  if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
-
-  try {
-    await storageHashData(
-		"init",
-		Buffer.from(customJsonStringify(temp)).toString("base64")
-    );
-  } catch (ex) {
-    console.log(`storeSystemData storageHashData Error!`, ex);
-  }
+  if (!CoNET_Data) return
+  if (storeSystemDataTimer) clearTimeout(storeSystemDataTimer)
+  storeSystemDataTimer = setTimeout(async () => {
+    storeSystemDataTimer = null
+    const temp = { ...CoNET_Data }
+    if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
+    try {
+      await storageHashData("init", Buffer.from(customJsonStringify(temp)).toString("base64"))
+    } catch (ex) {
+      console.warn(`[storeSystemData] Error:`, ex)
+    }
+  }, 200)
 }
 
 

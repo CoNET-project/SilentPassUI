@@ -828,7 +828,10 @@ function AppShell() {
 				</Routes>
 			</div>
 
-			{showFooter && <Footer visible={footerVisible} peek={false} />}
+			{showFooter && createPortal(
+				<Footer visible={footerVisible} peek={false} />,
+				document.body
+			)}
 
 			{/**	全画面 	 */}
 			{showAlphaHowItWorks === 'BeamioContactProfilePreview' && createPortal(

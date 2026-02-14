@@ -22,10 +22,8 @@ const _ethRpc = [
 const USDCContract_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const baseEndpoint = new ethers.JsonRpcProvider(
 	'https://1rpc.io/base',
-	{
-		name: "base",
-		chainId: 8453
-	}
+	{ name: 'base', chainId: 8453 },
+	{ staticNetwork: true }
 )
 
 const BeamioCardFactorySC = new ethers.Contract(

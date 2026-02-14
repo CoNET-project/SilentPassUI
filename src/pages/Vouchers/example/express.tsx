@@ -66,7 +66,7 @@ export default function WalletExample() {
   // 流程 1: 支付创建 Smart Account (模拟过程)
   const handleCreateSmartAccount = () => {
     if (eoaBalance < AA_CREATION_COST) {
-      alert("EOA 余额不足 0.99 USDC");
+      alert("Insufficient EOA balance (0.99 USDC required)");
       return;
     }
 

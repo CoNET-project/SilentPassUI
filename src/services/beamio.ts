@@ -27,6 +27,7 @@ import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
+import { withBaseRpc } from '../utils/baseRpc'
 
 export type x402Response = {
 	timestamp: string
@@ -72,35 +73,34 @@ const fetchBalanceFromApi = async (address: string): Promise<IBalance | null> =>
 	}
 }
 
-/** 从 API 获取指定地址 USDC 余额（RPC 熔断或失败时使用） */
-export const getUsdcBalanceFromApi = async (address: string): Promise<string> => {
+/** 从 API 获取指定地址 USDC 余额（RPC 熔断或失败时使用），失败返回 null 表示不可信 */
+export const getUsdcBalanceFromApi = async (address: string): Promise<string | null> => {
 	const b = await fetchBalanceFromApi(address)
-	return b?.usdc ?? '0'
+	return b?.usdc != null ? String(b.usdc) : null
 }
 
 const getBalance = async (address: string) => {
 	if (!address) return null
-	// 熔断期直接走 API，避免重复失败请求
-	if (isRpcDegraded()) {
-		return fetchBalanceFromApi(address)
-	}
+	// 熔断期仅使用 CoNET 节点（不向 API 服务器请求），withBaseRpc 内部会走 CoNET-only
 	try {
 		const [usdc, eth, req] = await Promise.all([
-			SC.balanceOf(address),
-			baseEndpoint.getBalance(address),
+			withBaseRpc((p) => new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, p).balanceOf(address)),
+			withBaseRpc((p) => p.getBalance(address)),
 			fetch(getOraclesEndPoint, { method: 'GET' }),
 		])
 		if (req.status === 200) {
 			const oracle = await req.json()
 			return {
-				eth: ethers.formatUnits(eth, 18).toString(),
-				usdc: ethers.formatUnits(usdc, 6).toString(),
+				eth: ethers.formatUnits(eth as bigint, 18).toString(),
+				usdc: ethers.formatUnits(usdc as bigint, 6).toString(),
 				oracle,
 			}
 		}
 	} catch (err) {
 		if (isRpcQuotaOrNetworkError(err)) reportRpcFailure()
-		return fetchBalanceFromApi(address)
+		// 限流时不再走 API，仅使用 CoNET 节点；非限流时可用 API 兜底
+		if (!isRpcDegraded()) return fetchBalanceFromApi(address)
+		return null
 	}
 	return null
 }

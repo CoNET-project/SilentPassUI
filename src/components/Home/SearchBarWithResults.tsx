@@ -61,7 +61,7 @@ function formatUserDate(timestamp?: string | number): string {
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
 	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false }: Props) => {
-		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter} = useDaemonContext()
+		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setRedeemFromUrl } = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
 		const [results, setResults] = useState<searchResult[]>([])
@@ -93,6 +93,20 @@ const SearchInputWithDropdown =
 			const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
 			const cashcode = searchParams.get("cashcode")||''
 			const _beamio = searchParams.get("beamio")||''
+			const _beamiocard = searchParams.get("beamiocard") || searchParams.get("Beamiocard") || ''
+			const _redeemcode = searchParams.get("redeemcode") || searchParams.get("Redeemcode") || ''
+
+			// BeamioUserCard redeem URL → 打开 redeem 面板并预填
+			if (_redeemcode?.trim()) {
+				setRedeemFromUrl({
+					cardAddress: _beamiocard?.trim() || undefined,
+					redeemCode: decodeURIComponent(_redeemcode.trim()),
+				})
+				setLoading(false)
+				setShowDropdown(false)
+				return navigate('/History')
+			}
+
 			if (_beamio) {
 				
 				const user = await searchUsername(_beamio)
@@ -155,13 +169,22 @@ const SearchInputWithDropdown =
 
 		// URL 逻辑：只有长度>=2才会走到这里（符合你的要求）
 		try {
-			const url = new URL(qq)
+			let url: URL
+			try {
+				url = new URL(qq)
+			} catch {
+				// 智能对应：无协议时，若包含 redeem 参数则尝试以 beamio.app 为 base 解析
+				if (/redeemcode=|beamiocard=/i.test(qq)) {
+					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.app')
+				} else {
+					throw new Error('not url')
+				}
+			}
 			if (url.protocol === 'https:' || url.protocol === 'http:') {
-			await requestUrl(url)
-			setLoading(false)
-			// URL 场景你现在是 navigate，不一定需要 dropdown
-			setShowDropdown(false)
-			return
+				await requestUrl(url)
+				setLoading(false)
+				setShowDropdown(false)
+				return
 			}
 			setInternalError(true)
 			setLoading(false)

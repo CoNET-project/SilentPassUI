@@ -121,6 +121,7 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
                     currency: selectedCard.currency,
                     points6: points6.toString(),
                     pointsHuman: pointsInput,
+                    ptsPer1Currency: selectedCard.ptsPer1Currency,
                     createdAt: Date.now(),
                     items,
                 }
@@ -153,7 +154,7 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
                     </div>
                     <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">Redeems created</h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6">
-                        {createdBatch.items.length} redeem codes created ({formatAmount(Number(createdBatch.pointsHuman), createdBatch.currency as any)} pts each)
+                        {createdBatch.items.length} redeem codes created (<span className="text-2xl font-semibold">{fiatPrefix(createdBatch.currency as any)}{formatAmount((createdBatch.ptsPer1Currency ? Number(createdBatch.pointsHuman) / Number(createdBatch.ptsPer1Currency) : Number(createdBatch.pointsHuman)), createdBatch.currency as any)}</span> each)
                     </p>
                     <div className="w-full max-w-[320px] space-y-2 mb-6 max-h-40 overflow-y-auto">
                         {createdBatch.items.slice(0, 5).map((item, i) => (

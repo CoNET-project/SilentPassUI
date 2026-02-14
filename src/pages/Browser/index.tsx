@@ -22,7 +22,7 @@ const formatMoney = (n: number) =>
 
 const Browser = ({}) => {
 	const navigate = useNavigate()
-	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl, setSendToMemo, setRedeemCode, setPaymentLinkCode, paymentLinkCode, payMePayment} = useDaemonContext()
+	const { power, setPower, setUsdcbalance, paymentLink, setPaymentLink, secureCode, ignoreUrl, setSecureCode, setIgnoreUrl, setSendToMemo, setRedeemCode, setPaymentLinkCode, paymentLinkCode, payMePayment, setRedeemFromUrl } = useDaemonContext()
 	
 	const [showLinkPay, setShowLinkPay] = useState(false)
 	const [code, setCode] = useState(paymentLink?.code)
@@ -107,6 +107,18 @@ const Browser = ({}) => {
 		let code = searchParams.get("code")||''
 		const _secureCode = searchParams.get("secureCode")||''
 		const cashcode = searchParams.get("cashcode")||''
+		const _beamiocard = searchParams.get("beamiocard") || searchParams.get("Beamiocard") || ''
+		const _redeemcode = searchParams.get("redeemcode") || searchParams.get("Redeemcode") || ''
+
+		// BeamioUserCard redeem URL → 打开 redeem 面板并预填
+		if (_redeemcode?.trim()) {
+			setRedeemFromUrl({
+				cardAddress: _beamiocard?.trim() || undefined,
+				redeemCode: decodeURIComponent(_redeemcode.trim()),
+			})
+			navigate('/History')
+			return
+		}
 		
 		if (_secureCode) {
 			setSecureCode (_secureCode)

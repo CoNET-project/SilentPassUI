@@ -672,16 +672,16 @@ export function MyWalletDashboard() {
 		}
 		const run = async () => {
 			try {
-				if (isRpcDegraded()) {
-					setAaAccountUsdcBalance(await getUsdcBalanceFromApi(aa))
-					return
-				}
+				// 限流时仅用 CoNET 节点，baseEndpoint 内部会走 CoNET-only
 				const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
 				const balanceRaw = await usdcContract.balanceOf(aa)
 				setAaAccountUsdcBalance(ethers.formatUnits(balanceRaw, 6))
 			} catch (e) {
 				if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
-				setAaAccountUsdcBalance(await getUsdcBalanceFromApi(aa))
+				if (!isRpcDegraded()) {
+					const bal = await getUsdcBalanceFromApi(aa)
+					if (bal != null) setAaAccountUsdcBalance(bal)
+				}
 			} finally {
 				loadAaAccountBalanceInFlightRef.current = null
 			}
@@ -1344,6 +1344,7 @@ export function MyWalletDashboard() {
 										setShowFooter(true)
 										setSettingsOpen('')
 									}}
+									aaAccountUsdcBalance={aaAccountUsdcBalance}
 								/>
 							)}
 							{

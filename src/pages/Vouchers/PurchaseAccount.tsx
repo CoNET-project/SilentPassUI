@@ -237,13 +237,17 @@ export default function PurchaseAccount({
 					onClose(null)
 				}
 			} else {
-				setError(requestData.error ?? "Failed to purchase. Please try again.")
+				const errMsg = requestData.error ?? "Failed to purchase. Please try again."
+				console.error("[PurchaseAccount] postBuyCardPoints failed:", errMsg)
+				setError(errMsg)
 				setLoading(false)
 				return
 			}
 
 		} catch (err) {
-				setError("Failed to purchase. Please try again.")
+				const msg = (err as Error)?.message ?? String(err)
+				console.error("[PurchaseAccount] payUSDCProcess error:", err)
+				setError(msg || "Failed to purchase. Please try again.")
 				setLoading(false)
 				return
 			}

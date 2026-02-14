@@ -241,6 +241,8 @@ type paymentCard = {
 	currency?: string
 	points6: string
 	pointsHuman: string
+	/** 1 单位 currency = ptsPer1Currency pts，用于按 currency 前缀显示金额 */
+	ptsPer1Currency?: string
 	createdAt: number
 	items: CardRedeemItem[]
   }

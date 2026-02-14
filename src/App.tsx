@@ -13,7 +13,8 @@ import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
 import { checkStorage, searchUsername, storeSystemData } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
-import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
+import { baseEndpoint, USDCContract_BASE, setBaseRpcNodeProvider, setRpcDegradedGetter } from "@/utils/constants"
+import { isRpcDegraded } from "@/utils/rpcStatus"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
 import MyWallet from "@/pages/Settings/index"
@@ -86,7 +87,8 @@ function AppShell() {
     scanIntent,
     setScanIntent,
 	setIsInitialLoading,
-	setBeamio
+	setBeamio,
+	setRedeemFromUrl
   } = useDaemonContext()
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -105,6 +107,16 @@ function AppShell() {
   useLayoutEffect(() => {
     if (showFooter) setFooterVisible(true)
   }, [showFooter])
+
+  // 注册 Base RPC 节点提供者与熔断状态：限流时仅使用 CoNET allNodes
+  useEffect(() => {
+    setBaseRpcNodeProvider(() => allNodes)
+    setRpcDegradedGetter(() => isRpcDegraded())
+    return () => {
+      setBaseRpcNodeProvider(null)
+      setRpcDegradedGetter(null)
+    }
+  }, [allNodes])
 
 	/** 消息唯一键：优先 sendId，否则 from_timestamp，用于去重与角标 */
 	const getMsgKey = (raw: any) => {
@@ -659,8 +671,20 @@ function AppShell() {
       searchParams.get("secureCode") || searchParams.get("securecode") || ""
     const cashcode = searchParams.get("cashcode") || ""
     const _beamio = searchParams.get("beamio") || ""
+    const _beamiocard = searchParams.get("beamiocard") || searchParams.get("Beamiocard") || ""
+    const _redeemcode = searchParams.get("redeemcode") || searchParams.get("Redeemcode") || ""
 
 	setScanData("")
+
+    // BeamioUserCard redeem URL: beamiocard + redeemcode → 打开 redeem 面板并预填
+    if (_redeemcode?.trim()) {
+      setRedeemFromUrl({
+        cardAddress: _beamiocard?.trim() || undefined,
+        redeemCode: decodeURIComponent(_redeemcode.trim()),
+      })
+      navigate("/History")
+      return
+    }
 
     if (_beamio) {
 		const user = await searchUsername(_beamio)

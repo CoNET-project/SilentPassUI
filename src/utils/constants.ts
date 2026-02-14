@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import contracts from './contracts'
+import { baseEndpoint } from './baseRpc'
 const localDatabaseName = "conet";
 const apiv3_endpoint = `https://apiv3.conet.network/api/`;
 const apiv4_endpoint = `https://apiv4.conet.network/api/`;
@@ -20,11 +21,6 @@ const _ethRpc = [
   "https://eth-mainnet.public.blastapi.io"
 ];
 const USDCContract_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
-const baseEndpoint = new ethers.JsonRpcProvider(
-	'https://1rpc.io/base',
-	{ name: 'base', chainId: 8453 },
-	{ staticNetwork: true }
-)
 
 const BeamioCardFactorySC = new ethers.Contract(
 	contracts.BeamioCardFactory.address,
@@ -116,10 +112,12 @@ export {
 	beamioCoreConet,
 	pgpCoNET,
 	GuardianNodesMainnet,
-	baseEndpoint,
+	baseEndpoint,  // 来自 baseRpc，带自动切换免费 RPC
 	USDCContract_BASE,
 	beamioApi,
 	voucherRelayApi,
 	CCSA_Card_Address,
 	BeamioCardFactorySC
 };
+
+export { withBaseRpc, switchToNextBaseRpc, getCurrentBaseRpcUrl, resetBaseRpcIndex, setBaseRpcNodeProvider, setRpcDegradedGetter } from './baseRpc'

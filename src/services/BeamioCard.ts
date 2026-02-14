@@ -2,6 +2,8 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC,conetDepinProvider, CCSA_Card_Address } from "../utils/constants";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
+import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
+import { storeSystemData } from "./beamio";
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
@@ -408,17 +410,10 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 	const seen = new Set<string>()
 	const merged: UserCardInfo[] = []
 
-	// 0. RPC 熔断期：跳过 RPC，直走 API，避免雪崩式重试
-	if (isRpcDegraded()) {
-		try {
-			const apiItems = await fetchMyCardsFromApi(owners)
-			return { cards: apiItems, trusted: true }
-		} catch {
-			return { cards: cached, trusted: false }
-		}
-	}
+	// 0. RPC 熔断期：仅使用 CoNET 节点，不向 API 请求
+	// （withBaseRpc 内部会走 CoNET-only）
 
-	// 1. 尝试 RPC
+	// 1. 尝试 RPC（正常时 CoNET 优先 + 公共 RPC，限流时仅 CoNET）
 	try {
 		for (const owner of owners) {
 			const list = await fetchCardsForOwner(owner)
@@ -612,7 +607,7 @@ const createRedeemBatchInterface = new ethers.Interface([
     'function createRedeemBatch(bytes32[] hashes,uint256 points6,uint256 attr,uint64 validAfter,uint64 validBefore,uint256[] tokenIds,uint256[] amounts)',
 ])
 
-/** 构建 createRedeemBatch 的 calldata（供 executeForOwner 使用）。codes 经 keccak256 得到 hashes，与 API cardCreateRedeemPreCheck 一致 */
+/** 构建 createRedeemBatch 的 calldata（供 executeForOwner 使用）。codes 经 keccak256 得到 hashes。points6 仅放 bundle，top-level points6 传 0 避免兑换时双倍 mint */
 export const encodeCreateRedeemBatch = (
     codes: string[],
     points6: bigint,
@@ -622,10 +617,10 @@ export const encodeCreateRedeemBatch = (
     const hashes = codes.map((c) => ethers.keccak256(ethers.toUtf8Bytes(c)))
     const tokenIds = [0n]
     const amounts = [points6]
-    return createRedeemBatchInterface.encodeFunctionData('createRedeemBatch', [hashes, points6, 0n, validAfter, validBefore, tokenIds, amounts])
+    return createRedeemBatchInterface.encodeFunctionData('createRedeemBatch', [hashes, 0n, 0n, validAfter, validBefore, tokenIds, amounts])
 }
 
-/** 构建 createRedeem 的 calldata（供 executeForOwner 使用）。hash 来自 generateCODE(passcode)，普通 redeem 用 passcode="" */
+/** 构建 createRedeem 的 calldata（供 executeForOwner 使用）。hash 来自 generateCODE(passcode)。points6 仅放 bundle，top-level 传 0 避免兑换时双倍 mint */
 export const encodeCreateRedeem = (
     hash: string,
     points6: bigint,
@@ -636,7 +631,7 @@ export const encodeCreateRedeem = (
     const amounts = [points6]
     return createRedeemInterface.encodeFunctionData('createRedeem', [
         hash,
-        points6,
+        0n,
         0n,
         validAfter,
         validBefore,
@@ -691,21 +686,42 @@ const cancelRedeemInterface = new ethers.Interface([
 export const encodeCancelRedeem = (code: string): string =>
     cancelRedeemInterface.encodeFunctionData('cancelRedeem', [code])
 
-const getRedeemStatusAbi = ['function getRedeemStatus(bytes32 hash) view returns (bool active, uint128 points6)']
+const getRedeemStatusAbi = [
+	'function getRedeemStatus(bytes32 hash) view returns (bool active, uint256 totalPoints6)',
+	'function getRedeemStatusBatch(string[] codes) view returns (bool[] active, uint256[] totalPoints6)',
+	'function getRedeemStatusBatch(bytes32[] hashes) view returns (bool[] active, uint256[] totalPoints6)',
+]
 
-/** 通过 BeamioUserCard.getRedeemStatus(bytes32) 从合约直接读取 RedeemStorage，无需扫描区块或事件 */
-function _decodeRedeemStatus(active: boolean): 'redeemed' | 'cancelled' | 'pending' {
-    if (active) return 'pending'
-    // active=false：已结束（redeemed 或 cancelled），合约不区分，统一返回 cancelled
-    return 'cancelled'
+export type RedeemStatusChain = 'redeemed' | 'cancelled' | 'pending' | 'not_found'
+
+/** 从 CoNET_Data.cardRedeems 中移除合约返回 not_found 的 redeem，并持久化 */
+export const removeNotFoundRedeems = (hashesToRemove: Set<string>) => {
+	if (hashesToRemove.size === 0) return
+	const temp = CoNET_Data
+	if (!temp?.cardRedeems?.length) return
+	const next = temp.cardRedeems
+		.map((b) => ({
+			...b,
+			items: b.items.filter((i) => !hashesToRemove.has(i.hash)),
+		}))
+		.filter((b) => b.items.length > 0)
+	temp.cardRedeems = next
+	setCoNET_Data(temp)
+	storeSystemData()
 }
 
-/** 单次查询：通过 getRedeemStatus(bytes32) 从合约直接读取，不做区块/事件扫描 */
+/** 通过 BeamioUserCard.getRedeemStatus(bytes32) 从合约直接读取 RedeemStorage，无需扫描区块或事件 */
+function _decodeRedeemStatus(active: boolean): RedeemStatusChain {
+    if (active) return 'pending'
+    // active=false：查无此 redeem 或已结束，合约返回空值，需从本地列表删除
+    return 'not_found'
+}
+
+/** 单次查询：通过 getRedeemStatus(bytes32) 从合约直接读取，不做区块/事件扫描；限流时仅用 CoNET */
 export const getRedeemStatusFromChain = async (
     cardAddress: string,
     hash: string
-): Promise<'redeemed' | 'cancelled' | 'pending'> => {
-    if (isRpcDegraded()) return 'pending'
+): Promise<RedeemStatusChain> => {
     const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
     try {
         const card = new ethers.Contract(cardAddress, getRedeemStatusAbi, baseEndpoint)
@@ -717,51 +733,146 @@ export const getRedeemStatusFromChain = async (
     }
 }
 
+/** Redeem 详情（用于 Redeem 窗口展示）：status、points、card 信息、owner 的 beamio 档案 */
+export type RedeemDetailsForDisplay = {
+    status: RedeemStatusChain
+    points6: string
+    pointsHuman: string
+    currency: string
+    ptsPer1Currency: string
+    cardName?: string
+    ownerProfile: searchResult | null
+}
+
+/** 从 RPC 拉取 redeem 详细信息：状态、资产、卡信息、发行者 profile */
+export const getRedeemDetailsForDisplay = async (
+    cardAddress: string,
+    code: string
+): Promise<RedeemDetailsForDisplay | null> => {
+    if (!cardAddress || !code?.trim() || !ethers.isAddress(cardAddress)) return null
+    const hash = ethers.keccak256(ethers.toUtf8Bytes(code.trim()))
+    try {
+        const cardAbiExtended = [
+            ...getRedeemStatusAbi,
+            'function owner() view returns (address)',
+            'function currency() view returns (uint8)',
+            'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
+        ]
+        const card = new ethers.Contract(cardAddress, cardAbiExtended, baseEndpoint)
+        const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : hash as `0x${string}`
+
+        const [[active, totalPoints6], owner, currencyNum, priceE6Raw] = await Promise.all([
+            card.getRedeemStatus(hashBytes32),
+            card.owner(),
+            card.currency(),
+            card.pointsUnitPriceInCurrencyE6(),
+        ])
+
+        // 合约仅存储 active，无法区分 redeemed/cancelled；API 有缓存且同样依赖合约。
+        // 以链上 active 为唯一可信来源，避免 API 缓存导致“已取消仍显示 Valid”的不一致。
+        const status = _decodeRedeemStatus(active)
+
+        const currency = getICurrency(BigInt(currencyNum))
+        const priceE6 = Number(priceE6Raw)
+        const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
+        const pointsHuman = (Number(ethers.formatUnits(totalPoints6, 6))).toFixed(6).replace(/\.?0+$/, '')
+
+        let ownerProfile: searchResult | null = null
+        if (owner && owner !== ethers.ZeroAddress) {
+            const search = await searchUsername(owner)
+            ownerProfile = search?.results?.[0] ?? null
+        }
+
+        let cardName: string | undefined
+        try {
+            const res = await fetch(`${beamioApi}/api/myCards?owner=${encodeURIComponent(owner)}`)
+            if (res.ok) {
+                const data = await res.json().catch(() => ({}))
+                const items = (data?.items ?? []) as Array<{ cardAddress: string; name?: string }>
+                const match = items.find((c: any) => (c.cardAddress || '').toLowerCase() === cardAddress.toLowerCase())
+                if (match?.name) cardName = match.name
+            }
+        } catch {}
+
+        return {
+            status,
+            points6: String(totalPoints6),
+            pointsHuman,
+            currency,
+            ptsPer1Currency: String(ptsPer1Currency),
+            cardName,
+            ownerProfile,
+        }
+    } catch (e) {
+        if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+        return null
+    }
+}
+
 /** Multicall3 地址（Base 等链通用） */
 const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11'
 
 /**
- * 批量查询 redeem 状态：使用 Multicall3.aggregate3 将多次 getRedeemStatus 合并为一次 RPC，
- * 避免 RedeemActiveList 对每个 item 单独调用造成的 RPC 风暴与主线程阻塞。
+ * 通过 API 批量查询 redeem 状态（仅支持批量）。优先使用，可减轻前端 RPC 压力。
+ */
+export const getRedeemStatusBatchFromApi = async (
+    items: { cardAddress: string; hash: string; code?: string }[]
+): Promise<Record<string, 'redeemed' | 'cancelled' | 'pending'> | null> => {
+    if (items.length === 0) return {}
+    try {
+        const res = await fetch(`${beamioApi}/api/redeemStatusBatch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: items.map(({ cardAddress, hash }) => ({ cardAddress, hash })) }),
+        })
+        if (!res.ok) return null
+        const data = await res.json()
+        if (!data?.success || !data?.statuses) return null
+        return data.statuses as Record<string, 'redeemed' | 'cancelled' | 'pending'>
+    } catch {
+        return null
+    }
+}
+
+/**
+ * 批量查询 redeem 状态：以链上 getRedeemStatusBatch 为唯一可信来源。
+ * API 有 30 秒缓存且同样依赖合约，无法区分 redeemed/cancelled，易导致状态不一致。
+ * RPC 成功且合约返回 active=false 时，返回 'not_found'，调用方应从本地列表删除该 redeem。
  */
 export const getRedeemStatusBatchFromChain = async (
-    items: { cardAddress: string; hash: string }[]
-): Promise<Record<string, 'redeemed' | 'cancelled' | 'pending'>> => {
-    const result: Record<string, 'redeemed' | 'cancelled' | 'pending'> = {}
+    items: { cardAddress: string; hash: string; code?: string }[]
+): Promise<Record<string, RedeemStatusChain>> => {
+    const result: Record<string, RedeemStatusChain> = {}
     if (items.length === 0) return result
-    if (isRpcDegraded()) {
-        items.forEach(({ hash }) => { result[hash] = 'pending' })
-        return result
-    }
-    const iface = new ethers.Interface(getRedeemStatusAbi)
-    const calls: { target: string; allowFailure: boolean; callData: string }[] = items.map(({ cardAddress, hash }) => {
-        const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
-        const callData = iface.encodeFunctionData('getRedeemStatus', [hashBytes32])
-        return { target: cardAddress, allowFailure: true, callData }
-    })
     try {
-        const mc = new ethers.Contract(
-            MULTICALL3_ADDRESS,
-            ['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnDatas)'],
-            baseEndpoint
-        )
-        const returnDatas = await mc.aggregate3(calls)
-        returnDatas.forEach((rd: { success: boolean; returnData: string }, i: number) => {
-            const hash = items[i].hash
-            if (!rd.success || rd.returnData === '0x') {
-                result[hash] = 'pending'
-                return
-            }
-            try {
-                const [active] = iface.decodeFunctionResult('getRedeemStatus', rd.returnData)
-                result[hash] = _decodeRedeemStatus(active)
-            } catch {
-                result[hash] = 'pending'
-            }
-        })
+        const byCard = new Map<string, { hash: string; code?: string }[]>()
+        for (const it of items) {
+            const arr = byCard.get(it.cardAddress) ?? []
+            arr.push({ hash: it.hash, code: it.code })
+            byCard.set(it.cardAddress, arr)
+        }
+        const iface = new ethers.Interface(getRedeemStatusAbi)
+        for (const [cardAddress, cardItems] of byCard) {
+            const card = new ethers.Contract(cardAddress, getRedeemStatusAbi, baseEndpoint)
+            const hashes = cardItems.map((i) =>
+                i.hash.length === 66 && i.hash.startsWith('0x') ? i.hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(i.hash))
+            )
+            const [activeList] = await card.getRedeemStatusBatch(hashes)
+            cardItems.forEach((it, idx) => {
+                result[it.hash] = _decodeRedeemStatus(activeList[idx])
+            })
+        }
         return result
     } catch (e) {
         if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+        // RPC 失败时回退到 API（有缓存，但比无结果好）
+        const fromApi = !isRpcDegraded() ? await getRedeemStatusBatchFromApi(items) : null
+        if (fromApi && Object.keys(fromApi).length > 0) {
+            items.forEach(({ hash }) => {
+                result[hash] = (fromApi[hash] === 'cancelled' ? 'not_found' : (fromApi[hash] ?? 'pending')) as RedeemStatusChain
+            })
+            return result
+        }
         items.forEach(({ hash }) => { result[hash] = 'pending' })
         return result
     }
@@ -827,8 +938,7 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 	if (cached && Date.now() - cached.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
 		return cached.result
 	}
-	// RPC 熔断期：避免雪崩式重试，无 API fallback 时直接失败
-	if (isRpcDegraded()) return null
+	// 限流时仅使用 CoNET 节点（withBaseRpc 内部会走 CoNET-only），不再跳过 RPC
 
 	return withGetMyAssetsMutex(async () => {
 		const cachedAgain = getMyAssetsCache.get(key)

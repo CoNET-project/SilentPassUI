@@ -26,6 +26,8 @@ type Prof = {
 	currencyUSDC?: boolean
 	feePlus?: boolean
 	currencyChange?: (val: ICurrency) => void
+	/** AA→EOA 时传入 AA 余额，覆盖 usdcbalance；未传则用 context 的 usdcbalance */
+	balanceOverride?: number | string
 }
 
 //@ts-ignore
@@ -82,7 +84,7 @@ function calcFeeFromReceived(received: number) {
 	return Number(feeByRatio.toFixed(4))
 }
 
-const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setSendError, sendError, focusSignal, currencyUSDC=false, feePlus=false, currencyChange}: Prof) => {
+const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setSendError, sendError, focusSignal, currencyUSDC=false, feePlus=false, currencyChange, balanceOverride}: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
@@ -207,6 +209,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}, [])
 
 	// ---------- Balance check (USDC truth) ----------
+	const effectiveBalance = balanceOverride != null ? Number(balanceOverride) : Number(usdcbalance || 0)
 	const checkBalance = (usdcToSend: number) => {
 		if (showLimit) {
 			if (usdcToSend <= showLimit) {
@@ -216,7 +219,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			}
 		}
 		if (!needBalance) return
-		const bal = Number(usdcbalance || 0)
+		const bal = effectiveBalance
 		if (bal - usdcToSend < 0) {
 			setSendError("Insufficient USDC balance")
 			
@@ -246,7 +249,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			setDisplayAmount(formatUsdc(safeUsdc)) // ✅ USDC 模式：显示 USDC
 		} else {
 			const curValue = usdcToCurrencyAmount(safeUsdc, currentCurrency)
-			setDisplayAmount('0') // ✅ 法币模式：显示法币
+			setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency)) // ✅ 法币模式：显示法币
 		}
 		
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -340,7 +343,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 	// ---------- MAX (sets USDC, refresh display) ----------
 	const handleMax = () => {
-		const usdc = Number(usdcbalance || 0)
+		const usdc = effectiveBalance
 		setAmount(formatUsdc(usdc))
 
 		const curValue = usdcToCurrencyAmount(usdc, currentCurrency)

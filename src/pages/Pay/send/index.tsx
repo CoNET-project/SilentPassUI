@@ -47,6 +47,8 @@ type Props = {
 	beamioer?: searchResult
 	/** 从 Smart Account 进入时为 aa-eoa-transfer（AA 与 EOA 互转）；否则为 eoa-pay（普通付款） */
 	mode?: PayScreenMode
+	/** AA 账户 USDC 余额（aa-eoa-transfer 且 aa-to-eoa 时用于 MAX / 余额校验） */
+	aaAccountUsdcBalance?: string | number
 }
 
 function formatAmount(v: number, c: ICurrency) {
@@ -65,7 +67,7 @@ function formatAmount(v: number, c: ICurrency) {
 	})
 }
 
-export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
+export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccountUsdcBalance}: Props) {
 	
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
@@ -429,11 +431,13 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 					return
 				}
 				if (amount <= 0 || amount > usdcbalance) return // EOA 转出，用 EOA 余额
-			} else {
-				toAddress = myAddress ?? ''
-				if (!toAddress) { setShowToError(true); return }
-				if (amount <= 0) return
-			}
+		} else {
+			toAddress = myAddress ?? ''
+			if (!toAddress) { setShowToError(true); return }
+			if (amount <= 0) return
+			const aaBal = Number(aaAccountUsdcBalance ?? 0)
+			if (amount > aaBal) return // AA 转出，用 AA 余额
+		}
 		} else {
 			// 普通付款：必须有选中的收款人
 			if (!item || !myAddress) {
@@ -793,6 +797,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay'}: Props) {
 									focusSignal={focusAmount}
 									currencyChange={val => setCurrentCurrency(val)}
 									currencyUSDC={lockMode === 'USDC_LOCKED'}
+									balanceOverride={isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? aaAccountUsdcBalance : undefined}
 								/>
 							</section>
 						</>

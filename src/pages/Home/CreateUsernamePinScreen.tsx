@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
 // FIX: 将 TriangleAlert 替换为 AlertTriangle
@@ -71,6 +71,18 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
   const isChecking = status === "checking"
   const isValid = status === "valid"
 
+  // 超过 3 秒无按键且文本长度 > 2 时自动检测 beamioTag
+  useEffect(() => {
+    const trimmed = value.trim().replace(/^@+/, "")
+    if (trimmed.length <= 2) return
+
+    const t = setTimeout(() => {
+      validateAndCheck()
+    }, 3000)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 value 变化时重置计时
+  }, [value])
+
   return (
     <div className="flex flex-col h-full px-6 pt-6 pb-6">
       <div className="flex-1">
@@ -79,7 +91,7 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
           Claim BeamioTag
         </h1>
         <p className="mt-3 text-[18px] md:text-[20px] text-slate-500 font-medium">
-          Your unique Beamio identity.
+		Your unique identity in the commerce layer.
         </p>
 
         {/* Input Section */}
@@ -153,23 +165,22 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
       </div>
 
       {/* Footer Button */}
-      {isValid && (
-        <div className="pb-[env(safe-area-inset-bottom)] pt-4">
-          <AppButton
-            fullWidth
-            className="
-              h-[64px] rounded-full
-              text-[20px] font-bold tracking-wide
-              bg-[#1652f0] hover:bg-[#1345ca]
-              shadow-[0_12px_30px_rgba(22,82,240,0.3)]
-              text-white
-            "
-            onClick={onNext}
-          >
-            Next <span className="ml-1">→</span>
-          </AppButton>
-        </div>
-      )}
+      <div className="pb-[env(safe-area-inset-bottom)] pt-4">
+        <AppButton
+          fullWidth
+          disabled={!isValid}
+          className={`
+            h-[64px] rounded-full
+            text-[20px] font-bold tracking-wide
+            ${isValid
+              ? 'bg-[#1652f0] hover:bg-[#1345ca] shadow-[0_12px_30px_rgba(22,82,240,0.3)] text-white'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
+          `}
+          onClick={onNext}
+        >
+          Next <span className="ml-1">→</span>
+        </AppButton>
+      </div>
     </div>
   )
 }

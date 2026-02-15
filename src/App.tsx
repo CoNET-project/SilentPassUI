@@ -36,6 +36,8 @@ import { Toast } from "antd-mobile"
 import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
 import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
+import { AppButton } from "@/components/button/AppButton"
+import { Check } from "lucide-react"
 
 global.Buffer = require("buffer").Buffer
 
@@ -88,7 +90,9 @@ function AppShell() {
     setScanIntent,
 	setIsInitialLoading,
 	setBeamio,
-	setRedeemFromUrl
+	setRedeemFromUrl,
+	redeemResult,
+	setRedeemResult,
   } = useDaemonContext()
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -982,6 +986,73 @@ function AppShell() {
 				</div>
 			</div>
 
+			{/* Redeem 结果：BeamioOnboardingModal Go To Home 后后台 redeem 完成，从下往上滑出 */}
+			<AnimatePresence>
+				{redeemResult && (
+					<>
+						<motion.div
+							className="fixed inset-0 z-[210] bg-black/50"
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							transition={{ duration: 0.2 }}
+							onClick={() => setRedeemResult(null)}
+							aria-hidden
+						/>
+						<motion.div
+							className="fixed inset-x-0 bottom-0 z-[211] bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.15)] pb-[env(safe-area-inset-bottom)]"
+							initial={{ y: "100%" }}
+							animate={{ y: 0 }}
+							exit={{ y: "100%" }}
+							transition={{ type: "tween", duration: 0.3, ease: "easeOut" }}
+						>
+							<div className="flex justify-center pt-2 pb-1">
+								<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+							</div>
+							<div className="px-6 pb-6">
+								{redeemResult.success ? (
+									<>
+										<div className="flex items-center gap-3 mb-4">
+											<div className="h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
+												<Check className="w-6 h-6 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
+											</div>
+											<div>
+												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeem Successful</h3>
+												<p className="text-sm text-slate-600 dark:text-slate-400">Your reward has been added to your account.</p>
+											</div>
+										</div>
+										{redeemResult.tx && (
+											<a
+												href={`https://basescan.org/tx/${redeemResult.tx}`}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="block mb-4 text-sm text-[#1652f0] underline"
+											>
+												View transaction
+											</a>
+										)}
+									</>
+								) : (
+									<>
+										<div className="flex items-center gap-3 mb-4">
+											<div className="h-12 w-12 rounded-full bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center shrink-0">
+												<span className="text-xl text-rose-600 dark:text-rose-400">!</span>
+											</div>
+											<div>
+												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeem Failed</h3>
+												<p className="text-sm text-rose-600 dark:text-rose-400">{redeemResult.error}</p>
+											</div>
+										</div>
+									</>
+								)}
+								<AppButton fullWidth onClick={() => setRedeemResult(null)} className="rounded-xl">
+									Done
+								</AppButton>
+							</div>
+						</motion.div>
+					</>
+				)}
+			</AnimatePresence>
 		</div>
 	)
 }

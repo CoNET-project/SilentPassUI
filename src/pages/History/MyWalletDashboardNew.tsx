@@ -30,6 +30,7 @@ import {
 	Calculator,
 	CalendarCheck,
 	HelpCircle,
+	RefreshCw,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
@@ -264,7 +265,9 @@ export default function MyWalletDashboardNew() {
 	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
 	const [ccsaBalance, setCcsaBalance] = useState<string>('0')
 	const [ccsaAssets, setCcsaAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
-	const [reflash, setReflash] = useState(false)
+	const [eoaReflash, setEoaReflash] = useState(false)
+	const [aaReflash, setAaReflash] = useState(false)
+	const [ccsaReflash, setCcsaReflash] = useState(false)
 	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | 'ccsa' | null>(null)
 	const [copiedCardAddress, setCopiedCardAddress] = useState<string | null>(null)
 	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
@@ -749,39 +752,51 @@ export default function MyWalletDashboardNew() {
 		[]
 	)
 
-	// 刷新资产：EOA USDC、AA USDC、CCSA 卡资产、EOA 交易历史（与 MyWalletDashboard 一致）
-	const reflashProcess = useCallback(async () => {
-		if (reflash) return
+	// 刷新资产：EOA USDC、AA USDC、EOA 交易历史（与 CCSA 分开处理）
+	// source: 哪个按钮触发，用于控制对应动画
+	const reflashProcess = useCallback(async (source: 'eoa' | 'aa') => {
 		const profile = profiles?.[0]
 		if (!profile) return
-		setReflash(true)
+		if (source === 'eoa' && eoaReflash) return
+		if (source === 'aa' && aaReflash) return
+		if (source === 'eoa') setEoaReflash(true)
+		else setAaReflash(true)
 		try {
 			await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
 			await loadAaAccountBalance()
 			await loadEoaHistory()
-			if (CCSA_Card_Address) {
-				try {
-					const assets = await getMyAssets(profile, CCSA_Card_Address)
-					if (assets?.points != null) setCcsaBalance(assets.points)
-					setCcsaAssets(assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null)
-				} catch (e) {
-					console.error('Failed to refresh CCSA assets:', e)
-					setCcsaBalance('0')
-					setCcsaAssets(null)
-				}
-			}
 			refetchUserCards()
 		} finally {
-			setReflash(false)
+			if (source === 'eoa') setEoaReflash(false)
+			else setAaReflash(false)
 		}
-	}, [reflash, profiles, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
+	}, [eoaReflash, aaReflash, profiles, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
+
+	// 单独刷新 CCSA 资产（与 EOA 刷新分开，动画独立）
+	const refreshCcsaAssets = useCallback(async () => {
+		if (ccsaReflash) return
+		const profile = profiles?.[0]
+		if (!profile || !CCSA_Card_Address) return
+		setCcsaReflash(true)
+		try {
+			const assets = await getMyAssets(profile, CCSA_Card_Address)
+			if (assets?.points != null) setCcsaBalance(assets.points)
+			setCcsaAssets(assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null)
+		} catch (e) {
+			console.error('Failed to refresh CCSA assets:', e)
+			setCcsaBalance('0')
+			setCcsaAssets(null)
+		} finally {
+			setCcsaReflash(false)
+		}
+	}, [ccsaReflash, profiles])
 
 	/** 延迟 5 秒后刷新 AA 资产（与 MyWalletDashboard 一致） */
 	const scheduleRefreshAAAssets = useCallback(() => {
 		if (refreshAAAssetsTimeoutRef.current) clearTimeout(refreshAAAssetsTimeoutRef.current)
 		refreshAAAssetsTimeoutRef.current = setTimeout(() => {
 			refreshAAAssetsTimeoutRef.current = null
-			reflashProcess()
+			reflashProcess('aa')
 		}, 5000)
 	}, [reflashProcess])
 
@@ -882,15 +897,15 @@ export default function MyWalletDashboardNew() {
 											className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
 											onClick={(e) => {
 												e.stopPropagation()
-												reflashProcess()
+												reflashProcess('eoa')
 											}}
-											disabled={reflash}
+											disabled={eoaReflash}
 											aria-label="Refresh"
 										>
 											<img
 												src={base_icon}
 												alt="Base"
-												className={`w-5 h-5 object-contain ${reflash ? 'animate-spin opacity-80' : ''}`}
+												className={`w-5 h-5 object-contain ${eoaReflash ? 'animate-spin opacity-80' : ''}`}
 											/>
 										</button>
 										<span className="font-medium">USDC on Base</span>
@@ -1063,13 +1078,27 @@ export default function MyWalletDashboardNew() {
 																</div>
 															</div>
 														</div>
-														<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
-															<Globe size={10} className="text-white" />
-															Membership
+														<div className="flex items-center gap-2 shrink-0">
+															<button
+																type="button"
+																className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
+																onClick={(e) => {
+																	e.stopPropagation()
+																	refreshCcsaAssets()
+																}}
+																disabled={ccsaReflash}
+																aria-label="Refresh CCSA"
+															>
+																<RefreshCw className={`w-4 h-4 text-white ${ccsaReflash ? 'animate-spin opacity-80' : ''}`} strokeWidth={2.5} />
+															</button>
+															<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
+																<Globe size={10} className="text-white" />
+																Membership
+															</div>
 														</div>
 													</div>
 
-													<div className="flex justify-between items-end">
+													<div className="flex items-end justify-between gap-2 min-w-0">
 														<div>
 															<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">Balance</p>
 															<div className="flex items-baseline gap-1">
@@ -1079,6 +1108,23 @@ export default function MyWalletDashboardNew() {
 																<span className="text-sm font-semibold opacity-90 text-[#fff2c6]">CAD</span>
 															</div>
 														</div>
+														{/* 右下方：会员 NFT number，与 Balance 底边对齐 */}
+														{(() => {
+															const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
+															const tokenId = nft?.tokenId
+															const memberNo = tokenId ? `M-${String(tokenId).padStart(6, '0')}` : null
+															if (!memberNo) return null
+															return (
+																<div className="relative font-mono text-[10px] tracking-[0.2em] uppercase font-semibold shrink-0 pb-0.5">
+																	<span className="absolute inset-0 text-black/45 translate-y-[1px]">
+																		MEMBER&nbsp;NO.&nbsp;{memberNo}
+																	</span>
+																	<span className="relative text-[#f5fffd] block">
+																		MEMBER&nbsp;NO.&nbsp;{memberNo}
+																	</span>
+																</div>
+															)
+														})()}
 													</div>
 												</div>
 											</div>
@@ -1110,15 +1156,15 @@ export default function MyWalletDashboardNew() {
 															className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
 															onClick={(e) => {
 																e.stopPropagation()
-																reflashProcess()
+																reflashProcess('aa')
 															}}
-															disabled={reflash}
+															disabled={aaReflash}
 															aria-label="Refresh"
 														>
 															<img
 																src={base_icon}
 																alt="Base"
-																className={`w-5 h-5 object-contain ${reflash ? 'animate-spin opacity-80' : ''}`}
+																className={`w-5 h-5 object-contain ${aaReflash ? 'animate-spin opacity-80' : ''}`}
 															/>
 														</button>
 														<span className="font-medium">Express Pay</span>

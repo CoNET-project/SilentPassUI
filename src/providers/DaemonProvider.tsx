@@ -166,6 +166,9 @@ type DaemonContext = {
 	/** 扫码/链接解析得到的 BeamioUserCard redeem 参数，打开 redeem 面板并预填 */
 	redeemFromUrl: { cardAddress?: string; redeemCode: string } | null
 	setRedeemFromUrl: (val: { cardAddress?: string; redeemCode: string } | null) => void
+	/** BeamioOnboardingModal Go To Home 后后台 redeem 的结果，从下往上滑出展示 */
+	redeemResult: { success: boolean; tx?: string; error?: string } | null
+	setRedeemResult: (val: { success: boolean; tx?: string; error?: string } | null) => void
 };
 
 type DaemonProps = {
@@ -241,6 +244,8 @@ const defaultContextValue: DaemonContext = {
 	setIgnoreUrl: (val: boolean) => {},
 	redeemFromUrl: null,
 	setRedeemFromUrl: () => {},
+	redeemResult: null,
+	setRedeemResult: () => {},
 	setSecureCode: (val: string) => {},
 	secureCode: '',
 	  setBeamioAppInstalled: () => {},
@@ -452,6 +457,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const [redeemCode, setRedeemCode] = useState('')
 	const [ignoreUrl, setIgnoreUrl] = useState(false)
 	const [redeemFromUrl, setRedeemFromUrl] = useState<{ cardAddress?: string; redeemCode: string } | null>(null)
+	const [redeemResult, setRedeemResult] = useState<{ success: boolean; tx?: string; error?: string } | null>(null)
 	const [payTag, setPayTag] = useState('')
 	const [beamioUsers, setbBeamioUsers] = useState<searchResult[]>([])
 	const [currencyData, setCurrencyData] = useState({
@@ -516,7 +522,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink, redeemCode, setRedeemCode,
 				profiles, setProfiles, isMiningUp, setIsMiningUp, getAllNodes, setaAllNodes, serverIpAddress,darkModle, setDarkModle, beamioAppInstalled, setBeamioAppInstalled,
-				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode, ignoreUrl, setIgnoreUrl, 				paymentLinkCode, setPaymentLinkCode, redeemFromUrl, setRedeemFromUrl,
+				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode, ignoreUrl, setIgnoreUrl, 				paymentLinkCode, setPaymentLinkCode, redeemFromUrl, setRedeemFromUrl, redeemResult, setRedeemResult,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,payTag, setPayTag, myAddress, setMyAddress,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput, usdcToUSD, setUsdcToUSD,
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance, currencyData, setCurrencyData,

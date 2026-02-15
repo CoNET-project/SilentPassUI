@@ -6,7 +6,7 @@ import {isStandalone, MobileType, checkStorage } from '@/services/beamio'
 import BeamioOnboardingModal from '@/pages/Home/LoadingPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {AppButton} from '../button/AppButton'
-
+import SplashScreen from '@/components/SplashScreen'
 import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -21,6 +21,8 @@ const BeamioInstallOnboarding: React.FC = () => {
 	const { profiles, setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPaymentLink, paymentLink, beamioAppInstalled} = useDaemonContext()
   	const [activeTab, setActiveTab] = useState<"ios" | "android" | "desktop">(MobileType())
 	const [installed, setInstalled] = useState(MobileType() === 'desktop' ? true : false)
+	/** 当需要显示 BeamioOnboardingModal 时，init 期间显示 splash；installed 时设为 true */
+	const [splashVisible, setSplashVisible] = useState(MobileType() === 'desktop')
 	const [canInstall, setCanInstall] = useState(false)
 	    const [showPostInstallTips, setShowPostInstallTips] = useState(false) //useState(MobileType() === 'desktop' ? true : false)
 	const navigate = useNavigate()
@@ -35,10 +37,14 @@ const BeamioInstallOnboarding: React.FC = () => {
 	const isAndroid = /Android/i.test(ua)
 	const isIOS = /iPhone|iPad|iPod/i.test(ua)
 
-	const checkLocal= async () => {
+	const checkLocal = async () => {
 		const CoNETData: encrypt_keys_object = await checkStorage()
-		if ( CoNETData && CoNETData?.beamio) {
+		if (CoNETData && CoNETData?.beamio) {
+			setSplashVisible(false)
 			return navigate('/')
+		}
+		if (!isStandalone) {
+			setSplashVisible(false)
 		}
 	}
 
@@ -46,10 +52,9 @@ const BeamioInstallOnboarding: React.FC = () => {
 		checkLocal()
 		
 		if (isStandalone) {
-			
 			setInstalled(true)
-			
-			return 
+			setSplashVisible(true)
+			return
 		}
 
 
@@ -63,11 +68,9 @@ const BeamioInstallOnboarding: React.FC = () => {
 		}
 
 		const handleAppInstalled = () => {
-			
 			setInstalled(true)
-			
+			setSplashVisible(true)
 			setInstallPromptEvent(null)
-			
 		}
 
 		window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
@@ -92,21 +95,21 @@ const BeamioInstallOnboarding: React.FC = () => {
 		console.log('User choice', choice.outcome)
 	
 		if (choice.outcome === 'accepted') {
-			// 用户点了安装，一般也会触发 appinstalled 事件
 			setInstalled(true)
+			setSplashVisible(true)
 			setShowPostInstallTips(true)
 		}
 	}
 
 	return (
 		<>
-			{
-
-				installed ? <BeamioOnboardingModal home={() => {
-					
-					navigate('/')
-					
-				}}/> : 
+			{splashVisible && <SplashScreen />}
+			{installed ? (
+				<BeamioOnboardingModal
+					home={() => navigate('/')}
+					onInitComplete={() => setSplashVisible(false)}
+				/>
+			) : (
 				<div 
 					className="flex justify-center px-4 py-8"
   					style={{ marginTop: TOP_OFFSET }}
@@ -276,7 +279,7 @@ const BeamioInstallOnboarding: React.FC = () => {
 						<div className="h-24 md:h-28" aria-hidden="true" />
 					</div>
 				</div>
-			}
+			)}
 
 		{/* 安装后提示弹窗 */}
 		{showPostInstallTips && (

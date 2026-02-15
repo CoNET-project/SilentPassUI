@@ -263,7 +263,13 @@ export default function Market() {
 			return
 		}
 		if (item.id === "m5" || item.name === "Uber Ride") {
+			setShowFooter(false)
 			navigate("/example-card")
+
+			return
+		}
+		if (item.id === "m4" || item.name === 'Whole Foods') {
+			navigate("/redeem-onboarding")
 			return
 		}
 

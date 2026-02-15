@@ -1,20 +1,24 @@
 import React, { useState, useRef } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
-import { Download, Copy, Check } from 'lucide-react'
+import { Download, Copy, Check, Loader } from 'lucide-react'
 import bIcon from '@/components/assets/logo512.png'
 import { useNavigate } from 'react-router-dom'
+type RecoveryQRScreenProps = {
+  qrDataUrl: string
+  recoveryCode: string
+  showButton: boolean
+  isRedeemFlow?: boolean
+  close: () => void | Promise<void>
+}
+
 const RecoveryQRScreen = ({
   qrDataUrl,
   recoveryCode,
   showButton,
+  isRedeemFlow = false,
   close
-}: {
-  qrDataUrl: string
-  recoveryCode: string
-  showButton: boolean
-  close: () => void
-}) => {
+}: RecoveryQRScreenProps) => {
   const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -49,6 +53,22 @@ const RecoveryQRScreen = ({
     } catch {
       // ignore
     }
+  }
+
+  // Redeem flow: 点击后显示 Activating loading 直至 redeem 完成
+  if (loading && isRedeemFlow) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center p-8 bg-white">
+        <div className="relative mb-8">
+          <div className="w-20 h-20 bg-[#1652f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-blue-500/40">
+            <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
+          </div>
+          <div className="absolute -inset-4 bg-[#1652f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Activating...</h2>
+        <p className="text-slate-400 font-medium">Deploying Account...</p>
+      </div>
+    )
   }
 
   return (
@@ -189,7 +209,7 @@ const RecoveryQRScreen = ({
             setLoading(true)
             await Promise.resolve(close?.())
           }}
-          loading={loading}
+          loading={loading && !isRedeemFlow}
           // 只有勾选确认后才启用（而确认本身需要先备份）
           disabled={!isConfirmed}
           className={`
@@ -201,7 +221,7 @@ const RecoveryQRScreen = ({
                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
            `}
         >
-          Open Wallet
+          {isRedeemFlow ? 'Initialize & Redeem' : 'Open Wallet'}
         </AppButton>
       </div>
 	  }

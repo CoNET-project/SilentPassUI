@@ -2,6 +2,8 @@ import React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Share2, PlusSquare } from "lucide-react"
 
+const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent)
+
 const STORAGE_KEY = "beamio_install_terminal_seen"
 
 export function getInstallTerminalSeen(): boolean {
@@ -22,16 +24,20 @@ export function setInstallTerminalSeen(): void {
 type Props = {
   open: boolean
   onClose: () => void
+  onRemindLater?: () => void
+  /** iOS PWA 首次启动：不显示 Install Terminal，改为指导使用 Restore Wallet */
+  showRestoreHint?: boolean
 }
 
 /**
  * Install Terminal 底部滑出引导：首次进入时显示，引导用户添加到主屏幕。
  * 点击「Remind me later」后写入本地缓存，下次不再显示。
  */
-export default function InstallTerminalSheet({ open, onClose }: Props) {
+export default function InstallTerminalSheet({ open, onClose, onRemindLater, showRestoreHint }: Props) {
   const handleRemindLater = () => {
     setInstallTerminalSeen()
     onClose()
+    onRemindLater?.()
   }
 
   return (
@@ -60,65 +66,92 @@ export default function InstallTerminalSheet({ open, onClose }: Props) {
             </div>
 
             <div className="px-6 pb-6">
-              {/* Header */}
-              <div className="flex items-start gap-4 mb-6">
-                <div className="h-14 w-14 rounded-2xl bg-[#1652f0] flex items-center justify-center shrink-0">
-                  <span className="text-2xl font-bold text-white">B</span>
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                    Install Terminal
-                  </h2>
-                  <p className="mt-0.5 text-[15px] text-slate-500 dark:text-slate-400">
-                    For secure commerce and fast signing
-                  </p>
-                </div>
-              </div>
-
-              {/* Steps */}
-              <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-5 space-y-4">
-                <div className="flex items-start gap-3">
-                  <span className="h-8 w-8 rounded-full bg-[#1652f0] text-white flex items-center justify-center text-sm font-bold shrink-0">
-                    1
-                  </span>
-                  <div className="flex items-center gap-2 flex-wrap pt-0.5">
-                    <span className="text-[15px] text-slate-700 dark:text-slate-300">
-                      Tap the
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
-                      <Share2 className="w-4 h-4 text-slate-600 dark:text-slate-400" strokeWidth={2.5} />
-                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Share</span>
-                    </span>
-                    <span className="text-[15px] text-slate-700 dark:text-slate-300">
-                      icon below.
-                    </span>
+              {showRestoreHint ? (
+                /* iOS PWA 首次启动：不显示 Install Terminal，指导使用 Restore Wallet */
+                <>
+                  <div className="flex items-start gap-4 mb-6">
+                    <div className="h-14 w-14 rounded-2xl bg-[#1652f0] flex items-center justify-center shrink-0">
+                      <span className="text-2xl font-bold text-white">B</span>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                        Restore Your Wallet
+                      </h2>
+                      <p className="mt-2 text-[16px] text-slate-600 dark:text-slate-400 leading-snug">
+                        Use <strong>Restore Wallet</strong> with your recovery code below.
+                      </p>
+                    </div>
                   </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <span className="h-8 w-8 rounded-full bg-[#1652f0] text-white flex items-center justify-center text-sm font-bold shrink-0">
-                    2
-                  </span>
-                  <div className="flex items-center gap-2 flex-wrap pt-0.5">
-                    <span className="text-[15px] text-slate-700 dark:text-slate-300">
-                      Select
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
-                      <PlusSquare className="w-4 h-4 text-slate-600 dark:text-slate-400" strokeWidth={2.5} />
-                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Add to Home Screen</span>
-                    </span>
-                    <span className="text-[15px] text-slate-700 dark:text-slate-300">.</span>
+                </>
+              ) : (
+                /* 默认：Install Terminal 引导 */
+                <>
+                  <div className="flex items-start gap-4 mb-6">
+                    <div className="h-14 w-14 rounded-2xl bg-[#1652f0] flex items-center justify-center shrink-0">
+                      <span className="text-2xl font-bold text-white">B</span>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                        Install Terminal
+                      </h2>
+                      <p className="mt-0.5 text-[15px] text-slate-500 dark:text-slate-400">
+                        For secure commerce and fast signing
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              {/* Remind me later */}
+                  <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-5 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <span className="h-8 w-8 rounded-full bg-[#1652f0] text-white flex items-center justify-center text-sm font-bold shrink-0">
+                        1
+                      </span>
+                      <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                        <span className="text-[15px] text-slate-700 dark:text-slate-300">
+                          Tap the
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                          <Share2 className="w-4 h-4 text-slate-600 dark:text-slate-400" strokeWidth={2.5} />
+                          <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Share</span>
+                        </span>
+                        <span className="text-[15px] text-slate-700 dark:text-slate-300">
+                          icon below.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <span className="h-8 w-8 rounded-full bg-[#1652f0] text-white flex items-center justify-center text-sm font-bold shrink-0">
+                        2
+                      </span>
+                      <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                        <span className="text-[15px] text-slate-700 dark:text-slate-300">
+                          Select
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                          <PlusSquare className="w-4 h-4 text-slate-600 dark:text-slate-400" strokeWidth={2.5} />
+                          <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Add to Home Screen</span>
+                        </span>
+                        <span className="text-[15px] text-slate-700 dark:text-slate-300">.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isIOS && (
+                    <div className="mt-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+                      <p className="text-[13px] text-amber-800 dark:text-amber-200 leading-snug">
+                        On iOS, the home screen app can&apos;t access Safari data. After adding, use <strong>Restore Wallet</strong> with your recovery code if needed.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
               <button
                 type="button"
                 onClick={handleRemindLater}
                 className="w-full mt-4 py-3 text-[15px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
               >
-                Remind me later
+                {showRestoreHint ? 'Got it' : 'Remind me later'}
               </button>
             </div>
           </motion.div>

@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Home from '../../components/Home/Home';
 import BeamioOnboardingModal from './LoadingPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {storeSystemData, MobileType, checkStorage} from '@/services/beamio'
-import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { checkStorage } from '@/services/beamio'
 import SplashScreen from "@/components/SplashScreen"
 
 const HomePage = ({}) => {
@@ -20,24 +19,6 @@ const HomePage = ({}) => {
 		setShowBeamioOnboardingModal(true)
 	}
 
-	const storageInit = async () => {
-		setSplashVisible(false)
-		setShowBeamioOnboardingModal(false)
-		setIsInitialLoading(false)
-		const temp = CoNET_Data
-		if (!temp) {
-			return
-		}
-		setBeamio(temp.beamio)
-		setProfiles(temp.profiles)
-		if (MobileType() === 'android') {
-			window.close()
-			window.open(window.location.href, '_blank', 'noopener,noreferrer')
-		}
-		
-		
-	}
-
 	useEffect(() => {
 		init()
   	}, [])
@@ -47,7 +28,7 @@ const HomePage = ({}) => {
 			{splashVisible && <SplashScreen />}
 			{showBeamioOnboardingModal ? (
 				<BeamioOnboardingModal
-					home={() => storageInit()}
+					home={() => window.location.reload()}
 					onInitComplete={() => setSplashVisible(false)}
 				/>
 			) : (

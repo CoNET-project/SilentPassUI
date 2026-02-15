@@ -2,7 +2,7 @@ import {  ArrowLeft, MoreVertical } from 'lucide-react'
 
 export default function BeamioNavBack({ title, onClose, onMore, showMore=false }: {title: string, onClose: () => void,  onMore: () => void, showMore?: boolean}) {
 	
-	return (
+		return (
 			<header
 			className="
 				absolute inset-x-0 top-0 z-50
@@ -11,7 +11,6 @@ export default function BeamioNavBack({ title, onClose, onMore, showMore=false }
 				pt-[calc(env(safe-area-inset-top)+2rem)]
 				pb-3
 				bg-transparent
-				pointer-events-none
 			"
 			>
 			{/* Left droplet back button */}
@@ -19,13 +18,13 @@ export default function BeamioNavBack({ title, onClose, onMore, showMore=false }
 				type="button"
 				onClick={onClose}
 				className="
-				pointer-events-auto
-				absolute left-4
-				h-10 w-10
+				absolute left-4 top-[calc(50%+1rem)] -translate-y-1/2
+				h-12 w-12 min-w-12 min-h-12
 				rounded-full
 				flex items-center justify-center
 				transition
 				active:scale-[0.96]
+				touch-manipulation
 				"
 				aria-label="Back"
 			>

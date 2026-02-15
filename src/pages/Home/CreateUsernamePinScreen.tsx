@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react"
 import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
 // FIX: 将 TriangleAlert 替换为 AlertTriangle
@@ -285,22 +285,30 @@ const SecureWalletPassword = ({
   )
 }
 
+export type CreateUsernamePinScreenRef = { goBack: () => boolean }
+
 /**
  * Main Controller
  */
-const CreateUsernamePinScreen = ({
-  close
-}: {
-  close: (val: {
-    qrDataUrl: string
-    pin: string
-    passcode: string
-    temp: any
-  }) => void
-}) => {
+const CreateUsernamePinScreen = forwardRef<
+  CreateUsernamePinScreenRef,
+  {
+    close: (val: { qrDataUrl: string; pin: string; passcode: string; temp: any }) => void
+  }
+>(function CreateUsernamePinScreen({ close }, ref) {
   const [step, setStep] = useState<"tag" | "password">("tag")
   const [beamioName, setBeamioName] = useState("")
   const [loading, setLoading] = useState(false)
+
+  useImperativeHandle(ref, () => ({
+    goBack: () => {
+      if (step === "password") {
+        setStep("tag")
+        return true
+      }
+      return false
+    }
+  }), [step])
 
   const handleCreateWallet = async (password: string) => {
     const trimmedTag = (beamioName || "").trim().replace(/^@+/, "")
@@ -337,6 +345,6 @@ const CreateUsernamePinScreen = ({
       )}
     </div>
   )
-}
+})
 
 export default CreateUsernamePinScreen

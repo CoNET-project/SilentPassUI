@@ -848,19 +848,59 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
 }
 
 export const checkStorage = async () => {
-  
-
   try {
-	const database = PouchDB(localDatabaseName, { auto_compaction: true });
+    const database = PouchDB(localDatabaseName, { auto_compaction: true });
     const doc = await database.get("init", { latest: true });
     const data = JSON.parse(Buffer.from(doc.title, "base64").toString());
     setCoNET_Data(data);
-	return data
-  } catch (ex) {
-    console.log(
-      `checkStorage have no CoNET data in IndexDB, INIT CoNET data`
-    )
-	return null
+    return data
+  } catch {
+    // IndexedDB 为空时，尝试从 Cache Storage 恢复（解决 iOS PWA 与 Safari 存储隔离问题）
+    const cached = await cacheStorageRestore()
+    if (cached) {
+      try {
+        const data = JSON.parse(Buffer.from(cached, "base64").toString());
+        if (data && typeof data === 'object' && data.profiles && Array.isArray(data.profiles)) {
+          setCoNET_Data(data);
+          const database = PouchDB(localDatabaseName, { auto_compaction: true });
+          await database.post({ _id: "init", title: cached });
+          return data
+        }
+      } catch (e) {
+        console.warn('[checkStorage] cache restore parse failed:', e)
+      }
+    }
+    return null
+  }
+}
+
+/** Cache 用的绝对 URL（Safari / PWA 路径不同，必须用 origin 级别 key 确保一致）
+ * 注意：iOS 上 Cache API 与 IndexedDB 同样与 Safari 隔离，PWA 无法读取。仅对 Android 等平台可能有效。 */
+const CACHE_WALLET_URL = typeof window !== 'undefined'
+  ? new URL('/__beamio_wallet_backup__', window.location.origin).href
+  : ''
+
+/** 写入 Cache Storage（iOS Safari→PWA 迁移备份，Cache API 在部分环境下共享） */
+const cacheStorageBackup = async (data: string) => {
+  try {
+    if (typeof caches === 'undefined' || !CACHE_WALLET_URL) return
+    const cache = await caches.open('beamio-wallet-v1')
+    const req = new Request(CACHE_WALLET_URL, { method: 'GET' })
+    await cache.put(req, new Response(data, { headers: { 'Content-Type': 'text/plain' } }))
+  } catch (_) {}
+}
+
+/** 从 Cache Storage 恢复（IndexedDB 为空时） */
+const cacheStorageRestore = async (): Promise<string | null> => {
+  try {
+    if (typeof caches === 'undefined' || !CACHE_WALLET_URL) return null
+    const cache = await caches.open('beamio-wallet-v1')
+    const req = new Request(CACHE_WALLET_URL, { method: 'GET' })
+    const res = await cache.match(req)
+    if (!res) return null
+    return await res.text()
+  } catch {
+    return null
   }
 }
 
@@ -872,6 +912,7 @@ const storageHashData = async (docId: string, data: string) => {
     try {
       const doc = await database.get(docId, { latest: true });
       await putWithRev(doc._rev);
+      await cacheStorageBackup(data)
       return;
     } catch (ex: any) {
       if (ex?.status === 409 || ex?.name === 'conflict') {
@@ -881,6 +922,7 @@ const storageHashData = async (docId: string, data: string) => {
       if (/^not_found/.test(ex?.name ?? '')) {
         try {
           await database.post({ _id: docId, title: data });
+          await cacheStorageBackup(data)
           return;
         } catch (postEx: any) {
           if (postEx?.status === 409 || postEx?.name === 'conflict') {
@@ -908,13 +950,15 @@ const ensureFlatProfiles = (p: any): profile[] => {
 let storeSystemDataTimer: ReturnType<typeof setTimeout> | null = null
 export const storeSystemData = async () => {
   if (!CoNET_Data) return
+  const temp = { ...CoNET_Data }
+  if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
+  const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
+  cacheStorageBackup(dataB64)
   if (storeSystemDataTimer) clearTimeout(storeSystemDataTimer)
   storeSystemDataTimer = setTimeout(async () => {
     storeSystemDataTimer = null
-    const temp = { ...CoNET_Data }
-    if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
     try {
-      await storageHashData("init", Buffer.from(customJsonStringify(temp)).toString("base64"))
+      await storageHashData("init", dataB64)
     } catch (ex) {
       console.warn(`[storeSystemData] Error:`, ex)
     }
@@ -939,21 +983,17 @@ export const MobileType = () => {
 }
 
 export const isStandalone = (() => {
-
-
-	// try {
-	// 	// Android / Desktop PWA
-	// 	if (window.matchMedia?.('(display-mode: standalone)').matches) {
-	// 		return true
-	// 	}
-
-	// 	// iOS Safari PWA
-	// 	if ((window.navigator as any).standalone === true) {
-	// 		return true
-	// 	}
-	// } catch (e) {}
-
-	return true
+	try {
+		// Android / Desktop PWA
+		if (typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches) {
+			return true
+		}
+		// iOS Safari PWA (added to home screen)
+		if (typeof navigator !== 'undefined' && (navigator as any).standalone === true) {
+			return true
+		}
+	} catch {}
+	return false
 })()
 
 

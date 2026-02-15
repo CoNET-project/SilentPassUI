@@ -38,7 +38,6 @@ import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
-import RedeemOnboardingApp from "@/example/beamioRedeemOnboard"
 
 global.Buffer = require("buffer").Buffer
 
@@ -854,7 +853,6 @@ function AppShell() {
 				<Route path="/ten-key-input" element={<TenKeyInput />} />
 				<Route path="/example-card" element={<EmapmpleCard />} />
 				<Route path="/cardManager" element={<CardManager />} />
-				<Route path="/redeem-onboarding" element={<RedeemOnboardingApp />} />
 				</Routes>
 			</div>
 

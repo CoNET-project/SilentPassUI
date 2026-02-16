@@ -6,6 +6,7 @@ import Footer from "@/components/Footer"
 import Home from "./pages/Home"
 import History from "./pages/History/MyWalletDashboardNew"
 import Pay from "./pages/Pay"
+import QrOperationPage from "./pages/Pay/QrOperationPage"
 import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
@@ -30,7 +31,6 @@ import Market from "@/pages/Vouchers/Market"
 import VouchersExample from "@/pages/Vouchers/example/index"
 import Express from "@/pages/Vouchers/example/express"
 import ExampleExpress from "@/pages/Vouchers/example/exampleExpress"
-import ExampleExpress2 from "@/pages/Vouchers/example/ExampleExpress2"
 import TenKeyInput from "@/pages/Pay/components/TenKeyInput"
 import { Toast } from "antd-mobile"
 import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
@@ -101,6 +101,8 @@ function AppShell() {
   const runningRef = useRef(false)
   const pendingQueueRef = useRef<string[]>([])
   const processedIdsRef = useRef<Set<string>>(new Set())
+  const setChartsRef = useRef(setCharts)
+  setChartsRef.current = setCharts
 
   // ✅ 现在安全了：AppShell 已经在 <Router> 内
   const navigate = useNavigate()
@@ -322,7 +324,7 @@ function AppShell() {
 		const bo: beamio = userInfo
 
 		await initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
-			setCharts((prev: string[]) => [...prev, message])
+			setChartsRef.current((prev: string[]) => [...prev, message])
 		})
 		
 		
@@ -489,15 +491,27 @@ function AppShell() {
 			const msg: message = JSON.parse(raw)
 			if (!msg?.from || !msg?.text || !msg?.signMessage) continue
 
-			const sign = checkSign(msg.text, msg.signMessage, msg.from)
+			// 验签：支持外层 text 或内层嵌套 { text } 的格式（部分客户端签 inner.text）
+			let sign = checkSign(msg.text, msg.signMessage, msg.from)
+			let displayText = msg.text
+			if (!sign && typeof msg.text === 'string') {
+				try {
+					const inner = JSON.parse(msg.text) as { text?: string }
+					if (typeof inner?.text === 'string') {
+						sign = checkSign(inner.text, msg.signMessage, msg.from)
+						if (sign) displayText = inner.text
+					}
+				} catch {}
+			}
 			if (!sign) continue
+			const signAddr = sign
 
-			let idx = chats.findIndex(n => n?.address?.toLowerCase() === sign.toLowerCase())
+			let idx = chats.findIndex(n => n?.address?.toLowerCase() === signAddr.toLowerCase())
 			let chat = idx >= 0 ? { ...chats[idx] } : null
 
 			// ✅ 不存在：创建新 chat
 			if (!chat) {
-				const _account = await searchUsername(sign) // 这里用 sign 更合理
+				const _account = await searchUsername(signAddr)
 				if (!_account?.results?.length) continue
 
 				const acc: searchResult = _account.results[0]
@@ -505,7 +519,7 @@ function AppShell() {
 				if (!kk?.publicArmored) continue
 
 				chat = {
-					address: sign,
+					address: signAddr,
 					beamio: acc,
 					messages: [],
 					pin: false,
@@ -520,10 +534,10 @@ function AppShell() {
 				idx = 0
 			}
 
-			// ✅ 合并消息（去重 + 排序）
+			// ✅ 合并消息（去重 + 排序）；displayText 已归一化（嵌套格式时用 inner.text）
 			const nextMessages = makeMessage(
 				chat.messages || [],
-				msg.text,
+				displayText,
 				msg.timestamp,
 				"them",
 				"sent"
@@ -551,7 +565,7 @@ function AppShell() {
 				unreadCount: unreadNext
 			}
 
-			if (isNew && isMembershipActivatedWithHash(msg.text)) chatsToAutoReply.push(nextChat)
+			if (isNew && isMembershipActivatedWithHash(displayText)) chatsToAutoReply.push(nextChat)
 
 			// ✅ 放回 chats（不可变）
 			if (idx === 0 && chats[0].address.toLowerCase() === nextChat.address.toLowerCase()) {
@@ -764,8 +778,16 @@ function AppShell() {
   // ② 入站 chat 串行队列处理：避免并行 addNewMessage 导致同一消息被处理两次
 	useEffect(() => {
 		const temp = CoNET_Data
-		// profile 为空说明 init 还未完成，不处理
-		if (!profiles?.length || !profiles[0] || !temp || !Array.isArray(charts) || charts.length === 0) return
+		if (!Array.isArray(charts) || charts.length === 0) return
+
+		// profile 或 temp 未就绪时，延迟重试（防止 init 未完成时丢消息）
+		if (!profiles?.length || !profiles[0] || !temp) {
+			const t = setTimeout(() => {
+				// 触发重新检查：通过 setCharts 保持引用不变但触发 effect 重跑
+				setCharts((prev: string[]) => (prev.length ? [...prev] : prev))
+			}, 500)
+			return () => clearTimeout(t)
+		}
 
 		// 新消息入队
 		pendingQueueRef.current.push(...charts)
@@ -841,6 +863,7 @@ function AppShell() {
 				<Route path="/" element={<Home />} />
 				<Route path="/History" element={<History />} />
 				<Route path="/Pay" element={<Pay />} />
+				<Route path="/qr" element={<QrOperationPage />} />
 				<Route path="/Chat" element={<Chat />} />
 				<Route path="/chat/:id" element={<ChatDetail />} />
 				<Route path="/settings" element={<Market />} />
@@ -849,7 +872,7 @@ function AppShell() {
 				<Route path="/HistoryAll" element={<HistoryAll />} />
 				<Route path="/vouchers-example" element={<VouchersExample />} />
 				<Route path="/express" element={<Express />} />
-				<Route path="/example-express" element={<ExampleExpress2 />} />
+				<Route path="/example-express" element={<ExampleExpress />} />
 				<Route path="/ten-key-input" element={<TenKeyInput />} />
 				<Route path="/example-card" element={<EmapmpleCard />} />
 				<Route path="/cardManager" element={<CardManager />} />

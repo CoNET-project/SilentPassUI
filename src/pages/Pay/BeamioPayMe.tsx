@@ -26,6 +26,8 @@ type BeamioPayMeProps = {
 	relayPayload?: OpenContainerRelayPayload | null
 	/** 从弹窗关闭时回调（如从 MyWalletDashboard 底部 sheet 打开） */
 	onClose?: () => void
+	/** 是否隐藏 displayName 和 @accountName */
+	hideName?: boolean
 }
 
 const displayName = (item: beamio|null) => {
@@ -40,7 +42,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
     activeTab = "main",
 	showActiveTab = true,
 	relayPayload = null,
-	onClose
+	onClose,
+	hideName = false
   } = props
 
 	const [copied, setCopied] = useState(false)
@@ -157,11 +160,13 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						qrValue={JSON.stringify({ ...relayPayload, validBefore: relayPayload.deadline })}
 						hideActions
 						hideUrl
+						hideName={hideName}
 					/>
 				) : showMode === 'main' && (
 				<div className="mt-6 rounded-[22px] bg-white shadow-[0_12px_35px_rgba(15,23,42,0.08)] ring-1 ring-black/10 overflow-hidden">
 					<div className="px-6 pt-4 pb-6">
 					<div className="text-center">
+						{!hideName && (
 						<div className="flex items-baseline justify-center gap-2 text-[20px] font-extrabold tracking-tight text-slate-900">
 							<span className="truncate">
 							{displayName(beamio)}
@@ -169,6 +174,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 
 							<span className="font-semibold text-beamio">@{beamio?.accountName}</span>
 						</div>
+						)}
 						</div>
 
 						{/* QR Card */}

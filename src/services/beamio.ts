@@ -722,56 +722,56 @@ const getDuplicateOwnership = async(duplicateAccount: string, keyID: string): Pr
 }
 
 const duplicateAPI = `${apiv4_endpoint}duplicate`
-const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
+// const initDuplicate = async (temp: encrypt_keys_object): Promise<encrypt_keys_object|null> => {
 	
-	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
-	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp._duplicateCode])
-	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
+// 	temp._duplicateCode = temp?._duplicateCode || uuid62.v4()
+// 	temp.duplicateCodeHash = ethers.solidityPackedKeccak256(['string'], [temp._duplicateCode])
+// 	temp.duplicateMnemonicPhrase = temp.mnemonicPhrase
 
 
-	if (!temp?.duplicateAccount) {
-		const profiles = temp.profiles
-		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: '', channelPartners: temp.ChannelPartners})
-		const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
-		const signMessage = await wallet.signMessage(message)
-		const sendData = {
-		  	message, signMessage
-		}
+// 	if (!temp?.duplicateAccount) {
+// 		const profiles = temp.profiles
+// 		const message = JSON.stringify({ walletAddress: profiles[0].keyID, hash: temp.duplicateCodeHash, data: '', channelPartners: temp.ChannelPartners})
+// 		const wallet = new ethers.Wallet(profiles[0].privateKeyArmor)
+// 		const signMessage = await wallet.signMessage(message)
+// 		const sendData = {
+// 		  	message, signMessage
+// 		}
 	
-		const result = await postToEndpoint(duplicateAPI, true, sendData)
-		if (!result|| !result?.status) {
-			console.log(`initDuplicate Error!`, result?.error)
-			return temp
-		}
-		console.log(`initDuplicate success!`, result?.status)
+// 		const result = await postToEndpoint(duplicateAPI, true, sendData)
+// 		if (!result|| !result?.status) {
+// 			console.log(`initDuplicate Error!`, result?.error)
+// 			return temp
+// 		}
+// 		console.log(`initDuplicate success!`, result?.status)
 
-		temp.duplicateAccount = {
-			privateKeyArmor: profiles[0].privateKeyArmor,
-			tokens: initProfileTokens(),
-			publicKeyArmor: '',
-			referrer: '',
-			keyID: result.status,
-			isNode: false,
-			index: 0,
-			hdPath: null,
-		}
+// 		temp.duplicateAccount = {
+// 			privateKeyArmor: profiles[0].privateKeyArmor,
+// 			tokens: initProfileTokens(),
+// 			publicKeyArmor: '',
+// 			referrer: '',
+// 			keyID: result.status,
+// 			isNode: false,
+// 			index: 0,
+// 			hdPath: null,
+// 		}
 		
-	} else {
-		const keyID = temp.profiles[0].keyID
-		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
-		if (duplicateStatus === false) {
+// 	} else {
+// 		const keyID = temp.profiles[0].keyID
+// 		const duplicateStatus = await getDuplicateOwnership(temp.duplicateAccount.keyID, keyID)
+// 		if (duplicateStatus === false) {
 			
-			return null
-		}
-	}
+// 			return null
+// 		}
+// 	}
 
-	if (!temp?.duplicatePassword) {
-		temp.duplicateCode = ''
-	}
+// 	if (!temp?.duplicatePassword) {
+// 		temp.duplicateCode = ''
+// 	}
 
-	return temp
+// 	return temp
 
-}
+// }
 
 export const createOrGetWallet = async (secretPhrase: string | null, initAccount = false, referrals = '', ChannelPartners = '' ) => {
 	await checkStorage()
@@ -828,10 +828,10 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
   
 
 
-	tmpData = await initDuplicate(tmpData)
-	if (!tmpData) {
-			return
-	}
+	// tmpData = await initDuplicate(tmpData)
+	// if (!tmpData) {
+	// 		return
+	// }
   
 	await setCoNET_Data(tmpData)
 

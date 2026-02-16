@@ -9,25 +9,170 @@ import {
   Ticket,
   Gamepad2,
   Car,
+  ChevronRight,
+  Server,
+  Trophy,
+  Sparkles,
+  Activity,
+  Zap,
+  ShieldCheck,
+  Check,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { getMyAssets } from "@/services/BeamioCard"
 import { CCSA_Card_Address } from "@/utils/constants"
-import CCSACardVisual from "./CardVisual"
 import BeamioNavBack from "@/components/Setting/BeamioNavBack"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
-import ccsabackphoto from "./assets/ccsacard.avif"
 import PurchaseAccount from "./PurchaseAccount"
 import TopUpAccount from "./TopUpAccount"
 import ShowPayQR from "./showPayQR"
 import { signOfflineTransferERC3009 } from "@/services/BeamioCard"
 
-const THEME = {
-  bg: "#F2F2F7",
+const THEME = { bg: "#F2F2F7" }
+
+const CATEGORIES = [
+  { id: "membership", name: "Memberships", icon: <Store size={20} />, color: "bg-purple-100 text-purple-600" },
+  { id: "events", name: "Events", icon: <Trophy size={20} />, color: "bg-pink-100 text-pink-600" },
+  { id: "dining", name: "Dining", icon: <Utensils size={20} />, color: "bg-orange-100 text-orange-600" },
+  { id: "retail", name: "Retail", icon: <ShoppingCart size={20} />, color: "bg-blue-100 text-blue-600" },
+  { id: "services", name: "Services", icon: <Sparkles size={20} />, color: "bg-emerald-100 text-emerald-600" },
+]
+
+const SectionHeader = ({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) => (
+  <div className="flex justify-between items-end px-5 mb-3 mt-8">
+    <h3 className="text-[22px] font-bold text-gray-900 tracking-tight leading-none">{title}</h3>
+    {action && (
+      <button onClick={onAction} className="text-[#1562f0] text-[15px] font-medium active:opacity-60">
+        {action}
+      </button>
+    )}
+  </div>
+)
+
+const GetButton = ({ price, count = 0, onClick }: { price: number; count?: number; onClick: () => void }) => (
+  <button
+    onClick={(e) => { e.stopPropagation(); onClick(); }}
+    className="relative pl-5 pr-5 py-1.5 rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm min-w-[75px] active:scale-95 bg-[#F2F2F7] text-[#1562f0] hover:bg-[#1562f0] hover:text-white flex items-center justify-center gap-1.5"
+  >
+    {price > 0 ? `CA$${price}` : "View"}
+    {count > 0 && (
+      <span className="flex items-center justify-center bg-blue-100 text-blue-600 text-[9px] h-4 min-w-[16px] px-1 rounded-full -mr-2 border border-blue-200 shadow-sm">
+        x{count}
+      </span>
+    )}
+  </button>
+)
+
+type GenesisFeature = { title: string; desc: string; icon: React.ReactNode }
+type GenesisNodeData = {
+  id: number
+  tagline: string
+  title: string
+  subtitle: string
+  description: string
+  currentMint: number
+  totalMint: number
+  price: number
+  type: string
+  image: string
+  features: GenesisFeature[]
 }
+type HeroItem = {
+  id: number
+  tagline: string
+  title: string
+  subtitle: string
+  description: string
+  features?: string[]
+  image: string
+  merchant: string
+  location: string
+  price: number
+  type: string
+  color?: string
+  overlay?: string
+}
+
+const GENESIS_NODE_DATA: GenesisNodeData = {
+  id: 999,
+  tagline: "LIMITED EDITION",
+  title: "Genesis Node Pack",
+  subtitle: "Strictly limited to 300 visionary partners.",
+  description: "Own the physical edge and the invisible engine of the Beamio network.",
+  currentMint: 247,
+  totalMint: 300,
+  price: 999,
+  type: "HARDWARE + NFT",
+  image: "https://images.unsplash.com/photo-1639322537228-f710d846310a?auto=format&fit=crop&q=80&w=800",
+  features: [
+    { title: "Dynamic E-ink Display", desc: "0.84mm flexible PCB. Auto-refreshes QR code every 60s.", icon: <Zap size={20} className="text-blue-400" /> },
+    { title: "Military-Grade SE", desc: "EAL5+ certified chip for Account Abstraction keys.", icon: <ShieldCheck size={20} className="text-blue-400" /> },
+    { title: "5% Protocol Revenue Share", desc: "Perpetual claim on 5% of all B-Units consumed across the global clearing network.", icon: <Check size={20} className="text-blue-400" /> },
+  ],
+}
+
+const HERO_COLLECTION: HeroItem[] = [
+  {
+    id: 102,
+    tagline: "LOCAL FAVORITE",
+    title: "Sen Pho + Cafe Card",
+    subtitle: "Redefining Vietnamese Cuisine",
+    description: "Experience authentic Vietnamese cuisine at its finest. This membership is valid at both Champlain Heights and Kerrisdale locations, offering exclusive perks for loyal patrons.",
+    features: ["10% Off All Orders", "Valid at Champlain Heights & Kerrisdale", "Priority Reservations", "Birthday Dessert"],
+    image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
+    merchant: "Sen Pho + Cafe",
+    location: "Vancouver, BC",
+    price: 99,
+    type: "Membership",
+    color: "text-white",
+    overlay: "from-black/80 via-black/40 to-transparent",
+  },
+]
+
+const GenesisCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () => void }) => (
+  <div
+    onClick={onClick}
+    className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-black border border-gray-800 shadow-[0_0_40px_-10px_rgba(21,98,240,0.3)] shrink-0"
+  >
+    <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] to-black" />
+    <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
+    <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
+      <div className="flex justify-between items-start">
+        <span className="bg-[#0f172a] text-blue-400 border border-blue-500/30 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg">
+          {data.tagline}
+        </span>
+        <span className="text-white/60 font-mono text-xs font-medium tracking-wide">
+          {data.currentMint} / {data.totalMint}
+        </span>
+      </div>
+      <div className="flex-1 flex items-center justify-center py-4">
+        <div className="relative w-48 h-32 bg-gradient-to-br from-gray-800 to-black rounded-xl shadow-2xl border border-gray-700 transform -rotate-12 group-hover:-rotate-6 transition-transform duration-500 flex items-center justify-center">
+          <div className="absolute top-4 left-4 w-8 h-6 bg-gray-300 rounded-md opacity-80" />
+          <Activity className="text-blue-500" size={32} />
+          <div className="absolute bottom-4 right-4"><div className="text-[8px] text-white font-bold">B</div></div>
+          <div className="absolute inset-0 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.5)]" />
+        </div>
+      </div>
+      <div className="mb-4">
+        <h2 className="text-4xl font-bold text-white leading-none tracking-tight mb-1">{data.title}</h2>
+      </div>
+      <div className="bg-[#1e293b]/50 backdrop-blur-md border border-gray-700 rounded-[20px] p-4 flex items-center justify-between">
+        <div>
+          <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Mint Price</div>
+          <div className="text-xl font-bold text-white flex items-baseline gap-1">
+            ${data.price} <span className="text-xs text-gray-500 font-normal">USDC</span>
+          </div>
+        </div>
+        <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} className="bg-[#1562f0] hover:bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold text-sm transition-colors shadow-lg shadow-blue-500/20">
+          View Specs
+        </button>
+      </div>
+    </div>
+  </div>
+)
 
 type MarketItem = {
   id: string
@@ -46,12 +191,12 @@ const MARKET_ITEMS: MarketItem[] = [
   {
     id: "m1",
     category: "membership",
-    name: "CCSA Membership",
-    fiatPrice: 100,
+    name: "CCSA Member Card",
+    fiatPrice: 150,
     fiatCurrency: "CA$",
     imageColor: "bg-gradient-to-br from-purple-600 to-indigo-600",
     icon: <Store size={24} className="text-white" />,
-    desc: "Get CA$100 Credits + VIP Access",
+    desc: "Unlock Exclusive Dining. First Partner: Osmanthus.",
     type: "Membership",
     topUpOptions: [50, 100, 200],
   },
@@ -165,22 +310,12 @@ const MARKET_ITEMS: MarketItem[] = [
   },
 ]
 
-const FILTER_TABS = [
-  { label: "All", id: null as string | null },
-  { label: "Memberships", id: "membership" },
-  { label: "Events", id: "events" },
-  { label: "Dining", id: "dining" },
-  { label: "Retail", id: "retail" },
-  { label: "Services", id: "services" },
-]
-
 export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, myAddress, setShowFooter, usdcbalance, beamio } = useDaemonContext()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 	const [activeFilter, setActiveFilter] = useState<string | null>(null)
-	const [, setViewAllCategory] = useState<{ id: string; title: string } | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
 	const [settingsOpen, setSettingsOpen] = useState<"" | "PurchaseAccount" | "TopUP" | "showPayQR">("")
@@ -220,37 +355,22 @@ export default function Market() {
 		[myAssets]
 	)
 
-	const membershipItems = useMemo(
-		() => MARKET_ITEMS.filter((i) => i.category === "membership"),
-		[]
-	)
-	const eventsItems = useMemo(
-		() => MARKET_ITEMS.filter((i) => i.category === "events"),
-		[]
-	)
-	const diningItems = useMemo(
-		() => MARKET_ITEMS.filter((i) => i.category === "dining"),
-		[]
-	)
-	const retailItems = useMemo(
-		() => MARKET_ITEMS.filter((i) => i.category === "retail"),
-		[]
-	)
-	const servicesItems = useMemo(
-		() => MARKET_ITEMS.filter((i) => i.category === "services"),
-		[]
-	)
+	const membershipItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "membership"), [])
+	const eventsItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "events"), [])
+	const diningItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "dining"), [])
+	const retailItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "retail"), [])
+	const servicesItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "services"), [])
 
 	const onItemClick = (item: MarketItem) => {
 		if (item.id === "m8" || item.name === "Uber Eats") {
-			navigate("/vouchers-example")
+			navigate("/example-express")
 			return
 		}
 		if (item.id === 'm9' || item.name === "Spotify") {
 			navigate("/express")
 			return
 		}
-		if (item.id === "m1" || item.name === "CCSA Membership") {
+		if (item.id === "m1" || item.name === "CCSA Member Card" || item.name === "CCSA Membership") {
 			setShowFooter(false)
 			if (isMember) {
 				setOverlayMode('cardItem')
@@ -273,67 +393,7 @@ export default function Market() {
 			return
 		}
 
-		navigate("/settings", { state: { openPurchase: item.id } })
-	}
-
-	const MarketSection = ({
-		title,
-		items,
-		limit = 5,
-		showViewAll = false,
-		onViewAll,
-	}: {
-		title: string
-		items: MarketItem[]
-		limit?: number
-		showViewAll?: boolean
-		onViewAll?: () => void
-	}) => {
-		const displayed = items.slice(0, limit)
-		const hasMore = items.length > limit
-
-		return (
-		<div className="mb-8">
-			<div className="px-4 sm:px-6 mb-3 flex justify-between items-center">
-			<h3 className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">
-				{title}
-			</h3>
-			{(showViewAll && onViewAll) || (hasMore && onViewAll) ? (
-				<button
-				type="button"
-				onClick={onViewAll}
-				className="text-[12px] font-bold text-blue-600 hover:underline"
-				>
-				View All
-				</button>
-			) : null}
-			</div>
-			<div className="flex overflow-x-auto gap-3 px-4 sm:px-6 pb-4 overflow-y-hidden">
-			{displayed.map((item) => (
-				<button
-				key={item.id}
-				type="button"
-				onClick={() => onItemClick(item)}
-				className="min-w-[160px] bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-3 text-left active:scale-[0.98] transition-transform"
-				>
-				<div
-					className={`w-12 h-12 rounded-xl ${item.imageColor} flex items-center justify-center shadow-md`}
-				>
-					{item.icon}
-				</div>
-				<div className="min-w-0">
-					<h4 className="font-bold text-slate-900 text-sm truncate">
-					{item.name}
-					</h4>
-					<span className="text-xs font-bold text-slate-500">
-					{item.fiatCurrency} {item.fiatPrice}
-					</span>
-				</div>
-				</button>
-			))}
-			</div>
-		</div>
-		)
+		//navigate("/settings", { state: { openPurchase: item.id } })
 	}
 
 	const closeCardDetail = () => {
@@ -343,163 +403,167 @@ export default function Market() {
 		flash()
 	}
 
+	const filteredItems = useMemo(() => {
+		if (!activeFilter) return MARKET_ITEMS
+		return MARKET_ITEMS.filter((i) => i.category === activeFilter)
+	}, [activeFilter])
+
 	return (
 		<>
-		<div
-		className="min-h-full overflow-y-auto pb-24 pt-6"
-		style={{ background: THEME.bg }}
-		>
+		<div className="min-h-full overflow-y-auto pb-24 pt-6 selection:bg-blue-100" style={{ background: THEME.bg }}>
 		{/* Header */}
-		<div className="px-4 sm:px-6 pb-4 flex justify-between items-center">
-			<h1 className="text-[28px] sm:text-3xl font-bold text-slate-900">
-			Market
-			</h1>
-			<button
-			type="button"
-			aria-label="Search"
-			className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-600"
-			>
-			<Search size={20} />
-			</button>
+		<div className="px-6 pt-6 pb-4 flex justify-between items-end bg-[#F2F2F7]/90 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/50">
+			<h1 className="text-[34px] font-bold text-black tracking-tight leading-none">Market</h1>
 		</div>
 
-		{/* Filter Tabs */}
-		<div className="px-4 sm:px-6 mb-6 overflow-x-auto flex gap-2 pb-1 overflow-y-hidden">
-			{FILTER_TABS.map((tab) => (
-			<button
-				key={tab.label}
-				type="button"
-				onClick={() => setActiveFilter(tab.id)}
-				className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
-				activeFilter === tab.id
-					? "bg-slate-800 text-white"
-					: "bg-white text-slate-500 shadow-sm"
-				}`}
-			>
-				{tab.label}
-			</button>
-			))}
-		</div>
-
-		{/* MY CARDS */}
-		<div className="mb-8">
-			<div className="px-4 sm:px-6 mb-3 flex justify-between items-center">
-			<h3 className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">
-				MY CARDS
-			</h3>
-			<button
-				type="button"
-				className="text-[12px] font-bold text-blue-600 hover:underline"
-				onClick={() => navigate("/settings")}
-			>
-				Manage
-			</button>
-			</div>
-			{isMember ? (
-			<div className="px-4 sm:px-6 flex justify-center overflow-x-auto gap-4 pb-4 overflow-y-hidden">
-				<div className="min-w-[min(100%,320px)] max-w-[320px] shrink-0">
-				<CCSACardVisual
-					balance={Number(myAssets?.points ?? 0)}
-					memberNo={numOfNfts.toString()}
-					hasPass={false}
-					showBuy={isMember ? "Member" : "join"}
-					onCardClick={() => {
-					setShowFooter(false)
-					navigate("/settings", { state: { openCardDetail: true } })
-					}}
-					onQR={async () => {
-						setShowFooter(false)
-						if (!profiles?.[0]?.privateKeyArmor || !myAssets?.cardAddress) return
-						try {
-							const pointsHuman = (myAssets?.points ?? 0).toString()
-							const data = await signOfflineTransferERC3009(
-								profiles[0].privateKeyArmor,
-								pointsHuman,
-								myAssets.cardAddress
-							)
-							setQrPayload(JSON.stringify(data))
-							setSettingsOpen("showPayQR")
-						} catch (e) {
-							console.error("signOfflineTransferERC3009 failed", e)
-						}
-					}}
-					onBuy={() => {
-					setShowFooter(false)
-					navigate("/settings", { state: { openPurchase: "m1" } })
-					}}
+		{/* Search Bar (ExampleCard style) */}
+		<div className="px-5 mb-6">
+			<div className="relative group active:scale-[0.99] transition-transform">
+				<Search className="absolute left-3.5 top-3 text-gray-400" size={18} strokeWidth={2.5} />
+				<input
+					type="text"
+					placeholder="Games, Food, Vouchers..."
+					className="w-full bg-[#E3E3E8] py-2.5 pl-10 pr-4 rounded-[12px] text-[17px] focus:outline-none focus:bg-[#D1D1D6] transition-colors placeholder-gray-500 font-medium"
 				/>
-				</div>
 			</div>
-			) : (
-			<div className="mx-4 sm:mx-6 p-6 bg-white rounded-2xl border-2 border-dashed border-slate-300 text-center">
-				<div className="w-14 h-14 mx-auto rounded-2xl bg-slate-200 flex items-center justify-center text-slate-400 mb-3">
-				<Ticket size={28} className="text-slate-400" />
-				</div>
-				<p className="text-slate-400 text-sm font-medium">
-				Your card wallet is empty.
-				</p>
-			</div>
-			)}
 		</div>
 
-		{/* PREMIER ACCESS */}
-		<div className="mb-2">
-			<h3 className="px-4 sm:px-6 text-[12px] font-bold text-slate-400 uppercase tracking-widest">
-			PREMIER ACCESS
-			</h3>
-		</div>
-		<div className="flex overflow-x-auto gap-4 px-4 sm:px-6 pb-8 overflow-y-hidden">
-			{membershipItems.map((item) => (
-			<button
-				key={item.id}
-				type="button"
-				onClick={() => onItemClick(item)}
-				className={`min-w-[280px] h-[160px] rounded-2xl p-5 text-white shadow-lg flex flex-col justify-between relative overflow-hidden text-left active:scale-[0.98] transition-transform bg-cover bg-center ${
-				item.id === "m1" ? "" : item.imageColor
-				}`}
-				style={
-				item.id === "m1"
-					? { backgroundImage: `url(${ccsabackphoto})` }
-					: undefined
-				}
-			>
-				{item.id === "m1" && (
-				<div className="absolute inset-0 bg-black/30 rounded-2xl z-0" aria-hidden />
-				)}
-				<div className="flex justify-between items-start z-10">
-				<span className="font-bold text-lg opacity-90">{item.name}</span>
-				{item.icon}
+		{/* HERO CARDS: PREMIER ACCESS (ExampleCard style - horizontal snap scroll) */}
+		<div className="flex gap-4 overflow-x-auto px-5 pb-8 scrollbar-hide snap-x snap-mandatory">
+			{/* 1. Genesis Node Pack (ExampleCard GenesisCard design) */}
+			<GenesisCard
+				data={GENESIS_NODE_DATA}
+				onClick={() => navigate("/example-card")}
+			/>
+
+			{/* 2. CCSA Member Card (ExampleCard Hero design) */}
+			{membershipItems.filter((item) => item.id === "m1").map((item) => (
+				<div
+					key={item.id}
+					role="button"
+					tabIndex={0}
+					onClick={() => onItemClick(item)}
+					onKeyDown={(e) => e.key === "Enter" && onItemClick(item)}
+					className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] shrink-0"
+				>
+					<img src="https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&q=80&w=800" alt="CCSA Member Card" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+					<div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+					<div className="absolute inset-0 p-6 flex flex-col justify-between">
+						<div>
+							<span className="text-blue-400 text-xs font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md px-2 py-1 rounded-md inline-block">
+								HAPPENING NOW
+							</span>
+							<h2 className="mt-2 text-4xl font-bold leading-[0.95] tracking-tight text-white drop-shadow-lg">
+								CCSA Member Card
+							</h2>
+							<p className="mt-2 text-white/90 font-medium text-[15px] drop-shadow-md line-clamp-2 leading-snug">
+								Unlock Exclusive Dining. First Partner: Osmanthus.
+							</p>
+						</div>
+						<div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[20px] p-4 flex items-center justify-between">
+							<div className="text-white">
+								<div className="text-[11px] opacity-80 uppercase tracking-wide">Price</div>
+								<div className="font-bold text-xl">{item.fiatCurrency}{item.fiatPrice}</div>
+							</div>
+							<div onClick={(e) => e.stopPropagation()}>
+								<GetButton price={item.fiatPrice} count={isMember ? 1 : 0} onClick={() => onItemClick(item)} />
+							</div>
+						</div>
+					</div>
 				</div>
-				<div className="z-10">
-				<div className="text-white/80 text-xs uppercase tracking-wide">
-					Price
+			))}
+
+			{/* 3. Sen Pho + Cafe Card (ExampleCard Hero design) */}
+			{HERO_COLLECTION.map((item) => (
+				<div
+					key={item.id}
+					onClick={() => navigate("/example-card")}
+					className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300 shrink-0"
+				>
+					<img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={item.title} />
+					<div className={`absolute inset-0 bg-gradient-to-t ${item.overlay}`} />
+					<div className="absolute inset-0 p-6 flex flex-col justify-between">
+						<div>
+							<span className="text-blue-400 text-xs font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md px-2 py-1 rounded-md inline-block">
+								{item.tagline}
+							</span>
+							<h2 className={`mt-2 text-4xl font-bold leading-[0.95] tracking-tight ${item.color ?? "text-white"} drop-shadow-lg`}>
+								{item.title}
+							</h2>
+							<p className="mt-2 text-white/90 font-medium text-[15px] drop-shadow-md line-clamp-2 leading-snug">
+								{item.subtitle}
+							</p>
+						</div>
+						<div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[20px] p-4 flex items-center justify-between">
+							<div className="text-white">
+								<div className="text-[11px] opacity-80 uppercase tracking-wide">Price</div>
+								<div className="font-bold text-xl">CA${item.price}</div>
+							</div>
+							<div onClick={(e) => e.stopPropagation()}>
+								<GetButton price={item.price} onClick={() => navigate("/example-card")} />
+							</div>
+						</div>
+					</div>
 				</div>
-				<div className="text-2xl font-bold">
-					{item.fiatCurrency} {item.fiatPrice}
-				</div>
-				</div>
-				<div className="absolute -bottom-10 -right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
-			</button>
 			))}
 		</div>
 
-		{/* EVENTS & TICKETS */}
-		<MarketSection title="EVENTS & TICKETS" items={eventsItems} limit={6} />
+		<div className="h-px bg-gray-200 mx-5 mb-2" />
 
-		{/* DINING REWARDS */}
-		<MarketSection
-			title="DINING REWARDS"
-			items={diningItems}
-			limit={6}
-			showViewAll
-			onViewAll={() => setViewAllCategory({ id: "dining", title: "Dining Rewards" })}
+		{/* Browse by Category (ExampleCard style) */}
+		<SectionHeader title="Browse by Category" />
+		<div className="flex gap-3 overflow-x-auto px-5 pb-4 scrollbar-hide">
+			{CATEGORIES.map((cat) => (
+				<button
+					key={cat.id}
+					type="button"
+					onClick={() => setActiveFilter(activeFilter === cat.id ? null : cat.id)}
+					className={`flex flex-col items-center gap-2 min-w-[72px] active:opacity-60 transition-opacity shrink-0 ${
+						activeFilter === cat.id ? "opacity-100" : ""
+					}`}
+				>
+					<div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-sm ${
+						activeFilter === cat.id ? "ring-2 ring-[#1562f0] ring-offset-2 " : ""
+					}${cat.color}`}>
+						{cat.icon}
+					</div>
+					<span className="text-[11px] font-semibold text-gray-500">{cat.name}</span>
+				</button>
+			))}
+		</div>
+
+		{/* Top Vouchers / Filtered List (ExampleCard list style) */}
+		<SectionHeader
+			title={activeFilter ? `${CATEGORIES.find((c) => c.id === activeFilter)?.name ?? "Items"}` : "Top Vouchers"}
 		/>
+		<div className="px-5 grid grid-cols-1 gap-y-0 bg-white rounded-[24px] shadow-sm divide-y divide-gray-100/80 mx-5 overflow-hidden">
+			{(activeFilter ? filteredItems : []).slice(0, 8).map((item, index) => (
+				<div
+					key={item.id}
+					className="flex items-center gap-4 p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
+					onClick={() => onItemClick(item)}
+				>
+					<div className="font-bold text-lg text-gray-300 w-4">{index + 1}</div>
+					<div className={`w-14 h-14 rounded-[14px] ${item.imageColor} flex items-center justify-center text-white shadow-sm shrink-0 group-hover:scale-105 transition-transform`}>
+						{item.icon}
+					</div>
+					<div className="flex-1 min-w-0 pr-2">
+						<div className="font-semibold text-gray-900 truncate text-[16px]">{item.name}</div>
+						<div className="text-[13px] text-gray-500 mt-0.5">{item.type} • {item.fiatCurrency}{item.fiatPrice}</div>
+					</div>
+					<div className="flex flex-col items-end gap-1">
+						<GetButton price={item.fiatPrice} onClick={() => onItemClick(item)} />
+					</div>
+				</div>
+			))}
+		</div>
 
-		{/* RETAIL */}
-		<MarketSection title="RETAIL" items={retailItems} limit={6} />
-
-		{/* SERVICES */}
-		<MarketSection title="SERVICES" items={servicesItems} limit={6} />
+		<div className="px-8 pb-10 text-center mt-8">
+			<p className="text-[10px] text-gray-400 leading-relaxed">
+				Prices may vary by location. All assets are secured on Base Mainnet.<br />
+				Beamio Inc. © 2026
+			</p>
+		</div>
 		</div>
 
 		{showCardDetail && (
@@ -523,33 +587,19 @@ export default function Market() {
 				<CardItem cardItem={myAssets} />
 				) : null}
 				{overlayMode === "cardDetail" && (
-					<div className="pb-24 mt-12">
-						<div className="px-4 pb-10 max-w-[420px] mx-auto">
-						<CCSACardVisual
-							balance={Number(myAssets?.points || 0)}
-							memberNo={numOfNfts.toString()}
-							hasPass={false}
-							showBuy={isMember ? 'Member':'join'}
-							
-							onCardClick={() => {
-								console.log("onCardClick")
-							}}
-							
-						/>
-						</div>
-						<CardDetail
-							isMember={isMember}
-							beamio={myAssets?.cardOwner ?? null}
-							onPurchase={() => {
-								setShowFooter(false)
-								if (isMember) {
-									setSettingsOpen("TopUP")
-									return
-								}
-								setSettingsOpen("PurchaseAccount")
-							}}
-						/>
-				</div>
+					<CardDetail
+						isMember={isMember}
+						beamio={myAssets?.cardOwner ?? null}
+						onPurchase={() => {
+							setShowFooter(false)
+							if (isMember) {
+								setSettingsOpen("TopUP")
+								return
+							}
+							setSettingsOpen("PurchaseAccount")
+						}}
+						onOpenWallet={isMember ? () => setOverlayMode("cardItem") : undefined}
+					/>
 				)}
 			</div>
 			</motion.div>
@@ -603,7 +653,7 @@ export default function Market() {
 								<PurchaseAccount
 									flow="PURCHASE"
 									beamioBalanceText={`Balance: ${usdcbalance.toFixed(2)} USDC`}
-									defaultAmount={100}
+									defaultAmount={150}
 									purchasePrice={0.01}
 									cardOwner={myAssets?.cardOwner ?? null}
 									onClose={(val) => {
@@ -643,6 +693,10 @@ export default function Market() {
 					</div>
 				</div>
 			</div>
+		<style>{`
+			.scrollbar-hide::-webkit-scrollbar { display: none; }
+			.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+		`}</style>
 		</>
 	)
 }

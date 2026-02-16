@@ -151,8 +151,8 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
   const [settingsOpen, setSettingsOpen] = useState<''|'PurchaseAccount'|'TopUP'|'showPayQR'>('')
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'cardDetail'>('')
   const [selectedActionItem, setSelectedActionItem] = useState<BeamioActionResponse | null>(null)
-  const [myAssets, setMyAssets] = useState<MyCardAssets>(cardItem)
   const [detailTab, setDetailTab] = useState<"activity" | "perks">("activity")
+  const [myAssets, setMyAssets] = useState<MyCardAssets>(cardItem)
   const [qrPayload, setQrPayload] = useState<string>("")
 
   const flash = async () => {
@@ -297,7 +297,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
       </div>
 
 
-	  {(showAlphaHowItWorks || selectedActionItem) && 
+	  {(showAlphaHowItWorks || selectedActionItem) && ( 
 			<AnimatePresence>
 				<motion.div
 					key="modal-overlay"
@@ -354,7 +354,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 					</div>
 				</motion.div>
 			</AnimatePresence>
-		}
+		)}
 
 		{/* TopUp Modal (demo) */}
 		<div
@@ -438,7 +438,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 											flash()
 										}, 3000)
 										setShowAlphaHowItWorks('')
-										setSettingsOpen('')
+									setSettingsOpen('')
 										setShowFooter(true)
 									}}
 								/>
@@ -454,7 +454,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 											setMyAssets({...val})
 										}
 										setShowAlphaHowItWorks('')
-										setSettingsOpen('')
+									setSettingsOpen('')
 										setShowFooter(true)
 										setTimeout(() => {
 											flash()

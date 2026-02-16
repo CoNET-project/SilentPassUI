@@ -5,11 +5,11 @@ import { Download, Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw } from '
 import bIcon from '@/components/assets/logo512.png'
 import { useNavigate } from 'react-router-dom'
 
-const ACTIVATING_STEPS = [
+export const ACTIVATING_STEPS = [
   { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
   { id: 1, title: 'Deploying Smart Vault', desc: 'Establishing storage on Base', icon: Lock },
-  { id: 2, title: 'Connecting to Network', desc: 'Syncing with Base L2', icon: Wifi },
-  { id: 3, title: 'Finalizing Terminal', desc: 'Preparing user interface', icon: RefreshCw },
+  { id: 2, title: 'Minting Membership', desc: 'Adding card to your wallet', icon: Wifi },
+  { id: 3, title: 'Verifying on Base L2', desc: 'Confirming on blockchain', icon: RefreshCw },
 ] as const
 const STEP_DURATION_MS = 5000 // 4 steps × 5s ≈ 20s total
 type RecoveryQRScreenProps = {

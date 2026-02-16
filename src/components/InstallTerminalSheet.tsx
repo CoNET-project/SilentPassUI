@@ -3,6 +3,22 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Share2, PlusSquare, MoreVertical, Download, Smartphone, X, Sparkles } from "lucide-react"
 
 const isIOS = typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent)
+const STORAGE_KEY = "beamio_install_terminal_seen"
+
+export function getInstallTerminalSeen(): boolean {
+	if (typeof window === "undefined") return true
+	try {
+		return localStorage.getItem(STORAGE_KEY) === "1"
+	} catch {
+		return true
+	}
+}
+
+export function setInstallTerminalSeen(): void {
+	try {
+		localStorage.setItem(STORAGE_KEY, "1")
+	} catch {}
+}
 
 type Props = {
   open: boolean
@@ -27,6 +43,7 @@ export default function InstallTerminalSheet({
   const [platform, setPlatform] = useState<"ios" | "android">(isIOS ? "ios" : "android")
 
   const handleRemindLater = () => {
+    setInstallTerminalSeen()
     onClose()
     onRemindLater?.()
   }

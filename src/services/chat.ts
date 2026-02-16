@@ -168,11 +168,20 @@ const isPgpKeyComplete = (pgp: initBeamioPGPKeysRet | undefined): boolean => {
 	return !!(pgp.keyID?.trim() && pgp.privateKey?.trim() && pgp.publicKey?.trim() && typeof pgp.routes === 'string')
 }
 
+/** 互斥：确保同一时刻只有一个 initChat 在执行 */
+let initChatInProgress = false
+
 export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean, newMessage: (val: string) => void) => {
 	if (gossip) return
+	if (initChatInProgress) {
+		console.debug('[initChat] Skipped: already in progress')
+		return
+	}
+	initChatInProgress = true
 	setGossip(true)
-	const allNodes = await getAllNodes()
-	setAllNodes(allNodes)
+	try {
+		const allNodes = await getAllNodes()
+		setAllNodes(allNodes)
 	const temp = CoNET_Data
 	if (!temp || !temp?.profiles?.length) {
 		setGossip(false)
@@ -278,8 +287,10 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		return
 	}
 	
-	connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
-	
+		connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
+	} finally {
+		initChatInProgress = false
+	}
 }
 
 export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGPKeysRet|null> => {
@@ -684,9 +695,13 @@ export const connectToGossipNode = async (
                     
                     console.log(`✅ Message:`, kkk.slice(0, 50) + "..."); // 仅打印前50字符防止刷屏
                     newMessage(kkk);
+                } else if (data?.from && data?.text != null && data?.signMessage) {
+                    // 非 PGP：明文信封格式 { timestamp, text, from, signMessage }，直接交给 newMessage
+                    console.log(`✅ Plain envelope from ${data.from}`);
+                    newMessage(JSON.stringify(data));
                 } else {
-					console.log(data)
-				}
+                    console.log('[Gossip] Unknown format:', data);
+                }
             } catch (ex: any) {
                 // "No decryption key packets found" = 消息不是发给我们的（gossip 广播了发给其他用户的消息），静默跳过
                 if (ex?.message?.includes?.("No decryption key packets found")) return;

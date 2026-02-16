@@ -15,11 +15,10 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Search, Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw } 
+import { Search, Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, ArrowUpRight, ArrowDownLeft, Plus } 
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
-import SearchInputWithDropdown from './SearchBarWithResults'
 import CoinbaseRamps from '@/components/Setting/CoinbaseRamps'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
@@ -29,40 +28,15 @@ import PayScreen from '@/pages/Pay/send'
 import { ethers } from 'ethers'
 import { baseEndpoint } from '@/utils/constants'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import { CCSA_Card_Address } from '@/utils/constants'
 import { getActiveArray } from '@/services/payment'
-import { getAAAccount } from '@/services/BeamioCard'
+import { getAAAccount, getMyAssets } from '@/services/BeamioCard'
 import ActivePannel from '@/pages/History/components/activePannel'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
-import {BeamioBetaCard} from './components/BeamioBetaCard'
-import {TopUp} from './components/TopUp'
-import {ActivityFeed} from './components/ActivityFeed'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 
 
-
-export const EXCHANGE_PARTNERS = [
-  {
-    id: "kinbok",
-    name: "Kinbok Forex",
-    type: "fiat",
-    offer: "Cash to USDC",
-    location: "Local",
-    icon: "🏦",
-    color: "bg-yellow-50 border-yellow-100",
-    textColor: "text-yellow-700"
-  },
-  {
-    id: "coinbase",
-    name: "Coinbase",
-    type: "exchange",
-    offer: "Instant Buy",
-    location: "Global",
-    icon: "🌐",
-    color: "bg-blue-50 border-blue-100",
-    textColor: "text-blue-700"
-  }
-]
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
@@ -82,7 +56,6 @@ const Home = ({}) => {
 	const navigate = useNavigate()
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Pay'>('')
 	
-	const [isSearchOpen, setIsSearchOpen] = useState(false)
 	const [avatarName, setAvatarName] = useState('')
 	const [processing, setProcessing] = useState(false)
 	const [showGetFaucet, setShowGetFaucet] = useState<'Faucet'|'finished'|'sameIP'>('Faucet')
@@ -98,6 +71,7 @@ const Home = ({}) => {
 	const [openSearch, setOpenSearch]= useState(false)
 	const [reflash, setReflash] = useState(false)
 	const [itemTx, setItemtx] = useState<TransferHistork>()
+	const [ccsaAssets, setCcsaAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 
 
 
@@ -153,10 +127,16 @@ const Home = ({}) => {
 
 	const reflashProcess = async () => {
 		if (reflash) return
-		const profile: profile = profiles[0]
+		const profile: profile = profiles?.[0]
+		if (!profile) return
 		setReflash(true)
 
 		await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+		if (CCSA_Card_Address) {
+			getMyAssets(profile, CCSA_Card_Address)
+				.then(setCcsaAssets)
+				.catch(() => setCcsaAssets(null))
+		}
 		setReflash(false)
 	}
 
@@ -216,6 +196,14 @@ const Home = ({}) => {
 			}
 		}
 		reflashProcess()
+		// 拉取 CCSA 卡资产（延迟执行，避免首屏阻塞）
+		if (CCSA_Card_Address) {
+			setTimeout(() => {
+				getMyAssets(profile, CCSA_Card_Address)
+					.then(setCcsaAssets)
+					.catch(() => setCcsaAssets(null))
+			}, 150)
+		}
 		const actives = await getActiveArray(profile)
 		setActiveItems(actives)
 
@@ -261,7 +249,7 @@ const Home = ({}) => {
 		if (firStartRef.current) {
 			return
 		}
-
+		setShowFooter(true)
 		firStartRef.current = true
 		init()
 		
@@ -373,6 +361,47 @@ const Home = ({}) => {
 			default:
 				return `US$ ${formatWithThousands(v, 2)}`
 		}
+	}
+
+	/** 用于 exampleExpress 风格的大数字拆分展示。合计：EOA USDC + AA 账号 CCSA 余额，转换为用户设定的 currency */
+	function getValuationParts(): { symbol: string; whole: string; decimal: string } {
+		// EOA USDC 转换为目标币种
+		const usdcRate = fxRateUSDCToCurrency(currency)
+		const eoaValue = currency === 'USDC' ? usdcbalance : usdcbalance * usdcRate
+
+		// CCSA 积分（AA 账号）按卡币种计价，转换为目标币种。CCSA 卡币种通常为 CAD
+		const ccsaPoints = Number(ccsaAssets?.points ?? 0)
+		const ccsaCurrency = ccsaAssets?.cardCurrency ?? 'CAD'
+		let ccsaValue = 0
+		if (ccsaCurrency === 'USDC') {
+			// 卡币种为 USDC 时，直接按 USDC→目标币种折算
+			ccsaValue = currency === 'USDC' ? ccsaPoints : ccsaPoints * usdcRate
+		} else {
+			// 卡币种为法币（如 CAD），按 1 ccsaCurrency = ? target 折算
+			const ccsaRate = currencyData.CAD && (currencyData as Record<string, number>)[ccsaCurrency]
+				? ((currencyData as Record<string, number>)[currency] ?? 1) / (currencyData as Record<string, number>)[ccsaCurrency]
+				: 0
+			ccsaValue = ccsaPoints * ccsaRate
+		}
+
+		const total = eoaValue + ccsaValue
+		const fixed = currency === 'JPY' ? 0 : 2
+		const formatted = formatWithThousands(total, fixed)
+		const [whole = '0', dec = fixed === 0 ? '00' : '00'] = formatted.split('.')
+		let symbol = '$'
+		switch (currency) {
+			case 'EUR': symbol = '€'; break
+			case 'TWD': symbol = 'NT$'; break
+			case 'SGD': symbol = 'SG$'; break
+			case 'HKD': symbol = 'HK$'; break
+			case 'JPY': symbol = 'JP¥'; break
+			case 'CNY': symbol = 'RMB¥'; break
+			case 'CAD': symbol = 'CA$'; break
+			case 'USD': symbol = 'US$'; break
+			case 'USDC': symbol = ''; break
+			default: symbol = 'US$'
+		}
+		return { symbol: symbol || '', whole, decimal: dec }
 	}
 
 	const claimFaucet = async () => {
@@ -698,12 +727,9 @@ const Home = ({}) => {
 
 	function ActivityPreview() {
 		return (
-			<div className="pt-6 pb-4">
-				<div className="text-xs font-medium text-slate-500 mb-2">No activity yet</div>
-				<div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-3">
-					<div className="text-xs text-slate-500">
-						When you send or receive USDC, your payments will show up here.
-					</div>
+			<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
+				<div className="text-center py-6 text-gray-400 text-sm">
+					When you send or receive USDC, your payments will show up here.
 				</div>
 			</div>
 		);
@@ -731,11 +757,11 @@ const Home = ({}) => {
 
 	return (
 		<div className="
-		pt-[env(safe-area-inset-top)]
+		pt-[calc(env(safe-area-inset-top))]
 		pb-[env(safe-area-inset-bottom)]
 		pl-[env(safe-area-inset-left)]
 		pr-[env(safe-area-inset-right)]
-		w-full h-screen bg-white
+		w-full h-screen
 		h-full flex flex-col text-slate-900
 		">
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
@@ -750,217 +776,155 @@ const Home = ({}) => {
 					</span>
 				</button>
 			</div> */}
-			{/* Phone frame */}
-			<div className="
-				
-				flex-1 px-5 pb-3 overflow-y-auto
-			">
-				
-				{/* Search */}
-				{
-					!openSearch && 
+			{/* Phone frame - exampleExpress style */}
+			<div className="flex-1 flex flex-col overflow-y-auto pb-44">
+				{!openSearch && (
 					<>
-					
-					<div className="
-						
-						flex items-center gap-2 mb-4 mt-4
-					">
-						<div 
-							onClick={() => {
-								setOpenSearch(true)
-							}}
-							className="w-full"
-						>
-							<div className="pointer-events-none">
-								<SearchInputWithDropdown
-									showHistory={false}
-									closeWindow={ path => {
-										console.log(path)
-									}}
-								/>
-							</div>
+						{/* Sticky Header - exampleExpress style */}
+						<div className="px-6 pt-14 pb-4 bg-white/80 backdrop-blur-md flex justify-between items-center sticky top-0 z-20 border-b border-gray-200/50">
+							<button
+								type="button"
+								onClick={() => navigate('/myWallet')}
+								className="flex items-center space-x-2 group"
+							>
+								{beamio ? (
+									<img
+										src={beamio.image ? beamio.image : getImg(beamio.accountName)}
+										alt={beamio.accountName}
+										className="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm group-active:scale-95 transition-transform"
+										draggable={false}
+									/>
+								) : (
+									<div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center border border-gray-200 shadow-sm text-lg">
+										?
+									</div>
+								)}
+								<div className="flex flex-col items-start">
+									<span className="text-xs font-bold text-gray-500 ml-0.5">
+										{beamio?.accountName ? beamio.accountName.split('@')[0] || 'User' : 'User'}
+									</span>
+									<div className="flex items-center space-x-1">
+										<span className="text-lg font-bold text-gray-900">
+											{beamio?.accountName ?? '@Beamio'}
+										</span>
+										<BadgeCheck className="w-4 h-4 text-[#1562f0]" fill="currentColor" />
+									</div>
+								</div>
+							</button>
+							<button
+								type="button"
+								onClick={() => setOpenSearch(true)}
+								className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-gray-200 text-gray-600 shadow-sm hover:text-[#1562f0] transition-colors"
+								aria-label="Search"
+							>
+								<Search className="w-5 h-5" />
+							</button>
 						</div>
-						{beamio && (
+
+						{/* Content - exampleExpress style */}
+						<div className="px-5 pt-6 space-y-6">
+							{/* Total Valuation - exampleExpress style */}
+							<div className="text-center py-4">
+								<div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white rounded-full shadow-sm border border-gray-100 mb-4">
+									<Zap className="w-3.5 h-3.5 text-yellow-500 fill-current" />
+									<span className="text-xs font-semibold text-gray-600">Beamio Sponsored Gas</span>
+								</div>
+								<h2 className="text-sm font-medium text-gray-500 mb-1 tracking-wide">
+									Total Valuation ({currency})
+								</h2>
+								<div className="flex justify-center items-baseline text-gray-900">
+									{(() => {
+										const { symbol, whole, decimal } = getValuationParts()
+										return (
+											<>
+												{symbol && <span className="text-3xl font-medium mr-1">{symbol}</span>}
+												<span className="text-5xl font-extrabold tracking-tight">{whole}</span>
+												<span className="text-3xl font-bold text-gray-400">.{decimal}</span>
+											</>
+										)
+									})()}
+								</div>
+							</div>
+
+							{/* Send | Receive + Add Cash - exampleExpress grid */}
+							<div className="grid grid-cols-2 gap-3">
 								<button
 									type="button"
 									onClick={() => {
-										navigate('/myWallet')
+										setSettingsOpen('Pay')
+										setShowFooter(false)
 									}}
-									className="
-									h-11 w-12
-									rounded-full overflow-hidden
-									bg-slate-100
-									flex items-center justify-center
-									cursor-pointer
-									active:scale-95
-									transition-transform
-									focus:outline-none
-									focus-visible:ring-2 focus-visible:ring-slate-400/50
-									"
-									aria-label={`Open ${beamio.accountName}`}
+									className="bg-white p-4 rounded-[28px] shadow-sm border border-gray-100 active:scale-[0.98] transition-transform flex flex-col justify-between h-32 group"
 								>
-									<img
-									src={beamio.image ? beamio.image : getImg(beamio.accountName)}
-									alt={beamio.accountName}
-									className="w-full h-full object-cover"
-									draggable={false}
-									/>
+									<div className="w-10 h-10 rounded-full bg-[#1562f0]/10 flex items-center justify-center self-start group-hover:bg-[#1562f0] transition-colors">
+										<ArrowUpRight className="w-5 h-5 text-[#1562f0] group-hover:text-white transition-colors" />
+									</div>
+									<div className="text-left">
+										<span className="block font-bold text-gray-900">Send</span>
+										<span className="text-xs text-gray-400">0 Gas USDC</span>
+									</div>
 								</button>
-						)}
-						
-						{/* <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-xs">
-							<ScanBtn />
-						</div> */}
-						
-					</div>
-					{/* Content */}
-				<div className="mt-6">
-					{/* Hero card */}
-					{/* {
-						showGetFaucet === 'Faucet' ? (
-							<div className="mt-3 rounded-2xl bg-gradient-to-r from-orange-400 via-pink-500 to-purple-600 text-white px-4 py-3 mb-4">
-	
-								<div className="text-[12px] font-semibold mb-1">
-									Claim 0.2 USDC to get started
-								</div>
-								<p className="text-[11px] text-orange-50 leading-snug mb-3">
-									Send your first gasless payment on Base. Help us reach 500 test
-									transfers.
-								</p>
-								<div className="flex gap-2">
-									<button 
-										className="flex-1 h-8 rounded-full bg-white/10 border border-white/40 text-[11px]"
-										onClick={() => setShowAlphaHowItWorks('BeamioAlphaHowItWorks')}
+								<div className="space-y-3">
+									<button
+										type="button"
+										onClick={() => { setPayTag('request'); navigate('/Pay') }}
+										className="w-full bg-white p-3 rounded-[24px] shadow-sm border border-gray-100 active:scale-[0.98] transition-transform flex items-center space-x-3"
 									>
-										Learn how Alpha works
+										<div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center">
+											<ArrowDownLeft className="w-5 h-5 text-green-600" />
+										</div>
+										<span className="font-bold text-gray-900 text-sm">Receive</span>
 									</button>
-									<button 
-										className="flex-1 h-8 rounded-full bg-white text-[11px] text-orange-600 font-medium"
-										onClick={async () => {
-											claimFaucet()
-										}}
+									<button
+										type="button"
+										onClick={handleAddFunds}
+										className="w-full bg-white p-3 rounded-[24px] shadow-sm border border-gray-100 active:scale-[0.98] transition-transform flex items-center space-x-3"
 									>
-										{claimLoading ? (
-										<svg
-										className="w-4 h-4 animate-spin text-white"
-										xmlns="http://www.w3.org/2000/svg"
-										fill="none"
-										viewBox="0 0 24 24"
-										>
-										<circle
-											className="opacity-25"
-											cx="12" cy="12" r="10"
-											stroke="currentColor" strokeWidth="4"
-										/>
-										<path
-											className="opacity-75"
-											fill="currentColor"
-											d="M4 12a8 8 0 018-8v4l3-3-3-3v4a12 12 0 00-12 12h4z"
-										/>
-										</svg>
-									) : (
-										"Claim 0.2 USDC"
-									)}
+										<div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+											<Plus className="w-5 h-5 text-gray-600" />
+										</div>
+										<span className="font-bold text-gray-900 text-sm">Add Cash</span>
 									</button>
 								</div>
 							</div>
-						) : (
-							
-								<Claim02Pannel />
-							
-						)
-					} */}
 
-					
+							{/* Recent Activity section */}
+							<div className="space-y-4">
+								<h3 className="text-lg font-bold text-gray-900 px-1">Recent Activity</h3>
+								{/* BeamioBetaCard 已隐藏 */}
 
-						
-					<BeamioBetaCard onLearnMore={() => {
-						setSettingsOpen('BeamioBetaAccess')
-						setShowFooter(false)
-					}}/>
-					<TopUp
-						partners={EXCHANGE_PARTNERS}
-						onPartnerClick={(p) => {
-						
-					}}
-					/>
-					<ActivityFeed />
+								{show200OK && (
+									<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
+										<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">Beamio Alpha Reward</p>
+									<h4 className="font-bold text-gray-900">You've claimed 0.1 USDC</h4>
+										<p className="mt-1 text-[11px] text-gray-500 leading-snug">
+											Thank you for testing Beamio on Base. Your Beamio wallet has been funded with{" "}
+											<span className="font-semibold text-gray-900">0.1 USDC</span> so you can try your first gasless payment.
+										</p>
+									</div>
+								)}
 
-					{/* Optional inline search bar, only when user taps search icon */}
-					{isSearchOpen && (
-						<div className="mb-3">
-							<div className="flex items-center gap-2 rounded-full bg-slate-50 border border-slate-200 px-3 py-2">
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 24 24"
-									className="w-4 h-4 text-slate-400"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth="1.8"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									>
-									<circle cx="11" cy="11" r="6" />
-									<path d="m16 16 3.5 3.5" />
-								</svg>
-									<input
-									className="flex-1 bg-transparent text-[11px] placeholder:text-slate-400 focus:outline-none"
-									placeholder="Find a person, @handle, or business"
-								/>
+								{/* Activity area */}
+								<div className="mt-6">
+									{activeItems?.length ? (
+										<ActivePannel
+											items={activeItems}
+											onOpen={tx => {
+												setItemtx(tx)
+												setShowAlphaHowItWorks('TransactionsItemDetail')
+												setShowFooter(false)
+											}}
+										/>
+									) : (
+										<ActivityPreview />
+									)}
+								</div>
 							</div>
 						</div>
-					)}
-					{
-						show200OK && <>
-							{/* Top header */}
-								<div className="mb-3">
-									<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">
-										Beamio Alpha Reward
-									</p>
-									<h1 className="text-xl font-semibold text-slate-900">You’ve claimed 0.1 USDC</h1>
-									<p className="mt-1 text-[11px] text-slate-500 leading-snug">
-										Thank you for testing Beamio on Base. Your Beamio wallet has been funded with
-									{" "}
-									<span className="font-semibold text-slate-900">0.1 USDC</span>
-									{" "}
-										so you can try your first gasless payment.
-									</p>
-								</div>
-						</>
-					}
 
-					{/* Activity area */}
-					<div className="mt-6">
-						{/** Active & Pending */}
-						{activeItems?.length ? (
-						
-							<ActivePannel
-								items ={activeItems}
-								onOpen={tx => {
-									setItemtx(tx)
-									setShowAlphaHowItWorks('TransactionsItemDetail')
-									setShowFooter(false)
-									
-								}}
-							 />
-						
-						) : (
-							<ActivityPreview />
-							
-						)}
-					</div>
-				</div>
-
-				<div
-					className="
-					h-[128px]
-					pb-[env(safe-area-inset-bottom)]
-					pointer-events-none
-					"
-				/>
+						<div className="h-[128px] pb-[env(safe-area-inset-bottom)] pointer-events-none" />
 					</>
-				}
-				
+				)}
 			</div>
 
 
@@ -1156,14 +1120,15 @@ const Home = ({}) => {
 								setSettingsOpen('')
 							}} />}
 
-							{ settingsOpen === 'Pay' && userPreviewItem &&
+							{ settingsOpen === 'Pay' && (
 								<PayScreen 
-									beamioer={userPreviewItem}
+									beamioer={userPreviewItem || undefined}
 									close={() => {
-										setShowAlphaHowItWorks('')
+										setSettingsOpen('')
 										setShowFooter(true)
-								}}/>
-							}
+									}}
+								/>
+							)}
 							<div
 								className="
 								h-[24px]

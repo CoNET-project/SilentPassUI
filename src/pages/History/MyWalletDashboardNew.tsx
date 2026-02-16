@@ -32,6 +32,13 @@ import {
 	HelpCircle,
 	RefreshCw,
 	Link2,
+	Scan,
+	ChevronDown,
+	Settings,
+	History,
+	Star,
+	Info,
+	ShieldCheck,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
@@ -158,6 +165,30 @@ const MiniAction = ({
 			{icon}
 		</div>
 		<div className="text-[11px] font-medium text-slate-600 dark:text-slate-300">{label}</div>
+	</button>
+)
+
+/** express 风格操作按钮：白色圆角卡 + 彩色圆形图标 */
+const ExpressAction = ({
+	icon,
+	label,
+	iconBgClass,
+	onClick,
+}: {
+	icon: React.ReactNode
+	label: string
+	iconBgClass: string
+	onClick?: () => void
+}) => (
+	<button
+		type="button"
+		onClick={onClick}
+		className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"
+	>
+		<div className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg ${iconBgClass}`}>
+			{icon}
+		</div>
+		<span className="text-xs font-bold text-gray-700">{label}</span>
 	</button>
 )
 
@@ -826,7 +857,7 @@ export default function MyWalletDashboardNew() {
 			balance: aaAccountUsdcBalance,
 			balanceFiat: aaBalanceFiat,
 			address: profiles?.[0]?.aaAccount || '',
-			gradient: 'bg-gradient-to-br from-purple-600 via-violet-500 to-fuchsia-500',
+			gradient: '', // 使用 express 风格内联渐变
 			badge: '',
 			badgeIcon: null,
 			isAA: true,
@@ -887,7 +918,8 @@ export default function MyWalletDashboardNew() {
 								Main Vault (EOA)
 							</h2>
 							<div
-							className="relative w-full h-52 rounded-[24px] bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b] text-white shadow-lg overflow-hidden group transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1)"
+							className="relative w-full h-52 rounded-[24px] text-white shadow-lg overflow-hidden group transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1)"
+							style={{ background: 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)' }}
 						>
 							<div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl pointer-events-none" />
 							<div className="p-5 h-full flex flex-col justify-between relative z-10">
@@ -1132,13 +1164,14 @@ export default function MyWalletDashboardNew() {
 										)
 									}
 
-									// Express Pay 卡片
+									// Express Pay 卡片 - express 风格渐变
 									return (
 										<div
 											key={card.id}
 											onClick={() => handleCardClick(card.id)}
-											className={`absolute w-full h-52 rounded-[24px] text-white shadow-lg transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) ${card.gradient}`}
+											className={`absolute w-full h-52 rounded-[24px] text-white shadow-lg transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) ${card.id === 'aa' ? '' : card.gradient}`}
 											style={{
+												...(card.id === 'aa' ? { background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)' } : {}),
 												top: `${top}px`,
 												zIndex: isSelected ? 60 : 50 - index,
 												transform:
@@ -1201,11 +1234,11 @@ export default function MyWalletDashboardNew() {
 												</div>
 
 												<div className="text-center mt-4">
-													<div className={`text-5xl font-bold tracking-tight tabular-nums ${card.id === 'aa' ? 'text-green-400' : 'text-white'}`}>
+													<div className={`text-5xl font-bold tracking-tight tabular-nums ${card.id === 'aa' ? 'text-[#4ade80]' : 'text-white'}`}>
 														{formatWithThousands(card.balance)}{' '}
-														<span className="text-2xl font-normal opacity-80">USDC</span>
+														<span className={`text-2xl font-normal ${card.id === 'aa' ? 'text-[#4ade80]/90' : 'opacity-80'}`}>USDC</span>
 													</div>
-													<div className={card.id === 'aa' ? 'text-green-300/90 mt-1 text-sm tabular-nums' : 'text-white/70 mt-1 text-sm tabular-nums'}>
+													<div className={card.id === 'aa' ? 'text-[#4ade80]/70 mt-1 text-sm tabular-nums' : 'text-white/70 mt-1 text-sm tabular-nums'}>
 														≈ {fiatPrefix('CAD')} {formatWithThousands(card.balanceFiat)}
 													</div>
 												</div>
@@ -1238,20 +1271,121 @@ export default function MyWalletDashboardNew() {
 						</div>
 					</div>
 
-					{/* DETAILS PANEL - 卡片详情面板，top 上移与卡片重叠（卡片 z 更高压住面板） */}
+					{/* 40% 黑色遮罩：盖住背后被压住的卡片，点击关闭 */}
+					{activeView && (
+						<div
+							className="absolute inset-0 z-[65] bg-black/40 transition-opacity duration-300 cursor-pointer"
+							onClick={() => setActiveView(null)}
+						/>
+					)}
+
+					{/* DETAILS PANEL - 盖住卡片，距离顶部 刘海+8rem，z 高于卡片 */}
 					<div
-						className={`absolute inset-x-0 bottom-0 top-[14rem] bg-white rounded-t-[32px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
+						className={`absolute inset-x-0 bottom-0 bg-[#F2F2F7] rounded-t-[32px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-[80] flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
 							activeView ? 'translate-y-0' : 'translate-y-[1000px]'
 						}`}
+						style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
 					>
-						<div className="px-6 pt-6 pb-4 border-b border-gray-50">
-							<span className="text-sm font-bold text-gray-900"></span>
-						</div>
-
-						{/* Action Grid：EOA 仅 Send / Bank；其余卡片为 Pay / Top Up / Receipts */}
+						{/* 顶部渐变条（按卡片类型） */}
 						{selectedCard && (
 							<>
-								<div className="px-6 py-6">
+								<div
+									className="absolute top-0 left-0 w-full h-64 z-0"
+									style={{
+										background:
+											selectedCard.id === 'eoa'
+												? 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)'
+												: selectedCard.id === 'aa'
+													? 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)'
+													: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
+									}}
+								/>
+								<div className="absolute top-0 left-0 w-full h-64 z-0 bg-gradient-to-b from-transparent to-[#F2F2F7]" />
+							</>
+						)}
+
+						{/* Header：关闭、设置 - VoucherDetailModal 风格，白色按钮在渐变上 */}
+						<div className="px-6 pt-6 pb-2 flex justify-between items-center z-10">
+							<button
+								type="button"
+								onClick={() => setActiveView(null)}
+								className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-white/30 text-white transition-colors"
+								aria-label="Close"
+							>
+								<ChevronDown className="w-6 h-6" />
+							</button>
+							<button
+								type="button"
+								onClick={() => navigate('/settings')}
+								className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-white/30 text-white transition-colors"
+								aria-label="Settings"
+							>
+								<Settings className="w-6 h-6" />
+							</button>
+						</div>
+
+						{/* 可滚动内容 */}
+						{selectedCard && (
+							<div className="flex-1 overflow-y-auto px-6 pt-2 pb-24 z-10 no-scrollbar">
+								{/* 卡片预览块 - VoucherDetailModal 风格 */}
+								<div
+									className="w-full min-h-[14rem] rounded-[24px] p-6 text-white shadow-2xl relative overflow-hidden mb-8"
+									style={{
+										background:
+											selectedCard.id === 'eoa'
+												? 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)'
+												: selectedCard.id === 'aa'
+													? 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)'
+													: selectedCard.id === 'ccsa'
+														? 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)'
+														: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
+									}}
+								>
+									<div className="flex justify-between items-start mb-2">
+										<div className="flex flex-col">
+											<h2 className="text-4xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
+												{formatWithThousands(selectedCard.balance)}{' '}
+												<span className="text-xl font-medium ml-2 opacity-90">
+													{selectedCard.id === 'ccsa' ? 'CAD' : 'USDC'}
+												</span>
+											</h2>
+											<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-1">Balance</p>
+										</div>
+										{selectedCard.id === 'ccsa' && ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0) && (
+											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
+												M-{String(ccsaAssets.nfts.find((n) => Number(n.tokenId) > 0)?.tokenId ?? '').padStart(6, '0')}
+											</div>
+										)}
+										{selectedCard.id !== 'ccsa' && selectedCard.address && (
+											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
+												{selectedCard.address.slice(0, 6)}...{selectedCard.address.slice(-4)}
+											</div>
+										)}
+									</div>
+									<div className="mt-12 flex justify-between items-end">
+										<div className="flex items-center gap-3">
+											<div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/20">
+												{selectedCard.id === 'eoa' ? (
+													<Landmark className="w-7 h-7 text-white" />
+												) : selectedCard.id === 'aa' ? (
+													<Zap className="w-7 h-7 text-white fill-white" />
+												) : (
+													<Globe className="w-7 h-7 text-white" />
+												)}
+											</div>
+											<div>
+												<h3 className="font-bold text-xl leading-none">{selectedCard.name}</h3>
+												<span className="text-[10px] opacity-80 uppercase tracking-wider">
+													{selectedCard.id === 'eoa' ? 'Main Wallet' : selectedCard.id === 'aa' ? 'Express Pay' : 'Membership'}
+												</span>
+											</div>
+										</div>
+										<QrCode className="w-8 h-8 opacity-60" />
+									</div>
+								</div>
+
+								{/* Actions - express 风格 */}
+								<div className="mb-8">
 									{selectedCard.id === 'eoa' ? (
 										<div className="flex items-start justify-between flex-wrap gap-4">
 											<MiniAction
@@ -1340,125 +1474,232 @@ export default function MyWalletDashboardNew() {
 
 										</div>
 									) : (
-										/* CCSA Card：无卡时才显示 Create Card 按钮 */
-										userCards.length === 0 && (
-											<div className="flex items-start justify-between flex-wrap gap-4">
-												<MiniAction
-													label="Create Card"
-													icon={<CreditCard className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-													onClick={() => {
-														setShowFooter(false)
+										/* CCSA Card：express 风格 Pay / Top Up / Details 三键网格 */
+										<div className="grid grid-cols-3 gap-3">
+											<ExpressAction
+												label="Pay"
+												iconBgClass="bg-[#1562f0] shadow-blue-600/30"
+												icon={<Scan className="w-5 h-5" />}
+												onClick={() => {
+													setScanData('')
+													setVoucherPayAmount('')
+													setVoucherPayToAA('')
+													setVoucherPayError('')
+													setScanIntent('payBill')
+													setShowFooter(false)
+													setShowTenKeySlide(true)
+												}}
+											/>
+											<ExpressAction
+												label="Top Up"
+												iconBgClass="bg-green-500 shadow-green-500/30"
+												icon={<Plus className="w-5 h-5" />}
+												onClick={() => {
+													setTopUpRedeemKey((k) => k + 1)
+													setShowFooter(false)
+													setTopUpRedeemOpen(true)
+												}}
+											/>
+											<ExpressAction
+												label={userCards.length === 0 ? 'Create Card' : 'Details'}
+												iconBgClass="bg-orange-500 shadow-orange-500/30"
+												icon={<CreditCard className="w-5 h-5" />}
+												onClick={() => {
+													setShowFooter(false)
+													if (userCards.length === 0) {
 														setCcsaCreateCardOpen(true)
-													}}
-												/>
-											</div>
-										)
+													} else {
+														navigate('/card-manager')
+													}
+												}}
+											/>
+										</div>
 									)}
 								</div>
 
-								<div className="flex-1 min-h-0 overflow-y-auto px-6 pb-24">
-									{selectedCard.id === 'eoa' ? (
-										<>
-											{/* Active & Pending（与 MyWalletDashboard Lists 一致） */}
-											<div className=" mt-4">
-												<div className="flex items-center gap-2 px-2 mb-4">
-													<span className="h-1.5 w-1.5 rounded-full bg-[#2F78FF]" />
-													<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-														Active & Pending
-													</div>
-													{loading && <Loader className="w-3.5 h-3.5 text-slate-400 animate-spin" strokeWidth={2.2} />}
+								{/* Recent Activity - VoucherDetailModal 风格 */}
+								{selectedCard.id === 'eoa' ? (
+									<>
+										{/* Active & Pending */}
+										<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+											<div className="flex items-center gap-2 mb-4">
+												<span className="h-1.5 w-1.5 rounded-full bg-[#2F78FF]" />
+												<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500">
+													Active & Pending
 												</div>
-												{activePending.length ? (
-													<ActivePannel
-														items={activePending}
-														onOpen={(tx) => {
-															setItemTx(tx)
-															setShowTxDetail(true)
-															setShowFooter(false)
-														}}
-													/>
-												) : (
-													<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
-														No active items
+												{loading && <Loader className="w-3.5 h-3.5 text-slate-400 animate-spin" strokeWidth={2.2} />}
+											</div>
+											{activePending.length ? (
+												<ActivePannel
+													items={activePending}
+													onOpen={(tx) => {
+														setItemTx(tx)
+														setShowTxDetail(true)
+														setShowFooter(false)
+													}}
+												/>
+											) : (
+												<div className="py-6 text-center text-gray-400 text-sm">No active items</div>
+											)}
+										</div>
+
+										{/* Recent Activity */}
+										<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+											<div className="flex justify-between items-center mb-4">
+												<h3 className="font-bold text-gray-900">Recent Activity</h3>
+												<button
+													type="button"
+													onClick={() => navigate('/HistoryAll')}
+													className="text-xs font-bold text-[#1562f0]"
+												>
+													View All
+												</button>
+											</div>
+											{history.length ? (
+												<div className="space-y-4">
+													{history.slice(0, 10).map((tx) => (
+														<div
+															key={`${tx.mode}-${tx.hash}-${tx.date}`}
+															onClick={() => {
+																setItemTx(tx)
+																setShowTxDetail(true)
+																setShowFooter(false)
+															}}
+															className="flex justify-between items-center cursor-pointer hover:bg-gray-50 rounded-xl p-2 -mx-2"
+														>
+															<div className="flex items-center space-x-3">
+																<div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+																	<History className="w-4 h-4" />
+																</div>
+																<div>
+																	<div className="text-sm font-bold text-gray-900">{tx.type}</div>
+																	<div className="text-xs text-gray-500">{formatTimev2(tx.date)}</div>
+																</div>
+															</div>
+															<span className={`text-sm font-bold ${tx.type1 === 'received' ? 'text-green-600' : 'text-gray-900'}`}>
+																{tx.type1 === 'received' ? '+' : '−'} {formatAmount(tx.type1 === 'received' ? tx.amount : tx.preAmount, 'USDC')} USDC
+															</span>
+														</div>
+													))}
+												</div>
+											) : (
+												<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+											)}
+										</div>
+									</>
+									) : selectedCard.id === 'ccsa' ? (
+										/* CCSA：Member Benefits + Recent Activity + Card Information + My BeamioUserCards */
+										<>
+											{/* Member Benefits - VoucherDetailModal 风格 */}
+											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+												<div className="flex items-center gap-2 mb-4">
+													<Star className="w-4 h-4 text-orange-500 fill-orange-500" />
+													<h3 className="font-bold text-gray-900">Member Benefits</h3>
+												</div>
+												<div className="space-y-4">
+													<div className="flex items-start gap-3">
+														<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+															<Star className="w-4 h-4 text-[#1562f0]" />
+														</div>
+														<div>
+															<h4 className="text-sm font-bold text-gray-900">Alliance Discount</h4>
+															<p className="text-xs text-gray-500 leading-relaxed">10% off at participating restaurants.</p>
+														</div>
 													</div>
-												)}
+													<div className="flex items-start gap-3">
+														<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+															<Zap className="w-4 h-4 text-[#1562f0]" />
+														</div>
+														<div>
+															<h4 className="text-sm font-bold text-gray-900">Gas-Free</h4>
+															<p className="text-xs text-gray-500 leading-relaxed">Zero transaction fees on Beamio network.</p>
+														</div>
+													</div>
+												</div>
 											</div>
 
-											{/* History（与 MyWalletDashboard Lists 一致） */}
-											<div className=" mt-4">
-												<div className="px-2 flex items-center justify-between">
-													<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-														History
-													</div>
-													<button
-														type="button"
-														onClick={() => navigate('/HistoryAll')}
-														className="text-[12px] font-semibold text-[#2F78FF] active:opacity-70"
-													>
-														View All
-													</button>
+											{/* Recent Activity */}
+											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+												<div className="flex justify-between items-center mb-4">
+													<h3 className="font-bold text-gray-900">Recent Activity</h3>
+													<span className="text-xs font-bold text-[#1562f0]">View All</span>
 												</div>
-												<div className="mt-3 overflow-hidden rounded-2xl bg-white/85 dark:bg-slate-900/65 ring-1 ring-black/5 dark:ring-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.08)]">
-													{history.length ? (
-														history.map((tx) => (
-															<Row
-																key={`${tx.mode}-${tx.hash}-${tx.date}`}
-																tx={tx}
-																mode={tx.mode}
-																onOpen={(tx) => {
-																	setItemTx(tx)
-																	setShowTxDetail(true)
-																	setShowFooter(false)
-																}}
-															/>
-														))
-													) : (
-														<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
-															No history yet
+												<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+											</div>
+
+											{/* Card Information - VoucherDetailModal 风格 */}
+											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+												<div className="flex items-center gap-2 mb-4">
+													<Info className="w-4 h-4 text-gray-400" />
+													<h3 className="font-bold text-gray-900">Card Information</h3>
+												</div>
+												<div className="space-y-3">
+													<div className="flex justify-between text-xs">
+														<span className="text-gray-500">Issuer</span>
+														<span className="font-medium text-gray-900">Canada Chinese Restaurant Alliance</span>
+													</div>
+													<div className="flex justify-between text-xs">
+														<span className="text-gray-500">Network</span>
+														<span className="font-medium text-gray-900">Base Mainnet</span>
+													</div>
+													<div className="flex justify-between text-xs">
+														<span className="text-gray-500">Standard</span>
+														<span className="font-medium text-gray-900">ERC-1155</span>
+													</div>
+													<div className="flex justify-between text-xs">
+														<span className="text-gray-500">Contract</span>
+														<span className="font-mono text-gray-500">
+															{CCSA_Card_Address ? `${CCSA_Card_Address.slice(0, 6)}...${CCSA_Card_Address.slice(-4)}` : '—'}
+														</span>
+													</div>
+													<div className="flex justify-between text-xs items-center pt-2 border-t border-gray-100 mt-2">
+														<span className="text-gray-500 flex items-center gap-1">
+															<ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status
+														</span>
+														<span className="font-bold text-green-600">Verified</span>
+													</div>
+												</div>
+											</div>
+
+											{/* My BeamioUserCards */}
+											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+												{userCards.length > 0 && (
+													<div className="flex justify-end mb-4">
+														<button
+															type="button"
+															onClick={() => {
+																setTopUpRedeemKey((k) => k + 1)
+																setShowFooter(false)
+																setTopUpRedeemOpen(true)
+															}}
+															className="flex items-center gap-1.5 text-[#1562f0] text-xs font-bold"
+														>
+															<Gift className="w-4 h-4" /> Airdrop
+														</button>
+													</div>
+												)}
+												<div className="flex items-center justify-between mb-4">
+													<div className="flex items-center gap-2">
+														<span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+														<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500">
+															My BeamioUserCards
 														</div>
+													</div>
+													{userCards.length > 0 && (
+														<button
+															type="button"
+															onClick={() => {
+																setTopUpRedeemKey((k) => k + 1)
+																setShowFooter(false)
+																setTopUpRedeemOpen(true)
+															}}
+															className="text-[12px] font-semibold text-[#1D5BFF] active:opacity-70 px-3 py-1.5 rounded-lg bg-blue-50"
+														>
+															Top Up
+														</button>
 													)}
 												</div>
-											</div>
-										</>
-									) : selectedCard.id === 'ccsa' ? (
-										/* My BeamioUserCards：普通发卡 owner 流程，与 CCSA 卡无关系 */
-										<div className="mt-4 space-y-3">
-											{/* Card owner create redeem（空投）icon 按钮 */}
-											{userCards.length > 0 && (
-												<div className="flex justify-end mb-1">
-													<MiniAction
-														label="Airdrop"
-														icon={<Gift className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-														onClick={() => {
-															setTopUpRedeemKey((k) => k + 1)
-															setShowFooter(false)
-															setTopUpRedeemOpen(true)
-														}}
-													/>
-												</div>
-											)}
-											<div className="flex items-center justify-between px-2 mb-4">
-												<div className="flex items-center gap-2">
-													<span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-													<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-														My BeamioUserCards
-													</div>
-												</div>
-												{userCards.length > 0 && (
-													<button
-														type="button"
-														onClick={() => {
-															setTopUpRedeemKey((k) => k + 1)
-															setShowFooter(false)
-															setTopUpRedeemOpen(true)
-														}}
-														className="text-[12px] font-semibold text-[#1D5BFF] active:opacity-70 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30"
-													>
-														Top Up
-													</button>
-												)}
-											</div>
-											{userCards.length > 0 ? (
+												{userCards.length > 0 ? (
 												<div className="space-y-3">
 													{userCards.map((card) => (
 														<div
@@ -1533,17 +1774,18 @@ export default function MyWalletDashboardNew() {
 												/>
 											)}
 										</div>
-									) : (
-										/* AA (Express Pay)：Activity Log */
-										<>
-											<h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Activity Log</h4>
-											<div className="space-y-2">
-												<p className="text-xs text-gray-400 italic text-center py-4">No recent activity.</p>
-											</div>
 										</>
+									) : (
+										/* AA (Express Pay)：Recent Activity */
+										<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+											<div className="flex justify-between items-center mb-4">
+												<h3 className="font-bold text-gray-900">Recent Activity</h3>
+												<span className="text-xs font-bold text-[#1562f0]">View All</span>
+											</div>
+											<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+										</div>
 									)}
 								</div>
-							</>
 						)}
 					</div>
 				</div>

@@ -3,8 +3,10 @@ import beamio_icon from '@/components/assets/32x32.svg'
 import { useNavigate } from "react-router-dom"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
-import { Zap, ChevronRight, Fingerprint, Gift, Check, Loader, Globe, ArrowLeft, ArrowRight, ShieldCheck, Smartphone, AlertTriangle, X } from "lucide-react"
+import { Zap, ChevronRight, Fingerprint, Gift, Check, Loader, Globe, ArrowLeft, ArrowRight, ShieldCheck, AlertTriangle, X } from "lucide-react"
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, getMyAssets } from "@/services/BeamioCard"
+import { initChat}from '@/services/chat'
+
 import { getUsdcBalanceFromApi, formatWithThousands, isStandalone } from "@/services/beamio"
 import { ethers } from "ethers"
 import { CCSA_Card_Address } from "@/utils/constants"
@@ -21,7 +23,6 @@ import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import CreateUsernamePinScreen, { type CreateUsernamePinScreenRef } from './CreateUsernamePinScreen'
 import RecoveryQRScreen from './RecoveryQRScreen'
-import InstallTerminalSheet from '@/components/InstallTerminalSheet'
 import RestoreEntryScreen from './RestoreEntryScreen'
 import RestoreWithQRScreen from './RestoreWithQRScreen'
 import RestoreWithUsernamePinScreen from './RestoreWithUsernamePinScreen'
@@ -29,7 +30,18 @@ import WalletReadyScreen from './WalletReadyScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
 
+
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
+const ISSUED_NFT_START_ID = 100_000_000_000
+
+/** 从 NFT tokenId 推导卡号显示：issued NFT 用序号，tier NFT 用 tokenId */
+function formatMemberNo(tokenId: string | number): string {
+	const n = Number(tokenId)
+	if (n >= ISSUED_NFT_START_ID) {
+		return `M-${String(n - ISSUED_NFT_START_ID + 1).padStart(6, '0')}`
+	}
+	return `M-${String(n).padStart(6, '0')}`
+}
 
 // Simple mobile-style onboarding modal for Beamio
 // TailwindCSS-based layout
@@ -123,7 +135,9 @@ function parseRedeemFromUrl(): { cardAddress: string; redeemCode: string } | nul
 }
 
 export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
-	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, setIsInitialLoading, myAddress, usdcbalance, setShowFooter } = useDaemonContext()
+	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, 
+		setAllNodes, setGossip, gossip,
+		setIsInitialLoading, myAddress, usdcbalance, setShowFooter, setCharts } = useDaemonContext()
 	const [walletAddr, setWalletAddr] = useState('')
 	const [usdcBal, setUsdcBal] = useState('0')
 	const [eoaAddress, setEoaAddress] = useState('')
@@ -132,7 +146,6 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
 	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'WalletReadyScreen'|'RestoreEntryScreen'|'RestoreWithQRScreen'|'RestoreWithUsernamePinScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(false)
-	const [showInstallSheet, setShowInstallSheet] = useState(false)
 	const [qrDataUrl, setQrDataUrl] = useState('')
 	const [recoveryCode, setRecoveryCode]  = useState('')
 	const [beamioTag, setBeamioTag] = useState('')
@@ -204,7 +217,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		const bo: beamio = userInfo
 
 		SetLoading(true)
-		
+		initChat(setProfiles, setAllNodes, setGossip, gossip, message => {
+			setCharts((prev: string[]) => [...prev, message])
+		})
 		
 		bo.initialLoading = true
 		
@@ -261,24 +276,31 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		setHasCheckedUrl(true)
 	}, [])
 
-	// Master Key 页面进入时：延迟更新 URL（Install Terminal 移至 WalletReadyScreen 内）
+	/** 往 PWA 传递参数的通用逻辑：更新 URL（beamioTag + MasterKey，移除 redeem 参数）+ 刷新 manifest start_url */
+	const applyPwaUrlParams = (tag: string, key: string) => {
+		if (!tag || !key || typeof window === 'undefined') return
+		try {
+			const url = new URL(window.location.href)
+			url.searchParams.set('beamioTag', tag)
+			url.searchParams.set('MasterKey', key)
+			;['beamiocard', 'Beamiocard', 'redeemcode', 'Redeemcode'].forEach(k => url.searchParams.delete(k))
+			const newHref = url.toString()
+			window.history.replaceState({}, '', newHref)
+			updateManifestStartUrl(newHref)
+		} catch (_) {}
+	}
+
+	// Card Active! 或 Wallet Ready! 进入时：更新 URL 并刷新 manifest（PWA 添加到主屏幕时携带 beamioTag、MasterKey）
 	useEffect(() => {
-		if (settingsOpen !== 'RecoveryQRScreen') return
-		const t = setTimeout(() => {
-			if (beamioTag && recoveryCode && typeof window !== 'undefined') {
-				try {
-					const url = new URL(window.location.href)
-					url.searchParams.set('beamioTag', beamioTag)
-					url.searchParams.set('MasterKey', recoveryCode)
-					const newHref = url.toString()
-					window.history.replaceState({}, '', newHref)
-					// 更新 manifest start_url，使 Add to Home Screen 时能携带参数（浏览器默认用 manifest 的 start_url）
-					updateManifestStartUrl(newHref)
-				} catch (_) {}
-			}
-		}, 1500)
-		return () => clearTimeout(t)
-	}, [settingsOpen, beamioTag, recoveryCode])
+		if (typeof window === 'undefined') return
+		const isCardActive = redeemFromUrl && !redeeming && redeemResult?.success
+		const isWalletReady = settingsOpen === 'WalletReadyScreen'
+		if ((isCardActive || isWalletReady) && beamioTag && recoveryCode) {
+			const t = setTimeout(() => applyPwaUrlParams(beamioTag, recoveryCode), isCardActive ? 300 : 400)
+			return () => clearTimeout(t)
+		}
+		if (isWalletReady) updateManifestStartUrl(window.location.href)
+	}, [settingsOpen, redeemFromUrl, redeeming, redeemResult?.success, beamioTag, recoveryCode])
 
 	// loading ready 后：无 redeem URL 则直接进入 home（防重复调用）；WalletReadyScreen 阶段不触发
 	useEffect(() => {
@@ -344,7 +366,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 						setRedeemDone(true)
 						setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? 'Redeem failed' })
 						if (result.success && profile) {
-							const assets = await getMyAssets(profile, CCSA_Card_Address).catch(() => null)
+							// 1. 使用正确的卡地址：redeem 目标卡（redeemFromUrl.cardAddress），自定义 beamiocard 时否则会查到错误卡
+							const cardAddr = redeemFromUrl.cardAddress || CCSA_Card_Address
+							const assets = await getMyAssets(profile, cardAddr).catch(() => null)
 							if (!cancelled && assets) setCcsaAssets({ points: assets.points, nfts: assets.nfts ?? [] })
 						}
 					}
@@ -381,7 +405,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 				setRedeemDone(true)
 				setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? 'Redeem failed' })
 				if (result.success && profile) {
-					getMyAssets(profile, CCSA_Card_Address).then((assets) => {
+					// 1. 使用正确的卡地址：redeem 目标卡（redeemFromUrl.cardAddress），自定义 beamiocard 时否则会查到错误卡
+					const cardAddr = redeemFromUrl.cardAddress || CCSA_Card_Address
+					getMyAssets(profile, cardAddr).then((assets) => {
 						if (!cancelled && assets) {
 							setCcsaAssets({ points: assets.points, nfts: assets.nfts ?? [] })
 						}
@@ -553,7 +579,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 													</div>
 												</div>
 												<div className="flex flex-col items-end gap-1.5">
-													<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
+													<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs text-white font-semibold flex items-center gap-1">
 														<Globe size={10} className="text-white" /> Membership
 													</div>
 													<div className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1">
@@ -565,13 +591,15 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 												<div>
 													<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-[#fff2c6]">Balance</p>
 													<div className="flex items-baseline gap-1">
-														<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{formatWithThousands(ccsaAssets?.points ?? '0')}</span>
+														{/* 2. 展示兜底：ccsaAssets 为空（getMyAssets 请求中/失败）但 redeem 已成功时，用 redeemDetails.pointsHuman */}
+														<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{formatWithThousands(ccsaAssets?.points ?? (redeemResult?.success && redeemDetails?.pointsHuman ? redeemDetails.pointsHuman : '0'))}</span>
 														<span className="text-sm font-semibold opacity-90 text-[#fff2c6]">CAD</span>
 													</div>
 												</div>
 												{(() => {
-													const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
-													const memberNo = nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : null
+													const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) >= ISSUED_NFT_START_ID)
+														?? ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
+													const memberNo = nft ? formatMemberNo(nft.tokenId) : null
 													if (!memberNo) return null
 													return (
 														<div className="relative font-mono text-[10px] tracking-[0.2em] uppercase font-semibold shrink-0 pb-0.5">
@@ -585,17 +613,18 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									</div>
 								</div>
 
-								{/* Save Wallet to Home Screen */}
+								{/* Go To Home */}
 								<div className="mt-auto space-y-3">
-									<button
-										onClick={() => setShowInstallSheet(true)}
-										className="w-full h-16 bg-slate-900 text-white rounded-full font-bold text-[17px] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+									<AppButton
+										loading={loading}
+										fullWidth
+										onClick={() => {
+											window.location.reload()
+										}}
+										className="h-16 rounded-full text-base font-bold uppercase tracking-wide bg-[#1652f0] hover:bg-[#1345ca] text-white shadow-[0_12px_30px_rgba(22,82,240,0.3)]"
 									>
-										<Smartphone size={20} /> Save Wallet to Home Screen
-									</button>
-									<p className="text-xs text-slate-500 text-center px-2">
-										Add soon. If you add to home screen later, you may need to restore with your Master Key.
-									</p>
+										Go To Home
+									</AppButton>
 								</div>
 							</div>
 						) : (
@@ -652,8 +681,11 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 													<Loader className="w-6 h-6 text-[#fff2c6] animate-spin" strokeWidth={2.5} />
 												) : (
 													<>
+														{/* 2. 展示兜底：ccsaAssets 为空（getMyAssets 请求中/失败）但 redeem 已成功时，用 redeemDetails.pointsHuman */}
 														<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">
-															{formatWithThousands(ccsaAssets?.points ?? '0')}
+															{formatWithThousands(
+																ccsaAssets?.points ?? (redeemResult?.success && redeemDetails?.pointsHuman ? redeemDetails.pointsHuman : '0')
+															)}
 														</span>
 														<span className="text-sm font-semibold opacity-90 text-[#fff2c6]">CAD</span>
 													</>
@@ -661,8 +693,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 											</div>
 										</div>
 										{(() => {
-											const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
-											const memberNo = nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : null
+											// 优先取 issued NFT (tokenId >= 1e11)，否则取任一 tier NFT (tokenId > 0)
+											const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) >= ISSUED_NFT_START_ID)
+												?? ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
+											const memberNo = nft ? formatMemberNo(nft.tokenId) : null
 											if (!memberNo || redeeming) return null
 											return (
 												<div className="relative font-mono text-[10px] tracking-[0.2em] uppercase font-semibold shrink-0 pb-0.5">
@@ -709,7 +743,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									<AppButton
 										loading={loading}
 										fullWidth
-										onClick={() => home()}
+										onClick={() => {
+											window.location.reload()
+										}}
 										className="h-[56px] rounded-2xl text-base font-bold uppercase tracking-wide bg-[#1652f0] hover:bg-[#1345ca] text-white shadow-[0_12px_30px_rgba(22,82,240,0.3)]"
 									>
 										Go To Home
@@ -760,7 +796,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 						>
 							
 							{
-								settingsOpen === 'CreateUsernamePinScreen' && <CreateUsernamePinScreen ref={createUsernameRef} close={qr => {
+								settingsOpen === 'CreateUsernamePinScreen' && <CreateUsernamePinScreen ref={createUsernameRef} isRedeemFlow={!!redeemFromUrl} close={qr => {
 									setQrDataUrl(qr.qrDataUrl)
 									setRecoveryCode(qr.passcode)
 									setBeamioTag(qr.beamioTag ?? '')
@@ -791,7 +827,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							{
 								settingsOpen === 'WalletReadyScreen' && <WalletReadyScreen
 									usdcBalance={formatWithThousands(usdcBal || '0')}
-									onSaveToHomeScreen={() => setShowInstallSheet(true)}
+									onGoToHome={() => home()}
 									address={eoaAddress || undefined}
 									balanceFiat={formatAmount(parseFloat(usdcBal || '0') || 0, 'CAD')}
 								/>
@@ -822,14 +858,6 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 				)}
 			</AnimatePresence>
 
-			{/* Install Terminal 底部滑出：Card Active / Wallet Ready 可手动打开。PWA 中不显示 */}
-			<InstallTerminalSheet
-				open={showInstallSheet && !isStandalone}
-				onClose={() => setShowInstallSheet(false)}
-				onRemindLater={settingsOpen === 'RecoveryQRScreen' ? undefined : () => { homeCalledRef.current = true; window.location.reload() }}
-				showRestoreHint={isStandalone && typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) && isInitialEntry}
-				beamioTag={beamioTag}
-			/>
 		</div>
 	)
 }

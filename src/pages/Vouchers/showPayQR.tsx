@@ -37,6 +37,7 @@ export default function ShowPayQR({
 	currency,
 	hideActions,
 	hideUrl,
+	hideName,
 }: {
 	successUrl: string
 	beamio: beamio | null
@@ -50,6 +51,8 @@ export default function ShowPayQR({
 	hideActions?: boolean
 	/** 是否隐藏 URL 显示区域 */
 	hideUrl?: boolean
+	/** 是否隐藏 displayName 和 @accountName */
+	hideName?: boolean
 }) {
 	const [copied, setCopied] = useState(false)
 	const valueForQR = qrValue ?? successUrl
@@ -159,6 +162,7 @@ export default function ShowPayQR({
 			<div className="mt-6">
 					<div className="px-6 pt-4 pb-6">
 						<div className="text-center">
+						{!hideName && (
 						<div className="flex items-baseline justify-center gap-2 text-[20px] font-extrabold tracking-tight text-slate-900">
 						<span className="truncate">
 						{displayName(beamio)}
@@ -168,6 +172,7 @@ export default function ShowPayQR({
 						@{beamio?.accountName}
 						</span>
 					</div>
+						)}
 						{/* 显示金额 */}
 						{amount && (
 							<div className="mt-3 text-[24px] font-bold text-slate-900">

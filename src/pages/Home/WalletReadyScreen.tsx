@@ -5,7 +5,7 @@ import { fiatPrefix } from '@/services/currency'
 
 type WalletReadyScreenProps = {
   usdcBalance: string
-  onSaveToHomeScreen: () => void
+  onGoToHome: () => void
   /** EOA 地址（可选），用于卡片底部展示 */
   address?: string
   /** 法币等价显示（可选），如 "0.00" */
@@ -18,7 +18,7 @@ type WalletReadyScreenProps = {
  */
 export default function WalletReadyScreen({
   usdcBalance,
-  onSaveToHomeScreen,
+  onGoToHome,
   address,
   balanceFiat = "0",
 }: WalletReadyScreenProps) {
@@ -97,14 +97,16 @@ export default function WalletReadyScreen({
         </div>
       </div>
 
-      {/* Save Wallet to Home Screen 按钮 */}
+      {/* Go To Home 按钮 */}
       <div className="mt-auto">
         <button
-          onClick={onSaveToHomeScreen}
+          onClick={() => {
+			window.location.reload()
+		  }}
           className="w-full h-16 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full font-bold text-[17px] shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3"
         >
           <Smartphone size={22} strokeWidth={2.5} />
-          Save Wallet to Home Screen
+          Go To Home
         </button>
       </div>
     </div>

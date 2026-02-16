@@ -1,736 +1,885 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  LayoutDashboard, 
-  PlusCircle, 
-  Receipt, 
-  Users, 
-  Settings, 
-  CreditCard, 
-  ArrowUpRight, 
-  Scan, 
-  Zap, 
-  Coins, 
-  Ticket, 
-  ChevronRight,
-  Monitor,
-  Smartphone,
-  CheckCircle2,
-  Database, 
-  ShieldCheck, 
-  History, 
-  TrendingUp, 
-  Wallet, 
-  MessageSquare, 
-  Send, 
-  ArrowRightLeft, 
-  Plus, 
-  ArrowLeft, 
-  QrCode, 
-  Camera, 
-  RefreshCw, 
-  Cpu, 
-  Globe, 
-  Lock, 
-  Search, 
-  MoreVertical,
-  Tag,
-  Gift,
-  ChevronDown,
-  Info,
-  ShieldAlert,
-  Activity,
-  Check,
-  Heart,
-  DollarSign,
-  X,
-  ExternalLink,
-  MapPin,
-  Clock,
-  Edit3
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import {
+ Scan,
+ Home,
+ CreditCard,
+ MessageSquare,
+ Store,
+ Settings,
+ ChevronDown,
+ Plus,
+ ArrowUpRight,
+ QrCode,
+ History,
+ Copy,
+ Wallet,
+ Globe,
+ Zap,
+ Utensils,
+ Coffee,
+ Ticket,
+ User,
+ Check,
+ X,
+ ChevronUp,
+ Search,
+ Plane,
+ Dumbbell,
+ ShoppingBag,
+ GripVertical,
+ MinusCircle,
+ EyeOff,
+ PlusCircle,
+ ArrowRight,
+ Clock,
+ AlertCircle,
+ CreditCard as CardIcon,
+ DollarSign,
+ Info,
+ Star,
+ ShieldCheck,
+ MapPin,
+ Edit2,
+ Save
 } from 'lucide-react';
 
-// --- Simulation Constants ---
-const MOCK_BALANCES = {
-  vouchers: 100.00,
-  aa_usdc: 50.00,
-  eoa_usdc: 200.00,
+
+// --- Configuration & Constants ---
+const BEAMIO_BLUE = '#1562f0';
+
+
+// Mock Exchange Rates (Base: USDC)
+const CURRENCY_RATES = {
+ 'CAD': { rate: 1.35, symbol: '$', flag: '🇨🇦', name: 'Canadian Dollar' },
+ 'USD': { rate: 1.00, symbol: '$', flag: '🇺🇸', name: 'US Dollar' },
 };
 
-const ExampleExpressComponent = () => {
-  const [activeTab, setActiveTab] = useState('pos'); 
-  const [viewMode, setViewMode] = useState('mobile'); 
-  const [posStep, setPosStep] = useState('input'); 
-  const [posMode, setPosMode] = useState<string | null>(null); 
-  const [posAmount, setPosAmount] = useState('');
-  const [isMember, setIsMember] = useState(false);
-  const [terminalLogs, setTerminalLogs] = useState<{s: string, m: string}[]>([]);
-  const [isSendingReceipt, setIsSendingReceipt] = useState(false);
-  const [receiptSent, setReceiptSent] = useState(false);
-  
-  // Chat Interaction States
-  const [showTipModal, setShowTipModal] = useState(false);
-  const [showFullReceipt, setShowFullReceipt] = useState(false);
-  const [tipAmount, setTipAmount] = useState<number | string>(0);
-  const [tipConfirmed, setTipConfirmed] = useState(false);
-  const [customTipMode, setCustomTipMode] = useState(false); // New: Custom Tip Mode
-  const [customTipInput, setCustomTipInput] = useState('');
-  
-  const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll
-  useEffect(() => {
-    if (activeTab === 'chat' && chatBottomRef.current) {
-      chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [activeTab, tipConfirmed]);
+// --- Type Definitions ---
+interface Transaction {
+ id: string;
+ type: 'Top Up' | 'Payment' | 'Transfer';
+ amount: string;
+ currency: string;
+ date: string;
+ isPositive: boolean;
+}
 
-  // --- Financial Logic ---
-  const BC_GST_RATE = 0.05; 
-  const CAD_TO_USDC = 0.74;
-  const rawTotalInput = parseFloat(posAmount) || 120.00; 
-  
-  // 1. Discount Logic
-  const discountRate = (posMode === 'B_SCAN_C' && isMember) ? 0.9 : 1.0;
-  const billableTotal = rawTotalInput * discountRate;
-  
-  // 2. Tax Logic (Reverse Calc)
-  const subtotalCAD = billableTotal / (1 + BC_GST_RATE);
-  const taxCAD = billableTotal - subtotalCAD;
 
-  // 3. Grand Total (User Pay)
-  const grandTotal = billableTotal + (typeof tipAmount === 'string' ? parseFloat(tipAmount || '0') : tipAmount || 0);
-  
-  // 4. Beamio Fee (Merchant Cost) - 0.8% Min 0.02 Max 2.00
-  const rawFeeUSDC = billableTotal * CAD_TO_USDC * 0.008;
-  const safeBeamioFeeUSDC = Math.max(0.02, Math.min(2.00, rawFeeUSDC)).toFixed(2);
+type Tab = 'home' | 'wallet' | 'scan' | 'chat' | 'store';
 
-  // 5. Split Logic
-  const vPart = Math.min(billableTotal, MOCK_BALANCES.vouchers);
-  const rem1 = billableTotal - vPart;
-  const aaPart = Math.min(rem1, MOCK_BALANCES.aa_usdc);
-  const rem2 = rem1 - aaPart;
-  const eoaPart = Math.min(rem2, MOCK_BALANCES.eoa_usdc);
-  const applePart = rem2 - eoaPart;
 
-  const aaUSDC = (aaPart * CAD_TO_USDC).toFixed(2);
-  const eoaUSDC = (eoaPart * CAD_TO_USDC).toFixed(2);
+// --- Global Data ---
 
-  const resetPOS = () => {
-    setPosStep('input');
-    setPosAmount('');
-    setIsMember(false);
-    setPosMode(null);
-    setTerminalLogs([]);
-    setReceiptSent(false);
-    setTipAmount(0);
-    setTipConfirmed(false);
-    setShowFullReceipt(false);
-    setIsSendingReceipt(false);
-    setCustomTipMode(false);
-    setCustomTipInput('');
-  };
 
-  const handleSendReceipt = () => {
-    setIsSendingReceipt(true);
-    setTimeout(() => {
-      setIsSendingReceipt(false);
-      setReceiptSent(true);
-    }, 1200);
-  };
+const recentActivityData: Transaction[] = [
+ { id: '1', type: 'Top Up', amount: '+ $100.00', currency: 'CAD', date: 'Feb 14', isPositive: true },
+ { id: '2', type: 'Payment', amount: '- $12.50', currency: 'CAD', date: 'Feb 12', isPositive: false },
+ { id: '3', type: 'Transfer', amount: '- $50.00', currency: 'USDC', date: 'Feb 10', isPositive: false },
+];
 
-  const runRoutingEngine = (isMemberDetected: boolean) => {
-    setIsMember(isMemberDetected);
-    setPosStep('execution');
-    const logs = [
-      { s: 'INIT', m: 'Initializing Beamio Smart Routing...' },
-      { s: 'CONN', m: 'Base Mainnet Node [OK]' },
-      { s: 'SCAN', m: 'Pre-signed intent found: 0x...f2e' },
-      { s: 'MEMB', m: isMemberDetected ? 'CCSA Alliance: 10% OFF' : 'Standard Rate' },
-      { s: 'TAX', m: `BC GST 5% Auto-calc: CA$ ${taxCAD.toFixed(2)}` },
-      { s: 'FEE', m: `Service Fee (0.8%): ${safeBeamioFeeUSDC} USDC` },
-      { s: 'T1', m: `Voucher Applied: CA$ ${vPart.toFixed(2)}` },
-      { s: 'T4', m: applePart > 0 ? `Card Fill: CA$ ${applePart.toFixed(2)}` : 'Full On-chain' },
-      { s: 'DONE', m: 'Routing Complete.' }
-    ];
-    logs.forEach((log, i) => {
-      setTimeout(() => {
-        setTerminalLogs(prev => [...prev, log]);
-        if (i === logs.length - 1) setTimeout(() => setPosStep('routing_result'), 800);
-      }, i * 300);
-    });
-  };
 
-  // --- UI COMPONENTS ---
+// Rich Data for Alliance Card Simulation
+const INITIAL_VOUCHERS = [
+   {
+     id: 'v1',
+     name: 'CCSA CARD',
+     nickname: '', // User customized name
+     balance: 150.00,
+     currency: 'CAD',
+     memberNo: 'M-000108',
+     type: 'Membership',
+     status: 'active',
+     expiryDate: null,
+     bg: 'radial-gradient(circle at top left, #dca54e, transparent 40%), radial-gradient(circle at bottom right, #2dd4bf, transparent 40%), linear-gradient(135deg, #7c3aed, #4f46e5)',
+     icon: Globe,
+     iconColor: '#fde68a',
+     textColor: '#ffffff',
+     benefits: [
+       { icon: Star, title: "Alliance Discount", desc: "10% off at 20+ participating restaurants." },
+       { icon: Zap, title: "Gas-Free", desc: "Zero transaction fees on Beamio network." },
+       { icon: MapPin, title: "Universal Access", desc: "Valid across Toronto & Vancouver partners." }
+     ],
+     info: {
+       issuer: "Canada Chinese Restaurant Alliance",
+       network: "Base Mainnet",
+       standard: "ERC-1155",
+       contract: "0x88...921a"
+     },
+     history: [{ id: 1, title: 'Top Up', date: 'Feb 14', amount: '+ $100.00' }]
+   },
+   {
+     id: 'v_sen',
+     name: 'Sen Pho & Cafe',
+     nickname: '',
+     balance: 50.00,
+     currency: 'CAD',
+     memberNo: 'P-9921',
+     type: 'Stored Value',
+     status: 'active',
+     expiryDate: null,
+     bg: 'linear-gradient(135deg, #f97316, #ea580c, #9a3412)',
+     icon: Utensils,
+     iconColor: '#fed7aa',
+     textColor: '#fff7ed',
+     benefits: [
+        { icon: Coffee, title: "Free Coffee", desc: "Get a free iced coffee every 5 visits." }
+     ],
+     info: { issuer: "Sen Pho", network: "Base", standard: "ERC-1155", contract: "0x77...22bb" },
+     history: [{ id: 1, title: 'Opening Gift', date: 'Feb 15', amount: '+ $50.00' }]
+   },
+   // --- Card 1: Starbucks (Main) ---
+   {
+     id: 'v2',
+     name: 'Starbucks',
+     nickname: 'Morning Coffee', // Already nicknamed by user
+     balance: 12.50,
+     currency: 'CAD',
+     memberNo: 'S-882939',
+     type: 'Rewards',
+     status: 'active',
+     expiryDate: null,
+     bg: '#006241',
+     icon: Coffee,
+     iconColor: 'white',
+     textColor: 'white',
+     history: []
+   },
+   // --- Card 2: Starbucks (Gift - Same Brand) ---
+   {
+     id: 'v2_gift_1',
+     name: 'Starbucks',
+     nickname: '',
+     balance: 25.00,
+     currency: 'CAD',
+     memberNo: 'G-112233',
+     type: 'Gift Card',
+     status: 'active',
+     expiryDate: null,
+     bg: '#006241',
+     icon: Coffee,
+     iconColor: 'white',
+     textColor: 'white',
+     history: []
+   },
+   // --- Card 3: Starbucks (Duplicate Balance Scenario) ---
+   {
+     id: 'v2_gift_2',
+     name: 'Starbucks',
+     nickname: '',
+     balance: 25.00, // SAME BALANCE as Card 2
+     currency: 'CAD',
+     memberNo: 'G-998877', // Different ID
+     type: 'Gift Card',
+     status: 'active',
+     expiryDate: null,
+     bg: '#006241',
+     icon: Coffee,
+     iconColor: 'white',
+     textColor: 'white',
+     history: []
+   },
+   // -----------------------------------------------------
+   {
+     id: 'v3',
+     name: 'Air Canada',
+     nickname: '',
+     balance: 25000,
+     currency: 'PTS',
+     memberNo: 'AC-7721',
+     type: 'Mileage',
+     status: 'active',
+     expiryDate: null,
+     bg: 'linear-gradient(135deg, #ef4444, #b91c1c)',
+     icon: Plane,
+     iconColor: 'white',
+     textColor: 'white',
+     history: []
+   },
+   {
+     id: 'v_concert_old',
+     name: 'Taylor Swift | Eras',
+     nickname: '',
+     balance: 0.00,
+     currency: 'TKT',
+     memberNo: 'SEC-102',
+     type: 'Event Ticket',
+     status: 'expired',
+     expiryDate: '2025-12-31',
+     bg: 'linear-gradient(135deg, #ec4899, #831843)',
+     icon: Ticket,
+     iconColor: 'white',
+     textColor: 'white',
+     history: []
+   },
+   {
+     id: 'v_old_gym',
+     name: 'Fit4Less',
+     nickname: '',
+     balance: 0.00,
+     currency: 'Days',
+     memberNo: 'F4L-99',
+     type: 'Access Pass',
+     status: 'archived',
+     expiryDate: null,
+     bg: 'linear-gradient(135deg, #fbbf24, #d97706)',
+     icon: Dumbbell,
+     iconColor: 'white',
+     textColor: 'white',
+     history: []
+   }
+];
 
-  const FullReceiptView = () => (
-    <div className="absolute inset-0 z-[150] bg-white flex flex-col animate-in slide-in-from-bottom-6 duration-500 overflow-hidden">
-      <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 shrink-0">
-        <button onClick={() => setShowFullReceipt(false)} className="p-2 bg-gray-50 rounded-full"><X size={20} /></button>
-        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Official Receipt</span>
-        <button className="p-2 bg-gray-50 rounded-full text-[#1562f0]"><ExternalLink size={18} /></button>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-8 space-y-10 scrollbar-hide pb-20">
-        <div className="text-center space-y-2">
-           <div className="w-16 h-16 bg-[#1562f0] rounded-[24px] flex items-center justify-center text-white mx-auto shadow-xl shadow-[#1562f0]/20 mb-4">
-              <Zap size={32} className="fill-current" />
-           </div>
-           <h3 className="text-2xl font-black italic tracking-tighter">Starbucks Coffee</h3>
-           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-center"><MapPin size={10} className="mr-1" /> Vancouver, North Branch</p>
-        </div>
+const USER_ASSETS_BASE = {
+ vault: { usdc: 3.73, address: '0x212F...191D' },
+ spending: { usdc: 0.04, address: '0x799E...75C8' },
+};
 
-        <div className="space-y-4 pt-4 border-t border-dashed border-gray-200">
-           <div className="flex justify-between items-center text-sm font-bold text-gray-500 uppercase tracking-tight">
-              <span>Subtotal</span>
-              <span className={isMember ? 'line-through opacity-40' : ''}>CA$ {subtotalCAD.toFixed(2)}</span>
-           </div>
-           {isMember && (
-             <div className="flex justify-between items-center text-sm font-black text-emerald-500 uppercase tracking-tight">
-                <span className="flex items-center"><Gift size={14} className="mr-2" /> CCSA 10% Discount</span>
-                <span>-CA$ {(rawTotalInput * 0.1).toFixed(2)}</span>
-             </div>
-           )}
-           <div className="flex justify-between items-center text-sm font-bold text-gray-500 uppercase tracking-tight">
-              <span>BC GST (5%)</span>
-              <span>CA$ {taxCAD.toFixed(2)}</span>
-           </div>
-           {tipConfirmed && (
-             <div className="flex justify-between items-center text-sm font-black text-[#1562f0] uppercase tracking-tight">
-                <span className="flex items-center"><Heart size={14} className="mr-2 fill-current" /> Added Tip</span>
-                <span>CA$ {(typeof tipAmount === 'string' ? parseFloat(tipAmount) : tipAmount).toFixed(2)}</span>
-             </div>
-           )}
-           
-           <div className="pt-4 border-t border-gray-900 flex justify-between items-center">
-              <span className="text-lg font-black uppercase tracking-tighter">Total Paid</span>
-              <span className="text-3xl font-black italic text-[#1d1d1f] tracking-tighter">CA$ {grandTotal.toFixed(2)}</span>
-           </div>
-        </div>
 
-        <div className="bg-[#f9fafb] rounded-[32px] p-6 space-y-4 border border-gray-50">
-           <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Atomic Settlement Proof</p>
-           <div className="space-y-3">
-              <div className={`flex justify-between items-center ${vPart > 0 ? 'opacity-100' : 'opacity-20'}`}>
-                 <span className="text-[11px] font-bold flex items-center"><Ticket size={14} className="mr-2 text-[#1562f0]" /> Tier 1: Vouchers</span>
-                 <span className="text-[11px] font-black text-[#1d1d1f]">CA$ {vPart.toFixed(2)}</span>
-              </div>
-              <div className={`flex justify-between items-center ${rem1 > 0 ? 'opacity-100' : 'opacity-20'}`}>
-                 <span className="text-[11px] font-bold flex items-center"><Zap size={14} className="mr-2 text-amber-500 fill-current" /> Tier 2/3: USDC Combined</span>
-                 <span className="text-[11px] font-black text-[#1d1d1f]">{(rem1 * CAD_TO_USDC).toFixed(2)} USDC</span>
-              </div>
-              <div className={`flex justify-between items-center ${applePart > 0 ? 'opacity-100' : 'opacity-20'}`}>
-                 <span className="text-[11px] font-bold flex items-center"><Smartphone size={14} className="mr-2 text-gray-400" /> Tier 4: Apple Pay Bridge</span>
-                 <span className="text-[11px] font-black text-[#1d1d1f]">CA$ {applePart.toFixed(2)}</span>
-              </div>
-           </div>
-           <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between opacity-50">
-              <span className="text-[9px] font-mono">HASH: 0x8A2E...4F21B</span>
-              <ShieldCheck size={14} />
-           </div>
-        </div>
-      </div>
-      
-      <div className="p-6 bg-white border-t border-gray-100 shrink-0">
-         <button onClick={() => setShowFullReceipt(false)} className="w-full py-4 bg-[#1d1d1f] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl active:scale-95 transition-all">Done</button>
-      </div>
-    </div>
-  );
+// --- Helper Components ---
 
-  const EoaPaymentView = () => (
-    <div className="flex-1 bg-white flex flex-col p-6 animate-in fade-in duration-500 overflow-hidden">
-      <div className="flex justify-between items-center mb-6 shrink-0 text-[#1d1d1f]">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-[#1562f0] rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-[#1562f0]/20">B</div>
-          <div>
-            <h3 className="text-[11px] font-black uppercase tracking-widest">EOA Gateway</h3>
-            <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest leading-none mt-0.5 text-emerald-500">Static Request</p>
-          </div>
-        </div>
-        <button onClick={() => setPosStep('input')} className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors"><ArrowLeft size={16} className="text-gray-400" /></button>
-      </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center space-y-8 overflow-y-auto pb-6 scrollbar-hide">
-        <div className="text-center shrink-0">
-          <h2 className="text-2xl font-black italic uppercase tracking-tighter text-[#1d1d1f]">STANDARD QR</h2>
-          <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase tracking-widest">Fixed Wallet Address</p>
-        </div>
-        <div className="w-72 h-72 border-[3.5px] border-[#1562f0] rounded-[60px] flex items-center justify-center relative shadow-2xl shadow-[#1562f0]/10 shrink-0">
-          <div className="w-48 h-48 relative">
-            <QrCode size={192} strokeWidth={1.5} className="text-[#1562f0]" />
-            <div className="absolute inset-0 flex items-center justify-center">
-               <div className="w-10 h-10 bg-white rounded-xl shadow-lg border border-gray-100 flex items-center justify-center"><span className="text-[#1562f0] font-black italic text-sm">B</span></div>
+const RealisticQRCode = ({ className }: { className?: string }) => (
+ <svg viewBox="0 0 100 100" fill="currentColor" className={className} shapeRendering="crispEdges">
+   <path d="M10,10 h20 v20 h-20 z M15,15 v10 h10 v-10 z" />
+   <path d="M70,10 h20 v20 h-20 z M75,15 v10 h10 v-10 z" />
+   <path d="M10,70 h20 v20 h-20 z M15,75 v10 h10 v-10 z" />
+   <rect x="20" y="20" width="5" height="5" />
+   <rect x="80" y="20" width="5" height="5" />
+   <rect x="20" y="80" width="5" height="5" />
+   <g opacity="0.9">
+     <rect x="40" y="10" width="5" height="5" /><rect x="50" y="10" width="5" height="5" /><rect x="60" y="10" width="5" height="5" />
+     <rect x="45" y="15" width="5" height="5" /><rect x="55" y="15" width="5" height="5" /><rect x="65" y="15" width="5" height="5" />
+     <rect x="40" y="20" width="5" height="5" /><rect x="50" y="20" width="5" height="5" /><rect x="60" y="20" width="5" height="5" />
+     <rect x="10" y="40" width="5" height="5" /><rect x="20" y="40" width="5" height="5" /><rect x="30" y="40" width="5" height="5" />
+     <rect x="15" y="45" width="5" height="5" /><rect x="25" y="45" width="5" height="5" /><rect x="35" y="45" width="5" height="5" />
+     <rect x="10" y="50" width="5" height="5" /><rect x="20" y="50" width="5" height="5" /><rect x="30" y="50" width="5" height="5" />
+     <rect x="40" y="40" width="10" height="10" /><rect x="60" y="40" width="5" height="5" /><rect x="70" y="40" width="5" height="5" /><rect x="80" y="40" width="5" height="5" />
+     <rect x="50" y="50" width="5" height="5" /><rect x="60" y="50" width="5" height="5" /><rect x="70" y="50" width="5" height="5" /><rect x="80" y="50" width="5" height="5" />
+     <rect x="40" y="60" width="5" height="5" /><rect x="50" y="60" width="5" height="5" /><rect x="60" y="60" width="5" height="5" /><rect x="70" y="60" width="10" height="10" />
+     <rect x="80" y="60" width="5" height="5" /><rect x="90" y="60" width="5" height="5" />
+     <rect x="40" y="70" width="5" height="5" /><rect x="50" y="70" width="5" height="5" /><rect x="60" y="70" width="5" height="5" /><rect x="80" y="70" width="5" height="5" />
+     <rect x="40" y="80" width="5" height="5" /><rect x="55" y="80" width="5" height="5" /><rect x="65" y="80" width="5" height="5" /><rect x="75" y="80" width="5" height="5" /><rect x="85" y="80" width="5" height="5" />
+     <rect x="40" y="90" width="5" height="5" /><rect x="50" y="90" width="5" height="5" /><rect x="60" y="90" width="5" height="5" /><rect x="70" y="90" width="5" height="5" /><rect x="80" y="90" width="5" height="5" />
+   </g>
+ </svg>
+);
+
+
+// Voucher Detail Modal
+const VoucherDetailModal = ({ voucher, onClose, onPay, onTopUp }: { voucher: any, onClose: () => void, onPay: (v: any) => void, onTopUp: () => void }) => {
+ if (!voucher) return null;
+ const Icon = voucher.icon;
+ // Use nickname if available, else name
+ const displayName = voucher.nickname || voucher.name;
+
+
+ return (
+   <div className="fixed inset-0 z-[90] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+      <div className="bg-[#F2F2F7] w-full h-[95%] rounded-t-[32px] relative flex flex-col overflow-hidden animate-slide-up shadow-2xl">
+         <div className="absolute top-0 left-0 w-full h-64 z-0" style={{ background: voucher.bg }}></div>
+         <div className="absolute top-0 left-0 w-full h-64 z-0 bg-gradient-to-b from-transparent to-[#F2F2F7]"></div>
+         <div className="px-6 pt-6 pb-2 flex justify-between items-center z-10">
+            <button onClick={onClose} className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-white/30 text-white transition-colors"><ChevronDown className="w-6 h-6" /></button>
+            <button className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-white/30 text-white transition-colors"><Settings className="w-6 h-6" /></button>
+         </div>
+         <div className="flex-1 overflow-y-auto px-6 pt-2 pb-10 z-10 hide-scrollbar">
+            <div className="w-full h-56 rounded-[24px] p-6 text-white shadow-2xl relative overflow-hidden mb-8 transform transition-transform" style={{ background: voucher.bg, color: voucher.textColor }}>
+                <div className="flex justify-between items-start mb-2">
+                   <div className="flex flex-col">
+                      <h2 className="text-4xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
+                        {voucher.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        <span className="text-xl font-medium ml-2 opacity-90">{voucher.currency}</span>
+                      </h2>
+                      <p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-1">Balance</p>
+                   </div>
+                   <div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
+                      {voucher.memberNo}
+                   </div>
+                </div>
+
+
+                <div className="mt-12 flex justify-between items-end">
+                    <div className="flex items-center gap-3">
+                       <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/20">
+                          <Icon className="w-7 h-7 text-white" />
+                       </div>
+                       <div>
+                          <h3 className="font-bold text-xl leading-none">{displayName}</h3>
+                          <span className="text-[10px] opacity-80 uppercase tracking-wider">{voucher.type}</span>
+                       </div>
+                    </div>
+                    <QrCode className="w-8 h-8 opacity-60" />
+                </div>
             </div>
-          </div>
-        </div>
-        <div className="text-center shrink-0">
-          <p className="text-lg font-black tracking-tighter text-[#1d1d1f] uppercase italic">@JIUDINGSXIANG</p>
-        </div>
-      </div>
+           
+            {/* Actions */}
+            {voucher.status === 'active' ? (
+               <div className="grid grid-cols-3 gap-3 mb-8">
+                   <button onClick={() => onPay(voucher)} className="bg-white p-4 rounded-[20px] flex flex-col items-center justify-center shadow-sm active:scale-95 transition-transform"><div className="w-10 h-10 bg-[#1562f0] rounded-full flex items-center justify-center text-white mb-2 shadow-lg shadow-blue-200"><Scan className="w-5 h-5" /></div><span className="text-xs font-bold text-gray-700">Pay</span></button>
+                   <button onClick={onTopUp} className="bg-white p-4 rounded-[20px] flex flex-col items-center justify-center shadow-sm active:scale-95 transition-transform"><div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white mb-2 shadow-lg shadow-green-200"><Plus className="w-5 h-5" /></div><span className="text-xs font-bold text-gray-700">Top Up</span></button>
+                   <button className="bg-white p-4 rounded-[20px] flex flex-col items-center justify-center shadow-sm active:scale-95 transition-transform"><div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white mb-2 shadow-lg shadow-orange-200"><Ticket className="w-5 h-5" /></div><span className="text-xs font-bold text-gray-700">Details</span></button>
+               </div>
+            ) : (
+               <div className="bg-red-50 rounded-[20px] p-4 mb-8 flex items-center justify-center gap-2 text-red-500 border border-red-100">
+                  <AlertCircle className="w-5 h-5" />
+                  <span className="font-bold text-sm">This card is {voucher.status}</span>
+               </div>
+            )}
 
-      <div className="grid grid-cols-2 gap-3 shrink-0 pt-4 border-t border-gray-50">
-        <button onClick={() => setPosStep('input')} className="py-4 rounded-2xl font-bold uppercase tracking-widest text-gray-400 text-[10px] hover:bg-gray-50 transition-colors">Cancel</button>
-        <button onClick={() => setPosStep('input')} className="py-4 bg-[#1562f0] text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-[#1562f0]/20 active:scale-95">Confirm</button>
-      </div>
-    </div>
-  );
 
-  const ChatInvoiceCard = () => (
-    <div className="bg-white border border-gray-100 rounded-[32px] overflow-hidden shadow-xl shadow-[#1562f0]/5 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-[#1562f0] p-5 text-white relative">
-        <div className="absolute top-0 right-0 p-4 opacity-10 rotate-12"><Zap size={60} /></div>
-        <div className="flex justify-between items-start mb-4">
-          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md"><Receipt size={20} /></div>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/20 px-2 py-1 rounded-md backdrop-blur-md">Paid</span>
-        </div>
-        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Starbucks North Branch</p>
-        <h3 className="text-2xl font-black italic tracking-tighter">CA$ {billableTotal.toFixed(2)}</h3>
-      </div>
-      
-      <div className="p-5 space-y-4">
-        <div className="space-y-1">
-          <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest"><span>Subtotal</span><span>CA$ {subtotalCAD.toFixed(2)}</span></div>
-          <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest"><span>BC GST (5%)</span><span>CA$ {taxCAD.toFixed(2)}</span></div>
-        </div>
-        
-        <div className="h-px bg-gray-50"></div>
-        
-        <div className="flex flex-col space-y-3">
-          <button 
-            onClick={() => { setShowTipModal(true); setCustomTipMode(false); }}
-            className="w-full py-3 bg-[#f5f5f7] hover:bg-gray-100 rounded-2xl flex items-center justify-center space-x-2 transition-all active:scale-95"
-          >
-            <Heart size={16} className="text-[#1562f0]" />
-            <span className="text-[11px] font-black uppercase text-[#1d1d1f] tracking-widest">
-              {tipConfirmed ? `Tip Added: CA$ ${tipAmount}` : 'Add Tip'}
-            </span>
-          </button>
-          
-          <button onClick={() => setShowFullReceipt(true)} className="w-full py-3 border border-gray-100 rounded-2xl flex items-center justify-center space-x-2 text-gray-400 hover:text-[#1d1d1f] transition-colors">
-            <span className="text-[10px] font-bold uppercase tracking-widest">View Full Receipt</span>
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen bg-[#fcfcfd] text-[#1d1d1f] font-sans selection:bg-[#1562f0]/10">
-      
-      {/* Tip Modal */}
-      {showTipModal && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-           <div className="w-full max-w-[340px] bg-white rounded-[40px] p-8 shadow-2xl animate-in slide-in-from-bottom-10">
-              <div className="flex justify-between items-center mb-6">
-                 <h4 className="text-xl font-black italic uppercase tracking-tighter">Support Staff</h4>
-                 <button onClick={() => setShowTipModal(false)} className="p-2 bg-gray-50 rounded-full hover:bg-gray-100"><X size={18} /></button>
-              </div>
-              
-              {!customTipMode ? (
-                <>
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                     {[15, 18, 20].map(pct => (
-                       <button 
-                         key={pct}
-                         onClick={() => setTipAmount((billableTotal * pct / 100).toFixed(2))}
-                         className={`py-5 rounded-[28px] border-2 flex flex-col items-center justify-center transition-all ${(typeof tipAmount === 'string' ? parseFloat(tipAmount) : tipAmount) === parseFloat((billableTotal * pct / 100).toFixed(2)) ? 'border-[#1562f0] bg-[#1562f0]/5 text-[#1562f0]' : 'border-gray-50 text-gray-400'}`}
-                       >
-                          <span className="text-sm font-black">{pct}%</span>
-                          <span className="text-[8px] font-bold uppercase mt-1 tracking-widest">CA$ {(billableTotal * pct / 100).toFixed(2)}</span>
-                       </button>
+            {/* Member Benefits */}
+            {voucher.benefits && (
+               <div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+                  <div className="flex items-center gap-2 mb-4">
+                     <Star className="w-4 h-4 text-orange-500 fill-orange-500" />
+                     <h3 className="font-bold text-gray-900">Member Benefits</h3>
+                  </div>
+                  <div className="space-y-4">
+                     {voucher.benefits.map((benefit: any, idx: number) => (
+                        <div key={idx} className="flex items-start gap-3">
+                           <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                              <benefit.icon className="w-4 h-4 text-[#1562f0]" />
+                           </div>
+                           <div>
+                              <h4 className="text-sm font-bold text-gray-900">{benefit.title}</h4>
+                              <p className="text-xs text-gray-500 leading-relaxed">{benefit.desc}</p>
+                           </div>
+                        </div>
                      ))}
                   </div>
-                  <button 
-                    onClick={() => { setCustomTipMode(true); setTipAmount(0); }}
-                    className="w-full py-4 mb-8 border-2 border-dashed border-gray-200 rounded-[28px] text-[10px] font-black uppercase tracking-widest text-gray-400 hover:border-[#1562f0] hover:text-[#1562f0] transition-colors"
-                  >
-                    Enter Custom Amount
-                  </button>
-                </>
-              ) : (
-                <div className="mb-8">
-                   <div className="flex flex-col items-center justify-center mb-6">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Custom Tip (CAD)</p>
-                      <input 
-                        type="number" 
-                        value={customTipInput}
-                        onChange={(e) => { setCustomTipInput(e.target.value); setTipAmount(e.target.value); }}
-                        placeholder="0.00"
-                        className="text-5xl font-black text-center w-full outline-none placeholder:text-gray-200"
-                        autoFocus
-                      />
-                   </div>
-                   <button onClick={() => setCustomTipMode(false)} className="w-full py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest underline">Back to Percentages</button>
-                </div>
-              )}
-              
-              <button 
-                disabled={!tipAmount || tipAmount <= 0}
-                onClick={() => { setTipConfirmed(true); setShowTipModal(false); }} 
-                className={`w-full py-5 text-white rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-[#1562f0]/20 active:scale-95 transition-all ${!tipAmount || tipAmount <= 0 ? 'bg-gray-200 cursor-not-allowed' : 'bg-[#1562f0]'}`}
-              >
-                Confirm Tip
-              </button>
-           </div>
-        </div>
-      )}
-
-      {/* Nav */}
-      <nav className="border-b border-gray-100 px-8 py-3 flex justify-between items-center bg-white/70 backdrop-blur-xl sticky top-0 z-50">
-        <div className="flex items-center space-x-2 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-          <div className="w-8 h-8 bg-[#1562f0] rounded-lg flex items-center justify-center shadow-lg shadow-[#1562f0]/20">
-            <Zap className="text-white fill-current" size={16} />
-          </div>
-          <span className="text-lg font-bold tracking-tight text-[#1562f0]">Beamio</span>
-        </div>
-        <div className="flex items-center space-x-4">
-          <div className="flex bg-gray-100 rounded-full p-1">
-            <button onClick={() => setViewMode('desktop')} className={`px-4 py-1.5 rounded-full flex items-center space-x-2 text-[10px] font-bold transition-all ${viewMode === 'desktop' ? 'bg-white text-[#1562f0] shadow-sm' : 'text-gray-500'}`}>
-              <Monitor size={12} /> <span className="hidden sm:inline uppercase">Dashboard</span>
-            </button>
-            <button onClick={() => setViewMode('mobile')} className={`px-4 py-1.5 rounded-full flex items-center space-x-2 text-[10px] font-bold transition-all ${viewMode === 'mobile' ? 'bg-white text-[#1562f0] shadow-sm' : 'text-gray-500'}`}>
-              <Smartphone size={12} /> <span className="hidden sm:inline uppercase tracking-tighter">Terminal</span>
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      <div className="flex">
-        <main className={`flex-1 ${viewMode === 'mobile' ? 'flex justify-center py-8' : 'p-10'}`}>
-          {viewMode === 'mobile' ? (
-            <div className="w-[360px] h-[740px] bg-white rounded-[50px] border-[10px] border-[#1d1d1f] shadow-2xl overflow-hidden relative flex flex-col scale-100">
-              <div className="h-8 bg-white flex justify-center items-end pb-1 relative z-50 shrink-0">
-                <div className="w-20 h-5 bg-[#1d1d1f] rounded-b-2xl"></div>
-              </div>
-
-              <div className="flex-1 bg-white flex flex-col overflow-hidden relative">
-                
-                {/* Full Receipt Overlay */}
-                {showFullReceipt && <FullReceiptView />}
-
-                {activeTab === 'pos' && (
-                  <div className="flex-1 flex flex-col p-6 overflow-hidden animate-in fade-in">
-                    <div className="flex justify-between items-center mb-6 shrink-0 text-[#1d1d1f]">
-                       <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 bg-[#1562f0] rounded-lg flex items-center justify-center text-white font-bold shadow-sm text-xs">B</div>
-                          <div>
-                             <h2 className="text-[10px] font-black uppercase tracking-tighter leading-none">PRO TERMINAL</h2>
-                             <p className="text-[8px] font-bold text-gray-300 uppercase tracking-widest mt-0.5 text-emerald-500">Hybrid Hub Active</p>
-                          </div>
-                       </div>
-                       <button onClick={() => setPosStep('eoa_request')} className="w-10 h-10 rounded-xl bg-[#1562f0]/5 flex items-center justify-center text-[#1562f0] border border-[#1562f0]/10 shadow-sm hover:bg-[#1562f0]/10 transition-colors">
-                          <QrCode size={18} />
-                       </button>
-                    </div>
-
-                    {/* INPUT STEP */}
-                    {posStep === 'input' && (
-                      <div className="flex-1 flex flex-col animate-in slide-in-from-bottom-4 overflow-hidden">
-                        <div className="flex-1 flex flex-col items-center justify-center">
-                          <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.3em] mb-2 text-center">Charge Amount (CAD)</p>
-                          <div className="text-6xl font-black tracking-tighter text-[#1d1d1f] mb-8">{posAmount || '0.00'}</div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 mb-6 shrink-0">
-                          {[1,2,3,4,5,6,7,8,9,'.',0,'del'].map(k => (
-                            <button key={k} onClick={() => {
-                              if (k === 'del') setPosAmount(p => p.slice(0,-1));
-                              else if (posAmount.length < 8) setPosAmount(p => p + k);
-                            }} className="h-12 bg-gray-50 rounded-2xl text-xl font-bold hover:bg-gray-100 active:scale-95 transition-all text-[#1d1d1f]">{k === 'del' ? '←' : k}</button>
-                          ))}
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 shrink-0 mb-4">
-                          <button disabled={!posAmount} onClick={() => { setPosMode('B_SCAN_C' as string); setPosStep('scanning'); }} className="py-5 rounded-[28px] bg-[#1562f0] text-white shadow-xl flex flex-col items-center justify-center space-y-1"><Camera size={20} /><span className="text-[8px] font-bold uppercase tracking-widest">Scan User</span></button>
-                          <button disabled={!posAmount} onClick={() => { setPosMode('C_SCAN_B' as string); setPosStep('showing_qr'); }} className="py-5 rounded-[28px] bg-white border-2 border-[#1562f0] text-[#1562f0] flex flex-col items-center justify-center space-y-1 shadow-md"><QrCode size={20} /><span className="text-[8px] font-bold uppercase tracking-widest">Show QR</span></button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* SCANNING */}
-                    {posStep === 'scanning' && (
-                      <div className="flex-1 flex flex-col animate-in zoom-in duration-300 overflow-hidden">
-                         <div className="flex-1 flex flex-col items-center justify-center">
-                            <div className="w-56 h-56 rounded-[48px] bg-gray-50 border border-gray-100 flex items-center justify-center relative overflow-hidden mb-8 shadow-inner">
-                               <Camera size={40} className="text-[#1562f0] animate-pulse" />
-                               <div className="absolute top-0 inset-x-0 h-1 bg-[#1562f0] animate-[scan_2s_linear_infinite]"></div>
-                            </div>
-                            <style>{`@keyframes scan { 0% { top: 10% } 50% { top: 90% } 100% { top: 10% } }`}</style>
-                            <h3 className="text-xl font-black italic uppercase tracking-tighter text-[#1d1d1f]">Recognizing</h3>
-                            <div className="mt-12 flex flex-col space-y-3 w-full px-6 shrink-0">
-                              <button onClick={() => runRoutingEngine(true)} className="py-4 bg-emerald-500 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center space-x-2 transition-all"><Tag size={14} /> <span>Member Detected (Jason)</span></button>
-                              <button onClick={() => runRoutingEngine(false)} className="py-4 bg-gray-100 text-gray-500 rounded-3xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all">Standard User</button>
-                            </div>
-                         </div>
-                      </div>
-                    )}
-
-                    {/* SHOW QR */}
-                    {posStep === 'showing_qr' && (
-                      <div className="flex-1 flex flex-col animate-in fade-in duration-500 overflow-hidden">
-                        <div className="flex-1 flex flex-col items-center justify-center">
-                           <div className="bg-white p-6 rounded-[48px] shadow-[0_20px_60px_rgba(21,98,240,0.15)] border border-gray-50 mb-10">
-                              <div className="w-56 h-56 relative flex items-center justify-center mx-auto">
-                                 <QrCode size={210} strokeWidth={1.2} className="text-[#1d1d1f]" />
-                                 <div className="absolute w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-gray-100">
-                                    <Zap size={24} className="text-[#1562f0] fill-current" />
-                                 </div>
-                              </div>
-                           </div>
-                           <div className="text-center">
-                              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mb-1 italic">Scan to Pay (Total)</p>
-                              <h4 className="text-3xl font-black text-[#1562f0] italic">CA$ {posAmount}</h4>
-                           </div>
-                           <div className="mt-12 w-full px-6">
-                              <button onClick={() => runRoutingEngine(false)} className="w-full py-4 bg-[#f9fafb] border border-gray-200 text-[#1d1d1f] rounded-3xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 shadow-sm active:bg-gray-100 transition-all">
-                                 <RefreshCw size={14} className="animate-spin text-[#1562f0]" /><span>Simulate User Scanned</span>
-                              </button>
-                           </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ROBOTIC EXECUTION ENGINE */}
-                    {posStep === 'execution' && (
-                      <div className="flex-1 flex flex-col bg-[#0b0b0b] -mx-6 -mt-6 p-8 text-white rounded-[42px] shadow-2xl relative overflow-hidden animate-in fade-in">
-                        <div className="absolute top-0 right-0 p-10 opacity-5"><Cpu size={140} strokeWidth={1} /></div>
-                        <div className="flex items-center space-x-2 mb-8 relative z-10">
-                           <div className="w-2 h-2 bg-[#1562f0] rounded-full animate-ping"></div>
-                           <p className="text-[10px] font-mono font-bold uppercase tracking-[0.3em] text-[#1562f0]">Robotic Routing Exec</p>
-                        </div>
-                        <div className="flex-1 font-mono text-[9px] space-y-4 overflow-y-auto leading-relaxed relative z-10 scrollbar-hide pt-2 text-[#fff]">
-                          {terminalLogs.map((log, i) => (
-                            <div key={i} className="animate-in slide-in-from-left-2 fade-in duration-300 flex">
-                              <span className="text-gray-500 mr-2 shrink-0">[{log.s}]</span>
-                              <span className={log.s.startsWith('T') || log.s === 'MEMB' || log.s === 'FEE' || log.s === 'TAX' ? 'text-[#1562f0] font-bold' : log.s === 'DONE' ? 'text-emerald-400 font-bold' : 'text-gray-300'}>{log.m}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-auto pt-6 border-t border-white/10 flex justify-between items-center opacity-40 relative z-10">
-                           <div className="flex items-center space-x-2"><Lock size={12} /><span className="text-[8px] font-black uppercase tracking-tighter">Atomic Pre-Clearing</span></div>
-                           <RefreshCw size={12} className="animate-spin" />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ROUTING RESULT (REVIEW & CHARGE) */}
-                    {posStep === 'routing_result' && (
-                      <div className="flex-1 flex flex-col overflow-hidden animate-in slide-in-from-right-4 duration-500">
-                        <header className="mb-4 shrink-0">
-                           <p className="text-[9px] text-[#1562f0] font-black uppercase tracking-[0.3em] mb-0.5 italic tracking-widest">Routing Result</p>
-                           <h3 className="text-2xl font-black italic uppercase tracking-tighter text-[#1d1d1f]">Review Settlement</h3>
-                        </header>
-
-                        <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-4 scrollbar-hide text-[#1d1d1f]">
-                           <div className="bg-white border border-gray-100 p-4 rounded-[28px] shadow-sm flex items-center space-x-3 shrink-0">
-                              <div className="w-10 h-10 bg-[#1562f0] rounded-xl flex items-center justify-center font-black text-lg text-white shadow-lg shadow-[#1562f0]/20">JT</div>
-                              <div className="flex-1">
-                                 <div className="flex items-center space-x-2">
-                                    <p className="text-xs font-black">Jason Toronto</p>
-                                    {(posMode === 'B_SCAN_C' && isMember) && <span className="bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border border-emerald-500/20">Member</span>}
-                                 </div>
-                                 <p className="text-[9px] text-gray-400 font-mono">0x71c...A2E9</p>
-                              </div>
-                           </div>
-
-                           <div className="bg-[#f9fafb] border border-gray-100 p-5 rounded-[36px] space-y-5 shadow-sm shrink-0 text-[#1d1d1f]">
-                              <div className="space-y-2">
-                                 <div className="flex justify-between items-center text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-                                    <span>Initial Price</span>
-                                    <span className={(posMode === 'B_SCAN_C' && isMember) ? 'line-through opacity-30 font-bold' : 'font-bold'}>CA$ {rawTotalInput.toFixed(2)}</span>
-                                 </div>
-                                 {(posMode === 'B_SCAN_C' && isMember) && (
-                                   <div className="flex justify-between items-center bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-xl border border-emerald-100">
-                                      <span className="text-[8px] font-black uppercase tracking-widest flex items-center"><Gift size={10} className="mr-1" /> CCSA 10% OFF</span>
-                                      <span className="text-xs font-black">-CA$ {(rawTotalInput * 0.1).toFixed(2)}</span>
-                                   </div>
-                                 )}
-                                 
-                                 {/* NEW: Tax & Subtotal Breakdown (Smart Invoice Logic) */}
-                                 <div className="pt-2 flex justify-between items-center text-[9px] font-bold text-gray-500">
-                                    <span>Subtotal</span>
-                                    <span>CA$ {subtotalCAD.toFixed(2)}</span>
-                                 </div>
-                                 <div className="flex justify-between items-center text-[9px] font-bold text-gray-500">
-                                    <span>BC GST (5.0%)</span>
-                                    <span>CA$ {taxCAD.toFixed(2)}</span>
-                                 </div>
-
-                                 <div className="flex justify-between items-center pt-2 border-t border-gray-200/50 mt-2">
-                                    <span className="text-[10px] font-black uppercase text-[#1562f0] tracking-tight">Final Settlement</span>
-                                    <span className="text-xl font-black text-[#1562f0] italic whitespace-nowrap">CA$ {billableTotal.toFixed(2)}</span>
-                                 </div>
-                              </div>
-
-                              <div className="h-px bg-gray-200"></div>
-
-                              <div className="space-y-3">
-                                 <p className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1 italic">Atomic Sequence</p>
-                                 <div className={`flex justify-between items-center ${vPart > 0 ? 'opacity-100' : 'opacity-20'}`}>
-                                    <div className="flex items-center space-x-2"><Ticket size={12} className="text-[#1562f0]" /><span className="text-[10px] font-bold text-gray-600 tracking-tight">Tier 1: Vouchers</span></div>
-                                    <span className="text-[10px] font-black">-CA$ {vPart.toFixed(2)}</span>
-                                 </div>
-                                 {(aaPart > 0 || eoaPart > 0) && (
-                                   <div className="flex justify-between items-center">
-                                      <div className="flex items-center space-x-2"><Zap size={12} className="text-amber-500" /><span className="text-[10px] font-bold text-gray-600 tracking-tight">Tier 2/3: USDC Credit</span></div>
-                                      <span className="text-[10px] font-black">{(parseFloat(aaUSDC) + parseFloat(eoaUSDC)).toFixed(2)} USDC</span>
-                                   </div>
-                                 )}
-                                 {applePart > 0 && (
-                                   <div className="flex justify-between items-center">
-                                      <div className="flex items-center space-x-2"><CreditCard size={12} className="text-gray-400" /><span className="text-[10px] font-bold text-gray-600 tracking-tight">Tier 4: Card Bridge</span></div>
-                                      <span className="text-[10px] font-black">+CA$ {applePart.toFixed(2)}</span>
-                                   </div>
-                                 )}
-                              </div>
-                              <div className="h-px bg-gray-200"></div>
-                              <div className="flex justify-between items-center bg-gray-100/50 p-3 rounded-2xl border border-gray-200/50">
-                                 <span className="text-[9px] font-black uppercase text-gray-500 tracking-wider">Service Fee (0.8%)</span>
-                                 <span className="text-xs font-black text-[#1d1d1f]">{safeBeamioFeeUSDC} USDC</span>
-                              </div>
-                           </div>
-                        </div>
-
-                        <div className="mt-auto space-y-2 shrink-0 pt-4 bg-white border-t border-gray-50 pb-2">
-                           <button onClick={() => setPosStep('success')} className="w-full py-5 bg-[#1562f0] text-white rounded-[24px] font-black text-lg shadow-xl shadow-[#1562f0]/30 active:scale-95 transition-all uppercase tracking-tighter italic">
-                              Charge & Finalize
-                           </button>
-                           <button onClick={resetPOS} className="w-full py-2 text-gray-300 text-[9px] font-black uppercase tracking-widest">Abort Transaction</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* SUCCESS / DONE STEP */}
-                    {posStep === 'success' && (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center animate-in zoom-in duration-500 overflow-hidden px-4 text-[#1d1d1f]">
-                         <div className="w-16 h-16 bg-[#1562f0] rounded-full flex items-center justify-center mb-6 shadow-xl shadow-[#1562f0]/20 animate-bounce">
-                            <CheckCircle2 size={32} className="text-white" strokeWidth={3} />
-                         </div>
-                         <h2 className="text-3xl font-black mb-1 tracking-tighter uppercase italic tracking-widest">Done</h2>
-                         <p className="text-gray-400 text-[9px] font-bold uppercase tracking-widest mb-10">Settled on Base Network</p>
-                         
-                         <div className="w-full bg-[#f9f9f9] border border-gray-100 p-6 rounded-[32px] text-left space-y-4 mb-8 shadow-sm">
-                            <div className="flex justify-between items-center">
-                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Final Cleared</span>
-                              <span className="text-xl font-black italic text-[#1562f0] whitespace-nowrap">CA$ {billableTotal.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between items-center pt-2 border-t border-gray-200/50">
-                               <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Service Fee</span>
-                               <span className="text-[11px] font-black">{safeBeamioFeeUSDC} USDC</span>
-                            </div>
-                            <div className="pt-4 border-t border-gray-200 flex justify-between items-center font-mono text-[8px] text-gray-400">
-                               <span>TX: 0x8A...4F2E</span>
-                               <div className="flex items-center space-x-1 text-emerald-500 font-black uppercase tracking-tighter">
-                                  <Lock size={8} /> <span>Confirmed</span>
-                               </div>
-                            </div>
-                         </div>
-
-                         <div className="w-full space-y-3">
-                            <button 
-                              onClick={handleSendReceipt}
-                              disabled={receiptSent || isSendingReceipt}
-                              className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all ${
-                                receiptSent 
-                                ? 'bg-emerald-500 text-white cursor-default shadow-md shadow-emerald-500/20' 
-                                : isSendingReceipt 
-                                  ? 'bg-gray-100 text-gray-400' 
-                                  : 'bg-white border-2 border-[#1562f0] text-[#1562f0] hover:bg-blue-50 active:scale-95 shadow-sm'
-                              }`}
-                            >
-                               {isSendingReceipt ? (
-                                 <><RefreshCw size={14} className="animate-spin" /> <span>Sending...</span></>
-                               ) : receiptSent ? (
-                                 <><Check size={14} /> <span>Invoice Sent to Chat</span></>
-                               ) : (
-                                 <><MessageSquare size={14} /> <span>Send Invoice to Chat</span></>
-                               )}
-                            </button>
-                            <button 
-                              onClick={resetPOS} 
-                              className="w-full py-4 bg-[#1d1d1f] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl active:scale-95 transition-all"
-                            >
-                               Next Client
-                            </button>
-                         </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {activeTab === 'chat' && (
-                  <div className="flex-1 flex flex-col bg-[#fcfcfd] animate-in slide-in-from-right-4 duration-300 overflow-hidden">
-                    <header className="p-6 border-b border-gray-100 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-10 shrink-0">
-                       <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-[#f5f5f7] rounded-xl flex items-center justify-center border border-gray-200"><Tag size={18} className="text-[#1562f0]" /></div>
-                          <div><h3 className="text-sm font-black">Starbucks Coffee</h3><p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest flex items-center"><ShieldCheck size={10} className="mr-1" /> Verified Store</p></div>
-                       </div>
-                       <MoreVertical size={18} className="text-gray-300" />
-                    </header>
-                    
-                    <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
-                       <div className="flex flex-col space-y-1">
-                          <p className="text-[9px] text-gray-300 font-bold uppercase text-center mb-6 tracking-[0.2em]">Today • 11:35 PM</p>
-                          <div className="bg-[#f5f5f7] p-4 rounded-[24px] rounded-tl-none max-w-[85%] text-[11px] font-medium leading-relaxed shadow-sm">
-                            Thanks for visiting! Here's your smart invoice. ☕️
-                          </div>
-                       </div>
-                       
-                       <ChatInvoiceCard />
-
-                       {tipConfirmed && (
-                         <div ref={chatBottomRef} className="flex justify-end animate-in fade-in slide-in-from-bottom-2">
-                            <div className="bg-[#1562f0] text-white p-5 rounded-[28px] rounded-tr-none max-w-[80%] text-[11px] font-bold shadow-xl shadow-[#1562f0]/20 leading-relaxed">
-                               Just added CA$ {tipAmount} as a tip. Great service! 🙏✨
-                            </div>
-                         </div>
-                       )}
-                    </div>
-                    
-                    <div className="p-4 bg-white border-t border-gray-100 flex items-center space-x-3 shrink-0">
-                       <div className="bg-gray-50 p-2.5 rounded-xl"><Plus size={18} className="text-gray-400" /></div>
-                       <div className="flex-1 bg-gray-50 px-4 py-3 rounded-2xl text-[11px] font-bold text-gray-300">Message Starbucks...</div>
-                       <div className="bg-[#1562f0] p-2.5 rounded-xl text-white shadow-lg"><Send size={18} /></div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab !== 'pos' && activeTab !== 'chat' && (
-                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50">
-                    <Database size={32} className="text-gray-200 mb-4 opacity-50" />
-                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 italic">Module Active</p>
-                    <button onClick={() => setActiveTab('pos')} className="mt-4 text-[#1562f0] text-[9px] font-black uppercase underline hover:opacity-70">Back to Terminal</button>
-                  </div>
-                )}
-              </div>
-
-              {/* GLOBAL BOTTOM NAV */}
-              <div className="h-16 bg-white/80 backdrop-blur-xl border-t border-gray-100 flex justify-around items-center px-4 pb-4 shrink-0 z-50">
-                {[{ id: 'pos', icon: CreditCard, label: 'POS' }, { id: 'wallet', icon: Wallet, label: 'Wallet' }, { id: 'chat', icon: MessageSquare, label: 'Chat' }, { id: 'dashboard', icon: LayoutDashboard, label: 'Admin' }].map(item => (
-                  <button key={item.id} onClick={() => {setActiveTab(item.id); if(item.id==='pos') resetPOS();}} className={`flex flex-col items-center space-y-0.5 transition-all ${activeTab === item.id ? 'text-[#1562f0] scale-105' : 'text-gray-400'}`}>
-                    <item.icon size={16} /><span className="text-[7px] font-black uppercase tracking-widest leading-none">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500">
-               <div className="flex justify-between items-center">
-                  <div>
-                    <h1 className="text-4xl font-black tracking-tight text-[#1d1d1f]">BEAMIO PRO</h1>
-                    <p className="text-gray-400 text-sm mt-1 uppercase font-bold tracking-widest">Enterprise Intelligence • Node v7.3</p>
-                  </div>
-                  <button className="px-6 py-3 bg-[#1562f0] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#1562f0]/20 active:scale-95 transition-all">New Campaign</button>
                </div>
-               <div className="grid grid-cols-2 gap-6">
-                  <div className="bg-white border border-gray-100 p-10 rounded-[48px] shadow-sm"><p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest opacity-60">Rolling Volume</p><h3 className="text-4xl font-black italic tracking-tighter text-[#1d1d1f]">CA$ 12,840.50</h3></div>
-                  <div className="bg-[#1d1d1f] p-10 rounded-[48px] shadow-sm text-white relative overflow-hidden"><p className="text-[10px] font-black opacity-40 uppercase mb-2 tracking-widest">Active Pool</p><h3 className="text-4xl font-black italic tracking-tighter text-emerald-400">4,200 USDC</h3></div>
-               </div>
+            )}
+
+
+            {/* Recent Activity */}
+            <div className="bg-white rounded-[24px] p-5 shadow-sm mb-4"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-900">Recent Activity</h3><span className="text-xs font-bold text-[#1562f0]">View All</span></div>
+               {voucher.history && voucher.history.length > 0 ? (<div className="space-y-4">{voucher.history.map((item: any) => (<div key={item.id} className="flex justify-between items-center"><div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"><History className="w-4 h-4" /></div><div><div className="text-sm font-bold text-gray-900">{item.title}</div><div className="text-xs text-gray-500">{item.date}</div></div></div><span className={`text-sm font-bold ${item.amount.startsWith('+') ? 'text-green-600' : 'text-gray-900'}`}>{item.amount}</span></div>))}</div>) : (<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>)}
             </div>
-          )}
-        </main>
+
+
+            {/* Card Information */}
+            {voucher.info && (
+               <div className="bg-white rounded-[24px] p-5 shadow-sm mb-12">
+                  <div className="flex items-center gap-2 mb-4">
+                     <Info className="w-4 h-4 text-gray-400" />
+                     <h3 className="font-bold text-gray-900">Card Information</h3>
+                  </div>
+                  <div className="space-y-3">
+                     <div className="flex justify-between text-xs"><span className="text-gray-500">Issuer</span><span className="font-medium text-gray-900">{voucher.info.issuer}</span></div>
+                     <div className="flex justify-between text-xs"><span className="text-gray-500">Network</span><span className="font-medium text-gray-900">{voucher.info.network}</span></div>
+                     <div className="flex justify-between text-xs"><span className="text-gray-500">Standard</span><span className="font-medium text-gray-900">{voucher.info.standard}</span></div>
+                     <div className="flex justify-between text-xs"><span className="text-gray-500">Contract</span><span className="font-mono text-gray-500">{voucher.info.contract}</span></div>
+                     <div className="flex justify-between text-xs items-center pt-2 border-t border-gray-100 mt-2">
+                        <span className="text-gray-500 flex items-center gap-1"><ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status</span>
+                        <span className="font-bold text-green-600">Verified</span>
+                     </div>
+                  </div>
+               </div>
+            )}
+         </div>
       </div>
-    </div>
+   </div>
+ );
+};
+
+
+// Unified Pay Code Overlay
+const PayCodeOverlay = ({ isOpen, onClose, voucher }: { isOpen: boolean, onClose: () => void, voucher?: any }) => {
+  if (!isOpen) return null;
+  const displayName = voucher ? (voucher.nickname || voucher.name) : '';
+
+
+  return (
+     <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-md transition-opacity" onClick={onClose}></div>
+        <div className="bg-[#1562f0] w-full rounded-t-[32px] p-6 pb-20 relative flex flex-col items-center animate-slide-up shadow-2xl overflow-hidden">
+           <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[60px] pointer-events-none -mt-20 -mr-20"></div>
+           <div className="w-12 h-1.5 bg-white/20 rounded-full mb-8"></div>
+           <div className="text-center mb-8 relative z-10">
+              <h2 className="text-white font-bold text-2xl mb-1">Express Pay</h2>
+              <p className="text-white/70 text-sm">Scan to pay instantly</p>
+           </div>
+           <div className="bg-white p-6 rounded-[32px] shadow-2xl shadow-blue-900/50 mb-8 relative z-10 w-full max-w-[320px] aspect-square flex items-center justify-center">
+              <RealisticQRCode className="w-full h-full text-gray-900" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                 <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-lg border-4 border-white">
+                    <Zap className="w-6 h-6 text-[#1562f0] fill-current" />
+                 </div>
+              </div>
+           </div>
+           {voucher ? (
+              <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-full pl-2 pr-4 py-2 flex items-center gap-3 animate-fade-in-up">
+                 <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: voucher.bg }}>
+                    <voucher.icon className="w-4 h-4 text-white" />
+                 </div>
+                 <div className="text-left">
+                    <p className="text-[10px] text-white/60 font-bold uppercase tracking-wider leading-none mb-0.5">Prioritizing</p>
+                    <p className="text-white font-bold text-sm leading-none">{displayName}</p>
+                 </div>
+              </div>
+           ) : (
+              <div className="text-white/50 text-xs font-mono">0x799E...75C8</div>
+           )}
+        </div>
+     </div>
   );
 };
 
-export default ExampleExpressComponent;
+
+// Top Up Overlay
+const TopUpOverlay = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  const [step, setStep] = useState('amount');
+  const [amount, setAmount] = useState('50');
+ 
+  // Reset state when opening
+  useEffect(() => {
+     if (isOpen) setStep('amount');
+  }, [isOpen]);
+
+
+  const handleTopUp = () => {
+     setStep('processing');
+     setTimeout(() => {
+        setStep('success');
+     }, 2000);
+  };
+
+
+  if (!isOpen) return null;
+
+
+  return (
+     <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+        <div className="bg-white w-full rounded-t-[32px] relative flex flex-col overflow-hidden animate-slide-up shadow-2xl min-h-[500px]">
+           {step !== 'success' && (
+              <div className="px-6 pt-6 pb-2 flex justify-between items-center z-10">
+                 <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><ChevronDown className="w-6 h-6 text-gray-600" /></button>
+                 <span className="font-bold text-lg">Top Up Balance</span>
+                 <div className="w-10"></div>
+              </div>
+           )}
+
+
+           {step === 'amount' && (
+              <div className="flex-1 px-6 pt-4 pb-12 flex flex-col">
+                 <div className="flex-1 flex flex-col items-center justify-center">
+                    <div className="text-sm font-bold text-gray-400 mb-2 uppercase tracking-wide">Enter Amount</div>
+                    <div className="flex items-center justify-center mb-8">
+                       <span className="text-4xl font-bold text-gray-300 mr-2">$</span>
+                       <input
+                          type="number"
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          className="text-6xl font-bold text-gray-900 bg-transparent w-40 text-center outline-none"
+                          autoFocus
+                       />
+                    </div>
+                    <div className="w-full max-w-xs grid grid-cols-3 gap-3 mb-8">
+                       {['20', '50', '100'].map(val => (
+                          <button
+                             key={val}
+                             onClick={() => setAmount(val)}
+                             className={`py-3 rounded-xl font-bold text-sm transition-all ${amount === val ? 'bg-[#1562f0] text-white shadow-lg shadow-blue-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                          >
+                             ${val}
+                          </button>
+                       ))}
+                    </div>
+                 </div>
+
+
+                 <div className="space-y-4">
+                    <div className="bg-gray-50 rounded-[20px] p-4 flex items-center justify-between border border-gray-100">
+                       <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center">
+                             <CardIcon className="w-5 h-5" />
+                          </div>
+                          <div>
+                             <p className="text-sm font-bold text-gray-900">Apple Pay</p>
+                             <p className="text-xs text-gray-500">Visa •• 4242</p>
+                          </div>
+                       </div>
+                       <span className="text-xs font-bold text-[#1562f0]">Change</span>
+                    </div>
+                    <button
+                       onClick={handleTopUp}
+                       className="w-full bg-[#1562f0] text-white h-14 rounded-[20px] font-bold text-lg shadow-xl shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2"
+                    >
+                       <Zap className="w-5 h-5 fill-white" />
+                       Top Up Now
+                    </button>
+                 </div>
+              </div>
+           )}
+
+
+           {step === 'processing' && (
+              <div className="flex-1 flex flex-col items-center justify-center">
+                 <div className="w-16 h-16 border-4 border-blue-100 border-t-[#1562f0] rounded-full animate-spin mb-6"></div>
+                 <h3 className="text-xl font-bold text-gray-900">Processing...</h3>
+                 <p className="text-gray-500 text-sm mt-2">Confirming with Payment Provider</p>
+              </div>
+           )}
+
+
+           {step === 'success' && (
+              <div className="flex-1 flex flex-col items-center justify-center px-6 text-center animate-fade-in-up">
+                 <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600">
+                    <Check className="w-10 h-10" strokeWidth={3} />
+                 </div>
+                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Top Up Successful!</h3>
+                 <p className="text-gray-500 mb-8">You have added <span className="text-gray-900 font-bold">${amount}.00</span> to your wallet.</p>
+                 <button onClick={onClose} className="w-full bg-gray-900 text-white h-14 rounded-[20px] font-bold text-lg">Done</button>
+              </div>
+           )}
+        </div>
+     </div>
+  );
+};
+
+
+// Manage Cards Overlay (Updated with Renaming Logic)
+const ManageCardsOverlay = ({
+ isOpen,
+ onClose,
+ allVouchers,
+ onUpdateStatus,
+ onRename
+}: {
+ isOpen: boolean,
+ onClose: () => void,
+ allVouchers: any[],
+ onUpdateStatus: (id: string, status: string) => void,
+ onRename: (id: string, newName: string) => void
+}) => {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [tempName, setTempName] = useState('');
+
+
+  if (!isOpen) return null;
+
+
+  const activeVouchers = allVouchers.filter(v => v.status === 'active');
+  const hiddenVouchers = allVouchers.filter(v => v.status === 'archived');
+  const expiredVouchers = allVouchers.filter(v => v.status === 'expired');
+
+
+  const startEditing = (voucher: any) => {
+     setEditingId(voucher.id);
+     setTempName(voucher.nickname || voucher.name);
+  };
+
+
+  const saveEditing = (id: string) => {
+     onRename(id, tempName);
+     setEditingId(null);
+  };
+
+
+  return (
+     <div className="fixed inset-0 z-[100] bg-[#F2F2F7] flex flex-col animate-slide-up">
+        {/* Header */}
+        <div className="bg-white/80 backdrop-blur-md px-5 pt-14 pb-4 flex justify-between items-center border-b border-gray-200 sticky top-0 z-10">
+           <h1 className="text-lg font-bold">Manage Passes</h1>
+           <button onClick={onClose} className="text-[#1562f0] font-bold text-base">Done</button>
+        </div>
+
+
+        <div className="flex-1 overflow-y-auto p-5">
+           <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">Active Passes ({activeVouchers.length})</p>
+           <div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-6">
+              {activeVouchers.map((voucher) => {
+                 const Icon = voucher.icon;
+                 const isEditing = editingId === voucher.id;
+                 const displayTitle = voucher.nickname || voucher.name;
+
+
+                 return (
+                    <div key={voucher.id} className="flex items-center p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors group">
+                       <button onClick={() => onUpdateStatus(voucher.id, 'archived')} className="text-red-500 mr-4 active:scale-90 transition-transform">
+                          <MinusCircle className="w-6 h-6 fill-red-100" />
+                       </button>
+                       <div className="w-10 h-10 rounded-full flex items-center justify-center mr-3" style={{ background: voucher.bg }}>
+                          <Icon className="w-5 h-5 text-white" />
+                       </div>
+                       <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                             {isEditing ? (
+                                <div className="flex items-center gap-2 w-full">
+                                   <input
+                                      type="text"
+                                      value={tempName}
+                                      onChange={(e) => setTempName(e.target.value)}
+                                      className="font-bold text-gray-900 text-sm border-b-2 border-[#1562f0] outline-none bg-transparent w-full"
+                                      autoFocus
+                                      onKeyDown={(e) => { if (e.key === 'Enter') saveEditing(voucher.id) }}
+                                   />
+                                   <button onClick={() => saveEditing(voucher.id)} className="text-[#1562f0]">
+                                      <Save className="w-4 h-4" />
+                                   </button>
+                                </div>
+                             ) : (
+                                <>
+                                   <h3 className="font-bold text-gray-900 text-sm">{displayTitle}</h3>
+                                   {voucher.nickname && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Nickname</span>}
+                                   <button onClick={() => startEditing(voucher)} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Edit2 className="w-3 h-3 text-gray-400 hover:text-[#1562f0]" />
+                                   </button>
+                                </>
+                             )}
+                          </div>
+                          <p className="text-xs text-gray-500">{voucher.type} • {voucher.balance.toLocaleString(undefined, {minimumFractionDigits: 2})} {voucher.currency}</p>
+                       </div>
+                       <div className="text-gray-300 cursor-grab active:cursor-grabbing">
+                          <GripVertical className="w-5 h-5" />
+                       </div>
+                    </div>
+                 );
+              })}
+              {activeVouchers.length === 0 && <div className="p-6 text-center text-gray-400 text-sm">No active passes</div>}
+           </div>
+
+
+           {(hiddenVouchers.length > 0 || expiredVouchers.length > 0) && (
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">Hidden & Expired</p>
+           )}
+          
+           <div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-8">
+              {hiddenVouchers.map((voucher) => {
+                 const Icon = voucher.icon;
+                 return (
+                    <div key={voucher.id} className="flex items-center p-4 border-b border-gray-100 last:border-0 opacity-70">
+                       <button onClick={() => onUpdateStatus(voucher.id, 'active')} className="text-green-500 mr-4 active:scale-90 transition-transform">
+                          <PlusCircle className="w-6 h-6 fill-green-100" />
+                       </button>
+                       <div className="w-10 h-10 rounded-full flex items-center justify-center mr-3 bg-gray-200">
+                          <Icon className="w-5 h-5 text-gray-500" />
+                       </div>
+                       <div className="flex-1">
+                          <h3 className="font-bold text-gray-900 text-sm">{voucher.nickname || voucher.name}</h3>
+                          <p className="text-xs text-gray-500">Archived by you</p>
+                       </div>
+                    </div>
+                 );
+              })}
+
+
+              {expiredVouchers.map((voucher) => {
+                 const Icon = voucher.icon;
+                 return (
+                    <div key={voucher.id} className="flex items-center p-4 border-b border-gray-100 last:border-0 opacity-50 bg-gray-50">
+                       <div className="mr-4 text-gray-300 w-6 flex justify-center">
+                          <Clock className="w-4 h-4" />
+                       </div>
+                       <div className="w-10 h-10 rounded-full flex items-center justify-center mr-3 grayscale" style={{ background: voucher.bg }}>
+                          <Icon className="w-5 h-5 text-white" />
+                       </div>
+                       <div className="flex-1">
+                          <h3 className="font-bold text-gray-500 text-sm">{voucher.name}</h3>
+                          <p className="text-xs text-gray-400">Expired on {voucher.expiryDate}</p>
+                       </div>
+                    </div>
+                 );
+              })}
+           </div>
+        </div>
+     </div>
+  );
+};
+
+
+// Store View
+const StoreView = () => (
+   <div className="pt-14 pb-32 px-4 space-y-6 animate-fade-in">
+      <div className="flex justify-between items-center px-2">
+         <h1 className="text-3xl font-bold text-gray-900">Store</h1>
+         <div className="bg-gray-100 px-3 py-1 rounded-full text-xs font-bold text-gray-500">Toronto</div>
+      </div>
+      <div className="w-full h-40 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-[24px] p-6 text-white flex flex-col justify-center shadow-lg relative overflow-hidden">
+         <div className="relative z-10">
+            <h2 className="text-2xl font-bold mb-1">New Arrivals</h2>
+            <p className="opacity-80 text-sm mb-4">Get exclusive membership deals.</p>
+            <button className="bg-white text-indigo-600 px-4 py-2 rounded-full text-xs font-bold shadow-sm">Explore</button>
+         </div>
+         <div className="absolute right-[-20px] top-[-20px] w-32 h-32 bg-white/20 rounded-full blur-2xl"></div>
+      </div>
+      <h3 className="text-lg font-bold text-gray-900 px-1">Featured</h3>
+      <div className="grid grid-cols-2 gap-4">
+         {[{ title: 'Best Buy', offer: '2% Back', color: 'bg-blue-600' }, { title: 'Amazon', offer: '$10 Gift', color: 'bg-yellow-500' }, { title: 'Uber', offer: 'Free Ride', color: 'bg-black' }].map((item, idx) => (
+            <div key={idx} className="bg-white p-4 rounded-[20px] h-32 flex flex-col justify-between shadow-sm border border-gray-100">
+               <div className={`w-10 h-10 rounded-full ${item.color} flex items-center justify-center text-white font-bold text-xs`}>{item.title[0]}</div>
+               <div><h4 className="font-bold text-gray-900">{item.title}</h4><span className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded">{item.offer}</span></div>
+            </div>
+         ))}
+      </div>
+   </div>
+);
+
+
+// Main App Component
+export default function App() {
+ const [activeTab, setActiveTab] = useState<Tab>('home');
+ const [isExpressExpanded, setIsExpressExpanded] = useState(false);
+ const [selectedVoucher, setSelectedVoucher] = useState<any>(null);
+ const [isManagingCards, setIsManagingCards] = useState(false);
+ const [showPayCode, setShowPayCode] = useState(false);
+ const [payCodeContext, setPayCodeContext] = useState<any>(null);
+ const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [vouchers, setVouchers] = useState(INITIAL_VOUCHERS);
+
+
+ const updateVoucherStatus = (id: string, newStatus: string) => {
+    setVouchers(prev => prev.map(v => v.id === id ? { ...v, status: newStatus } : v));
+ };
+
+
+ const renameVoucher = (id: string, newNickname: string) => {
+    setVouchers(prev => prev.map(v => v.id === id ? { ...v, nickname: newNickname } : v));
+ };
+
+
+ const handlePayAction = (voucher: any) => {
+    setPayCodeContext(voucher);
+    setShowPayCode(true);
+ };
+
+
+ const handleAddCard = () => {
+    setActiveTab('store');
+ };
+
+
+ const handleDetails = () => {
+    // Show details for the main card (CCSA)
+    setSelectedVoucher(INITIAL_VOUCHERS[0]);
+ };
+
+
+ const handleTopUpTrigger = () => {
+    setIsTopUpOpen(true);
+ };
+
+
+ const HomeView = () => (
+   <div className="pt-14 pb-32 px-4 space-y-6 animate-fade-in">
+     <div className="flex justify-between items-center px-2">
+       <button className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition"><ChevronDown size={20} /></button>
+       <button className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition"><Settings size={20} /></button>
+     </div>
+     <div className="relative w-full aspect-[1.58/1] rounded-[32px] overflow-hidden shadow-2xl shadow-indigo-500/30">
+       <div className="absolute inset-0 bg-gradient-to-br from-[#6366F1] via-[#8B5CF6] to-[#06B6D4]"></div>
+       <div className="absolute inset-0 bg-white/5 backdrop-blur-[2px]"></div>
+       <div className="relative h-full p-6 flex flex-col justify-between text-white">
+         <div className="flex justify-between items-start">
+           <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full border border-white/30 flex items-center justify-center bg-white/10"><Globe size={20} className="text-yellow-300" /></div><div><h3 className="font-serif text-xl leading-tight tracking-wide">CCSA</h3><p className="text-xs font-serif opacity-80 tracking-widest">CARD</p></div></div>
+           <QrCode size={24} className="opacity-80" />
+         </div>
+         <div><p className="text-xs font-medium opacity-70 mb-1 tracking-wider">BALANCE</p><div className="flex items-baseline gap-2"><h1 className="text-4xl font-bold tracking-tight">150.00</h1><span className="text-sm font-medium opacity-80">CAD</span></div></div>
+         <div className="absolute bottom-6 right-6"><p className="text-[10px] font-mono opacity-60 tracking-widest">M-000108</p></div>
+       </div>
+     </div>
+     <div className="grid grid-cols-3 gap-4">
+       <button onClick={() => handlePayAction(INITIAL_VOUCHERS[0])} className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"><div className="w-12 h-12 bg-[#1562f0] rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/30"><Scan size={20} /></div><span className="text-xs font-bold text-gray-700">Pay</span></button>
+       <button onClick={handleTopUpTrigger} className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"><div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-500/30"><Plus size={24} /></div><span className="text-xs font-bold text-gray-700">Top Up</span></button>
+       <button onClick={handleDetails} className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"><div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-orange-500/30"><CreditCard size={20} /></div><span className="text-xs font-bold text-gray-700">Details</span></button>
+     </div>
+     <div className="bg-white rounded-[32px] p-6 shadow-sm">
+       <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-gray-800">Recent Activity</h3><button className="text-[#1562f0] text-xs font-bold">View All</button></div>
+       <div className="space-y-6">
+         {recentActivityData.map((tx) => (<div key={tx.id} className="flex items-center justify-between"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"><History size={18} /></div><div><p className="text-sm font-bold text-gray-900">{tx.type}</p><p className="text-xs text-gray-400">{tx.date}</p></div></div><span className={`text-sm font-bold ${tx.isPositive ? 'text-green-600' : 'text-gray-900'}`}>{tx.amount}</span></div>))}
+       </div>
+     </div>
+   </div>
+ );
+
+
+ const WalletStackView = ({ onManage, onAdd }: { onManage: () => void, onAdd: () => void }) => {
+   const [searchTerm, setSearchTerm] = useState('');
+   const filteredVouchers = vouchers.filter(v => v.status === 'active' && (v.nickname || v.name).toLowerCase().includes(searchTerm.toLowerCase()));
+
+
+   return (
+     <div className="flex flex-col h-full bg-[#F2F2F7] pt-14 px-5 pb-44 overflow-y-auto hide-scrollbar">
+       <div className="flex justify-between items-center mb-6 px-1">
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Wallet</h1>
+          <div className="flex items-center gap-4">
+            <button onClick={onManage} className="text-[#1562f0] font-bold text-sm">Edit</button>
+            <button onClick={onAdd} className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform"><Plus className="w-5 h-5" /></button>
+          </div>
+       </div>
+       <div className="relative h-[650px] perspective-1000">
+         <div onClick={() => setIsExpressExpanded(false)} className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isExpressExpanded ? 'scale-90 opacity-100 translate-y-4 brightness-50' : 'scale-95 translate-y-16'}`} style={{ background: 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)', zIndex: 10 }}>
+           <div className="flex justify-between items-start mb-8"><div className="flex items-center space-x-2"><div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center"><div className="w-4 h-1 bg-white rounded-full"></div></div><span className="font-medium text-lg tracking-wide">USDC on Base</span></div><div className="p-2 bg-white/10 rounded-xl backdrop-blur-md border border-white/20"><QrCode className="w-5 h-5" /></div></div>
+           <div className="text-center mb-10"><div className="flex items-baseline justify-center"><span className="text-6xl font-bold tracking-tighter">{USER_ASSETS_BASE.vault.usdc.toFixed(2)}</span><span className="text-xl font-medium ml-2 opacity-80">USDC</span></div><div className="text-white/70 font-medium">≈ CA$ {(USER_ASSETS_BASE.vault.usdc * CURRENCY_RATES.CAD.rate).toFixed(2)}</div></div>
+           <div className="bg-black/20 backdrop-blur-md px-4 py-2 rounded-full inline-flex items-center space-x-2 border border-white/10 font-mono text-sm active:bg-black/30 transition-colors cursor-pointer mx-auto block w-fit"><span>{USER_ASSETS_BASE.vault.address}</span><Copy className="w-3 h-3 opacity-70" /></div>
+         </div>
+         <div onClick={() => setIsExpressExpanded(!isExpressExpanded)} className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-[0_20px_50px_-12px_rgba(79,70,229,0.5)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'translate-y-[240px]' : 'translate-y-[150px]'}`} style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)', zIndex: 20 }}>
+           <div className="flex justify-between items-center mb-8"><div className="flex items-center space-x-2"><div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center"><Zap className="w-4 h-4 fill-current" /></div><span className="font-medium text-lg tracking-wide">Express Pay</span></div><button onClick={(e) => { e.stopPropagation(); handlePayAction(null); }} className="flex items-center space-x-2 border border-white/30 rounded-full px-4 py-1.5 backdrop-blur-md bg-white/5 active:bg-white/20 transition-colors"><QrCode className="w-4 h-4" /><span className="text-xs font-bold tracking-wider">PAY CODE</span></button></div>
+           <div className="text-center mb-10"><div className="flex items-baseline justify-center"><span className="text-6xl font-bold tracking-tighter text-[#4ade80]">{USER_ASSETS_BASE.spending.usdc.toFixed(2)}</span><span className="text-xl font-medium ml-2 opacity-80 text-[#4ade80]">USDC</span></div><div className="text-[#4ade80]/70 font-medium">≈ CA$ {(USER_ASSETS_BASE.spending.usdc * CURRENCY_RATES.CAD.rate).toFixed(2)}</div></div>
+           <div className="bg-black/20 backdrop-blur-md px-4 py-2 rounded-full inline-flex items-center space-x-2 border border-white/10 font-mono text-sm active:bg-black/30 transition-colors mx-auto block w-fit" onClick={(e) => { e.stopPropagation(); /* Copy action here */ }}><span>{USER_ASSETS_BASE.spending.address}</span><Copy className="w-3 h-3 opacity-70" /></div>
+           <div className="absolute bottom-4 right-6 opacity-50 animate-bounce">{isExpressExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</div>
+         </div>
+         <div className={`absolute top-[480px] w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isExpressExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-20 pointer-events-none'}`} style={{ zIndex: 15 }}>
+            <div className="mb-4"><div className="bg-white rounded-xl px-4 py-2 flex items-center shadow-sm border border-gray-100"><Search className="w-4 h-4 text-gray-400 mr-2" /><input type="text" placeholder="Search passes..." className="bg-transparent text-sm w-full outline-none text-gray-700 placeholder-gray-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div></div>
+            <div className="flex items-center justify-between px-2 mb-2"><span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{filteredVouchers.length} Passes</span></div>
+            <div className="relative pb-32">
+              {filteredVouchers.length > 0 ? (
+                  filteredVouchers.map((voucher, index) => {
+                    const Icon = voucher.icon;
+                    const overlap = 135;
+                    const displayName = voucher.nickname || voucher.name;
+                    return (
+                      <div key={voucher.id} onClick={() => setSelectedVoucher(voucher)} className="w-full h-48 rounded-[24px] p-6 text-white shadow-lg relative overflow-hidden group active:scale-[0.98] transition-transform origin-top hover:translate-y-[-8px] border border-white/10" style={{ background: voucher.bg, zIndex: index, marginTop: index === 0 ? 0 : `-${overlap}px`, color: voucher.textColor || 'white', boxShadow: '0 -4px 20px rgba(0,0,0,0.1)', transform: `scale(${Math.max(0.95, 1 - (index * 0.01))})`, }}>
+                         <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/10 shadow-sm"><Icon className="w-4 h-4 text-white" /></div><div className="flex flex-col"><h3 className="font-bold text-sm leading-tight text-white/90 drop-shadow-sm">{displayName}</h3><span className="text-[10px] opacity-70 uppercase tracking-wider">{voucher.type}</span></div></div>
+                            <div className="text-right"><h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">{voucher.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}<span className="text-xs font-medium ml-1 opacity-80">{voucher.currency}</span></h2></div>
+                         </div>
+                         <div className="mt-auto pt-8 flex justify-end items-end opacity-40"><p className="text-[10px] font-mono tracking-widest">{voucher.memberNo}</p></div>
+                      </div>
+                    );
+                  })
+              ) : (<div className="text-center py-10 text-gray-400 text-sm">No passes found</div>)}
+            </div>
+         </div>
+       </div>
+       <VoucherDetailModal voucher={selectedVoucher} onClose={() => setSelectedVoucher(null)} onPay={handlePayAction} onTopUp={handleTopUpTrigger} />
+     </div>
+   );
+ };
+
+
+ const StatusBar = () => (<div className="flex justify-between items-center px-6 py-2 text-white/80 text-xs font-medium z-50 absolute top-0 w-full"><span>9:41</span><div className="flex gap-1"><div className="w-4 h-2.5 border border-white/40 rounded-[2px]"></div></div></div>);
+ const BottomNav = () => (<div className="fixed bottom-6 left-6 right-6 h-20 bg-white rounded-[32px] shadow-2xl flex items-center justify-between px-6 z-50"><button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 ${activeTab === 'home' ? 'text-blue-600' : 'text-gray-400'}`}><Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} /></button><button onClick={() => setActiveTab('wallet')} className={`flex flex-col items-center gap-1 ${activeTab === 'wallet' ? 'text-blue-600' : 'text-gray-400'}`}><Wallet size={24} strokeWidth={activeTab === 'wallet' ? 2.5 : 2} /></button><button onClick={() => setActiveTab('scan')} className="relative -top-6 w-16 h-16 bg-[#1562f0] rounded-full shadow-lg shadow-blue-600/40 flex items-center justify-center text-white transform transition-transform active:scale-95"><Scan size={28} /></button><button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 ${activeTab === 'chat' ? 'text-blue-600' : 'text-gray-400'}`}><MessageSquare size={24} strokeWidth={activeTab === 'chat' ? 2.5 : 2} /></button><button onClick={() => setActiveTab('store')} className={`flex flex-col items-center gap-1 ${activeTab === 'store' ? 'text-blue-600' : 'text-gray-400'}`}><Store size={24} strokeWidth={activeTab === 'store' ? 2.5 : 2} /></button></div>);
+
+
+ return (
+   <div className="w-full min-h-screen bg-[#F2F4F8] font-sans antialiased text-slate-900 selection:bg-blue-200">
+     <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none"><div className="absolute top-[-10%] left-[-20%] w-[500px] h-[500px] bg-purple-200/40 rounded-full blur-[100px]"></div><div className="absolute bottom-[-10%] right-[-20%] w-[400px] h-[400px] bg-blue-200/40 rounded-full blur-[100px]"></div></div>
+     <div className="relative z-10 max-w-md mx-auto min-h-screen bg-[#F2F4F8]/80 backdrop-blur-sm flex flex-col shadow-2xl overflow-hidden">
+       <StatusBar />
+       <div className="flex-1 overflow-hidden relative">
+         {activeTab === 'home' && <HomeView />}
+         {activeTab === 'wallet' && <WalletStackView onManage={() => setIsManagingCards(true)} onAdd={handleAddCard} />}
+         {activeTab === 'store' && <StoreView />}
+         {activeTab === 'scan' && <div className="flex items-center justify-center h-full text-gray-400 font-medium animate-pulse">Camera Active...</div>}
+       </div>
+       <ManageCardsOverlay
+         isOpen={isManagingCards}
+         onClose={() => setIsManagingCards(false)}
+         allVouchers={vouchers}
+         onUpdateStatus={updateVoucherStatus}
+         onRename={renameVoucher} // Pass the rename handler
+       />
+       <PayCodeOverlay isOpen={showPayCode} onClose={() => { setShowPayCode(false); setPayCodeContext(null); }} voucher={payCodeContext} />
+       <TopUpOverlay isOpen={isTopUpOpen} onClose={() => setIsTopUpOpen(false)} />
+       <BottomNav />
+     </div>
+     <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; } @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } } .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1); } @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } } .animate-fade-in { animation: fade-in 0.3s ease-out; } @keyframes fade-in-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in-up { animation: fade-in-up 0.4s ease-out forwards; }`}</style>
+   </div>
+ );
+}
 

@@ -1,8 +1,15 @@
 import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react"
 import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
-// FIX: 将 TriangleAlert 替换为 AlertTriangle
-import { Eye, EyeOff, ShieldCheck, AlertTriangle, Check, Loader } from "lucide-react"
+import { Eye, EyeOff, ShieldCheck, AlertTriangle, Check, Loader, KeyRound, RefreshCw } from "lucide-react"
+import { ACTIVATING_STEPS } from "./RecoveryQRScreen"
+
+const CREATING_STEPS = [
+  { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
+  { id: 1, title: 'Finalizing Terminal', desc: 'Preparing user interface', icon: RefreshCw },
+] as const
+const STEP_DURATION_MS = 2000
+const ACTIVATING_STEP_DURATION_MS = 5000
 
 // Types
 type CreateBeamioTagProps = {
@@ -322,11 +329,29 @@ const CreateUsernamePinScreen = forwardRef<
   CreateUsernamePinScreenRef,
   {
     close: (val: { qrDataUrl: string; pin: string; passcode: string; temp: any; beamioTag: string }) => void
+    isRedeemFlow?: boolean
   }
->(function CreateUsernamePinScreen({ close }, ref) {
+>(function CreateUsernamePinScreen({ close, isRedeemFlow = false }, ref) {
   const [step, setStep] = useState<"tag" | "password">("tag")
   const [beamioName, setBeamioName] = useState("")
   const [loading, setLoading] = useState(false)
+  const [creatingStep, setCreatingStep] = useState(0)
+
+  const steps = isRedeemFlow ? ACTIVATING_STEPS : CREATING_STEPS
+  const stepDuration = isRedeemFlow ? ACTIVATING_STEP_DURATION_MS : STEP_DURATION_MS
+
+  useEffect(() => {
+    if (!loading) {
+      setCreatingStep(0)
+      return
+    }
+    const advance = () => setCreatingStep((prev) => Math.min(prev + 1, steps.length - 1))
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (let i = 1; i < steps.length; i++) {
+      timers.push(setTimeout(advance, i * stepDuration))
+    }
+    return () => timers.forEach((t) => clearTimeout(t))
+  }, [loading, isRedeemFlow])
 
   useImperativeHandle(ref, () => ({
     goBack: () => {
@@ -357,18 +382,65 @@ const CreateUsernamePinScreen = forwardRef<
     })
   }
 
-  // Create Wallet 处理中：显示与 redeem 相同的 Activating / Deploying Account loading 页
+  // Create Wallet 处理中：4 步 loading（1.Generating Secure ID 2.Deploying Smart Vault 3.Minting Membership 4.Verifying on Base L2）
   if (loading) {
     return (
-      <div className="flex flex-col h-full items-center justify-center p-8 bg-white">
+      <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
         <div className="relative mb-8">
           <div className="w-20 h-20 bg-[#1652f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-blue-500/40">
             <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
           </div>
           <div className="absolute -inset-4 bg-[#1652f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
         </div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Activating...</h2>
-        <p className="text-slate-400 font-medium">Deploying Account...</p>
+        <div className="w-full max-w-sm space-y-6">
+          {steps.map((s, idx) => {
+            const isCompleted = idx < creatingStep
+            const isActive = idx === creatingStep
+            const Icon = s.icon
+            return (
+              <div key={s.id} className="flex items-start gap-4">
+                <div
+                  className={[
+                    'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors',
+                    isCompleted && 'bg-emerald-500',
+                    isActive && 'bg-[#1652f0]',
+                    !isCompleted && !isActive && 'bg-slate-200',
+                  ].filter(Boolean).join(' ')}
+                >
+                  {isCompleted ? (
+                    <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
+                  ) : isActive ? (
+                    <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
+                  ) : (
+                    <Icon className="w-5 h-5 text-slate-400" strokeWidth={2.5} />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p
+                    className={[
+                      'font-semibold text-[15px] transition-colors',
+                      isActive && 'text-[#1652f0]',
+                      isCompleted && 'text-slate-700',
+                      !isCompleted && !isActive && 'text-slate-400',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    {s.title}
+                  </p>
+                  <p
+                    className={[
+                      'text-sm mt-0.5 transition-colors',
+                      isActive && 'text-slate-700',
+                      isCompleted && 'text-slate-500',
+                      !isCompleted && !isActive && 'text-slate-400',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    {s.desc}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     )
   }

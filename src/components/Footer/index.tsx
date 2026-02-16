@@ -41,25 +41,25 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		const HIDE_Y = 140 // ✅ 往下移出屏幕
 
 		if (!visible) {
-		await barControls.start({
-			y: HIDE_Y,
-			opacity: 0,
-			transition: { duration: 0.24, ease: [0.2, 0.8, 0.2, 1] }
-		})
-		return
+			await barControls.start({
+				y: HIDE_Y,
+				opacity: 0,
+				transition: { duration: 0.24, ease: [0.2, 0.8, 0.2, 1] }
+			})
+			return
 		}
 
 		// ✅ 显示：从下面上来 -> overshoot -> 回落
 		barControls.set({ y: HIDE_Y, opacity: 0 })
 
 		await barControls.start({
-		y: [HIDE_Y, -12, 0], // -12 = 轻微上冲
-		opacity: [0, 1, 1],
-		transition: {
-			duration: 0.56,
-			times: [0, 0.40, 1],
-			ease: [0.2, 0.9, 0.2, 1]
-		}
+			y: [HIDE_Y, -12, 0], // -12 = 轻微上冲
+			opacity: [0, 1, 1],
+			transition: {
+				duration: 0.56,
+				times: [0, 0.40, 1],
+				ease: [0.2, 0.9, 0.2, 1]
+			}
 		})
 
 		if (cancelled) return
@@ -111,8 +111,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	// 如果 hasNewVersion 变化，你希望 settings badge 跟着更新
 	useEffect(() => {
 		setBadgeMap(v => ({
-		...v,
-		'/settings': hasNewVersion ? Math.max(v['/settings'] || 0, 1) : 0
+			...v,
+			'/settings': hasNewVersion ? Math.max(v['/settings'] || 0, 1) : 0
 		}))
 	}, [hasNewVersion])
 
@@ -162,7 +162,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		const p = (pathname || '/').toLowerCase()
 		if (p === '/' || p.startsWith('/?')) return '/'
 		if (p.startsWith('/history')) return '/history'
-		if (p.startsWith('/pay')) return '/pay'
+		if (p.startsWith('/pay') || p.startsWith('/qr')) return '/pay'
 		if (p.startsWith('/chat')) return '/chat'
 		if (p.startsWith('/settings')) return '/settings'
 		return '/'
@@ -184,7 +184,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				setMessageCount(0)
 			}
 		} else {
-			openPayWorkflow()
+			// 打开 QR 操作页（扫描 / 我的二维码）
+			navigate('/qr')
 			return
 		}
 

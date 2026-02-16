@@ -149,7 +149,22 @@ const STEP_ORDER = ROUTING_STEPS.map((s) => s.id)
 
 const BASE_EXPLORER_TX = 'https://basescan.org/tx/'
 
-function SmartRoutingAnalysis({ steps, onAbandon, successTxHash }: { steps: RoutingStep[]; onAbandon?: () => void; successTxHash?: string }) {
+const RPC_ERROR_MSG = 'RPC错误'
+
+const retryRpcCall = async <T,>(fn: () => Promise<T>, retries = 2): Promise<T> => {
+	let lastErr: unknown
+	for (let i = 0; i <= retries; i++) {
+		try {
+			return await fn()
+		} catch (e) {
+			lastErr = e
+			if (i < retries) await new Promise((r) => setTimeout(r, 800))
+		}
+	}
+	throw lastErr
+}
+
+function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { steps: RoutingStep[]; onAbandon?: () => void; onRetry?: () => void; successTxHash?: string }) {
 	const hasError = steps.some((s) => s.status === 'error')
 
 	// Steps not in the 4-panel design: show only when loading or error (hide when passed)
@@ -226,6 +241,16 @@ function SmartRoutingAnalysis({ steps, onAbandon, successTxHash }: { steps: Rout
 									{step.detail}
 								</p>
 							</div>
+							{step.status === 'error' && step.detail === RPC_ERROR_MSG && onRetry && (
+								<button
+									type="button"
+									onClick={onRetry}
+									className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all flex items-center gap-1.5"
+								>
+									<RefreshCw className="w-4 h-4" strokeWidth={2.5} />
+									Try again
+								</button>
+							)}
 						</motion.div>
 					))}
 				</AnimatePresence>
@@ -593,6 +618,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 	const [routingSteps, setRoutingSteps] = useState<RoutingStep[]>(() =>
 		ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus }))
 	)
+	const [routingRetryTrigger, setRoutingRetryTrigger] = useState(0)
 	const [confirmDeduction, setConfirmDeduction] = useState<ConfirmDeductionPayload | null>(null)
 	const [submitting, setSubmitting] = useState(false)
 	const [successTxHash, setSuccessTxHash] = useState<string | null>(null)
@@ -690,6 +716,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		const isVoucherOrBill = scanIntent === 'voucherPay' || scanIntent === 'payBill'
 		if (!isVoucherOrBill || !scanData || routingDoneRef.current) return
 		routingDoneRef.current = true
+		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
 
 		const setStep = (id: string, status: StepStatus, detail?: string) => {
 			setRoutingSteps((prev) =>
@@ -752,20 +779,20 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 					setVoucherPayToAA(billPayeeAA)
 					setStepLoading('detectingUser')
 					await loadingDelay()
-					// 使用 Beamio Account Factory 校验 to 是否为合法 BeamioAccount（getCode 仅能说明是合约，不能区分 BeamioAccount）
+					// 使用 Beamio Account Factory 校验 to 是否为合法 BeamioAccount
 					try {
 						const aaFactory = new ethers.Contract(
 							contracts.BeamioAAAcountFactory.address,
 							contracts.BeamioAAAcountFactory.abi,
 							baseEndpoint
 						)
-						const isBeamio = await aaFactory.isBeamioAccount(billPayeeAA)
+						const isBeamio = await retryRpcCall(() => aaFactory.isBeamioAccount(billPayeeAA))
 						if (!isBeamio) {
 							failStep('detectingUser', 'Bill payee is not a Beamio AA account')
 							return
 						}
 					} catch (e) {
-						failStep('detectingUser', (e as Error)?.message ?? 'Could not verify bill payee AA')
+						failStep('detectingUser', RPC_ERROR_MSG)
 						return
 					}
 					if (!payerAA || !ethers.isAddress(payerAA)) {
@@ -794,13 +821,12 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 							['function getOwnership(address user) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)'],
 							baseEndpoint
 						)
-						const [pt, nfts] = await cardContract.getOwnership(payerAA)
+						const [pt, nfts] = await retryRpcCall(() => cardContract.getOwnership(payerAA))
 						pointsBalanceWei = BigInt(pt?.toString() ?? 0)
 						cardNumbers = (nfts || []).map((n: { tokenId: bigint }) => n.tokenId.toString()).filter(Boolean)
 						setStepSuccess('membership', cardNumbers.length > 0 ? 'Cardholder (10% OFF)' : 'No membership discount')
 					} catch (e) {
-						console.warn('CCSA card check failed', e)
-						failStep('membership', 'Could not read CCSA card')
+						failStep('membership', RPC_ERROR_MSG)
 						return
 					}
 					await doneDelay()
@@ -810,10 +836,14 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 					let unitPriceUSDC6 = 0n
 					if (pointsBalanceWei > 0n) {
 						try {
-							unitPriceUSDC6 = BigInt((await BeamioCardFactorySC.quoteUnitPointInUSDC6(CCSA_Card_Address))?.toString() ?? 0)
+							const quote = await retryRpcCall(() => BeamioCardFactorySC.quoteUnitPointInUSDC6(CCSA_Card_Address))
+							unitPriceUSDC6 = BigInt(quote?.toString() ?? 0)
 							ccsaCapacityUsdcWei = (pointsBalanceWei * unitPriceUSDC6) / 1_000_000n
 						} catch (e) {
-							console.warn('CCSA quote UnitPointInUSDC6 failed', e)
+							setStepLoading('analyzingAssets')
+							await loadingDelay()
+							failStep('analyzingAssets', RPC_ERROR_MSG)
+							return
 						}
 					}
 
@@ -826,11 +856,15 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 							usdc_abi as ethers.InterfaceAbi,
 							baseEndpoint
 						)
-						const bal = await tokenContract.balanceOf(payerAA)
+						const bal = await retryRpcCall(() => tokenContract.balanceOf(payerAA))
 						balanceWei = BigInt(bal.toString())
 						const totalAvailableWei = balanceWei + ccsaCapacityUsdcWei
 						if (effectiveWei > 0n && totalAvailableWei < effectiveWei) {
-							failStep('analyzingAssets', 'Insufficient balance')
+							const reqStr = ethers.formatUnits(effectiveWei, 6)
+							const balStr = ethers.formatUnits(totalAvailableWei, 6)
+							const shortfallWei = effectiveWei - totalAvailableWei
+							const shortfallStr = ethers.formatUnits(shortfallWei, 6)
+							failStep('analyzingAssets', `Insufficient balance. Requested: ${reqStr} USDC, Balance: ${balStr} USDC, Shortfall: ${shortfallStr} USDC`)
 							return
 						}
 						const detail = ccsaCapacityUsdcWei >= effectiveWei
@@ -840,8 +874,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 								: 'USDC sufficient'
 						setStepSuccess('analyzingAssets', detail)
 					} catch (e) {
-						console.warn('Balance check failed', e)
-						failStep('analyzingAssets', 'Could not verify balance')
+						failStep('analyzingAssets', RPC_ERROR_MSG)
 						return
 					}
 					await doneDelay()
@@ -965,24 +998,24 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 					contracts.BeamioAAAcountFactory.abi,
 					baseEndpoint
 				)
-				const primary = await aaFactory.primaryAccountOf(payload.to)
+				const primary = await retryRpcCall(() => aaFactory.primaryAccountOf(payload.to))
 				if (!primary || primary === ethers.ZeroAddress) {
 					failStep('detectingUser', 'Beneficiary has no AA account')
 					return
 				}
 			} catch (e) {
-				failStep('detectingUser', (e as Error)?.message ?? 'Could not verify beneficiary AA')
+				failStep('detectingUser', RPC_ERROR_MSG)
 				return
 			}
 			try {
-				const storedNonce = await readContainerNonceFromAAStorage(baseEndpoint, payload.account, 'openRelayed')
+				const storedNonce = await retryRpcCall(() => readContainerNonceFromAAStorage(baseEndpoint, payload.account, 'openRelayed'))
 				const payloadNonce = BigInt(payload.nonce)
 				if (storedNonce !== payloadNonce) {
 					failStep('detectingUser', `Nonce mismatch: expected ${storedNonce}, got ${payloadNonce}`)
 					return
 				}
 			} catch (e) {
-				failStep('detectingUser', (e as Error)?.message ?? 'Could not read nonce')
+				failStep('detectingUser', RPC_ERROR_MSG)
 				return
 			}
 			const nowSec = Math.floor(Date.now() / 1000)
@@ -1024,14 +1057,13 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 					['function getOwnership(address user) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)'],
 					baseEndpoint
 				)
-				const [pt, nfts] = await cardContract.getOwnership(payload.account)
+				const [pt, nfts] = await retryRpcCall(() => cardContract.getOwnership(payload.account))
 				pointsBalanceWei = BigInt(pt?.toString() ?? 0)
 				cardNumbers = (nfts || []).map((n: { tokenId: bigint }) => n.tokenId.toString()).filter(Boolean)
 				const detail = cardNumbers.length > 0 ? 'Cardholder (10% OFF)' : 'No membership discount'
 				setStepSuccess('membership', detail)
 			} catch (e) {
-				console.warn('CCSA card check failed', e)
-				failStep('membership', 'Could not read CCSA card')
+				failStep('membership', RPC_ERROR_MSG)
 				return
 			}
 			await doneDelay()
@@ -1044,10 +1076,14 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 			let unitPriceUSDC6 = 0n
 			if (pointsBalanceWei > 0n) {
 				try {
-					unitPriceUSDC6 = BigInt((await BeamioCardFactorySC.quoteUnitPointInUSDC6(CCSA_Card_Address))?.toString() ?? 0)
+					const quote = await retryRpcCall(() => BeamioCardFactorySC.quoteUnitPointInUSDC6(CCSA_Card_Address))
+					unitPriceUSDC6 = BigInt(quote?.toString() ?? 0)
 					ccsaCapacityUsdcWei = (pointsBalanceWei * unitPriceUSDC6) / 1_000_000n
 				} catch (e) {
-					console.warn('CCSA quote UnitPointInUSDC6 failed', e)
+					setStepLoading('analyzingAssets')
+					await loadingDelay()
+					failStep('analyzingAssets', RPC_ERROR_MSG)
+					return
 				}
 			}
 
@@ -1063,25 +1099,27 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 					baseEndpoint
 				)
 				try {
-					const bal = await usdcContract.balanceOf(payload.account)
-					balanceWei = BigInt(bal?.toString?.() ?? String(bal ?? 0))
-				} catch (e1) {
-					console.warn('USDC balanceOf failed, retry with payload asset', e1)
+					let bal: unknown
 					try {
+						bal = await retryRpcCall(() => usdcContract.balanceOf(payload.account))
+					} catch {
 						const altContract = usdcAsset && usdcAsset.toLowerCase() !== USDCContract_BASE.toLowerCase()
 							? new ethers.Contract(usdcAsset, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
 							: usdcContract
-						const bal = await altContract.balanceOf(payload.account)
-						balanceWei = BigInt(bal?.toString?.() ?? String(bal ?? 0))
-					} catch (e2) {
-						console.warn('Balance check failed', e2)
-						failStep('analyzingAssets', (e2 as Error)?.message ?? 'Could not verify balance')
-						return
+						bal = await retryRpcCall(() => altContract.balanceOf(payload.account))
 					}
+					balanceWei = BigInt((bal as bigint)?.toString?.() ?? String(bal ?? 0))
+				} catch (e2) {
+					failStep('analyzingAssets', RPC_ERROR_MSG)
+					return
 				}
 				const totalAvailableWei = balanceWei + ccsaCapacityUsdcWei
 				if (totalAvailableWei < effectiveWei) {
-					failStep('analyzingAssets', 'Insufficient balance')
+					const reqStr = ethers.formatUnits(effectiveWei, 6)
+					const balStr = ethers.formatUnits(totalAvailableWei, 6)
+					const shortfallWei = effectiveWei - totalAvailableWei
+					const shortfallStr = ethers.formatUnits(shortfallWei, 6)
+					failStep('analyzingAssets', `Insufficient balance. Requested: ${reqStr} USDC, Balance: ${balStr} USDC, Shortfall: ${shortfallStr} USDC`)
 					return
 				}
 				const detail = ccsaCapacityUsdcWei >= effectiveWei
@@ -1174,7 +1212,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 			// 不在此处 submit；等用户确认后再提交
 			return
 		})()
-	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, profiles, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
+	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, profiles, routingRetryTrigger, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
 
 	// 进入 voucherPay / payBill 时重置步骤为 pending（等待 scanData），并清空确认
 	useEffect(() => {
@@ -1352,6 +1390,12 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		routingDoneRef.current = false
 	}
 
+	const handleRetryRouting = () => {
+		routingDoneRef.current = false
+		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
+		setRoutingRetryTrigger((r) => r + 1)
+	}
+
 	const handleScanUser = () => {
 		if (!value) return
 		const toAA = profiles?.[0]?.aaAccount ?? ''
@@ -1401,7 +1445,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		return (
 			<>
 				<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-					<SmartRoutingAnalysis steps={routingSteps} onAbandon={handleAbandonRouting} successTxHash={successTxHash ?? undefined} />
+					<SmartRoutingAnalysis steps={routingSteps} onAbandon={handleAbandonRouting} onRetry={handleRetryRouting} successTxHash={successTxHash ?? undefined} />
 				</div>
 			</>
 		)

@@ -8,23 +8,28 @@ import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, getMyAssets }
 import { getUsdcBalanceFromApi, formatWithThousands, isStandalone } from "@/services/beamio"
 import { ethers } from "ethers"
 import { CCSA_Card_Address } from "@/utils/constants"
+import { updateManifestStartUrl } from "@/utils/updateManifestStartUrl"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { getUserInfo, storeSystemData, checkStorage } from "@/services/beamio"
+import { getUserInfo, storeSystemData, checkStorage, restoreWithRedeem } from "@/services/beamio"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import CreateUsernamePinScreen, { type CreateUsernamePinScreenRef } from './CreateUsernamePinScreen'
 import RecoveryQRScreen from './RecoveryQRScreen'
-import InstallTerminalSheet, { getInstallTerminalSeen } from '@/components/InstallTerminalSheet'
+import InstallTerminalSheet from '@/components/InstallTerminalSheet'
 import RestoreEntryScreen from './RestoreEntryScreen'
 import RestoreWithQRScreen from './RestoreWithQRScreen'
 import RestoreWithUsernamePinScreen from './RestoreWithUsernamePinScreen'
+import WalletReadyScreen from './WalletReadyScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
+import packageJson from '../../../package.json'
+
+const APP_VERSION = (packageJson as { version?: string }).version ?? ''
 
 // Simple mobile-style onboarding modal for Beamio
 // TailwindCSS-based layout
@@ -49,6 +54,7 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 	const isInvalid = !redeemDetailsLoading && (redeemDetails === null || redeemDetails.status !== 'pending')
 	return (
 		<div className="min-h-screen bg-[#F5F5F7] flex flex-col relative overflow-hidden font-sans" style={safeArea}>
+			{APP_VERSION && <div className="absolute top-[env(safe-area-inset-top)] right-6 z-50 text-[11px] text-slate-500/30">v{APP_VERSION}</div>}
 			<div className="w-full h-14 bg-transparent z-50" />
 			<div className="flex-1 flex flex-col items-center px-6 pt-4 relative z-10">
 				{isInvalid ? (
@@ -120,19 +126,23 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, setIsInitialLoading, myAddress, usdcbalance, setShowFooter } = useDaemonContext()
 	const [walletAddr, setWalletAddr] = useState('')
 	const [usdcBal, setUsdcBal] = useState('0')
+	const [eoaAddress, setEoaAddress] = useState('')
 	const [loading, SetLoading] = useState(true)
 	const navigate = useNavigate()
 
-	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'RestoreEntryScreen'|'RestoreWithQRScreen'|'RestoreWithUsernamePinScreen'>('')
+	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'WalletReadyScreen'|'RestoreEntryScreen'|'RestoreWithQRScreen'|'RestoreWithUsernamePinScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(false)
 	const [showInstallSheet, setShowInstallSheet] = useState(false)
 	const [qrDataUrl, setQrDataUrl] = useState('')
 	const [recoveryCode, setRecoveryCode]  = useState('')
+	const [beamioTag, setBeamioTag] = useState('')
 	const [temp, setTemp] = useState<any>()
 
 	// Redeem from URL (beamiocard + redeemcode)
 	const [redeemFromUrl, setRedeemFromUrl] = useState<{ cardAddress: string; redeemCode: string } | null>(null)
 	const [hasCheckedUrl, setHasCheckedUrl] = useState(false)
+	/** 从 URL 的 MasterKey 参数进入的 recover 模式，restore 失败时预填到 RestoreWithQRScreen */
+	const [restoreFromUrlMasterKey, setRestoreFromUrlMasterKey] = useState('')
 	const [redeemDetails, setRedeemDetails] = useState<import('@/services/BeamioCard').RedeemDetailsForDisplay | null>(null)
 	const [redeemDetailsLoading, setRedeemDetailsLoading] = useState(false)
 	const [redeeming, setRedeeming] = useState(false)
@@ -141,7 +151,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const [ccsaAssets, setCcsaAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
 	const redeemHandledByRecoveryRef = useRef(false)
 	const createUsernameRef = useRef<CreateUsernamePinScreenRef>(null)
+	const homeCalledRef = useRef(false)
 	const [redeemActivating, setRedeemActivating] = useState(false)
+	const [redeemPostCreateInProgress, setRedeemPostCreateInProgress] = useState(false)
 
 	// 隐藏全局 footer：redeem 进行中 Loading 或 Card Active 成功页
 	useEffect(() => {
@@ -203,6 +215,8 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		
 		setCoNET_Data(temp)
 		await storeSystemData()
+		const eoa = profiles[0]?.keyID?.trim()
+		if (eoa && ethers.isAddress(eoa)) setEoaAddress(eoa)
 		SetLoading(false)
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
@@ -213,20 +227,32 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	let first = true
 
 	useEffect(() => {
-		if (first) {
-			first = false
+		if (!first) return
+		first = false
+		const run = async () => {
+			const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+			const beamioTagParam = urlParams?.get('beamioTag')
+			const masterKeyParam = urlParams?.get('MasterKey')
+			if (beamioTagParam && masterKeyParam) {
+				try {
+					const restored = await restoreWithRedeem(masterKeyParam, '')
+					if (restored) {
+						await init(restored)
+						// 保持 beamioTag、MasterKey 参数在 URL 中，不删除
+						return
+					}
+				} catch (_) {}
+				setIsInitialEntry(true)
+				setRestoreFromUrlMasterKey(masterKeyParam)
+				setSettingsOpen('RestoreWithQRScreen')
+				setHasCheckedUrl(true)
+				onInitComplete?.()
+				return
+			}
 			init()
 		}
+		run()
 	}, [])
-
-	// 首次进入时从下滑出 Install Terminal 引导（未看过则显示）；redeem URL 用户跳过，因 Card Active! 页有 Save Wallet to Home Screen 时会显示
-	useEffect(() => {
-		if (!hasCheckedUrl) return
-		if (getInstallTerminalSeen()) return
-		if (redeemFromUrl) return
-		const t = setTimeout(() => setShowInstallSheet(true), 600)
-		return () => clearTimeout(t)
-	}, [hasCheckedUrl, redeemFromUrl])
 
 	// 解析 URL 中的 redeem 参数
 	useEffect(() => {
@@ -235,19 +261,43 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		setHasCheckedUrl(true)
 	}, [])
 
-	// loading ready 后：无 redeem URL 则直接进入 home
+	// Master Key 页面进入时：延迟更新 URL（Install Terminal 移至 WalletReadyScreen 内）
+	useEffect(() => {
+		if (settingsOpen !== 'RecoveryQRScreen') return
+		const t = setTimeout(() => {
+			if (beamioTag && recoveryCode && typeof window !== 'undefined') {
+				try {
+					const url = new URL(window.location.href)
+					url.searchParams.set('beamioTag', beamioTag)
+					url.searchParams.set('MasterKey', recoveryCode)
+					const newHref = url.toString()
+					window.history.replaceState({}, '', newHref)
+					// 更新 manifest start_url，使 Add to Home Screen 时能携带参数（浏览器默认用 manifest 的 start_url）
+					updateManifestStartUrl(newHref)
+				} catch (_) {}
+			}
+		}, 1500)
+		return () => clearTimeout(t)
+	}, [settingsOpen, beamioTag, recoveryCode])
+
+	// loading ready 后：无 redeem URL 则直接进入 home（防重复调用）；WalletReadyScreen 阶段不触发
 	useEffect(() => {
 		if (isInitialEntry || !hasCheckedUrl || redeemFromUrl !== null || loading) return
+		if (settingsOpen === 'WalletReadyScreen') return
+		if (homeCalledRef.current) return
+		homeCalledRef.current = true
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
 		home()
-	}, [isInitialEntry, hasCheckedUrl, redeemFromUrl, loading, home])
+	}, [isInitialEntry, hasCheckedUrl, redeemFromUrl, loading, settingsOpen, home])
 
-	// Wallet Ready：获取 AA 地址与 USDC 余额
+	// Wallet Ready：获取 AA 地址与 USDC 余额，并记录 EOA 地址
 	useEffect(() => {
 		if (isInitialEntry) return
 		const profile = CoNET_Data?.profiles?.[0]
 		if (!profile) return
+		const eoa = profile.keyID?.trim()
+		if (eoa && ethers.isAddress(eoa)) setEoaAddress(eoa)
 		let cancelled = false
 		getAAAccount(profile).then((aa) => {
 			if (cancelled || !aa) return
@@ -272,7 +322,45 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		return () => { cancelled = true }
 	}, [redeemFromUrl])
 
-	// 有 redeem URL 时在后台执行 redeem，完成后拉取 CCSA 资产（RecoveryQRScreen 内手动 redeem 时跳过）
+	// redeem 流程：CreateUsernamePinScreen 关闭后，连续执行 store profile + redeem，再进入 Master Key 页（无二次 Activating）
+	useEffect(() => {
+		if (settingsOpen !== 'RecoveryQRScreen' || !redeemFromUrl || !temp || !redeemPostCreateInProgress) return
+		let cancelled = false
+		redeemHandledByRecoveryRef.current = true
+		;(async () => {
+			try {
+				await init(temp, { dontClose: true })
+				if (cancelled) return
+				const profile = temp?.profiles?.[0]
+				let toUserEOA = ''
+				if (profile?.keyID && ethers.isAddress(profile.keyID)) toUserEOA = profile.keyID
+				else if (profile?.privateKeyArmor) {
+					try { toUserEOA = new ethers.Wallet(profile.privateKeyArmor).address } catch {}
+				}
+				if (toUserEOA && ethers.isAddress(toUserEOA) && redeemFromUrl) {
+					setRedeeming(true)
+					const result = await postCardRedeem(redeemFromUrl.cardAddress, redeemFromUrl.redeemCode, toUserEOA)
+					if (!cancelled) {
+						setRedeemDone(true)
+						setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? 'Redeem failed' })
+						if (result.success && profile) {
+							const assets = await getMyAssets(profile, CCSA_Card_Address).catch(() => null)
+							if (!cancelled && assets) setCcsaAssets({ points: assets.points, nfts: assets.nfts ?? [] })
+						}
+					}
+					setRedeeming(false)
+				}
+			} finally {
+				if (!cancelled) {
+					setRedeemPostCreateInProgress(false)
+					setRedeemActivating(false)
+				}
+			}
+		})()
+		return () => { cancelled = true }
+	}, [settingsOpen, redeemFromUrl, temp, redeemPostCreateInProgress])
+
+	// 有 redeem URL 时在后台执行 redeem，完成后拉取 CCSA 资产（仅 restore 流程，CreateUsernamePinScreen 流程由上方 effect 处理）
 	useEffect(() => {
 		if (!redeemFromUrl || isInitialEntry || redeemHandledByRecoveryRef.current) return
 		const profile = CoNET_Data?.profiles?.[0]
@@ -313,9 +401,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
       pb-[env(safe-area-inset-bottom)]
       pl-[env(safe-area-inset-left)]
       pr-[env(safe-area-inset-right)]
-      w-full h-screen bg-white
+      w-full h-screen bg-white relative
     "
   >
+    {APP_VERSION && <div className="absolute top-[env(safe-area-inset-top)] right-6 md:right-8 z-10 text-[11px] text-slate-500/30">v{APP_VERSION}</div>}
     <div className="h-full max-w-lg mx-auto px-6 md:px-8">
       <div className="h-full flex flex-col items-center">
         {/* 上方留白（贴近截图的“更空”感觉） */}
@@ -652,7 +741,8 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							<BeamioNavBack
 								title=''
 								onClose={() => {
-									if (settingsOpen === 'RecoveryQRScreen') setSettingsOpen('CreateUsernamePinScreen')
+									if (settingsOpen === 'WalletReadyScreen') setSettingsOpen('RecoveryQRScreen')
+									else if (settingsOpen === 'RecoveryQRScreen') setSettingsOpen('CreateUsernamePinScreen')
 									else if (settingsOpen === 'RestoreWithQRScreen' || settingsOpen === 'RestoreWithUsernamePinScreen') setSettingsOpen('RestoreEntryScreen')
 									else if (settingsOpen === 'CreateUsernamePinScreen') {
 										const handled = createUsernameRef.current?.goBack()
@@ -673,8 +763,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								settingsOpen === 'CreateUsernamePinScreen' && <CreateUsernamePinScreen ref={createUsernameRef} close={qr => {
 									setQrDataUrl(qr.qrDataUrl)
 									setRecoveryCode(qr.passcode)
-									setSettingsOpen('RecoveryQRScreen')
+									setBeamioTag(qr.beamioTag ?? '')
 									setTemp(qr.temp)
+									if (redeemFromUrl) {
+										setRedeemActivating(true)
+										setRedeemPostCreateInProgress(true)
+									}
+									setSettingsOpen('RecoveryQRScreen')
 								}} />
 							}
 
@@ -684,33 +779,22 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									recoveryCode={recoveryCode}
 									showButton={true}
 									isRedeemFlow={!!redeemFromUrl}
-									close={redeemFromUrl ? async () => {
-										setRedeemActivating(true)
-										try {
-											redeemHandledByRecoveryRef.current = true
-											await init(temp, { dontClose: true })
-											const profile = temp?.profiles?.[0]
-											let toUserEOA = ''
-											if (profile?.keyID && ethers.isAddress(profile.keyID)) toUserEOA = profile.keyID
-											else if (profile?.privateKeyArmor) {
-												try { toUserEOA = new ethers.Wallet(profile.privateKeyArmor).address } catch {}
-											}
-											if (toUserEOA && ethers.isAddress(toUserEOA) && redeemFromUrl) {
-												setRedeeming(true)
-												const result = await postCardRedeem(redeemFromUrl.cardAddress, redeemFromUrl.redeemCode, toUserEOA)
-												setRedeemDone(true)
-												setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? 'Redeem failed' })
-												if (result.success && profile) {
-													const assets = await getMyAssets(profile, CCSA_Card_Address).catch(() => null)
-													if (assets) setCcsaAssets({ points: assets.points, nfts: assets.nfts ?? [] })
-												}
-												setRedeeming(false)
-											}
-											setSettingsOpen('')
-										} finally {
-											setRedeemActivating(false)
-										}
-									} : () => init(temp)} />
+									redeemActivating={redeemActivating}
+									close={redeemFromUrl ? () => {
+										// redeem 流程下 init+redeem 已在进入时完成，此处仅关闭
+										setSettingsOpen('')
+									} : async () => {
+										await init(temp, { dontClose: true })
+										setSettingsOpen('WalletReadyScreen')
+									}} />
+							}
+							{
+								settingsOpen === 'WalletReadyScreen' && <WalletReadyScreen
+									usdcBalance={formatWithThousands(usdcBal || '0')}
+									onSaveToHomeScreen={() => setShowInstallSheet(true)}
+									address={eoaAddress || undefined}
+									balanceFiat={formatAmount(parseFloat(usdcBal || '0') || 0, 'CAD')}
+								/>
 							}
 							{
 								settingsOpen === 'RestoreEntryScreen' && <RestoreEntryScreen onUseRecoveryQR={() => {
@@ -720,10 +804,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								}} />
 							}
 							{
-								settingsOpen === 'RestoreWithQRScreen' && <RestoreWithQRScreen onRestore={temp => {
-									setSettingsOpen('')
-									init(temp)
-								}} />
+								settingsOpen === 'RestoreWithQRScreen' && <RestoreWithQRScreen
+									initialRecoveryCode={restoreFromUrlMasterKey}
+									onRestore={temp => {
+										setSettingsOpen('')
+										setRestoreFromUrlMasterKey('')
+										init(temp)
+									}} />
 							}
 							{
 								settingsOpen === 'RestoreWithUsernamePinScreen' && <RestoreWithUsernamePinScreen onRestore={temp => {
@@ -735,12 +822,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 				)}
 			</AnimatePresence>
 
-			{/* Install Terminal 底部滑出：首次进入显示。iOS PWA 首次启动时显示 Restore 指导而非 Install Terminal */}
+			{/* Install Terminal 底部滑出：Card Active / Wallet Ready 可手动打开。PWA 中不显示 */}
 			<InstallTerminalSheet
-				open={showInstallSheet}
+				open={showInstallSheet && !isStandalone}
 				onClose={() => setShowInstallSheet(false)}
-				onRemindLater={() => home()}
+				onRemindLater={settingsOpen === 'RecoveryQRScreen' ? undefined : () => { homeCalledRef.current = true; window.location.reload() }}
 				showRestoreHint={isStandalone && typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) && isInitialEntry}
+				beamioTag={beamioTag}
 			/>
 		</div>
 	)

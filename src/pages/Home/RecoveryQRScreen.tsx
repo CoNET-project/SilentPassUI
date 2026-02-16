@@ -1,14 +1,23 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
-import { Download, Copy, Check, Loader } from 'lucide-react'
+import { Download, Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw } from 'lucide-react'
 import bIcon from '@/components/assets/logo512.png'
 import { useNavigate } from 'react-router-dom'
+
+const ACTIVATING_STEPS = [
+  { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
+  { id: 1, title: 'Deploying Smart Vault', desc: 'Establishing storage on Base', icon: Lock },
+  { id: 2, title: 'Connecting to Network', desc: 'Syncing with Base L2', icon: Wifi },
+  { id: 3, title: 'Finalizing Terminal', desc: 'Preparing user interface', icon: RefreshCw },
+] as const
+const STEP_DURATION_MS = 5000 // 4 steps × 5s ≈ 20s total
 type RecoveryQRScreenProps = {
   qrDataUrl: string
   recoveryCode: string
   showButton: boolean
   isRedeemFlow?: boolean
+  redeemActivating?: boolean
   close: () => void | Promise<void>
 }
 
@@ -17,16 +26,34 @@ const RecoveryQRScreen = ({
   recoveryCode,
   showButton,
   isRedeemFlow = false,
+  redeemActivating = false,
   close
 }: RecoveryQRScreenProps) => {
   const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [isConfirmed, setIsConfirmed] = useState(false)
+  const [activatingStep, setActivatingStep] = useState(0)
   // 新增状态：是否已经执行过备份操作（保存或复制）
   const [hasBackedUp, setHasBackedUp] = useState(false)
 
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  const isActivating = (loading || redeemActivating) && isRedeemFlow
+  useEffect(() => {
+    if (!isActivating) {
+      setActivatingStep(0)
+      return
+    }
+    const advance = () => {
+      setActivatingStep((prev) => Math.min(prev + 1, ACTIVATING_STEPS.length - 1))
+    }
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (let i = 1; i < ACTIVATING_STEPS.length; i++) {
+      timers.push(setTimeout(advance, i * STEP_DURATION_MS))
+    }
+    return () => timers.forEach((t) => clearTimeout(t))
+  }, [isActivating])
 
   const handleSaveImage = () => {
     if (!qrCanvasRef.current) return
@@ -55,18 +82,71 @@ const RecoveryQRScreen = ({
     }
   }
 
-  // Redeem flow: 点击后显示 Activating loading 直至 redeem 完成
-  if (loading && isRedeemFlow) {
+  // Redeem flow: 进入时或点击后显示 4 步 Activating loading 动画（总长约 30 秒）
+  if (isActivating) {
     return (
-      <div className="flex flex-col h-full items-center justify-center p-8 bg-white">
+      <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
         <div className="relative mb-8">
           <div className="w-20 h-20 bg-[#1652f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-blue-500/40">
             <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
           </div>
           <div className="absolute -inset-4 bg-[#1652f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
         </div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Activating...</h2>
-        <p className="text-slate-400 font-medium">Deploying Account...</p>
+        <div className="w-full max-w-sm space-y-6">
+          {ACTIVATING_STEPS.map((step, idx) => {
+            const isCompleted = idx < activatingStep
+            const isActive = idx === activatingStep
+            const Icon = step.icon
+            return (
+              <div key={step.id} className="flex items-start gap-4">
+                <div
+                  className={[
+                    'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors',
+                    isCompleted && 'bg-emerald-500',
+                    isActive && 'bg-[#1652f0]',
+                    !isCompleted && !isActive && 'bg-slate-200',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  {isCompleted ? (
+                    <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
+                  ) : isActive ? (
+                    <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
+                  ) : (
+                    <Icon className="w-5 h-5 text-slate-400" strokeWidth={2.5} />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p
+                    className={[
+                      'font-semibold text-[15px] transition-colors',
+                      isActive && 'text-[#1652f0]',
+                      isCompleted && 'text-slate-700',
+                      !isCompleted && !isActive && 'text-slate-400',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    {step.title}
+                  </p>
+                  <p
+                    className={[
+                      'text-sm mt-0.5 transition-colors',
+                      isActive && 'text-slate-700',
+                      isCompleted && 'text-slate-500',
+                      !isCompleted && !isActive && 'text-slate-400',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    {step.desc}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     )
   }
@@ -221,7 +301,7 @@ const RecoveryQRScreen = ({
                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
            `}
         >
-          {isRedeemFlow ? 'Initialize & Redeem' : 'Open Wallet'}
+          {isRedeemFlow ? 'Continue' : 'Open Wallet'}
         </AppButton>
       </div>
 	  }

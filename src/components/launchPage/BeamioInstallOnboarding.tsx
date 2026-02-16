@@ -25,7 +25,7 @@ const BeamioInstallOnboarding: React.FC = () => {
 		<>
 			{splashVisible && <SplashScreen />}
 			<BeamioOnboardingModal
-				home={() => window.location.reload()}
+				home={() => navigate('/')}
 				onInitComplete={() => setSplashVisible(false)}
 			/>
 		</>

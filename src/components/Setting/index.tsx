@@ -19,8 +19,9 @@ import BeamioNotificationsSettingsScreen from "./BeamioNotificationsSettingsScre
 import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import Security from './Security'
+import packageJson from '../../../package.json'
 
-const version = 'Version 0.29.0'
+const version = `Version ${(packageJson as { version?: string }).version ?? ''}`
 
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`

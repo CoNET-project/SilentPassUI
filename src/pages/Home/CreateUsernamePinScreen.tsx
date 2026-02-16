@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } f
 import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
 // FIX: 将 TriangleAlert 替换为 AlertTriangle
-import { Eye, EyeOff, ShieldCheck, AlertTriangle, Check } from "lucide-react"
+import { Eye, EyeOff, ShieldCheck, AlertTriangle, Check, Loader } from "lucide-react"
 
 // Types
 type CreateBeamioTagProps = {
@@ -18,6 +18,7 @@ type CreateBeamioTagProps = {
  */
 const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagProps) => {
   const lastCheckedRef = useRef("")
+  const footerRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
   const [error, setError] = useState("")
 
@@ -71,17 +72,18 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
   const isChecking = status === "checking"
   const isValid = status === "valid"
 
-  // 超过 3 秒无按键且文本长度 > 2 时自动检测 beamioTag
+  // 超过 3 秒无按键且文本长度 > 2 时自动检测 beamioTag；已校验通过则不再重复检测
   useEffect(() => {
     const trimmed = value.trim().replace(/^@+/, "")
     if (trimmed.length <= 2) return
+    if (trimmed === lastCheckedRef.current && status === "valid") return
 
     const t = setTimeout(() => {
       validateAndCheck()
     }, 3000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅 value 变化时重置计时
-  }, [value])
+  }, [value, status])
 
   return (
     <div className="flex flex-col h-full px-6 pt-6 pb-6">
@@ -106,6 +108,7 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
               readOnly={loading || isChecking}
               autoCapitalize="none"
               autoCorrect="off"
+              enterKeyHint="next"
               className={`
                 w-full h-[72px] pl-12 pr-20 rounded-[24px]
                 border border-slate-100 bg-white shadow-sm
@@ -126,7 +129,24 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
                 setStatus("idle")
                 setError("")
               }}
-              onBlur={validateAndCheck}
+              onBlur={async () => {
+                const trimmed = value.trim().replace(/^@+/, "")
+                if (trimmed.length < 3) return
+                const ok = await validateAndCheck()
+                if (ok) {
+                  requestAnimationFrame(() => {
+                    footerRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+                  })
+                }
+              }}
+              onKeyDown={async e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const ok = await validateAndCheck()
+                  if (ok) onNext()
+                }
+              }}
             />
 
             {/* Right Side Indicator */}
@@ -165,7 +185,7 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
       </div>
 
       {/* Footer Button */}
-      <div className="pb-[env(safe-area-inset-bottom)] pt-4">
+      <div ref={footerRef} className="pb-[env(safe-area-inset-bottom)] pt-4">
         <AppButton
           fullWidth
           disabled={!isValid}
@@ -219,6 +239,7 @@ const SecureWalletPassword = ({
               readOnly={loading}
               type={show ? "text" : "password"}
               autoComplete="new-password"
+              enterKeyHint="done"
               className="
                 w-full h-[72px] pl-6 pr-16 rounded-[24px]
                 border border-slate-100 bg-white shadow-sm
@@ -230,6 +251,13 @@ const SecureWalletPassword = ({
               value={password}
               placeholder="Set Password (6+ chars)" // Matches Screenshot 3
               onChange={e => setPassword(e.currentTarget.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && canSubmit) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onCreate(password.trim())
+                }
+              }}
             />
 
             <button
@@ -293,7 +321,7 @@ export type CreateUsernamePinScreenRef = { goBack: () => boolean }
 const CreateUsernamePinScreen = forwardRef<
   CreateUsernamePinScreenRef,
   {
-    close: (val: { qrDataUrl: string; pin: string; passcode: string; temp: any }) => void
+    close: (val: { qrDataUrl: string; pin: string; passcode: string; temp: any; beamioTag: string }) => void
   }
 >(function CreateUsernamePinScreen({ close }, ref) {
   const [step, setStep] = useState<"tag" | "password">("tag")
@@ -324,8 +352,25 @@ const CreateUsernamePinScreen = forwardRef<
       qrDataUrl: kks.qrCode,
       pin: password,
       passcode: kks.recoverCode,
-      temp: kks.temp
+      temp: kks.temp,
+      beamioTag: trimmedTag
     })
+  }
+
+  // Create Wallet 处理中：显示与 redeem 相同的 Activating / Deploying Account loading 页
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center p-8 bg-white">
+        <div className="relative mb-8">
+          <div className="w-20 h-20 bg-[#1652f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-blue-500/40">
+            <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
+          </div>
+          <div className="absolute -inset-4 bg-[#1652f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Activating...</h2>
+        <p className="text-slate-400 font-medium">Deploying Account...</p>
+      </div>
+    )
   }
 
   return (

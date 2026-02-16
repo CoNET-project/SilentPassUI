@@ -6,14 +6,20 @@ import { Scan, AlertCircle } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 type RestoreWithQRScreenProps = {
   onRestore: (temp: encrypt_keys_object) => void
+  /** 从 URL 等途径预填的 recovery code（如 PWA 从 Save to Home Screen 携带） */
+  initialRecoveryCode?: string
 }
 
-const RestoreWithQRScreen = ({ onRestore }: RestoreWithQRScreenProps) => {
-  const [recoveryCode, setRecoveryCode] = useState('')
+const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWithQRScreenProps) => {
+  const [recoveryCode, setRecoveryCode] = useState(initialRecoveryCode)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const { scanRef } = useDaemonContext()
-		const { scanData } = useDaemonContext()
+  const { scanData } = useDaemonContext()
+
+  useEffect(() => {
+    if (initialRecoveryCode) setRecoveryCode(initialRecoveryCode)
+  }, [initialRecoveryCode])
 
   useEffect(() => {
     

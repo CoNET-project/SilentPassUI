@@ -31,6 +31,7 @@ import {
 	CalendarCheck,
 	HelpCircle,
 	RefreshCw,
+	Link2,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
@@ -1661,7 +1662,7 @@ export default function MyWalletDashboardNew() {
 					</div>
 				</div>
 
-				{/* CCSA Redeem：用户输入 redeem 码，API 执行 redeemForUser */}
+				{/* CCSA Redeem：Redeem Asset 面板 - 按图示设计 */}
 				<div
 					className={`fixed inset-0 z-[100] ${ccsaRedeemOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
 					aria-hidden={!ccsaRedeemOpen}
@@ -1683,101 +1684,95 @@ export default function MyWalletDashboardNew() {
 							<div className="h-1 w-10 rounded-full bg-slate-500/70" />
 						</div>
 						<div className="px-6 py-6 overflow-y-auto">
-							<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">Redeem</h3>
-
-							{/* 按钮区上方：avatar、displayNameTag、资产、状态 */}
-							{(redeemDetailsLoading || redeemDetails) && (
-								<div className="flex flex-col items-center mb-6 pb-4 border-b border-slate-200 dark:border-slate-600">
-									{redeemDetailsLoading ? (
-										<div className="flex items-center justify-center py-8">
-											<Loader className="w-8 h-8 animate-spin text-slate-400" strokeWidth={2} />
+							{/* Loading: Minting to AA... */}
+							{redeemLoading ? (
+								<div className="flex flex-col items-center justify-center py-16">
+									<div className="w-16 h-16 rounded-full bg-[#1652f0] flex items-center justify-center mb-6">
+										<Loader className="w-8 h-8 text-white animate-spin" strokeWidth={2.5} />
+									</div>
+									<p className="text-lg font-bold text-slate-900 dark:text-slate-100">Minting to AA...</p>
+									<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Executing Logic Hook</p>
+								</div>
+							) : redeemSuccessTx ? (
+								/* Success: Redeemed Successfully */
+								<div className="space-y-6">
+									<div className="flex items-center justify-center gap-2">
+										<div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center shrink-0">
+											<Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
 										</div>
-									) : redeemDetails ? (
-										<>
-											{/* Beamio Avatar */}
-											<img
-												src={redeemDetails.ownerProfile?.image?.trim()
-													? redeemDetails.ownerProfile.image
-													: `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(redeemDetails.ownerProfile?.username || redeemDetails.ownerProfile?.address || 'Beamio')}`}
-												alt=""
-												className="h-16 w-16 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-600 shrink-0"
-											/>
-											{/* displayNameTag */}
-											{(() => {
-												const p = redeemDetails.ownerProfile
-												if (!p) return null
-												const lastnameLines = (p.last_name || '')?.split('\r\n') || []
-												const lastNamePart = /^\{/.test(lastnameLines[0] ?? '') ? '' : (lastnameLines[0] ?? '')
-												const fullName = `${p.first_name || ''} ${lastNamePart}`.trim()
-												const tag = p.username ? ` @${p.username}` : ''
-												const displayNameTag = fullName ? `${fullName}${tag}` : (p.username ? `@${p.username}` : '')
-												return displayNameTag ? (
-													<p className="mt-2 text-[15px] font-medium text-slate-700 dark:text-slate-200">
-														{displayNameTag}
-													</p>
-												) : null
-											})()}
-											{/* 资产：ptsPer1Currency=0 时显示 pts；getRedeemStatus 返回 totalPoints6（含 token bundle POINTS_ID） */}
-											<p className="mt-2 text-xl font-semibold text-slate-800 dark:text-slate-100">
-												{redeemDetails.cardName ?? 'Card'} · {(() => {
+										<p className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeemed Successfully</p>
+									</div>
+
+									{/* CCSA Card - 显示最新余额 */}
+									{redeemDetails && (
+										<div className="w-full max-w-[340px] mx-auto">
+											<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
+												<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+												<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
+												<div className="relative z-10 p-5 h-full flex flex-col justify-between">
+													<div className="flex justify-between items-start">
+														<div className="flex items-center gap-3">
+															<div className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={{ background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' }}><Globe className="h-5 w-5 text-white" /></div>
+															<div><div className="text-[18px] font-black tracking-wide text-[#fff2c6] drop-shadow-sm font-serif">CCSA</div><div className="text-[18px] font-black tracking-wide text-[#fff2c6] -mt-0.5 font-serif">CARD</div></div>
+														</div>
+														<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><Globe size={10} className="text-white" /> Membership</div>
+													</div>
+													<div>
+														<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-[#fff2c6]">Balance</p>
+														<div className="flex items-baseline gap-1">
+															<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{(() => {
+																const pts = Number(redeemDetails.pointsHuman)
+																const ptsPer1 = Number(redeemDetails.ptsPer1Currency)
+																if (!ptsPer1) return formatAmount(pts, 'USDC', 4)
+																const amt = pts / ptsPer1
+																return formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined)
+															})()}</span>
+															<span className="text-sm font-semibold opacity-90 text-[#fff2c6]">{redeemDetails.currency as string}</span>
+														</div>
+													</div>
+												</div>
+											</div>
+										</div>
+									)}
+
+									{/* NEW TRANSACTION */}
+									<div className="rounded-2xl bg-slate-100 dark:bg-slate-800/50 p-4 space-y-3">
+										<div className="flex items-center justify-between">
+											<span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">New Transaction</span>
+											<span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 text-xs font-semibold">Confirmed</span>
+										</div>
+										<div className="rounded-xl bg-white dark:bg-slate-800 p-4 flex items-center gap-4">
+											<div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center shrink-0">
+												<ArrowDownLeft className="w-5 h-5 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
+											</div>
+											<div className="flex-1 min-w-0">
+												<p className="font-semibold text-slate-900 dark:text-slate-100">Stored Value Added</p>
+												<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Just now</p>
+											</div>
+											<div className="text-right shrink-0">
+												<p className="text-base font-bold text-emerald-600 dark:text-emerald-400">+ {redeemDetails ? (() => {
 													const pts = Number(redeemDetails.pointsHuman)
 													const ptsPer1 = Number(redeemDetails.ptsPer1Currency)
-													if (!ptsPer1) return `${formatAmount(pts, 'USDC', 4)} pts`
+													if (!ptsPer1) return formatAmount(pts, 'USDC', 4)
 													const amt = pts / ptsPer1
-													return `${fiatPrefix(redeemDetails.currency as any)}${formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined)}`
-												})()}
-											</p>
-											{/* 状态 */}
-											<span className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-												redeemDetails.status === 'pending'
-													? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
-													: redeemDetails.status === 'redeemed'
-													? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
-													: redeemDetails.status === 'cancelled'
-													? 'bg-slate-200 text-slate-700 dark:bg-slate-600 dark:text-slate-200'
-													: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200'
-											}`}>
-												{redeemDetails.status === 'pending' && 'Valid · Ready to redeem'}
-												{redeemDetails.status === 'redeemed' && 'Redeemed successfully'}
-												{redeemDetails.status === 'cancelled' && 'Cancelled'}
-												{redeemDetails.status === 'not_found' && 'Not found or expired'}
-											</span>
-										</>
-									) : null}
-								</div>
-							)}
-
-							<div className="mb-4">
-								<label htmlFor="redeem-card-number" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-									Card address (optional)
-								</label>
-								<input
-									id="redeem-card-number"
-									type="text"
-									value={redeemCardNumberInput}
-									onChange={(e) => setRedeemCardNumberInput(e.target.value)}
-									placeholder="Leave empty for CCSA card; enter card address if code is from another card"
-									className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-[#2F78FF] focus:border-transparent"
-									disabled={redeemLoading}
-									autoComplete="off"
-								/>
-							</div>
-							<p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-								Enter your redeem code to receive $CCSA points to your account.
-							</p>
-							{redeemSuccessTx ? (
-								<div className="space-y-4">
-									<div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800">
-										<p className="text-emerald-700 dark:text-emerald-300 font-medium">Redeem successful!</p>
-										<a
-											href={`https://basescan.org/tx/${redeemSuccessTx}`}
-											target="_blank"
-											rel="noopener noreferrer"
-											className="text-sm text-[#2F78FF] underline mt-1 inline-block"
-										>
-											View transaction
-										</a>
+													return formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined)
+												})() : '0'}</p>
+												<p className="text-xs text-slate-500 dark:text-slate-400">{redeemDetails?.currency as string ?? 'CAD'}</p>
+											</div>
+										</div>
+										<div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+											<span className="text-xs text-slate-500 dark:text-slate-400"># REF</span>
+											<a
+												href={`https://basescan.org/tx/${redeemSuccessTx}`}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="text-xs font-mono text-slate-900 dark:text-slate-100 hover:underline"
+											>
+												{`${redeemSuccessTx.slice(0, 6)}...${redeemSuccessTx.slice(-4)}`}
+											</a>
+										</div>
 									</div>
+
 									<button
 										type="button"
 										onClick={() => {
@@ -1788,12 +1783,101 @@ export default function MyWalletDashboardNew() {
 											refetchUserCards()
 											if (profiles?.[0]) getMyAssets(profiles[0], CCSA_Card_Address).then(setCcsaAssets)
 										}}
-										className="w-full py-3 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-semibold"
+										className="w-full py-4 rounded-2xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-base uppercase tracking-wide"
 									>
 										Done
 									</button>
 								</div>
 							) : (
+								<>
+							{/* Header */}
+							<h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-0.5 text-center">Redeem Asset</h3>
+							<p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center">Mint to Express Pay (Smart Account)</p>
+
+							{/* Asset Card - CCSA CARD 风格 */}
+							{(redeemDetailsLoading || redeemDetails) && (
+								<div className="w-full max-w-[340px] mx-auto mb-6">
+									{redeemDetailsLoading ? (
+										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+											<Loader className="w-10 h-10 animate-spin text-slate-400" strokeWidth={2} />
+										</div>
+									) : redeemDetails ? (
+										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
+											<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+											<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
+											<div className="relative z-10 p-5 h-full flex flex-col justify-between">
+												<div className="flex justify-between items-start">
+													<div className="flex items-center gap-3">
+														<div className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={{ background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' }}><Globe className="h-5 w-5 text-white" /></div>
+														<div><div className="text-[18px] font-black tracking-wide text-[#fff2c6] drop-shadow-sm font-serif">CCSA</div><div className="text-[18px] font-black tracking-wide text-[#fff2c6] -mt-0.5 font-serif">CARD</div></div>
+													</div>
+													<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><Globe size={10} className="text-white" /> Membership</div>
+												</div>
+												<div>
+													<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-[#fff2c6]">Balance</p>
+													<div className="flex items-baseline gap-1">
+														<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{(() => {
+															const pts = Number(redeemDetails.pointsHuman)
+															const ptsPer1 = Number(redeemDetails.ptsPer1Currency)
+															if (!ptsPer1) return formatAmount(pts, 'USDC', 4)
+															const amt = pts / ptsPer1
+															return formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined)
+														})()}</span>
+														<span className="text-sm font-semibold opacity-90 text-[#fff2c6]">{redeemDetails.currency as string}</span>
+													</div>
+												</div>
+											</div>
+										</div>
+									) : null}
+								</div>
+							)}
+
+							{/* Redemption Code */}
+							<div className="mb-4">
+								<label htmlFor="redeem-code" className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+									Redemption Code
+								</label>
+								<div className="relative">
+									<div className="rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 px-4 py-3 flex items-center gap-3">
+										<Link2 className="w-5 h-5 text-slate-400 shrink-0" strokeWidth={2} />
+										<input
+											id="redeem-code"
+											type="text"
+											value={redeemCodeInput}
+											onChange={(e) => setRedeemCodeInput(e.target.value)}
+											placeholder="00Efik2Ev8a51QPTCdRoNf"
+											className="flex-1 min-w-0 bg-transparent text-sm font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none"
+											disabled={redeemLoading}
+											autoComplete="off"
+										/>
+										{redeemDetails?.status === 'pending' && (
+											<Check className="w-5 h-5 text-emerald-500 shrink-0" strokeWidth={2.5} />
+										)}
+									</div>
+									{redeemDetails?.status === 'pending' && (
+										<p className="mt-2 flex items-center gap-1.5 text-[13px] text-slate-600 dark:text-slate-400">
+											<Globe size={14} className="text-slate-400 shrink-0" />
+											Verified. Ready to mint via Smart Contract.
+										</p>
+									)}
+								</div>
+							</div>
+
+							{/* Card address (optional) - 折叠或小字 */}
+							<details className="mb-4">
+								<summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">Card address (optional)</summary>
+								<input
+									id="redeem-card-number"
+									type="text"
+									value={redeemCardNumberInput}
+									onChange={(e) => setRedeemCardNumberInput(e.target.value)}
+									placeholder="Leave empty for CCSA card"
+									className="mt-2 w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
+									disabled={redeemLoading}
+									autoComplete="off"
+								/>
+							</details>
+
 								<form
 									onSubmit={async (e) => {
 										e.preventDefault()
@@ -1835,46 +1919,32 @@ export default function MyWalletDashboardNew() {
 									}}
 									className="space-y-4"
 								>
-									<div>
-										<label htmlFor="redeem-code" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-											Redeem code
-										</label>
-										<input
-											id="redeem-code"
-											type="text"
-											value={redeemCodeInput}
-											onChange={(e) => setRedeemCodeInput(e.target.value)}
-											placeholder="Paste your redeem code"
-											className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-[#2F78FF] focus:border-transparent"
-											disabled={redeemLoading}
-											autoComplete="off"
-										/>
-									</div>
 									{redeemError && (
 										<p className="text-sm text-rose-600 dark:text-rose-400">{redeemError}</p>
 									)}
 									<div className="flex gap-3">
-									<button
-										type="button"
-										onClick={() => {
-											setCcsaRedeemOpen(false)
-											setShowFooter(true)
-											setRedeemDetails(null)
-										}}
-										className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-slate-600 font-semibold text-slate-700 dark:text-slate-300"
+										<button
+											type="button"
+											onClick={() => {
+												setCcsaRedeemOpen(false)
+												setShowFooter(true)
+												setRedeemDetails(null)
+											}}
+											className="flex-1 py-3.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
 										>
 											Cancel
 										</button>
 										<button
 											type="submit"
 											disabled={redeemLoading || !redeemCodeInput.trim()}
-											className="flex-1 py-3 rounded-xl bg-[#2F78FF] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+											className="flex-1 py-3.5 rounded-xl bg-[#1652f0] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#1345ca] transition-colors"
 										>
 											{redeemLoading ? <Loader className="w-5 h-5 animate-spin" strokeWidth={2} /> : null}
 											Redeem
 										</button>
 									</div>
 								</form>
+							</>
 							)}
 						</div>
 					</div>

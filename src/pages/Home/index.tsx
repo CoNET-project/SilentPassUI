@@ -28,7 +28,11 @@ const HomePage = ({}) => {
 			{splashVisible && <SplashScreen />}
 			{showBeamioOnboardingModal ? (
 				<BeamioOnboardingModal
-					home={() => window.location.reload()}
+					home={() => {
+						setShowBeamioOnboardingModal(false)
+						setSplashVisible(false)
+						setIsInitialLoading(false)
+					}}
 					onInitComplete={() => setSplashVisible(false)}
 				/>
 			) : (

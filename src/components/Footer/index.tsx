@@ -1,7 +1,8 @@
 // Footer/index.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, useAnimation } from 'framer-motion'
+import html2canvas from 'html2canvas'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { ReactComponent as HomeIconGrey } from './assets/home-icon-grey.svg'
 import { ReactComponent as HomeBlueIcon } from './assets/home-icon-blue.svg'
@@ -78,8 +79,64 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 	const navigate = useNavigate()
 	const { pathname } = useLocation()
-	// 主 Tab 页（/, /history, /pay, /chat, /settings）使用浅色背景 #F2F2F7 或白，Footer 用灰色 20% 透明
-	const isLightBackgroundPage = /^\/(history|pay|chat|settings)?(\/|$)/i.test(pathname || '/')
+	const footerRef = useRef<HTMLDivElement>(null)
+	const [isDarkUnderneath, setIsDarkUnderneath] = useState(true)
+
+	const sampleBackgroundColor = useCallback(async () => {
+		const el = footerRef.current
+		if (!el || typeof document === 'undefined') return
+		const rect = el.getBoundingClientRect()
+		if (rect.width === 0 || rect.height === 0) return
+		const centerX = rect.left + rect.width / 2
+		const centerY = rect.top + rect.height / 2
+		try {
+			const canvas = await html2canvas(document.body, {
+				scale: 1,
+				useCORS: true,
+				allowTaint: true,
+				scrollX: window.scrollX,
+				scrollY: window.scrollY,
+				width: window.innerWidth,
+				height: window.innerHeight,
+				x: window.scrollX,
+				y: window.scrollY,
+				ignoreElements: (elem: Element) => elem?.hasAttribute?.('data-html2canvas-ignore'),
+				logging: false
+			})
+			const ctx = canvas.getContext('2d')
+			if (!ctx) return
+			const px = Math.floor(centerX)
+			const py = Math.floor(centerY)
+			const imgData = ctx.getImageData(px, py, 1, 1)
+			const [r, g, b] = imgData.data
+			const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+			setIsDarkUnderneath(luminance < 128)
+		} catch (err) {
+			console.warn('[Footer] Background sampling failed:', err)
+		}
+	}, [])
+
+	useEffect(() => {
+		if (!visible) return
+		const t = setTimeout(sampleBackgroundColor, 300)
+		return () => clearTimeout(t)
+	}, [visible, pathname, sampleBackgroundColor])
+
+	useEffect(() => {
+		if (!visible) return
+		let tm: ReturnType<typeof setTimeout>
+		const debouncedSample = () => {
+			clearTimeout(tm)
+			tm = setTimeout(sampleBackgroundColor, 150)
+		}
+		window.addEventListener('scroll', debouncedSample, { passive: true })
+		window.addEventListener('resize', debouncedSample)
+		return () => {
+			clearTimeout(tm)
+			window.removeEventListener('scroll', debouncedSample)
+			window.removeEventListener('resize', debouncedSample)
+		}
+	}, [visible, sampleBackgroundColor])
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
 	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, scanRef } = useDaemonContext()
@@ -277,7 +334,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		const run = async () => {
 			dropletControls.set({
 				x: `${prevIndexRef.current * 100}%`,
-				borderRadius: 999,
+				borderRadius: 12,
 				scaleX: 0.5,
 				scaleY: 0.5,
 			})
@@ -285,7 +342,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			setPhase('moving')
 
 			await dropletControls.start({
-				borderRadius: 26,
+				borderRadius: 12,
 				scaleX: 1.10,
 				scaleY: 0.90,
 				transition: {
@@ -297,7 +354,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			if (cancelled) return
 
 			await dropletControls.start({
-				borderRadius: 26,
+				borderRadius: 12,
 				scaleX: 1.272,
 				scaleY: 1.152,
 				transition: {
@@ -307,6 +364,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			})
 
 			await dropletControls.start({
+				borderRadius: 12,
 				scaleX: 1.06,
 				scaleY: 0.96,
 				transition: {
@@ -373,7 +431,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					animate={iconTarget}
 					transition={iconTransition}
 				>
-					{active ? <span className="inline-flex [&_path]:!fill-[#1652f0] [&_path]:!fill-opacity-100">{iconBlue}</span> : <span className="inline-flex [&_path]:!fill-black [&_path]:!fill-opacity-100">{iconGrey}</span>}
+					{active ? <span className="inline-flex [&_path]:!fill-[#1652f0] [&_path]:!fill-opacity-100">{iconBlue}</span> : <span className={`inline-flex [&_path]:!fill-opacity-100 ${isDarkUnderneath ? '[&_path]:!fill-black' : '[&_path]:!fill-white'}`}>{iconGrey}</span>}
 
 					{badge && (
 						<span
@@ -397,7 +455,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				<motion.div
 					className={`
 						text-[9px] leading-none font-medium
-						${active ? 'text-[#1652f0]' : 'text-slate-400 dark:text-slate-500'}
+						${active ? 'text-[#1652f0]' : isDarkUnderneath ? 'text-black/80' : 'text-white/90'}
 					`}
 					animate={
 						active && (phase === 'impact' || phase === 'settling')
@@ -418,6 +476,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 	return (
 		<motion.div
+			ref={footerRef}
+			data-html2canvas-ignore
 			className="fixed left-0 right-0 z-50"
 			animate={barControls}
 			initial={false}
@@ -428,7 +488,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			}}
 		>
 			 {/* ✅ 玻璃层：不做 transform，只负责 blur */}
-			<div className="ml-4 max-w-[200px] pointer-events-auto origin-bottom-left" style={{ transform: 'scale(1.3)' }}>
+			<div className="ml-4 max-w-[200px] pointer-events-auto origin-bottom-left" style={{ transform: 'scale(1.5)' }}>
 				<div
 					className="
 						relative
@@ -446,11 +506,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 						pt-1 pb-1.5
 						"
 						style={{
-						backgroundColor: isLightBackgroundPage
-							? 'rgba(100, 116, 139, 0.2)'
-							: darkModle
-								? 'rgba(255, 255, 255, 0.85)'
-								: 'rgba(255, 255, 255, 0.85)',
+						backgroundColor: isDarkUnderneath
+							? 'rgba(255, 255, 255, 0.4)'
+							: 'rgba(0, 0, 0, 0.4)',
 						WebkitBackdropFilter: 'blur(1rem)',
 						backdropFilter: 'blur(1rem)',
 						transform: 'translate3d(0,0,0)',
@@ -475,7 +533,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 							}}
 							initial={{
 							x: `${activeIndex * 100}%`,
-							borderRadius: 13,
+							borderRadius: 12,
 							scaleX: 1.06,
 							scaleY: 0.96
 							}}

@@ -53,6 +53,8 @@ export default function BeamioAccountScreen({ colse }: prof) {
   const [avatarFileUrl, setAvatarFileUrl] = useState<string | null>(null)
   const [avatarFileName, setAvatarFileName] = useState<string>('')
   const avatarInputRef = useRef<HTMLInputElement>(null)
+  /** 进入页面时锁定的 accountName，保存时强制使用此值，防止被 AVATAR TEXT 或其它逻辑覆盖 */
+  const accountNameLockRef = useRef<string>(beamio?.accountName || defaultName)
   const [loading, setLoading] = useState(false)
   const [avatarUploadingIpfs, setAvatarUploadingIpfs] = useState(false)
   const [avatarSeedConfirmed, setAvatarSeedConfirmed] = useState(false)
@@ -85,11 +87,13 @@ export default function BeamioAccountScreen({ colse }: prof) {
 				if (m) {
 					const seed = decodeURIComponent(m[1])
 					setAvatarSeed(seed)
-					setAvatarName(seed)
 				}
 			}
 		}
-
+		// BEAMIO HANDLE (accountName) 不允许修改，进入时锁定
+		const locked = bo.accountName || defaultName
+		accountNameLockRef.current = locked
+		setAvatarName(locked)
 		setLastName(checkLastName(bo?.lastName))
 	}
 
@@ -159,8 +163,8 @@ export default function BeamioAccountScreen({ colse }: prof) {
     setLoading(true)
 
     const tmpData = CoNET_Data
-    const accountNameToSave = avatarSeed?.trim() || avatarName || defaultName
-    setAvatarName(accountNameToSave)
+    // BEAMIO HANDLE 不允许修改，使用进入页面时锁定的值，避免被 avatarSeed 或其它逻辑覆盖
+    const accountNameToSave = accountNameLockRef.current || defaultName
 
     // image 仅使用 IPFS URL；优先用当前展示的 avatarImageDataTemp（已是 IPFS 时），避免 setState 未提交导致 ipfsImageUrl 滞后
     let imageForSave = beamio?.image || ''

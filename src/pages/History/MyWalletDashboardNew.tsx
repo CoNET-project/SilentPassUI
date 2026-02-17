@@ -51,6 +51,7 @@ import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
 import BankingBridge from './components/BankingBridge'
 import TenKeyInput from '@/pages/Pay/components/TenKeyInput'
+import TenKeyInputV2 from '@/pages/Pay/components/TenKeyInputV2'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
@@ -1136,11 +1137,19 @@ export default function MyWalletDashboardNew() {
 						<div className="flex justify-between items-center mb-1 min-h-[2.125rem]">
 							<h1 className="text-[34px] font-bold text-black tracking-tight leading-none">Wallet</h1>
 							<div className="flex items-center gap-3">
-								{/* <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 backdrop-blur-md rounded-full text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-black/5 shrink-0">
-									<Zap size={14} className="fill-amber-400 text-amber-400" />
-									<span>Gas Sponsored</span>
-								</div> */}
-								<button type="button" onClick={() => setIsManagingCards(true)} className="text-[#1562f0] font-bold text-sm">Edit</button>
+								<button
+									type="button"
+									onClick={() => {
+										setPayScreenMode('aa-eoa-transfer')
+										setAaPanelOpen('Pay')
+										setShowFooter(false)
+									}}
+									className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform"
+									title="Transfer between Main Vault and Express Pay"
+								>
+									<ArrowLeftRight className="w-5 h-5" strokeWidth={2.4} />
+								</button>
+								<button type="button" onClick={() => setIsManagingCards(true)} className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform" title="Edit cards"><Edit2 className="w-5 h-5" strokeWidth={2.4} /></button>
 								<button type="button" onClick={() => navigate('/settings')} className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform" title="Add card"><Plus className="w-5 h-5" /></button>
 							</div>
 						</div>
@@ -1563,8 +1572,9 @@ export default function MyWalletDashboardNew() {
 													setVoucherPayAmount('')
 													setVoucherPayToAA('')
 													setVoucherPayError('')
-													setScanIntent('payBill')
+													// setScanIntent('payBill')
 													setShowFooter(false)
+													setActiveView(null)
 													setShowTenKeySlide(true)
 												}}
 											/>
@@ -2317,7 +2327,7 @@ export default function MyWalletDashboardNew() {
 								onMore={() => {}}
 							/>
 							<div className="flex-1 min-h-0 flex flex-col overflow-hidden pt-[calc(env(safe-area-inset-top)+3rem)]">
-								<TenKeyInput
+								<TenKeyInputV2
 									onPaymentSuccess={() => {
 										setShowTenKeySlide(false)
 										setShowFooter(true)

@@ -451,6 +451,8 @@ export default function MyWalletDashboardNew() {
 		setHistoryPayData,
 		redeemFromUrl,
 		setRedeemFromUrl,
+		voucherPayFromScan,
+		setVoucherPayFromScan,
 	} = useDaemonContext()
 
 	const [activeView, setActiveView] = useState<string | null>(null) // 'eoa' | 'aa' | 'ccsa' | null
@@ -552,6 +554,15 @@ export default function MyWalletDashboardNew() {
 			setRedeemFromUrl(null)
 		}
 	}, [redeemFromUrl, setRedeemFromUrl, setShowFooter])
+
+	// 扫码 paymentUrl → 打开 TenKeyInput 执行向 request 人支付 request 金额的 workflow
+	useEffect(() => {
+		if (voucherPayFromScan) {
+			setShowTenKeySlide(true)
+			setShowFooter(false)
+			setVoucherPayFromScan(false)
+		}
+	}, [voucherPayFromScan, setVoucherPayFromScan, setShowFooter])
 
 	// 拉取 redeem 详情：当面板打开且有 code 时
 	useEffect(() => {

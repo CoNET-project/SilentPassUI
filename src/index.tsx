@@ -6,6 +6,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { DaemonProvider } from './providers/DaemonProvider'
+import { MemoryRouter as Router } from 'react-router-dom'
 
 const root = ReactDOM.createRoot(
   	document.getElementById('root') as HTMLElement
@@ -13,11 +14,11 @@ const root = ReactDOM.createRoot(
 
 root.render(
 	<React.StrictMode>
-
-		<DaemonProvider>
-			<App />
-		</DaemonProvider>
-
+		<Router initialEntries={["/Onboarding"]}>
+			<DaemonProvider>
+				<App />
+			</DaemonProvider>
+		</Router>
 	</React.StrictMode>
 )
 // If you want to start measuring performance in your app, pass a function

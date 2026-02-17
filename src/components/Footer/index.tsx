@@ -185,7 +185,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			}
 		} else {
 			// 打开 QR 操作页（扫描 / 我的二维码）
-			navigate('/qr')
+			openPayWorkflow()
 			return
 		}
 

@@ -1,6 +1,6 @@
 // App.tsx
 import { useEffect, useRef, useState, useLayoutEffect } from "react"
-import { Route, Routes, MemoryRouter as Router, useNavigate } from "react-router-dom"
+import { Route, Routes, useNavigate } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
 import Home from "./pages/Home"
@@ -88,6 +88,7 @@ function AppShell() {
     setScanData,
     scanIntent,
     setScanIntent,
+    setVoucherPayFromScan,
 	setIsInitialLoading,
 	setBeamio,
 	setRedeemFromUrl,
@@ -109,6 +110,7 @@ function AppShell() {
 
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] =
     useState<"BeamioContactProfilePreview" | ""|'Pay'>("")
+  const [payFocusAmountOnMount, setPayFocusAmountOnMount] = useState(false)
 
   useLayoutEffect(() => {
     if (showFooter) setFooterVisible(true)
@@ -651,6 +653,33 @@ function AppShell() {
     }
   }
 
+  /** BeamioUserCard redeem URL：beamiocard + redeemcode → /History 并打开 ccsaRedeemOpen */
+  const isRedeemUrl = (raw: string): boolean => {
+    try {
+      if (!raw || typeof raw !== 'string') return false
+      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
+      const redeemcode = u.searchParams.get('redeemcode') ?? u.searchParams.get('Redeemcode')
+      return !!(redeemcode?.trim())
+    } catch {
+      return false
+    }
+  }
+
+  const parseRedeemUrl = (raw: string): { cardAddress?: string; redeemCode: string } | null => {
+    try {
+      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
+      const redeemcode = u.searchParams.get('redeemcode') ?? u.searchParams.get('Redeemcode')
+      const beamiocard = u.searchParams.get('beamiocard') ?? u.searchParams.get('Beamiocard')
+      if (!redeemcode?.trim()) return null
+      return {
+        cardAddress: beamiocard?.trim() || undefined,
+        redeemCode: decodeURIComponent(redeemcode.trim()),
+      }
+    } catch {
+      return null
+    }
+  }
+
   /** 商家发行的 bill paymentUrl：Amount=、currency=、acceptTokens= 为必选项，缺一视为非法 bill 不处理；路径为 /Vouchers 或域名含 beamio */
   const isPaymentUrl = (raw: string): boolean => {
     try {
@@ -751,17 +780,59 @@ function AppShell() {
     if (scanIntent === 'voucherPay' || scanIntent === 'payBill') return
 
     const run = async () => {
-      // 符合 paymentUrl 的扫码结果交给 TenKeyInputComponent 处理（进入 Smart Routing → 确认 → 支付）
+      // 符合 paymentUrl 的扫码结果：navigate 到 /History，打开 TenKeyInput 向 request 人支付 request 金额
       if (isPaymentUrl(scanData)) {
         setScanIntent('voucherPay')
-        navigate('/ten-key-input')
+        setVoucherPayFromScan(true)
+        navigate('/History')
+        return
+      }
+      if (isRedeemUrl(scanData)) {
+        const parsed = parseRedeemUrl(scanData)
+        setScanData("")
+        if (parsed) {
+          setRedeemFromUrl(parsed)
+          navigate("/History")
+        }
         return
       }
       if (/^0x/i.test(scanData)) {
-        setPaymentLink({ code: "", note: "", address: scanData, amount: "" })
-        setSendToMemo(scanData)
+        const addr = scanData
         setScanData("")
-        navigate("/Pay")
+        try {
+          const user = await searchUsername(addr)
+          const results: searchResult[] = user?.results || []
+          const searchResultItem: searchResult = results[0] ?? {
+            address: addr,
+            created_at: 0,
+            first_name: '',
+            last_name: '',
+            follow_count: '',
+            follower_count: '',
+            username: addr.slice(0, 6) + '…' + addr.slice(-4),
+            image: '',
+          }
+          setUserPreviewItem(searchResultItem)
+          setPayFocusAmountOnMount(true)
+          setShowAlphaHowItWorks('Pay')
+          setShowFooter(false)
+          navigate("/")
+        } catch {
+          setUserPreviewItem({
+            address: addr,
+            created_at: 0,
+            first_name: '',
+            last_name: '',
+            follow_count: '',
+            follower_count: '',
+            username: addr.slice(0, 6) + '…' + addr.slice(-4),
+            image: '',
+          })
+          setPayFocusAmountOnMount(true)
+          setShowAlphaHowItWorks('Pay')
+          setShowFooter(false)
+          navigate("/")
+        }
         return
       }
 	  navigate('/History')
@@ -918,11 +989,14 @@ function AppShell() {
 										close={item => {
 											if (typeof item === 'string') {
 												setShowAlphaHowItWorks('')
-
 												return
 											}
+											// 与扫码地址 workflow 一致：打开 Pay 底部栏，聚焦金额输入框
+											setUserPreviewItem(item)
+											setPayFocusAmountOnMount(true)
 											setShowAlphaHowItWorks('Pay')
 											setShowFooter(false)
+											navigate('/')
 										}}
 									/>
 										
@@ -991,7 +1065,9 @@ function AppShell() {
 							{showAlphaHowItWorks === "Pay" && userPreviewItem &&(
 								<PayScreen 
 									beamioer={userPreviewItem}
+									focusAmountOnMount={payFocusAmountOnMount}
 									close={() => {
+										setPayFocusAmountOnMount(false)
 										setShowAlphaHowItWorks('')
 										setShowFooter(true)
 								}}/>
@@ -1081,9 +1157,5 @@ function AppShell() {
 }
 
 export default function App() {
-  return (
-    <Router initialEntries={["/Onboarding"]}>
-      <AppShell />
-    </Router>
-  )
+  return <AppShell />
 }

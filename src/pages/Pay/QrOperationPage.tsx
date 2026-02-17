@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
-import { X, CreditCard, Gift, UserPlus, Share2, Copy, Check, Loader2, Lock } from "lucide-react"
+import { useNavigate, useLocation } from "react-router-dom"
+import { X, CreditCard, Share2, Copy, Check, Loader2, Lock, Wallet } from "lucide-react"
 import { QRCodeCanvas } from "qrcode.react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from "@/services/AAaccount"
@@ -11,6 +11,7 @@ const QR_SIZE = 200
 const QR_LOGO_SIZE = 40
 
 const showPaylinkSite = "https://beamio.app"
+const shortAddress = (addr: string) => (addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : "")
 
 function displayName(item: beamio | null): string {
   if (!item) return ""
@@ -21,7 +22,6 @@ function displayName(item: beamio | null): string {
 
 type TabId = "scan" | "mycode"
 type MyCodeSubTab = "merchants" | "friends"
-type ScanMode = "pay" | "gift" | "add"
 
 async function copyText(t: string): Promise<boolean> {
   try {
@@ -30,31 +30,25 @@ async function copyText(t: string): Promise<boolean> {
   } catch {
     return false
   }
+  
 }
 
 export default function QrOperationPage() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<TabId>("scan")
+  const location = useLocation()
+  const [tab, setTab] = useState<TabId>(() => (location.state as { tab?: TabId })?.tab ?? "scan")
   const [myCodeSubTab, setMyCodeSubTab] = useState<MyCodeSubTab>("friends")
-  const [copied, setCopied] = useState(false)
+  const [copiedAddress, setCopiedAddress] = useState(false)
+  const [copiedQr, setCopiedQr] = useState(false)
   const [merchantPayload, setMerchantPayload] = useState<OpenContainerRelayPayload | null>(null)
   const [merchantSigning, setMerchantSigning] = useState(false)
   const [merchantError, setMerchantError] = useState<string | null>(null)
   const [merchantExpireSec, setMerchantExpireSec] = useState(0)
-  const { beamio, myAddress, profiles, scanRef, setScanIntent } = useDaemonContext()
+  const { beamio, myAddress, profiles } = useDaemonContext()
 
   const handleClose = () => {
     setMerchantPayload(null)
     navigate(-1)
-  }
-
-  /** 调用全局 openPayWorkflow，由监听全局负责后续 workflow */
-  const startScan = (mode: ScanMode) => {
-    if (mode === "pay") setScanIntent("payBill")
-    else if (mode === "gift") setScanIntent("voucherPay")
-    else setScanIntent("")
-    scanRef.current?.start()
-    handleClose()
   }
 
   const payMeUrl = beamio?.accountName ? `${showPaylinkSite}?beamio=${encodeURIComponent(beamio.accountName)}` : ""
@@ -96,10 +90,20 @@ export default function QrOperationPage() {
     return () => clearInterval(t)
   }, [merchantExpireSec])
 
-  const onCopy = async (value: string) => {
+  const onCopyAddress = async (value: string) => {
     const ok = await copyText(value)
-    if (ok) setCopied(true)
-    setTimeout(() => setCopied(false), 3000)
+    if (ok) {
+      setCopiedAddress(true)
+      setTimeout(() => setCopiedAddress(false), 3000)
+    }
+  }
+
+  const onCopyQr = async (value: string) => {
+    const ok = await copyText(value)
+    if (ok) {
+      setCopiedQr(true)
+      setTimeout(() => setCopiedQr(false), 3000)
+    }
   }
 
   const onShare = (urlOrValue: string) => {
@@ -172,9 +176,9 @@ export default function QrOperationPage() {
           {tab === "scan" ? (
             <div className="w-full flex flex-col items-center">
               <div className="relative w-full max-w-[280px] aspect-square">
-                {/* 占位：按下 Pay / Gift / Add 将调用全局 scanRef.start() 打开相机 */}
+                {/* 占位：从 Html5QrcodePlugin 或外部调用 scanRef.start() 打开相机 */}
                 <div className="relative w-full h-full rounded-2xl bg-black/50 flex flex-col items-center justify-center border-2 border-white/20">
-                  <p className="text-white/70 text-sm text-center px-6">按下方 Pay / Gift / Add 开始扫描</p>
+                  <p className="text-white/70 text-sm text-center px-6">选择 Scan 打开相机开始扫描</p>
                   {/* 四角白框 */}
                   <div className="absolute inset-0 pointer-events-none">
                     <div className="absolute left-4 top-4 w-12 h-12 border-l-4 border-t-4 border-white/60 rounded-tl-lg" />
@@ -212,12 +216,12 @@ export default function QrOperationPage() {
               {/* QR 卡片：For Friends / For Merchants 使用相同大小展示 */}
               <div className="w-full rounded-2xl bg-slate-900/80 border border-white/10 p-5 min-h-[320px] flex flex-col items-center justify-center">
                 {myCodeSubTab === "friends" ? (
-                  /* For Friends: MAIN WALLET, 静态 EOA */
+                  /* For Friends: Main Vault (EOA)，格式同 BeamioPayMe */
                   myAddress ? (
                     <div className="flex flex-col items-center w-full">
                       <div className="flex items-center gap-2 self-start mb-3">
                         <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                        <span className="text-xs font-semibold text-white/90">MAIN WALLET</span>
+                        <span className="text-xs font-semibold text-white/90">Main Vault (EOA)</span>
                       </div>
                       <div className="relative">
                         <QRCodeCanvas
@@ -235,16 +239,20 @@ export default function QrOperationPage() {
                           }}
                         />
                       </div>
-                      <p className="mt-3 text-xs text-white/60">Static EOA Address • Permanent</p>
-                      <p className="mt-2 text-lg font-bold text-white">@{beamio?.accountName}</p>
-                      <button
-                        type="button"
-                        onClick={() => onCopy(myAddress)}
-                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white/90 text-xs font-mono hover:bg-white/20"
-                      >
-                        {`${myAddress.slice(0, 6)}...${myAddress.slice(-4)}`}
-                        {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                      </button>
+                      <div className="mt-3 flex items-center justify-center gap-2">
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
+                          <Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />
+                          {shortAddress(myAddress)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onCopyAddress(myAddress)}
+                          className="p-1 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                          aria-label="Copy"
+                        >
+                          {copiedAddress ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-8 text-white/60 text-sm">Connect wallet to show EOA</div>
@@ -272,7 +280,7 @@ export default function QrOperationPage() {
                       <div className="flex items-center justify-between w-full mb-3">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full bg-blue-400" />
-                          <span className="text-xs font-semibold text-white/90">EXPRESS PAY</span>
+                          <span className="text-xs font-semibold text-white/90">Express Pay (Smart Account)</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-white/70">
                           <Lock size={12} />
@@ -303,15 +311,20 @@ export default function QrOperationPage() {
                       <p className="mt-3 text-xs text-white/60">
                         Auto-refresh in {Math.floor(merchantExpireSec / 60)}:{String(merchantExpireSec % 60).padStart(2, "0")}s
                       </p>
-                      <p className="mt-2 text-lg font-bold text-white">@{beamio?.accountName}</p>
-                      <button
-                        type="button"
-                        onClick={() => onCopy(profiles?.[0]?.aaAccount ?? "")}
-                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white/90 text-xs font-mono hover:bg-white/20"
-                      >
-                        aa:{`${(profiles?.[0]?.aaAccount ?? "").slice(0, 6)}...${(profiles?.[0]?.aaAccount ?? "").slice(-4)}`}
-                        {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                      </button>
+                      <div className="mt-2 flex items-center justify-center gap-2">
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
+                          <CreditCard className="w-4 h-4 shrink-0" strokeWidth={2.2} />
+                          {shortAddress(profiles?.[0]?.aaAccount ?? "")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onCopyAddress(profiles?.[0]?.aaAccount ?? "")}
+                          className="p-1 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                          aria-label="Copy"
+                        >
+                          {copiedAddress ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-8 text-white/60 text-sm">Activate AA wallet to use Pay Code</div>
@@ -332,11 +345,11 @@ export default function QrOperationPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => onCopy(myCodeSubTab === "friends" ? myAddress : (merchantPayload ? JSON.stringify(merchantPayload) : payMeUrl))}
+                  onClick={() => onCopyQr(myCodeSubTab === "friends" ? myAddress : (merchantPayload ? JSON.stringify(merchantPayload) : payMeUrl))}
                   className="flex flex-col items-center text-white/80 hover:text-white transition-colors disabled:opacity-50"
                   disabled={myCodeSubTab === "friends" ? !myAddress : !merchantPayload}
                 >
-                  {copied ? <Check className="w-8 h-8 mb-1 text-emerald-400" strokeWidth={2} /> : <Copy className="w-8 h-8 mb-1" strokeWidth={2} />}
+                  {copiedQr ? <Check className="w-8 h-8 mb-1 text-emerald-400" strokeWidth={2} /> : <Copy className="w-8 h-8 mb-1" strokeWidth={2} />}
                   <span className="text-xs">Copy</span>
                 </button>
               </div>
@@ -344,33 +357,6 @@ export default function QrOperationPage() {
           )}
         </div>
 
-        {/* 底部操作按钮：按下后才打开相机开始扫描 */}
-        <div className="px-6 pb-6 grid grid-cols-3 gap-4">
-          <button
-            type="button"
-            onClick={() => startScan("pay")}
-            className="flex flex-col items-center justify-center py-4 rounded-2xl bg-black/30 text-white hover:bg-black/40 active:scale-95 transition-all"
-          >
-            <CreditCard className="w-8 h-8 text-blue-400 mb-2" strokeWidth={2} />
-            <span className="text-xs font-semibold uppercase">Pay</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => startScan("gift")}
-            className="flex flex-col items-center justify-center py-4 rounded-2xl bg-black/30 text-white hover:bg-black/40 active:scale-95 transition-all"
-          >
-            <Gift className="w-8 h-8 text-purple-400 mb-2" strokeWidth={2} />
-            <span className="text-xs font-semibold uppercase">Gift</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => startScan("add")}
-            className="flex flex-col items-center justify-center py-4 rounded-2xl bg-black/30 text-white hover:bg-black/40 active:scale-95 transition-all"
-          >
-            <UserPlus className="w-8 h-8 text-emerald-400 mb-2" strokeWidth={2} />
-            <span className="text-xs font-semibold uppercase">Add</span>
-          </button>
-        </div>
       </div>
     </div>
   )

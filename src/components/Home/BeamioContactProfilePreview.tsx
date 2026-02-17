@@ -767,10 +767,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 													py-2.5 rounded-full
 													bg-sky-600 text-white text-[13px] font-semibold shadow-sm
 												"
-												onClick={() => {
-													navigate('/History')
-													setHistoryPayData(item)
-												}}
+												onClick={() => close(item)}
 											>
 												Pay
 											</AppButton>

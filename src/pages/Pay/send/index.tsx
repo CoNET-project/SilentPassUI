@@ -61,6 +61,17 @@ function saveRecentRecipients(items: searchResult[]) {
 
 export type PayScreenMode = 'eoa-pay' | 'aa-eoa-transfer'
 
+const unknowAcc = (address: string): searchResult => ({
+	address,
+	created_at: 0,
+	first_name: '',
+	last_name: '',
+	follow_count: '',
+	follower_count: '',
+	username: 'Unknow',
+	image: '',
+})
+
 type Props = {
 	close: (path: string) => void
 	beamioer?: searchResult
@@ -68,9 +79,11 @@ type Props = {
 	mode?: PayScreenMode
 	/** AA 账户 USDC 余额（aa-eoa-transfer 且 aa-to-eoa 时用于 MAX / 余额校验） */
 	aaAccountUsdcBalance?: string | number
+	/** 挂载时自动聚焦金额输入框（如从扫码地址进入） */
+	focusAmountOnMount?: boolean
 }
 
-export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccountUsdcBalance}: Props) {
+export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccountUsdcBalance, focusAmountOnMount}: Props) {
 	
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
@@ -153,6 +166,13 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 			setItem(beamioer)
 		}
 	}, [beamioer])
+
+	useEffect(() => {
+		if (focusAmountOnMount) {
+			const t = setTimeout(() => setFocusAmount(true), 300)
+			return () => clearTimeout(t)
+		}
+	}, [focusAmountOnMount])
 
 	// AA/EOA 模式：根据方向同步收款人 item（用于提交）；AA→EOA 固定为 myAddress
 	useEffect(() => {

@@ -493,14 +493,14 @@ const SearchInputWithDropdown =
 							}
 							
 							{/* Beamio icon —— 在最左侧 */}
-							<img
+							{/* <img
 								src={beamio_icon}
 								alt="Beamio"
 								className={[
 									'w-5 h-5 mr-2 flex-shrink-0 opacity-80',
 									readonly ? 'ml-2' : ''
 								].join(' ')}
-							/>
+							/> */}
 
 							{/* Search icon —— 紧接 Beamio icon */}
 							<Search

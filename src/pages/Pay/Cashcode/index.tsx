@@ -488,7 +488,6 @@ export default function PaymentLink ({close}: Props) {
 								showMax={true}
 								needBalance={true}
 								focusSignal={focusAmount}
-								currencyUSDC={lockMode === 'USDC_LOCKED'}
 								feePlus={true}
 								currencyChange={val => setCurrentCurrency(val)}
 							/>

@@ -11,7 +11,6 @@ import base_ex from '@/components/assets/base-ex.svg'
 import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import { X, Check, Plus, Camera, ArrowRight, ArrowLeft, Wallet, CreditCard } from "lucide-react"
-import LockModeSegmented from '../PaymentLink/LockModeSegmented'
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
@@ -39,6 +38,26 @@ const displayName = (item: searchResult) => {
 
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
+
+const PAY_RECENT_KEY = 'beamio_pay_recent'
+const PAY_RECENT_MAX = 8
+
+function loadRecentRecipients(): searchResult[] {
+	try {
+		const raw = localStorage.getItem(PAY_RECENT_KEY)
+		if (!raw) return []
+		const arr = JSON.parse(raw) as searchResult[]
+		return Array.isArray(arr) ? arr.slice(0, PAY_RECENT_MAX) : []
+	} catch {
+		return []
+	}
+}
+
+function saveRecentRecipients(items: searchResult[]) {
+	try {
+		localStorage.setItem(PAY_RECENT_KEY, JSON.stringify(items.slice(0, PAY_RECENT_MAX)))
+	} catch {}
+}
 
 export type PayScreenMode = 'eoa-pay' | 'aa-eoa-transfer'
 
@@ -86,22 +105,28 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 	const [cardCreate, setCardCreate] = useState(false)
 	const [cardTitle, setCardTitle] = useState("Your dynamic text goes here")
 	const [cardDetail, setCardDetail] = useState("Write some detail…")
-	const [currentCurrency, setCurrentCurrency] = useState<ICurrency>('USDC')
+	const [currentCurrency, setCurrentCurrency] = useState<ICurrency>('USD')
 	const [showGiftEnvelope, setShowGiftEnvelope] = useState(false)
 	const [showGiftImageError, setShowGiftImageError] = useState(false)
 	const [uploadingIPFS, setUploadingIPFS] = useState(false)
 	const [addedNote, setAddedNote] = useState("")
-	const [lockMode, setLockMode] = useState<PaymentLinkLockMode>("FIAT_LOCKED")
 	const [showToError, setShowToError] = useState(false)
+	const [recentRecipients, setRecentRecipients] = useState<searchResult[]>(() => loadRecentRecipients())
 
-	const selectItem = (item: searchResult) => {
-		setItem(item)
+	const selectItem = (selected: searchResult) => {
+		setItem(selected)
+		// 加入最近选择列表（去重，新选中的放最前）
+		setRecentRecipients((prev) => {
+			const next = [selected, ...prev.filter((p) => p.address?.toLowerCase() !== selected.address?.toLowerCase())]
+			saveRecentRecipients(next)
+			return next
+		})
 	}
 
 	function fxRateUSDCToCurrency(currency: ICurrency): number {
+		if (currency === 'USDC') return 1
 		// 1 USDC = ? USD
 		const usdcToUSD = currencyData.USDC ?? 1
-
 		if (currency === 'USD') return usdcToUSD
 
 		const usdToCurrency = currencyData[currency]
@@ -111,12 +136,14 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 	}
 
 	function usdcToCurrencyAmount(usdc: number, c: ICurrency) {
+		if (c === 'USDC') return usdc
 		const rate = fxRateUSDCToCurrency(c)
 		return usdc * rate
 	}
 
-	/** 将所选 currency 的金额按即时汇率换算为 USDC（1 USDC = fxRateUSDCToCurrency(c) 的 currency） */
+	/** 将所选 currency 的金额按即时汇率换算为 USDC */
 	function currencyAmountToUSDC(amountInCurrency: number, c: ICurrency): number {
+		if (c === 'USDC') return amountInCurrency
 		const rate = fxRateUSDCToCurrency(c)
 		if (rate <= 0) return 0
 		return amountInCurrency / rate
@@ -180,8 +207,9 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 			usdcToCurrencyAmount(Number(sendAmount), currentCurrency),
 			currentCurrency
 		)
-		return `${fiatPrefix(currentCurrency)} ${curr}`
-	}, [sendAmount, currentCurrency, currencyData]) // ✅ 把 currencyData 纳入
+		const prefix = currentCurrency === 'USDC' ? 'USDC ' : (fiatPrefix(currentCurrency) + ' ')
+		return prefix + curr
+	}, [sendAmount, currentCurrency, currencyData])
 
 
 
@@ -307,13 +335,13 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 		const chatDatas = profile?.chats || []
 		profile.chats = chatDatas
 
-		const currencyAmount = lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency) : sendAmount
+		const currencyAmount = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
 		const index = profile.chats.findIndex(n => n.address === chatData.address)
 		if (index > -1) {
 			profile.chats.splice(index, 1)
 		}
 		
-		const messageCard = emitReactionAsNewMessage(Number(currencyAmount), lockMode === 'USDC_LOCKED' ? 'USDC' : currentCurrency, note, Number(sendAmount), '')
+		const messageCard = emitReactionAsNewMessage(Number(currencyAmount), currentCurrency, note, Number(sendAmount), '')
 		chatData.messages.push(messageCard)
 		profile.chats.push(chatData)
 		setProfiles(profiles)
@@ -448,9 +476,9 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 		}
 		const bo = beamio
 
-		const currencyAmount = lockMode === 'FIAT_LOCKED' ? formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency) : sendAmount
+		const currencyAmount = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
 		let data1: payMe = {
-			currency: lockMode === 'FIAT_LOCKED' ? currentCurrency : 'USDC',
+			currency: currentCurrency,
 			currencyAmount,
 		}
 
@@ -466,7 +494,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 				title: card.title,
 				detail: card.detail,
 				image: card.image,
-				currency: lockMode=== 'USDC_LOCKED' ? 'USDC' : currentCurrency,
+				currency: currentCurrency,
 				currencyAmount: currencyAmountText
 			}
 
@@ -688,6 +716,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 							</div>
 						)} */}
 						{!isAaEoaTransfer && !item && (
+						<>
 						<section className="mb-4">
 							<SearchInputWithDropdown
 							showHistory={false}
@@ -701,6 +730,31 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 							select={true}
 							/>
 						</section>
+						{/* 最近选择：本地存储记忆，点击选中 */}
+						{recentRecipients.length > 0 && (
+							<div className="mb-4 flex items-center gap-3 overflow-x-auto pb-2 no-scrollbar">
+								{recentRecipients.map((r) => (
+									<button
+										key={r.address}
+										type="button"
+										onClick={() => selectItem(r)}
+										className="flex-shrink-0 flex flex-col items-center gap-1 active:scale-95 transition-transform"
+									>
+										<div className="w-10 h-10 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center ring-2 ring-transparent hover:ring-blue-300">
+											{r.image ? (
+												<img src={r.image} alt={r.username} className="w-full h-full object-cover" />
+											) : (
+												<img src={getImg(r.username || r.address)} alt={r.username} className="w-full h-full object-cover" />
+											)}
+										</div>
+										<span className="text-[11px] font-medium text-blue-600 truncate max-w-[56px]">
+											@{(r as { username?: string; accountName?: string }).username || (r as { accountName?: string }).accountName || r.address?.slice(0, 6) || ''}
+										</span>
+									</button>
+								))}
+							</div>
+						)}
+						</>
 						)}
 
 						{item && !isAaEoaTransfer && (
@@ -738,7 +792,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 									{/* Text under avatar (shadow only) */}
 									<div
 										className="
-											-mt-1
+											mt-1
 											flex flex-col items-center
 											pointer-events-none
 										"
@@ -773,16 +827,6 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 
 						{!message && (
 						<>
-							<div className="mt-5 flex items-center gap-3">
-								<LockModeSegmented
-									value={lockMode}
-									readonly={!!message}
-									onChange={val => {
-									setLockMode(val)
-									}}
-								/>
-							</div>
-
 							<section className="input">
 								<AmountCurrency
 									amount={sendAmount}
@@ -796,7 +840,6 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 									needBalance={true}
 									focusSignal={focusAmount}
 									currencyChange={val => setCurrentCurrency(val)}
-									currencyUSDC={lockMode === 'USDC_LOCKED'}
 									balanceOverride={isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? aaAccountUsdcBalance : undefined}
 								/>
 							</section>
@@ -804,148 +847,128 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 						)}
 
 						{message && (
-						<ShowTotal
-							usdcAmount={sendAmount}
-							fiatCurrency={currentCurrency}
-							fiatAmount={formatAmount(
-							usdcToCurrencyAmount(Number(sendAmount), currentCurrency),
-							currentCurrency
-							)}
-						/>
+							<ShowTotal
+								usdcAmount={sendAmount}
+								fiatCurrency={currentCurrency}
+								fiatAmount={formatAmount(
+								usdcToCurrencyAmount(Number(sendAmount), currentCurrency),
+								currentCurrency
+								)}
+							/>
 						)}
 
 						{showGiftImageError && (
-						<div className="flex justify-center">
-							<p className="text-sm text-rose-600">
-							An error occurred while uploading the image to IPFS. Please try again later.
-							</p>
+							<div className="flex justify-center">
+								<p className="text-sm text-rose-600">
+								An error occurred while uploading the image to IPFS. Please try again later.
+								</p>
 						</div>
 						)}
 
 						{uploadingIPFS && (
-						<div className="flex justify-center">
-							<p className="text-sm text-slate-600 flex items-center gap-1">
-							Uploading image to IPFS, please wait
-							<span className="inline-flex w-4">
-								<span className="animate-dot">.</span>
-								<span className="animate-dot delay-200">.</span>
-								<span className="animate-dot delay-400">.</span>
-							</span>
-							</p>
+							<div className="flex justify-center">
+								<p className="text-sm text-slate-600 flex items-center gap-1">
+								Uploading image to IPFS, please wait
+								<span className="inline-flex w-4">
+									<span className="animate-dot">.</span>
+									<span className="animate-dot delay-200">.</span>
+									<span className="animate-dot delay-400">.</span>
+								</span>
+								</p>
 
-							<style>{`
-							.animate-dot { animation: blink 1.4s infinite both; }
-							.delay-200 { animation-delay: 0.2s; }
-							.delay-400 { animation-delay: 0.4s; }
-							@keyframes blink {
-								0% { opacity: 0.2; }
-								20% { opacity: 1; }
-								100% { opacity: 0.2; }
-							}
-							`}</style>
-						</div>
+								<style>{`
+								.animate-dot { animation: blink 1.4s infinite both; }
+								.delay-200 { animation-delay: 0.2s; }
+								.delay-400 { animation-delay: 0.4s; }
+								@keyframes blink {
+									0% { opacity: 0.2; }
+									20% { opacity: 1; }
+									100% { opacity: 0.2; }
+								}
+								`}</style>
+							</div>
 						)}
 
 						{showGiftEnvelope && !isAaEoaTransfer && (
-						<div className="flex justify-center">
-							<div className="relative w-fit">
-							<img
-								src={giftEnvelope}
-								className="w-24 block"
-								alt="Gift Envelope"
-							/>
+							<div className="flex justify-center">
+								<div className="relative w-fit">
+								<img
+									src={giftEnvelope}
+									className="w-24 block"
+									alt="Gift Envelope"
+								/>
 
-							{!message && (
-								<button
-								type="button"
-								onClick={() => setShowGiftEnvelope(false)}
-								className="
-									absolute top-0 right-0 z-30
-									translate-x-1/2 -translate-y-1/8
-									w-7 h-7 rounded-full
-									bg-white/10
-									backdrop-blur-md
-									border border-white/20
-									shadow-[0_4px_10px_rgba(0,0,0,0.12)]
-									hover:bg-white/20
-									active:scale-95
-									transition
-									flex items-center justify-center
-								"
-								aria-label="Remove gift envelope"
-								>
-								<X className="w-4 h-4 text-black/30" />
-								</button>
-							)}
+								{!message && (
+									<button
+									type="button"
+									onClick={() => setShowGiftEnvelope(false)}
+									className="
+										absolute top-0 right-0 z-30
+										translate-x-1/2 -translate-y-1/8
+										w-7 h-7 rounded-full
+										bg-white/10
+										backdrop-blur-md
+										border border-white/20
+										shadow-[0_4px_10px_rgba(0,0,0,0.12)]
+										hover:bg-white/20
+										active:scale-95
+										transition
+										flex items-center justify-center
+									"
+									aria-label="Remove gift envelope"
+									>
+									<X className="w-4 h-4 text-black/30" />
+									</button>
+								)}
+								</div>
 							</div>
-						</div>
 						)}
 
 						{!message && !isAaEoaTransfer && (
-						<textarea
-							value={note.split('\r\n')[0]}
-							onFocus={() => {
-							if (note === defaultNodeText) setNote('')
-							}}
-							readOnly={!!message}
-							placeholder="What's this for?"
-							onChange={(e) => {
-								setNote(e.target.value)
-							}}
-							rows={2}
-							className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 mt-6"
-						/>
+							<div className="relative flex items-center mt-6 rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 overflow-hidden">
+								{!showGiftEnvelope && (
+									<button
+										type="button"
+										onClick={() => setCardCreate(true)}
+										className="shrink-0 w-12 h-12 flex items-center justify-center border-r border-slate-200 dark:border-slate-700"
+										aria-label="Open camera"
+									>
+										<Camera
+											className="w-6 h-6 text-slate-900/20 dark:text-slate-400/60 opacity-80"
+											strokeWidth={2.2}
+										/>
+									</button>
+								)}
+								<input
+									type="text"
+									value={note.split('\r\n')[0]}
+									onFocus={() => {
+										if (note === defaultNodeText) setNote('')
+									}}
+									readOnly={!!message}
+									placeholder="What's this for?"
+									onChange={(e) => setNote(e.target.value.replace(/[\r\n]/g, ''))}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') e.preventDefault()
+									}}
+									className="flex-1 min-w-0 px-3 py-3 text-sm text-slate-900 dark:text-slate-100 bg-transparent border-0 outline-none placeholder:text-slate-500"
+								/>
+							</div>
 						)}
 
 						{message && (
-						<>
-							{note && (
-							<div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-[12px] text-yellow-900 space-y-1 mt-6">
-								{note}
-							</div>
-							)}
+							<>
+								{note && (
+								<div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-[12px] text-yellow-900 space-y-1 mt-6">
+									{note}
+								</div>
+								)}
 
-							<NetworkFeeGas />
-						</>
+								<NetworkFeeGas />
+							</>
 						)}
 
 						<div className="mt-6 flex gap-3 w-full">
-							
-
-							{!showGiftEnvelope && !message && !isAaEoaTransfer && (
-								<>
-								{/* iOS glass camera button - 仅在 eoa-pay 模式显示 */}
-								<button
-									type="button"
-									onClick={() => {
-										setCardCreate(true)
-									}}
-									className="
-										shrink-0
-										w-12 h-12
-										rounded-full
-										flex items-center justify-center
-
-										bg-white/30
-										backdrop-blur-md
-
-										shadow-[0_8px_20px_rgba(0,0,0,0.18)]
-										ring-1 ring-white/30
-
-										active:scale-95
-										transition
-										border border-white/50   /* ← 白色 1px 外框 */
-									"
-									aria-label="Open camera"
-								>
-									<Camera
-										className="w-6 h-6 text-slate-900/20 opacity-80"
-										strokeWidth={2.2}
-									/>
-								</button>
-								</>
-							)}
-
 							<AppButton
 								fullWidth
 								// size="sm"

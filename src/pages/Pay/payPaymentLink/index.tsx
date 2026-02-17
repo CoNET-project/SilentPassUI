@@ -565,7 +565,6 @@ export default function PayMeLink ({close, code, address}: Props) {
 															showMax={true}
 															needBalance={true}
 															focusSignal={focusAmount}
-															currencyUSDC={lockMode === 'USDC_LOCKED'}
 														/>
 													</section>
 											</>

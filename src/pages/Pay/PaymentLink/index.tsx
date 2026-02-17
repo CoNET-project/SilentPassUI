@@ -363,7 +363,6 @@ return (
                   showMax={false}
                   needBalance={false}
                   focusSignal={focusAmount}
-                  currencyUSDC={lockMode === 'USDC_LOCKED'}
                 />
               </section>
 

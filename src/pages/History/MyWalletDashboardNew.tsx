@@ -39,6 +39,13 @@ import {
 	Star,
 	Info,
 	ShieldCheck,
+	ChevronUp,
+	Search,
+	MinusCircle,
+	PlusCircle,
+	GripVertical,
+	Edit2,
+	Save,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
@@ -265,6 +272,163 @@ interface Card {
 	isCCSA?: boolean
 }
 
+/** Manage Passes Overlay - 参照 exampleExpress ManageCardsOverlay，支持隐藏/恢复、重命名 */
+const ManageCardsOverlay = ({
+	isOpen,
+	onClose,
+	allPasses,
+	onUpdateStatus,
+	onRename,
+}: {
+	isOpen: boolean
+	onClose: () => void
+	allPasses: { id: string; name: string; nickname?: string; balance: string; currency: string; type: string; memberNo: string; bg: string; status: 'active' | 'archived'; icon?: React.ElementType }[]
+	onUpdateStatus: (id: string, status: 'active' | 'archived') => void
+	onRename: (id: string, newName: string) => void
+}) => {
+	const [editingId, setEditingId] = useState<string | null>(null)
+	const [tempName, setTempName] = useState('')
+
+	if (!isOpen) return null
+
+	const activePasses = allPasses.filter((p) => p.status === 'active')
+	const hiddenPasses = allPasses.filter((p) => p.status === 'archived')
+
+	const startEditing = (pass: (typeof allPasses)[0]) => {
+		setEditingId(pass.id)
+		setTempName(pass.nickname || pass.name)
+	}
+
+	const saveEditing = (id: string) => {
+		onRename(id, tempName)
+		setEditingId(null)
+	}
+
+	return (
+		<div className="fixed inset-0 z-[100] bg-[#F2F2F7] flex flex-col animate-slide-up">
+			<div className="bg-white/80 backdrop-blur-md px-5 pt-14 pb-4 flex justify-between items-center border-b border-gray-200 sticky top-0 z-10">
+				<h1 className="text-lg font-bold">Manage Passes</h1>
+				<button type="button" onClick={onClose} className="text-[#1562f0] font-bold text-base">
+					Done
+				</button>
+			</div>
+			<div className="flex-1 overflow-y-auto p-5">
+				<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">
+					Active Passes ({activePasses.length})
+				</p>
+				<div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-6">
+					{activePasses.map((pass) => {
+						const Icon = pass.id === 'ccsa' ? Globe : CreditCard
+						const isEditing = editingId === pass.id
+						const displayTitle = pass.nickname || pass.name
+						return (
+							<div
+								key={pass.id}
+								className="flex items-center p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors group"
+							>
+								<button
+									type="button"
+									onClick={() => onUpdateStatus(pass.id, 'archived')}
+									className="text-red-500 mr-4 active:scale-90 transition-transform"
+								>
+									<MinusCircle className="w-6 h-6 fill-red-100" />
+								</button>
+								<div
+									className="w-10 h-10 rounded-full flex items-center justify-center mr-3"
+									style={{ background: pass.bg }}
+								>
+									<Icon className="w-5 h-5 text-white" />
+								</div>
+								<div className="flex-1">
+									<div className="flex items-center gap-2">
+										{isEditing ? (
+											<div className="flex items-center gap-2 w-full">
+												<input
+													type="text"
+													value={tempName}
+													onChange={(e) => setTempName(e.target.value)}
+													className="font-bold text-gray-900 text-sm border-b-2 border-[#1562f0] outline-none bg-transparent w-full"
+													autoFocus
+													onKeyDown={(e) => {
+														if (e.key === 'Enter') saveEditing(pass.id)
+													}}
+												/>
+												<button
+													type="button"
+													onClick={() => saveEditing(pass.id)}
+													className="text-[#1562f0]"
+												>
+													<Save className="w-4 h-4" />
+												</button>
+											</div>
+										) : (
+											<>
+												<h3 className="font-bold text-gray-900 text-sm">{displayTitle}</h3>
+												{pass.nickname && (
+													<span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+														Nickname
+													</span>
+												)}
+												<button
+													type="button"
+													onClick={() => startEditing(pass)}
+													className="opacity-0 group-hover:opacity-100 transition-opacity"
+												>
+													<Edit2 className="w-3 h-3 text-gray-400 hover:text-[#1562f0]" />
+												</button>
+											</>
+										)}
+									</div>
+									<p className="text-xs text-gray-500">
+										{pass.type} • {pass.balance} {pass.currency}
+									</p>
+								</div>
+								<div className="text-gray-300 cursor-grab active:cursor-grabbing">
+									<GripVertical className="w-5 h-5" />
+								</div>
+							</div>
+						)
+					})}
+					{activePasses.length === 0 && (
+						<div className="p-6 text-center text-gray-400 text-sm">No active passes</div>
+					)}
+				</div>
+				{hiddenPasses.length > 0 && (
+					<>
+						<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">Hidden</p>
+						<div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-8">
+							{hiddenPasses.map((pass) => {
+								const Icon = pass.id === 'ccsa' ? Globe : CreditCard
+								return (
+									<div
+										key={pass.id}
+										className="flex items-center p-4 border-b border-gray-100 last:border-0 opacity-70"
+									>
+										<button
+											type="button"
+											onClick={() => onUpdateStatus(pass.id, 'active')}
+											className="text-green-500 mr-4 active:scale-90 transition-transform"
+										>
+											<PlusCircle className="w-6 h-6 fill-green-100" />
+										</button>
+										<div className="w-10 h-10 rounded-full flex items-center justify-center mr-3 bg-gray-200">
+											<Icon className="w-5 h-5 text-gray-500" />
+										</div>
+										<div className="flex-1">
+											<h3 className="font-bold text-gray-900 text-sm">{pass.nickname || pass.name}</h3>
+											<p className="text-xs text-gray-500">Archived by you</p>
+										</div>
+									</div>
+								)
+							})}
+						</div>
+					</>
+				)}
+			</div>
+		</div>
+	)
+}
+
 export default function MyWalletDashboardNew() {
 	const navigate = useNavigate()
 	const {
@@ -290,6 +454,8 @@ export default function MyWalletDashboardNew() {
 	} = useDaemonContext()
 
 	const [activeView, setActiveView] = useState<string | null>(null) // 'eoa' | 'aa' | 'ccsa' | null
+	const [isExpressExpanded, setIsExpressExpanded] = useState(false) // exampleExpress 风格：展开显示 passes
+	const [passSearchTerm, setPassSearchTerm] = useState('')
 	const [allItems, setAllItems] = useState<TransferHistork[]>([])
 	const [loading, setLoading] = useState(false)
 	const [itemTx, setItemTx] = useState<TransferHistork>()
@@ -319,6 +485,11 @@ export default function MyWalletDashboardNew() {
 	const [redeemDetailsLoading, setRedeemDetailsLoading] = useState(false)
 	const [userCards, setUserCards] = useState<UserCardInfo[]>([])
 	const [payScreenMode, setPayScreenMode] = useState<'eoa-pay' | 'aa-eoa-transfer'>('eoa-pay')
+	const [isManagingCards, setIsManagingCards] = useState(false)
+	/** 已隐藏（archived）的 pass id 列表，用于 ManageCardsOverlay */
+	const [archivedPassIds, setArchivedPassIds] = useState<Set<string>>(new Set())
+	/** pass 昵称，id -> nickname */
+	const [passNicknames, setPassNicknames] = useState<Record<string, string>>({})
 	/** 从 historyPayData 进入时暂存，传入 PayScreen 后清除 historyPayData */
 	const [pendingPayTarget, setPendingPayTarget] = useState<searchResult | null>(null)
 	const [openRelayPayload, setOpenRelayPayload] = useState<OpenContainerRelayPayload | null>(null)
@@ -881,394 +1052,290 @@ export default function MyWalletDashboardNew() {
 
 	const selectedCard = cards.find((c) => c.id === activeView)
 
+	// exampleExpress passes：CCSA + userCards，用于展开时的叠卡列表
+	const passes = useMemo(() => {
+		const list: { id: string; name: string; balance: string; currency: string; type: string; memberNo: string; bg: string; textColor?: string }[] = []
+		if (profiles?.[0]?.aaAccount) {
+			const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
+			list.push({
+				id: 'ccsa',
+				name: 'CCSA CARD',
+				balance: formatWithThousands(ccsaBalance),
+				currency: 'CAD',
+				type: 'Membership',
+				memberNo: nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : '',
+				bg: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
+				textColor: 'white',
+			})
+		}
+		userCards.forEach((uc) => {
+			list.push({
+				id: uc.cardAddress,
+				name: uc.name,
+				balance: '—',
+				currency: uc.currency,
+				type: 'Stored Value',
+				memberNo: uc.cardAddress.slice(0, 10) + '...',
+				bg: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)',
+			})
+		})
+		return list
+	}, [profiles?.[0]?.aaAccount, ccsaAssets?.nfts, ccsaBalance, userCards])
+
+	const updatePassStatus = useCallback((id: string, status: 'active' | 'archived') => {
+		setArchivedPassIds((prev) => {
+			const next = new Set(prev)
+			if (status === 'archived') next.add(id)
+			else next.delete(id)
+			return next
+		})
+	}, [])
+
+	const renamePass = useCallback((id: string, newName: string) => {
+		setPassNicknames((prev) => ({ ...prev, [id]: newName.trim() || '' }))
+	}, [])
+
+	/** 供 ManageCardsOverlay 使用的完整 pass 列表（含 status、nickname） */
+	const allPassesForManage = useMemo(() => {
+		return passes.map((p) => ({
+			...p,
+			nickname: passNicknames[p.id] || undefined,
+			status: (archivedPassIds.has(p.id) ? 'archived' : 'active') as 'active' | 'archived',
+		}))
+	}, [passes, passNicknames, archivedPassIds])
+
+	/** 显示的 passes：排除已隐藏，应用 nickname 作为 displayName */
+	const visiblePasses = useMemo(
+		() => passes.filter((p) => !archivedPassIds.has(p.id)).map((p) => ({ ...p, displayName: passNicknames[p.id] || p.name })),
+		[passes, archivedPassIds, passNicknames]
+	)
+
+	const filteredPasses = useMemo(
+		() => visiblePasses.filter((p) => p.displayName.toLowerCase().includes(passSearchTerm.toLowerCase())),
+		[visiblePasses, passSearchTerm]
+	)
+
 	return (
+		<>
 		<div className="flex justify-center bg-gray-200 min-h-screen font-sans antialiased">
 			<div className="w-full max-w-lg bg-[#F2F2F7] min-h-screen shadow-2xl overflow-hidden relative flex flex-col">
 				{/* 未选中：显示 Header；选中：不占位，卡片+内容从容器顶部开始 */}
 				{!activeView && (
 					<header className="px-5 pt-14 pb-2 bg-[#F2F2F7]/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
 						<div className="flex justify-between items-center mb-1 min-h-[2.125rem]">
-							<h1 className="text-[34px] font-bold text-black tracking-tight leading-none">My Wallet</h1>
-							<div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 backdrop-blur-md rounded-full text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-black/5 shrink-0">
-								<Zap size={14} className="fill-amber-400 text-amber-400" />
-								<span>Gas Sponsored</span>
+							<h1 className="text-[34px] font-bold text-black tracking-tight leading-none">Wallet</h1>
+							<div className="flex items-center gap-3">
+								{/* <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 backdrop-blur-md rounded-full text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-black/5 shrink-0">
+									<Zap size={14} className="fill-amber-400 text-amber-400" />
+									<span>Gas Sponsored</span>
+								</div> */}
+								<button type="button" onClick={() => setIsManagingCards(true)} className="text-[#1562f0] font-bold text-sm">Edit</button>
+								<button type="button" onClick={() => navigate('/settings')} className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform" title="Add card"><Plus className="w-5 h-5" /></button>
 							</div>
 						</div>
 					</header>
 				)}
 
-				{/* Cards and Details Container - 选中时增加顶部 2rem 空间 */}
+				{/* Cards and Details Container - exampleExpress WalletStackView 风格 */}
 				<div className={`relative flex-1 min-h-0 flex flex-col transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) ${activeView ? 'pt-8' : ''}`}>
-					{/* Scrollable Main Content */}
-					<div className={`flex-1 min-h-0 pb-32 px-4 scroll-smooth relative no-scrollbar ${
+					{/* Scrollable Main Content - exampleExpress 叠卡布局 */}
+					<div className={`flex-1 min-h-0 pb-32 px-5 scroll-smooth relative no-scrollbar ${
 						activeView ? 'overflow-hidden' : 'overflow-y-auto'
 					}`}>
-						{/* LAYER 1: MAIN WALLET (EOA) - 当选中其他卡片时折叠 */}
-						<div
-							onClick={() => handleCardClick('eoa')}
-							className={`relative transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${
-								activeView && activeView !== 'eoa'
-									? 'h-0 mb-0 opacity-0 overflow-hidden pointer-events-none z-40'
-									: activeView === 'eoa'
-									? 'opacity-100 translate-y-0 mb-6 z-[60]'
-									: 'opacity-100 translate-y-0 mb-6 z-40'
-						}`}
-					>
-							<h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1 flex items-center gap-1">
-								Main Vault (EOA)
-							</h2>
+						<div className={`relative h-[650px] perspective-1000 transition-transform duration-500 ${activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''}`}>
+							{/* LAYER 1: MAIN VAULT (EOA) - 点击折叠 express 或打开详情 */}
 							<div
-							className="relative w-full h-52 rounded-[24px] text-white shadow-lg overflow-hidden group transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1)"
-							style={{ background: 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)' }}
-						>
-							<div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl pointer-events-none" />
-							<div className="p-5 h-full flex flex-col justify-between relative z-10">
-									<div className="flex justify-between items-start">
-									<div className="flex items-center gap-2">
+								onClick={() => (isExpressExpanded ? setIsExpressExpanded(false) : handleCardClick('eoa'))}
+								className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'scale-90 opacity-100 translate-y-4 brightness-50' : 'scale-95 translate-y-16'}`}
+								style={{ background: 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)', zIndex: 10 }}
+							>
+								<div className="flex justify-between items-start mb-8">
+									<div className="flex items-center space-x-2">
 										<button
 											type="button"
-											className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
-											onClick={(e) => {
-												e.stopPropagation()
-												reflashProcess('eoa')
-											}}
+											className="inline-flex items-center justify-center w-8 h-8 rounded-full border-2 border-white/30 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95]"
+											onClick={(e) => { e.stopPropagation(); reflashProcess('eoa') }}
 											disabled={eoaReflash}
-											aria-label="Refresh"
 										>
-											<img
-												src={base_icon}
-												alt="Base"
-												className={`w-5 h-5 object-contain ${eoaReflash ? 'animate-spin opacity-80' : ''}`}
-											/>
+											<img src={base_icon} alt="Base" className={`w-5 h-5 object-contain ${eoaReflash ? 'animate-spin opacity-80' : ''}`} />
 										</button>
-										<span className="font-medium">USDC on Base</span>
+										<span className="font-medium text-lg tracking-wide">USDC on Base</span>
 									</div>
 									<button
 										type="button"
-										className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-										onClick={(e) => {
-											e.stopPropagation()
-											setShowFooter(false)
-											setEoaPanelOpen('ShowPayQR')
-										}}
-										aria-label="Show Pay QR"
+										className="p-2 bg-white/10 rounded-xl backdrop-blur-md border border-white/20"
+										onClick={(e) => { e.stopPropagation(); setShowFooter(false); setEoaPanelOpen('ShowPayQR') }}
 									>
-										<QrCode size={18} className="text-white" />
+										<QrCode className="w-5 h-5" />
 									</button>
 								</div>
-
-								<div className="text-center mt-4">
-									<div className="text-5xl font-bold tracking-tight tabular-nums">
-										{formatWithThousands(usdcbalance || '0')}{' '}
-										<span className="text-2xl font-normal opacity-80">USDC</span>
+								<div className="text-center mb-10">
+									<div className="flex items-baseline justify-center">
+										<span className="text-6xl font-bold tracking-tighter">{formatWithThousands(usdcbalance || '0')}</span>
+										<span className="text-xl font-medium ml-2 opacity-80">USDC</span>
 									</div>
-									<div className="text-white/70 mt-1 text-sm tabular-nums">
-										≈ {fiatPrefix('CAD')} {formatWithThousands(balanceFiat)}
-									</div>
+									<div className="text-white/70 font-medium">≈ CA$ {formatWithThousands(balanceFiat)}</div>
 								</div>
-
-								{/* 地址显示 */}
 								{myAddress && (
-									<div className="flex justify-start mt-auto">
-										<button
-											type="button"
-											onClick={(e) => {
-												e.stopPropagation()
-												copyAddress(myAddress, 'eoa')
-											}}
-											className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors"
-										>
-											{`${myAddress.slice(0, 6)}...${myAddress.slice(-4)}`}
-											{addressCopied === 'eoa' ? (
-												<Check size={10} className="text-emerald-400 shrink-0" />
-											) : (
-												<Copy size={10} />
-											)}
-										</button>
-									</div>
+									<button
+										type="button"
+										onClick={(e) => { e.stopPropagation(); copyAddress(myAddress, 'eoa') }}
+										className="bg-black/20 backdrop-blur-md px-4 py-2 rounded-full inline-flex items-center space-x-2 border border-white/10 font-mono text-sm mx-auto block w-fit"
+									>
+										<span>{myAddress.slice(0, 6)}...{myAddress.slice(-4)}</span>
+										{addressCopied === 'eoa' ? <Check className="w-3 h-3 opacity-70" /> : <Copy className="w-3 h-3 opacity-70" />}
+									</button>
 								)}
 							</div>
-						</div>
-						</div>
 
-						{/* LAYER 2: EXPRESS PAY & CCSA STACK */}
-						<div
-							className={`relative perspective-1000 min-h-[400px] transition-transform duration-500 ${
-								activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''
-							}`}
-						>
-						<div className="flex justify-between items-center mb-3 ml-1">
-							<h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-								{activeView === 'aa'
-									? 'Express Pay'
-									: activeView === 'ccsa'
-									? 'CCSA Card'
-									: 'Express Pay & Cards'}
-							</h2>
-						</div>
-
-						<div className="relative transition-all duration-500">
-							{cards
-								.filter((c) => c.id !== 'eoa')
-								.filter((c) => c.id !== 'ccsa' || !!profiles?.[0]?.aaAccount)
-								.map((card, index) => {
-									const isSelected = activeView === card.id
-
-									// 计算卡片位置
-									let top = index * 55
-									if (activeView && activeView !== 'eoa') {
-										top = isSelected ? 0 : 800
-									} else if (activeView === 'eoa') {
-										top = index * 30
-									}
-
-									// Express Pay 卡片 - 如果 AA 账户不存在，显示创建按钮
-									if (card.id === 'aa' && !profiles?.[0]?.aaAccount) {
-										return (
-											<div
-												key={card.id}
-												className="absolute w-full h-52 rounded-[24px] text-white shadow-lg transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) bg-gradient-to-br from-slate-800 to-slate-900"
-												style={{
-													top: `${top}px`,
-													zIndex: isSelected ? 60 : 50 - index,
-													transform:
-														activeView && activeView !== 'eoa' && !isSelected
-															? 'scale(0.95)'
-															: 'scale(1)',
-													opacity: activeView && activeView !== 'eoa' && !isSelected ? 0 : 1,
-												}}
-											>
-												<button
-													type="button"
-													onClick={() => navigate('/settings')}
-													className="relative w-full h-full p-6 flex flex-col justify-center items-center cursor-pointer overflow-hidden border-2 border-dashed border-slate-600 group hover:border-purple-400 transition-colors"
-												>
-													<div className="absolute inset-0 bg-purple-600/10 group-hover:bg-purple-600/20 transition-colors pointer-events-none" />
-													<div className="z-10 bg-white/10 p-4 rounded-full mb-3 backdrop-blur-sm group-hover:scale-110 transition-transform">
-														<Plus size={32} className="text-purple-300" />
-													</div>
-													<h3 className="text-xl font-bold z-10">Create Express Pay</h3>
-													<p className="text-slate-400 text-sm mt-2 z-10 text-center px-8">
-														Unlock gas-free payments & exclusive vouchers
-													</p>
-												</button>
-											</div>
-										)
-									}
-
-									// CCSA Card 特殊样式
-									if (card.isCCSA) {
-										return (
-											<div
-												key={card.id}
-												onClick={() => handleCardClick(card.id)}
-												className="absolute w-full h-52 rounded-[24px] text-white shadow-lg transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) overflow-hidden"
-												style={{
-													top: `${top}px`,
-													zIndex: isSelected ? 60 : 50 - index,
-													transform:
-														activeView && activeView !== 'eoa' && !isSelected
-															? 'scale(0.95)'
-															: 'scale(1)',
-													opacity: activeView && activeView !== 'eoa' && !isSelected ? 0 : 1,
-												}}
-											>
-												{/* CCSA Background */}
-												<img
-													src={ccsabackphoto}
-													alt="CCSA Card"
-													className="absolute inset-0 h-full w-full object-cover"
-													draggable={false}
-												/>
-												<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
-												<div
-													className="absolute inset-0 pointer-events-none"
-													style={{
-														boxShadow:
-															'inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -30px 70px rgba(0,0,0,0.42)',
-													}}
-												/>
-
-												<div className="p-5 h-full flex flex-col justify-between relative z-10">
-													<div className="flex justify-between items-start">
-														<div className="flex items-center gap-3">
-															<div
-																className="w-10 h-10 rounded-full grid place-items-center shrink-0"
-																style={{
-																	background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)',
-																	boxShadow:
-																		'0 14px 30px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,255,255,0.38)',
-																}}
-															>
-																<Globe className="h-5 w-5 text-white drop-shadow" />
-															</div>
-															<div>
-																<div className="text-[18px] font-black tracking-wide text-[#fff2c6] drop-shadow-sm font-serif">
-																	CCSA
-																</div>
-																<div className="text-[18px] font-black tracking-wide text-[#fff2c6] -mt-0.5 drop-shadow-sm font-serif">
-																	CARD
-																</div>
-															</div>
-														</div>
-														<div className="flex items-center gap-2 shrink-0">
-															<button
-																type="button"
-																className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
-																onClick={(e) => {
-																	e.stopPropagation()
-																	refreshCcsaAssets()
-																}}
-																disabled={ccsaReflash}
-																aria-label="Refresh CCSA"
-															>
-																<RefreshCw className={`w-4 h-4 text-white ${ccsaReflash ? 'animate-spin opacity-80' : ''}`} strokeWidth={2.5} />
-															</button>
-															<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1">
-																<Globe size={10} className="text-white" />
-																Membership
-															</div>
-														</div>
-													</div>
-
-													<div className="flex items-end justify-between gap-2 min-w-0">
-														<div>
-															<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">Balance</p>
-															<div className="flex items-baseline gap-1">
-																<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">
-																	{formatWithThousands(card.balance)}
-																</span>
-																<span className="text-sm font-semibold opacity-90 text-[#fff2c6]">CAD</span>
-															</div>
-														</div>
-														{/* 右下方：会员 NFT number，与 Balance 底边对齐 */}
-														{(() => {
-															const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
-															const tokenId = nft?.tokenId
-															const memberNo = tokenId ? `M-${String(tokenId).padStart(6, '0')}` : null
-															if (!memberNo) return null
-															return (
-																<div className="relative font-mono text-[10px] tracking-[0.2em] uppercase font-semibold shrink-0 pb-0.5">
-																	<span className="absolute inset-0 text-black/45 translate-y-[1px]">
-																		MEMBER&nbsp;NO.&nbsp;{memberNo}
-																	</span>
-																	<span className="relative text-[#f5fffd] block">
-																		MEMBER&nbsp;NO.&nbsp;{memberNo}
-																	</span>
-																</div>
-															)
-														})()}
-													</div>
-												</div>
-											</div>
-										)
-									}
-
-									// Express Pay 卡片 - express 风格渐变
-									return (
-										<div
-											key={card.id}
-											onClick={() => handleCardClick(card.id)}
-											className={`absolute w-full h-52 rounded-[24px] text-white shadow-lg transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) ${card.id === 'aa' ? '' : card.gradient}`}
-											style={{
-												...(card.id === 'aa' ? { background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)' } : {}),
-												top: `${top}px`,
-												zIndex: isSelected ? 60 : 50 - index,
-												transform:
-													activeView && activeView !== 'eoa' && !isSelected
-														? 'scale(0.95)'
-														: 'scale(1)',
-												opacity: activeView && activeView !== 'eoa' && !isSelected ? 0 : 1,
-											}}
-										>
-											<div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl pointer-events-none" />
-											<div className="p-5 h-full flex flex-col justify-between relative z-10">
-													<div className="flex justify-between items-start">
-													<div className="flex items-center gap-2">
-														<button
-															type="button"
-															className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
-															onClick={(e) => {
-																e.stopPropagation()
-																reflashProcess('aa')
-															}}
-															disabled={aaReflash}
-															aria-label="Refresh"
-														>
-															<img
-																src={base_icon}
-																alt="Base"
-																className={`w-5 h-5 object-contain ${aaReflash ? 'animate-spin opacity-80' : ''}`}
-															/>
-														</button>
-														<span className="font-medium">Express Pay</span>
-													</div>
-													<button
-														type="button"
-														className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm px-3 py-1.5 transition hover:bg-white/30 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 disabled:active:scale-100"
-														onClick={async (e) => {
-															e.stopPropagation()
-															if (payMeSigning || !profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor) return
-															setPayMeSigning(true)
-															try {
-																const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], '10000', { deadlineSeconds: 3 * 60 })
-																setOpenRelayPayload(payload)
-																setShowFooter(false)
-																setAaPanelOpen('BeamioPayMeQR')
-															} catch (err) {
-																console.error('Pay Me signature failed', err)
-															} finally {
-																setPayMeSigning(false)
-															}
-														}}
-														disabled={payMeSigning}
-														aria-label="Pay QR"
-													>
-														{payMeSigning ? (
-															<Loader size={16} className="text-white shrink-0 animate-spin" strokeWidth={2.4} />
-														) : (
-															<QrCode size={16} className="text-white shrink-0" />
-														)}
-														<span className="text-xs font-semibold text-white tracking-wide">PAY CODE</span>
-													</button>
-												</div>
-
-												<div className="text-center mt-4">
-													<div className={`text-5xl font-bold tracking-tight tabular-nums ${card.id === 'aa' ? 'text-[#4ade80]' : 'text-white'}`}>
-														{formatWithThousands(card.balance)}{' '}
-														<span className={`text-2xl font-normal ${card.id === 'aa' ? 'text-[#4ade80]/90' : 'opacity-80'}`}>USDC</span>
-													</div>
-													<div className={card.id === 'aa' ? 'text-[#4ade80]/70 mt-1 text-sm tabular-nums' : 'text-white/70 mt-1 text-sm tabular-nums'}>
-														≈ {fiatPrefix('CAD')} {formatWithThousands(card.balanceFiat)}
-													</div>
-												</div>
-
-												{/* 地址显示 */}
-												{card.address && (
-													<div className="flex justify-start mt-auto">
-														<button
-															type="button"
-															onClick={(e) => {
-																e.stopPropagation()
-																copyAddress(card.address, 'aa')
-															}}
-															className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors"
-														>
-															{`${card.address.slice(0, 6)}...${card.address.slice(-4)}`}
-															{addressCopied === 'aa' ? (
-																<Check size={10} className="text-emerald-400 shrink-0" />
-															) : (
-																<Copy size={10} />
-															)}
-														</button>
-													</div>
-												)}
-											</div>
+							{/* LAYER 2: EXPRESS PAY (AA) - 点击展开/折叠 passes，或创建入口 */}
+							{!profiles?.[0]?.aaAccount ? (
+								<div
+									className="absolute top-0 w-full rounded-[32px] p-6 text-white shadow-lg transition-all duration-500"
+									style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)', transform: 'translateY(150px)', zIndex: 20 }}
+								>
+									<button
+										type="button"
+										onClick={() => navigate('/settings')}
+										className="relative w-full h-full p-6 flex flex-col justify-center items-center cursor-pointer overflow-hidden border-2 border-dashed border-white/30"
+									>
+										<div className="z-10 bg-white/10 p-4 rounded-full mb-3 backdrop-blur-sm">
+											<Plus size={32} className="text-white" />
 										</div>
-									)
-								})}
+										<h3 className="text-xl font-bold z-10">Create Express Pay</h3>
+										<p className="text-white/70 text-sm mt-2 z-10 text-center px-8">Unlock gas-free payments & exclusive vouchers</p>
+									</button>
+								</div>
+							) : (
+								<div
+									onClick={() => setIsExpressExpanded(!isExpressExpanded)}
+									className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-[0_20px_50px_-12px_rgba(79,70,229,0.5)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'translate-y-[240px]' : 'translate-y-[150px]'}`}
+									style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)', zIndex: 20 }}
+								>
+									<div className="flex justify-between items-center mb-8">
+										<div className="flex items-center space-x-2">
+											<div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center">
+												<Zap className="w-4 h-4 fill-current" />
+											</div>
+											<span className="font-medium text-lg tracking-wide">Express Pay</span>
+										</div>
+										<button
+											type="button"
+											className="flex items-center space-x-2 border border-white/30 rounded-full px-4 py-1.5 backdrop-blur-md bg-white/5 active:bg-white/20"
+											onClick={async (e) => {
+												e.stopPropagation()
+												if (payMeSigning || !profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor) return
+												setPayMeSigning(true)
+												try {
+													const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], '10000', { deadlineSeconds: 3 * 60 })
+													setOpenRelayPayload(payload)
+													setShowFooter(false)
+													setAaPanelOpen('BeamioPayMeQR')
+												} catch (err) {
+													console.error('Pay Me signature failed', err)
+												} finally {
+													setPayMeSigning(false)
+												}
+											}}
+											disabled={payMeSigning}
+										>
+											{payMeSigning ? <Loader size={16} className="animate-spin" /> : <QrCode className="w-4 h-4" />}
+											<span className="text-xs font-bold tracking-wider">PAY CODE</span>
+										</button>
+									</div>
+									<div className="text-center mb-10">
+										<div className="flex items-baseline justify-center">
+											<span className="text-6xl font-bold tracking-tighter text-[#4ade80]">{formatWithThousands(aaAccountUsdcBalance)}</span>
+											<span className="text-xl font-medium ml-2 opacity-80 text-[#4ade80]">USDC</span>
+										</div>
+										<div className="text-[#4ade80]/70 font-medium">≈ CA$ {formatWithThousands(aaBalanceFiat)}</div>
+									</div>
+									{profiles?.[0]?.aaAccount && (
+										<button
+											type="button"
+											onClick={(e) => { e.stopPropagation(); copyAddress(profiles[0].aaAccount, 'aa') }}
+											className="bg-black/20 backdrop-blur-md px-4 py-2 rounded-full inline-flex items-center space-x-2 border border-white/10 font-mono text-sm mx-auto block w-fit"
+										>
+											<span>{profiles[0].aaAccount.slice(0, 6)}...{profiles[0].aaAccount.slice(-4)}</span>
+											{addressCopied === 'aa' ? <Check className="w-3 h-3 opacity-70" /> : <Copy className="w-3 h-3 opacity-70" />}
+										</button>
+									)}
+									<div className="absolute bottom-4 right-6 opacity-50 animate-bounce">
+										{isExpressExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+									</div>
+								</div>
+							)}
+
+							{/* LAYER 3: PASSES (CCSA + userCards) - 展开时显示，exampleExpress 风格叠卡 */}
+							{profiles?.[0]?.aaAccount && (
+								<div
+									className={`absolute top-[480px] w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isExpressExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-20 pointer-events-none'}`}
+									style={{ zIndex: 15 }}
+								>
+									<div className="mb-4">
+										<div className="bg-white rounded-xl px-4 py-2 flex items-center shadow-sm border border-gray-100">
+											<Search className="w-4 h-4 text-gray-400 mr-2" />
+											<input
+												type="text"
+												placeholder="Search passes..."
+												className="bg-transparent text-sm w-full outline-none text-gray-700 placeholder-gray-400"
+												value={passSearchTerm}
+												onChange={(e) => setPassSearchTerm(e.target.value)}
+											/>
+										</div>
+									</div>
+									<div className="flex items-center justify-between px-2 mb-2">
+										<span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{filteredPasses.length} Passes</span>
+									</div>
+									<div className="relative pb-32">
+										{filteredPasses.length > 0 ? (
+											filteredPasses.map((pass, index) => {
+												const overlap = 135
+												return (
+													<div
+														key={pass.id}
+														onClick={() => handleCardClick('ccsa')}
+														className="w-full h-48 rounded-[24px] p-6 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform origin-top hover:translate-y-[-8px] border border-white/10"
+														style={{
+															background: pass.bg,
+															zIndex: index,
+															marginTop: index === 0 ? 0 : `-${overlap}px`,
+															color: pass.textColor || 'white',
+															boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
+															transform: `scale(${Math.max(0.95, 1 - index * 0.01)})`,
+														}}
+													>
+														<div className="flex justify-between items-center mb-3">
+															<div className="flex items-center gap-3">
+																<div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/10 shadow-sm">
+																	{pass.id === 'ccsa' ? <Globe className="w-4 h-4 text-white" /> : <CreditCard className="w-4 h-4 text-white" />}
+																</div>
+																<div className="flex flex-col">
+																	<h3 className="font-bold text-sm leading-tight text-white/90 drop-shadow-sm">{pass.displayName}</h3>
+																	<span className="text-[10px] opacity-70 uppercase tracking-wider">{pass.type}</span>
+																</div>
+															</div>
+															<div className="text-right">
+																<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
+																	{pass.balance}
+																	<span className="text-xs font-medium ml-1 opacity-80">{pass.currency}</span>
+																</h2>
+															</div>
+														</div>
+														<div className="mt-auto pt-8 flex justify-end items-end opacity-40">
+															<p className="text-[10px] font-mono tracking-widest">{pass.memberNo}</p>
+														</div>
+													</div>
+												)
+											})
+										) : (
+											<div className="text-center py-10 text-gray-400 text-sm">No passes found</div>
+										)}
+									</div>
+								</div>
+							)}
 						</div>
-						</div>
+
 					</div>
 
 					{/* 40% 黑色遮罩：盖住背后被压住的卡片，点击关闭 */}
@@ -1279,9 +1346,9 @@ export default function MyWalletDashboardNew() {
 						/>
 					)}
 
-					{/* DETAILS PANEL - 盖住卡片，距离顶部 刘海+8rem，z 高于卡片 */}
+					{/* DETAILS PANEL - 盖住卡片，距离顶部 刘海+1rem，z 高于卡片 */}
 					<div
-						className={`absolute inset-x-0 bottom-0 bg-[#F2F2F7] rounded-t-[32px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-[80] flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
+						className={`absolute inset-x-0 bottom-0 bg-[#F2F2F7] rounded-t-[4px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-[80] flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
 							activeView ? 'translate-y-0' : 'translate-y-[1000px]'
 						}`}
 						style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
@@ -1790,7 +1857,7 @@ export default function MyWalletDashboardNew() {
 					</div>
 				</div>
 
-				{/* EOA Send / Bank 底部浮层（z-[100] 高于卡片 z-60，确保盖住 card） */}
+				{/* EOA Send / Bank 底部浮层 */}
 				<div
 					className={`fixed inset-0 z-[100] ${eoaPanelOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
 					aria-hidden={!eoaPanelOpen}
@@ -2314,7 +2381,18 @@ export default function MyWalletDashboardNew() {
 					</AnimatePresence>,
 					document.body
 				)}
+
+				{/* Manage Passes Overlay - Edit 按钮打开 */}
+				<ManageCardsOverlay
+					isOpen={isManagingCards}
+					onClose={() => setIsManagingCards(false)}
+					allPasses={allPassesForManage}
+					onUpdateStatus={updatePassStatus}
+					onRename={renamePass}
+				/>
 			</div>
 		</div>
+		<style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } } .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1); }`}</style>
+		</>
 	)
 }

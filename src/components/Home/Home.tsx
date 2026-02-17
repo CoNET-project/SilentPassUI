@@ -35,11 +35,22 @@ import ActivePannel from '@/pages/History/components/activePannel'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
+import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 
 
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
+
+/** beamio 表示 name 的 protocol，与 ChatList displayName 一致。兼容 beamio 与 searchResult 两种类型 */
+const displayName = (item: beamio | searchResult | null | undefined) => {
+	if (!item) return ''
+	const first = 'first_name' in item ? item.first_name : (item as beamio).firstName ?? ''
+	const lastRaw = 'last_name' in item ? item.last_name : (item as beamio).lastName ?? ''
+	const lastname = String(lastRaw || '').split('\r\n') || []
+	const fullName = `${first || ''} ${/^\{/.test(lastname[0] || '') ? '' : lastname[0] || ''}`.trim()
+	return fullName || (item as beamio).accountName || (item as searchResult).username || (item as beamio).address || (item as searchResult).address || ''
+}
 
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
@@ -79,6 +90,7 @@ const Home = ({}) => {
 
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
+	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -559,11 +571,10 @@ const Home = ({}) => {
 							{/* Gas sponsored */}
 							<div className="flex justify-end mb-4">
 								<div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 backdrop-blur-sm">
-									
-										<Sparkles
-											className="w-4 h-4 text-amber-500"
-											strokeWidth={2.2}
-										/>
+									<Sparkles
+										className="w-4 h-4 text-amber-500"
+										strokeWidth={2.2}
+									/>
 									<span className="text-[11px] font-medium text-white">
 										Gas sponsored
 									</span>
@@ -801,13 +812,13 @@ const Home = ({}) => {
 								)}
 								<div className="flex flex-col items-start">
 									<span className="text-xs font-bold text-gray-500 ml-0.5">
-										{beamio?.accountName ? beamio.accountName.split('@')[0] || 'User' : 'User'}
+										{displayName(beamio) || 'User'}
 									</span>
 									<div className="flex items-center space-x-1">
 										<span className="text-lg font-bold text-gray-900">
-											{beamio?.accountName ?? '@Beamio'}
+											@{beamio?.accountName ?? '@Beamio'}
 										</span>
-										<BadgeCheck className="w-4 h-4 text-[#1562f0]" fill="currentColor" />
+										
 									</div>
 								</div>
 							</button>
@@ -825,10 +836,19 @@ const Home = ({}) => {
 						<div className="px-5 pt-6 space-y-6">
 							{/* Total Valuation - exampleExpress style */}
 							<div className="text-center py-4">
-								<div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white rounded-full shadow-sm border border-gray-100 mb-4">
-									<Zap className="w-3.5 h-3.5 text-yellow-500 fill-current" />
+								<button
+									type="button"
+									onClick={reflashProcess}
+									disabled={reflash}
+									className={`
+										inline-flex items-center space-x-1.5 px-3 py-1 bg-white rounded-full shadow-sm border border-gray-100 mb-4
+										transition active:scale-[0.98]
+										${reflash ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:bg-gray-50'}
+									`}
+								>
+									<Zap className={`w-3.5 h-3.5 text-yellow-500 fill-current ${reflash ? 'animate-spin' : ''}`} />
 									<span className="text-xs font-semibold text-gray-600">Beamio Sponsored Gas</span>
-								</div>
+								</button>
 								<h2 className="text-sm font-medium text-gray-500 mb-1 tracking-wide">
 									Total Valuation ({currency})
 								</h2>
@@ -846,7 +866,7 @@ const Home = ({}) => {
 								</div>
 							</div>
 
-							{/* Send | Receive + Add Cash - exampleExpress grid */}
+							{/* Send | Receive + Add Cash - exampleExpress grid，蓝色背景 + 白字 */}
 							<div className="grid grid-cols-2 gap-3">
 								<button
 									type="button"
@@ -854,20 +874,20 @@ const Home = ({}) => {
 										setSettingsOpen('Pay')
 										setShowFooter(false)
 									}}
-									className="bg-white p-4 rounded-[28px] shadow-sm border border-gray-100 active:scale-[0.98] transition-transform flex flex-col justify-between h-32 group"
+									className="bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 p-4 rounded-[28px] shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-transform flex flex-col justify-between h-32 group text-white"
 								>
-									<div className="w-10 h-10 rounded-full bg-[#1562f0]/10 flex items-center justify-center self-start group-hover:bg-[#1562f0] transition-colors">
-										<ArrowUpRight className="w-5 h-5 text-[#1562f0] group-hover:text-white transition-colors" />
+									<div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center self-start group-hover:bg-white/30 transition-colors">
+										<ArrowUpRight className="w-5 h-5 text-white" />
 									</div>
 									<div className="text-left">
-										<span className="block font-bold text-gray-900">Send</span>
-										<span className="text-xs text-gray-400">0 Gas USDC</span>
+										<span className="block font-bold text-white">Send</span>
+										<span className="text-xs text-white/80">0 Gas USDC</span>
 									</div>
 								</button>
 								<div className="space-y-3">
 									<button
 										type="button"
-										onClick={() => { setPayTag('request'); navigate('/Pay') }}
+										onClick={() => setShowPayMeSheet(true)}
 										className="w-full bg-white p-3 rounded-[24px] shadow-sm border border-gray-100 active:scale-[0.98] transition-transform flex items-center space-x-3"
 									>
 										<div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center">
@@ -929,6 +949,53 @@ const Home = ({}) => {
 
 
 
+
+			{/* Receive - BeamioPayMe 底部滑出 */}
+			{createPortal(
+				<AnimatePresence>
+					{showPayMeSheet && (
+						<>
+							<motion.div
+								className="fixed inset-0 z-[9997] bg-black/40"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+								transition={{ duration: 0.2 }}
+								onClick={() => setShowPayMeSheet(false)}
+							/>
+							<motion.div
+								className="fixed left-0 right-0 bottom-0 z-[9998] bg-white dark:bg-slate-900 rounded-t-[24px] shadow-2xl flex flex-col pb-[calc(env(safe-area-inset-bottom)+4rem)]"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="flex-shrink-0 flex items-center justify-between px-4 py-2">
+									<div className="w-10" />
+									<div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-slate-600" />
+									<button
+										type="button"
+										onClick={() => setShowPayMeSheet(false)}
+										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+										aria-label="Close"
+									>
+										<X className="w-5 h-5" />
+									</button>
+								</div>
+								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+									<BeamioPayMe
+										showActiveTab={false}
+										hideOuterFrame
+										onClose={() => setShowPayMeSheet(false)}
+									/>
+								</div>
+							</motion.div>
+						</>
+					)}
+				</AnimatePresence>,
+				document.body
+			)}
 
 			{!openSearch && showAlphaHowItWorks && createPortal(
 				<AnimatePresence>

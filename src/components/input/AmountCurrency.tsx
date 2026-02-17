@@ -23,7 +23,6 @@ type Prof = {
 	sendError: string
 	setSendError: (val: string) => void
 	focusSignal?: boolean
-	currencyUSDC?: boolean
 	feePlus?: boolean
 	currencyChange?: (val: ICurrency) => void
 	/** AA→EOA 时传入 AA 余额，覆盖 usdcbalance；未传则用 context 的 usdcbalance */
@@ -40,6 +39,7 @@ const CURRENCY_META: Record<ICurrency, { flag: string; sym: string; maxDp: numbe
 	HKD: { flag: "🇭🇰", sym: "$", maxDp: 2 },
 	TWD: { flag: "🇹🇼", sym: "NT$", maxDp: 0 },
 	SGD: { flag: "🇸🇬", sym: "$", maxDp: 2 },
+	USDC: { flag: "🪙", sym: "$", maxDp: 4 },
 }
 
 // 0.8% fee, min 0.02, max 2 USDC
@@ -84,20 +84,23 @@ function calcFeeFromReceived(received: number) {
 	return Number(feeByRatio.toFixed(4))
 }
 
-const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setSendError, sendError, focusSignal, currencyUSDC=false, feePlus=false, currencyChange, balanceOverride}: Prof) => {
+const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setSendError, sendError, focusSignal, feePlus=false, currencyChange, balanceOverride}: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
 
-	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>('USD')
+	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>(() => beamio?.currency ?? 'USD')
 	const [showCurrencyPicker, setShowCurrencyPicker] = useState(false)
+
+	const effectiveCurrency: ICurrency = currentCurrency
+	const isUSDCMode = effectiveCurrency === 'USDC'
 
 	// ✅ UI 显示值：当前 currency 的金额（input 只绑定它）
 	const [displayAmount, setDisplayAmount] = useState("0")
 
 	const lastSentUsdcRef = useRef<string>("")
 	const firstEditArmedRef = useRef(true)
-	const prevModeRef = useRef<boolean>(currencyUSDC)
+	const prevCurrencyRef = useRef<ICurrency>(effectiveCurrency)
 	
 
 	// Focus management
@@ -107,21 +110,23 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	
 
 	// ---------- FX helpers ----------
-	const maxDp = currencyUSDC ? 4 : (CURRENCY_META[currentCurrency]?.maxDp ?? 2)
+	const maxDp = (CURRENCY_META[effectiveCurrency]?.maxDp ?? 2)
 	const currencySymbol = (c: ICurrency) => CURRENCY_META[c]?.sym ?? "$"
 	const currencyFlag = (c: ICurrency) => CURRENCY_META[c]?.flag ?? ""
 
-	// 1 USDC -> ? USD, 1 USD -> ? currency
+	// 1 USDC -> ? USD, 1 USD -> ? currency；USDC 直接 1:1
 	const usdcUsd = useMemo(() => Number((currencyData as any)?.USDC ?? 1), [currencyData])
-	const usdToCur = (c: ICurrency) => (c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
+	const usdToCur = (c: ICurrency) => (c === "USDC" ? 1 : c === "USD" ? 1 : Number((currencyData as any)?.[c] ?? 1))
 
 	const usdcToCurrencyAmount = (usdc: number, c: ICurrency) => {
+		if (c === 'USDC') return usdc
 		const u2u = usdcUsd || 1
 		const u2c = usdToCur(c) || 1
 		return usdc * u2u * u2c
 	}
 
 	const currencyToUsdcAmount = (cur: number, c: ICurrency) => {
+		if (c === 'USDC') return cur
 		const u2u = usdcUsd || 1
 		const u2c = usdToCur(c) || 1
 		if (!u2u || !u2c) return 0
@@ -147,9 +152,9 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}, [])
 
 	function fxRateUSDCToCurrency(currency: ICurrency): number {
+		if (currency === 'USDC') return 1
 		// 1 USDC = ? USD
 		const usdcToUSD = currencyData.USDC ?? 1
-
 		if (currency === 'USD') return usdcToUSD
 
 		const usdToCurrency = currencyData[currency]
@@ -174,10 +179,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}
 
 	useEffect(() => {
-		const prev = prevModeRef.current
-		
-		prevModeRef.current = currencyUSDC
-
+		prevCurrencyRef.current = effectiveCurrency
 		firstEditArmedRef.current = true
 
 		// ✅ 对齐成 0，避免后续 sync effect “认为不是本组件刚发出的”
@@ -185,10 +187,11 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		lastSentUsdcRef.current = zeroUsdcStr
 
 		setAmount(zeroUsdcStr)
-		setDisplayAmount(currencyUSDC ? zeroUsdcStr : formatCurrencyAmount(0, currentCurrency))
+		setDisplayAmount(isUSDCMode ? zeroUsdcStr : formatCurrencyAmount(0, effectiveCurrency))
 
 		setSendError("")
-	}, [currencyUSDC]) // 保持依赖不变即可
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [effectiveCurrency])
 	
 
 	useEffect(() => {
@@ -245,15 +248,15 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		const usdc = Number(amount || 0)
 		const safeUsdc = Number.isFinite(usdc) ? usdc : 0
 
-		if (currencyUSDC) {
-			setDisplayAmount(formatUsdc(safeUsdc)) // ✅ USDC 模式：显示 USDC
+		if (isUSDCMode) {
+			setDisplayAmount(formatUsdc(safeUsdc)) // ✅ USDC：直接显示 USDC
 		} else {
-			const curValue = usdcToCurrencyAmount(safeUsdc, currentCurrency)
-			setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency)) // ✅ 法币模式：显示法币
+			const curValue = usdcToCurrencyAmount(safeUsdc, effectiveCurrency)
+			setDisplayAmount(formatCurrencyAmount(curValue, effectiveCurrency)) // ✅ 法币：显示法币
 		}
 		
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [amount, currentCurrency, currencyData, showCurrencyPicker, displayAmount])
+	}, [amount, effectiveCurrency, currencyData, showCurrencyPicker, displayAmount])
 
 	// ---------- Picker open/close ----------
 	const openPicker = () => {
@@ -326,17 +329,17 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		setBeamio({...bo})
 	}
 
-	// ---------- Pick currency (USDC truth stays) ----------
+	// ---------- Pick currency（含 USDC，由 CurrencyPicker 返回）----------
 	const pickCurrency = (next: ICurrency) => {
 		setcurrentCurrency(next)
 		if (currencyChange) {
 			currencyChange(next)
 		}
 		const usdc = Number(amount || 0)
-		const nextDisplay = usdcToCurrencyAmount(Number.isFinite(usdc) ? usdc : 0, next)
-		setDisplayAmount(formatCurrencyAmount(nextDisplay, next))
+		const nextDisplay = next === 'USDC' ? usdc : usdcToCurrencyAmount(Number.isFinite(usdc) ? usdc : 0, next)
+		setDisplayAmount(next === 'USDC' ? formatUsdc(nextDisplay) : formatCurrencyAmount(nextDisplay, next))
 		
-		handleSaveAvatar(next)
+		if (next !== 'USDC') handleSaveAvatar(next) // USDC 为输入模式，不写入 beamio.currency
 		setSendError("")
 		closePicker()
 	}
@@ -346,17 +349,18 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		const usdc = effectiveBalance
 		setAmount(formatUsdc(usdc))
 
-		const curValue = usdcToCurrencyAmount(usdc, currentCurrency)
-		setDisplayAmount(formatCurrencyAmount(curValue, currentCurrency))
+		const curValue = usdcToCurrencyAmount(usdc, effectiveCurrency)
+		setDisplayAmount(isUSDCMode ? formatUsdc(usdc) : formatCurrencyAmount(curValue, effectiveCurrency))
 
 		setSendError("")
 	}
 
 	const approxUsdcText = useMemo(() => {
+		if (isUSDCMode) return "" // USDC 模式不显示 ≈ 提示
 		const v = Number(displayAmount || 0)
 		if (!Number.isFinite(v) || v <= 0) return ""
 
-		const usdc = currencyToUsdcAmount(v, currentCurrency)
+		const usdc = currencyToUsdcAmount(v, effectiveCurrency)
 		if (!Number.isFinite(usdc) || usdc <= 0) return ""
 
 		let decimals = 0
@@ -371,13 +375,11 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		})
 
 		return `${formatted}`
-	}, [displayAmount, currentCurrency, currencyData])
+	}, [displayAmount, effectiveCurrency, currencyData, isUSDCMode])
 
 	const onVChange = (n: number) => {
-
-		if (currencyUSDC) {
-			const fee = feePlus ? calcFeeFromReceived(n) :calcFeeFromNumber(n)
-
+		if (isUSDCMode) {
+			const fee = feePlus ? calcFeeFromReceived(n) : calcFeeFromNumber(n)
 			if (feePlus) {
 				n += fee
 			}
@@ -387,15 +389,11 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			setAmount(usdcStr)
 			checkBalance(usdc)
 		} else {
-		
-			let usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, currentCurrency)
-			
-			const fee = feePlus ? calcFeeFromReceived(usdc) :calcFeeFromNumber(usdc)
+			let usdc = currencyToUsdcAmount(Number.isFinite(n) ? n : 0, effectiveCurrency)
+			const fee = feePlus ? calcFeeFromReceived(usdc) : calcFeeFromNumber(usdc)
 			if (feePlus) {
 				usdc += fee
 			}
-
-
 			const usdcStr = formatUsdc(usdc)
 			lastSentUsdcRef.current = usdcStr
 			setAmount(usdcStr)
@@ -404,7 +402,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}
 
 	return (
-		<div className="mb-3 overflow-visible">
+		<div className="mb-3 overflow-visible mt-10">
 			{/* ===================== Input view ===================== */}
 			<div>
 				{/**		Balance  */}
@@ -442,13 +440,13 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						value={displayAmount}
 						onFocus={() => {
 							// 当显示是默认 0.00（或 JPY 的 0）时，武装"首次键入替换"
-							const zeroDisplay = formatCurrencyAmount(0, currentCurrency)
+							const zeroDisplay = isUSDCMode ? formatUsdc(0) : formatCurrencyAmount(0, effectiveCurrency)
 							firstEditArmedRef.current = (displayAmount === zeroDisplay)
 						}}
 						onKeyDown={e => {
 							if (readOnly) return
 							setSendError("")
-							const zeroDisplay = currencyUSDC ? formatUsdc(0) : formatCurrencyAmount(0, currentCurrency)
+							const zeroDisplay = isUSDCMode ? formatUsdc(0) : formatCurrencyAmount(0, effectiveCurrency)
 							
 							if (displayAmount !== zeroDisplay) {
 								firstEditArmedRef.current = false
@@ -537,16 +535,15 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 							onVChange(n)
 						}}
 						readOnly={readOnly}
-						className="
+						className={`
 							w-full h-12
-							text-[32px] leading-none font-semibold
-							text-slate-900
+							text-[60px] leading-none font-semibold
+							${Number(displayAmount) === 0 ? 'text-slate-400/30' : 'text-slate-900'}
 							bg-transparent outline-none
 							text-center
 							selection:bg-sky-200
 							px-16
-							border-b border-slate-400/20
-						"
+						`}
 					/>
 					{
 						// showLimit > 0 && (
@@ -557,8 +554,21 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						// )
 					}
 
-					{/* ≈ USDC hint（右侧，20% 灰） */}
-					{approxUsdcText && !currencyUSDC && (
+					{/* USDC 模式：右侧右对齐显示 "USDC" */}
+					{isUSDCMode && (
+						<div
+							className="
+								pointer-events-none
+								absolute right-1 top-1/2 -translate-y-1/2
+								text-[13px] font-normal text-slate-700 dark:text-slate-100
+								whitespace-nowrap
+							"
+						>
+							USDC
+						</div>
+					)}
+					{/* ≈ USDC hint（法币模式，右侧，20% 灰） */}
+					{approxUsdcText && (
 						<div
 							className="
 								pointer-events-none
@@ -615,28 +625,26 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 					{/* Left */}
 					<div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
-						{/* Currency capsule */}
-						{
-							!currencyUSDC && (
+						{/* Currency capsule：Picker（含 USDC）*/}
+						<IOSGlassPillButton open={showCurrencyPicker} onToggle={openPicker} >
+							{effectiveCurrency === 'USDC' ? (
+								<div className="relative flex-shrink-0 w-4 h-4 min-w-[16px] min-h-[16px]">
+									<img src={usdcIcon} alt="USDC" className="block w-4 h-4 rounded-full object-contain" />
+									<img src={baseIcon} alt="Base" className="block w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
+								</div>
+							) : (
 								<>
-									<IOSGlassPillButton open={showCurrencyPicker} onToggle={openPicker} >
-										<span className="text-[15px] leading-none">   
-											{currencyFlag(currentCurrency)}
-										</span>
-
-										<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
-											{currencySymbol(currentCurrency)}
-										</span>
-									</IOSGlassPillButton>
-									
+									<span className="text-[15px] leading-none">{currencyFlag(effectiveCurrency)}</span>
+									<span className="text-[13px] font-normal text-slate-700 dark:text-slate-100 leading-none">
+										{currencySymbol(effectiveCurrency)}
+									</span>
 								</>
-								
-							)
-						}
+							)}
+						</IOSGlassPillButton>
 							
 
 						{/* MAX */}
-						{currencyUSDC && showMax && (
+						{isUSDCMode && showMax && (
 							<button
 								type="button"
 								onClick={handleMax}
@@ -741,8 +749,8 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			
 					
 
-					{/* 货币网格 */}
-					<CurrencyPicker setCurrentCurrency={pickCurrency} currentCurrency={currentCurrency} />
+					{/* 货币网格（含 USDC，选择后走 USDC 特有 workflow）*/}
+					<CurrencyPicker setCurrentCurrency={pickCurrency} currentCurrency={effectiveCurrency} />
 
 				
 				</div>

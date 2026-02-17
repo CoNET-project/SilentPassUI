@@ -28,6 +28,8 @@ type BeamioPayMeProps = {
 	onClose?: () => void
 	/** 是否隐藏 displayName 和 @accountName */
 	hideName?: boolean
+	/** 是否隐藏主卡片外框（shadow/ring），用于底部滑出面板等嵌入场景 */
+	hideOuterFrame?: boolean
 }
 
 const displayName = (item: beamio|null) => {
@@ -43,7 +45,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	showActiveTab = true,
 	relayPayload = null,
 	onClose,
-	hideName = false
+	hideName = false,
+	hideOuterFrame = false
   } = props
 
 	const [copied, setCopied] = useState(false)
@@ -163,7 +166,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						hideName={hideName}
 					/>
 				) : showMode === 'main' && (
-				<div className="mt-6 rounded-[22px] bg-white shadow-[0_12px_35px_rgba(15,23,42,0.08)] ring-1 ring-black/10 overflow-hidden">
+				<div className={hideOuterFrame ? "mt-6 overflow-hidden" : "mt-6 rounded-[22px] bg-white shadow-[0_12px_35px_rgba(15,23,42,0.08)] ring-1 ring-black/10 overflow-hidden"}>
 					<div className="px-6 pt-4 pb-6">
 					<div className="text-center">
 						{!hideName && (

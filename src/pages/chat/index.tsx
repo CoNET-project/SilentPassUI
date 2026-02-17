@@ -56,10 +56,10 @@ const Home = () => {
 
 
   return (
-		<div className="pt-[calc(env(safe-area-inset-top)+1rem)] h-full">
+		<div className="pt-14 min-h-screen h-full bg-[#F2F2F7]">
 		{/* ✅ 当没选中聊天对象时：搜索 + ChatList */}
 		{!chatData && (
-			<div className="h-full flex flex-col text-slate-900">
+			<div className="min-h-[calc(100vh-3.5rem)] flex flex-col text-slate-900">
 				{/* 顶部：Search */}
 				<div className="px-5 pb-2">
 					<div className="relative mb-4 mt-4">
@@ -92,8 +92,8 @@ const Home = () => {
 				</div>
 
 				{/* ✅ 列表：占满剩余高度 */}
-				<div className="flex-1 min-h-0 overflow-hidden">
-					<div className="h-full overflow-y-auto">
+				<div className="flex-1 min-h-0 min-w-0 overflow-hidden bg-[#F2F2F7]">
+					<div className="h-full overflow-y-auto overflow-x-hidden bg-[#F2F2F7]">
 						<ChatList
 						// 这里你传你维护的 chat list（通常是 profile.chat）
 						list={profiles?.[0]?.chat || []}
@@ -121,9 +121,6 @@ const Home = () => {
 				privateKey={privateKey}
 			/>
 		)}
-
-
-		
 		</div>
   )
 }

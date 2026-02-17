@@ -1092,27 +1092,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 
   return (
-		<div className="fixed inset-0 bg-white">
+		<div className="fixed inset-0 bg-[#F2F2F7]">
 			<ChatHeaderIOS
 				beamioer={fromBeamio}
 				onBack={onBack}
 				online={chatData.chatData.online}
 				avatarSrc={userImg}
-			/>
-
-			{/* ✅ 渐变蒙版：从顶部100%不透明+模糊 -> 下方0%透明+无模糊，高度10rem */}
-			<div
-				className="absolute left-0 right-0 pointer-events-none z-10"
-				style={{
-					top: `0`,
-					height: "10rem",
-					background:
-					"linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)",
-					backdropFilter: "blur(12px)",
-					WebkitBackdropFilter: "blur(12px)",
-					maskImage: "linear-gradient(to bottom, black 0%, transparent 100%)",
-					WebkitMaskImage: "linear-gradient(to bottom, black 0%, transparent 100%)"
-				}}
 			/>
 
 			{/* iOS 风格 Message Reaction 菜单：仅对收到的消息显示，在 message 上方，内容可左右滚动；一点展开/收缩动画 */}
@@ -1175,12 +1160,24 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 			{/* 内容区：消息列表 */}
 			<div
-				className={["absolute inset-0", "bg-white"].join(" ")}
+				className={["absolute inset-0", "bg-[#F2F2F7]"].join(" ")}
 				style={{
 					// paddingTop: "calc(env(safe-area-inset-top) + 140px)",
 					// paddingBottom: "calc(env(safe-area-inset-bottom) + 112px)"
 				}}
 			>
+			{/* 顶部白色渐变蒙版 */}
+			<div
+				className="absolute left-0 right-0 top-0 h-[10rem] pointer-events-none z-10"
+				style={{ background: "linear-gradient(to bottom, rgba(242,242,247,1) 0%, rgba(242,242,247,0) 100%)" }}
+				aria-hidden
+			/>
+			{/* 底部白色渐变蒙版 */}
+			<div
+				className="absolute left-0 right-0 bottom-0 h-[10rem] pointer-events-none z-10"
+				style={{ background: "linear-gradient(to top, rgba(242,242,247,1) 0%, rgba(242,242,247,0) 100%)" }}
+				aria-hidden
+			/>
 			<div
 				ref={scrollRef}
 				className="h-full overflow-y-auto px-4 py-4"
@@ -1671,20 +1668,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 					</div>
 				</div>
 			</div>
-
-			{/* ✅ 渐变蒙版：顶部0%透明+无模糊 -> 下方100%不透明+模糊，高度10rem（固定在底部，不考虑安全区） */}
-			<div
-			className="absolute left-0 right-0 bottom-0 pointer-events-none z-10"
-			style={{
-				height: "10rem",
-				background:
-				"linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,1) 100%)",
-				backdropFilter: "blur(12px)",
-				WebkitBackdropFilter: "blur(12px)",
-				maskImage: "linear-gradient(to bottom, transparent 0%, black 100%)",
-				WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 100%)"
-			}}
-			/>
 		</div>
 		)
 }

@@ -373,6 +373,8 @@ const CreateUsernamePinScreen = forwardRef<
 
     if (!kks) return
 
+	
+
     close({
       qrDataUrl: kks.qrCode,
       pin: password,

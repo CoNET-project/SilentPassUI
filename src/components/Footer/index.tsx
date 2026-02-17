@@ -15,7 +15,7 @@ import { ReactComponent as ChatGreyIcon } from './assets/chat-grey.svg'
 import { ReactComponent as BLogo } from './assets/center-scan-icon.blue.svg'
 import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
 
-import { isStandalone, MobileType, searchUsername, storeSystemData} from '@/services/beamio'
+import { searchUsername, storeSystemData } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import type { Transition } from 'framer-motion'
 
@@ -23,8 +23,8 @@ import type { Transition } from 'framer-motion'
 type TabKey = '/' | '/history' | '/pay' | '/chat' | '/settings'
 type Phase = 'idle' | 'moving' | 'settling' | 'impact'
 
-const ICON_CLASS = 'w-11 h-11 block'
-const SLOT_H = 'h-12'
+const ICON_CLASS = 'w-[18px] h-[18px] block'
+const SLOT_H = 'h-6'
 
 
 
@@ -78,6 +78,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 	const navigate = useNavigate()
 	const { pathname } = useLocation()
+	// 主 Tab 页（/, /history, /pay, /chat, /settings）使用浅色背景 #F2F2F7 或白，Footer 用灰色 20% 透明
+	const isLightBackgroundPage = /^\/(history|pay|chat|settings)?(\/|$)/i.test(pathname || '/')
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
 	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, scanRef } = useDaemonContext()
@@ -260,8 +262,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		prevIndexRef.current = next
 	}, [activeIndex])
 
+	// 移除 isStandalone/MobileType 限制，使 Footer 在 Safari 移动浏览器中也能显示（与 PWA 一致）
 	const shouldRender = useMemo(() => {
-		return showBar && (isStandalone || MobileType() === 'desktop')
+		return showBar
 	}, [showBar])
 
 
@@ -358,9 +361,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				type="button"
 				onClick={() => go(k)}
 				className="
-					relative w-full h-12 px-0.5
+					relative w-full h-6 px-[1px]
 					flex flex-col items-center justify-center
-					gap-[2px]
+					gap-[1px]
 					
 					select-none focus:outline-none
 				"
@@ -370,20 +373,20 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					animate={iconTarget}
 					transition={iconTransition}
 				>
-					{active ? iconBlue : iconGrey}
+					{active ? <span className="inline-flex [&_path]:!fill-[#1652f0] [&_path]:!fill-opacity-100">{iconBlue}</span> : <span className="inline-flex [&_path]:!fill-black [&_path]:!fill-opacity-100">{iconGrey}</span>}
 
 					{badge && (
 						<span
 						className="
-							absolute top-[2px] right-[2px]
+							absolute top-[1px] right-[1px]
 							z-20
-							min-w-[16px] h-[16px] px-1
+							min-w-[8px] h-[8px] px-0.5
 							rounded-full
 							bg-rose-500
-							text-[11px] leading-[16px]
+							text-[9px] leading-[8px]
 							text-white
 							flex items-center justify-center
-							ring-2 ring-white/70 dark:ring-slate-900/60
+							ring-1 ring-white/70 dark:ring-slate-900/60
 						"
 						>
 						{badge}
@@ -393,8 +396,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 				<motion.div
 					className={`
-						text-[11px] leading-none font-medium
-						${active ? 'text-[#9fbfe5]' : 'text-slate-400 dark:text-slate-500'}
+						text-[9px] leading-none font-medium
+						${active ? 'text-[#1652f0]' : 'text-slate-400 dark:text-slate-500'}
 					`}
 					animate={
 						active && (phase === 'impact' || phase === 'settling')
@@ -425,30 +428,31 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			}}
 		>
 			 {/* ✅ 玻璃层：不做 transform，只负责 blur */}
-			<div className="mx-auto max-w-[800px] px-4 pointer-events-auto">
+			<div className="ml-4 max-w-[200px] pointer-events-auto origin-bottom-left" style={{ transform: 'scale(1.3)' }}>
 				<div
 					className="
 						relative
-						rounded-[28px]
+						rounded-[14px]
 						overflow-visible
-						shadow-[0_10px_28px_rgba(0,0,0,0.18)]
 					"
 					>
 					{/* ✅ 背景玻璃层：负责圆角裁切 + blur */}
 					<div
 						className="
 						absolute inset-0
-						rounded-[28px]
+						rounded-[14px]
 						overflow-hidden
 						border border-white/60 dark:border-white/10
-						pt-2 pb-2.5
+						pt-1 pb-1.5
 						"
 						style={{
-						backgroundColor: darkModle
-							? 'rgba(10, 10, 30, 0.4)'
-							: 'rgba(240, 240, 255, 0.95)',
-						WebkitBackdropFilter: 'blur(36px) saturate(150%)',
-						backdropFilter: 'blur(36px) saturate(150%)',
+						backgroundColor: isLightBackgroundPage
+							? 'rgba(100, 116, 139, 0.2)'
+							: darkModle
+								? 'rgba(255, 255, 255, 0.85)'
+								: 'rgba(255, 255, 255, 0.85)',
+						WebkitBackdropFilter: 'blur(1rem)',
+						backdropFilter: 'blur(1rem)',
 						transform: 'translate3d(0,0,0)',
 						WebkitTransform: 'translate3d(0,0,0)',
 						pointerEvents: 'none'
@@ -471,7 +475,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 							}}
 							initial={{
 							x: `${activeIndex * 100}%`,
-							borderRadius: 26,
+							borderRadius: 13,
 							scaleX: 1.06,
 							scaleY: 0.96
 							}}
@@ -492,7 +496,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					</div>
 
 					{/* ✅ 前景内容层：不裁切，所以 badge 可以越界 */}
-					<div className="relative pt-2 pb-2.5 overflow-visible pointer-events-auto">
+					<div className="relative pt-1 pb-1.5 overflow-visible pointer-events-auto">
 						<div className="relative grid grid-cols-5 items-center gap-0 overflow-visible">
 						{tabs.map(t => (
 							<Item

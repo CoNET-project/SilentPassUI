@@ -242,7 +242,7 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound }: Props) {
                             animate={{ y: 0 }}
                             exit={{ y: '100%' }}
                             transition={{ type: 'tween', duration: 0.3 }}
-                            className="relative bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] overflow-hidden pb-[env(safe-area-inset-bottom)]"
+                            className="relative bg-white dark:bg-slate-900 rounded-t-[22px] overflow-hidden pb-[env(safe-area-inset-bottom)]"
                         >
                             <div
                                 className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15 mx-auto mt-2 mb-1"

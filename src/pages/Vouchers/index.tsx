@@ -338,7 +338,6 @@ export default function Vouchers() {
 						"w-full",
 						"bg-white dark:bg-slate-900",
 						"rounded-t-[22px]",
-						"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
 
 						// ✅ 自适应高度，但最多不超过屏幕（避免顶到状态栏）
 						// 你也可以改成 90dvh

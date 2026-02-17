@@ -62,7 +62,7 @@ export default function InstallTerminalSheet({
             aria-hidden
           />
           <motion.div
-            className="fixed inset-x-0 bottom-0 z-[10003] bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.15)] pb-[env(safe-area-inset-bottom)] max-h-[85vh] overflow-y-auto"
+            className="fixed inset-x-0 bottom-0 z-[10003] bg-white dark:bg-slate-900 rounded-t-[22px] pb-[env(safe-area-inset-bottom)] max-h-[85vh] overflow-y-auto"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}

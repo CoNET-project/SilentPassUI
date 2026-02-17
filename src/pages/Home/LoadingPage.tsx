@@ -241,6 +241,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
 	let first = true
 
+	// 仅适用于首次启动（本地存储无 beamio 信息）时的启动 URL 参数，不适用于 scan QR workflow
 	useEffect(() => {
 		if (!first) return
 		first = false
@@ -248,18 +249,27 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
 			const beamioTagParam = urlParams?.get('beamioTag')
 			const masterKeyParam = urlParams?.get('MasterKey')
-			if (beamioTagParam && masterKeyParam) {
-				try {
-					const restored = await restoreWithRedeem(masterKeyParam, '')
-					if (restored) {
-						await init(restored)
-						// 保持 beamioTag、MasterKey 参数在 URL 中，不删除
-						return
-					}
-				} catch (_) {}
+			// beamioTag 优先于 beamiocard：若有 beamioTag，忽略 beamiocard/redeemcode，进入恢复 wallet 流程
+			if (beamioTagParam) {
+				if (masterKeyParam) {
+					try {
+						const restored = await restoreWithRedeem(masterKeyParam, '')
+						if (restored) {
+							await init(restored)
+							// 保持 beamioTag、MasterKey 参数在 URL 中，不删除
+							return
+						}
+					} catch (_) {}
+					setIsInitialEntry(true)
+					setRestoreFromUrlMasterKey(masterKeyParam)
+					setSettingsOpen('RestoreWithQRScreen')
+					setHasCheckedUrl(true)
+					onInitComplete?.()
+					return
+				}
+				// beamioTag 存在但无 MasterKey：直接进入 RestoreEntryScreen（恢复 wallet 入口）
 				setIsInitialEntry(true)
-				setRestoreFromUrlMasterKey(masterKeyParam)
-				setSettingsOpen('RestoreWithQRScreen')
+				setSettingsOpen("RestoreEntryScreen")
 				setHasCheckedUrl(true)
 				onInitComplete?.()
 				return
@@ -269,8 +279,15 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		run()
 	}, [])
 
-	// 解析 URL 中的 redeem 参数
+	// 解析启动 URL 中的 redeem 参数（仅 window.location，非 scan QR）；beamioTag 优先时忽略 beamiocard/redeemcode
 	useEffect(() => {
+		const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+		const hasBeamioTag = !!(urlParams?.get('beamioTag')?.trim())
+		if (hasBeamioTag) {
+			setRedeemFromUrl(null)
+			setHasCheckedUrl(true)
+			return
+		}
 		const parsed = parseRedeemFromUrl()
 		setRedeemFromUrl(parsed)
 		setHasCheckedUrl(true)

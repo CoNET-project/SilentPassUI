@@ -1,6 +1,6 @@
 // App.tsx
 import { useEffect, useRef, useState, useLayoutEffect } from "react"
-import { Route, Routes, useNavigate } from "react-router-dom"
+import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
 import Home from "./pages/Home"
@@ -107,14 +107,16 @@ function AppShell() {
 
   // ✅ 现在安全了：AppShell 已经在 <Router> 内
   const navigate = useNavigate()
+  const { pathname } = useLocation()
 
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] =
     useState<"BeamioContactProfilePreview" | ""|'Pay'>("")
   const [payFocusAmountOnMount, setPayFocusAmountOnMount] = useState(false)
 
+  // 当 showFooter 为 true 或路由变化时恢复 footer 可见，避免 scroll 隐藏后、页面切换时 footerVisible 未重置
   useLayoutEffect(() => {
     if (showFooter) setFooterVisible(true)
-  }, [showFooter])
+  }, [showFooter, pathname])
 
   // 注册 Base RPC 节点提供者与熔断状态：限流时仅使用 CoNET allNodes
   useEffect(() => {
@@ -774,6 +776,7 @@ function AppShell() {
     }
   }
 
+  // scan QR workflow：isInitialLoading 时不处理 scanData，扫码逻辑仅适用于已有 wallet 后的正常使用
   useEffect(() => {
     if (!scanData||isInitialLoading) return
     // voucherPay / payBill 全流程由 TenKeyInputComponent 内的 Smart Routing Analysis 处理，此处不消费 scanData
@@ -1043,7 +1046,6 @@ function AppShell() {
 						"w-full",
 						"bg-white dark:bg-slate-900",
 						"rounded-t-[22px]",
-						"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
 
 						// ✅ 自适应高度，但最多不超过屏幕（避免顶到状态栏）
 						// 你也可以改成 90dvh
@@ -1099,7 +1101,7 @@ function AppShell() {
 							aria-hidden
 						/>
 						<motion.div
-							className="fixed inset-x-0 bottom-0 z-[211] bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.15)] pb-[env(safe-area-inset-bottom)]"
+							className="fixed inset-x-0 bottom-0 z-[211] bg-white dark:bg-slate-900 rounded-t-[22px] pb-[env(safe-area-inset-bottom)]"
 							initial={{ y: "100%" }}
 							animate={{ y: 0 }}
 							exit={{ y: "100%" }}

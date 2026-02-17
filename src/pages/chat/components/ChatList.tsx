@@ -230,10 +230,10 @@ export default function ChatList({
 
 
   return (
-    <div className="bg-white">
+    <div className="min-h-full min-w-0 bg-[#F2F2F7]">
       {/* 顶部栏（贴近 iOS 列表页风格） */}
       <div
-        className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl"
+        className="sticky top-0 z-20 bg-[#F2F2F7]/90 backdrop-blur-xl"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         {/* <div className="px-4 pt-3 pb-2 flex items-center justify-between">
@@ -263,8 +263,8 @@ export default function ChatList({
       </div>
 
       {/* 列表 */}
-      <div className="px-0 pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto w-full max-w-[820px]">
+      <div className="px-4 pt-2 pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto w-full max-w-[820px] min-w-0">
           {items.map((it, idx) => {
             const last = it.messages?.[it.messages.length - 1]
 			const dir = last ? (last.from === "me" ? "out" : "in") : null
@@ -317,11 +317,13 @@ export default function ChatList({
 					onOpen?.(it)
 				}}
                 className={[
-                  "w-full text-left active:bg-slate-50 transition",
-                  noRoute ? "border-l-4 border-l-amber-400 bg-amber-50/50" : ""
+                  "w-full min-w-0 max-w-full text-left transition overflow-hidden",
+                  "mb-3 rounded-2xl bg-white shadow-sm",
+                  "active:scale-[0.98] active:bg-slate-50/80",
+                  noRoute ? "ring-2 ring-amber-400/50" : ""
                 ].filter(Boolean).join(" ")}
               >
-                <div className="px-4">
+                <div className="px-4 min-w-0 overflow-hidden">
                   <div className="flex items-center gap-3 py-3.5">
                     <Avatar
 						address={it.address}
@@ -416,12 +418,7 @@ export default function ChatList({
 					</div>
                     </div>
                   </div>
-
-                  {/* 分割线（模仿 iOS） */}
-                  <div className="h-px bg-slate-200/80" />
                 </div>
-
-                {idx === items.length - 1 ? <div className="h-2" /> : null}
               </button>
             )
           })}

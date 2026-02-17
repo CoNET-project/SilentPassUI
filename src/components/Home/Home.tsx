@@ -258,14 +258,13 @@ const Home = ({}) => {
 
 
   	useEffect(() => {
+		setShowFooter(true)
 		if (firStartRef.current) {
 			return
 		}
-		setShowFooter(true)
+		
 		firStartRef.current = true
 		init()
-		
-		
 
 				// 只在挂载时注册一次
 		// const off = onWalletEvent("scan:url", (url: string) => {
@@ -768,7 +767,7 @@ const Home = ({}) => {
 
 	return (
 		<div className="
-		pt-[calc(env(safe-area-inset-top))]
+		bg-[#F2F2F7]
 		pb-[env(safe-area-inset-bottom)]
 		pl-[env(safe-area-inset-left)]
 		pr-[env(safe-area-inset-right)]
@@ -791,8 +790,8 @@ const Home = ({}) => {
 			<div className="flex-1 flex flex-col overflow-y-auto pb-44">
 				{!openSearch && (
 					<>
-						{/* Sticky Header - exampleExpress style */}
-						<div className="px-6 pt-14 pb-4 bg-white/80 backdrop-blur-md flex justify-between items-center sticky top-0 z-20 border-b border-gray-200/50">
+						{/* Sticky Header - 对齐 MyWalletDashboardNew：px-5 pt-14 pb-2 */}
+						<div className="px-5 pt-14 pb-2 bg-[#F2F2F7]/90 backdrop-blur-md flex justify-between items-center sticky top-0 z-20 border-b border-gray-200/50">
 							<button
 								type="button"
 								onClick={() => navigate('/myWallet')}
@@ -1160,7 +1159,6 @@ const Home = ({}) => {
 						"w-full",
 						"bg-white dark:bg-slate-900",
 						"rounded-t-[22px]",
-						"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
 
 						// ✅ 自适应高度，但最多不超过屏幕（避免顶到状态栏）
 						// 你也可以改成 90dvh

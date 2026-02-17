@@ -1888,7 +1888,7 @@ export default function MyWalletDashboardNew() {
 						onClick={closeEoaPanel}
 					/>
 					<div
-						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${eoaPanelOpen ? 'translate-y-0' : 'translate-y-full'}`}
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${eoaPanelOpen ? 'translate-y-0' : 'translate-y-full'}`}
 					>
 						<div className="pt-2 pb-1 flex justify-center">
 							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
@@ -1940,7 +1940,7 @@ export default function MyWalletDashboardNew() {
 						onClick={closeAaPanel}
 					/>
 					<div
-						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${aaPanelOpen ? 'translate-y-0' : 'translate-y-full'}`}
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${aaPanelOpen ? 'translate-y-0' : 'translate-y-full'}`}
 					>
 						<div className="pt-2 pb-1 flex justify-center">
 							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
@@ -1974,7 +1974,7 @@ export default function MyWalletDashboardNew() {
 						onClick={closeCcsaCreateCard}
 					/>
 					<div
-						className={`absolute inset-x-0 bottom-0 bg-[#0f0f12] rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${ccsaCreateCardOpen ? 'translate-y-0' : 'translate-y-full'}`}
+						className={`absolute inset-x-0 bottom-0 bg-[#0f0f12] rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${ccsaCreateCardOpen ? 'translate-y-0' : 'translate-y-full'}`}
 					>
 						<div className="pt-2 pb-1 flex justify-center">
 							<div className="h-1 w-10 rounded-full bg-slate-500/70" />
@@ -2008,7 +2008,7 @@ export default function MyWalletDashboardNew() {
 						}}
 					/>
 					<div
-						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${ccsaRedeemOpen ? 'translate-y-0' : 'translate-y-full'}`}
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${ccsaRedeemOpen ? 'translate-y-0' : 'translate-y-full'}`}
 					>
 						<div className="pt-2 pb-1 flex justify-center">
 							<div className="h-1 w-10 rounded-full bg-slate-500/70" />
@@ -2290,7 +2290,7 @@ export default function MyWalletDashboardNew() {
 						onClick={() => { setTopUpRedeemOpen(false); setShowFooter(true) }}
 					/>
 					<div
-						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${topUpRedeemOpen ? 'translate-y-0' : 'translate-y-full'}`}
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${topUpRedeemOpen ? 'translate-y-0' : 'translate-y-full'}`}
 					>
 						<div className="pt-2 pb-1 flex justify-center">
 							<div className="h-1 w-10 rounded-full bg-slate-500/70" />

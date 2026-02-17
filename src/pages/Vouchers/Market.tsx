@@ -410,9 +410,9 @@ export default function Market() {
 
 	return (
 		<>
-		<div className="min-h-full overflow-y-auto pb-24 pt-6 selection:bg-blue-100" style={{ background: THEME.bg }}>
-		{/* Header */}
-		<div className="px-6 pt-6 pb-4 flex justify-between items-end bg-[#F2F2F7]/90 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/50">
+		<div className="min-h-full overflow-y-auto pb-24 selection:bg-blue-100" style={{ background: THEME.bg }}>
+		{/* Header - 对齐 Home：px-5 pt-14 pb-2 */}
+		<div className="px-5 pt-14 pb-2 flex justify-between items-end bg-[#F2F2F7]/90 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/50">
 			<h1 className="text-[34px] font-bold text-black tracking-tight leading-none">Market</h1>
 		</div>
 
@@ -639,7 +639,6 @@ export default function Market() {
 							"w-full",
 							"bg-white dark:bg-slate-900",
 							"rounded-t-[22px]",
-							"shadow-[0_-12px_40px_rgba(0,0,0,0.18)]",
 							"max-h-[calc(100dvh-env(safe-area-inset-top)-12px)]",
 							"h-auto",
 							"pb-[env(safe-area-inset-bottom)]",

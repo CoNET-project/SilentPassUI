@@ -964,7 +964,7 @@ const Home = ({}) => {
 								onClick={() => setShowPayMeSheet(false)}
 							/>
 							<motion.div
-								className="fixed left-0 right-0 bottom-0 z-[9998] bg-white dark:bg-slate-900 rounded-t-[24px] shadow-2xl flex flex-col pb-[calc(env(safe-area-inset-bottom)+4rem)]"
+								className="fixed left-0 right-0 bottom-0 z-[9998] bg-white dark:bg-slate-900 rounded-t-[24px] shadow-2xl flex flex-col max-h-[92dvh] pb-[calc(env(safe-area-inset-bottom)+2rem)] min-[480px]:pb-[calc(env(safe-area-inset-bottom)+4rem)]"
 								initial={{ y: '100%' }}
 								animate={{ y: 0 }}
 								exit={{ y: '100%' }}
@@ -1196,13 +1196,13 @@ const Home = ({}) => {
 									}}
 								/>
 							)}
-							<div
+							{/* <div
 								className="
 								h-[24px]
 								pb-[env(safe-area-inset-bottom)]
 								pointer-events-none
 								"
-							/>
+							/> */}
 						</div>
 					</div>
 				</div>

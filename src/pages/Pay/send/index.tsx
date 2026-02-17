@@ -13,7 +13,7 @@ import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import { X, Check, Plus, Camera, ArrowRight, ArrowLeft, Wallet, CreditCard } from "lucide-react"
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
-import {CURRENCY_META, fiatPrefix} from '@/services/currency'
+import { fiatPrefix, formatAmount } from '@/services/currency'
 import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNodes} from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
@@ -68,22 +68,6 @@ type Props = {
 	mode?: PayScreenMode
 	/** AA 账户 USDC 余额（aa-eoa-transfer 且 aa-to-eoa 时用于 MAX / 余额校验） */
 	aaAccountUsdcBalance?: string | number
-}
-
-function formatAmount(v: number, c: ICurrency) {
-	if (!isFinite(v)) return "0"
-
-	const decimals =
-		c === "TWD" || c === "JPY"
-			? 0
-			: c === "USDC"
-			? 4
-			: 2
-
-	return v.toLocaleString("en-US", {
-		minimumFractionDigits: decimals,
-		maximumFractionDigits: decimals
-	})
 }
 
 export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccountUsdcBalance}: Props) {
@@ -842,6 +826,67 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 									currencyChange={val => setCurrentCurrency(val)}
 									balanceOverride={isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? aaAccountUsdcBalance : undefined}
 								/>
+							</section>
+
+							{/* PAYING FROM - 支付账号 EOA/AA 信息与余额 */}
+							<section className="mt-4 rounded-2xl bg-white dark:bg-slate-800/50 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
+								<div className="flex items-center justify-between px-4 pt-3 pb-2">
+									<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">Paying from</span>
+									{isAaEoaTransfer && (
+										<button
+											type="button"
+											onClick={() => setTransferDirection(d => d === 'eoa-to-aa' ? 'aa-to-eoa' : 'eoa-to-aa')}
+											className="text-[13px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
+										>
+											Change &gt;
+										</button>
+									)}
+								</div>
+								<div className="flex items-center justify-between px-4 pb-4">
+									<div className="flex items-center gap-3 min-w-0">
+										<div className="w-10 h-10 shrink-0 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+											<Wallet className="w-5 h-5 text-slate-600 dark:text-slate-300" strokeWidth={2.2} />
+										</div>
+										<div className="min-w-0">
+											<div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+												{isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'Express Pay' : 'Main Vault'}
+											</div>
+											<div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+												Secure • {isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'AA' : 'EOA'}
+											</div>
+										</div>
+									</div>
+									<div className="text-right shrink-0 ml-4">
+										<div className="font-semibold text-slate-900 dark:text-slate-100">
+											{currentCurrency === 'USDC'
+												? `${formatAmount(
+														isAaEoaTransfer && transferDirection === 'aa-to-eoa'
+															? Number(aaAccountUsdcBalance ?? 0)
+															: Number(usdcbalance ?? 0),
+														'USDC'
+													)} USDC`
+												: `${fiatPrefix(currentCurrency)} ${formatAmount(
+														usdcToCurrencyAmount(
+															isAaEoaTransfer && transferDirection === 'aa-to-eoa'
+																? Number(aaAccountUsdcBalance ?? 0)
+																: Number(usdcbalance ?? 0),
+															currentCurrency
+														),
+														currentCurrency
+													)}`}
+										</div>
+										{currentCurrency !== 'USDC' && (
+											<div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+												≈ {formatAmount(
+													isAaEoaTransfer && transferDirection === 'aa-to-eoa'
+														? Number(aaAccountUsdcBalance ?? 0)
+														: Number(usdcbalance ?? 0),
+													'USDC'
+												)} USDC
+											</div>
+										)}
+									</div>
+								</div>
 							</section>
 						</>
 						)}

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, useRef } from "react"
-import { Copy, Check, MessageCircle, Printer, Share2 } from "lucide-react"
+import { Copy, Check, MessageCircle, Share2, Plus, Wallet, CreditCard } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { ethers } from "ethers"
+import AmountCurrency from '@/components/input/AmountCurrency'
+import { fiatPrefix, formatAmount } from '@/services/currency'
 import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
 import bIcon from '@/components/assets/logo512.png'
 import { QRCodeCanvas } from 'qrcode.react'
@@ -14,6 +17,16 @@ import { X } from 'lucide-react'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 
 const showPaylinkSite = 'https://beamio.app'
+/** 0.8% fee, min 0.02, max 2 USDC */
+const calcFeeUsdc = (amountUsdc: number) => {
+	if (!isFinite(amountUsdc) || amountUsdc <= 0) return 0
+	const raw = amountUsdc * 0.008
+	return Number((Math.min(Math.max(raw, 0.02), 2)).toFixed(4))
+}
+const getImg = (avatarSeed: string|undefined) =>
+	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || '@Beamio').toString()}`
+const shortAddress = (addr: string) =>
+	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
 type Mode = 'main' | 'PaymentLink'|'Print'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -63,18 +76,50 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	}, [copiedSig])
 
 	const onCopyPayLink = async () => {
-		const ok = await copyText(successUrl)
+		const ok = await copyText(qrValue)
 		if (ok) setCopied(true)
 	}
 
-  const [qrDataUrl, setQrDataUrl] = useState<string>("")
+	const [qrDataUrl, setQrDataUrl] = useState<string>("")
   const [getBeamio, setGetBeamio] = useState<beamio|null>(null)
   	const [successUrl, setSuccessUrl] = useState("")
 	const [showMode, setShowMode] = useState<Mode>(activeTab)
 	const [isUSDC, setIsUSDC] = useState(true)
+	/** 是否展开金额输入：false 显示「输入金额」按钮，true 显示 AmountCurrency + 完成 */
+	const [showAmountInput, setShowAmountInput] = useState(false)
+	/** 指定金额的 paymentUrl（类似 TenKeyInput 的 bill），为 null 时 QR 显示 successUrl（任意金额） */
+	const [billPaymentUrl, setBillPaymentUrl] = useState<string | null>(null)
+	const [billAmountUsdc, setBillAmountUsdc] = useState("")
+	const [billCurrency, setBillCurrency] = useState<ICurrency>('USD')
+	const [billForText, setBillForText] = useState("")
+	const [amountError, setAmountError] = useState("")
 
 	
   const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress, setShowFooter, currencyData, beamio, setBeamio} = useDaemonContext()
+	const merchantAA = profiles?.[0]?.aaAccount
+	const qrValue = billPaymentUrl ?? successUrl
+	const handleDoneAmount = () => {
+		const amt = Number(billAmountUsdc)
+		if (!amt || amt <= 0) {
+			setAmountError("Please enter a valid amount")
+			return
+		}
+		if (!merchantAA || !ethers.isAddress(merchantAA)) {
+			setAmountError("Smart Account not found")
+			return
+		}
+		setAmountError("")
+		const params = new URLSearchParams({
+			Amount: billAmountUsdc,
+			currency: billCurrency,
+			acceptTokens: 'USDC,CCSA',
+			to: merchantAA,
+		})
+		if (billForText.trim()) params.set('forText', billForText.trim())
+		const url = `https://beamio.app/Vouchers?${params.toString()}`
+		setBillPaymentUrl(url)
+		setShowAmountInput(false)
+	}
 	useEffect(() => {
 		if (!beamio||getBeamio||!profiles?.length) return
 		setGetBeamio({...beamio})
@@ -110,38 +155,33 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 
   
 
-  const onPrint = () => {
-    	window.print()
-  }
-
   const onMessage = async () => {
-    // iOS/Android 上如果支持 share，会走系统消息/分享面板
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Beamio PayMe", text: successUrl, url: successUrl })
+        await navigator.share({ title: "Beamio PayMe", text: qrValue, url: qrValue })
         return
       } catch {
         // ignore
       }
     }
-    await copyText(successUrl)
+    await copyText(qrValue)
   }
 
   const onShare = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Beamio PayMe", text: successUrl, url: successUrl })
+        await navigator.share({ title: "Beamio PayMe", text: qrValue, url: qrValue })
         return
       } catch {
         // ignore
       }
     }
-    await copyText(successUrl)
+    await copyText(qrValue)
   }
 
   return (
-    <div className="flex justify-center">
-      <div className="w-full max-w-[540px] px-4 py-4 relative">
+    <div className="flex justify-center min-h-0">
+      <div className="w-full max-w-[540px] px-3 sm:px-4 py-0 pb-2 relative">
 
         {/* Segmented */}
 		{
@@ -166,57 +206,86 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						hideName={hideName}
 					/>
 				) : showMode === 'main' && (
-				<div className={hideOuterFrame ? "mt-6 overflow-hidden" : "mt-6 rounded-[22px] bg-white shadow-[0_12px_35px_rgba(15,23,42,0.08)] ring-1 ring-black/10 overflow-hidden"}>
-					<div className="px-6 pt-4 pb-6">
+				<div className={hideOuterFrame ? " overflow-hidden" : "mt-1 sm:mt-2 rounded-[22px] bg-white shadow-[0_12px_35px_rgba(15,23,42,0.08)] ring-1 ring-black/10 overflow-hidden"}>
+					<div className="px-3 sm:px-6 pt-1 sm:pt-4 pb-2 sm:pb-6">
 					<div className="text-center">
 						{!hideName && (
-						<div className="flex items-baseline justify-center gap-2 text-[20px] font-extrabold tracking-tight text-slate-900">
-							<span className="truncate">
-							{displayName(beamio)}
-							</span>
-
-							<span className="font-semibold text-beamio">@{beamio?.accountName}</span>
-						</div>
+							<div className="flex flex-col items-center gap-0">
+								<img
+									src={beamio?.image || getImg(beamio?.accountName)}
+									alt=""
+									className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-600 shrink-0"
+								/>
+								<div className="text-center mt-0.5 sm:mt-0">
+									<div className="text-[16px] sm:text-[20px] font-extrabold tracking-tight text-slate-900 dark:text-slate-100 truncate max-w-[180px] sm:max-w-[240px] leading-tight">
+										{displayName(beamio)}
+									</div>
+									<div className="text-[13px] sm:text-[16px] font-semibold text-beamio">
+										@{beamio?.accountName}
+									</div>
+								</div>
+							</div>
 						)}
 						</div>
 
-						{/* QR Card */}
-							<div className="mt-4 flex justify-center">
+						{/* 收款钱包 - QR 上方，无金额 EOA(蓝)，有金额 AA(紫)，同 PayScreen 胶囊样式 */}
+						{!showAmountInput && (
+							<div className="mt-2 sm:mt-4 flex justify-center">
+								<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase mr-2 self-center">
+									{billPaymentUrl && merchantAA ? 'Express Pay (Smart Account)' : 'Main Vault (EOA)'}
+								</span>
+								{billPaymentUrl && merchantAA ? (
+									<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
+										<CreditCard className="w-4 h-4 shrink-0" strokeWidth={2.2} />
+										{shortAddress(merchantAA)}
+									</span>
+								) : myAddress ? (
+									<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
+										<Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />
+										{shortAddress(myAddress)}
+									</span>
+								) : null}
+							</div>
+						)}
+
+						{/* QR Card - 金额输入展开时隐藏，小屏紧凑 */}
+						{!showAmountInput && (
+							<div className="mt-1.5 sm:mt-3 flex justify-center">
 							<div className="relative isolate">
 								{/* glow：强制放到最底层 */}
 								<div
 								aria-hidden
 								className="
-									absolute inset-[-12px]
+									absolute inset-[-8px] sm:inset-[-12px]
 									-z-10
-									rounded-[36px]
+									rounded-[28px] sm:rounded-[36px]
 									bg-[radial-gradient(60%_60%_at_50%_40%,rgba(132,120,255,0.18),rgba(132,120,255,0.05)_60%,transparent_75%)]
 									blur-xl
 									pointer-events-none
 								"
 								/>
 
-								{/* QR 白底板：强制放到上层 */}
+								{/* QR 白底板：小屏 200px，大屏 264px */}
 								<div className="relative z-10 flex justify-center">
 									<div
 										className="
-										rounded-[28px]
+										rounded-[20px] sm:rounded-[28px]
 										bg-white
-										p-[18px]
+										p-2 sm:p-[18px]
 										shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
 										"
 									>
 										<QRCodeCanvas
-											value={successUrl}
-											size={264}
+											value={qrValue}
+											size={180}
 											level="H"
 											includeMargin={false}
 											bgColor="white"
 											fgColor="#000000"
 											imageSettings={{
 												src: bIcon,
-												height: 95,
-												width: 95,
+												height: 56,
+												width: 56,
 												excavate: true,
 											}}
 											className="block"
@@ -232,89 +301,127 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								{/* <TaxSwitch value={isUSDC} onChange={setIsUSDC} taxRate={getBeamio?.tax ? Number(getBeamio.tax):0} /> */}
 							</div>
 							</div>
+						)}
 
-
-
-						{/* Payment link */}
-						<div className="mt-10">
-						<div className="rounded-[14px] bg-slate-50 ring-1 ring-black/10 shadow-sm px-4 py-3 flex items-center justify-between gap-4">
-  
-							{/* 左侧文字：真正上下居中 */}
-							<div className="min-w-0 flex flex-col justify-center">
-								<div className="text-[12px] leading-snug text-slate-700 break-all">
-								{successUrl}
+						{/* 费率计算卡片：指定金额时显示在 QR 下方，Requesting 使用用户输入的 currency */}
+						{billPaymentUrl && billAmountUsdc && (() => {
+							const amt = Number(billAmountUsdc)
+							const fee = calcFeeUsdc(amt)
+							const estReceive = amt - fee
+							const usdcToUSD = Number(currencyData?.USDC) ?? 1
+							const usdToFiat = Number(currencyData?.[billCurrency]) ?? 1
+							const amtInCurrency = billCurrency === 'USDC' ? amt : amt * usdcToUSD * usdToFiat
+							const requestingDisplay = billCurrency === 'USDC'
+								? `${formatAmount(amt, 'USDC')} USDC`
+								: `${fiatPrefix(billCurrency)} ${formatAmount(amtInCurrency, billCurrency)}`
+							return (
+								<div className="mt-2 sm:mt-6 rounded-2xl bg-white dark:bg-slate-800/80 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600 overflow-hidden">
+									<div className="px-3 sm:px-4 py-2 sm:py-2.5 space-y-1 sm:space-y-1.5">
+										<div className="flex justify-between items-center">
+											<span className="text-slate-500 dark:text-slate-400 text-sm">Requesting</span>
+											<span className="font-semibold text-slate-900 dark:text-slate-100">{requestingDisplay}</span>
+										</div>
+										<div className="flex justify-between items-center">
+											<span className="text-slate-500 dark:text-slate-400 text-sm">Fee (0.8%)</span>
+											<span className="text-slate-500 dark:text-slate-400">- {formatAmount(fee, 'USDC')} USDC</span>
+										</div>
+										<div className="border-t border-slate-200 dark:border-slate-600 pt-2">
+											<div className="flex justify-between items-start">
+												<span className="font-semibold text-green-600 dark:text-green-400 text-sm">Est. Receive</span>
+												<div className="text-right">
+													<span className="font-semibold text-green-600 dark:text-green-400">{formatAmount(estReceive, 'USDC')} USDC</span>
+													{billCurrency !== 'USDC' && currencyData?.USDC != null && currencyData?.[billCurrency] != null && (() => {
+														const estReceiveFiat = estReceive * usdcToUSD * usdToFiat
+														return (
+															<div className="text-xs text-slate-500 dark:text-slate-400 mt-0">
+																≈ {fiatPrefix(billCurrency)} {formatAmount(estReceiveFiat, billCurrency)}
+															</div>
+														)
+													})()}
+												</div>
+											</div>
+										</div>
+									</div>
 								</div>
-							</div>
+							)
+						})()}
 
-							{/* 右侧按钮 */}
+						{/* 输入金额：按钮区上方 */}
+						{!billPaymentUrl && (
+							<div className="mt-3 sm:mt-10">
+								{!showAmountInput ? (
+									<button
+										type="button"
+										onClick={() => setShowAmountInput(true)}
+										className="w-full py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl bg-sky-100 dark:bg-sky-900/40 text-blue-600 dark:text-blue-400 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-sky-200 dark:hover:bg-sky-900/60 transition-colors"
+									>
+										<Plus className="w-5 h-5" strokeWidth={2.5} />
+										Set Specific Amount
+									</button>
+								) : (
+									<div className="space-y-1.5 sm:space-y-2">
+										<AmountCurrency
+											amount={billAmountUsdc}
+											setAmount={setBillAmountUsdc}
+											autoEntry={true}
+											readOnly={false}
+											showLimit={0}
+											sendError={amountError}
+											setSendError={setAmountError}
+											showMax={false}
+											needBalance={false}
+											currencyChange={setBillCurrency}
+										/>
+										<input
+											type="text"
+											value={billForText}
+											onChange={(e) => setBillForText(e.target.value.replace(/[\r\n]/g, ''))}
+											onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
+											placeholder="What's this for?"
+											className="w-full rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-300 dark:focus:ring-sky-600"
+										/>
+										<button
+											type="button"
+											onClick={handleDoneAmount}
+											className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-[var(--beamio-brand,#2F78FF)] text-white font-semibold text-sm hover:opacity-90 active:scale-[0.98] transition"
+										>
+											Generate request
+										</button>
+									</div>
+								)}
+							</div>
+						)}
+
+						{/* Actions - 金额输入期间隐藏，Copy 左 Share 右，图标在文字左侧 */}
+						{!showAmountInput && (
+						<div className="mt-3 sm:mt-10 flex gap-2 sm:gap-3">
 							<button
 								type="button"
 								onClick={onCopyPayLink}
 								className={[
-								"shrink-0 w-[36px] h-[36px] rounded-[18px]",
-								"bg-white/85 backdrop-blur-md",
-								"ring-1 ring-black/10 shadow-sm",
-								"flex items-center justify-center",
-								"active:scale-[0.96] transition-transform duration-150",
-								copied
-									? "ring-[rgba(0,0,255,0.25)] shadow-[0_10px_24px_rgba(0,0,255,0.12)]"
-									: "",
+									"flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl font-semibold text-sm",
+									"bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200",
+									"hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.98] transition",
+									copied ? "ring-2 ring-blue-400" : ""
 								].join(" ")}
-								aria-label="Copy payment link"
-								title={copied ? "Copied" : "Copy"}
 							>
-								{/* icon 容器：严格几何居中 */}
-								<span className="relative w-5 h-5 leading-none">
-								
-								{/* Copy */}
-								<span
-									className={[
-									"absolute inset-0 flex items-center justify-center leading-none",
-									"transition-all duration-200 ease-out",
-									copied ? "opacity-0 scale-75" : "opacity-100 scale-100",
-									].join(" ")}
-									aria-hidden={copied}
-								>
-									<Copy className="w-5 h-5 text-slate-700 leading-none" />
-								</span>
-
-								{/* Check */}
-								<span
-									className={[
-									"absolute inset-0 flex items-center justify-center leading-none",
-									"transition-all duration-200 ease-out",
-									copied ? "opacity-100 scale-100" : "opacity-0 scale-75",
-									].join(" ")}
-									aria-hidden={!copied}
-								>
-									<Check className="w-5 h-5 text-[rgb(0_0_255)] leading-none" />
-								</span>
-								</span>
+								{copied ? (
+									<Check className="w-5 h-5 text-blue-600 shrink-0" />
+								) : (
+									<Copy className="w-5 h-5 text-slate-600 dark:text-slate-400 shrink-0" />
+								)}
+								<span>Copy</span>
 							</button>
-							</div>
-
-						{/* <div className="mt-4 text-center text-[12px] font-semibold text-slate-400">
-							Opens in browser or Beamio app
-						</div> */}
+							<button
+								type="button"
+								onClick={onShare}
+								className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl font-semibold text-sm bg-black dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 active:scale-[0.98] transition"
+							>
+								<Share2 className="w-5 h-5 shrink-0" />
+								<span>Share</span>
+							</button>
 						</div>
-						{/* Actions */}
-						<div className="mt-10 flex items-center justify-center gap-16">
-						<button type="button" onClick={onPrint} className="group flex flex-col items-center">
-							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
-							<Printer className="h-7 w-7 text-slate-600" />
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-600">Print</div>
-						</button>
-
-					
-
-						<button type="button" onClick={onShare} className="group flex flex-col items-center">
-							<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
-							<Share2 className="h-7 w-7 text-slate-600" />
-							</div>
-							<div className="mt-3 text-[18px] font-semibold text-slate-600">Share</div>
-						</button>
-						</div>
+						)}
 
 					</div>
 					</div>

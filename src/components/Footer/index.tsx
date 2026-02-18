@@ -16,6 +16,7 @@ import { ReactComponent as ChatGreyIcon } from './assets/chat-grey.svg'
 import { ReactComponent as BLogo } from './assets/center-scan-icon.blue.svg'
 import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
 
+import { Search } from 'lucide-react'
 import { searchUsername, storeSystemData } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import type { Transition } from 'framer-motion'
@@ -50,16 +51,15 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			return
 		}
 
-		// ✅ 显示：从下面上来 -> overshoot -> 回落
+		// ✅ 显示：从下方滑入，无 overshoot/回落
 		barControls.set({ y: HIDE_Y, opacity: 0 })
 
 		await barControls.start({
-			y: [HIDE_Y, -12, 0], // -12 = 轻微上冲
-			opacity: [0, 1, 1],
+			y: [HIDE_Y, 0],
+			opacity: [0, 1],
 			transition: {
-				duration: 0.56,
-				times: [0, 0.40, 1],
-				ease: [0.2, 0.9, 0.2, 1]
+				duration: 0.32,
+				ease: [0.2, 0.8, 0.2, 1]
 			}
 		})
 
@@ -139,7 +139,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	}, [visible, sampleBackgroundColor])
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
-	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, scanRef } = useDaemonContext()
+	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, scanRef, setShowFooter, setChatSearchOpen } = useDaemonContext()
 
 	const [showBar, setShowBar] = useState(true)
 
@@ -487,7 +487,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				pointerEvents: 'none'
 			}}
 		>
-			 {/* ✅ 玻璃层：不做 transform，只负责 blur */}
+			 {/* ✅ 玻璃层：tab bar 左 | 右侧独立的 search 圆形按钮（与 footer 同步显隐） */}
 			<div className="ml-4 max-w-[200px] pointer-events-auto origin-bottom-left" style={{ transform: 'scale(1.5)' }}>
 				<div
 					className="
@@ -571,7 +571,25 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					</div>
 				
 			</div>
-			
+				{/* Search：footer 右侧独立的圆形按钮，与 footer 同步显隐动画（同一 motion.div） */}
+				<button
+					type="button"
+					onClick={() => {
+						setChatSearchOpen(true)
+						setShowFooter(false)
+					}}
+					className="fixed bottom-[1.5rem] right-4 w-10 h-10 rounded-full flex items-center justify-center border flex-shrink-0 pointer-events-auto z-10"
+					style={{
+						backgroundColor: isDarkUnderneath ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+						color: isDarkUnderneath ? '#000' : '#fff',
+						borderColor: isDarkUnderneath ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)',
+						WebkitBackdropFilter: 'blur(1rem)',
+						backdropFilter: 'blur(1rem)'
+					}}
+					aria-label="Search"
+				>
+					<Search className="w-5 h-5" />
+				</button>
 		</motion.div>
 	)
 }

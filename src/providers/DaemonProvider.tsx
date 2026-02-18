@@ -35,6 +35,8 @@ type DaemonContext = {
 	setPayMePayment: Dispatch<SetStateAction<searchResult | null>>
 	showFooter: boolean
 	setShowFooter: (val: boolean) => void
+	chatSearchOpen: boolean
+	setChatSearchOpen: (val: boolean) => void
 	beamioUsers: searchResult[]
 	setbBeamioUsers: (val: searchResult[]) => void
 	currencyData: currencyData
@@ -213,6 +215,8 @@ const defaultContextValue: DaemonContext = {
 	setPayMePayment: () => {},
 	showFooter: true,
 	setShowFooter: (val: boolean) => {},
+	chatSearchOpen: false,
+	setChatSearchOpen: (val: boolean) => {},
 	currencyData: {
 		CAD: 0,
 		USD: 0,
@@ -457,7 +461,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [currentBlock,setCurrentBlock] = useState(0)
   const [beamio, setBeamio] = useState<beamio|null>(null)
   const [usdcbalance, setUsdcbalance] = useState(0)
-  const [showFooter, setShowFooter] = useState(true)
+	const [showFooter, setShowFooter] = useState(true)
+	const [chatSearchOpen, setChatSearchOpen] = useState(false)
 	const [secureCode, setSecureCode] = useState('')
 	const [redeemCode, setRedeemCode] = useState('')
 	const [ignoreUrl, setIgnoreUrl] = useState(false)
@@ -535,7 +540,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo, charts, setCharts,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
-				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
+				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,
         		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
 				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>

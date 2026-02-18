@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react"
+import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import {
   Search,
   Store,
@@ -320,6 +321,7 @@ export default function Market() {
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
 	const [settingsOpen, setSettingsOpen] = useState<"" | "PurchaseAccount" | "TopUP" | "showPayQR">("")
 	const [qrPayload, setQrPayload] = useState<string>("")
+	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
 
 	useEffect(() => {
 		const state = location.state as { openCardDetail?: boolean } | null
@@ -410,24 +412,21 @@ export default function Market() {
 
 	return (
 		<>
-		<div className="min-h-full overflow-y-auto pb-24 selection:bg-blue-100" style={{ background: THEME.bg }}>
-		{/* Header - 对齐 Home：px-5 pt-14 pb-2 */}
-		<div className="px-5 pt-14 pb-2 flex justify-between items-end bg-[#F2F2F7]/90 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/50">
-			<h1 className="text-[34px] font-bold text-black tracking-tight leading-none">Market</h1>
-		</div>
-
-		{/* Search Bar (ExampleCard style) */}
-		<div className="px-5 mb-6">
-			<div className="relative group active:scale-[0.99] transition-transform">
-				<Search className="absolute left-3.5 top-3 text-gray-400" size={18} strokeWidth={2.5} />
-				<input
-					type="text"
-					placeholder="Games, Food, Vouchers..."
-					className="w-full bg-[#E3E3E8] py-2.5 pl-10 pr-4 rounded-[12px] text-[17px] focus:outline-none focus:bg-[#D1D1D6] transition-colors placeholder-gray-500 font-medium"
-				/>
+		<div className="w-full h-screen min-h-0 bg-[#F2F2F7] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100">
+		{/* 固定独立胶囊：Title，与 /history 一致，随滚动渐隐 */}
+		<div
+			className="fixed left-0 right-0 z-30 flex items-center justify-between px-5 transition-opacity duration-300"
+			style={{ top: 'max(1rem, env(safe-area-inset-top))', opacity: capsuleOpacity, pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+		>
+			<div className="px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
+				<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Market</h1>
 			</div>
 		</div>
 
+		{/* 滚动容器：与 Home 一致，flex-1 直接子元素 */}
+		<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 min-h-0 overflow-y-auto pb-24">
+		{/* 顶部留白：为胶囊让出高度 */}
+		<div className="h-[3.25rem] shrink-0" />
 		{/* HERO CARDS: PREMIER ACCESS (ExampleCard style - horizontal snap scroll) */}
 		<div className="flex gap-4 overflow-x-auto px-5 pb-8 scrollbar-hide snap-x snap-mandatory">
 			{/* 1. Genesis Node Pack (ExampleCard GenesisCard design) */}
@@ -563,6 +562,7 @@ export default function Market() {
 				Prices may vary by location. All assets are secured on Base Mainnet.<br />
 				Beamio Inc. © 2026
 			</p>
+		</div>
 		</div>
 		</div>
 

@@ -1,6 +1,7 @@
 // Home.tsx
 
-import { useEffect, useRef, useState, useMemo, useLayoutEffect} from "react"
+import { useEffect, useRef, useState, useMemo, useLayoutEffect } from "react"
+import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, searchUsername} from '@/services/beamio'
@@ -15,7 +16,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Search, Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, ArrowUpRight, ArrowDownLeft, Plus } 
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, ArrowUpRight, ArrowDownLeft, Plus } 
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -91,6 +92,7 @@ const Home = ({}) => {
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
+	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -786,50 +788,46 @@ const Home = ({}) => {
 					</span>
 				</button>
 			</div> */}
+			{/* 固定独立胶囊：头像 + @username，悬浮于顶部，左对齐，随滚动渐隐 */}
+			{!openSearch && (
+				<button
+					type="button"
+					onClick={() => navigate('/myWallet')}
+					className="fixed left-4 z-30 flex items-center justify-start transition-opacity duration-300"
+					style={{ top: 'max(1rem, env(safe-area-inset-top))', opacity: capsuleOpacity, pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+					aria-label="Open wallet"
+				>
+					<div className="flex items-center space-x-2.5 px-3 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50 group active:scale-[0.98] transition-transform">
+						{beamio ? (
+							<img
+								src={beamio.image ? beamio.image : getImg(beamio.accountName)}
+								alt={beamio.accountName}
+								className="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 shadow-sm"
+								draggable={false}
+							/>
+						) : (
+							<div className="w-9 h-9 bg-slate-200 dark:bg-slate-600 rounded-full flex items-center justify-center border border-gray-200 dark:border-slate-500 text-lg text-gray-500">
+								?
+							</div>
+						)}
+						<div className="flex flex-col items-start">
+							<span className="text-xs font-bold text-gray-500 dark:text-slate-400 leading-tight">
+								{displayName(beamio) || 'User'}
+							</span>
+							<span className="text-base font-bold text-gray-900 dark:text-slate-100 leading-tight">
+								@{beamio?.accountName ?? '@Beamio'}
+							</span>
+						</div>
+					</div>
+				</button>
+			)}
+
 			{/* Phone frame - exampleExpress style */}
-			<div className="flex-1 flex flex-col overflow-y-auto pb-44">
+			<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 flex flex-col overflow-y-auto pb-44">
 				{!openSearch && (
 					<>
-						{/* Sticky Header - 对齐 MyWalletDashboardNew：px-5 pt-14 pb-2 */}
-						<div className="px-5 pt-14 pb-2 bg-[#F2F2F7]/90 backdrop-blur-md flex justify-between items-center sticky top-0 z-20 border-b border-gray-200/50">
-							<button
-								type="button"
-								onClick={() => navigate('/myWallet')}
-								className="flex items-center space-x-2 group"
-							>
-								{beamio ? (
-									<img
-										src={beamio.image ? beamio.image : getImg(beamio.accountName)}
-										alt={beamio.accountName}
-										className="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm group-active:scale-95 transition-transform"
-										draggable={false}
-									/>
-								) : (
-									<div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center border border-gray-200 shadow-sm text-lg">
-										?
-									</div>
-								)}
-								<div className="flex flex-col items-start">
-									<span className="text-xs font-bold text-gray-500 ml-0.5">
-										{displayName(beamio) || 'User'}
-									</span>
-									<div className="flex items-center space-x-1">
-										<span className="text-lg font-bold text-gray-900">
-											@{beamio?.accountName ?? '@Beamio'}
-										</span>
-										
-									</div>
-								</div>
-							</button>
-							<button
-								type="button"
-								onClick={() => setOpenSearch(true)}
-								className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-gray-200 text-gray-600 shadow-sm hover:text-[#1562f0] transition-colors"
-								aria-label="Search"
-							>
-								<Search className="w-5 h-5" />
-							</button>
-						</div>
+						{/* 顶部留白：为固定胶囊让出高度 */}
+						<div className="h-[3.75rem] shrink-0" />
 
 						{/* Content - exampleExpress style */}
 						<div className="px-5 pt-6 space-y-6">

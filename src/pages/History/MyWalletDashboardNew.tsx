@@ -2,6 +2,7 @@
 
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -498,6 +499,7 @@ export default function MyWalletDashboardNew() {
 	const [openRelayPayload, setOpenRelayPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [showTenKeySlide, setShowTenKeySlide] = useState(false)
 	const [payMeSigning, setPayMeSigning] = useState(false)
+	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!activeView)
 	const copyAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const copiedCardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const refreshAAAssetsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1129,40 +1131,65 @@ export default function MyWalletDashboardNew() {
 
 	return (
 		<>
-		<div className="flex justify-center bg-gray-200 min-h-screen font-sans antialiased">
-			<div className="w-full max-w-lg bg-[#F2F2F7] min-h-screen shadow-2xl overflow-hidden relative flex flex-col">
-				{/* 未选中：显示 Header；选中：不占位，卡片+内容从容器顶部开始 */}
+		<div className="w-full min-h-screen bg-[#F2F2F7] font-sans antialiased overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+				{/* 固定独立胶囊：Title + 按钮组，悬浮于顶部，随滚动渐隐 */}
 				{!activeView && (
-					<header className="px-5 pt-14 pb-2 bg-[#F2F2F7]/90 backdrop-blur-md sticky top-0 z-30 shrink-0">
-						<div className="flex justify-between items-center mb-1 min-h-[2.125rem]">
-							<h1 className="text-[34px] font-bold text-black tracking-tight leading-none">Wallet</h1>
-							<div className="flex items-center gap-3">
-								<button
-									type="button"
-									onClick={() => {
-										setPayScreenMode('aa-eoa-transfer')
-										setAaPanelOpen('Pay')
-										setShowFooter(false)
-									}}
-									className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform"
-									title="Transfer between Main Vault and Express Pay"
-								>
-									<ArrowLeftRight className="w-5 h-5" strokeWidth={2.4} />
-								</button>
-								<button type="button" onClick={() => setIsManagingCards(true)} className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform" title="Edit cards"><Edit2 className="w-5 h-5" strokeWidth={2.4} /></button>
-								<button type="button" onClick={() => navigate('/settings')} className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform" title="Add card"><Plus className="w-5 h-5" /></button>
-							</div>
+					<div
+						className="fixed left-0 right-0 z-30 flex items-center justify-between px-5 transition-opacity duration-300"
+						style={{ top: 'max(1rem, env(safe-area-inset-top))', opacity: capsuleOpacity, pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+					>
+						{/* Title 胶囊 */}
+						<div className="px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
+							<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Wallet</h1>
 						</div>
-					</header>
+						{/* 按钮组胶囊 */}
+						<div className="flex items-center gap-2 px-2 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
+							<button
+								type="button"
+								onClick={() => {
+									setPayScreenMode('aa-eoa-transfer')
+									setAaPanelOpen('Pay')
+									setShowFooter(false)
+								}}
+								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
+								title="Transfer between Main Vault and Express Pay"
+							>
+								<ArrowLeftRight className="w-5 h-5" strokeWidth={2.4} />
+							</button>
+							<button
+								type="button"
+								onClick={() => setIsManagingCards(true)}
+								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
+								title="Edit cards"
+							>
+								<Edit2 className="w-5 h-5" strokeWidth={2.4} />
+							</button>
+							<button
+								type="button"
+								onClick={() => navigate('/settings')}
+								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
+								title="Add card"
+							>
+								<Plus className="w-5 h-5" />
+							</button>
+						</div>
+					</div>
 				)}
+
+				{/* 顶部留白：为固定胶囊让出高度 */}
+				
 
 				{/* Cards and Details Container - exampleExpress WalletStackView 风格 */}
 				<div className={`relative flex-1 min-h-0 flex flex-col transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) ${activeView ? 'pt-8' : ''}`}>
 					{/* Scrollable Main Content - exampleExpress 叠卡布局 */}
-					<div className={`flex-1 min-h-0 pb-32 px-5 scroll-smooth relative no-scrollbar ${
-						activeView ? 'overflow-hidden' : 'overflow-y-auto'
-					}`}>
-						<div className={`relative h-[650px] perspective-1000 transition-transform duration-500 ${activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''}`}>
+					<div
+						ref={setScrollRef}
+						onScroll={onCapsuleScroll}
+						className={`flex-1 min-h-0 pb-32 px-5 scroll-smooth relative no-scrollbar ${
+							activeView ? 'overflow-hidden' : 'overflow-y-auto'
+						}`}
+					>
+						<div className={`relative h-[650px] perspective-1000 transition-transform duration-500 mt-[1.25rem] ${activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''}`}>
 							{/* LAYER 1: MAIN VAULT (EOA) - 点击折叠 express 或打开详情 */}
 							<div
 								onClick={() => (isExpressExpanded ? setIsExpressExpanded(false) : handleCardClick('eoa'))}
@@ -2411,7 +2438,6 @@ export default function MyWalletDashboardNew() {
 					onUpdateStatus={updatePassStatus}
 					onRename={renamePass}
 				/>
-			</div>
 		</div>
 		<style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } } .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1); }`}</style>
 		</>

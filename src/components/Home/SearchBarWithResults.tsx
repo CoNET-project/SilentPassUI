@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
+import React, { useEffect, useLayoutEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Search, ChevronLeft} from 'lucide-react'
 import { searchUsername, storeSystemData } from '@/services/beamio'
 import beamio_icon from '@/components/assets/32x32.svg'
@@ -28,6 +28,8 @@ type Props = {
 	showBackIcon?: boolean
 	focus?: boolean
 	showError?: boolean
+	/** Chat 等场景：不渲染全屏白色侧边面板（BeamioContactProfilePreview） */
+	showSideSlidePanel?: boolean
 }
 
 const displayName = (item: searchResult) => {
@@ -60,7 +62,7 @@ function formatUserDate(timestamp?: string | number): string {
 
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
-	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false }: Props) => {
+	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false, showSideSlidePanel = true }: Props) => {
 		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setRedeemFromUrl } = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
@@ -71,6 +73,8 @@ const SearchInputWithDropdown =
 		const [myAddress, setMyAddress] = useState('')
 		const [sideSlide, setSideSlide] = useState<'' | 'BeamioContactProfilePreview'>('')
 		const [showDropdown, setShowDropdown] = useState(false)
+		const [dropdownUpwards, setDropdownUpwards] = useState(false)
+		const containerRef = useRef<HTMLDivElement>(null)
 		const [searchBeamiosHistory, setSearchBeamiosHistory] = useState<searchkeywork[]>([])
 		const [searchKeysHistory, setSearchKeysHistory] = useState<searchkeywork[]>([])
 		const [readonly, setReadonly] = useState(!focus)
@@ -306,6 +310,15 @@ const SearchInputWithDropdown =
 			setInternalError(showError)
 		}, [showError])
 
+		// 靠近底部时，Dropdown 向上弹出；远离底部时保持向下
+		useLayoutEffect(() => {
+			if (!showDropdown || !containerRef.current) return
+			const rect = containerRef.current.getBoundingClientRect()
+			const spaceBelow = window.innerHeight - rect.bottom
+			const spaceAbove = rect.top
+			setDropdownUpwards(spaceBelow < spaceAbove)
+		}, [showDropdown])
+
 		const handleSelect = (item: searchResult) => {
 			if (select) {
 				setQuery('')
@@ -462,7 +475,7 @@ const SearchInputWithDropdown =
                    如果这个组件是整个页面的顶部，必须加这个 padding
                 */}
 
-				<div className="relative w-full h-11"
+				<div ref={containerRef} className="relative w-full h-11"
 				>
 					{/* 没输入：普通 pill 输入框 */}
 					{!sideSlide && !showDropdown && (
@@ -567,18 +580,16 @@ const SearchInputWithDropdown =
 					{/* 有输入：Google 风格大卡片，input + 下拉合在一起 */}
 					{!sideSlide && showDropdown && (
 						<div
-							className="
-								absolute inset-x-0 top-0
-								rounded-3xl bg-white
-								shadow-xl shadow-slate-200/80
-								border border-slate-200/80
-								overflow-hidden
-								z-30
-							"
-							// ✅ FIX 6: 下拉框的定位也要考虑安全区域
-                            // 如果外层加了 padding，这里 top-0 可能是相对 padding box 的
-                            // 如果觉得位置不对，可以改成 top-[env(safe-area-inset-top)] 但通常 relative 父级处理了就行
-                            style={{ top: 0 }}
+							className={[
+								"absolute inset-x-0",
+								"rounded-3xl bg-white",
+								"shadow-xl shadow-slate-200/80",
+								"border border-slate-200/80",
+								"overflow-hidden",
+								"z-30",
+								"flex flex-col",
+								dropdownUpwards ? "top-0 -translate-y-full flex-col-reverse mb-1" : "top-0",
+							].join(" ")}
 						>
 							{/* 顶部：输入行 */}
 							<div 
@@ -732,7 +743,8 @@ const SearchInputWithDropdown =
 					)}
 				</div>
 
-				{/* Settings full-screen slide-over */}
+				{/* Settings full-screen slide-over（showSideSlidePanel=false 时不渲染，如 Chat 页） */}
+				{showSideSlidePanel && (
 				<div
 						className={[
 							"pt-[env(safe-area-inset-top)]",
@@ -792,6 +804,7 @@ const SearchInputWithDropdown =
 						)}
 					</div>
 				</div>
+				)}
 
 				
 			</>

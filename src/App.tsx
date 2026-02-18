@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useLayoutEffect } from "react"
 import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
+import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import Home from "./pages/Home"
 import History from "./pages/History/MyWalletDashboardNew"
 import Pay from "./pages/Pay"
@@ -69,6 +70,9 @@ function AppShell() {
     isInitialLoading,
     showFooter,
     setShowFooter,
+    chatSearchOpen,
+    setChatSearchOpen,
+    setChatHomeItem,
     seenMsgRef,
     charts,
     setMessageCount,
@@ -953,8 +957,35 @@ function AppShell() {
 				</Routes>
 			</div>
 
-			{showFooter && createPortal(
-				<Footer visible={footerVisible} peek={false} />,
+			{createPortal(
+				<Footer visible={showFooter && footerVisible} peek={false} />,
+				document.body
+			)}
+
+			{/* 全局 Search：任意页面点击 footer 的 search 图标后，直接显示/隐藏（无滑动动画） */}
+			{chatSearchOpen && createPortal(
+				<div
+					className="fixed bottom-5 left-0 right-0 z-[100] flex items-center px-4"
+					style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+				>
+					<SearchInputWithDropdown
+							showHistory={false}
+							showSideSlidePanel={false}
+							closeWindow={item => {
+								setChatSearchOpen(false)
+								if (item && typeof item !== 'string') {
+									setUserPreviewItem(item)
+									setShowAlphaHowItWorks('BeamioContactProfilePreview')
+									setShowFooter(false)
+								} else {
+									setShowFooter(true)
+								}
+							}}
+							showBackIcon={true}
+							select={true}
+							focus={true}
+						/>
+				</div>,
 				document.body
 			)}
 

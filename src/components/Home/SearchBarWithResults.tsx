@@ -1,7 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Search, ChevronLeft} from 'lucide-react'
 import { searchUsername, storeSystemData } from '@/services/beamio'
-import beamio_icon from '@/components/assets/32x32.svg'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { CoNET_Data, setCoNET_Data, } from '@/utils/globals'
@@ -240,10 +239,10 @@ const SearchInputWithDropdown =
 
 		const pillClass = [
 			"flex items-center",
-			"bg-slate-100",
+			"bg-white",
 			"rounded-full",
 			"px-2",
-			"h-11",
+			"h-11 shrink-0",
 			"flex-1",
 			"transition",
 				
@@ -591,9 +590,13 @@ const SearchInputWithDropdown =
 								dropdownUpwards ? "top-0 -translate-y-full flex-col-reverse mb-1" : "top-0",
 							].join(" ")}
 						>
-							{/* 顶部：输入行 */}
-							<div 
-							className={pillClass}
+							{/* 输入行：固定高度，不参与 flex 伸缩 */}
+							<div
+								className={[
+									pillClass,
+									"!flex-none !h-11 !min-h-11",
+								].join(" ")}
+								style={{ height: 44, minHeight: 44 }}
 							>
 								{/* ← 返回按钮 */}
 								{
@@ -617,13 +620,6 @@ const SearchInputWithDropdown =
 									)
 								}
 								
-
-								{/* Beamio icon */}
-								<img
-									src={beamio_icon}
-									alt="Beamio"
-									className="w-5 h-5 mr-2 flex-shrink-0 opacity-80"
-								/>
 
 								{/* Search icon */}
 								<Search

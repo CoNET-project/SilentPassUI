@@ -72,8 +72,8 @@ const Home = () => {
 
 				{/* 滚动容器：与 Home 一致，flex-1 直接子元素，ref+onScroll 绑定此处 */}
 				<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#F2F2F7] pb-[env(safe-area-inset-bottom)]">
-					{/* 顶部留白：为胶囊让出高度 */}
-					<div className="h-[3.25rem] shrink-0" />
+					{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
+					<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
 					<ChatList
 						// 这里你传你维护的 chat list（通常是 profile.chat）
 						list={profiles?.[0]?.chat || []}

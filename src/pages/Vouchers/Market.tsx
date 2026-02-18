@@ -425,8 +425,8 @@ export default function Market() {
 
 		{/* 滚动容器：与 Home 一致，flex-1 直接子元素 */}
 		<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 min-h-0 overflow-y-auto pb-24">
-		{/* 顶部留白：为胶囊让出高度 */}
-		<div className="h-[3.25rem] shrink-0" />
+		{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
+		<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
 		{/* HERO CARDS: PREMIER ACCESS (ExampleCard style - horizontal snap scroll) */}
 		<div className="flex gap-4 overflow-x-auto px-5 pb-8 scrollbar-hide snap-x snap-mandatory">
 			{/* 1. Genesis Node Pack (ExampleCard GenesisCard design) */}

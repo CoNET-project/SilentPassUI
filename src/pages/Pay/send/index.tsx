@@ -633,9 +633,26 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 
 	return (
 	// ✅ 白底容器，不再 items-center（避免“卡片居中感”）
-	<div className="">
+	<div className="relative">
+		{/* 顶部右侧：独立圆形关闭按钮 */}
+		<button
+			type="button"
+			onClick={() => close('/')}
+			className="
+				absolute top-0 right-0 z-10
+				w-10 h-10 rounded-full
+				bg-slate-100 dark:bg-slate-800
+				flex items-center justify-center
+				hover:bg-slate-200 dark:hover:bg-slate-700
+				active:scale-95
+				transition-colors
+			"
+			aria-label="Close"
+		>
+			<X className="w-5 h-5 text-slate-600 dark:text-slate-300" strokeWidth={2.5} />
+		</button>
 		{/* ✅ 不再 justify-center，不包 Card */}
-		<div className="w-full mt-8 mb-16">
+		<div className="w-full mt-8 mb-16 pr-12">
 		{/* ✅ 原 CardContent 的 padding 交给这里 */}
 		<div className="">
 			{successHash ? (

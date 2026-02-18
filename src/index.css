@@ -30,6 +30,8 @@ body,
   height: 100vh;
   margin: 0;
   padding: 0;
+  /* 禁用弹力下拉（rubber-band / overscroll bounce） */
+  overscroll-behavior: none;
 }
 
 body {
@@ -41,8 +43,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  overflow-x: hidden;          /* ✅ 只放 body */
-  overscroll-behavior-y: none; /* ✅ 可留可不留 */
+  overflow-x: hidden;
    padding-bottom: 0 !important; /* 覆盖 Tailwind 的安全区域设置 */
   
 }

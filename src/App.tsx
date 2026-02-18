@@ -934,8 +934,8 @@ function AppShell() {
 	}, [charts, profiles])
 
   return (
-		<div>
-			<div ref={bodyRef}>
+		<div className="overscroll-none">
+			<div ref={bodyRef} className="overscroll-none min-h-full">
 				<Routes>
 				<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
 				<Route path="/" element={<Home />} />

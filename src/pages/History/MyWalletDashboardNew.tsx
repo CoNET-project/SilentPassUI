@@ -1176,9 +1176,6 @@ export default function MyWalletDashboardNew() {
 					</div>
 				)}
 
-				{/* 顶部留白：为固定胶囊让出高度 */}
-				
-
 				{/* Cards and Details Container - exampleExpress WalletStackView 风格 */}
 				<div className={`relative flex-1 min-h-0 flex flex-col transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) ${activeView ? 'pt-8' : ''}`}>
 					{/* Scrollable Main Content - exampleExpress 叠卡布局 */}
@@ -1189,7 +1186,9 @@ export default function MyWalletDashboardNew() {
 							activeView ? 'overflow-hidden' : 'overflow-y-auto'
 						}`}
 					>
-						<div className={`relative h-[650px] perspective-1000 transition-transform duration-500 mt-[1.25rem] ${activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''}`}>
+						{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
+						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
+						<div className={`relative h-[650px] perspective-1000 transition-transform duration-500 ${activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''}`}>
 							{/* LAYER 1: MAIN VAULT (EOA) - 点击折叠 express 或打开详情 */}
 							<div
 								onClick={() => (isExpressExpanded ? setIsExpressExpanded(false) : handleCardClick('eoa'))}

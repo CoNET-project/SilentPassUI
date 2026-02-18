@@ -231,10 +231,9 @@ export default function ChatList({
 
   return (
     <div className="min-h-full min-w-0 bg-[#F2F2F7]">
-      {/* 顶部栏（贴近 iOS 列表页风格） */}
+      {/* 顶部栏（贴近 iOS 列表页风格；父级已提供 刘海+3.5rem 留白，此处不再重复 safe-area） */}
       <div
         className="sticky top-0 z-20 bg-[#F2F2F7]/90 backdrop-blur-xl"
-        style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         {/* <div className="px-4 pt-3 pb-2 flex items-center justify-between">
           <button

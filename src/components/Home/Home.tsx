@@ -37,6 +37,7 @@ import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
+import BankingBridge from '@/pages/History/components/BankingBridge'
 
 
 
@@ -92,6 +93,7 @@ const Home = ({}) => {
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
+	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
@@ -426,7 +428,8 @@ const Home = ({}) => {
 	}
 
 	const handleAddFunds = () => {
-		setShowAlphaHowItWorks('CoinbaseRamps')
+		setShowAddCashSheet(true)
+		setShowFooter(false)
 	}
 
 	/** 余额卡：白底 + 渐变描边 */
@@ -826,8 +829,8 @@ const Home = ({}) => {
 			<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 flex flex-col overflow-y-auto pb-44">
 				{!openSearch && (
 					<>
-						{/* 顶部留白：为固定胶囊让出高度 */}
-						<div className="h-[3.75rem] shrink-0" />
+						{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
+						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
 
 						{/* Content - exampleExpress style */}
 						<div className="px-5 pt-6 space-y-6">
@@ -985,6 +988,66 @@ const Home = ({}) => {
 										showActiveTab={false}
 										hideOuterFrame
 										onClose={() => setShowPayMeSheet(false)}
+									/>
+								</div>
+							</motion.div>
+						</>
+					)}
+				</AnimatePresence>,
+				document.body
+			)}
+
+			{/* Add Cash - BankingBridge 底部滑出 */}
+			{createPortal(
+				<AnimatePresence>
+					{showAddCashSheet && (
+						<>
+							<motion.div
+								className="fixed inset-0 z-[9997] bg-black/40"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+								transition={{ duration: 0.2 }}
+								onClick={() => {
+									setShowAddCashSheet(false)
+									setShowFooter(true)
+								}}
+							/>
+							<motion.div
+								className="fixed left-0 right-0 bottom-0 z-[9998] bg-white dark:bg-slate-900 rounded-t-[24px] shadow-2xl flex flex-col max-h-[92dvh] pb-[calc(env(safe-area-inset-bottom)+2rem)]"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="flex-shrink-0 flex items-center justify-between px-4 py-2">
+									<div className="w-10" />
+									<div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-slate-600" />
+									<button
+										type="button"
+										onClick={() => {
+											setShowAddCashSheet(false)
+											setShowFooter(true)
+										}}
+										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+										aria-label="Close"
+									>
+										<X className="w-5 h-5" />
+									</button>
+								</div>
+								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+									<BankingBridge
+										onAddCash={() => {
+											setShowAddCashSheet(false)
+											setShowFooter(false)
+											setShowAlphaHowItWorks('CoinbaseRamps')
+										}}
+										onCashOut={() => {
+											setShowAddCashSheet(false)
+											setShowFooter(false)
+											setShowAlphaHowItWorks('CoinbaseRamps')
+										}}
 									/>
 								</div>
 							</motion.div>

@@ -269,17 +269,17 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
             >
               <X className="w-5 h-5" strokeWidth={2.5} />
             </button>
-            <div className="flex p-1 rounded-full bg-white/10">
+            <div className="flex flex-1 min-w-[240px] max-w-[320px] p-1 rounded-full bg-white/10 gap-1">
               <button
                 type="button"
-                className="px-5 py-2 rounded-full text-sm font-semibold bg-white text-slate-800"
+                className="flex-1 min-w-0 px-4 py-2 rounded-full text-sm font-semibold bg-white text-slate-800"
               >
                 Scan
               </button>
               <button
                 type="button"
                 onClick={handleMyCode}
-                className="px-5 py-2 rounded-full text-sm font-semibold text-white/80 hover:text-white transition-colors"
+                className="flex-1 min-w-0 px-4 py-2 rounded-full text-sm font-semibold text-white/80 hover:text-white transition-colors"
               >
                 Show to pay
               </button>

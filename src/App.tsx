@@ -962,16 +962,28 @@ function AppShell() {
 				document.body
 			)}
 
-			{/* 全局 Search：任意页面点击 footer 的 search 图标后，直接显示/隐藏（无滑动动画） */}
+			{/* 全局 Search：任意页面点击 footer 的 search 图标后，直接显示/隐藏（无滑动动画）
+				当 search 控件执行关闭（返回按钮/选择结果）后，父容器必须执行 setChatSearchOpen(false) 隐藏 search */}
 			{chatSearchOpen && createPortal(
-				<div
-					className="fixed bottom-5 left-0 right-0 z-[100] flex items-center px-4"
-					style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-				>
-					<SearchInputWithDropdown
+				<div className="fixed inset-0 z-[100] flex flex-col">
+					{/* 遮罩：点击后关闭 search，确保父容器执行隐藏 */}
+					<div
+						className="flex-1 min-h-0"
+						aria-hidden
+						onClick={() => {
+							setChatSearchOpen(false)
+							setShowFooter(true)
+						}}
+					/>
+					<div
+						className="flex-shrink-0 flex items-center px-4 pb-5"
+						style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+					>
+						<SearchInputWithDropdown
 							showHistory={false}
 							showSideSlidePanel={false}
 							closeWindow={item => {
+								// 必须：search 关闭后父容器执行隐藏
 								setChatSearchOpen(false)
 								if (item && typeof item !== 'string') {
 									setUserPreviewItem(item)
@@ -985,6 +997,7 @@ function AppShell() {
 							select={true}
 							focus={true}
 						/>
+					</div>
 				</div>,
 				document.body
 			)}

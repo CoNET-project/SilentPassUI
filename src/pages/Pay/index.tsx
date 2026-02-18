@@ -189,13 +189,12 @@ const Pay = ({}) => {
 				`}
 			>
 				<BeamioSearch close={(item) => {
-					if (!item || typeof item === 'string') {
-						setOpenSearch(false)
-					} else {
+					// 关闭时必须隐藏 search 控件
+					setOpenSearch(false)
+					if (item && typeof item !== 'string') {
 						setUserPreviewItem(item)
 						setShowAlphaHowItWorks('Pay')
 					}
-					
 				} }/>
 			</div>
 			{showAlphaHowItWorks && createPortal(

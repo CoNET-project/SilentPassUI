@@ -74,6 +74,7 @@ import { TransactionsItemDetail } from '@/pages/History/TransactionsItemDetail'
 import CardManager from '@/pages/cardManager'
 import TopUpRedeemForm from '@/pages/Vouchers/TopUpRedeemForm'
 import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
+import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 
 /** Redeem Active List：显示 owner 已创建的 redeem  batches 一览 */
 const RedeemActiveList = ({
@@ -473,6 +474,8 @@ export default function MyWalletDashboardNew() {
 	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | 'ccsa' | null>(null)
 	const [copiedCardAddress, setCopiedCardAddress] = useState<string | null>(null)
 	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
+	/** Add Cash 后：父容器内显示 BeamioAddUSDCFlow 的 Coinbase 确认画面（204-221） */
+	const [eoaAddUsdcOpen, setEoaAddUsdcOpen] = useState(false)
 	const [aaPanelOpen, setAaPanelOpen] = useState<'' | 'Pay' | 'BeamioPayMeQR'>('')
 	const [ccsaCreateCardOpen, setCcsaCreateCardOpen] = useState(false)
 	const [topUpRedeemOpen, setTopUpRedeemOpen] = useState(false)
@@ -595,6 +598,7 @@ export default function MyWalletDashboardNew() {
 	const closeEoaPanel = useCallback(() => {
 		setShowFooter(true)
 		setEoaPanelOpen('')
+		setEoaAddUsdcOpen(false)
 		setPendingPayTarget(null)
 	}, [setShowFooter])
 
@@ -1501,41 +1505,7 @@ export default function MyWalletDashboardNew() {
 								<div className="mb-8">
 									{selectedCard.id === 'eoa' ? (
 										<div className="flex items-start justify-between flex-wrap gap-4">
-											<MiniAction
-												label="Send"
-												icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-												onClick={() => {
-													setShowFooter(false)
-													setEoaPanelOpen('Pay')
-												}}
-											/>
-											<MiniAction
-												label="Request"
-												icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-												onClick={() => {
-													setShowFooter(false)
-													setEoaPanelOpen('PaymentLink')
-												}}
-											/>
-											<MiniAction
-												label="Bank"
-												icon={<Landmark className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-												onClick={() => {
-													setShowFooter(false)
-													setEoaPanelOpen('BankingBridge')
-												}}
-											/>
-											<MiniAction
-												label="Redeem"
-												icon={<Ticket className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
-												onClick={() => {
-													setShowFooter(false)
-													setCcsaRedeemOpen(true)
-													setRedeemCodeInput('')
-													setRedeemError(null)
-													setRedeemSuccessTx(null)
-												}}
-											/>
+											
 										</div>
 									) : selectedCard.id === 'aa' ? (
 										/* Express Pay：Transfer / Pay / Pay bill / Vouchers（与 MyWalletDashboard Tab 2 一致） */
@@ -1614,7 +1584,7 @@ export default function MyWalletDashboardNew() {
 													setTopUpRedeemOpen(true)
 												}}
 											/>
-											<ExpressAction
+											{/* <ExpressAction
 												label={userCards.length === 0 ? 'Create Card' : 'Details'}
 												iconBgClass="bg-orange-500 shadow-orange-500/30"
 												icon={<CreditCard className="w-5 h-5" />}
@@ -1626,7 +1596,7 @@ export default function MyWalletDashboardNew() {
 														navigate('/card-manager')
 													}
 												}}
-											/>
+											/> */}
 										</div>
 									)}
 								</div>
@@ -1927,11 +1897,24 @@ export default function MyWalletDashboardNew() {
 									close={closeEoaPanel}
 								/>
 							)}
-							{eoaPanelOpen === 'BankingBridge' && (
+							{eoaPanelOpen === 'BankingBridge' && !eoaAddUsdcOpen && (
 								<BankingBridge
-									onAddCash={() => {}}
-									onCashOut={() => {}}
+									onAddCash={() => setEoaAddUsdcOpen(true)}
+									onCashOut={() => setEoaAddUsdcOpen(true)}
 								/>
+							)}
+							{eoaPanelOpen === 'BankingBridge' && eoaAddUsdcOpen && (
+								<>
+									<BeamioNavBack
+										title=""
+										onClose={() => setEoaAddUsdcOpen(false)}
+										onMore={() => {}}
+									/>
+									<BeamioAddUSDCFlow
+										embedInSheet
+										onCancel={() => setEoaAddUsdcOpen(false)}
+									/>
+								</>
 							)}
 							{eoaPanelOpen === 'PaymentLink' && (
 								<PaymentLink

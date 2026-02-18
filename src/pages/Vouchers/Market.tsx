@@ -3,6 +3,7 @@ import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import {
   Search,
   Store,
+  Crown,
   Coffee,
   Music,
   ShoppingCart,
@@ -18,6 +19,14 @@ import {
   Zap,
   ShieldCheck,
   Check,
+  X,
+  ArrowRight,
+  Lock,
+  Cpu,
+  Wallet,
+  Share,
+  Truck,
+  MapPin,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -80,6 +89,7 @@ type GenesisNodeData = {
   type: string
   image: string
   features: GenesisFeature[]
+  partners: { name: string; icon: string; bg: string }[]
 }
 type HeroItem = {
   id: number
@@ -95,6 +105,7 @@ type HeroItem = {
   type: string
   color?: string
   overlay?: string
+  partners?: { name: string; icon: string; bg: string }[]
 }
 
 const GENESIS_NODE_DATA: GenesisNodeData = {
@@ -113,9 +124,16 @@ const GENESIS_NODE_DATA: GenesisNodeData = {
     { title: "Military-Grade SE", desc: "EAL5+ certified chip for Account Abstraction keys.", icon: <ShieldCheck size={20} className="text-blue-400" /> },
     { title: "5% Protocol Revenue Share", desc: "Perpetual claim on 5% of all B-Units consumed across the global clearing network.", icon: <Check size={20} className="text-blue-400" /> },
   ],
+  partners: [
+	{ name: "Osmanthus", icon: "🌸", bg: "bg-yellow-100" },
+	{ name: "Sen Pho", icon: "🍜", bg: "bg-orange-100" },
+	{ name: "Longdhang", icon: "🥟", bg: "bg-red-100" },
+	{ name: "More", icon: "+18", bg: "bg-gray-100 text-xs font-bold" }
+  ],
 }
 
 const HERO_COLLECTION: HeroItem[] = [
+  { id: 101, tagline: "HAPPENING NOW", title: "CCSA Member Card", subtitle: "Unlock Exclusive Dining. First Partner: Osmanthus.", description: "Your gateway to a curated network of premier restaurants. Start your journey at Osmanthus, our inaugural partner, with exclusive perks and stored value acceptance.", features: ["Accepted at Osmanthus & Future Partners", "Priority Booking at Osmanthus", "Member-Only Tasting Menus", "Future Network Expansion"], image: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&q=80&w=800", merchant: "CCSA Alliance", location: "Aberdeen Centre, Richmond, BC", price: 150, type: "Membership", color: "text-white", overlay: "from-black/60 via-black/10 to-transparent", partners: [{ name: "Osmanthus", icon: "🌸", bg: "bg-yellow-100" }, { name: "Sen Pho", icon: "🍜", bg: "bg-orange-100" }, { name: "Longdhang", icon: "🥟", bg: "bg-red-100" }, { name: "More", icon: "+18", bg: "bg-gray-100 text-xs font-bold" }] },
   {
     id: 102,
     tagline: "LOCAL FAVORITE",
@@ -174,6 +192,124 @@ const GenesisCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () => 
     </div>
   </div>
 )
+
+type InventoryInstance = { id: string; date: string; balance: string }
+type ViewingItem = (GenesisNodeData | HeroItem) & { icon?: React.ReactNode; bg?: string; shadow?: string }
+
+const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: ViewingItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (item: ViewingItem) => void; onOpenWallet: () => void }) => {
+  if (!item) return null
+  const count = inventory.length
+  const genesisItem = item as GenesisNodeData
+  return (
+    <div className="fixed inset-0 z-[80] bg-[#020617] overflow-y-auto flex flex-col text-white" style={{ animation: "slide-up 0.3s ease-out" }}>
+      <div className="absolute top-0 w-full p-4 flex justify-between items-center z-50">
+        <button onClick={onClose} className="w-9 h-9 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"><X size={20} /></button>
+        <button className="w-9 h-9 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"><Share size={18} /></button>
+      </div>
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-0 w-full h-[50vh] bg-gradient-to-b from-[#1562f0]/20 to-transparent" />
+        <div className="absolute top-0 w-full h-full" style={{ backgroundImage: "linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)", backgroundSize: "50px 50px" }} />
+      </div>
+      <div className="relative z-10 px-6 pt-24 pb-32">
+        <div className="mb-2"><span className="bg-[#1562f0] text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md">{genesisItem.type}</span></div>
+        <h1 className="text-5xl font-bold leading-none tracking-tight mb-4">{genesisItem.title.replace(" Pack", "")}</h1>
+        <p className="text-gray-400 text-lg leading-snug mb-8">{genesisItem.subtitle}</p>
+        {count > 0 && (
+          <div onClick={onOpenWallet} className="bg-blue-900/30 border border-blue-500/30 rounded-2xl p-4 mb-8 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform shadow-[0_0_20px_rgba(21,98,240,0.2)]">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-sm"><Wallet size={20} /></div>
+              <div><h4 className="text-sm font-bold text-white">You own {count} Nodes</h4><p className="text-xs text-blue-300">Tap to Gift or Manage</p></div>
+            </div>
+            <ChevronRight size={18} className="text-blue-400" />
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-4 mb-8">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400"><Cpu size={20} /></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-bold">Chipset</div><div className="text-sm font-bold leading-tight">EAL6+<br/>Secure</div></div>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-400"><Activity size={20} /></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-bold">Yield</div><div className="text-sm font-bold leading-tight">5% Global</div></div>
+          </div>
+        </div>
+        <div className="mb-10">
+          <div className="flex justify-between items-end mb-2"><span className="text-sm font-medium text-gray-300">Genesis Mint Progress</span><span className="text-[#1562f0] font-mono font-bold">{genesisItem.currentMint ?? 0} / {genesisItem.totalMint ?? 0}</span></div>
+          <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-full bg-[#1562f0] rounded-full shadow-[0_0_10px_#1562f0]" style={{ width: `${((genesisItem.currentMint ?? 0) / (genesisItem.totalMint || 1)) * 100}%` }} />
+          </div>
+        </div>
+        <div className="bg-[#0f172a] rounded-3xl p-6 border border-gray-800">
+          <div className="flex items-center gap-2 mb-6 text-gray-500 text-xs font-bold uppercase tracking-widest"><Lock size={12} /> The Tangible Edge</div>
+          <div className="space-y-8">
+            {(genesisItem.features ?? []).map((feature: GenesisFeature, idx: number) => (
+              <div key={idx} className="flex gap-4">
+                <div className="mt-1">{feature.icon}</div>
+                <div><h4 className="font-bold text-white text-[15px]">{feature.title}</h4><p className="text-gray-400 text-sm leading-relaxed mt-1">{feature.desc}</p></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="fixed bottom-0 w-full max-w-md bg-[#020617]/90 backdrop-blur-xl border-t border-gray-800 p-5 pb-8 z-50 flex items-center gap-3">
+        {count > 0 ? (
+          <><button onClick={onOpenWallet} className="flex-1 bg-white/5 border border-white/10 text-white px-4 py-3.5 rounded-full font-bold text-[15px] active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-white/10"><Wallet size={18} /> My Nodes <span className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded ml-1">x{count}</span></button><button onClick={() => onBuy(item)} className="flex-[1.5] bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-[0_0_30px_-5px_rgba(21,98,240,0.5)] active:scale-95 transition-transform flex items-center justify-center gap-2">Secure Another</button></>
+        ) : (
+          <><div><div className="text-[10px] text-gray-500 uppercase font-bold tracking-wide">Total Investment</div><div className="text-3xl font-bold text-white tracking-tight">${item.price}</div></div><button onClick={() => {
+
+		  }} className="flex-1 bg-[#1562f0] hover:bg-blue-600 text-white py-3.5 rounded-full font-bold text-[17px] shadow-[0_0_30px_-5px_rgba(21,98,240,0.5)] active:scale-95 transition-all flex items-center justify-center gap-2">Secure Node <ArrowRight size={20} /></button></>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: ViewingItem; onClose: () => void; onConfirm: () => void }) => {
+  const [step, setStep] = useState("check")
+  useEffect(() => {
+    if (step === "check") setTimeout(() => setStep("shipping"), 2000)
+    if (step === "paying") setTimeout(() => setStep("minting"), 2000)
+    if (step === "minting") setTimeout(() => setStep("success"), 3000)
+  }, [step])
+  return (
+    <div className="fixed inset-0 z-[100] bg-[#020617] text-white flex flex-col">
+      <div className="absolute top-0 right-0 p-6 z-50"><button onClick={onClose} className="bg-white/10 p-2 rounded-full hover:bg-white/20"><X size={20} /></button></div>
+      {step === "check" && <div className="flex-1 flex flex-col items-center justify-center p-8 text-center"><div className="w-16 h-16 rounded-full border-4 border-blue-500 border-t-transparent animate-spin mb-6" /><h2 className="text-2xl font-bold mb-2">Verifying Eligibility</h2><p className="text-gray-400">Checking whitelist status and wallet age...</p></div>}
+      {step === "shipping" && <div className="flex-1 flex flex-col p-6"><h2 className="text-3xl font-bold mb-2 pt-12">Where should we send your Node?</h2><p className="text-gray-400 mb-8">This pack includes physical hardware.</p><div className="space-y-4"><div className="bg-white/5 border border-white/10 p-4 rounded-xl"><label className="text-xs uppercase text-gray-500 font-bold block mb-2">Full Name</label><input type="text" defaultValue="Felix Chen" className="w-full bg-transparent text-white font-bold text-lg outline-none" /></div><div className="bg-white/5 border border-white/10 p-4 rounded-xl"><label className="text-xs uppercase text-gray-500 font-bold block mb-2">Shipping Address</label><input type="text" defaultValue="1288 Alberni St, Vancouver, BC" className="w-full bg-transparent text-white font-bold text-lg outline-none" /></div></div><div className="mt-auto"><div className="flex justify-between items-center mb-6 text-sm"><span className="text-gray-400">Hardware Delivery</span><span className="text-green-400 flex items-center gap-1"><Truck size={14} /> Est. 2 Weeks</span></div><button onClick={() => setStep("paying")} className="w-full bg-[#1562f0] py-4 rounded-full font-bold text-lg shadow-[0_0_30px_rgba(21,98,240,0.4)]">Confirm & Pay $999</button></div></div>}
+      {(step === "paying" || step === "minting") && <div className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden"><div className="absolute inset-0 opacity-20 bg-gradient-to-br from-blue-900/40 via-transparent to-purple-900/40 mix-blend-screen" /><div className="relative z-10 bg-black/50 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-2xl"><div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 mx-auto"><Cpu size={40} className="text-blue-400 animate-pulse" /></div><h2 className="text-3xl font-bold mb-2">{step === "paying" ? "Processing Payment" : "Minting Genesis NFT"}</h2><p className="text-gray-400 font-mono text-sm">{step === "paying" ? "Securing funds on Base L2..." : "Deploying contract 0x71...9a2"}</p></div></div>}
+      {step === "success" && <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-blue-900/20 to-[#020617]"><div className="w-32 h-32 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-2xl shadow-[0_0_60px_rgba(59,130,246,0.6)] flex items-center justify-center mb-8 rotate-12"><Server size={64} className="text-white" /></div><h1 className="text-4xl font-bold mb-2">Welcome, Node #248</h1><p className="text-gray-400 mb-8 max-w-xs">You are now a verified infrastructure partner of the Beamio Network.</p><div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-4 mb-8"><div className="flex justify-between py-2 border-b border-white/10"><span className="text-gray-500">Transaction</span><span className="font-mono text-blue-400">0x8a...2b9</span></div><div className="flex justify-between py-2"><span className="text-gray-500">Revenue Share</span><span className="text-green-400">Active</span></div></div><button onClick={onConfirm} className="w-full max-w-sm bg-white text-black py-4 rounded-full font-bold text-lg hover:bg-gray-200 transition-colors">Enter Dashboard</button></div>}
+    </div>
+  )
+}
+
+const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: ViewingItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (item: ViewingItem) => void; onOpenWallet: () => void }) => {
+  if (!item) return null
+  const count = inventory.length
+  const heroItem = item as HeroItem
+  return (
+    <div className="fixed inset-0 z-[80] bg-white overflow-y-auto flex flex-col">
+      <div className="absolute top-0 w-full p-4 flex justify-between items-center z-50">
+        <button onClick={onClose} className="w-9 h-9 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm hover:bg-white/30 transition-colors"><X size={20} /></button>
+        <button className="w-9 h-9 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm hover:bg-white/30 transition-colors"><Share size={18} /></button>
+      </div>
+      <div className="relative w-full h-[45vh] shrink-0 bg-gray-900">
+        {heroItem.image && <img src={heroItem.image} className="w-full h-full object-cover" alt={heroItem.title} />}
+        <div className={`absolute inset-0 bg-gradient-to-t ${heroItem.overlay || "from-black/80 via-transparent to-black/30"}`} />
+        <div className="absolute bottom-0 left-0 w-full p-6 text-white"><span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-3 inline-block bg-[#1562f0]">{heroItem.type || "Voucher"}</span><h1 className="text-4xl font-bold leading-tight mb-2 shadow-sm">{heroItem.title}</h1><p className="text-lg text-white/90 font-medium">{heroItem.merchant}</p></div>
+      </div>
+      <div className="flex-1 px-6 py-8 pb-32">
+        {count > 0 && <div onClick={onOpenWallet} className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-4 mb-6 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform shadow-sm"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-[#1562f0] shadow-sm"><Wallet size={20} /></div><div><h4 className="text-sm font-bold text-gray-900">You have {count} cards</h4><p className="text-xs text-gray-500">Tap to Use, Gift or Trade</p></div></div><ChevronRight size={18} className="text-blue-400" /></div>}
+        <div className="flex gap-6 mb-8 border-b border-gray-100 pb-8"><div className="flex items-center gap-2"><div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 text-gray-500"><MapPin size={20} /></div><div><div className="text-[11px] uppercase font-bold tracking-wide text-gray-400">Location</div><div className="text-sm font-semibold text-gray-900">{heroItem.location || "Online"}</div></div></div><div className="flex items-center gap-2"><div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 text-gray-500"><ShieldCheck size={20} /></div><div><div className="text-[11px] uppercase font-bold tracking-wide text-gray-400">Security</div><div className="text-sm font-semibold text-gray-900">Guaranteed</div></div></div></div>
+        <h3 className="text-xl font-bold mb-3 text-gray-900">About</h3>
+        <p className="leading-relaxed text-[17px] mb-8 text-gray-600">{heroItem.description}</p>
+        {heroItem.features && <div className="rounded-2xl p-5 mb-8 bg-[#F2F2F7]"><h4 className="text-sm font-bold uppercase tracking-wide mb-4 text-gray-900">What&apos;s Included</h4><div className="space-y-3">{(heroItem.features ?? []).map((f: string, idx: number) => <div key={idx} className="flex items-center gap-3"><div className="w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 bg-green-500"><Check size={12} strokeWidth={4} /></div><span className="font-medium text-gray-700">{f}</span></div>)}</div></div>}
+      </div>
+      <div className="fixed bottom-0 w-full max-w-md backdrop-blur-xl border-t bg-white/90 border-gray-200 p-5 pb-8 z-50 flex gap-3">
+        {count > 0 ? <><button onClick={onOpenWallet} className="flex-1 border-2 px-4 py-3.5 rounded-full font-bold text-[15px] active:scale-95 transition-transform flex items-center justify-center gap-2 bg-white border-gray-200 text-gray-900"><Wallet size={18} /> My Wallet <span className="text-xs px-1.5 py-0.5 rounded-md ml-1 bg-gray-200 text-gray-900">x{count}</span></button><button onClick={() => onBuy(item)} className="flex-[1.5] bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Buy Another <span className="opacity-80 font-medium text-xs ml-1">${item.price}</span></button></> : <div className="flex-1 flex gap-4 items-center"><div className="flex-1"><div className="text-xs uppercase font-bold text-gray-500">Total Price</div><div className="text-3xl font-bold tracking-tight text-gray-900">${item.price}</div></div><button onClick={() => onBuy(item)} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-full font-bold text-[17px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Purchase <ArrowRight size={20} /></button></div>}
+      </div>
+    </div>
+  )
+}
 
 type MarketItem = {
   id: string
@@ -320,6 +456,9 @@ export default function Market() {
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
 	const [settingsOpen, setSettingsOpen] = useState<"" | "PurchaseAccount" | "TopUP" | "showPayQR">("")
+	const [viewingItem, setViewingItem] = useState<ViewingItem | null>(null)
+	const [inventory, setInventory] = useState<Record<number, InventoryInstance[]>>({})
+	const [purchasingGenesis, setPurchasingGenesis] = useState(false)
 	const [qrPayload, setQrPayload] = useState<string>("")
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
 
@@ -405,6 +544,34 @@ export default function Market() {
 		flash()
 	}
 
+	const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] ?? []
+	const openDetail = (item: ViewingItem) => setViewingItem(item)
+	const initiatePurchase = (item: ViewingItem) => {
+		if (item.id === 999) {
+			setViewingItem(null)
+			setPurchasingGenesis(true)
+			return
+		}
+		if (getOwnedInstances(item.id).length > 0) {
+			openDetail(item)
+			return
+		}
+		if ((item as HeroItem).id === 101) {
+			setViewingItem(null)
+			setShowFooter(false)
+			setOverlayMode("cardDetail")
+			setShowCardDetail(true)
+			return
+		}
+		setViewingItem(null)
+	}
+	const finalizeGenesis = () => {
+		setPurchasingGenesis(false)
+		const newId = "#GN-" + (248 + getOwnedInstances(999).length)
+		setInventory((prev) => ({ ...prev, 999: [...(prev[999] ?? []), { id: newId, date: "Just now", balance: "ACTIVE" }] }))
+		setViewingItem(GENESIS_NODE_DATA)
+	}
+
 	const filteredItems = useMemo(() => {
 		if (!activeFilter) return MARKET_ITEMS
 		return MARKET_ITEMS.filter((i) => i.category === activeFilter)
@@ -432,79 +599,86 @@ export default function Market() {
 			{/* 1. Genesis Node Pack (ExampleCard GenesisCard design) */}
 			<GenesisCard
 				data={GENESIS_NODE_DATA}
-				onClick={() => navigate("/example-card")}
+				onClick={() => openDetail(GENESIS_NODE_DATA)}
 			/>
 
-			{/* 2. CCSA Member Card (ExampleCard Hero design) */}
-			{membershipItems.filter((item) => item.id === "m1").map((item) => (
-				<div
-					key={item.id}
-					role="button"
-					tabIndex={0}
-					onClick={() => onItemClick(item)}
-					onKeyDown={(e) => e.key === "Enter" && onItemClick(item)}
-					className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] shrink-0"
-				>
-					<img src="https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&q=80&w=800" alt="CCSA Member Card" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-					<div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-					<div className="absolute inset-0 p-6 flex flex-col justify-between">
-						<div>
-							<span className="text-blue-400 text-xs font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md px-2 py-1 rounded-md inline-block">
-								HAPPENING NOW
-							</span>
-							<h2 className="mt-2 text-4xl font-bold leading-[0.95] tracking-tight text-white drop-shadow-lg">
-								CCSA Member Card
-							</h2>
-							<p className="mt-2 text-white/90 font-medium text-[15px] drop-shadow-md line-clamp-2 leading-snug">
-								Unlock Exclusive Dining. First Partner: Osmanthus.
-							</p>
-						</div>
-						<div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[20px] p-4 flex items-center justify-between">
-							<div className="text-white">
-								<div className="text-[11px] opacity-80 uppercase tracking-wide">Price</div>
-								<div className="font-bold text-xl">{item.fiatCurrency}{item.fiatPrice}</div>
+			{/* 2. CCSA + Sen Pho (ExampleCard Hero design) */}
+			{HERO_COLLECTION.map((item) => {
+				const count = item.id === 101 ? (isMember ? 1 : 0) : getOwnedInstances(item.id).length
+				return (
+					<div
+						key={item.id}
+						role="button"
+						tabIndex={0}
+						onClick={() => openDetail(item)}
+						onKeyDown={(e) => e.key === "Enter" && openDetail(item)}
+						className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300 shrink-0"
+					>
+						<img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={item.title} />
+						<div className={`absolute inset-0 bg-gradient-to-t ${item.overlay}`} />
+						<div className="absolute inset-0 p-6 flex flex-col justify-between">
+							<div>
+								<span className="text-blue-400 text-xs font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md px-2 py-1 rounded-md inline-block">
+									{item.tagline}
+								</span>
+								<h2 className={`mt-2 text-4xl font-bold leading-[0.95] tracking-tight ${item.color ?? "text-white"} drop-shadow-lg`}>
+									{item.title}
+								</h2>
+								<p className="mt-2 text-white/90 font-medium text-[15px] drop-shadow-md line-clamp-2 leading-snug">
+									{item.subtitle}
+								</p>
 							</div>
-							<div onClick={(e) => e.stopPropagation()}>
-								<GetButton price={item.fiatPrice} count={isMember ? 1 : 0} onClick={() => onItemClick(item)} />
+							<div className={`flex flex-col ${item.partners ? "gap-3" : ""}`}>
+								{item.partners && (
+									<div onClick={(e) => e.stopPropagation()} className="flex justify-end">
+										<GetButton price={item.price} count={count} onClick={() => navigate("/example-card")} />
+									</div>
+								)}
+								<div className={`bg-white/10 backdrop-blur-xl border border-white/20 rounded-[20px] p-4 shadow-lg flex ${item.partners ? "" : "items-center justify-between"}`}>
+								<div className={`flex items-center gap-3.5 ${item.partners ? "" : "flex-1"}`}>
+									{item.partners ? (
+										<div className="flex -space-x-3">
+											{item.partners.map((p, i) => (
+												<div key={i} className={`w-10 h-10 ${p.bg} rounded-full flex items-center justify-center text-lg border-2 border-white/20 shadow-md`}>
+													{p.icon}
+												</div>
+											))}
+										</div>
+									) : (
+										<div className="w-12 h-12 bg-black/40 backdrop-blur-md rounded-[14px] flex items-center justify-center shadow-inner border border-white/10">
+											<Store size={24} className="text-white/60" />
+										</div>
+									)}
+									<div className="flex flex-col">
+										<span className="text-white font-bold text-[15px] leading-tight">
+											{item.partners ? "Multiple Locations" : item.merchant}
+										</span>
+										<div className="flex items-center gap-1.5 mt-0.5">
+											{item.partners ? (
+												<div className="flex items-center gap-1 text-green-300">
+													<Store size={12} fill="currentColor" />
+													<span className="text-[11px] font-bold uppercase tracking-wide">Alliance</span>
+												</div>
+											) : (
+												<>
+													{item.price > 0 && <Crown size={12} className="text-amber-400 fill-current" />}
+													<span className="text-gray-300 text-[11px] font-medium uppercase tracking-wide">{item.type}</span>
+												</>
+											)}
+										</div>
+									</div>
+								</div>
+								{!item.partners && (
+									<div onClick={(e) => e.stopPropagation()}>
+										<GetButton price={item.price} count={count} onClick={() => navigate("/example-card")} />
+									</div>
+								)}
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
-			))}
-
-			{/* 3. Sen Pho + Cafe Card (ExampleCard Hero design) */}
-			{HERO_COLLECTION.map((item) => (
-				<div
-					key={item.id}
-					onClick={() => navigate("/example-card")}
-					className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300 shrink-0"
-				>
-					<img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={item.title} />
-					<div className={`absolute inset-0 bg-gradient-to-t ${item.overlay}`} />
-					<div className="absolute inset-0 p-6 flex flex-col justify-between">
-						<div>
-							<span className="text-blue-400 text-xs font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md px-2 py-1 rounded-md inline-block">
-								{item.tagline}
-							</span>
-							<h2 className={`mt-2 text-4xl font-bold leading-[0.95] tracking-tight ${item.color ?? "text-white"} drop-shadow-lg`}>
-								{item.title}
-							</h2>
-							<p className="mt-2 text-white/90 font-medium text-[15px] drop-shadow-md line-clamp-2 leading-snug">
-								{item.subtitle}
-							</p>
-						</div>
-						<div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[20px] p-4 flex items-center justify-between">
-							<div className="text-white">
-								<div className="text-[11px] opacity-80 uppercase tracking-wide">Price</div>
-								<div className="font-bold text-xl">CA${item.price}</div>
-							</div>
-							<div onClick={(e) => e.stopPropagation()}>
-								<GetButton price={item.price} onClick={() => navigate("/example-card")} />
-							</div>
-						</div>
-					</div>
-				</div>
-			))}
+				)
+			})}
 		</div>
 
 		<div className="h-px bg-gray-200 mx-5 mb-2" />
@@ -516,7 +690,7 @@ export default function Market() {
 				<button
 					key={cat.id}
 					type="button"
-					onClick={() => setActiveFilter(activeFilter === cat.id ? null : cat.id)}
+					onClick={() => {}}
 					className={`flex flex-col items-center gap-2 min-w-[72px] active:opacity-60 transition-opacity shrink-0 ${
 						activeFilter === cat.id ? "opacity-100" : ""
 					}`}
@@ -540,7 +714,9 @@ export default function Market() {
 				<div
 					key={item.id}
 					className="flex items-center gap-4 p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
-					onClick={() => onItemClick(item)}
+					onClick={() => {
+						navigate("/example-card")
+					}}
 				>
 					<div className="font-bold text-lg text-gray-300 w-4">{index + 1}</div>
 					<div className={`w-14 h-14 rounded-[14px] ${item.imageColor} flex items-center justify-center text-white shadow-sm shrink-0 group-hover:scale-105 transition-transform`}>
@@ -551,7 +727,9 @@ export default function Market() {
 						<div className="text-[13px] text-gray-500 mt-0.5">{item.type} • {item.fiatCurrency}{item.fiatPrice}</div>
 					</div>
 					<div className="flex flex-col items-end gap-1">
-						<GetButton price={item.fiatPrice} onClick={() => onItemClick(item)} />
+						<GetButton price={item.fiatPrice} onClick={() => {
+							navigate("/example-card")
+						}} />
 					</div>
 				</div>
 			))}
@@ -692,9 +870,39 @@ export default function Market() {
 					</div>
 				</div>
 			</div>
+		{/* Genesis + Hero detail modals (ExampleCard style) */}
+		{viewingItem && viewingItem.id === 999 && (
+			<GenesisDetailModal
+				item={viewingItem}
+				inventory={getOwnedInstances(999)}
+				onClose={() => setViewingItem(null)}
+				onBuy={() => { setViewingItem(null); setPurchasingGenesis(true); }}
+				onOpenWallet={() => {}}
+			/>
+		)}
+		{viewingItem && viewingItem.id !== 999 && (
+			<ProductDetailModal
+				item={viewingItem}
+				inventory={viewingItem.id === 101 ? (isMember ? [{ id: "#CCSA", date: "Active", balance: "Full" }] : []) : getOwnedInstances(viewingItem.id)}
+				onClose={() => setViewingItem(null)}
+				onBuy={(it) => {
+					
+				}}
+				onOpenWallet={viewingItem.id === 101 && isMember ? () => { setViewingItem(null); setOverlayMode("cardItem"); setShowCardDetail(true); setShowFooter(false); } : () => setViewingItem(null)}
+			/>
+		)}
+		{purchasingGenesis && (
+			<GenesisPurchaseModal
+				item={GENESIS_NODE_DATA}
+				onClose={() => setPurchasingGenesis(false)}
+				onConfirm={finalizeGenesis}
+			/>
+		)}
+
 		<style>{`
 			.scrollbar-hide::-webkit-scrollbar { display: none; }
 			.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+			@keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 		`}</style>
 		</>
 	)

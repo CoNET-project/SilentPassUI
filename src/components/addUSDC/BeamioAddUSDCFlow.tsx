@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
 	ArrowLeft,
 	X,
@@ -27,7 +27,16 @@ type Screen = "hub" | "coinbase" | "coinbase_error" | "transfer" | "receive" | "
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
-export default function BeamioAddUSDCFlow() {
+type BeamioAddUSDCFlowProps = {
+	/** 来自 BankingBridge Add Cash：挂载后直接执行 Add funds via Coinbase 流程 */
+	autoStartCoinbase?: boolean
+	/** 底部 sheet 嵌入模式：仅显示 Coinbase 确认内容 (204-221)，无 Header/hub */
+	embedInSheet?: boolean
+	/** embedInSheet 时 Cancel 的回调 */
+	onCancel?: () => void
+}
+
+export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onCancel }: BeamioAddUSDCFlowProps = {}) {
 	const [screen, setScreen] = useState<Screen>("hub");
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio,
@@ -82,6 +91,7 @@ export default function BeamioAddUSDCFlow() {
 			if (!res.ok) {
 				setLoading(false)
 				console.error('Failed to create onramp session', await res.text())
+				setScreen('coinbase_error')
 				return 
 			}
 
@@ -89,6 +99,7 @@ export default function BeamioAddUSDCFlow() {
 			setLoading(false)
 			if (!onrampUrl) {
 				console.error('No onrampUrl in response')
+				setScreen('coinbase_error')
 				return 
 			}
 			setCoinbaseUrl(onrampUrl)
@@ -99,9 +110,18 @@ export default function BeamioAddUSDCFlow() {
 		} catch (e) {
 			setLoading(false)
 			console.error('open coinbase onramp error', e)
+			setScreen('coinbase_error')
 			return 
 		}
 	}
+
+	// 来自 BankingBridge Add Cash：挂载后直接执行 Add funds via Coinbase 流程
+	const hasAutoStarted = useRef(false)
+	useEffect(() => {
+		if ((!autoStartCoinbase && !embedInSheet) || !myAddress || hasAutoStarted.current) return
+		hasAutoStarted.current = true
+		clickNext()
+	}, [autoStartCoinbase, embedInSheet, myAddress])
 
 	const openUrl = () => {
 		const a = document.createElement('a')
@@ -111,6 +131,48 @@ export default function BeamioAddUSDCFlow() {
 		document.body.appendChild(a)
 		a.click()
 		a.remove()
+	}
+
+	// embedInSheet：仅显示 Coinbase 确认 (204-221)，无 Header/hub
+	if (embedInSheet) {
+		return (
+			<div className="px-4 pt-4 pb-4">
+				{!myAddress && (
+					<div className="flex items-center justify-center py-12 text-sm text-slate-500">Loading...</div>
+				)}
+				{myAddress && loading && (
+					<div className="flex items-center justify-center py-12">
+						<div className="w-8 h-8 border-2 border-slate-300 border-t-slate-900 rounded-full animate-spin" />
+					</div>
+				)}
+				{screen === "coinbase" && !loading && (
+					<Card>
+						<div className="text-sm text-slate-600">
+							You’ll complete checkout with Coinbase. Verification may be required.
+						</div>
+						<div className="mt-4 grid grid-cols-2 gap-3">
+							<ButtonSecondary onClick={() => onCancel?.()}>Cancel</ButtonSecondary>
+							<ButtonPrimary onClick={openUrl}>Open Coinbase</ButtonPrimary>
+						</div>
+						<div className="mt-4 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600">
+							If Coinbase fails, you can still add USDC by transferring from another wallet/exchange.
+						</div>
+					</Card>
+				)}
+				{screen === "coinbase_error" && !loading && (
+					<Card>
+						<div className="flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-amber-900">
+							<AlertTriangle className="h-5 w-5 mt-0.5" />
+							<div className="text-sm">Coinbase couldn’t complete this step. Try again, or use another method.</div>
+						</div>
+						<div className="mt-4 grid grid-cols-2 gap-3">
+							<ButtonSecondary onClick={() => onCancel?.()}>Back</ButtonSecondary>
+							<ButtonPrimary onClick={() => { hasAutoStarted.current = false; clickNext() }}>Try again</ButtonPrimary>
+						</div>
+					</Card>
+				)}
+			</div>
+		)
 	}
 
   return (

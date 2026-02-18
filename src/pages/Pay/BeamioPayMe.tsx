@@ -89,7 +89,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	const [showAmountInput, setShowAmountInput] = useState(false)
 	/** 指定金额的 paymentUrl（类似 TenKeyInput 的 bill），为 null 时 QR 显示 successUrl（任意金额） */
 	const [billPaymentUrl, setBillPaymentUrl] = useState<string | null>(null)
-	const [billAmountUsdc, setBillAmountUsdc] = useState("")
+	/** 请求金额（所选 currency 的原生数量，不换算 USDC） */
+	const [billAmount, setBillAmount] = useState("")
 	const [billCurrency, setBillCurrency] = useState<ICurrency>('USD')
 	const [billForText, setBillForText] = useState("")
 	const [amountError, setAmountError] = useState("")
@@ -99,7 +100,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	const merchantAA = profiles?.[0]?.aaAccount
 	const qrValue = billPaymentUrl ?? successUrl
 	const handleDoneAmount = () => {
-		const amt = Number(billAmountUsdc)
+		const amt = Number(billAmount)
 		if (!amt || amt <= 0) {
 			setAmountError("Please enter a valid amount")
 			return
@@ -110,7 +111,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		}
 		setAmountError("")
 		const params = new URLSearchParams({
-			Amount: billAmountUsdc,
+			Amount: billAmount,
 			currency: billCurrency,
 			acceptTokens: 'USDC,CCSA',
 			to: merchantAA,
@@ -304,16 +305,18 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						)}
 
 						{/* 费率计算卡片：指定金额时显示在 QR 下方，Requesting 使用用户输入的 currency */}
-						{billPaymentUrl && billAmountUsdc && (() => {
-							const amt = Number(billAmountUsdc)
+						{billPaymentUrl && billAmount && (() => {
+							const amtOrig = Number(billAmount)
+							const usdcRate = Number(currencyData?.USDC) ?? 1
+							const usdToCur = billCurrency === 'USDC' ? 1 : (Number((currencyData as any)?.[billCurrency]) ?? 1)
+							const amt = billCurrency === 'USDC' ? amtOrig : amtOrig / (usdToCur * usdcRate)
 							const fee = calcFeeUsdc(amt)
 							const estReceive = amt - fee
 							const usdcToUSD = Number(currencyData?.USDC) ?? 1
-							const usdToFiat = Number(currencyData?.[billCurrency]) ?? 1
-							const amtInCurrency = billCurrency === 'USDC' ? amt : amt * usdcToUSD * usdToFiat
+							const usdToFiat = billCurrency === 'USDC' ? 1 : (Number((currencyData as any)?.[billCurrency]) ?? 1)
 							const requestingDisplay = billCurrency === 'USDC'
-								? `${formatAmount(amt, 'USDC')} USDC`
-								: `${fiatPrefix(billCurrency)} ${formatAmount(amtInCurrency, billCurrency)}`
+								? `${formatAmount(amtOrig, 'USDC')} USDC`
+								: `${fiatPrefix(billCurrency)} ${formatAmount(amtOrig, billCurrency)}`
 							return (
 								<div className="mt-2 sm:mt-6 rounded-2xl bg-white dark:bg-slate-800/80 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600 overflow-hidden">
 									<div className="px-3 sm:px-4 py-2 sm:py-2.5 space-y-1 sm:space-y-1.5">
@@ -361,8 +364,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								) : (
 									<div className="space-y-1.5 sm:space-y-2">
 										<AmountCurrency
-											amount={billAmountUsdc}
-											setAmount={setBillAmountUsdc}
+											amount={billAmount}
+											setAmount={setBillAmount}
 											autoEntry={true}
 											readOnly={false}
 											showLimit={0}
@@ -371,6 +374,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 											showMax={false}
 											needBalance={false}
 											currencyChange={setBillCurrency}
+											outputNativeCurrency
 										/>
 										<input
 											type="text"

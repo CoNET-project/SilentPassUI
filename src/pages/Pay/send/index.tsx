@@ -634,12 +634,12 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 	return (
 	// ✅ 白底容器，不再 items-center（避免“卡片居中感”）
 	<div className="relative">
-		{/* 顶部右侧：绝对定位独立关闭按钮，不占用内容流 */}
+		{/* 顶部右侧：fixed 定位，始终距视口顶部 0.5rem，不受 search/avatar 切换影响 */}
 		<button
 			type="button"
 			onClick={() => close('/')}
 			className="
-				absolute -top-12 right-2 z-20
+				fixed top-2 right-4 z-[9999]
 				w-10 h-10 rounded-full
 				bg-slate-100 dark:bg-slate-800
 				flex items-center justify-center
@@ -738,7 +738,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 						)} */}
 						{!isAaEoaTransfer && !item && (
 						<>
-						<section className="mt-14 mb-4">
+						<section className="mt-16 mb-4">
 							<SearchInputWithDropdown
 							showHistory={false}
 							closeWindow={item => {
@@ -784,6 +784,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 								className="
 									w-full
 									flex justify-center
+									pt-4
 								"
 								onClick={() => {}}
 							>

@@ -38,33 +38,10 @@ import {
  Layers,
  Activity,
  Percent,
- Truck
+ Truck,
+ Crown,
+ Store
 } from 'lucide-react';
-
-// --- TYPES ---
-type InventoryInstance = { id: string; date: string; balance: string };
-type Inventory = Record<number, InventoryInstance[]>;
-type MarketItem = {
-  id: number;
-  title: string;
-  price: number;
-  merchant?: string;
-  location?: string;
-  description?: string;
-  features?: string[] | { title: string; desc: string; icon: React.ReactNode }[];
-  image?: string;
-  icon?: string | React.ReactNode;
-  tagline?: string;
-  subtitle?: string;
-  type?: string;
-  category?: string;
-  color?: string;
-  overlay?: string;
-  bg?: string;
-  shadow?: string;
-  currentMint?: number;
-  totalMint?: number;
-};
 
 // --- MOCK DATA ---
 
@@ -103,19 +80,26 @@ const GENESIS_NODE_DATA = {
 const HERO_COLLECTION = [
  {
    id: 101, // CCSA Member Card
-   tagline: "HAPPENING NOW",
-   title: "CCSA Member Card", // UPDATED NAME
+   tagline: "ALLIANCE PASS",
+   title: "CCSA Member Card",
    subtitle: "Unlock Exclusive Dining. First Partner: Osmanthus.",
    description: "Your gateway to a curated network of premier restaurants. Start your journey at Osmanthus, our inaugural partner, with exclusive perks and stored value acceptance. Delicacy Originated From Song Dynasty.",
    features: ["Accepted at Osmanthus & Future Partners", "Priority Booking at Osmanthus", "Member-Only Tasting Menus", "Future Network Expansion"],
-   // Yellow flower aesthetic matching Osmanthus branding
-   image: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&q=80&w=800",
+   // REPLACED IMAGE: High-end yellow floral dish aesthetic (Osmanthus style)
+   image: "https://images.unsplash.com/photo-1625937759420-26d7e003e04c?auto=format&fit=crop&q=80&w=800",
    merchant: "CCSA Alliance",
+   merchantLogo: "🌸",
+   partners: [
+     { name: "Osmanthus", icon: "🌸", bg: "bg-yellow-100" },
+     { name: "Sen Pho", icon: "🍜", bg: "bg-orange-100" },
+     { name: "Longdhang", icon: "🥟", bg: "bg-red-100" },
+     { name: "More", icon: "+18", bg: "bg-gray-100 text-xs font-bold" }
+   ],
    location: "Aberdeen Centre, Richmond, BC",
    price: 150,
-   type: "Membership",
+   type: "Alliance Membership",
    color: "text-white",
-   overlay: "from-black/60 via-black/10 to-transparent"
+   overlay: "from-black/60 via-black/10 to-black/30"
  },
  {
    id: 102,
@@ -126,6 +110,7 @@ const HERO_COLLECTION = [
    features: ["10% Off All Orders", "Valid at Champlain Heights & Kerrisdale", "Priority Reservations", "Birthday Dessert"],
    image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
    merchant: "Sen Pho + Cafe",
+   merchantLogo: "🍜",
    location: "Vancouver, BC",
    price: 99,
    type: "Membership",
@@ -145,6 +130,21 @@ const CATEGORIES = [
 
 
 const TOP_VOUCHERS = [
+ {
+   id: 301,
+   title: "Signature Pan-Fried Buns",
+   merchant: "老弄堂 LONGDHANG",
+   category: "Free Voucher",
+   description: "Enjoy a complimentary serving of our signature Pan-Fried Buns (4pcs). Authentic Shanghai flavor with crispy bottom and juicy filling.",
+   features: ["Free Voucher", "Value CA$6.95", "Dine-in Only", "Valid 7 Days"],
+   location: "Richmond & Vancouver",
+   price: 0,
+   originalPrice: 6.95,
+   icon: "🥟",
+   bg: "bg-red-700",
+   rating: 4.9,
+   tag: "GIFT"
+ },
  {
    id: 201,
    title: "$20 Lunch Pass",
@@ -173,22 +173,26 @@ const TOP_VOUCHERS = [
    bg: "bg-purple-500",
    rating: 4.9
  },
- {
-   id: 203,
-   title: "10-Class Gym Pass",
-   merchant: "FitLife",
-   category: "Fitness",
-   description: "Access any group fitness class including Yoga, HIIT, and Spin.",
-   features: ["10 Classes", "Valid 3 Months", "All Locations"],
-   location: "Multiple Locations",
-   price: 120,
-   originalPrice: 150,
-   icon: "💪",
-   bg: "bg-blue-600",
-   rating: 4.7
- },
 ];
 
+// --- TYPES ---
+type VoucherItem = {
+  id: number; title: string; merchant: string; tagline?: string; subtitle?: string;
+  category?: string; description?: string; features?: string[];
+  location?: string; price: number; originalPrice?: number;
+  icon?: string; bg?: string; rating?: number; tag?: string; image?: string;
+  overlay?: string; shadow?: string; partners?: { name: string; icon: string; bg: string }[];
+  type?: string; merchantLogo?: string; color?: string;
+};
+type GenesisItem = {
+  id: number; tagline: string; title: string; subtitle: string; description: string;
+  currentMint: number; totalMint: number; price: number; type: string; image: string;
+  features: { title: string; desc: string; icon: JSX.Element }[];
+  merchant?: string; icon?: string; bg?: string; shadow?: string; overlay?: string; category?: string; location?: string; partners?: { name: string; icon: string; bg: string }[];
+};
+type ProductItem = VoucherItem | GenesisItem;
+type InventoryInstance = { id: string; date: string; balance: string };
+type InventoryState = Record<number, InventoryInstance[]>;
 
 // --- COMPONENTS ---
 
@@ -201,25 +205,43 @@ const SectionHeader = ({ title, action = "See All" }: { title: string; action?: 
 );
 
 
-// Updated GetButton with Quantity Badge Logic
-const GetButton = ({ price, state = 'idle', count = 0, onClick }: { price: number; state?: 'loading' | 'idle'; count?: number; onClick: () => void }) => {
+// Updated GetButton
+const GetButton = ({ price, state = 'ready', count = 0, onClick, compact = false }: { price: number; state?: 'ready' | 'loading'; count?: number; onClick: () => void; compact?: boolean }) => {
  if (state === 'loading') {
    return (
-     <button className="px-5 py-1.5 rounded-full font-bold text-[13px] bg-gray-100 min-w-[75px] flex items-center justify-center">
+     <button className={`${compact ? 'w-16 h-8' : 'px-5 py-1.5 min-w-[75px]'} rounded-full font-bold text-[13px] bg-gray-100 flex items-center justify-center`}>
         <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
      </button>
    );
  }
 
 
+ // Visual style for FREE items
+ if (price === 0) {
+    return (
+       <button
+         onClick={(e) => { e.stopPropagation(); onClick(); }}
+         className={`relative rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm active:scale-95 bg-red-100 text-red-700 hover:bg-red-200 flex items-center justify-center gap-1.5 ${compact ? 'px-4 py-1.5' : 'px-5 py-1.5 min-w-[75px]'}`}
+       >
+         CLAIM
+         {count > 0 && (
+            <span className="flex items-center justify-center bg-white text-red-700 text-[9px] h-4 min-w-[16px] px-1 rounded-full -mr-2 shadow-sm font-extrabold">
+               x{count}
+            </span>
+         )}
+       </button>
+    );
+ }
+
+
  return (
    <button
      onClick={(e) => { e.stopPropagation(); onClick(); }}
-     className="relative pl-5 pr-5 py-1.5 rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm min-w-[75px] active:scale-95 bg-[#F2F2F7] text-[#1562f0] hover:bg-[#1562f0] hover:text-white flex items-center justify-center gap-1.5"
+     className={`relative rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm active:scale-95 bg-[#1562f0] text-white hover:bg-blue-600 flex items-center justify-center gap-1.5 ${compact ? 'px-4 py-1.5' : 'px-5 py-1.5 min-w-[75px]'}`}
    >
      ${price}
      {count > 0 && (
-       <span className="flex items-center justify-center bg-blue-100 text-blue-600 text-[9px] h-4 min-w-[16px] px-1 rounded-full -mr-2 border border-blue-200 shadow-sm">
+       <span className="flex items-center justify-center bg-blue-100 text-blue-600 text-[9px] h-4 min-w-[16px] px-1 rounded-full -mr-2 border border-blue-200 shadow-sm font-extrabold">
           x{count}
        </span>
      )}
@@ -228,63 +250,149 @@ const GetButton = ({ price, state = 'idle', count = 0, onClick }: { price: numbe
 };
 
 
-// --- GENESIS CARD (Visual - List View) ---
-const GenesisCard = ({ data, onClick }: { data: MarketItem; onClick: (item: MarketItem) => void }) => (
+// --- STORY CARD (For Alliance & Standard) ---
+const StoryCard = ({ item, count, onClick, onBuy }: { item: VoucherItem; count: number; onClick: (i: VoucherItem) => void; onBuy: (i: VoucherItem) => void }) => (
+ <div
+   onClick={() => onClick(item)}
+   className="snap-center relative min-w-[340px] h-[460px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300"
+ >
+   <img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={item.title} />
+   <div className={`absolute inset-0 bg-gradient-to-b ${item.overlay}`} />
+
+
+   <div className="absolute inset-0 flex flex-col justify-between p-7">
+      <div className="mt-2">
+         <span className="text-blue-300 font-bold tracking-wider text-[11px] uppercase mb-2 block drop-shadow-md">
+            {item.tagline}
+         </span>
+         <h2 className="text-white text-4xl font-bold leading-[1.1] tracking-tight drop-shadow-lg w-4/5 mb-3">
+            {item.title}
+         </h2>
+         <p className="text-gray-200 text-[15px] font-medium leading-snug line-clamp-2 drop-shadow-md w-11/12">
+            {item.subtitle}
+         </p>
+      </div>
+
+
+      <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[24px] p-4 flex items-center justify-between shadow-lg">
+         <div className="flex items-center gap-3.5">
+            {item.partners ? (
+              <div className="flex -space-x-3">
+                 {item.partners.map((p: { name: string; icon: string; bg: string }, i: number) => (
+                   <div key={i} className={`w-10 h-10 ${p.bg} rounded-full flex items-center justify-center text-lg border-2 border-white/20 shadow-md z-${10-i}`}>
+                      {p.icon}
+                   </div>
+                 ))}
+              </div>
+            ) : (
+              <div className="w-12 h-12 bg-black/40 backdrop-blur-md rounded-[14px] flex items-center justify-center text-2xl shadow-inner border border-white/10">
+                 {item.merchantLogo}
+              </div>
+            )}
+           
+            <div className="flex flex-col">
+               <span className="text-white font-bold text-[15px] leading-tight">
+                  {item.partners ? "Multiple Locations" : item.merchant}
+               </span>
+               <div className="flex items-center gap-1.5 mt-0.5">
+                  {item.partners ? (
+                     <div className="flex items-center gap-1 text-green-300">
+                        <Store size={12} fill="currentColor" />
+                        <span className="text-[11px] font-bold uppercase tracking-wide">Alliance</span>
+                     </div>
+                  ) : (
+                     <>
+                       {item.price > 0 && <Crown size={12} className="text-amber-400 fill-current" />}
+                       <span className="text-gray-300 text-[11px] font-medium uppercase tracking-wide">{item.type}</span>
+                     </>
+                  )}
+               </div>
+            </div>
+         </div>
+
+
+         <div onClick={(e) => e.stopPropagation()}>
+            <GetButton
+              price={item.price}
+              count={count}
+              onClick={() => onBuy(item)}
+              compact={true}
+            />
+         </div>
+      </div>
+
+
+   </div>
+ </div>
+);
+
+
+// --- GENESIS CARD (List View - The Black Card) ---
+const GenesisCard = ({ data, onClick }: { data: GenesisItem; onClick: (d: GenesisItem) => void }) => (
  <div
    onClick={() => onClick(data)}
-   className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-black border border-gray-800 shadow-[0_0_40px_-10px_rgba(21,98,240,0.3)]"
+   className="snap-center relative min-w-[340px] h-[460px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-black border border-gray-800 shadow-[0_0_50px_-15px_rgba(21,98,240,0.5)]"
  >
-   {/* Background Gradient */}
-   <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] to-black"></div>
-  
-   {/* Tech Grid Pattern Overlay */}
-   <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+   <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-black to-black"></div>
+   {/* Tech Grid Pattern */}
+   <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
 
 
-   {/* Content Container */}
-   <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
+   <div className="absolute inset-0 p-7 flex flex-col justify-between z-10">
     
      {/* Top Bar */}
-     <div className="flex justify-between items-start">
-       <span className="bg-[#0f172a] text-blue-400 border border-blue-500/30 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg">
+     <div className="flex justify-between items-start mt-2">
+       <span className="bg-[#1e293b] text-blue-400 border border-blue-500/30 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg">
          {data.tagline}
        </span>
-       <span className="text-white/60 font-mono text-xs font-medium tracking-wide">
+       <span className="text-white/60 font-mono text-xs font-bold tracking-wide">
          {data.currentMint} / {data.totalMint}
        </span>
      </div>
 
 
-     {/* Floating 3D Card Image (Simulated) */}
-     <div className="flex-1 flex items-center justify-center py-4">
-        <div className="relative w-48 h-32 bg-gradient-to-br from-gray-800 to-black rounded-xl shadow-2xl border border-gray-700 transform -rotate-12 group-hover:-rotate-6 transition-transform duration-500 flex items-center justify-center">
-           {/* Inner Card Details */}
-           <div className="absolute top-4 left-4 w-8 h-6 bg-gray-300 rounded-md opacity-80"></div>
-           <Activity className="text-blue-500" size={32} />
-           <div className="absolute bottom-4 right-4">
-              <div className="text-[8px] text-white font-bold">B</div>
-           </div>
-           {/* Glow */}
-           <div className="absolute inset-0 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.5)]"></div>
+     {/* 3D Card Visual */}
+     <div className="flex-1 flex items-center justify-center py-6">
+        <div className="relative w-64 h-40 bg-gradient-to-br from-gray-800 via-gray-900 to-black rounded-2xl shadow-2xl border border-gray-700/50 transform -rotate-6 group-hover:-rotate-3 transition-transform duration-500 flex flex-col justify-between p-4 overflow-hidden">
+            {/* Card Shine */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+           
+            {/* E-ink Screen */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-black border border-gray-600 rounded-lg flex items-center justify-center shadow-inner">
+               <QrCode className="text-white opacity-80" size={48} />
+               <div className="absolute bottom-1 right-1 text-[5px] text-blue-400 font-mono">E-Ink</div>
+            </div>
+
+
+            <div className="flex justify-between items-center">
+               <div className="w-8 h-5 bg-yellow-600/20 rounded-[4px] border border-yellow-600/40 relative overflow-hidden">
+                  <div className="absolute left-1 top-1 w-3 h-3 border-l border-t border-yellow-600/60 rounded-tl-[2px]"></div>
+               </div>
+               <Wifi size={14} className="text-gray-500" />
+            </div>
+           
+            <div className="text-right">
+               <span className="font-bold italic text-white text-lg">B</span>
+            </div>
         </div>
      </div>
 
 
-     {/* Title */}
+     {/* Info */}
      <div className="mb-4">
-       <h2 className="text-4xl font-bold text-white leading-none tracking-tight mb-1">{data.title}</h2>
+       <h2 className="text-4xl font-bold text-white leading-none tracking-tight mb-2">{data.title}</h2>
      </div>
 
 
-     {/* Bottom Action */}
-     <div className="bg-[#1e293b]/50 backdrop-blur-md border border-gray-700 rounded-[20px] p-4 flex items-center justify-between">
+     {/* Mint Button */}
+     <div className="bg-[#1e293b]/50 backdrop-blur-md border border-gray-700 rounded-[24px] p-4 flex items-center justify-between group-hover:border-blue-500/50 transition-colors">
         <div>
            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Mint Price</div>
            <div className="text-xl font-bold text-white flex items-baseline gap-1">
               ${data.price} <span className="text-xs text-gray-500 font-normal">USDC</span>
            </div>
         </div>
-        <button className="bg-[#1562f0] hover:bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold text-sm transition-colors shadow-lg shadow-blue-500/20 flex items-center gap-2">
+        <button className="bg-[#1562f0] hover:bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold text-sm transition-colors shadow-[0_0_20px_rgba(21,98,240,0.4)] flex items-center gap-2">
            View Specs
         </button>
      </div>
@@ -294,7 +402,7 @@ const GenesisCard = ({ data, onClick }: { data: MarketItem; onClick: (item: Mark
 
 
 // --- GENESIS DETAILS MODAL (Visual - PDP) ---
-const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: MarketItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (item: MarketItem) => void; onOpenWallet: () => void }) => {
+const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: GenesisItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (i: GenesisItem) => void; onOpenWallet: () => void }) => {
  if (!item) return null;
  const count = inventory.length;
 
@@ -379,10 +487,10 @@ const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
         <div className="mb-10">
            <div className="flex justify-between items-end mb-2">
               <span className="text-sm font-medium text-gray-300">Genesis Mint Progress</span>
-              <span className="text-[#1562f0] font-mono font-bold">{item.currentMint ?? 0} / {item.totalMint ?? 0}</span>
+              <span className="text-[#1562f0] font-mono font-bold">{item.currentMint} / {item.totalMint}</span>
            </div>
            <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
-              <div className="h-full bg-[#1562f0] rounded-full shadow-[0_0_10px_#1562f0]" style={{ width: `${((item.currentMint ?? 0) / (item.totalMint || 1)) * 100}%` }}></div>
+              <div className="h-full bg-[#1562f0] rounded-full shadow-[0_0_10px_#1562f0]" style={{ width: `${(item.currentMint / item.totalMint) * 100}%` }}></div>
            </div>
         </div>
 
@@ -393,7 +501,7 @@ const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
               <Lock size={12} /> The Tangible Edge
            </div>
            <div className="space-y-8">
-              {(item.features as { title: string; desc: string; icon: React.ReactNode }[] | undefined)?.map((feature, idx) => (
+              {item.features.map((feature: { title: string; desc: string; icon: JSX.Element }, idx: number) => (
                  <div key={idx} className="flex gap-4">
                     <div className="mt-1">{feature.icon}</div>
                     <div>
@@ -447,7 +555,7 @@ const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
 
 
 // --- GENESIS PURCHASE MODAL (Workflow - Wizard) ---
-const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: MarketItem; onClose: () => void; onConfirm: () => void }) => {
+const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: GenesisItem; onClose: () => void; onConfirm: () => void }) => {
  const [step, setStep] = useState('check'); // check -> shipping -> paying -> minting -> success
 
 
@@ -571,9 +679,13 @@ const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: MarketItem; 
 
 
 // --- STANDARD PRODUCT DETAIL MODAL ---
-const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: MarketItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (item: MarketItem) => void; onOpenWallet: () => void }) => {
+const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: ProductItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (i: ProductItem) => void; onOpenWallet: () => void }) => {
  if (!item) return null;
  const count = inventory.length;
+
+
+ // Custom visual for free items
+ const isFree = item.price === 0;
 
 
  return (
@@ -588,7 +700,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
         {item.image ? <img src={item.image} className="w-full h-full object-cover" alt={item.title} /> : <div className="w-full h-full flex items-center justify-center text-9xl opacity-20 text-white">{item.icon}</div>}
         <div className={`absolute inset-0 bg-gradient-to-t ${item.overlay || 'from-black/80 via-transparent to-black/30'}`}></div>
         <div className="absolute bottom-0 left-0 w-full p-6 text-white">
-           <span className={`text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-3 inline-block ${item.id === 999 ? 'bg-blue-600 text-white' : 'bg-[#1562f0]'}`}>{item.type || item.category || "Voucher"}</span>
+           <span className={`text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-3 inline-block ${item.id === 999 ? 'bg-blue-600 text-white' : (isFree ? 'bg-red-700 text-white' : 'bg-[#1562f0]')}`}>{item.type || item.category || "Voucher"}</span>
            <h1 className="text-4xl font-bold leading-tight mb-2 shadow-sm">{item.title}</h1>
            <p className="text-lg text-white/90 font-medium">{item.merchant}</p>
         </div>
@@ -607,7 +719,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
                     <Wallet size={20} />
                  </div>
                  <div>
-                    <h4 className="text-sm font-bold text-gray-900">You have {count} cards</h4>
+                    <h4 className="text-sm font-bold text-gray-900">You have {count} items</h4>
                     <p className="text-xs text-gray-500">Tap to Use, Gift or Trade</p>
                  </div>
               </div>
@@ -644,19 +756,35 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
 
 
         {item.features && (
-          <div className={`rounded-2xl p-5 mb-8 ${item.id === 999 ? 'bg-slate-800' : 'bg-[#F2F2F7]'}`}>
+          <div className={`rounded-2xl p-5 mb-8 ${item.id === 999 ? 'bg-slate-900' : 'bg-[#F2F2F7]'}`}>
              <h4 className={`text-sm font-bold uppercase tracking-wide mb-4 ${item.id === 999 ? 'text-gray-400' : 'text-gray-900'}`}>What's Included</h4>
              <div className="space-y-3">
-                {(Array.isArray(item.features) ? item.features : []).map((feature, idx) => (
+                {(Array.isArray(item.features) ? item.features : []).map((feature: string | { title: string; desc: string; icon: JSX.Element }, idx: number) => (
                    <div key={idx} className="flex items-center gap-3">
                       <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 ${item.id === 999 ? 'bg-blue-600' : 'bg-green-500'}`}>
                          <Check size={12} strokeWidth={4} />
                       </div>
-                      <span className={`font-medium ${item.id === 999 ? 'text-gray-300' : 'text-gray-700'}`}>{typeof feature === 'string' ? feature : (feature as { title: string }).title}</span>
+                      <span className={`font-medium ${item.id === 999 ? 'text-gray-300' : 'text-gray-700'}`}>{typeof feature === 'string' ? feature : feature.title}</span>
                    </div>
                 ))}
              </div>
           </div>
+        )}
+
+
+        {/* PARTNERS LIST (For Alliance Card Only) */}
+        {item.partners && (
+           <div className="mt-8">
+              <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Participating Locations</h4>
+              <div className="grid grid-cols-2 gap-3">
+                 {item.partners.map((p: { name: string; icon: string; bg: string }, i: number) => (
+                    <div key={i} className="bg-white border border-gray-100 p-3 rounded-xl flex items-center gap-3 shadow-sm">
+                       <div className={`w-10 h-10 ${p.bg} rounded-full flex items-center justify-center text-lg`}>{p.icon}</div>
+                       <span className="text-sm font-bold text-gray-900">{p.name}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
         )}
      </div>
 
@@ -673,18 +801,25 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
               </button>
               <button
                 onClick={() => onBuy(item)}
-                className="flex-[1.5] bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2"
+                className={`flex-[1.5] text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 ${isFree ? 'bg-red-700 shadow-red-500/30' : 'bg-[#1562f0] shadow-blue-500/30'}`}
               >
-                 Buy Another <span className="opacity-80 font-medium text-xs ml-1">${item.price}</span>
+                 {isFree ? "Claim Another" : "Buy Another"} <span className="opacity-80 font-medium text-xs ml-1">{isFree ? "FREE" : `$${item.price}`}</span>
               </button>
            </>
         ) : (
            <div className="flex-1 flex gap-4 items-center">
               <div className="flex-1">
                  <div className={`text-xs uppercase font-bold ${item.id === 999 ? 'text-gray-400' : 'text-gray-500'}`}>Total Price</div>
-                 <div className={`text-3xl font-bold tracking-tight ${item.id === 999 ? 'text-white' : 'text-gray-900'}`}>${item.price}</div>
+                 <div className={`text-3xl font-bold tracking-tight ${item.id === 999 ? 'text-white' : (isFree ? 'text-red-700' : 'text-gray-900')}`}>
+                   {isFree ? "FREE" : `$${item.price}`}
+                 </div>
               </div>
-              <button onClick={() => onBuy(item)} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-full font-bold text-[17px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center gap-2">Purchase <ArrowRight size={20} /></button>
+              <button
+                onClick={() => onBuy(item)}
+                className={`text-white px-8 py-3.5 rounded-full font-bold text-[17px] shadow-lg active:scale-95 transition-transform flex items-center gap-2 ${isFree ? 'bg-red-700 shadow-red-500/30' : 'bg-[#1562f0] shadow-blue-500/30'}`}
+              >
+                 {isFree ? "Claim Gift" : "Purchase"} <ArrowRight size={20} />
+              </button>
            </div>
         )}
      </div>
@@ -694,7 +829,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
 
 
 // --- CARD PICKER MODAL (The Stack View) ---
-const CardPickerModal = ({ item, instances, onClose, onSelect }: { item: MarketItem; instances: InventoryInstance[]; onClose: () => void; onSelect: (instance: InventoryInstance) => void }) => {
+const CardPickerModal = ({ item, instances, onClose, onSelect }: { item: ProductItem; instances: InventoryInstance[]; onClose: () => void; onSelect: (inst: InventoryInstance) => void }) => {
  return (
    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
       <div
@@ -722,9 +857,9 @@ const CardPickerModal = ({ item, instances, onClose, onSelect }: { item: MarketI
                     onClick={() => onSelect(inst)}
                     className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-[0.98] transition-transform cursor-pointer relative overflow-hidden group"
                   >
-                     <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${item.bg || 'bg-gray-900'}`}></div>
+                     <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${item.bg || (item.price === 0 ? 'bg-red-700' : 'bg-gray-900')}`}></div>
                      <div className="flex gap-4 items-center">
-                        <div className={`w-12 h-12 rounded-xl ${item.bg || 'bg-gray-900'} flex items-center justify-center text-2xl text-white shadow-sm`}>
+                        <div className={`w-12 h-12 rounded-xl ${item.bg || (item.price === 0 ? 'bg-red-700' : 'bg-gray-900')} flex items-center justify-center text-2xl text-white shadow-sm`}>
                            {item.icon || "💎"}
                         </div>
                         <div>
@@ -750,7 +885,7 @@ const CardPickerModal = ({ item, instances, onClose, onSelect }: { item: MarketI
 
 
 // --- REDEEM MODAL ---
-const RedeemModal = ({ item, instance, onClose }: { item: MarketItem; instance: InventoryInstance | null; onClose: () => void }) => {
+const RedeemModal = ({ item, instance, onClose }: { item: ProductItem; instance: InventoryInstance; onClose: () => void }) => {
  if (!item) return null;
  return (
    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-fade-in">
@@ -771,7 +906,7 @@ const RedeemModal = ({ item, instance, onClose }: { item: MarketItem; instance: 
 
 
 // --- GIFTING MODAL ---
-const GiftingModal = ({ item, instance, onClose }: { item: MarketItem; instance: InventoryInstance | null; onClose: () => void }) => {
+const GiftingModal = ({ item, instance, onClose }: { item: ProductItem; instance: InventoryInstance; onClose: () => void }) => {
  const [step, setStep] = useState('wrap');
  const [theme, setTheme] = useState('classic');
  const THEMES = [{ id: 'classic', name: 'Classic', color: 'bg-red-500' }, { id: 'birthday', name: 'Birthday', color: 'bg-pink-500' }, { id: 'business', name: 'Business', color: 'bg-slate-800' }];
@@ -803,7 +938,7 @@ const GiftingModal = ({ item, instance, onClose }: { item: MarketItem; instance:
 
 
 // --- ACTION SHEET (After Selecting Card) ---
-const ActionSheet = ({ item, instance, onClose, onGift, onRedeem }: { item: MarketItem; instance: InventoryInstance; onClose: () => void; onGift: (instance: InventoryInstance) => void; onRedeem: (instance: InventoryInstance) => void }) => {
+const ActionSheet = ({ item, instance, onClose, onGift, onRedeem }: { item: ProductItem; instance: InventoryInstance; onClose: () => void; onGift: (inst: InventoryInstance) => void; onRedeem: (inst: InventoryInstance) => void }) => {
   return (
      <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose}>
         <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[32px] p-6 animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -823,9 +958,12 @@ const ActionSheet = ({ item, instance, onClose, onGift, onRedeem }: { item: Mark
 
 
 // --- PAYMENT SHEET ---
-const PaymentSheet = ({ item, onConfirm, onCancel }: { item: MarketItem; onConfirm: () => void; onCancel: () => void }) => {
+const PaymentSheet = ({ item, onConfirm, onCancel }: { item: ProductItem; onConfirm: () => void; onCancel: () => void }) => {
  const [step, setStep] = useState('review');
  const handlePay = () => { setStep('processing'); setTimeout(() => { setStep('success'); setTimeout(onConfirm, 1500); }, 2000); };
+  const isFree = item.price === 0;
+
+
  return (
    <div className="fixed inset-0 z-[100] flex items-end justify-center">
      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity" onClick={step === 'review' ? onCancel : undefined} />
@@ -847,12 +985,12 @@ const PaymentSheet = ({ item, onConfirm, onCancel }: { item: MarketItem; onConfi
           <div className="space-y-4 mb-8">
              <div className="flex justify-between items-center pb-4 border-b border-gray-200/60"><span className="text-gray-500 text-[15px]">Pay with</span><div className="flex items-center gap-2"><div className="w-6 h-6 bg-[#2775CA] rounded-full flex items-center justify-center text-[8px] text-white font-bold">USDC</div><span className="text-gray-900 font-semibold text-[15px]">Balance</span></div></div>
              <div className="flex justify-between items-center pb-4 border-b border-gray-200/60"><span className="text-gray-500 text-[15px]">Network Fee</span><span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-lg">COVERED</span></div>
-             <div className="flex justify-between items-center pt-2"><span className="text-gray-900 font-bold text-lg">Total</span><span className="text-3xl font-bold text-gray-900 tracking-tight">${item.price}</span></div>
+             <div className="flex justify-between items-center pt-2"><span className="text-gray-900 font-bold text-lg">Total</span><span className={`text-3xl font-bold tracking-tight ${isFree ? 'text-green-600' : 'text-gray-900'}`}>{isFree ? "FREE" : `$${item.price}`}</span></div>
           </div>
           <div className="relative h-[60px]">
-             {step === 'review' && <button onClick={handlePay} className="w-full h-full bg-[#1562f0] text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-[0_10px_20px_rgba(21,98,240,0.3)]">Confirm Payment</button>}
+             {step === 'review' && <button onClick={handlePay} className={`w-full h-full text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all ${isFree ? 'bg-green-600 shadow-green-500/30' : 'bg-[#1562f0] shadow-[0_10px_20px_rgba(21,98,240,0.3)]'}`}>{isFree ? "Confirm Claim" : "Confirm Payment"}</button>}
              {step === 'processing' && <div className="w-full h-full bg-black text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-3"><div className="w-5 h-5 border-[3px] border-white/30 border-t-white rounded-full animate-spin"></div>Processing on Base...</div>}
-             {step === 'success' && <div className="w-full h-full bg-green-500 text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-2 animate-scale-in"><Check size={28} strokeWidth={3} />Purchased</div>}
+             {step === 'success' && <div className="w-full h-full bg-green-500 text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-2 animate-scale-in"><Check size={28} strokeWidth={3} />{isFree ? "Claimed" : "Purchased"}</div>}
           </div>
           <div className="text-center mt-6 flex justify-center items-center gap-1.5 opacity-50"><Lock size={12} className="text-gray-500" /><span className="text-[11px] text-gray-500 font-medium">Secured by ERC-4337 Smart Account</span></div>
        </div>
@@ -866,37 +1004,36 @@ const PaymentSheet = ({ item, onConfirm, onCancel }: { item: MarketItem; onConfi
 
 
 export default function BeamioMarketPage() {
- const [confirmingItem, setConfirmingItem] = useState<MarketItem | null>(null);
- const [viewingItem, setViewingItem] = useState<MarketItem | null>(null); // Detail modal
- const [purchasingGenesis, setPurchasingGenesis] = useState(false); // Genesis Flow
-  // Inventory State: { itemId: [ { id, date, balance } ] }
- const [inventory, setInventory] = useState<Inventory>({
+ const [purchaseStates, setPurchaseStates] = useState({});
+ const [confirmingItem, setConfirmingItem] = useState<ProductItem | null>(null);
+ const [viewingItem, setViewingItem] = useState<ProductItem | null>(null);
+ const [purchasingGenesis, setPurchasingGenesis] = useState(false);
+ const [inventory, setInventory] = useState<InventoryState>({
     201: [{ id: '#100', date: 'Oct 24', balance: '$20' }]
  });
-  // Instance Management State
- const [pickingCardForItem, setPickingCardForItem] = useState<MarketItem | null>(null);
- const [actionSheetInstance, setActionSheetInstance] = useState<{ item: MarketItem; instance: InventoryInstance } | null>(null);
- const [giftingItem, setGiftingItem] = useState<{ item: MarketItem; instance: InventoryInstance } | null>(null);
- const [redeemingItem, setRedeemingItem] = useState<{ item: MarketItem; instance: InventoryInstance } | null>(null);
+ const [pickingCardForItem, setPickingCardForItem] = useState<ProductItem | null>(null);
+ const [actionSheetInstance, setActionSheetInstance] = useState<{ item: ProductItem; instance: InventoryInstance } | null>(null);
+ const [giftingItem, setGiftingItem] = useState<{ item: ProductItem; instance: InventoryInstance } | null>(null);
+ const [redeemingItem, setRedeemingItem] = useState<{ item: ProductItem; instance: InventoryInstance } | null>(null);
 
 
  const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] || [];
 
 
- const openDetail = (item: MarketItem) => {
+ const openDetail = (item: ProductItem) => {
    setViewingItem(item);
  };
 
 
- const initiatePurchase = (item: MarketItem) => {
+ const initiatePurchase = (item: ProductItem, forcePayment = false) => {
    // If Genesis Node, trigger special flow
    if (item.id === 999) {
      setPurchasingGenesis(true);
      return;
    }
   
-   // For standard items, if owned, open detail to show manage options
-   if (getOwnedInstances(item.id).length > 0) {
+   // For standard items: if owned AND NOT forced, show manage options (open detail)
+   if (!forcePayment && getOwnedInstances(item.id).length > 0) {
      openDetail(item);
      return;
    }
@@ -909,7 +1046,11 @@ export default function BeamioMarketPage() {
   
    // Optimistic Update: Add new instance
    const newId = '#' + (100 + Math.floor(Math.random() * 900));
-   const newItem = { id: newId, date: 'Just now', balance: '$' + confirmingItem.price };
+   const newItem = {
+     id: newId,
+     date: 'Just now',
+     balance: confirmingItem.price === 0 ? 'CLAIMED' : '$' + confirmingItem.price
+   };
   
    setInventory(prev => ({
       ...prev,
@@ -942,9 +1083,9 @@ export default function BeamioMarketPage() {
 
 
  const handleCardSelect = (instance: InventoryInstance) => {
+    const item = pickingCardForItem;
     setPickingCardForItem(null);
-    // Open Action Sheet for this specific card
-    if (viewingItem) setActionSheetInstance({ item: viewingItem, instance });
+    setActionSheetInstance(item ? { item, instance } : null);
  };
 
 
@@ -980,39 +1121,20 @@ export default function BeamioMarketPage() {
           
            {/* 1. Special Genesis Node Card */}
            <GenesisCard
-             data={GENESIS_NODE_DATA as MarketItem}
-             onClick={openDetail}
+             data={GENESIS_NODE_DATA}
+             onClick={(d) => openDetail(d)}
            />
 
 
-           {/* 2. Standard Hero Cards */}
+           {/* 2. Standard Hero Cards (Story Style) */}
            {HERO_COLLECTION.map(item => (
-             <div
+             <StoryCard
                key={item.id}
-               onClick={() => openDetail(item)} // Standard Detail Logic
-               className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300"
-             >
-               <img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={item.title} />
-               <div className={`absolute inset-0 bg-gradient-to-t ${item.overlay}`} />
-               <div className="absolute inset-0 p-6 flex flex-col justify-between">
-                 <div>
-                   <span className="text-blue-400 text-xs font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md px-2 py-1 rounded-md inline-block">{item.tagline}</span>
-                   <h2 className={`mt-2 text-4xl font-bold leading-[0.95] tracking-tight ${item.color} drop-shadow-lg`}>{item.title}</h2>
-                   <p className="mt-2 text-white/90 font-medium text-[15px] drop-shadow-md line-clamp-2 leading-snug">{item.subtitle}</p>
-                 </div>
-                 <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[20px] p-4 flex items-center justify-between">
-                    <div className="text-white"><div className="text-[11px] opacity-80 uppercase tracking-wide">Price</div><div className="font-bold text-xl">${item.price}</div></div>
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <GetButton
-                        price={item.price}
-                        count={getOwnedInstances(item.id).length}
-                        state="idle"
-                        onClick={() => initiatePurchase(item)}
-                      />
-                    </div>
-                 </div>
-               </div>
-             </div>
+               item={item}
+               count={getOwnedInstances(item.id).length}
+               onClick={openDetail}
+               onBuy={(item) => initiatePurchase(item)}
+             />
            ))}
          </div>
 
@@ -1029,7 +1151,7 @@ export default function BeamioMarketPage() {
                   <div className="font-bold text-lg text-gray-300 w-4">{index + 1}</div>
                   <div className={`w-14 h-14 rounded-[14px] ${voucher.bg} flex items-center justify-center text-3xl shadow-sm shrink-0 group-hover:scale-105 transition-transform`}>{voucher.icon}</div>
                   <div className="flex-1 min-w-0 pr-2"><div className="font-semibold text-gray-900 truncate text-[16px]">{voucher.title}</div><div className="text-[13px] text-gray-500 mt-0.5">{voucher.merchant} • {voucher.category}</div></div>
-                  <div className="flex flex-col items-end gap-1"><GetButton price={voucher.price} count={getOwnedInstances(voucher.id).length} state="idle" onClick={() => initiatePurchase(voucher)} /><span className="text-[9px] text-gray-400 font-medium">In-App Purchase</span></div>
+                  <div className="flex flex-col items-end gap-1"><GetButton price={voucher.price} state="ready" count={getOwnedInstances(voucher.id).length} onClick={() => initiatePurchase(voucher)} /><span className="text-[9px] text-gray-400 font-medium">In-App Purchase</span></div>
                </div>
             ))}
          </div>
@@ -1041,7 +1163,7 @@ export default function BeamioMarketPage() {
        {/* --- SPECIAL GENESIS DETAIL MODAL (Updated with Inventory) --- */}
        {viewingItem && viewingItem.id === 999 && (
          <GenesisDetailModal
-           item={viewingItem}
+           item={viewingItem as unknown as GenesisItem}
            inventory={getOwnedInstances(999)} // Pass inventory!
            onClose={() => setViewingItem(null)}
            onBuy={(item) => { setViewingItem(null); setPurchasingGenesis(true); }}
@@ -1056,7 +1178,7 @@ export default function BeamioMarketPage() {
            item={viewingItem}
            inventory={getOwnedInstances(viewingItem.id)}
            onClose={() => setViewingItem(null)}
-           onBuy={(it: MarketItem) => initiatePurchase(it)}
+           onBuy={(item) => initiatePurchase(item, true)} // FORCE BUY for "Buy Another"
            onOpenWallet={() => setPickingCardForItem(viewingItem)}
          />
        )}
@@ -1098,8 +1220,8 @@ export default function BeamioMarketPage() {
              item={actionSheetInstance.item}
              instance={actionSheetInstance.instance}
              onClose={() => setActionSheetInstance(null)}
-             onGift={(inst: InventoryInstance) => { setActionSheetInstance(null); if (viewingItem) setGiftingItem({ item: viewingItem, instance: inst }); }}
-             onRedeem={(inst: InventoryInstance) => { setActionSheetInstance(null); if (viewingItem) setRedeemingItem({ item: viewingItem, instance: inst }); }}
+             onGift={(inst) => { setActionSheetInstance(null); setGiftingItem({ item: actionSheetInstance.item, instance: inst }); }}
+             onRedeem={(inst) => { setActionSheetInstance(null); setRedeemingItem({ item: actionSheetInstance.item, instance: inst }); }}
           />
        )}
 

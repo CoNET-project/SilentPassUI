@@ -10,7 +10,7 @@ import usdc_abi from '@/services/ABI/usdc_abi.json'
 import contracts from '@/utils/contracts'
 import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC } from '@/utils/constants'
 import { searchUsername, getOracle } from '@/services/beamio'
-import { formatAmount } from '@/services/currency'
+import { formatAmount, fiatPrefix } from '@/services/currency'
 
 
 //		
@@ -316,6 +316,13 @@ export type ConfirmDeductionPayload = {
 	payeeDisplayName?: string
 	/** Bill 支付时：商家会员标签（可选） */
 	payeeMemberLabel?: string
+	/** Bill 请求币种（如 USD、JPY），用于金额展示；无则用 CAD */
+	billCurrency?: string
+	/** Bill 时：请求币种的展示金额（与 amountStr 等对应） */
+	amountStrFiat?: string
+	usdcFromBalanceFiat?: string
+	usdcFromCCSAFiat?: string
+	totalRequestedStrFiat?: string
 }
 
 function ConfirmDeductionView({
@@ -329,15 +336,19 @@ function ConfirmDeductionView({
 	onCancel: () => void
 	submitting: boolean
 }) {
-	// 仅使用真实 container item 数据，与 POST/链上一致，不做多余再计算
-	const amount = data.amountStrCAD ?? data.amountStr
-	const totalReq = data.totalRequestedStrCAD ?? data.totalRequestedStr ?? data.amountStr ?? ''
-	const fromBal = data.usdcFromBalanceCAD ?? data.usdcFromBalance
-	const fromCCSA = data.usdcFromCCSACAD ?? data.usdcFromCCSA
+	const reqCur = (data.billCurrency || 'CAD').toUpperCase() as 'CAD'|'USD'|'JPY'|'EUR'|'CNY'|'HKD'|'TWD'|'SGD'
+	const sym = fiatPrefix(reqCur) || `${reqCur} `
+	// Bill 时优先用请求币种展示，否则用 CAD
+	const amount = data.billCurrency ? (data.amountStrFiat ?? data.amountStr) : (data.amountStrCAD ?? data.amountStr)
+	const totalReq = data.billCurrency ? (data.totalRequestedStrFiat ?? data.totalRequestedStr ?? data.amountStr ?? '') : (data.totalRequestedStrCAD ?? data.totalRequestedStr ?? data.amountStr ?? '')
+	const fromBal = data.billCurrency ? (data.usdcFromBalanceFiat ?? data.usdcFromBalance) : (data.usdcFromBalanceCAD ?? data.usdcFromBalance)
+	const fromCCSA = data.billCurrency ? (data.usdcFromCCSAFiat ?? data.usdcFromCCSA) : (data.usdcFromCCSACAD ?? data.usdcFromCCSA)
 	const discountVal = data.hasDiscount && data.totalRequestedStr != null && data.amountStr != null
-		? (data.totalRequestedStrCAD != null && data.amountStrCAD != null
-			? Number(data.totalRequestedStrCAD) - Number(data.amountStrCAD)
-			: Number(data.totalRequestedStr) - Number(data.amountStr))
+		? (data.billCurrency && data.totalRequestedStrFiat != null && data.amountStrFiat != null
+			? Number(data.totalRequestedStrFiat) - Number(data.amountStrFiat)
+			: data.totalRequestedStrCAD != null && data.amountStrCAD != null
+				? Number(data.totalRequestedStrCAD) - Number(data.amountStrCAD)
+				: Number(data.totalRequestedStr) - Number(data.amountStr))
 		: null
 	const hasCCSA = Number(fromCCSA) > 0
 	const hasUSDC = Number(fromBal) > 0
@@ -409,14 +420,14 @@ function ConfirmDeductionView({
 			{/* Bill Amount：真实 totalRequested（与 POST/链上 container 一致） */}
 			<div className="flex justify-between items-center mb-2 leading-[1.375rem]">
 				<span className="text-slate-500 dark:text-slate-400 text-sm">Bill Amount</span>
-				<span className="font-bold text-slate-900 dark:text-slate-100">CA${formatAmount(totalReq, 'CAD')}</span>
+				<span className="font-bold text-slate-900 dark:text-slate-100">{sym}{formatAmount(totalReq, reqCur)}</span>
 			</div>
 
 			{/* Member Discount (10%)：真实 totalRequested − amount（与 POST/链上一致） */}
 			{data.hasDiscount && discountVal != null && (
 				<div className="flex justify-between items-center mb-4 leading-[1.375rem]">
 					<span className="text-slate-500 dark:text-slate-400 text-sm">Member Discount (10%)</span>
-					<span className="font-bold text-blue-600 dark:text-blue-400">-CA${formatAmount(discountVal, 'CAD')}</span>
+					<span className="font-bold text-blue-600 dark:text-blue-400">-{sym}{formatAmount(discountVal, reqCur)}</span>
 				</div>
 			)}
 
@@ -429,7 +440,7 @@ function ConfirmDeductionView({
 						</div>
 						<span className="text-emerald-700 dark:text-emerald-400 font-medium text-sm">$CCSA Balance</span>
 					</div>
-					<span className="font-bold text-emerald-700 dark:text-emerald-400 text-sm flex-shrink-0">-CA${formatAmount(fromCCSA, 'CAD')}</span>
+					<span className="font-bold text-emerald-700 dark:text-emerald-400 text-sm flex-shrink-0">-{sym}{formatAmount(fromCCSA, reqCur)}</span>
 				</div>
 			)}
 
@@ -442,14 +453,14 @@ function ConfirmDeductionView({
 						</div>
 						<span className="text-blue-700 dark:text-blue-400 font-medium text-sm">USDC Top-up</span>
 					</div>
-					<span className="font-bold text-blue-700 dark:text-blue-400 text-sm flex-shrink-0">-CA${formatAmount(fromBal, 'CAD')}</span>
+					<span className="font-bold text-blue-700 dark:text-blue-400 text-sm flex-shrink-0">-{sym}{formatAmount(fromBal, reqCur)}</span>
 				</div>
 			)}
 
 			{/* Total Charge - prominent */}
 			<div className="flex justify-between items-baseline mt-2 mb-6 leading-[1.375rem]">
 				<span className="text-slate-500 dark:text-slate-400 text-sm">Total Charge</span>
-				<span className="text-4xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">CA${formatAmount(amount, 'CAD')}</span>
+				<span className="text-4xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{sym}{formatAmount(amount, reqCur)}</span>
 			</div>
 
 			{/* Actions */}
@@ -638,41 +649,71 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setVoucherPayToAA,
 		voucherPayError,
 		setVoucherPayError,
+		setVoucherPayFromScan,
 		currencyData,
 		setCurrencyData,
 	} = useDaemonContext()
 	const maxLength = 10
 	const allowDecimal = true
 
-	// 与 AmountCurrency 共用同一套 Beamio app 共享 oracle（getOracle），避免 TenKeyInput 单独链上询价导致免费 RPC 被限流
-	type OracleRates = { USDC: number; CAD: number }
+	// 与 AmountCurrency 共用同一套 Beamio app 共享 oracle
+	type OracleRates = { USDC: number; CAD: number; USD: number; JPY?: number; EUR?: number; CNY?: number; HKD?: number; TWD?: number; SGD?: number }
 	const ensureOracle = async (): Promise<OracleRates> => {
-		const usdc = Number((currencyData as any)?.USDC)
-		const cad = Number((currencyData as any)?.CAD)
-		if (usdc && cad) return { USDC: usdc, CAD: cad }
-		const data = await getOracle()
-		if (data) {
-			const next = {
-				CAD: Number(data.usdcad),
-				JPY: Number(data.usdjpy),
+		const data = (currencyData as any) || {}
+		if (data.USDC && data.CAD) {
+			return {
+				USDC: Number(data.USDC),
+				CAD: Number(data.CAD),
 				USD: 1,
-				CNY: Number(data.usdcny),
-				USDC: Number(data.usdc),
-				HKD: Number(data.usdhkd),
-				TWD: Number(data.usdtwd),
-				EUR: Number(data.usdeur),
-				SGD: Number(data.usdsgd),
+				JPY: Number(data.JPY),
+				EUR: Number(data.EUR),
+				CNY: Number(data.CNY),
+				HKD: Number(data.HKD),
+				TWD: Number(data.TWD),
+				SGD: Number(data.SGD),
+			}
+		}
+		const oracle = await getOracle()
+		if (oracle) {
+			const next = {
+				CAD: Number(oracle.usdcad),
+				JPY: Number(oracle.usdjpy),
+				USD: 1,
+				CNY: Number(oracle.usdcny),
+				USDC: Number(oracle.usdc),
+				HKD: Number(oracle.usdhkd),
+				TWD: Number(oracle.usdtwd),
+				EUR: Number(oracle.usdeur),
+				SGD: Number(oracle.usdsgd),
 			}
 			setCurrencyData(next as any)
-			return { USDC: next.USDC, CAD: next.CAD }
+			return { ...next }
 		}
-		return { USDC: 1, CAD: 1 }
+		return { USDC: 1, CAD: 1, USD: 1 }
 	}
-	const cadToUsdc6 = (rates: OracleRates, cadStr: string): bigint => {
-		if (!rates.USDC || !rates.CAD) return 0n
-		const cad = Number(cadStr)
-		if (!Number.isFinite(cad) || cad <= 0) return 0n
-		const usdc = cad / rates.CAD / rates.USDC
+	/** 汇率：1 USD = rate 该币种。如 1 USD = 1.35 CAD → usdToCur['CAD']=1.35 */
+	const usdToCur = (r: OracleRates, c: string): number => {
+		const cur = (c || '').toUpperCase()
+		if (cur === 'USD' || cur === 'USDC') return 1
+		const v = (r as any)[cur]
+		return Number.isFinite(v) && v > 0 ? v : 1
+	}
+	/** Bill 金额（request currency）按支付时牌价换算为 USDC6 */
+	const fiatToUsdc6 = (rates: OracleRates, amountStr: string, currency: string): bigint => {
+		const n = Number(amountStr)
+		if (!Number.isFinite(n) || n <= 0) return 0n
+		const cur = (currency || '').toUpperCase()
+		if (cur === 'USD' || cur === 'USDC') {
+			const usdc = rates.USDC ? n / rates.USDC : n
+			try {
+				return ethers.parseUnits(usdc.toFixed(6), 6)
+			} catch {
+				return 0n
+			}
+		}
+		// amount 在 cur 币种，1 cur = 1/usdToCur USD，1 USD = 1/USDC USDC
+		const amountUsd = n / usdToCur(rates, cur)
+		const usdc = rates.USDC ? amountUsd / rates.USDC : amountUsd
 		try {
 			return ethers.parseUnits(usdc.toFixed(6), 6)
 		} catch {
@@ -684,6 +725,16 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		const n = Number(usdcStr)
 		if (!Number.isFinite(n)) return '0.00'
 		return (n * rates.USDC * rates.CAD).toFixed(2)
+	}
+	/** USDC 换算为指定 currency 的显示金额 */
+	const usdcToFiatStr = (rates: OracleRates, usdcStr: string, currency: string): string => {
+		const n = Number(usdcStr)
+		if (!Number.isFinite(n)) return '0.00'
+		const cur = (currency || '').toUpperCase()
+		if (cur === 'USD' || cur === 'USDC') return (n * (rates.USDC || 1)).toFixed(2)
+		const amountUsd = n * (rates.USDC || 1)
+		const amountCur = amountUsd * usdToCur(rates, cur)
+		return (cur === 'JPY' || cur === 'TWD' ? Math.round(amountCur) : amountCur.toFixed(2)).toString()
 	}
 
 	// 每次挂载时清空上一次遗留的 scan/voucher 状态；若已是 voucherPay/payBill 则保留 scanData/scanIntent 及金额（voucherPayAmount）供本组件消费
@@ -805,9 +856,9 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					let enteredWei: bigint
 					try {
 						const rates = await ensureOracle()
-						enteredWei = cadToUsdc6(rates, amountParam)
+						enteredWei = fiatToUsdc6(rates, amountParam, currencyParam)
 					} catch (e) {
-						console.warn('Bill CAD to USDC (shared oracle) failed', e)
+						console.warn('Bill currency to USDC (shared oracle) failed', e)
 						enteredWei = 0n
 					}
 
@@ -899,6 +950,10 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					let usdcFromCCSACAD: string | undefined
 					let customerUsdcBalanceCAD: string | undefined
 					let totalRequestedStrCAD: string | undefined
+					let amountStrFiat: string | undefined
+					let usdcFromBalanceFiat: string | undefined
+					let usdcFromCCSAFiat: string | undefined
+					let totalRequestedStrFiat: string | undefined
 					try {
 						const rates = await ensureOracle()
 						amountStrCAD = usdcToCadStr(rates, amountStr)
@@ -906,6 +961,12 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						usdcFromCCSACAD = usdcToCadStr(rates, usdcFromCCSAStr)
 						customerUsdcBalanceCAD = usdcToCadStr(rates, customerUsdcBalanceStr)
 						totalRequestedStrCAD = usdcToCadStr(rates, totalRequestedStrVal)
+						// Bill 请求币种展示
+						const bc = (currencyParam || 'USD').toUpperCase()
+						amountStrFiat = usdcToFiatStr(rates, amountStr, bc)
+						usdcFromBalanceFiat = usdcToFiatStr(rates, usdcFromBalanceStr, bc)
+						usdcFromCCSAFiat = usdcToFiatStr(rates, usdcFromCCSAStr, bc)
+						totalRequestedStrFiat = usdcToFiatStr(rates, totalRequestedStrVal, bc)
 					} catch (e) {
 						console.warn('USDC to CAD (shared oracle) failed', e)
 					}
@@ -960,6 +1021,11 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						billPayeeAA,
 						payeeDisplayName,
 						payeeMemberLabel: undefined,
+						billCurrency: currencyParam,
+						amountStrFiat,
+						usdcFromBalanceFiat,
+						usdcFromCCSAFiat,
+						totalRequestedStrFiat,
 					})
 					return
 				}
@@ -1030,7 +1096,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			try {
 				if (amountSource) {
 					const rates = await ensureOracle()
-					enteredWei = cadToUsdc6(rates, amountSource)
+					enteredWei = fiatToUsdc6(rates, amountSource, 'CAD')
 				} else {
 					enteredWei = 0n
 				}
@@ -1364,14 +1430,18 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 	}
 
 	const handleCancelDeduction = () => {
-		setVoucherPayError('Cancelled')
+		setVoucherPayError('')
 		setConfirmDeduction(null)
 		setSuccessTxHash(null)
+		setPaymentSuccessData(null)
 		setScanData('')
-		setScanIntent('')
 		setVoucherPayAmount('')
 		setVoucherPayToAA('')
+		setVoucherPayFromScan?.(false)
+		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
 		routingDoneRef.current = false
+		// 保持 scanIntent 为 payBill/voucherPay，回到 Smart Routing 等待新扫描；重新打开扫码
+		scanRef.current?.start()
 	}
 
 	/**
@@ -1383,10 +1453,13 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		if (fromPaymentSuccess && onPaymentSuccess) onPaymentSuccess()
 		setSuccessTxHash(null)
 		setPaymentSuccessData(null)
+		setConfirmDeduction(null)
 		setScanData('')
 		setScanIntent('')
 		setVoucherPayAmount('')
 		setVoucherPayToAA('')
+		setVoucherPayFromScan?.(false)
+		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
 		routingDoneRef.current = false
 	}
 

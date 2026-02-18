@@ -94,6 +94,8 @@ const Home = ({}) => {
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
 	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
+	/** Add Cash 后：底部 sheet 内显示 Coinbase 确认 (204-221)，非全屏 */
+	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
@@ -1010,6 +1012,7 @@ const Home = ({}) => {
 								transition={{ duration: 0.2 }}
 								onClick={() => {
 									setShowAddCashSheet(false)
+									setShowAddUsdcInSheet(false)
 									setShowFooter(true)
 								}}
 							/>
@@ -1028,6 +1031,7 @@ const Home = ({}) => {
 										type="button"
 										onClick={() => {
 											setShowAddCashSheet(false)
+											setShowAddUsdcInSheet(false)
 											setShowFooter(true)
 										}}
 										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
@@ -1037,18 +1041,25 @@ const Home = ({}) => {
 									</button>
 								</div>
 								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-									<BankingBridge
-										onAddCash={() => {
-											setShowAddCashSheet(false)
-											setShowFooter(false)
-											setShowAlphaHowItWorks('CoinbaseRamps')
-										}}
-										onCashOut={() => {
-											setShowAddCashSheet(false)
-											setShowFooter(false)
-											setShowAlphaHowItWorks('CoinbaseRamps')
-										}}
-									/>
+									{!showAddUsdcInSheet && (
+										<BankingBridge
+											onAddCash={() => setShowAddUsdcInSheet(true)}
+											onCashOut={() => setShowAddUsdcInSheet(true)}
+										/>
+									)}
+									{showAddUsdcInSheet && (
+										<>
+											<BeamioNavBack
+												title=""
+												onClose={() => setShowAddUsdcInSheet(false)}
+												onMore={() => {}}
+											/>
+											<BeamioAddUSDCFlow
+												embedInSheet
+												onCancel={() => setShowAddUsdcInSheet(false)}
+											/>
+										</>
+									)}
 								</div>
 							</motion.div>
 						</>

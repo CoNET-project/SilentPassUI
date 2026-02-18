@@ -638,6 +638,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		setVoucherPayToAA,
 		voucherPayError,
 		setVoucherPayError,
+		setVoucherPayFromScan,
 		currencyData,
 		setCurrencyData,
 	} = useDaemonContext()
@@ -678,6 +679,21 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		} catch {
 			return 0n
 		}
+	}
+	/** Bill 金额按 currency 换算为 USDC6：USD/USDC 用 1:1，CAD 用 cadToUsdc6 */
+	const fiatToUsdc6 = (rates: OracleRates, amountStr: string, currency: string): bigint => {
+		const n = Number(amountStr)
+		if (!Number.isFinite(n) || n <= 0) return 0n
+		const cur = (currency || '').toUpperCase()
+		if (cur === 'USD' || cur === 'USDC') {
+			const usdc = rates.USDC ? n / rates.USDC : n
+			try {
+				return ethers.parseUnits(usdc.toFixed(6), 6)
+			} catch {
+				return 0n
+			}
+		}
+		return cadToUsdc6(rates, amountStr)
 	}
 	const usdcToCadStr = (rates: OracleRates, usdcStr: string): string => {
 		if (!rates.USDC || !rates.CAD) return usdcStr
@@ -805,9 +821,9 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 					let enteredWei: bigint
 					try {
 						const rates = await ensureOracle()
-						enteredWei = cadToUsdc6(rates, amountParam)
+						enteredWei = fiatToUsdc6(rates, amountParam, currencyParam)
 					} catch (e) {
-						console.warn('Bill CAD to USDC (shared oracle) failed', e)
+						console.warn('Bill currency to USDC (shared oracle) failed', e)
 						enteredWei = 0n
 					}
 
@@ -1364,13 +1380,16 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 	}
 
 	const handleCancelDeduction = () => {
-		setVoucherPayError('Cancelled')
+		setVoucherPayError('')
 		setConfirmDeduction(null)
 		setSuccessTxHash(null)
+		setPaymentSuccessData(null)
 		setScanData('')
 		setScanIntent('')
 		setVoucherPayAmount('')
 		setVoucherPayToAA('')
+		setVoucherPayFromScan?.(false)
+		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
 		routingDoneRef.current = false
 	}
 

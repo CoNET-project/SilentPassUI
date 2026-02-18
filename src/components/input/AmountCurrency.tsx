@@ -13,8 +13,8 @@ import { getDecimals} from '@/services/currency'
 
 
 type Prof = {
-	setAmount: (usdc: string) => void // ✅ 永远回传 USDC
-	amount: string // ✅ 永远是 USDC
+	setAmount: (usdc: string) => void // outputNativeCurrency 时回传所选 currency 的金额，否则 USDC
+	amount: string
 	autoEntry: boolean
 	showMax: boolean
 	readOnly: boolean
@@ -25,6 +25,8 @@ type Prof = {
 	focusSignal?: boolean
 	feePlus?: boolean
 	currencyChange?: (val: ICurrency) => void
+	/** true：setAmount 回传所选 currency 的原生金额（用于 bill URL，不换算 USDC） */
+	outputNativeCurrency?: boolean
 	/** AA→EOA 时传入 AA 余额，覆盖 usdcbalance；未传则用 context 的 usdcbalance */
 	balanceOverride?: number | string
 }
@@ -84,7 +86,7 @@ function calcFeeFromReceived(received: number) {
 	return Number(feeByRatio.toFixed(4))
 }
 
-const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setSendError, sendError, focusSignal, feePlus=false, currencyChange, balanceOverride}: Prof) => {
+const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setSendError, sendError, focusSignal, feePlus=false, currencyChange, balanceOverride, outputNativeCurrency=false }: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
 	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
@@ -181,6 +183,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	useEffect(() => {
 		prevCurrencyRef.current = effectiveCurrency
 		firstEditArmedRef.current = true
+		if (outputNativeCurrency) return
 
 		// ✅ 对齐成 0，避免后续 sync effect “认为不是本组件刚发出的”
 		const zeroUsdcStr = formatUsdc(0)
@@ -191,7 +194,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 		setSendError("")
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [effectiveCurrency])
+	}, [effectiveCurrency, outputNativeCurrency])
 	
 
 	useEffect(() => {
@@ -245,18 +248,23 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		// 如果 amount 是我们刚刚从本 input 发出去的，就别反向覆盖 displayAmount（避免光标跳动）
 		if (amount === lastSentUsdcRef.current) return
 
-		const usdc = Number(amount || 0)
-		const safeUsdc = Number.isFinite(usdc) ? usdc : 0
-
-		if (isUSDCMode) {
-			setDisplayAmount(formatUsdc(safeUsdc)) // ✅ USDC：直接显示 USDC
+		if (outputNativeCurrency) {
+			const n = Number(amount || 0)
+			const safe = Number.isFinite(n) ? n : 0
+			setDisplayAmount(effectiveCurrency === 'USDC' ? formatUsdc(safe) : formatCurrencyAmount(safe, effectiveCurrency))
 		} else {
-			const curValue = usdcToCurrencyAmount(safeUsdc, effectiveCurrency)
-			setDisplayAmount(formatCurrencyAmount(curValue, effectiveCurrency)) // ✅ 法币：显示法币
+			const usdc = Number(amount || 0)
+			const safeUsdc = Number.isFinite(usdc) ? usdc : 0
+			if (isUSDCMode) {
+				setDisplayAmount(formatUsdc(safeUsdc))
+			} else {
+				const curValue = usdcToCurrencyAmount(safeUsdc, effectiveCurrency)
+				setDisplayAmount(formatCurrencyAmount(curValue, effectiveCurrency))
+			}
 		}
 		
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [amount, effectiveCurrency, currencyData, showCurrencyPicker, displayAmount])
+	}, [amount, effectiveCurrency, currencyData, showCurrencyPicker, displayAmount, outputNativeCurrency])
 
 	// ---------- Picker open/close ----------
 	const openPicker = () => {
@@ -331,13 +339,24 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 
 	// ---------- Pick currency（含 USDC，由 CurrencyPicker 返回）----------
 	const pickCurrency = (next: ICurrency) => {
+		const prevCur = currentCurrency
 		setcurrentCurrency(next)
 		if (currencyChange) {
 			currencyChange(next)
 		}
-		const usdc = Number(amount || 0)
-		const nextDisplay = next === 'USDC' ? usdc : usdcToCurrencyAmount(Number.isFinite(usdc) ? usdc : 0, next)
-		setDisplayAmount(next === 'USDC' ? formatUsdc(nextDisplay) : formatCurrencyAmount(nextDisplay, next))
+		if (outputNativeCurrency) {
+			const prevAmount = Number(amount || 0)
+			const usdc = currencyToUsdcAmount(Number.isFinite(prevAmount) ? prevAmount : 0, prevCur)
+			const nextAmount = next === 'USDC' ? usdc : usdcToCurrencyAmount(usdc, next)
+			const nextStr = next === 'USDC' ? formatUsdc(nextAmount) : formatCurrencyAmount(nextAmount, next)
+			setDisplayAmount(nextStr)
+			lastSentUsdcRef.current = nextStr
+			setAmount(nextStr)
+		} else {
+			const usdc = Number(amount || 0)
+			const nextDisplay = next === 'USDC' ? usdc : usdcToCurrencyAmount(Number.isFinite(usdc) ? usdc : 0, next)
+			setDisplayAmount(next === 'USDC' ? formatUsdc(nextDisplay) : formatCurrencyAmount(nextDisplay, next))
+		}
 		
 		if (next !== 'USDC') handleSaveAvatar(next) // USDC 为输入模式，不写入 beamio.currency
 		setSendError("")
@@ -378,7 +397,12 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}, [displayAmount, effectiveCurrency, currencyData, isUSDCMode])
 
 	const onVChange = (n: number) => {
-		if (isUSDCMode) {
+		if (outputNativeCurrency) {
+			const str = effectiveCurrency === 'USDC' ? formatUsdc(n) : formatCurrencyAmount(n, effectiveCurrency)
+			lastSentUsdcRef.current = str
+			setAmount(str)
+			if (needBalance && !isUSDCMode) checkBalance(currencyToUsdcAmount(n, effectiveCurrency))
+		} else if (isUSDCMode) {
 			const fee = feePlus ? calcFeeFromReceived(n) : calcFeeFromNumber(n)
 			if (feePlus) {
 				n += fee

@@ -54,7 +54,7 @@ export default function QrOperationPage() {
 
   const payMeUrl = beamio?.accountName ? `${showPaylinkSite}?beamio=${encodeURIComponent(beamio.accountName)}` : ""
 
-  // 自动签名获取 relay payload（My Code 即 For Merchants）
+  // Auto-sign to get relay payload (My Code = For Merchants)
   useEffect(() => {
     if (tab !== "mycode") return
     if (!profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor || merchantPayload) return
@@ -126,7 +126,7 @@ export default function QrOperationPage() {
         background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 25%, #0f3460 50%, #e94560 100%)",
       }}
     >
-      {/* 安全区 */}
+      {/* Safe area */}
       <div className="flex-1 flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         {/* Header */}
         <div className="px-4 py-3">
@@ -161,7 +161,7 @@ export default function QrOperationPage() {
             </div>
             <div className="w-10" />
           </div>
-          {/* Beamio 头像 + 下一行 name + @beamioTag 标准格式 */}
+          {/* Beamio avatar + name + @beamioTag */}
           {(displayName(beamio) || beamio?.accountName) && (
             <div className="flex flex-col items-center mt-3 gap-1">
               <img
@@ -182,16 +182,16 @@ export default function QrOperationPage() {
           )}
         </div>
 
-        {/* Scanner / My Code 区域 */}
+        {/* Scanner / My Code area */}
         <div className="flex-1 flex items-center justify-center px-6 min-h-0">
           <div className="-translate-y-16 w-full flex flex-col items-center">
           {tab === "scan" ? (
             <div className="w-full flex flex-col items-center">
               <div className="relative w-full max-w-[280px] aspect-square">
-                {/* 占位：从 Html5QrcodePlugin 或外部调用 scanRef.start() 打开相机 */}
+                {/* Placeholder: Html5QrcodePlugin or external scanRef.start() opens camera */}
                 <div className="relative w-full h-full rounded-2xl bg-black/50 flex flex-col items-center justify-center border-2 border-white/20">
-                  <p className="text-white/70 text-sm text-center px-6">选择 Scan 打开相机开始扫描</p>
-                  {/* 四角白框 */}
+                  <p className="text-white/70 text-sm text-center px-6">Tap Scan to open camera and start scanning</p>
+                  {/* Corner frames */}
                   <div className="absolute inset-0 pointer-events-none">
                     <div className="absolute left-4 top-4 w-12 h-12 border-l-4 border-t-4 border-white/60 rounded-tl-lg" />
                     <div className="absolute right-4 top-4 w-12 h-12 border-r-4 border-t-4 border-white/60 rounded-tr-lg" />
@@ -203,7 +203,7 @@ export default function QrOperationPage() {
             </div>
           ) : (
             <div className="w-full max-w-[400px] rounded-2xl bg-slate-900/80 border border-white/10 p-5 flex flex-col items-center">
-              {/* QR + Copy/Share 整体，上下居中对齐 */}
+              {/* QR + Copy/Share, centered */}
               {merchantSigning ? (
                 <div className="flex flex-col items-center justify-center flex-1 min-h-[400px] w-full">
                   <Loader2 className="w-10 h-10 text-blue-400 animate-spin" strokeWidth={2} />
@@ -262,7 +262,7 @@ export default function QrOperationPage() {
                     <span>{shortAddress(profiles?.[0]?.aaAccount ?? "")}</span>
                     {copiedAddress ? <Check size={14} className="text-emerald-500 shrink-0" /> : <Copy size={14} className="shrink-0 opacity-80" />}
                   </button>
-                  {/* Share / Copy 底部按钮 - 对齐 BeamioPayMe 样式 */}
+                  {/* Share / Copy buttons - BeamioPayMe style */}
                   <div className="mt-6 sm:mt-8 w-full flex gap-2 sm:gap-3">
                     <button
                       type="button"

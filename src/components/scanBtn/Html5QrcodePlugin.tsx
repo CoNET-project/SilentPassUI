@@ -281,7 +281,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
                 onClick={handleMyCode}
                 className="px-5 py-2 rounded-full text-sm font-semibold text-white/80 hover:text-white transition-colors"
               >
-                My Code
+                Show to pay
               </button>
             </div>
             <div className="w-10" />

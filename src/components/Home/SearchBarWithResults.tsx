@@ -29,6 +29,8 @@ type Props = {
 	showError?: boolean
 	/** Chat 等场景：不渲染全屏白色侧边面板（BeamioContactProfilePreview） */
 	showSideSlidePanel?: boolean
+	/** PayScreen 等底部弹窗场景：强制下拉菜单向下展开，不使用自适应向上 */
+	dropdownDownward?: boolean
 }
 
 const displayName = (item: searchResult) => {
@@ -61,7 +63,7 @@ function formatUserDate(timestamp?: string | number): string {
 
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
-	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false, showSideSlidePanel = true }: Props) => {
+	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false, showSideSlidePanel = true, dropdownDownward = false }: Props) => {
 		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setRedeemFromUrl } = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
@@ -292,13 +294,14 @@ const SearchInputWithDropdown =
 
 
 
-		// 下拉框显示/隐藏时，重新 focus input
+		// 下拉框显示/关闭时，保持 focus 在 input（切换分支会挂载新 input，需主动 focus）
 		useEffect(() => {
-			if (readonly||!focus) return
-			// ✅ FIX 1: 这里不要仅仅 focus，還要处理滚动，但主要逻辑放到 onFocus 里面更安全
-            // 仅仅 focus 可能会触发系统默认的 scroll 导致跳动
-            
-			inputRef.current?.focus()
+			if (readonly) return
+			// 延迟一帧确保新 input 已挂载、ref 已绑定
+			const id = requestAnimationFrame(() => {
+				inputRef.current?.focus()
+			})
+			return () => cancelAnimationFrame(id)
 		}, [showDropdown, readonly])
 
 		useEffect(() => {
@@ -309,14 +312,18 @@ const SearchInputWithDropdown =
 			setInternalError(showError)
 		}, [showError])
 
-		// 靠近底部时，Dropdown 向上弹出；远离底部时保持向下
+		// 靠近底部时，Dropdown 向上弹出；远离底部时保持向下（dropdownDownward 为 true 时强制向下）
 		useLayoutEffect(() => {
 			if (!showDropdown || !containerRef.current) return
+			if (dropdownDownward) {
+				setDropdownUpwards(false)
+				return
+			}
 			const rect = containerRef.current.getBoundingClientRect()
 			const spaceBelow = window.innerHeight - rect.bottom
 			const spaceAbove = rect.top
 			setDropdownUpwards(spaceBelow < spaceAbove)
-		}, [showDropdown])
+		}, [showDropdown, dropdownDownward])
 
 		const handleSelect = (item: searchResult) => {
 			if (select) {

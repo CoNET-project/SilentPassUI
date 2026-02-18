@@ -634,12 +634,12 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 	return (
 	// ✅ 白底容器，不再 items-center（避免“卡片居中感”）
 	<div className="relative">
-		{/* 顶部右侧：独立圆形关闭按钮 */}
+		{/* 顶部右侧：绝对定位独立关闭按钮，不占用内容流 */}
 		<button
 			type="button"
 			onClick={() => close('/')}
 			className="
-				absolute top-0 right-0 z-10
+				absolute -top-12 right-2 z-20
 				w-10 h-10 rounded-full
 				bg-slate-100 dark:bg-slate-800
 				flex items-center justify-center
@@ -651,8 +651,8 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 		>
 			<X className="w-5 h-5 text-slate-600 dark:text-slate-300" strokeWidth={2.5} />
 		</button>
-		{/* ✅ 不再 justify-center，不包 Card */}
-		<div className="w-full mt-8 mb-16 pr-12">
+		{/* 内容区：左右对称 padding，居中显示 */}
+		<div className="w-full mt-8 mb-16 px-4 sm:px-6">
 		{/* ✅ 原 CardContent 的 padding 交给这里 */}
 		<div className="">
 			{successHash ? (
@@ -738,7 +738,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 						)} */}
 						{!isAaEoaTransfer && !item && (
 						<>
-						<section className="mb-4">
+						<section className="mt-14 mb-4">
 							<SearchInputWithDropdown
 							showHistory={false}
 							closeWindow={item => {
@@ -749,6 +749,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 							showError={showToError}
 							showBackIcon={false}
 							select={true}
+							dropdownDownward
 							/>
 						</section>
 						{/* 最近选择：本地存储记忆，点击选中 */}

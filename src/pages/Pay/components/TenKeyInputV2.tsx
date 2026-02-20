@@ -9,7 +9,7 @@ import { beamioApiBase, readContainerNonceFromAAStorage, signAAtoEOA_USDC_with_B
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import contracts from '@/utils/contracts'
 import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC } from '@/utils/constants'
-import { searchUsername, getOracle } from '@/services/beamio'
+import { searchUsername } from '@/services/beamio'
 import { formatAmount, fiatPrefix } from '@/services/currency'
 
 
@@ -651,45 +651,25 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setVoucherPayError,
 		setVoucherPayFromScan,
 		currencyData,
-		setCurrencyData,
 	} = useDaemonContext()
 	const maxLength = 10
 	const allowDecimal = true
 
-	// 与 AmountCurrency 共用同一套 Beamio app 共享 oracle
+	// 使用全局 Oracle 喂料器提供的 currencyData
 	type OracleRates = { USDC: number; CAD: number; USD: number; JPY?: number; EUR?: number; CNY?: number; HKD?: number; TWD?: number; SGD?: number }
-	const ensureOracle = async (): Promise<OracleRates> => {
-		const data = (currencyData as any) || {}
-		if (data.USDC && data.CAD) {
-			return {
-				USDC: Number(data.USDC),
-				CAD: Number(data.CAD),
-				USD: 1,
-				JPY: Number(data.JPY),
-				EUR: Number(data.EUR),
-				CNY: Number(data.CNY),
-				HKD: Number(data.HKD),
-				TWD: Number(data.TWD),
-				SGD: Number(data.SGD),
-			}
+	const ensureOracle = (): OracleRates => {
+		const d = (currencyData as any) || {}
+		return {
+			USDC: Number(d.USDC) || 1,
+			CAD: Number(d.CAD) || 1.35,
+			USD: 1,
+			JPY: Number(d.JPY) || 150,
+			EUR: Number(d.EUR) || 0.92,
+			CNY: Number(d.CNY) || 7.2,
+			HKD: Number(d.HKD) || 7.8,
+			TWD: Number(d.TWD) || 31,
+			SGD: Number(d.SGD) || 1.35
 		}
-		const oracle = await getOracle()
-		if (oracle) {
-			const next = {
-				CAD: Number(oracle.usdcad),
-				JPY: Number(oracle.usdjpy),
-				USD: 1,
-				CNY: Number(oracle.usdcny),
-				USDC: Number(oracle.usdc),
-				HKD: Number(oracle.usdhkd),
-				TWD: Number(oracle.usdtwd),
-				EUR: Number(oracle.usdeur),
-				SGD: Number(oracle.usdsgd),
-			}
-			setCurrencyData(next as any)
-			return { ...next }
-		}
-		return { USDC: 1, CAD: 1, USD: 1 }
 	}
 	/** 汇率：1 USD = rate 该币种。如 1 USD = 1.35 CAD → usdToCur['CAD']=1.35 */
 	const usdToCur = (r: OracleRates, c: string): number => {
@@ -855,7 +835,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 
 					let enteredWei: bigint
 					try {
-						const rates = await ensureOracle()
+						const rates = ensureOracle()
 						enteredWei = fiatToUsdc6(rates, amountParam, currencyParam)
 					} catch (e) {
 						console.warn('Bill currency to USDC (shared oracle) failed', e)
@@ -955,7 +935,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					let usdcFromCCSAFiat: string | undefined
 					let totalRequestedStrFiat: string | undefined
 					try {
-						const rates = await ensureOracle()
+						const rates = ensureOracle()
 						amountStrCAD = usdcToCadStr(rates, amountStr)
 						usdcFromBalanceCAD = usdcToCadStr(rates, usdcFromBalanceStr)
 						usdcFromCCSACAD = usdcToCadStr(rates, usdcFromCCSAStr)
@@ -1095,7 +1075,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			let enteredWei: bigint
 			try {
 				if (amountSource) {
-					const rates = await ensureOracle()
+					const rates = ensureOracle()
 					enteredWei = fiatToUsdc6(rates, amountSource, 'CAD')
 				} else {
 					enteredWei = 0n
@@ -1221,7 +1201,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			let customerUsdcBalanceCAD: string | undefined
 			let totalRequestedStrCAD: string | undefined
 			try {
-				const rates = await ensureOracle()
+				const rates = ensureOracle()
 				amountStrCAD = usdcToCadStr(rates, amountStr)
 				usdcFromBalanceCAD = usdcToCadStr(rates, usdcFromBalanceStr)
 				usdcFromCCSACAD = usdcToCadStr(rates, usdcFromCCSAStr)

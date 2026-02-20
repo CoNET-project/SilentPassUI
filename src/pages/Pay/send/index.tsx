@@ -215,6 +215,15 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 		return prefix + curr
 	}, [sendAmount, currentCurrency, currencyData])
 
+	/** aa-to-eoa 输入金额后，检测 AA 余额是否足够（sendAmount 已是 USDC） */
+	const insufficientAaBalance = useMemo(() => {
+		if (!isAaEoaTransfer || transferDirection !== 'aa-to-eoa' || !sendAmount) return false
+		const usdcAmt = Number(sendAmount)
+		if (!(usdcAmt > 0 && isFinite(usdcAmt))) return false
+		const aaBal = Number(aaAccountUsdcBalance ?? 0)
+		return usdcAmt > aaBal
+	}, [isAaEoaTransfer, transferDirection, sendAmount, aaAccountUsdcBalance])
+
 
 
 
@@ -367,7 +376,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 			return setShowToError(true)
 		}
 
-		// AA→EOA：用户输入为 currentCurrency 金额，按即时汇率换算为 USDC 后打包；提交 containerPayload + currency + currencyAmount 到 /api/AAtoEOA
+		// AA→EOA：AmountCurrency 输出为 USDC（outputNativeCurrency 默认 false），直接使用 sendAmount 作为 USDC；currency/currencyAmount 用于 API 的 afterNote 展示
 		if (isAaEoaTransfer && transferDirection === 'aa-to-eoa') {
 			const toEOA = myAddress ?? ''
 			if (!toEOA || amount <= 0) {
@@ -379,34 +388,35 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 				setShowToError(true)
 				return
 			}
-			const rate = fxRateUSDCToCurrency(currentCurrency)
-			if (rate <= 0) {
-				setSendError('Exchange rate not available for ' + currentCurrency)
+			// sendAmount 已是 USDC（AmountCurrency 内部换算后输出）；currencyAmount 与 EOA→AA 一致：USDC 时用原值，否则按汇率换算后格式化
+			const usdcAmountStr = amount > 0 ? amount.toFixed(6) : '0'
+			const currencyAmountDisplay = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(amount, currentCurrency), currentCurrency)
+			const aaBal = Number(aaAccountUsdcBalance ?? 0)
+			if (amount > aaBal) {
+				setSendError('Insufficient balance')
 				return
 			}
-			// 用户输入是 currentCurrency 的金额，换算为 USDC（6 位小数字符串）
-			const usdcAmountNum = currencyAmountToUSDC(amount, currentCurrency)
-			const usdcAmountStr = usdcAmountNum > 0 ? usdcAmountNum.toFixed(6) : '0'
-			const currencyAmountDisplay = formatAmount(amount, currentCurrency)
-
+			setProcessing(true)
 			// 发送前必须用链上查到的 AA 地址，不信任 profile.aaAccount（可能为旧缓存或误设为 EOA）
 			let aaAccount: string
 			try {
 				const fromChain = await getAAAccount(profile)
 				if (!fromChain || !fromChain.startsWith('0x')) {
 					setSendError('No Express Pay found. Please create or link a Express Pay first.')
+					setProcessing(false)
 					return
 				}
 				if (myAddress && fromChain.toLowerCase() === myAddress.toLowerCase()) {
 					setSendError('Express Pay address cannot be the same as your EOA. Please create or link a Express Pay first.')
+					setProcessing(false)
 					return
 				}
 				aaAccount = fromChain
 			} catch (e: any) {
 				setSendError(e?.message ?? 'Failed to get Express Pay address')
+				setProcessing(false)
 				return
 			}
-			setProcessing(true)
 			try {
 				// 使用 containerMainRelayed 签名（绑定 to = owner EOA），金额为换算后的 USDC
 				const profileWithAA = { ...profile, aaAccount }
@@ -857,7 +867,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 									autoEntry={!!!item}
 									readOnly={processing||!!message}
 									showLimit={0}
-									sendError={sendError}
+									sendError={insufficientAaBalance ? 'Insufficient balance' : sendError}
 									setSendError={setSendError}
 									showMax={true}
 									needBalance={true}

@@ -16,7 +16,7 @@ import {
 } from "lucide-react"
 import baseIcon from '@/components/assets/base-logo.png'
 
-import {getOracle, postBeamio, storeSystemData} from '@/services/beamio'
+import {postBeamio, storeSystemData} from '@/services/beamio'
 import { useDaemonContext} from '@/providers/DaemonProvider'
 type prof = {
 	colse: () => void
@@ -67,7 +67,7 @@ function DropdownRow({
 
 
 export default function BeamioRegionCurrencyScreen({colse}:prof) {
-	const { currencyData, setCurrencyData, setBeamio, beamio} = useDaemonContext()
+	const { currencyData, setBeamio, beamio, refreshOracle} = useDaemonContext()
 	const [exchangeSource, setExchangeSource] = useState<"coinbase">("coinbase")
 	const [stablecoin, setStablecoin] = useState<"usdc_base">("usdc_base")
 	const [language, setLanguage] = useState<"en">("en")
@@ -77,24 +77,6 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	const [fxUpdatedAt, setFxUpdatedAt] = useState<Date | null>(null)
 	const [loading, setLoading] = useState(false)
 	const [tax, setTax] = useState('0')
-
-	const oracle = async () => {
-		getAccountData()
-		const data = await getOracle ()
-		setCurrencyData({
-			CAD: Number(data.usdcad),
-			JPY: Number(data.usdjpy),
-			USD: 1,
-			CNY: Number(data.usdcny),
-			USDC: Number(data.usdc),
-			HKD: Number(data.usdhkd),
-			TWD: Number(data.usdtwd),
-			EUR: Number(data.usdeur),
-			SGD: Number(data.usdsgd)
-		})
-		setFxUpdatedAt(new Date())
-	}
-	let oracleProcess = false
 
 	const handleSaveAvatar = async () => {
 		if (!CoNET_Data||!beamio ) return
@@ -125,11 +107,9 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	}
 
 	useEffect(() => {
-
-		if (oracleProcess) return
-		oracleProcess = true
-		oracle()
-	},[])
+		getAccountData()
+		setFxUpdatedAt(new Date())
+	}, [beamio])
 
 	/**
 	 * @returns 1 USDC ≈ X {currency}
@@ -197,7 +177,8 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	const manualRefreshFx = async () => {
 		setLoading(true)
 		await new Promise(executor => setTimeout(() => executor(true), 500))
-		await getOracle ()
+		refreshOracle?.()
+		setFxUpdatedAt(new Date())
 		setLoading(false)
 	}
   return (

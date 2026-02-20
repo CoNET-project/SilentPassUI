@@ -8,7 +8,7 @@ import bIcon from '@/components/assets/32x32.svg'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
-import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign, searchUsername, getOracle, postBeamio, storeSystemData} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign, searchUsername, postBeamio, storeSystemData} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrencyV2'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
 
@@ -127,7 +127,7 @@ const formatCurrencyAmount = (n: number, c: ICurrency) => {
 
 
 const PayForm = ({code, closeWin}: Props) => {
-	const { darkModle, setDarkModle, setProfiles, setPower, profiles, usdcbalance, usdcToUSD, setMyAddress, myAddress, currencyData, setCurrencyData, beamio, setBeamio } = useDaemonContext()
+	const { darkModle, setDarkModle, setProfiles, setPower, profiles, usdcbalance, usdcToUSD, setMyAddress, myAddress, currencyData, beamio, setBeamio } = useDaemonContext()
 	const navigate = useNavigate()
 	const [successPayLink, setSuccessPayLink] = useState<string>('')
 	const [signx402Show, setSignx402Show] = useState(false)
@@ -331,21 +331,6 @@ const PayForm = ({code, closeWin}: Props) => {
 		setStep('form')
 	}
 
-	const oracle = async () => {
-		const data = await getOracle()
-		setCurrencyData({
-			CAD: Number(data.usdcad),
-			JPY: Number(data.usdjpy),
-			USD: 1,
-			CNY: Number(data.usdcny),
-			USDC: Number(data.usdc),
-			HKD: Number(data.usdhkd),
-			TWD: Number(data.usdtwd),
-			EUR: Number(data.usdeur),
-			SGD: Number(data.usdsgd),
-		})
-	}
-
 	let process = false
 	useEffect(() => {
 		if (process) {
@@ -498,10 +483,8 @@ const PayForm = ({code, closeWin}: Props) => {
 		}
 		setCurrency(beamio.currency)
 		try {
-			const [fx] = await 
-			Promise.all([
-				CoreContract.getLinkMemo(code),
-				oracle()
+			const [fx] = await Promise.all([
+				CoreContract.getLinkMemo(code)
 			])
 			
 			const amount = Number(ethers.formatUnits(fx.amount, 6))

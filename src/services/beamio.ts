@@ -303,6 +303,27 @@ export const getOracle = async () => {
 	}
 }
 
+/** 将 getOracle 返回的原始数据解析为 currencyData 格式，供全局 feeder 和各页面使用 */
+export const parseOracleToCurrencyData = (data: { usdcad?: string | number; usdjpy?: string | number; usdcny?: string | number; usdc?: string | number; usdhkd?: string | number; usdtwd?: string | number; usdeur?: string | number; usdsgd?: string | number } | null): currencyData => {
+	if (!data) {
+		return { CAD: 1.35, USD: 1, JPY: 150, CNY: 7.2, USDC: 1, HKD: 7.8, SGD: 1.35, EUR: 0.92, TWD: 31 }
+	}
+	return {
+		CAD: Number(data.usdcad) || 1.35,
+		USD: 1,
+		JPY: Number(data.usdjpy) || 150,
+		CNY: Number(data.usdcny) || 7.2,
+		USDC: Number(data.usdc) || 1,
+		HKD: Number(data.usdhkd) || 7.8,
+		TWD: Number(data.usdtwd) || 31,
+		EUR: Number(data.usdeur) || 0.92,
+		SGD: Number(data.usdsgd) || 1.35
+	}
+}
+
+/** 全局 Oracle 刷新间隔：5 分钟 */
+export const ORACLE_REFRESH_MS = 5 * 60 * 1000
+
 
 export const estimateGasUSDC = async (amount: number, to: string) => {
 	if (!CoNET_Data?.profiles?.length) {

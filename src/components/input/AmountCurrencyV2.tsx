@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useAutoFocus } from "@/components/input/useAutoFocus"
 import { XCircle } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { getOracle, postBeamio, storeSystemData } from "@/services/beamio"
+import { postBeamio, storeSystemData } from "@/services/beamio"
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
@@ -53,7 +53,7 @@ const isCurrency = (v: any): v is ICurrency =>
 const AmountCurrency = ({ setAmount, amount, showMax, readOnly, needBalance=true, showLimit, setError, focusSignal, currencyUSDC=false, feePlus=false }: Prof) => {
 	
 
-	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
+	const { usdcbalance, beamio, currencyData, setBeamio} = useDaemonContext()
 
 	const [sendError, setSendError] = useState("")
 	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>('USD')
@@ -108,11 +108,6 @@ const AmountCurrency = ({ setAmount, amount, showMax, readOnly, needBalance=true
 	}
 
 
-	useEffect(() => {
-
-		oracle()
-	}, [])
-
 	function fxRateUSDCToCurrency(currency: ICurrency): number {
 		// 1 USDC = ? USD
 		const usdcToUSD = currencyData.USDC ?? 1
@@ -124,22 +119,6 @@ const AmountCurrency = ({ setAmount, amount, showMax, readOnly, needBalance=true
 
 		return usdcToUSD * usdToCurrency
 	}
-
-	const oracle = async () => {
-		const data = await getOracle()
-		setCurrencyData({
-			CAD: Number(data.usdcad),
-			JPY: Number(data.usdjpy),
-			USD: 1,
-			CNY: Number(data.usdcny),
-			USDC: Number(data.usdc),
-			HKD: Number(data.usdhkd),
-			TWD: Number(data.usdtwd),
-			EUR: Number(data.usdeur),
-			SGD: Number(data.usdsgd),
-		})
-	}
-
 
 	// ---------- Balance check (USDC truth) ----------
 	const checkBalance = (usdcToSend: number) => {

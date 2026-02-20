@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useAutoFocus } from "@/components/input/useAutoFocus"
 import { XCircle } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { getOracle, postBeamio, storeSystemData } from "@/services/beamio"
+import { postBeamio, storeSystemData } from "@/services/beamio"
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
@@ -89,7 +89,7 @@ function calcFeeFromReceived(received: number) {
 const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needBalance=true, showLimit, setSendError, sendError, focusSignal, feePlus=false, currencyChange, balanceOverride, outputNativeCurrency=false }: Prof) => {
 	const amountInputRef = useAutoFocus<HTMLInputElement>(autoEntry)
 
-	const { usdcbalance, beamio, setCurrencyData, currencyData, setBeamio} = useDaemonContext()
+	const { usdcbalance, beamio, currencyData, setBeamio} = useDaemonContext()
 
 	const [currentCurrency, setcurrentCurrency] = useState<ICurrency>(() => beamio?.currency ?? 'USD')
 	const [showCurrencyPicker, setShowCurrencyPicker] = useState(false)
@@ -148,11 +148,6 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 	}
 
 
-	useEffect(() => {
-
-		oracle()
-	}, [])
-
 	function fxRateUSDCToCurrency(currency: ICurrency): number {
 		if (currency === 'USDC') return 1
 		// 1 USDC = ? USD
@@ -163,21 +158,6 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		if (typeof usdToCurrency !== 'number') return usdcToUSD
 
 		return usdcToUSD * usdToCurrency
-	}
-
-	const oracle = async () => {
-		const data = await getOracle()
-		setCurrencyData({
-			CAD: Number(data.usdcad),
-			JPY: Number(data.usdjpy),
-			USD: 1,
-			CNY: Number(data.usdcny),
-			USDC: Number(data.usdc),
-			HKD: Number(data.usdhkd),
-			TWD: Number(data.usdtwd),
-			EUR: Number(data.usdeur),
-			SGD: Number(data.usdsgd),
-		})
 	}
 
 	useEffect(() => {

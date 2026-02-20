@@ -670,7 +670,7 @@ export default function Market() {
 								</div>
 								{!item.partners && (
 									<div onClick={(e) => e.stopPropagation()}>
-										<GetButton price={item.price} count={count} onClick={() => navigate("/example-card")} />
+										<GetButton price={item.price} count={count} onClick={() => navigate("/example-express")} />
 									</div>
 								)}
 								</div>

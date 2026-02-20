@@ -69,6 +69,7 @@ import { getRedeemStatusBatchFromChain } from '@/services/BeamioCard'
 import base_icon from '@/components/assets/base-logo.png'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import ActivePannel from './components/activePannel'
+import ActiveHistoryPannelNew from './components/activeHistoryPannelNew'
 import AccountBeo from './AccountBea'
 import { TransactionsItemDetail } from '@/pages/History/TransactionsItemDetail'
 import CardManager from '@/pages/cardManager'
@@ -1068,6 +1069,11 @@ export default function MyWalletDashboardNew() {
 		setActiveView(activeView === cardId ? null : cardId)
 	}
 
+	// 打开 DETAILS PANEL 时隐藏 footer，关闭时恢复（避免 panel z-80 盖住 footer）
+	useEffect(() => {
+		setShowFooter(!activeView)
+	}, [activeView, setShowFooter])
+
 	const selectedCard = cards.find((c) => c.id === activeView)
 
 	// exampleExpress passes：CCSA + userCards，用于展开时的叠卡列表
@@ -1195,7 +1201,7 @@ export default function MyWalletDashboardNew() {
 						<div className={`relative h-[650px] perspective-1000 transition-transform duration-500 ${activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''}`}>
 							{/* LAYER 1: MAIN VAULT (EOA) - 点击折叠 express 或打开详情 */}
 							<div
-								onClick={() => (isExpressExpanded ? setIsExpressExpanded(false) : handleCardClick('eoa'))}
+								onClick={() => (isExpressExpanded ? setIsExpressExpanded(false) : {})}
 								className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'scale-90 opacity-100 translate-y-4 brightness-50' : 'scale-95 translate-y-16'}`}
 								style={{ background: 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)', zIndex: 10 }}
 							>
@@ -1396,10 +1402,10 @@ export default function MyWalletDashboardNew() {
 						/>
 					)}
 
-					{/* DETAILS PANEL - 盖住卡片，距离顶部 刘海+1rem，z 高于卡片 */}
+					{/* DETAILS PANEL - 盖住卡片，距离顶部 刘海+1rem，z 高于卡片；隐藏时 pointer-events-none 避免遮挡 footer */}
 					<div
 						className={`absolute inset-x-0 bottom-0 bg-[#F2F2F7] rounded-t-[4px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-[80] flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
-							activeView ? 'translate-y-0' : 'translate-y-[1000px]'
+							activeView ? 'translate-y-0' : 'translate-y-[1000px] pointer-events-none'
 						}`}
 						style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
 					>
@@ -1626,6 +1632,9 @@ export default function MyWalletDashboardNew() {
 												<div className="py-6 text-center text-gray-400 text-sm">No active items</div>
 											)}
 										</div>
+
+										{/* Indexer History（BeamioIndexerDiamond 本月前20条） */}
+										<ActiveHistoryPannelNew />
 
 										{/* Recent Activity */}
 										<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">

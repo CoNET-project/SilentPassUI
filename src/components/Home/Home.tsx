@@ -9,7 +9,7 @@ import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { useNavigate } from "react-router-dom"
-import { createOrGetWallet, storeSystemData, getOracle, postBeamio} from "@/services/beamio"
+import { createOrGetWallet, storeSystemData, postBeamio} from "@/services/beamio"
 import BeamioAlphaHowItWorks from './BeamioAlphaHowItWorks'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
@@ -30,9 +30,8 @@ import { ethers } from 'ethers'
 import { baseEndpoint } from '@/utils/constants'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { CCSA_Card_Address } from '@/utils/constants'
-import { getActiveArray } from '@/services/payment'
 import { getAAAccount, getMyAssets } from '@/services/BeamioCard'
-import ActivePannel from '@/pages/History/components/activePannel'
+import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
@@ -108,25 +107,6 @@ const Home = ({}) => {
 		setCurrency(bo.currency)
 		setLanguage(bo.language)
 	}
-
-	const oracle = async () => {
-		
-		const data = await getOracle ()
-		setCurrencyData({
-			CAD: Number(data.usdcad),
-			JPY: Number(data.usdjpy),
-			USD: 1,
-			CNY: Number(data.usdcny),
-			USDC: Number(data.usdc),
-			HKD: Number(data.usdhkd),
-			TWD: Number(data.usdtwd),
-			EUR: Number(data.usdeur),
-			SGD: Number(data.usdsgd)
-			
-		})
-	}
-
-
 
 	const storee = async () => {
 		const temp = CoNET_Data
@@ -222,9 +202,6 @@ const Home = ({}) => {
 					.catch(() => setCcsaAssets(null))
 			}, 150)
 		}
-		const actives = await getActiveArray(profile)
-		setActiveItems(actives)
-
 		const bo: beamio = temp?.beamio || await getUserInfo(profile.keyID)
 
 		if (!bo) return
@@ -232,8 +209,6 @@ const Home = ({}) => {
 		bo.initialLoading = true
 		
 		
-		
-		oracle()
 		if (bo.isUSDCFaucet) {
 			setShowGetFaucet('finished')
 		} else {
@@ -292,45 +267,18 @@ const Home = ({}) => {
 
 
 
+	/** 常见币种相对 USD 的 fallback 汇率（1 USD = X 该币种），用于 currencyData 未加载时 */
+	const FALLBACK_RATES: Record<string, number> = { USD: 1, CAD: 1.35, JPY: 150, EUR: 0.92, CNY: 7.2, HKD: 7.8, TWD: 31, SGD: 1.35 }
+
 	/**
 	 * @returns 1 USDC ≈ X {currency}
 	 */
 	function fxRateUSDCToCurrency(currency: ICurrency): number {
-		// 1 USDC = ? USD
-		const usdcToUSD = currencyData.USDC ?? 1
-
-		switch (currency) {
-			case 'USD':
-				// 1 USDC = ? USD
-				return usdcToUSD
-
-			case 'CAD':
-				return usdcToUSD * currencyData.CAD
-
-			case 'EUR':
-				return usdcToUSD * currencyData.EUR
-
-			case 'JPY':
-				return usdcToUSD * currencyData.JPY
-
-			case 'CNY':
-				return usdcToUSD * currencyData.CNY
-
-			case 'HKD':
-				return usdcToUSD * currencyData.HKD
-
-			case 'TWD':
-				return usdcToUSD * currencyData.TWD
-
-			case 'SGD':
-				return usdcToUSD * currencyData.SGD
-
-			default: {
-				// 理论上不会发生，兜底防炸
-				console.warn('Unknown currency:', currency)
-				return usdcToUSD
-			}
-		}
+		const usdcToUSD = (currencyData.USDC ?? 1) || 1
+		if (currency === 'USD') return usdcToUSD
+		const raw = (currencyData as Record<string, number>)[currency] ?? FALLBACK_RATES[currency] ?? 1
+		const rate = usdcToUSD * (raw || (FALLBACK_RATES[currency] ?? 1))
+		return rate > 0 ? rate : (FALLBACK_RATES[currency] ?? 1)
 	}
 
 	function formatFiat() {
@@ -380,13 +328,17 @@ const Home = ({}) => {
 		}
 	}
 
-	/** 用于 exampleExpress 风格的大数字拆分展示。合计：EOA USDC + AA 账号 CCSA 余额，转换为用户设定的 currency */
+	/** 用于 exampleExpress 风格的大数字拆分展示。合计：EOA USDC + AA USDC + CCSA 卡余额，转换为用户设定的 currency */
 	function getValuationParts(): { symbol: string; whole: string; decimal: string } {
-		// EOA USDC 转换为目标币种
+		// 1) EOA USDC 转换为目标币种
 		const usdcRate = fxRateUSDCToCurrency(currency)
 		const eoaValue = currency === 'USDC' ? usdcbalance : usdcbalance * usdcRate
 
-		// CCSA 积分（AA 账号）按卡币种计价，转换为目标币种。CCSA 卡币种通常为 CAD
+		// 2) AA 账号 USDC（getMyAssets 返回，与 EOA 分开）
+		const aaUsdc = Number(ccsaAssets?.usdcBalance ?? 0)
+		const aaValue = currency === 'USDC' ? aaUsdc : aaUsdc * usdcRate
+
+		// 3) CCSA 积分按卡币种计价，转换为目标币种。CCSA 卡币种通常为 CAD
 		const ccsaPoints = Number(ccsaAssets?.points ?? 0)
 		const ccsaCurrency = ccsaAssets?.cardCurrency ?? 'CAD'
 		let ccsaValue = 0
@@ -394,14 +346,15 @@ const Home = ({}) => {
 			// 卡币种为 USDC 时，直接按 USDC→目标币种折算
 			ccsaValue = currency === 'USDC' ? ccsaPoints : ccsaPoints * usdcRate
 		} else {
-			// 卡币种为法币（如 CAD），按 1 ccsaCurrency = ? target 折算
-			const ccsaRate = currencyData.CAD && (currencyData as Record<string, number>)[ccsaCurrency]
-				? ((currencyData as Record<string, number>)[currency] ?? 1) / (currencyData as Record<string, number>)[ccsaCurrency]
-				: 0
+			// 卡币种为法币（如 CAD）：1 ccsaCurrency = ? target 货币
+			// 公式：targetPerCcsa = (1 USD = X target) / (1 USD = Y ccsaCurrency) = X/Y
+			const targetPerUsd = (currencyData as Record<string, number>)[currency] ?? (currency === 'USD' ? 1 : 0)
+			const ccsaPerUsd = (currencyData as Record<string, number>)[ccsaCurrency] ?? (ccsaCurrency === 'CAD' ? 1.35 : 1)
+			const ccsaRate = ccsaPerUsd > 0 ? targetPerUsd / ccsaPerUsd : 0
 			ccsaValue = ccsaPoints * ccsaRate
 		}
 
-		const total = eoaValue + ccsaValue
+		const total = eoaValue + aaValue + ccsaValue
 		const fixed = currency === 'JPY' ? 0 : 2
 		const formatted = formatWithThousands(total, fixed)
 		const [whole = '0', dec = fixed === 0 ? '00' : '00'] = formatted.split('.')
@@ -742,16 +695,6 @@ const Home = ({}) => {
 		)
 	}
 
-	function ActivityPreview() {
-		return (
-			<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
-				<div className="text-center py-6 text-gray-400 text-sm">
-					When you send or receive USDC, your payments will show up here.
-				</div>
-			</div>
-		);
-	}
-
 	useEffect(() => {
 
 		if (!showLinkPay) {
@@ -910,38 +853,19 @@ const Home = ({}) => {
 								</div>
 							</div>
 
-							{/* Recent Activity section */}
-							<div className="space-y-4">
-								<h3 className="text-lg font-bold text-gray-900 px-1">Recent Activity</h3>
-								{/* BeamioBetaCard 已隐藏 */}
-
-								{show200OK && (
-									<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
-										<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">Beamio Alpha Reward</p>
+							{show200OK && (
+								<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
+									<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">Beamio Alpha Reward</p>
 									<h4 className="font-bold text-gray-900">You've claimed 0.1 USDC</h4>
-										<p className="mt-1 text-[11px] text-gray-500 leading-snug">
-											Thank you for testing Beamio on Base. Your Beamio wallet has been funded with{" "}
-											<span className="font-semibold text-gray-900">0.1 USDC</span> so you can try your first gasless payment.
-										</p>
-									</div>
-								)}
-
-								{/* Activity area */}
-								<div className="mt-6">
-									{activeItems?.length ? (
-										<ActivePannel
-											items={activeItems}
-											onOpen={tx => {
-												setItemtx(tx)
-												setShowAlphaHowItWorks('TransactionsItemDetail')
-												setShowFooter(false)
-											}}
-										/>
-									) : (
-										<ActivityPreview />
-									)}
+									<p className="mt-1 text-[11px] text-gray-500 leading-snug">
+										Thank you for testing Beamio on Base. Your Beamio wallet has been funded with{" "}
+										<span className="font-semibold text-gray-900">0.1 USDC</span> so you can try your first gasless payment.
+									</p>
 								</div>
-							</div>
+							)}
+
+							{/* Recent Activity - 与 Total Valuation、Send/Receive 同层级，左右边距统一 px-5；bare 无外层圆角/边框/边距，内部控件与上方对齐 */}
+							<ActiveHistoryPannelNew title="Recent Activity" compact compactLimit={5} bare />
 						</div>
 
 						<div className="h-[128px] pb-[env(safe-area-inset-bottom)] pointer-events-none" />

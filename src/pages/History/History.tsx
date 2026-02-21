@@ -161,7 +161,7 @@ const History = ({}) => {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setProcessError('RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
 			}
 			return final(body)
 		} catch (ex) {

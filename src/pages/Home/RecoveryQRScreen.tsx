@@ -16,15 +16,26 @@ type RecoveryQRScreenProps = {
   qrDataUrl: string
   recoveryCode: string
   showButton: boolean
+  /** 用户输入的 beamio tag，用于保存时作为文件名 */
+  beamioTag?: string
   isRedeemFlow?: boolean
   redeemActivating?: boolean
   close: () => void | Promise<void>
 }
 
+/** 将 beamio tag 转为安全文件名（去除 @ 和非法字符） */
+const toSafeFilename = (tag: string) =>
+  tag
+    .trim()
+    .replace(/^@+/, '')
+    .replace(/[/\\:*?"<>|]/g, '-')
+    .replace(/\s+/g, '-') || 'beamio-master-key'
+
 const RecoveryQRScreen = ({
   qrDataUrl,
   recoveryCode,
   showButton,
+  beamioTag,
   isRedeemFlow = false,
   redeemActivating = false,
   close
@@ -60,7 +71,7 @@ const RecoveryQRScreen = ({
     const dataUrl = qrCanvasRef.current.toDataURL('image/png')
     const link = document.createElement('a')
     link.href = dataUrl
-    link.download = 'beamio-master-key.png'
+    link.download = `${toSafeFilename(beamioTag ?? '')}.png`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

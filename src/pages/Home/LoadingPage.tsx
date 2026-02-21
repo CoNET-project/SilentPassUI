@@ -137,7 +137,7 @@ function parseRedeemFromUrl(): { cardAddress: string; redeemCode: string } | nul
 export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, 
 		setAllNodes, setGossip, gossip,
-		setIsInitialLoading, myAddress, usdcbalance, setShowFooter, setCharts } = useDaemonContext()
+		setIsInitialLoading, myAddress, setMyAddress, usdcbalance, setShowFooter, setCharts } = useDaemonContext()
 	const [walletAddr, setWalletAddr] = useState('')
 	const [usdcBal, setUsdcBal] = useState('0')
 	const [eoaAddress, setEoaAddress] = useState('')
@@ -231,7 +231,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		setCoNET_Data(temp)
 		await storeSystemData()
 		const eoa = profiles[0]?.keyID?.trim()
-		if (eoa && ethers.isAddress(eoa)) setEoaAddress(eoa)
+		if (eoa && ethers.isAddress(eoa)) {
+			setEoaAddress(eoa)
+			setMyAddress(eoa)
+		}
 		SetLoading(false)
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
@@ -831,6 +834,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									qrDataUrl={qrDataUrl}
 									recoveryCode={recoveryCode}
 									showButton={true}
+									beamioTag={beamioTag || undefined}
 									isRedeemFlow={!!redeemFromUrl}
 									redeemActivating={redeemActivating}
 									close={redeemFromUrl ? () => {

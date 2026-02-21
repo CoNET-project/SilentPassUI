@@ -212,7 +212,7 @@ export default function PaymentLink ({close}: Props) {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setProcessError('RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
 			}
 			setSuccessUrl(data.showUrl)
 			return setSuccessHash(body.USDC_tx)

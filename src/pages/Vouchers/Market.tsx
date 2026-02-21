@@ -502,40 +502,6 @@ export default function Market() {
 	const retailItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "retail"), [])
 	const servicesItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "services"), [])
 
-	const onItemClick = (item: MarketItem) => {
-		if (item.id === "m8" || item.name === "Uber Eats") {
-			navigate("/example-express")
-			return
-		}
-		if (item.id === 'm9' || item.name === "Spotify") {
-			navigate("/express")
-			return
-		}
-		if (item.id === "m1" || item.name === "CCSA Member Card" || item.name === "CCSA Membership") {
-			setShowFooter(false)
-			if (isMember) {
-				setOverlayMode('cardItem')
-				setShowCardDetail(true)
-				return
-			}
-			
-			setOverlayMode("cardDetail")
-			setShowCardDetail(true)
-			return
-		}
-		if (item.id === "m5" || item.name === "Uber Ride") {
-			setShowFooter(false)
-			navigate("/example-card")
-
-			return
-		}
-		if (item.id === "m4" || item.name === 'Whole Foods') {
-			navigate("/redeem-onboarding")
-			return
-		}
-
-		//navigate("/settings", { state: { openPurchase: item.id } })
-	}
 
 	const closeCardDetail = () => {
 		setShowCardDetail(false)

@@ -322,7 +322,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 			
 			if (!secondResponse.ok) {
 				setProcessing(false)
-				return setSendError('RPC Error!')
+				return setSendError((body as { error?: string })?.error ?? 'RPC Error!')
 			}
 			await sendMessageToClient()
 			setProcessing(false)

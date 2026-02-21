@@ -109,6 +109,7 @@ const SearchInputWithDropdown =
 				})
 				setLoading(false)
 				setShowDropdown(false)
+				closeWindow('/History')
 				return navigate('/History')
 			}
 

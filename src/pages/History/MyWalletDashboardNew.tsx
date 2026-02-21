@@ -692,6 +692,11 @@ export default function MyWalletDashboardNew() {
 		if (!profiles?.length) return
 		const profile: profile = profiles[0]
 		const address = profile.keyID
+		if (!address || !ethers.isAddress(address)) {
+			setAllItems([])
+			setLoading(false)
+			return
+		}
 		if (!myAddress) setMyAddress(address)
 		setLoading(true)
 		try {

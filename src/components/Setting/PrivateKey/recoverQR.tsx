@@ -87,6 +87,7 @@ export default function RecoverQRReveal({ close }: Props) {
       <RecoveryQRScreen
         qrDataUrl={qrDataUrl}
         recoveryCode={recoveryCode}
+        beamioTag={beamio?.accountName}
         showButton={true}
 		close={() => {
 			const next = [...navigateLeftButtonArray]

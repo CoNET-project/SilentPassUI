@@ -312,6 +312,10 @@ export type ConfirmDeductionPayload = {
 	/** Bill 支付：无预签 payload，确认时由付款人签名；to 为 bill 的 AA */
 	isBillPay?: boolean
 	billPayeeAA?: string
+	/** Bill 支付时：URL 中的 requestHash（bytes32），供记账写入 originalPaymentHash 以关联 request_create */
+	billRequestHash?: string
+	/** 请求备注 forText，供 BeamioIndexerDiamond displayJson 记账 */
+	forText?: string
 	/** Bill 支付时：请求方商家展示名（Beamio 名），无则用短地址 */
 	payeeDisplayName?: string
 	/** Bill 支付时：商家会员标签（可选） */
@@ -443,6 +447,14 @@ function ConfirmDeductionView({
 						<span className="text-blue-700 dark:text-blue-400 font-medium text-sm">USDC Top-up</span>
 					</div>
 					<span className="font-bold text-blue-700 dark:text-blue-400 text-sm flex-shrink-0">-CA${formatAmount(fromBal, 'CAD')}</span>
+				</div>
+			)}
+
+			{/* forText：请求备注，记账到 BeamioIndexerDiamond displayJson */}
+			{data.forText && data.forText.trim() && (
+				<div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 p-3 mb-4">
+					<p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Memo</p>
+					<p className="text-sm text-slate-700 dark:text-slate-300 break-words whitespace-pre-wrap">{data.forText.trim()}</p>
 				</div>
 			)}
 
@@ -957,6 +969,11 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 						billPayeeAA,
 						payeeDisplayName,
 						payeeMemberLabel: undefined,
+						billRequestHash: (() => {
+							const rh = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
+							return rh && ethers.isHexString(rh) && ethers.dataLength(rh) === 32 ? rh : undefined
+						})(),
+						forText: u.searchParams.get('forText') ?? undefined,
 					})
 					return
 				}
@@ -1187,6 +1204,18 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 				console.warn('Payer Beamio lookup failed (searchUsername by EOA)', e)
 			}
 
+			// 记账用：Voucher/请求 URL 的 requestHash、forText（用于 BeamioIndexerDiamond displayJson、originalPaymentHash）
+			let voucherRequestHash: string | undefined
+			let voucherForText: string | undefined
+			try {
+				if (typeof window !== 'undefined' && window.location?.search) {
+					const u = new URL(window.location.href)
+					const rh = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
+					voucherRequestHash = rh && ethers.isHexString(rh) && ethers.dataLength(rh) === 32 ? rh : undefined
+					voucherForText = u.searchParams.get('forText') ?? undefined
+				}
+			} catch (_) {}
+
 			setConfirmDeduction({
 				payload,
 				amountStr,
@@ -1205,6 +1234,8 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 				payerBeamioTag,
 				usdcFromBalanceWeiStr: usdcFromBalanceWei > 0n ? usdcFromBalanceWei.toString() : undefined,
 				ccsaPointsWeiStr: ccsaPointsWei > 0n ? ccsaPointsWei.toString() : undefined,
+				billRequestHash: voucherRequestHash,
+				forText: voucherForText,
 			})
 			// 不在此处 submit；等用户确认后再提交
 			return
@@ -1320,6 +1351,11 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 			}
 			if (currencyDiscount != null) bodyPayload.currencyDiscount = currencyDiscount
 			if (currencyDiscountAmount != null) bodyPayload.currencyDiscountAmount = currencyDiscountAmount
+			// 记账到 BeamioIndexerDiamond：requestHash（originalPaymentHash）、forText（displayJson）
+			if (data.forText?.trim()) bodyPayload.forText = data.forText.trim()
+			if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
+				bodyPayload.requestHash = data.billRequestHash
+			}
 
 			const res = await fetch(url, {
 				method: 'POST',

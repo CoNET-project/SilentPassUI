@@ -758,7 +758,9 @@ export const getRedeemDetailsForDisplay = async (
             'function currency() view returns (uint8)',
             'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
         ]
-        const card = new ethers.Contract(cardAddress, cardAbiExtended, baseEndpoint)
+
+		const rpcEndpoint = baseEndpoint
+        const card = new ethers.Contract(cardAddress, cardAbiExtended, rpcEndpoint)
         const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : hash as `0x${string}`
 
         const [[active, totalPoints6], owner, currencyNum, priceE6Raw] = await Promise.all([

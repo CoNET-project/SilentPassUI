@@ -139,9 +139,10 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 
 			{/* Recovery QR card */}
 
-			{
+				{
 				newRecoveryCode ? (
-					<RecoveryQRScreen qrDataUrl={newRecoverUrl} recoveryCode={newCode} 
+					<RecoveryQRScreen qrDataUrl={newRecoverUrl} recoveryCode={newCode}
+					beamioTag={beamio?.accountName}
 					showButton={true}
 					close={() => {
 						colse('')

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -6,6 +6,7 @@ import { ethers } from 'ethers'
 import {
 	ArrowUpRight,
 	ArrowDownLeft,
+	Check,
 	CreditCard,
 	QrCode,
 	X,
@@ -19,6 +20,7 @@ import {
 	Copy,
 	ExternalLink,
 	Code,
+	Hash,
 	Share2,
 	Clock,
 	Ban,
@@ -35,6 +37,9 @@ import { conetDepinProvider } from '@/utils/constants'
 import contracts from '@/utils/contracts'
 import { formatAmount, getDecimals } from '@/services/currency'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
+import ShowCard from '@/components/card/ShowCard'
+import { QRCodeCanvas } from 'qrcode.react'
+import bIcon from '@/components/assets/logo512.png'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612'
 
@@ -54,6 +59,8 @@ const TX_REQUEST_EXPIRED = ethers.keccak256(ethers.toUtf8Bytes('request_expired:
 const TX_TOPUP = ethers.keccak256(ethers.toUtf8Bytes('topup:confirmed'))
 const TX_INTERNAL = ethers.keccak256(ethers.toUtf8Bytes('internal_transfer:confirmed'))
 const TX_VOUCHER_BURN = ethers.keccak256(ethers.toUtf8Bytes('voucher_burn:confirmed'))
+/** 新卡发行与 Top Up 共用 */
+const TX_CARDMINT = ethers.keccak256(ethers.toUtf8Bytes('cardmint:confirmed'))
 
 type TxDisplayType =
 	| 'merchant_pay'
@@ -63,6 +70,7 @@ type TxDisplayType =
 	| 'request_create'
 	| 'request_expired'
 	| 'topup'
+	| 'cardmint'
 	| 'internal_transfer'
 	| 'voucher_burn'
 	| 'unknown'
@@ -76,6 +84,7 @@ function txCategoryToType(txCategory: string): TxDisplayType {
 	if (cat === TX_REQUEST_CREATE.toLowerCase()) return 'request_create'
 	if (cat === TX_REQUEST_EXPIRED.toLowerCase()) return 'request_expired'
 	if (cat === TX_TOPUP.toLowerCase()) return 'topup'
+	if (cat === TX_CARDMINT.toLowerCase()) return 'cardmint'
 	if (cat === TX_INTERNAL.toLowerCase()) return 'internal_transfer'
 	if (cat === TX_VOUCHER_BURN.toLowerCase()) return 'voucher_burn'
 	return 'unknown'
@@ -102,6 +111,8 @@ interface TxView {
 	type: TxDisplayType
 	title: string
 	handle: string
+	/** displayJson 中的 forText（付款备注等） */
+	forText?: string
 	timestamp: string
 	timestampMs: number
 	amountUSDC: number
@@ -116,6 +127,8 @@ interface TxView {
 	counterpartyAddress?: string
 	/** 合约原始 Transaction 数据（用于 Smart Receipt 展示） */
 	rawTransaction?: RawTxRecord
+	/** 附加 Gift Card（来自 displayJson.card） */
+	card?: { title?: string; detail?: string; image?: string }
 }
 
 /** 按币种格式化带符号金额，使用 meta.currencyFiat 对应的小数位 */
@@ -128,12 +141,15 @@ function formatCurrencySigned(amount: number, currencyCode: string) {
 	return `0.00 ${currencyCode}`
 }
 
-function parseDisplayJson(displayJson: string): { title: string; handle: string } {
+function parseDisplayJson(displayJson: string): { title: string; handle: string; forText?: string; card?: { title?: string; detail?: string; image?: string } } {
 	try {
 		const j = JSON.parse(displayJson || '{}')
+		const forText = typeof j.forText === 'string' ? j.forText.trim() : undefined
 		return {
 			title: j.title ?? 'Transaction',
-			handle: j.handle ?? j.note ?? '',
+			handle: j.handle ?? j.forText ?? j.note ?? '',
+			forText: forText || undefined,
+			card: j.card,
 		}
 	} catch {
 		return { title: 'Transaction', handle: displayJson?.slice(0, 40) ?? '' }
@@ -227,6 +243,36 @@ function toNamedTransactionJson(obj: unknown): Record<string, unknown> {
 /** 将 raw tx 转为 JSON 可序列化对象（bigint -> string，fees/meta 具名） */
 function serializeTransaction(tx: RawTxRecord): Record<string, unknown> {
 	return toNamedTransactionJson(tx)
+}
+
+/** 从 request 类 Transaction 组装 https://beamio.app/Vouchers URL */
+function buildVouchersUrl(tx: TxView): string | null {
+	const raw = tx.rawTransaction as RawTxRecord | undefined
+	if (!raw) return null
+	const extractAddr = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
+	const toAddr = extractAddr(raw.payee)
+	if (!toAddr || !ethers.isAddress(toAddr)) return null
+	const hashRaw = raw.originalPaymentHash
+	const requestHash = hashRaw ? (typeof hashRaw === 'string' ? hashRaw : ethers.hexlify(hashRaw as ethers.BytesLike)) : ''
+	if (!requestHash) return null
+	let forText = ''
+	let validDays = 1
+	try {
+		const j = JSON.parse(raw.displayJson || '{}')
+		forText = typeof j.forText === 'string' ? j.forText.trim() : ''
+		validDays = typeof j.validity?.validDays === 'number' ? Math.max(1, Math.floor(j.validity.validDays)) : 1
+	} catch {}
+	const amount = Math.abs(tx.amountFiat)
+	const params = new URLSearchParams({
+		Amount: amount.toString(),
+		currency: tx.currencyCode,
+		acceptTokens: 'USDC,CCSA',
+		to: toAddr,
+		requestHash,
+		validDays: String(validDays),
+	})
+	if (forText) params.set('forText', forText)
+	return `https://beamio.app/Vouchers?${params.toString()}`
 }
 
 /** 从地址构建最小 searchResult（无链上 profile 时用于 Chat initMessage） */
@@ -342,6 +388,10 @@ const ActiveHistoryPannelNew = ({
 	const [fullTransactionFromChain, setFullTransactionFromChain] = useState<Record<string, unknown> | null>(null)
 	const [fullTxLoading, setFullTxLoading] = useState(false)
 	const [showFullDrawer, setShowFullDrawer] = useState(false)
+	const [showGiftCard, setShowGiftCard] = useState(false)
+	const [showVouchersQRSheet, setShowVouchersQRSheet] = useState(false)
+	const [copiedForQR, setCopiedForQR] = useState(false)
+	const refreshLockRef = useRef(false)
 	const { opacity: backBtnOpacity, onScroll: onAllActivityScroll, setRef: setAllActivityScrollRef } = useScrollCapsuleOpacity(compact && showFullDrawer)
 
 	const eoa = profiles?.[0]?.keyID?.trim()
@@ -362,7 +412,7 @@ const ActiveHistoryPannelNew = ({
 					const eoaAddr = (eoa ?? myAddress ?? '').toLowerCase()
 					const aaAddr = aa.toLowerCase()
 					// 与 TxItemRow 的 internalTitle 一致：payee 决定资金流向
-					return payeeAddr === eoaAddr ? 'Withdraw to Main' : payeeAddr === aaAddr ? 'Add to Express Pay' : 'Internal Transfer'
+					return payeeAddr === eoaAddr ? 'Withdraw to Main Wallet' : payeeAddr === aaAddr ? 'Add to Express Pay' : 'Internal Transfer'
 				}
 				const isEoaSent = !selectedTx.isAA && !selectedTx.isInbound
 				const isEoaReceived = !selectedTx.isAA && selectedTx.isInbound
@@ -404,14 +454,25 @@ const ActiveHistoryPannelNew = ({
 			const indexer = new ethers.Contract(BEAMIO_INDEXER, INDEXER_ABI, conetDepinProvider)
 			const TX_FILTER = ethers.ZeroHash
 
-			const results = await Promise.all(
-				accounts.map((account) =>
-					indexer.getAccountTransactionsByMonthOffsetPaged(
-						account,
-						0, // periodOffset: 0 = 本月
-						0, // pageOffset
-						20, // pageLimit
-						TX_FILTER
+			const INDEXER_TIMEOUT_MS = 15_000
+			const withTimeout = <T,>(p: Promise<T>): Promise<T> =>
+				Promise.race([
+					p,
+					new Promise<T>((_, reject) =>
+						setTimeout(() => reject(new Error('Indexer RPC timeout')), INDEXER_TIMEOUT_MS)
+					),
+				])
+
+			const results = await withTimeout(
+				Promise.all(
+					accounts.map((account) =>
+						indexer.getAccountTransactionsByMonthOffsetPaged(
+							account,
+							0, // periodOffset: 0 = 本月
+							0, // pageOffset
+							20, // pageLimit
+							TX_FILTER
+						)
 					)
 				)
 			)
@@ -429,7 +490,7 @@ const ActiveHistoryPannelNew = ({
 					seen.add(id)
 
 					const type = txCategoryToType(tx.txCategory ?? '')
-					const { title, handle } = parseDisplayJson(tx.displayJson ?? '')
+					const { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
 					const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
 					const metaRaw = (tx as RawTxRecord).meta
 					// finalRequestAmountFiat6 = requestAmountFiat6 - discountAmountFiat6 + taxAmountFiat6（readme 7.2）
@@ -465,6 +526,7 @@ const ActiveHistoryPannelNew = ({
 						type: resolvedType,
 						title: title ?? 'Transaction',
 						handle: handle ?? '',
+						forText: forText || undefined,
 						timestamp: formatTime(tsRaw),
 						timestampMs: tsMs,
 						amountUSDC,
@@ -475,6 +537,7 @@ const ActiveHistoryPannelNew = ({
 						txHash: id.startsWith('0x') && id.length === 66 ? id : '',
 						counterpartyAddress: counterparty || undefined,
 						rawTransaction: tx as RawTxRecord,
+						card: card?.image ? card : undefined,
 					})
 				}
 			}
@@ -489,6 +552,12 @@ const ActiveHistoryPannelNew = ({
 			setLoading(false)
 		}
 	}, [eoa, aa, overrideAddress, myAddress])
+
+	const handleRefresh = useCallback(() => {
+		if (refreshLockRef.current) return
+		refreshLockRef.current = true
+		load().finally(() => { refreshLockRef.current = false })
+	}, [load])
 
 	useEffect(() => {
 		load()
@@ -505,7 +574,11 @@ const ActiveHistoryPannelNew = ({
 
 	// 关闭 Detail Sheet 或切换 tx 时清空完整 Transaction 缓存
 	useEffect(() => {
-		if (!selectedTx) setFullTransactionFromChain(null)
+		if (!selectedTx) {
+			setFullTransactionFromChain(null)
+			setShowGiftCard(false)
+			setShowVouchersQRSheet(false)
+		}
 	}, [selectedTx])
 
 	// 点击 View Smart Receipt 时，若有 txHash 则调用 getTransactionFullByTxId 获取完整 Transaction（含 payer/payee/route）
@@ -556,7 +629,58 @@ const ActiveHistoryPannelNew = ({
 		return true
 	})
 
-	const displayItems = compact ? filteredItems.slice(0, compactLimit) : filteredItems
+	/** 判断 request 类记录是否已过期（request_expired 或 request_create 逾 validDays） */
+	const isRequestExpired = (tx: TxView): boolean => {
+		if (tx.type === 'request_expired') return true
+		if (tx.type !== 'request_create') return false
+		const raw = tx.rawTransaction as RawTxRecord | undefined
+		const displayJsonStr = raw?.displayJson ?? ''
+		try {
+			const j = JSON.parse(displayJsonStr || '{}')
+			const validity = j.validity as { expiresAt?: number; validDays?: number } | undefined
+			const tsRaw = raw?.timestamp ?? 0n
+			const tsSec = Number(tsRaw) < 10_000_000_000 ? Number(tsRaw) : Number(tsRaw) / 1000
+			const expiresAtSec = validity?.expiresAt ?? (validity?.validDays ? tsSec + validity.validDays * 86400 : 0)
+			return expiresAtSec > 0 && Date.now() / 1000 > expiresAtSec
+		} catch {
+			return false
+		}
+	}
+
+	/** 从 rawTransaction 提取 originalPaymentHash（hex 字符串），用于分组 */
+	const getOriginalPaymentHash = (tx: TxView): string => {
+		const raw = tx.rawTransaction as RawTxRecord | undefined
+		const oph = raw?.originalPaymentHash
+		if (!oph) return ''
+		const hex = typeof oph === 'string' ? oph : ethers.hexlify(oph as ethers.BytesLike)
+		return hex === ethers.ZeroHash ? '' : hex
+	}
+
+	/** 按 originalPaymentHash 分组：若 request_create 与 request_fulfilled 同 Hash，则只显示 request_fulfilled（状态已完成） */
+	const groupedDisplayItems = useMemo(() => {
+		const byHash = new Map<string, TxView[]>()
+		for (const tx of filteredItems) {
+			const hash = getOriginalPaymentHash(tx)
+			if (hash) {
+				const arr = byHash.get(hash) ?? []
+				arr.push(tx)
+				byHash.set(hash, arr)
+			}
+		}
+		const suppressed = new Set<string>()
+		for (const [, arr] of byHash) {
+			const hasCreate = arr.some((t) => t.type === 'request_create')
+			const hasFulfilled = arr.some((t) => t.type === 'request_fulfilled')
+			if (hasCreate && hasFulfilled) {
+				for (const t of arr) {
+					if (t.type === 'request_create') suppressed.add(t.id)
+				}
+			}
+		}
+		return filteredItems.filter((tx) => !suppressed.has(tx.id))
+	}, [filteredItems])
+
+	const displayItems = compact ? groupedDisplayItems.slice(0, compactLimit) : groupedDisplayItems
 
 	/** internal_transfer 方向：按图示 - Withdraw to Main Wallet 用平行双向箭头，Add to Express Pay 用钱包图标 */
 	const iconForInternalTransfer = (tx: TxView, size: number) => {
@@ -576,8 +700,9 @@ const ActiveHistoryPannelNew = ({
 			case 'merchant_pay':
 				return <CreditCard size={size} strokeWidth={2} />
 			case 'transfer_in':
-			case 'request_fulfilled':
 				return <ArrowDownLeft size={size} strokeWidth={2} />
+			case 'request_fulfilled':
+				return <QrCode size={size} strokeWidth={2} />
 			case 'transfer_out':
 				return <ArrowUpRight size={size} strokeWidth={2} />
 			case 'request_create':
@@ -585,6 +710,7 @@ const ActiveHistoryPannelNew = ({
 			case 'request_expired':
 				return <XCircle size={size} strokeWidth={2} />
 			case 'topup':
+			case 'cardmint':
 				return <ArrowRightLeft size={size === 22 ? 20 : size} strokeWidth={2} />
 			case 'internal_transfer':
 				return tx && eoa && aa ? iconForInternalTransfer(tx, size) : <ArrowRightLeft size={size === 22 ? 20 : size} strokeWidth={2} />
@@ -609,6 +735,7 @@ const ActiveHistoryPannelNew = ({
 			case 'request_expired':
 				return 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-400'
 			case 'topup':
+			case 'cardmint':
 			case 'internal_transfer':
 				return 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
 			case 'voucher_burn':
@@ -632,6 +759,7 @@ const ActiveHistoryPannelNew = ({
 			case 'request_expired':
 				return 'bg-gray-200 text-gray-500 dark:bg-slate-600 dark:text-slate-300'
 			case 'topup':
+			case 'cardmint':
 			case 'internal_transfer':
 				return 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-300'
 			case 'voucher_burn':
@@ -653,6 +781,7 @@ const ActiveHistoryPannelNew = ({
 
 	function TxItemRow({ tx }: { tx: TxView }) {
 		const isInternalTransfer = tx.type === 'internal_transfer'
+		const isReqExpired = (tx.type === 'request_create' || tx.type === 'request_expired') && isRequestExpired(tx)
 		const rawTx = tx.rawTransaction as RawTxRecord | undefined
 		const extractAddr = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
 		const payerAddr = extractAddr(rawTx?.payer) ?? ''
@@ -662,13 +791,13 @@ const ActiveHistoryPannelNew = ({
 
 		// payee 决定资金流向：payee=EOA → Withdraw to Main，payee=AA → Add to Express Pay（与 isInbound 无关）
 		const internalTitle = isInternalTransfer && eoaAddr && aaAddr
-			? (payeeAddr.toLowerCase() === eoaAddr ? 'Withdraw to Main' : payeeAddr.toLowerCase() === aaAddr ? 'Add to Express Pay' : 'Internal Transfer')
+			? (payeeAddr.toLowerCase() === eoaAddr ? 'Withdraw to Main Wallet' : payeeAddr.toLowerCase() === aaAddr ? 'Add to Express Pay' : 'Internal Transfer')
 			: tx.title
 
 		const isAddToExpressPay = isInternalTransfer && payeeAddr.toLowerCase() === aaAddr
 		const isEoaSent = !tx.isAA && !tx.isInbound && !isInternalTransfer
 		const isEoaReceived = !tx.isAA && tx.isInbound && !isInternalTransfer
-		const needsCounterparty = isEoaSent || isEoaReceived
+		const needsCounterparty = isEoaSent || isEoaReceived || tx.type === 'request_fulfilled'
 		const { fullName, beamioTag } = useCounterpartyProfile(needsCounterparty ? tx.counterpartyAddress : undefined)
 		const handleIsJson = (s: string | undefined) => !s || /^[\s]*\{/.test(s) || /"currency"/.test(s)
 		const safeHandle = handleIsJson(tx.handle) ? '' : tx.handle
@@ -676,24 +805,40 @@ const ActiveHistoryPannelNew = ({
 			? `${tx.counterpartyAddress.slice(0, 6)}…${tx.counterpartyAddress.slice(-4)}`
 			: ''
 		const counterpartyLabel = fullName || beamioTag || safeHandle || shortAddr || 'Unknown'
-		const titleText = isEoaSent
-			? `Sent to ${counterpartyLabel}`
-			: isEoaReceived
-				? `Received from ${counterpartyLabel}`
-				: isInternalTransfer
-					? internalTitle
-					: tx.title
-		const subtitleText = isInternalTransfer
-			? 'Internal Transfer'
-			: isEoaSent || isEoaReceived
-				? (fullName ? (beamioTag ?? '') : '')
-				: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
+		const isPendingRequesting = (tx.type === 'request_create' || tx.type === 'request_expired') && !isReqExpired
+		const isRequestFulfilled = tx.type === 'request_fulfilled'
+		const titleText = isReqExpired
+			? 'Request Expired'
+			: isPendingRequesting
+				? 'Payment QR'
+				: isRequestFulfilled
+					? 'Payment Received'
+					: isEoaSent
+						? `Sent to ${counterpartyLabel}`
+						: isEoaReceived
+							? `Received from ${counterpartyLabel}`
+							: isInternalTransfer
+								? internalTitle
+								: tx.title
+		const subtitleText = isReqExpired
+			? ((tx.forText ?? '').trim() || 'Link Invalidated')
+			: isPendingRequesting
+				? ((tx.forText ?? '').trim() || 'QR Generated')
+				: isRequestFulfilled
+					? (beamioTag ? `Paid by @${beamioTag}` : `Paid by ${fullName || shortAddr || '…'}`)
+					: isInternalTransfer
+						? 'Internal Transfer'
+						: isEoaSent || isEoaReceived
+							? (fullName ? (beamioTag ?? '') : '')
+							: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
 
 		const iconBg = isInternalTransfer
 			? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
-			: isEoaReceived
-				? 'bg-[#34C759]/10 text-[#34C759]'
-				: colorForType(tx.type)
+			: isReqExpired
+				? 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-400'
+				: isEoaReceived
+					? 'bg-[#34C759]/10 text-[#34C759]'
+					: colorForType(tx.type)
 
 		// AA→EOA (Withdraw to Main): 收入，数字显示绿色 +（以 payee=EOA 为准，不受合并顺序影响）
 		const isWithdrawToMain = isInternalTransfer && payeeAddr.toLowerCase() === eoaAddr
@@ -721,12 +866,12 @@ const ActiveHistoryPannelNew = ({
 					<div
 						className={`w-9 h-9 rounded-[10px] flex items-center justify-center shadow-sm shrink-0 ${iconBg}`}
 					>
-						{isEoaReceived ? <ArrowDownLeft size={16} strokeWidth={2} /> : iconForType(tx.type, 16, tx)}
+						{(isEoaReceived && tx.type !== 'request_fulfilled') ? <ArrowDownLeft size={16} strokeWidth={2} /> : iconForType(tx.type, 16, tx)}
 					</div>
 					<div className="flex flex-col gap-0.5 min-w-0">
 						<h3
 							className={`text-[12px] font-semibold tracking-tight truncate ${
-								tx.type === 'request_expired' ? 'text-gray-400 dark:text-slate-500' : 'text-black dark:text-white'
+								isReqExpired ? 'text-gray-400 dark:text-slate-500' : 'text-black dark:text-white'
 							}`}
 						>
 							{titleText}
@@ -742,9 +887,14 @@ const ActiveHistoryPannelNew = ({
 									Request
 								</span>
 							)}
-							{tx.type === 'request_create' && (
+							{tx.type === 'request_create' && !isReqExpired && (
 								<span className="text-[8px] font-semibold text-[#FF9500] bg-[#FF9500]/10 px-1 py-0 rounded-[4px]">
 									Waiting
+								</span>
+							)}
+							{isReqExpired && (
+								<span className="text-[8px] font-semibold text-gray-400 bg-gray-200 dark:bg-slate-600 dark:text-slate-400 px-1 py-0 rounded-[4px]">
+									Expired
 								</span>
 							)}
 						</div>
@@ -754,13 +904,13 @@ const ActiveHistoryPannelNew = ({
 					<div
 						className={`text-[12px] font-semibold tracking-tight ${
 							amountIsGreen ? 'text-[#34C759]' :
-							tx.type === 'request_expired' ? 'text-gray-400 dark:text-slate-500' :
+							isReqExpired ? 'text-gray-400 dark:text-slate-500' :
 							'text-black dark:text-white'
 						}`}
 					>
-						{tx.type === 'request_create' ? (
+						{tx.type === 'request_create' && !isReqExpired ? (
 							<span className="text-[#FF9500]">Pending</span>
-						) : tx.type === 'request_expired' ? (
+						) : isReqExpired ? (
 							'Expired'
 						) : (
 							formatCurrencySigned(
@@ -785,37 +935,37 @@ const ActiveHistoryPannelNew = ({
 		: 'bg-[#F2F2F7] dark:bg-slate-900/80 rounded-[20px] p-4 shadow-sm border border-gray-100 dark:border-slate-700/50 overflow-hidden'
 
 	return (
+		<>
 		<div className={outerClassName}>
 			{/* Header - embeddedInDrawer 时隐藏整行（refresh 移至胶囊内） */}
 			{!embeddedInDrawer && (
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-[14px] font-bold text-black dark:text-white tracking-tight">{title}</h3>
 				<div className="flex items-center gap-2">
-					{compact ? (
-						<button
-							type="button"
-							onClick={() => setShowFullDrawer(true)}
-							className="flex items-center gap-1 text-[12px] font-semibold text-[#1562f0] hover:text-[#0d47c7] transition-colors"
-						>
-							View all
-							<ChevronRight size={16} strokeWidth={2.5} />
-						</button>
-					) : (
-						<button
-							type="button"
-							onClick={load}
-							disabled={loading}
-							className="p-2 rounded-full bg-white dark:bg-slate-700 shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
-							aria-label="Refresh"
-						>
-							{loading ? (
-								<Loader size={20} className="animate-spin text-[#1562f0]" />
-							) : (
-								<RefreshCw size={20} className="text-gray-600 dark:text-slate-300" />
-							)}
-						</button>
-					)}
+					<h3 className="text-[14px] font-bold text-black dark:text-white tracking-tight">{title}</h3>
+					<button
+						type="button"
+						onClick={handleRefresh}
+						disabled={loading}
+						className="w-[22.4px] h-[22.4px] flex items-center justify-center rounded-full bg-white dark:bg-slate-700 shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors disabled:opacity-50 shrink-0"
+						aria-label="Refresh"
+					>
+						{loading ? (
+							<Loader size={13} className="animate-spin text-[#1562f0]" />
+						) : (
+							<RefreshCw size={13} className="text-[#1562f0]" />
+						)}
+					</button>
 				</div>
+				{compact && (
+					<button
+						type="button"
+						onClick={() => setShowFullDrawer(true)}
+						className="flex items-center gap-1 text-[12px] font-semibold text-[#1562f0] hover:text-[#0d47c7] transition-colors"
+					>
+						View all
+						<ChevronRight size={16} strokeWidth={2.5} />
+					</button>
+				)}
 			</div>
 			)}
 
@@ -964,14 +1114,16 @@ const ActiveHistoryPannelNew = ({
 							{(() => {
 								const isInternalToEoa = selectedTx.type === 'internal_transfer' && eoa && aa &&
 									(extractAddr((selectedTx.rawTransaction as RawTxRecord)?.payee) ?? '').toLowerCase() === (eoa ?? myAddress ?? '').toLowerCase()
-								const showGreenArrow = (!selectedTx.isAA && selectedTx.isInbound && selectedTx.type !== 'internal_transfer') || isInternalToEoa
+								const showGreenArrow = !selectedTx.isAA && selectedTx.isInbound && selectedTx.type !== 'internal_transfer'
+								// AA→EOA 使用与列表一致的灰色胶囊背景
+								const capsuleBg = isInternalToEoa
+									? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
+									: showGreenArrow ? 'bg-[#34C759] text-white shadow-[0_18px_38px_rgba(52,199,89,0.3)]' : colorForTypeSolid(selectedTx.type)
 								return (
 							<div
-								className={`w-[72px] h-[72px] mx-auto rounded-[24px] flex items-center justify-center shadow-lg mb-5 ${
-									showGreenArrow ? 'bg-[#34C759] text-white shadow-[0_18px_38px_rgba(52,199,89,0.3)]' : colorForTypeSolid(selectedTx.type)
-								}`}
+								className={`w-[72px] h-[72px] mx-auto rounded-[24px] flex items-center justify-center shadow-lg mb-5 ${capsuleBg}`}
 							>
-								{showGreenArrow && selectedTx.type !== 'internal_transfer' ? <ArrowDownLeft size={36} strokeWidth={2} /> : iconForType(selectedTx.type, 36, selectedTx)}
+								{showGreenArrow ? <ArrowDownLeft size={36} strokeWidth={2} /> : iconForType(selectedTx.type, 36, selectedTx)}
 							</div>
 								)
 							})()}
@@ -1017,7 +1169,45 @@ const ActiveHistoryPannelNew = ({
 							</div>
 						</div>
 
-						{selectedTx.type !== 'internal_transfer' && (
+						{/* displayJson 附带的 title / forText 等文字信息 */}
+						{(selectedTx.title !== 'Transaction' || (selectedTx.forText ?? selectedTx.handle)) && (
+							<div className="mb-6 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 px-4 py-3">
+								{selectedTx.title !== 'Transaction' && (
+									<p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedTx.title}</p>
+								)}
+								{(selectedTx.forText ?? selectedTx.handle) && !handleIsJson(selectedTx.forText ?? selectedTx.handle) && (
+									<p className={`text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap break-words ${selectedTx.title !== 'Transaction' ? 'mt-1' : ''}`}>
+										{selectedTx.forText ?? selectedTx.handle}
+									</p>
+								)}
+							</div>
+						)}
+
+						{/* 附带 Gift Card 时展示查看按钮 */}
+						{selectedTx.card?.image && (
+							<div className="mb-8">
+								<button
+									type="button"
+									onClick={() => setShowGiftCard(true)}
+									className="w-full flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-2xl active:scale-[0.98] transition-transform"
+								>
+									{selectedTx.card.image && (
+										<div className="w-14 h-14 rounded-xl overflow-hidden bg-amber-100 dark:bg-amber-900/40 flex-shrink-0">
+											<img src={selectedTx.card.image} alt={selectedTx.card.title ?? 'Gift'} className="w-full h-full object-cover" />
+										</div>
+									)}
+									<div className="flex-1 min-w-0 text-left">
+										<p className="font-semibold text-amber-900 dark:text-amber-200 truncate">{selectedTx.card.title || 'Gift Card'}</p>
+										{selectedTx.card.detail && (
+											<p className="text-[12px] text-amber-700 dark:text-amber-300 line-clamp-2 mt-0.5">{selectedTx.card.detail}</p>
+										)}
+									</div>
+									<ChevronRight size={20} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+								</button>
+							</div>
+						)}
+
+						{selectedTx.type !== 'internal_transfer' && selectedTx.type !== 'request_create' && selectedTx.type !== 'request_expired' && (
 						<div className="grid grid-cols-2 gap-4 mb-8">
 							<button
 								type="button"
@@ -1043,6 +1233,53 @@ const ActiveHistoryPannelNew = ({
 							</button>
 						</div>
 						)}
+
+						{['request_create', 'request_expired', 'request_fulfilled'].includes(selectedTx.type) && (() => {
+							const raw = selectedTx.rawTransaction
+							const displayJsonStr = raw?.displayJson ?? ''
+							let validity: { expiresAt?: number; validDays?: number } | undefined
+							try {
+								const j = JSON.parse(displayJsonStr || '{}')
+								validity = j.validity
+							} catch {}
+							const hashRaw = raw?.originalPaymentHash
+							const reqHash = hashRaw
+								? (typeof hashRaw === 'string' ? hashRaw : ethers.hexlify(hashRaw as ethers.BytesLike))
+								: (selectedTx.txHash || selectedTx.id || '')
+							const shortHash = (reqHash && reqHash.startsWith('0x') ? `${reqHash.slice(0, 7)}…${reqHash.slice(-5)}` : reqHash?.slice(0, 18) || '').toUpperCase()
+							const tsRaw = raw?.timestamp ?? 0n
+							const tsSec = Number(tsRaw) < 10_000_000_000 ? Number(tsRaw) : Number(tsRaw) / 1000
+							const expiresAtSec = validity?.expiresAt ?? (validity?.validDays ? tsSec + validity.validDays * 86400 : 0)
+							const expiryText = expiresAtSec > 0
+								? new Date(expiresAtSec * 1000).toLocaleString(undefined, { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+								: ''
+							const vouchersUrl = buildVouchersUrl(selectedTx)
+							return (
+								<div className="space-y-3 mb-6">
+									<div className="flex flex-wrap gap-2">
+										{shortHash && (
+											<span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 rounded-full text-[12px] font-medium">
+												<Hash size={12} /> Request ID: {shortHash}
+											</span>
+										)}
+										{expiryText && (
+											<span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 dark:bg-slate-600/40 text-slate-700 dark:text-slate-300 rounded-full text-[12px] font-medium">
+												<Clock size={12} /> {selectedTx.type === 'request_expired' ? 'Expired' : 'Expires'}: {expiryText}
+											</span>
+										)}
+									</div>
+									{vouchersUrl && !isRequestExpired(selectedTx) && (
+										<button
+											type="button"
+											onClick={() => setShowVouchersQRSheet(true)}
+											className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm bg-sky-100 dark:bg-sky-900/40 text-blue-600 dark:text-blue-400 hover:bg-sky-200 dark:hover:bg-sky-900/60 active:scale-[0.98] transition"
+										>
+											<QrCode size={18} /> Show QR
+										</button>
+									)}
+								</div>
+							)
+						})()}
 
 						<div className="bg-[#F9FAFB] dark:bg-slate-800/80 rounded-[24px] p-5 space-y-4 mb-8">
 							<div className="flex justify-between items-center text-[14px]">
@@ -1136,6 +1373,117 @@ const ActiveHistoryPannelNew = ({
 				</div>
 			)}
 		</div>
+
+		{/* Gift Card 全屏展示 */}
+		{showGiftCard && selectedTx?.card?.image && (
+			<ShowCard
+				card={{
+					title: selectedTx.card.title ?? 'Gift Card',
+					detail: selectedTx.card.detail ?? '',
+					image: selectedTx.card.image,
+					currency: selectedTx.currencyCode as ICurrency,
+					currencyAmount: formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency),
+				}}
+				address={selectedTx.counterpartyAddress ?? ''}
+				usdcAmount={formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)}
+				cancel={() => setShowGiftCard(false)}
+			/>
+		)}
+
+		{/* Show QR - Vouchers URL 展示弹窗 */}
+		{showVouchersQRSheet && selectedTx && (() => {
+			const vouchersUrl = buildVouchersUrl(selectedTx)
+			if (!vouchersUrl) return null
+			const onCopy = async () => {
+				try {
+					await navigator.clipboard.writeText(vouchersUrl)
+					setCopiedForQR(true)
+					setTimeout(() => setCopiedForQR(false), 3000)
+				} catch {}
+			}
+			return (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+					onClick={() => setShowVouchersQRSheet(false)}
+				>
+					<div
+						className="relative w-full max-w-[380px] rounded-2xl bg-white dark:bg-slate-800 p-6 shadow-xl"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<button
+							type="button"
+							onClick={() => setShowVouchersQRSheet(false)}
+							className="absolute right-3 top-3 rounded-full p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition"
+							aria-label="Close"
+						>
+							<X className="w-5 h-5" />
+						</button>
+						<div className="text-center mb-4">
+							<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Payment QR</h3>
+						</div>
+						<div className="relative isolate flex justify-center">
+							{/* glow：强制放到最底层 */}
+							<div
+								aria-hidden
+								className="
+									absolute inset-[-8px] sm:inset-[-12px]
+									-z-10
+									rounded-[28px] sm:rounded-[36px]
+									bg-[radial-gradient(60%_60%_at_50%_40%,rgba(132,120,255,0.18),rgba(132,120,255,0.05)_60%,transparent_75%)]
+									blur-xl
+									pointer-events-none
+								"
+							/>
+							{/* QR 白底板 */}
+							<div className="relative z-10 flex justify-center">
+								<div
+									className="
+									rounded-[20px] sm:rounded-[28px]
+									bg-white
+									p-2 sm:p-[18px]
+									shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+									"
+								>
+									<QRCodeCanvas
+										value={vouchersUrl}
+										size={220}
+										level="H"
+										includeMargin={false}
+										bgColor="white"
+										fgColor="#000000"
+										imageSettings={{
+											src: bIcon,
+											height: 70,
+											width: 70,
+											excavate: true,
+										}}
+										className="block"
+									/>
+								</div>
+							</div>
+						</div>
+						<div className="mt-4">
+							<button
+								type="button"
+								onClick={onCopy}
+								className={[
+									"mt-2 w-full py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2",
+									"bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100",
+									"hover:bg-slate-300 dark:hover:bg-slate-500 active:scale-[0.98] transition",
+								].join(" ")}
+							>
+								{copiedForQR ? (
+									<><Check className="w-4 h-4" /> Copied</>
+								) : (
+									<><Copy className="w-4 h-4" /> Copy URL</>
+								)}
+							</button>
+						</div>
+					</div>
+				</div>
+			)
+		})()}
+	</>
 	)
 }
 

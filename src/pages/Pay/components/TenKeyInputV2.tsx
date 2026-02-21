@@ -1,16 +1,33 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, QrCode, Loader, Check, X, RefreshCw, Zap, Copy, ExternalLink } from 'lucide-react'
+import { Camera, QrCode, Loader, Check, X, RefreshCw, Zap, Copy, ExternalLink, Wallet, CreditCard } from 'lucide-react'
 import ShowPayQR from "@/pages/Vouchers/showPayQR"
+import ConformView from '@/pages/Pay/send/ConformView'
+import { AppButton } from '@/components/button/AppButton'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from 'ethers'
 import type { OpenContainerRelayPayload } from '@/services/AAaccount'
 import { beamioApiBase, readContainerNonceFromAAStorage, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from '@/services/AAaccount'
+import { AuthorizationSign } from '@/services/beamio'
+import { getAAAccount } from '@/services/BeamioCard'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import contracts from '@/utils/contracts'
 import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC } from '@/utils/constants'
 import { searchUsername } from '@/services/beamio'
 import { formatAmount, fiatPrefix } from '@/services/currency'
+
+const aptEndpoint = 'https://api.settleonbase.xyz'
+const shortAddr = (addr: string) => addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
+const getImg = (seed: string | undefined) =>
+	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(seed || '@Beamio')}`
+
+/** Beamio last_name 格式：普通 lastname + '\\r\\n' + 设定 JSON，取第一个非 JSON 片段作为展示用 */
+const getDisplayLastName = (lastName: string | undefined): string => {
+	if (!lastName) return ''
+	const parts = lastName.split('\r\n')
+	const displayPart = parts.find((p) => (p?.trim() ?? '') && !/^\{/.test((p ?? '').trim()))
+	return (displayPart ?? '').trim()
+}
 
 
 //		
@@ -312,17 +329,35 @@ export type ConfirmDeductionPayload = {
 	/** Bill 支付：无预签 payload，确认时由付款人签名；to 为 bill 的 AA */
 	isBillPay?: boolean
 	billPayeeAA?: string
+	/** Bill 受益方为 EOA 时：true 使用 AA→EOA，false 使用 EOA→EOA */
+	billPayeeIsEOA?: boolean
+	useAaToEoa?: boolean
+	/** AA+EOA 组合：先 AA 转 aaAmountStr，再 EOA 转 eoaAmountStr，合计为 amountStr */
+	useAaPlusEoa?: boolean
+	aaAmountStr?: string
+	eoaAmountStr?: string
+	/** Bill 的 forText 参数（付款备注） */
+	forText?: string
 	/** Bill 支付时：请求方商家展示名（Beamio 名），无则用短地址 */
 	payeeDisplayName?: string
+	/** Bill 支付时：受益人 Beamio 信息（头像、姓名、beamioTag） */
+	payeeImage?: string
+	payeeFirstName?: string
+	payeeLastName?: string
+	payeeAccountName?: string
 	/** Bill 支付时：商家会员标签（可选） */
 	payeeMemberLabel?: string
 	/** Bill 请求币种（如 USD、JPY），用于金额展示；无则用 CAD */
 	billCurrency?: string
+	/** Bill 支付时：URL 中的 requestHash（bytes32），供记账写入 originalPaymentHash 以关联 request_create */
+	billRequestHash?: string
 	/** Bill 时：请求币种的展示金额（与 amountStr 等对应） */
 	amountStrFiat?: string
 	usdcFromBalanceFiat?: string
 	usdcFromCCSAFiat?: string
 	totalRequestedStrFiat?: string
+	/** Bill 支付方无 AA、仅用 EOA USDC 支付（受益方可为 AA 或 EOA） */
+	billPayerEoaOnly?: boolean
 }
 
 function ConfirmDeductionView({
@@ -358,6 +393,13 @@ function ConfirmDeductionView({
 	const isBillPay = !!data.isBillPay
 	const payeeAddr = data.billPayeeAA ?? data.payload?.to ?? ''
 	const payeeName = data.payeeDisplayName ?? (payeeAddr ? `${payeeAddr.slice(0, 6)}…${payeeAddr.slice(-4)}` : 'Merchant')
+	// Beamio 标准格式：fullName = firstName + lastName（首行），无则 fallback accountName / 地址
+	const payeeFullName = [data.payeeFirstName, data.payeeLastName].filter(Boolean).join(' ').trim() || data.payeeAccountName || payeeName
+	// 支付来源：无 AA 时用 EOA；EOA 受益方时 useAaToEoa/useAaPlusEoa 决定；否则为 Express Pay
+	const isPayingFromAA = data.billPayerEoaOnly ? false : (data.billPayeeIsEOA ? (!!data.useAaToEoa || !!data.useAaPlusEoa) : true)
+	const payingFromAddr = data.payload?.account ?? ''
+	const payingFromLabel = data.useAaPlusEoa ? 'Smart Routing (AA + EOA)' : (isPayingFromAA ? 'Express Pay' : 'Main Vault')
+	const payingFromSubLabel = data.useAaPlusEoa ? 'Combined transfer' : (isPayingFromAA ? 'Smart Account' : 'EOA')
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-16">
@@ -367,20 +409,40 @@ function ConfirmDeductionView({
 					Pay bill
 				</h1>
 			)}
-			{/* Bill 时显示请求方商家信息，否则显示 Payer (扣款者 / QR holder) 信息 */}
+			{/* Bill 时显示请求方商家信息（Beamio 标准：头像、firstName+lastName、@beamioTag），否则显示 Payer (扣款者 / QR holder) 信息 */}
 			<div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-4 flex items-center gap-4 mb-6">
-				<div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
-					{isBillPay ? 'Pay to' : 'Payer'}
-				</div>
+				{isBillPay ? (
+					<div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+						{data.payeeImage ? (
+							<img src={data.payeeImage} alt="" className="w-full h-full object-cover" />
+						) : (
+							<img src={getImg(data.payeeAccountName ?? payeeAddr)} alt="" className="w-full h-full object-cover" />
+						)}
+					</div>
+				) : (
+					<div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
+						Payer
+					</div>
+				)}
 				<div className="min-w-0 flex-1">
 					{isBillPay ? (
 						<>
-							<p className="font-bold text-slate-900 dark:text-slate-100 text-base truncate">
-								{data.payeeDisplayName ? `@${data.payeeDisplayName}` : payeeName}
+							<p className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+								Pay to
 							</p>
+							{(payeeFullName || payeeName) ? (
+								<p className="font-bold text-slate-900 dark:text-slate-100 text-base truncate mt-0.5">
+									{payeeFullName || payeeName}
+								</p>
+							) : null}
+							{data.payeeAccountName ? (
+								<p className="text-sm text-blue-600 dark:text-blue-400 font-medium mt-0.5">
+									@{data.payeeAccountName}
+								</p>
+							) : null}
 							{payeeAddr ? (
 								<p className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-									{payeeAddr.slice(0, 6)}…{payeeAddr.slice(-4)}
+									{shortAddr(payeeAddr)}
 								</p>
 							) : null}
 							{data.payeeMemberLabel && (
@@ -390,6 +452,12 @@ function ConfirmDeductionView({
 									</span>
 									{data.payeeMemberLabel}
 								</p>
+							)}
+							{/* forText：请求 URL 中的备注，iOS 风格 note 胶囊 */}
+							{data.forText && data.forText.trim() && (
+								<div className="mt-3 rounded-2xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200/80 dark:border-amber-700/40 px-4 py-3">
+									<p className="text-sm text-slate-700 dark:text-slate-300 break-words whitespace-pre-wrap">{data.forText.trim()}</p>
+								</div>
 							)}
 						</>
 					) : (
@@ -416,6 +484,30 @@ function ConfirmDeductionView({
 					)}
 				</div>
 			</div>
+
+			{/* Paying from：显示用于支付的钱包（Express Pay / Main Vault） */}
+			{isBillPay && payingFromAddr && (
+				<div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-4 flex items-center gap-4 mb-6">
+					<div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-slate-200 dark:bg-slate-700">
+						{isPayingFromAA ? (
+							<CreditCard className="w-6 h-6 text-violet-600 dark:text-violet-400" strokeWidth={2.2} />
+						) : (
+							<Wallet className="w-6 h-6 text-blue-600 dark:text-blue-400" strokeWidth={2.2} />
+						)}
+					</div>
+					<div className="min-w-0 flex-1">
+						<p className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+							Paying from
+						</p>
+						<p className="font-bold text-slate-900 dark:text-slate-100 text-base mt-0.5">
+							{payingFromLabel}
+						</p>
+						<p className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+							{shortAddr(payingFromAddr)} · {payingFromSubLabel}
+						</p>
+					</div>
+				</div>
+			)}
 
 			{/* Bill Amount：真实 totalRequested（与 POST/链上 container 一致） */}
 			<div className="flex justify-between items-center mb-2 leading-[1.375rem]">
@@ -444,14 +536,14 @@ function ConfirmDeductionView({
 				</div>
 			)}
 
-			{/* USDC Top-up (only if deduction from USDC balance > 0) */}
+			{/* USDC / USDC Top-up (toEOA 时用 USDC，否则用 USDC Top-up) */}
 			{hasUSDC && (
 				<div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-4 flex items-center justify-between gap-3 mb-4">
 					<div className="flex items-center gap-3 min-w-0">
 						<div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">
 							$
 						</div>
-						<span className="text-blue-700 dark:text-blue-400 font-medium text-sm">USDC Top-up</span>
+						<span className="text-blue-700 dark:text-blue-400 font-medium text-sm">{data.billPayeeIsEOA ? 'USDC' : 'USDC Top-up'}</span>
 					</div>
 					<span className="font-bold text-blue-700 dark:text-blue-400 text-sm flex-shrink-0">-{sym}{formatAmount(fromBal, reqCur)}</span>
 				</div>
@@ -489,8 +581,12 @@ function ConfirmDeductionView({
 
 export type PaymentSuccessData = {
 	txHash: string
+	/** 多笔转账时（如 AA+EOA 组合）展示所有 hash；单笔时可用 txHash */
+	txHashes?: string[]
 	amountCAD: string
 	amountUSDC: string
+	/** 请求币种（CAD/USD/JPY 等），用于 fiatPrefix 和 formatAmount；EOA 直转时为 USDC */
+	currency?: string
 	exchangeRateCADtoUSDC?: string
 	paidWithCCSACAD?: string
 	recipientName?: string
@@ -511,6 +607,12 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 		}, 2000)
 	}
 	useEffect(() => () => { if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current) }, [])
+	// Beamio 标准：fiatPrefix + formatAmount 展示币种
+	const reqCur = (data.currency || 'CAD').toUpperCase() as ICurrency
+	const sym = fiatPrefix(reqCur) || `${reqCur} `
+	// 法币金额（Total Paid）：法币时用 amountCAD，USDC 时用 amountUSDC
+	const amountFiat = reqCur === 'USDC' ? Number(data.amountUSDC) : Number(data.amountCAD)
+	const totalPaidFormatted = `${sym}${formatAmount(amountFiat, reqCur)}`
 	// 判断是否需要从 USDC 扣款：如果完全用 CCSA 支付（paidWithCCSACAD 等于 amountCAD），则不需要显示 PAYMENT DETAILS
 	const needsUSDCCharge = !(data.paidWithCCSACAD != null && Number(data.paidWithCCSACAD) > 0 && Math.abs(Number(data.paidWithCCSACAD) - Number(data.amountCAD)) < 0.01)
 	
@@ -522,6 +624,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 	const usdcFromBalance = data.amountUSDC && paidWithCCSAUSDC
 		? (Number(data.amountUSDC) - Number(paidWithCCSAUSDC)).toFixed(6)
 		: data.amountUSDC
+	const usdcFormatted = usdcFromBalance ? formatAmount(Number(usdcFromBalance), 'USDC') : '0'
 	
 	return (
 		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-16 pb-6">
@@ -532,12 +635,44 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 				{data.recipientName ? `@${data.recipientName}` : 'Payment'}
 			</p>
 			<p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6">
-				{data.txHash ? `${data.txHash.slice(0, 6)}…${data.txHash.slice(-4)} • ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+				{data.txHashes && data.txHashes.length > 1
+					? `${data.txHashes.length} transactions • ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+					: data.txHash ? `${data.txHash.slice(0, 6)}…${data.txHash.slice(-4)} • ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
 			</p>
+
+			{/* 多笔转账时展示两个 hash */}
+			{data.txHashes && data.txHashes.length >= 2 && (
+				<div className="mb-6 space-y-3">
+					<p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Transaction IDs</p>
+					{data.txHashes.map((h, i) => (
+						<div key={h} className="flex justify-between items-center text-sm">
+							<span className="text-slate-500 dark:text-slate-400">{(i === 0 ? 'AA→EOA' : 'EOA→EOA')}</span>
+							<div className="flex items-center gap-2">
+								<button
+									type="button"
+									onClick={() => {
+										navigator.clipboard.writeText(`${BASE_EXPLORER_TX}${h}`)
+										setCopied(true)
+										if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+										copyTimeoutRef.current = setTimeout(() => { setCopied(false); copyTimeoutRef.current = null }, 2000)
+									}}
+									className="font-mono text-slate-700 dark:text-slate-300 flex items-center gap-1.5 hover:underline"
+								>
+									{h.slice(0, 6)}…{h.slice(-4)}
+									<Copy className="w-3.5 h-3.5 flex-shrink-0" />
+								</button>
+								<a href={`${BASE_EXPLORER_TX}${h}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600" title="View on BaseScan">
+									<ExternalLink className="w-4 h-4" />
+								</a>
+							</div>
+						</div>
+					))}
+				</div>
+			)}
 
 			<div className="flex justify-between items-center mb-4 leading-[1.5rem]">
 				<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid</span>
-				<span className="font-bold text-slate-900 dark:text-slate-100">CA${data.amountCAD}</span>
+				<span className="font-bold text-slate-900 dark:text-slate-100">{totalPaidFormatted}</span>
 			</div>
 
 			{needsUSDCCharge && (
@@ -548,11 +683,11 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 					</div>
 					<div className="flex justify-between text-sm mb-1">
 						<span className="text-slate-600 dark:text-slate-400">Exchange Rate</span>
-						<span className="text-slate-800 dark:text-slate-200">1 CAD ≈ {rate} USDC</span>
+						<span className="text-slate-800 dark:text-slate-200">1 {reqCur} ≈ {rate} USDC</span>
 					</div>
 					<div className="flex justify-between items-center mt-2">
 						<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid in USDC</span>
-						<span className="font-bold text-blue-600 dark:text-blue-400">{usdcFromBalance} USDC</span>
+						<span className="font-bold text-blue-600 dark:text-blue-400">{usdcFormatted} USDC</span>
 					</div>
 				</div>
 			)}
@@ -565,9 +700,9 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 					</div>
 					<div className="flex justify-between items-center">
 						<span className="font-bold text-emerald-700 dark:text-emerald-600">Paid with $CCSA</span>
-						<span className="font-bold text-emerald-700 dark:text-emerald-600">$CCSA {data.paidWithCCSACAD}</span>
+						<span className="font-bold text-emerald-700 dark:text-emerald-600">{fiatPrefix('CAD')}{formatAmount(Number(data.paidWithCCSACAD), 'CAD')}</span>
 					</div>
-					<p className="text-xs text-slate-500 dark:text-slate-400 mt-1">1 $CCSA = 1.00 CAD</p>
+					<p className="text-xs text-slate-500 dark:text-slate-400 mt-1">1 $CCSA = {fiatPrefix('CAD')}1.00</p>
 				</div>
 			)}
 
@@ -578,6 +713,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 					Base Mainnet
 				</span>
 			</div>
+			{(!data.txHashes || data.txHashes.length < 2) && (
 			<div className="flex justify-between items-center text-sm mb-6 leading-[1.375rem]">
 				<span className="text-slate-500 dark:text-slate-400">Transaction ID</span>
 				<div className="flex items-center gap-2">
@@ -602,9 +738,10 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 					)}
 				</div>
 			</div>
+			)}
 
 			<p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-1">GRAND TOTAL PAID</p>
-			<p className="text-4xl font-bold text-blue-600 dark:text-blue-400 text-center mb-6">CA${data.amountCAD}</p>
+			<p className="text-4xl font-bold text-blue-600 dark:text-blue-400 text-center mb-6">{totalPaidFormatted}</p>
 
 			<button
 				type="button"
@@ -634,6 +771,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 	const [submitting, setSubmitting] = useState(false)
 	const [successTxHash, setSuccessTxHash] = useState<string | null>(null)
 	const [paymentSuccessData, setPaymentSuccessData] = useState<PaymentSuccessData | null>(null)
+	const [eoaTransferMessage, setEoaTransferMessage] = useState<any>(null)
 	const routingDoneRef = useRef(false)
 	const {
 		beamio,
@@ -651,6 +789,8 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setVoucherPayError,
 		setVoucherPayFromScan,
 		currencyData,
+		myAddress,
+		usdcbalance,
 	} = useDaemonContext()
 	const maxLength = 10
 	const allowDecimal = true
@@ -805,32 +945,284 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						failStep('detectingUser', 'Invalid bill: missing or invalid payee (to)')
 						return
 					}
-					const billPayeeAA = ethers.getAddress(toParam)
+					const billPayeeAddr = ethers.getAddress(toParam)
 					setVoucherPayAmount(amountParam)
-					setVoucherPayToAA(billPayeeAA)
+					setVoucherPayToAA(billPayeeAddr)
 					setStepLoading('detectingUser')
 					await loadingDelay()
-					// 使用 Beamio Account Factory 校验 to 是否为合法 BeamioAccount
+					// 使用 Beamio Account Factory 校验 to 是否为合法 BeamioAccount；若为 EOA 则进入 toEOA 流程
+					let billPayeeIsEOA = false
 					try {
 						const aaFactory = new ethers.Contract(
 							contracts.BeamioAAAcountFactory.address,
 							contracts.BeamioAAAcountFactory.abi,
 							baseEndpoint
 						)
-						const isBeamio = await retryRpcCall(() => aaFactory.isBeamioAccount(billPayeeAA))
+						const isBeamio = await retryRpcCall(() => aaFactory.isBeamioAccount(billPayeeAddr))
 						if (!isBeamio) {
-							failStep('detectingUser', 'Bill payee is not a Beamio AA account')
-							return
+							billPayeeIsEOA = true
+							setStepSuccess('detectingUser', 'Payee is EOA, using Smart Routing')
+						} else {
+							setStepSuccess('detectingUser', 'Bill payee validated')
 						}
 					} catch (e) {
 						failStep('detectingUser', RPC_ERROR_MSG)
 						return
 					}
-					if (!payerAA || !ethers.isAddress(payerAA)) {
-						failStep('detectingUser', 'Payer AA not found')
+
+					// 受益方为 EOA：Smart Routing（AA 充足则 AA→EOA，否则 EOA→EOA）
+					if (billPayeeIsEOA) {
+						const payerEOA = myAddress ?? profiles?.[0]?.keyID ?? ''
+						if (!payerEOA || !ethers.isAddress(payerEOA)) {
+							failStep('detectingUser', 'Payer EOA not found')
+							return
+						}
+						let enteredWei: bigint
+						try {
+							const rates = ensureOracle()
+							enteredWei = fiatToUsdc6(rates, amountParam, currencyParam)
+						} catch (e) {
+							console.warn('Bill currency to USDC (shared oracle) failed', e)
+							enteredWei = 0n
+						}
+						await doneDelay()
+
+						setStepLoading('membership')
+						await loadingDelay()
+						setStepSuccess('membership', 'N/A (EOA payee)')
+						await doneDelay()
+
+						const effectiveWei = enteredWei
+						setStepLoading('analyzingAssets')
+						await loadingDelay()
+						let payerAaBalanceWei = 0n
+						let payerEoaBalanceWei = 0n
+						let payerChainAA: string | undefined
+						try {
+							if (payerAA && ethers.isAddress(payerAA)) {
+								const tokenContract = new ethers.Contract(
+									USDCContract_BASE,
+									usdc_abi as ethers.InterfaceAbi,
+									baseEndpoint
+								)
+								payerAaBalanceWei = BigInt((await retryRpcCall(() => tokenContract.balanceOf(payerAA))).toString())
+								payerChainAA = payerAA
+							}
+							payerEoaBalanceWei = BigInt((await retryRpcCall(() =>
+								new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
+									.balanceOf(payerEOA)
+							)).toString())
+						} catch (e) {
+							failStep('analyzingAssets', RPC_ERROR_MSG)
+							return
+						}
+						const totalAvailableWei = payerAaBalanceWei + payerEoaBalanceWei
+						if (effectiveWei > 0n && totalAvailableWei < effectiveWei) {
+							const reqStr = ethers.formatUnits(effectiveWei, 6)
+							const balStr = ethers.formatUnits(totalAvailableWei, 6)
+							failStep('analyzingAssets', `Insufficient balance. Requested: ${reqStr} USDC, Available: ${balStr} USDC`)
+							return
+						}
+						const useAaToEoa = payerChainAA && payerAaBalanceWei >= effectiveWei
+						const useAaPlusEoa = !useAaToEoa && !!payerChainAA && payerAaBalanceWei > 0n && payerEoaBalanceWei >= (effectiveWei - payerAaBalanceWei)
+						const routeDetail = useAaToEoa ? 'AA→EOA (sufficient)' : useAaPlusEoa ? 'AA+EOA (Hybrid)' : 'EOA→EOA'
+						setStepSuccess('analyzingAssets', `AA: ${ethers.formatUnits(payerAaBalanceWei, 6)}, EOA: ${ethers.formatUnits(payerEoaBalanceWei, 6)}`)
+						await doneDelay()
+
+						setStepLoading('optimizingRoute')
+						await loadingDelay()
+						setStepSuccess('optimizingRoute', routeDetail)
+						await doneDelay()
+
+						const amountStr = ethers.formatUnits(effectiveWei, 6)
+						const amountStrFiat = (() => {
+							try {
+								return usdcToFiatStr(ensureOracle(), amountStr, (currencyParam || 'USD').toUpperCase())
+							} catch {
+								return amountStr
+							}
+						})()
+
+						// EOA 受益方：通过 searchUsername 获取 Beamio 信息
+						let payeeImage: string | undefined
+						let payeeFirstName: string | undefined
+						let payeeLastName: string | undefined
+						let payeeAccountName: string | undefined
+						try {
+							const account = await searchUsername(billPayeeAddr)
+							const peer = account?.results?.[0]
+							if (peer) {
+								payeeAccountName = (peer as { username?: string }).username
+								payeeImage = (peer as { image?: string }).image
+								payeeFirstName = (peer as { first_name?: string }).first_name
+								payeeLastName = getDisplayLastName((peer as { last_name?: string }).last_name)
+							}
+						} catch (e) {
+							console.warn('Bill payee EOA Beamio lookup failed', e)
+						}
+
+						const aaAmountWei = useAaPlusEoa ? payerAaBalanceWei : (useAaToEoa ? effectiveWei : 0n)
+						const eoaAmountWei = useAaPlusEoa ? (effectiveWei - payerAaBalanceWei) : (useAaToEoa ? 0n : effectiveWei)
+						setConfirmDeduction({
+							payload: {
+								account: (useAaPlusEoa ? payerChainAA : payerChainAA || payerEOA) ?? payerEOA,
+								to: billPayeeAddr,
+								items: [{ kind: 0, asset: USDCContract_BASE, amount: (useAaPlusEoa ? aaAmountWei : effectiveWei).toString(), tokenId: '0', data: '0x' }],
+								currencyType: 4,
+								maxAmount: '0',
+								nonce: '0',
+								deadline: String(Math.floor(Date.now() / 1000) + 300),
+								signature: '0x',
+							} as OpenContainerRelayPayload,
+							amountStr,
+							usdcFromBalance: amountStr,
+							usdcFromCCSA: '0',
+							customerUsdcBalance: ethers.formatUnits(useAaToEoa ? payerAaBalanceWei : (useAaPlusEoa ? payerEoaBalanceWei : payerEoaBalanceWei), 6),
+							totalRequestedStr: amountStr,
+							hasDiscount: false,
+							isBillPay: true,
+							billPayeeAA: billPayeeAddr,
+							billPayeeIsEOA: true,
+							useAaToEoa: !!useAaToEoa,
+							useAaPlusEoa: !!useAaPlusEoa,
+							aaAmountStr: useAaPlusEoa ? ethers.formatUnits(aaAmountWei, 6) : undefined,
+							eoaAmountStr: useAaPlusEoa ? ethers.formatUnits(eoaAmountWei, 6) : undefined,
+							billCurrency: currencyParam,
+							amountStrFiat,
+							totalRequestedStrFiat: amountStrFiat,
+							usdcFromBalanceWeiStr: effectiveWei.toString(),
+							ccsaPointsWeiStr: undefined,
+							forText: u.searchParams.get('forText') ?? undefined,
+									billRequestHash: (() => {
+										const rh = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
+										return rh && ethers.isHexString(rh) && ethers.dataLength(rh) === 32 ? rh : undefined
+									})(),
+									payeeImage,
+							payeeFirstName,
+							payeeLastName,
+							payeeAccountName,
+						})
 						return
 					}
-					setStepSuccess('detectingUser', 'Bill payee validated')
+
+					// 受益方为 AA 但支付方无 AA：使用 EOA USDC，按 oracle 换算后支付
+					if (!payerAA || !ethers.isAddress(payerAA)) {
+						const payerEOA = myAddress ?? profiles?.[0]?.keyID ?? ''
+						if (!payerEOA || !ethers.isAddress(payerEOA)) {
+							failStep('detectingUser', 'Payer EOA not found')
+							return
+						}
+						let enteredWei: bigint
+						try {
+							const rates = ensureOracle()
+							enteredWei = fiatToUsdc6(rates, amountParam, currencyParam)
+						} catch (e) {
+							console.warn('Bill currency to USDC (shared oracle) failed', e)
+							failStep('detectingUser', 'Currency conversion failed')
+							return
+						}
+						if (enteredWei <= 0n) {
+							failStep('detectingUser', 'Invalid amount')
+							return
+						}
+						setStepSuccess('detectingUser', 'EOA-only payer, using Main Vault (USDC)')
+						await doneDelay()
+
+						setStepLoading('membership')
+						await loadingDelay()
+						setStepSuccess('membership', 'N/A (EOA-only, no membership)')
+						await doneDelay()
+
+						setStepLoading('analyzingAssets')
+						await loadingDelay()
+						let payerEoaBalanceWei = 0n
+						try {
+							payerEoaBalanceWei = BigInt((await retryRpcCall(() =>
+								new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
+									.balanceOf(payerEOA)
+							)).toString())
+						} catch (e) {
+							failStep('analyzingAssets', RPC_ERROR_MSG)
+							return
+						}
+						if (payerEoaBalanceWei < enteredWei) {
+							const reqStr = ethers.formatUnits(enteredWei, 6)
+							const balStr = ethers.formatUnits(payerEoaBalanceWei, 6)
+							failStep('analyzingAssets', `Insufficient balance. Requested: ${reqStr} USDC, Available: ${balStr} USDC`)
+							return
+						}
+						setStepSuccess('analyzingAssets', `EOA: ${ethers.formatUnits(payerEoaBalanceWei, 6)} USDC`)
+						await doneDelay()
+
+						setStepLoading('optimizingRoute')
+						await loadingDelay()
+						setStepSuccess('optimizingRoute', 'EOA→AA (USDC)')
+						await doneDelay()
+
+						const amountStr = ethers.formatUnits(enteredWei, 6)
+						const amountStrFiat = (() => {
+							try {
+								return usdcToFiatStr(ensureOracle(), amountStr, (currencyParam || 'USD').toUpperCase())
+							} catch {
+								return amountStr
+							}
+						})()
+
+						let payeeImage: string | undefined
+						let payeeFirstName: string | undefined
+						let payeeLastName: string | undefined
+						let payeeAccountName: string | undefined
+						try {
+							const account = await searchUsername(billPayeeAddr)
+							const peer = account?.results?.[0]
+							if (peer) {
+								payeeAccountName = (peer as { username?: string }).username
+								payeeImage = (peer as { image?: string }).image
+								payeeFirstName = (peer as { first_name?: string }).first_name
+								payeeLastName = getDisplayLastName((peer as { last_name?: string }).last_name)
+							}
+						} catch (e) {
+							console.warn('Bill payee AA Beamio lookup failed', e)
+						}
+
+						setConfirmDeduction({
+							payload: {
+								account: payerEOA,
+								to: billPayeeAddr,
+								items: [{ kind: 0, asset: USDCContract_BASE, amount: enteredWei.toString(), tokenId: '0', data: '0x' }],
+								currencyType: 4,
+								maxAmount: '0',
+								nonce: '0',
+								deadline: String(Math.floor(Date.now() / 1000) + 300),
+								signature: '0x',
+							} as OpenContainerRelayPayload,
+							amountStr,
+							usdcFromBalance: amountStr,
+							usdcFromCCSA: '0',
+							customerUsdcBalance: ethers.formatUnits(payerEoaBalanceWei, 6),
+							totalRequestedStr: amountStr,
+							hasDiscount: false,
+							isBillPay: true,
+							billPayeeAA: billPayeeAddr,
+							billPayeeIsEOA: false,
+							billPayerEoaOnly: true,
+							amountStrFiat,
+							totalRequestedStrFiat: amountStrFiat,
+							usdcFromBalanceWeiStr: enteredWei.toString(),
+							forText: u.searchParams.get('forText') ?? undefined,
+							billRequestHash: (() => {
+								const rh = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
+								return rh && ethers.isHexString(rh) && ethers.dataLength(rh) === 32 ? rh : undefined
+							})(),
+							payeeImage,
+							payeeFirstName,
+							payeeLastName,
+							payeeAccountName,
+						})
+						return
+					}
+
+					const billPayeeAA = billPayeeAddr
 					await doneDelay()
 
 					let enteredWei: bigint
@@ -951,8 +1343,12 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						console.warn('USDC to CAD (shared oracle) failed', e)
 					}
 
-					// Bill 请求方商家展示名：通过 AA.owner() 得 EOA，再 searchUsername 获取
+					// Bill 请求方商家 Beamio 信息：通过 AA.owner() 得 EOA，再 searchUsername 获取
 					let payeeDisplayName: string | undefined
+					let payeeImage: string | undefined
+					let payeeFirstName: string | undefined
+					let payeeLastName: string | undefined
+					let payeeAccountName: string | undefined
 					try {
 						const aaContract = new ethers.Contract(
 							billPayeeAA,
@@ -962,8 +1358,13 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						const merchantEOA = (await aaContract.owner()) as string
 						if (merchantEOA && merchantEOA !== ethers.ZeroAddress) {
 							const account = await searchUsername(merchantEOA)
-							if (account?.results?.[0]?.username) {
-								payeeDisplayName = account.results[0].username
+							const peer = account?.results?.[0]
+							if (peer) {
+								payeeAccountName = (peer as { username?: string }).username
+								payeeDisplayName = payeeAccountName
+								payeeImage = (peer as { image?: string }).image
+								payeeFirstName = (peer as { first_name?: string }).first_name
+								payeeLastName = getDisplayLastName((peer as { last_name?: string }).last_name)
 							}
 						}
 					} catch (e) {
@@ -1000,12 +1401,21 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						isBillPay: true,
 						billPayeeAA,
 						payeeDisplayName,
+						payeeImage,
+						payeeFirstName,
+						payeeLastName,
+						payeeAccountName,
 						payeeMemberLabel: undefined,
 						billCurrency: currencyParam,
 						amountStrFiat,
 						usdcFromBalanceFiat,
 						usdcFromCCSAFiat,
 						totalRequestedStrFiat,
+						forText: u.searchParams.get('forText') ?? undefined,
+						billRequestHash: (() => {
+							const rh = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
+							return rh && ethers.isHexString(rh) && ethers.dataLength(rh) === 32 ? rh : undefined
+						})(),
 					})
 					return
 				}
@@ -1212,29 +1622,29 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			}
 
 			// 付款人 Beamio 信息：通过 AA.owner() 得到付款人 EOA，再 searchUsername(EOA) 获取 username / first_name+last_name
-			let payerDisplayName: string | undefined
-			let payerBeamioTag: string | undefined
-			try {
-				const aaContract = new ethers.Contract(
-					payload.account,
-					['function owner() view returns (address)'],
-					baseEndpoint
-				)
-				const payerEOA = await aaContract.owner() as string
-				if (payerEOA && payerEOA !== ethers.ZeroAddress) {
-					const account = await searchUsername(payerEOA)
-					const peer = account?.results?.[0]
-					if (peer) {
-						if (peer.username) payerDisplayName = peer.username
-						const lastname = (peer as { last_name?: string }).last_name?.split?.('\r\n')?.[0] ?? ''
-						const firstName = (peer as { first_name?: string }).first_name ?? ''
-						const fullName = `${firstName || ''} ${/^\{/.test(String(lastname)) ? '' : lastname || ''}`.trim()
-						if (fullName) payerBeamioTag = fullName
+					let payerDisplayName: string | undefined
+					let payerBeamioTag: string | undefined
+					try {
+						const aaContract = new ethers.Contract(
+							payload.account,
+							['function owner() view returns (address)'],
+							baseEndpoint
+						)
+						const payerEOA = await aaContract.owner() as string
+						if (payerEOA && payerEOA !== ethers.ZeroAddress) {
+							const account = await searchUsername(payerEOA)
+							const peer = account?.results?.[0]
+							if (peer) {
+								if (peer.username) payerDisplayName = peer.username
+								const firstName = (peer as { first_name?: string }).first_name ?? ''
+								const displayLast = getDisplayLastName((peer as { last_name?: string }).last_name)
+								const fullName = `${firstName || ''} ${displayLast || ''}`.trim()
+								if (fullName) payerBeamioTag = fullName
+							}
+						}
+					} catch (e) {
+						console.warn('Payer Beamio lookup failed (searchUsername by EOA)', e)
 					}
-				}
-			} catch (e) {
-				console.warn('Payer Beamio lookup failed (searchUsername by EOA)', e)
-			}
 
 			setConfirmDeduction({
 				payload,
@@ -1279,6 +1689,166 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		if (!confirmDeduction || submitting) return
 		const data = confirmDeduction
 		setSubmitting(true)
+
+		// Bill 支付方无 AA（EOA-only）或 受益方为 EOA 且使用 EOA→EOA：走 BeamioTransfer 402 流程（需 ConformView 二次确认）
+		// useAaPlusEoa 时在下方直接执行两次转账，不走此分支
+		if (data.isBillPay && data.billPayeeAA && (data.billPayerEoaOnly || (data.billPayeeIsEOA && !data.useAaToEoa && !data.useAaPlusEoa)) && profiles?.[0] && myAddress) {
+			const noteMeta: Record<string, string> = { currency: data.billCurrency || 'USD', currencyAmount: data.amountStrFiat ?? data.amountStr }
+			if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
+				noteMeta.requestHash = data.billRequestHash
+			}
+			const sendNote = (data.forText || '') + `\r\n${JSON.stringify(noteMeta)}`
+			const params = new URLSearchParams({
+				amount: data.amountStr,
+				toAddress: data.billPayeeAA,
+				note: sendNote.trim(),
+			})
+			if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
+				params.set('requestHash', data.billRequestHash)
+			}
+			const paramsStr = params.toString()
+			const requestEndpoint = `${aptEndpoint}/api/BeamioTransfer?${paramsStr}`
+			try {
+				const response = await fetch(requestEndpoint, { method: 'GET' })
+				if (response.status !== 402) {
+					setSubmitting(false)
+					setVoucherPayError('RPC Error!')
+					return
+				}
+				const { accepts } = await response.json()
+				const MessageData = accepts[0]
+				const msgData: IMessageData = {
+					receive: {
+						accountName: shortAddr(data.billPayeeAA),
+						firstName: '',
+						lastName: JSON.stringify({}),
+						address: data.billPayeeAA,
+						image: '',
+					},
+					sender: {
+						accountName: beamio?.accountName ?? '',
+						firstName: beamio?.firstName ?? '',
+						lastName: beamio?.language ?? '',
+						address: myAddress,
+						image: beamio?.image ?? '',
+					},
+					node: sendNote,
+					sginTatle: 'send',
+					reqUrl: requestEndpoint,
+					amount: data.amountStr,
+					currencyAmount: data.amountStrFiat ?? data.amountStr,
+				}
+				MessageData.data = msgData
+				MessageData.data.reqUrl = requestEndpoint
+				MessageData.reqUrl = requestEndpoint
+				setEoaTransferMessage(MessageData)
+				setConfirmDeduction(null)
+			} catch (e) {
+				setSubmitting(false)
+				setVoucherPayError((e as Error)?.message ?? 'Request failed')
+				return
+			}
+			setSubmitting(false)
+			return
+		}
+
+		// AA+EOA 组合：AA→EOA 与 EOA→EOA 并行执行，用户已在确认页确认总金额
+		if (data.isBillPay && data.billPayeeIsEOA && data.useAaPlusEoa && data.aaAmountStr && data.eoaAmountStr && data.billPayeeAA && profiles?.[0] && myAddress) {
+			setConfirmDeduction(null)
+			setStepById('sendTx', 'loading', 'AA→EOA…')
+			setStepById('waitTx', 'loading', 'EOA→EOA…')
+			try {
+				const profile = profiles[0]
+				const chainAA = await getAAAccount(profile)
+				if (!chainAA) {
+					setSubmitting(false)
+					setVoucherPayError('Express Pay not found')
+					return
+				}
+
+				// 按 USDC 比例拆分总金额：AA 与 EOA 各自发送对应 portion 的 currencyAmount
+				const totalUsdc = Number(data.amountStr) || 1
+				const aaUsdc = Number(data.aaAmountStr) || 0
+				const eoaUsdc = Number(data.eoaAmountStr) || 0
+				const totalFiat = Number(data.amountStrFiat ?? data.amountStr) || totalUsdc
+				const aaCurrencyAmount = totalUsdc > 0 ? String((aaUsdc / totalUsdc) * totalFiat) : data.aaAmountStr
+				const eoaCurrencyAmount = totalUsdc > 0 ? String((eoaUsdc / totalUsdc) * totalFiat) : data.eoaAmountStr
+
+				const runAA = async (): Promise<string | null> => {
+					const aaAmountWei = ethers.parseUnits(data.aaAmountStr!, 6)
+					const aaItems = [{ kind: 0, asset: USDCContract_BASE, amount: aaAmountWei.toString(), tokenId: '0', data: '0x' }]
+					const profileWithAA = { ...profile, aaAccount: chainAA }
+					const signed = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profileWithAA, data.aaAmountStr!, { to: data.billPayeeAA })
+					const payload = { ...signed, to: ethers.getAddress(data.billPayeeAA!), items: aaItems }
+					const body: Record<string, unknown> = {
+						openContainerPayload: payload,
+						currency: data.billCurrency ?? 'CAD',
+						currencyAmount: aaCurrencyAmount,
+					}
+					if (data.forText?.trim()) body.forText = data.forText.trim()
+					if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) body.requestHash = data.billRequestHash
+					const res = await fetch(`${beamioApiBase.replace(/\/$/, '')}/api/AAtoEOA`, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(body),
+					})
+					const apiResult = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; USDC_tx?: string }
+					if (!res.ok || apiResult.success === false) throw new Error(apiResult.error ?? `HTTP ${res.status}`)
+					return apiResult.USDC_tx ?? null
+				}
+
+				const runEOA = async (): Promise<string | null> => {
+					const noteMeta: Record<string, string> = { currency: data.billCurrency || 'USD', currencyAmount: eoaCurrencyAmount }
+					if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
+						noteMeta.requestHash = data.billRequestHash
+					}
+					const sendNote = (data.forText || '') + `\r\n${JSON.stringify(noteMeta)}`
+					const params = new URLSearchParams({
+						amount: data.eoaAmountStr!,
+						toAddress: data.billPayeeAA!,
+						note: sendNote.trim(),
+					})
+					if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
+						params.set('requestHash', data.billRequestHash)
+					}
+					const requestEndpoint = `${aptEndpoint}/api/BeamioTransfer?${params.toString()}`
+					const response = await fetch(requestEndpoint, { method: 'GET' })
+					if (response.status !== 402) throw new Error('RPC Error on EOA step')
+					const { accepts } = await response.json()
+					const msgData = accepts[0]
+					const pay = BigInt(Number(msgData?.maxAmountRequired ?? 0).toFixed(0))
+					const paymentHeader = await AuthorizationSign(pay, msgData?.payTo ?? data.billPayeeAA)
+					const res2 = await fetch(requestEndpoint, {
+						method: 'GET',
+						headers: { 'X-PAYMENT': paymentHeader, 'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE' },
+					})
+					const body2 = await res2.json().catch(() => ({}))
+					if (!res2.ok || !body2.USDC_tx) throw new Error((body2 as { error?: string }).error ?? 'EOA transfer failed')
+					return body2.USDC_tx
+				}
+
+				const [aaHash, eoaHash] = await Promise.all([runAA(), runEOA()])
+				const hashes = [aaHash, eoaHash].filter((h): h is string => !!h)
+				setStepById('sendTx', 'success', 'AA sent')
+				setStepById('waitTx', 'success', 'Transaction complete')
+				setSuccessTxHash(hashes[0] ?? hashes[1] ?? '')
+				setPaymentSuccessData({
+					txHash: hashes[0] ?? hashes[1] ?? '',
+					txHashes: hashes,
+					amountCAD: data.amountStrFiat ?? data.amountStr,
+					amountUSDC: data.amountStr,
+					currency: data.billCurrency ?? 'CAD',
+					recipientName: data.payeeAccountName,
+				})
+			} catch (e) {
+				setSubmitting(false)
+				setVoucherPayError((e as Error)?.message ?? 'Request failed')
+				return
+			}
+			setSubmitting(false)
+			return
+		}
+
 		setConfirmDeduction(null)
 		// Build items from deduction split: only include items with amount > 0; do not add zero-amount items.
 		const usdcWei = data.usdcFromBalanceWeiStr ? BigInt(data.usdcFromBalanceWeiStr) : 0n
@@ -1297,9 +1867,17 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 
 		let payload: OpenContainerRelayPayload
 		if (data.isBillPay && data.billPayeeAA && profiles?.[0]) {
-			// Bill 支付：由付款人签名 Open Container，to 指向 bill 的 AA
+			// Bill 支付：由付款人签名 Open Container，to 指向 bill 的 AA 或 EOA
 			try {
-				const signed = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], data.amountStr, { to: data.billPayeeAA })
+				const profile = profiles[0]
+				const chainAA = await getAAAccount(profile)
+				if (!chainAA && data.useAaToEoa) {
+					setSubmitting(false)
+					setVoucherPayError('Express Pay not found')
+					return
+				}
+				const profileWithAA = chainAA ? { ...profile, aaAccount: chainAA } : profile
+				const signed = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profileWithAA, data.amountStr, { to: data.billPayeeAA })
 				payload = { ...signed, to: ethers.getAddress(data.billPayeeAA), items }
 			} catch (e) {
 				setSubmitting(false)
@@ -1369,6 +1947,10 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			}
 			if (currencyDiscount != null) bodyPayload.currencyDiscount = currencyDiscount
 			if (currencyDiscountAmount != null) bodyPayload.currencyDiscountAmount = currencyDiscountAmount
+			if (data.forText?.trim()) bodyPayload.forText = data.forText.trim()
+			if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
+				bodyPayload.requestHash = data.billRequestHash
+			}
 
 			const res = await fetch(url, {
 				method: 'POST',
@@ -1388,6 +1970,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					txHash: apiResult.USDC_tx ?? '',
 					amountCAD,
 					amountUSDC,
+					currency: data.billCurrency ?? 'CAD',
 					exchangeRateCADtoUSDC: rate,
 					paidWithCCSACAD: data.usdcFromCCSACAD && Number(data.usdcFromCCSACAD) > 0 ? data.usdcFromCCSACAD : undefined,
 					recipientName: data.payerDisplayName,
@@ -1409,9 +1992,46 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setSubmitting(false)
 	}
 
+	const handleSignEoaTransfer = async () => {
+		if (!eoaTransferMessage || submitting || !profiles?.[0]) return
+		setSubmitting(true)
+		try {
+			const pay = BigInt(Number(eoaTransferMessage.maxAmountRequired).toFixed(0))
+			const paymentHeader = await AuthorizationSign(pay, eoaTransferMessage.payTo)
+			const res = await fetch(eoaTransferMessage.reqUrl ?? eoaTransferMessage.data?.reqUrl, {
+				method: 'GET',
+				headers: { 'X-PAYMENT': paymentHeader, 'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE' },
+			})
+			const body = await res.json().catch(() => ({}))
+			setSubmitting(false)
+			setEoaTransferMessage(null)
+			if (res.ok && body.USDC_tx) {
+				setSuccessTxHash(body.USDC_tx)
+				setStepById('sendTx', 'success', 'Sent')
+				setStepById('waitTx', 'success', 'Transaction complete')
+				const amt = eoaTransferMessage.data?.amount ?? eoaTransferMessage.amount ?? '0'
+				setPaymentSuccessData({
+					txHash: body.USDC_tx,
+					amountCAD: amt,
+					amountUSDC: amt,
+					currency: 'USDC',
+					exchangeRateCADtoUSDC: undefined,
+					paidWithCCSACAD: undefined,
+					recipientName: undefined,
+				})
+			} else {
+				setVoucherPayError(body.error ?? 'Transfer failed')
+			}
+		} catch (e) {
+			setSubmitting(false)
+			setVoucherPayError((e as Error)?.message ?? 'Sign failed')
+		}
+	}
+
 	const handleCancelDeduction = () => {
 		setVoucherPayError('')
 		setConfirmDeduction(null)
+		setEoaTransferMessage(null)
 		setSuccessTxHash(null)
 		setPaymentSuccessData(null)
 		setScanData('')
@@ -1434,6 +2054,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setSuccessTxHash(null)
 		setPaymentSuccessData(null)
 		setConfirmDeduction(null)
+		setEoaTransferMessage(null)
 		setScanData('')
 		setScanIntent('')
 		setVoucherPayAmount('')
@@ -1480,6 +2101,38 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						data={paymentSuccessData}
 						onDone={() => handleAbandonRouting(true)}
 					/>
+				</div>
+			)
+		}
+		if (eoaTransferMessage) {
+			const data = eoaTransferMessage.data
+			return (
+				<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-8 pb-6">
+					<div className="text-center mb-4">
+						<div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+							{data?.amount ?? eoaTransferMessage.amount} USDC
+						</div>
+						<div className="text-sm text-slate-500 mt-1">
+							To {shortAddr(data?.receive?.address ?? '')}
+						</div>
+					</div>
+					<ConformView messageData={eoaTransferMessage} />
+					<div className="mt-6">
+						<AppButton
+							fullWidth
+							onClick={handleSignEoaTransfer}
+							loading={submitting}
+						>
+							Confirm & Send
+						</AppButton>
+					</div>
+					<button
+						type="button"
+						onClick={() => setEoaTransferMessage(null)}
+						className="mt-3 w-full py-2.5 text-sm text-slate-500 hover:text-slate-700"
+					>
+						Cancel
+					</button>
 				</div>
 			)
 		}

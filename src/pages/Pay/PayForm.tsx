@@ -304,7 +304,7 @@ const PayForm = ({code, closeWin}: Props) => {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setProcessError('RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
 			}
 			setSignx402Show(false)
 			return setSuccessPayLink(body.USDC_tx)

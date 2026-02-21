@@ -4,7 +4,8 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from "ethers"
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { fiatPrefix, formatAmount } from '@/services/currency'
-import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
+import {AuthorizationSign, getBalanceProcess, generateCODE, generateRequestHash} from '@/services/beamio'
+import { postToEndpoint } from '@/utils/utils'
 import bIcon from '@/components/assets/logo512.png'
 import { QRCodeCanvas } from 'qrcode.react'
 import PaymentLink from './PaymentLink'
@@ -93,7 +94,12 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	const [billAmount, setBillAmount] = useState("")
 	const [billCurrency, setBillCurrency] = useState<ICurrency>('USD')
 	const [billForText, setBillForText] = useState("")
+	const [billValidDaysInput, setBillValidDaysInput] = useState('1')
+	const billValidDays = billValidDaysInput === '' ? 1 : Math.max(1, parseInt(billValidDaysInput, 10) || 1)
 	const [amountError, setAmountError] = useState("")
+	/** 记账状态：idle | loading | success | error；成功时 syncTx 为 CoNET 链 hash */
+	const [accountingStatus, setAccountingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+	const [accountingSyncTx, setAccountingSyncTx] = useState<string | null>(null)
 
 	
   const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress, setShowFooter, currencyData, beamio, setBeamio} = useDaemonContext()
@@ -105,21 +111,46 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 			setAmountError("Please enter a valid amount")
 			return
 		}
-		if (!merchantAA || !ethers.isAddress(merchantAA)) {
-			setAmountError("Smart Account not found")
+		const toAddress = merchantAA && ethers.isAddress(merchantAA) ? merchantAA : myAddress
+		if (!toAddress || !ethers.isAddress(toAddress)) {
+			setAmountError("No receiving address found")
 			return
 		}
 		setAmountError("")
+		setAccountingStatus('loading')
+		setAccountingSyncTx(null)
+		const requestHash = generateRequestHash()
 		const params = new URLSearchParams({
 			Amount: billAmount,
 			currency: billCurrency,
 			acceptTokens: 'USDC,CCSA',
-			to: merchantAA,
+			to: toAddress,
+			requestHash,
 		})
 		if (billForText.trim()) params.set('forText', billForText.trim())
+		if (billValidDays >= 1) params.set('validDays', String(Math.floor(billValidDays)))
 		const url = `https://beamio.app/Vouchers?${params.toString()}`
 		setBillPaymentUrl(url)
 		setShowAmountInput(false)
+		postToEndpoint<{ success?: boolean; indexed?: boolean; syncTx?: string }>(`${showPaylinkSite}/api/requestAccounting`, true, {
+			requestHash,
+			payee: toAddress,
+			amount: billAmount,
+			currency: billCurrency,
+			forText: billForText.trim() || undefined,
+			validDays: Math.max(1, Math.floor(billValidDays)),
+		})
+			.then((res) => {
+				if (res && typeof res === 'object' && res.indexed && res.syncTx) {
+					setAccountingStatus('success')
+					setAccountingSyncTx(res.syncTx)
+				} else {
+					setAccountingStatus('error')
+				}
+			})
+			.catch(() => {
+				setAccountingStatus('error')
+			})
 	}
 	useEffect(() => {
 		if (!beamio||getBeamio||!profiles?.length) return
@@ -344,6 +375,30 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 												</div>
 											</div>
 										</div>
+										{accountingStatus !== 'idle' && (
+											<div className="border-t border-slate-200 dark:border-slate-600 pt-2">
+												<div className="flex justify-between items-center">
+													<span className="text-slate-500 dark:text-slate-400 text-sm">Recorded</span>
+													{accountingStatus === 'loading' && (
+														<span className="text-amber-600 dark:text-amber-400 text-sm animate-pulse">Recording…</span>
+													)}
+													{accountingStatus === 'success' && accountingSyncTx && (
+														<a
+															href={`https://mainnet.conet.network/tx/${accountingSyncTx}`}
+															target="_blank"
+															rel="noopener noreferrer"
+															className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium truncate max-w-[180px] sm:max-w-[220px]"
+															title={accountingSyncTx}
+														>
+															{accountingSyncTx.slice(0, 10)}…{accountingSyncTx.slice(-8)}
+														</a>
+													)}
+													{accountingStatus === 'error' && (
+														<span className="text-slate-400 dark:text-slate-500 text-xs">Failed to record</span>
+													)}
+												</div>
+											</div>
+										)}
 									</div>
 								</div>
 							)
@@ -384,6 +439,30 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 											placeholder="What's this for?"
 											className="w-full rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-300 dark:focus:ring-sky-600"
 										/>
+										<div className="flex items-center gap-2">
+											<label htmlFor="billValidDays" className="text-sm text-slate-600 dark:text-slate-400 whitespace-nowrap">Valid for</label>
+											<input
+												id="billValidDays"
+												type="number"
+												min={1}
+												step={1}
+												value={billValidDaysInput}
+												onChange={(e) => {
+													const v = e.target.value
+													if (v === '') {
+														setBillValidDaysInput('')
+														return
+													}
+													const n = parseInt(v, 10)
+													if (!Number.isNaN(n) && n >= 0) setBillValidDaysInput(String(Math.floor(n)))
+												}}
+												onBlur={() => {
+													if (billValidDaysInput === '' || parseInt(billValidDaysInput, 10) < 1) setBillValidDaysInput('1')
+												}}
+												className="w-20 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-sky-300 dark:focus:ring-sky-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+											/>
+											<span className="text-sm text-slate-500 dark:text-slate-400">days</span>
+										</div>
 										<button
 											type="button"
 											onClick={handleDoneAmount}

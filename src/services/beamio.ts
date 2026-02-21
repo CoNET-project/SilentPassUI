@@ -155,11 +155,11 @@ export async function AuthorizationSign(
 	const wallet = new ethers.Wallet(privateKey)
 	const from = await wallet.getAddress()
 
-	// 2) 金额 & 时间窗（现在 - 1s 到 24h 后）
+	// 2) 金额 & 时间窗（现在 - 5min 到 1h 后，与注释一致，避免 facilitator 因过期拒绝）
 	const value = amount
 	const now = BigInt(Math.floor(Date.now() / 1000))
-	const validAfter = now - BigInt(60)
-	const validBefore = now + BigInt(60)    
+	const validAfter = now - BigInt(300)   // 5 分钟容错（时钟偏差）
+	const validBefore = now + BigInt(3600) // 1 小时内有效    
 
 	console.log(`AuthorizationSign validAfter = ${validAfter} validBefore ${validBefore}`)
 
@@ -534,6 +534,12 @@ export const generateCODE = (passcode: string) => {
 	return ({
 		code, hash
 	})
+}
+
+/** 生成 request 唯一 hash（bytes32），供 URL 与链上 originalPaymentHash 使用 */
+export const generateRequestHash = (): string => {
+	const seed = uuid62.v4() + '-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+	return ethers.keccak256(ethers.toUtf8Bytes(seed))
 }
 
 

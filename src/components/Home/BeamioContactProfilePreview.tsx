@@ -228,7 +228,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 			console.log(secondResponse.ok)
 			setLoading(false)
 			if (!secondResponse.ok) {
-				return setProcessError('RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
 			}
 			setShowPayConfirm(false)
 			setShowChatSendAmount(false)

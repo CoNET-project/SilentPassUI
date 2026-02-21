@@ -98,6 +98,7 @@ function AppShell() {
 	setRedeemFromUrl,
 	redeemResult,
 	setRedeemResult,
+	setMyAddress,
   } = useDaemonContext()
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -345,6 +346,8 @@ function AppShell() {
 		
 		setCoNET_Data(temp)
 		await storeSystemData()
+		const eoa = profiles[0]?.keyID?.trim()
+		if (eoa && ethers.isAddress(eoa)) setMyAddress(eoa)
 		setIsInitialLoading(false)
 
   	}

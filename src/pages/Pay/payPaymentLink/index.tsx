@@ -356,7 +356,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setSendError('RPC Error!')
+				return setSendError((body as { error?: string })?.error ?? 'RPC Error!')
 			}
 			setSuccessUrl(data.showUrl)
 			return setSuccessHash(body.USDC_tx)

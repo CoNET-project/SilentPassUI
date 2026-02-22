@@ -29,6 +29,7 @@ import {
 	MessageCircle,
 	ChevronRight,
 	ChevronLeft,
+	Zap,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -156,7 +157,18 @@ function parseDisplayJson(displayJson: string): { title: string; handle: string;
 	}
 }
 
-/** 合约 Transaction 完整结构（与 readme 一致，不含 route 因当前 ABI 未返回） */
+/** RouteItem (readme RouteSource: 0=MainUSDC, 1=UserCardPoint, 2=UserCardCoupon, 3=UserCardCashVoucher, 4=TipAppend) */
+type RouteItemRecord = {
+	asset?: string
+	amountE6?: string
+	assetType?: number
+	source?: number
+	tokenId?: string
+	itemCurrencyType?: number
+	offsetInRequestCurrencyE6?: string
+}
+
+/** 合约 Transaction 完整结构（与 readme 一致，含 route） */
 interface RawTxRecord {
 	id: string | ethers.BytesLike
 	originalPaymentHash?: string | ethers.BytesLike
@@ -169,6 +181,7 @@ interface RawTxRecord {
 	finalRequestAmountFiat6?: bigint
 	finalRequestAmountUSDC6?: bigint
 	isAAAccount?: boolean
+	route?: RouteItemRecord[]
 	fees?: {
 		gasChainType?: number
 		gasWei?: bigint
@@ -195,6 +208,18 @@ interface RawTxRecord {
 const FEE_INFO_KEYS = ['gasChainType', 'gasWei', 'gasUSDC6', 'serviceUSDC6', 'bServiceUSDC6', 'bServiceUnits6', 'feePayer'] as const
 const META_KEYS = ['requestAmountFiat6', 'requestAmountUSDC6', 'currencyFiat', 'discountAmountFiat6', 'discountRateBps', 'taxAmountFiat6', 'taxRateBps', 'afterNotePayer', 'afterNotePayee'] as const
 const ROUTE_ITEM_KEYS = ['asset', 'amountE6', 'assetType', 'source', 'tokenId', 'itemCurrencyType', 'offsetInRequestCurrencyE6'] as const
+
+/** RouteSource: 0=MainUSDC, 1=UserCardPoint, 2=UserCardCoupon, 3=UserCardCashVoucher, 4=TipAppend */
+function routeItemLabel(source: number, isAA: boolean): { primary: string; secondary: string } {
+	switch (source) {
+		case 0: return { primary: 'USDC', secondary: isAA ? 'Cash • Express Pay (AA)' : 'Cash • Main Wallet (EOA)' }
+		case 1: return { primary: 'Points', secondary: 'Points • Express Pay' }
+		case 2: return { primary: 'Coupon', secondary: 'Coupon • Express Pay' }
+		case 3: return { primary: 'Voucher', secondary: 'Voucher • Express Pay' }
+		case 4: return { primary: 'Tip', secondary: 'Tip' }
+		default: return { primary: 'Asset', secondary: 'Express Pay' }
+	}
+}
 
 /** 将 positional 数组转为具名对象 */
 function arrayToNamed<T extends readonly string[]>(arr: unknown[], keys: T): Record<T[number], unknown> {
@@ -581,10 +606,10 @@ const ActiveHistoryPannelNew = ({
 		}
 	}, [selectedTx])
 
-	// 点击 View Smart Receipt 时，若有 txHash 则调用 getTransactionFullByTxId 获取完整 Transaction（含 payer/payee/route）
+	// 选中交易且有 txHash 时，调用 getTransactionFullByTxId 获取完整 Transaction（含 route），供 Settled 节与 Smart Receipt 展示
 	useEffect(() => {
-		if (!showJson || !selectedTx?.txHash) {
-			if (!showJson) setFullTxLoading(false)
+		if (!selectedTx?.txHash) {
+			setFullTxLoading(false)
 			return
 		}
 		setFullTxLoading(true)
@@ -620,7 +645,7 @@ const ActiveHistoryPannelNew = ({
 			})
 			.catch(() => setFullTransactionFromChain(null))
 			.finally(() => setFullTxLoading(false))
-	}, [showJson, selectedTx?.txHash])
+	}, [selectedTx?.txHash])
 
 	const filteredItems = items.filter((tx) => {
 		if (activeTab === 'All') return true
@@ -1147,8 +1172,8 @@ const ActiveHistoryPannelNew = ({
 											return formatCurrencySigned(amt, selectedTx.currencyCode)
 										})()}
 							</h2>
-							{selectedTx.type !== 'request_create' && selectedTx.type !== 'request_expired' && (
-								<p className="text-[13px] font-medium text-[#1562f0] mt-0.5">
+							{selectedTx.type !== 'request_create' && selectedTx.type !== 'request_expired' && selectedTx.amountUSDC !== 0 && (
+								<p className="text-[14px] font-medium text-slate-600 dark:text-slate-400 mt-0.5">
 									Settled for {formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC
 								</p>
 							)}
@@ -1268,7 +1293,8 @@ const ActiveHistoryPannelNew = ({
 											</span>
 										)}
 									</div>
-									{vouchersUrl && !isRequestExpired(selectedTx) && (
+
+									{vouchersUrl && selectedTx.type === 'request_create' && !isRequestExpired(selectedTx) && (
 										<button
 											type="button"
 											onClick={() => setShowVouchersQRSheet(true)}
@@ -1277,6 +1303,60 @@ const ActiveHistoryPannelNew = ({
 											<QrCode size={18} /> Show QR
 										</button>
 									)}
+								</div>
+							)
+						})()}
+
+						{/* Settled 节：当 Transaction 含 route 时展示（适用于 merchant_pay、request_fulfilled、transfer_out 等） */}
+						{(() => {
+							const txWithRoute = fullTransactionFromChain ?? (selectedTx?.rawTransaction as unknown as Record<string, unknown>)
+							const routeArr = (txWithRoute?.route as RouteItemRecord[] | undefined) ?? []
+							if (routeArr.length === 0) return null
+							const isAA = !!txWithRoute?.isAAAccount
+							const totalUSDC6 = typeof txWithRoute?.finalRequestAmountUSDC6 === 'string'
+								? BigInt(txWithRoute.finalRequestAmountUSDC6 as string)
+								: (txWithRoute?.finalRequestAmountUSDC6 as bigint | undefined) ?? 0n
+							return (
+								<div className="rounded-2xl bg-white dark:bg-slate-800/80 border border-gray-100 dark:border-slate-600/50 p-4 shadow-sm mb-6">
+									<div className="flex items-center justify-between mb-4">
+										<h3 className="flex items-center gap-2 text-[14px] font-bold text-black dark:text-white">
+											<Zap size={16} className="text-[#1562f0]" />
+											Smart Routing
+										</h3>
+										<span className="text-[11px] font-bold text-gray-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded-md tracking-wide">AUTO</span>
+									</div>
+									<div className="space-y-4 relative">
+										<div className="absolute left-[9px] top-3 bottom-3 w-[2px] bg-gray-100 dark:bg-slate-600 -z-10" />
+										{routeArr.map((item, idx) => {
+											const amtE6 = BigInt(item.amountE6 ?? item.offsetInRequestCurrencyE6 ?? '0')
+											const amt = Number(amtE6) / 1e6
+											const src = Number(item.source ?? 0)
+											const { primary, secondary } = routeItemLabel(src, isAA)
+											const isVoucher = src >= 1 && src <= 3
+											return (
+												<div key={idx} className="flex justify-between items-center">
+													<div className="flex items-center gap-3">
+														<div className={`w-5 h-5 rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 ${
+															isVoucher ? 'bg-[#AF52DE] text-white' : 'bg-[#1562f0] text-white'
+														}`}>
+															{isVoucher ? 'pts' : '$'}
+														</div>
+														<div className="flex flex-col">
+															<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">{primary}</span>
+															<span className="text-[12px] text-gray-400 dark:text-slate-400 font-medium">{secondary}</span>
+														</div>
+													</div>
+													<span className="text-[15px] font-semibold text-black dark:text-white">-{amt.toFixed(2)}</span>
+												</div>
+											)
+										})}
+										<div className="border-t border-dashed border-gray-200 dark:border-slate-600 mt-4 pt-4 flex justify-between items-center">
+											<span className="text-[13px] font-medium text-gray-400 dark:text-slate-500 pl-9">Total Paid</span>
+											<span className="text-[16px] font-bold text-black dark:text-white">
+												{(Number(totalUSDC6) / 1e6).toFixed(2)} USDC
+											</span>
+										</div>
+									</div>
 								</div>
 							)
 						})()}

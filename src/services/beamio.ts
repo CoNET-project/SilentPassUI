@@ -125,6 +125,101 @@ const addFollowingUrl = `${beamioApi}/api/addFollow`
 const myFollowStatusUrl = `${beamioApi}/api/getMyFollowStatus`
 const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 
+/** CoNET 主网 chainId（BUnitAirdrop 部署链） */
+const CONET_CHAIN_ID = 224400
+
+/** CoNET BUnitAirdrop 合约地址（与 deployments/conet-BUintAirdrop.json 一致） */
+const CONET_BUNIT_AIRDROP_ADDRESS = '0x5Bf7b014190c05957cc1A84976f958674628578c'
+
+/** 检查是否可领取 BeamioBUnits */
+export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {
+	try {
+		const res = await fetch(`${beamioApi}/api/checkBUnitClaimEligibility?address=${encodeURIComponent(address)}`)
+		const data = await res.json().catch(() => ({}))
+		if (!res.ok) return { canClaim: false, error: data?.error ?? res.statusText }
+		return {
+			canClaim: !!data.canClaim,
+			nonce: data.nonce,
+			deadline: data.deadline != null ? Number(data.deadline) : undefined,
+		}
+	} catch (e) {
+		return { canClaim: false, error: (e as Error)?.message ?? 'Request failed' }
+	}
+}
+
+/** 使用 EOA 私钥签写 ClaimAirdrop 并提交 claimBUnits 请求 */
+export const signAndClaimBUnits = async (
+	privateKey: string,
+	claimant: string,
+	nonce: string | number,
+	deadline: number
+): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+	try {
+		const wallet = new ethers.Wallet(privateKey)
+		if (wallet.address.toLowerCase() !== ethers.getAddress(claimant).toLowerCase()) {
+			return { success: false, error: 'Signer address does not match claimant' }
+		}
+		const domain = {
+			name: 'BUnitAirdrop',
+			version: '1',
+			chainId: CONET_CHAIN_ID,
+			verifyingContract: CONET_BUNIT_AIRDROP_ADDRESS as `0x${string}`,
+		}
+		const types = {
+			ClaimAirdrop: [
+				{ name: 'claimant', type: 'address' },
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
+		}
+		const value = {
+			claimant: ethers.getAddress(claimant),
+			nonce: BigInt(nonce),
+			deadline: BigInt(deadline),
+		}
+		const signature = await wallet.signTypedData(domain, types, value)
+		const res = await fetch(`${beamioApi}/api/claimBUnits`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				claimant: ethers.getAddress(claimant),
+				nonce: String(nonce),
+				deadline: String(deadline),
+				signature,
+			}),
+		})
+		const data = await res.json().catch(() => ({}))
+		if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
+		return { success: true, txHash: data.txHash }
+	} catch (e) {
+		return { success: false, error: (e as Error)?.message ?? 'Claim failed' }
+	}
+}
+
+/** 校验 Voucher 支付请求是否过期或已支付。用于 Smart Routing 前置校验。 */
+export const checkRequestStatus = async (
+	requestHash: string,
+	validDays: number,
+	payee: string
+): Promise<{ expired: boolean; fulfilled: boolean; error?: string }> => {
+	try {
+		const params = new URLSearchParams({
+			requestHash,
+			validDays: String(Math.max(1, Math.floor(validDays))),
+			payee: ethers.getAddress(payee),
+		})
+		const res = await fetch(`${beamioApi}/api/checkRequestStatus?${params}`)
+		if (!res.ok) {
+			const err = (await res.json().catch(() => ({}))).error ?? res.statusText
+			return { expired: false, fulfilled: false, error: err }
+		}
+		const { expired, fulfilled } = await res.json()
+		return { expired: !!expired, fulfilled: !!fulfilled }
+	} catch (e) {
+		return { expired: false, fulfilled: false, error: (e as Error)?.message ?? 'Request failed' }
+	}
+}
+
 
 export const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)

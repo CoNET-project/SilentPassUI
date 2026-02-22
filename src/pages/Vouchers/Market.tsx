@@ -19,6 +19,8 @@ import {
   Zap,
   ShieldCheck,
   Check,
+  CheckCircle2,
+  Info,
   X,
   ArrowRight,
   Lock,
@@ -27,6 +29,10 @@ import {
   Share,
   Truck,
   MapPin,
+  Database,
+  Flame,
+  Banknote,
+  PackageOpen,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -88,8 +94,15 @@ type GenesisNodeData = {
   price: number
   type: string
   image: string
+  stat1Label: string
+  stat1Value: string
+  stat2Label: string
+  stat2Value: string
   features: GenesisFeature[]
-  partners: { name: string; icon: string; bg: string }[]
+  legalNote: string
+  featureTitle?: string
+  themeColor?: 'blue' | 'orange'
+  partners?: { name: string; icon: string; bg: string }[]
 }
 type HeroItem = {
   id: number
@@ -110,26 +123,52 @@ type HeroItem = {
 
 const GENESIS_NODE_DATA: GenesisNodeData = {
   id: 999,
-  tagline: "LIMITED EDITION",
+  tagline: "Hardware + License",
   title: "Genesis Node Pack",
-  subtitle: "Strictly limited to 300 visionary partners.",
+  subtitle: "The Infrastructure Equity",
   description: "Own the physical edge and the invisible engine of the Beamio network.",
   currentMint: 247,
   totalMint: 300,
   price: 999,
-  type: "HARDWARE + NFT",
-  image: "https://images.unsplash.com/photo-1639322537228-f710d846310a?auto=format&fit=crop&q=80&w=800",
+  type: "Package B",
+  image: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=800&auto=format&fit=crop",
+  stat1Label: "Compute",
+  stat1Value: "EAL6+ Edge",
+  stat2Label: "Yield",
+  stat2Value: "5% Network",
   features: [
-    { title: "Dynamic E-ink Display", desc: "0.84mm flexible PCB. Auto-refreshes QR code every 60s.", icon: <Zap size={20} className="text-blue-400" /> },
-    { title: "Military-Grade SE", desc: "EAL5+ certified chip for Account Abstraction keys.", icon: <ShieldCheck size={20} className="text-blue-400" /> },
-    { title: "5% Protocol Revenue Share", desc: "Perpetual claim on 5% of all B-Units consumed across the global clearing network.", icon: <Check size={20} className="text-blue-400" /> },
+    { title: "Dynamic E-ink Terminal", desc: "0.84mm flexible PCB. Off-grid identity credential auto-refreshing every 60s.", icon: <Zap size={20} className="text-blue-400" /> },
+    { title: "Global Validator License", desc: "Delegated Staking (NaaS). 1-click cloud delegation for seamless routing.", icon: <ShieldCheck size={20} className="text-blue-400" /> },
+    { title: "5% Validator Yield", desc: "Perpetual computational rewards from all global B-Units routing fuel consumed.", icon: <CheckCircle2 size={20} className="text-blue-400" /> },
   ],
-  partners: [
-	{ name: "Osmanthus", icon: "🌸", bg: "bg-yellow-100" },
-	{ name: "Sen Pho", icon: "🍜", bg: "bg-orange-100" },
-	{ name: "Longdhang", icon: "🥟", bg: "bg-red-100" },
-	{ name: "More", icon: "+18", bg: "bg-gray-100 text-xs font-bold" }
+  legalNote: "Forward-looking projection based on network modeling. Yields are utility-derived computational rewards, not guaranteed financial returns.",
+  featureTitle: "The Tangible Edge",
+  themeColor: "blue",
+}
+
+const LIMITED_FUEL_PACK_DATA: GenesisNodeData = {
+  id: 998,
+  tagline: "Merchant Prepaid",
+  title: "Limited Fuel Pack",
+  subtitle: "The Store Clearing Fuel",
+  description: "Instant clearing fuel to process your daily retail volume. System value of $1,000 USDC.",
+  currentMint: 842,
+  totalMint: 1000,
+  price: 499,
+  type: "Package A",
+  image: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=800&auto=format&fit=crop",
+  stat1Label: "Volume",
+  stat1Value: "100k B-Units",
+  stat2Label: "Discount",
+  stat2Value: "50% Tech Off",
+  features: [
+    { title: "100,000 B-Units Pre-load", desc: "System value of $1,000 USDC. Instant clearing fuel to process your daily retail volume.", icon: <Database size={20} className="text-orange-400" /> },
+    { title: "50% Effective Rate Cut", desc: "Effectively slashes the standard 0.8% Beamio transaction fee in half. Keep more of your hard-earned revenue.", icon: <Banknote size={20} className="text-orange-400" /> },
+    { title: "Automated Fee Deduction", desc: "Zero crypto friction. The system automatically burns your pre-paid fuel as consumers pay at your counter.", icon: <Server size={20} className="text-orange-400" /> },
   ],
+  legalNote: "B-Units are internal utility protocol fuel pegged for internal system accounting. They cannot be withdrawn as fiat or traded on secondary markets.",
+  featureTitle: "The Merchant Arsenal",
+  themeColor: "orange",
 }
 
 const HERO_COLLECTION: HeroItem[] = [
@@ -154,39 +193,89 @@ const HERO_COLLECTION: HeroItem[] = [
 const GenesisCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () => void }) => (
   <div
     onClick={onClick}
-    className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-black border border-gray-800 shadow-[0_0_40px_-10px_rgba(21,98,240,0.3)] shrink-0"
+    className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-gradient-to-br from-gray-900 to-black border border-gray-800 shadow-[0_0_30px_rgba(0,112,243,0.15)] shrink-0"
   >
-    <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] to-black" />
-    <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
+    <img
+      src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop"
+      alt="Carbon texture"
+      className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
+    />
+    <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/60 to-[#0a0a0c]" />
+    <div className="absolute -left-10 top-20 w-32 h-32 bg-blue-600 rounded-full blur-[60px] opacity-40 animate-pulse" />
     <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
-      <div className="flex justify-between items-start">
-        <span className="bg-[#0f172a] text-blue-400 border border-blue-500/30 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-lg">
-          {data.tagline}
+      <div className="flex justify-between items-center mb-4">
+        <span className="bg-blue-600/20 text-blue-400 border border-blue-500/30 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
+          {data.type}
         </span>
-        <span className="text-white/60 font-mono text-xs font-medium tracking-wide">
-          {data.currentMint} / {data.totalMint}
+        <span className="text-gray-400 text-xs font-bold font-mono">
+          {data.currentMint}/{data.totalMint}
         </span>
       </div>
-      <div className="flex-1 flex items-center justify-center py-4">
-        <div className="relative w-48 h-32 bg-gradient-to-br from-gray-800 to-black rounded-xl shadow-2xl border border-gray-700 transform -rotate-12 group-hover:-rotate-6 transition-transform duration-500 flex items-center justify-center">
-          <div className="absolute top-4 left-4 w-8 h-6 bg-gray-300 rounded-md opacity-80" />
-          <Activity className="text-blue-500" size={32} />
-          <div className="absolute bottom-4 right-4"><div className="text-[8px] text-white font-bold">B</div></div>
-          <div className="absolute inset-0 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.5)]" />
+      <div className="flex-1 flex items-center justify-center py-2">
+        <div className="relative w-48 h-32 bg-gradient-to-tr from-[#1a1a1c] to-[#2a2a2c] rounded-xl border border-gray-600 shadow-2xl rotate-12 flex items-center justify-center group-hover:scale-105 transition-transform duration-500">
+          <div className="w-12 h-8 bg-black rounded flex items-center justify-center border border-gray-700">
+            <Activity className="w-5 h-5 text-blue-400" />
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-500/10 to-transparent h-1 w-full animate-[scan_2s_ease-in-out_infinite]" />
         </div>
       </div>
       <div className="mb-4">
-        <h2 className="text-4xl font-bold text-white leading-none tracking-tight mb-1">{data.title}</h2>
+        <h2 className="text-white text-3xl font-extrabold leading-tight tracking-tight">{data.title}</h2>
+        <p className="text-blue-400/80 text-xs mt-1 font-semibold uppercase tracking-wider">{data.subtitle}</p>
       </div>
-      <div className="bg-[#1e293b]/50 backdrop-blur-md border border-gray-700 rounded-[20px] p-4 flex items-center justify-between">
+      <div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 flex justify-between items-center border border-white/10">
         <div>
-          <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Mint Price</div>
-          <div className="text-xl font-bold text-white flex items-baseline gap-1">
-            ${data.price} <span className="text-xs text-gray-500 font-normal">USDC</span>
-          </div>
+          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Pricing</p>
+          <p className="text-white text-xl font-bold font-mono">${data.price} <span className="text-[10px] text-gray-500">USDC</span></p>
         </div>
-        <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} className="bg-[#1562f0] hover:bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold text-sm transition-colors shadow-lg shadow-blue-500/20">
-          View Specs
+        <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} className="bg-blue-600 text-white font-bold px-5 py-2 rounded-xl text-sm shadow-[0_0_15px_rgba(37,99,235,0.5)]">
+          View
+        </button>
+      </div>
+    </div>
+  </div>
+)
+
+const FuelPackCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () => void }) => (
+  <div
+    onClick={onClick}
+    className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-gradient-to-br from-gray-900 to-[#1a1005] border border-gray-800 shadow-[0_0_30px_rgba(249,115,22,0.15)] shrink-0"
+  >
+    <img
+      src="https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=800&auto=format&fit=crop"
+      alt="Server texture"
+      className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
+    />
+    <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/80 to-[#0a0a0c]" />
+    <div className="absolute -left-10 top-20 w-32 h-32 bg-orange-600 rounded-full blur-[60px] opacity-30 animate-pulse" />
+    <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
+      <div className="flex justify-between items-center mb-4">
+        <span className="bg-orange-600/20 text-orange-400 border border-orange-500/30 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
+          {data.type}
+        </span>
+        <span className="text-gray-400 text-xs font-bold font-mono">
+          {data.currentMint}/{data.totalMint}
+        </span>
+      </div>
+      <div className="flex-1 flex items-center justify-center py-2">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-40 bg-[#110a05] rounded-xl border border-orange-900/50 shadow-2xl flex flex-col items-center justify-center group-hover:scale-105 transition-transform duration-500">
+          <Database className="w-12 h-12 text-orange-500 mb-2 opacity-80" />
+          <p className="text-orange-400 font-mono font-bold text-lg leading-none">100k</p>
+          <p className="text-orange-600 text-[8px] uppercase font-bold tracking-widest mt-1">B-Units</p>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-orange-600 rounded-b-xl shadow-[0_0_10px_rgba(234,88,12,0.8)]" />
+        </div>
+      </div>
+      <div className="mb-4">
+        <h2 className="text-white text-3xl font-extrabold leading-tight tracking-tight">{data.title}</h2>
+        <p className="text-orange-400/80 text-xs mt-1 font-semibold uppercase tracking-wider">{data.subtitle}</p>
+      </div>
+      <div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 flex justify-between items-center border border-white/10">
+        <div>
+          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Pricing</p>
+          <p className="text-white text-xl font-bold font-mono">${data.price} <span className="text-[10px] text-gray-500">USDC</span></p>
+        </div>
+        <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} className="bg-orange-600 text-white font-bold px-5 py-2 rounded-xl text-sm shadow-[0_0_15px_rgba(234,88,12,0.5)]">
+          View
         </button>
       </div>
     </div>
@@ -201,21 +290,31 @@ const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
   const count = inventory.length
   const genesisItem = item as GenesisNodeData
   return (
-    <div className="fixed inset-0 z-[80] bg-[#020617] overflow-y-auto flex flex-col text-white" style={{ animation: "slide-up 0.3s ease-out" }}>
-      <div className="absolute top-0 w-full p-4 flex justify-between items-center z-50">
-        <button onClick={onClose} className="w-9 h-9 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"><X size={20} /></button>
-        <button className="w-9 h-9 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"><Share size={18} /></button>
-      </div>
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 w-full h-[50vh] bg-gradient-to-b from-[#1562f0]/20 to-transparent" />
-        <div className="absolute top-0 w-full h-full" style={{ backgroundImage: "linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)", backgroundSize: "50px 50px" }} />
-      </div>
-      <div className="relative z-10 px-6 pt-24 pb-32">
-        <div className="mb-2"><span className="bg-[#1562f0] text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md">{genesisItem.type}</span></div>
-        <h1 className="text-5xl font-bold leading-none tracking-tight mb-4">{genesisItem.title.replace(" Pack", "")}</h1>
-        <p className="text-gray-400 text-lg leading-snug mb-8">{genesisItem.subtitle}</p>
+    <div className="fixed inset-0 z-[80] bg-[#0a0a0c] overflow-y-auto flex flex-col text-white" style={{ animation: "slide-up 0.3s ease-out" }}>
+      <div className="absolute inset-0 overflow-y-auto pb-48">
+        {/* Hero Image Area */}
+        <div className="relative h-[380px] w-full bg-gradient-to-b from-gray-900 to-[#0a0a0c]">
+          <img
+            src={genesisItem.image}
+            alt="Detail background"
+            className="w-full h-full object-cover opacity-30 mix-blend-screen"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0c]/80 to-[#0a0a0c]" />
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-48 h-20 rounded-[100%] blur-[80px] opacity-30 bg-blue-600" />
+          <div className="absolute top-12 inset-x-4 flex justify-between items-center z-10">
+            <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition border border-white/10"><X className="w-5 h-5" /></button>
+            <button className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition border border-white/10"><Share className="w-5 h-5" /></button>
+          </div>
+          <div className="absolute bottom-6 inset-x-6">
+            <span className="bg-blue-600/20 text-blue-400 border border-blue-500/30 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-3 inline-block">
+              {genesisItem.tagline}
+            </span>
+            <h1 className="text-white text-4xl font-extrabold leading-tight mb-2 tracking-tight">{genesisItem.title}</h1>
+            <p className="text-gray-400 font-medium text-sm">{genesisItem.subtitle}</p>
+          </div>
+        </div>
         {count > 0 && (
-          <div onClick={onOpenWallet} className="bg-blue-900/30 border border-blue-500/30 rounded-2xl p-4 mb-8 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform shadow-[0_0_20px_rgba(21,98,240,0.2)]">
+          <div onClick={onOpenWallet} className="mx-6 mt-6 bg-blue-900/30 border border-blue-500/30 rounded-2xl p-4 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform shadow-[0_0_20px_rgba(21,98,240,0.2)]">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-sm"><Wallet size={20} /></div>
               <div><h4 className="text-sm font-bold text-white">You own {count} Nodes</h4><p className="text-xs text-blue-300">Tap to Gift or Manage</p></div>
@@ -223,42 +322,181 @@ const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
             <ChevronRight size={18} className="text-blue-400" />
           </div>
         )}
-        <div className="grid grid-cols-2 gap-4 mb-8">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400"><Cpu size={20} /></div>
-            <div><div className="text-[10px] text-gray-500 uppercase font-bold">Chipset</div><div className="text-sm font-bold leading-tight">EAL6+<br/>Secure</div></div>
+        {/* Specs Row */}
+        <div className="flex border-b border-gray-800 py-6 px-6 bg-[#0a0a0c]">
+          <div className="flex items-center gap-4 flex-1">
+            <div className="w-12 h-12 rounded-full bg-[#151518] border border-gray-800 flex items-center justify-center shadow-lg text-blue-500">
+              <Cpu className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">{genesisItem.stat1Label}</p>
+              <p className="text-base font-bold text-white leading-none">{genesisItem.stat1Value}</p>
+            </div>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-400"><Activity size={20} /></div>
-            <div><div className="text-[10px] text-gray-500 uppercase font-bold">Yield</div><div className="text-sm font-bold leading-tight">5% Global</div></div>
+          <div className="w-px bg-gray-800 mx-2 h-10 self-center" />
+          <div className="flex items-center gap-4 flex-1 pl-4">
+            <div className="w-12 h-12 rounded-full bg-[#151518] border border-gray-800 flex items-center justify-center shadow-lg text-green-500">
+              <Activity className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">{genesisItem.stat2Label}</p>
+              <p className="text-base font-bold text-white leading-none">{genesisItem.stat2Value}</p>
+            </div>
           </div>
         </div>
-        <div className="mb-10">
-          <div className="flex justify-between items-end mb-2"><span className="text-sm font-medium text-gray-300">Genesis Mint Progress</span><span className="text-[#1562f0] font-mono font-bold">{genesisItem.currentMint ?? 0} / {genesisItem.totalMint ?? 0}</span></div>
-          <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-full bg-[#1562f0] rounded-full shadow-[0_0_10px_#1562f0]" style={{ width: `${((genesisItem.currentMint ?? 0) / (genesisItem.totalMint || 1)) * 100}%` }} />
+        {/* Progress Bar */}
+        <div className="px-6 py-6 bg-[#0a0a0c]">
+          <div className="flex justify-between text-xs font-bold mb-2">
+            <span className="text-gray-400">Global Allocation Progress</span>
+            <span className="text-blue-400 font-mono">{genesisItem.currentMint ?? 0} / {genesisItem.totalMint ?? 0}</span>
+          </div>
+          <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative">
+            <div
+              className="absolute top-0 left-0 h-full bg-blue-600 shadow-[0_0_10px_rgba(37,99,235,0.8)] rounded-full"
+              style={{ width: `${((genesisItem.currentMint ?? 0) / (genesisItem.totalMint || 1)) * 100}%` }}
+            />
           </div>
         </div>
-        <div className="bg-[#0f172a] rounded-3xl p-6 border border-gray-800">
-          <div className="flex items-center gap-2 mb-6 text-gray-500 text-xs font-bold uppercase tracking-widest"><Lock size={12} /> The Tangible Edge</div>
-          <div className="space-y-8">
-            {(genesisItem.features ?? []).map((feature: GenesisFeature, idx: number) => (
-              <div key={idx} className="flex gap-4">
-                <div className="mt-1">{feature.icon}</div>
-                <div><h4 className="font-bold text-white text-[15px]">{feature.title}</h4><p className="text-gray-400 text-sm leading-relaxed mt-1">{feature.desc}</p></div>
-              </div>
-            ))}
+        {/* Features Card */}
+        <div className="px-6 mb-4">
+          <div className="bg-[#151518] border border-gray-800 rounded-2xl p-6">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-6 flex items-center gap-2">
+              <Lock className="w-4 h-4" />
+              The Tangible Edge
+            </h3>
+            <div className="space-y-6">
+              {(genesisItem.features ?? []).map((feature: GenesisFeature, idx: number) => (
+                <div key={idx} className="flex items-start gap-4">
+                  <div className="mt-1 flex-shrink-0">{feature.icon}</div>
+                  <div>
+                    <span className="text-sm font-bold text-gray-200 block">{feature.title}</span>
+                    <span className="text-xs text-gray-500 font-medium mt-1 block leading-relaxed opacity-80">{feature.desc}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Compliance / Legal Note */}
+        <div className="px-6 mb-8">
+          <div className="bg-gray-900/50 border border-gray-800/50 rounded-xl p-4 flex items-start gap-3">
+            <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
+              <strong className="text-gray-400 block mb-1">LEGAL NOTE:</strong>
+              {genesisItem.legalNote}
+            </p>
           </div>
         </div>
       </div>
-      <div className="fixed bottom-0 w-full max-w-md bg-[#020617]/90 backdrop-blur-xl border-t border-gray-800 p-5 pb-8 z-50 flex items-center gap-3">
+      {/* Sticky Bottom Bar */}
+      <div className="fixed bottom-0 inset-x-0 bg-[#0a0a0c]/90 backdrop-blur-xl border-t border-gray-800 p-6 flex justify-between items-center rounded-b-[32px] z-50">
         {count > 0 ? (
-          <><button onClick={onOpenWallet} className="flex-1 bg-white/5 border border-white/10 text-white px-4 py-3.5 rounded-full font-bold text-[15px] active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-white/10"><Wallet size={18} /> My Nodes <span className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded ml-1">x{count}</span></button><button onClick={() => onBuy(item)} className="flex-[1.5] bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-[0_0_30px_-5px_rgba(21,98,240,0.5)] active:scale-95 transition-transform flex items-center justify-center gap-2">Secure Another</button></>
+          <><button onClick={onOpenWallet} className="flex-1 bg-white/5 border border-white/10 text-white px-4 py-3.5 rounded-full font-bold text-[15px] active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-white/10"><Wallet size={18} /> My Nodes <span className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded ml-1">x{count}</span></button><button onClick={() => onBuy(item)} className="flex-[1.5] bg-blue-600 hover:bg-blue-500 text-white px-4 py-3.5 rounded-xl font-bold text-[15px] shadow-[0_0_20px_rgba(37,99,235,0.4)] active:scale-95 transition-all flex items-center justify-center gap-2">Secure Another <ArrowRight size={18} /></button></>
         ) : (
-          <><div><div className="text-[10px] text-gray-500 uppercase font-bold tracking-wide">Total Investment</div><div className="text-3xl font-bold text-white tracking-tight">${item.price}</div></div><button onClick={() => {
-
-		  }} className="flex-1 bg-[#1562f0] hover:bg-blue-600 text-white py-3.5 rounded-full font-bold text-[17px] shadow-[0_0_30px_-5px_rgba(21,98,240,0.5)] active:scale-95 transition-all flex items-center justify-center gap-2">Secure Node <ArrowRight size={20} /></button></>
+          <><div><p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Total Due</p><p className="text-3xl font-extrabold text-white font-mono tracking-tight">{genesisItem.price} <span className="text-sm text-gray-500">USDC</span></p></div><button onClick={() => onBuy(item)} className="bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all text-white font-bold py-3.5 px-6 rounded-xl flex items-center gap-2 shadow-[0_0_20px_rgba(37,99,235,0.4)]">Secure Node <ArrowRight className="w-4 h-4" /></button></>
         )}
+      </div>
+    </div>
+  )
+}
+
+const FuelPackDetailModal = ({ item, onClose, onBuy }: { item: ViewingItem; onClose: () => void; onBuy: (item: ViewingItem) => void }) => {
+  if (!item) return null
+  const fuelItem = item as GenesisNodeData
+  return (
+    <div className="fixed inset-0 z-[80] bg-[#0a0a0c] overflow-y-auto flex flex-col text-white" style={{ animation: "slide-up 0.3s ease-out" }}>
+      <div className="absolute inset-0 overflow-y-auto pb-48">
+        {/* Hero Image Area */}
+        <div className="relative h-[380px] w-full bg-gradient-to-b from-gray-900 to-[#0a0a0c]">
+          <img
+            src={fuelItem.image}
+            alt="Detail background"
+            className="w-full h-full object-cover opacity-30 mix-blend-screen"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0c]/80 to-[#0a0a0c]" />
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-48 h-20 rounded-[100%] blur-[80px] opacity-30 bg-orange-600" />
+          <div className="absolute top-12 inset-x-4 flex justify-between items-center z-10">
+            <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition border border-white/10"><X className="w-5 h-5" /></button>
+            <button className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition border border-white/10"><Share className="w-5 h-5" /></button>
+          </div>
+          <div className="absolute bottom-6 inset-x-6">
+            <span className="bg-orange-600/20 text-orange-400 border border-orange-500/30 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-3 inline-block">
+              {fuelItem.tagline}
+            </span>
+            <h1 className="text-white text-4xl font-extrabold leading-tight mb-2 tracking-tight">{fuelItem.title}</h1>
+            <p className="text-gray-400 font-medium text-sm">{fuelItem.subtitle}</p>
+          </div>
+        </div>
+        {/* Specs Row */}
+        <div className="flex border-b border-gray-800 py-6 px-6 bg-[#0a0a0c]">
+          <div className="flex items-center gap-4 flex-1">
+            <div className="w-12 h-12 rounded-full bg-[#151518] border border-gray-800 flex items-center justify-center shadow-lg text-orange-500">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">{fuelItem.stat1Label}</p>
+              <p className="text-base font-bold text-white leading-none">{fuelItem.stat1Value}</p>
+            </div>
+          </div>
+          <div className="w-px bg-gray-800 mx-2 h-10 self-center" />
+          <div className="flex items-center gap-4 flex-1 pl-4">
+            <div className="w-12 h-12 rounded-full bg-[#151518] border border-gray-800 flex items-center justify-center shadow-lg text-orange-400">
+              <Flame className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">{fuelItem.stat2Label}</p>
+              <p className="text-base font-bold text-white leading-none">{fuelItem.stat2Value}</p>
+            </div>
+          </div>
+        </div>
+        {/* Progress Bar */}
+        <div className="px-6 py-6 bg-[#0a0a0c]">
+          <div className="flex justify-between text-xs font-bold mb-2">
+            <span className="text-gray-400">Global Allocation Progress</span>
+            <span className="text-orange-400 font-mono">{fuelItem.currentMint ?? 0} / {fuelItem.totalMint ?? 0}</span>
+          </div>
+          <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative">
+            <div
+              className="absolute top-0 left-0 h-full bg-orange-600 shadow-[0_0_10px_rgba(234,88,12,0.8)] rounded-full"
+              style={{ width: `${((fuelItem.currentMint ?? 0) / (fuelItem.totalMint || 1)) * 100}%` }}
+            />
+          </div>
+        </div>
+        {/* Features Card */}
+        <div className="px-6 mb-4">
+          <div className="bg-[#151518] border border-gray-800 rounded-2xl p-6">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-6 flex items-center gap-2">
+              <PackageOpen className="w-4 h-4" />
+              {fuelItem.featureTitle ?? "The Merchant Arsenal"}
+            </h3>
+            <div className="space-y-6">
+              {(fuelItem.features ?? []).map((feature: GenesisFeature, idx: number) => (
+                <div key={idx} className="flex items-start gap-4">
+                  <div className="mt-1 flex-shrink-0">{feature.icon}</div>
+                  <div>
+                    <span className="text-sm font-bold text-gray-200 block">{feature.title}</span>
+                    <span className="text-xs text-gray-500 font-medium mt-1 block leading-relaxed opacity-80">{feature.desc}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Compliance / Legal Note */}
+        <div className="px-6 mb-8">
+          <div className="bg-gray-900/50 border border-gray-800/50 rounded-xl p-4 flex items-start gap-3">
+            <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
+              <strong className="text-gray-400 block mb-1">LEGAL NOTE:</strong>
+              {fuelItem.legalNote}
+            </p>
+          </div>
+        </div>
+      </div>
+      {/* Sticky Bottom Bar */}
+      <div className="fixed bottom-0 inset-x-0 bg-[#0a0a0c]/90 backdrop-blur-xl border-t border-gray-800 p-6 flex justify-between items-center rounded-b-[32px] z-50">
+        <div><p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Total Due</p><p className="text-3xl font-extrabold text-white font-mono tracking-tight">{fuelItem.price} <span className="text-sm text-gray-500">USDC</span></p></div>
+        <button onClick={() => onBuy(item)} className="bg-orange-600 hover:bg-orange-500 active:scale-95 transition-all text-white font-bold py-3.5 px-6 rounded-xl flex items-center gap-2 shadow-[0_0_20px_rgba(234,88,12,0.4)]">Secure Fuel <ArrowRight className="w-4 h-4" /></button>
       </div>
     </div>
   )
@@ -568,7 +806,13 @@ export default function Market() {
 				onClick={() => openDetail(GENESIS_NODE_DATA)}
 			/>
 
-			{/* 2. CCSA + Sen Pho (ExampleCard Hero design) */}
+			{/* 2. Limited Fuel Pack (The Store Clearing Fuel) */}
+			<FuelPackCard
+				data={LIMITED_FUEL_PACK_DATA}
+				onClick={() => openDetail(LIMITED_FUEL_PACK_DATA)}
+			/>
+
+			{/* 3. CCSA + Sen Pho (ExampleCard Hero design) */}
 			{HERO_COLLECTION.map((item) => {
 				const count = item.id === 101 ? (isMember ? 1 : 0) : getOwnedInstances(item.id).length
 				return (
@@ -656,7 +900,12 @@ export default function Market() {
 				<button
 					key={cat.id}
 					type="button"
-					onClick={() => {}}
+					onClick={() => {
+						switch (cat.id) {
+							
+							
+						}
+					}}
 					className={`flex flex-col items-center gap-2 min-w-[72px] active:opacity-60 transition-opacity shrink-0 ${
 						activeFilter === cat.id ? "opacity-100" : ""
 					}`}
@@ -842,11 +1091,18 @@ export default function Market() {
 				item={viewingItem}
 				inventory={getOwnedInstances(999)}
 				onClose={() => setViewingItem(null)}
-				onBuy={() => { setViewingItem(null); setPurchasingGenesis(true); }}
+				onBuy={() => { setViewingItem(null); navigate("/settings"); }}
 				onOpenWallet={() => {}}
 			/>
 		)}
-		{viewingItem && viewingItem.id !== 999 && (
+		{viewingItem && viewingItem.id === 998 && (
+			<FuelPackDetailModal
+				item={viewingItem}
+				onClose={() => setViewingItem(null)}
+				onBuy={() => setViewingItem(null)}
+			/>
+		)}
+		{viewingItem && viewingItem.id !== 999 && viewingItem.id !== 998 && (
 			<ProductDetailModal
 				item={viewingItem}
 				inventory={viewingItem.id === 101 ? (isMember ? [{ id: "#CCSA", date: "Active", balance: "Full" }] : []) : getOwnedInstances(viewingItem.id)}
@@ -869,6 +1125,11 @@ export default function Market() {
 			.scrollbar-hide::-webkit-scrollbar { display: none; }
 			.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 			@keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+			@keyframes scan {
+				0% { top: 0%; opacity: 0; }
+				50% { opacity: 1; }
+				100% { top: 100%; opacity: 0; }
+			}
 		`}</style>
 		</>
 	)

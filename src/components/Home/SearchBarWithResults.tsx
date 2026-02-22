@@ -42,6 +42,23 @@ const displayName = (item: searchResult) => {
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
 
+/** 商家 bill paymentUrl：Amount、currency、acceptTokens 必选；与扫码 QR workflow 一致 */
+const isPaymentUrl = (raw: string): boolean => {
+	try {
+		if (!raw || typeof raw !== 'string') return false
+		const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.app')
+		const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
+		const currency = u.searchParams.get('currency') ?? u.searchParams.get('Currency') ?? ''
+		const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
+		if (!amount || Number(amount) <= 0) return false
+		if (!currency || !acceptTokens) return false
+		if (u.pathname === '/Vouchers' || /beamio\.app/i.test(u.origin)) return true
+		return /\/Vouchers/i.test(u.pathname)
+	} catch {
+		return false
+	}
+}
+
 function formatUserDate(timestamp?: string | number): string {
 	if (!timestamp) return ""
 
@@ -64,7 +81,7 @@ function formatUserDate(timestamp?: string | number): string {
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
 	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false, showSideSlidePanel = true, dropdownDownward = false }: Props) => {
-		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setRedeemFromUrl } = useDaemonContext()
+		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setRedeemFromUrl, setScanData, setScanIntent, setVoucherPayFromScan } = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
 		const [results, setResults] = useState<searchResult[]>([])
@@ -93,6 +110,18 @@ const SearchInputWithDropdown =
 			
 
 			const searchParams = url.searchParams
+
+			// Vouchers 支付请求 URL：与扫码 QR workflow 相同，走 Smart Routing Analysis
+			if (isPaymentUrl(url.href)) {
+				setScanData(url.href)
+				setScanIntent('voucherPay')
+				setVoucherPayFromScan(true)
+				setLoading(false)
+				setShowDropdown(false)
+				closeWindow('/History')
+				navigate('/History')
+				return
+			}
 	
 			let code = searchParams.get("code")||''
 			const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
@@ -179,9 +208,14 @@ const SearchInputWithDropdown =
 			try {
 				url = new URL(qq)
 			} catch {
-				// 智能对应：无协议时，若包含 redeem 参数则尝试以 beamio.app 为 base 解析
+				// 智能对应：无协议时，尝试以 beamio.app 为 base 解析
 				if (/redeemcode=|beamiocard=/i.test(qq)) {
 					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.app')
+				} else if ((/Amount=/i.test(qq) && /Vouchers|beamio\.app/i.test(qq)) && !/^https?:\/\//i.test(qq)) {
+					// Vouchers 支付 URL 无协议时补全（如 beamio.app/Vouchers?Amount=... 或 /Vouchers?Amount=...）
+					const withProto = qq.startsWith('/') ? 'https://beamio.app' + qq : 'https://' + qq
+					if (isPaymentUrl(withProto)) url = new URL(withProto)
+					else throw new Error('not url')
 				} else {
 					throw new Error('not url')
 				}
@@ -450,10 +484,6 @@ const SearchInputWithDropdown =
 
 		const processRef = useRef(false)
 
-		useEffect(() => {
-			saveSearchKeywork()
-		}, [searchKeysHistory, searchBeamiosHistory])
-
 		const saveSearchKeywork = async () => {
 			if (!CoNET_Data ) return
 			if (!searchBeamiosHistory.length && !searchKeysHistory.length) return
@@ -473,6 +503,10 @@ const SearchInputWithDropdown =
 				processRef.current = false
 			}
 		}
+
+		useEffect(() => {
+			saveSearchKeywork()
+		}, [searchKeysHistory, searchBeamiosHistory])
 
 		return (
 			<>

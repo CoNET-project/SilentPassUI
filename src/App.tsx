@@ -13,7 +13,7 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
-import { checkStorage, searchUsername, storeSystemData } from "@/services/beamio"
+import { checkStorage, searchUsername, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE, setBaseRpcNodeProvider, setRpcDegradedGetter } from "@/utils/constants"
 import { isRpcDegraded } from "@/utils/rpcStatus"
@@ -35,6 +35,7 @@ import ExampleExpress from "@/pages/Vouchers/example/exampleExpress"
 import TenKeyInput from "@/pages/Pay/components/TenKeyInput"
 import { Toast } from "antd-mobile"
 import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
+import NewCardExample from '@/pages/Vouchers/example/newCardExample'
 import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -109,6 +110,29 @@ function AppShell() {
   const processedIdsRef = useRef<Set<string>>(new Set())
   const setChartsRef = useRef(setCharts)
   setChartsRef.current = setCharts
+  const bUnitClaimAttemptedRef = useRef(false)
+
+  // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求
+  useEffect(() => {
+    if (bUnitClaimAttemptedRef.current || !profiles?.length) return
+    const p0 = profiles[0] as { privateKeyArmor?: string } | undefined
+    if (!p0?.privateKeyArmor) return
+    let claimant: string
+    try {
+      claimant = new ethers.Wallet(p0.privateKeyArmor).address
+    } catch {
+      return
+    }
+    if (!claimant || !ethers.isAddress(claimant)) return
+    bUnitClaimAttemptedRef.current = true
+    checkBUnitClaimEligibility(claimant).then(async (r) => {
+      if (!r.canClaim || r.nonce == null || r.deadline == null) return
+      const result = await signAndClaimBUnits(p0.privateKeyArmor!, claimant, r.nonce, r.deadline)
+      if (result.success) {
+        Toast.show({ content: '20 B-Units claimed!', position: 'top' })
+      }
+    }).catch(() => {})
+  }, [profiles])
 
   // ✅ 现在安全了：AppShell 已经在 <Router> 内
   const navigate = useNavigate()
@@ -956,6 +980,7 @@ function AppShell() {
 				<Route path="/example-express" element={<ExampleExpress />} />
 				<Route path="/ten-key-input" element={<TenKeyInput />} />
 				<Route path="/example-card" element={<EmapmpleCard />} />
+				<Route path="/example-new-card" element={<NewCardExample />} />
 				<Route path="/cardManager" element={<CardManager />} />
 				</Routes>
 			</div>

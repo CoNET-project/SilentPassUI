@@ -8,7 +8,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from 'ethers'
 import type { OpenContainerRelayPayload } from '@/services/AAaccount'
 import { beamioApiBase, readContainerNonceFromAAStorage, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from '@/services/AAaccount'
-import { AuthorizationSign } from '@/services/beamio'
+import { AuthorizationSign, checkRequestStatus } from '@/services/beamio'
 import { getAAAccount } from '@/services/BeamioCard'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import contracts from '@/utils/contracts'
@@ -351,6 +351,8 @@ export type ConfirmDeductionPayload = {
 	billCurrency?: string
 	/** Bill 支付时：URL 中的 requestHash（bytes32），供记账写入 originalPaymentHash 以关联 request_create */
 	billRequestHash?: string
+	/** Bill 时：URL 中的 validDays，供 API 校验过期 */
+	billValidDays?: number
 	/** Bill 时：请求币种的展示金额（与 amountStr 等对应） */
 	amountStrFiat?: string
 	usdcFromBalanceFiat?: string
@@ -950,6 +952,33 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					setVoucherPayToAA(billPayeeAddr)
 					setStepLoading('detectingUser')
 					await loadingDelay()
+
+					// 若有 requestHash 与 validDays，先校验是否过期或已支付，二者任一则不允许支付
+					const requestHashParam = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
+					const validDaysParam = u.searchParams.get('validDays') ?? u.searchParams.get('validdays')
+					if (
+						requestHashParam &&
+						ethers.isHexString(requestHashParam) &&
+						ethers.dataLength(requestHashParam) === 32 &&
+						validDaysParam &&
+						Number(validDaysParam) >= 1
+					) {
+						try {
+							const status = await checkRequestStatus(requestHashParam, Number(validDaysParam), billPayeeAddr)
+							if (status.expired) {
+								failStep('detectingUser', 'Request expired')
+								return
+							}
+							if (status.fulfilled) {
+								failStep('detectingUser', 'Request already paid')
+								return
+							}
+						} catch (e) {
+							failStep('detectingUser', (e as Error)?.message ?? 'Request status check failed')
+							return
+						}
+					}
+
 					// 使用 Beamio Account Factory 校验 to 是否为合法 BeamioAccount；若为 EOA 则进入 toEOA 流程
 					let billPayeeIsEOA = false
 					try {
@@ -1097,6 +1126,10 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 										const rh = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
 										return rh && ethers.isHexString(rh) && ethers.dataLength(rh) === 32 ? rh : undefined
 									})(),
+									billValidDays: (() => {
+										const vd = u.searchParams.get('validDays') ?? u.searchParams.get('validdays')
+										return vd ? Math.max(1, Math.floor(Number(vd))) : undefined
+									})(),
 									payeeImage,
 							payeeFirstName,
 							payeeLastName,
@@ -1213,6 +1246,10 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 							billRequestHash: (() => {
 								const rh = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
 								return rh && ethers.isHexString(rh) && ethers.dataLength(rh) === 32 ? rh : undefined
+							})(),
+							billValidDays: (() => {
+								const vd = u.searchParams.get('validDays') ?? u.searchParams.get('validdays')
+								return vd ? Math.max(1, Math.floor(Number(vd))) : undefined
 							})(),
 							payeeImage,
 							payeeFirstName,
@@ -1415,6 +1452,10 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						billRequestHash: (() => {
 							const rh = u.searchParams.get('requestHash') ?? u.searchParams.get('requesthash')
 							return rh && ethers.isHexString(rh) && ethers.dataLength(rh) === 32 ? rh : undefined
+						})(),
+						billValidDays: (() => {
+							const vd = u.searchParams.get('validDays') ?? u.searchParams.get('validdays')
+							return vd ? Math.max(1, Math.floor(Number(vd))) : undefined
 						})(),
 					})
 					return
@@ -1787,6 +1828,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					}
 					if (data.forText?.trim()) body.forText = data.forText.trim()
 					if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) body.requestHash = data.billRequestHash
+					if (data.billValidDays != null && data.billValidDays >= 1) body.validDays = data.billValidDays
 					const res = await fetch(`${beamioApiBase.replace(/\/$/, '')}/api/AAtoEOA`, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
@@ -1950,6 +1992,9 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			if (data.forText?.trim()) bodyPayload.forText = data.forText.trim()
 			if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
 				bodyPayload.requestHash = data.billRequestHash
+			}
+			if (data.billValidDays != null && data.billValidDays >= 1) {
+				bodyPayload.validDays = data.billValidDays
 			}
 
 			const res = await fetch(url, {

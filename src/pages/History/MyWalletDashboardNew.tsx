@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ethers } from 'ethers'
@@ -51,7 +51,6 @@ import {
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
 import BankingBridge from './components/BankingBridge'
-import TenKeyInput from '@/pages/Pay/components/TenKeyInput'
 import TenKeyInputV2 from '@/pages/Pay/components/TenKeyInputV2'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
@@ -74,6 +73,7 @@ import AccountBeo from './AccountBea'
 import { TransactionsItemDetail } from '@/pages/History/TransactionsItemDetail'
 import CardManager from '@/pages/cardManager'
 import TopUpRedeemForm from '@/pages/Vouchers/TopUpRedeemForm'
+import AddAdminBottomSheet from './AddAdminBottomSheet'
 import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 
@@ -435,6 +435,7 @@ const ManageCardsOverlay = ({
 
 export default function MyWalletDashboardNew() {
 	const navigate = useNavigate()
+	const location = useLocation()
 	const {
 		profiles,
 		setProfiles,
@@ -481,6 +482,8 @@ export default function MyWalletDashboardNew() {
 	const [ccsaCreateCardOpen, setCcsaCreateCardOpen] = useState(false)
 	const [topUpRedeemOpen, setTopUpRedeemOpen] = useState(false)
 	const [topUpRedeemKey, setTopUpRedeemKey] = useState(0)
+	const [addAdminOpen, setAddAdminOpen] = useState(false)
+	const [addAdminKey, setAddAdminKey] = useState(0)
 	const [showRedeemListOpen, setShowRedeemListOpen] = useState(false)
 	const [cardRedeemsVersion, setCardRedeemsVersion] = useState(0)
 	const [ccsaRedeemOpen, setCcsaRedeemOpen] = useState(false)
@@ -502,6 +505,8 @@ export default function MyWalletDashboardNew() {
 	const [pendingPayTarget, setPendingPayTarget] = useState<searchResult | null>(null)
 	const [openRelayPayload, setOpenRelayPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [showTenKeySlide, setShowTenKeySlide] = useState(false)
+	/** PayScreen 重定向时传入的 payload，确保 TenKeyInput 能拿到金额（避免 context 时序问题） */
+	const [pendingSmartRoutingPayload, setPendingSmartRoutingPayload] = useState<{ paymentUrl: string; amount: string; currency: string; toAddress: string } | null>(null)
 	const [payMeSigning, setPayMeSigning] = useState(false)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!activeView)
 	const copyAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -562,14 +567,26 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [redeemFromUrl, setRedeemFromUrl, setShowFooter])
 
-	// 扫码 paymentUrl → 打开 TenKeyInput 执行向 request 人支付 request 金额的 workflow
+	// 扫码 paymentUrl 或 PayScreen 重定向（带 smartRoutingPayload）→ 打开 TenKeyInput 执行 Smart Routing
 	useEffect(() => {
+		const payload = (location.state as { smartRoutingPayload?: { paymentUrl: string; amount: string; currency: string; toAddress: string } })?.smartRoutingPayload
+		if (payload) {
+			setPendingSmartRoutingPayload(payload)
+			setScanData(payload.paymentUrl)
+			setScanIntent('payBill')
+			setVoucherPayAmount(payload.amount)
+			setVoucherPayToAA(payload.toAddress)
+			setShowFooter(false)
+			navigate(location.pathname, { replace: true, state: {} })
+			queueMicrotask(() => setShowTenKeySlide(true))
+			return
+		}
 		if (voucherPayFromScan) {
 			setShowTenKeySlide(true)
 			setShowFooter(false)
 			setVoucherPayFromScan(false)
 		}
-	}, [voucherPayFromScan, setVoucherPayFromScan, setShowFooter])
+	}, [voucherPayFromScan, setVoucherPayFromScan, setShowFooter, location.state, location.pathname, navigate, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA])
 
 	// 拉取 redeem 详情：当面板打开且有 code 时
 	useEffect(() => {
@@ -1222,13 +1239,12 @@ export default function MyWalletDashboardNew() {
 										</button>
 										<span className="font-medium text-lg tracking-wide">USDC on Base</span>
 									</div>
-									<button
-										type="button"
-										className="p-2 bg-white/10 rounded-xl backdrop-blur-md border border-white/20"
-										onClick={(e) => { e.stopPropagation(); setShowFooter(false); setEoaPanelOpen('ShowPayQR') }}
-									>
-										<QrCode className="w-5 h-5" />
-									</button>
+									<div className="text-right">
+										<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
+											{formatWithThousands(usdcbalance || '0')}
+											<span className="text-xs font-medium ml-1 opacity-80">USDC</span>
+										</h2>
+									</div>
 								</div>
 								<div className="text-center mb-10">
 									<div className="flex items-baseline justify-center">
@@ -1280,29 +1296,12 @@ export default function MyWalletDashboardNew() {
 											</div>
 											<span className="font-medium text-lg tracking-wide">Express Pay</span>
 										</div>
-										<button
-											type="button"
-											className="flex items-center space-x-2 border border-white/30 rounded-full px-4 py-1.5 backdrop-blur-md bg-white/5 active:bg-white/20"
-											onClick={async (e) => {
-												e.stopPropagation()
-												if (payMeSigning || !profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor) return
-												setPayMeSigning(true)
-												try {
-													const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], '10000', { deadlineSeconds: 3 * 60 })
-													setOpenRelayPayload(payload)
-													setShowFooter(false)
-													setAaPanelOpen('BeamioPayMeQR')
-												} catch (err) {
-													console.error('Pay Me signature failed', err)
-												} finally {
-													setPayMeSigning(false)
-												}
-											}}
-											disabled={payMeSigning}
-										>
-											{payMeSigning ? <Loader size={16} className="animate-spin" /> : <QrCode className="w-4 h-4" />}
-											<span className="text-xs font-bold tracking-wider">PAY CODE</span>
-										</button>
+										<div className="text-right">
+											<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
+												{formatWithThousands(aaAccountUsdcBalance || '0')}
+												<span className="text-xs font-medium ml-1 opacity-80">USDC</span>
+											</h2>
+										</div>
 									</div>
 									<div className="text-center mb-10">
 										<div className="flex items-baseline justify-center">
@@ -1595,19 +1594,21 @@ export default function MyWalletDashboardNew() {
 													setTopUpRedeemOpen(true)
 												}}
 											/>
-											{/* <ExpressAction
-												label={userCards.length === 0 ? 'Create Card' : 'Details'}
+											<ExpressAction
+												label={userCards.length === 0 ? 'Create Card' : 'Add Admin'}
 												iconBgClass="bg-orange-500 shadow-orange-500/30"
 												icon={<CreditCard className="w-5 h-5" />}
 												onClick={() => {
-													setShowFooter(false)
 													if (userCards.length === 0) {
 														setCcsaCreateCardOpen(true)
+														setShowFooter(false)
 													} else {
-														navigate('/card-manager')
+														setAddAdminKey((k) => k + 1)
+														setShowFooter(false)
+														setAddAdminOpen(true)
 													}
 												}}
-											/> */}
+											/>
 										</div>
 									)}
 								</div>
@@ -2329,6 +2330,32 @@ export default function MyWalletDashboardNew() {
 					</div>
 				</div>
 
+				{/* Add Admin：Owner 添加 admin（EOA 地址） */}
+				<div
+					className={`fixed inset-0 z-[100] ${addAdminOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+					aria-hidden={!addAdminOpen}
+				>
+					<div
+						className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${addAdminOpen ? 'opacity-100' : 'opacity-0'}`}
+						onClick={() => { setAddAdminOpen(false); setShowFooter(true) }}
+					/>
+					<div
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${addAdminOpen ? 'translate-y-0' : 'translate-y-full'}`}
+					>
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-500/70" />
+						</div>
+						<div className="overflow-y-auto max-h-[calc(100dvh-60px)] flex flex-col">
+							<AddAdminBottomSheet
+								key={addAdminKey}
+								userCards={userCards}
+								onClose={() => { setAddAdminOpen(false); setShowFooter(true) }}
+								onSuccess={() => refetchUserCards()}
+							/>
+						</div>
+					</div>
+				</div>
+
 				{/* Pay bill / Vouchers：TenKeyInput 全屏滑入 */}
 				{showTenKeySlide && createPortal(
 					<AnimatePresence>
@@ -2346,14 +2373,19 @@ export default function MyWalletDashboardNew() {
 								onClose={() => {
 									setShowTenKeySlide(false)
 									setShowFooter(true)
+									setPendingSmartRoutingPayload(null)
 								}}
 								onMore={() => {}}
 							/>
 							<div className="flex-1 min-h-0 flex flex-col overflow-hidden pt-[calc(env(safe-area-inset-top)+3rem)]">
 								<TenKeyInputV2
+								
+									initialSmartRoutingPayload={pendingSmartRoutingPayload}
+									onPayloadConsumed={() => setPendingSmartRoutingPayload(null)}
 									onPaymentSuccess={() => {
 										setShowTenKeySlide(false)
 										setShowFooter(true)
+										setPendingSmartRoutingPayload(null)
 										scheduleRefreshAAAssets()
 									}}
 								/>

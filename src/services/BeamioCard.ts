@@ -281,6 +281,7 @@ const createCardEndpoint = `${beamioApi}/api/createCard`
 const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
+const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 
 /** 用户兑换 redeem 码：提交到 API，服务端调用 redeemForUser，将点数 mint 到用户 AA */
 export const postCardRedeem = async (
@@ -685,6 +686,43 @@ const cancelRedeemInterface = new ethers.Interface([
 /** 构建 cancelRedeem 的 calldata（供 executeForOwner 使用） */
 export const encodeCancelRedeem = (code: string): string =>
     cancelRedeemInterface.encodeFunctionData('cancelRedeem', [code])
+
+const addAdminInterface = new ethers.Interface([
+    'function addAdmin(address newAdmin, uint256 newThreshold)',
+])
+
+/** 构建 addAdmin 的 calldata（供 executeForOwner 使用）。newAdmin 必须为 EOA，newThreshold 为所需签名数（通常 1） */
+export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint): string =>
+    addAdminInterface.encodeFunctionData('addAdmin', [newAdmin, BigInt(newThreshold)])
+
+/** 提交 addAdmin 到 API cardAddAdmin。Cluster 预检 newAdmin 为 EOA 后转发 Master executeForOwner 排队，返回 tx hash */
+export const postCardAddAdmin = async (payload: {
+    cardAddress: string
+    data: string
+    deadline: number
+    nonce: string
+    ownerSignature: string
+}): Promise<{ success: boolean; hash?: string; error?: string }> => {
+    try {
+        const body = {
+            cardAddress: payload.cardAddress,
+            data: payload.data,
+            deadline: payload.deadline,
+            nonce: payload.nonce,
+            ownerSignature: payload.ownerSignature,
+        }
+        const res = await fetch(cardAddAdminEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'cardAddAdmin failed' }
+        return { success: true, hash: data.hash }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
 
 const getRedeemStatusAbi = [
 	'function getRedeemStatus(bytes32 hash) view returns (bool active, uint256 totalPoints6)',

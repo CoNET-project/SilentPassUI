@@ -189,9 +189,8 @@ export default function PaymentLink ({close}: Props) {
 
 
 	const signRequest = async (messageDataRe: any) => {
-		
-		setProcessing (true)
-
+		setProcessing(true)
+		setProcessError('') // 重试时清除旧错误，确保重新获取 ethers 签字
 		const paymentHeader = await AuthorizationSign(messageDataRe.maxAmountRequired, messageDataRe.payTo)
 		const newInit = {
 			method: 'GET',

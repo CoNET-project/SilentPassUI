@@ -81,7 +81,7 @@ function formatUserDate(timestamp?: string | number): string {
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
 	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false, showSideSlidePanel = true, dropdownDownward = false }: Props) => {
-		const { profiles, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setRedeemFromUrl, setScanData, setScanIntent, setVoucherPayFromScan } = useDaemonContext()
+		const { profiles, beamio, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setRedeemFromUrl, setScanData, setScanIntent, setVoucherPayFromScan } = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
 		const [results, setResults] = useState<searchResult[]>([])
@@ -143,20 +143,20 @@ const SearchInputWithDropdown =
 			}
 
 			if (_beamio) {
-				
-				const user = await searchUsername(_beamio)
-				const results: searchResult[] = user?.results
-				if (!results.length) {
-					return
+				// 输入自己时：直接进入我的钱包
+				if (beamio?.accountName && String(_beamio).trim().toLowerCase() === String(beamio.accountName).toLowerCase()) {
+					setLoading(false)
+					setShowDropdown(false)
+					closeWindow('/myWallet')
+					return navigate('/myWallet')
 				}
-				const filtered = results.filter(n => n.username === _beamio)
-				if (!filtered.length) {
-					return
-				}
-
-				setPayMePayment(filtered[0])
-				return navigate('/browser')
-
+				// 与扫码 workflow 对齐：交由 App checkUrl 处理（BeamioContactProfilePreview + preferredPayeeWallet）
+				setScanData(url.href)
+				setLoading(false)
+				setShowDropdown(false)
+				closeWindow('/')
+				navigate('/History')
+				return
 			}
 			if (_secureCode) {
 				setSecureCode (_secureCode)

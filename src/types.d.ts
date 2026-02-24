@@ -598,6 +598,8 @@ type payMe = {
 	currency: ICurrency
 	currencyAmount: string
 	currencyTip?: string
+	/** EOA→AA 内部转账时设为 true，供 API 正确记账 payer=EOA payee=AA */
+	isInternalTransfer?: boolean
 	currencyDiscount?: string
 	currencyDiscountAmount?: string
 	tip?: number

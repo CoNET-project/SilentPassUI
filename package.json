@@ -1,6 +1,6 @@
 {
 	"name": "beamio",
-	"version": "0.37.2",
+	"version": "0.37.10",
 	"private": true,
 	"homepage": "/app",
 	"dependencies": {
@@ -96,7 +96,6 @@
 		"@babel/types": "^7.23.0",
 		"@craco/craco": "^7.1.0",
 		"@farcaster/miniapp-sdk": "^0.2.1",
-		"@noble/hashes": "^2.0.1",
 		"@types/async": "^3.2.24",
 		"@types/blobshape": "^1.0.3",
 		"@types/lodash": "^4.17.16",

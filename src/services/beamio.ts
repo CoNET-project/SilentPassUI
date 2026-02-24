@@ -242,7 +242,7 @@ export const fetchNfcCardStatus = async (uid: string): Promise<{ registered: boo
 const BASE_CARD_FACTORY = '0xbDC8a165820bB8FA23f5d953632409F73E804eE5'
 const BASE_CHAIN_ID = 8453
 
-/** NFC Topup Prepare：获取 executeForAdmin 所需的 cardAddr、data、deadline、nonce */
+/** NFC Topup Prepare：获取 executeForOwner 所需的 cardAddr、data、deadline、nonce */
 export const nfcTopupPrepare = async (params: { uid: string; amount: string; currency?: string }): Promise<{
 	cardAddr: string
 	data: string
@@ -265,7 +265,7 @@ export const nfcTopupPrepare = async (params: { uid: string; amount: string; cur
 	}
 }
 
-/** NFC Topup：读取方 UI 用户用 profile 私钥签 ExecuteForAdmin，提交后 Master 调用 factory.executeForAdmin */
+/** NFC Topup：读取方 UI 用户用 profile 私钥签 ExecuteForOwner，提交后 Master 调用 factory.executeForOwner */
 export const nfcTopup = async (params: { uid: string; amount: string; currency?: string }): Promise<{ success: boolean; txHash?: string; error?: string }> => {
 	if (!CoNET_Data?.profiles?.length || !CoNET_Data.profiles[0]?.privateKeyArmor) {
 		return { success: false, error: '请先登录 Beamio 账户' }
@@ -283,7 +283,7 @@ export const nfcTopup = async (params: { uid: string; amount: string; currency?:
 		verifyingContract: BASE_CARD_FACTORY,
 	}
 	const types = {
-		ExecuteForAdmin: [
+		ExecuteForOwner: [
 			{ name: 'cardAddress', type: 'address' },
 			{ name: 'dataHash', type: 'bytes32' },
 			{ name: 'deadline', type: 'uint256' },
@@ -300,7 +300,7 @@ export const nfcTopup = async (params: { uid: string; amount: string; currency?:
 	const res = await fetch(`${beamioApi}/api/nfcTopup`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ cardAddr, data, deadline, nonce, adminSignature }),
+		body: JSON.stringify({ cardAddr, data, deadline, nonce, adminSignature, uid: params.uid }),
 	})
 	const dataRes = (await res.json().catch(() => ({}))) as { success?: boolean; txHash?: string; error?: string }
 	return {

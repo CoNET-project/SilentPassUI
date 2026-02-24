@@ -33,7 +33,7 @@ export const fiatPrefix = (ccy: ICurrency) => {
 
 export const getDecimals = (c: ICurrency) => {
 	const decimals =
-		c === 'USDC' ? 4 :
+		c === 'USDC' ? 2 :
 		c === "TWD" || c === "JPY"
 		? 0
 		: 2
@@ -67,6 +67,15 @@ export const formatAmount = (
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   })
+}
+
+/** Beamio 右对齐金额 protocol：非 USDC 时 "CURRENCY amount"，USDC 时 "amount USDC"，小数位沿用 getDecimals */
+export const formatAmountWithCurrencyProtocol = (
+  v: number | string,
+  c: ICurrency
+): string => {
+  const amt = formatAmount(v, c)
+  return c === 'USDC' ? `${amt} USDC` : `${c} ${amt}`
 }
 
 /** Token pts 人类可读：链上数位永远 10**6 */

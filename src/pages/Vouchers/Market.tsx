@@ -125,7 +125,7 @@ const GENESIS_NODE_DATA: GenesisNodeData = {
   id: 999,
   tagline: "Hardware + License",
   title: "Genesis Node Pack",
-  subtitle: "The Infrastructure Equity",
+  subtitle: "The Infrastructure Backbone",
   description: "Own the physical edge and the invisible engine of the Beamio network.",
   currentMint: 247,
   totalMint: 300,
@@ -902,8 +902,9 @@ export default function Market() {
 					type="button"
 					onClick={() => {
 						switch (cat.id) {
-							
-							
+							case 'services':
+								navigate("/transfertion")
+								break
 						}
 					}}
 					className={`flex flex-col items-center gap-2 min-w-[72px] active:opacity-60 transition-opacity shrink-0 ${

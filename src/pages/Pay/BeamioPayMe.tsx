@@ -83,7 +83,6 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 
 	const [qrDataUrl, setQrDataUrl] = useState<string>("")
   const [getBeamio, setGetBeamio] = useState<beamio|null>(null)
-  	const [successUrl, setSuccessUrl] = useState("")
 	const [showMode, setShowMode] = useState<Mode>(activeTab)
 	const [isUSDC, setIsUSDC] = useState(true)
 	/** 是否展开金额输入：false 显示「输入金额」按钮，true 显示 AmountCurrency + 完成 */
@@ -100,10 +99,20 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	/** 记账状态：idle | loading | success | error；成功时 syncTx 为 CoNET 链 hash */
 	const [accountingStatus, setAccountingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
 	const [accountingSyncTx, setAccountingSyncTx] = useState<string | null>(null)
+	/** 收款地址显示：'aa' 优先 AA，'eoa' 为 EOA；有 AA 时点击胶囊可切换 */
+	const [receivingMode, setReceivingMode] = useState<'aa' | 'eoa'>('aa')
 
 	
   const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress, setShowFooter, currencyData, beamio, setBeamio} = useDaemonContext()
 	const merchantAA = profiles?.[0]?.aaAccount
+	/** 任意金额收款链接：含 wallet= 随 receivingMode 切换 */
+	const successUrl = useMemo(() => {
+		if (!beamio?.accountName) return ''
+		const params = new URLSearchParams({ beamio: beamio.accountName })
+		const walletAddr = (receivingMode === 'aa' && merchantAA && ethers.isAddress(merchantAA)) ? merchantAA : (myAddress && ethers.isAddress(myAddress) ? myAddress : null)
+		if (walletAddr) params.set('wallet', walletAddr)
+		return `${showPaylinkSite}?${params.toString()}`
+	}, [beamio?.accountName, receivingMode, merchantAA, myAddress])
 	const qrValue = billPaymentUrl ?? successUrl
 	const handleDoneAmount = () => {
 		const amt = Number(billAmount)
@@ -111,7 +120,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 			setAmountError("Please enter a valid amount")
 			return
 		}
-		const toAddress = merchantAA && ethers.isAddress(merchantAA) ? merchantAA : myAddress
+		const toAddress = (receivingMode === 'aa' && merchantAA && ethers.isAddress(merchantAA)) ? merchantAA : myAddress
 		if (!toAddress || !ethers.isAddress(toAddress)) {
 			setAmountError("No receiving address found")
 			return
@@ -125,6 +134,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 			currency: billCurrency,
 			acceptTokens: 'USDC,CCSA',
 			to: toAddress,
+			wallet: toAddress,
 			requestHash,
 		})
 		if (billForText.trim()) params.set('forText', billForText.trim())
@@ -155,12 +165,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	useEffect(() => {
 		if (!beamio||getBeamio||!profiles?.length) return
 		setGetBeamio({...beamio})
-		
-		const showparams = new URLSearchParams({beamio: beamio.accountName}).toString()
-		const showUrl = `${showPaylinkSite}?${showparams}`
-		setSuccessUrl(showUrl)
-		
-	},[])
+	}, [])
 
 
   const copyText = async (t: string) => {
@@ -260,25 +265,41 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						)}
 						</div>
 
-						{/* 收款钱包 - QR 上方，无金额 EOA(蓝)，有金额 AA(紫)，同 PayScreen 胶囊样式 */}
-						{!showAmountInput && (
-							<div className="mt-2 sm:mt-4 flex justify-center">
-								<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase mr-2 self-center">
-									{billPaymentUrl && merchantAA ? 'Express Pay (Smart Account)' : 'Main Vault (EOA)'}
-								</span>
-								{billPaymentUrl && merchantAA ? (
-									<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
-										<CreditCard className="w-4 h-4 shrink-0" strokeWidth={2.2} />
-										{shortAddress(merchantAA)}
+						{/* 收款钱包 - 优先 AA，无则 EOA；有 AA 时胶囊整体可点击切换 */}
+						{!showAmountInput && (() => {
+							const showAA = receivingMode === 'aa' && merchantAA && ethers.isAddress(merchantAA)
+							const displayAddr = showAA ? merchantAA : myAddress
+							const canToggle = !!(merchantAA && ethers.isAddress(merchantAA) && myAddress && ethers.isAddress(myAddress))
+							const label = showAA ? 'Express Pay (Smart Account)' : 'Main Vault (EOA)'
+							const content = (
+								<>
+									<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase mr-2 self-center">
+										{label}
 									</span>
-								) : myAddress ? (
-									<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
-										<Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />
-										{shortAddress(myAddress)}
-									</span>
-								) : null}
-							</div>
-						)}
+									{displayAddr && (
+										<span className={`flex items-center gap-1 px-2 py-0.5 rounded-md ${showAA ? 'bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300' : 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'}`}>
+											{showAA ? <CreditCard className="w-4 h-4 shrink-0" strokeWidth={2.2} /> : <Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />}
+											{shortAddress(displayAddr)}
+										</span>
+									)}
+								</>
+							)
+							return (
+								<div className="mt-2 sm:mt-4 flex justify-center">
+									{canToggle ? (
+										<button
+											type="button"
+											onClick={() => setReceivingMode(prev => prev === 'aa' ? 'eoa' : 'aa')}
+											className="flex items-center cursor-pointer hover:opacity-90 active:scale-[0.98] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 dark:focus-visible:ring-violet-500 rounded-lg"
+										>
+											{content}
+										</button>
+									) : (
+										<div className="flex items-center">{content}</div>
+									)}
+								</div>
+							)
+						})()}
 
 						{/* QR Card - 金额输入展开时隐藏，小屏紧凑 */}
 						{!showAmountInput && (
@@ -404,8 +425,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 							)
 						})()}
 
-						{/* 输入金额：按钮区上方 */}
-						{!billPaymentUrl && (
+						{/* 输入金额：按钮区上方；收款账号为 EOA 时不展示 Set Specific Amount */}
+						{!billPaymentUrl && receivingMode === 'aa' && merchantAA && ethers.isAddress(merchantAA) && (
 							<div className="mt-3 sm:mt-10">
 								{!showAmountInput ? (
 									<button

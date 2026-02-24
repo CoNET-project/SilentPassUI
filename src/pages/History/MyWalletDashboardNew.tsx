@@ -1585,7 +1585,7 @@ export default function MyWalletDashboardNew() {
 												}}
 											/>
 											<ExpressAction
-												label="Top Up"
+												label="Create Redeem"
 												iconBgClass="bg-green-500 shadow-green-500/30"
 												icon={<Plus className="w-5 h-5" />}
 												onClick={() => {

@@ -6,7 +6,8 @@ import {
   QrCode,
   Link2,
   Ticket,
-  Gift
+  Gift,
+  SmartphoneNfc
 } from "lucide-react"
 import PayScreen from '@/pages/Pay/send'
 
@@ -149,7 +150,7 @@ function DashboardTile({
   )
 }
 
-export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWorks: (val:'Pay'|''|'PayRequest'|'Cashcode'|'payme') => void}) {
+export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWorks: (val:'Pay'|''|'PayRequest'|'Cashcode'|'payme'|'PaymentNfc') => void}) {
   const nav = useNavigate()
 
   const items: DashItem[] = [
@@ -200,6 +201,14 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
       Icon: Gift,
       variant: "orange",
       onClick: () => setShowAlphaHowItWorks('PayRequest')
+    },
+    {
+      key: "payment_nfc",
+      title: "Payment\nwith NFC",
+	  //@ts-ignore
+      Icon: SmartphoneNfc,
+      variant: "blue",
+      onClick: () => setShowAlphaHowItWorks('PaymentNfc')
     }
   ]
 

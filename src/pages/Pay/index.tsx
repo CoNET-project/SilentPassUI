@@ -13,6 +13,7 @@ import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import BeamioPayMe from './BeamioPayMe'
 import Dashboard from './Dashboard'
+import PaymentWithNfc from './PaymentWithNfc'
 
 
 
@@ -30,7 +31,7 @@ const Pay = ({}) => {
 	const spSendRef=useRef()
 	const solSendRef=useRef()
 	const usdtSendRef=useRef()
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Pay'|''|'PayRequest'|'Cashcode'|'payme'>('')
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Pay'|''|'PayRequest'|'Cashcode'|'payme'|'PaymentNfc'>('')
 	const { darkModle, setDarkModle, setProfiles, power, setPower, setSendToMemo, setPaymentLink, setSecureCode, setRedeemCode, setPaymentLinkCode,
 		setPayMePayment
 	} = useDaemonContext()
@@ -215,7 +216,8 @@ const Pay = ({}) => {
 						title={
 							showAlphaHowItWorks === 'Pay' ? '':
 							showAlphaHowItWorks === 'PayRequest' ? 'Request' : 
-							showAlphaHowItWorks === 'Cashcode' ? 'Cashcode' : 'Pay Me'
+							showAlphaHowItWorks === 'Cashcode' ? 'Cashcode' : 
+							showAlphaHowItWorks === 'PaymentNfc' ? 'Payment with NFC' : 'Pay Me'
 						}
 						onClose={() => {
 							setShowAlphaHowItWorks('')
@@ -237,6 +239,9 @@ const Pay = ({}) => {
 							}
 							{
 								showAlphaHowItWorks === 'Cashcode' && <Cashcode close={( )=> setShowAlphaHowItWorks('')} />
+							}
+							{
+								showAlphaHowItWorks === 'PaymentNfc' && <PaymentWithNfc onClose={() => setShowAlphaHowItWorks('')} />
 							}
 							
 						</div>

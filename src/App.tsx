@@ -36,6 +36,7 @@ import TenKeyInput from "@/pages/Pay/components/TenKeyInput"
 import { Toast } from "antd-mobile"
 import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
 import NewCardExample from '@/pages/Vouchers/example/newCardExample'
+import BeamioTransactions from '@/pages/Vouchers/example/transfertion'
 import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -95,6 +96,7 @@ function AppShell() {
     setScanIntent,
     setVoucherPayFromScan,
 	setIsInitialLoading,
+	beamio,
 	setBeamio,
 	setRedeemFromUrl,
 	redeemResult,
@@ -105,6 +107,8 @@ function AppShell() {
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [footerVisible, setFooterVisible] = useState(true)
   const [userPreviewItem, setUserPreviewItem] = useState<searchResult | null>()
+  /** 扫码 beamio URL 中的 wallet 参数：{ beamioAccount, wallet }，PayScreen 优先使用此地址 */
+  const [preferredPayeeWallet, setPreferredPayeeWallet] = useState<{ beamioAccount: string; wallet: string } | null>(null)
   const runningRef = useRef(false)
   const pendingQueueRef = useRef<string[]>([])
   const processedIdsRef = useRef<Set<string>>(new Set())
@@ -767,6 +771,17 @@ function AppShell() {
     }
 
     if (_beamio) {
+		// 扫码自己时：直接进入我的钱包
+		if (beamio?.accountName && String(_beamio).trim().toLowerCase() === String(beamio.accountName).toLowerCase()) {
+			setScanData("")
+			navigate('/myWallet')
+			return
+		}
+		const _wallet = searchParams.get("wallet") ?? searchParams.get("Wallet") ?? ""
+		const walletAddr = _wallet.trim() && ethers.isAddress(_wallet.trim()) ? ethers.getAddress(_wallet.trim()) : null
+		if (walletAddr) {
+			setPreferredPayeeWallet({ beamioAccount: _beamio.trim(), wallet: walletAddr })
+		}
 		const user = await searchUsername(_beamio)
 		const results: searchResult[] = user?.results
 		if (!results?.length) return
@@ -981,6 +996,7 @@ function AppShell() {
 				<Route path="/ten-key-input" element={<TenKeyInput />} />
 				<Route path="/example-card" element={<EmapmpleCard />} />
 				<Route path="/example-new-card" element={<NewCardExample />} />
+				<Route path="/transfertion" element={<BeamioTransactions />} />
 				<Route path="/cardManager" element={<CardManager />} />
 				</Routes>
 			</div>
@@ -1139,8 +1155,16 @@ function AppShell() {
 							{showAlphaHowItWorks === "Pay" && userPreviewItem &&(
 								<PayScreen 
 									beamioer={userPreviewItem}
+									preferredToAddress={
+										preferredPayeeWallet &&
+										preferredPayeeWallet.beamioAccount === userPreviewItem.username &&
+										ethers.isAddress(preferredPayeeWallet.wallet)
+											? preferredPayeeWallet.wallet
+											: undefined
+									}
 									focusAmountOnMount={payFocusAmountOnMount}
 									close={() => {
+										setPreferredPayeeWallet(null)
 										setPayFocusAmountOnMount(false)
 										setShowAlphaHowItWorks('')
 										setShowFooter(true)

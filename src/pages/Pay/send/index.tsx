@@ -1,5 +1,6 @@
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import { useNavigate } from "react-router-dom"
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
 import { Card, CardContent } from "@/components/ui/card"
 import {AuthorizationSign, getBalanceProcess, postToIPFS, storeSystemData} from '@/services/beamio'
@@ -10,7 +11,7 @@ import ConformView from './ConformView'
 import base_ex from '@/components/assets/base-ex.svg'
 import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
-import { X, Check, Plus, Camera, ArrowRight, ArrowLeft, Wallet, CreditCard } from "lucide-react"
+import { X, Check, Plus, Camera, ArrowRight, ArrowLeft, Wallet, CreditCard, Zap } from "lucide-react"
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
 import { fiatPrefix, formatAmount } from '@/services/currency'
@@ -21,6 +22,7 @@ import { ethers } from 'ethers'
 import { beamioApiBase, signAAtoEOA_USDC_with_BeamioContainerMainRelayed } from '@/services/AAaccount'
 import { getAAAccount } from '@/services/BeamioCard'
 import { baseEndpoint } from '@/utils/constants'
+import contracts from '@/utils/contracts'
 
 
 
@@ -38,6 +40,19 @@ const displayName = (item: searchResult) => {
 
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
+
+const retryRpcCall = async <T,>(fn: () => Promise<T>, retries = 2): Promise<T> => {
+	let lastErr: unknown
+	for (let i = 0; i <= retries; i++) {
+		try {
+			return await fn()
+		} catch (e) {
+			lastErr = e
+			if (i < retries) await new Promise((r) => setTimeout(r, 800))
+		}
+	}
+	throw lastErr
+}
 
 const PAY_RECENT_KEY = 'beamio_pay_recent'
 const PAY_RECENT_MAX = 8
@@ -75,6 +90,8 @@ const unknowAcc = (address: string): searchResult => ({
 type Props = {
 	close: (path: string) => void
 	beamioer?: searchResult
+	/** 扫码 beamio URL 中 wallet= 指定的收款地址，优先于 beamioer.address */
+	preferredToAddress?: string
 	/** 从 Smart Account 进入时为 aa-eoa-transfer（AA 与 EOA 互转）；否则为 eoa-pay（普通付款） */
 	mode?: PayScreenMode
 	/** AA 账户 USDC 余额（aa-eoa-transfer 且 aa-to-eoa 时用于 MAX / 余额校验） */
@@ -83,7 +100,7 @@ type Props = {
 	focusAmountOnMount?: boolean
 }
 
-export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccountUsdcBalance, focusAmountOnMount}: Props) {
+export default function PayScreen ({close, beamioer, preferredToAddress, mode = 'eoa-pay', aaAccountUsdcBalance, focusAmountOnMount}: Props) {
 	
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
@@ -93,7 +110,8 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 	const [item, setItem] = useState<searchResult|null>(beamioer||null)
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<''|'ConformView'>('')
 	const [focusAmount, setFocusAmount] = useState(false)
-	const {usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, allNodes, setProfiles, setHistoryPayData, historyPayData } = useDaemonContext()
+	const { usdcbalance, beamio, setCurrencyData, currencyData, myAddress, profiles, allNodes, setProfiles, setHistoryPayData, historyPayData, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayFromScan } = useDaemonContext()
+	const navigate = useNavigate()
 	const isAaEoaTransfer = mode === 'aa-eoa-transfer'
 	const [transferDirection, setTransferDirection] = useState<'eoa-to-aa' | 'aa-to-eoa'>('aa-to-eoa')
 	const [sendError, setSendError] = useState("")
@@ -109,6 +127,8 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 	const [addedNote, setAddedNote] = useState("")
 	const [showToError, setShowToError] = useState(false)
 	const [recentRecipients, setRecentRecipients] = useState<searchResult[]>(() => loadRecentRecipients())
+	/** 受益方为 AA 时 true，用于显示 Smart Routing 胶囊并走 Smart Routing 支付 */
+	const [isPayeeAA, setIsPayeeAA] = useState<boolean | null>(null)
 
 	const selectItem = (selected: searchResult) => {
 		setItem(selected)
@@ -163,9 +183,32 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 
 	useEffect(() => {
 		if (beamioer) {
-			setItem(beamioer)
+			if (preferredToAddress && ethers.isAddress(preferredToAddress)) {
+				setItem({ ...beamioer, address: preferredToAddress })
+			} else {
+				setItem(beamioer)
+			}
 		}
-	}, [beamioer])
+	}, [beamioer, preferredToAddress])
+
+	// 受益方为 AA 时设置 isPayeeAA，用于显示 Smart Routing 胶囊（仅 eoa-pay 模式）
+	useEffect(() => {
+		if (isAaEoaTransfer || !item?.address || !ethers.isAddress(item.address)) {
+			setIsPayeeAA(null)
+			return
+		}
+		let cancelled = false
+		setIsPayeeAA(null)
+		const aaFactory = new ethers.Contract(
+			contracts.BeamioAAAcountFactory.address,
+			contracts.BeamioAAAcountFactory.abi,
+			baseEndpoint
+		)
+		retryRpcCall(() => aaFactory.isBeamioAccount(item.address))
+			.then((v) => { if (!cancelled) setIsPayeeAA(!!v) })
+			.catch(() => { if (!cancelled) setIsPayeeAA(false) })
+		return () => { cancelled = true }
+	}, [isAaEoaTransfer, item?.address])
 
 	useEffect(() => {
 		if (focusAmountOnMount) {
@@ -299,27 +342,26 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 	}
 
 
+	/** 402 签字确认：用户按下后才 ethers 签字并送往服务器；重试时重新签字 */
 	const signRequest = async () => {
-			
+		if (!message) return
 		setProcessing(true)
-		const pay = BigInt(Number(message.maxAmountRequired).toFixed(0))
-		const paymentHeader = await AuthorizationSign(pay, message.payTo)
-		const newInit = {
-			method: 'GET',
-			headers: {
-				
-				"X-PAYMENT": paymentHeader,
-				"Access-Control-Expose-Headers": "X-PAYMENT-RESPONSE"
-			},
-			__is402Retry: true
-		}
-
-		const reqUrl = message.data.reqUrl
+		setSendError('') // 重试时清除旧错误，确保重新获取 ethers 签字
 		try {
+			const pay = BigInt(Number(message.maxAmountRequired).toFixed(0))
+			const paymentHeader = await AuthorizationSign(pay, message.payTo)
+			const newInit = {
+				method: 'GET',
+				headers: {
+					"X-PAYMENT": paymentHeader,
+					"Access-Control-Expose-Headers": "X-PAYMENT-RESPONSE"
+				},
+				__is402Retry: true
+			}
+			const reqUrl = message.data.reqUrl
 			const secondResponse = await fetch(reqUrl, newInit)
 			const body = await secondResponse.json()
-			
-			
+
 			if (!secondResponse.ok) {
 				setProcessing(false)
 				return setSendError((body as { error?: string })?.error ?? 'RPC Error!')
@@ -327,13 +369,10 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 			await sendMessageToClient()
 			setProcessing(false)
 			return setSuccessHash(body.USDC_tx)
-
 		} catch (ex) {
 			setProcessing(false)
 			return setSendError('RPC Error!')
-			
 		}
-
 	}
 
 	const sendMessageToClient = async () => {
@@ -418,6 +457,12 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 				return
 			}
 			try {
+				// 签字送出前检查 currency，避免记账时遗失
+				if (!currentCurrency || !String(currentCurrency).trim()) {
+					setSendError('Currency is required for accounting')
+					setProcessing(false)
+					return
+				}
 				// 使用 containerMainRelayed 签名（绑定 to = owner EOA），金额为换算后的 USDC
 				const profileWithAA = { ...profile, aaAccount }
 				const containerPayload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayed(
@@ -486,14 +531,60 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 				return setShowToError(true)
 			}
 			toAddress = item.address
-			if (amount <= 0 || amount > usdcbalance) return
+			if (amount <= 0) return
+			// 受益方为 AA 时走 Smart Routing（会校验 AA+EOA 余额），否则需 EOA 余额充足
+			if (!isPayeeAA && amount > usdcbalance) return
+
+			// 受益方为 AA 时交由 Smart Routing Analysis 处理（isPayeeAA 已预检则直接跳转，否则 RPC 校验）
+			if (toAddress && ethers.isAddress(toAddress) && setScanData && setScanIntent && setVoucherPayAmount && setVoucherPayToAA && setVoucherPayFromScan) {
+				const doRedirectToSmartRouting = () => {
+					// 传入原始币种金额，USDC 换算由 Smart Routing Analysis 内部处理；避免 JPY 1 等小额换算成 USDC 后截断为 0
+					const nativeAmount = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
+					const paymentUrl = `https://beamio.app/Vouchers?Amount=${encodeURIComponent(nativeAmount)}&currency=${encodeURIComponent(currentCurrency)}&acceptTokens=USDC&to=${encodeURIComponent(toAddress)}`
+					setScanData(paymentUrl)
+					setScanIntent('payBill')
+					setVoucherPayAmount(nativeAmount)
+					setVoucherPayToAA(toAddress)
+					setVoucherPayFromScan(true)
+					close('')
+					// 通过 navigation state 传递 payload，确保 History 挂载时金额等数据可用（避免 context 更新时序问题）
+					navigate('/History', { state: { smartRoutingPayload: { paymentUrl, amount: nativeAmount, currency: currentCurrency, toAddress } } })
+				}
+				if (isPayeeAA) {
+					doRedirectToSmartRouting()
+					return
+				}
+				setProcessing(true)
+				try {
+					const aaFactory = new ethers.Contract(
+						contracts.BeamioAAAcountFactory.address,
+						contracts.BeamioAAAcountFactory.abi,
+						baseEndpoint
+					)
+					const payeeIsAA = await retryRpcCall(() => aaFactory.isBeamioAccount(toAddress))
+					if (payeeIsAA) {
+						doRedirectToSmartRouting()
+						return
+					}
+				} catch (e) {
+					console.warn('PayScreen: isBeamioAccount check failed, fallback to default flow', e)
+				} finally {
+					setProcessing(false)
+				}
+			}
 		}
 		const bo = beamio
 
 		const currencyAmount = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
+		// 签字送出前检查 currency，避免记账时遗失
+		if (!currentCurrency || !String(currentCurrency).trim()) {
+			setSendError('Currency is required for accounting')
+			return
+		}
 		let data1: payMe = {
 			currency: currentCurrency,
 			currencyAmount,
+			...(isAaEoaTransfer && transferDirection === 'eoa-to-aa' && { isInternalTransfer: true }),
 		}
 
 
@@ -877,7 +968,15 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 								/>
 							</section>
 
-							{/* PAYING FROM - 支付账号 EOA/AA 信息与余额 */}
+							{/* 受益方为 AA：显示紫色 Smart Routing 胶囊；否则显示 Paying from */}
+							{isPayeeAA ? (
+								<section className="mt-4 flex justify-center">
+									<div className="inline-flex items-center gap-2 rounded-full bg-violet-100 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-700/60 px-4 py-2.5">
+										<Zap size={18} className="text-violet-600 dark:text-violet-400 shrink-0" />
+										<span className="font-semibold text-violet-700 dark:text-violet-300">Smart Routing Analysis</span>
+									</div>
+								</section>
+							) : (
 							<section className="mt-4 rounded-2xl bg-white dark:bg-slate-800/50 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
 								<div className="flex items-center justify-between px-4 pt-3 pb-2">
 									<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">Paying from</span>
@@ -937,6 +1036,7 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 									</div>
 								</div>
 							</section>
+							)}
 						</>
 						)}
 
@@ -1070,7 +1170,11 @@ export default function PayScreen ({close, beamioer, mode = 'eoa-pay', aaAccount
 								loading={processing}
 								errorText={sendError}
 							>
-								{message ? 'Confirm': 'Send'}
+								{message
+									? (sendError ? 'Retry' : 'Confirm & Sign')
+									: isAaEoaTransfer && transferDirection === 'aa-to-eoa' && sendError
+										? 'Retry'
+										: 'Send'}
 							</AppButton>
 						</div>
 					</div>

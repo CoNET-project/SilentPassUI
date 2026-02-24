@@ -14,8 +14,8 @@ type DaemonContext = {
 	setMessageCount: React.Dispatch<React.SetStateAction<number>>
 	scanData: string
 	setScanData: (val: string) => void
-	scanIntent: '' | 'voucherPay' | 'payBill'
-	setScanIntent: (val: '' | 'voucherPay' | 'payBill') => void
+	scanIntent: '' | 'voucherPay' | 'payBill' | 'payByNfc'
+	setScanIntent: (val: '' | 'voucherPay' | 'payBill' | 'payByNfc') => void
 	voucherPayAmount: string
 	setVoucherPayAmount: (val: string) => void
 	voucherPayToAA: string
@@ -380,7 +380,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const msgCountLockRef = useRef(false) // 可选：避免同一帧重复统计
 	const [messageCount, setMessageCount] = useState(0)
 	const [scanData, setScanData] = useState('')
-	const [scanIntent, setScanIntent] = useState<'' | 'voucherPay' | 'payBill'>('')
+	const [scanIntent, setScanIntent] = useState<'' | 'voucherPay' | 'payBill' | 'payByNfc'>('')
 	const [voucherPayAmount, setVoucherPayAmount] = useState('')
 	const [voucherPayToAA, setVoucherPayToAA] = useState('')
 	const [voucherPayError, setVoucherPayError] = useState('')

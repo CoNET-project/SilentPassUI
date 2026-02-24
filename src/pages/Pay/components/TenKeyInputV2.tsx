@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, QrCode, Loader, Check, X, RefreshCw, Zap, Copy, ExternalLink, Wallet, CreditCard } from 'lucide-react'
+import { Camera, QrCode, Loader, Loader2, Check, X, RefreshCw, Zap, Copy, ExternalLink, Wallet, CreditCard, SmartphoneNfc } from 'lucide-react'
 import ShowPayQR from "@/pages/Vouchers/showPayQR"
 import ConformView from '@/pages/Pay/send/ConformView'
 import { AppButton } from '@/components/button/AppButton'
@@ -8,12 +8,12 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from 'ethers'
 import type { OpenContainerRelayPayload } from '@/services/AAaccount'
 import { beamioApiBase, readContainerNonceFromAAStorage, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from '@/services/AAaccount'
-import { AuthorizationSign, checkRequestStatus } from '@/services/beamio'
 import { getAAAccount } from '@/services/BeamioCard'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import contracts from '@/utils/contracts'
 import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC } from '@/utils/constants'
-import { searchUsername } from '@/services/beamio'
+import { AuthorizationSign, checkRequestStatus, searchUsername, fetchNfcCardStatus, payByNfcUid, nfcTopup } from '@/services/beamio'
+import { useNfcRead } from '@/hooks/useNfcRead'
 import { formatAmount, fiatPrefix } from '@/services/currency'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -40,6 +40,8 @@ interface TenKeyInputProps {
 	currency?: string
 	onScanUser?: () => void
 	onShowQR?: () => void
+	onPaymentWithNfc?: () => void
+	onNfcTopup?: () => void
 	/** 显示在金额与键盘之间的错误信息（如 QR 最大金额不足） */
 	errorMessage?: string
 }
@@ -53,6 +55,8 @@ const TenKeyInput = ({
 	currency = "$",
 	onScanUser,
 	onShowQR,
+	onPaymentWithNfc,
+	onNfcTopup,
 	errorMessage,
 }: TenKeyInputProps) => {
 	const handleKeyClick = (key: number | string) => {
@@ -118,8 +122,8 @@ const TenKeyInput = ({
 			</div>
 
 			{/* 底部操作按钮 */}
-			{(onScanUser || onShowQR) && (
-				<div className="grid grid-cols-2 gap-2 shrink-0 px-3 pb-4 pt-1">
+			{(onScanUser || onShowQR || onPaymentWithNfc || onNfcTopup) && (
+				<div className="grid grid-cols-2 sm:grid-cols-3 gap-2 shrink-0 px-3 pb-4 pt-1">
 					{onScanUser && (
 						<button
 							type="button"
@@ -129,6 +133,28 @@ const TenKeyInput = ({
 						>
 							<Camera size={20} />
 							<span className="text-[10px] font-bold uppercase tracking-wider">SCAN USER</span>
+						</button>
+					)}
+					{onPaymentWithNfc && (
+						<button
+							type="button"
+							onClick={onPaymentWithNfc}
+							disabled={!value}
+							className="h-14 rounded-xl bg-[#0d9488] text-white shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all"
+						>
+							<SmartphoneNfc size={20} />
+							<span className="text-[10px] font-bold uppercase tracking-wider">NFC</span>
+						</button>
+					)}
+					{onNfcTopup && (
+						<button
+							type="button"
+							onClick={onNfcTopup}
+							disabled={!value}
+							className="h-14 rounded-xl bg-amber-500 text-white shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all"
+						>
+							<SmartphoneNfc size={20} />
+							<span className="text-[10px] font-bold uppercase tracking-wider">NFC Topup</span>
 						</button>
 					)}
 					{onShowQR && (
@@ -360,6 +386,9 @@ export type ConfirmDeductionPayload = {
 	totalRequestedStrFiat?: string
 	/** Bill 支付方无 AA、仅用 EOA USDC 支付（受益方可为 AA 或 EOA） */
 	billPayerEoaOnly?: boolean
+	/** NFC 卡支付：使用 UID 调用 payByNfcUid 端点 */
+	isNfcPay?: boolean
+	nfcUid?: string
 }
 
 function ConfirmDeductionView({
@@ -756,15 +785,189 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 	)
 }
 
+/** NFC Topup 底部滑出页：读取 UID，发送 amount+UID 到 API */
+function NfcTopupBottomSheet({
+	open,
+	onClose,
+	amount,
+	currency,
+	readUid,
+	nfcTopup,
+}: {
+	open: boolean
+	onClose: () => void
+	amount: string
+	currency: string
+	readUid: () => Promise<string | null>
+	nfcTopup: (params: { uid: string; amount: string; currency?: string }) => Promise<{ success: boolean; txHash?: string; error?: string }>
+}) {
+	const [uid, setUid] = React.useState<string | null>(null)
+	const [manualUid, setManualUid] = React.useState('')
+	const [status, setStatus] = React.useState<'idle' | 'reading' | 'submitting' | 'success' | 'error'>('idle')
+	const [error, setError] = React.useState<string | null>(null)
+	const [txHash, setTxHash] = React.useState<string | null>(null)
+
+	React.useEffect(() => {
+		if (!error) return
+		const t = setTimeout(() => setError(null), 5000)
+		return () => clearTimeout(t)
+	}, [error])
+
+	const handleRead = async () => {
+		const trimmed = manualUid.trim()
+		if (trimmed) {
+			setUid(trimmed)
+			setStatus('idle')
+			await handleTopup(trimmed)
+			return
+		}
+		setStatus('reading')
+		setError(null)
+		setUid(null)
+		const result = await readUid()
+		if (result) {
+			setUid(result)
+			setStatus('idle')
+		} else {
+			setError('NFC 读取失败，请重试')
+			setStatus('error')
+		}
+	}
+
+	const handleTopup = async (overrideUid?: string) => {
+		const uidToUse = overrideUid ?? uid
+		if (!uidToUse || !amount) return
+		setStatus('submitting')
+		setError(null)
+		try {
+			const result = await nfcTopup({ uid: uidToUse, amount, currency })
+			if (result.success && result.txHash) {
+				setTxHash(result.txHash)
+				setStatus('success')
+			} else {
+				setError(result.error ?? 'Topup 失败')
+				setStatus('error')
+			}
+		} catch (e) {
+			setError((e as Error)?.message ?? 'Request failed')
+			setStatus('error')
+		}
+	}
+
+	const handleClose = () => {
+		setUid(null)
+		setManualUid('')
+		setStatus('idle')
+		setError(null)
+		setTxHash(null)
+		onClose()
+	}
+
+	return (
+		<div className={["fixed inset-0 z-50", open ? "pointer-events-auto" : "pointer-events-none"].join(" ")}>
+			<div
+				className={["absolute inset-0 bg-black/50 transition-opacity duration-300", open ? "opacity-100" : "opacity-0"].join(" ")}
+				onClick={handleClose}
+			/>
+			<div
+				className={["absolute inset-x-0 bottom-0 transition-transform duration-300 bg-white dark:bg-slate-900 rounded-t-[32px] max-h-[90vh] overflow-y-auto", open ? "translate-y-0" : "translate-y-full"].join(" ")}
+				onTouchMove={(e) => e.stopPropagation()}
+			>
+				<div className="sticky top-0 z-10 flex justify-end p-4 bg-white dark:bg-slate-900">
+					<button type="button" onClick={handleClose} className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300">
+						<X className="w-6 h-6" />
+					</button>
+				</div>
+				<div className="px-6 pb-8">
+					<div className="flex flex-col items-center gap-6">
+						<div className="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+							<SmartphoneNfc className="w-10 h-10 text-amber-600 dark:text-amber-400" strokeWidth={2} />
+						</div>
+						<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">NFC Topup</h2>
+						<p className="text-2xl font-black text-amber-600 dark:text-amber-400">CA${amount}</p>
+						<p className="text-sm text-slate-500 dark:text-slate-400">将 NTAG 424 DNA 卡靠近手机背面，或手工输入 UID</p>
+						{!uid ? (
+							<>
+								<div className="w-full">
+									<label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">手工输入 UID（可选）</label>
+									<input
+										type="text"
+										value={manualUid}
+										onChange={(e) => setManualUid(e.target.value)}
+										placeholder="例如：04A1B2C3D4E5F6"
+										className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono text-sm border-0 focus:ring-2 focus:ring-amber-500"
+									/>
+								</div>
+								<button
+									type="button"
+									onClick={handleRead}
+									disabled={status === 'reading' || status === 'submitting'}
+									className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+								>
+									{status === 'reading' ? <Loader2 className="w-5 h-5 animate-spin" /> : <SmartphoneNfc className="w-5 h-5" />}
+									{status === 'reading' ? '请靠近 NFC 卡...' : manualUid.trim() ? '确认 Topup（使用手工 UID）' : '读取 NFC 卡'}
+								</button>
+							</>
+						) : status === 'success' ? (
+							<div className="w-full text-center">
+								<Check className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
+								<p className="font-semibold text-emerald-600 dark:text-emerald-400">Topup 成功</p>
+								{txHash && (
+									<a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 mt-2 block">
+										{txHash.slice(0, 10)}…{txHash.slice(-8)}
+									</a>
+								)}
+								<button type="button" onClick={handleClose} className="mt-4 w-full py-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">
+									完成
+								</button>
+							</div>
+						) : (
+							<>
+								<div className="w-full rounded-lg bg-slate-100 dark:bg-slate-800 px-4 py-3">
+									<p className="text-xs text-slate-500 mb-1">UID</p>
+									<p className="font-mono text-sm break-all text-slate-800 dark:text-slate-200">{uid}</p>
+								</div>
+								<button
+									type="button"
+									onClick={() => handleTopup()}
+									disabled={status === 'submitting'}
+									className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+								>
+									{status === 'submitting' ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+									{status === 'submitting' ? '提交中...' : '确认 Topup'}
+								</button>
+								<button type="button" onClick={handleRead} className="text-sm text-slate-500 hover:text-slate-700">
+									重新读取
+								</button>
+							</>
+						)}
+						{error && (
+							<div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
+								<X className="w-5 h-5 flex-shrink-0" />
+								<span>{error}</span>
+							</div>
+						)}
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+
 export type TenKeyInputComponentProps = {
 	/** 支付成功并点击 Done 后调用，用于关闭本组件并回到父页面（父页面可在此安排刷新 AA 资产等） */
 	onPaymentSuccess?: () => void
+	/** PayScreen 重定向时传入的 payload，当 context 中 scanData 为空时使用，确保金额正确 */
+	initialSmartRoutingPayload?: { paymentUrl: string; amount: string; currency: string; toAddress: string } | null
+	/** 消费 payload 后调用，供父组件清空 */
+	onPayloadConsumed?: () => void
 }
 
 const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
-	const { onPaymentSuccess } = props
+	const { onPaymentSuccess, initialSmartRoutingPayload, onPayloadConsumed } = props
 	const [value, setValue] = useState('')
 	const [showQRSheet, setShowQRSheet] = useState(false)
+	const [showNfcTopupSheet, setShowNfcTopupSheet] = useState(false)
 	const [routingSteps, setRoutingSteps] = useState<RoutingStep[]>(() =>
 		ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus }))
 	)
@@ -775,6 +978,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 	const [paymentSuccessData, setPaymentSuccessData] = useState<PaymentSuccessData | null>(null)
 	const [eoaTransferMessage, setEoaTransferMessage] = useState<any>(null)
 	const routingDoneRef = useRef(false)
+	const { readUid } = useNfcRead()
 	const {
 		beamio,
 		profiles,
@@ -859,10 +1063,9 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		return (cur === 'JPY' || cur === 'TWD' ? Math.round(amountCur) : amountCur.toFixed(2)).toString()
 	}
 
-	// 每次挂载时清空上一次遗留的 scan/voucher 状态；若已是 voucherPay/payBill 则保留 scanData/scanIntent 及金额（voucherPayAmount）供本组件消费
-	// 仅当不在 voucherPay/payBill 时清空，避免用户点击 Scan User 后 setScanIntent('voucherPay') 触发本 effect 把刚设的 voucherPayAmount 清掉导致 Analyzing Assets 出现 Skipped (zero amount)
+	// 每次挂载时清空上一次遗留的 scan/voucher 状态；若已是 voucherPay/payBill/payByNfc 则保留
 	useEffect(() => {
-		if (scanIntent !== 'voucherPay' && scanIntent !== 'payBill') {
+		if (scanIntent !== 'voucherPay' && scanIntent !== 'payBill' && scanIntent !== 'payByNfc') {
 			setScanData('')
 			setScanIntent('')
 			setVoucherPayAmount('')
@@ -872,23 +1075,40 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		}
 	}, [scanIntent, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
 
+	// 进入 voucherPay / payBill / payByNfc 时重置步骤为 pending（等待 scanData），并清空确认
+	useEffect(() => {
+		if (scanIntent === 'voucherPay' || scanIntent === 'payBill' || scanIntent === 'payByNfc') {
+			setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
+			setConfirmDeduction(null)
+			routingDoneRef.current = false
+		}
+	}, [scanIntent])
+
 	// 输入变化时清除扫码错误提示
 	useEffect(() => {
 		if (voucherPayError) setVoucherPayError('')
 	}, [value])
 
-	// payBill：进入后自动打开扫描，让用户扫商家的 bill paymentUrl
+	// payBill：仅当 scanData 和 initialSmartRoutingPayload 均为空时自动打开扫描；若已有数据则直接走 Smart Routing
 	useEffect(() => {
-		if (scanIntent === 'payBill') {
+		if (scanIntent === 'payBill' && !scanData && !initialSmartRoutingPayload?.paymentUrl) {
 			scanRef.current?.start()
 		}
-	}, [scanIntent, scanRef])
+	}, [scanIntent, scanData, initialSmartRoutingPayload?.paymentUrl, scanRef])
 
 	// voucherPay 流程：当 scanIntent === 'voucherPay' 且 scanData 到位时执行步骤并更新 UI；也处理 payBill 扫到的 paymentUrl
+	// PayScreen 重定向时 scanData 可能尚未同步，使用 initialSmartRoutingPayload 作为 fallback
 	useEffect(() => {
 		const isVoucherOrBill = scanIntent === 'voucherPay' || scanIntent === 'payBill'
-		if (!isVoucherOrBill || !scanData || routingDoneRef.current) return
+		const effectiveScanData = scanData || initialSmartRoutingPayload?.paymentUrl
+		if (!isVoucherOrBill || !effectiveScanData || routingDoneRef.current) return
 		routingDoneRef.current = true
+		if (initialSmartRoutingPayload && !scanData) {
+			setScanData(initialSmartRoutingPayload.paymentUrl)
+			setVoucherPayAmount(initialSmartRoutingPayload.amount)
+			setVoucherPayToAA(initialSmartRoutingPayload.toAddress)
+			onPayloadConsumed?.()
+		}
 		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
 
 		const setStep = (id: string, status: StepStatus, detail?: string) => {
@@ -928,7 +1148,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 
 			// --- Bill paymentUrl 分支：Amount、currency、acceptTokens、to 均为必选项，缺一视为非法 bill ---
 			try {
-				const u = scanData.startsWith('http') ? new URL(scanData) : new URL(scanData, 'http://beamio.app')
+				const u = effectiveScanData.startsWith('http') ? new URL(effectiveScanData) : new URL(effectiveScanData, 'http://beamio.app')
 				const amountParam = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
 				const currencyParam = u.searchParams.get('currency') ?? u.searchParams.get('Currency') ?? ''
 				const acceptTokensParam = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
@@ -1239,8 +1459,11 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 							billPayeeAA: billPayeeAddr,
 							billPayeeIsEOA: false,
 							billPayerEoaOnly: true,
+							billCurrency: currencyParam,
 							amountStrFiat,
 							totalRequestedStrFiat: amountStrFiat,
+							usdcFromBalanceFiat: amountStrFiat,
+							usdcFromCCSAFiat: undefined,
 							usdcFromBalanceWeiStr: enteredWei.toString(),
 							forText: u.searchParams.get('forText') ?? undefined,
 							billRequestHash: (() => {
@@ -1709,17 +1932,97 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			// 不在此处 submit；等用户确认后再提交
 			return
 		})()
-	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, profiles, routingRetryTrigger, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
+	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, profiles, routingRetryTrigger, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError, initialSmartRoutingPayload, onPayloadConsumed])
+
+	// payByNfc 流程：UID 已就绪时执行 Smart Routing 步骤并设置确认
+	useEffect(() => {
+		if (scanIntent !== 'payByNfc' || !scanData || !voucherPayAmount || !voucherPayToAA || routingDoneRef.current) return
+		routingDoneRef.current = true
+		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
+		const setStep = (id: string, status: StepStatus, detail?: string) => {
+			setRoutingSteps((prev) =>
+				prev.map((s) => (s.id === id ? { ...s, status, ...(detail != null ? { detail } : {}) } : s))
+			)
+		}
+		const loadingDelay = () => new Promise<void>((r) => setTimeout(r, 2000))
+		const doneDelay = () => new Promise<void>((r) => setTimeout(r, 2000))
+		;(async () => {
+			const payeeAA = ethers.getAddress(voucherPayToAA)
+			setStep('detectingUser', 'loading')
+			await loadingDelay()
+			try {
+				const aaFactory = new ethers.Contract(
+					contracts.BeamioAAAcountFactory.address,
+					contracts.BeamioAAAcountFactory.abi,
+					baseEndpoint
+				)
+				const isBeamio = await retryRpcCall(() => aaFactory.isBeamioAccount(payeeAA))
+				if (!isBeamio) {
+					setStep('detectingUser', 'error', 'Payee is not a Beamio AA account')
+					routingDoneRef.current = false
+					return
+				}
+			} catch (e) {
+				setStep('detectingUser', 'error', RPC_ERROR_MSG)
+				routingDoneRef.current = false
+				return
+			}
+			setStep('detectingUser', 'success', 'Merchant validated')
+			await doneDelay()
+			setStep('membership', 'loading')
+			await loadingDelay()
+			setStep('membership', 'success', 'NFC card payment')
+			await doneDelay()
+			setStep('analyzingAssets', 'loading')
+			await loadingDelay()
+			setStep('analyzingAssets', 'success', 'NFC card balance')
+			await doneDelay()
+			setStep('optimizingRoute', 'loading')
+			await loadingDelay()
+			setStep('optimizingRoute', 'success', 'Direct: NFC → Merchant')
+			await doneDelay()
+			const rates = ensureOracle()
+			const amountUsdc6 = fiatToUsdc6(rates, voucherPayAmount, 'CAD')
+			const amountStr = ethers.formatUnits(amountUsdc6, 6)
+			let amountStrCAD: string | undefined
+			try {
+				amountStrCAD = usdcToCadStr(rates, amountStr)
+			} catch {
+				amountStrCAD = voucherPayAmount
+			}
+			const syntheticPayload: OpenContainerRelayPayload = {
+				account: ethers.ZeroAddress,
+				to: payeeAA,
+				items: [],
+				currencyType: 4,
+				maxAmount: '0',
+				nonce: '0',
+				deadline: String(Math.floor(Date.now() / 1000) + 300),
+				signature: '0x',
+			}
+			setConfirmDeduction({
+				payload: syntheticPayload,
+				amountStr,
+				usdcFromBalance: amountStr,
+				usdcFromCCSA: '0',
+				customerUsdcBalance: '0',
+				totalRequestedStr: amountStr,
+				amountStrCAD,
+				usdcFromBalanceCAD: amountStrCAD,
+				usdcFromCCSACAD: '0',
+				customerUsdcBalanceCAD: '0',
+				totalRequestedStrCAD: amountStrCAD,
+				usdcFromBalanceWeiStr: amountUsdc6.toString(),
+				ccsaPointsWeiStr: undefined,
+				payerDisplayName: 'NFC Card',
+				payeeDisplayName: undefined,
+				isNfcPay: true,
+				nfcUid: scanData,
+			})
+		})()
+	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, routingRetryTrigger])
 
 	// 进入 voucherPay / payBill 时重置步骤为 pending（等待 scanData），并清空确认
-	useEffect(() => {
-		if (scanIntent === 'voucherPay' || scanIntent === 'payBill') {
-			setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
-			setConfirmDeduction(null)
-			routingDoneRef.current = false
-		}
-	}, [scanIntent])
-
 	const setStepById = (id: string, status: StepStatus, detail?: string) => {
 		setRoutingSteps((prev) =>
 			prev.map((s) => (s.id === id ? { ...s, status, ...(detail != null ? { detail } : {}) } : s))
@@ -1730,6 +2033,49 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		if (!confirmDeduction || submitting) return
 		const data = confirmDeduction
 		setSubmitting(true)
+
+		// NFC 卡支付：调用 payByNfcUid 端点
+		if (data.isNfcPay && data.nfcUid && voucherPayToAA) {
+			setConfirmDeduction(null)
+			setStepById('sendTx', 'loading', 'Submitting…')
+			try {
+				const amountUsdc6 = data.usdcFromBalanceWeiStr ?? ethers.parseUnits(data.amountStr, 6).toString()
+				const result = await payByNfcUid({
+					uid: data.nfcUid,
+					amountUsdc6,
+					payee: voucherPayToAA,
+				})
+				setStepById('sendTx', 'success', 'Sent')
+				if (result.success && result.USDC_tx) {
+					setSuccessTxHash(result.USDC_tx)
+					setStepById('waitTx', 'success', 'Transaction complete')
+					const amountCAD = data.amountStrCAD ?? data.amountStr
+					const amountUSDC = data.amountStr
+					const rate = amountCAD && amountUSDC ? (Number(amountUSDC) / Number(amountCAD)).toFixed(4) : undefined
+					setPaymentSuccessData({
+						txHash: result.USDC_tx,
+						amountCAD,
+						amountUSDC,
+						exchangeRateCADtoUSDC: rate,
+						recipientName: data.payeeDisplayName,
+					})
+				} else {
+					setSubmitting(false)
+					setStepById('waitTx', 'error', result.error ?? 'Payment failed')
+					setVoucherPayError(result.error ?? 'Payment failed')
+					return
+				}
+			} catch (e) {
+				console.warn('payByNfcUid failed', e)
+				setSubmitting(false)
+				const errMsg = (e as Error)?.message ?? 'Request failed'
+				setStepById('sendTx', 'error', errMsg)
+				setVoucherPayError(errMsg)
+				return
+			}
+			setSubmitting(false)
+			return
+		}
 
 		// Bill 支付方无 AA（EOA-only）或 受益方为 EOA 且使用 EOA→EOA：走 BeamioTransfer 402 流程（需 ConformView 二次确认）
 		// useAaPlusEoa 时在下方直接执行两次转账，不走此分支
@@ -1782,6 +2128,13 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				MessageData.data = msgData
 				MessageData.data.reqUrl = requestEndpoint
 				MessageData.reqUrl = requestEndpoint
+				// 来自 Pay 重定向（Smart Routing）：跳过 402 签字确认页，直接签字发送
+				if (initialSmartRoutingPayload) {
+					setConfirmDeduction(null)
+					setStepById('sendTx', 'loading', 'Signing…')
+					await handleSignEoaTransfer(MessageData)
+					return
+				}
 				setEoaTransferMessage(MessageData)
 				setConfirmDeduction(null)
 			} catch (e) {
@@ -1892,6 +2245,8 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		}
 
 		setConfirmDeduction(null)
+		// 立即显示 Sending transaction loading，避免返回 Smart Routing 时长时间无反馈
+		setStepById('sendTx', 'loading', 'Preparing…')
 		// Build items from deduction split: only include items with amount > 0; do not add zero-amount items.
 		const usdcWei = data.usdcFromBalanceWeiStr ? BigInt(data.usdcFromBalanceWeiStr) : 0n
 		const ccsaPointsWei = data.ccsaPointsWeiStr ? BigInt(data.ccsaPointsWeiStr) : 0n
@@ -1939,8 +2294,9 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setStepById('sendTx', 'loading', 'Submitting…')
 		try {
 			const url = `${beamioApiBase.replace(/\/$/, '')}/api/AAtoEOA`
-			// currency 和 currencyAmount 用于服务器端记账：按 item 拆分
+			// currency 和 currencyAmount 用于服务器端记账：使用 bill 请求币种（如 JPY），无则用 CAD
 			// 如果 items.length > 1，需要发送数组形式的 currency 和 currencyAmount
+			const reqCur = (data.billCurrency || 'CAD').toUpperCase()
 			const USDCContract_BASE_lower = USDCContract_BASE.toLowerCase()
 			const CCSA_Card_Address_lower = CCSA_Card_Address.toLowerCase()
 			let currency: string | string[]
@@ -1954,34 +2310,36 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					const itemAssetLower = item.asset.toLowerCase()
 					if (item.kind === 0 && itemAssetLower === USDCContract_BASE_lower) {
 						// USDC item
-						currencyArray.push('CAD')
-						currencyAmountArray.push(data.usdcFromBalanceCAD ?? data.amountStrCAD ?? data.amountStr)
+						currencyArray.push(reqCur)
+						currencyAmountArray.push(data.billCurrency ? (data.usdcFromBalanceFiat ?? data.amountStrFiat ?? data.amountStr) : (data.usdcFromBalanceCAD ?? data.amountStrCAD ?? data.amountStr))
 					} else if (item.kind === 1 && itemAssetLower === CCSA_Card_Address_lower) {
 						// CCSA item
-						currencyArray.push('CAD')
-						currencyAmountArray.push(data.usdcFromCCSACAD ?? data.amountStrCAD ?? data.amountStr)
+						currencyArray.push(reqCur)
+						currencyAmountArray.push(data.billCurrency ? (data.usdcFromCCSAFiat ?? data.amountStrFiat ?? data.amountStr) : (data.usdcFromCCSACAD ?? data.amountStrCAD ?? data.amountStr))
 					} else {
 						// 其他类型（不应该发生，但兜底）
-						currencyArray.push('CAD')
-						currencyAmountArray.push(data.amountStrCAD ?? data.amountStr)
+						currencyArray.push(reqCur)
+						currencyAmountArray.push(data.billCurrency ? (data.amountStrFiat ?? data.amountStr) : (data.amountStrCAD ?? data.amountStr))
 					}
 				}
 				currency = currencyArray
 				currencyAmount = currencyAmountArray
 			} else {
 				// 单个 item：使用单个值
-				currency = 'CAD'
-				currencyAmount = data.totalRequestedStrCAD ?? data.amountStrCAD ?? data.amountStr
+				currency = reqCur
+				currencyAmount = data.billCurrency ? (data.totalRequestedStrFiat ?? data.amountStrFiat ?? data.amountStr) : (data.totalRequestedStrCAD ?? data.amountStrCAD ?? data.amountStr)
 			}
 
 			// 会员折扣：送出 currencyDiscount（折扣金额）和 currencyDiscountAmount（折后实付），供服务器记账
 			const discountVal = data.hasDiscount && data.totalRequestedStr != null && data.amountStr != null
-				? (data.totalRequestedStrCAD != null && data.amountStrCAD != null
-					? Number(data.totalRequestedStrCAD) - Number(data.amountStrCAD)
-					: Number(data.totalRequestedStr) - Number(data.amountStr))
+				? (data.billCurrency && data.totalRequestedStrFiat != null && data.amountStrFiat != null
+					? Number(data.totalRequestedStrFiat) - Number(data.amountStrFiat)
+					: data.totalRequestedStrCAD != null && data.amountStrCAD != null
+						? Number(data.totalRequestedStrCAD) - Number(data.amountStrCAD)
+						: Number(data.totalRequestedStr) - Number(data.amountStr))
 				: null
 			const currencyDiscount = discountVal != null ? String(discountVal) : undefined
-			const currencyDiscountAmount = data.hasDiscount ? (data.amountStrCAD ?? data.amountStr) : undefined
+			const currencyDiscountAmount = data.hasDiscount ? (data.billCurrency ? (data.amountStrFiat ?? data.amountStr) : (data.amountStrCAD ?? data.amountStr)) : undefined
 			const bodyPayload: Record<string, unknown> = {
 				openContainerPayload: payload,
 				currency,
@@ -2037,13 +2395,15 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setSubmitting(false)
 	}
 
-	const handleSignEoaTransfer = async () => {
-		if (!eoaTransferMessage || submitting || !profiles?.[0]) return
+	const handleSignEoaTransfer = async (messageOverride?: any) => {
+		const msg = messageOverride ?? eoaTransferMessage
+		if (!msg || submitting || !profiles?.[0]) return
 		setSubmitting(true)
+		setVoucherPayError('') // 重试时清除旧错误，确保重新获取 ethers 签字
 		try {
-			const pay = BigInt(Number(eoaTransferMessage.maxAmountRequired).toFixed(0))
-			const paymentHeader = await AuthorizationSign(pay, eoaTransferMessage.payTo)
-			const res = await fetch(eoaTransferMessage.reqUrl ?? eoaTransferMessage.data?.reqUrl, {
+			const pay = BigInt(Number(msg.maxAmountRequired).toFixed(0))
+			const paymentHeader = await AuthorizationSign(pay, msg.payTo)
+			const res = await fetch(msg.reqUrl ?? msg.data?.reqUrl, {
 				method: 'GET',
 				headers: { 'X-PAYMENT': paymentHeader, 'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE' },
 			})
@@ -2054,7 +2414,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				setSuccessTxHash(body.USDC_tx)
 				setStepById('sendTx', 'success', 'Sent')
 				setStepById('waitTx', 'success', 'Transaction complete')
-				const amt = eoaTransferMessage.data?.amount ?? eoaTransferMessage.amount ?? '0'
+				const amt = msg.data?.amount ?? msg.amount ?? '0'
 				setPaymentSuccessData({
 					txHash: body.USDC_tx,
 					amountCAD: amt,
@@ -2085,8 +2445,12 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setVoucherPayFromScan?.(false)
 		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
 		routingDoneRef.current = false
-		// 保持 scanIntent 为 payBill/voucherPay，回到 Smart Routing 等待新扫描；重新打开扫码
-		scanRef.current?.start()
+		// payByNfc 取消时回到主界面；voucherPay/payBill 保持 scanIntent，重新打开扫码
+		if (scanIntent === 'payByNfc') {
+			setScanIntent('')
+		} else {
+			scanRef.current?.start()
+		}
 	}
 
 	/**
@@ -2131,14 +2495,51 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setShowQRSheet(true)
 	}
 
+	const handleNfcTopup = () => {
+		if (!value || Number(value) <= 0) return
+		setShowNfcTopupSheet(true)
+	}
+
+	const handlePaymentWithNfc = async () => {
+		if (!value || Number(value) <= 0) return
+		const merchantAA = profiles?.[0]?.aaAccount ?? ''
+		if (!merchantAA || !ethers.isAddress(merchantAA)) {
+			setVoucherPayError('Merchant AA not found')
+			return
+		}
+		setVoucherPayError('')
+		const uid = await readUid()
+		if (!uid) {
+			setVoucherPayError('NFC 读取失败，请重试')
+			return
+		}
+		try {
+			const result = await fetchNfcCardStatus(uid)
+			if (!result.registered) {
+				setVoucherPayError('不存在该卡')
+				return
+			}
+			if (!result.address) {
+				setVoucherPayError('卡已登记但无法获取地址')
+				return
+			}
+			setVoucherPayAmount(value)
+			setVoucherPayToAA(merchantAA)
+			setScanData(uid)
+			setScanIntent('payByNfc')
+		} catch (e) {
+			setVoucherPayError((e as Error)?.message ?? '查询失败')
+		}
+	}
+
 	// 商家 bill 必选项：Amount、currency、acceptTokens、to（收款方 AA）；to 为当前商家 AA，支付方扫码后款项转入此地址
 	const merchantAA = profiles?.[0]?.aaAccount
 	const paymentUrl = value && merchantAA && ethers.isAddress(merchantAA)
 		? `http://beamio.app/Vouchers?Amount=${encodeURIComponent(value)}&currency=CAD&acceptTokens=USDC,CCSA&to=${encodeURIComponent(merchantAA)}`
 		: ''
 
-	// voucherPay / payBill workflow：Confirm → Submitting 成功 → 显示 PaymentSuccessView；仅当用户点击「Done & Go to Chat」才 onPaymentSuccess 回到父页面（不在此前关闭）
-	if (scanIntent === 'voucherPay' || scanIntent === 'payBill') {
+	// voucherPay / payBill / payByNfc workflow：Confirm → Submitting 成功 → 显示 PaymentSuccessView；仅当用户点击「Done & Go to Chat」才 onPaymentSuccess 回到父页面（不在此前关闭）
+	if (scanIntent === 'voucherPay' || scanIntent === 'payBill' || scanIntent === 'payByNfc') {
 		if (paymentSuccessData) {
 			return (
 				<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -2214,6 +2615,8 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					currency="$"
 					onScanUser={handleScanUser}
 					onShowQR={handleShowQR}
+					onPaymentWithNfc={handlePaymentWithNfc}
+					onNfcTopup={handleNfcTopup}
 					errorMessage={voucherPayError}
 				/>
 			</div>
@@ -2295,6 +2698,16 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					</div>
 				</div>
 			</div>
+
+			{/* NFC Topup 底部滑出 */}
+			<NfcTopupBottomSheet
+				open={showNfcTopupSheet}
+				onClose={() => setShowNfcTopupSheet(false)}
+				amount={value}
+				currency="CAD"
+				readUid={readUid}
+				nfcTopup={nfcTopup}
+			/>
 		</>
 	)
 }

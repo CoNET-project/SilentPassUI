@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, QrCode, Loader, Check, X, RefreshCw, Zap, Copy, ExternalLink } from 'lucide-react'
+import { Camera, QrCode, Loader, Check, X, RefreshCw, Zap, Copy, ExternalLink, SmartphoneNfc } from 'lucide-react'
 import ShowPayQR from "@/pages/Vouchers/showPayQR"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from 'ethers'
@@ -9,7 +9,8 @@ import { beamioApiBase, readContainerNonceFromAAStorage, signAAtoEOA_USDC_with_B
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import contracts from '@/utils/contracts'
 import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC } from '@/utils/constants'
-import { searchUsername } from '@/services/beamio'
+import { searchUsername, fetchNfcCardStatus, payByNfcUid } from '@/services/beamio'
+import { useNfcRead } from '@/hooks/useNfcRead'
 import { formatAmount } from '@/services/currency'
 
 
@@ -23,6 +24,7 @@ interface TenKeyInputProps {
 	currency?: string
 	onScanUser?: () => void
 	onShowQR?: () => void
+	onPaymentWithNfc?: () => void
 	/** 显示在金额与键盘之间的错误信息（如 QR 最大金额不足） */
 	errorMessage?: string
 }
@@ -36,6 +38,7 @@ const TenKeyInput = ({
 	currency = "$",
 	onScanUser,
 	onShowQR,
+	onPaymentWithNfc,
 	errorMessage,
 }: TenKeyInputProps) => {
 	const handleKeyClick = (key: number | string) => {
@@ -101,8 +104,8 @@ const TenKeyInput = ({
 			</div>
 
 			{/* 底部操作按钮 */}
-			{(onScanUser || onShowQR) && (
-				<div className="grid grid-cols-2 gap-2 shrink-0 px-3 pb-4 pt-1">
+			{(onScanUser || onShowQR || onPaymentWithNfc) && (
+				<div className={`grid gap-2 shrink-0 px-3 pb-4 pt-1 ${onPaymentWithNfc ? 'grid-cols-3' : 'grid-cols-2'}`}>
 					{onScanUser && (
 						<button
 							type="button"
@@ -112,6 +115,17 @@ const TenKeyInput = ({
 						>
 							<Camera size={20} />
 							<span className="text-[10px] font-bold uppercase tracking-wider">SCAN USER</span>
+						</button>
+					)}
+					{onPaymentWithNfc && (
+						<button
+							type="button"
+							onClick={onPaymentWithNfc}
+							disabled={!value}
+							className="h-14 rounded-xl bg-[#0d9488] text-white shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all"
+						>
+							<SmartphoneNfc size={20} />
+							<span className="text-[10px] font-bold uppercase tracking-wider">NFC</span>
 						</button>
 					)}
 					{onShowQR && (
@@ -318,6 +332,9 @@ export type ConfirmDeductionPayload = {
 	forText?: string
 	/** Bill 支付时：请求方商家展示名（Beamio 名），无则用短地址 */
 	payeeDisplayName?: string
+	/** NFC 卡支付：使用 UID 调用 payByNfcUid 端点 */
+	isNfcPay?: boolean
+	nfcUid?: string
 	/** Bill 支付时：商家会员标签（可选） */
 	payeeMemberLabel?: string
 }
@@ -636,6 +653,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 	const [successTxHash, setSuccessTxHash] = useState<string | null>(null)
 	const [paymentSuccessData, setPaymentSuccessData] = useState<PaymentSuccessData | null>(null)
 	const routingDoneRef = useRef(false)
+	const { readUid } = useNfcRead()
 	const {
 		beamio,
 		profiles,
@@ -695,10 +713,9 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		return (n * rates.USDC * rates.CAD).toFixed(2)
 	}
 
-	// 每次挂载时清空上一次遗留的 scan/voucher 状态；若已是 voucherPay/payBill 则保留 scanData/scanIntent 及金额（voucherPayAmount）供本组件消费
-	// 仅当不在 voucherPay/payBill 时清空，避免用户点击 Scan User 后 setScanIntent('voucherPay') 触发本 effect 把刚设的 voucherPayAmount 清掉导致 Analyzing Assets 出现 Skipped (zero amount)
+	// 每次挂载时清空上一次遗留的 scan/voucher 状态；若已是 voucherPay/payBill/payByNfc 则保留
 	useEffect(() => {
-		if (scanIntent !== 'voucherPay' && scanIntent !== 'payBill') {
+		if (scanIntent !== 'voucherPay' && scanIntent !== 'payBill' && scanIntent !== 'payByNfc') {
 			setScanData('')
 			setScanIntent('')
 			setVoucherPayAmount('')
@@ -713,12 +730,12 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		if (voucherPayError) setVoucherPayError('')
 	}, [value])
 
-	// payBill：进入后自动打开扫描，让用户扫商家的 bill paymentUrl
+	// payBill：仅当 scanData 为空时自动打开扫描；若 scanData 已存在（如从 PayScreen 重定向而来），则直接走 Smart Routing，不打开扫码
 	useEffect(() => {
-		if (scanIntent === 'payBill') {
+		if (scanIntent === 'payBill' && !scanData) {
 			scanRef.current?.start()
 		}
-	}, [scanIntent, scanRef])
+	}, [scanIntent, scanData, scanRef])
 
 	// voucherPay 流程：当 scanIntent === 'voucherPay' 且 scanData 到位时执行步骤并更新 UI；也处理 payBill 扫到的 paymentUrl
 	useEffect(() => {
@@ -1242,14 +1259,102 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		})()
 	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, profiles, routingRetryTrigger, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA, setVoucherPayError])
 
-	// 进入 voucherPay / payBill 时重置步骤为 pending（等待 scanData），并清空确认
+	// 进入 voucherPay / payBill / payByNfc 时重置步骤为 pending（等待 scanData），并清空确认
 	useEffect(() => {
-		if (scanIntent === 'voucherPay' || scanIntent === 'payBill') {
+		if (scanIntent === 'voucherPay' || scanIntent === 'payBill' || scanIntent === 'payByNfc') {
 			setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
 			setConfirmDeduction(null)
 			routingDoneRef.current = false
 		}
 	}, [scanIntent])
+
+	// payByNfc 流程：UID 已就绪时执行 Smart Routing 步骤并设置确认
+	useEffect(() => {
+		if (scanIntent !== 'payByNfc' || !scanData || !voucherPayAmount || !voucherPayToAA || routingDoneRef.current) return
+		routingDoneRef.current = true
+		setRoutingSteps(ROUTING_STEPS.map((s) => ({ ...s, status: 'pending' as StepStatus })))
+		const setStep = (id: string, status: StepStatus, detail?: string) => {
+			setRoutingSteps((prev) =>
+				prev.map((s) => (s.id === id ? { ...s, status, ...(detail != null ? { detail } : {}) } : s))
+			)
+		}
+		const loadingDelay = () => new Promise<void>((r) => setTimeout(r, 2000))
+		const doneDelay = () => new Promise<void>((r) => setTimeout(r, 2000))
+		;(async () => {
+			const payeeAA = ethers.getAddress(voucherPayToAA)
+			setStep('detectingUser', 'loading')
+			await loadingDelay()
+			try {
+				const aaFactory = new ethers.Contract(
+					contracts.BeamioAAAcountFactory.address,
+					contracts.BeamioAAAcountFactory.abi,
+					baseEndpoint
+				)
+				const isBeamio = await retryRpcCall(() => aaFactory.isBeamioAccount(payeeAA))
+				if (!isBeamio) {
+					setStep('detectingUser', 'error', 'Payee is not a Beamio AA account')
+					routingDoneRef.current = false
+					return
+				}
+			} catch (e) {
+				setStep('detectingUser', 'error', RPC_ERROR_MSG)
+				routingDoneRef.current = false
+				return
+			}
+			setStep('detectingUser', 'success', 'Merchant validated')
+			await doneDelay()
+			setStep('membership', 'loading')
+			await loadingDelay()
+			setStep('membership', 'success', 'NFC card payment')
+			await doneDelay()
+			setStep('analyzingAssets', 'loading')
+			await loadingDelay()
+			setStep('analyzingAssets', 'success', 'NFC card balance')
+			await doneDelay()
+			setStep('optimizingRoute', 'loading')
+			await loadingDelay()
+			setStep('optimizingRoute', 'success', 'Direct: NFC → Merchant')
+			await doneDelay()
+			const rates = ensureOracle()
+			const amountUsdc6 = cadToUsdc6(rates, voucherPayAmount)
+			const amountStr = ethers.formatUnits(amountUsdc6, 6)
+			let amountStrCAD: string | undefined
+			try {
+				amountStrCAD = usdcToCadStr(rates, amountStr)
+			} catch {
+				amountStrCAD = voucherPayAmount
+			}
+			const syntheticPayload: OpenContainerRelayPayload = {
+				account: ethers.ZeroAddress,
+				to: payeeAA,
+				items: [],
+				currencyType: 4,
+				maxAmount: '0',
+				nonce: '0',
+				deadline: String(Math.floor(Date.now() / 1000) + 300),
+				signature: '0x',
+			}
+			setConfirmDeduction({
+				payload: syntheticPayload,
+				amountStr,
+				usdcFromBalance: amountStr,
+				usdcFromCCSA: '0',
+				customerUsdcBalance: '0',
+				totalRequestedStr: amountStr,
+				amountStrCAD,
+				usdcFromBalanceCAD: amountStrCAD,
+				usdcFromCCSACAD: '0',
+				customerUsdcBalanceCAD: '0',
+				totalRequestedStrCAD: amountStrCAD,
+				usdcFromBalanceWeiStr: amountUsdc6.toString(),
+				ccsaPointsWeiStr: undefined,
+				payerDisplayName: 'NFC Card',
+				payeeDisplayName: undefined,
+				isNfcPay: true,
+				nfcUid: scanData,
+			})
+		})()
+	}, [scanIntent, scanData, voucherPayAmount, voucherPayToAA, routingRetryTrigger])
 
 	const setStepById = (id: string, status: StepStatus, detail?: string) => {
 		setRoutingSteps((prev) =>
@@ -1262,6 +1367,49 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		const data = confirmDeduction
 		setSubmitting(true)
 		setConfirmDeduction(null)
+
+		// NFC 卡支付：调用 payByNfcUid 端点
+		if (data.isNfcPay && data.nfcUid && voucherPayToAA) {
+			setStepById('sendTx', 'loading', 'Submitting…')
+			try {
+				const amountUsdc6 = data.usdcFromBalanceWeiStr ?? ethers.parseUnits(data.amountStr, 6).toString()
+				const result = await payByNfcUid({
+					uid: data.nfcUid,
+					amountUsdc6,
+					payee: voucherPayToAA,
+				})
+				setStepById('sendTx', 'success', 'Sent')
+				if (result.success && result.USDC_tx) {
+					setSuccessTxHash(result.USDC_tx)
+					setStepById('waitTx', 'success', 'Transaction complete')
+					const amountCAD = data.amountStrCAD ?? data.amountStr
+					const amountUSDC = data.amountStr
+					const rate = amountCAD && amountUSDC ? (Number(amountUSDC) / Number(amountCAD)).toFixed(4) : undefined
+					setPaymentSuccessData({
+						txHash: result.USDC_tx,
+						amountCAD,
+						amountUSDC,
+						exchangeRateCADtoUSDC: rate,
+						recipientName: data.payeeDisplayName,
+					})
+				} else {
+					setSubmitting(false)
+					setStepById('waitTx', 'error', result.error ?? 'Payment failed')
+					setVoucherPayError(result.error ?? 'Payment failed')
+					return
+				}
+			} catch (e) {
+				console.warn('payByNfcUid failed', e)
+				setSubmitting(false)
+				const errMsg = (e as Error)?.message ?? 'Request failed'
+				setStepById('sendTx', 'error', errMsg)
+				setVoucherPayError(errMsg)
+				return
+			}
+			setSubmitting(false)
+			return
+		}
+
 		// Build items from deduction split: only include items with amount > 0; do not add zero-amount items.
 		const usdcWei = data.usdcFromBalanceWeiStr ? BigInt(data.usdcFromBalanceWeiStr) : 0n
 		const ccsaPointsWei = data.ccsaPointsWeiStr ? BigInt(data.ccsaPointsWeiStr) : 0n
@@ -1448,14 +1596,46 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		setShowQRSheet(true)
 	}
 
+	const handlePaymentWithNfc = async () => {
+		if (!value || Number(value) <= 0) return
+		const merchantAA = profiles?.[0]?.aaAccount ?? ''
+		if (!merchantAA || !ethers.isAddress(merchantAA)) {
+			setVoucherPayError('Merchant AA not found')
+			return
+		}
+		setVoucherPayError('')
+		const uid = await readUid()
+		if (!uid) {
+			setVoucherPayError('NFC 读取失败，请重试')
+			return
+		}
+		try {
+			const result = await fetchNfcCardStatus(uid)
+			if (!result.registered) {
+				setVoucherPayError('不存在该卡')
+				return
+			}
+			if (!result.address) {
+				setVoucherPayError('卡已登记但无法获取地址')
+				return
+			}
+			setVoucherPayAmount(value)
+			setVoucherPayToAA(merchantAA)
+			setScanData(uid)
+			setScanIntent('payByNfc')
+		} catch (e) {
+			setVoucherPayError((e as Error)?.message ?? '查询失败')
+		}
+	}
+
 	// 商家 bill 必选项：Amount、currency、acceptTokens、to（收款方 AA）；to 为当前商家 AA，支付方扫码后款项转入此地址
 	const merchantAA = profiles?.[0]?.aaAccount
 	const paymentUrl = value && merchantAA && ethers.isAddress(merchantAA)
 		? `http://beamio.app/Vouchers?Amount=${encodeURIComponent(value)}&currency=CAD&acceptTokens=USDC,CCSA&to=${encodeURIComponent(merchantAA)}`
 		: ''
 
-	// voucherPay / payBill workflow：Confirm → Submitting 成功 → 显示 PaymentSuccessView；仅当用户点击「Done & Go to Chat」才 onPaymentSuccess 回到父页面（不在此前关闭）
-	if (scanIntent === 'voucherPay' || scanIntent === 'payBill') {
+	// voucherPay / payBill / payByNfc workflow：Confirm → Submitting 成功 → 显示 PaymentSuccessView；仅当用户点击「Done & Go to Chat」才 onPaymentSuccess 回到父页面（不在此前关闭）
+	if (scanIntent === 'voucherPay' || scanIntent === 'payBill' || scanIntent === 'payByNfc') {
 		if (paymentSuccessData) {
 			return (
 				<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -1499,6 +1679,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 					currency="$"
 					onScanUser={handleScanUser}
 					onShowQR={handleShowQR}
+					onPaymentWithNfc={handlePaymentWithNfc}
 					errorMessage={voucherPayError}
 				/>
 			</div>

@@ -83,17 +83,18 @@ const getBalance = async (address: string) => {
 	if (!address) return null
 	// 熔断期仅使用 CoNET 节点（不向 API 服务器请求），withBaseRpc 内部会走 CoNET-only
 	try {
-		const [usdc, eth, req] = await Promise.all([
+		const [usdc, eth, oracle] = await Promise.all([
 			withBaseRpc((p) => new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, p).balanceOf(address)),
 			withBaseRpc((p) => p.getBalance(address)),
-			fetch(getOraclesEndPoint, { method: 'GET' }),
+			getOracle(),
 		])
-		if (req.status === 200) {
-			const oracle = await req.json()
+		if (oracle) {
+			// getBalanceProcess 期望 oracle.eth.usdc（USDC→USD 汇率）
+			const oracleForBalance = { ...oracle, eth: { usdc: oracle.usdc ?? '1' } }
 			return {
 				eth: ethers.formatUnits(eth as bigint, 18).toString(),
 				usdc: ethers.formatUnits(usdc as bigint, 6).toString(),
-				oracle,
+				oracle: oracleForBalance,
 			}
 		}
 	} catch (err) {
@@ -114,8 +115,11 @@ const local = 'http://localhost:4088'
 const beamioApi = 'https://beamio.app'
 const ipfsEndpoint = `https://ipfs.conet.network/api/`
 
-const getOraclesEndPoint = `${beamioApi}/api/getOracle`
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`
+
+/** Base 主网 BeamioOracle 合约，直接读取链上汇率，不再使用 API 服务器 */
+const BEAMIO_ORACLE_BASE = '0xDa4AE8301262BdAaf1bb68EC91259E6C512A9A2B'
+const BeamioOracleAbi = ['function getRate(uint8 c) view returns (uint256)'] as const
 
 const storageNewUser = `${beamioApi}/api/addUser`
 const searchUrl = `${beamioApi}/api/search-users`
@@ -220,6 +224,106 @@ export const checkRequestStatus = async (
 	}
 }
 
+/** 查询 NTAG 424 DNA 卡状态（根据 UID）；若已登记则返回 address（AA/EOA） */
+export const fetchNfcCardStatus = async (uid: string): Promise<{ registered: boolean; address?: string }> => {
+	const res = await fetch(`${beamioApi}/api/nfcCardStatus`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ uid }),
+	})
+	if (!res.ok) {
+		const err = (await res.json().catch(() => ({}))).error ?? res.statusText
+		throw new Error(err)
+	}
+	return res.json()
+}
+
+/** Base 主网 BeamioUserCard 工厂地址（与 x402sdk chainAddresses 一致） */
+const BASE_CARD_FACTORY = '0xbDC8a165820bB8FA23f5d953632409F73E804eE5'
+const BASE_CHAIN_ID = 8453
+
+/** NFC Topup Prepare：获取 executeForAdmin 所需的 cardAddr、data、deadline、nonce */
+export const nfcTopupPrepare = async (params: { uid: string; amount: string; currency?: string }): Promise<{
+	cardAddr: string
+	data: string
+	deadline: number
+	nonce: string
+} | { error: string }> => {
+	const res = await fetch(`${beamioApi}/api/nfcTopupPrepare`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(params),
+	})
+	const data = (await res.json().catch(() => ({}))) as { cardAddr?: string; data?: string; deadline?: number; nonce?: string; error?: string }
+	if (!res.ok || data.error) return { error: data.error ?? res.statusText ?? 'Prepare failed' }
+	if (!data.cardAddr || !data.data || data.deadline == null || !data.nonce) return { error: 'Invalid prepare response' }
+	return {
+		cardAddr: data.cardAddr,
+		data: data.data,
+		deadline: Number(data.deadline),
+		nonce: data.nonce,
+	}
+}
+
+/** NFC Topup：读取方 UI 用户用 profile 私钥签 ExecuteForAdmin，提交后 Master 调用 factory.executeForAdmin */
+export const nfcTopup = async (params: { uid: string; amount: string; currency?: string }): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+	if (!CoNET_Data?.profiles?.length || !CoNET_Data.profiles[0]?.privateKeyArmor) {
+		return { success: false, error: '请先登录 Beamio 账户' }
+	}
+	const prepare = await nfcTopupPrepare(params)
+	if ('error' in prepare) return { success: false, error: prepare.error }
+	const { cardAddr, data, deadline, nonce } = prepare
+	const privateKey = CoNET_Data.profiles[0].privateKeyArmor
+	const wallet = new ethers.Wallet(privateKey)
+	const dataHash = ethers.keccak256(data)
+	const domain = {
+		name: 'BeamioUserCardFactory',
+		version: '1',
+		chainId: BASE_CHAIN_ID,
+		verifyingContract: BASE_CARD_FACTORY,
+	}
+	const types = {
+		ExecuteForAdmin: [
+			{ name: 'cardAddress', type: 'address' },
+			{ name: 'dataHash', type: 'bytes32' },
+			{ name: 'deadline', type: 'uint256' },
+			{ name: 'nonce', type: 'bytes32' },
+		],
+	}
+	const message = {
+		cardAddress: cardAddr,
+		dataHash,
+		deadline: BigInt(deadline),
+		nonce: nonce.startsWith('0x') ? nonce : '0x' + nonce,
+	}
+	const adminSignature = await wallet.signTypedData(domain, types, message)
+	const res = await fetch(`${beamioApi}/api/nfcTopup`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ cardAddr, data, deadline, nonce, adminSignature }),
+	})
+	const dataRes = (await res.json().catch(() => ({}))) as { success?: boolean; txHash?: string; error?: string }
+	return {
+		success: res.ok && dataRes.success !== false,
+		txHash: dataRes.txHash,
+		error: dataRes.error,
+	}
+}
+
+/** 以 UID 支付：服务端使用 NFC 卡私钥向 payee 转 USDC */
+export const payByNfcUid = async (params: { uid: string; amountUsdc6: string; payee: string }): Promise<{ success: boolean; USDC_tx?: string; error?: string }> => {
+	const res = await fetch(`${beamioApi}/api/payByNfcUid`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(params),
+	})
+	const data = (await res.json().catch(() => ({}))) as { success?: boolean; USDC_tx?: string; error?: string }
+	return {
+		success: res.ok && data.success !== false,
+		USDC_tx: data.USDC_tx,
+		error: data.error,
+	}
+}
 
 export const toBase64 = (s: string) => {
 	const bytes = new TextEncoder().encode(s)
@@ -385,15 +489,35 @@ export function decodeStoredCBOR(b64: string): any {
   	return cborDecode(bytes)       // CBOR → 原始对象
 }
 
-export const getOracle = async () => {
+/** BeamioCurrency 枚举：与 BeamioCurrency.sol 一致 */
+const BEAMIO_CURRENCY = { CAD: 0, USD: 1, JPY: 2, CNY: 3, USDC: 4, HKD: 5, EUR: 6, SGD: 7, TWD: 8 } as const
+
+/** 从 Base 链上 BeamioOracle 直接读取汇率，不再使用 API 服务器。getRate(c) 返回「1 单位该货币 = X USD」E18 */
+export const getOracle = async (): Promise<{
+	usdcad?: string; usdjpy?: string; usdcny?: string; usdc?: string;
+	usdhkd?: string; usdtwd?: string; usdeur?: string; usdsgd?: string;
+} | null> => {
 	try {
-		const req = await fetch(getOraclesEndPoint, {method: 'GET'})
-		if (req.status === 200) {
-			const oracle = await req.json()
-			return oracle
-		}
-		return null
-	} catch (ex) {
+		const res = await withBaseRpc(async (provider) => {
+			const oracle = new ethers.Contract(BEAMIO_ORACLE_BASE, BeamioOracleAbi, provider)
+			const ids = [BEAMIO_CURRENCY.CAD, BEAMIO_CURRENCY.JPY, BEAMIO_CURRENCY.CNY, BEAMIO_CURRENCY.USDC,
+				BEAMIO_CURRENCY.HKD, BEAMIO_CURRENCY.EUR, BEAMIO_CURRENCY.SGD, BEAMIO_CURRENCY.TWD] as const
+			const rates = await Promise.all(ids.map((c) => oracle.getRate(c)))
+			const ratesNum = rates.map((r) => Number(ethers.formatUnits(r, 18)))
+			// 链上：1 外币 = X USD；前端需 1 USD = Y 外币，故非 USD/USDC 用倒数
+			return {
+				usdcad: ratesNum[0] > 0 ? String(1 / ratesNum[0]) : undefined,
+				usdjpy: ratesNum[1] > 0 ? String(1 / ratesNum[1]) : undefined,
+				usdcny: ratesNum[2] > 0 ? String(1 / ratesNum[2]) : undefined,
+				usdc: String(ratesNum[3] || 1),
+				usdhkd: ratesNum[4] > 0 ? String(1 / ratesNum[4]) : undefined,
+				usdeur: ratesNum[5] > 0 ? String(1 / ratesNum[5]) : undefined,
+				usdsgd: ratesNum[6] > 0 ? String(1 / ratesNum[6]) : undefined,
+				usdtwd: ratesNum[7] > 0 ? String(1 / ratesNum[7]) : undefined,
+			}
+		})
+		return res
+	} catch {
 		return null
 	}
 }
@@ -429,21 +553,17 @@ export const estimateGasUSDC = async (amount: number, to: string) => {
 	const sc = new ethers.Contract(USDCContract_BASE, usdc_abi, wallet)
 	const _amount = ethers.parseUnits(amount.toFixed(2), 6)
 	try {
-		const [gas, price, req] = await Promise.all([
+		const [gas, price, oracle] = await Promise.all([
 			sc.transfer.estimateGas(to||contracts.beamioConet.address, _amount),
 			baseEndpoint.getFeeData(),
-			fetch(getOraclesEndPoint, {method: 'GET'})
+			getOracle(),
 		])
 
-		if (req.status === 200) {
-			const oracle = await req.json()
+		if (oracle) {
 			return {gas: gas * BigInt(3), price: price.gasPrice, oracle}
 		}
 
 		return null
-
-		
-
 	} catch (ex) {
 		return null
 	}
@@ -1231,7 +1351,10 @@ export const getBalanceProcess = async (keyID: string,  setBalance: (val: number
 	const usdc = Number(ba.usdc)
 
 	setBalance(usdc)
-	const usdcToUSD = usdc * Number(ba.oracle.eth.usdc)
+	const ethUsdc = typeof ba.oracle?.eth === 'object' && ba.oracle.eth && 'usdc' in ba.oracle.eth
+		? ba.oracle.eth.usdc
+		: '1'
+	const usdcToUSD = usdc * Number(ethUsdc)
 	setUsdcToUsd(usdcToUSD)
 	processing = false
 }

@@ -8,7 +8,7 @@ export const BASE_MAINNET_FACTORIES = {
   /** AA 账户工厂 (BeamioFactoryPaymasterV07) */
   AA_FACTORY: '0xD86403DD1755F7add19540489Ea10cdE876Cc1CE',
   /** UserCard 工厂 (BeamioUserCardFactoryPaymasterV07) */
-  CARD_FACTORY: '0xbDC8a165820bB8FA23f5d953632409F73E804eE5',
+  CARD_FACTORY: '0x86879fE3fbd958f468B1e5E6Cd075a9149ADB48F',
   /** CCSA 卡 (BeamioUserCard 实例)。与 x402sdk chainAddresses.ts BASE_CCSA_CARD_ADDRESS 必须一致；重发卡后运行 replace-ccsa-address.js 同步两处 */
-  BeamioCardCCSA_ADDRESS: '0x57052780925448Ce1dB7aC409cCcCf13Bcc4eb71',
+  BeamioCardCCSA_ADDRESS: '0x6870acA2f4f6aBed6B10B0C8D76C75343398fd64',
 } as const

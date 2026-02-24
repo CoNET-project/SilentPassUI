@@ -239,7 +239,7 @@ export const fetchNfcCardStatus = async (uid: string): Promise<{ registered: boo
 }
 
 /** Base 主网 BeamioUserCard 工厂地址（与 x402sdk chainAddresses 一致） */
-const BASE_CARD_FACTORY = '0xbDC8a165820bB8FA23f5d953632409F73E804eE5'
+const BASE_CARD_FACTORY = '0x86879fE3fbd958f468B1e5E6Cd075a9149ADB48F'
 const BASE_CHAIN_ID = 8453
 
 /** NFC Topup Prepare：获取 executeForOwner 所需的 cardAddr、data、deadline、nonce */

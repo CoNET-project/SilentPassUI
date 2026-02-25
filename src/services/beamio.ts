@@ -238,6 +238,29 @@ export const fetchNfcCardStatus = async (uid: string): Promise<{ registered: boo
 	return res.json()
 }
 
+/** 根据 UID 查询 NFC 卡资产（CCSA 点数 + USDC 余额），需卡已登记 */
+export type UIDAssetsResponse = {
+	ok: boolean
+	address?: string
+	cardAddress?: string
+	points: string
+	points6?: string
+	usdcBalance: string
+	cardCurrency?: string
+	nfts?: { tokenId: string; attribute: string; tier: string; expiry: string; isExpired: boolean }[]
+	error?: string
+}
+export const fetchUIDAssets = async (uid: string): Promise<UIDAssetsResponse> => {
+	const res = await fetch(`${beamioApi}/api/getUIDAssets`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ uid: uid.trim() }),
+	})
+	const data = (await res.json().catch(() => ({}))) as UIDAssetsResponse
+	if (!res.ok) return { ok: false, error: data.error ?? res.statusText ?? 'Query failed' }
+	return data
+}
+
 /** Base 主网 BeamioUserCard 工厂地址（与 x402sdk chainAddresses 一致） */
 const BASE_CARD_FACTORY = '0x19C000c00e6A2b254b39d16797930431E310BEdd'
 const BASE_CHAIN_ID = 8453

@@ -47,6 +47,9 @@ import {
 	GripVertical,
 	Edit2,
 	Save,
+	SmartphoneNfc,
+	Loader2,
+	X,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
@@ -56,13 +59,14 @@ import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
-import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt } from '@/services/beamio'
+import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
 import { getMyAssets, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, type UserCardInfo, type RedeemDetailsForDisplay } from '@/services/BeamioCard'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
 import type { RedeemStatusChain } from '@/services/BeamioCard'
 import { fiatPrefix, parseNodeEX, calcFeeFromReceived, formatTimev2, formatAmount, type ParsedNote } from '@/services/currency'
 import { CCSA_Card_Address } from '@/utils/constants'
+import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { getRedeemStatusBatchFromChain } from '@/services/BeamioCard'
 import base_icon from '@/components/assets/base-logo.png'
@@ -76,6 +80,155 @@ import TopUpRedeemForm from '@/pages/Vouchers/TopUpRedeemForm'
 import AddAdminBottomSheet from './AddAdminBottomSheet'
 import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
+import { useNfcRead } from '@/hooks/useNfcRead'
+
+/** NFC 读取余额底部滑出页：读取 UID → 调用 getUIDAssets → 展示点数/USDC */
+function NfcCheckBalanceBottomSheet({
+	open,
+	onClose,
+	readUid,
+}: {
+	open: boolean
+	onClose: () => void
+	readUid: () => Promise<string | null>
+}) {
+	const [uid, setUid] = useState<string | null>(null)
+	const [manualUid, setManualUid] = useState('')
+	const [status, setStatus] = useState<'idle' | 'reading' | 'loading' | 'success' | 'error'>('idle')
+	const [error, setError] = useState<string | null>(null)
+	const [assets, setAssets] = useState<UIDAssetsResponse | null>(null)
+
+	useEffect(() => {
+		if (!error) return
+		const t = setTimeout(() => setError(null), 5000)
+		return () => clearTimeout(t)
+	}, [error])
+
+	const handleRead = async () => {
+		const trimmed = manualUid.trim()
+		if (trimmed) {
+			setUid(trimmed)
+			setStatus('idle')
+			await handleQuery(trimmed)
+			return
+		}
+		setStatus('reading')
+		setError(null)
+		setUid(null)
+		setAssets(null)
+		const result = await readUid()
+		if (result) {
+			setUid(result)
+			setStatus('idle')
+			await handleQuery(result)
+		} else {
+			setError('NFC 读取失败，请重试')
+			setStatus('error')
+		}
+	}
+
+	const handleQuery = async (uidToUse: string) => {
+		setStatus('loading')
+		setError(null)
+		setAssets(null)
+		try {
+			const res = await fetchUIDAssets(uidToUse)
+			if (res.ok && res.points != null) {
+				setAssets(res)
+				setStatus('success')
+			} else {
+				setError(res.error ?? '查询失败')
+				setStatus('error')
+			}
+		} catch (e) {
+			setError((e as Error)?.message ?? 'Request failed')
+			setStatus('error')
+		}
+	}
+
+	const handleClose = () => {
+		setUid(null)
+		setManualUid('')
+		setStatus('idle')
+		setError(null)
+		setAssets(null)
+		onClose()
+	}
+
+	return (
+		<div className={['fixed inset-0 z-[100]', open ? 'pointer-events-auto' : 'pointer-events-none'].join(' ')}>
+			<div className={['absolute inset-0 bg-black/50 transition-opacity duration-300', open ? 'opacity-100' : 'opacity-0'].join(' ')} onClick={handleClose} />
+			<div className={['absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out', open ? 'translate-y-0' : 'translate-y-full'].join(' ')}>
+				<div className="pt-2 pb-1 flex justify-center">
+					<div className="h-1 w-10 rounded-full bg-slate-500/70" />
+				</div>
+				<div className="px-6 py-6 overflow-y-auto">
+					<div className="flex flex-col items-center gap-6">
+						<div className="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+							<SmartphoneNfc className="w-10 h-10 text-amber-600 dark:text-amber-400" strokeWidth={2} />
+						</div>
+						<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">读取 NFC 卡余额</h2>
+						<p className="text-sm text-slate-500 dark:text-slate-400">将 NTAG 424 DNA 卡靠近手机背面，或手工输入 UID</p>
+						{status === 'loading' ? (
+							<div className="flex flex-col items-center py-8">
+								<Loader2 className="w-12 h-12 text-amber-500 animate-spin mb-4" />
+								<p className="text-slate-500 dark:text-slate-400">查询中...</p>
+							</div>
+						) : status === 'success' && assets ? (
+							<div className="w-full space-y-4">
+								<div className="relative w-full max-w-[340px] mx-auto rounded-2xl overflow-hidden shadow-lg aspect-[1.58/1]">
+									<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+									<div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+									<div className="absolute inset-0 p-5 flex flex-col justify-end text-white">
+										<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">CCSA Balance</p>
+										<p className="text-2xl font-bold text-[#fff2c6]">{formatAmount(Number(assets.points), (assets.cardCurrency as any) ?? 'CAD', 4)}</p>
+										<p className="text-xs opacity-90 mt-1">USDC: {formatAmount(Number(assets.usdcBalance), 'USDC', 4)}</p>
+										{assets.address && <p className="text-[10px] font-mono opacity-70 mt-2 truncate">{assets.address}</p>}
+									</div>
+								</div>
+								<div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-4">
+									<p className="text-xs text-slate-500 dark:text-slate-400 mb-2">UID</p>
+									<p className="font-mono text-sm break-all text-slate-800 dark:text-slate-200">{uid}</p>
+								</div>
+								<button type="button" onClick={handleClose} className="w-full py-3.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">
+									完成
+								</button>
+							</div>
+						) : (
+							<>
+								<div className="w-full">
+									<label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">手工输入 UID（可选）</label>
+									<input
+										type="text"
+										value={manualUid}
+										onChange={(e) => setManualUid(e.target.value)}
+										placeholder="例如：04A1B2C3D4E5F6"
+										className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 font-mono text-sm border-0 focus:ring-2 focus:ring-amber-500"
+									/>
+								</div>
+								<button
+									type="button"
+									onClick={handleRead}
+									disabled={status === 'reading'}
+									className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+								>
+									{status === 'reading' ? <Loader2 className="w-5 h-5 animate-spin" /> : <SmartphoneNfc className="w-5 h-5" />}
+									{status === 'reading' ? '请靠近 NFC 卡...' : manualUid.trim() ? '查询余额（手工 UID）' : '读取 NFC 卡'}
+								</button>
+							</>
+						)}
+						{error && (
+							<div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
+								<X className="w-5 h-5 flex-shrink-0" />
+								<span>{error}</span>
+							</div>
+						)}
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
 
 /** Redeem Active List：显示 owner 已创建的 redeem  batches 一览 */
 const RedeemActiveList = ({
@@ -486,6 +639,7 @@ export default function MyWalletDashboardNew() {
 	const [addAdminKey, setAddAdminKey] = useState(0)
 	const [showRedeemListOpen, setShowRedeemListOpen] = useState(false)
 	const [cardRedeemsVersion, setCardRedeemsVersion] = useState(0)
+	const [nfcCheckBalanceOpen, setNfcCheckBalanceOpen] = useState(false)
 	const [ccsaRedeemOpen, setCcsaRedeemOpen] = useState(false)
 	const [redeemCodeInput, setRedeemCodeInput] = useState('')
 	const [redeemCardNumberInput, setRedeemCardNumberInput] = useState('')
@@ -509,6 +663,7 @@ export default function MyWalletDashboardNew() {
 	const [pendingSmartRoutingPayload, setPendingSmartRoutingPayload] = useState<{ paymentUrl: string; amount: string; currency: string; toAddress: string } | null>(null)
 	const [payMeSigning, setPayMeSigning] = useState(false)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!activeView)
+	const { readUid: readNfcUid } = useNfcRead()
 	const copyAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const copiedCardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const refreshAAAssetsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -588,7 +743,9 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [voucherPayFromScan, setVoucherPayFromScan, setShowFooter, location.state, location.pathname, navigate, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA])
 
-	// 拉取 redeem 详情：当面板打开且有 code 时
+	// 拉取 redeem 详情：当面板打开且有 code 时。新 CCSA 查不到时 fallback 到旧 CCSA（兼容迁移前创建的 redeem）
+	const OLD_CCSA = BASE_MAINNET_FACTORIES.OLD_CCSA_CARD_ADDRESS
+	const NEW_CCSA = BASE_MAINNET_FACTORIES.BeamioCardCCSA_ADDRESS
 	useEffect(() => {
 		if (!ccsaRedeemOpen || !redeemCodeInput.trim()) {
 			setRedeemDetails(null)
@@ -602,11 +759,20 @@ export default function MyWalletDashboardNew() {
 		let cancelled = false
 		setRedeemDetailsLoading(true)
 		setRedeemDetails(null)
-		getRedeemDetailsForDisplay(cardAddr, redeemCodeInput.trim()).then((d) => {
+		const code = redeemCodeInput.trim()
+		const tryFetch = async (addr: string) => getRedeemDetailsForDisplay(addr, code)
+		;(async () => {
+			let d = await tryFetch(cardAddr)
+			let usedCard = cardAddr
+			if (!d && cardAddr.toLowerCase() === NEW_CCSA.toLowerCase()) {
+				d = await tryFetch(OLD_CCSA)
+				if (d) usedCard = OLD_CCSA
+			}
 			if (!cancelled) {
 				setRedeemDetails(d ?? null)
+				if (d && usedCard !== cardAddr) setRedeemCardNumberInput(usedCard)
 			}
-		}).finally(() => {
+		})().finally(() => {
 			if (!cancelled) setRedeemDetailsLoading(false)
 		})
 		return () => { cancelled = true }
@@ -1585,13 +1751,18 @@ export default function MyWalletDashboardNew() {
 												}}
 											/>
 											<ExpressAction
-												label="Create Redeem"
+												label={userCards.length === 0 ? 'Check NFC Balance' : 'Create Redeem'}
 												iconBgClass="bg-green-500 shadow-green-500/30"
-												icon={<Plus className="w-5 h-5" />}
+												icon={userCards.length === 0 ? <SmartphoneNfc className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
 												onClick={() => {
-													setTopUpRedeemKey((k) => k + 1)
-													setShowFooter(false)
-													setTopUpRedeemOpen(true)
+													if (userCards.length === 0) {
+														setShowFooter(false)
+														setNfcCheckBalanceOpen(true)
+													} else {
+														setTopUpRedeemKey((k) => k + 1)
+														setShowFooter(false)
+														setTopUpRedeemOpen(true)
+													}
 												}}
 											/>
 											<ExpressAction
@@ -1987,6 +2158,16 @@ export default function MyWalletDashboardNew() {
 						</div>
 					</div>
 				</div>
+
+				{/* NFC Check Balance：无卡用户读取 NFC 卡余额 */}
+				<NfcCheckBalanceBottomSheet
+					open={nfcCheckBalanceOpen}
+					onClose={() => {
+						setNfcCheckBalanceOpen(false)
+						setShowFooter(true)
+					}}
+					readUid={readNfcUid}
+				/>
 
 				{/* CCSA Create Card：底部滑出窗口 */}
 				<div

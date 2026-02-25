@@ -10,6 +10,7 @@ import { initChat}from '@/services/chat'
 import { getUsdcBalanceFromApi, formatWithThousands, isStandalone } from "@/services/beamio"
 import { ethers } from "ethers"
 import { CCSA_Card_Address } from "@/utils/constants"
+import { BASE_MAINNET_FACTORIES } from "@/config/chainAddresses"
 import { updateManifestStartUrl } from "@/utils/updateManifestStartUrl"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
@@ -351,14 +352,26 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		return () => { cancelled = true }
 	}, [isInitialEntry, CoNET_Data?.profiles])
 
-	// 有 redeem URL 时拉取 redeem 详情（用于显示金额 + Splash 页校验）
+	// 有 redeem URL 时拉取 redeem 详情（用于显示金额 + Splash 页校验）。新 CCSA 查不到时 fallback 到旧 CCSA
+	const { OLD_CCSA_CARD_ADDRESS, BeamioCardCCSA_ADDRESS } = BASE_MAINNET_FACTORIES
 	useEffect(() => {
 		if (!redeemFromUrl) return
 		let cancelled = false
 		setRedeemDetailsLoading(true)
-		getRedeemDetailsForDisplay(redeemFromUrl.cardAddress, redeemFromUrl.redeemCode).then((d) => {
-			if (!cancelled) setRedeemDetails(d ?? null)
-		}).finally(() => {
+		const cardAddr = redeemFromUrl.cardAddress
+		const code = redeemFromUrl.redeemCode
+		;(async () => {
+			let d = await getRedeemDetailsForDisplay(cardAddr, code)
+			let usedCard = cardAddr
+			if (!d && cardAddr.toLowerCase() === BeamioCardCCSA_ADDRESS.toLowerCase()) {
+				d = await getRedeemDetailsForDisplay(OLD_CCSA_CARD_ADDRESS, code)
+				if (d) usedCard = OLD_CCSA_CARD_ADDRESS
+			}
+			if (!cancelled) {
+				setRedeemDetails(d ?? null)
+				if (d && usedCard !== cardAddr) setRedeemFromUrl(prev => prev ? { ...prev, cardAddress: usedCard } : null)
+			}
+		})().finally(() => {
 			if (!cancelled) setRedeemDetailsLoading(false)
 		})
 		return () => { cancelled = true }

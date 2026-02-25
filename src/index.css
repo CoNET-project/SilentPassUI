@@ -28,6 +28,8 @@ body,
 #root {
   height: 100dvh;
   height: 100vh;
+  /* Android WebView 兼容：-webkit-fill-available 确保正确视口高度 */
+  min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
   /* 禁用弹力下拉（rubber-band / overscroll bounce） */

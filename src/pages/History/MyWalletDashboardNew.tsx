@@ -60,7 +60,7 @@ import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
-import { getMyAssets, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, type UserCardInfo, type RedeemDetailsForDisplay } from '@/services/BeamioCard'
+import { getMyAssets, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch } from '@/services/BeamioCard'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
 import type { RedeemStatusChain } from '@/services/BeamioCard'
@@ -82,7 +82,7 @@ import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import { useNfcRead } from '@/hooks/useNfcRead'
 
-/** NFC 读取余额底部滑出页：读取 UID → 调用 getUIDAssets → 展示点数/USDC */
+/** NFC 读取余额底部滑出页：仅当用户按下「读取 NFC 卡」时走 NFC 流程，其余时刻忽略 */
 function NfcCheckBalanceBottomSheet({
 	open,
 	onClose,
@@ -104,6 +104,25 @@ function NfcCheckBalanceBottomSheet({
 		return () => clearTimeout(t)
 	}, [error])
 
+	const handleQuery = useCallback(async (uidToUse: string) => {
+		setStatus('loading')
+		setError(null)
+		setAssets(null)
+		try {
+			const res = await fetchUIDAssets(uidToUse)
+			if (res.ok && res.points != null) {
+				setAssets(res)
+				setStatus('success')
+			} else {
+				setError(res.error ?? '查询失败')
+				setStatus('error')
+			}
+		} catch (e) {
+			setError((e as Error)?.message ?? 'Request failed')
+			setStatus('error')
+		}
+	}, [])
+
 	const handleRead = async () => {
 		const trimmed = manualUid.trim()
 		if (trimmed) {
@@ -123,25 +142,6 @@ function NfcCheckBalanceBottomSheet({
 			await handleQuery(result)
 		} else {
 			setError('NFC 读取失败，请重试')
-			setStatus('error')
-		}
-	}
-
-	const handleQuery = async (uidToUse: string) => {
-		setStatus('loading')
-		setError(null)
-		setAssets(null)
-		try {
-			const res = await fetchUIDAssets(uidToUse)
-			if (res.ok && res.points != null) {
-				setAssets(res)
-				setStatus('success')
-			} else {
-				setError(res.error ?? '查询失败')
-				setStatus('error')
-			}
-		} catch (e) {
-			setError((e as Error)?.message ?? 'Request failed')
 			setStatus('error')
 		}
 	}
@@ -180,9 +180,23 @@ function NfcCheckBalanceBottomSheet({
 									<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
 									<div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
 									<div className="absolute inset-0 p-5 flex flex-col justify-end text-white">
-										<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">CCSA Balance</p>
-										<p className="text-2xl font-bold text-[#fff2c6]">{formatAmount(Number(assets.points), (assets.cardCurrency as any) ?? 'CAD', 4)}</p>
-										<p className="text-xs opacity-90 mt-1">USDC: {formatAmount(Number(assets.usdcBalance), 'USDC', 4)}</p>
+										<div className="flex justify-between items-start mb-1">
+											<div className="flex flex-col">
+												<h2 className="text-2xl font-bold tracking-tight leading-none text-[#fff2c6] drop-shadow-sm">
+													{formatWithThousands(String(assets.points ?? 0))}{' '}
+													<span className="text-lg font-medium ml-1 opacity-90">
+														{(assets.cardCurrency as any) ?? 'CAD'}
+													</span>
+												</h2>
+												<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-0.5">Balance</p>
+											</div>
+											{assets.nfts?.find((n) => Number(n.tokenId) > 0) && (
+												<div className="text-xs font-mono opacity-80 tracking-widest pt-1 text-right shrink-0">
+													M-{String(assets.nfts.find((n) => Number(n.tokenId) > 0)!.tokenId).padStart(6, '0')}
+												</div>
+											)}
+										</div>
+										<p className="text-xs opacity-90 mt-1">USDC: {formatAmount(Number(assets.usdcBalance ?? 0), 'USDC', 4)}</p>
 										{assets.address && <p className="text-[10px] font-mono opacity-70 mt-2 truncate">{assets.address}</p>}
 									</div>
 								</div>
@@ -658,6 +672,9 @@ export default function MyWalletDashboardNew() {
 	/** 从 historyPayData 进入时暂存，传入 PayScreen 后清除 historyPayData */
 	const [pendingPayTarget, setPendingPayTarget] = useState<searchResult | null>(null)
 	const [openRelayPayload, setOpenRelayPayload] = useState<OpenContainerRelayPayload | null>(null)
+	const [aaRelayQROpen, setAaRelayQROpen] = useState(false)
+	const [aaRelayQRPayload, setAaRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
+	const [aaRelaySigning, setAaRelaySigning] = useState(false)
 	const [showTenKeySlide, setShowTenKeySlide] = useState(false)
 	/** PayScreen 重定向时传入的 payload，确保 TenKeyInput 能拿到金额（避免 context 时序问题） */
 	const [pendingSmartRoutingPayload, setPendingSmartRoutingPayload] = useState<{ paymentUrl: string; amount: string; currency: string; toAddress: string } | null>(null)
@@ -1210,6 +1227,33 @@ export default function MyWalletDashboardNew() {
 		}, 5000)
 	}, [reflashProcess])
 
+	/** AA 卡片：生成 Open Relay 签名并显示 QR，供商家 3 分钟内扣款 */
+	const handleAaRelayQR = useCallback(async () => {
+		const profile = profiles?.[0]
+		if (!profile?.privateKeyArmor || !profile?.aaAccount || aaRelaySigning) return
+		setAaRelaySigning(true)
+		setAaRelayQRPayload(null)
+		try {
+			const amount = aaAccountUsdcBalance || '0'
+			if (Number(amount) <= 0) {
+				setAaRelaySigning(false)
+				return
+			}
+			const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
+				{ privateKeyArmor: profile.privateKeyArmor, aaAccount: profile.aaAccount },
+				amount,
+				{ deadlineSeconds: 300 }
+			)
+			setAaRelayQRPayload(payload)
+			setShowFooter(false)
+			setAaRelayQROpen(true)
+		} catch (e) {
+			console.error('signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen failed:', e)
+		} finally {
+			setAaRelaySigning(false)
+		}
+	}, [profiles, aaAccountUsdcBalance, aaRelaySigning])
+
 	useEffect(
 		() => () => {
 			if (refreshAAAssetsTimeoutRef.current) clearTimeout(refreshAAAssetsTimeoutRef.current)
@@ -1329,7 +1373,8 @@ export default function MyWalletDashboardNew() {
 
 	return (
 		<>
-		<div className="w-full min-h-screen bg-[#F2F2F7] font-sans antialiased overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+		{/* h-full min-h-0 修复 Android WebView 中 flex+overflow 导致主内容不可见；min-h-screen 保证内容不足时仍占满视口 */}
+		<div className="w-full h-full min-h-0 min-h-screen bg-[#F2F2F7] font-sans antialiased overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
 				{/* 固定独立胶囊：Title + 按钮组，悬浮于顶部，随滚动渐隐 */}
 				{!activeView && (
 					<div
@@ -1649,7 +1694,25 @@ export default function MyWalletDashboardNew() {
 												M-{String(ccsaAssets.nfts.find((n) => Number(n.tokenId) > 0)?.tokenId ?? '').padStart(6, '0')}
 											</div>
 										)}
-										{selectedCard.id !== 'ccsa' && selectedCard.address && (
+										{selectedCard.id === 'aa' && (
+											<div className="flex items-center gap-2 shrink-0 pt-2">
+												<button
+													type="button"
+													onClick={handleAaRelayQR}
+													disabled={aaRelaySigning || Number(aaAccountUsdcBalance || 0) <= 0}
+													className="p-2 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 transition-colors disabled:opacity-50"
+													title="显示扣款 QR（3 分钟有效）"
+												>
+													{aaRelaySigning ? <Loader className="w-5 h-5 animate-spin" /> : <QrCode className="w-5 h-5" />}
+												</button>
+												{selectedCard.address && (
+													<div className="text-xs font-mono opacity-80 tracking-widest text-right">
+														{selectedCard.address.slice(0, 6)}...{selectedCard.address.slice(-4)}
+													</div>
+												)}
+											</div>
+										)}
+										{selectedCard.id === 'eoa' && selectedCard.address && (
 											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
 												{selectedCard.address.slice(0, 6)}...{selectedCard.address.slice(-4)}
 											</div>
@@ -1681,7 +1744,44 @@ export default function MyWalletDashboardNew() {
 								<div className="mb-8">
 									{selectedCard.id === 'eoa' ? (
 										<div className="flex items-start justify-between flex-wrap gap-4">
-											
+											<MiniAction
+												label="Send"
+												icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setPayScreenMode('eoa-pay')
+													setEoaPanelOpen('Pay')
+													setShowFooter(false)
+												}}
+											/>
+											<MiniAction
+												label="Request"
+												icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setEoaPanelOpen('ShowPayQR')
+													setShowFooter(false)
+												}}
+											/>
+											<MiniAction
+												label="Cashcode"
+												icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setScanData('')
+													setVoucherPayAmount('')
+													setVoucherPayToAA('')
+													setVoucherPayError('')
+													setScanIntent('')
+													setShowFooter(false)
+													setShowTenKeySlide(true)
+												}}
+											/>
+											<MiniAction
+												label="Bank"
+												icon={<Landmark className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
+												onClick={() => {
+													setEoaPanelOpen('BankingBridge')
+													setShowFooter(false)
+												}}
+											/>
 										</div>
 									) : selectedCard.id === 'aa' ? (
 										/* Express Pay：Transfer / Pay / Pay bill / Vouchers（与 MyWalletDashboard Tab 2 一致） */
@@ -2035,7 +2135,7 @@ export default function MyWalletDashboardNew() {
 											{/* Redeem Active List：owner 已创建的 redeem 一览 */}
 											{(CoNET_Data?.cardRedeems?.length ?? 0) > 0 && (
 												<RedeemActiveList
-													batches={CoNET_Data?.cardRedeems ?? []}
+													batches={(CoNET_Data?.cardRedeems ?? []) as CardRedeemBatch[]}
 													onManageClick={() => {
 														setShowFooter(false)
 														setShowRedeemListOpen(true)
@@ -2046,14 +2146,8 @@ export default function MyWalletDashboardNew() {
 										</div>
 										</>
 									) : (
-										/* AA (Express Pay)：Recent Activity */
-										<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
-											<div className="flex justify-between items-center mb-4">
-												<h3 className="font-bold text-gray-900">Recent Activity</h3>
-												<span className="text-xs font-bold text-[#1562f0]">View All</span>
-											</div>
-											<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
-										</div>
+										/* AA (Express Pay)：与 EOA 共用 Indexer History，收款人可在此看到转入记录 */
+										<ActiveHistoryPannelNew />
 									)}
 								</div>
 						)}
@@ -2168,6 +2262,53 @@ export default function MyWalletDashboardNew() {
 					}}
 					readUid={readNfcUid}
 				/>
+
+				{/* AA 扣款 QR：商家 3 分钟内扫码扣款 */}
+				<div
+					className={`fixed inset-0 z-[100] ${aaRelayQROpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+					aria-hidden={!aaRelayQROpen}
+				>
+					<div
+						className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${aaRelayQROpen ? 'opacity-100' : 'opacity-0'}`}
+						onClick={() => {
+							setAaRelayQROpen(false)
+							setAaRelayQRPayload(null)
+							setShowFooter(true)
+						}}
+					/>
+					<div
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${aaRelayQROpen ? 'translate-y-0' : 'translate-y-full'}`}
+					>
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+						</div>
+						<div className="px-4 pb-4 overflow-y-auto">
+							<BeamioNavBack
+								title=""
+								onClose={() => {
+									setAaRelayQROpen(false)
+									setAaRelayQRPayload(null)
+									setShowFooter(true)
+								}}
+								onMore={() => {}}
+							/>
+							{aaRelayQRPayload && (
+								<ShowPayQR
+									successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
+									beamio={beamio ?? null}
+									qrValue={JSON.stringify({
+										...aaRelayQRPayload,
+										validBefore: aaRelayQRPayload.deadline,
+										maxAmount: aaRelayQRPayload.items?.[0]?.amount ?? '0',
+									})}
+									hideActions
+									hideUrl
+									hideName
+								/>
+							)}
+						</div>
+					</div>
+				</div>
 
 				{/* CCSA Create Card：底部滑出窗口 */}
 				<div

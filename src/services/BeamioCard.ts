@@ -8,6 +8,7 @@ import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
 import { Theater } from "lucide-react";
+//		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
 export type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
@@ -731,6 +732,22 @@ const getRedeemStatusAbi = [
 ]
 
 export type RedeemStatusChain = 'redeemed' | 'cancelled' | 'pending' | 'not_found'
+
+/** Redeem batch 项（code + hash） */
+export type CardRedeemItem = { code: string; hash: string }
+
+/** Redeem batch：owner 创建的 redeem 列表，存于 CoNET_Data.cardRedeems */
+export type CardRedeemBatch = {
+	batchId: string
+	cardAddress: string
+	cardName?: string
+	currency?: string
+	points6?: string
+	pointsHuman: string
+	ptsPer1Currency?: string
+	createdAt: number
+	items: CardRedeemItem[]
+}
 
 /** 从 CoNET_Data.cardRedeems 中移除合约返回 not_found 的 redeem，并持久化 */
 export const removeNotFoundRedeems = (hashesToRemove: Set<string>) => {

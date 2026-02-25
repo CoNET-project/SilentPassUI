@@ -24,44 +24,31 @@ import {
  Route
 } from 'lucide-react';
 
-type TxType = 'smart_pay' | 'merchant_pay' | 'reload_card' | 'receive_static_aa' | 'transfer_in' | 'transfer_out' | 'request_create' | 'request_fulfilled' | 'request_expired' | 'request_canceled' | 'fund_express_pay' | 'internal_transfer' | 'voucher_burn';
-type TxStatus = 'Finalized' | 'Waiting' | 'Pending' | 'Expired' | 'Canceled' | 'Redeemed';
-
-interface RouteItem {
-  asset: string;
-  amount: number;
-  type: string;
-  symbol: string;
-  source?: string;
-}
-
-interface Transaction {
+/** 路由项：资产、金额、类型、来源 */
+type RouteItem = { asset: string; amount: number; type: string; symbol: string; source?: string };
+/** 交易元数据 */
+type TxMeta = { requestAmount?: number; expiresAt?: string; via?: string; originalRequestId?: string };
+/** 交易类型 */
+type Transaction = {
   id: string;
-  type: TxType;
+  type: string;
   title: string;
   handle: string;
   timestamp: string;
   amountFiat: number;
   currencyFiat: string;
   amountUSDC: number;
-  status: TxStatus;
+  status: string;
   category: string;
   accountType: string;
   isMixed: boolean;
   route: RouteItem[];
   fees: { gas: number; service: number; bUnits: number; gasBUnits: number };
   hashes: { base: string | string[] | null; conet: string | null };
-  meta?: { requestAmount?: number; expiresAt?: string; via?: string; originalRequestId?: string };
-}
-
-interface LedgerEntry {
-  tx: Transaction;
-  id: string;
-  title: string;
-  amountPrimary: string;
-  amountSecondary: string | null;
-  isPositive: boolean;
-}
+  meta?: TxMeta;
+};
+/** 账本条目 */
+type LedgerEntry = { tx: Transaction; id: string; title: string; amountPrimary: string; amountSecondary: string | null; isPositive: boolean };
 
 /**
 * Beamio Transactions Module
@@ -71,7 +58,7 @@ interface LedgerEntry {
 * - 紫色 (AA): Express Pay
 * - 智能子账本引擎: 支持混合支付 (Mixed) 在不同 Tab 下的动态拆行与法币精准折算。
 */
-const TRANSACTIONS: Transaction[] = [
+const TRANSACTIONS = [
  {
    id: 'tx_017',
    type: 'receive_static_aa',
@@ -109,7 +96,7 @@ const TRANSACTIONS: Transaction[] = [
    route: [],
    fees: { gas: 0, service: 0, bUnits: 64, gasBUnits: 0 },
    hashes: { base: null, conet: '0xabc...def0' },
-   meta: { requestAmount: 80.00, expiresAt: 'Feb 24, 2026, 02:15 PM' } // 🔥 变更为具体的过期时间点
+   meta: { requestAmount: 80.00, expiresAt: 'Feb 24, 2026, 02:15 PM' }
  },
  {
    id: 'tx_007',
@@ -127,7 +114,7 @@ const TRANSACTIONS: Transaction[] = [
    route: [],
    fees: { gas: 0, service: 0, bUnits: 40, gasBUnits: 0 },
    hashes: { base: null, conet: '0x9a8...b7c6' },
-   meta: { requestAmount: 50.00, expiresAt: 'Feb 24, 2026, 10:23 AM' } // 🔥 变更为具体的过期时间点
+   meta: { requestAmount: 50.00, expiresAt: 'Feb 24, 2026, 10:23 AM' }
  },
  {
    id: 'tx_018',
@@ -315,7 +302,7 @@ const TRANSACTIONS: Transaction[] = [
  {
    id: 'tx_010',
    type: 'internal_transfer',
-   title: 'Withdraw from Express Pay',
+   title: 'Express Pay → Main Wallet',
    handle: 'Internal Transfer',
    timestamp: 'Today, 9:30 AM',
    amountFiat: 20.00,
@@ -353,7 +340,7 @@ const TRANSACTIONS: Transaction[] = [
  {
    id: 'tx_003',
    type: 'fund_express_pay',
-   title: 'Add to Express Pay',
+   title: 'Main Wallet → Express Pay',
    handle: 'Internal Transfer',
    timestamp: 'Yesterday, 2:00 PM',
    amountFiat: 100.00,
@@ -400,7 +387,7 @@ const TRANSACTIONS: Transaction[] = [
    category: 'Ticket',
    accountType: 'AA',
    isMixed: false,
-   route: [{ asset: 'Lounge Pass #402', amount: 1, type: 'NFT', symbol: '#', source: '' }],
+   route: [{ asset: 'Lounge Pass #402', amount: 1, type: 'NFT', symbol: '#' }],
    fees: { gas: 0, service: 0, bUnits: 0, gasBUnits: 0 },
    hashes: { base: '0x5f6...g7h8', conet: '0x2a3...b4c5' }
  }
@@ -413,27 +400,14 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
  const [showJson, setShowJson] = useState(false);
 
 
- // 格式化金额工具
+ // 格式化金额工具 (完全剥离 $)
  const formatCurrency = (amount: number, currency: string) => {
-   const sign = amount > 0 ? '+' : amount < 0 ? '' : '';
-   return `${sign}${amount.toFixed(2)} ${currency}`;
+   const sign = amount > 0 ? '+' : amount < 0 ? '-' : '';
+   return `${sign}${Math.abs(amount).toFixed(2)} ${currency}`;
  };
 
 
- // 内部互转名称翻转引擎
- const getDisplayTitle = (tx: Transaction, tab: string) => {
-   if (tx.accountType !== 'Internal') return tx.title;
-   if (tx.type === 'fund_express_pay') {
-     return tab === 'Express' ? 'Withdraw from Main Wallet' : 'Add to Express Pay';
-   }
-   if (tx.type === 'internal_transfer') {
-     return tab === 'Express' ? 'Add to Main Wallet' : 'Withdraw from Express Pay';
-   }
-   return tx.title;
- };
-
-
- // 内部互转金额翻转引擎
+ // 内部互转金额翻转引擎 (名字由箭头固化，仅保留金额极性的上下文翻转)
  const getDisplayAmount = (tx: Transaction, tab: string) => {
    if (tx.accountType !== 'Internal') return tx.amountFiat;
    if (tx.type === 'fund_express_pay') return tab === 'Express' ? Math.abs(tx.amountFiat) : -Math.abs(tx.amountFiat);
@@ -513,7 +487,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
  };
 
 
- // 🔥 核心革命：智能子账本投影引擎与法币精准折算
+ // 核心革命：智能子账本投影引擎与法币精准折算
  const ledgerEntries: LedgerEntry[] = [];
  TRANSACTIONS.forEach((tx) => {
    // 1. 内部互转
@@ -523,7 +497,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
        ledgerEntries.push({
          tx,
          id: tx.id,
-         title: getDisplayTitle(tx, activeTab),
+         title: tx.title,
          amountPrimary: formatCurrency(displayFiat, tx.currencyFiat),
          amountSecondary: `${Math.abs(displayFiat).toFixed(2)} USDC`,
          isPositive: displayFiat > 0
@@ -535,8 +509,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
 
    // 2. All 标签页 (宏观上帝视角)
    if (activeTab === 'All') {
-     let amtPrimary;
-     // 🔥 直接显示请求的金额，丢弃冗余的 Expired/Canceled 字样，完全剥离 $ 符号
+     let amtPrimary: string;
      if (tx.type === 'request_create' || tx.type === 'request_expired' || tx.type === 'request_canceled') {
         amtPrimary = `${(tx.meta?.requestAmount ?? 0).toFixed(2)} ${tx.currencyFiat}`;
      }
@@ -561,8 +534,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
    if (!tx.isMixed || !tx.route || tx.route.length === 0) {
      if ((activeTab === 'Cash' && tx.accountType === 'EOA') ||
          (activeTab === 'Express' && tx.accountType === 'AA')) {
-       let amtPrimary;
-       // 🔥 直接显示请求的金额，丢弃冗余的 Expired/Canceled 字样，完全剥离 $ 符号
+       let amtPrimary: string;
        if (tx.type === 'request_create' || tx.type === 'request_expired' || tx.type === 'request_canceled') {
           amtPrimary = `${(tx.meta?.requestAmount ?? 0).toFixed(2)} ${tx.currencyFiat}`;
        }
@@ -876,14 +848,13 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                <h2 className={`text-[28px] font-bold tracking-tight leading-tight ${(selectedTx.type === 'request_expired' || selectedTx.type === 'request_canceled') ? 'text-gray-400' : 'text-black'}`}>
                   {selectedTx.type === 'request_create' || selectedTx.type === 'request_expired' || selectedTx.type === 'request_canceled'
                     ? `Requesting ${(selectedTx.meta?.requestAmount ?? 0).toFixed(2)} ${selectedTx.currencyFiat}`
-                    // 详情页永远展示整个原子交易的总法币账单
                     : selectedTx.amountFiat === 0 ? 'Redeemed'
                     : formatCurrency(selectedTx.type === 'reload_card' ? selectedTx.amountFiat : selectedTx.amountFiat, selectedTx.currencyFiat)
                   }
                </h2>
 
 
-               {/* 明确展示结算的资产组合 (移除了对 Internal 类的屏蔽，允许展示内部划转的 USDC 结算) */}
+               {/* 明确展示结算的资产组合 */}
                {selectedTx.type !== 'request_create' && selectedTx.type !== 'request_expired' && selectedTx.type !== 'request_canceled' && getSettledString(selectedTx) && (
                   <div className="text-[15px] font-semibold text-[#1562f0] mt-1.5 mb-0.5">
                     Settled for {getSettledString(selectedTx)}
@@ -1001,8 +972,8 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                   
                    <div className="flex items-center gap-2">
                       <span className="font-semibold text-black flex items-center gap-1.5">
-                        {/* 🔥 极简脱水：直接输出 handle (即 @Tag)，不附带任何名字 */}
-                        {selectedTx.category === 'Internal' ? getDisplayTitle(selectedTx, activeTab) :
+                        {/* 🔥 直接显示固化的标题，或者 @Tag */}
+                        {selectedTx.category === 'Internal' ? selectedTx.title :
                          (selectedTx.type === 'request_create' || selectedTx.type === 'request_expired' || selectedTx.type === 'request_canceled') ? selectedTx.title :
                          selectedTx.handle}
                         {selectedTx.type !== 'request_create' && selectedTx.type !== 'request_expired' && selectedTx.type !== 'request_canceled' && selectedTx.category !== 'Internal' && <Share2 size={14} className="text-gray-400" />}
@@ -1018,7 +989,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                 </div>
 
 
-                {/* 🔥 引入 Expires 字段，展示精准的过期时间点 (不再对 Canceled 和 Expired 隐藏) */}
+                {/* 🔥 引入 Expires 字段，展示精准的过期时间点 */}
                 {(selectedTx.type === 'request_create' || selectedTx.type === 'request_expired' || selectedTx.type === 'request_canceled') && selectedTx.meta?.expiresAt && (
                    <div className="flex justify-between items-center text-[14px]">
                       <span className="text-gray-500 font-medium">Expires</span>
@@ -1073,7 +1044,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                   {selectedTx.hashes.base ? 'Settlement Proof' : 'Creation Proof'}
                 </h4>
                
-                 {Array.isArray(selectedTx.hashes.base) ? (
+                {Array.isArray(selectedTx.hashes.base) ? (
                    selectedTx.hashes.base.map((hash: string, index: number) => (
                      <div key={index} className="flex items-center justify-between p-3.5 bg-white border border-gray-200 rounded-[16px] shadow-sm active:bg-gray-50 transition-colors cursor-pointer">
                          <div className="flex items-center gap-2.5">

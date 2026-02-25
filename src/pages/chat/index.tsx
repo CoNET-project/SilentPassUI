@@ -56,7 +56,7 @@ const Home = () => {
 
 
   return (
-		<div className="w-full h-screen min-h-0 bg-[#F2F2F7] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+		<div className="w-full h-full min-h-0 h-screen bg-[#F2F2F7] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
 		{/* ✅ 当没选中聊天对象时：固定胶囊 + ChatList */}
 		{!chatData && (
 			<>

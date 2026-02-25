@@ -523,7 +523,7 @@ const ActiveHistoryPannelNew = ({
 							account,
 							0, // periodOffset: 0 = 本月
 							0, // pageOffset
-							20, // pageLimit
+							30, // pageLimit：受益人交易多时，20 条可能不足，导致最新收款被截断
 							TX_FILTER
 						)
 					)
@@ -596,7 +596,7 @@ const ActiveHistoryPannelNew = ({
 			}
 
 			merged.sort((a, b) => b.timestampMs - a.timestampMs)
-			setItems(merged.slice(0, 20))
+			setItems(merged.slice(0, 30))
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
 			setError(msg)
@@ -678,7 +678,8 @@ const ActiveHistoryPannelNew = ({
 
 	const filteredItems = items.filter((tx) => {
 		if (activeTab === 'All') return true
-		if (activeTab === 'Cash') return !tx.isAA
+		// Cash: Main Wallet 相关。internal_transfer 虽 isAA=true，但 EOA→AA/AA→EOA 都涉及 Main Wallet，需展示
+		if (activeTab === 'Cash') return !tx.isAA || tx.type === 'internal_transfer'
 		if (activeTab === 'Vouchers') return tx.isAA
 		return true
 	})
@@ -869,7 +870,7 @@ const ActiveHistoryPannelNew = ({
 	/** 带符号的法币金额，用于展示（使用 meta.currencyFiat 对应币种） */
 	const amountFiatSigned = (tx: TxView) => (tx.isInbound ? tx.amountFiat : -tx.amountFiat)
 
-	function TxItemRow({ tx }: { tx: TxView }) {
+	function TxItemRow({ tx, activeTab: rowActiveTab }: { tx: TxView; activeTab?: 'All' | 'Cash' | 'Vouchers' }) {
 		const isInternalTransfer = tx.type === 'internal_transfer'
 		const isReqExpired = (tx.type === 'request_create' || tx.type === 'request_expired') && isRequestExpired(tx)
 		const isReqCanceled = tx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(tx))
@@ -880,9 +881,9 @@ const ActiveHistoryPannelNew = ({
 		const eoaAddr = (eoa ?? myAddress ?? '').toLowerCase()
 		const aaAddr = (aa ?? '').toLowerCase()
 
-		// payee 决定资金流向：payee=EOA → Withdraw from Express Pay，payee=AA → Add to Express Pay（与 isInbound 无关）
+		// payee 决定资金流向：payee=EOA → Express Pay → Main Wallet (AA→EOA)，payee=AA → Main Wallet → Express Pay (EOA→AA)
 		const internalTitle = isInternalTransfer && eoaAddr && aaAddr
-			? (payeeAddr.toLowerCase() === eoaAddr ? 'Withdraw from Express Pay' : payeeAddr.toLowerCase() === aaAddr ? 'Add to Express Pay' : 'Internal Transfer')
+			? (payeeAddr.toLowerCase() === eoaAddr ? 'Express Pay → Main Wallet' : payeeAddr.toLowerCase() === aaAddr ? 'Main Wallet → Express Pay' : 'Internal Transfer')
 			: tx.title
 
 		const isAddToExpressPay = isInternalTransfer && payeeAddr.toLowerCase() === aaAddr
@@ -957,8 +958,14 @@ const ActiveHistoryPannelNew = ({
 
 		// AA→EOA (Withdraw to Main): 收入，数字显示绿色 +（以 payee=EOA 为准，不受合并顺序影响）
 		const isWithdrawToMain = isInternalTransfer && payeeAddr.toLowerCase() === eoaAddr
-		// Add to Express Pay (EOA→AA): 负数用黑色，不显示绿色
-		const amountIsGreen = !isAddToExpressPay && ((tx.isInbound && tx.amountUSDC > 0) || (isWithdrawToMain && tx.amountUSDC > 0))
+		// Vouchers 下：Main Wallet → Express Pay 显示 + 绿色，Express Pay → Main Wallet 显示 - 黑色
+		const vouchersInternalAmount = rowActiveTab === 'Vouchers' && isInternalTransfer
+			? (isAddToExpressPay ? { amt: Math.abs(tx.amountFiat), green: true } : { amt: -Math.abs(tx.amountFiat), green: false })
+			: null
+		// Add to Express Pay (EOA→AA): 负数用黑色，不显示绿色。Vouchers 下则反转：EOA→AA 为 + 绿色
+		const amountIsGreen = vouchersInternalAmount
+			? vouchersInternalAmount.green
+			: !isAddToExpressPay && ((tx.isInbound && tx.amountUSDC > 0) || (isWithdrawToMain && tx.amountUSDC > 0))
 
 		return (
 			<div
@@ -1040,7 +1047,9 @@ const ActiveHistoryPannelNew = ({
 							formatAmountWithCurrencyProtocol(Math.abs(tx.amountFiat), tx.currencyCode as ICurrency)
 						) : (
 							formatCurrencySigned(
-								isWithdrawToMain ? Math.abs(tx.amountFiat) : isAddToExpressPay ? -Math.abs(tx.amountFiat) : amountFiatSigned(tx),
+								vouchersInternalAmount
+									? vouchersInternalAmount.amt
+									: isWithdrawToMain ? Math.abs(tx.amountFiat) : isAddToExpressPay ? -Math.abs(tx.amountFiat) : amountFiatSigned(tx),
 								tx.currencyCode
 							)
 						)}
@@ -1156,7 +1165,7 @@ const ActiveHistoryPannelNew = ({
 			{!error && items.length > 0 && (
 				<div className="space-y-2 pb-3">
 					{displayItems.map((tx) => (
-						<TxItemRow key={tx.id} tx={tx} />
+						<TxItemRow key={tx.id} tx={tx} activeTab={activeTab} />
 					))}
 				</div>
 			)}
@@ -1240,8 +1249,9 @@ const ActiveHistoryPannelNew = ({
 							{(() => {
 								const isReqCanceledDetail = selectedTx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(selectedTx))
 								const isReqExpiredDetail = (selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && isRequestExpired(selectedTx)
-								const isInternalToEoa = selectedTx.type === 'internal_transfer' && eoa && aa &&
-									(extractAddr((selectedTx.rawTransaction as RawTxRecord)?.payee) ?? '').toLowerCase() === (eoa ?? myAddress ?? '').toLowerCase()
+								const payeeAddr = (extractAddr((selectedTx.rawTransaction as RawTxRecord)?.payee) ?? '').toLowerCase()
+								const isInternalToEoa = selectedTx.type === 'internal_transfer' && eoa && aa && payeeAddr === (eoa ?? myAddress ?? '').toLowerCase()
+								const isInternalToAa = selectedTx.type === 'internal_transfer' && eoa && aa && payeeAddr === (aa ?? '').toLowerCase()
 								const showGreenArrow = !selectedTxMySideIsAA && selectedTx.isInbound && selectedTx.type !== 'internal_transfer'
 								// 自己是收款方时，与列表对齐：request_fulfilled 用 QrCode，transfer_in 用 ArrowDownLeft
 								const isReceiver = selectedTx.isInbound && selectedTx.type !== 'internal_transfer'
@@ -1250,10 +1260,12 @@ const ActiveHistoryPannelNew = ({
 									: showGreenArrow ? <ArrowDownLeft size={36} strokeWidth={2} /> : (isReqExpiredDetail || isReqCanceledDetail)
 										? <XCircle size={36} strokeWidth={2} />
 										: iconForType(selectedTx.type, 36, selectedTx)
-								// AA→EOA 使用与列表一致的灰色胶囊背景；Request Expired / Canceled 使用灰色
+								// AA→EOA 蓝色背景白色 icon；EOA→AA 紫色背景白色 icon；Request Expired / Canceled 使用灰色
 								const capsuleBg = isInternalToEoa
-									? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
-									: (isReqExpiredDetail || isReqCanceledDetail)
+									? 'bg-[#1562f0] text-white dark:bg-[#1562f0] dark:text-white'
+									: isInternalToAa
+										? 'bg-[#AF52DE] text-white dark:bg-[#AF52DE] dark:text-white'
+										: (isReqExpiredDetail || isReqCanceledDetail)
 										? 'bg-gray-200 text-gray-500 dark:bg-slate-600 dark:text-slate-300'
 										: showGreenArrow ? 'bg-[#34C759] text-white shadow-[0_18px_38px_rgba(52,199,89,0.3)]' : colorForTypeSolid(selectedTx.type)
 								return (
@@ -1266,12 +1278,29 @@ const ActiveHistoryPannelNew = ({
 							})()}
 
 							<div className="text-center">
+								{(() => {
+									const raw = selectedTx.rawTransaction as RawTxRecord | undefined
+									const extractAddrDetail = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
+									const payeeAddrDetail = (extractAddrDetail(raw?.payee) ?? '').toLowerCase()
+									const isInternalToEoaDetail = selectedTx.type === 'internal_transfer' && eoa && aa && payeeAddrDetail === (eoa ?? myAddress ?? '').toLowerCase()
+									const isAddToExpressDetail = selectedTx.type === 'internal_transfer' && eoa && aa && payeeAddrDetail === (aa ?? '').toLowerCase()
+									// Vouchers 下与一览表对齐：Main Wallet → Express Pay 显示 + 绿色，Express Pay → Main Wallet 显示 - 黑色
+									const vouchersDetailAmt = activeTab === 'Vouchers' && selectedTx.type === 'internal_transfer'
+										? (isAddToExpressDetail ? { amt: Math.abs(selectedTx.amountFiat), green: true } : { amt: -Math.abs(selectedTx.amountFiat), green: false })
+										: null
+									const detailAmt = vouchersDetailAmt
+										? vouchersDetailAmt.amt
+										: isInternalToEoaDetail ? Math.abs(selectedTx.amountFiat) : isAddToExpressDetail ? -Math.abs(selectedTx.amountFiat) : amountFiatSigned(selectedTx)
+									const detailAmtGreen = vouchersDetailAmt ? vouchersDetailAmt.green : false
+									const amountColorClass = ((selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && (isRequestExpired(selectedTx) || canceledHashes.has(getOriginalPaymentHash(selectedTx))))
+										? 'text-gray-400 dark:text-slate-500'
+										: activeTab === 'Vouchers' && selectedTx.type === 'internal_transfer'
+											? (detailAmtGreen ? 'text-[#34C759]' : 'text-black dark:text-white')
+											: 'text-black dark:text-white'
+									return (
 								<h2
 									id="tx-detail-title"
-									className={`text-[28px] font-bold tracking-tight leading-tight ${
-										((selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && (isRequestExpired(selectedTx) || canceledHashes.has(getOriginalPaymentHash(selectedTx))))
-											? 'text-gray-400 dark:text-slate-500' : 'text-black dark:text-white'
-									}`}
+									className={`text-[28px] font-bold tracking-tight leading-tight ${amountColorClass}`}
 								>
 									{selectedTx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(selectedTx))
 										? 'Request Canceled'
@@ -1281,16 +1310,10 @@ const ActiveHistoryPannelNew = ({
 										? `Requesting ${formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)} ${selectedTx.currencyCode}`
 										: selectedTx.amountUSDC === 0
 											? 'Redeemed'
-											: (() => {
-												const raw = selectedTx.rawTransaction as RawTxRecord | undefined
-												const extractAddr = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
-												const payeeAddr = (extractAddr(raw?.payee) ?? '').toLowerCase()
-												const isInternalToEoa = selectedTx.type === 'internal_transfer' && eoa && aa && payeeAddr === (eoa ?? myAddress ?? '').toLowerCase()
-												const isAddToExpress = selectedTx.type === 'internal_transfer' && eoa && aa && payeeAddr === (aa ?? '').toLowerCase()
-												const amt = isInternalToEoa ? Math.abs(selectedTx.amountFiat) : isAddToExpress ? -Math.abs(selectedTx.amountFiat) : amountFiatSigned(selectedTx)
-												return formatCurrencySigned(amt, selectedTx.currencyCode)
-											})()}
+											: formatCurrencySigned(detailAmt, selectedTx.currencyCode)}
 								</h2>
+									)
+								})()}
 								{((selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && (isRequestExpired(selectedTx) || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
 									<p className="text-[18px] font-semibold text-gray-500 dark:text-slate-400 mt-1">
 										{formatAmountWithCurrencyProtocol(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)}
@@ -1484,10 +1507,11 @@ const ActiveHistoryPannelNew = ({
 							)
 						})()}
 
-						{/* Settled 节：仅当 request 已完成支付时展示 Smart Routing；Request Expired、Waiting、Cancel 状态下不展示 */}
+						{/* Settled 节：仅当 request 已完成支付时展示 Smart Routing；Request Expired、Waiting、Cancel 状态下不展示；EOA<>AA 内部互转不展示 */}
 						{(() => {
 							const status = getStatus(selectedTx)
 							if (status === 'Waiting' || status === 'Expired' || status === 'Canceled') return null
+							if (selectedTx.type === 'internal_transfer') return null
 							if (canceledHashes.has(getOriginalPaymentHash(selectedTx))) return null
 							const txWithRoute = fullTransactionFromChain ?? (selectedTx?.rawTransaction as unknown as Record<string, unknown>)
 							const routeArr = (txWithRoute?.route as RouteItemRecord[] | undefined) ?? []
@@ -1545,14 +1569,30 @@ const ActiveHistoryPannelNew = ({
 						})()}
 
 						<div className="bg-[#F9FAFB] dark:bg-slate-800/80 rounded-[24px] p-5 space-y-4 mb-8">
-							{!(getOriginalPaymentHash(selectedTx) && (getStatus(selectedTx) === 'Waiting' || getStatus(selectedTx) === 'Expired' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
+
+							{selectedTx.type === 'internal_transfer' && eoa && aa && (() => {
+								const raw = selectedTx.rawTransaction as RawTxRecord | undefined
+								const extractAddr = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
+								const payeeAddr = (extractAddr(raw?.payee) ?? '').toLowerCase()
+								const eoaAddr = (eoa ?? myAddress ?? '').toLowerCase()
+								const aaAddr = (aa ?? '').toLowerCase()
+								// 与 TxItemRow internalTitle 一致：EOA→AA 显示 Main Wallet → Express Pay，AA→EOA 显示 Express Pay → Main Wallet
+								const label = payeeAddr === eoaAddr ? 'Express Pay → Main Wallet' : payeeAddr === aaAddr ? 'Main Wallet → Express Pay' : 'Internal Transfer'
+								return (
+									<div className="flex justify-between items-center text-[14px]">
+										<span className="text-gray-500 dark:text-slate-400 font-medium">Transaction Type</span>
+										<span className="font-semibold text-black dark:text-white">{label}</span>
+									</div>
+								)
+							})()}
+							{selectedTx.type !== 'internal_transfer' && !(getOriginalPaymentHash(selectedTx) && (getStatus(selectedTx) === 'Waiting' || getStatus(selectedTx) === 'Expired' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
 							<div className="flex justify-between items-center text-[14px]">
 								<span className="text-gray-500 dark:text-slate-400 font-medium">
-									{selectedTx.type === 'internal_transfer' ? 'Recipient' : selectedTx.isInbound ? 'Received From' : getOriginalPaymentHash(selectedTx) ? 'Paid To' : 'Send To'}
+									{selectedTx.isInbound ? 'Received From' : getOriginalPaymentHash(selectedTx) ? 'Paid To' : 'Send To'}
 								</span>
 								<span className="font-semibold text-black dark:text-white flex items-center gap-1.5">
 									{detailTitleText}
-									{selectedTx.type !== 'internal_transfer' && selectedTx.counterpartyAddress && ethers.isAddress(selectedTx.counterpartyAddress) && (
+									{selectedTx.counterpartyAddress && ethers.isAddress(selectedTx.counterpartyAddress) && (
 										<button
 											type="button"
 											onClick={() => {

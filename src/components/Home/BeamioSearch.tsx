@@ -4,9 +4,11 @@ import { ChevronLeft } from "lucide-react"
 
 type Props = {
   close: (path: string | searchResult) => void
+  /** 仅当搜索面板真正打开时才 focus input，避免 navigate 到 home 时误弹键盘 */
+  isOpen?: boolean
 }
 
-export default function BeamioSearch({ close }: Props) {
+export default function BeamioSearch({ close, isOpen = true }: Props) {
 
 	
   return (
@@ -30,7 +32,7 @@ export default function BeamioSearch({ close }: Props) {
               if (path) close(path)
               	else close("/")
             }}
-			focus={true}
+			focus={isOpen}
 			select={true}
           />
         </section>

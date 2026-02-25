@@ -7,20 +7,23 @@ function BuildProgressPlugin() {
 }
 BuildProgressPlugin.prototype.apply = function (compiler) {
     const self = this;
+    compiler.hooks.environment.tap('BuildProgressPlugin', () => {
+        process.stderr.write('[Build] Webpack compiler created\n');
+    });
     compiler.hooks.compile.tap('BuildProgressPlugin', () => {
         self.startTime = Date.now();
-        console.error('[Build] 0% - Compiling...');
+        process.stderr.write('[Build] 0% - Compiling...\n');
     });
     compiler.hooks.compilation.tap('BuildProgressPlugin', () => {
-        console.error('[Build] 20% - Building modules...');
+        process.stderr.write('[Build] 20% - Building modules...\n');
     });
     compiler.hooks.emit.tap('BuildProgressPlugin', () => {
         const elapsed = ((Date.now() - self.startTime) / 1000).toFixed(1);
-        console.error(`[Build] 80% - Emitting assets... (${elapsed}s)`);
+        process.stderr.write(`[Build] 80% - Emitting assets... (${elapsed}s)\n`);
     });
     compiler.hooks.done.tap('BuildProgressPlugin', () => {
         const elapsed = ((Date.now() - self.startTime) / 1000).toFixed(1);
-        console.error(`[Build] 100% - Done in ${elapsed}s`);
+        process.stderr.write(`[Build] 100% - Done in ${elapsed}s\n`);
     });
 };
 

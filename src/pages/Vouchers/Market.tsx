@@ -783,7 +783,7 @@ export default function Market() {
 
 	return (
 		<>
-		<div className="w-full h-screen min-h-0 bg-[#F2F2F7] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100">
+		<div className="w-full h-full min-h-0 h-screen bg-[#F2F2F7] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100">
 		{/* 固定独立胶囊：Title，与 /history 一致，随滚动渐隐 */}
 		<div
 			className="fixed left-0 right-0 z-30 flex items-center justify-between px-5 transition-opacity duration-300"

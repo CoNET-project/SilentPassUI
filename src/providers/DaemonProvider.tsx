@@ -568,8 +568,10 @@ export function DaemonProvider({ children }: DaemonProps) {
 			<div style={{ position: "absolute", width: 0, height: 0, overflow: "hidden", pointerEvents: "none" }}>
 			<ScanButton ref={scanRef} hidden />
 			</div>
-
+			{/* h-full 确保 App 获得明确高度，修复 Android WebView 中主内容不可见 */}
+			<div className="h-full min-h-0 flex flex-col">
       {children}
+			</div>
     </Daemon.Provider>
   );
 }

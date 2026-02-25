@@ -126,11 +126,7 @@ const Pay = ({}) => {
 
 
 	return (
-		<div className="
-
-			flex justify-center
-			pt-[calc(env(safe-area-inset-top)+2rem)]
-		">
+		<div className="h-full min-h-0 flex flex-col justify-center pt-[calc(env(safe-area-inset-top)+2rem)]">
 			<div className="">
 				{/* Search */}
 			{/* <div className="flex items-center gap-2 mb-4 mt-4">

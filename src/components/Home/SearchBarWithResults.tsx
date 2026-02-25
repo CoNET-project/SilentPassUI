@@ -96,6 +96,7 @@ const SearchInputWithDropdown =
 		const [searchBeamiosHistory, setSearchBeamiosHistory] = useState<searchkeywork[]>([])
 		const [searchKeysHistory, setSearchKeysHistory] = useState<searchkeywork[]>([])
 		const [readonly, setReadonly] = useState(!focus)
+		useEffect(() => { setReadonly(!focus) }, [focus])
 		const hasQuery = query.trim().length > 0
 		const [internalError, setInternalError] = useState(showError)
 

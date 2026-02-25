@@ -770,8 +770,8 @@ const Home = ({}) => {
 				</button>
 			)}
 
-			{/* Phone frame - exampleExpress style */}
-			<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 flex flex-col overflow-y-auto pb-44">
+			{/* Phone frame - exampleExpress style；min-h-0 修复 Android WebView 中 flex+overflow 导致内容不可见 */}
+			<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 min-h-0 flex flex-col overflow-y-auto pb-44">
 				{!openSearch && (
 					<>
 						{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
@@ -1100,9 +1100,7 @@ const Home = ({}) => {
 					*/}
 					<div className="h-full w-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
 						<BeamioSearch
-							// 如果需要每次打开都重置状态，可以加这个 key
-							// key={openSearch ? "active" : "inactive"} 
-							
+							isOpen={openSearch}
 							close={(item) => {
 								
 								if (!item || typeof item === "string") {

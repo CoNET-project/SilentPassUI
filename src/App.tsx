@@ -10,7 +10,7 @@ import Pay from "./pages/Pay"
 import QrOperationPage from "./pages/Pay/QrOperationPage"
 import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
-import BeamioInstallOnboarding from "@/components/launchPage/BeamioInstallOnboarding"
+import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
 import { checkStorage, searchUsername, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits } from "@/services/beamio"
@@ -976,8 +976,9 @@ function AppShell() {
 	}, [charts, profiles])
 
   return (
-		<div className="overscroll-none">
-			<div ref={bodyRef} className="overscroll-none min-h-full">
+		<div className="overscroll-none h-full min-h-screen flex flex-col">
+			<div ref={bodyRef} className="overscroll-none flex-1 min-h-0 flex flex-col">
+				<div className="flex-1 min-h-0 flex flex-col">
 				<Routes>
 				<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
 				<Route path="/" element={<Home />} />
@@ -999,6 +1000,7 @@ function AppShell() {
 				<Route path="/transfertion" element={<BeamioTransactions />} />
 				<Route path="/cardManager" element={<CardManager />} />
 				</Routes>
+				</div>
 			</div>
 
 			{createPortal(

@@ -243,9 +243,9 @@ export type UIDAssetsResponse = {
 	ok: boolean
 	address?: string
 	cardAddress?: string
-	points: string
+	points?: string
 	points6?: string
-	usdcBalance: string
+	usdcBalance?: string
 	cardCurrency?: string
 	nfts?: { tokenId: string; attribute: string; tier: string; expiry: string; isExpired: boolean }[]
 	error?: string

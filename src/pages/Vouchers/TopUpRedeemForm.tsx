@@ -13,6 +13,8 @@ import {
     postCardCreateRedeem,
     encodeCreateRedeemBatch,
     type UserCardInfo,
+    type CardRedeemBatch,
+    type CardRedeemItem,
 } from '@/services/BeamioCard'
 import { generateCODE } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
@@ -127,7 +129,7 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
                 }
                 const temp = CoNET_Data
                 if (temp) {
-                    temp.cardRedeems = [...(temp.cardRedeems ?? []), batch]
+                    ;(temp as any).cardRedeems = [...((temp as any).cardRedeems ?? []), batch]
                     setCoNET_Data(temp)
                     await storeSystemData()
                 }

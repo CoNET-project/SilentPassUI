@@ -2080,15 +2080,14 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		// Bill 支付方无 AA（EOA-only）或 受益方为 EOA 且使用 EOA→EOA：走 BeamioTransfer 402 流程（需 ConformView 二次确认）
 		// useAaPlusEoa 时在下方直接执行两次转账，不走此分支
 		if (data.isBillPay && data.billPayeeAA && (data.billPayerEoaOnly || (data.billPayeeIsEOA && !data.useAaToEoa && !data.useAaPlusEoa)) && profiles?.[0] && myAddress) {
-			const noteMeta: Record<string, string> = { currency: data.billCurrency || 'USD', currencyAmount: data.amountStrFiat ?? data.amountStr }
-			if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
-				noteMeta.requestHash = data.billRequestHash
-			}
-			const sendNote = (data.forText || '') + `\r\n${JSON.stringify(noteMeta)}`
+			const sendNote = (data.forText || '').trim()
 			const params = new URLSearchParams({
 				amount: data.amountStr,
+				usdcAmount: data.amountStr,
+				currency: data.billCurrency || 'CAD',
+				currencyAmount: data.amountStrFiat ?? data.amountStr,
 				toAddress: data.billPayeeAA,
-				note: sendNote.trim(),
+				note: sendNote,
 			})
 			if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
 				params.set('requestHash', data.billRequestHash)
@@ -2193,15 +2192,14 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				}
 
 				const runEOA = async (): Promise<string | null> => {
-					const noteMeta: Record<string, string> = { currency: data.billCurrency || 'USD', currencyAmount: eoaCurrencyAmount }
-					if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
-						noteMeta.requestHash = data.billRequestHash
-					}
-					const sendNote = (data.forText || '') + `\r\n${JSON.stringify(noteMeta)}`
+					const sendNote = (data.forText || '').trim()
 					const params = new URLSearchParams({
 						amount: data.eoaAmountStr!,
+						usdcAmount: data.eoaAmountStr!,
+						currency: data.billCurrency || 'CAD',
+						currencyAmount: eoaCurrencyAmount,
 						toAddress: data.billPayeeAA!,
-						note: sendNote.trim(),
+						note: sendNote,
 					})
 					if (data.billRequestHash && ethers.isHexString(data.billRequestHash) && ethers.dataLength(data.billRequestHash) === 32) {
 						params.set('requestHash', data.billRequestHash)

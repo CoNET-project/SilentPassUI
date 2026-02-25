@@ -576,43 +576,24 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 		const bo = beamio
 
 		const currencyAmount = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
-		// 签字送出前检查 currency，避免记账时遗失
 		if (!currentCurrency || !String(currentCurrency).trim()) {
 			setSendError('Currency is required for accounting')
 			return
 		}
-		let data1: payMe = {
+		// 协议：使用显式参数 currency/currencyAmount/usdcAmount，不再使用 payMe JSON
+		let sendNote = note
+		if (addedNote) {
+			sendNote += (sendNote ? '\r\n' : '') + addedNote
+		}
+		const params = new URLSearchParams({
+			amount: sendAmount,
+			usdcAmount: sendAmount,
 			currency: currentCurrency,
 			currencyAmount,
-			...(isAaEoaTransfer && transferDirection === 'eoa-to-aa' && { isInternalTransfer: true }),
-		}
-
-
-
-		let sendNote = note
-		let _addnote = addedNote
-
-		if (addedNote) {
-			const tryAdd = JSON.parse(addedNote)
-			const card = tryAdd.card
-			const _data: IImageCard = {
-				title: card.title,
-				detail: card.detail,
-				image: card.image,
-				currency: currentCurrency,
-				currencyAmount: currencyAmountText
-			}
-
-			_addnote = JSON.stringify(_data)
-		}
-
-		sendNote += `\r\n${JSON.stringify(data1)}`
-
-		if (_addnote) {
-			sendNote += `\r\n${_addnote}`
-		}
-		
-		const params = new URLSearchParams({amount: sendAmount, toAddress: toAddress, note: sendNote }).toString()
+			toAddress,
+			note: sendNote.trim(),
+			...(isAaEoaTransfer && transferDirection === 'eoa-to-aa' && { isInternalTransfer: 'true' }),
+		}).toString()
 		const path = `/api/BeamioTransfer?${params}`
 		const requestEndpoint = aptEndpoint + path
 		setProcessing(true)

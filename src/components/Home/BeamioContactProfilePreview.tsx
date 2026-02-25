@@ -338,8 +338,15 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 		setShowPayConfirm(false)
 		setComformError('')
 
-		const sendNote = note||defaultNodeText
-		const params = new URLSearchParams({amount: amount, toAddress: itemAddress, note: sendNote }).toString()
+		const sendNote = note || defaultNodeText
+		const params = new URLSearchParams({
+			amount,
+			usdcAmount: amount,
+			currency: 'USDC',
+			currencyAmount: amount,
+			toAddress: itemAddress,
+			note: sendNote,
+		}).toString()
 		const path = `/api/BeamioTransfer?${params}`
 		const requestEndpoint = aptEndpoint + path
 

@@ -604,7 +604,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 	}
 
-	/** 执行 Payment Request 的 USDC 转账（与 PayScreen BeamioTransfer workflow 一致）。note 中传 payMe：currency/currencyAmount 保持原币种，usdcAmount 记录实际支付的 USDC。 */
+	/** 执行 Payment Request 的 USDC 转账（与 PayScreen BeamioTransfer workflow 一致）。使用显式参数 currency/currencyAmount/usdcAmount。 */
 	async function executePaymentRequestTransfer(
 		prSendId: string,
 		usdcAmountNum: number,
@@ -619,13 +619,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		setPayTransferLoading(prSendId)
 		setPayTransferError(null)
 		const usdcAmountStr = usdcAmountNum > 0 ? usdcAmountNum.toFixed(6) : '0'
-		const payMeForNote: payMe = {
+		const params = new URLSearchParams({
+			amount: usdcAmountStr,
+			usdcAmount: usdcAmountStr,
 			currency: originalCurrency,
 			currencyAmount: originalCurrencyAmount,
-			usdcAmount: usdcAmountNum,
-		}
-		const note = JSON.stringify({ payMe: payMeForNote })
-		const params = new URLSearchParams({ amount: usdcAmountStr, toAddress, note }).toString()
+			toAddress,
+			note: '',
+		}).toString()
 		const requestEndpoint = `${aptEndpoint}/api/BeamioTransfer?${params}`
 		try {
 			const response = await fetch(requestEndpoint, { method: 'GET' })

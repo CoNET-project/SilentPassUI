@@ -239,10 +239,10 @@ export const fetchNfcCardStatus = async (uid: string): Promise<{ registered: boo
 }
 
 /** Base 主网 BeamioUserCard 工厂地址（与 x402sdk chainAddresses 一致） */
-const BASE_CARD_FACTORY = '0x86879fE3fbd958f468B1e5E6Cd075a9149ADB48F'
+const BASE_CARD_FACTORY = '0x19C000c00e6A2b254b39d16797930431E310BEdd'
 const BASE_CHAIN_ID = 8453
 
-/** NFC Topup Prepare：获取 executeForOwner 所需的 cardAddr、data、deadline、nonce */
+/** NFC Topup Prepare：获取 executeForAdmin 所需的 cardAddr、data、deadline、nonce */
 export const nfcTopupPrepare = async (params: { uid: string; amount: string; currency?: string }): Promise<{
 	cardAddr: string
 	data: string
@@ -265,7 +265,7 @@ export const nfcTopupPrepare = async (params: { uid: string; amount: string; cur
 	}
 }
 
-/** NFC Topup：读取方 UI 用户用 profile 私钥签 ExecuteForOwner，提交后 Master 调用 factory.executeForOwner */
+/** NFC Topup：读取方 UI 用户用 profile 私钥签 ExecuteForAdmin，提交后 Master 调用 factory.executeForAdmin */
 export const nfcTopup = async (params: { uid: string; amount: string; currency?: string }): Promise<{ success: boolean; txHash?: string; error?: string }> => {
 	if (!CoNET_Data?.profiles?.length || !CoNET_Data.profiles[0]?.privateKeyArmor) {
 		return { success: false, error: '请先登录 Beamio 账户' }
@@ -283,7 +283,7 @@ export const nfcTopup = async (params: { uid: string; amount: string; currency?:
 		verifyingContract: BASE_CARD_FACTORY,
 	}
 	const types = {
-		ExecuteForOwner: [
+		ExecuteForAdmin: [
 			{ name: 'cardAddress', type: 'address' },
 			{ name: 'dataHash', type: 'bytes32' },
 			{ name: 'deadline', type: 'uint256' },

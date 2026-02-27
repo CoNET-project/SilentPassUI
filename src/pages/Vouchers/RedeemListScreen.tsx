@@ -15,6 +15,7 @@ import {
     postExecuteForOwner,
     getRedeemStatusBatchFromChain,
     removeNotFoundRedeems,
+    getCardOwner,
 } from '@/services/BeamioCard'
 import { CoNET_Data } from '@/utils/globals'
 import type { RedeemStatusChain } from '@/services/BeamioCard'
@@ -107,6 +108,14 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound }: Props) {
         setCancelLoadingHash(hash)
         setError('')
         try {
+            const wallet = new ethers.Wallet(profile.privateKeyArmor)
+            const cardOwner = await getCardOwner(cardAddress)
+            if (ethers.getAddress(cardOwner) !== ethers.getAddress(wallet.address)) {
+                setError('This card is owned by your AA account. Cancel redeem requires the card owner to sign. Please use a card owned by your EOA.')
+                setCancelLoadingHash(null)
+                return
+            }
+
             const data = encodeCancelRedeem(code)
             const now = Math.floor(Date.now() / 1000)
             const deadline = now + 3600

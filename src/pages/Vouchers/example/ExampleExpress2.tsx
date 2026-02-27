@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
-import { getMyAssets } from '@/services/BeamioCard';
+import { getMyAssetsAggregated } from '@/services/BeamioCard';
 import { CCSA_Card_Address } from '@/utils/constants';
 import ActiveList from '@/pages/Vouchers/ActiveList';
 import {
@@ -464,8 +464,8 @@ export default function BeamioApp() {
 
   // 拉取 CCSA 卡资产，供 ActiveList 展示活动（与 MyWalletDashboard Tab 2 一致）
   useEffect(() => {
-    if (activeTab !== 'wallet' || !profiles?.[0] || !CCSA_Card_Address) return;
-    getMyAssets(profiles[0], CCSA_Card_Address)
+    if (activeTab !== 'wallet' || !profiles?.[0]) return;
+    getMyAssetsAggregated(profiles[0])
       .then((assets) => { if (assets) setSmartAccountCardAssets(assets); })
       .catch(() => setSmartAccountCardAssets(null));
   }, [activeTab, profiles]);

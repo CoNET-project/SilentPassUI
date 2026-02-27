@@ -11,8 +11,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence } from "framer-motion"
 import CardDetail from "./CardDetail"
 import CCSACardVisual from "./CardVisual"
-import { getMyAssets } from "@/services/BeamioCard"
-import { CCSA_Card_Address } from "@/utils/constants"
+import { getMyAssetsAggregated } from "@/services/BeamioCard"
 import TopUpAccount from "@/pages/Vouchers/TopUpAccount"
 import ShowPayQR from "@/pages/Vouchers/showPayQR"
 import ActiveList from "./ActiveList"
@@ -158,7 +157,7 @@ export default function Vouchers() {
 	const flash = async () => {
 		if (profiles?.length) {
 			await new Promise(resolve => setTimeout(resolve, 500))
-			getMyAssets(profiles[0], CCSA_Card_Address).then((res) => {
+			getMyAssetsAggregated(profiles[0]).then((res) => {
 			setMyAssets(res)
 			}).catch(e => {
 			console.log(e)

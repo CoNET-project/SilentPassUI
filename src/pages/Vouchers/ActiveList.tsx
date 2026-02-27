@@ -3,7 +3,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { getLatest20UserActions_Lite } from '@/services/BeamioCard'
 import { Minus, Plus } from 'lucide-react'
 import { fiatPrefix, formatAmount } from '@/services/currency'
-import { CCSA_Card_Address, USDCContract_BASE } from '@/utils/constants'
+import { ASSET_CARD_ADDRESSES, USDCContract_BASE,CCSA_Card_Address } from '@/utils/constants'
 
 /** action 枚举：1=mint(收入), 2=burn, 3=transfer(支出) */
 const TOKEN_MINT = 1
@@ -131,13 +131,15 @@ const ActiveList = ({ onItemClick, MyCardAssets }: ActiveListProps) => {
 
   useEffect(() => {
     if (!profiles?.[0] || !MyCardAssets?.cardAddress) return
-    // 同时查询 USDC 和 CCSA 的活动记录
+    // 同时查询 USDC 和资产卡（CCSA + beamioUserCard）的活动记录
     Promise.all([
       getLatest20UserActions_Lite(profiles[0], USDCContract_BASE),
-      getLatest20UserActions_Lite(profiles[0], CCSA_Card_Address, MyCardAssets.cardAddress),
-    ]).then(([usdcActions, ccsacActions]) => {
+      ...ASSET_CARD_ADDRESSES.map((cardAddr) =>
+        getLatest20UserActions_Lite(profiles![0], cardAddr, MyCardAssets!.cardAddress)
+      ),
+    ]).then(([usdcActions, ...assetActions]) => {
       // 合并结果并按时间戳排序
-      const allActions = [...(usdcActions || []), ...(ccsacActions || [])]
+      const allActions = [...(usdcActions || []), ...assetActions.flat()]
       allActions.sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
       // 取最新的 20 条
       const latest20 = allActions.slice(0, 20)

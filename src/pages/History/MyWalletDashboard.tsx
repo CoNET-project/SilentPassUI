@@ -41,7 +41,7 @@ import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import ActivePannel from "./components/activePannel"
 import ActiveList from '@/pages/Vouchers/ActiveList'
 import ActionItemDetail from '@/pages/Vouchers/ActionItemDetail'
-import { getMyAssets } from '@/services/BeamioCard'
+import { getMyAssetsAggregated } from '@/services/BeamioCard'
 import { CCSA_Card_Address } from '@/utils/constants'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
@@ -702,8 +702,8 @@ export function MyWalletDashboard() {
 
 	// Tab 2 (Express Pay)：拉取 CCSA 卡资产，供 ActiveList 展示活动
 	useEffect(() => {
-		if (activeSlide !== 1 || !profiles?.[0] || !CCSA_Card_Address) return
-		getMyAssets(profiles[0], CCSA_Card_Address)
+		if (activeSlide !== 1 || !profiles?.[0]) return
+		getMyAssetsAggregated(profiles[0])
 			.then((assets) => { if (assets) setSmartAccountCardAssets(assets) })
 			.catch(() => setSmartAccountCardAssets(null))
 	}, [activeSlide, profiles])
@@ -738,9 +738,9 @@ export function MyWalletDashboard() {
 		await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
 		await loadAaAccountBalance()
 		// 刷新 CCSA 资产
-		if (profiles?.[0] && CCSA_Card_Address) {
+		if (profiles?.[0]) {
 			try {
-				const assets = await getMyAssets(profiles[0], CCSA_Card_Address)
+				const assets = await getMyAssetsAggregated(profiles[0])
 				if (assets) setSmartAccountCardAssets(assets)
 			} catch (e) {
 				console.error('Failed to refresh CCSA assets:', e)
@@ -756,8 +756,8 @@ export function MyWalletDashboard() {
 		refreshAAAssetsTimeoutRef.current = setTimeout(() => {
 			refreshAAAssetsTimeoutRef.current = null
 			loadAaAccountBalance()
-			if (profiles?.[0] && CCSA_Card_Address) {
-				getMyAssets(profiles[0], CCSA_Card_Address)
+			if (profiles?.[0]) {
+				getMyAssetsAggregated(profiles[0])
 					.then((assets) => { if (assets) setSmartAccountCardAssets(assets) })
 					.catch(() => setSmartAccountCardAssets(null))
 			}

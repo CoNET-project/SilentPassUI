@@ -29,8 +29,7 @@ import PayScreen from '@/pages/Pay/send'
 import { ethers } from 'ethers'
 import { baseEndpoint } from '@/utils/constants'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
-import { CCSA_Card_Address } from '@/utils/constants'
-import { getAAAccount, getMyAssets } from '@/services/BeamioCard'
+import { getAAAccount, getMyAssetsAggregated } from '@/services/BeamioCard'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
@@ -83,7 +82,7 @@ const Home = ({}) => {
 	const [openSearch, setOpenSearch]= useState(false)
 	const [reflash, setReflash] = useState(false)
 	const [itemTx, setItemtx] = useState<TransferHistork>()
-	const [ccsaAssets, setCcsaAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
+	const [ccsaAssets, setCcsaAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 
 
 
@@ -130,11 +129,9 @@ const Home = ({}) => {
 		setReflash(true)
 
 		await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
-		if (CCSA_Card_Address) {
-			getMyAssets(profile, CCSA_Card_Address)
-				.then(setCcsaAssets)
-				.catch(() => setCcsaAssets(null))
-		}
+		getMyAssetsAggregated(profile)
+			.then(setCcsaAssets)
+			.catch(() => setCcsaAssets(null))
 		setReflash(false)
 	}
 
@@ -194,14 +191,12 @@ const Home = ({}) => {
 			}
 		}
 		reflashProcess()
-		// 拉取 CCSA 卡资产（延迟执行，避免首屏阻塞）
-		if (CCSA_Card_Address) {
-			setTimeout(() => {
-				getMyAssets(profile, CCSA_Card_Address)
-					.then(setCcsaAssets)
-					.catch(() => setCcsaAssets(null))
-			}, 150)
-		}
+		// 拉取 CCSA + beamioUserCard 聚合资产（延迟执行，避免首屏阻塞）
+		setTimeout(() => {
+			getMyAssetsAggregated(profile)
+				.then(setCcsaAssets)
+				.catch(() => setCcsaAssets(null))
+		}, 150)
 		const bo: beamio = temp?.beamio || await getUserInfo(profile.keyID)
 
 		if (!bo) return

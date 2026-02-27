@@ -37,8 +37,7 @@ import {
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { getMyAssets } from "@/services/BeamioCard"
-import { CCSA_Card_Address } from "@/utils/constants"
+import { getMyAssetsAggregated } from "@/services/BeamioCard"
 import BeamioNavBack from "@/components/Setting/BeamioNavBack"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
@@ -689,7 +688,7 @@ export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, myAddress, setShowFooter, usdcbalance, beamio } = useDaemonContext()
-	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
+	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [activeFilter, setActiveFilter] = useState<string | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
@@ -716,7 +715,7 @@ export default function Market() {
 	const flash = async () => {
 		if (profiles?.length) {
 		await new Promise((r) => setTimeout(r, 500))
-		getMyAssets(profiles[0], CCSA_Card_Address)
+		getMyAssetsAggregated(profiles[0])
 			.then(setMyAssets)
 			.catch((e) => console.warn(e))
 		}
@@ -904,6 +903,9 @@ export default function Market() {
 						switch (cat.id) {
 							case 'services':
 								navigate("/transfertion")
+								break
+							case 'retail':
+								navigate("/native-pos")
 								break
 						}
 					}}

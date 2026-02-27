@@ -10,6 +10,7 @@ import {
     signExecuteForOwner,
     postCardAddAdmin,
     encodeAddAdmin,
+    getCardOwner,
     type UserCardInfo,
 } from '@/services/BeamioCard'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
@@ -70,6 +71,14 @@ export default function AddAdminBottomSheet({ userCards, onClose, onSuccess }: P
         setLoading(true)
         setError('')
         try {
+            const wallet = new ethers.Wallet(profile.privateKeyArmor)
+            const cardOwner = await getCardOwner(selectedCard.cardAddress)
+            if (ethers.getAddress(cardOwner) !== ethers.getAddress(wallet.address)) {
+                setError('This card is owned by your AA account. Add admin requires the card owner to sign. Please use a card owned by your EOA.')
+                setLoading(false)
+                return
+            }
+
             const now = Math.floor(Date.now() / 1000)
             const deadline = now + 3600
             const nonce = ethers.hexlify(ethers.randomBytes(32))

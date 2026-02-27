@@ -10,13 +10,12 @@ const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
 const _viteBaseRpc = typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_BASE_RPC?: string } }).env?.VITE_BASE_RPC
 
-/** 免费 Base 主网 RPC（1rpc.io，Beamio 节点同步落后时使用） */
-const DEFAULT_BASE_RPC = 'https://1rpc.io/base'
-
-/** 免费 Base 主网 RPC 列表（VITE_BASE_RPC 未设置时：1rpc.io + CoNET 代理作为 fallback） */
+/** 免费 Base 主网 RPC 列表（VITE_BASE_RPC 未设置时：多节点 fallback，RPC 限流/失败时自动切换） */
 export const BASE_RPC_URLS = _viteBaseRpc
 	? [_viteBaseRpc]
-	: [DEFAULT_BASE_RPC]
+	: [
+		'https://1rpc.io/base'
+	]
 
 /** 检测是否为 RPC 配额/网络类错误（应触发切换） */
 export const isRpcQuotaOrNetworkError = (err: unknown): boolean => {
@@ -31,7 +30,8 @@ export const isRpcQuotaOrNetworkError = (err: unknown): boolean => {
 		/missing response for request/i.test(msg) ||
 		/JsonRpcProvider failed to detect network/i.test(msg) ||
 		/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|ERR_CONNECTION_CLOSED|net::/i.test(msg) ||
-		/ERR_INCOMPLETE_CHUNKED_ENCODING/i.test(msg)
+		/ERR_INCOMPLETE_CHUNKED_ENCODING/i.test(msg) ||
+		/Failed to fetch|fetch failed/i.test(msg)
 	)
 }
 
@@ -77,7 +77,7 @@ let _currentIndex = 0
 /** 获取当前 provider（使用 _currentIndex） */
 function getCurrentProvider(): ethers.JsonRpcProvider {
 	const urls = getEffectiveUrls()
-	if (!urls.length) return createProvider(BASE_RPC_URLS[0] ?? DEFAULT_BASE_RPC)
+	if (!urls.length) return createProvider(BASE_RPC_URLS[0] ?? 'https://1rpc.io/base')
 	return createProvider(urls[_currentIndex] ?? urls[0])
 }
 
@@ -92,7 +92,7 @@ export function switchToNextBaseRpc(): ethers.JsonRpcProvider {
 	const urls = getEffectiveUrls()
 	const n = Math.max(1, urls.length)
 	_currentIndex = (_currentIndex + 1) % n
-	return createProvider(urls[_currentIndex] ?? BASE_RPC_URLS[0] ?? DEFAULT_BASE_RPC)
+	return createProvider(urls[_currentIndex] ?? BASE_RPC_URLS[0] ?? 'https://1rpc.io/base')
 }
 
 /** 获取当前 RPC URL（便于调试） */

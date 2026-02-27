@@ -10,6 +10,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatAmount } from '@/services/currency'
 import {
     signExecuteForOwner,
+    getCardOwner,
     postCardCreateRedeem,
     encodeCreateRedeemBatch,
     type UserCardInfo,
@@ -78,6 +79,14 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
         setLoading(true)
         setError('')
         try {
+            const wallet = new ethers.Wallet(profile.privateKeyArmor)
+            const cardOwner = await getCardOwner(selectedCard.cardAddress)
+            if (ethers.getAddress(cardOwner) !== ethers.getAddress(wallet.address)) {
+                setError('This card is owned by your AA account. Create redeem requires the card owner to sign. Please use a card owned by your EOA, or create new cards with your EOA as owner.')
+                setLoading(false)
+                return
+            }
+
             const codes: string[] = []
             for (let i = 0; i < quantity; i++) {
                 const { code } = generateCODE('')

@@ -50,6 +50,7 @@ import {
 	SmartphoneNfc,
 	Loader2,
 	X,
+	Cpu,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
@@ -60,12 +61,12 @@ import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
-import { getMyAssets, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch } from '@/services/BeamioCard'
+import { getMyAssets, getCardMetadataFromUri, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch } from '@/services/BeamioCard'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
 import type { RedeemStatusChain } from '@/services/BeamioCard'
 import { fiatPrefix, parseNodeEX, calcFeeFromReceived, formatTimev2, formatAmount, type ParsedNote } from '@/services/currency'
-import { CCSA_Card_Address } from '@/utils/constants'
+import { CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/utils/constants'
 import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { getRedeemStatusBatchFromChain } from '@/services/BeamioCard'
@@ -453,7 +454,7 @@ const ManageCardsOverlay = ({
 }: {
 	isOpen: boolean
 	onClose: () => void
-	allPasses: { id: string; name: string; nickname?: string; balance: string; currency: string; type: string; memberNo: string; bg: string; status: 'active' | 'archived'; icon?: React.ElementType }[]
+	allPasses: { id: string; name: string; nickname?: string; balance: string; currency: string; type: string; memberNo: string; bg: string; status: 'active' | 'archived'; icon?: React.ElementType; image?: string }[]
 	onUpdateStatus: (id: string, status: 'active' | 'archived') => void
 	onRename: (id: string, newName: string) => void
 }) => {
@@ -489,7 +490,7 @@ const ManageCardsOverlay = ({
 				</p>
 				<div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-6">
 					{activePasses.map((pass) => {
-						const Icon = pass.id === 'ccsa' ? Globe : CreditCard
+						const Icon = pass.id === 'ccsa' ? Globe : pass.id === BEAMIO_USER_CARD_ASSET_ADDRESS ? Cpu : CreditCard
 						const isEditing = editingId === pass.id
 						const displayTitle = pass.nickname || pass.name
 						return (
@@ -505,10 +506,10 @@ const ManageCardsOverlay = ({
 									<MinusCircle className="w-6 h-6 fill-red-100" />
 								</button>
 								<div
-									className="w-10 h-10 rounded-full flex items-center justify-center mr-3"
+									className="w-10 h-10 rounded-full flex items-center justify-center mr-3 overflow-hidden shrink-0"
 									style={{ background: pass.bg }}
 								>
-									<Icon className="w-5 h-5 text-white" />
+									{pass.image ? <img src={pass.image} alt="" className="w-full h-full object-cover" /> : <Icon className="w-5 h-5 text-white" />}
 								</div>
 								<div className="flex-1">
 									<div className="flex items-center gap-2">
@@ -569,7 +570,7 @@ const ManageCardsOverlay = ({
 						<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">Hidden</p>
 						<div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-8">
 							{hiddenPasses.map((pass) => {
-								const Icon = pass.id === 'ccsa' ? Globe : CreditCard
+								const Icon = pass.id === 'ccsa' ? Globe : pass.id === BEAMIO_USER_CARD_ASSET_ADDRESS ? Cpu : CreditCard
 								return (
 									<div
 										key={pass.id}
@@ -582,8 +583,8 @@ const ManageCardsOverlay = ({
 										>
 											<PlusCircle className="w-6 h-6 fill-green-100" />
 										</button>
-										<div className="w-10 h-10 rounded-full flex items-center justify-center mr-3 bg-gray-200">
-											<Icon className="w-5 h-5 text-gray-500" />
+										<div className="w-10 h-10 rounded-full flex items-center justify-center mr-3 overflow-hidden shrink-0 bg-gray-200">
+											{pass.image ? <img src={pass.image} alt="" className="w-full h-full object-cover" /> : <Icon className="w-5 h-5 text-gray-500" />}
 										</div>
 										<div className="flex-1">
 											<h3 className="font-bold text-gray-900 text-sm">{pass.nickname || pass.name}</h3>
@@ -637,6 +638,9 @@ export default function MyWalletDashboardNew() {
 	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
 	const [ccsaBalance, setCcsaBalance] = useState<string>('0')
 	const [ccsaAssets, setCcsaAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
+	const [infraCardBalance, setInfraCardBalance] = useState<string>('0')
+	const [infraCardAssets, setInfraCardAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
+	const [infraCardMetadata, setInfraCardMetadata] = useState<{ name?: string; image?: string } | null>(null)
 	const [eoaReflash, setEoaReflash] = useState(false)
 	const [aaReflash, setAaReflash] = useState(false)
 	const [ccsaReflash, setCcsaReflash] = useState(false)
@@ -662,6 +666,7 @@ export default function MyWalletDashboardNew() {
 	const [redeemSuccessTx, setRedeemSuccessTx] = useState<string | null>(null)
 	const [redeemDetails, setRedeemDetails] = useState<RedeemDetailsForDisplay | null>(null)
 	const [redeemDetailsLoading, setRedeemDetailsLoading] = useState(false)
+	const [redeemDetailsRetryKey, setRedeemDetailsRetryKey] = useState(0)
 	const [userCards, setUserCards] = useState<UserCardInfo[]>([])
 	const [payScreenMode, setPayScreenMode] = useState<'eoa-pay' | 'aa-eoa-transfer'>('eoa-pay')
 	const [isManagingCards, setIsManagingCards] = useState(false)
@@ -763,6 +768,12 @@ export default function MyWalletDashboardNew() {
 	// 拉取 redeem 详情：当面板打开且有 code 时。新 CCSA 查不到时 fallback 到旧 CCSA（兼容迁移前创建的 redeem）
 	const OLD_CCSA = BASE_MAINNET_FACTORIES.OLD_CCSA_CARD_ADDRESS
 	const NEW_CCSA = BASE_MAINNET_FACTORIES.BeamioCardCCSA_ADDRESS
+	/** 是否为基础设施 CCSA 卡（用于 Redeem Asset 面板展示 CCSA 风格 vs 通用 BeamioUserCard 风格） */
+	const isCcsaCard = (addr: string) => {
+		const a = (addr || '').trim().toLowerCase()
+		if (!a) return true // 空时默认用 CCSA
+		return a === NEW_CCSA.toLowerCase() || a === OLD_CCSA.toLowerCase() || a === CCSA_Card_Address.toLowerCase() || a === BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase()
+	}
 	useEffect(() => {
 		if (!ccsaRedeemOpen || !redeemCodeInput.trim()) {
 			setRedeemDetails(null)
@@ -793,7 +804,7 @@ export default function MyWalletDashboardNew() {
 			if (!cancelled) setRedeemDetailsLoading(false)
 		})
 		return () => { cancelled = true }
-	}, [ccsaRedeemOpen, redeemCodeInput, redeemCardNumberInput])
+	}, [ccsaRedeemOpen, redeemCodeInput, redeemCardNumberInput, redeemDetailsRetryKey])
 
 	// 从 detail 内操作返回时恢复全局 footer（所有 detail 按钮操作的共同规则）
 	const closeEoaPanel = useCallback(() => {
@@ -1123,16 +1134,29 @@ export default function MyWalletDashboardNew() {
 		return () => cancelAnimationFrame(id)
 	}, [profiles?.[0]?.keyID, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD])
 
-	// 拉取 CCSA 卡资产（延迟执行，避免首屏加载阻塞 Footer 等交互）
+	// 拉取 CCSA 与 基础设施卡 资产（分开，0x4879... 的 token#0 不合并入 CCSA 总额）
 	useEffect(() => {
-		if (!profiles?.[0] || !CCSA_Card_Address) return
+		if (!profiles?.[0]) return
 		const id = setTimeout(() => {
-			getMyAssets(profiles[0], CCSA_Card_Address)
-				.then((assets) => {
-					if (assets?.points != null) setCcsaBalance(assets.points)
-					setCcsaAssets(assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null)
+			Promise.all([
+				getMyAssets(profiles[0], CCSA_Card_Address),
+				getMyAssets(profiles[0], BEAMIO_USER_CARD_ASSET_ADDRESS),
+				getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS),
+			])
+				.then(([ccsa, infra, meta]) => {
+					if (ccsa?.points != null) setCcsaBalance(ccsa.points)
+					setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
+					if (infra?.points != null) setInfraCardBalance(infra.points)
+					setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
+					setInfraCardMetadata(meta ?? null)
 				})
-				.catch(() => { setCcsaBalance('0'); setCcsaAssets(null) })
+				.catch(() => {
+					setCcsaBalance('0')
+					setCcsaAssets(null)
+					setInfraCardBalance('0')
+					setInfraCardAssets(null)
+					setInfraCardMetadata(null)
+				})
 		}, 150)
 		return () => clearTimeout(id)
 	}, [profiles])
@@ -1199,20 +1223,30 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [eoaReflash, aaReflash, profiles, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
 
-	// 单独刷新 CCSA 资产（与 EOA 刷新分开，动画独立）
+	// 单独刷新 CCSA 与 基础设施卡 资产（分开，0x4879... 不合并入 CCSA）
 	const refreshCcsaAssets = useCallback(async () => {
 		if (ccsaReflash) return
 		const profile = profiles?.[0]
-		if (!profile || !CCSA_Card_Address) return
+		if (!profile) return
 		setCcsaReflash(true)
 		try {
-			const assets = await getMyAssets(profile, CCSA_Card_Address)
-			if (assets?.points != null) setCcsaBalance(assets.points)
-			setCcsaAssets(assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null)
+			const [ccsa, infra, meta] = await Promise.all([
+				getMyAssets(profile, CCSA_Card_Address),
+				getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS),
+				getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS),
+			])
+			if (ccsa?.points != null) setCcsaBalance(ccsa.points)
+			setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
+			if (infra?.points != null) setInfraCardBalance(infra.points)
+			setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
+			setInfraCardMetadata(meta ?? null)
 		} catch (e) {
 			console.error('Failed to refresh CCSA assets:', e)
 			setCcsaBalance('0')
 			setCcsaAssets(null)
+			setInfraCardBalance('0')
+			setInfraCardAssets(null)
+			setInfraCardMetadata(null)
 		} finally {
 			setCcsaReflash(false)
 		}
@@ -1308,9 +1342,9 @@ export default function MyWalletDashboardNew() {
 
 	const selectedCard = cards.find((c) => c.id === activeView)
 
-	// exampleExpress passes：CCSA + userCards，用于展开时的叠卡列表
+	// exampleExpress passes：CCSA + 基础设施卡 + userCards，用于展开时的叠卡列表
 	const passes = useMemo(() => {
-		const list: { id: string; name: string; balance: string; currency: string; type: string; memberNo: string; bg: string; textColor?: string }[] = []
+		const list: { id: string; name: string; balance: string; currency: string; type: string; memberNo: string; bg: string; textColor?: string; image?: string }[] = []
 		if (profiles?.[0]?.aaAccount) {
 			const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
 			list.push({
@@ -1322,6 +1356,19 @@ export default function MyWalletDashboardNew() {
 				memberNo: nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : '',
 				bg: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
 				textColor: 'white',
+			})
+			// 基础设施卡 0x4879171D6c4693EaEdcD8F448a785A31B2146e64，使用创建卡时 uri 的 metadata
+			const infraNft = infraCardAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
+			list.push({
+				id: BEAMIO_USER_CARD_ASSET_ADDRESS,
+				name: infraCardMetadata?.name ?? '基础设施卡',
+				balance: formatWithThousands(infraCardBalance),
+				currency: 'CAD',
+				type: 'Infrastructure',
+				memberNo: infraNft ? `M-${String(infraNft.tokenId).padStart(6, '0')}` : BEAMIO_USER_CARD_ASSET_ADDRESS.slice(0, 10) + '...',
+				bg: 'linear-gradient(135deg, #0ea5e9, #06b6d4, #14b8a6)',
+				textColor: 'white',
+				image: infraCardMetadata?.image,
 			})
 		}
 		userCards.forEach((uc) => {
@@ -1336,7 +1383,7 @@ export default function MyWalletDashboardNew() {
 			})
 		})
 		return list
-	}, [profiles?.[0]?.aaAccount, ccsaAssets?.nfts, ccsaBalance, userCards])
+	}, [profiles?.[0]?.aaAccount, ccsaAssets?.nfts, ccsaBalance, infraCardAssets?.nfts, infraCardBalance, infraCardMetadata, userCards])
 
 	const updatePassStatus = useCallback((id: string, status: 'active' | 'archived') => {
 		setArchivedPassIds((prev) => {
@@ -1578,8 +1625,16 @@ export default function MyWalletDashboardNew() {
 													>
 														<div className="flex justify-between items-center mb-3">
 															<div className="flex items-center gap-3">
-																<div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/10 shadow-sm">
-																	{pass.id === 'ccsa' ? <Globe className="w-4 h-4 text-white" /> : <CreditCard className="w-4 h-4 text-white" />}
+																<div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/10 shadow-sm overflow-hidden shrink-0">
+																	{pass.image ? (
+																		<img src={pass.image} alt="" className="w-full h-full object-cover" />
+																	) : pass.id === 'ccsa' ? (
+																		<Globe className="w-4 h-4 text-white" />
+																	) : pass.id === BEAMIO_USER_CARD_ASSET_ADDRESS ? (
+																		<Cpu className="w-4 h-4 text-white" />
+																	) : (
+																		<CreditCard className="w-4 h-4 text-white" />
+																	)}
 																</div>
 																<div className="flex flex-col">
 																	<h3 className="font-bold text-sm leading-tight text-white/90 drop-shadow-sm">{pass.displayName}</h3>
@@ -2379,31 +2434,37 @@ export default function MyWalletDashboardNew() {
 										<p className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeemed Successfully</p>
 									</div>
 
-									{/* CCSA Card - 显示最新余额 */}
+									{/* 卡面 - CCSA 或通用 BeamioUserCard */}
 									{redeemDetails && (
 										<div className="w-full max-w-[340px] mx-auto">
 											<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
-												<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
-												<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
+												{isCcsaCard(redeemCardNumberInput) ? (
+													<>
+														<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+														<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
+													</>
+												) : (
+													<div className="absolute inset-0 bg-[linear-gradient(135deg,#1562f0_0%,#0d47a1_50%,#1562f0_100%)]" />
+												)}
 												<div className="relative z-10 p-5 h-full flex flex-col justify-between">
 													<div className="flex justify-between items-start">
 														<div className="flex items-center gap-3">
-															<div className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={{ background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' }}><Globe className="h-5 w-5 text-white" /></div>
-															<div><div className="text-[18px] font-black tracking-wide text-[#fff2c6] drop-shadow-sm font-serif">CCSA</div><div className="text-[18px] font-black tracking-wide text-[#fff2c6] -mt-0.5 font-serif">CARD</div></div>
+															<div className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={isCcsaCard(redeemCardNumberInput) ? { background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' } : { background: 'rgba(255,255,255,0.25)' }}><CreditCard className="h-5 w-5 text-white" /></div>
+															<div><div className="text-[18px] font-black tracking-wide text-white drop-shadow-sm font-serif">{isCcsaCard(redeemCardNumberInput) ? 'CCSA' : (redeemDetails.cardName || 'User Card')}</div><div className="text-[14px] font-semibold tracking-wide text-white/90 -mt-0.5">{isCcsaCard(redeemCardNumberInput) ? 'CARD' : 'BeamioUserCard'}</div></div>
 														</div>
-														<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><Globe size={10} className="text-white" /> Membership</div>
+														<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><CreditCard size={10} className="text-white" /> {isCcsaCard(redeemCardNumberInput) ? 'Membership' : 'Stored Value'}</div>
 													</div>
 													<div>
-														<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-[#fff2c6]">Balance</p>
+														<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-white/90">Balance</p>
 														<div className="flex items-baseline gap-1">
-															<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{(() => {
+															<span className="text-3xl font-medium tracking-tighter text-white">{(() => {
 																const pts = Number(redeemDetails.pointsHuman)
 																const ptsPer1 = Number(redeemDetails.ptsPer1Currency)
 																if (!ptsPer1) return formatAmount(pts, 'USDC', 4)
 																const amt = pts / ptsPer1
 																return formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined)
 															})()}</span>
-															<span className="text-sm font-semibold opacity-90 text-[#fff2c6]">{redeemDetails.currency as string}</span>
+															<span className="text-sm font-semibold opacity-90 text-white">{redeemDetails.currency as string}</span>
 														</div>
 													</div>
 												</div>
@@ -2457,7 +2518,17 @@ export default function MyWalletDashboardNew() {
 											setRedeemSuccessTx(null)
 											setRedeemDetails(null)
 											refetchUserCards()
-											if (profiles?.[0]) getMyAssets(profiles[0], CCSA_Card_Address).then(setCcsaAssets)
+											if (profiles?.[0]) {
+												Promise.all([
+													getMyAssets(profiles[0], CCSA_Card_Address),
+													getMyAssets(profiles[0], BEAMIO_USER_CARD_ASSET_ADDRESS),
+													getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS),
+												]).then(([ccsa, infra, meta]) => {
+													if (ccsa) setCcsaAssets({ points: ccsa.points, nfts: ccsa.nfts ?? [] }); if (ccsa?.points != null) setCcsaBalance(ccsa.points)
+													if (infra) setInfraCardAssets({ points: infra.points, nfts: infra.nfts ?? [] }); if (infra?.points != null) setInfraCardBalance(infra.points)
+													if (meta) setInfraCardMetadata(meta)
+												})
+											}
 										}}
 										className="w-full py-4 rounded-2xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-base uppercase tracking-wide"
 									>
@@ -2470,8 +2541,8 @@ export default function MyWalletDashboardNew() {
 							<h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-0.5 text-center">Redeem Asset</h3>
 							<p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center">Mint to Express Pay (Smart Account)</p>
 
-							{/* Asset Card - CCSA CARD 风格 */}
-							{(redeemDetailsLoading || redeemDetails) && (
+							{/* Asset Card - CCSA 风格（基础设施卡）或通用 BeamioUserCard 风格；加载失败时显示错误提示 */}
+							{(redeemDetailsLoading || redeemDetails || (redeemCodeInput.trim() && !redeemDetailsLoading && !redeemDetails)) && (
 								<div className="w-full max-w-[340px] mx-auto mb-6">
 									{redeemDetailsLoading ? (
 										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
@@ -2479,30 +2550,50 @@ export default function MyWalletDashboardNew() {
 										</div>
 									) : redeemDetails ? (
 										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
-											<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
-											<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
+											{isCcsaCard(redeemCardNumberInput) ? (
+												<>
+													<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+													<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
+												</>
+											) : (
+												<div className="absolute inset-0 bg-[linear-gradient(135deg,#1562f0_0%,#0d47a1_50%,#1562f0_100%)]" />
+											)}
 											<div className="relative z-10 p-5 h-full flex flex-col justify-between">
 												<div className="flex justify-between items-start">
 													<div className="flex items-center gap-3">
-														<div className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={{ background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' }}><Globe className="h-5 w-5 text-white" /></div>
-														<div><div className="text-[18px] font-black tracking-wide text-[#fff2c6] drop-shadow-sm font-serif">CCSA</div><div className="text-[18px] font-black tracking-wide text-[#fff2c6] -mt-0.5 font-serif">CARD</div></div>
+														<div className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={isCcsaCard(redeemCardNumberInput) ? { background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' } : { background: 'rgba(255,255,255,0.25)' }}><CreditCard className="h-5 w-5 text-white" /></div>
+														<div><div className="text-[18px] font-black tracking-wide text-white drop-shadow-sm font-serif">{isCcsaCard(redeemCardNumberInput) ? 'CCSA' : (redeemDetails.cardName || 'User Card')}</div><div className="text-[14px] font-semibold tracking-wide text-white/90 -mt-0.5">{isCcsaCard(redeemCardNumberInput) ? 'CARD' : 'BeamioUserCard'}</div></div>
 													</div>
-													<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><Globe size={10} className="text-white" /> Membership</div>
+													<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><CreditCard size={10} className="text-white" /> {isCcsaCard(redeemCardNumberInput) ? 'Membership' : 'Stored Value'}</div>
 												</div>
 												<div>
-													<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-[#fff2c6]">Balance</p>
+													<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-white/90">Balance</p>
 													<div className="flex items-baseline gap-1">
-														<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{(() => {
+														<span className="text-3xl font-medium tracking-tighter text-white">{(() => {
 															const pts = Number(redeemDetails.pointsHuman)
 															const ptsPer1 = Number(redeemDetails.ptsPer1Currency)
 															if (!ptsPer1) return formatAmount(pts, 'USDC', 4)
 															const amt = pts / ptsPer1
 															return formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined)
 														})()}</span>
-														<span className="text-sm font-semibold opacity-90 text-[#fff2c6]">{redeemDetails.currency as string}</span>
+														<span className="text-sm font-semibold opacity-90 text-white">{redeemDetails.currency as string}</span>
 													</div>
 												</div>
 											</div>
+										</div>
+									) : !redeemDetailsLoading && redeemCodeInput.trim() ? (
+										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex flex-col items-center justify-center p-4">
+											<Info className="w-10 h-10 text-amber-500 mb-2" strokeWidth={2} />
+											<p className="text-sm font-medium text-amber-800 dark:text-amber-200 text-center">无法获取卡信息</p>
+											<p className="text-xs text-amber-600 dark:text-amber-400 mt-1 text-center">请检查卡地址与兑换码，或稍后重试（RPC 可能限流）</p>
+											<button
+												type="button"
+												onClick={() => setRedeemDetailsRetryKey((k) => k + 1)}
+												className="mt-3 px-4 py-2 rounded-xl bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-sm font-semibold hover:bg-amber-300 dark:hover:bg-amber-700 transition-colors flex items-center gap-2"
+											>
+												<RefreshCw className="w-4 h-4" strokeWidth={2} />
+												重试
+											</button>
 										</div>
 									) : null}
 								</div>
@@ -2547,7 +2638,7 @@ export default function MyWalletDashboardNew() {
 									type="text"
 									value={redeemCardNumberInput}
 									onChange={(e) => setRedeemCardNumberInput(e.target.value)}
-									placeholder="Leave empty for CCSA card"
+									placeholder="Leave empty for default CCSA card"
 									className="mt-2 w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
 									disabled={redeemLoading}
 									autoComplete="off"

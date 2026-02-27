@@ -37,6 +37,7 @@ import { Toast } from "antd-mobile"
 import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
 import NewCardExample from '@/pages/Vouchers/example/newCardExample'
 import BeamioTransactions from '@/pages/Vouchers/example/transfertion'
+import MobilePOS from '@/pages/Vouchers/example/nativeApp'
 import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -115,6 +116,40 @@ function AppShell() {
   const setChartsRef = useRef(setCharts)
   setChartsRef.current = setCharts
   const bUnitClaimAttemptedRef = useRef(false)
+  const initialRedeemUrlProcessedRef = useRef(false)
+
+  const navigate = useNavigate()
+
+  // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时解析并跳转
+  useEffect(() => {
+    if (isInitialLoading || initialRedeemUrlProcessedRef.current) return
+    if (typeof window === 'undefined') return
+    // 支持 query 在 search 或 hash 中（HashRouter 下可能为 #/?beamiocard=...）
+    let redeemcode: string | null = null
+    let beamiocard: string | null = null
+    const search = window.location.search
+    const hash = window.location.hash || ''
+    if (search) {
+      const sp = new URLSearchParams(search)
+      redeemcode = sp.get('redeemcode') ?? sp.get('Redeemcode')
+      beamiocard = sp.get('beamiocard') ?? sp.get('Beamiocard')
+    }
+    if ((!redeemcode?.trim()) && hash.includes('redeemcode')) {
+      const hashQuery = hash.split('?')[1]
+      if (hashQuery) {
+        const sp = new URLSearchParams(hashQuery)
+        redeemcode = sp.get('redeemcode') ?? sp.get('Redeemcode')
+        beamiocard = sp.get('beamiocard') ?? sp.get('Beamiocard')
+      }
+    }
+    if (!redeemcode?.trim()) return
+    initialRedeemUrlProcessedRef.current = true
+    setRedeemFromUrl({
+      cardAddress: beamiocard?.trim() || undefined,
+      redeemCode: decodeURIComponent(redeemcode.trim()),
+    })
+    navigate('/History')
+  }, [isInitialLoading, navigate, setRedeemFromUrl])
 
   // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求
   useEffect(() => {
@@ -138,8 +173,6 @@ function AppShell() {
     }).catch(() => {})
   }, [profiles])
 
-  // ✅ 现在安全了：AppShell 已经在 <Router> 内
-  const navigate = useNavigate()
   const { pathname } = useLocation()
 
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] =
@@ -998,6 +1031,7 @@ function AppShell() {
 				<Route path="/example-card" element={<EmapmpleCard />} />
 				<Route path="/example-new-card" element={<NewCardExample />} />
 				<Route path="/transfertion" element={<BeamioTransactions />} />
+				<Route path="/native-pos" element={<MobilePOS />} />
 				<Route path="/cardManager" element={<CardManager />} />
 				</Routes>
 				</div>

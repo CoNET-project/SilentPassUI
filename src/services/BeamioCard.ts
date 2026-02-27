@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
-import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC,conetDepinProvider, CCSA_Card_Address } from "../utils/constants";
+import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
+import { BASE_MAINNET_FACTORIES } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -572,7 +573,14 @@ export const postBuyCardPoints = async (
         }
     }
 
-/** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。 */
+/** 获取卡的 owner 地址。executeForOwner 要求签名者必须等于 card.owner()，AA 为 owner 时需用 EOA 签会失败。 */
+export const getCardOwner = async (cardAddress: string): Promise<string> => {
+	const card = new ethers.Contract(cardAddress, ['function owner() view returns (address)'], baseEndpoint)
+	return ethers.getAddress(await card.owner())
+}
+
+/** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。
+ * 注意：签名者（从 privateKey 恢复的 EOA）必须等于 card.owner()。若卡 owner 为 AA 地址，用 EOA 签会 revert UC_InvalidSignature。 */
 export const signExecuteForOwner = async (
     ownerPrivateKey: string,
     cardAddress: string,
@@ -799,6 +807,29 @@ export type RedeemDetailsForDisplay = {
     ownerProfile: searchResult | null
 }
 
+/** 检测是否为合约 revert、RPC 非标准错误或网络错误 */
+function isContractRevertOrUpstreamError(e: unknown): boolean {
+    const msg = String((e as Error)?.message ?? e)
+    return (
+        /execution reverted/i.test(msg) ||
+        /invalid BytesLike value/i.test(msg) ||
+        /upstream_error/i.test(msg) ||
+        /Failed to fetch/i.test(msg) ||
+        /fetch failed/i.test(msg)
+    )
+}
+
+/** CCSA 卡地址（getRedeemStatus 正常）；非 CCSA UserCard 优先用 getRedeemStatusEx 避免 revert */
+function isCcsaCardForRedeem(addr: string): boolean {
+    const a = (addr || '').trim().toLowerCase()
+    if (!a) return false
+    return (
+        a === BASE_MAINNET_FACTORIES.BeamioCardCCSA_ADDRESS.toLowerCase() ||
+        a === BASE_MAINNET_FACTORIES.OLD_CCSA_CARD_ADDRESS.toLowerCase() ||
+        a === CCSA_Card_Address.toLowerCase()
+    )
+}
+
 /** 从 RPC 拉取 redeem 详细信息：状态、资产、卡信息、发行者 profile */
 export const getRedeemDetailsForDisplay = async (
     cardAddress: string,
@@ -809,6 +840,7 @@ export const getRedeemDetailsForDisplay = async (
     try {
         const cardAbiExtended = [
             ...getRedeemStatusAbi,
+            'function getRedeemStatusEx(bytes32 hash, address claimer) view returns (bool active, uint128 points6, bool isPool)',
             'function owner() view returns (address)',
             'function currency() view returns (uint8)',
             'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
@@ -818,16 +850,114 @@ export const getRedeemDetailsForDisplay = async (
         const card = new ethers.Contract(cardAddress, cardAbiExtended, rpcEndpoint)
         const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : hash as `0x${string}`
 
-        const [[active, totalPoints6], owner, currencyNum, priceE6Raw] = await Promise.all([
-            card.getRedeemStatus(hashBytes32),
-            card.owner(),
-            card.currency(),
-            card.pointsUnitPriceInCurrencyE6(),
-        ])
+        // 1) 获取 redeem 状态：CCSA 卡用 getRedeemStatus（正常）；非 CCSA UserCard 优先用 getRedeemStatusEx（不遍历 bundle，避免 revert）
+        let active: boolean
+        let totalPoints6: bigint
+        let statusFromApi: RedeemStatusChain | null = null
+        if (isCcsaCardForRedeem(cardAddress)) {
+            try {
+                const [a, t] = await card.getRedeemStatus(hashBytes32)
+                active = a
+                totalPoints6 = t
+            } catch (revertErr) {
+                if (isContractRevertOrUpstreamError(revertErr)) {
+                    try {
+                        const [aList, tList] = await card.getRedeemStatusBatch([code.trim()])
+                        active = aList[0]
+                        totalPoints6 = tList[0]
+                    } catch {
+                        const apiStatuses = await getRedeemStatusBatchFromApi([{ cardAddress, hash, code }])
+                        const apiStatus = apiStatuses?.[hash]
+                        if (apiStatus) {
+                            active = apiStatus === 'pending'
+                            totalPoints6 = 0n
+                            statusFromApi = apiStatus as RedeemStatusChain
+                            console.warn('[getRedeemDetailsForDisplay] CCSA 合约 revert，使用 API 状态:', cardAddress, apiStatus)
+                        } else {
+                            console.warn('[getRedeemDetailsForDisplay] CCSA getRedeemStatus/Batch revert:', cardAddress, (revertErr as Error)?.message)
+                            return null
+                        }
+                    }
+                } else throw revertErr
+            }
+        } else {
+            // 非 CCSA：优先 getRedeemStatusEx，避免 _redeemTotalPoints 迭代 revert
+            try {
+                const [aEx, ptsEx, isPool] = await card.getRedeemStatusEx(hashBytes32, ethers.ZeroAddress)
+                active = aEx
+                if (isPool) {
+                    totalPoints6 = 0n
+                } else if (aEx && ptsEx === 0n) {
+                    // createRedeemBatch 将 points 仅放 bundle，r.points6=0；需用 getRedeemStatus 取 _redeemTotalPoints
+                    try {
+                        const [, total] = await card.getRedeemStatus(hashBytes32)
+                        totalPoints6 = total
+                    } catch {
+                        totalPoints6 = 0n
+                    }
+                } else {
+                    totalPoints6 = BigInt(ptsEx)
+                }
+            } catch (exErr) {
+                if (isContractRevertOrUpstreamError(exErr)) {
+                    try {
+                        const [a, t] = await card.getRedeemStatus(hashBytes32)
+                        active = a
+                        totalPoints6 = t
+                    } catch {
+                        try {
+                            const [aList, tList] = await card.getRedeemStatusBatch([code.trim()])
+                            active = aList[0]
+                            totalPoints6 = tList[0]
+                        } catch {
+                            // 合约全部 revert 时，尝试 API：服务端 catch revert 后返回 pending
+                            const apiStatuses = await getRedeemStatusBatchFromApi([{ cardAddress, hash, code }])
+                            const apiStatus = apiStatuses?.[hash]
+                            if (apiStatus) {
+                                active = apiStatus === 'pending'
+                                totalPoints6 = 0n
+                                statusFromApi = apiStatus as RedeemStatusChain
+                                console.warn('[getRedeemDetailsForDisplay] 合约 revert，使用 API 状态:', cardAddress, apiStatus)
+                            } else {
+                                console.warn('[getRedeemDetailsForDisplay] UserCard getRedeemStatusEx/Status/Batch 均 revert:', cardAddress, (exErr as Error)?.message)
+                                return null
+                            }
+                        }
+                    }
+                } else throw exErr
+            }
+        }
+
+        // 2) owner、currency、price：任一 revert 时使用默认值，仍返回 redeem 状态
+        let owner = ethers.ZeroAddress
+        let currencyNum = 0n
+        let priceE6Raw = 0n
+        try {
+            const [o, c] = await Promise.all([card.owner(), card.currency()])
+            owner = o
+            currencyNum = BigInt(c)
+            try {
+                const p = await card.pointsUnitPriceInCurrencyE6()
+                priceE6Raw = p
+            } catch {
+                const cardLegacy = new ethers.Contract(
+                    cardAddress,
+                    ['function pointsUnitPriceInCurrencyE18() view returns (uint256)'],
+                    baseEndpoint
+                )
+                const priceE18 = await cardLegacy.pointsUnitPriceInCurrencyE18()
+                priceE6Raw = BigInt(Math.round(Number(priceE18) / 1e12))
+            }
+        } catch (metaErr) {
+            if (isContractRevertOrUpstreamError(metaErr)) {
+                console.warn('[getRedeemDetailsForDisplay] owner/currency/price revert，使用默认值:', (metaErr as Error)?.message)
+            } else throw metaErr
+        }
 
         // 合约仅存储 active，无法区分 redeemed/cancelled；API 有缓存且同样依赖合约。
         // 以链上 active 为唯一可信来源，避免 API 缓存导致“已取消仍显示 Valid”的不一致。
-        const status = _decodeRedeemStatus(active)
+        // 若来自 API fallback（合约 revert），直接使用 API 返回的 status
+        const status = statusFromApi ?? _decodeRedeemStatus(active)
 
         const currency = getICurrency(BigInt(currencyNum))
         const priceE6 = Number(priceE6Raw)
@@ -862,6 +992,7 @@ export const getRedeemDetailsForDisplay = async (
         }
     } catch (e) {
         if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+        console.warn('[getRedeemDetailsForDisplay] RPC/API 失败:', cardAddress, code?.slice(0, 8) + '…', (e as Error)?.message ?? e)
         return null
     }
 }
@@ -1070,6 +1201,74 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 			throw error
 		}
 	})
+}
+
+/** 聚合查询 CCSA + beamioUserCard(0x4879...) 的资产，与 CCSA 同等对待。
+ * 注意：不使用 withGetMyAssetsMutex，因 getMyAssets 内部已用 mutex；若此处再用会死锁（持有 mutex 时调用 getMyAssets，getMyAssets 等待同一 mutex）。 */
+export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAssets | null> => {
+	const key = `aggregated-${profile.keyID ?? ''}`
+	const cached = getMyAssetsCache.get(key)
+	if (cached && Date.now() - cached.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
+		return cached.result
+	}
+	const results = await Promise.all(
+		ASSET_CARD_ADDRESSES.map((addr) => getMyAssets(profile, addr))
+	)
+	const valid = results.filter((r): r is MyCardAssets => r != null)
+	if (valid.length === 0) return null
+	const first = valid[0]
+	const totalPoints = valid.reduce((sum, r) => sum + Number(r.points || 0), 0)
+	const mergedNfts = valid.flatMap((r) => r.nfts)
+	const result: MyCardAssets = {
+		...first,
+		cardAddress: CCSA_Card_Address,
+		points: String(totalPoints),
+		nfts: mergedNfts,
+	}
+	getMyAssetsCache.set(key, { result, timestamp: Date.now() })
+	return result
+}
+
+/** ERC1155 metadata 缓存：cardAddress -> { name?, image?, timestamp }，TTL 5 分钟 */
+const cardMetadataCache = new Map<string, { name?: string; image?: string; timestamp: number }>()
+const CARD_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
+
+/** 从 BeamioUserCard 的 uri 获取 metadata（name、image）。创建卡时传入的 uri 如 https://api.beamio.io/metadata/{id}.json */
+export const getCardMetadataFromUri = async (cardAddress: string): Promise<{ name?: string; image?: string } | null> => {
+	const key = cardAddress.toLowerCase()
+	const cached = cardMetadataCache.get(key)
+	if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
+		return cached
+	}
+	try {
+		const card = new ethers.Contract(
+			cardAddress,
+			['function uri(uint256) view returns (string)'],
+			baseEndpoint
+		)
+		const baseUri = await card.uri(0)
+		if (!baseUri || typeof baseUri !== 'string') return null
+		// ERC1155: 将 {id} 替换为 tokenId（0 = POINTS_ID，用于卡级 metadata）
+		// 链上可能存完整 URL（如 https://api.beamio.io/metadata/0x{owner}.json），无 {id} 则不再替换
+		const url = baseUri.includes('{id}') ? baseUri.replace(/{id}/gi, '0') : baseUri
+		const res = await fetch(url)
+		if (!res.ok) return null
+		const json = (await res.json()) as {
+			name?: string
+			image?: string
+			description?: string
+			shareTokenMetadata?: { name?: string; image?: string; description?: string }
+		}
+		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构
+		const meta = {
+			name: json?.name ?? json?.shareTokenMetadata?.name,
+			image: json?.image ?? json?.shareTokenMetadata?.image,
+		}
+		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
+		return meta
+	} catch {
+		return null
+	}
 }
 
 const getICurrency = (currency: bigint | number): ICurrency => {

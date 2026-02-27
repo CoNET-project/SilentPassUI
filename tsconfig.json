@@ -1,7 +1,8 @@
 {
 	"compilerOptions": {
 		"types": [
-			"node"
+			"node",
+			"react-scripts"
 		],
 		"target": "esnext",
 		"lib": [

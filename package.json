@@ -118,5 +118,8 @@
 		"nth-check": "^2.1.1",
 		"postcss": "^8.4.31"
 	},
+	"engines": {
+		"node": ">=18 <24"
+	},
 	"packageManager": "yarn@1.2.0+sha512.1606bef7c84bc7d83b8576063de2fd08f7d69f9939015bed800f9585a002390268ecc777e9feeba7e26e9556aef6beaad4806968db2182ab5dd3e955ab3b9a0b"
 }

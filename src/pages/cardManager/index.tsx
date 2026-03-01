@@ -130,9 +130,11 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 	const [error, setError] = useState("")
 	const fileInputRef = useRef<HTMLInputElement>(null)
 
-	/** Tier form row; attr derived from tier order (chain uses for entitlements/redeem, default to index) */
-	type TierFormRow = { minHuman: string; name: string; description: string }
+	/** Tier form row; attr derived from tier order (chain uses for entitlements/redeem, default to index). upgradeByBalance: true=按余额升级，false=按单次 topup/redeem 金额升级 */
+	type TierFormRow = { minHuman: string; name: string; description: string; image: string; backgroundColor: string; upgradeByBalance: boolean }
 	const [tiers, setTiers] = useState<TierFormRow[]>([])
+	const [tierImageUploading, setTierImageUploading] = useState<number | null>(null)
+	const tierFileInputRef = useRef<HTMLInputElement>(null)
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
@@ -172,6 +174,9 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 									minUsdc6: Math.round((Number.isFinite(minUnits) ? minUnits : idx + 1) * 1e6),
 									name: t.name.trim(),
 									description: t.description.trim() || undefined,
+									image: t.image.trim() || undefined,
+									backgroundColor: t.backgroundColor.trim() || undefined,
+									upgradeByBalance: t.upgradeByBalance,
 								}
 							})
 						valid.sort((a, b) => b.minUsdc6 - a.minUsdc6)
@@ -181,6 +186,9 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 							attr: idx,
 							name: t.name,
 							...(t.description && { description: t.description }),
+							...(t.image && { image: t.image }),
+							...(t.backgroundColor && { backgroundColor: t.backgroundColor }),
+							upgradeByBalance: t.upgradeByBalance,
 						}))
 					})()
 				: undefined
@@ -223,17 +231,61 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 	const handleBack = () => (onClose ? onClose() : navigate(-1))
 
 	const addTier = () => {
-		setTiers((prev) => [...prev, { minHuman: String(prev.length + 1), name: "", description: "" }])
+		setTiers((prev) => [...prev, { minHuman: String(prev.length + 1), name: "", description: "", image: "", backgroundColor: "#6366f1", upgradeByBalance: true }])
 	}
 	const removeTier = (i: number) => {
 		setTiers((prev) => prev.filter((_, idx) => idx !== i))
 	}
-	const updateTier = (i: number, field: keyof TierFormRow, value: string) => {
+	const updateTier = (i: number, field: keyof TierFormRow, value: string | boolean) => {
 		setTiers((prev) => {
 			const next = [...prev]
 			next[i] = { ...next[i], [field]: value }
 			return next
 		})
+	}
+	const triggerTierImageUpload = (tierIndex: number) => {
+		setTierImageUploading(tierIndex)
+		tierFileInputRef.current?.click()
+	}
+	const handleTierImagePick: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+		const input = e.currentTarget
+		const file = input.files?.[0]
+		const tierIndex = tierImageUploading
+		input.value = ""
+		setTierImageUploading(null)
+		if (tierIndex == null || !file || !file.type.startsWith("image/")) return
+		const isSvg = file.type === "image/svg+xml"
+		const profile = profiles?.[0]
+		if (!profile?.privateKeyArmor) {
+			setError("Profile not available for upload")
+			return
+		}
+		setError("")
+		try {
+			let blob: Blob = file
+			if (!isSvg && file.size > TARGET_MAX_BYTES) {
+				blob = await resizeToFitLimit(file, TARGET_MAX_BYTES)
+				Toast.show({ content: "Image resized to <49.5MB", icon: "success" })
+			}
+			const reader = new FileReader()
+			const dataUrl = await new Promise<string>((resolve, reject) => {
+				reader.onload = () => resolve(String(reader.result))
+				reader.onerror = () => reject(reader.error)
+				reader.readAsDataURL(blob)
+			})
+			const hash = await postToIPFS(profile, dataUrl)
+			if (hash) {
+				const url = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`
+				updateTier(tierIndex, "image", url)
+				Toast.show({ content: "Tier image uploaded", icon: "success" })
+			} else {
+				setError("Tier image upload failed")
+				Toast.show({ content: "Upload failed", icon: "fail" })
+			}
+		} catch (err: any) {
+			setError(err?.message ?? "Upload failed")
+			Toast.show({ content: err?.message ?? "Upload failed", icon: "fail" })
+		}
 	}
 
 	const handleImagePick: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
@@ -443,8 +495,15 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 					<div className="p-4 rounded-xl bg-white/5 border border-white/10">
 						<h3 className="text-sm font-medium text-white/80 mb-1">Card Tiers</h3>
 						<p className="text-xs text-white/50 mb-3">
-							No tiers by default = all cards are normal. Tap + to add tiers (e.g. Gold Card / Silver Card)
+							No tiers by default = all cards are normal. Tap + to add tiers (e.g. Gold Card / Silver Card). Per-tier image (IPFS) and background color are used in NFT metadata.
 						</p>
+						<input
+							ref={tierFileInputRef}
+							type="file"
+							accept="image/*"
+							className="hidden"
+							onChange={handleTierImagePick}
+						/>
 						<div className="space-y-3">
 							{tiers.map((t, i) => (
 								<div key={i} className="p-3 rounded-lg bg-white/5 border border-white/10 space-y-2">
@@ -489,6 +548,56 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 											placeholder="e.g. Highest tier"
 											className="w-full px-2 py-1.5 rounded bg-white/10 border border-white/20 text-white text-sm placeholder-white/40 focus:outline-none focus:border-[#6f4de7]"
 										/>
+									</div>
+									<div>
+										<label className="block text-[10px] text-white/50 mb-0.5">image (IPFS)</label>
+										<div className="flex gap-2 items-center">
+											<button
+												type="button"
+												onClick={() => triggerTierImageUpload(i)}
+												disabled={tierImageUploading !== null}
+												className="inline-flex items-center gap-2 px-2 py-1.5 rounded bg-white/10 border border-white/20 hover:bg-white/15 focus:outline-none focus:border-[#6f4de7] disabled:opacity-60 text-xs"
+											>
+												{tierImageUploading === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
+												{tierImageUploading === i ? "Uploading…" : "Upload"}
+											</button>
+											{t.image && (
+												<>
+													<img src={t.image} alt={`Tier ${i + 1}`} className="h-8 w-8 rounded object-cover border border-white/20" />
+													<button type="button" onClick={() => updateTier(i, "image", "")} className="p-0.5 rounded bg-red-500/80 hover:bg-red-500 text-white" aria-label="Remove"><X className="w-3 h-3" /></button>
+												</>
+											)}
+										</div>
+									</div>
+									<div>
+										<label className="block text-[10px] text-white/50 mb-0.5">background color</label>
+										<div className="flex gap-2 items-center">
+											<input
+												type="color"
+												value={t.backgroundColor || "#6366f1"}
+												onChange={(e) => updateTier(i, "backgroundColor", e.target.value)}
+												className="h-8 w-10 rounded border border-white/20 cursor-pointer bg-transparent"
+											/>
+											<input
+												type="text"
+												value={t.backgroundColor}
+												onChange={(e) => updateTier(i, "backgroundColor", e.target.value)}
+												placeholder="#6366f1"
+												className="flex-1 px-2 py-1.5 rounded bg-white/10 border border-white/20 text-white text-sm placeholder-white/40 focus:outline-none focus:border-[#6f4de7] font-mono"
+											/>
+										</div>
+									</div>
+									<div className="flex items-center gap-2">
+										<input
+											type="checkbox"
+											id={`tier-${i}-upgradeByBalance`}
+											checked={t.upgradeByBalance}
+											onChange={(e) => updateTier(i, "upgradeByBalance", e.target.checked)}
+											className="rounded border-white/30 bg-white/10 text-[#6f4de7] focus:ring-[#6f4de7]"
+										/>
+										<label htmlFor={`tier-${i}-upgradeByBalance`} className="text-xs text-white/70">
+											Upgrade by balance (uncheck = upgrade by single topup/redeem amount)
+										</label>
 									</div>
 								</div>
 							))}

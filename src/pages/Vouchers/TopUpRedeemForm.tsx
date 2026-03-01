@@ -20,13 +20,14 @@ import {
 import { generateCODE } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
-import { storeSystemData } from '@/services/beamio'
+import { storeSystemData, flushStoreSystemData } from '@/services/beamio'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 
 type Props = {
     userCards: UserCardInfo[]
     onClose: () => void
-    onSuccess?: () => void
+    /** 创建成功后调用，可传入更新后的 redeem 列表以便父组件立即刷新 UI */
+    onSuccess?: (newBatches?: CardRedeemBatch[]) => void
 }
 
 const NAV_TOP = 'env(safe-area-inset-top)'
@@ -136,15 +137,19 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
                     createdAt: Date.now(),
                     items,
                 }
-                const temp = CoNET_Data
-                if (temp) {
-                    ;(temp as any).cardRedeems = [...((temp as any).cardRedeems ?? []), batch]
-                    setCoNET_Data(temp)
+                const prev = CoNET_Data
+                const updatedList: CardRedeemBatch[] = prev
+                    ? [...((prev as any).cardRedeems ?? []), batch]
+                    : [batch]
+                if (prev) {
+                    const next = { ...prev, cardRedeems: updatedList } as any
+                    setCoNET_Data(next)
                     await storeSystemData()
+                    await flushStoreSystemData()
                 }
                 setCreatedBatch(batch)
                 setSuccess(true)
-                onSuccess?.()
+                onSuccess?.(updatedList)
             } else {
                 setError(result.error ?? 'Submission failed')
             }

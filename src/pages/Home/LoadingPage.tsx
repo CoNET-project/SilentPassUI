@@ -352,8 +352,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		return () => { cancelled = true }
 	}, [isInitialEntry, CoNET_Data?.profiles])
 
-	// 有 redeem URL 时拉取 redeem 详情（用于显示金额 + Splash 页校验）。新 CCSA 查不到时 fallback 到旧 CCSA
-	const { OLD_CCSA_CARD_ADDRESS, BeamioCardCCSA_ADDRESS } = BASE_MAINNET_FACTORIES
+	// 有 redeem URL 时拉取 redeem 详情（用于显示金额 + Splash 页校验）
 	useEffect(() => {
 		if (!redeemFromUrl) return
 		let cancelled = false
@@ -361,15 +360,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		const cardAddr = redeemFromUrl.cardAddress
 		const code = redeemFromUrl.redeemCode
 		;(async () => {
-			let d = await getRedeemDetailsForDisplay(cardAddr, code)
-			let usedCard = cardAddr
-			if (!d && cardAddr.toLowerCase() === BeamioCardCCSA_ADDRESS.toLowerCase()) {
-				d = await getRedeemDetailsForDisplay(OLD_CCSA_CARD_ADDRESS, code)
-				if (d) usedCard = OLD_CCSA_CARD_ADDRESS
-			}
+			const d = await getRedeemDetailsForDisplay(cardAddr, code)
 			if (!cancelled) {
 				setRedeemDetails(d ?? null)
-				if (d && usedCard !== cardAddr) setRedeemFromUrl(prev => prev ? { ...prev, cardAddress: usedCard } : null)
 			}
 		})().finally(() => {
 			if (!cancelled) setRedeemDetailsLoading(false)

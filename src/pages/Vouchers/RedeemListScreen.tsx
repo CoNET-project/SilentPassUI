@@ -18,14 +18,18 @@ import {
     getCardOwner,
 } from '@/services/BeamioCard'
 import { CoNET_Data } from '@/utils/globals'
-import type { RedeemStatusChain } from '@/services/BeamioCard'
+import type { RedeemStatusChain, CardRedeemBatch } from '@/services/BeamioCard'
 
 type Props = {
     onClose: () => void
     onRemoveNotFound?: () => void
+    /** 父组件创建新 redeem 后递增，触发本组件重新从 CoNET_Data 读取 */
+    refreshVersion?: number
+    /** 父组件传入的 batches，优先使用；与 Redeem Active List 同源，确保新建 redeem 在 detail 中显示 */
+    batches?: CardRedeemBatch[]
 }
 
-export default function RedeemListScreen({ onClose, onRemoveNotFound }: Props) {
+export default function RedeemListScreen({ onClose, onRemoveNotFound, refreshVersion, batches: batchesProp }: Props) {
     const { profiles, beamio } = useDaemonContext()
     const [itemStatuses, setItemStatuses] = useState<Record<string, RedeemStatusChain>>({})
     const [cancelLoadingHash, setCancelLoadingHash] = useState<string | null>(null)
@@ -72,7 +76,10 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound }: Props) {
         return fullName ? `${fullName}${tag}` : (beamio.accountName ? `@${beamio.accountName}` : '')
     }, [beamio])
 
-    const cardRedeems = useMemo(() => CoNET_Data?.cardRedeems ?? [], [redeemsVersion])
+    const cardRedeems = useMemo(
+        () => (batchesProp !== undefined ? batchesProp : (CoNET_Data?.cardRedeems ?? [])),
+        [batchesProp, redeemsVersion, refreshVersion ?? 0]
+    )
 
     const refreshBatchStatuses = useCallback(async (batchesToRefresh: CardRedeemBatch[]) => {
         const items = batchesToRefresh.flatMap((b) => b.items.map((item) => ({ cardAddress: b.cardAddress, hash: item.hash, code: item.code })))

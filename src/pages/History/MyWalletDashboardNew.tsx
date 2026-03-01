@@ -51,6 +51,9 @@ import {
 	Loader2,
 	X,
 	Cpu,
+	Layers,
+	ImagePlus,
+	Trash2,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
@@ -61,7 +64,8 @@ import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
-import { getMyAssets, getCardMetadataFromUri, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch } from '@/services/BeamioCard'
+import { getMyAssets, getCardOwner, getCardMetadataFromUri, getCardMetadataFromApi, getCardMetadataFrom1155Json, getNftMetadataFromApi, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, signExecuteForOwner, encodeCreateIssuedNft, postCardCreateIssuedNft, getTierIndexForRedeemAmount, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch, type CardTierMetadata, type NftTierMetadata, type CardMetadataFromUri } from '@/services/BeamioCard'
+import { postToIPFS } from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
 import type { RedeemStatusChain } from '@/services/BeamioCard'
@@ -442,6 +446,12 @@ interface Card {
 	badgeIcon: React.ReactNode
 	isAA?: boolean
 	isCCSA?: boolean
+	/** 来自 pass 时用于预览背景 */
+	bg?: string
+	/** 来自 pass 时用于显示货币（CAD/USDC 等） */
+	currency?: string
+	/** 来自 pass 时用于显示会员号 M-xxxxxx */
+	memberNo?: string
 }
 
 /** Manage Passes Overlay - 参照 exampleExpress ManageCardsOverlay，支持隐藏/恢复、重命名 */
@@ -640,7 +650,9 @@ export default function MyWalletDashboardNew() {
 	const [ccsaAssets, setCcsaAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
 	const [infraCardBalance, setInfraCardBalance] = useState<string>('0')
 	const [infraCardAssets, setInfraCardAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
-	const [infraCardMetadata, setInfraCardMetadata] = useState<{ name?: string; image?: string } | null>(null)
+	const [infraCardMetadata, setInfraCardMetadata] = useState<{ name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string; nftMetadata?: NftTierMetadata | null } | null>(null)
+	/** CCSA 卡的创建者/owner（链上 card.owner()），仅创建者能打开 CCSA 的 DETAILS */
+	const [ccsaCardOwner, setCcsaCardOwner] = useState<string | null>(null)
 	const [eoaReflash, setEoaReflash] = useState(false)
 	const [aaReflash, setAaReflash] = useState(false)
 	const [ccsaReflash, setCcsaReflash] = useState(false)
@@ -656,7 +668,24 @@ export default function MyWalletDashboardNew() {
 	const [addAdminOpen, setAddAdminOpen] = useState(false)
 	const [addAdminKey, setAddAdminKey] = useState(0)
 	const [showRedeemListOpen, setShowRedeemListOpen] = useState(false)
+	const [showNewNftForm, setShowNewNftForm] = useState(false)
+	const [newNftTitle, setNewNftTitle] = useState('')
+	const [newNftValidAfter, setNewNftValidAfter] = useState('') // datetime-local string or empty
+	const [newNftValidBefore, setNewNftValidBefore] = useState('') // datetime-local or empty = no limit
+	const [newNftMaxSupply, setNewNftMaxSupply] = useState('')
+	const [newNftPriceE6, setNewNftPriceE6] = useState('') // e.g. 10 = 10 USDC
+	const [newNftDescription, setNewNftDescription] = useState('')
+	const [newNftImageUrl, setNewNftImageUrl] = useState('') // IPFS/fragment link after upload
+	const [newNftBackgroundColor, setNewNftBackgroundColor] = useState('') // e.g. #6366f1
+	const [newNftImageUploading, setNewNftImageUploading] = useState(false)
+	const [newNftSubmitting, setNewNftSubmitting] = useState(false)
+	const [newNftError, setNewNftError] = useState('')
+	const newNftImageInputRef = useRef<HTMLInputElement>(null)
 	const [cardRedeemsVersion, setCardRedeemsVersion] = useState(0)
+	/** Redeem 列表用 state 同步，创建成功后由 TopUpRedeemForm 回传，避免依赖 CoNET_Data 的渲染时序 */
+	const [cardRedeemsBatches, setCardRedeemsBatches] = useState<CardRedeemBatch[]>([])
+	/** onSuccess 回传的列表优先于 effect 从 CoNET_Data 读取，避免新建 redeem 被旧数据覆盖 */
+	const pendingRedeemsFromSuccessRef = useRef<CardRedeemBatch[] | null>(null)
 	const [nfcCheckBalanceOpen, setNfcCheckBalanceOpen] = useState(false)
 	const [ccsaRedeemOpen, setCcsaRedeemOpen] = useState(false)
 	const [redeemCodeInput, setRedeemCodeInput] = useState('')
@@ -667,7 +696,13 @@ export default function MyWalletDashboardNew() {
 	const [redeemDetails, setRedeemDetails] = useState<RedeemDetailsForDisplay | null>(null)
 	const [redeemDetailsLoading, setRedeemDetailsLoading] = useState(false)
 	const [redeemDetailsRetryKey, setRedeemDetailsRetryKey] = useState(0)
+	/** Redeem Asset 卡面：从 card metadata 拉取的 image、background 等 */
+	const [redeemCardMetadata, setRedeemCardMetadata] = useState<CardMetadataFromUri | null>(null)
+	/** Redeem Asset 卡面：根据 redeem 金额解析出的 tier metadata（有 tiers 时用该 tier 的 image/backgroundColor/name 渲染） */
+	const [redeemCardTierMeta, setRedeemCardTierMeta] = useState<CardTierMetadata | null>(null)
 	const [userCards, setUserCards] = useState<UserCardInfo[]>([])
+	/** 每张 userCard 的资产 + metadata（redeem/topup 获得的 NFT 及该卡自己的 tier metadata），key = cardAddress 小写 */
+	const [userCardDetails, setUserCardDetails] = useState<Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; nftMetadata?: NftTierMetadata | null }>>({})
 	const [payScreenMode, setPayScreenMode] = useState<'eoa-pay' | 'aa-eoa-transfer'>('eoa-pay')
 	const [isManagingCards, setIsManagingCards] = useState(false)
 	/** 已隐藏（archived）的 pass id 列表，用于 ManageCardsOverlay */
@@ -765,14 +800,13 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [voucherPayFromScan, setVoucherPayFromScan, setShowFooter, location.state, location.pathname, navigate, setScanData, setScanIntent, setVoucherPayAmount, setVoucherPayToAA])
 
-	// 拉取 redeem 详情：当面板打开且有 code 时。新 CCSA 查不到时 fallback 到旧 CCSA（兼容迁移前创建的 redeem）
-	const OLD_CCSA = BASE_MAINNET_FACTORIES.OLD_CCSA_CARD_ADDRESS
+	// 拉取 redeem 详情：当面板打开且有 code 时。
 	const NEW_CCSA = BASE_MAINNET_FACTORIES.BeamioCardCCSA_ADDRESS
-	/** 是否为基础设施 CCSA 卡（用于 Redeem Asset 面板展示 CCSA 风格 vs 通用 BeamioUserCard 风格） */
+	/** 是否为 CCSA 卡（仅 CCSA，不含基础设施 BeamioUserCard；用于 Redeem Asset 面板展示 CCSA 风格 vs 通用 BeamioUserCard 风格） */
 	const isCcsaCard = (addr: string) => {
 		const a = (addr || '').trim().toLowerCase()
 		if (!a) return true // 空时默认用 CCSA
-		return a === NEW_CCSA.toLowerCase() || a === OLD_CCSA.toLowerCase() || a === CCSA_Card_Address.toLowerCase() || a === BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase()
+		return a === NEW_CCSA.toLowerCase() || a === CCSA_Card_Address.toLowerCase()
 	}
 	useEffect(() => {
 		if (!ccsaRedeemOpen || !redeemCodeInput.trim()) {
@@ -788,23 +822,56 @@ export default function MyWalletDashboardNew() {
 		setRedeemDetailsLoading(true)
 		setRedeemDetails(null)
 		const code = redeemCodeInput.trim()
-		const tryFetch = async (addr: string) => getRedeemDetailsForDisplay(addr, code)
 		;(async () => {
-			let d = await tryFetch(cardAddr)
-			let usedCard = cardAddr
-			if (!d && cardAddr.toLowerCase() === NEW_CCSA.toLowerCase()) {
-				d = await tryFetch(OLD_CCSA)
-				if (d) usedCard = OLD_CCSA
-			}
+			const d = await getRedeemDetailsForDisplay(cardAddr, code)
 			if (!cancelled) {
 				setRedeemDetails(d ?? null)
-				if (d && usedCard !== cardAddr) setRedeemCardNumberInput(usedCard)
 			}
 		})().finally(() => {
 			if (!cancelled) setRedeemDetailsLoading(false)
 		})
 		return () => { cancelled = true }
 	}, [ccsaRedeemOpen, redeemCodeInput, redeemCardNumberInput, redeemDetailsRetryKey])
+
+	// Redeem Asset：拉取卡级 1155 JSON，用 JSON 的 tiers metadata 根据 redeem 金额确定 tier，用该 tier 的 metadata（含 background_color）渲染卡面
+	useEffect(() => {
+		if (!redeemDetails || isCcsaCard(redeemCardNumberInput)) {
+			setRedeemCardMetadata(null)
+			setRedeemCardTierMeta(null)
+			return
+		}
+		const addr = redeemCardNumberInput.trim()
+		if (!addr || !ethers.isAddress(addr)) {
+			setRedeemCardMetadata(null)
+			setRedeemCardTierMeta(null)
+			return
+		}
+		let cancelled = false
+		getCardMetadataFrom1155Json(addr)
+			.then((m) => m ?? getCardMetadataFromApi(addr))
+			.then((m) => m ?? getCardMetadataFromUri(addr))
+			.then((meta) => {
+				if (cancelled) return
+				setRedeemCardMetadata(meta)
+				if (meta?.tiers && meta.tiers.length > 0) {
+					const tiersWithMin = meta.tiers.filter((t) => t.minUsdc6 != null && String(t.minUsdc6).trim() !== '')
+					const tierIdx = tiersWithMin.length > 0
+						? getTierIndexForRedeemAmount(tiersWithMin as { minUsdc6: string }[], redeemDetails.points6)
+						: 0
+					const tierMeta = tiersWithMin.length > 0 ? (tiersWithMin[tierIdx] ?? tiersWithMin[0]) : meta.tiers[0]
+					setRedeemCardTierMeta(tierMeta ?? null)
+				} else {
+					setRedeemCardTierMeta(null)
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setRedeemCardMetadata(null)
+					setRedeemCardTierMeta(null)
+				}
+			})
+		return () => { cancelled = true }
+	}, [redeemDetails, redeemCardNumberInput])
 
 	// 从 detail 内操作返回时恢复全局 footer（所有 detail 按钮操作的共同规则）
 	const closeEoaPanel = useCallback(() => {
@@ -1134,25 +1201,36 @@ export default function MyWalletDashboardNew() {
 		return () => cancelAnimationFrame(id)
 	}, [profiles?.[0]?.keyID, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD])
 
-	// 拉取 CCSA 与 基础设施卡 资产（分开，0x4879... 的 token#0 不合并入 CCSA 总额）
+	// 拉取 CCSA 与 基础设施卡 资产（分开，基础设施卡 token#0 不合并入 CCSA 总额）；基础设施卡 metadata 优先从 beamioApi 拉取 card_owner + metadata_json，并拉取 per-NFT metadata（含 background_color）用于 Pass 渲染
 	useEffect(() => {
 		if (!profiles?.[0]) return
 		const id = setTimeout(() => {
+			const fetchInfraMeta = () =>
+				getCardMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS).then((apiMeta) => apiMeta ?? getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS))
 			Promise.all([
 				getMyAssets(profiles[0], CCSA_Card_Address),
 				getMyAssets(profiles[0], BEAMIO_USER_CARD_ASSET_ADDRESS),
-				getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS),
+				fetchInfraMeta(),
+				getCardOwner(CCSA_Card_Address),
 			])
-				.then(([ccsa, infra, meta]) => {
+				.then(async ([ccsa, infra, meta, ccsaOwner]: [Awaited<ReturnType<typeof getMyAssets>>, Awaited<ReturnType<typeof getMyAssets>>, Awaited<ReturnType<typeof getCardMetadataFromApi>>, string]) => {
 					if (ccsa?.points != null) setCcsaBalance(ccsa.points)
 					setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
+					setCcsaCardOwner(ccsaOwner ?? null)
 					if (infra?.points != null) setInfraCardBalance(infra.points)
 					setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
-					setInfraCardMetadata(meta ?? null)
+					let infraNftMetadata: NftTierMetadata | null = null
+					if (meta?.cardOwner && infra?.nfts?.length) {
+						const infraNfts = (infra.nfts ?? []).filter((n: { tokenId: string }) => Number(n.tokenId) > 0) as { tokenId: string }[]
+						const infraBestNft = infraNfts.length > 0 ? infraNfts.reduce((a: { tokenId: string }, b: { tokenId: string }) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+						if (infraBestNft) infraNftMetadata = await getNftMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS, infraBestNft.tokenId)
+					}
+					setInfraCardMetadata(meta ? { ...meta, nftMetadata: infraNftMetadata ?? undefined } : null)
 				})
 				.catch(() => {
 					setCcsaBalance('0')
 					setCcsaAssets(null)
+					setCcsaCardOwner(null)
 					setInfraCardBalance('0')
 					setInfraCardAssets(null)
 					setInfraCardMetadata(null)
@@ -1164,11 +1242,75 @@ export default function MyWalletDashboardNew() {
 	// ref 稳定 identity，避免 refetchUserCards 触发 effect 重跑导致 RPC 循环
 	const refetchUserCardsRef = useRef(refetchUserCards)
 	refetchUserCardsRef.current = refetchUserCards
-	// 仅在进入 CCSA 视图时拉取 userCards，避免首屏 5+ 个 RPC 并发阻塞主线程和 Footer 交互
+	// 进入任意「卡」视图（CCSA、基础设施卡、用户卡）时拉取 userCards，以便 isCardViewWithRedeemList 能匹配用户卡并显示 Redeem 列表
 	useEffect(() => {
-		if (activeView !== 'ccsa') return
+		if (!activeView || activeView === 'eoa' || activeView === 'aa') return
 		refetchUserCardsRef.current()
 	}, [activeView])
+	// 展开 Express Pay（显示 passes）时拉取 userCards，否则 passes 中的「用户自己发行的卡」永远为空（refetchUserCards 此前仅在点击某张卡后才触发）
+	useEffect(() => {
+		if (!isExpressExpanded) return
+		const p = profilesRef.current?.[0]
+		if (!p || (!p.aaAccount && !p.keyID && !p.privateKeyArmor)) return
+		refetchUserCardsRef.current()
+	}, [isExpressExpanded])
+
+	// 从 CoNET_Data 同步 redeem 列表：展开 Express Pay 时（刷新后历史记录）、version 变化时（创建/关闭表单后）
+	// 若 onSuccess 刚回传了列表，优先使用且不清空 ref，避免 effect 后续用 CoNET_Data 覆盖
+	useEffect(() => {
+		if (!isExpressExpanded) return
+		const fromSuccess = pendingRedeemsFromSuccessRef.current
+		if (fromSuccess && fromSuccess.length > 0) {
+			setCardRedeemsBatches(fromSuccess)
+			// 不在此处清空 ref，由 onClose 或 mount 时清空，保证创建后不被打断
+		} else {
+			setCardRedeemsBatches(((CoNET_Data as any)?.cardRedeems ?? []) as CardRedeemBatch[])
+		}
+	}, [cardRedeemsVersion, isExpressExpanded])
+
+	// 挂载时清空 pending ref，确保首次加载从 CoNET_Data 读取
+	useEffect(() => {
+		pendingRedeemsFromSuccessRef.current = null
+	}, [])
+
+	// 每张 userCard 拉取该卡的 assets（NFT）+ metadata（tiers），用于 Passes 显示该卡自己的 NFT 与 tier
+	useEffect(() => {
+		if (!profiles?.[0]) return
+		if (userCards.length === 0) {
+			setUserCardDetails({})
+			return
+		}
+		const profile = profiles[0]
+		const run = async () => {
+			const next: Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; nftMetadata?: NftTierMetadata | null }> = {}
+			await Promise.all(
+				userCards.map(async (uc) => {
+					const addr = uc.cardAddress.toLowerCase()
+					try {
+						const [assets, meta] = await Promise.all([
+							getMyAssets(profile, uc.cardAddress),
+							getCardMetadataFromApi(uc.cardAddress).then((m) => m ?? getCardMetadataFromUri(uc.cardAddress)),
+						])
+						const nfts = assets?.nfts?.filter((n) => Number(n.tokenId) > 0) ?? []
+						const bestNft = nfts.length > 0 ? nfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+						let nftMetadata: NftTierMetadata | null = null
+						if (uc.cardAddress && bestNft) {
+							nftMetadata = await getNftMetadataFromApi(uc.cardAddress, bestNft.tokenId)
+						}
+						next[addr] = {
+							assets: assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null,
+							metadata: meta ?? null,
+							nftMetadata: nftMetadata ?? null,
+						}
+					} catch {
+						next[addr] = { assets: null, metadata: null, nftMetadata: null }
+					}
+				})
+			)
+			setUserCardDetails(next)
+		}
+		run()
+	}, [profiles?.[0], userCards])
 
 	const copyAddress = useCallback(
 		(address: string, which: 'eoa' | 'aa' | 'ccsa') => {
@@ -1223,27 +1365,38 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [eoaReflash, aaReflash, profiles, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
 
-	// 单独刷新 CCSA 与 基础设施卡 资产（分开，0x4879... 不合并入 CCSA）
+	// 单独刷新 CCSA 与 基础设施卡 资产（分开）；基础设施卡 metadata 优先从 beamioApi 拉取
 	const refreshCcsaAssets = useCallback(async () => {
 		if (ccsaReflash) return
 		const profile = profiles?.[0]
 		if (!profile) return
 		setCcsaReflash(true)
 		try {
-			const [ccsa, infra, meta] = await Promise.all([
-				getMyAssets(profile, CCSA_Card_Address),
-				getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS),
-				getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS),
-			])
-			if (ccsa?.points != null) setCcsaBalance(ccsa.points)
-			setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
-			if (infra?.points != null) setInfraCardBalance(infra.points)
-			setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
-			setInfraCardMetadata(meta ?? null)
+		const fetchInfraMeta = () =>
+			getCardMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS).then((m) => m ?? getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS))
+		const [ccsa, infra, meta, ccsaOwner] = await Promise.all([
+			getMyAssets(profile, CCSA_Card_Address),
+			getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS),
+			fetchInfraMeta(),
+			getCardOwner(CCSA_Card_Address),
+		])
+		const infraNfts = (infra?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
+		const infraBestNft = infraNfts.length > 0 ? infraNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+		let infraNftMetadata: NftTierMetadata | null = null
+		if (meta?.cardOwner && infraBestNft) {
+			infraNftMetadata = await getNftMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS, infraBestNft.tokenId)
+		}
+		if (ccsa?.points != null) setCcsaBalance(ccsa.points)
+		setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
+		setCcsaCardOwner(ccsaOwner ?? null)
+		if (infra?.points != null) setInfraCardBalance(infra.points)
+		setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
+		setInfraCardMetadata(meta ? { ...meta, nftMetadata: infraNftMetadata ?? undefined } : null)
 		} catch (e) {
 			console.error('Failed to refresh CCSA assets:', e)
 			setCcsaBalance('0')
 			setCcsaAssets(null)
+			setCcsaCardOwner(null)
 			setInfraCardBalance('0')
 			setInfraCardAssets(null)
 			setInfraCardMetadata(null)
@@ -1331,7 +1484,42 @@ export default function MyWalletDashboardNew() {
 		},
 	]
 
+	/** 判断当前用户是否为某卡的创建者/owner（链上 card.owner()），仅创建者可打开 DETAILS；eoa/aa 无「卡」概念，按原逻辑 */
+	const isCardCreator = useCallback(
+		(cardId: string) => {
+			if (!cardId) return false
+			if (cardId === 'eoa') return true
+			if (cardId === 'aa') return !!profiles?.[0]?.aaAccount
+			const eoa = profiles?.[0]?.keyID
+			const aa = profiles?.[0]?.aaAccount
+			const userAddrs = [eoa, aa].filter(Boolean).map((a) => ethers.getAddress(a).toLowerCase())
+			if (cardId === 'ccsa') {
+				if (!ccsaCardOwner) return false
+				return userAddrs.includes(ethers.getAddress(ccsaCardOwner).toLowerCase())
+			}
+			if (cardId === BEAMIO_USER_CARD_ASSET_ADDRESS) {
+				const owner = infraCardMetadata?.cardOwner
+				if (!owner) return false
+				return userAddrs.includes(ethers.getAddress(owner).toLowerCase())
+			}
+			// 用户创建的卡：优先用 metadata.cardOwner，无则用「在 userCards 中」（userCards 来自 cardsOfOwner，即创建者列表）
+			const owner = userCardDetails[cardId.toLowerCase()]?.metadata?.cardOwner
+			if (owner) return userAddrs.includes(ethers.getAddress(owner).toLowerCase())
+			return userCards.some((c) => c.cardAddress.toLowerCase() === cardId.toLowerCase())
+		},
+		[profiles, ccsaCardOwner, infraCardMetadata?.cardOwner, userCardDetails, userCards]
+	)
+
+	/** 判断某 cardId 是否为当前用户所拥有（用于点击时是否允许打开 DETAILS）：按创建者/owner 判断，非「持有 NFT」 */
+	const isOwnerOfCard = useCallback(
+		(cardId: string) => isCardCreator(cardId),
+		[isCardCreator]
+	)
+
 	const handleCardClick = (cardId: string) => {
+		if (!isOwnerOfCard(cardId)) return
+		// CCSA 二次校验：仅创建者才允许打开
+		if (cardId === 'ccsa' && !isCcsaOwnerStrict) return
 		setActiveView(activeView === cardId ? null : cardId)
 	}
 
@@ -1340,50 +1528,260 @@ export default function MyWalletDashboardNew() {
 		setShowFooter(!activeView)
 	}, [activeView, setShowFooter])
 
-	const selectedCard = cards.find((c) => c.id === activeView)
+	/** 仅当用户是该卡的创建者/owner 时才允许显示 DETAILS 面板（按 card.owner() 判断，非持有 NFT） */
+	const isOwnerOfSelectedCard = useMemo(() => isCardCreator(activeView ?? ''), [activeView, isCardCreator])
 
-	// exampleExpress passes：CCSA + 基础设施卡 + userCards，用于展开时的叠卡列表
-	const passes = useMemo(() => {
-		const list: { id: string; name: string; balance: string; currency: string; type: string; memberNo: string; bg: string; textColor?: string; image?: string }[] = []
-		if (profiles?.[0]?.aaAccount) {
-			const nft = ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
-			list.push({
-				id: 'ccsa',
-				name: 'CCSA CARD',
-				balance: formatWithThousands(ccsaBalance),
-				currency: 'CAD',
-				type: 'Membership',
-				memberNo: nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : '',
-				bg: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
-				textColor: 'white',
+	/** CCSA 专属：当前用户是否为 CCSA 卡的创建者/owner（链上 card.owner()）。用于面板显示与清除 */
+	const isCcsaOwnerStrict = useMemo(
+		() => {
+			if (!ccsaCardOwner) return false
+			const eoa = profiles?.[0]?.keyID
+			const aa = profiles?.[0]?.aaAccount
+			const userAddrs = [eoa, aa].filter(Boolean).map((a) => ethers.getAddress(a).toLowerCase())
+			return userAddrs.includes(ethers.getAddress(ccsaCardOwner).toLowerCase())
+		},
+		[ccsaCardOwner, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount]
+	)
+
+	/** 是否允许显示 DETAILS 面板：ccsa 必须用 isCcsaOwnerStrict，其余用 isOwnerOfSelectedCard */
+	const showDetailsPanel = !!activeView && (activeView === 'ccsa' ? isCcsaOwnerStrict : isOwnerOfSelectedCard)
+
+	// 若当前选中的卡用户不是 owner，则关闭 DETAILS（ccsa 用 isCcsaOwnerStrict，避免非 owner 通过任何方式打开）
+	useEffect(() => {
+		if (!activeView) return
+		const isOwner = activeView === 'ccsa' ? isCcsaOwnerStrict : isOwnerOfSelectedCard
+		if (!isOwner) setActiveView(null)
+	}, [activeView, isOwnerOfSelectedCard, isCcsaOwnerStrict])
+
+	/** 根据背景色（#hex）返回合适文字颜色：深色背景用白字，浅色用黑字 */
+	const textColorForBackground = (hexOrCss: string | undefined): 'white' | 'black' => {
+		if (!hexOrCss || typeof hexOrCss !== 'string') return 'white'
+		const s = hexOrCss.trim()
+		let r = 0, g = 0, b = 0
+		if (/^#[0-9A-Fa-f]{6}$/.test(s)) {
+			r = parseInt(s.slice(1, 3), 16)
+			g = parseInt(s.slice(3, 5), 16)
+			b = parseInt(s.slice(5, 7), 16)
+		} else if (/^#[0-9A-Fa-f]{3}$/.test(s)) {
+			r = parseInt(s[1] + s[1], 16)
+			g = parseInt(s[2] + s[2], 16)
+			b = parseInt(s[3] + s[3], 16)
+		} else return 'white'
+		const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+		return luminance < 0.5 ? 'white' : 'black'
+	}
+
+	/** 当前 DETAILS 对应卡地址（仅当 activeView 为卡时有效） */
+	const cardAddressForDetails = activeView && activeView !== 'eoa' && activeView !== 'aa'
+		? (activeView === 'ccsa' ? CCSA_Card_Address : activeView)
+		: ''
+
+	const IPFS_GET_FRAGMENT = 'https://ipfs.conet.network/api/getFragment?hash='
+	const handleNewNftImagePick = useCallback<React.ChangeEventHandler<HTMLInputElement>>(async (e) => {
+		const input = e.currentTarget
+		const file = input.files?.[0]
+		input.value = ''
+		if (!file || !file.type.startsWith('image/')) return
+		const profile = profiles?.[0]
+		if (!profile?.privateKeyArmor) {
+			setNewNftError('Please log in to upload image')
+			return
+		}
+		setNewNftError('')
+		setNewNftImageUploading(true)
+		try {
+			const dataUrl = await new Promise<string>((resolve, reject) => {
+				const reader = new FileReader()
+				reader.onload = () => resolve(String(reader.result))
+				reader.onerror = () => reject(reader.error)
+				reader.readAsDataURL(file)
 			})
-			// 基础设施卡 0x4879171D6c4693EaEdcD8F448a785A31B2146e64，使用创建卡时 uri 的 metadata
-			const infraNft = infraCardAssets?.nfts?.find((n) => Number(n.tokenId) > 0)
+			const hash = await postToIPFS(profile, dataUrl)
+			if (hash) {
+				setNewNftImageUrl(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`)
+			} else {
+				setNewNftError('Image upload failed')
+			}
+		} catch (err: any) {
+			setNewNftError(err?.message ?? 'Image upload failed')
+		} finally {
+			setNewNftImageUploading(false)
+		}
+	}, [profiles])
+
+	const handleNewNftSubmit = useCallback(async () => {
+		if (!cardAddressForDetails || !newNftTitle.trim()) {
+			setNewNftError('Please enter a title')
+			return
+		}
+		const maxSupply = parseInt(newNftMaxSupply, 10)
+		if (!Number.isFinite(maxSupply) || maxSupply < 1) {
+			setNewNftError('Max supply must be ≥ 1')
+			return
+		}
+		const now = Math.floor(Date.now() / 1000)
+		const validAfter = newNftValidAfter ? Math.floor(new Date(newNftValidAfter).getTime() / 1000) : 0
+		const validBefore = newNftValidBefore ? Math.floor(new Date(newNftValidBefore).getTime() / 1000) : 0
+		if (validBefore !== 0 && validBefore < validAfter) {
+			setNewNftError('Valid until must be after valid from')
+			return
+		}
+		const priceE6 = newNftPriceE6.trim() === '' ? 0 : Math.round(parseFloat(newNftPriceE6) * 1e6)
+		if (newNftPriceE6.trim() !== '' && (!Number.isFinite(parseFloat(newNftPriceE6)) || priceE6 < 0)) {
+			setNewNftError('Price must be a non-negative number')
+			return
+		}
+		const profile = profiles?.[0]
+		if (!profile?.privateKeyArmor) {
+			setNewNftError('Please log in first')
+			return
+		}
+		setNewNftSubmitting(true)
+		setNewNftError('')
+		try {
+			const wallet = new ethers.Wallet(profile.privateKeyArmor)
+			const cardOwner = await getCardOwner(cardAddressForDetails)
+			if (ethers.getAddress(cardOwner) !== ethers.getAddress(wallet.address)) {
+				setNewNftError('This card is owned by your AA account. New NFT requires the card owner (EOA) to sign.')
+				setNewNftSubmitting(false)
+				return
+			}
+			const deadline = now + 3600
+			const nonce = ethers.hexlify(ethers.randomBytes(32))
+			const data = encodeCreateIssuedNft(
+				newNftTitle.trim(),
+				validAfter,
+				validBefore,
+				maxSupply,
+				priceE6,
+				'0'
+			)
+			const ownerSignature = await signExecuteForOwner(
+				profile.privateKeyArmor,
+				cardAddressForDetails,
+				data,
+				deadline,
+				nonce
+			)
+			const result = await postCardCreateIssuedNft({
+				cardAddress: cardAddressForDetails,
+				data,
+				deadline,
+				nonce,
+				ownerSignature,
+				description: newNftDescription.trim() || undefined,
+				image: newNftImageUrl.trim() || undefined,
+				background_color: newNftBackgroundColor.trim() || undefined,
+			})
+			if (result.success) {
+				setShowNewNftForm(false)
+				setNewNftTitle('')
+				setNewNftValidAfter('')
+				setNewNftValidBefore('')
+				setNewNftMaxSupply('')
+				setNewNftPriceE6('')
+				setNewNftDescription('')
+				setNewNftImageUrl('')
+				setNewNftBackgroundColor('')
+			} else {
+				setNewNftError(result.error ?? 'Create NFT failed')
+			}
+		} catch (e: any) {
+			setNewNftError(e?.message ?? String(e))
+		} finally {
+			setNewNftSubmitting(false)
+		}
+	}, [cardAddressForDetails, newNftTitle, newNftValidAfter, newNftValidBefore, newNftMaxSupply, newNftPriceE6, newNftDescription, newNftImageUrl, newNftBackgroundColor, profiles])
+
+	// exampleExpress passes：CCSA + 基础设施卡 + userCards；BeamioUserCard 的 tier 来自合约，tier name/description 来自创建卡时写入的 metadata (0x{owner}.json)
+	const passes = useMemo(() => {
+		const list: { id: string; name: string; balance: string; currency: string; type: string; memberNo: string; bg: string; textColor?: string; image?: string; tier?: string; tierName?: string; tierDescription?: string }[] = []
+		if (profiles?.[0]?.aaAccount) {
+			// 可折叠 CCSA 卡：拥有该卡内 NFT 资产 或 是该卡的创建者/owner 均显示；仅创建者可点击打开 DETAILS
+			const ccsaNfts = (ccsaAssets?.nfts ?? []).filter((n) => { const id = Number(n.tokenId); return Number.isInteger(id) && id > 0 })
+			const showCcsa = ccsaNfts.length > 0 || isCardCreator('ccsa')
+			if (showCcsa) {
+				const nft = ccsaNfts.length > 0 ? ccsaNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+				list.push({
+					id: 'ccsa',
+					name: 'CCSA CARD',
+					balance: formatWithThousands(ccsaBalance),
+					currency: 'CAD',
+					type: 'Membership',
+					memberNo: nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : '',
+					bg: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
+					textColor: 'white',
+				})
+			}
+			// 基础设施卡：拥有该卡 NFT 资产 或 是该卡的创建者/owner 均显示；仅创建者可点击打开 DETAILS
+			const infraNfts = (infraCardAssets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
+			const showInfra = infraNfts.length > 0 || isCardCreator(BEAMIO_USER_CARD_ASSET_ADDRESS)
+			if (showInfra) {
+			const infraNft = infraNfts.length > 0
+				? infraNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a))
+				: undefined
+			const rawTier = infraNft?.tier
+			const tierIndex = rawTier != null && rawTier !== 'Default/Max' ? Number(rawTier) : null
+			const tierMeta = tierIndex != null && Number.isInteger(tierIndex) && infraCardMetadata?.tiers?.length
+				? infraCardMetadata.tiers.find((t) => t.index === tierIndex) ?? infraCardMetadata.tiers[tierIndex]
+				: undefined
+			const infraNftMeta = infraCardMetadata?.nftMetadata
+			const infraTierName = infraNftMeta?.name ?? tierMeta?.name ?? (tierIndex != null ? `Tier ${tierIndex + 1}` : rawTier === 'Default/Max' ? 'Default' : undefined)
+			const infraTierDesc = infraNftMeta?.description ?? tierMeta?.description
+			const infraBg = infraNftMeta?.backgroundColor
+				? (infraNftMeta.backgroundColor.startsWith('#') ? infraNftMeta.backgroundColor : `#${infraNftMeta.backgroundColor.replace(/^#/, '')}`)
+				: 'linear-gradient(135deg, #0ea5e9, #06b6d4, #14b8a6)'
+			const infraTextColor = infraNftMeta?.backgroundColor ? textColorForBackground(infraNftMeta.backgroundColor) : 'white'
 			list.push({
 				id: BEAMIO_USER_CARD_ASSET_ADDRESS,
-				name: infraCardMetadata?.name ?? '基础设施卡',
+				name: infraCardMetadata?.name ?? 'CashTrees Card',
 				balance: formatWithThousands(infraCardBalance),
 				currency: 'CAD',
 				type: 'Infrastructure',
 				memberNo: infraNft ? `M-${String(infraNft.tokenId).padStart(6, '0')}` : BEAMIO_USER_CARD_ASSET_ADDRESS.slice(0, 10) + '...',
-				bg: 'linear-gradient(135deg, #0ea5e9, #06b6d4, #14b8a6)',
-				textColor: 'white',
-				image: infraCardMetadata?.image,
+				bg: infraBg,
+				textColor: infraTextColor,
+				image: infraNftMeta?.image ?? infraCardMetadata?.image,
+				tier: infraTierName,
+				tierName: infraTierName,
+				tierDescription: infraTierDesc,
 			})
+			}
 		}
 		userCards.forEach((uc) => {
+			const addr = uc.cardAddress.toLowerCase()
+			const details = userCardDetails[addr]
+			const nfts = details?.assets?.nfts?.filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[] | undefined
+			const bestNft = nfts?.length ? nfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+			const rawTier = bestNft?.tier
+			const tierIdx = rawTier != null && rawTier !== 'Default/Max' ? Number(rawTier) : null
+			const tiers = details?.metadata?.tiers
+			const tierMeta =
+				tierIdx != null && Number.isInteger(tierIdx) && tiers?.length
+					? tiers.find((t) => t.index === tierIdx) ?? tiers[tierIdx]
+					: undefined
+			const tierFallback = tierIdx != null ? `Tier ${tierIdx + 1}` : rawTier === 'Default/Max' ? 'Default' : undefined
+			// 优先使用 per-NFT metadata（/metadata/0x{owner}{NFT#}.json），无则用卡级 tiers[tierIdx]
+			const nftMeta = details?.nftMetadata
+			const tierName = nftMeta?.name ?? tierMeta?.name ?? tierFallback
+			const tierDescription = nftMeta?.description ?? tierMeta?.description
+			const cardImage = nftMeta?.image ?? details?.metadata?.image
 			list.push({
 				id: uc.cardAddress,
-				name: uc.name,
-				balance: '—',
+				name: details?.metadata?.name ?? uc.name,
+				balance: details?.assets?.points != null ? formatWithThousands(details.assets.points) : '—',
 				currency: uc.currency,
 				type: 'Stored Value',
-				memberNo: uc.cardAddress.slice(0, 10) + '...',
+				memberNo: bestNft ? `M-${String(bestNft.tokenId).padStart(6, '0')}` : uc.cardAddress.slice(0, 10) + '...',
 				bg: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)',
+				image: cardImage,
+				tier: tierName,
+				tierName,
+				tierDescription,
 			})
 		})
 		return list
-	}, [profiles?.[0]?.aaAccount, ccsaAssets?.nfts, ccsaBalance, infraCardAssets?.nfts, infraCardBalance, infraCardMetadata, userCards])
+	}, [profiles?.[0]?.aaAccount, isCardCreator, ccsaAssets?.nfts, ccsaBalance, infraCardAssets?.nfts, infraCardBalance, infraCardMetadata, userCards, userCardDetails])
 
 	const updatePassStatus = useCallback((id: string, status: 'active' | 'archived') => {
 		setArchivedPassIds((prev) => {
@@ -1400,7 +1798,7 @@ export default function MyWalletDashboardNew() {
 
 	/** 供 ManageCardsOverlay 使用的完整 pass 列表（含 status、nickname） */
 	const allPassesForManage = useMemo(() => {
-		return passes.map((p) => ({
+		return (passes ?? []).map((p) => ({
 			...p,
 			nickname: passNicknames[p.id] || undefined,
 			status: (archivedPassIds.has(p.id) ? 'archived' : 'active') as 'active' | 'archived',
@@ -1409,7 +1807,7 @@ export default function MyWalletDashboardNew() {
 
 	/** 显示的 passes：排除已隐藏，应用 nickname 作为 displayName */
 	const visiblePasses = useMemo(
-		() => passes.filter((p) => !archivedPassIds.has(p.id)).map((p) => ({ ...p, displayName: passNicknames[p.id] || p.name })),
+		() => (passes ?? []).filter((p) => !archivedPassIds.has(p.id)).map((p) => ({ ...p, displayName: passNicknames[p.id] || p.name })),
 		[passes, archivedPassIds, passNicknames]
 	)
 
@@ -1417,6 +1815,35 @@ export default function MyWalletDashboardNew() {
 		() => visiblePasses.filter((p) => p.displayName.toLowerCase().includes(passSearchTerm.toLowerCase())),
 		[visiblePasses, passSearchTerm]
 	)
+
+	/** 当前选中的卡：优先从 cards（eoa/aa/ccsa）取，否则从 visiblePasses（基础设施卡、user card）合成 */
+	const selectedCard = useMemo((): Card | undefined => {
+		if (!activeView) return undefined
+		const fromCards = cards.find((c) => c.id === activeView)
+		if (fromCards) return fromCards
+		const p = visiblePasses.find((x) => x.id === activeView)
+		if (!p) return undefined
+		const displayName = (p as { displayName?: string }).displayName ?? p.name ?? p.id
+		return {
+			id: p.id,
+			name: displayName,
+			balance: p.balance ?? '0',
+			balanceFiat: 0,
+			address: '',
+			gradient: p.bg ?? '',
+			badge: p.type ?? 'Card',
+			badgeIcon: null,
+			bg: p.bg ?? '',
+			currency: p.currency,
+			memberNo: p.memberNo,
+		}
+	}, [activeView, cards, visiblePasses])
+
+	/** 当前选中的是否为「展示 My BeamioUserCards + Redeem Active List」的卡（CCSA、基础设施卡、或自己创建的 user card） */
+	const isCardViewWithRedeemList =
+		selectedCard?.id === 'ccsa' ||
+		selectedCard?.id === BEAMIO_USER_CARD_ASSET_ADDRESS ||
+		(!!selectedCard?.id && userCards.some((c) => c.cardAddress.toLowerCase() === selectedCard.id?.toLowerCase()))
 
 	return (
 		<>
@@ -1456,9 +1883,16 @@ export default function MyWalletDashboardNew() {
 							</button>
 							<button
 								type="button"
-								onClick={() => navigate('/settings')}
+								onClick={() => {
+									if (profiles?.[0]?.aaAccount) {
+										setCcsaCreateCardOpen(true)
+										setShowFooter(false)
+									} else {
+										navigate('/settings')
+									}
+								}}
 								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
-								title="Add card"
+								title={profiles?.[0]?.aaAccount ? 'Create BeamioUserCard' : 'Add card / Settings'}
 							>
 								<Plus className="w-5 h-5" />
 							</button>
@@ -1543,7 +1977,12 @@ export default function MyWalletDashboardNew() {
 								</div>
 							) : (
 								<div
-									onClick={() => setIsExpressExpanded(!isExpressExpanded)}
+									onClick={() => {
+										const next = !isExpressExpanded
+										setIsExpressExpanded(next)
+										// 展开时若当前是 CCSA DETAILS 且用户非 owner，则关闭 DETAILS，避免非 owner 看到从底部滑出的 CCSA 面板
+										if (next && activeView === 'ccsa' && !isCcsaOwnerStrict) setActiveView(null)
+									}}
 									className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-[0_20px_50px_-12px_rgba(79,70,229,0.5)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'translate-y-[240px]' : 'translate-y-[150px]'}`}
 									style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)', zIndex: 20 }}
 								>
@@ -1554,7 +1993,23 @@ export default function MyWalletDashboardNew() {
 											</div>
 											<span className="font-medium text-lg tracking-wide">Express Pay</span>
 										</div>
-										<div className="text-right">
+										<div className="flex items-center justify-end gap-2 text-right">
+											<button
+												type="button"
+												onClick={(e) => {
+													e.stopPropagation()
+													handleAaRelayQR()
+												}}
+												className="p-2 rounded-full bg-white/20 hover:bg-white/30 border border-white/20 flex items-center justify-center transition-colors"
+												title="显示扣款 QR（5 分钟有效）"
+												aria-label="显示扣款 QR"
+											>
+												{aaRelaySigning ? (
+													<Loader className="w-5 h-5 animate-spin text-white" />
+												) : (
+													<QrCode className="w-5 h-5 text-white" />
+												)}
+											</button>
 											<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
 												{formatWithThousands(aaAccountUsdcBalance || '0')}
 												<span className="text-xs font-medium ml-1 opacity-80">USDC</span>
@@ -1609,47 +2064,66 @@ export default function MyWalletDashboardNew() {
 										{filteredPasses.length > 0 ? (
 											filteredPasses.map((pass, index) => {
 												const overlap = 135
+												const passTextColor = pass.textColor || 'white'
+												const isLightBg = passTextColor === 'black'
 												return (
 													<div
 														key={pass.id}
-														onClick={() => handleCardClick('ccsa')}
-														className="w-full h-48 rounded-[24px] p-6 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform origin-top hover:translate-y-[-8px] border border-white/10"
+														onClick={() => {
+															// 非 CCSA owner 点 CCSA 卡不打开 DETAILS（列表理论上不展示 CCSA，此处兜底）
+															if (pass.id === 'ccsa' && !isCcsaOwnerStrict) return
+															handleCardClick(pass.id)
+														}}
+														className={`w-full h-48 rounded-[24px] p-6 shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform origin-top hover:translate-y-[-8px] border ${isLightBg ? 'border-black/10' : 'border-white/10'}`}
 														style={{
 															background: pass.bg,
 															zIndex: index,
 															marginTop: index === 0 ? 0 : `-${overlap}px`,
-															color: pass.textColor || 'white',
+															color: passTextColor,
 															boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
 															transform: `scale(${Math.max(0.95, 1 - index * 0.01)})`,
 														}}
 													>
 														<div className="flex justify-between items-center mb-3">
 															<div className="flex items-center gap-3">
-																<div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/10 shadow-sm overflow-hidden shrink-0">
+																<div className={`w-8 h-8 rounded-full backdrop-blur-md flex items-center justify-center overflow-hidden shrink-0 ${isLightBg ? 'bg-black/10 border border-black/10' : 'bg-white/20 border border-white/10'}`}>
 																	{pass.image ? (
 																		<img src={pass.image} alt="" className="w-full h-full object-cover" />
 																	) : pass.id === 'ccsa' ? (
-																		<Globe className="w-4 h-4 text-white" />
+																		<Globe className="w-4 h-4" style={{ color: passTextColor }} />
 																	) : pass.id === BEAMIO_USER_CARD_ASSET_ADDRESS ? (
-																		<Cpu className="w-4 h-4 text-white" />
+																		<Cpu className="w-4 h-4" style={{ color: passTextColor }} />
 																	) : (
-																		<CreditCard className="w-4 h-4 text-white" />
+																		<CreditCard className="w-4 h-4" style={{ color: passTextColor }} />
 																	)}
 																</div>
-																<div className="flex flex-col">
-																	<h3 className="font-bold text-sm leading-tight text-white/90 drop-shadow-sm">{pass.displayName}</h3>
-																	<span className="text-[10px] opacity-70 uppercase tracking-wider">{pass.type}</span>
+																<div className="flex flex-col min-w-0">
+																	<h3 className={`font-bold text-sm leading-tight drop-shadow-sm truncate ${isLightBg ? 'text-gray-900' : 'text-white/90'}`}>{pass.displayName}</h3>
+																	<span className={`text-[10px] uppercase tracking-wider ${isLightBg ? 'text-gray-700 opacity-90' : 'text-white/70'}`}>
+																		{pass.tierName ?? pass.tier ?? pass.type}
+																	</span>
+																	
 																</div>
 															</div>
 															<div className="text-right">
-																<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
+																<h2 className={`text-2xl font-bold tracking-tight leading-none drop-shadow-sm ${isLightBg ? 'text-gray-900' : 'text-white'}`}>
 																	{pass.balance}
-																	<span className="text-xs font-medium ml-1 opacity-80">{pass.currency}</span>
+																	<span className={`text-xs font-medium ml-1 ${isLightBg ? 'text-gray-700 opacity-80' : 'opacity-80'}`}>{pass.currency}</span>
 																</h2>
 															</div>
 														</div>
-														<div className="mt-auto pt-8 flex justify-end items-end opacity-40">
-															<p className="text-[10px] font-mono tracking-widest">{pass.memberNo}</p>
+														<div className={`mt-auto pt-8 flex flex-col items-end gap-0.5 ${isLightBg ? 'text-gray-800 opacity-90' : 'opacity-90'}`}>
+															{/* 用户获得的 NFT 编号 */}
+															<p className="text-[10px] font-mono tracking-widest">NFT {pass.memberNo}</p>
+															{/* 该 NFT 的 tier */}
+															{/* {(pass.tierName ?? pass.tier) ? (
+																<p className={`text-[10px] ${isLightBg ? 'text-gray-700 opacity-80' : 'opacity-80'}`}>
+																	Tier: {pass.tierName ?? pass.tier}
+																</p>
+															) : null}
+															{pass.tierDescription ? (
+																<p className={`text-[9px] max-w-[80%] text-right line-clamp-1 ${isLightBg ? 'text-gray-600 opacity-60' : 'opacity-60'}`}>{pass.tierDescription}</p>
+															) : null} */}
 														</div>
 													</div>
 												)
@@ -1664,65 +2138,72 @@ export default function MyWalletDashboardNew() {
 
 					</div>
 
-					{/* 40% 黑色遮罩：盖住背后被压住的卡片，点击关闭 */}
-					{activeView && (
+					{/* 40% 黑色遮罩：盖住背后被压住的卡片，点击关闭；仅当用户是该卡 owner 时显示 */}
+					{showDetailsPanel && (
 						<div
 							className="absolute inset-0 z-[65] bg-black/40 transition-opacity duration-300 cursor-pointer"
 							onClick={() => setActiveView(null)}
 						/>
 					)}
 
-					{/* DETAILS PANEL - 盖住卡片，距离顶部 刘海+1rem，z 高于卡片；隐藏时 pointer-events-none 避免遮挡 footer */}
+					{/* DETAILS PANEL - 统一面板；整块从顶到底一条渐变，与顶部同一色系、一气呵成；CCSA/其他增加背景模糊 */}
 					<div
-						className={`absolute inset-x-0 bottom-0 bg-[#F2F2F7] rounded-t-[4px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-[80] flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
-							activeView ? 'translate-y-0' : 'translate-y-[1000px] pointer-events-none'
+						className={`absolute inset-x-0 bottom-0 rounded-t-[4px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-[80] flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
+							showDetailsPanel ? 'translate-y-0' : 'translate-y-[1000px] pointer-events-none'
 						}`}
-						style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
+						style={{
+							top: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
+							background: selectedCard
+								? selectedCard.id === 'eoa'
+									? 'linear-gradient(180deg, #2563eb 0%, #9333ea 12%, #db2777 22%, rgba(242,242,247,0.97) 38%, #F2F2F7 48%, #F2F2F7 100%)'
+									: selectedCard.id === 'aa'
+										? 'linear-gradient(180deg, #7c3aed 0%, #a855f7 12%, #3b82f6 22%, rgba(242,242,247,0.97) 38%, #F2F2F7 48%, #F2F2F7 100%)'
+										: 'linear-gradient(180deg, #6366F144 0%, #8B5CF644 12%, #F2F2F744 38%, #F2F2F7 48%, #F2F2F7 100%)'
+								: '#F2F2F7',
+							...(selectedCard && selectedCard.id !== 'eoa' && selectedCard.id !== 'aa'
+								? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }
+								: {}),
+						}}
 					>
-						{/* 顶部渐变条（按卡片类型） */}
-						{selectedCard && (
-							<>
-								<div
-									className="absolute top-0 left-0 w-full h-64 z-0"
-									style={{
-										background:
-											selectedCard.id === 'eoa'
-												? 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)'
-												: selectedCard.id === 'aa'
-													? 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)'
-													: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
-									}}
-								/>
-								<div className="absolute top-0 left-0 w-full h-64 z-0 bg-gradient-to-b from-transparent to-[#F2F2F7]" />
-							</>
-						)}
-
-						{/* Header：关闭、设置 - VoucherDetailModal 风格，白色按钮在渐变上 */}
+						{/* Header：关闭、New NFT（仅卡详情）、设置 - VoucherDetailModal 风格，白色按钮在渐变上 */}
 						<div className="px-6 pt-6 pb-2 flex justify-between items-center z-10">
 							<button
 								type="button"
 								onClick={() => setActiveView(null)}
-								className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-white/30 text-white transition-colors"
+								className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
 								aria-label="Close"
 							>
 								<ChevronDown className="w-6 h-6" />
 							</button>
-							<button
-								type="button"
-								onClick={() => navigate('/settings')}
-								className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-white/30 text-white transition-colors"
-								aria-label="Settings"
-							>
-								<Settings className="w-6 h-6" />
-							</button>
+							<div className="flex items-center gap-2">
+								{selectedCard && selectedCard.id !== 'eoa' && selectedCard.id !== 'aa' && (
+									<button
+										type="button"
+										onClick={() => setShowNewNftForm(true)}
+										className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
+										aria-label="New NFT"
+										title="New NFT"
+									>
+										<Layers className="w-6 h-6" />
+									</button>
+								)}
+								<button
+									type="button"
+									onClick={() => navigate('/settings')}
+									className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
+									aria-label="Settings"
+								>
+									<Settings className="w-6 h-6" />
+								</button>
+							</div>
 						</div>
 
-						{/* 可滚动内容 */}
+						{/* 可滚动内容；背景透明，由面板容器的一条渐变统一呈现 */}
 						{selectedCard && (
 							<div className="flex-1 overflow-y-auto px-6 pt-2 pb-24 z-10 no-scrollbar">
-								{/* 卡片预览块 - VoucherDetailModal 风格 */}
+								{/* 卡片预览块 - VoucherDetailModal 风格；CCSA/其他在渐变上增加背景模糊 */}
 								<div
-									className="w-full min-h-[14rem] rounded-[24px] p-6 text-white shadow-2xl relative overflow-hidden mb-8"
+									className={`w-full min-h-[14rem] rounded-[24px] p-6 text-white shadow-2xl relative overflow-hidden mb-8 ${selectedCard.id !== 'eoa' && selectedCard.id !== 'aa' ? 'backdrop-blur-md' : ''}`}
 									style={{
 										background:
 											selectedCard.id === 'eoa'
@@ -1730,8 +2211,8 @@ export default function MyWalletDashboardNew() {
 												: selectedCard.id === 'aa'
 													? 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)'
 													: selectedCard.id === 'ccsa'
-														? 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)'
-														: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
+														? 'linear-gradient(135deg, #6366F144, #8B5CF644, #F2F2F744)'
+														: (typeof selectedCard.bg === 'string' && selectedCard.bg.trim() ? selectedCard.bg : typeof selectedCard.gradient === 'string' && selectedCard.gradient.trim() ? selectedCard.gradient : 'linear-gradient(135deg, #6366F144, #8B5CF644, #F2F2F744)'),
 									}}
 								>
 									<div className="flex justify-between items-start mb-2">
@@ -1739,16 +2220,20 @@ export default function MyWalletDashboardNew() {
 											<h2 className="text-4xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
 												{formatWithThousands(selectedCard.balance)}{' '}
 												<span className="text-xl font-medium ml-2 opacity-90">
-													{selectedCard.id === 'ccsa' ? 'CAD' : 'USDC'}
+													{selectedCard.currency ?? (selectedCard.id === 'ccsa' ? 'CAD' : 'USDC')}
 												</span>
 											</h2>
 											<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-1">Balance</p>
 										</div>
-										{selectedCard.id === 'ccsa' && ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0) && (
+										{selectedCard.memberNo ? (
+											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
+												{selectedCard.memberNo.startsWith('M-') ? selectedCard.memberNo : `M-${selectedCard.memberNo}`}
+											</div>
+										) : selectedCard.id === 'ccsa' && ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0) ? (
 											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
 												M-{String(ccsaAssets.nfts.find((n) => Number(n.tokenId) > 0)?.tokenId ?? '').padStart(6, '0')}
 											</div>
-										)}
+										) : null}
 										{selectedCard.id === 'aa' && (
 											<div className="flex items-center gap-2 shrink-0 pt-2">
 												<button
@@ -1787,7 +2272,7 @@ export default function MyWalletDashboardNew() {
 											<div>
 												<h3 className="font-bold text-xl leading-none">{selectedCard.name}</h3>
 												<span className="text-[10px] opacity-80 uppercase tracking-wider">
-													{selectedCard.id === 'eoa' ? 'Main Wallet' : selectedCard.id === 'aa' ? 'Express Pay' : 'Membership'}
+													{selectedCard.id === 'eoa' ? 'Main Wallet' : selectedCard.id === 'aa' ? 'Express Pay' : (selectedCard.badge ?? 'Membership')}
 												</span>
 											</div>
 										</div>
@@ -1888,8 +2373,8 @@ export default function MyWalletDashboardNew() {
 
 										</div>
 									) : (
-										/* CCSA Card：express 风格 Pay / Top Up / Details 三键网格 */
-										<div className="grid grid-cols-3 gap-3">
+										/* CCSA Card：express 风格 Pay / Top Up / New NFT / Details 四键网格 */
+										<div className="grid grid-cols-4 gap-3">
 											<ExpressAction
 												label="Pay"
 												iconBgClass="bg-[#1562f0] shadow-blue-600/30"
@@ -1918,6 +2403,15 @@ export default function MyWalletDashboardNew() {
 														setShowFooter(false)
 														setTopUpRedeemOpen(true)
 													}
+												}}
+											/>
+											<ExpressAction
+												label="New NFT"
+												iconBgClass="bg-indigo-500 shadow-indigo-500/30"
+												icon={<Layers className="w-5 h-5" />}
+												onClick={() => {
+													setShowFooter(false)
+													setShowNewNftForm(true)
 												}}
 											/>
 											<ExpressAction
@@ -2012,79 +2506,103 @@ export default function MyWalletDashboardNew() {
 											)}
 										</div>
 									</>
-									) : selectedCard.id === 'ccsa' ? (
-										/* CCSA：Member Benefits + Recent Activity + Card Information + My BeamioUserCards */
+									) : isCardViewWithRedeemList ? (
+										/* CCSA / 基础设施卡 / 用户卡：Member Benefits + Card Information（仅 CCSA/基础设施）+ My BeamioUserCards + Redeem Active List */
 										<>
-											{/* Member Benefits - VoucherDetailModal 风格 */}
-											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
-												<div className="flex items-center gap-2 mb-4">
-													<Star className="w-4 h-4 text-orange-500 fill-orange-500" />
-													<h3 className="font-bold text-gray-900">Member Benefits</h3>
-												</div>
-												<div className="space-y-4">
-													<div className="flex items-start gap-3">
-														<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-															<Star className="w-4 h-4 text-[#1562f0]" />
+											{selectedCard.id === 'ccsa' && (
+												<>
+													{/* Member Benefits - VoucherDetailModal 风格 */}
+													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+														<div className="flex items-center gap-2 mb-4">
+															<Star className="w-4 h-4 text-orange-500 fill-orange-500" />
+															<h3 className="font-bold text-gray-900">Member Benefits</h3>
 														</div>
-														<div>
-															<h4 className="text-sm font-bold text-gray-900">Alliance Discount</h4>
-															<p className="text-xs text-gray-500 leading-relaxed">10% off at participating restaurants.</p>
+														<div className="space-y-4">
+															<div className="flex items-start gap-3">
+																<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+																	<Star className="w-4 h-4 text-[#1562f0]" />
+																</div>
+																<div>
+																	<h4 className="text-sm font-bold text-gray-900">Alliance Discount</h4>
+																	<p className="text-xs text-gray-500 leading-relaxed">10% off at participating restaurants.</p>
+																</div>
+															</div>
+															<div className="flex items-start gap-3">
+																<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+																	<Zap className="w-4 h-4 text-[#1562f0]" />
+																</div>
+																<div>
+																	<h4 className="text-sm font-bold text-gray-900">Gas-Free</h4>
+																	<p className="text-xs text-gray-500 leading-relaxed">Zero transaction fees on Beamio network.</p>
+																</div>
+															</div>
 														</div>
 													</div>
-													<div className="flex items-start gap-3">
-														<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-															<Zap className="w-4 h-4 text-[#1562f0]" />
-														</div>
-														<div>
-															<h4 className="text-sm font-bold text-gray-900">Gas-Free</h4>
-															<p className="text-xs text-gray-500 leading-relaxed">Zero transaction fees on Beamio network.</p>
-														</div>
-													</div>
-												</div>
-											</div>
 
-											{/* Recent Activity */}
-											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
-												<div className="flex justify-between items-center mb-4">
-													<h3 className="font-bold text-gray-900">Recent Activity</h3>
-													<span className="text-xs font-bold text-[#1562f0]">View All</span>
-												</div>
-												<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
-											</div>
+													{/* Recent Activity */}
+													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+														<div className="flex justify-between items-center mb-4">
+															<h3 className="font-bold text-gray-900">Recent Activity</h3>
+															<span className="text-xs font-bold text-[#1562f0]">View All</span>
+														</div>
+														<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+													</div>
 
-											{/* Card Information - VoucherDetailModal 风格 */}
-											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
-												<div className="flex items-center gap-2 mb-4">
-													<Info className="w-4 h-4 text-gray-400" />
-													<h3 className="font-bold text-gray-900">Card Information</h3>
+													{/* Card Information - VoucherDetailModal 风格（仅 CCSA） */}
+													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+														<div className="flex items-center gap-2 mb-4">
+															<Info className="w-4 h-4 text-gray-400" />
+															<h3 className="font-bold text-gray-900">Card Information</h3>
+														</div>
+														<div className="space-y-3">
+															<div className="flex justify-between text-xs">
+																<span className="text-gray-500">Issuer</span>
+																<span className="font-medium text-gray-900">Canada Chinese Restaurant Alliance</span>
+															</div>
+															<div className="flex justify-between text-xs">
+																<span className="text-gray-500">Network</span>
+																<span className="font-medium text-gray-900">Base Mainnet</span>
+															</div>
+															<div className="flex justify-between text-xs">
+																<span className="text-gray-500">Standard</span>
+																<span className="font-medium text-gray-900">ERC-1155</span>
+															</div>
+															<div className="flex justify-between text-xs">
+																<span className="text-gray-500">Contract</span>
+																<span className="font-mono text-gray-500">
+																	{CCSA_Card_Address ? `${CCSA_Card_Address.slice(0, 6)}...${CCSA_Card_Address.slice(-4)}` : '—'}
+																</span>
+															</div>
+															<div className="flex justify-between text-xs items-center pt-2 border-t border-gray-100 mt-2">
+																<span className="text-gray-500 flex items-center gap-1">
+																	<ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status
+																</span>
+																<span className="font-bold text-green-600">Verified</span>
+															</div>
+														</div>
+													</div>
+												</>
+											)}
+											{selectedCard.id === BEAMIO_USER_CARD_ASSET_ADDRESS && (
+												<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+													<div className="flex items-center gap-2 mb-4">
+														<Info className="w-4 h-4 text-gray-400" />
+														<h3 className="font-bold text-gray-900">Card Information</h3>
+													</div>
+													<div className="space-y-3">
+														<div className="flex justify-between text-xs">
+															<span className="text-gray-500">Network</span>
+															<span className="font-medium text-gray-900">Base Mainnet</span>
+														</div>
+														<div className="flex justify-between text-xs">
+															<span className="text-gray-500">Contract</span>
+															<span className="font-mono text-gray-500" title={BEAMIO_USER_CARD_ASSET_ADDRESS}>
+																{BEAMIO_USER_CARD_ASSET_ADDRESS.slice(0, 10)}...{BEAMIO_USER_CARD_ASSET_ADDRESS.slice(-8)}
+															</span>
+														</div>
+													</div>
 												</div>
-												<div className="space-y-3">
-													<div className="flex justify-between text-xs">
-														<span className="text-gray-500">Issuer</span>
-														<span className="font-medium text-gray-900">Canada Chinese Restaurant Alliance</span>
-													</div>
-													<div className="flex justify-between text-xs">
-														<span className="text-gray-500">Network</span>
-														<span className="font-medium text-gray-900">Base Mainnet</span>
-													</div>
-													<div className="flex justify-between text-xs">
-														<span className="text-gray-500">Standard</span>
-														<span className="font-medium text-gray-900">ERC-1155</span>
-													</div>
-													<div className="flex justify-between text-xs">
-														<span className="text-gray-500">Contract</span>
-														<span className="font-mono text-gray-500">
-															{CCSA_Card_Address ? `${CCSA_Card_Address.slice(0, 6)}...${CCSA_Card_Address.slice(-4)}` : '—'}
-														</span>
-													</div>
-													<div className="flex justify-between text-xs items-center pt-2 border-t border-gray-100 mt-2">
-														<span className="text-gray-500 flex items-center gap-1">
-															<ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status
-														</span>
-														<span className="font-bold text-green-600">Verified</span>
-													</div>
-												</div>
-											</div>
+											)}
 
 											{/* My BeamioUserCards */}
 											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
@@ -2188,14 +2706,16 @@ export default function MyWalletDashboardNew() {
 											)}
 
 											{/* Redeem Active List：owner 已创建的 redeem 一览 */}
-											{(CoNET_Data?.cardRedeems?.length ?? 0) > 0 && (
+											{cardRedeemsBatches.length > 0 && (
 												<RedeemActiveList
-													batches={(CoNET_Data?.cardRedeems ?? []) as CardRedeemBatch[]}
+													batches={cardRedeemsBatches}
 													onManageClick={() => {
 														setShowFooter(false)
 														setShowRedeemListOpen(true)
 													}}
-													onRemoveNotFound={() => setCardRedeemsVersion((v) => v + 1)}
+													onRemoveNotFound={() => {
+														setCardRedeemsVersion((v) => v + 1)
+													}}
 												/>
 											)}
 										</div>
@@ -2208,6 +2728,170 @@ export default function MyWalletDashboardNew() {
 						)}
 					</div>
 				</div>
+
+				{/* New NFT 底部滑出表单：对应 createIssuedNft，离线签字送 API 代付 gas */}
+				{showNewNftForm && cardAddressForDetails && (
+					<div className="fixed inset-0 z-[85] flex flex-col justify-end">
+						<div
+							className="absolute inset-0 bg-black/50 transition-opacity"
+							onClick={() => !newNftSubmitting && setShowNewNftForm(false)}
+							aria-hidden
+						/>
+						<div className="relative bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[85dvh] overflow-hidden pb-[env(safe-area-inset-bottom)] shadow-2xl flex flex-col animate-slide-up">
+							<div className="pt-2 pb-1 flex justify-center shrink-0">
+								<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
+							</div>
+							<div className="px-4 pb-6 overflow-y-auto flex-1 min-h-0">
+								<div className="flex items-center justify-between mb-4">
+									<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">New NFT</h2>
+									<button
+										type="button"
+										onClick={() => !newNftSubmitting && setShowNewNftForm(false)}
+										className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+										aria-label="Close"
+									>
+										<X className="w-5 h-5" />
+									</button>
+								</div>
+								<p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+									Define a new issued NFT type (e.g. event tickets). Title is stored as keccak256. Valid range and price are optional.
+								</p>
+								{newNftError && (
+									<div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm flex items-center gap-2">
+										<Info className="w-4 h-4 shrink-0" />
+										{newNftError}
+									</div>
+								)}
+								<div className="space-y-4">
+									<div>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title (event name)</label>
+										<input
+											type="text"
+											value={newNftTitle}
+											onChange={(e) => setNewNftTitle(e.target.value)}
+											placeholder="e.g. Concert 2025"
+											className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+										/>
+									</div>
+									<div>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Description (EIP-1155)</label>
+										<textarea
+											value={newNftDescription}
+											onChange={(e) => setNewNftDescription(e.target.value)}
+											placeholder="Short description for Base Explorer"
+											rows={2}
+											className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 resize-none"
+										/>
+									</div>
+									<div className="grid grid-cols-2 gap-3">
+										<div>
+											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Valid from (optional)</label>
+											<input
+												type="datetime-local"
+												value={newNftValidAfter}
+												onChange={(e) => setNewNftValidAfter(e.target.value)}
+												className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+											/>
+										</div>
+										<div>
+											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Valid until (optional)</label>
+											<input
+												type="datetime-local"
+												value={newNftValidBefore}
+												onChange={(e) => setNewNftValidBefore(e.target.value)}
+												className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+											/>
+										</div>
+									</div>
+									<div>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Max supply</label>
+										<input
+											type="number"
+											min={1}
+											value={newNftMaxSupply}
+											onChange={(e) => setNewNftMaxSupply(e.target.value)}
+											placeholder="e.g. 100"
+											className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+										/>
+									</div>
+									<div>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Price (card currency, 0 = free)</label>
+										<input
+											type="number"
+											min={0}
+											step="0.000001"
+											value={newNftPriceE6}
+											onChange={(e) => setNewNftPriceE6(e.target.value)}
+											placeholder="0"
+											className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+										/>
+									</div>
+									<div>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Image (EIP-1155)</label>
+										<div className="flex items-center gap-2 flex-wrap">
+											<input
+												ref={newNftImageInputRef}
+												type="file"
+												accept="image/*"
+												className="hidden"
+												onChange={handleNewNftImagePick}
+											/>
+											<button
+												type="button"
+												onClick={() => newNftImageInputRef.current?.click()}
+												disabled={newNftImageUploading || newNftSubmitting}
+												className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50"
+											>
+												{newNftImageUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+												{newNftImageUploading ? 'Uploading…' : 'Add image'}
+											</button>
+											{newNftImageUrl ? (
+												<>
+													<a href={newNftImageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#1562f0] truncate max-w-[140px]" title={newNftImageUrl}>Link</a>
+													<button type="button" onClick={() => setNewNftImageUrl('')} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400" aria-label="Remove image">
+														<Trash2 className="w-4 h-4" />
+													</button>
+												</>
+											) : null}
+										</div>
+										{newNftImageUrl && (
+											<div className="mt-2 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 aspect-video max-h-24">
+												<img src={newNftImageUrl} alt="NFT" className="w-full h-full object-contain" />
+											</div>
+										)}
+									</div>
+									<div>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Background color (optional, e.g. #6366f1)</label>
+										<div className="flex items-center gap-2">
+											<input
+												type="color"
+												value={newNftBackgroundColor.startsWith('#') ? newNftBackgroundColor : '#6366f1'}
+												onChange={(e) => setNewNftBackgroundColor(e.target.value)}
+												className="h-10 w-14 rounded-lg border border-slate-200 dark:border-slate-600 cursor-pointer bg-white"
+											/>
+											<input
+												type="text"
+												value={newNftBackgroundColor}
+												onChange={(e) => setNewNftBackgroundColor(e.target.value)}
+												placeholder="#6366f1"
+												className="flex-1 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono text-sm placeholder:text-slate-400"
+											/>
+										</div>
+									</div>
+									<button
+										type="button"
+										onClick={handleNewNftSubmit}
+										disabled={newNftSubmitting || !newNftTitle.trim() || !newNftMaxSupply.trim()}
+										className="w-full py-3.5 rounded-xl bg-[#1562f0] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+									>
+										{newNftSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Layers className="w-5 h-5" />}
+										{newNftSubmitting ? 'Submitting…' : 'Create NFT'}
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
+				)}
 
 				{/* EOA Send / Bank 底部浮层 */}
 				<div
@@ -2434,7 +3118,7 @@ export default function MyWalletDashboardNew() {
 										<p className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeemed Successfully</p>
 									</div>
 
-									{/* 卡面 - CCSA 或通用 BeamioUserCard */}
+									{/* 卡面 - CCSA 或通用 BeamioUserCard（UserCard 使用 metadata 的 image、background） */}
 									{redeemDetails && (
 										<div className="w-full max-w-[340px] mx-auto">
 											<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
@@ -2444,18 +3128,42 @@ export default function MyWalletDashboardNew() {
 														<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 													</>
 												) : (
-													<div className="absolute inset-0 bg-[linear-gradient(135deg,#1562f0_0%,#0d47a1_50%,#1562f0_100%)]" />
+													<>
+														{/* 背景：优先使用 tier metadata 的 backgroundColor，无则用卡级，再则用默认渐变 */}
+														{(() => {
+															const bg = redeemCardTierMeta?.backgroundColor ?? redeemCardMetadata?.tiers?.[0]?.backgroundColor
+															return (
+																<div
+																	className="absolute inset-0"
+																	style={{
+																		background: bg
+																			? (bg.startsWith('#') ? bg : `#${bg.replace(/^#/, '')}`)
+																			: 'linear-gradient(135deg,#1562f0_0%,#0d47a1_50%,#1562f0_100%)',
+																	}}
+																/>
+															)
+														})()}
+														{/* card image 显示在左上角：优先 tier，无则用卡级 */}
+														{(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) && (
+															<div className="absolute top-4 left-4 w-14 h-14 rounded-xl overflow-hidden border border-white/20 shadow-lg z-10">
+																<img src={(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) ?? ''} alt="" className="w-full h-full object-cover" draggable={false} />
+															</div>
+														)}
+													</>
 												)}
-												<div className="relative z-10 p-5 h-full flex flex-col justify-between">
+												<div className={`relative z-10 p-5 h-full flex flex-col justify-between ${!isCcsaCard(redeemCardNumberInput) && (redeemCardTierMeta?.image ?? redeemCardMetadata?.image) ? 'pl-[5.5rem]' : ''}`}>
 													<div className="flex justify-between items-start">
-														<div className="flex items-center gap-3">
-															<div className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={isCcsaCard(redeemCardNumberInput) ? { background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' } : { background: 'rgba(255,255,255,0.25)' }}><CreditCard className="h-5 w-5 text-white" /></div>
-															<div><div className="text-[18px] font-black tracking-wide text-white drop-shadow-sm font-serif">{isCcsaCard(redeemCardNumberInput) ? 'CCSA' : (redeemDetails.cardName || 'User Card')}</div><div className="text-[14px] font-semibold tracking-wide text-white/90 -mt-0.5">{isCcsaCard(redeemCardNumberInput) ? 'CARD' : 'BeamioUserCard'}</div></div>
+														<div className="flex items-center gap-4">
+															{!(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) && (
+																<div className="w-10 h-10 rounded-full grid place-items-center shrink-0 overflow-hidden" style={isCcsaCard(redeemCardNumberInput) ? { background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' } : { background: 'rgba(255,255,255,0.25)' }}>
+																	<CreditCard className="h-5 w-5 text-white" />
+																</div>
+															)}
+															<div><div className="text-[18px] font-black tracking-wide text-white drop-shadow-sm font-serif">{isCcsaCard(redeemCardNumberInput) ? 'CCSA' : (redeemCardMetadata?.name ?? redeemDetails.cardName ?? 'User Card')}</div>{!isCcsaCard(redeemCardNumberInput) && redeemCardTierMeta?.name && <div className="text-[14px] font-semibold tracking-wide text-white/90 -mt-0.5">{redeemCardTierMeta.name}</div>}</div>
 														</div>
-														<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><CreditCard size={10} className="text-white" /> {isCcsaCard(redeemCardNumberInput) ? 'Membership' : 'Stored Value'}</div>
 													</div>
 													<div>
-														<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-white/90">Balance</p>
+														<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-white/90">Amount</p>
 														<div className="flex items-baseline gap-1">
 															<span className="text-3xl font-medium tracking-tighter text-white">{(() => {
 																const pts = Number(redeemDetails.pointsHuman)
@@ -2519,10 +3227,12 @@ export default function MyWalletDashboardNew() {
 											setRedeemDetails(null)
 											refetchUserCards()
 											if (profiles?.[0]) {
+												const fetchInfraMeta = () =>
+													getCardMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS).then((m) => m ?? getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS))
 												Promise.all([
 													getMyAssets(profiles[0], CCSA_Card_Address),
 													getMyAssets(profiles[0], BEAMIO_USER_CARD_ASSET_ADDRESS),
-													getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS),
+													fetchInfraMeta(),
 												]).then(([ccsa, infra, meta]) => {
 													if (ccsa) setCcsaAssets({ points: ccsa.points, nfts: ccsa.nfts ?? [] }); if (ccsa?.points != null) setCcsaBalance(ccsa.points)
 													if (infra) setInfraCardAssets({ points: infra.points, nfts: infra.nfts ?? [] }); if (infra?.points != null) setInfraCardBalance(infra.points)
@@ -2541,7 +3251,7 @@ export default function MyWalletDashboardNew() {
 							<h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-0.5 text-center">Redeem Asset</h3>
 							<p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center">Mint to Express Pay (Smart Account)</p>
 
-							{/* Asset Card - CCSA 风格（基础设施卡）或通用 BeamioUserCard 风格；加载失败时显示错误提示 */}
+							{/* Asset Card - CCSA 风格（基础设施卡）或通用 BeamioUserCard 风格（使用 metadata image/background）；加载失败时显示错误提示 */}
 							{(redeemDetailsLoading || redeemDetails || (redeemCodeInput.trim() && !redeemDetailsLoading && !redeemDetails)) && (
 								<div className="w-full max-w-[340px] mx-auto mb-6">
 									{redeemDetailsLoading ? (
@@ -2556,18 +3266,42 @@ export default function MyWalletDashboardNew() {
 													<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 												</>
 											) : (
-												<div className="absolute inset-0 bg-[linear-gradient(135deg,#1562f0_0%,#0d47a1_50%,#1562f0_100%)]" />
+												<>
+													{/* 背景：优先使用 tier metadata 的 backgroundColor，无则用卡级，再则用默认渐变 */}
+													{(() => {
+														const bg = redeemCardTierMeta?.backgroundColor ?? redeemCardMetadata?.tiers?.[0]?.backgroundColor
+														return (
+															<div
+																className="absolute inset-0"
+																style={{
+																	background: bg
+																		? (bg.startsWith('#') ? bg : `#${bg.replace(/^#/, '')}`)
+																		: 'linear-gradient(135deg,#1562f0_0%,#0d47a1_50%,#1562f0_100%)',
+																}}
+															/>
+														)
+													})()}
+													{/* card image 显示在左上角：优先 tier，无则用卡级 */}
+													{(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) && (
+														<div className="absolute top-4 left-4 w-14 h-14 rounded-xl overflow-hidden border border-white/20 shadow-lg z-10">
+															<img src={(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) ?? ''} alt="" className="w-full h-full object-cover" draggable={false} />
+														</div>
+													)}
+												</>
 											)}
-											<div className="relative z-10 p-5 h-full flex flex-col justify-between">
+											<div className={`relative z-10 p-5 h-full flex flex-col justify-between ${!isCcsaCard(redeemCardNumberInput) && (redeemCardTierMeta?.image ?? redeemCardMetadata?.image) ? 'pl-[5.5rem]' : ''}`}>
 												<div className="flex justify-between items-start">
-													<div className="flex items-center gap-3">
-														<div className="w-10 h-10 rounded-full grid place-items-center shrink-0" style={isCcsaCard(redeemCardNumberInput) ? { background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' } : { background: 'rgba(255,255,255,0.25)' }}><CreditCard className="h-5 w-5 text-white" /></div>
-														<div><div className="text-[18px] font-black tracking-wide text-white drop-shadow-sm font-serif">{isCcsaCard(redeemCardNumberInput) ? 'CCSA' : (redeemDetails.cardName || 'User Card')}</div><div className="text-[14px] font-semibold tracking-wide text-white/90 -mt-0.5">{isCcsaCard(redeemCardNumberInput) ? 'CARD' : 'BeamioUserCard'}</div></div>
+													<div className="flex items-center gap-4">
+														{!(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) && (
+															<div className="w-10 h-10 rounded-full grid place-items-center shrink-0 overflow-hidden" style={isCcsaCard(redeemCardNumberInput) ? { background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' } : { background: 'rgba(255,255,255,0.25)' }}>
+																<CreditCard className="h-5 w-5 text-white" />
+															</div>
+														)}
+														<div><div className="text-[18px] font-black tracking-wide text-white drop-shadow-sm font-serif">{isCcsaCard(redeemCardNumberInput) ? 'CCSA' : (redeemCardMetadata?.name ?? redeemDetails.cardName ?? 'User Card')}</div>{!isCcsaCard(redeemCardNumberInput) && redeemCardTierMeta?.name && <div className="text-[14px] font-semibold tracking-wide text-white/90 -mt-0.5">{redeemCardTierMeta.name}</div>}</div>
 													</div>
-													<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><CreditCard size={10} className="text-white" /> {isCcsaCard(redeemCardNumberInput) ? 'Membership' : 'Stored Value'}</div>
 												</div>
 												<div>
-													<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-white/90">Balance</p>
+													<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-white/90">Amount</p>
 													<div className="flex items-baseline gap-1">
 														<span className="text-3xl font-medium tracking-tighter text-white">{(() => {
 															const pts = Number(redeemDetails.pointsHuman)
@@ -2736,8 +3470,19 @@ export default function MyWalletDashboardNew() {
 							<TopUpRedeemForm
 								key={topUpRedeemKey}
 								userCards={userCards}
-								onClose={() => { setTopUpRedeemOpen(false); setShowFooter(true) }}
-								onSuccess={() => refetchUserCards()}
+								onClose={() => {
+									setTopUpRedeemOpen(false)
+									setShowFooter(true)
+									setCardRedeemsVersion((v) => v + 1)
+								}}
+								onSuccess={(newBatches?: CardRedeemBatch[]) => {
+									refetchUserCards()
+									if (newBatches && newBatches.length > 0) {
+										pendingRedeemsFromSuccessRef.current = newBatches
+										setCardRedeemsBatches(newBatches)
+									}
+									setCardRedeemsVersion((v) => v + 1)
+								}}
 							/>
 						</div>
 					</div>
@@ -2859,6 +3604,8 @@ export default function MyWalletDashboardNew() {
 							/>
 							<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain pt-[calc(env(safe-area-inset-top)+3rem)]">
 								<RedeemListScreen
+									batches={cardRedeemsBatches}
+									refreshVersion={cardRedeemsVersion}
 									onClose={() => {
 										setShowRedeemListOpen(false)
 										setShowFooter(true)

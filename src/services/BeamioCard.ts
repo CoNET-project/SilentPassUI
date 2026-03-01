@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
-import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
+import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
@@ -147,7 +147,7 @@ export const USDC2Token = async (
     }
 }
 
-/** 当前使用的 Card Factory 地址（须与 contracts.BeamioCardFactory 一致，为新部署 0x7Ec82...） */
+/** 当前使用的 Card Factory 地址（与 config/chainAddresses CARD_FACTORY / contracts.BeamioCardFactory 一致） */
 const CARD_FACTORY_ADDRESS = contracts.BeamioCardFactory.address;
 
 export const quoteUSDCForPoints = async (
@@ -392,7 +392,11 @@ export type GetCardsResult = { cards: UserCardInfo[]; trusted: boolean }
  * 当 keyID 缺失时，会从 privateKeyArmor 推导 EOA 地址作为 fallback。
  * 若 CCSA 的 owner 与用户 EOA 匹配，则始终包含 CCSA（兜底：cardsOfOwner 有时因链上/格式问题不返回）。
  * - trusted=true：RPC 或 API 明确成功，可更新 profile.issuedCards。
- * - trusted=false：RPC 与 API 均失败，返回 profile.issuedCards 作为缓存，UI 不可信空 []。 */
+ * - trusted=false：RPC 与 API 均失败，返回 profile.issuedCards 作为缓存，UI 不可信空 []。
+ *
+ * 重要：Factory.cardsOfOwner(cardOwner) 按创建时的 cardOwner 索引。CLI 创建时 CARD_OWNER 为 EOA，
+ * 则必须用 profile.keyID（或 privateKeyArmor 推导的 EOA）查询；App 创建时 cardOwner 为 aaAccount ?? keyID，
+ * 则需同时查询两者。若卡由 CLI 以某 EOA 创建，但 App 登录的是不同钱包，则不会显示。 */
 export const getCardsOfOwnerWithDetailsForProfile = async (
 	profile: { aaAccount?: string | null; keyID?: string | null; privateKeyArmor?: string | null; issuedCards?: UserCardInfo[] }
 ): Promise<GetCardsResult> => {
@@ -407,7 +411,17 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 	const owners: string[] = []
 	if (aa && ethers.isAddress(aa)) owners.push(ethers.getAddress(aa))
 	if (eoa && ethers.isAddress(eoa)) owners.push(ethers.getAddress(eoa))
-	if (owners.length === 0) return { cards: [], trusted: false }
+	// 去重：aa 与 eoa 可能相同（罕见）
+	const uniqueOwners = [...new Set(owners)]
+	if (typeof console !== 'undefined' && console.log) {
+		console.log('[getCardsOfOwnerWithDetailsForProfile] 查询 owners:', uniqueOwners, '| keyID:', eoa ?? '(空)', '| aaAccount:', aa ?? '(空)')
+	}
+	if (uniqueOwners.length === 0) {
+		if (typeof console !== 'undefined' && console.warn) {
+			console.warn('[getCardsOfOwnerWithDetailsForProfile] 无有效 owner（keyID/aaAccount 均空）')
+		}
+		return { cards: [], trusted: false }
+	}
 
 	const cached = profile?.issuedCards ?? []
 	const seen = new Set<string>()
@@ -418,7 +432,7 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 
 	// 1. 尝试 RPC（正常时 CoNET 优先 + 公共 RPC，限流时仅 CoNET）
 	try {
-		for (const owner of owners) {
+		for (const owner of uniqueOwners) {
 			const list = await fetchCardsForOwner(owner)
 			for (const c of list) {
 				const key = c.cardAddress.toLowerCase()
@@ -454,14 +468,53 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 				}
 			} catch (_) {}
 		}
+		// Fallback: 若用户 EOA 为基础设施卡 owner，但 cardsOfOwner 未返回该卡，则显式加入（便于 owner 创建 redeem）
+		if (BEAMIO_USER_CARD_ASSET_ADDRESS && eoa && ethers.isAddress(eoa)) {
+			try {
+				const infraLower = BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase()
+				if (!seen.has(infraLower)) {
+					const owner = await BeamioCardFactorySC.beamioUserCardOwner(BEAMIO_USER_CARD_ASSET_ADDRESS)
+					if (owner && ethers.getAddress(owner).toLowerCase() === ethers.getAddress(eoa).toLowerCase()) {
+						const card = new ethers.Contract(BEAMIO_USER_CARD_ASSET_ADDRESS, cardAbiSlice, baseEndpoint)
+						const [currencyNum, priceE6Raw] = await Promise.all([
+							card.currency(),
+							card.pointsUnitPriceInCurrencyE6(),
+						])
+						const currency = getICurrency(BigInt(currencyNum))
+						const priceE6 = Number(priceE6Raw)
+						const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
+						merged.push({
+							cardAddress: BEAMIO_USER_CARD_ASSET_ADDRESS,
+							name: 'CashTrees Card',
+							currency,
+							priceE6: String(priceE6),
+							ptsPer1Currency: String(ptsPer1Currency),
+						})
+						seen.add(infraLower)
+					}
+				}
+			} catch (_) {}
+		}
+		if (merged.length === 0 && typeof console !== 'undefined' && console.warn) {
+			console.warn('[getCardsOfOwnerWithDetailsForProfile] 0 cards for owners:', uniqueOwners, '(EOA/keyID 须与创建卡时的 cardOwner 一致)')
+		}
 		return { cards: merged, trusted: true }
 	} catch (e) {
 		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+		if (typeof console !== 'undefined' && console.warn) {
+			console.warn('[getCardsOfOwnerWithDetailsForProfile] RPC 失败，尝试 API。owners:', uniqueOwners, (e as Error)?.message ?? e)
+		}
 		// 2. RPC 失败，尝试 API
 		try {
-			const apiItems = await fetchMyCardsFromApi(owners)
+			const apiItems = await fetchMyCardsFromApi(uniqueOwners)
+			if (apiItems.length === 0 && typeof console !== 'undefined' && console.warn) {
+				console.warn('[getCardsOfOwnerWithDetailsForProfile] API 返回 0 张卡。owners:', uniqueOwners)
+			}
 			return { cards: apiItems, trusted: true }
-		} catch {
+		} catch (apiErr) {
+			if (typeof console !== 'undefined' && console.warn) {
+				console.warn('[getCardsOfOwnerWithDetailsForProfile] RPC+API 均失败，返回缓存。owners:', uniqueOwners, 'cached:', cached.length, (apiErr as Error)?.message ?? apiErr)
+			}
 			// 3. RPC 与 API 均失败，返回 profile 缓存的卡，不信任空 []
 			return { cards: cached, trusted: false }
 		}
@@ -475,13 +528,17 @@ export type ShareTokenMetadata = {
 	image?: string
 }
 
-/** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含 */
+/** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。upgradeByBalance 对应 BeamioUserCard.Tier：true=按余额升级，false=按单次 topup/redeem 金额升级 */
 export type TierMetadata = {
 	index: number
 	minUsdc6: string
 	attr: number
 	name?: string
 	description?: string
+	image?: string
+	backgroundColor?: string
+	/** true = 按余额达到 minUsdc6 即升级到本档；false = 按单次 topup/redeem 金额达到 minUsdc6 即升级 */
+	upgradeByBalance?: boolean
 }
 
 /** createCardCollectionWithInitCode 所需关键参数 */
@@ -704,6 +761,64 @@ const addAdminInterface = new ethers.Interface([
 export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint): string =>
     addAdminInterface.encodeFunctionData('addAdmin', [newAdmin, BigInt(newThreshold)])
 
+const createIssuedNftInterface = new ethers.Interface([
+    'function createIssuedNft(bytes32 title, uint64 validAfter, uint64 validBefore, uint256 maxSupply, uint256 priceInCurrency6, bytes32 sharedMetadataHash)',
+])
+
+/** 构建 createIssuedNft 的 calldata（供 executeForOwner 使用）。title 为字符串时用 keccak256(toUtf8Bytes(title))；sharedMetadataHash 省略或 "0" 表示无，由服务端组装 EIP-1155 metadata */
+export const encodeCreateIssuedNft = (
+    title: string,
+    validAfter: number,
+    validBefore: number,
+    maxSupply: number | bigint,
+    priceInCurrency6: number | bigint,
+    sharedMetadataHash?: string
+): string => {
+    const titleHash = title.startsWith('0x') && title.length === 66
+        ? title as `0x${string}`
+        : ethers.keccak256(ethers.toUtf8Bytes(title))
+    const hashBytes32 = !sharedMetadataHash || sharedMetadataHash === '0' || sharedMetadataHash === '0x0'
+        ? ethers.ZeroHash
+        : sharedMetadataHash.length === 66 && sharedMetadataHash.startsWith('0x')
+            ? sharedMetadataHash as `0x${string}`
+            : ethers.keccak256(ethers.toUtf8Bytes(sharedMetadataHash))
+    return createIssuedNftInterface.encodeFunctionData('createIssuedNft', [
+        titleHash,
+        BigInt(validAfter),
+        BigInt(validBefore),
+        BigInt(maxSupply),
+        BigInt(priceInCurrency6),
+        hashBytes32,
+    ])
+}
+
+const cardCreateIssuedNftEndpoint = `${beamioApi}/api/cardCreateIssuedNft`
+
+/** 提交 createIssuedNft 到 API cardCreateIssuedNft。Cluster 预检后转发 Master executeForOwner 代付 gas 上链。可选 description、image（IPFS/fragment link）、background_color 用于服务端组装 EIP-1155 metadata */
+export const postCardCreateIssuedNft = async (payload: {
+    cardAddress: string
+    data: string
+    deadline: number
+    nonce: string
+    ownerSignature: string
+    description?: string
+    image?: string
+    background_color?: string
+}): Promise<{ success: boolean; hash?: string; error?: string }> => {
+    try {
+        const res = await fetch(cardCreateIssuedNftEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'cardCreateIssuedNft failed' }
+        return { success: true, hash: data.hash }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
+
 /** 提交 addAdmin 到 API cardAddAdmin。Cluster 预检 newAdmin 为 EOA 后转发 Master executeForOwner 排队，返回 tx hash */
 export const postCardAddAdmin = async (payload: {
     cardAddress: string
@@ -825,7 +940,6 @@ function isCcsaCardForRedeem(addr: string): boolean {
     if (!a) return false
     return (
         a === BASE_MAINNET_FACTORIES.BeamioCardCCSA_ADDRESS.toLowerCase() ||
-        a === BASE_MAINNET_FACTORIES.OLD_CCSA_CARD_ADDRESS.toLowerCase() ||
         a === CCSA_Card_Address.toLowerCase()
     )
 }
@@ -1203,7 +1317,7 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 	})
 }
 
-/** 聚合查询 CCSA + beamioUserCard(0x4879...) 的资产，与 CCSA 同等对待。
+/** 聚合查询 CCSA + beamioUserCard（基础设施卡）的资产，与 CCSA 同等对待。
  * 注意：不使用 withGetMyAssetsMutex，因 getMyAssets 内部已用 mutex；若此处再用会死锁（持有 mutex 时调用 getMyAssets，getMyAssets 等待同一 mutex）。 */
 export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAssets | null> => {
 	const key = `aggregated-${profile.keyID ?? ''}`
@@ -1229,16 +1343,189 @@ export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAss
 	return result
 }
 
-/** ERC1155 metadata 缓存：cardAddress -> { name?, image?, timestamp }，TTL 5 分钟 */
-const cardMetadataCache = new Map<string, { name?: string; image?: string; timestamp: number }>()
+/** 卡 metadata 中的 tier 项（创建卡时由 cardManager 提交，存于 0x{owner}.json） */
+export type CardTierMetadata = { index: number; minUsdc6?: string; attr?: number; name?: string; description?: string; image?: string; backgroundColor?: string }
+
+/** 从 BeamioUserCard 合约读取 tiers（getTiersCount + getTierAt），用于根据 redeem 金额确定 tier */
+export const getCardTiersFromContract = async (cardAddress: string): Promise<{ minUsdc6: string; attr: number; upgradeByBalance: boolean }[]> => {
+	try {
+		const card = new ethers.Contract(
+			cardAddress,
+			[
+				'function getTiersCount() view returns (uint256)',
+				'function getTierAt(uint256 idx) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
+			],
+			baseEndpoint
+		)
+		const count = Number(await card.getTiersCount())
+		if (count === 0) return []
+		const tiers: { minUsdc6: string; attr: number; upgradeByBalance: boolean }[] = []
+		for (let i = 0; i < count; i++) {
+			const [minUsdc6, attr, , upgradeByBalance] = await card.getTierAt(i)
+			tiers.push({ minUsdc6: minUsdc6.toString(), attr: Number(attr), upgradeByBalance })
+		}
+		return tiers
+	} catch {
+		return []
+	}
+}
+
+/** 根据 redeem 金额（points6）确定 tier index：与合约 _issueCardByPointsDelta 逻辑一致，选 minUsdc6 最大且 <= points6 的档。
+ * 注意：tiers 不按 minUsdc6 顺序排列，需遍历全部 tier 比较。 */
+export const getTierIndexForRedeemAmount = (
+	contractTiers: { minUsdc6: string }[],
+	points6: string
+): number => {
+	if (contractTiers.length === 0) return 0
+	const pts = BigInt(points6)
+	let bestIdx = -1
+	let bestMin = 0n
+	for (let i = 0; i < contractTiers.length; i++) {
+		const min = BigInt(contractTiers[i].minUsdc6)
+		if (pts >= min && (bestIdx === -1 || min > bestMin)) {
+			bestIdx = i
+			bestMin = min
+		}
+	}
+	return bestIdx >= 0 ? bestIdx : 0
+}
+
+/** 卡级 metadata（getCardMetadataFromApi / getCardMetadataFromUri）；cardOwner 用于请求 per-NFT metadata */
+export type CardMetadataFromUri = { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string }
+
+/** 单张成员 NFT 的 tier metadata（GET /metadata/0x{owner}{NFT#}.json） */
+export type NftTierMetadata = { name?: string; description?: string; image?: string; tierIndex?: number; minUsdc6?: string; backgroundColor?: string }
+
+/** ERC1155 metadata 缓存：cardAddress -> { name?, image?, tiers?, cardOwner?, timestamp }，TTL 5 分钟 */
+const cardMetadataCache = new Map<string, { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string; timestamp: number }>()
 const CARD_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
 
-/** 从 BeamioUserCard 的 uri 获取 metadata（name、image）。创建卡时传入的 uri 如 https://api.beamio.io/metadata/{id}.json */
-export const getCardMetadataFromUri = async (cardAddress: string): Promise<{ name?: string; image?: string } | null> => {
+/** per-NFT metadata 缓存：cardOwner_tokenId -> { name?, description?, image?, timestamp }，TTL 5 分钟 */
+const nftMetadataCache = new Map<string, { name?: string; description?: string; image?: string; timestamp: number }>()
+const NFT_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
+
+/** 从 beamioApi 拉取卡级 1155 JSON（metadata/0x{cardAddress}0.json），获取 tiers。BeamioUserCard uri(0) 返回该格式。 */
+export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
+	const normalized = cardAddress.startsWith('0x') ? cardAddress.slice(2).toLowerCase() : cardAddress.toLowerCase()
+	if (normalized.length !== 40) return null
+	const cacheKey = `1155_${normalized}`
+	const cached = cardMetadataCache.get(cacheKey)
+	if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
+		const { timestamp, ...meta } = cached
+		return meta
+	}
+	try {
+		const filename = `0x${normalized}0.json`
+		const res = await fetch(`${beamioApi}/metadata/${filename}`)
+		if (!res.ok) return null
+		const json = (await res.json()) as {
+			name?: string
+			image?: string
+			description?: string
+			shareTokenMetadata?: { name?: string; image?: string; description?: string }
+			tiers?: CardTierMetadata[]
+			properties?: Record<string, unknown>
+		}
+		const share = json?.shareTokenMetadata
+		const meta: CardMetadataFromUri = {
+			name: (share?.name ?? json?.name) as string | undefined,
+			image: (share?.image ?? json?.image) as string | undefined,
+			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
+		}
+		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
+		return meta
+	} catch {
+		return null
+	}
+}
+
+/** 从 beamioApi 拉取 card_owner + metadata_json，转为 CardMetadataFromUri。优先用此接口，不依赖链上 uri 与 RPC。 */
+export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
 	const key = cardAddress.toLowerCase()
 	const cached = cardMetadataCache.get(key)
 	if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
-		return cached
+		const { timestamp, ...meta } = cached
+		return meta
+	}
+	try {
+		const res = await fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(cardAddress)}`)
+		if (!res.ok) return null
+		const data = (await res.json()) as { cardOwner?: string; metadata?: Record<string, unknown> | null }
+		const metaJson = data?.metadata
+		if (!metaJson || typeof metaJson !== 'object') return null
+		const share = metaJson.shareTokenMetadata as Record<string, unknown> | undefined
+		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
+		const meta: CardMetadataFromUri = {
+			name: (share?.name ?? metaJson.name) as string | undefined,
+			image: (share?.image ?? metaJson.image) as string | undefined,
+			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
+			...(cardOwner && { cardOwner }),
+		}
+		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
+		return meta
+	} catch {
+		return null
+	}
+}
+
+/** 从 beamioApi 拉取单张成员 NFT 的 tier metadata（GET /metadata/0x{cardAddress}{NFT#}.json），符合 EIP-1155/Base Explorer 约定（40hex = 合约地址） */
+export const getNftMetadataFromApi = async (cardAddress: string, tokenId: number | string): Promise<NftTierMetadata | null> => {
+	const tid = String(Number(tokenId))
+	const normalized = cardAddress.startsWith('0x') ? cardAddress.slice(2).toLowerCase() : cardAddress.toLowerCase()
+	if (normalized.length !== 40) return null
+	const cacheKey = `card_${normalized}_${tid}`
+	const cached = nftMetadataCache.get(cacheKey)
+	if (cached && Date.now() - cached.timestamp < NFT_METADATA_CACHE_TTL_MS) {
+		const { timestamp, ...meta } = cached
+		return meta
+	}
+	try {
+		const filename = `0x${normalized}${tid}.json`
+		const res = await fetch(`${beamioApi}/metadata/${filename}`)
+		if (!res.ok) return null
+		const json = (await res.json()) as {
+			name?: string
+			description?: string
+			image?: string
+			tierIndex?: number
+			minUsdc6?: string
+			properties?: { tier_index?: number; min_usdc6?: string; tier_name?: string; tier_description?: string; background_color?: string }
+		}
+		const meta = parseNftTierMetadataJson(json)
+		nftMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
+		return meta
+	} catch {
+		return null
+	}
+}
+
+function parseNftTierMetadataJson(json: {
+	name?: string
+	description?: string
+	image?: string
+	tierIndex?: number
+	minUsdc6?: string
+	properties?: { tier_index?: number; min_usdc6?: string; tier_name?: string; tier_description?: string; background_color?: string }
+}): NftTierMetadata {
+	return {
+		name: json?.name,
+		description: json?.description,
+		image: json?.image,
+		...(json?.tierIndex != null && { tierIndex: json.tierIndex }),
+		...(json?.minUsdc6 != null && { minUsdc6: json.minUsdc6 }),
+		...(json?.properties?.background_color != null && { backgroundColor: json.properties.background_color }),
+		...(json?.properties?.tier_index != null && json?.tierIndex == null && { tierIndex: json.properties.tier_index }),
+		...(json?.properties?.min_usdc6 != null && json?.minUsdc6 == null && { minUsdc6: json.properties.min_usdc6 }),
+	}
+}
+
+/** 从 BeamioUserCard 的 uri 获取 metadata（name、image、tiers）。创建卡时传入的 uri 如 https://api.beamio.io/metadata/{id}.json；tiers 含创建卡时配置的 name/description */
+export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
+	const key = cardAddress.toLowerCase()
+	const cached = cardMetadataCache.get(key)
+	if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
+		const { timestamp, ...meta } = cached
+		return meta
 	}
 	try {
 		const card = new ethers.Contract(
@@ -1258,11 +1545,13 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<{ nam
 			image?: string
 			description?: string
 			shareTokenMetadata?: { name?: string; image?: string; description?: string }
+			tiers?: CardTierMetadata[]
 		}
-		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构
-		const meta = {
+		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers
+		const meta: CardMetadataFromUri = {
 			name: json?.name ?? json?.shareTokenMetadata?.name,
 			image: json?.image ?? json?.shareTokenMetadata?.image,
+			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 		}
 		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
 		return meta

@@ -26,6 +26,7 @@ import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
+import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
 
@@ -262,7 +263,7 @@ export const fetchUIDAssets = async (uid: string): Promise<UIDAssetsResponse> =>
 }
 
 /** Base 主网 BeamioUserCard 工厂地址（与 x402sdk chainAddresses 一致） */
-const BASE_CARD_FACTORY = '0x19C000c00e6A2b254b39d16797930431E310BEdd'
+const BASE_CARD_FACTORY = BASE_MAINNET_FACTORIES.CARD_FACTORY
 const BASE_CHAIN_ID = 8453
 
 /** NFC Topup Prepare：获取 executeForAdmin 所需的 cardAddr、data、deadline、nonce */
@@ -1217,6 +1218,7 @@ export const storeSystemData = async () => {
   if (!CoNET_Data) return
   const temp = { ...CoNET_Data }
   if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
+  if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
   const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
   cacheStorageBackup(dataB64)
   if (storeSystemDataTimer) clearTimeout(storeSystemDataTimer)
@@ -1228,6 +1230,25 @@ export const storeSystemData = async () => {
       console.warn(`[storeSystemData] Error:`, ex)
     }
   }, 200)
+}
+
+/** 立即将当前 CoNET_Data 写入存储（用于 cardRedeems 等需马上落盘的数据），并取消待执行的 storeSystemData 定时器 */
+export const flushStoreSystemData = async () => {
+  if (storeSystemDataTimer) {
+    clearTimeout(storeSystemDataTimer)
+    storeSystemDataTimer = null
+  }
+  if (!CoNET_Data) return
+  const temp = { ...CoNET_Data }
+  if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
+  if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
+  const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
+  cacheStorageBackup(dataB64)
+  try {
+    await storageHashData("init", dataB64)
+  } catch (ex) {
+    console.warn(`[flushStoreSystemData] Error:`, ex)
+  }
 }
 
 

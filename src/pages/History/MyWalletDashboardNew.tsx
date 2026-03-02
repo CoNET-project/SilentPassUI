@@ -1421,14 +1421,10 @@ export default function MyWalletDashboardNew() {
 		setAaRelaySigning(true)
 		setAaRelayQRPayload(null)
 		try {
-			const amount = aaAccountUsdcBalance || '0'
-			if (Number(amount) <= 0) {
-				setAaRelaySigning(false)
-				return
-			}
+			
 			const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 				{ privateKeyArmor: profile.privateKeyArmor, aaAccount: profile.aaAccount },
-				amount,
+				'0',
 				{ deadlineSeconds: 300 }
 			)
 			setAaRelayQRPayload(payload)

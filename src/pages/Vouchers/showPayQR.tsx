@@ -212,12 +212,12 @@ export default function ShowPayQR({
 											includeMargin={false}
 											bgColor="white"
 											fgColor="#000000"
-											imageSettings={{
-												src: bIcon,
-												height: 95,
-												width: 95,
-												excavate: true,
-											}}
+											// imageSettings={{
+											// 	src: bIcon,
+											// 	height: 95,
+											// 	width: 95,
+											// 	excavate: true,
+											// }}
 											className="block"
 										/>
 										{expired && (

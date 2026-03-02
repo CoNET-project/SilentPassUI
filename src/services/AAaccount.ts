@@ -372,10 +372,10 @@ export type ContainerItemLike = {
 /** containerMainRelayedOpen 签名结果，与 BeamioContainerModuleV07.containerMainRelayedOpen(to, items, currencyType, maxAmount, nonce_, deadline_, sig) 一致；items 为可 JSON 序列化（amount/tokenId 为 string） */
 export type OpenContainerRelayPayload = {
 	account: string
-	to: string
-	items: { kind: number; asset: string; amount: string; tokenId: string; data: string }[]
-	currencyType: number
-	maxAmount: string
+	to?: string
+	items?: { kind: number; asset: string; amount: string; tokenId: string; data: string }[]
+	currencyType?: number
+	maxAmount?: string
 	nonce: string
 	deadline: string
 	signature: string
@@ -576,7 +576,6 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 	const deadline = BigInt(now + (options?.deadlineSeconds ?? 300))
 
 	const amountWei = ethers.parseUnits(amountUSDC, 6)
-	const to = options?.to && ethers.isAddress(options.to) ? options.to : signer.address
 
 	const items: ContainerItemLike[] = [
 	  { kind: 0, asset: USDC_ADDRESS_BASE, amount: amountWei, tokenId: 0n, data: '0x' }
@@ -615,16 +614,7 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 
 	return {
 	  account: aaAccount,
-	  to,
-	  items: items.map((it) => ({
-		kind: it.kind,
-		asset: it.asset,
-		amount: it.amount.toString(),
-		tokenId: it.tokenId.toString(),
-		data: typeof it.data === 'string' ? it.data : ethers.hexlify(it.data)
-	  })),
 	  currencyType,
-	  maxAmount: maxAmount.toString(),
 	  nonce: nonce.toString(),
 	  deadline: deadline.toString(),
 	  signature

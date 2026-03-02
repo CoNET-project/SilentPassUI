@@ -533,6 +533,8 @@ export type TierMetadata = {
 	index: number
 	minUsdc6: string
 	attr: number
+	/** 0 => 使用卡全局 expirySeconds */
+	tierExpirySeconds?: number
 	name?: string
 	description?: string
 	image?: string
@@ -760,6 +762,24 @@ const addAdminInterface = new ethers.Interface([
 /** 构建 addAdmin 的 calldata（供 executeForOwner 使用）。newAdmin 必须为 EOA，newThreshold 为所需签名数（通常 1） */
 export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint): string =>
     addAdminInterface.encodeFunctionData('addAdmin', [newAdmin, BigInt(newThreshold)])
+
+const appendTierInterface = new ethers.Interface([
+    'function appendTier(uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
+])
+
+/** 构建 appendTier 的 calldata（供 executeForOwner 或 appendTierForCardWithOwnerSignature 使用）。tierExpirySeconds=0 表示使用卡全局 expirySeconds */
+export const encodeAppendTier = (
+    minUsdc6: number | bigint | string,
+    attr: number | bigint,
+    tierExpirySeconds: number | bigint,
+    upgradeByBalance: boolean
+): string =>
+    appendTierInterface.encodeFunctionData('appendTier', [
+        BigInt(minUsdc6),
+        BigInt(attr),
+        BigInt(tierExpirySeconds),
+        upgradeByBalance,
+    ])
 
 const createIssuedNftInterface = new ethers.Interface([
     'function createIssuedNft(bytes32 title, uint64 validAfter, uint64 validBefore, uint256 maxSupply, uint256 priceInCurrency6, bytes32 sharedMetadataHash)',

@@ -2718,7 +2718,7 @@ export default function MyWalletDashboardNew() {
 													}}
 												/>
 											)}
-										</div>
+											</div>
 										</>
 									) : (
 										/* AA (Express Pay)：与 EOA 共用 Indexer History，收款人可在此看到转入记录 */
@@ -3038,7 +3038,6 @@ export default function MyWalletDashboardNew() {
 									qrValue={JSON.stringify({
 										...aaRelayQRPayload,
 										validBefore: aaRelayQRPayload.deadline,
-										maxAmount: aaRelayQRPayload.items?.[0]?.amount ?? '0',
 									})}
 									hideActions
 									hideUrl

@@ -163,7 +163,7 @@ const STEP_ORDER = ROUTING_STEPS.map((s) => s.id)
 
 const BASE_EXPLORER_TX = 'https://basescan.org/tx/'
 
-const RPC_ERROR_MSG = 'RPC错误'
+const RPC_ERROR_MSG = 'RPC Error'
 
 const retryRpcCall = async <T,>(fn: () => Promise<T>, retries = 2): Promise<T> => {
 	let lastErr: unknown
@@ -1606,17 +1606,17 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 		setVoucherPayError('')
 		const uid = await readUid()
 		if (!uid) {
-			setVoucherPayError('NFC 读取失败，请重试')
+			setVoucherPayError('NFC read failed, please try again')
 			return
 		}
 		try {
 			const result = await fetchNfcCardStatus(uid)
 			if (!result.registered) {
-				setVoucherPayError('不存在该卡')
+				setVoucherPayError('Card not found')
 				return
 			}
 			if (!result.address) {
-				setVoucherPayError('卡已登记但无法获取地址')
+				setVoucherPayError('Card registered but address unavailable')
 				return
 			}
 			setVoucherPayAmount(value)
@@ -1624,7 +1624,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 			setScanData(uid)
 			setScanIntent('payByNfc')
 		} catch (e) {
-			setVoucherPayError((e as Error)?.message ?? '查询失败')
+			setVoucherPayError((e as Error)?.message ?? 'Query failed')
 		}
 	}
 

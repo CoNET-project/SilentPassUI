@@ -133,7 +133,7 @@ const TOP_VOUCHERS = [
  {
    id: 301,
    title: "Signature Pan-Fried Buns",
-   merchant: "老弄堂 LONGDHANG",
+   merchant: "LONGDHANG",
    category: "Free Voucher",
    description: "Enjoy a complimentary serving of our signature Pan-Fried Buns (4pcs). Authentic Shanghai flavor with crispy bottom and juicy filling.",
    features: ["Free Voucher", "Value CA$6.95", "Dine-in Only", "Valid 7 Days"],

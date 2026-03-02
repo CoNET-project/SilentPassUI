@@ -192,7 +192,7 @@ const STEP_ORDER = ROUTING_STEPS.map((s) => s.id)
 
 const BASE_EXPLORER_TX = 'https://basescan.org/tx/'
 
-const RPC_ERROR_MSG = 'RPC错误'
+const RPC_ERROR_MSG = 'RPC Error'
 
 const retryRpcCall = async <T,>(fn: () => Promise<T>, retries = 2): Promise<T> => {
 	let lastErr: unknown
@@ -829,7 +829,7 @@ function NfcTopupBottomSheet({
 			setUid(result)
 			setStatus('idle')
 		} else {
-			setError('NFC 读取失败，请重试')
+			setError('NFC read failed, please try again')
 			setStatus('error')
 		}
 	}
@@ -845,7 +845,7 @@ function NfcTopupBottomSheet({
 				setTxHash(result.txHash)
 				setStatus('success')
 			} else {
-				setError(result.error ?? 'Topup 失败')
+				setError(result.error ?? 'Topup failed')
 				setStatus('error')
 			}
 		} catch (e) {
@@ -885,16 +885,16 @@ function NfcTopupBottomSheet({
 						</div>
 						<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">NFC Topup</h2>
 						<p className="text-2xl font-black text-amber-600 dark:text-amber-400">CA${amount}</p>
-						<p className="text-sm text-slate-500 dark:text-slate-400">将 NTAG 424 DNA 卡靠近手机背面，或手工输入 UID</p>
+						<p className="text-sm text-slate-500 dark:text-slate-400">Hold NTAG 424 DNA card near phone back, or enter UID manually</p>
 						{!uid ? (
 							<>
 								<div className="w-full">
-									<label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">手工输入 UID（可选）</label>
+									<label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">Manual UID (optional)</label>
 									<input
 										type="text"
 										value={manualUid}
 										onChange={(e) => setManualUid(e.target.value)}
-										placeholder="例如：04A1B2C3D4E5F6"
+										placeholder="e.g. 04A1B2C3D4E5F6"
 										className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono text-sm border-0 focus:ring-2 focus:ring-amber-500"
 									/>
 								</div>
@@ -905,20 +905,20 @@ function NfcTopupBottomSheet({
 									className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
 								>
 									{status === 'reading' ? <Loader2 className="w-5 h-5 animate-spin" /> : <SmartphoneNfc className="w-5 h-5" />}
-									{status === 'reading' ? '请靠近 NFC 卡...' : manualUid.trim() ? '确认 Topup（使用手工 UID）' : '读取 NFC 卡'}
+									{status === 'reading' ? 'Hold NFC card near phone...' : manualUid.trim() ? 'Confirm Topup (manual UID)' : 'Read NFC Card'}
 								</button>
 							</>
 						) : status === 'success' ? (
 							<div className="w-full text-center">
 								<Check className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
-								<p className="font-semibold text-emerald-600 dark:text-emerald-400">Topup 成功</p>
+								<p className="font-semibold text-emerald-600 dark:text-emerald-400">Topup successful</p>
 								{txHash && (
 									<a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 mt-2 block">
 										{txHash.slice(0, 10)}…{txHash.slice(-8)}
 									</a>
 								)}
 								<button type="button" onClick={handleClose} className="mt-4 w-full py-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">
-									完成
+									Done
 								</button>
 							</div>
 						) : (
@@ -934,10 +934,10 @@ function NfcTopupBottomSheet({
 									className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
 								>
 									{status === 'submitting' ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-									{status === 'submitting' ? '提交中...' : '确认 Topup'}
+									{status === 'submitting' ? 'Submitting...' : 'Confirm Topup'}
 								</button>
 								<button type="button" onClick={handleRead} className="text-sm text-slate-500 hover:text-slate-700">
-									重新读取
+									Read again
 								</button>
 							</>
 						)}
@@ -2508,17 +2508,17 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		setVoucherPayError('')
 		const uid = await readUid()
 		if (!uid) {
-			setVoucherPayError('NFC 读取失败，请重试')
+			setVoucherPayError('NFC read failed, please try again')
 			return
 		}
 		try {
 			const result = await fetchNfcCardStatus(uid)
 			if (!result.registered) {
-				setVoucherPayError('不存在该卡')
+				setVoucherPayError('Card not found')
 				return
 			}
 			if (!result.address) {
-				setVoucherPayError('卡已登记但无法获取地址')
+				setVoucherPayError('Card is registered but address could not be retrieved')
 				return
 			}
 			setVoucherPayAmount(value)
@@ -2526,7 +2526,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			setScanData(uid)
 			setScanIntent('payByNfc')
 		} catch (e) {
-			setVoucherPayError((e as Error)?.message ?? '查询失败')
+			setVoucherPayError((e as Error)?.message ?? 'Query failed')
 		}
 	}
 

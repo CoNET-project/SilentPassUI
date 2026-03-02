@@ -489,8 +489,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
           {/* Slogan */}
           <div className="mt-3 text-[22px] leading-snug text-slate-500">
-            The Commerce State Layer for
-            USDC.
+            The Commerce State Layer for USDC.
           </div>
         </div>
 

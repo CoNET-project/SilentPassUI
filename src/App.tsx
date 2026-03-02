@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState, useLayoutEffect } from "react"
 import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
-import Footer from "@/components/Footer"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import Home from "./pages/Home"
 import History from "./pages/History/MyWalletDashboardNew"
@@ -38,6 +37,7 @@ import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
 import NewCardExample from '@/pages/Vouchers/example/newCardExample'
 import BeamioTransactions from '@/pages/Vouchers/example/transfertion'
 import MobilePOS from '@/pages/Vouchers/example/nativeApp'
+import MerchantOS from '@/pages/Vouchers/example/biz'
 import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -459,9 +459,9 @@ function AppShell() {
 
 
 
-	const AUTO_REPLY_TEXT = "这是自动回复测试"
-	const AUTO_REPLY_TEXT_WITH_HASH = "这是自动回复测试，已确认 on-chain"
-	const AUTO_REPLY_TEXT_WITHOUT_HASH = "这是自动回复测试，未确认 on-chain"
+	const AUTO_REPLY_TEXT = "This is auto-reply test"
+	const AUTO_REPLY_TEXT_WITH_HASH = "This is auto-reply test, confirmed on-chain"
+	const AUTO_REPLY_TEXT_WITHOUT_HASH = "This is auto-reply test, not confirmed on-chain"
 
 	/** 在 Base 链上根据 tx hash 查该笔记录：只要存在 USDC 转账且金额 > 0 即承认该记录（contractCallSuccess）；或返回 USDC 转账的受益人 */
 	const getUsdcTransferRecipientOnBase = async (
@@ -1031,16 +1031,13 @@ function AppShell() {
 				<Route path="/example-card" element={<EmapmpleCard />} />
 				<Route path="/example-new-card" element={<NewCardExample />} />
 				<Route path="/transfertion" element={<BeamioTransactions />} />
-				<Route path="/native-pos" element={<MobilePOS />} />
+				<Route path="/native-pos" element={<MerchantOS />} />
 				<Route path="/cardManager" element={<CardManager />} />
 				</Routes>
 				</div>
 			</div>
 
-			{createPortal(
-				<Footer visible={showFooter && footerVisible} peek={false} />,
-				document.body
-			)}
+		
 
 			{/* 全局 Search：任意页面点击 footer 的 search 图标后，直接显示/隐藏（无滑动动画）
 				当 search 控件执行关闭（返回按钮/选择结果）后，父容器必须执行 setChatSearchOpen(false) 隐藏 search */}

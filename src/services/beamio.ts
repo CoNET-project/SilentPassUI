@@ -292,7 +292,7 @@ export const nfcTopupPrepare = async (params: { uid: string; amount: string; cur
 /** NFC Topup：读取方 UI 用户用 profile 私钥签 ExecuteForAdmin，提交后 Master 调用 factory.executeForAdmin */
 export const nfcTopup = async (params: { uid: string; amount: string; currency?: string }): Promise<{ success: boolean; txHash?: string; error?: string }> => {
 	if (!CoNET_Data?.profiles?.length || !CoNET_Data.profiles[0]?.privateKeyArmor) {
-		return { success: false, error: '请先登录 Beamio 账户' }
+		return { success: false, error: 'Please log in to your Beamio account first' }
 	}
 	const prepare = await nfcTopupPrepare(params)
 	if ('error' in prepare) return { success: false, error: prepare.error }

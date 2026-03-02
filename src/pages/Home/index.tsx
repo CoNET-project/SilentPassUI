@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import Home from '../../components/Home/Home';
+import Home from './bizHome';
 import BeamioOnboardingModal from './LoadingPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { checkStorage, isStandalone } from '@/services/beamio'
@@ -8,7 +8,7 @@ import InstallTerminalSheet, { getInstallTerminalSeen } from '@/components/Insta
 import { refreshManifestThen } from '@/utils/updateManifestStartUrl'
 
 const HomePage = ({}) => {
-	const { isInitialLoading, setIsInitialLoading, setBeamio, setProfiles } = useDaemonContext()
+	const { isInitialLoading, setIsInitialLoading, setBeamio, setProfiles, beamio } = useDaemonContext()
 	const [showBeamioOnboardingModal, setShowBeamioOnboardingModal] = useState(false)
 	const [splashVisible, setSplashVisible] = useState(true)
 	const [showInstallSheet, setShowInstallSheet] = useState(false)
@@ -18,6 +18,7 @@ const HomePage = ({}) => {
 			setSplashVisible(false)
 			return
 		}
+		
 		setIsInitialLoading(true)
 		setShowBeamioOnboardingModal(true)
 	}

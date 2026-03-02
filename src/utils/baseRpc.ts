@@ -120,7 +120,7 @@ export function waitForConetNodes(maxWaitMs = 30000): Promise<void> {
 				resolve()
 			} else if (Date.now() - start >= maxWaitMs) {
 				clearInterval(t)
-				reject(new Error('Base RPC: 等待 CoNET 节点超时'))
+				reject(new Error('Base RPC: Timeout waiting for CoNET node'))
 			}
 		}, 300)
 	})

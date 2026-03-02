@@ -48,7 +48,7 @@ export function useNfcRead() {
 					resolve(uidHex)
 				}
 				reader.onerror = () => {
-					setError('读取失败，请重试')
+					setError('Read failed, please try again')
 					setStatus('error')
 					resolve(null)
 				}

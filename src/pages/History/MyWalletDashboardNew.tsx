@@ -119,7 +119,7 @@ function NfcCheckBalanceBottomSheet({
 				setAssets(res)
 				setStatus('success')
 			} else {
-				setError(res.error ?? '查询失败')
+				setError(res.error ?? 'Query failed')
 				setStatus('error')
 			}
 		} catch (e) {
@@ -146,7 +146,7 @@ function NfcCheckBalanceBottomSheet({
 			setStatus('idle')
 			await handleQuery(result)
 		} else {
-			setError('NFC 读取失败，请重试')
+			setError('NFC read failed, please try again')
 			setStatus('error')
 		}
 	}
@@ -172,12 +172,12 @@ function NfcCheckBalanceBottomSheet({
 						<div className="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
 							<SmartphoneNfc className="w-10 h-10 text-amber-600 dark:text-amber-400" strokeWidth={2} />
 						</div>
-						<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">读取 NFC 卡余额</h2>
-						<p className="text-sm text-slate-500 dark:text-slate-400">将 NTAG 424 DNA 卡靠近手机背面，或手工输入 UID</p>
+						<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Read NFC Card Balance</h2>
+						<p className="text-sm text-slate-500 dark:text-slate-400">Place NTAG 424 DNA card near the back of your phone, or enter UID manually</p>
 						{status === 'loading' ? (
 							<div className="flex flex-col items-center py-8">
 								<Loader2 className="w-12 h-12 text-amber-500 animate-spin mb-4" />
-								<p className="text-slate-500 dark:text-slate-400">查询中...</p>
+								<p className="text-slate-500 dark:text-slate-400">Querying...</p>
 							</div>
 						) : status === 'success' && assets ? (
 							<div className="w-full space-y-4">
@@ -210,18 +210,18 @@ function NfcCheckBalanceBottomSheet({
 									<p className="font-mono text-sm break-all text-slate-800 dark:text-slate-200">{uid}</p>
 								</div>
 								<button type="button" onClick={handleClose} className="w-full py-3.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">
-									完成
+									Done
 								</button>
 							</div>
 						) : (
 							<>
 								<div className="w-full">
-									<label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">手工输入 UID（可选）</label>
+									<label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">Enter UID manually (optional)</label>
 									<input
 										type="text"
 										value={manualUid}
 										onChange={(e) => setManualUid(e.target.value)}
-										placeholder="例如：04A1B2C3D4E5F6"
+										placeholder="e.g. 04A1B2C3D4E5F6"
 										className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 font-mono text-sm border-0 focus:ring-2 focus:ring-amber-500"
 									/>
 								</div>
@@ -232,7 +232,7 @@ function NfcCheckBalanceBottomSheet({
 									className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
 								>
 									{status === 'reading' ? <Loader2 className="w-5 h-5 animate-spin" /> : <SmartphoneNfc className="w-5 h-5" />}
-									{status === 'reading' ? '请靠近 NFC 卡...' : manualUid.trim() ? '查询余额（手工 UID）' : '读取 NFC 卡'}
+									{status === 'reading' ? 'Please hold NFC card near phone...' : manualUid.trim() ? 'Query Balance (Manual UID)' : 'Read NFC Card'}
 								</button>
 							</>
 						)}
@@ -2001,8 +2001,8 @@ export default function MyWalletDashboardNew() {
 													handleAaRelayQR()
 												}}
 												className="p-2 rounded-full bg-white/20 hover:bg-white/30 border border-white/20 flex items-center justify-center transition-colors"
-												title="显示扣款 QR（5 分钟有效）"
-												aria-label="显示扣款 QR"
+												title="Show payment QR (valid 5 min)"
+												aria-label="Show payment QR"
 											>
 												{aaRelaySigning ? (
 													<Loader className="w-5 h-5 animate-spin text-white" />
@@ -2241,7 +2241,7 @@ export default function MyWalletDashboardNew() {
 													onClick={handleAaRelayQR}
 													disabled={aaRelaySigning || Number(aaAccountUsdcBalance || 0) <= 0}
 													className="p-2 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 transition-colors disabled:opacity-50"
-													title="显示扣款 QR（3 分钟有效）"
+													title="Show payment QR (valid 3 min)"
 												>
 													{aaRelaySigning ? <Loader className="w-5 h-5 animate-spin" /> : <QrCode className="w-5 h-5" />}
 												</button>
@@ -3317,8 +3317,8 @@ export default function MyWalletDashboardNew() {
 									) : !redeemDetailsLoading && redeemCodeInput.trim() ? (
 										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex flex-col items-center justify-center p-4">
 											<Info className="w-10 h-10 text-amber-500 mb-2" strokeWidth={2} />
-											<p className="text-sm font-medium text-amber-800 dark:text-amber-200 text-center">无法获取卡信息</p>
-											<p className="text-xs text-amber-600 dark:text-amber-400 mt-1 text-center">请检查卡地址与兑换码，或稍后重试（RPC 可能限流）</p>
+											<p className="text-sm font-medium text-amber-800 dark:text-amber-200 text-center">Unable to get card info</p>
+											<p className="text-xs text-amber-600 dark:text-amber-400 mt-1 text-center">Please check card address and redeem code, or try again later (RPC may be rate-limited)</p>
 											<button
 												type="button"
 												onClick={() => setRedeemDetailsRetryKey((k) => k + 1)}

@@ -25,7 +25,7 @@ export default function PaymentWithNfc({ onClose }: Props) {
 				const result = await fetchNfcCardStatus(readUidResult)
 				setApiResult(result)
 			} catch (e) {
-				setApiError((e as Error)?.message ?? '查询失败')
+				setApiError((e as Error)?.message ?? 'Query failed')
 			} finally {
 				setQuerying(false)
 			}
@@ -41,7 +41,7 @@ export default function PaymentWithNfc({ onClose }: Props) {
 						<SmartphoneNfc className="w-10 h-10 text-blue-600 dark:text-blue-400" strokeWidth={2} />
 					</div>
 					<p className="text-center text-slate-600 dark:text-slate-400 text-sm">
-						将 NTAG 424 DNA 卡靠近手机背面
+						Place NTAG 424 DNA card near the back of your phone
 					</p>
 					<button
 						type="button"
@@ -52,10 +52,10 @@ export default function PaymentWithNfc({ onClose }: Props) {
 						{(status === 'reading' || querying) ? (
 							<>
 								<Loader2 className="w-5 h-5 animate-spin" />
-								{querying ? '查询中...' : '请靠近 NFC 卡...'}
+								{querying ? 'Querying...' : 'Hold NFC card near phone...'}
 							</>
 						) : (
-							'读取 NFC 卡'
+							'Read NFC Card'
 						)}
 					</button>
 					{uid && (
@@ -81,12 +81,12 @@ export default function PaymentWithNfc({ onClose }: Props) {
 							{apiResult.registered ? (
 								<>
 									<CheckCircle className="w-5 h-5 flex-shrink-0" />
-									<span>卡已登记</span>
+									<span>Card registered</span>
 								</>
 							) : (
 								<>
 									<XCircle className="w-5 h-5 flex-shrink-0" />
-									<span>卡未登记</span>
+									<span>Card not registered</span>
 								</>
 							)}
 						</div>

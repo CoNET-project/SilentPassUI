@@ -121,7 +121,9 @@ const shortenAddress = (addr: string) => {
 	return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-export default function BeamioMeMainScreen() {
+type BeamioMeMainScreenProps = { embedInPanel?: boolean }
+
+export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMainScreenProps) {
 	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, 
 		profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, 
 		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray } = useDaemonContext()
@@ -551,7 +553,7 @@ export default function BeamioMeMainScreen() {
 		)
 
 		return (
-			<div className="w-full min-h-screen">
+			<div className={`w-full ${embedInPanel ? 'h-full min-h-0' : 'min-h-screen'}`}>
 			{
 				!settingsOpen && (
 					<>
@@ -734,14 +736,15 @@ export default function BeamioMeMainScreen() {
 			
     		
 
-					{/* Settings full-screen slide-over（你原样） */}
+					{/* Settings slide-over：embedInPanel 时仅覆盖父容器（不盖左侧 menu），否则全屏 */}
 					<div
 						className={[
 							"pt-[env(safe-area-inset-top)]",
 							'pb-[env(safe-area-inset-bottom)]',
 							'pl-[env(safe-area-inset-left)]',
 							'pr-[env(safe-area-inset-right)]',
-							"fixed inset-0 z-40 flex-1 overflow-y-auto",
+							embedInPanel ? "absolute inset-0" : "fixed inset-0",
+							"z-40 flex-1 overflow-y-auto",
 							"transition-transform duration-300 ease-out",
 							(!!settingsOpen) ? "translate-x-0" : "translate-x-full",
 						].join(" ")}
@@ -837,10 +840,11 @@ export default function BeamioMeMainScreen() {
 						</div>
 					</div>
 
-					{/* Receive slide-over（你原样） */}
+					{/* Receive slide-over：embedInPanel 时仅覆盖父容器 */}
 					<div
 						className={[
-							'fixed inset-0 z-50 bg-white dark:bg-slate-900',
+							embedInPanel ? 'absolute inset-0' : 'fixed inset-0',
+							'z-50 bg-white dark:bg-slate-900',
 							'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]',
 							'transition-transform duration-300 ease-out flex flex-col',
 							receiveOpen ? 'translate-x-0' : 'translate-x-full',

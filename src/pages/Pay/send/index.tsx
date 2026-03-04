@@ -767,7 +767,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 											transition={{ duration: 0.2 }}
 											className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200"
 										>
-											<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+											<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/50 text-[#1562f0] dark:text-blue-400">
 												<Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />
 												{shortAddress(myAddress)}
 											</span>
@@ -791,7 +791,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 												{shortAddress(profiles[0].aaAccount)}
 											</span>
 											<ArrowRight className="w-4 h-4 shrink-0" />
-											<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+											<span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/50 text-[#1562f0] dark:text-blue-400">
 												<Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />
 												{shortAddress(myAddress)}
 											</span>
@@ -811,10 +811,10 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 							</div>
 						)}
 						{isAaEoaTransfer && transferDirection === 'aa-to-eoa' && (
-							<div className="mb-4 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
-								<span className="text-sm font-medium text-violet-800 dark:text-violet-200">To: EOA</span>
+							<div className="mb-4 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+								<span className="text-sm font-medium text-[#1562f0] dark:text-blue-400">To: EOA</span>
 								{myAddress && (
-									<span className="text-xs font-mono text-violet-600 dark:text-violet-400">{shortAddress(myAddress)}</span>
+									<span className="text-xs font-mono text-[#1562f0] dark:text-blue-400">{shortAddress(myAddress)}</span>
 								)}
 							</div>
 						)} */}
@@ -973,14 +973,14 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 								</div>
 								<div className="flex items-center justify-between px-4 pb-4">
 									<div className="flex items-center gap-3 min-w-0">
-										<div className="w-10 h-10 shrink-0 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
-											<Wallet className="w-5 h-5 text-slate-600 dark:text-slate-300" strokeWidth={2.2} />
+										<div className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'bg-violet-100 dark:bg-violet-900/50' : 'bg-blue-100 dark:bg-blue-900/50'}`}>
+											<Wallet className={`w-5 h-5 shrink-0 ${isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'text-violet-600 dark:text-violet-400' : 'text-[#1562f0] dark:text-blue-400'}`} strokeWidth={2.2} />
 										</div>
 										<div className="min-w-0">
 											<div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
 												{isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'Express Pay' : 'Main Vault'}
 											</div>
-											<div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+											<div className={`text-[12px] mt-0.5 ${isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'text-violet-600 dark:text-violet-400' : 'text-[#1562f0] dark:text-blue-400'}`}>
 												Secure • {isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'AA' : 'EOA'}
 											</div>
 										</div>

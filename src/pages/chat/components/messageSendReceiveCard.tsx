@@ -180,45 +180,45 @@ export function MessageSendReceiveCard({
 		)
 	}
 
-	// ===================== Membership Activated 卡片（Chat 内固定格式） =====================
+	// ===================== Membership Activated 卡片（统一会员卡风格） =====================
 	if (isMembershipActivated) {
 		const amountText = `+${fiatPrefix(currency)}${formatAmount(Number(amount), currency)}`
 		return (
 			<div
 				className={[
 					"inline-block w-[260px] max-w-full align-top text-left",
-					"relative overflow-hidden rounded-2xl",
-					"bg-white text-slate-900 ring-1 ring-black/5",
-					"shadow-[0_6px_18px_rgba(2,6,23,0.10)]",
+					"relative overflow-hidden rounded-[24px]",
+					"shadow-[0_12px_40px_rgba(0,0,0,0.25)]",
 					className
 				].join(" ")}
+				style={{ backgroundColor: "#2C5535" }}
 			>
 				<div className="p-4">
 					{/* Header: 图标 + 标题 + 时间 */}
 					<div className="flex items-center justify-between gap-3">
 						<div className="flex items-center gap-3 min-w-0">
-							<div className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
-								<Infinity className="w-3 h-3 text-emerald-600" strokeWidth={2.5} />
+							<div className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: "#3C6A43" }}>
+								<Infinity className="w-4 h-4" style={{ color: "#6ED088" }} strokeWidth={2.5} />
 							</div>
-							<span className="text-[10px] font-bold text-slate-900 truncate">
+							<span className="text-[14px] font-bold text-white truncate">
 								{title || "Membership Activated"}
 							</span>
 						</div>
 						{timeLabel && (
-							<span className="shrink-0 text-[10px] text-slate-400">
+							<span className="shrink-0 text-[10px]" style={{ color: "#BBBBBB" }}>
 								{timeLabel}
 							</span>
 						)}
 					</div>
 
-					{/* 金额：大号绿色，左右居中 */}
-					<div className="mt-4 tabular-nums text-[20px] font-bold leading-none text-emerald-600 text-center">
+					{/* 金额：大号绿色 */}
+					<div className="mt-4 tabular-nums text-[20px] font-bold leading-none text-center" style={{ color: "#6ED088" }}>
 						{amountText}
 					</div>
 
-					{/* 状态胶囊，左右居中 */}
+					{/* 状态胶囊 */}
 					<div className="mt-2 flex justify-center">
-						<span className="inline-flex items-center px-3 py-1 rounded-full text-[8px] font-semibold bg-emerald-500/80 text-white">
+						<span className="inline-flex items-center px-3 py-1 rounded-full text-[8px] font-semibold text-white" style={{ backgroundColor: "#224229" }}>
 							{statusLabel}
 						</span>
 					</div>
@@ -229,9 +229,10 @@ export function MessageSendReceiveCard({
 						onClick={() => onViewInvoice?.()}
 						className={[
 							"mt-4 w-full flex items-center justify-center gap-2",
-							"py-2.5 rounded-xl text-[10px] font-semibold text-slate-700",
-							"bg-slate-100 hover:bg-slate-200/90 active:scale-[0.99] transition"
+							"py-2.5 rounded-xl text-[10px] font-semibold",
+							"active:scale-[0.99] transition"
 						].join(" ")}
+						style={{ backgroundColor: "#3C6A43", color: "white" }}
 					>
 						<FileText className="w-4 h-4 shrink-0" strokeWidth={2} />
 							View Invoice

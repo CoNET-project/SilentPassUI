@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { ethers } from 'ethers';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import BeamioMeMainScreen from '@/components/Setting';
+import { searchUsername } from '@/services/beamio';
+import { signRegisterPOS, generateRegisterPOSNonce, registerPOSApi, signRemovePOS, removePOSApi, getMerchantPOSListFromCoNET } from '@/services/merchantPOS';
 import {
  LayoutDashboard,
  Receipt,
@@ -36,7 +39,9 @@ import {
  MonitorSmartphone, // 新增：用于终端图标
  Plus,              // 新增：用于添加按钮
  Trash2,            // 新增：用于删除按钮
- Link as LinkIcon   // 新增：用于关联图标
+ Link as LinkIcon,  // 新增：用于关联图标
+ Copy,
+ Check
 } from 'lucide-react';
 
 const getImg = (avatarSeed: string | undefined) =>
@@ -83,15 +88,43 @@ const MOCK_TRANSACTIONS = [
 ];
 
 
-// 新增：终端 Mock 数据
-const INITIAL_TERMINALS = [
- { id: 'TM-001', tag: '@ut_reg1', name: 'Main Register 1', eoa: '0x1A2B...3C4D', status: 'Active', lastActive: '2 mins ago' },
- { id: 'TM-002', tag: '@ut_kiosk2', name: 'Self-Serve Kiosk', eoa: '0x9F8E...7D6C', status: 'Active', lastActive: '1 hr ago' },
-];
+const fmtAddr = (a: string | undefined) => (a && a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : (a || '—'));
 
+const AddressRow = ({ label, icon: Icon, address, fullAddress }: { label: string; icon: LucideIcon; address: string; fullAddress: string }) => {
+  const [copied, setCopied] = useState(false);
+  const hasAddress = !!fullAddress && fullAddress.length >= 10;
+  const handleCopy = useCallback(async () => {
+    if (!hasAddress) return;
+    try {
+      await navigator.clipboard.writeText(fullAddress);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  }, [fullAddress, hasAddress]);
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight flex items-center gap-1 shrink-0 leading-none whitespace-nowrap"><Icon size={11} className="shrink-0" /> {label}</span>
+      <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden justify-end">
+        <span className={`text-[11px] font-mono font-bold bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm truncate leading-none inline-flex items-center min-w-0 ${hasAddress ? 'text-[#1562f0]' : 'text-slate-400'}`}>{address}</span>
+        {hasAddress && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="shrink-0 p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors flex items-center justify-center"
+            title="Copy"
+          >
+            {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default function MerchantOS() {
- const { beamio } = useDaemonContext();
+ const { beamio, profiles, myAddress } = useDaemonContext();
  const [currentView, setCurrentView] = useState('dashboard');
  const [activeTab, setActiveTab] = useState('Overview');
   const [merchantTag, setMerchantTag] = useState('@urbantea_van');
@@ -105,11 +138,45 @@ export default function MerchantOS() {
  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
 
- // 新增：终端管理状态
- const [terminals, setTerminals] = useState(INITIAL_TERMINALS);
+ // 新增：终端管理状态（从 CoNET 合约获取）
+ const [terminals, setTerminals] = useState<Array<{ id: string; tag: string; name: string; eoa: string; status: string; lastActive: string }>>([]);
+ const [terminalsLoading, setTerminalsLoading] = useState(false);
  const [isAddTerminalOpen, setIsAddTerminalOpen] = useState(false);
  const [newTerminalTag, setNewTerminalTag] = useState('');
- const [newTerminalEoa, setNewTerminalEoa] = useState('');
+ const [linkTerminalLoading, setLinkTerminalLoading] = useState(false);
+ const [linkTerminalError, setLinkTerminalError] = useState<string | null>(null);
+ const [deleteTerminalToRemove, setDeleteTerminalToRemove] = useState<{ id: string; tag: string; name: string; eoa: string } | null>(null);
+ const [removeTerminalLoading, setRemoveTerminalLoading] = useState(false);
+ const [removeTerminalError, setRemoveTerminalError] = useState<string | null>(null);
+
+ const merchant = profiles?.[0]?.keyID ?? myAddress;
+
+ const fetchTerminals = useCallback(async () => {
+   if (!merchant || !ethers.isAddress(merchant)) {
+     setTerminals([]);
+     return;
+   }
+   setTerminalsLoading(true);
+   try {
+     const posList = await getMerchantPOSListFromCoNET(merchant);
+     setTerminals(posList.map((pos, idx) => ({
+       id: pos,
+       tag: fmtAddr(pos),
+       name: `POS Terminal ${idx + 1}`,
+       eoa: fmtAddr(pos),
+       status: 'Active',
+       lastActive: 'On-chain',
+     })));
+   } catch {
+     setTerminals([]);
+   } finally {
+     setTerminalsLoading(false);
+   }
+ }, [merchant]);
+
+ useEffect(() => {
+   fetchTerminals();
+ }, [fetchTerminals]);
 
 
  // --- Financial Mock Data Logic ---
@@ -265,7 +332,7 @@ export default function MerchantOS() {
      onClick={onClick}
      className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'gap-3 px-4'} py-3 rounded-2xl transition-all ${
        isActive
-         ? 'bg-black text-white shadow-md'
+         ? 'bg-[#1562f0] text-white shadow-md'
          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
      }`}
      title={collapsed ? label : undefined}
@@ -458,15 +525,19 @@ export default function MerchantOS() {
         
          {!isSidebarCollapsed && (
            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3 overflow-hidden whitespace-nowrap">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5"><Cpu size={12}/> Smart AA</span>
-                <span className="text-[11px] font-mono font-bold text-slate-800 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">0x4D2...11F2</span>
-              </div>
+              <AddressRow
+                label="Smart AA"
+                icon={Cpu}
+                address={fmtAddr(profiles?.[0]?.aaAccount)}
+                fullAddress={profiles?.[0]?.aaAccount ?? ''}
+              />
               <div className="h-[1px] w-full bg-slate-200/50"></div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5"><KeyRound size={12}/> Owner EOA</span>
-                <span className="text-[11px] font-mono text-slate-400">0x8B...A9C</span>
-              </div>
+              <AddressRow
+                label="Owner EOA"
+                icon={KeyRound}
+                address={fmtAddr(profiles?.[0]?.keyID ?? myAddress)}
+                fullAddress={profiles?.[0]?.keyID ?? myAddress ?? ''}
+              />
            </div>
          )}
        </div>
@@ -504,17 +575,21 @@ export default function MerchantOS() {
          <h2 className="text-2xl font-bold text-black tracking-tight">{activeTab}</h2>
          <div className="flex items-center gap-6">
            <span className="text-[13px] font-semibold text-slate-500">{dateString}</span>
-           <div className="h-6 w-[1px] bg-slate-200"></div>
-           <div className="flex items-center gap-3">
-             <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200">
-                <span className="text-[13px] font-bold text-emerald-700">UT</span>
-             </div>
-           </div>
+           {activeTab !== 'Settings' && (
+             <>
+               <div className="h-6 w-[1px] bg-slate-200"></div>
+               <div className="flex items-center gap-3">
+                 <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-200">
+                    <span className="text-[13px] font-bold text-emerald-700">UT</span>
+                 </div>
+               </div>
+             </>
+           )}
          </div>
        </header>
 
 
-       <div className="flex-1 overflow-y-auto p-10">
+       <div className="flex-1 min-h-0 relative overflow-y-auto p-10">
          {activeTab === 'Overview' && (
            <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500">
              {/* Row 1: Operations Metrics */}
@@ -848,8 +923,24 @@ export default function MerchantOS() {
                      </tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100">
-                      {terminals.map((term, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50 transition-colors group">
+                      {terminalsLoading ? (
+                        <tr>
+                          <td colSpan={4} className="px-8 py-16 text-center text-slate-500">
+                            <span className="inline-flex items-center gap-2">
+                              <span className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                              Loading from CoNET...
+                            </span>
+                          </td>
+                        </tr>
+                      ) : terminals.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-8 py-16 text-center text-slate-500">
+                            No terminals linked yet. Click &quot;Link New Terminal&quot; to add one.
+                          </td>
+                        </tr>
+                      ) : (
+                      terminals.map((term) => (
+                        <tr key={term.id} className="hover:bg-slate-50 transition-colors group">
                            <td className="px-8 py-6">
                              <div className="flex items-center gap-4">
                                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700 border border-slate-200">
@@ -876,12 +967,16 @@ export default function MerchantOS() {
                              <div className="text-[11px] font-medium text-slate-400 mt-2">Last active: {term.lastActive}</div>
                            </td>
                            <td className="px-8 py-6 text-right">
-                             <button className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-colors tooltip-trigger" title="Revoke Authorization">
+                             <button
+                               onClick={() => setDeleteTerminalToRemove(term)}
+                               className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-colors"
+                               title="Revoke Authorization"
+                             >
                                <Trash2 size={18} />
                              </button>
                            </td>
                         </tr>
-                      ))}
+                      )))}
                    </tbody>
                 </table>
               </div>
@@ -890,8 +985,8 @@ export default function MerchantOS() {
 
 
          {activeTab === 'Settings' && (
-           <div className="animate-in fade-in duration-300">
-             <BeamioMeMainScreen />
+           <div className="absolute inset-0 z-10 overflow-hidden animate-in fade-in duration-300">
+             <BeamioMeMainScreen embedInPanel />
            </div>
          )}
 
@@ -937,61 +1032,154 @@ export default function MerchantOS() {
 
 
               <div className="space-y-1.5">
-                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">Terminal Beamio Tag</label>
-                 <div className="relative">
-                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                     <span className="text-slate-400 font-bold">@</span>
-                   </div>
-                   <input
-                     type="text"
-                     value={newTerminalTag}
-                     onChange={(e) => setNewTerminalTag(e.target.value)}
-                     placeholder="e.g. ut_reg3"
-                     className="w-full pl-9 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-semibold text-[15px] text-slate-900"
-                   />
-                 </div>
+                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">Terminal Beamio Tag / EOA Address</label>
+                 <input
+                   type="text"
+                   value={newTerminalTag}
+                   onChange={(e) => { setNewTerminalTag(e.target.value); setLinkTerminalError(null); }}
+                   placeholder="e.g. @ut_reg3 or 0x..."
+                   className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-semibold text-[15px] text-slate-900 font-mono"
+                 />
               </div>
 
+              {linkTerminalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[13px] font-medium text-rose-700">
+                  {linkTerminalError}
+                </div>
+              )}
 
-              <div className="space-y-1.5">
-                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">Terminal EOA Address</label>
-                 <div className="relative">
-                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                     <KeyRound size={16} className="text-slate-400" />
-                   </div>
-                   <input
-                     type="text"
-                     value={newTerminalEoa}
-                     onChange={(e) => setNewTerminalEoa(e.target.value)}
-                     placeholder="0x..."
-                     className="w-full pl-10 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-mono font-medium text-[14px] text-slate-900"
-                   />
-                 </div>
-              </div>
             </div>
 
 
             <button
-              onClick={() => {
-                // Mock adding logic
-                if (newTerminalTag && newTerminalEoa) {
-                  setTerminals([...terminals, {
-                    id: `TM-00${terminals.length + 1}`,
-                    tag: newTerminalTag.startsWith('@') ? newTerminalTag : `@${newTerminalTag}`,
-                    name: 'New POS Terminal',
-                    eoa: `${newTerminalEoa.substring(0, 6)}...${newTerminalEoa.substring(newTerminalEoa.length - 4)}`,
-                    status: 'Active',
-                    lastActive: 'Just now'
-                  }]);
+              onClick={async () => {
+                const raw = ((newTerminalTag ?? '') as string).trim();
+                if (!raw) return;
+                setLinkTerminalError(null);
+                setLinkTerminalLoading(true);
+                try {
+                  const merchant = profiles?.[0]?.keyID ?? myAddress;
+                  if (!merchant || !ethers.isAddress(merchant)) {
+                    throw new Error('Merchant EOA not found. Please unlock your wallet first.');
+                  }
+                  const privateKey = profiles?.[0]?.privateKeyArmor;
+                  if (!privateKey) {
+                    throw new Error('Private key not available. Please unlock your wallet.');
+                  }
+                  const pkHex = privateKey.startsWith('0x') ? privateKey : '0x' + privateKey;
+                  let pos: string;
+                  if (ethers.isAddress(raw)) {
+                    pos = ethers.getAddress(raw);
+                  } else {
+                    const tagRaw = raw as string;
+                    const tag = tagRaw.startsWith('@') ? tagRaw.slice(1) : tagRaw;
+                    const res = await searchUsername(tag);
+                    const peer = res?.results?.[0];
+                    if (!peer?.address || !ethers.isAddress(peer.address)) {
+                      throw new Error(`Could not resolve @${tag} to an address. Check the Beamio Tag.`);
+                    }
+                    pos = ethers.getAddress(peer.address);
+                  }
+                  const deadline = Math.floor(Date.now() / 1000) + 60 * 15;
+                  const nonce = generateRegisterPOSNonce();
+                  const signature = await signRegisterPOS(pkHex, merchant, pos, deadline, nonce);
+                  const result = await registerPOSApi({ merchant, pos, deadline, nonce, signature });
+                  if (!result.success) {
+                    throw new Error(result.error ?? 'Register failed');
+                  }
                   setIsAddTerminalOpen(false);
                   setNewTerminalTag('');
-                  setNewTerminalEoa('');
+                  await fetchTerminals();
+                } catch (e: unknown) {
+                  setLinkTerminalError((e as Error)?.message ?? 'Failed to link terminal');
+                } finally {
+                  setLinkTerminalLoading(false);
                 }
               }}
-              className="w-full bg-black text-white py-4 rounded-[16px] font-semibold text-[16px] hover:bg-slate-800 transition-all active:scale-[0.98] shadow-md"
+              disabled={linkTerminalLoading || !newTerminalTag?.trim()}
+              className="w-full bg-black text-white py-4 rounded-[16px] font-semibold text-[16px] hover:bg-slate-800 transition-all active:scale-[0.98] shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Authorize & Link
+              {linkTerminalLoading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Authorizing...
+                </>
+              ) : (
+                'Authorize & Link'
+              )}
             </button>
+         </div>
+       </div>
+     )}
+
+     {/* --- DELETE TERMINAL CONFIRMATION MODAL --- */}
+     {deleteTerminalToRemove && (
+       <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !removeTerminalLoading && (setDeleteTerminalToRemove(null), setRemoveTerminalError(null))} />
+         <div className="relative bg-white rounded-[40px] shadow-2xl w-full max-w-md p-8 animate-in zoom-in-95 duration-200">
+           <div className="flex justify-between items-center mb-6">
+             <div className="flex items-center gap-3">
+               <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center">
+                 <Trash2 size={24} />
+               </div>
+               <h2 className="text-xl font-bold tracking-tight text-black">Revoke Terminal</h2>
+             </div>
+             <button onClick={() => !removeTerminalLoading && (setDeleteTerminalToRemove(null), setRemoveTerminalError(null))} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-black transition-colors disabled:opacity-50">
+               <X size={20} />
+             </button>
+           </div>
+           <p className="text-[15px] text-slate-600 mb-4">
+             Are you sure you want to revoke authorization for <span className="font-mono font-semibold text-slate-800">{deleteTerminalToRemove.eoa}</span>? This will remove the terminal from your store.
+           </p>
+           {removeTerminalError && (
+             <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-[13px] font-medium text-rose-700">
+               {removeTerminalError}
+             </div>
+           )}
+           <div className="flex gap-3">
+             <button
+               onClick={() => !removeTerminalLoading && (setDeleteTerminalToRemove(null), setRemoveTerminalError(null))}
+               disabled={removeTerminalLoading}
+               className="flex-1 py-3.5 rounded-2xl text-[15px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+             >
+               Cancel
+             </button>
+             <button
+               onClick={async () => {
+                 if (!deleteTerminalToRemove || !merchant) return;
+                 setRemoveTerminalError(null);
+                 setRemoveTerminalLoading(true);
+                 try {
+                   const privateKey = profiles?.[0]?.privateKeyArmor;
+                   if (!privateKey) throw new Error('Private key not available. Please unlock your wallet.');
+                   const pkHex = privateKey.startsWith('0x') ? privateKey : '0x' + privateKey;
+                   const pos = deleteTerminalToRemove.id;
+                   const deadline = Math.floor(Date.now() / 1000) + 60 * 15;
+                   const nonce = generateRegisterPOSNonce();
+                   const signature = await signRemovePOS(pkHex, merchant, pos, deadline, nonce);
+                   const result = await removePOSApi({ merchant, pos, deadline, nonce, signature });
+                   if (!result.success) throw new Error(result.error ?? 'Remove failed');
+                   setDeleteTerminalToRemove(null);
+                   await fetchTerminals();
+                 } catch (e: unknown) {
+                   setRemoveTerminalError((e as Error)?.message ?? 'Failed to revoke terminal');
+                 } finally {
+                   setRemoveTerminalLoading(false);
+                 }
+               }}
+               disabled={removeTerminalLoading}
+               className="flex-1 py-3.5 rounded-2xl text-[15px] font-semibold bg-rose-500 text-white hover:bg-rose-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+             >
+               {removeTerminalLoading ? (
+                 <>
+                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                   Revoking...
+                 </>
+               ) : (
+                 'Revoke'
+               )}
+             </button>
+           </div>
          </div>
        </div>
      )}

@@ -36,6 +36,7 @@ import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import BankingBridge from '@/pages/History/components/BankingBridge'
+import FuelView from './FuelView'
 
 
 
@@ -92,6 +93,7 @@ const Home = ({}) => {
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
 	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
+	const [showFuelView, setShowFuelView] = useState(false)
 	/** Add Cash 后：底部 sheet 内显示 Coinbase 确认 (204-221)，非全屏 */
 	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
@@ -778,16 +780,11 @@ const Home = ({}) => {
 							<div className="text-center py-4">
 								<button
 									type="button"
-									onClick={reflashProcess}
-									disabled={reflash}
-									className={`
-										inline-flex items-center space-x-1.5 px-3 py-1 bg-white rounded-full shadow-sm border border-gray-100 mb-4
-										transition active:scale-[0.98]
-										${reflash ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:bg-gray-50'}
-									`}
+									onClick={() => setShowFuelView(true)}
+									className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white dark:bg-slate-800 rounded-full shadow-sm border border-gray-100 dark:border-slate-700 mb-4 transition active:scale-[0.98] cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700"
 								>
-									<Zap className={`w-3.5 h-3.5 text-yellow-500 fill-current ${reflash ? 'animate-spin' : ''}`} />
-									<span className="text-xs font-semibold text-gray-600">Beamio Sponsored Gas</span>
+									<Zap className="w-3.5 h-3.5 text-yellow-500 fill-current" />
+									<span className="text-xs font-semibold text-gray-600 dark:text-slate-300">Beamio Sponsored Gas</span>
 								</button>
 								<h2 className="text-sm font-medium text-gray-500 mb-1 tracking-wide">
 									Total Valuation ({currency})
@@ -983,6 +980,24 @@ const Home = ({}) => {
 							</motion.div>
 						</>
 					)}
+				</AnimatePresence>,
+				document.body
+			)}
+
+			{showFuelView && createPortal(
+				<AnimatePresence>
+					<motion.div
+						key="fuel-view-overlay"
+						className="fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col"
+						initial={{ x: "100%" }}
+						animate={{ x: 0 }}
+						exit={{ x: "100%" }}
+						transition={{ duration: 0.28, ease: "easeOut" }}
+					>
+						<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain pt-[env(safe-area-inset-top)]">
+							<FuelView onClose={() => setShowFuelView(false)} />
+						</div>
+					</motion.div>
 				</AnimatePresence>,
 				document.body
 			)}

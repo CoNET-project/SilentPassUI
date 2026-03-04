@@ -103,7 +103,7 @@ const BizHome = () => {
 						<button
 							type="submit"
 							disabled={isLoading}
-							className="w-full bg-black text-white py-4 rounded-[20px] font-semibold text-[16px] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all mt-6 flex justify-center items-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
+							className="w-full bg-[#1562f0] hover:bg-[#1253d0] text-white py-4 rounded-[20px] font-semibold text-[16px] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all mt-6 flex justify-center items-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
 						>
 							{isLoading ? (
 								<>
@@ -112,7 +112,7 @@ const BizHome = () => {
 								</>
 							) : (
 								<>
-									<Wallet size={18} /> Unlock Wallet
+									<Wallet size={18} /> Unlock Wallet ···
 								</>
 							)}
 						</button>

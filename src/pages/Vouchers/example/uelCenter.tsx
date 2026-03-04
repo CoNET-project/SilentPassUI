@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
- Zap,
+ Fuel,
  ArrowUpRight,
  Plus,
  ChevronRight,
@@ -28,13 +28,10 @@ import {
  Cpu,
  BarChart3,
  ArrowRightLeft,
- Wallet as WalletIcon
+ Wallet as WalletIcon,
+ Link2
 } from 'lucide-react';
 
-
-// --- Types ---
-type Contact = { id: string; name: string; tag: string; followers: number; wallet: string; avatarColor: string };
-type BUnitsLog = { id: string; title: string; subtitle: string; amount: number; time: string; type: string; status: string; linkedUsdc: string; txHash: string; network: string };
 
 // --- Global Configuration (V4.0 Specs) ---
 const BEAMIO_BLUE = "#1562f0";
@@ -44,11 +41,38 @@ const MAX_SERVICE_FEE = 200; // Max 200 Units ($2.00)
 const P2P_GAS_COST = 2; // Flat 2 Units for P2P Send
 
 
+// 🛠 Helper to generate massive mock data to test pagination
+const generateExtendedLogs = () => {
+ const baseLogs = [
+   { id: "LOG-892A", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "Feb 21, 14:22", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
+   { id: "LOG-891B", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "2h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x1c9d...9e2f", network: "Base Mainnet" },
+   { id: "LOG-890C", title: "Manual Refuel Gain", subtitle: "Swap $5.00 USDC", amount: 498, time: "5h ago", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x4a1b...2c3d", network: "Base Mainnet" },
+   { id: "LOG-889D", title: "Reward Backfill", subtitle: "CashTree Card Claim #102", amount: 100, time: "Yesterday", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" }
+ ];
+  const extraLogs = Array.from({length: 25}).map((_, i) => {
+     const isFee = i % 3 === 0;
+     const isRefuel = i % 7 === 0;
+     return {
+         id: `LOG-EXT-${i}`,
+         title: isRefuel ? "Auto-Refuel" : isFee ? "Service Fee (0.8%)" : "Network Gas",
+         subtitle: isRefuel ? "System Top-up" : `Historical Txn #${500 - i}`,
+         amount: isRefuel ? 98 : isFee ? -45 : -2,
+         time: `Feb ${20 - Math.floor(i/3)}, 10:00`,
+         type: isRefuel ? "refuel" : isFee ? "fee" : "gas",
+         status: "Completed",
+         linkedUsdc: isFee ? "56.25 USDC" : "N/A",
+         txHash: "0x" + Math.random().toString(16).substr(2, 8) + "..." + Math.random().toString(16).substr(2, 4),
+         network: "Base Mainnet"
+     };
+ });
+ return [...baseLogs, ...extraLogs];
+};
+
+
 const App = () => {
  // --- Global States ---
- const [currentView, setCurrentView] = useState('home'); // home, fuel, profile, genesis
-  // 🟢 恢复为正常的资金状态，体验完整的顺畅转账流程
- const [bUnits, setBUnits] = useState(852);
+ const [currentView, setCurrentView] = useState('home');
+  const [bUnits, setBUnits] = useState(852);
  const [usdcBalance, setUsdcBalance] = useState(182.24);
   const [autoRefuel, setAutoRefuel] = useState(true);
   // Genesis Node States
@@ -64,7 +88,8 @@ const App = () => {
  const [showRefuelSuccess, setShowRefuelSuccess] = useState(false);
   // Send Workflow States
  const [sendModalOpen, setSendModalOpen] = useState(false);
- const [sendStep, setSendStep] = useState('input'); // input, confirm, processing, success
+ const [sendStep, setSendStep] = useState('input');
+ type Contact = { id: string; name: string; tag: string; followers: number; wallet: string; avatarColor: string };
  const [sendRecipient, setSendRecipient] = useState<Contact | null>(null);
  const [sendAmount, setSendAmount] = useState('');
  const [sendSearchQuery, setSendSearchQuery] = useState('');
@@ -75,22 +100,29 @@ const App = () => {
 
 
  // Ledger Detail Modal State
- const [selectedLog, setSelectedLog] = useState<BUnitsLog | null>(null);
+ type LogEntry = { id: string; title: string; subtitle: string; amount: number; time: string; type: string; status: string; linkedUsdc: string; txHash: string; network: string };
+ const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
 
 
- // --- Dynamic Ledgers (Stateful for syncing) ---
+ // Filter & Pagination UI States
+ const [showFilters, setShowFilters] = useState(false);
+ const [ledgerFilter, setLedgerFilter] = useState('all');
+ const [visibleLogs, setVisibleLogs] = useState(5);
+
+
+ useEffect(() => {
+   setVisibleLogs(5);
+ }, [ledgerFilter]);
+
+
+ // --- Dynamic Ledgers ---
  const [usdcLedger, setUsdcLedger] = useState([
    { id: 'u1', name: "Payment Received", tag: "Paid by @Beamiot...", val: "+ 1.37 CAD", sub: "1.23 USDC", icon: <QrCode size={18} />, color: "text-green-500", type: "receive" },
    { id: 'u2', name: "Sent to @Simon", tag: "1.00 USD", val: "- 1.0000 USDC", sub: "1.00 USDC", icon: <ArrowUpRight size={18} />, color: "text-slate-900", type: "send" }
  ]);
 
 
- const [bUnitsLedger, setBUnitsLedger] = useState([
-   { id: "LOG-892A", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "Feb 21, 14:22", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
-   { id: "LOG-891B", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "2h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x1c9d...9e2f", network: "Base Mainnet" },
-   { id: "LOG-890C", title: "Manual Refuel Gain", subtitle: "Swap $5.00 USDC", amount: 498, time: "5h ago", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x4a1b...2c3d", network: "Base Mainnet" },
-   { id: "LOG-889D", title: "Reward Backfill", subtitle: "CashTree Card Claim #102", amount: 100, time: "Yesterday", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" }
- ]);
+ const [bUnitsLedger, setBUnitsLedger] = useState(generateExtendedLogs());
 
 
  // --- Mock Data ---
@@ -101,19 +133,26 @@ const App = () => {
 
 
  const mockYieldLedger = [
-   { title: "Protocol Share (Burn)", subtitle: "From 12,450 Network Txns", amount: "+4.25", asset: "USDC", time: "1h ago", icon: <Zap size={16} className="text-amber-400" /> },
-   { title: "Protocol Share (Burn)", subtitle: "From 3,820 Network Txns", amount: "+1.12", asset: "USDC", time: "4h ago", icon: <Zap size={16} className="text-amber-400" /> },
+   { title: "Protocol Share (Burn)", subtitle: "From 12,450 Network Txns", amount: "+4.25", asset: "USDC", time: "1h ago", icon: <Fuel size={16} className="text-orange-500" /> },
+   { title: "Protocol Share (Burn)", subtitle: "From 3,820 Network Txns", amount: "+1.12", asset: "USDC", time: "4h ago", icon: <Fuel size={16} className="text-orange-500" /> },
    { title: "Yield Claimed", subtitle: "To Main Wallet", amount: "-120.00", asset: "USDC", time: "Feb 20", icon: <ArrowRightLeft size={16} className="text-slate-400" /> }
  ];
 
 
  // --- Logic Calculations ---
+ // 🌟 更新：B-Units 健康状态颜色全面向橙色 (Orange) 家族靠拢
  const fuelStatus = useMemo(() => {
-   if (bUnits > 50) return { label: 'Optimal', color: 'text-green-500', bar: 'bg-green-500', width: '85%' };
+   if (bUnits > 50) return { label: 'Optimal', color: 'text-orange-500', bar: 'bg-orange-500', width: '85%' };
    if (bUnits >= 10) return { label: 'Warning', color: 'text-amber-500', bar: 'bg-amber-500', width: '30%' };
    if (bUnits >= 0) return { label: 'Critical', color: 'text-red-500', bar: 'bg-red-500', width: '5%' };
    return { label: 'Overdraft', color: 'text-purple-600', bar: 'bg-purple-600', width: '0%' };
  }, [bUnits]);
+
+
+ const filteredLedger = useMemo(() => {
+   if (ledgerFilter === 'all') return bUnitsLedger;
+   return bUnitsLedger.filter(log => log.type === ledgerFilter);
+ }, [bUnitsLedger, ledgerFilter]);
 
 
  // --- Handlers ---
@@ -124,7 +163,6 @@ const App = () => {
      setUsdcBalance(prev => prev - refuelAmount);
      setBUnits(prev => prev + (refuelAmount * 100) - REFUEL_GAS_COST);
     
-     // Update B-Units Ledger
      setBUnitsLedger([{
        id: `LOG-${Math.floor(Math.random()*10000)}`,
        title: "Manual Refuel Gain", subtitle: `Swap $${refuelAmount.toFixed(2)} USDC`,
@@ -159,21 +197,15 @@ const App = () => {
  }, [calcAmount]);
 
 
- // --- 🌟 Send Workflow Execution (The Dual-Ledger Magic) 🌟 ---
  const executeSend = () => {
    if (!sendRecipient) return;
    setSendStep('processing');
-  
-   // Simulate Blockchain & Facilitator latency
    setTimeout(() => {
      const amountNum = parseFloat(sendAmount);
-    
-     // 1. Deduct Balances (USDC Principle + 2 B-Units Network Gas)
      setUsdcBalance(prev => prev - amountNum);
      setBUnits(prev => prev - P2P_GAS_COST);
 
 
-     // 2. Sync to Home USDC Ledger (Fiat Ledger)
      setUsdcLedger([{
        id: `u-${Date.now()}`,
        name: `Sent to ${sendRecipient.name}`,
@@ -186,7 +218,6 @@ const App = () => {
      }, ...usdcLedger]);
 
 
-     // 3. Sync to B-Units Ledger (Shadow Gas Ledger)
      setBUnitsLedger([{
        id: `LOG-S${Math.floor(Math.random()*1000)}`,
        title: "Network Gas",
@@ -201,7 +232,6 @@ const App = () => {
      }, ...bUnitsLedger]);
 
 
-     // 4. Move to Success Screen
      setSendStep('success');
    }, 1800);
  };
@@ -237,10 +267,20 @@ const App = () => {
 
 
      <div className="mt-8 px-6 text-center space-y-4">
-       <div onClick={() => setCurrentView('fuel')} className="inline-flex items-center gap-1.5 bg-white px-4 py-2 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.04)] cursor-pointer hover:shadow-md transition-all active:scale-95 border border-slate-100/50">
-         <Zap size={14} className="text-amber-400" fill="currentColor" />
-         <span className="text-[11px] font-black text-slate-600">Beamio Sponsored Gas</span>
+      
+       {/* 🌟 更新：采用醒目的橙色药丸设计，强化 Fuel 概念 */}
+       <div
+         onClick={() => setCurrentView('fuel')}
+         className={`inline-flex items-center gap-1.5 bg-white pl-4 pr-1.5 py-1.5 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.04)] cursor-pointer hover:shadow-md transition-all active:scale-95 border ${bUnits < 10 ? 'border-red-100' : 'border-orange-100/50'}`}
+       >
+         <Fuel size={14} className={bUnits < 10 ? "text-red-500" : "text-orange-500"} fill="currentColor" />
+         <span className={`text-[11px] font-black ${bUnits < 10 ? 'text-red-600' : 'text-slate-600'}`}>Network Fuel</span>
+         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ml-1 ${bUnits < 10 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
+           {bUnits} B-Units
+         </span>
        </div>
+
+
        <div className="space-y-1">
          <p className="text-sm font-bold text-slate-400">Total Valuation (USDC)</p>
          <div className="flex items-baseline justify-center gap-1">
@@ -250,8 +290,6 @@ const App = () => {
          </div>
        </div>
        <div className="grid grid-cols-2 gap-4 mt-8 h-40">
-        
-         {/* SEND ACTION CARD */}
          <div
            onClick={openSendModal}
            className="bg-gradient-to-br from-[#3b7ef5] to-[#1562f0] rounded-[2rem] p-5 text-white flex flex-col justify-between shadow-2xl shadow-blue-200/50 active:scale-95 transition-all cursor-pointer group"
@@ -264,8 +302,6 @@ const App = () => {
              <p className="text-[10px] font-medium opacity-80 mt-0.5 tracking-wide">0 Gas USDC</p>
            </div>
          </div>
-
-
          <div className="flex flex-col gap-4">
            <div className="flex-1 bg-white rounded-[1.8rem] px-5 flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer hover:border-blue-100 border border-transparent">
              <div className="flex items-center gap-3">
@@ -326,55 +362,55 @@ const App = () => {
 
 
      <div className="px-6 pt-8 space-y-6">
-       <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-50 relative overflow-hidden group">
+       {/* Network Fuel Balance Card */}
+       <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-50 relative overflow-hidden">
          <div className="flex justify-between items-center mb-1">
-           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Fuel Balance</p>
-           <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase ${fuelStatus.bar} bg-opacity-10 ${fuelStatus.color}`}>
+           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Network Fuel Balance</p>
+           <div className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase bg-orange-100 text-slate-600">
              {fuelStatus.label}
            </div>
          </div>
-         <div className="flex items-baseline justify-between">
-           <div className="flex items-baseline gap-2">
-             <span className={`text-[4.5rem] leading-none font-black tracking-tighter ${bUnits < 10 ? 'text-red-500' : 'text-[#1562f0]'}`}>{bUnits}</span>
-             <span className="text-slate-300 font-bold text-xl uppercase italic">Units</span>
-           </div>
+         <div className="flex items-baseline gap-2">
+           <span className={`text-[4.5rem] leading-none font-black tracking-tighter ${bUnits < 10 ? 'text-red-500' : 'text-orange-500'}`}>{bUnits}</span>
+           <span className="text-orange-500 font-bold text-xl uppercase">B-Units</span>
          </div>
-         <div className="mt-8 h-2 bg-slate-100 rounded-full overflow-hidden">
-           <div style={{ width: fuelStatus.width }} className={`${fuelStatus.bar} h-full rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(21,98,240,0.2)]`}></div>
+         <div className="mt-8 h-2.5 bg-slate-200 rounded-full overflow-hidden">
+           <div style={{ width: fuelStatus.width }} className={`${fuelStatus.bar} h-full rounded-full transition-all duration-1000`}></div>
          </div>
        </div>
 
 
-       <div className="bg-white rounded-[2rem] p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-50 space-y-6">
+       {/* Refuel Section Card */}
+       <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-50 space-y-6">
          <div className="flex justify-between items-center">
-           <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Select Amount</h3>
-           <div className="bg-[#eef6ff] px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-             <Coins size={14} className="text-[#1562f0]" />
-             <span className="text-base font-black text-[#1562f0]">${refuelAmount}</span>
-             <span className="text-[10px] text-blue-400 font-bold uppercase">USDC</span>
+           <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Amount</h3>
+           <div className="bg-[#E1F5FE] border border-blue-200/60 px-4 py-2 rounded-full flex items-center gap-2">
+             <Link2 size={14} className="text-[#3498DB]" strokeWidth={2.5} />
+             <span className="text-base font-black text-[#3498DB]">${refuelAmount}</span>
+             <span className="text-[11px] text-slate-500 font-bold uppercase">USDC</span>
            </div>
          </div>
 
 
          <div className="flex items-center gap-4 px-1">
-           <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount-1))} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all"><Minus size={20}/></button>
-           <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={e=>setRefuelAmount(Number(e.target.value))} className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" />
-           <button onClick={() => setRefuelAmount(refuelAmount+1)} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all"><Plus size={20}/></button>
+           <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount-1))} className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 active:scale-95 transition-all"><Minus size={20} strokeWidth={2.5}/></button>
+           <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={e=>setRefuelAmount(Number(e.target.value))} className="flex-1 h-3 bg-slate-200 rounded-lg cursor-pointer accent-[#3498DB]" />
+           <button onClick={() => setRefuelAmount(Math.min(100, refuelAmount+1))} className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 active:scale-95 transition-all"><Plus size={20} strokeWidth={2.5}/></button>
          </div>
 
 
-         <div className="bg-[#f8f9fc] p-5 rounded-[1.5rem] space-y-3">
+         <div className="space-y-3">
            <div className="flex justify-between text-[13px] font-bold">
-             <span className="text-slate-400">Fuel Yield (1:100)</span>
-             <span className="text-slate-800">+{refuelAmount * 100} Units</span>
+             <span className="text-slate-500">Fuel Yield (1:100)</span>
+             <span className="text-green-600 font-black">+{refuelAmount * 100} B-Units</span>
            </div>
            <div className="flex justify-between text-[13px] font-bold">
-             <span className="text-slate-400 tracking-tight">Refuel Fee (Shadow Gas)</span>
-             <span className="text-red-400">-{REFUEL_GAS_COST} Units</span>
+             <span className="text-slate-500 tracking-tight">Refuel Fee (Shadow Gas)</span>
+             <span className="text-red-500 font-black">-{REFUEL_GAS_COST} B-Units</span>
            </div>
-           <div className="border-t border-slate-200 pt-3 flex justify-between items-center mt-1">
-             <span className="text-[14px] font-black text-slate-800">Net Deposit</span>
-             <span className="text-[22px] font-black text-[#1562f0] leading-none">+{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[10px] font-bold opacity-60 uppercase">Units</span></span>
+           <div className="border-t border-slate-300 pt-4 flex justify-between items-center">
+             <span className="text-[14px] font-black text-slate-700">Net Deposit</span>
+             <span className="text-[22px] font-black text-orange-500 leading-none">+{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[11px] font-bold opacity-80 uppercase">B-Units</span></span>
            </div>
          </div>
 
@@ -382,9 +418,9 @@ const App = () => {
          <button
            onClick={handleRefuel}
            disabled={isRefueling}
-           className="w-full bg-[#1562f0] py-4 rounded-[1.2rem] text-white font-black text-[15px] shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+           className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.5rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
          >
-           {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Zap size={18} fill="currentColor" /> Refuel Now</>}
+           {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={20} fill="currentColor" strokeWidth={1.5} /> Refuel Now</>}
          </button>
        </div>
 
@@ -392,39 +428,111 @@ const App = () => {
        <div className="space-y-4">
          <div className="flex justify-between items-center px-2">
            <h3 className="text-[13px] font-black text-slate-800 uppercase tracking-widest">B-Units Ledger</h3>
-           <button className="text-[11px] font-bold text-[#1562f0] flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-full hover:bg-blue-100 transition-colors">
+           <button
+             onClick={() => setShowFilters(!showFilters)}
+             className={`text-[11px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full transition-colors ${showFilters ? 'bg-orange-500 text-white' : 'text-orange-500 bg-orange-50 hover:bg-orange-100'}`}
+           >
              <Filter size={12} /> Filter
            </button>
          </div>
-         <div className="bg-white rounded-[2rem] overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-50 divide-y divide-slate-50">
-           {bUnitsLedger.map((log, idx) => (
-             <div
-               key={log.id}
-               onClick={() => setSelectedLog(log)}
-               className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group"
-             >
-               <div className="flex items-center gap-4">
-                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${
-                   log.amount < 0 ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'
-                 }`}>
-                   {log.type === 'refuel' ? <Plus size={18} strokeWidth={3} /> : <Zap size={16} fill="currentColor" />}
-                 </div>
-                 <div>
-                   <p className="text-[14px] font-black text-slate-800 leading-tight">{log.title}</p>
-                   <p className="text-[11px] font-medium text-slate-400 mt-0.5">{log.subtitle}</p>
-                 </div>
+
+
+         {showFilters && (
+           <div className="flex gap-2 px-2 overflow-x-auto hide-scrollbar animate-in slide-in-from-top-2 fade-in duration-200 pb-1">
+             {['all', 'fee', 'gas', 'refuel', 'reward'].map(f => (
+               <button
+                 key={f}
+                 onClick={() => setLedgerFilter(f)}
+                 className={`px-3 py-1.5 rounded-full text-[11px] font-bold capitalize whitespace-nowrap transition-colors ${ledgerFilter === f ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+               >
+                 {f === 'all' ? 'All' :
+                  f === 'fee' ? 'Service Fees' :
+                  f === 'gas' ? 'Network Gas' :
+                  f === 'refuel' ? 'Refuels' : 'Rewards'}
+               </button>
+             ))}
+           </div>
+         )}
+
+
+         <div className="bg-white rounded-[2rem] overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-50">
+           {filteredLedger.length === 0 ? (
+               <div className="p-8 text-center flex flex-col items-center justify-center animate-in fade-in duration-300">
+                   <Filter size={24} className="text-slate-200 mb-2" />
+                   <p className="text-slate-400 text-[13px] font-medium">No records found</p>
                </div>
-               <div className="text-right flex items-center gap-2">
-                 <div>
-                   <p className={`text-[15px] font-black ${log.amount < 0 ? 'text-slate-900' : 'text-green-500'}`}>
-                     {log.amount > 0 ? '+' : ''}{log.amount}
-                   </p>
-                   <p className="text-[9px] font-bold text-slate-300 uppercase tracking-wide">Units</p>
-                 </div>
-                 <ChevronRight size={16} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity -mr-1" />
+           ) : (
+               <div className="divide-y divide-slate-50">
+                 {filteredLedger.slice(0, visibleLogs).map((log) => (
+                   <div
+                     key={log.id}
+                     onClick={() => setSelectedLog(log)}
+                     className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group animate-in fade-in duration-300"
+                   >
+                     <div className="flex items-center gap-4">
+                       {/* 🌟 更新：底层明细也使用橘色油枪图标 */}
+                       <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm bg-orange-50 text-orange-500">
+                         {log.type === 'refuel' ? <Plus size={18} strokeWidth={3} /> : <Fuel size={16} fill="currentColor" />}
+                       </div>
+                       <div>
+                         <p className="text-[14px] font-black text-slate-800 leading-tight">{log.title}</p>
+                         <p className="text-[11px] font-medium text-slate-400 mt-0.5">{log.subtitle}</p>
+                       </div>
+                     </div>
+                     <div className="text-right flex items-center gap-2">
+                       <div>
+                         <p className={`text-[15px] font-black ${log.amount > 0 ? 'text-orange-500' : 'text-slate-900'}`}>
+                           {log.amount > 0 ? '+' : ''}{log.amount}
+                         </p>
+                         <p className="text-[9px] font-bold text-slate-300 uppercase tracking-wide">B-Units</p>
+                       </div>
+                       <ChevronRight size={16} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity -mr-1" />
+                     </div>
+                   </div>
+                 ))}
+                
+                 {visibleLogs < filteredLedger.length && (
+                   <button
+                     onClick={() => setVisibleLogs(prev => prev + 5)}
+                     className="w-full py-4 text-[12px] font-bold text-orange-500 hover:bg-orange-50/50 transition-colors flex items-center justify-center gap-2"
+                   >
+                     Load More Records...
+                   </button>
+                 )}
                </div>
+           )}
+         </div>
+       </div>
+
+
+       <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-6 shadow-2xl shadow-slate-900/20">
+         <div className="flex items-center gap-2">
+           <Calculator size={18} className="text-orange-400" />
+           <h3 className="font-bold text-[15px]">Fee Estimator</h3>
+         </div>
+         <div>
+           <label className="text-[10px] text-slate-400 uppercase font-bold ml-1 tracking-widest">Receive Amount (USDC)</label>
+           <div className="flex items-center gap-2 bg-white/5 rounded-2xl p-4 mt-2 border border-white/10 focus-within:border-orange-500 transition-colors">
+             <span className="text-2xl font-bold text-orange-400">$</span>
+             <input type="number" value={calcAmount} onChange={e=>setCalcAmount(Number(e.target.value))} className="bg-transparent border-none outline-none text-[28px] font-black w-full text-white leading-none" />
+           </div>
+         </div>
+         <div className="space-y-2.5 px-1">
+           <div className="flex justify-between text-[13px] text-slate-400 font-medium items-center">
+             <span>Service Fee (0.8%)</span>
+             <div className="flex items-center gap-1.5 bg-orange-500/10 px-2 py-0.5 rounded text-orange-400">
+                <Fuel size={12} fill="currentColor"/>
+                <span className="font-bold">{estimatedServiceFee} B-Units</span>
              </div>
-           ))}
+           </div>
+           <div className="flex justify-between text-[13px] text-slate-400 font-medium">
+             <span>Network Gas</span>
+             <span className="text-green-400 font-bold">Waived</span>
+           </div>
+           <div className="pt-4 border-t border-white/10 flex justify-between items-end mt-2">
+             <span className="text-[14px] font-bold text-white">Total Fuel Cost</span>
+             <span className="text-[24px] font-black text-orange-500 leading-none">{estimatedServiceFee} <span className="text-[11px] text-orange-500/70 uppercase">B-Units</span></span>
+           </div>
          </div>
        </div>
      </div>
@@ -475,15 +583,15 @@ const App = () => {
 
 
        <div className="pt-2">
-           <div onClick={() => setCurrentView('fuel')} className="bg-white rounded-[1.8rem] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex justify-between items-center group cursor-pointer hover:border-blue-100 border border-transparent transition-all active:scale-95">
+           <div onClick={() => setCurrentView('fuel')} className="bg-white rounded-[1.8rem] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex justify-between items-center group cursor-pointer hover:border-orange-100 border border-transparent transition-all active:scale-95">
                <div className="flex items-center gap-4">
-               <div className="w-10 h-10 bg-[#1562f0] rounded-xl flex items-center justify-center text-white"><Zap size={20} fill="currentColor"/></div>
+               <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white"><Fuel size={20} fill="currentColor"/></div>
                <div>
                    <span className="text-[15px] font-black text-slate-900">Network Fuel (B-Units)</span>
-                   <p className="text-[11px] text-[#1562f0] font-bold mt-0.5 tracking-tight">{bUnits} Units Available</p>
+                   <p className="text-[11px] text-orange-500 font-bold mt-0.5 tracking-tight">{bUnits} B-Units Available</p>
                </div>
                </div>
-               <ChevronRight size={18} className="text-[#1562f0] group-hover:translate-x-1 transition-transform" />
+               <ChevronRight size={18} className="text-orange-500 group-hover:translate-x-1 transition-transform" />
            </div>
        </div>
      </div>
@@ -535,7 +643,7 @@ const App = () => {
            {mockYieldLedger.map((log, idx) => (
              <div key={idx} className="p-5 flex items-center justify-between hover:bg-white/5 transition-colors">
                <div className="flex items-center gap-4">
-                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${log.amount.startsWith('-') ? 'bg-slate-800 text-slate-400' : 'bg-amber-500/10 text-amber-500'}`}>
+                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${log.amount.startsWith('-') ? 'bg-slate-800 text-slate-400' : 'bg-orange-500/10 text-orange-500'}`}>
                    {log.icon}
                  </div>
                  <div>
@@ -544,7 +652,7 @@ const App = () => {
                  </div>
                </div>
                <div className="text-right">
-                 <p className={`text-[15px] font-black ${log.amount.startsWith('-') ? 'text-slate-300' : 'text-amber-400'}`}>{log.amount}</p>
+                 <p className={`text-[15px] font-black ${log.amount.startsWith('-') ? 'text-slate-300' : 'text-orange-400'}`}>{log.amount}</p>
                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">{log.asset}</p>
                </div>
              </div>
@@ -568,9 +676,6 @@ const App = () => {
 
 
      {/* --- MODALS OVERLAYS --- */}
-
-
-     {/* 1. Send Workflow Modal (Bottom Sheet) */}
      {sendModalOpen && (
        <div className="fixed inset-0 z-[70] flex items-end justify-center pointer-events-auto max-w-md mx-auto">
          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => {if(sendStep==='input') setSendModalOpen(false)}}></div>
@@ -588,10 +693,8 @@ const App = () => {
            )}
 
 
-           {/* STEP 1: INPUT */}
            {sendStep === 'input' && (
              <div className="flex flex-col h-full pt-8 animate-in fade-in zoom-in-95 duration-300">
-               {/* Search Bar */}
                <div className="relative mb-6">
                  <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                  <input
@@ -604,7 +707,6 @@ const App = () => {
                </div>
 
 
-               {/* Contacts or Recipient Selected */}
                {!sendRecipient ? (
                  <div className="flex gap-4 mb-8 px-2 overflow-x-auto pb-2 hide-scrollbar">
                    {mockContacts.map(c => (
@@ -627,7 +729,6 @@ const App = () => {
                )}
 
 
-               {/* Amount Input */}
                <div className={`flex flex-col items-center justify-center flex-1 transition-opacity ${sendRecipient ? 'opacity-100' : 'opacity-30'}`}>
                   <div className="flex items-center gap-2">
                     <span className="text-2xl font-black text-slate-800">$</span>
@@ -644,7 +745,6 @@ const App = () => {
                </div>
 
 
-               {/* Paying From Card */}
                <div className="mt-auto mb-6 bg-slate-50 border border-slate-100 rounded-[1.5rem] p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center text-slate-600">
@@ -673,7 +773,6 @@ const App = () => {
            )}
 
 
-           {/* STEP 2: CONFIRMATION & B-UNITS GUARD */}
            {sendStep === 'confirm' && sendRecipient && (
              <div className="flex flex-col h-full pt-10 animate-in slide-in-from-right duration-300">
                <div className="text-center mb-10">
@@ -696,17 +795,17 @@ const App = () => {
                  </div>
 
 
-                 {/* B-UNITS NETWORK GAS UI */}
+                 {/* 🌟 更新：参照截图，确认页中的 Beamio Fee 也使用橙色药丸样式 */}
                  <div className="flex justify-between items-center pt-2">
                    <div>
-                     <p className="text-[13px] font-bold text-slate-800">Network Gas</p>
+                     <p className="text-[13px] font-bold text-slate-800">Beamio Fee</p>
                      <p className="text-[10px] text-slate-400 mt-0.5">Base L2 Operation</p>
                    </div>
                   
                    <div className="flex flex-col items-end">
-                     <div className="flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
-                       <Zap size={14} className="text-[#1562f0]" fill="currentColor" />
-                       <span className="text-[13px] font-black text-[#1562f0]">{P2P_GAS_COST} Units</span>
+                     <div className="flex items-center gap-1.5 bg-[#FFF4E5] px-2.5 py-1 rounded-md border border-orange-100">
+                       <Fuel size={14} className="text-[#F97316]" fill="currentColor" />
+                       <span className="text-[13px] font-black text-[#F97316]">{P2P_GAS_COST} B-Units</span>
                      </div>
                      <p className="text-[10px] text-slate-400 font-medium mt-1">From B-Units Ledger</p>
                    </div>
@@ -714,7 +813,6 @@ const App = () => {
                </div>
 
 
-               {/* INSUFFICIENT B-UNITS GUARD */}
                {bUnits < P2P_GAS_COST && (
                  <div className="mb-6 bg-red-50 p-4 rounded-xl border border-red-100 animate-in fade-in slide-in-from-bottom-2">
                    <div className="flex items-center gap-2 text-red-600 mb-1.5">
@@ -739,9 +837,9 @@ const App = () => {
                  ) : (
                    <button
                      onClick={() => { setSendModalOpen(false); setCurrentView('fuel'); }}
-                     className="w-full bg-slate-900 py-4 rounded-[1.2rem] text-white font-black text-[17px] shadow-[0_8px_20px_rgba(15,23,42,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                     className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[17px] shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                    >
-                     <Zap size={18} fill="currentColor" /> Refuel B-Units
+                     <Fuel size={18} fill="currentColor" /> Refuel B-Units
                    </button>
                  )}
                </div>
@@ -749,7 +847,6 @@ const App = () => {
            )}
 
 
-           {/* STEP 3: PROCESSING */}
            {sendStep === 'processing' && (
              <div className="flex flex-col items-center justify-center h-full animate-in fade-in duration-300">
                <div className="w-16 h-16 relative">
@@ -762,7 +859,6 @@ const App = () => {
            )}
 
 
-           {/* STEP 4: SUCCESS */}
            {sendStep === 'success' && (
              <div className="flex flex-col items-center justify-center pt-10 pb-4 animate-in zoom-in-95 duration-500">
                <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center text-white shadow-[0_0_30px_rgba(34,197,94,0.4)] mb-6">
@@ -790,7 +886,6 @@ const App = () => {
      )}
 
 
-     {/* 2. Detail Receipt Modal (Bottom Sheet for Ledger) */}
      {selectedLog && (
        <div className="fixed inset-0 z-[60] flex items-end justify-center pointer-events-auto max-w-md mx-auto">
          <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setSelectedLog(null)}></div>
@@ -804,16 +899,17 @@ const App = () => {
 
 
            <div className="text-center mt-4 space-y-2">
-             <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center shadow-md mb-4 ${selectedLog.amount < 0 ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
-               {selectedLog.type === 'refuel' ? <Plus size={28} strokeWidth={3} /> : <Zap size={28} fill="currentColor" />}
+             {/* 🌟 更新：账单详情大图标也变为橙色油枪 */}
+             <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center shadow-md mb-4 bg-orange-50 text-orange-500`}>
+               {selectedLog.type === 'refuel' ? <Plus size={28} strokeWidth={3} /> : <Fuel size={28} fill="currentColor" />}
              </div>
              <h3 className="text-[22px] font-black text-slate-900">{selectedLog.title}</h3>
              <p className="text-[13px] font-bold text-slate-400">{selectedLog.subtitle}</p>
              <div className="pt-2">
-               <span className={`text-[32px] font-black tracking-tighter ${selectedLog.amount < 0 ? 'text-slate-900' : 'text-green-500'}`}>
+               <span className={`text-[32px] font-black tracking-tighter ${selectedLog.amount > 0 ? 'text-orange-500' : 'text-slate-900'}`}>
                  {selectedLog.amount > 0 ? '+' : ''}{selectedLog.amount}
                </span>
-               <span className="text-[14px] font-bold text-slate-400 ml-1">Units</span>
+               <span className="text-[14px] font-bold text-slate-400 ml-1">B-Units</span>
              </div>
            </div>
 
@@ -853,19 +949,17 @@ const App = () => {
      )}
 
 
-     {/* Success Modal for Refuel */}
      {showRefuelSuccess && (
        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-[1.5rem] shadow-2xl flex items-center gap-3 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
          <div className="bg-green-500 rounded-full p-1"><CheckCircle2 size={18} className="text-white" /></div>
          <div>
            <p className="text-[13px] font-black">Refuel Successful</p>
-           <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-0.5">Synced +{refuelAmount * 100 - REFUEL_GAS_COST} Units</p>
+           <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-0.5">Synced +{refuelAmount * 100 - REFUEL_GAS_COST} B-Units</p>
          </div>
        </div>
      )}
 
 
-     {/* Bottom Navigation */}
      {currentView !== 'genesis' && (
        <div className="fixed bottom-6 left-0 right-0 px-6 max-w-md mx-auto z-40 flex items-center justify-between pointer-events-none">
          <div className="bg-slate-800/95 backdrop-blur-xl rounded-[2rem] p-1.5 flex items-center gap-1 shadow-2xl pointer-events-auto">

@@ -1375,8 +1375,8 @@ export default function MyWalletDashboardNew() {
 		const fetchInfraMeta = () =>
 			getCardMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS).then((m) => m ?? getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS))
 		const [ccsa, infra, meta, ccsaOwner] = await Promise.all([
-			getMyAssets(profile, CCSA_Card_Address),
-			getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS),
+				getMyAssets(profile, CCSA_Card_Address),
+				getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS),
 			fetchInfraMeta(),
 			getCardOwner(CCSA_Card_Address),
 		])
@@ -1386,11 +1386,11 @@ export default function MyWalletDashboardNew() {
 		if (meta?.cardOwner && infraBestNft) {
 			infraNftMetadata = await getNftMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS, infraBestNft.tokenId)
 		}
-		if (ccsa?.points != null) setCcsaBalance(ccsa.points)
-		setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
+			if (ccsa?.points != null) setCcsaBalance(ccsa.points)
+			setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
 		setCcsaCardOwner(ccsaOwner ?? null)
-		if (infra?.points != null) setInfraCardBalance(infra.points)
-		setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
+			if (infra?.points != null) setInfraCardBalance(infra.points)
+			setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
 		setInfraCardMetadata(meta ? { ...meta, nftMetadata: infraNftMetadata ?? undefined } : null)
 		} catch (e) {
 			console.error('Failed to refresh CCSA assets:', e)
@@ -1698,16 +1698,16 @@ export default function MyWalletDashboardNew() {
 			const showCcsa = ccsaNfts.length > 0 || isCardCreator('ccsa')
 			if (showCcsa) {
 				const nft = ccsaNfts.length > 0 ? ccsaNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
-				list.push({
-					id: 'ccsa',
-					name: 'CCSA CARD',
-					balance: formatWithThousands(ccsaBalance),
-					currency: 'CAD',
-					type: 'Membership',
-					memberNo: nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : '',
-					bg: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
-					textColor: 'white',
-				})
+			list.push({
+				id: 'ccsa',
+				name: 'CCSA CARD',
+				balance: formatWithThousands(ccsaBalance),
+				currency: 'CAD',
+				type: 'Membership',
+				memberNo: nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : '',
+				bg: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
+				textColor: 'white',
+			})
 			}
 			// 基础设施卡：拥有该卡 NFT 资产 或 是该卡的创建者/owner 均显示；仅创建者可点击打开 DETAILS
 			const infraNfts = (infraCardAssets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
@@ -2147,12 +2147,12 @@ export default function MyWalletDashboardNew() {
 						className={`absolute inset-x-0 bottom-0 rounded-t-[4px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-[80] flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
 							showDetailsPanel ? 'translate-y-0' : 'translate-y-[1000px] pointer-events-none'
 						}`}
-						style={{
+									style={{
 							top: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
 							background: selectedCard
 								? selectedCard.id === 'eoa'
 									? 'linear-gradient(180deg, #2563eb 0%, #9333ea 12%, #db2777 22%, rgba(242,242,247,0.97) 38%, #F2F2F7 48%, #F2F2F7 100%)'
-									: selectedCard.id === 'aa'
+												: selectedCard.id === 'aa'
 										? 'linear-gradient(180deg, #7c3aed 0%, #a855f7 12%, #3b82f6 22%, rgba(242,242,247,0.97) 38%, #F2F2F7 48%, #F2F2F7 100%)'
 										: 'linear-gradient(180deg, #6366F144 0%, #8B5CF644 12%, #F2F2F744 38%, #F2F2F7 48%, #F2F2F7 100%)'
 								: '#F2F2F7',
@@ -2183,14 +2183,14 @@ export default function MyWalletDashboardNew() {
 										<Layers className="w-6 h-6" />
 									</button>
 								)}
-								<button
-									type="button"
-									onClick={() => navigate('/settings')}
+							<button
+								type="button"
+								onClick={() => navigate('/settings')}
 									className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
-									aria-label="Settings"
-								>
-									<Settings className="w-6 h-6" />
-								</button>
+								aria-label="Settings"
+							>
+								<Settings className="w-6 h-6" />
+							</button>
 							</div>
 						</div>
 
@@ -2506,77 +2506,77 @@ export default function MyWalletDashboardNew() {
 										/* CCSA / 基础设施卡 / 用户卡：Member Benefits + Card Information（仅 CCSA/基础设施）+ My BeamioUserCards + Redeem Active List */
 										<>
 											{selectedCard.id === 'ccsa' && (
-												<>
-													{/* Member Benefits - VoucherDetailModal 风格 */}
-													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
-														<div className="flex items-center gap-2 mb-4">
-															<Star className="w-4 h-4 text-orange-500 fill-orange-500" />
-															<h3 className="font-bold text-gray-900">Member Benefits</h3>
+										<>
+											{/* Member Benefits - VoucherDetailModal 风格 */}
+											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+												<div className="flex items-center gap-2 mb-4">
+													<Star className="w-4 h-4 text-orange-500 fill-orange-500" />
+													<h3 className="font-bold text-gray-900">Member Benefits</h3>
+												</div>
+												<div className="space-y-4">
+													<div className="flex items-start gap-3">
+														<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+															<Star className="w-4 h-4 text-[#1562f0]" />
 														</div>
-														<div className="space-y-4">
-															<div className="flex items-start gap-3">
-																<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-																	<Star className="w-4 h-4 text-[#1562f0]" />
-																</div>
-																<div>
-																	<h4 className="text-sm font-bold text-gray-900">Alliance Discount</h4>
-																	<p className="text-xs text-gray-500 leading-relaxed">10% off at participating restaurants.</p>
-																</div>
-															</div>
-															<div className="flex items-start gap-3">
-																<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-																	<Zap className="w-4 h-4 text-[#1562f0]" />
-																</div>
-																<div>
-																	<h4 className="text-sm font-bold text-gray-900">Gas-Free</h4>
-																	<p className="text-xs text-gray-500 leading-relaxed">Zero transaction fees on Beamio network.</p>
-																</div>
-															</div>
+														<div>
+															<h4 className="text-sm font-bold text-gray-900">Alliance Discount</h4>
+															<p className="text-xs text-gray-500 leading-relaxed">10% off at participating restaurants.</p>
 														</div>
 													</div>
+													<div className="flex items-start gap-3">
+														<div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+															<Zap className="w-4 h-4 text-[#1562f0]" />
+														</div>
+														<div>
+															<h4 className="text-sm font-bold text-gray-900">Gas-Free</h4>
+															<p className="text-xs text-gray-500 leading-relaxed">Zero transaction fees on Beamio network.</p>
+														</div>
+													</div>
+												</div>
+											</div>
 
-													{/* Recent Activity */}
-													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
-														<div className="flex justify-between items-center mb-4">
-															<h3 className="font-bold text-gray-900">Recent Activity</h3>
-															<span className="text-xs font-bold text-[#1562f0]">View All</span>
-														</div>
-														<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
-													</div>
+											{/* Recent Activity */}
+											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+												<div className="flex justify-between items-center mb-4">
+													<h3 className="font-bold text-gray-900">Recent Activity</h3>
+													<span className="text-xs font-bold text-[#1562f0]">View All</span>
+												</div>
+												<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+											</div>
 
 													{/* Card Information - VoucherDetailModal 风格（仅 CCSA） */}
-													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
-														<div className="flex items-center gap-2 mb-4">
-															<Info className="w-4 h-4 text-gray-400" />
-															<h3 className="font-bold text-gray-900">Card Information</h3>
-														</div>
-														<div className="space-y-3">
-															<div className="flex justify-between text-xs">
-																<span className="text-gray-500">Issuer</span>
-																<span className="font-medium text-gray-900">Canada Chinese Restaurant Alliance</span>
-															</div>
-															<div className="flex justify-between text-xs">
-																<span className="text-gray-500">Network</span>
-																<span className="font-medium text-gray-900">Base Mainnet</span>
-															</div>
-															<div className="flex justify-between text-xs">
-																<span className="text-gray-500">Standard</span>
-																<span className="font-medium text-gray-900">ERC-1155</span>
-															</div>
-															<div className="flex justify-between text-xs">
-																<span className="text-gray-500">Contract</span>
-																<span className="font-mono text-gray-500">
-																	{CCSA_Card_Address ? `${CCSA_Card_Address.slice(0, 6)}...${CCSA_Card_Address.slice(-4)}` : '—'}
-																</span>
-															</div>
-															<div className="flex justify-between text-xs items-center pt-2 border-t border-gray-100 mt-2">
-																<span className="text-gray-500 flex items-center gap-1">
-																	<ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status
-																</span>
-																<span className="font-bold text-green-600">Verified</span>
-															</div>
-														</div>
+											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
+												<div className="flex items-center gap-2 mb-4">
+													<Info className="w-4 h-4 text-gray-400" />
+													<h3 className="font-bold text-gray-900">Card Information</h3>
+												</div>
+												<div className="space-y-3">
+													<div className="flex justify-between text-xs">
+														<span className="text-gray-500">Issuer</span>
+														<span className="font-medium text-gray-900">Canada Chinese Restaurant Alliance</span>
 													</div>
+													<div className="flex justify-between text-xs">
+														<span className="text-gray-500">Network</span>
+														<span className="font-medium text-gray-900">Base Mainnet</span>
+													</div>
+													<div className="flex justify-between text-xs">
+														<span className="text-gray-500">Standard</span>
+														<span className="font-medium text-gray-900">ERC-1155</span>
+													</div>
+													<div className="flex justify-between text-xs">
+														<span className="text-gray-500">Contract</span>
+														<span className="font-mono text-gray-500">
+															{CCSA_Card_Address ? `${CCSA_Card_Address.slice(0, 6)}...${CCSA_Card_Address.slice(-4)}` : '—'}
+														</span>
+													</div>
+													<div className="flex justify-between text-xs items-center pt-2 border-t border-gray-100 mt-2">
+														<span className="text-gray-500 flex items-center gap-1">
+															<ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status
+														</span>
+														<span className="font-bold text-green-600">Verified</span>
+													</div>
+												</div>
+											</div>
 												</>
 											)}
 											{selectedCard.id === BEAMIO_USER_CARD_ASSET_ADDRESS && (
@@ -2714,7 +2714,7 @@ export default function MyWalletDashboardNew() {
 													}}
 												/>
 											)}
-											</div>
+										</div>
 										</>
 									) : (
 										/* AA (Express Pay)：与 EOA 共用 Indexer History，收款人可在此看到转入记录 */
@@ -3152,7 +3152,7 @@ export default function MyWalletDashboardNew() {
 															{!(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) && (
 																<div className="w-10 h-10 rounded-full grid place-items-center shrink-0 overflow-hidden" style={isCcsaCard(redeemCardNumberInput) ? { background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' } : { background: 'rgba(255,255,255,0.25)' }}>
 																	<CreditCard className="h-5 w-5 text-white" />
-																</div>
+														</div>
 															)}
 															<div><div className="text-[18px] font-black tracking-wide text-white drop-shadow-sm font-serif">{isCcsaCard(redeemCardNumberInput) ? 'CCSA' : (redeemCardMetadata?.name ?? redeemDetails.cardName ?? 'User Card')}</div>{!isCcsaCard(redeemCardNumberInput) && redeemCardTierMeta?.name && <div className="text-[14px] font-semibold tracking-wide text-white/90 -mt-0.5">{redeemCardTierMeta.name}</div>}</div>
 														</div>
@@ -3290,7 +3290,7 @@ export default function MyWalletDashboardNew() {
 														{!(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) && (
 															<div className="w-10 h-10 rounded-full grid place-items-center shrink-0 overflow-hidden" style={isCcsaCard(redeemCardNumberInput) ? { background: 'linear-gradient(135deg, #ffd65a 0%, #d19a00 100%)' } : { background: 'rgba(255,255,255,0.25)' }}>
 																<CreditCard className="h-5 w-5 text-white" />
-															</div>
+													</div>
 														)}
 														<div><div className="text-[18px] font-black tracking-wide text-white drop-shadow-sm font-serif">{isCcsaCard(redeemCardNumberInput) ? 'CCSA' : (redeemCardMetadata?.name ?? redeemDetails.cardName ?? 'User Card')}</div>{!isCcsaCard(redeemCardNumberInput) && redeemCardTierMeta?.name && <div className="text-[14px] font-semibold tracking-wide text-white/90 -mt-0.5">{redeemCardTierMeta.name}</div>}</div>
 													</div>

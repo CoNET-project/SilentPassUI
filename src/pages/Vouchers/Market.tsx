@@ -4,6 +4,7 @@ import {
   Search,
   Store,
   Crown,
+  CreditCard as CardIcon,
   Coffee,
   Music,
   ShoppingCart,
@@ -45,6 +46,8 @@ import PurchaseAccount from "./PurchaseAccount"
 import TopUpAccount from "./TopUpAccount"
 import ShowPayQR from "./showPayQR"
 import { signOfflineTransferERC3009 } from "@/services/BeamioCard"
+import cashTreesLog from "./assets/cashtreesLog.png"
+import phoIcon from "./assets/phoIcon.svg"
 
 const THEME = { bg: "#F2F2F7" }
 
@@ -119,6 +122,15 @@ type HeroItem = {
   overlay?: string
   partners?: { name: string; icon: string; bg: string }[]
 }
+type CashTreesItem = HeroItem & {
+  merchantLogo?: string
+  isVariablePrice?: boolean
+  minPrice?: number
+  maxPrice?: number
+  customGradient?: string
+  theme?: "black" | "green"
+  partners?: { name: string; address?: string; icon: string; bg: string }[]
+}
 
 const GENESIS_NODE_DATA: GenesisNodeData = {
   id: 999,
@@ -188,6 +200,127 @@ const HERO_COLLECTION: HeroItem[] = [
     overlay: "from-black/80 via-black/40 to-transparent",
   },
 ]
+
+const CASH_TREES_COLLECTION: CashTreesItem[] = [
+  {
+    id: 201,
+    title: "CashTrees Black VIP",
+    tagline: "",
+    subtitle: "Load $100+ to unlock maximum merchant discounts.",
+    description: "Experience premium dining with exclusive rewards. Discount rates are set by individual merchants. The entire bill must be paid with this CashTrees card to apply the discount.",
+    features: ["Merchant-Defined VIP Discounts", "Sen Pho + Cafe: 10% Off", "Priority Reservations", "Valid at Kerrisdale & Champlain Heights"],
+    image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
+    merchant: "Sen Pho + Cafe",
+    location: "Vancouver, BC",
+    merchantLogo: phoIcon,
+    partners: [
+      { name: "Kerrisdale", address: "6290 East Blvd, Vancouver, BC", icon: "📍", bg: "bg-gray-800 text-white" },
+      { name: "Champlain Heights", address: "7056 Kerr St, Vancouver, BC", icon: "📍", bg: "bg-black text-white" },
+    ],
+    price: 100,
+    isVariablePrice: true,
+    minPrice: 100,
+    type: "CashTrees VIP",
+    color: "text-white",
+    customGradient: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.95) 100%)",
+    theme: "black",
+  },
+  {
+    id: 202,
+    title: "CashTrees Green Card",
+    tagline: "",
+    subtitle: "Load $50 - $99 to unlock standard discounts.",
+    description: "Start enjoying authentic dining with CashTrees rewards. Discount rates are set by individual merchants. The entire bill must be paid with this CashTrees card to apply the discount.",
+    features: ["Merchant-Defined Standard Discounts", "Sen Pho + Cafe: 5% Off", "Instant Digital Setup", "Valid at Kerrisdale & Champlain Heights"],
+    image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
+    merchant: "Sen Pho + Cafe",
+    location: "Vancouver, BC",
+    merchantLogo: phoIcon,
+    partners: [
+      { name: "Kerrisdale", address: "6290 East Blvd, Vancouver, BC", icon: "📍", bg: "bg-white text-green-700" },
+      { name: "Champlain Heights", address: "7056 Kerr St, Vancouver, BC", icon: "📍", bg: "bg-green-100 text-green-800" },
+    ],
+    price: 50,
+    isVariablePrice: true,
+    minPrice: 50,
+    maxPrice: 99.99,
+    type: "CashTrees Member",
+    color: "text-[#0e2a05]",
+    customGradient: "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.6) 100%)",
+    theme: "green",
+  },
+]
+
+const CashTreesGetButton = ({ price, count = 0, onClick, isVariable = false }: { price: number; count?: number; onClick: () => void; isVariable?: boolean }) => (
+  <button
+    onClick={(e) => { e.stopPropagation(); onClick(); }}
+    className="relative rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm active:scale-95 bg-black text-white hover:bg-gray-800 flex items-center justify-center gap-1.5 px-5 py-1.5 min-w-[75px]"
+  >
+    {isVariable ? `Load $${price}+` : `$${price}`}
+    {count > 0 && (
+      <span className="flex items-center justify-center bg-white text-black text-[9px] h-4 min-w-[16px] px-1 rounded-full -mr-2 shadow-sm font-extrabold">
+        x{count}
+      </span>
+    )}
+  </button>
+)
+
+const StoryCard = ({ item, count, onClick, onBuy }: { item: CashTreesItem; count: number; onClick: (i: CashTreesItem) => void; onBuy: (i: CashTreesItem) => void }) => {
+  const isBlackCard = item.theme === "black"
+  const isDarkBg = item.theme === "black" || item.theme === "green"
+  return (
+    <div
+      onClick={() => onClick(item)}
+      className="snap-center relative min-w-[340px] h-[460px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300 shrink-0"
+    >
+      <img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={item.title} />
+      <div className="absolute inset-0" style={{ background: item.customGradient }} />
+      <img src={cashTreesLog} alt="CashTrees" className="absolute top-5 left-5 w-16 h-10 object-contain z-10 opacity-90 drop-shadow-md" />
+      <div className="absolute inset-0 flex flex-col justify-between p-7">
+        <div className="mt-8">
+          <h2 className={`${item.id === 202 ? "text-[#9ecc3c]" : isDarkBg ? "text-white" : "text-[#0e2a05]"} text-4xl font-extrabold leading-[1.1] tracking-tight drop-shadow-lg w-4/5 mb-3`}>
+            {item.title}
+          </h2>
+          <p className={`${isDarkBg ? "text-gray-200" : "text-[#1a4a0a]"} text-[15px] font-medium leading-snug line-clamp-2 drop-shadow-md w-11/12`}>
+            {item.subtitle}
+          </p>
+        </div>
+        <div className={`${item.id === 202 ? "bg-[#9ecc3c] border-[#9ecc3c]/50" : isBlackCard ? "bg-black/80 border-gray-700" : "bg-black/70 border-gray-600"} backdrop-blur-xl border rounded-[24px] p-4 flex items-center justify-between shadow-lg`}>
+          <div className="flex items-center gap-3.5">
+            <div className="w-[60px] h-[60px] flex items-center justify-center text-2xl shrink-0">
+              {item.merchantLogo ? (
+                typeof item.merchantLogo === "string" && (item.merchantLogo.startsWith("/") || item.merchantLogo.startsWith("http") || item.merchantLogo.includes(".svg")) ? (
+                  <img src={item.merchantLogo} alt={item.merchant} className="w-full h-full object-contain" />
+                ) : (
+                  item.merchantLogo
+                )
+              ) : (
+                "🍜"
+              )}
+            </div>
+            <div className="flex flex-col">
+              <span className={`${isDarkBg ? "text-white" : "text-[#0e2a05]"} font-bold text-[15px] leading-tight`}>
+                {item.merchant}
+              </span>
+              {/* <div className="flex items-center gap-1.5 mt-0.5">
+                <CardIcon size={12} className={isDarkBg ? "text-gray-400" : "text-[#1a4a0a]"} />
+                <span className={`${isDarkBg ? "text-gray-300" : "text-[#1a4a0a]"} text-[11px] font-bold uppercase tracking-wide`}>CashTrees</span>
+              </div> */}
+            </div>
+          </div>
+          <div onClick={(e) => e.stopPropagation()}>
+            <CashTreesGetButton
+              price={item.price}
+              count={count}
+              onClick={() => onBuy(item)}
+              isVariable={item.isVariablePrice}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const GenesisCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () => void }) => (
   <div
@@ -522,7 +655,8 @@ const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: ViewingItem;
 const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: ViewingItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (item: ViewingItem) => void; onOpenWallet: () => void }) => {
   if (!item) return null
   const count = inventory.length
-  const heroItem = item as HeroItem
+  const heroItem = item as HeroItem & { customGradient?: string }
+  const isCashTrees = item.id === 201 || item.id === 202
   return (
     <div className="fixed inset-0 z-[80] bg-white overflow-y-auto flex flex-col">
       <div className="absolute top-0 w-full p-4 flex justify-between items-center z-50">
@@ -531,7 +665,12 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
       </div>
       <div className="relative w-full h-[45vh] shrink-0 bg-gray-900">
         {heroItem.image && <img src={heroItem.image} className="w-full h-full object-cover" alt={heroItem.title} />}
-        <div className={`absolute inset-0 bg-gradient-to-t ${heroItem.overlay || "from-black/80 via-transparent to-black/30"}`} />
+        {heroItem.customGradient ? (
+          <div className="absolute inset-0" style={{ background: heroItem.customGradient }} />
+        ) : (
+          <div className={`absolute inset-0 bg-gradient-to-t ${heroItem.overlay || "from-black/80 via-transparent to-black/30"}`} />
+        )}
+        {isCashTrees && <img src={cashTreesLog} alt="CashTrees" className="absolute top-[2.25rem] left-5 w-32 h-20 object-contain z-10 opacity-90 drop-shadow-md" />}
         <div className="absolute bottom-0 left-0 w-full p-6 text-white"><span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-3 inline-block bg-[#1562f0]">{heroItem.type || "Voucher"}</span><h1 className="text-4xl font-bold leading-tight mb-2 shadow-sm">{heroItem.title}</h1><p className="text-lg text-white/90 font-medium">{heroItem.merchant}</p></div>
       </div>
       <div className="flex-1 px-6 py-8 pb-32">
@@ -766,6 +905,11 @@ export default function Market() {
 			setShowCardDetail(true)
 			return
 		}
+		// CashTrees cards: open detail modal to view/purchase
+		if (item.id === 201 || item.id === 202) {
+			openDetail(item)
+			return
+		}
 		setViewingItem(null)
 	}
 	const finalizeGenesis = () => {
@@ -797,97 +941,17 @@ export default function Market() {
 		<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 min-h-0 overflow-y-auto pb-24">
 		{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
 		<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
-		{/* HERO CARDS: PREMIER ACCESS (ExampleCard style - horizontal snap scroll) */}
+		{/* HERO CARDS: CashTrees (ExampleCardNew StoryCard design) */}
 		<div className="flex gap-4 overflow-x-auto px-5 pb-8 scrollbar-hide snap-x snap-mandatory">
-			{/* 1. Genesis Node Pack (ExampleCard GenesisCard design) */}
-			<GenesisCard
-				data={GENESIS_NODE_DATA}
-				onClick={() => openDetail(GENESIS_NODE_DATA)}
-			/>
-
-			{/* 2. Limited Fuel Pack (The Store Clearing Fuel) */}
-			<FuelPackCard
-				data={LIMITED_FUEL_PACK_DATA}
-				onClick={() => openDetail(LIMITED_FUEL_PACK_DATA)}
-			/>
-
-			{/* 3. CCSA + Sen Pho (ExampleCard Hero design) */}
-			{HERO_COLLECTION.map((item) => {
-				const count = item.id === 101 ? (isMember ? 1 : 0) : getOwnedInstances(item.id).length
-				return (
-					<div
-						key={item.id}
-						role="button"
-						tabIndex={0}
-						onClick={() => openDetail(item)}
-						onKeyDown={(e) => e.key === "Enter" && openDetail(item)}
-						className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300 shrink-0"
-					>
-						<img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={item.title} />
-						<div className={`absolute inset-0 bg-gradient-to-t ${item.overlay}`} />
-						<div className="absolute inset-0 p-6 flex flex-col justify-between">
-							<div>
-								<span className="text-blue-400 text-xs font-bold uppercase tracking-widest bg-black/40 backdrop-blur-md px-2 py-1 rounded-md inline-block">
-									{item.tagline}
-								</span>
-								<h2 className={`mt-2 text-4xl font-bold leading-[0.95] tracking-tight ${item.color ?? "text-white"} drop-shadow-lg`}>
-									{item.title}
-								</h2>
-								<p className="mt-2 text-white/90 font-medium text-[15px] drop-shadow-md line-clamp-2 leading-snug">
-									{item.subtitle}
-								</p>
-							</div>
-							<div className={`flex flex-col ${item.partners ? "gap-3" : ""}`}>
-								{item.partners && (
-									<div onClick={(e) => e.stopPropagation()} className="flex justify-end">
-										<GetButton price={item.price} count={count} onClick={() => navigate("/example-card")} />
-									</div>
-								)}
-								<div className={`bg-white/10 backdrop-blur-xl border border-white/20 rounded-[20px] p-4 shadow-lg flex ${item.partners ? "" : "items-center justify-between"}`}>
-								<div className={`flex items-center gap-3.5 ${item.partners ? "" : "flex-1"}`}>
-									{item.partners ? (
-										<div className="flex -space-x-3">
-											{item.partners.map((p, i) => (
-												<div key={i} className={`w-10 h-10 ${p.bg} rounded-full flex items-center justify-center text-lg border-2 border-white/20 shadow-md`}>
-													{p.icon}
-												</div>
-											))}
-										</div>
-									) : (
-										<div className="w-12 h-12 bg-black/40 backdrop-blur-md rounded-[14px] flex items-center justify-center shadow-inner border border-white/10">
-											<Store size={24} className="text-white/60" />
-										</div>
-									)}
-									<div className="flex flex-col">
-										<span className="text-white font-bold text-[15px] leading-tight">
-											{item.partners ? "Multiple Locations" : item.merchant}
-										</span>
-										<div className="flex items-center gap-1.5 mt-0.5">
-											{item.partners ? (
-												<div className="flex items-center gap-1 text-green-300">
-													<Store size={12} fill="currentColor" />
-													<span className="text-[11px] font-bold uppercase tracking-wide">Alliance</span>
-												</div>
-											) : (
-												<>
-													{item.price > 0 && <Crown size={12} className="text-amber-400 fill-current" />}
-													<span className="text-gray-300 text-[11px] font-medium uppercase tracking-wide">{item.type}</span>
-												</>
-											)}
-										</div>
-									</div>
-								</div>
-								{!item.partners && (
-									<div onClick={(e) => e.stopPropagation()}>
-										<GetButton price={item.price} count={count} onClick={() => navigate("/example-express")} />
-									</div>
-								)}
-								</div>
-							</div>
-						</div>
-					</div>
-				)
-			})}
+			{CASH_TREES_COLLECTION.map((item) => (
+				<StoryCard
+					key={item.id}
+					item={item}
+					count={getOwnedInstances(item.id).length}
+					onClick={openDetail}
+					onBuy={(it) => initiatePurchase(it)}
+				/>
+			))}
 		</div>
 
 		<div className="h-px bg-gray-200 mx-5 mb-2" />
@@ -901,6 +965,9 @@ export default function Market() {
 					type="button"
 					onClick={() => {
 						switch (cat.id) {
+							case 'dining':
+								navigate("/example-card-new")
+								break
 							case 'services':
 								navigate("/transfertion")
 								break

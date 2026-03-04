@@ -1783,6 +1783,32 @@ export const getLatest20UserActions_Lite = async (
 	return uniqueFiltered.slice(0, 20)
 };
 
+/** CoNET 主网 BUint 合约地址 */
+const CONET_BUINT_ADDRESS = "0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879";
+
+const BUINT_BALANCE_OF_ALL_ABI = [
+  "function balanceOfAll(address account) external view returns (uint256 total, uint256 free, uint256 paid)"
+];
+
+/**
+ * 查询 CoNET 主网 BUint 余额（total, free, paid）。6 位精度。
+ */
+export const getBUnitBalanceOnConet = async (account: string): Promise<{ total: number; free: number; paid: number }> => {
+  if (!account || !ethers.isAddress(account)) return { total: 0, free: 0, paid: 0 };
+  try {
+    const contract = new ethers.Contract(CONET_BUINT_ADDRESS, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
+    const [total, free, paid] = await contract.balanceOfAll(account);
+    const decimals = 6;
+    return {
+      total: Number(total) / 10 ** decimals,
+      free: Number(free) / 10 ** decimals,
+      paid: Number(paid) / 10 ** decimals
+    };
+  } catch {
+    return { total: 0, free: 0, paid: 0 };
+  }
+};
+
 export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<searchResult | null> => {
     try {
         const card = new ethers.Contract(cardAddress, cardAbi, baseEndpoint)

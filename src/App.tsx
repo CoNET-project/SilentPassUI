@@ -36,8 +36,9 @@ import TenKeyInput from "@/pages/Pay/components/TenKeyInput"
 import { Toast } from "antd-mobile"
 import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
 import NewCardExample from '@/pages/Vouchers/example/newCardExample'
-import BeamioTransactions from '@/pages/Vouchers/example/transfertion'
-import MobilePOS from '@/pages/Vouchers/example/nativeApp'
+import ExampleCardNew from '@/pages/Vouchers/example/ExampleCardNew'
+import BeamioTransactions from '@/pages/Vouchers/example/uelCenter'
+import MobilePOS from '@/pages/Vouchers/example/Pos'
 import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -1030,6 +1031,7 @@ function AppShell() {
 				<Route path="/ten-key-input" element={<TenKeyInput />} />
 				<Route path="/example-card" element={<EmapmpleCard />} />
 				<Route path="/example-new-card" element={<NewCardExample />} />
+				<Route path="/example-card-new" element={<ExampleCardNew />} />
 				<Route path="/transfertion" element={<BeamioTransactions />} />
 				<Route path="/native-pos" element={<MobilePOS />} />
 				<Route path="/cardManager" element={<CardManager />} />

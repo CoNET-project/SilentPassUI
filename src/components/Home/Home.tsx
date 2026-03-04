@@ -16,7 +16,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, ArrowUpRight, ArrowDownLeft, Plus } 
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, ArrowUpRight, ArrowDownLeft, Plus, Fuel } 
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -29,13 +29,14 @@ import PayScreen from '@/pages/Pay/send'
 import { ethers } from 'ethers'
 import { baseEndpoint } from '@/utils/constants'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
-import { getAAAccount, getMyAssetsAggregated } from '@/services/BeamioCard'
+import { getAAAccount, getMyAssetsAggregated, getBUnitBalanceOnConet } from '@/services/BeamioCard'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import BankingBridge from '@/pages/History/components/BankingBridge'
+import FuelView from './FuelView'
 
 
 
@@ -83,6 +84,7 @@ const Home = ({}) => {
 	const [reflash, setReflash] = useState(false)
 	const [itemTx, setItemtx] = useState<TransferHistork>()
 	const [ccsaAssets, setCcsaAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
+	const [bUnitBalance, setBUnitBalance] = useState<{ total: number; free: number; paid: number } | null>(null)
 
 
 
@@ -92,6 +94,7 @@ const Home = ({}) => {
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
 	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
+	const [showFuelView, setShowFuelView] = useState(false)
 	/** Add Cash 后：底部 sheet 内显示 Coinbase 确认 (204-221)，非全屏 */
 	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
@@ -132,6 +135,9 @@ const Home = ({}) => {
 		getMyAssetsAggregated(profile)
 			.then(setCcsaAssets)
 			.catch(() => setCcsaAssets(null))
+		getBUnitBalanceOnConet(profile.keyID)
+			.then(setBUnitBalance)
+			.catch(() => setBUnitBalance(null))
 		setReflash(false)
 	}
 
@@ -778,16 +784,18 @@ const Home = ({}) => {
 							<div className="text-center py-4">
 								<button
 									type="button"
-									onClick={reflashProcess}
-									disabled={reflash}
-									className={`
-										inline-flex items-center space-x-1.5 px-3 py-1 bg-white rounded-full shadow-sm border border-gray-100 mb-4
-										transition active:scale-[0.98]
-										${reflash ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:bg-gray-50'}
-									`}
+									onClick={() => setShowFuelView(true)}
+									className="inline-flex items-center rounded-full border border-orange-200 dark:border-orange-800/50 overflow-hidden shadow-sm mb-4 transition active:scale-[0.98] cursor-pointer hover:opacity-90"
 								>
-									<Zap className={`w-3.5 h-3.5 text-yellow-500 fill-current ${reflash ? 'animate-spin' : ''}`} />
-									<span className="text-xs font-semibold text-gray-600">Beamio Sponsored Gas</span>
+									<div className="inline-flex items-center gap-1.5 pl-4 pr-2 py-1.5 bg-white dark:bg-slate-800">
+										<Fuel size={14} className="text-orange-500 fill-current" />
+										<span className="text-[11px] font-semibold text-gray-700 dark:text-slate-300">Network Fuel</span>
+									</div>
+									<div className="inline-flex items-center px-3 py-1.5 bg-orange-100 dark:bg-orange-900/30">
+										<span className="text-[11px] font-bold text-orange-600 dark:text-orange-400">
+											{bUnitBalance != null ? Math.floor(bUnitBalance.total) : "—"} B-Units
+										</span>
+									</div>
 								</button>
 								<h2 className="text-sm font-medium text-gray-500 mb-1 tracking-wide">
 									Total Valuation ({currency})
@@ -983,6 +991,27 @@ const Home = ({}) => {
 							</motion.div>
 						</>
 					)}
+				</AnimatePresence>,
+				document.body
+			)}
+
+			{showFuelView && createPortal(
+				<AnimatePresence>
+					<motion.div
+						key="fuel-view-overlay"
+						className="fixed inset-0 z-[9999] bg-white dark:bg-slate-900 flex flex-col"
+						initial={{ x: "100%" }}
+						animate={{ x: 0 }}
+						exit={{ x: "100%" }}
+						transition={{ duration: 0.28, ease: "easeOut" }}
+					>
+						<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain pt-[env(safe-area-inset-top)]">
+							<FuelView onClose={() => setShowFuelView(false)} bUnitBalance={bUnitBalance} onRefresh={() => {
+								const p = profiles?.[0]
+								if (p?.keyID) getBUnitBalanceOnConet(p.keyID).then(setBUnitBalance).catch(() => setBUnitBalance(null))
+							}} />
+						</div>
+					</motion.div>
 				</AnimatePresence>,
 				document.body
 			)}

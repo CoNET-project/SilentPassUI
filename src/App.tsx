@@ -49,7 +49,7 @@ const beamioConetContract = {
   address: "0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd",
   network: "CONET DePIN",
   abi: beamioConetCoreABI,
-  provider: new ethers.JsonRpcProvider("https://mainnet-rpc1.conet.network"),
+  provider: new ethers.JsonRpcProvider("https://mainnet-rpc.conet.network"),
 }
 
 type message = {
@@ -152,9 +152,10 @@ function AppShell() {
   }, [isInitialLoading, navigate, setRedeemFromUrl])
 
   // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求
+  // 重要：claimant 必须从私钥推导，不能使用 keyID，否则会导致 signer != claimant 链上失败
   useEffect(() => {
     if (bUnitClaimAttemptedRef.current || !profiles?.length) return
-    const p0 = profiles[0] as { privateKeyArmor?: string } | undefined
+    const p0 = profiles[0] as { privateKeyArmor?: string; keyID?: string } | undefined
     if (!p0?.privateKeyArmor) return
     let claimant: string
     try {
@@ -163,6 +164,10 @@ function AppShell() {
       return
     }
     if (!claimant || !ethers.isAddress(claimant)) return
+    // 防御：keyID 与私钥推导地址不一致时跳过，避免 signer != claimant 导致链上 revert
+    if (p0.keyID && ethers.isAddress(p0.keyID) && p0.keyID.toLowerCase() !== claimant.toLowerCase()) {
+      return
+    }
     bUnitClaimAttemptedRef.current = true
     checkBUnitClaimEligibility(claimant).then(async (r) => {
       if (!r.canClaim || r.nonce == null || r.deadline == null) return

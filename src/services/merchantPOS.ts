@@ -87,7 +87,7 @@ export function generateRegisterPOSNonce(): string {
 }
 
 /** CoNET 主网 RPC */
-const CONET_RPC = 'https://mainnet-rpc1.conet.network'
+const CONET_RPC = 'https://mainnet-rpc.conet.network'
 
 const MERCHANT_POS_ABI = [
 	'function getMerchantPOSList(address merchant) view returns (address[])',

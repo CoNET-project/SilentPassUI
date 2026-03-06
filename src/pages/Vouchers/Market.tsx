@@ -972,7 +972,7 @@ export default function Market() {
 								navigate("/transfertion")
 								break
 							case 'retail':
-								navigate("/native-pos")
+								navigate("/render-action")
 								break
 						}
 					}}

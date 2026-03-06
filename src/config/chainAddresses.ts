@@ -12,3 +12,6 @@ export const BASE_MAINNET_FACTORIES = {
   /** CCSA 卡 (BeamioUserCard 实例)。与 x402sdk chainAddresses.ts BASE_CCSA_CARD_ADDRESS 必须一致；重发卡后运行 replace-ccsa-address.js 同步两处 */
   BeamioCardCCSA_ADDRESS: '0x2032A363BB2cf331142391fC0DAd21D6504922C7',
 } as const
+
+/** BaseTreasury: USDC 购买 B-Unit，用户 EIP-3009 离线签字后由服务端提交 */
+export const BASE_TREASURY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'

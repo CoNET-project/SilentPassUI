@@ -266,6 +266,13 @@ const Home = ({}) => {
 
   	}, [])
 
+	/** profiles 可用时刷新 B-Unit 余额（init 可能早于 profiles 加载完成） */
+	useEffect(() => {
+		if (profiles?.length && profiles[0]?.keyID) {
+			reflashProcess()
+		}
+	}, [profiles?.length, profiles?.[0]?.keyID])
+
 
 
 	/** 常见币种相对 USD 的 fallback 汇率（1 USD = X 该币种），用于 currencyData 未加载时 */
@@ -1006,10 +1013,15 @@ const Home = ({}) => {
 						transition={{ duration: 0.28, ease: "easeOut" }}
 					>
 						<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain pt-[env(safe-area-inset-top)]">
-							<FuelView onClose={() => setShowFuelView(false)} bUnitBalance={bUnitBalance} onRefresh={() => {
-								const p = profiles?.[0]
-								if (p?.keyID) getBUnitBalanceOnConet(p.keyID).then(setBUnitBalance).catch(() => setBUnitBalance(null))
-							}} />
+							<FuelView
+								onClose={() => setShowFuelView(false)}
+								bUnitBalance={bUnitBalance}
+								account={profiles?.[0]?.keyID}
+								onRefresh={() => {
+									const p = profiles?.[0]
+									if (p?.keyID) getBUnitBalanceOnConet(p.keyID).then(setBUnitBalance).catch(() => setBUnitBalance(null))
+								}}
+							/>
 						</div>
 					</motion.div>
 				</AnimatePresence>,

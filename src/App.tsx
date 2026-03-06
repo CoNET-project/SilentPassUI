@@ -15,8 +15,7 @@ import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
 import { checkStorage, searchUsername, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
-import { baseEndpoint, USDCContract_BASE, setBaseRpcNodeProvider, setRpcDegradedGetter } from "@/utils/constants"
-import { isRpcDegraded } from "@/utils/rpcStatus"
+import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
 import MyWallet from "@/pages/Settings/index"
@@ -40,6 +39,7 @@ import ExampleCardNew from '@/pages/Vouchers/example/ExampleCardNew'
 import BeamioTransactions from '@/pages/Vouchers/example/uelCenter'
 import MobilePOS from '@/pages/Vouchers/example/Pos'
 import CardManager from '@/pages/cardManager'
+import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
@@ -50,7 +50,7 @@ const beamioConetContract = {
   address: "0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd",
   network: "CONET DePIN",
   abi: beamioConetCoreABI,
-  provider: new ethers.JsonRpcProvider("https://mainnet-rpc1.conet.network"),
+  provider: new ethers.JsonRpcProvider("https://mainnet-rpc.conet.network"),
 }
 
 type message = {
@@ -153,9 +153,10 @@ function AppShell() {
   }, [isInitialLoading, navigate, setRedeemFromUrl])
 
   // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求
+  // 重要：claimant 必须从私钥推导，不能使用 keyID，否则会导致 signer != claimant 链上失败
   useEffect(() => {
     if (bUnitClaimAttemptedRef.current || !profiles?.length) return
-    const p0 = profiles[0] as { privateKeyArmor?: string } | undefined
+    const p0 = profiles[0] as { privateKeyArmor?: string; keyID?: string } | undefined
     if (!p0?.privateKeyArmor) return
     let claimant: string
     try {
@@ -164,6 +165,10 @@ function AppShell() {
       return
     }
     if (!claimant || !ethers.isAddress(claimant)) return
+    // 防御：keyID 与私钥推导地址不一致时跳过，避免 signer != claimant 导致链上 revert
+    if (p0.keyID && ethers.isAddress(p0.keyID) && p0.keyID.toLowerCase() !== claimant.toLowerCase()) {
+      return
+    }
     bUnitClaimAttemptedRef.current = true
     checkBUnitClaimEligibility(claimant).then(async (r) => {
       if (!r.canClaim || r.nonce == null || r.deadline == null) return
@@ -184,16 +189,6 @@ function AppShell() {
   useLayoutEffect(() => {
     if (showFooter) setFooterVisible(true)
   }, [showFooter, pathname])
-
-  // 注册 Base RPC 节点提供者与熔断状态：限流时仅使用 CoNET allNodes
-  useEffect(() => {
-    setBaseRpcNodeProvider(() => allNodes)
-    setRpcDegradedGetter(() => isRpcDegraded())
-    return () => {
-      setBaseRpcNodeProvider(null)
-      setRpcDegradedGetter(null)
-    }
-  }, [allNodes])
 
 	/** 消息唯一键：优先 sendId，否则 from_timestamp，用于去重与角标 */
 	const getMsgKey = (raw: any) => {
@@ -1035,6 +1030,7 @@ function AppShell() {
 				<Route path="/transfertion" element={<BeamioTransactions />} />
 				<Route path="/native-pos" element={<MobilePOS />} />
 				<Route path="/cardManager" element={<CardManager />} />
+				<Route path="/render-action" element={<RenderActionPage />} />
 				</Routes>
 				</div>
 			</div>

@@ -1,8 +1,7 @@
 /**
- * Base 主网 RPC 自动切换模块
- * 优先使用 1rpc.io/base（免费），故障时自动切换到 CoNET 代理节点
- * 支持 CoNET allNodes：限流时仅使用 CoNET 节点，不向 API 服务器请求
- * 支持 VITE_BASE_RPC 环境变量覆盖（使用单节点，不切换）
+ * Base 主网 RPC 模块
+ * 使用 Beamio Base RPC (base-rpc.conet.network)，不再使用 conet.network 节点代理
+ * 支持 VITE_BASE_RPC 环境变量覆盖
  */
 import { ethers } from 'ethers'
 
@@ -10,11 +9,11 @@ const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
 const _viteBaseRpc = typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_BASE_RPC?: string } }).env?.VITE_BASE_RPC
 
-/** 免费 Base 主网 RPC 列表（VITE_BASE_RPC 未设置时：多节点 fallback，RPC 限流/失败时自动切换） */
+/** Base 主网 RPC 列表（VITE_BASE_RPC 未设置时使用 Beamio Base RPC） */
 export const BASE_RPC_URLS = _viteBaseRpc
 	? [_viteBaseRpc]
 	: [
-		'https://1rpc.io/base'
+		'https://base-rpc.conet.network'
 	]
 
 /** 检测是否为 RPC 配额/网络类错误（应触发切换） */
@@ -35,34 +34,21 @@ export const isRpcQuotaOrNetworkError = (err: unknown): boolean => {
 	)
 }
 
-/** CoNET 节点信息（只需 domain 字段） */
+/** @deprecated 不再使用 conet.network 节点作为 Base RPC，保留空实现以兼容调用方 */
 export type BaseRpcNodeInfo = { domain: string }
 
-let _nodeProvider: (() => BaseRpcNodeInfo[]) | null = null
-let _rpcDegradedGetter: (() => boolean) | null = null
-
-/** 注册 useDaemonContext 的 allNodes 提供者 */
-export function setBaseRpcNodeProvider(getter: (() => BaseRpcNodeInfo[]) | null): void {
-	_nodeProvider = getter
+/** @deprecated 不再使用 conet.network 节点 */
+export function setBaseRpcNodeProvider(_getter: (() => BaseRpcNodeInfo[]) | null): void {
+	// no-op
 }
 
-/** 注册熔断状态获取器（由 rpcStatus 注入，限流时仅使用 CoNET 节点） */
-export function setRpcDegradedGetter(getter: (() => boolean) | null): void {
-	_rpcDegradedGetter = getter
+/** @deprecated 不再使用 conet.network 节点 */
+export function setRpcDegradedGetter(_getter: (() => boolean) | null): void {
+	// no-op
 }
 
-/** 从 CoNET 节点构建 Base RPC URL */
-function conetNodeToBaseRpcUrl(node: BaseRpcNodeInfo): string {
-	return `https://${node.domain}.conet.network/base-rpc`
-}
-
-/** 获取当前有效 URL 列表：限流时仅 CoNET 代理；否则 1rpc.io 优先，CoNET 代理作 fallback */
+/** 获取当前有效 URL 列表（仅 BASE_RPC_URLS，不再包含 conet 节点） */
 function getEffectiveUrls(): string[] {
-	const nodes = _nodeProvider?.() ?? []
-	const conetUrls = nodes.map(conetNodeToBaseRpcUrl)
-	const isDegraded = _rpcDegradedGetter?.() ?? false
-	if (isDegraded && conetUrls.length > 0) return conetUrls
-	if (conetUrls.length > 0) return [...BASE_RPC_URLS, ...conetUrls]
 	return BASE_RPC_URLS
 }
 
@@ -71,13 +57,13 @@ function createProvider(url: string): ethers.JsonRpcProvider {
 	return new ethers.JsonRpcProvider(url, BASE_NETWORK, { staticNetwork: true })
 }
 
-/** 当前使用的 RPC 索引；CoNET 节点时首次随机选取 */
+/** 当前使用的 RPC 索引 */
 let _currentIndex = 0
 
-/** 获取当前 provider（使用 _currentIndex） */
+/** 获取当前 provider */
 function getCurrentProvider(): ethers.JsonRpcProvider {
 	const urls = getEffectiveUrls()
-	if (!urls.length) return createProvider(BASE_RPC_URLS[0] ?? 'https://1rpc.io/base')
+	if (!urls.length) return createProvider('https://base-rpc.conet.network')
 	return createProvider(urls[_currentIndex] ?? urls[0])
 }
 
@@ -92,7 +78,7 @@ export function switchToNextBaseRpc(): ethers.JsonRpcProvider {
 	const urls = getEffectiveUrls()
 	const n = Math.max(1, urls.length)
 	_currentIndex = (_currentIndex + 1) % n
-	return createProvider(urls[_currentIndex] ?? BASE_RPC_URLS[0] ?? 'https://1rpc.io/base')
+	return createProvider(urls[_currentIndex] ?? urls[0] ?? 'https://base-rpc.conet.network')
 }
 
 /** 获取当前 RPC URL（便于调试） */
@@ -107,38 +93,19 @@ export function resetBaseRpcIndex(): void {
 	_hasPickedRandomStart = false
 }
 
-/** 等待 allNodes 内有节点（限流时需使用 CoNET 节点前调用） */
-export function waitForConetNodes(maxWaitMs = 30000): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const nodes = _nodeProvider?.()
-		if (nodes && nodes.length > 0) return resolve()
-		const start = Date.now()
-		const t = setInterval(() => {
-			const n = _nodeProvider?.()
-			if (n && n.length > 0) {
-				clearInterval(t)
-				resolve()
-			} else if (Date.now() - start >= maxWaitMs) {
-				clearInterval(t)
-				reject(new Error('Base RPC: 等待 CoNET 节点超时'))
-			}
-		}, 300)
-	})
+/** @deprecated 不再使用 conet.network 节点，立即 resolve */
+export function waitForConetNodes(_maxWaitMs = 30000): Promise<void> {
+	return Promise.resolve()
 }
 
 /**
- * 使用 Base RPC 执行任意异步操作，失败时自动切换节点重试
- * 限流时仅使用 CoNET allNodes，不向 API 服务器请求；若无节点则等待
+ * 使用 Base RPC 执行任意异步操作，失败时自动切换节点重试（仅 BASE_RPC_URLS 内切换）
  */
 /** 是否已在本次会话中做过随机起始（避免每次请求都重置，导致 429 后下次又打回故障节点） */
 let _hasPickedRandomStart = false
 
 export async function withBaseRpc<T>(fn: (provider: ethers.JsonRpcProvider) => Promise<T>): Promise<T> {
-	let urls = getEffectiveUrls()
-	if (urls.length === 0) {
-		await waitForConetNodes()
-		urls = getEffectiveUrls()
-	}
+	const urls = getEffectiveUrls()
 	// 首次或 url 数量变化时做一次随机起始，后续保持 _currentIndex（429 后 switchToNextBaseRpc 已递增，不重置）
 	if (!_hasPickedRandomStart || _currentIndex >= urls.length) {
 		pickRandomStartIndex()
@@ -180,7 +147,7 @@ export async function callWithBaseRpcRetry(
 	})
 }
 
-/** 创建带自动切换的 Base Provider：支持 CoNET 节点与限流时仅用节点 */
+/** 创建带自动切换的 Base Provider（仅 BASE_RPC_URLS 内切换） */
 function createSwitchableBaseProvider(): ethers.Provider {
 	const base = getCurrentProvider()
 	return new Proxy(base, {

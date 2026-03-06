@@ -28,36 +28,65 @@ import {
  Cpu,
  BarChart3,
  ArrowRightLeft,
- Wallet as WalletIcon,
- Link2
+ Wallet as WalletIcon
 } from 'lucide-react';
 
 
 // --- Global Configuration (V4.0 Specs) ---
 const BEAMIO_BLUE = "#1562f0";
 const REFUEL_GAS_COST = 2; // Shadow gas for the refuel operation itself
+
+type Contact = { id: string; name: string; tag: string; followers: number; wallet: string; avatarColor: string };
+type LedgerLog = { id: string; title: string; subtitle: string; amount: number; time: string; type: string; status: string; linkedUsdc: string; txHash: string; network: string };
 const MIN_SERVICE_FEE = 2; // Min 2 Units ($0.02)
 const MAX_SERVICE_FEE = 200; // Max 200 Units ($2.00)
 const P2P_GAS_COST = 2; // Flat 2 Units for P2P Send
 
 
-// 🛠 Helper to generate massive mock data to test pagination
+// 🌟 核心更新：将 V2 终极版字典中的 11 个标准事件全量注入账本
 const generateExtendedLogs = () => {
  const baseLogs = [
-   { id: "LOG-892A", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "Feb 21, 14:22", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
-   { id: "LOG-891B", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "2h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x1c9d...9e2f", network: "Base Mainnet" },
-   { id: "LOG-890C", title: "Manual Refuel Gain", subtitle: "Swap $5.00 USDC", amount: 498, time: "5h ago", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x4a1b...2c3d", network: "Base Mainnet" },
-   { id: "LOG-889D", title: "Reward Backfill", subtitle: "CashTree Card Claim #102", amount: 100, time: "Yesterday", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" }
+   // 1. In-App Refuel (Atomically split)
+   { id: "LOG-YLD-01", title: "Fuel Yield (1:100)", subtitle: "Swap $5.00 USDC", amount: 500, time: "Just now", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
+   { id: "LOG-FEE-01", title: "Refuel Fee (Shadow Gas)", subtitle: "Underlying Tx Cost", amount: -2, time: "Just now", type: "gas", status: "Completed", linkedUsdc: "N/A", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
+  
+   // 2. Consumption Tax
+   { id: "LOG-SVC-02", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "2h ago", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x1c9d...9e2f", network: "Base Mainnet" },
+  
+   // 3. P2P Transfer
+   { id: "LOG-P2P-03", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "5h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x4a1b...2c3d", network: "Base Mainnet" },
+  
+   // 4. Operator Subsidy
+   { id: "LOG-OP-04", title: "CashTrees Top-up Bonus", subtitle: "Operator Subsidy", amount: 100, time: "Yesterday", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" },
+  
+   // 5. Card Activation
+   { id: "LOG-CARD-05", title: "Hardware Minting Fee", subtitle: "Card Setup", amount: -99, time: "Feb 20", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0x5566...7788", network: "CoNET L1" },
+  
+   // 6. Asset Minting
+   { id: "LOG-DEP-06", title: "Deposit Network Fee", subtitle: "Top-up Card", amount: -2, time: "Feb 19", type: "gas", status: "Completed", linkedUsdc: "N/A", txHash: "0x99aa...bbcc", network: "Base Mainnet" },
+  
+   // 7. Operator Payout
+   { id: "LOG-PAY-07", title: "Settlement Routing Fee", subtitle: "Operator Payout", amount: -2, time: "Feb 18", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0xddee...ff00", network: "Base Mainnet" },
+  
+   // 8. B2B Large Payment
+   { id: "LOG-B2B-08", title: "B2B Transfer Fee", subtitle: "Procurement Gas", amount: -500, time: "Feb 15", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0x1234...5678", network: "Base Mainnet" },
+  
+   // 9. Protocol Subsidy
+   { id: "LOG-PROT-09", title: "Network Welcome Grant", subtitle: "Protocol Subsidy", amount: 20, time: "Feb 14", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x1122...3344", network: "CoNET L1" },
+  
+   // 10. Enterprise Fuel Pack
+   { id: "LOG-ENT-10", title: "Enterprise Fuel Allocation", subtitle: "Fuel Pack Purchase", amount: 100000, time: "Feb 10", type: "refuel", status: "Completed", linkedUsdc: "N/A", txHash: "0x8765...4321", network: "Base Mainnet" }
  ];
-  const extraLogs = Array.from({length: 25}).map((_, i) => {
+  // Backfill with some generic historic data for pagination demo
+ const extraLogs = Array.from({length: 15}).map((_, i) => {
      const isFee = i % 3 === 0;
      const isRefuel = i % 7 === 0;
      return {
          id: `LOG-EXT-${i}`,
-         title: isRefuel ? "Auto-Refuel" : isFee ? "Service Fee (0.8%)" : "Network Gas",
+         title: isRefuel ? "Fuel Yield (1:100)" : isFee ? "Service Fee (0.8%)" : "Network Gas",
          subtitle: isRefuel ? "System Top-up" : `Historical Txn #${500 - i}`,
-         amount: isRefuel ? 98 : isFee ? -45 : -2,
-         time: `Feb ${20 - Math.floor(i/3)}, 10:00`,
+         amount: isRefuel ? 500 : isFee ? -45 : -2,
+         time: `Jan ${28 - Math.floor(i/3)}, 10:00`,
          type: isRefuel ? "refuel" : isFee ? "fee" : "gas",
          status: "Completed",
          linkedUsdc: isFee ? "56.25 USDC" : "N/A",
@@ -89,7 +118,6 @@ const App = () => {
   // Send Workflow States
  const [sendModalOpen, setSendModalOpen] = useState(false);
  const [sendStep, setSendStep] = useState('input');
- type Contact = { id: string; name: string; tag: string; followers: number; wallet: string; avatarColor: string };
  const [sendRecipient, setSendRecipient] = useState<Contact | null>(null);
  const [sendAmount, setSendAmount] = useState('');
  const [sendSearchQuery, setSendSearchQuery] = useState('');
@@ -100,18 +128,17 @@ const App = () => {
 
 
  // Ledger Detail Modal State
- type LogEntry = { id: string; title: string; subtitle: string; amount: number; time: string; type: string; status: string; linkedUsdc: string; txHash: string; network: string };
- const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+ const [selectedLog, setSelectedLog] = useState<LedgerLog | null>(null);
 
 
  // Filter & Pagination UI States
  const [showFilters, setShowFilters] = useState(false);
  const [ledgerFilter, setLedgerFilter] = useState('all');
- const [visibleLogs, setVisibleLogs] = useState(5);
+ const [visibleLogs, setVisibleLogs] = useState(11); // Default show 11 to fit all dictionary events
 
 
  useEffect(() => {
-   setVisibleLogs(5);
+   setVisibleLogs(11);
  }, [ledgerFilter]);
 
 
@@ -135,12 +162,13 @@ const App = () => {
  const mockYieldLedger = [
    { title: "Protocol Share (Burn)", subtitle: "From 12,450 Network Txns", amount: "+4.25", asset: "USDC", time: "1h ago", icon: <Fuel size={16} className="text-orange-500" /> },
    { title: "Protocol Share (Burn)", subtitle: "From 3,820 Network Txns", amount: "+1.12", asset: "USDC", time: "4h ago", icon: <Fuel size={16} className="text-orange-500" /> },
+   // 🌟 核心更新：加入字典定义的 Node_Claim_Fee 扣除明细
+   { title: "Cross-chain Claim Fee (0.05%)", subtitle: "Yield Extraction", amount: "-0.06", asset: "B-Units", time: "Feb 20", icon: <ArrowRightLeft size={16} className="text-slate-400" /> },
    { title: "Yield Claimed", subtitle: "To Main Wallet", amount: "-120.00", asset: "USDC", time: "Feb 20", icon: <ArrowRightLeft size={16} className="text-slate-400" /> }
  ];
 
 
  // --- Logic Calculations ---
- // 🌟 更新：B-Units 健康状态颜色全面向橙色 (Orange) 家族靠拢
  const fuelStatus = useMemo(() => {
    if (bUnits > 50) return { label: 'Optimal', color: 'text-orange-500', bar: 'bg-orange-500', width: '85%' };
    if (bUnits >= 10) return { label: 'Warning', color: 'text-amber-500', bar: 'bg-amber-500', width: '30%' };
@@ -163,12 +191,23 @@ const App = () => {
      setUsdcBalance(prev => prev - refuelAmount);
      setBUnits(prev => prev + (refuelAmount * 100) - REFUEL_GAS_COST);
     
-     setBUnitsLedger([{
-       id: `LOG-${Math.floor(Math.random()*10000)}`,
-       title: "Manual Refuel Gain", subtitle: `Swap $${refuelAmount.toFixed(2)} USDC`,
-       amount: (refuelAmount * 100) - REFUEL_GAS_COST, time: "Just now", type: "refuel", status: "Completed",
-       linkedUsdc: `-${refuelAmount.toFixed(2)} USDC`, txHash: "0x" + Math.random().toString(16).substr(2, 8), network: "Base Mainnet"
-     }, ...bUnitsLedger]);
+     const commonTxHash = "0x" + Math.random().toString(16).substr(2, 8);
+    
+     setBUnitsLedger([
+       {
+         id: `LOG-FEE-${Math.floor(Math.random()*10000)}`,
+         title: "Refuel Fee (Shadow Gas)", subtitle: `Underlying Tx Cost`,
+         amount: -REFUEL_GAS_COST, time: "Just now", type: "gas", status: "Completed",
+         linkedUsdc: "N/A", txHash: commonTxHash, network: "Base Mainnet"
+       },
+       {
+         id: `LOG-YLD-${Math.floor(Math.random()*10000)}`,
+         title: "Fuel Yield (1:100)", subtitle: `Swap $${refuelAmount.toFixed(2)} USDC`,
+         amount: (refuelAmount * 100), time: "Just now", type: "refuel", status: "Completed",
+         linkedUsdc: `-${refuelAmount.toFixed(2)} USDC`, txHash: commonTxHash, network: "Base Mainnet"
+       },
+       ...bUnitsLedger
+     ]);
 
 
      setIsRefueling(false);
@@ -198,7 +237,8 @@ const App = () => {
 
 
  const executeSend = () => {
-   if (!sendRecipient) return;
+   const recipient = sendRecipient;
+   if (!recipient) return;
    setSendStep('processing');
    setTimeout(() => {
      const amountNum = parseFloat(sendAmount);
@@ -208,8 +248,8 @@ const App = () => {
 
      setUsdcLedger([{
        id: `u-${Date.now()}`,
-       name: `Sent to ${sendRecipient.name}`,
-       tag: sendRecipient.tag,
+       name: `Sent to ${recipient.name}`,
+       tag: recipient.tag,
        val: `- ${amountNum.toFixed(4)} USDC`,
        sub: `${amountNum.toFixed(2)} USDC`,
        icon: <ArrowUpRight size={18} />,
@@ -221,7 +261,7 @@ const App = () => {
      setBUnitsLedger([{
        id: `LOG-S${Math.floor(Math.random()*1000)}`,
        title: "Network Gas",
-       subtitle: `P2P Send to ${sendRecipient.tag}`,
+       subtitle: `P2P Send to ${recipient.tag}`,
        amount: -P2P_GAS_COST,
        time: "Just now",
        type: "gas",
@@ -267,8 +307,6 @@ const App = () => {
 
 
      <div className="mt-8 px-6 text-center space-y-4">
-      
-       {/* 🌟 更新：采用醒目的橙色药丸设计，强化 Fuel 概念 */}
        <div
          onClick={() => setCurrentView('fuel')}
          className={`inline-flex items-center gap-1.5 bg-white pl-4 pr-1.5 py-1.5 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.04)] cursor-pointer hover:shadow-md transition-all active:scale-95 border ${bUnits < 10 ? 'border-red-100' : 'border-orange-100/50'}`}
@@ -362,55 +400,55 @@ const App = () => {
 
 
      <div className="px-6 pt-8 space-y-6">
-       {/* Network Fuel Balance Card */}
-       <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-50 relative overflow-hidden">
+       <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-50 relative overflow-hidden group">
          <div className="flex justify-between items-center mb-1">
-           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Network Fuel Balance</p>
-           <div className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase bg-orange-100 text-slate-600">
+           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Fuel Balance</p>
+           <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase ${fuelStatus.bar} bg-opacity-10 ${fuelStatus.color}`}>
              {fuelStatus.label}
            </div>
          </div>
-         <div className="flex items-baseline gap-2">
-           <span className={`text-[4.5rem] leading-none font-black tracking-tighter ${bUnits < 10 ? 'text-red-500' : 'text-orange-500'}`}>{bUnits}</span>
-           <span className="text-orange-500 font-bold text-xl uppercase">B-Units</span>
+         <div className="flex items-baseline justify-between">
+           <div className="flex items-baseline gap-2">
+             <span className={`text-[4.5rem] leading-none font-black tracking-tighter ${bUnits < 10 ? 'text-red-500' : 'text-orange-500'}`}>{bUnits}</span>
+             <span className="text-orange-300 font-bold text-xl italic">B-Units</span>
+           </div>
          </div>
-         <div className="mt-8 h-2.5 bg-slate-200 rounded-full overflow-hidden">
-           <div style={{ width: fuelStatus.width }} className={`${fuelStatus.bar} h-full rounded-full transition-all duration-1000`}></div>
+         <div className="mt-8 h-2 bg-slate-100 rounded-full overflow-hidden">
+           <div style={{ width: fuelStatus.width }} className={`${fuelStatus.bar} h-full rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(249,115,22,0.2)]`}></div>
          </div>
        </div>
 
 
-       {/* Refuel Section Card */}
-       <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-50 space-y-6">
+       <div className="bg-white rounded-[2rem] p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-50 space-y-6">
          <div className="flex justify-between items-center">
-           <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Amount</h3>
-           <div className="bg-[#E1F5FE] border border-blue-200/60 px-4 py-2 rounded-full flex items-center gap-2">
-             <Link2 size={14} className="text-[#3498DB]" strokeWidth={2.5} />
-             <span className="text-base font-black text-[#3498DB]">${refuelAmount}</span>
-             <span className="text-[11px] text-slate-500 font-bold uppercase">USDC</span>
+           <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Select Amount</h3>
+           <div className="bg-[#eef6ff] px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+             <Coins size={14} className="text-[#1562f0]" />
+             <span className="text-base font-black text-[#1562f0]">${refuelAmount}</span>
+             <span className="text-[10px] text-blue-400 font-bold uppercase">USDC</span>
            </div>
          </div>
 
 
          <div className="flex items-center gap-4 px-1">
-           <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount-1))} className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 active:scale-95 transition-all"><Minus size={20} strokeWidth={2.5}/></button>
-           <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={e=>setRefuelAmount(Number(e.target.value))} className="flex-1 h-3 bg-slate-200 rounded-lg cursor-pointer accent-[#3498DB]" />
-           <button onClick={() => setRefuelAmount(Math.min(100, refuelAmount+1))} className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 active:scale-95 transition-all"><Plus size={20} strokeWidth={2.5}/></button>
+           <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount-1))} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all"><Minus size={20}/></button>
+           <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={e=>setRefuelAmount(Number(e.target.value))} className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" />
+           <button onClick={() => setRefuelAmount(refuelAmount+1)} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all"><Plus size={20}/></button>
          </div>
 
 
-         <div className="space-y-3">
+         <div className="bg-[#f8f9fc] p-5 rounded-[1.5rem] space-y-3">
            <div className="flex justify-between text-[13px] font-bold">
-             <span className="text-slate-500">Fuel Yield (1:100)</span>
-             <span className="text-green-600 font-black">+{refuelAmount * 100} B-Units</span>
+             <span className="text-slate-400">Fuel Yield (1:100)</span>
+             <span className="text-slate-800">+{refuelAmount * 100} B-Units</span>
            </div>
            <div className="flex justify-between text-[13px] font-bold">
-             <span className="text-slate-500 tracking-tight">Refuel Fee (Shadow Gas)</span>
-             <span className="text-red-500 font-black">-{REFUEL_GAS_COST} B-Units</span>
+             <span className="text-slate-400 tracking-tight">Refuel Fee (Shadow Gas)</span>
+             <span className="text-red-400">-{REFUEL_GAS_COST} B-Units</span>
            </div>
-           <div className="border-t border-slate-300 pt-4 flex justify-between items-center">
-             <span className="text-[14px] font-black text-slate-700">Net Deposit</span>
-             <span className="text-[22px] font-black text-orange-500 leading-none">+{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[11px] font-bold opacity-80 uppercase">B-Units</span></span>
+           <div className="border-t border-slate-200 pt-3 flex justify-between items-center mt-1">
+             <span className="text-[14px] font-black text-slate-800">Net Deposit</span>
+             <span className="text-[22px] font-black text-orange-500 leading-none">+{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[10px] font-bold opacity-60">B-Units</span></span>
            </div>
          </div>
 
@@ -418,16 +456,16 @@ const App = () => {
          <button
            onClick={handleRefuel}
            disabled={isRefueling}
-           className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.5rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+           className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
          >
-           {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={20} fill="currentColor" strokeWidth={1.5} /> Refuel Now</>}
+           {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={18} fill="currentColor" /> Refuel Now</>}
          </button>
        </div>
 
 
        <div className="space-y-4">
          <div className="flex justify-between items-center px-2">
-           <h3 className="text-[13px] font-black text-slate-800 uppercase tracking-widest">B-Units Ledger</h3>
+           <h3 className="text-[13px] font-black text-slate-800 tracking-widest uppercase">B-Units LEDGER</h3>
            <button
              onClick={() => setShowFilters(!showFilters)}
              className={`text-[11px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full transition-colors ${showFilters ? 'bg-orange-500 text-white' : 'text-orange-500 bg-orange-50 hover:bg-orange-100'}`}
@@ -470,9 +508,10 @@ const App = () => {
                      className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group animate-in fade-in duration-300"
                    >
                      <div className="flex items-center gap-4">
-                       {/* 🌟 更新：底层明细也使用橘色油枪图标 */}
-                       <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm bg-orange-50 text-orange-500">
-                         {log.type === 'refuel' ? <Plus size={18} strokeWidth={3} /> : <Fuel size={16} fill="currentColor" />}
+                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${
+                           log.type === 'fee' || log.type === 'gas' ? 'bg-slate-100 text-slate-600' : 'bg-orange-50 text-orange-500'
+                       }`}>
+                         {log.type === 'refuel' || log.type === 'reward' ? <Plus size={18} strokeWidth={3} /> : <Fuel size={16} fill="currentColor" />}
                        </div>
                        <div>
                          <p className="text-[14px] font-black text-slate-800 leading-tight">{log.title}</p>
@@ -484,7 +523,7 @@ const App = () => {
                          <p className={`text-[15px] font-black ${log.amount > 0 ? 'text-orange-500' : 'text-slate-900'}`}>
                            {log.amount > 0 ? '+' : ''}{log.amount}
                          </p>
-                         <p className="text-[9px] font-bold text-slate-300 uppercase tracking-wide">B-Units</p>
+                         <p className="text-[10px] font-bold text-slate-400 tracking-wide">B-Units</p>
                        </div>
                        <ChevronRight size={16} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity -mr-1" />
                      </div>
@@ -531,7 +570,7 @@ const App = () => {
            </div>
            <div className="pt-4 border-t border-white/10 flex justify-between items-end mt-2">
              <span className="text-[14px] font-bold text-white">Total Fuel Cost</span>
-             <span className="text-[24px] font-black text-orange-500 leading-none">{estimatedServiceFee} <span className="text-[11px] text-orange-500/70 uppercase">B-Units</span></span>
+             <span className="text-[24px] font-black text-orange-500 leading-none">{estimatedServiceFee} <span className="text-[11px] text-orange-500/70">B-Units</span></span>
            </div>
          </div>
        </div>
@@ -783,7 +822,7 @@ const App = () => {
 
 
                <div className="bg-[#f8f9fc] rounded-[1.5rem] p-6 space-y-4 border border-slate-100 mb-6">
-                 <div className="flex justify-between items-end pb-4 border-b border-dashed border-slate-200">
+                 <div className="flex justify-between items-end pb-5 border-b border-dashed border-slate-200">
                    <div>
                      <p className="text-[15px] font-black text-slate-900">Total</p>
                      <p className="text-[11px] font-medium text-slate-400 mt-0.5">Amount to send</p>
@@ -795,19 +834,12 @@ const App = () => {
                  </div>
 
 
-                 {/* 🌟 更新：参照截图，确认页中的 Beamio Fee 也使用橙色药丸样式 */}
-                 <div className="flex justify-between items-center pt-2">
-                   <div>
-                     <p className="text-[13px] font-bold text-slate-800">Beamio Fee</p>
-                     <p className="text-[10px] text-slate-400 mt-0.5">Base L2 Operation</p>
-                   </div>
-                  
-                   <div className="flex flex-col items-end">
-                     <div className="flex items-center gap-1.5 bg-[#FFF4E5] px-2.5 py-1 rounded-md border border-orange-100">
-                       <Fuel size={14} className="text-[#F97316]" fill="currentColor" />
-                       <span className="text-[13px] font-black text-[#F97316]">{P2P_GAS_COST} B-Units</span>
-                     </div>
-                     <p className="text-[10px] text-slate-400 font-medium mt-1">From B-Units Ledger</p>
+                 {/* 🌟 核心更新：完美复刻截图的 Beamio Fee 橙色药丸样式 */}
+                 <div className="flex justify-between items-center pt-1">
+                   <span className="text-[16px] font-bold text-slate-500">Beamio Fee</span>
+                   <div className="flex items-center gap-1.5 bg-[#FFF4E5] px-3 py-1.5 rounded-lg">
+                     <Fuel size={16} className="text-[#F97316]" fill="currentColor" />
+                     <span className="text-[15px] font-black text-[#F97316]">{P2P_GAS_COST} B-Units</span>
                    </div>
                  </div>
                </div>
@@ -899,7 +931,6 @@ const App = () => {
 
 
            <div className="text-center mt-4 space-y-2">
-             {/* 🌟 更新：账单详情大图标也变为橙色油枪 */}
              <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center shadow-md mb-4 bg-orange-50 text-orange-500`}>
                {selectedLog.type === 'refuel' ? <Plus size={28} strokeWidth={3} /> : <Fuel size={28} fill="currentColor" />}
              </div>
@@ -954,7 +985,7 @@ const App = () => {
          <div className="bg-green-500 rounded-full p-1"><CheckCircle2 size={18} className="text-white" /></div>
          <div>
            <p className="text-[13px] font-black">Refuel Successful</p>
-           <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-0.5">Synced +{refuelAmount * 100 - REFUEL_GAS_COST} B-Units</p>
+           <p className="text-[10px] text-white/50 font-bold tracking-widest mt-0.5"><span className="uppercase">Synced</span> +{refuelAmount * 100 - REFUEL_GAS_COST} B-Units</p>
          </div>
        </div>
      )}

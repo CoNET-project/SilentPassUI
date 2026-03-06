@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
-import { BASE_MAINNET_FACTORIES } from "@/config/chainAddresses";
+import { BASE_MAINNET_FACTORIES, BASE_TREASURY } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -145,6 +145,63 @@ export const USDC2Token = async (
         console.log(`❌ Direct Purchase Failed: ${error.message}`);
         throw error;
     }
+}
+
+/** Refuel B-Unit 请求体：EIP-3009 签名购买 B-Unit，提交给 /api/purchaseBUnitFromBase */
+export type IBUnitRefuelPayload = {
+	from: string
+	amount: string
+	validAfter: number
+	validBefore: number
+	nonce: string
+	signature: string
+}
+
+/**
+ * 为 Refuel Now 生成 EIP-3009 签名：USDC 转至 BaseTreasury 购买 B-Unit。
+ * 用户离线签字，服务端提交 BaseTreasury.purchaseBUnitWith3009Authorization。
+ */
+export const signBUnitRefuel3009 = async (
+	userPrivateKey: string,
+	usdcAmountHuman: string
+): Promise<IBUnitRefuelPayload> => {
+	const usdcAmount6 = ethers.parseUnits(usdcAmountHuman, 6)
+	if (usdcAmount6 < 1_000_000n) throw new Error("Minimum purchase is 1 USDC")
+	const userWallet = new ethers.Wallet(userPrivateKey, baseEndpoint)
+	const chainId = (await baseEndpoint.getNetwork()).chainId
+	const now = Math.floor(Date.now() / 1000)
+	const validAfter = 0
+	const validBefore = now + 3600
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	const signature = await userWallet.signTypedData(
+		{ name: "USD Coin", version: "2", chainId, verifyingContract: USDCContract_BASE },
+		{
+			TransferWithAuthorization: [
+				{ name: "from", type: "address" },
+				{ name: "to", type: "address" },
+				{ name: "value", type: "uint256" },
+				{ name: "validAfter", type: "uint256" },
+				{ name: "validBefore", type: "uint256" },
+				{ name: "nonce", type: "bytes32" },
+			],
+		},
+		{
+			from: userWallet.address,
+			to: BASE_TREASURY,
+			value: usdcAmount6,
+			validAfter: BigInt(validAfter),
+			validBefore: BigInt(validBefore),
+			nonce,
+		}
+	)
+	return {
+		from: userWallet.address,
+		amount: usdcAmount6.toString(),
+		validAfter,
+		validBefore,
+		nonce,
+		signature,
+	}
 }
 
 /** 当前使用的 Card Factory 地址（与 config/chainAddresses CARD_FACTORY / contracts.BeamioCardFactory 一致） */
@@ -427,10 +484,10 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 	const seen = new Set<string>()
 	const merged: UserCardInfo[] = []
 
-	// 0. RPC 熔断期：仅使用 CoNET 节点，不向 API 请求
+	// 0. RPC 熔断期：跳过 RPC，不向 API 请求
 	// （withBaseRpc 内部会走 CoNET-only）
 
-	// 1. 尝试 RPC（正常时 CoNET 优先 + 公共 RPC，限流时仅 CoNET）
+	// 1. 尝试 RPC（Beamio Base RPC）
 	try {
 		for (const owner of uniqueOwners) {
 			const list = await fetchCardsForOwner(owner)
@@ -915,7 +972,7 @@ function _decodeRedeemStatus(active: boolean): RedeemStatusChain {
     return 'not_found'
 }
 
-/** 单次查询：通过 getRedeemStatus(bytes32) 从合约直接读取，不做区块/事件扫描；限流时仅用 CoNET */
+/** 单次查询：通过 getRedeemStatus(bytes32) 从合约直接读取，不做区块/事件扫描 */
 export const getRedeemStatusFromChain = async (
     cardAddress: string,
     hash: string
@@ -1260,7 +1317,7 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 	if (cached && Date.now() - cached.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
 		return cached.result
 	}
-	// 限流时仅使用 CoNET 节点（withBaseRpc 内部会走 CoNET-only），不再跳过 RPC
+	// 限流时跳过 RPC，使用 API
 
 	return withGetMyAssetsMutex(async () => {
 		const cachedAgain = getMyAssetsCache.get(key)
@@ -1786,15 +1843,38 @@ export const getLatest20UserActions_Lite = async (
 /** CoNET 主网 BUint 合约地址 */
 const CONET_BUINT_ADDRESS = "0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879";
 
+/** BeamioIndexerDiamond 地址（CoNET） */
+const BEAMIO_INDEXER_DIAMOND = "0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612";
+
 const BUINT_BALANCE_OF_ALL_ABI = [
   "function balanceOfAll(address account) external view returns (uint256 total, uint256 free, uint256 paid)"
 ];
 
+const INDEXER_GET_ACCOUNT_TX_ABI = [
+  "function getAccountTransactionsPaged(address account, uint256 offset, uint256 limit) view returns ((bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)"
+];
+
+/** BUnit 相关 txCategory（keccak256） */
+const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes("buintClaim"));
+const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes("buintUSDC"));
+
 /**
  * 查询 CoNET 主网 BUint 余额（total, free, paid）。6 位精度。
+ * 优先通过 beamio API 获取（避免浏览器 CORS），失败时回退到直接 RPC。
  */
 export const getBUnitBalanceOnConet = async (account: string): Promise<{ total: number; free: number; paid: number }> => {
   if (!account || !ethers.isAddress(account)) return { total: 0, free: 0, paid: 0 };
+  try {
+    const res = await fetch(`${beamioApi}/api/getBUnitBalance?address=${encodeURIComponent(account)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.total === 'number' && typeof data.free === 'number' && typeof data.paid === 'number') {
+        return { total: data.total, free: data.free, paid: data.paid };
+      }
+    }
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceOnConet] API fallback failed:', e);
+  }
   try {
     const contract = new ethers.Contract(CONET_BUINT_ADDRESS, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
     const [total, free, paid] = await contract.balanceOfAll(account);
@@ -1804,10 +1884,136 @@ export const getBUnitBalanceOnConet = async (account: string): Promise<{ total: 
       free: Number(free) / 10 ** decimals,
       paid: Number(paid) / 10 ** decimals
     };
-  } catch {
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceOnConet] RPC failed:', e);
     return { total: 0, free: 0, paid: 0 };
   }
 };
+
+export type BUnitLedgerEntry = {
+  id: string;
+  title: string;
+  subtitle: string;
+  amount: number;
+  time: string;
+  timestamp: number;
+  type: "refuel" | "fee" | "gas" | "reward";
+  status: string;
+  linkedUsdc: string;
+  txHash: string;
+  network: string;
+  /** Base mainnet tx hash for USDC refuel (when available from displayJson) */
+  baseTxHash?: string;
+};
+
+/**
+ * 从 BeamioIndexerDiamond 获取 B-Unit 记账明细（claim、USDC 购买、焚烧）
+ * 优先通过 beamio API 获取（避免浏览器 CORS），失败时回退到直接 RPC。
+ */
+export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitLedgerEntry[]> => {
+  if (!account || !ethers.isAddress(account)) return [];
+  try {
+    const res = await fetch(`${beamioApi}/api/getBUnitLedger?address=${encodeURIComponent(account)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.every((e: unknown) => e && typeof e === 'object' && 'id' in (e as object))) {
+        return data as BUnitLedgerEntry[];
+      }
+    }
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitLedgerFromIndexer] API fallback failed:', e);
+  }
+  const accountLower = account.toLowerCase();
+  const buintLower = CONET_BUINT_ADDRESS.toLowerCase();
+  try {
+    const indexer = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_GET_ACCOUNT_TX_ABI, conetDepinProvider);
+    const page = await indexer.getAccountTransactionsPaged(account, 0, 100);
+    const decimals = 6;
+    const entries: BUnitLedgerEntry[] = [];
+    for (const tx of page) {
+      if (!tx?.exists) continue;
+      const txCategory = String(tx.txCategory);
+      const payer = String(tx.payer).toLowerCase();
+      const payee = String(tx.payee).toLowerCase();
+      const amountFiat6 = Number(tx.finalRequestAmountFiat6 ?? 0);
+      const amountUSDC6 = Number(tx.finalRequestAmountUSDC6 ?? 0);
+      const amountBUnits = Math.round(amountFiat6 / 10 ** decimals);
+      const ts = Number(tx.timestamp ?? 0);
+      const timeStr = ts ? formatBUnitLedgerTime(ts) : "—";
+      const rawId = tx.id;
+      const txIdHex = typeof rawId === "string" ? rawId : rawId != null ? "0x" + BigInt(rawId).toString(16).padStart(64, "0") : "0x";
+      const txHashShort = txIdHex.length > 10 ? `${txIdHex.slice(0, 6)}...${txIdHex.slice(-4)}` : txIdHex;
+
+      const baseEntry = { time: timeStr, timestamp: ts, txHash: txHashShort, network: "CoNET L1" as const, status: "Completed" as const };
+      if (txCategory === TX_BUINT_CLAIM && payee === accountLower) {
+        entries.push({
+          ...baseEntry,
+          id: txIdHex,
+          title: "BUnit Claim",
+          subtitle: "Free claim",
+          amount: amountBUnits,
+          type: "reward",
+          linkedUsdc: "N/A",
+        });
+      } else if (txCategory === TX_BUINT_USDC && payee === accountLower) {
+        const usdcAmount = amountUSDC6 > 0 ? amountUSDC6 / 10 ** decimals : amountBUnits / 100;
+        const usdcStr = usdcAmount > 0 ? `-${usdcAmount.toFixed(2)} USDC` : "N/A";
+        let baseTxHash: string | undefined;
+        try {
+          const displayJson = (tx as { displayJson?: string })?.displayJson ?? "";
+          if (displayJson) {
+            const parsed = JSON.parse(displayJson) as { baseTxHash?: string };
+            if (parsed?.baseTxHash && ethers.isHexString(parsed.baseTxHash)) baseTxHash = parsed.baseTxHash;
+          }
+        } catch {}
+        entries.push({
+          ...baseEntry,
+          id: txIdHex,
+          title: "Fuel Yield (1:100)",
+          subtitle: "System Top-up",
+          amount: amountBUnits,
+          type: "refuel",
+          linkedUsdc: usdcStr,
+          baseTxHash,
+        });
+      } else if (payee === buintLower && payer === accountLower) {
+        let baseTxHash: string | undefined;
+        try {
+          const displayJson = (tx as { displayJson?: string })?.displayJson ?? "";
+          if (displayJson) {
+            const parsed = JSON.parse(displayJson) as { baseTxHash?: string };
+            if (parsed?.baseTxHash && ethers.isHexString(parsed.baseTxHash)) baseTxHash = parsed.baseTxHash;
+          }
+        } catch {}
+        entries.push({
+          ...baseEntry,
+          id: txIdHex,
+          title: "B-Unit Burn",
+          subtitle: amountUSDC6 > 0 ? `Paid ${(amountUSDC6 / 10 ** decimals).toFixed(2)} USDC` : "Gas / Fee",
+          amount: -amountBUnits,
+          type: amountUSDC6 > 0 ? "fee" : "gas",
+          linkedUsdc: amountUSDC6 > 0 ? `${(amountUSDC6 / 10 ** decimals).toFixed(2)} USDC` : "N/A",
+          baseTxHash,
+        });
+      }
+    }
+    entries.sort((a, b) => b.timestamp - a.timestamp);
+    return entries;
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitLedgerFromIndexer] RPC failed:', e);
+    return [];
+  }
+};
+
+function formatBUnitLedgerTime(ts: number): string {
+  const d = new Date(ts * 1000);
+  const now = Date.now();
+  const diff = now - ts * 1000;
+  if (diff < 60 * 60 * 1000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 24 * 60 * 60 * 1000) return `${Math.floor(diff / 3600000)}h ago`;
+  if (diff < 48 * 60 * 60 * 1000) return "Yesterday";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<searchResult | null> => {
     try {

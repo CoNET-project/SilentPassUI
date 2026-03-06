@@ -1,52 +1,92 @@
-import React, { useState, useMemo } from 'react'
-import { Fuel, Plus, Minus, ChevronRight, RefreshCw, Filter, Link2 } from 'lucide-react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { Fuel, Plus, Minus, ChevronRight, RefreshCw, Filter, Link2, X, Check, ExternalLink, Code } from 'lucide-react'
+import { getBUnitLedgerFromIndexer, signBUnitRefuel3009, type BUnitLedgerEntry } from '@/services/BeamioCard'
+import { purchaseBUnitFromBase, getUsdcBalanceFromApi } from '@/services/beamio'
+import { useDaemonContext } from '@/providers/DaemonProvider'
 
-const REFUEL_GAS_COST = 2
+const MIN_PURCHASE_USD = 1  // Minimum $1, no purchase below $1
 
-const generateExtendedLogs = () => {
-  const baseLogs = [
-    { id: "LOG-892A", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "Feb 21, 14:22", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
-    { id: "LOG-891B", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "2h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x1c9d...9e2f", network: "Base Mainnet" },
-    { id: "LOG-890C", title: "Manual Refuel Gain", subtitle: "Swap $5.00 USDC", amount: 498, time: "5h ago", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x4a1b...2c3d", network: "Base Mainnet" },
-    { id: "LOG-889D", title: "Reward Backfill", subtitle: "CashTree Card Claim #102", amount: 100, time: "Yesterday", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" }
-  ]
-  const extraLogs = Array.from({ length: 10 }).map((_, i) => ({
-    id: `LOG-EXT-${i}`,
-    title: i % 3 === 0 ? "Auto-Refuel" : i % 3 === 1 ? "Service Fee (0.8%)" : "Network Gas",
-    subtitle: `Historical Txn #${500 - i}`,
-    amount: i % 3 === 0 ? 98 : i % 3 === 1 ? -45 : -2,
-    time: `Feb ${20 - Math.floor(i / 3)}, 10:00`,
-    type: i % 3 === 0 ? "refuel" : i % 3 === 1 ? "fee" : "gas",
-    status: "Completed",
-    linkedUsdc: "N/A",
-    txHash: "0x" + Math.random().toString(16).substr(2, 8) + "...",
-    network: "Base Mainnet"
-  }))
-  return [...baseLogs, ...extraLogs]
-}
+type LogEntry = BUnitLedgerEntry & { type: string }
 
-type LogEntry = { id: string; title: string; subtitle: string; amount: number; time: string; type: string; status: string; linkedUsdc: string; txHash: string; network: string }
+const isBuintClaim = (log: LogEntry) => log.title === 'BUnit Claim' && log.subtitle === 'Free claim'
+const isRefuel = (log: LogEntry) => log.type === 'refuel'
+const hasBaseTxHash = (log: LogEntry) => !!(log as BUnitLedgerEntry & { baseTxHash?: string }).baseTxHash
+const displayTitle = (log: LogEntry) => (isBuintClaim(log) ? 'Network Welcome Grant' : log.title)
+/** Subtitle hidden for Network Welcome Grant and Fuel Yield (1:100) */
+const showSubtitle = (log: LogEntry) => !isBuintClaim(log) && log.title !== 'Fuel Yield (1:100)'
 
 interface FuelViewProps {
   onClose: () => void
   bUnitBalance?: { total: number; free: number; paid: number } | null
   onRefresh?: () => void
+  account?: string | null
 }
 
-const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh }) => {
+const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, account }) => {
+  const { profiles } = useDaemonContext()
   const bUnits = bUnitBalance != null ? Math.floor(bUnitBalance.total) : 0
+  const [usdcBalance, setUsdcBalance] = useState<number | null>(null)
   const [refuelAmount, setRefuelAmount] = useState(5)
   const [isRefueling, setIsRefueling] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [ledgerFilter, setLedgerFilter] = useState('all')
   const [visibleLogs, setVisibleLogs] = useState(5)
-  const [bUnitsLedger, setBUnitsLedger] = useState(generateExtendedLogs)
+  const [bUnitsLedger, setBUnitsLedger] = useState<LogEntry[]>([])
+  const [ledgerLoading, setLedgerLoading] = useState(true)
+  const [selectedDetail, setSelectedDetail] = useState<LogEntry | null>(null)
+  const [showJson, setShowJson] = useState(false)
+  const [refuelError, setRefuelError] = useState<string | null>(null)
+
+  const fetchLedger = () => {
+    if (!account) {
+      setBUnitsLedger([])
+      setLedgerLoading(false)
+      return
+    }
+    setLedgerLoading(true)
+    getBUnitLedgerFromIndexer(account)
+      .then(setBUnitsLedger)
+      .catch(() => setBUnitsLedger([]))
+      .finally(() => setLedgerLoading(false))
+  }
+
+  useEffect(() => {
+    fetchLedger()
+  }, [account])
+
+  useEffect(() => {
+    if (!account) {
+      setUsdcBalance(null)
+      return
+    }
+    setUsdcBalance(null)
+    getUsdcBalanceFromApi(account)
+      .then(s => setUsdcBalance(s != null ? Number(s) : 0))
+      .catch(() => setUsdcBalance(null))
+  }, [account])
+
+  const amountConfig = useMemo(() => {
+    if (usdcBalance == null) return { step: 1, min: MIN_PURCHASE_USD, max: 100, disabled: true }
+    if (usdcBalance < MIN_PURCHASE_USD) return { step: 1, min: MIN_PURCHASE_USD, max: 0, disabled: true }
+    const max = Math.min(100, usdcBalance)
+    return { step: 1, min: MIN_PURCHASE_USD, max, disabled: false }
+  }, [usdcBalance])
+
+  useEffect(() => {
+    if (amountConfig.disabled && amountConfig.max === 0) {
+      setRefuelAmount(MIN_PURCHASE_USD)
+    } else if (!amountConfig.disabled && refuelAmount > amountConfig.max) {
+      setRefuelAmount(amountConfig.max)
+    } else if (!amountConfig.disabled && refuelAmount < amountConfig.min) {
+      setRefuelAmount(amountConfig.min)
+    }
+  }, [amountConfig, refuelAmount])
 
   const fuelStatus = useMemo(() => {
-    if (bUnits > 50) return { label: 'Optimal', bar: 'bg-orange-500', width: '85%' }
-    if (bUnits >= 10) return { label: 'Warning', bar: 'bg-amber-500', width: '30%' }
-    if (bUnits >= 0) return { label: 'Critical', bar: 'bg-red-500', width: '5%' }
-    return { label: 'Overdraft', bar: 'bg-purple-600', width: '0%' }
+    if (bUnits > 50) return { label: 'Optimal', bar: 'bg-orange-500', barShadow: 'shadow-[0_0_10px_rgba(249,115,22,0.2)]', badge: 'bg-orange-500 text-white', width: '85%' }
+    if (bUnits >= 10) return { label: 'Warning', bar: 'bg-amber-500', barShadow: 'shadow-[0_0_10px_rgba(245,158,11,0.2)]', badge: 'bg-amber-500 text-white', width: '30%' }
+    if (bUnits >= 0) return { label: 'Critical', bar: 'bg-red-500', barShadow: 'shadow-[0_0_10px_rgba(239,68,68,0.2)]', badge: 'bg-red-500 text-white', width: '5%' }
+    return { label: 'Overdraft', bar: 'bg-purple-600', barShadow: 'shadow-[0_0_10px_rgba(147,51,234,0.2)]', badge: 'bg-purple-600 text-white', width: '0%' }
   }, [bUnits])
 
   const filteredLedger = useMemo(() => {
@@ -54,45 +94,76 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh })
     return bUnitsLedger.filter((log: LogEntry) => log.type === ledgerFilter)
   }, [bUnitsLedger, ledgerFilter])
 
-  const handleRefuel = () => {
+  const handleRefuel = async () => {
+    const pk = profiles?.[0]?.privateKeyArmor
+    if (!pk || !account) {
+      setRefuelError('Wallet not ready. Please unlock or sign in.')
+      return
+    }
+    setRefuelError(null)
     setIsRefueling(true)
-    setTimeout(() => {
-      onRefresh?.()
-      setBUnitsLedger(prev => [{
-        id: `LOG-${Math.floor(Math.random() * 10000)}`,
-        title: "Manual Refuel Gain",
-        subtitle: `Swap $${refuelAmount.toFixed(2)} USDC`,
-        amount: (refuelAmount * 100) - REFUEL_GAS_COST,
-        time: "Just now",
-        type: "refuel",
-        status: "Completed",
-        linkedUsdc: `-${refuelAmount.toFixed(2)} USDC`,
-        txHash: "0x" + Math.random().toString(16).substr(2, 8),
-        network: "Base Mainnet"
-      }, ...prev])
+    try {
+      const usdcAmount = String(refuelAmount)
+      const payload = await signBUnitRefuel3009(pk, usdcAmount)
+      const result = await purchaseBUnitFromBase(payload)
+      if (result.success) {
+        onRefresh?.()
+        fetchLedger()
+        // Miner vote on CoNET can take 1–3 min. Poll in background for up to 2 min to pick up minted balance.
+        const pollMs = 5000
+        const pollCount = 24
+        const pollBalance = () => {
+          for (let i = 0; i < pollCount; i++) {
+            setTimeout(() => {
+              onRefresh?.()
+              fetchLedger()
+            }, (i + 1) * pollMs)
+          }
+        }
+        pollBalance()
+      } else {
+        setRefuelError(result.error ?? 'Refuel failed')
+      }
+    } catch (e) {
+      setRefuelError((e as Error)?.message ?? 'Refuel failed')
+    } finally {
       setIsRefueling(false)
-    }, 1200)
+    }
+  }
+
+  const handleRefresh = () => {
+    onRefresh?.()
+    fetchLedger()
+    if (account) {
+      getUsdcBalanceFromApi(account)
+        .then(s => setUsdcBalance(s != null ? Number(s) : 0))
+        .catch(() => setUsdcBalance(null))
+    }
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#fdfdff] dark:bg-slate-900 pb-32">
-      <div className="px-6 pt-10 flex items-center gap-4 shrink-0">
+    <div className="flex flex-col min-h-screen bg-[#fdfdff] dark:bg-slate-900 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pb-[calc(8rem+env(safe-area-inset-bottom))]">
+      {/* Beamio protocol: 返回按钮+title 对齐 Home 胶囊 top: max(1rem, env(safe-area-inset-top)) */}
+      <div className="px-6 flex items-center gap-4 shrink-0" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
         <button onClick={onClose} className="w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
           <ChevronRight size={22} className="rotate-180" />
         </button>
-        <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Fuel Center</h2>
-        {onRefresh && (
-          <button onClick={onRefresh} className="ml-auto w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" aria-label="Refresh">
-            <RefreshCw size={20} />
+        <h2 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Fuel Center</h2>
+        {(onRefresh || account) && (
+          <button onClick={handleRefresh} className="ml-auto w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" aria-label="Refresh">
+            <RefreshCw size={20} className={ledgerLoading ? 'animate-spin' : ''} />
           </button>
         )}
       </div>
 
-      <div className="px-6 pt-8 space-y-6 flex-1 overflow-y-auto">
+      {/* Beamio protocol: 首内容 Network Fuel Balance 对齐 Home 首内容，spacer + pt-6 */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+        <div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
+        <div className="px-6 pt-6 space-y-6">
         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-50 dark:border-slate-700">
           <div className="flex justify-between items-center mb-1">
             <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Network Fuel Balance</p>
-            <div className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase bg-orange-100 dark:bg-orange-900/30 text-slate-600 dark:text-slate-300">
+            <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase ${fuelStatus.badge}`}>
               {fuelStatus.label}
             </div>
           </div>
@@ -100,62 +171,80 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh })
             <span className={`text-[4.5rem] leading-none font-black tracking-tighter ${bUnits < 10 ? 'text-red-500' : 'text-orange-500'}`}>
               {bUnitBalance != null ? bUnits : "—"}
             </span>
-            <span className="text-orange-500 font-bold text-xl uppercase">B-Units</span>
+            <span className="text-orange-500 font-bold text-xl">B-Units</span>
           </div>
-          <div className="mt-8 h-2.5 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
-            <div style={{ width: fuelStatus.width }} className={`${fuelStatus.bar} h-full rounded-full transition-all duration-1000`} />
+          <div className="mt-8 h-2 bg-slate-100 dark:bg-slate-600 rounded-full overflow-hidden">
+            <div style={{ width: fuelStatus.width }} className={`${fuelStatus.bar} ${fuelStatus.barShadow} h-full rounded-full transition-all duration-1000`} />
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-50 dark:border-slate-700 space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Select Amount</h3>
-            <div className="bg-[#E1F5FE] dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-700/50 px-4 py-2 rounded-full flex items-center gap-2">
-              <Link2 size={14} className="text-[#3498DB]" strokeWidth={2.5} />
-              <span className="text-base font-black text-[#3498DB]">${refuelAmount}</span>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold uppercase">USDC</span>
+            <div className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 border ${amountConfig.disabled ? 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600' : 'bg-[#eef6ff] dark:bg-blue-900/20 border-blue-200/60 dark:border-blue-700/50'}`}>
+              <Link2 size={14} className={amountConfig.disabled ? 'text-slate-400' : 'text-[#1562f0]'} strokeWidth={2.5} />
+              <span className={`text-base font-black ${amountConfig.disabled ? 'text-slate-400 dark:text-slate-500' : 'text-[#1562f0]'}`}>
+                ${refuelAmount % 1 === 0 ? refuelAmount : refuelAmount.toFixed(2)}
+              </span>
+              <span className={`text-[10px] font-bold uppercase ${amountConfig.disabled ? 'text-slate-400' : 'text-blue-400 dark:text-blue-400'}`}>USDC</span>
             </div>
           </div>
 
+          {amountConfig.disabled ? (
+            <div className="rounded-xl bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 px-4 py-4 text-center text-[13px] font-medium text-slate-500 dark:text-slate-400">
+              {usdcBalance === null ? 'Loading USDC balance...' : usdcBalance < MIN_PURCHASE_USD ? 'Minimum purchase is $1. Add USDC on Base to refuel.' : 'No USDC on Base. Add USDC to refuel.'}
+            </div>
+          ) : (
           <div className="flex items-center gap-4 px-1">
-            <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount - 1))} className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all">
+            <button
+              onClick={() => setRefuelAmount(prev => Math.max(amountConfig.min, Math.round((prev - amountConfig.step) * 100) / 100))}
+              disabled={amountConfig.disabled}
+              className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 dark:border-slate-600 flex items-center justify-center text-slate-400 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Minus size={20} strokeWidth={2.5} />
             </button>
             <input
               type="range"
-              min={1}
-              max={100}
-              step={1}
+              min={amountConfig.min}
+              max={amountConfig.max}
+              step={amountConfig.step}
               value={refuelAmount}
               onChange={e => setRefuelAmount(Number(e.target.value))}
-              className="flex-1 h-3 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-[#3498DB]"
+              disabled={amountConfig.disabled}
+              className="flex-1 h-2 bg-slate-100 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-[#1562f0] disabled:cursor-not-allowed disabled:opacity-50"
             />
-            <button onClick={() => setRefuelAmount(Math.min(100, refuelAmount + 1))} className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 transition-all">
+            <button
+              onClick={() => setRefuelAmount(prev => Math.min(amountConfig.max, Math.round((prev + amountConfig.step) * 100) / 100))}
+              disabled={amountConfig.disabled}
+              className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 dark:border-slate-600 flex items-center justify-center text-slate-400 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Plus size={20} strokeWidth={2.5} />
             </button>
           </div>
+          )}
 
-          <div className="space-y-3">
-            <div className="flex justify-between text-[13px] font-bold">
-              <span className="text-slate-500 dark:text-slate-400">Fuel Yield (1:100)</span>
-              <span className="text-green-600 font-black">+{refuelAmount * 100} B-Units</span>
-            </div>
-            <div className="flex justify-between text-[13px] font-bold">
-              <span className="text-slate-500 dark:text-slate-400 tracking-tight">Refuel Fee (Shadow Gas)</span>
-              <span className="text-red-500 font-black">-{REFUEL_GAS_COST} B-Units</span>
-            </div>
-            <div className="border-t border-slate-300 dark:border-slate-600 pt-4 flex justify-between items-center">
-              <span className="text-[14px] font-black text-slate-700 dark:text-slate-200">Net Deposit</span>
+          {!amountConfig.disabled && (
+          <div className="bg-[#f8f9fc] dark:bg-slate-700/30 p-5 rounded-[1.5rem]">
+            <div className="flex justify-between items-center">
+              <span className="text-[14px] font-black text-slate-800 dark:text-slate-200">You receive</span>
               <span className="text-[22px] font-black text-orange-500 leading-none">
-                +{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[11px] font-bold opacity-80 uppercase">B-Units</span>
+                +{Math.round(refuelAmount * 100)} <span className="text-[10px] font-bold opacity-60">B-Units</span>
               </span>
             </div>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">$1 = 100 B-Units (no fee)</p>
           </div>
+          )}
+
+          {refuelError && (
+            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-2 text-[13px] font-medium text-red-600 dark:text-red-400">
+              {refuelError}
+            </div>
+          )}
 
           <button
             onClick={handleRefuel}
-            disabled={isRefueling}
-            className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.5rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+            disabled={isRefueling || amountConfig.disabled || refuelAmount <= 0}
+            className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:shadow-none transition-all flex items-center justify-center gap-2"
           >
             {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={20} fill="currentColor" strokeWidth={1.5} /> Refuel Now</>}
           </button>
@@ -186,39 +275,162 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh })
             </div>
           )}
 
-          <div className="bg-white dark:bg-slate-800 rounded-[2rem] overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-700">
-            <div className="divide-y divide-slate-50 dark:divide-slate-700">
+          <div className="bg-transparent">
+            {ledgerLoading ? (
+              <div className="p-8 flex items-center justify-center text-slate-400">
+                <RefreshCw size={24} className="animate-spin mr-2" />
+                <span className="text-sm font-medium">Loading ledger...</span>
+              </div>
+            ) : filteredLedger.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-sm">
+                No B-Unit transactions yet. Claim or refuel to see history.
+              </div>
+            ) : (
+            <div className="space-y-2 pb-3">
               {filteredLedger.slice(0, visibleLogs).map((log: LogEntry) => (
-                <div key={log.id} className="p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm bg-orange-50 dark:bg-orange-900/20 text-orange-500">
-                      {log.type === 'refuel' ? <Plus size={18} strokeWidth={3} /> : <Fuel size={16} fill="currentColor" />}
+                <div
+                  key={log.id}
+                  onClick={() => setSelectedDetail(log)}
+                  className="relative flex items-center justify-between py-2.5 px-3 bg-white dark:bg-slate-800/80 rounded-[15px] shadow-[0_2px_9px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-all duration-200 cursor-pointer border border-gray-100/50 dark:border-slate-700/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shadow-sm shrink-0 bg-orange-50 dark:bg-orange-900/20 text-orange-500">
+                      {(log.type === 'refuel' || log.type === 'reward') ? <Plus size={16} strokeWidth={2} /> : <Fuel size={16} fill="currentColor" />}
                     </div>
-                    <div>
-                      <p className="text-[14px] font-black text-slate-800 dark:text-slate-100 leading-tight">{log.title}</p>
-                      <p className="text-[11px] font-medium text-slate-400 mt-0.5">{log.subtitle}</p>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <h3 className="text-[12px] font-semibold tracking-tight truncate text-black dark:text-white">
+                        {displayTitle(log)}
+                      </h3>
+                      {showSubtitle(log) && log.subtitle && (
+                        <span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium truncate max-w-[105px]">
+                          {log.subtitle}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`text-[15px] font-black ${log.amount > 0 ? 'text-orange-500' : 'text-slate-900 dark:text-slate-100'}`}>
+                  <div className="text-right flex flex-col items-end shrink-0">
+                    <div className={`text-[12px] font-semibold tracking-tight ${log.amount > 0 ? 'text-[#34C759]' : 'text-black dark:text-white'}`}>
                       {log.amount > 0 ? '+' : ''}{log.amount}
-                    </p>
-                    <p className="text-[9px] font-bold text-slate-300 uppercase tracking-wide">B-Units</p>
+                    </div>
+                    <span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">B-Units</span>
                   </div>
                 </div>
               ))}
             </div>
-            {visibleLogs < filteredLedger.length && (
-              <button
-                onClick={() => setVisibleLogs(prev => prev + 5)}
-                className="w-full py-4 text-[12px] font-bold text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
-              >
-                Load More Records...
-              </button>
+            )}
+            {!ledgerLoading && filteredLedger.length > 0 && visibleLogs < filteredLedger.length && (
+              <div className="pt-2 pb-1 text-center">
+                <button
+                  onClick={() => setVisibleLogs(prev => prev + 5)}
+                  className="text-[12px] font-medium text-orange-500 hover:text-orange-600 transition-colors"
+                >
+                  Load More Records...
+                </button>
+              </div>
             )}
           </div>
         </div>
+        </div>
       </div>
+
+      {/* Detail 底部滑出面板 */}
+      {selectedDetail && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40 transition-opacity"
+            onClick={() => { setSelectedDetail(null); setShowJson(false) }}
+            aria-hidden="true"
+          />
+          <div
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-slate-900 rounded-t-[2rem] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] overflow-hidden"
+            style={{ animation: 'slideUp 0.3s ease-out forwards' }}
+          >
+            <style>{`
+              @keyframes slideUp {
+                from { transform: translateY(100%); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+              }
+            `}</style>
+            <div className="pt-3 pb-1 flex items-center justify-center relative">
+              <div className="w-12 h-1 rounded-full bg-slate-200 dark:bg-slate-600" />
+                <button
+                onClick={() => { setSelectedDetail(null); setShowJson(false) }}
+                className="absolute right-4 top-3 w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="px-6 pb-10 pt-2">
+              <div className="flex flex-col items-center text-center mb-6">
+                <div className="w-12 h-12 rounded-full bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-orange-500 mb-3 shrink-0 overflow-hidden">
+                  {(selectedDetail.type === 'refuel' || selectedDetail.type === 'reward') ? (
+                    <Plus size={22} strokeWidth={3} />
+                  ) : (
+                    <Fuel size={20} fill="currentColor" />
+                  )}
+                </div>
+                <h3 className="text-xl font-black text-slate-800 dark:text-slate-100">{displayTitle(selectedDetail)}</h3>
+                <p className={`text-2xl font-black mt-2 ${selectedDetail.amount > 0 ? 'text-orange-500' : 'text-slate-800 dark:text-slate-100'}`}>
+                  {selectedDetail.amount > 0 ? '+' : ''}{selectedDetail.amount} <span className="text-base font-medium text-slate-500 dark:text-slate-400">B-Units</span>
+                </p>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/80 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700">
+                <div className="flex justify-between items-center px-4 py-3 border-b border-dashed border-slate-200 dark:border-slate-600">
+                  <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">Status</span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500 text-white text-[11px] font-bold">
+                    <Check size={12} strokeWidth={3} /> {selectedDetail.status.toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3 border-b border-dashed border-slate-200 dark:border-slate-600">
+                  <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">Time</span>
+                  <span className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{selectedDetail.time}</span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3 border-b border-dashed border-slate-200 dark:border-slate-600">
+                  <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">Linked USDC</span>
+                  <span className="text-[13px] font-bold text-blue-500">{selectedDetail.linkedUsdc}</span>
+                </div>
+                <div className={`flex justify-between items-center px-4 py-3 ${hasBaseTxHash(selectedDetail) ? 'border-b border-dashed border-slate-200 dark:border-slate-600' : ''}`}>
+                  <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">Network</span>
+                  <span className="text-[13px] font-bold text-slate-800 dark:text-slate-100">
+                    {hasBaseTxHash(selectedDetail) ? 'Base Mainnet' : selectedDetail.network}
+                  </span>
+                </div>
+                {hasBaseTxHash(selectedDetail) && (
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">TxHash</span>
+                  <a
+                    href={`https://basescan.org/tx/${(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-mono font-semibold text-[#1562f0] hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                  >
+                    {(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash!.slice(0, 10)}...{(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash!.slice(-8)}
+                    <ExternalLink size={12} strokeWidth={2.5} />
+                  </a>
+                </div>
+                )}
+              </div>
+
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowJson(!showJson)}
+                  className="w-full py-3 border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 rounded-[16px] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50 dark:active:bg-slate-700 transition-colors"
+                >
+                  <Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
+                </button>
+                {showJson && (
+                  <div className="mt-4 bg-[#1C1C1E] rounded-[16px] p-5 overflow-x-auto shadow-inner">
+                    <pre className="text-[11px] text-[#34C759] font-mono leading-relaxed">
+                      {JSON.stringify(selectedDetail, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

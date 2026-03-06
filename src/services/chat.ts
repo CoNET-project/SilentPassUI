@@ -130,7 +130,8 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 
 
 
-const getAllNodes = (): Promise<nodeInfo[]> => new Promise(async resolve=> {
+/** 获取 CoNET 节点列表（供 sendMessage 等使用），可单独调用无需 initChat */
+export const getCoNETNodesForChat = (): Promise<nodeInfo[]> => new Promise(async resolve=> {
 	const Guardian_Nodes: nodeInfo[] = []
     const _nodes1 = await GuardianNodesMainnet.getAllNodes(0, 400)
     const _nodes2 = await GuardianNodesMainnet.getAllNodes(400, 800)
@@ -160,7 +161,7 @@ const getAllNodes = (): Promise<nodeInfo[]> => new Promise(async resolve=> {
     resolve(Guardian_Nodes)
 })
 
-
+const getAllNodes = getCoNETNodesForChat
 
 const isPgpKeyComplete = (pgp: initBeamioPGPKeysRet | undefined): boolean => {
 	if (!pgp) return false

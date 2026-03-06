@@ -30,6 +30,7 @@ import {
 	ChevronRight,
 	ChevronLeft,
 	Zap,
+	Plus,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -63,6 +64,10 @@ const TX_VOUCHER_BURN = ethers.keccak256(ethers.toUtf8Bytes('voucher_burn:confir
 const TX_REQUEST_CANCEL = ethers.keccak256(ethers.toUtf8Bytes('request_cancel:confirmed'))
 /** 新卡发行与 Top Up 共用 */
 const TX_CARDMINT = ethers.keccak256(ethers.toUtf8Bytes('cardmint:confirmed'))
+/** B-Unit Claim（Network Welcome Grant）：Recent Activity 中排除 */
+const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes('buintClaim'))
+/** B-Unit USDC 购买（Fuel Yield 1:100）：与 B-Units Ledger 描述对齐 */
+const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes('buintUSDC'))
 
 type TxDisplayType =
 	| 'merchant_pay'
@@ -76,6 +81,7 @@ type TxDisplayType =
 	| 'internal_transfer'
 	| 'voucher_burn'
 	| 'request_cancel'
+	| 'fuel_yield'
 	| 'unknown'
 
 function txCategoryToType(txCategory: string): TxDisplayType {
@@ -91,6 +97,7 @@ function txCategoryToType(txCategory: string): TxDisplayType {
 	if (cat === TX_INTERNAL.toLowerCase()) return 'internal_transfer'
 	if (cat === TX_VOUCHER_BURN.toLowerCase()) return 'voucher_burn'
 	if (cat === TX_REQUEST_CANCEL.toLowerCase()) return 'request_cancel'
+	if (cat === TX_BUINT_USDC.toLowerCase()) return 'fuel_yield'
 	return 'unknown'
 }
 
@@ -459,6 +466,7 @@ const ActiveHistoryPannelNew = ({
 	const handleIsJson = (s: string | undefined) => !s || /^[\s]*\{/.test(s) || /"currency"/.test(s)
 	const detailTitleText = selectedTx
 		? (() => {
+				if (selectedTx.type === 'fuel_yield') return 'Fuel Yield (1:100)'
 				if (selectedTx.type === 'internal_transfer' && eoa && aa) {
 					const rawTx = selectedTx.rawTransaction as RawTxRecord | undefined
 					const payeeAddr = (extractAddr(rawTx?.payee) ?? '').toLowerCase()
@@ -538,12 +546,18 @@ const ActiveHistoryPannelNew = ({
 				const list = Array.isArray(page) ? page : []
 				for (const tx of list) {
 					if (!tx?.exists) continue
+					if (String(tx.txCategory ?? '') === TX_BUINT_CLAIM) continue
 					const id = typeof tx.id === 'string' ? tx.id : tx.id != null ? ethers.hexlify(tx.id as ethers.BytesLike) : ethers.ZeroHash
 					if (seen.has(id)) continue
 					seen.add(id)
 
 					const type = txCategoryToType(tx.txCategory ?? '')
-					const { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
+					const amPayee = accounts.some((a) => a.toLowerCase() === (tx.payee ?? '').toLowerCase())
+					let { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
+					if (String(tx.txCategory ?? '') === TX_BUINT_USDC && amPayee) {
+						title = 'Fuel Yield (1:100)'
+						handle = 'System Top-up'
+					}
 					const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
 					const metaRaw = (tx as RawTxRecord).meta
 					// finalRequestAmountFiat6 = requestAmountFiat6 - discountAmountFiat6 + taxAmountFiat6（readme 7.2）
@@ -560,7 +574,6 @@ const ActiveHistoryPannelNew = ({
 						? (metaRaw as { currencyFiat?: number }).currencyFiat
 						: (Array.isArray(metaRaw) ? metaRaw[2] : (metaRaw as Record<number, unknown>)?.[2])
 					const currencyCode = currencyFiatToCode(Number(currencyFiatNum ?? 1))
-					const amPayee = accounts.some((a) => a.toLowerCase() === (tx.payee ?? '').toLowerCase())
 					const isInbound = amPayee
 					const tsRaw = tx.timestamp ?? 0n
 					const tsMs = Number(tsRaw) < 10_000_000_000 ? Number(tsRaw) * 1000 : Number(tsRaw)
@@ -678,8 +691,8 @@ const ActiveHistoryPannelNew = ({
 
 	const filteredItems = items.filter((tx) => {
 		if (activeTab === 'All') return true
-		// Cash: Main Wallet 相关。internal_transfer 虽 isAA=true，但 EOA→AA/AA→EOA 都涉及 Main Wallet，需展示
-		if (activeTab === 'Cash') return !tx.isAA || tx.type === 'internal_transfer'
+		// Cash: Main Wallet 相关。internal_transfer、fuel_yield 虽 isAA 可能为 true，也需展示
+		if (activeTab === 'Cash') return !tx.isAA || tx.type === 'internal_transfer' || tx.type === 'fuel_yield'
 		if (activeTab === 'Vouchers') return tx.isAA
 		return true
 	})
@@ -800,6 +813,8 @@ const ActiveHistoryPannelNew = ({
 				return <Ticket size={size} strokeWidth={2} />
 			case 'request_cancel':
 				return <XCircle size={size} strokeWidth={2} />
+			case 'fuel_yield':
+				return <Plus size={size} strokeWidth={2} />
 			default:
 				return <ArrowRightLeft size={size === 22 ? 20 : size} strokeWidth={2} />
 		}
@@ -826,6 +841,8 @@ const ActiveHistoryPannelNew = ({
 				return 'bg-[#AF52DE]/10 text-[#AF52DE]'
 			case 'request_cancel':
 				return 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-400'
+			case 'fuel_yield':
+				return 'bg-orange-500/10 text-orange-500 dark:bg-orange-500/20 dark:text-orange-400'
 			default:
 				return 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
 		}
@@ -852,6 +869,8 @@ const ActiveHistoryPannelNew = ({
 				return 'bg-[#AF52DE] text-white'
 			case 'request_cancel':
 				return 'bg-gray-200 text-gray-500 dark:bg-slate-600 dark:text-slate-300'
+			case 'fuel_yield':
+				return 'bg-orange-500 text-white shadow-orange-200'
 			default:
 				return 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-300'
 		}
@@ -909,44 +928,50 @@ const ActiveHistoryPannelNew = ({
 		const paidToAA = payeeIsOther && !!beamioTag
 		// 无 originalPaymentHash 且为付款方时：Title = "Send to [beamio first lastname]"，subtitle = beamioTag
 		const sendToNoOph = (isEoaSent || isAASent) && !getOriginalPaymentHash(tx) && (fullName || beamioTag)
-		const titleText = isReqExpired
-			? 'Request Expired'
-			: isReqCanceled
-				? 'Request Canceled'
-				: isPendingRequesting
-				? 'Payment QR'
-				: isRequestFulfilled
-					? 'Payment Received'
-					: sendToNoOph
-						? `Send to ${fullName || beamioTag || counterpartyLabel}`
-						: paidToAA
-							? `Paid to ${beamioTag}`
-							: isEoaSent || isAASent
-							? `Sent to ${counterpartyLabel}`
-							: isEoaReceived
-								? `Received from ${counterpartyLabel}`
-								: isInternalTransfer
-									? internalTitle
-									: tx.title
-		const subtitleText = isReqExpired
-			? ((tx.forText ?? '').trim() || 'Link Invalidated')
-			: isReqCanceled
-				? ((tx.forText ?? '').trim() || '')
-				: isPendingRequesting
-				? ((tx.forText ?? '').trim() || 'QR Generated')
-				: isRequestFulfilled
-					? (beamioTag ? `Paid by ${beamioTag}` : `Paid by ${fullName || shortAddr || '…'}`)
-					: isInternalTransfer
-						? 'Internal Transfer'
+		const titleText = tx.type === 'fuel_yield'
+			? 'Fuel Yield (1:100)'
+			: isReqExpired
+				? 'Request Expired'
+				: isReqCanceled
+					? 'Request Canceled'
+					: isPendingRequesting
+					? 'Payment QR'
+					: isRequestFulfilled
+						? 'Payment Received'
 						: sendToNoOph
-							? (beamioTag ?? '')
+							? `Send to ${fullName || beamioTag || counterpartyLabel}`
 							: paidToAA
-								? ((tx.forText ?? '').trim() || '')
-								: isEoaSent || isEoaReceived
-								? (fullName ? (beamioTag ?? '') : '')
-								: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
+								? `Paid to ${beamioTag}`
+								: isEoaSent || isAASent
+								? `Sent to ${counterpartyLabel}`
+								: isEoaReceived
+									? `Received from ${counterpartyLabel}`
+									: isInternalTransfer
+										? internalTitle
+										: tx.title
+		const subtitleText = tx.type === 'fuel_yield'
+			? 'System Top-up'
+			: isReqExpired
+				? ((tx.forText ?? '').trim() || 'Link Invalidated')
+				: isReqCanceled
+					? ((tx.forText ?? '').trim() || '')
+					: isPendingRequesting
+					? ((tx.forText ?? '').trim() || 'QR Generated')
+					: isRequestFulfilled
+						? (beamioTag ? `Paid by ${beamioTag}` : `Paid by ${fullName || shortAddr || '…'}`)
+						: isInternalTransfer
+							? 'Internal Transfer'
+							: sendToNoOph
+								? (beamioTag ?? '')
+								: paidToAA
+									? ((tx.forText ?? '').trim() || '')
+									: isEoaSent || isEoaReceived
+									? (fullName ? (beamioTag ?? '') : '')
+									: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
 
-		const iconBg = isInternalTransfer
+		const iconBg = tx.type === 'fuel_yield'
+			? colorForType(tx.type)
+			: isInternalTransfer
 			? (payeeAddr.toLowerCase() === eoaAddr
 				? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
 				: 'bg-[#AF52DE]/10 text-[#AF52DE] dark:bg-[#AF52DE]/20 dark:text-[#c77dff]')
@@ -963,9 +988,11 @@ const ActiveHistoryPannelNew = ({
 			? (isAddToExpressPay ? { amt: Math.abs(tx.amountFiat), green: true } : { amt: -Math.abs(tx.amountFiat), green: false })
 			: null
 		// Add to Express Pay (EOA→AA): 负数用黑色，不显示绿色。Vouchers 下则反转：EOA→AA 为 + 绿色
-		const amountIsGreen = vouchersInternalAmount
-			? vouchersInternalAmount.green
-			: !isAddToExpressPay && ((tx.isInbound && tx.amountUSDC > 0) || (isWithdrawToMain && tx.amountUSDC > 0))
+		const amountIsGreen = tx.type === 'fuel_yield'
+			? true
+			: vouchersInternalAmount
+				? vouchersInternalAmount.green
+				: !isAddToExpressPay && ((tx.isInbound && tx.amountUSDC > 0) || (isWithdrawToMain && tx.amountUSDC > 0))
 
 		return (
 			<div
@@ -1043,6 +1070,8 @@ const ActiveHistoryPannelNew = ({
 					>
 						{tx.type === 'request_create' && !isReqExpired && !isReqCanceled ? (
 							<span className="text-[#FF9500]">Pending</span>
+						) : tx.type === 'fuel_yield' ? (
+							<>{tx.amountFiat > 0 ? '+' : ''}{Math.round(tx.amountFiat)}</>
 						) : isReqExpired || isReqCanceled ? (
 							formatAmountWithCurrencyProtocol(Math.abs(tx.amountFiat), tx.currencyCode as ICurrency)
 						) : (
@@ -1054,11 +1083,13 @@ const ActiveHistoryPannelNew = ({
 							)
 						)}
 					</div>
-					{tx.amountUSDC !== 0 && tx.type !== 'request_create' && tx.type !== 'request_expired' && (
+					{tx.type === 'fuel_yield' ? (
+						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">B-Units</span>
+					) : tx.amountUSDC !== 0 && tx.type !== 'request_create' && tx.type !== 'request_expired' ? (
 						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
 							{Math.abs(tx.amountUSDC).toFixed(2)} USDC
 						</span>
-					)}
+					) : null}
 				</div>
 			</div>
 		)
@@ -1294,9 +1325,11 @@ const ActiveHistoryPannelNew = ({
 									const detailAmtGreen = vouchersDetailAmt ? vouchersDetailAmt.green : false
 									const amountColorClass = ((selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && (isRequestExpired(selectedTx) || canceledHashes.has(getOriginalPaymentHash(selectedTx))))
 										? 'text-gray-400 dark:text-slate-500'
-										: activeTab === 'Vouchers' && selectedTx.type === 'internal_transfer'
-											? (detailAmtGreen ? 'text-[#34C759]' : 'text-black dark:text-white')
-											: 'text-black dark:text-white'
+										: selectedTx.type === 'fuel_yield'
+											? 'text-[#34C759]'
+											: activeTab === 'Vouchers' && selectedTx.type === 'internal_transfer'
+												? (detailAmtGreen ? 'text-[#34C759]' : 'text-black dark:text-white')
+												: 'text-black dark:text-white'
 									return (
 								<h2
 									id="tx-detail-title"
@@ -1306,6 +1339,8 @@ const ActiveHistoryPannelNew = ({
 										? 'Request Canceled'
 										: (selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && isRequestExpired(selectedTx)
 										? 'Request Expired'
+										: selectedTx.type === 'fuel_yield'
+										? `+${Math.round(selectedTx.amountFiat)} B-Units`
 										: selectedTx.type === 'request_create' || selectedTx.type === 'request_expired'
 										? `Requesting ${formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)} ${selectedTx.currencyCode}`
 										: selectedTx.amountUSDC === 0
@@ -1322,7 +1357,9 @@ const ActiveHistoryPannelNew = ({
 							</div>
 							{selectedTx.type !== 'request_create' && selectedTx.type !== 'request_expired' && selectedTx.amountUSDC !== 0 && (
 								<p className="text-[14px] font-medium text-blue-600 dark:text-blue-400 mt-0.5">
-									Settled for {formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC
+									{selectedTx.type === 'fuel_yield'
+										? `Paid ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`
+										: `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`}
 								</p>
 							)}
 							<p className="text-[15px] font-medium text-gray-500 dark:text-slate-400 mt-1">{selectedTx.timestamp}</p>
@@ -1588,11 +1625,11 @@ const ActiveHistoryPannelNew = ({
 							{selectedTx.type !== 'internal_transfer' && !(getOriginalPaymentHash(selectedTx) && (getStatus(selectedTx) === 'Waiting' || getStatus(selectedTx) === 'Expired' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
 							<div className="flex justify-between items-center text-[14px]">
 								<span className="text-gray-500 dark:text-slate-400 font-medium">
-									{selectedTx.isInbound ? 'Received From' : getOriginalPaymentHash(selectedTx) ? 'Paid To' : 'Send To'}
+									{selectedTx.type === 'fuel_yield' ? 'Source' : selectedTx.isInbound ? 'Received From' : getOriginalPaymentHash(selectedTx) ? 'Paid To' : 'Send To'}
 								</span>
 								<span className="font-semibold text-black dark:text-white flex items-center gap-1.5">
-									{detailTitleText}
-									{selectedTx.counterpartyAddress && ethers.isAddress(selectedTx.counterpartyAddress) && (
+									{selectedTx.type === 'fuel_yield' ? 'System Top-up' : detailTitleText}
+									{selectedTx.type !== 'fuel_yield' && selectedTx.counterpartyAddress && ethers.isAddress(selectedTx.counterpartyAddress) && (
 										<button
 											type="button"
 											onClick={() => {
@@ -1613,7 +1650,7 @@ const ActiveHistoryPannelNew = ({
 								</span>
 							</div>
 							)}
-							{selectedTx.currencyCode !== 'USDC' && Math.abs(selectedTx.amountFiat) > 0 && selectedTx.amountUSDC !== 0 && (
+							{selectedTx.type !== 'fuel_yield' && selectedTx.currencyCode !== 'USDC' && Math.abs(selectedTx.amountFiat) > 0 && selectedTx.amountUSDC !== 0 && (
 							<div className="flex justify-between items-center text-[14px]">
 								<span className="text-gray-500 dark:text-slate-400 font-medium">Exchange Rate</span>
 								<span className="font-semibold text-black dark:text-white">

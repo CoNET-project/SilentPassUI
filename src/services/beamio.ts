@@ -82,7 +82,7 @@ export const getUsdcBalanceFromApi = async (address: string): Promise<string | n
 
 const getBalance = async (address: string) => {
 	if (!address) return null
-	// 熔断期仅使用 CoNET 节点（不向 API 服务器请求），withBaseRpc 内部会走 CoNET-only
+	// 熔断期跳过 RPC（不向 API 服务器请求）
 	try {
 		const [usdc, eth, oracle] = await Promise.all([
 			withBaseRpc((p) => new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, p).balanceOf(address)),
@@ -100,7 +100,7 @@ const getBalance = async (address: string) => {
 		}
 	} catch (err) {
 		if (isRpcQuotaOrNetworkError(err)) reportRpcFailure()
-		// 限流时不再走 API，仅使用 CoNET 节点；非限流时可用 API 兜底
+		// 熔断期不请求 API；非熔断期用 API 兜底
 		if (!isRpcDegraded()) return fetchBalanceFromApi(address)
 		return null
 	}
@@ -133,8 +133,8 @@ const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 /** CoNET 主网 chainId（BUnitAirdrop 部署链） */
 const CONET_CHAIN_ID = 224400
 
-/** CoNET BUnitAirdrop 合约地址（与 deployments/conet-BUintAirdrop.json 一致） */
-const CONET_BUNIT_AIRDROP_ADDRESS = '0x36dEc4b91ee3b9a0cF0F6f0df47955745Eae4a30'
+/** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致） */
+const CONET_BUNIT_AIRDROP_ADDRESS = '0xa7410a532544aB7d1bA70701D9D0E389e4f4Cc1F'
 
 /** 检查是否可领取 BeamioBUnits */
 export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {
@@ -198,6 +198,22 @@ export const signAndClaimBUnits = async (
 		return { success: true, txHash: data.txHash }
 	} catch (e) {
 		return { success: false, error: (e as Error)?.message ?? 'Claim failed' }
+	}
+}
+
+/** 提交 Refuel B-Unit 请求到 API。Cluster 预检后转发 Master，Master 提交 BaseTreasury.purchaseBUnitWith3009Authorization。 */
+export const purchaseBUnitFromBase = async (payload: import('./BeamioCard').IBUnitRefuelPayload): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+	try {
+		const res = await fetch(`${beamioApi}/api/purchaseBUnitFromBase`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		})
+		const data = await res.json().catch(() => ({}))
+		if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
+		return { success: true, txHash: data.txHash }
+	} catch (e) {
+		return { success: false, error: (e as Error)?.message ?? 'Refuel failed' }
 	}
 }
 
@@ -1420,7 +1436,7 @@ const beamioAccountContract = {
 	address: '0x3E15607BCf98B01e6C7dF834a2CEc7B8B6aFb1BC',
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
 	
 }
 
@@ -1989,7 +2005,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
 	
 }
 

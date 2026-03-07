@@ -34,12 +34,12 @@ import {
   Flame,
   Banknote,
   PackageOpen,
+  ArrowLeft,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { getMyAssetsAggregated } from "@/services/BeamioCard"
-import BeamioNavBack from "@/components/Setting/BeamioNavBack"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
 import PurchaseAccount from "./PurchaseAccount"
@@ -192,7 +192,7 @@ const HERO_COLLECTION: HeroItem[] = [
     description: "Experience authentic Vietnamese cuisine at its finest. This membership is valid at both Champlain Heights and Kerrisdale locations, offering exclusive perks for loyal patrons.",
     features: ["10% Off All Orders", "Valid at Champlain Heights & Kerrisdale", "Priority Reservations", "Birthday Dessert"],
     image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
-    merchant: "Sen Pho + Cafe",
+    merchant: "",
     location: "Vancouver, BC",
     price: 99,
     type: "Membership",
@@ -210,7 +210,7 @@ const CASH_TREES_COLLECTION: CashTreesItem[] = [
     description: "Experience premium dining with exclusive rewards. Discount rates are set by individual merchants. The entire bill must be paid with this CashTrees card to apply the discount.",
     features: ["Merchant-Defined VIP Discounts", "Sen Pho + Cafe: 10% Off", "Priority Reservations", "Valid at Kerrisdale & Champlain Heights"],
     image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
-    merchant: "Sen Pho + Cafe",
+    merchant: "",
     location: "Vancouver, BC",
     merchantLogo: phoIcon,
     partners: [
@@ -233,7 +233,7 @@ const CASH_TREES_COLLECTION: CashTreesItem[] = [
     description: "Start enjoying authentic dining with CashTrees rewards. Discount rates are set by individual merchants. The entire bill must be paid with this CashTrees card to apply the discount.",
     features: ["Merchant-Defined Standard Discounts", "Sen Pho + Cafe: 5% Off", "Instant Digital Setup", "Valid at Kerrisdale & Champlain Heights"],
     image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
-    merchant: "Sen Pho + Cafe",
+    merchant: "",
     location: "Vancouver, BC",
     merchantLogo: phoIcon,
     partners: [
@@ -1033,18 +1033,27 @@ export default function Market() {
 		<AnimatePresence>
 			<motion.div
 			key="card-detail-overlay"
-			className="fixed inset-0 z-[99] bg-white dark:bg-slate-900 flex flex-col pt-[env(safe-area-inset-top)]"
+			className="fixed inset-0 z-[99] bg-white dark:bg-slate-900 flex flex-col"
 			initial={{ x: "100%" }}
 			animate={{ x: 0 }}
 			exit={{ x: "100%" }}
 			transition={{ duration: 0.28, ease: "easeOut" }}
 			onTouchMove={(e) => e.stopPropagation()}
 			>
-			<BeamioNavBack
-				title=""
-				onClose={closeCardDetail}
-				onMore={() => {}}
-			/>
+			<div
+				className="absolute left-0 right-0 z-50 flex items-center justify-between px-5"
+				style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
+			>
+				<button
+					type="button"
+					onClick={closeCardDetail}
+					className="w-12 h-12 rounded-full bg-white/90 dark:bg-slate-900/70 shadow-[0_10px_24px_rgba(0,0,0,0.12)] ring-1 ring-black/5 dark:ring-white/10 flex items-center justify-center text-slate-600 dark:text-slate-200 active:scale-95 transition-transform"
+					aria-label="Back"
+				>
+					<ArrowLeft className="w-5 h-5" />
+				</button>
+				<div className="w-12 h-12" aria-hidden />
+			</div>
 			<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
 				{overlayMode === "cardItem" && isMember && myAssets != null ? (
 				<CardItem cardItem={myAssets} />

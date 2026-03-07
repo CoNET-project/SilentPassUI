@@ -244,6 +244,37 @@ export function TransactionsItemDetail({
 
 	}, [tx.amount, currency])
 
+	const hideNoteForFuelYield = useMemo(() => {
+		const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim()
+		const normalizeCompact = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+		const fuelYieldLabel = 'fuel yield (1:100)'
+		const fuelYieldCompact = 'fuelyield1100'
+		const systemTopupCompact = 'systemtopup'
+		const candidates = [
+			title,
+			note,
+			tx?.note,
+			(tx?.requestDetail as any)?.textNote,
+		]
+			.map((value) => (typeof value === 'string' ? value : ''))
+			.filter(Boolean)
+
+		return candidates.some((value) => {
+			const normalized = normalize(value)
+			const compact = normalizeCompact(value)
+			return (
+				normalized.includes(fuelYieldLabel) ||
+				compact.includes(fuelYieldCompact) ||
+				normalized.includes('fuel yield') ||
+				compact.includes(systemTopupCompact)
+			)
+		})
+	}, [title, note, tx])
+
+	// Home Recent Activity detail panel: hide note/title note representation.
+	const hideNoteSectionInDetail = true
+
 
 	const subtotal = useMemo(() => {
 		if (!tx || !tx?.requestDetail) return 0
@@ -642,7 +673,7 @@ export function TransactionsItemDetail({
 						{/* Note */}
 
 						{
-						title && (
+						title && !hideNoteSectionInDetail && (
 							
 								<div className="pt-4 pb-3">
 									<div className="text-[16px] font-extrabold text-slate-900">{title}</div>
@@ -655,7 +686,7 @@ export function TransactionsItemDetail({
 					
 										
 						{
-							note && 
+							note && !hideNoteForFuelYield && !hideNoteSectionInDetail &&
 								<div className="mt-4 pb-4">
 									<div
 										className="

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { Fuel, Plus, ChevronRight, RefreshCw, Filter, X, Check, ExternalLink, Code, Calculator } from 'lucide-react'
 import { getBUnitLedgerFromIndexer, signBUnitRefuel3009, type BUnitLedgerEntry } from '@/services/BeamioCard'
 import { purchaseBUnitFromBase, getUsdcBalanceFromApi } from '@/services/beamio'
@@ -15,6 +15,81 @@ const hasOriginalPaymentHash = (log: LogEntry) => !!(log as BUnitLedgerEntry & {
 const displayTitle = (log: LogEntry) => (isBuintClaim(log) ? 'Network Welcome Grant' : log.title)
 /** Subtitle hidden for Network Welcome Grant and Fuel Yield (1:100) */
 const showSubtitle = (log: LogEntry) => !isBuintClaim(log) && log.title !== 'Fuel Yield (1:100)'
+const BUNIT_LEDGER_CACHE_KEY_PREFIX = 'beamio:bunit-ledger:v3:'
+const BUNIT_LEDGER_RENDER_BATCH = 12
+const BUNIT_LEDGER_BATCH_INTERVAL_MS = 120
+const BUNIT_LEDGER_CACHE_MAX_ITEMS = 60
+
+const getLedgerCacheKey = (account: string) => `${BUNIT_LEDGER_CACHE_KEY_PREFIX}${account.toLowerCase()}`
+
+const normalizeLedger = (entries: LogEntry[]) => {
+  const dedup = new Map<string, LogEntry>()
+  for (const entry of entries) {
+    if (!entry?.id) continue
+    dedup.set(entry.id, entry)
+  }
+  return Array.from(dedup.values()).sort((a, b) => b.timestamp - a.timestamp)
+}
+
+const minimizeRawTxForCache = (rawTx: Record<string, unknown> | undefined): Record<string, unknown> => {
+  if (!rawTx || typeof rawTx !== 'object') return {}
+  return {
+    id: rawTx.id,
+    originalPaymentHash: rawTx.originalPaymentHash,
+    chainId: rawTx.chainId,
+    txCategory: rawTx.txCategory,
+    timestamp: rawTx.timestamp,
+    payer: rawTx.payer,
+    payee: rawTx.payee,
+    finalRequestAmountFiat6: rawTx.finalRequestAmountFiat6,
+    finalRequestAmountUSDC6: rawTx.finalRequestAmountUSDC6,
+    exists: rawTx.exists,
+  }
+}
+
+const readLedgerCache = (account: string): LogEntry[] => {
+  if (typeof window === 'undefined' || !window.localStorage) return []
+  try {
+    const raw = window.localStorage.getItem(getLedgerCacheKey(account))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return normalizeLedger(
+      parsed.filter((item): item is LogEntry => !!item && typeof item === 'object' && 'id' in (item as object))
+    )
+  } catch {
+    return []
+  }
+}
+
+const writeLedgerCache = (account: string, entries: LogEntry[]) => {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  try {
+    const compact = normalizeLedger(entries)
+      .slice(0, BUNIT_LEDGER_CACHE_MAX_ITEMS)
+      .map((entry) => ({
+        ...entry,
+        rawTx: minimizeRawTxForCache(entry.rawTx as Record<string, unknown> | undefined),
+      }))
+    window.localStorage.setItem(getLedgerCacheKey(account), JSON.stringify(compact))
+  } catch {}
+}
+
+const getDataStateBadge = (state: 'cached' | 'synced' | 'stale') => {
+  if (state === 'cached') return { text: 'Cached', cls: 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300' }
+  if (state === 'stale') return { text: 'Refresh failed', cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300' }
+  return { text: 'Synced', cls: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-300' }
+}
+
+const formatBUnits = (value: number, withSign = false) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return withSign ? '0.00' : '0.00'
+  const abs = Math.abs(n).toFixed(2)
+  if (!withSign) return abs
+  if (n > 0) return `+${abs}`
+  if (n < 0) return `-${abs}`
+  return '0.00'
+}
 
 interface FuelViewProps {
   onClose: () => void
@@ -25,7 +100,7 @@ interface FuelViewProps {
 
 const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, account }) => {
   const { profiles } = useDaemonContext()
-  const bUnits = bUnitBalance != null ? Math.floor(bUnitBalance.total) : 0
+  const bUnits = bUnitBalance?.total ?? 0
   const [usdcBalance, setUsdcBalance] = useState<number | null>(null)
   const [refuelAmount, setRefuelAmount] = useState(5)
   const [refuelAmountStr, setRefuelAmountStr] = useState('5')
@@ -40,22 +115,73 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
   const [refuelError, setRefuelError] = useState<string | null>(null)
   const [refuelSuccess, setRefuelSuccess] = useState<string | null>(null)
   const [calcAmount, setCalcAmount] = useState(100)
+  const [ledgerDataState, setLedgerDataState] = useState<'cached' | 'synced' | 'stale'>('synced')
+  const ledgerFetchSeqRef = useRef(0)
 
   const fetchLedger = () => {
     if (!account) {
+      ledgerFetchSeqRef.current += 1
       setBUnitsLedger([])
       setLedgerLoading(false)
+      setLedgerDataState('synced')
       return
     }
-    setLedgerLoading(true)
-    getBUnitLedgerFromIndexer(account)
-      .then(setBUnitsLedger)
-      .catch(() => setBUnitsLedger([]))
-      .finally(() => setLedgerLoading(false))
+    const fetchSeq = ++ledgerFetchSeqRef.current
+    const cached = readLedgerCache(account)
+    if (cached.length > 0) {
+      setBUnitsLedger(cached)
+      setLedgerLoading(false)
+      setLedgerDataState('cached')
+    } else {
+      setLedgerLoading(true)
+    }
+
+    getBUnitLedgerFromIndexer(account, { throwOnError: true })
+      .then((fresh) => {
+        if (fetchSeq !== ledgerFetchSeqRef.current) return
+        const normalized = normalizeLedger(fresh as LogEntry[])
+
+        // Chain returned successfully: trust source-of-truth, including "no record" case.
+        if (normalized.length === 0) {
+          setBUnitsLedger([])
+          writeLedgerCache(account, [])
+          setLedgerLoading(false)
+          setLedgerDataState('synced')
+          return
+        }
+
+        // Prioritize new records first, then batch-apply remaining history.
+        const firstBatchSize = Math.min(BUNIT_LEDGER_RENDER_BATCH, normalized.length)
+        let rendered = normalized.slice(0, firstBatchSize)
+        setBUnitsLedger(rendered)
+        writeLedgerCache(account, normalized)
+        setLedgerLoading(false)
+        setLedgerDataState('synced')
+
+        const applyNextBatch = () => {
+          if (fetchSeq !== ledgerFetchSeqRef.current) return
+          if (rendered.length >= normalized.length) return
+          const nextSize = Math.min(rendered.length + BUNIT_LEDGER_RENDER_BATCH, normalized.length)
+          rendered = normalized.slice(0, nextSize)
+          setBUnitsLedger(rendered)
+          window.setTimeout(applyNextBatch, BUNIT_LEDGER_BATCH_INTERVAL_MS)
+        }
+        window.setTimeout(applyNextBatch, BUNIT_LEDGER_BATCH_INTERVAL_MS)
+      })
+      .catch(() => {
+        // Chain access failed: keep cached records; do not clear permanent history by network fault.
+        if (fetchSeq !== ledgerFetchSeqRef.current) return
+        if (cached.length === 0) setBUnitsLedger([])
+        setLedgerLoading(false)
+        setLedgerDataState('stale')
+      })
   }
 
   useEffect(() => {
-    fetchLedger()
+    const id = window.requestAnimationFrame(() => {
+      fetchLedger()
+    })
+    return () => window.cancelAnimationFrame(id)
   }, [account])
 
   useEffect(() => {
@@ -180,17 +306,12 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
           <ChevronRight size={22} className="rotate-180" />
         </button>
         <h2 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Fuel Center</h2>
-        {(onRefresh || account) && (
-          <button onClick={handleRefresh} className="ml-auto w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" aria-label="Refresh">
-            <RefreshCw size={20} className={ledgerLoading ? 'animate-spin' : ''} />
-          </button>
-        )}
       </div>
 
-      {/* Beamio protocol: 首内容 Network Fuel Balance 对齐 Home 首内容，spacer + pt-6 */}
+      {/* Beamio protocol: 首内容 Network Fuel Balance 对齐 Home 首内容；spacer 0 + -mt-12 使面板上移 5rem */}
       <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
-        <div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
-        <div className="px-6 pt-6 space-y-6">
+        <div className="shrink-0" style={{ minHeight: 'env(safe-area-inset-top)' }} />
+        <div className="px-6 pt-6 mt-4 space-y-6">
         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-50 dark:border-slate-700">
           <div className="flex justify-between items-center mb-1">
             <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Network Fuel Balance</p>
@@ -199,8 +320,8 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className={`text-[4.5rem] leading-none font-black tracking-tighter ${bUnits < 10 ? 'text-red-500' : 'text-orange-500'}`}>
-              {bUnitBalance != null ? bUnits : "—"}
+            <span className={`text-[3.375rem] leading-none font-black tracking-tighter ${bUnits < 10 ? 'text-red-500' : 'text-orange-500'}`}>
+              {bUnitBalance != null ? formatBUnits(bUnits) : "—"}
             </span>
             <span className="text-orange-500 font-bold text-xl">B-Units</span>
           </div>
@@ -295,7 +416,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                 <div className="flex justify-between items-center">
                   <span className="text-[14px] font-black text-slate-800 dark:text-slate-200">You receive</span>
                   <span className="text-[22px] font-black text-orange-500 leading-none">
-                    +{Math.round(effectiveRefuelAmount * 100)} <span className="text-[10px] font-bold opacity-60">B-Units</span>
+                    +{(effectiveRefuelAmount * 100).toFixed(2)} <span className="text-[10px] font-bold opacity-60">B-Units</span>
                   </span>
                 </div>
                 <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">$1 = 100 B-Units (no fee)</p>
@@ -321,7 +442,13 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
 
         <div className="space-y-4">
           <div className="flex justify-between items-center px-2">
-            <h3 className="text-[13px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">B-Units Ledger</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-[13px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">B-Units Ledger</h3>
+              {(() => {
+                const badge = getDataStateBadge(ledgerDataState)
+                return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${badge.cls}`}>{badge.text}</span>
+              })()}
+            </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`text-[11px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full transition-colors ${showFilters ? 'bg-orange-500 text-white' : 'text-orange-500 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30'}`}
@@ -379,7 +506,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                   </div>
                   <div className="text-right flex flex-col items-end shrink-0">
                     <div className={`text-[12px] font-semibold tracking-tight ${log.amount > 0 ? 'text-[#34C759]' : 'text-black dark:text-white'}`}>
-                      {log.amount > 0 ? '+' : ''}{log.amount}
+                      {formatBUnits(log.amount, true)}
                     </div>
                     <span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">B-Units</span>
                   </div>
@@ -424,7 +551,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
               <span>Service Fee (0.8%)</span>
               <div className="flex items-center gap-1.5 bg-orange-500/10 px-2 py-0.5 rounded text-orange-500">
                 <Fuel size={12} fill="currentColor" />
-                <span className="font-bold">{estimatedServiceFee} B-Units</span>
+                <span className="font-bold">{estimatedServiceFee.toFixed(2)} B-Units</span>
               </div>
             </div>
             <div className="flex justify-between text-[13px] text-slate-500 dark:text-slate-400 font-medium">
@@ -433,7 +560,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
             </div>
             <div className="pt-4 border-t border-slate-200 dark:border-slate-600 flex justify-between items-end mt-2">
               <span className="text-[14px] font-bold text-slate-800 dark:text-slate-100">Total Fuel Cost</span>
-              <span className="text-[24px] font-black text-orange-500 leading-none">{estimatedServiceFee} <span className="text-[11px] text-orange-500/70">B-Units</span></span>
+              <span className="text-[24px] font-black text-orange-500 leading-none">{estimatedServiceFee.toFixed(2)} <span className="text-[11px] text-orange-500/70">B-Units</span></span>
             </div>
           </div>
         </div>
@@ -449,7 +576,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
             aria-hidden="true"
           />
           <div
-            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-slate-900 rounded-t-[2rem] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] overflow-hidden"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-slate-900 rounded-t-[2rem] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] overflow-hidden h-[85vh] max-h-[85vh] flex flex-col"
             style={{ animation: 'slideUp 0.3s ease-out forwards' }}
           >
             <style>{`
@@ -458,7 +585,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                 to { transform: translateY(0); opacity: 1; }
               }
             `}</style>
-            <div className="pt-3 pb-1 flex items-center justify-center relative">
+            <div className="pt-3 pb-1 flex items-center justify-center relative shrink-0">
               <div className="w-12 h-1 rounded-full bg-slate-200 dark:bg-slate-600" />
                 <button
                 onClick={() => { setSelectedDetail(null); setShowJson(false) }}
@@ -467,7 +594,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                 <X size={20} />
               </button>
             </div>
-            <div className="px-6 pb-10 pt-2">
+            <div className="px-6 pb-10 pt-2 overflow-y-auto flex-1">
               <div className="flex flex-col items-center text-center mb-6">
                 <div className="w-12 h-12 rounded-full bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-orange-500 mb-3 shrink-0 overflow-hidden">
                   {(selectedDetail.type === 'refuel' || selectedDetail.type === 'reward') ? (
@@ -478,7 +605,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                 </div>
                 <h3 className="text-xl font-black text-slate-800 dark:text-slate-100">{displayTitle(selectedDetail)}</h3>
                 <p className={`text-2xl font-black mt-2 ${selectedDetail.amount > 0 ? 'text-orange-500' : 'text-slate-800 dark:text-slate-100'}`}>
-                  {selectedDetail.amount > 0 ? '+' : ''}{selectedDetail.amount} <span className="text-base font-medium text-slate-500 dark:text-slate-400">B-Units</span>
+                  {formatBUnits(selectedDetail.amount, true)} <span className="text-base font-medium text-slate-500 dark:text-slate-400">B-Units</span>
                 </p>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/80 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700">
@@ -541,9 +668,9 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                   <Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
                 </button>
                 {showJson && (
-                  <div className="mt-4 bg-[#1C1C1E] rounded-[16px] p-5 overflow-x-auto shadow-inner">
+                  <div className="mt-4 bg-[#1C1C1E] rounded-[16px] p-5 overflow-x-auto overflow-y-auto max-h-[32vh] shadow-inner">
                     <pre className="text-[11px] text-[#34C759] font-mono leading-relaxed">
-                      {JSON.stringify(selectedDetail, null, 2)}
+                      {JSON.stringify((selectedDetail as LogEntry & { rawTx?: Record<string, unknown> }).rawTx ?? selectedDetail, null, 2)}
                     </pre>
                   </div>
                 )}

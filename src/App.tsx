@@ -70,6 +70,7 @@ const CoreContract = new ethers.Contract(
 // ...
 
 function AppShell() {
+  const ROUTE_LOCK_ENABLED = false
   const {
     isInitialLoading,
     showFooter,
@@ -118,6 +119,8 @@ function AppShell() {
   setChartsRef.current = setCharts
   const bUnitClaimAttemptedRef = useRef(false)
   const initialRedeemUrlProcessedRef = useRef(false)
+  const routeLockHashRef = useRef<string>("")
+  const routeLockApplyingRef = useRef(false)
 
   const navigate = useNavigate()
 
@@ -181,6 +184,81 @@ function AppShell() {
 
   const { pathname } = useLocation()
 
+  useEffect(() => {
+    if (!ROUTE_LOCK_ENABLED || typeof window === "undefined") return
+
+    const normalizeHash = (hash: string) => (hash && hash.startsWith("#") ? hash : `#${hash || "/"}`)
+    const originalPushState = window.history.pushState.bind(window.history)
+    const originalReplaceState = window.history.replaceState.bind(window.history)
+
+    routeLockHashRef.current = normalizeHash(window.location.hash || "#/")
+
+    const forceBackToLockedHash = () => {
+      const locked = normalizeHash(routeLockHashRef.current || "#/")
+      const current = normalizeHash(window.location.hash || "#/")
+      if (current === locked) return
+      routeLockApplyingRef.current = true
+      originalReplaceState(window.history.state, "", `${window.location.pathname}${window.location.search}${locked}`)
+      setTimeout(() => {
+        routeLockApplyingRef.current = false
+      }, 0)
+    }
+
+    const onHashChange = (e: HashChangeEvent) => {
+      if (routeLockApplyingRef.current) return
+      const locked = normalizeHash(routeLockHashRef.current || "#/")
+      const current = normalizeHash(window.location.hash || "#/")
+      if (current === locked) return
+      e.preventDefault?.()
+      forceBackToLockedHash()
+    }
+
+    const onPopState = () => {
+      if (routeLockApplyingRef.current) return
+      forceBackToLockedHash()
+    }
+
+    const onClickCapture = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null
+      if (!target) return
+      if (target.target === "_blank" || target.hasAttribute("download")) return
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      const href = (target.getAttribute("href") || "").trim()
+      if (!href) return
+      const isHashLink = href.startsWith("#")
+      const isRelativeLink = href.startsWith("/") || href.startsWith("./") || href.startsWith("../")
+      const isSameOriginAbsolute = /^https?:\/\//i.test(href) && new URL(href, window.location.href).origin === window.location.origin
+      if (!isHashLink && !isRelativeLink && !isSameOriginAbsolute) return
+      e.preventDefault()
+      e.stopPropagation()
+      const ie = e as MouseEvent & { stopImmediatePropagation?: () => void }
+      ie.stopImmediatePropagation?.()
+      forceBackToLockedHash()
+    }
+
+    window.history.pushState = ((..._args: Parameters<History["pushState"]>) => {
+      forceBackToLockedHash()
+    }) as History["pushState"]
+
+    window.history.replaceState = ((..._args: Parameters<History["replaceState"]>) => {
+      forceBackToLockedHash()
+    }) as History["replaceState"]
+
+    window.addEventListener("hashchange", onHashChange, true)
+    window.addEventListener("popstate", onPopState, true)
+    document.addEventListener("click", onClickCapture, true)
+
+    forceBackToLockedHash()
+
+    return () => {
+      window.history.pushState = originalPushState
+      window.history.replaceState = originalReplaceState
+      window.removeEventListener("hashchange", onHashChange, true)
+      window.removeEventListener("popstate", onPopState, true)
+      document.removeEventListener("click", onClickCapture, true)
+    }
+  }, [ROUTE_LOCK_ENABLED])
+
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] =
     useState<"BeamioContactProfilePreview" | ""|'Pay'>("")
   const [payFocusAmountOnMount, setPayFocusAmountOnMount] = useState(false)
@@ -211,6 +289,38 @@ function AppShell() {
 	}
 
   useEffect(() => {
+		let touchStartX = 0
+		let touchStartY = 0
+		let edgeSwipeBlock = false
+		const EDGE_GUARD_PX = 28
+		const captureOpts: AddEventListenerOptions = { capture: true }
+		const capturePassiveStart: AddEventListenerOptions = { capture: true, passive: true }
+		const captureActiveMove: AddEventListenerOptions = { capture: true, passive: false }
+
+		const canScrollX = (el: HTMLElement) => {
+			const style = window.getComputedStyle(el)
+			const overflowX = style.overflowX
+			if (overflowX !== "auto" && overflowX !== "scroll") return false
+			return el.scrollWidth > el.clientWidth
+		}
+
+		const hasHorizontalScrollableAncestor = (target: HTMLElement | null) => {
+			const root = (document.scrollingElement as HTMLElement) || document.documentElement
+			let el: HTMLElement | null = target
+			while (el && el !== root) {
+				if (canScrollX(el)) return true
+				el = el.parentElement
+			}
+			return false
+		}
+
+		const stopEvent = (e: TouchEvent) => {
+			e.preventDefault()
+			e.stopPropagation()
+			const ie = e as TouchEvent & { stopImmediatePropagation?: () => void }
+			ie.stopImmediatePropagation?.()
+		}
+
 		const canScroll = (el: HTMLElement) => {
 			const style = window.getComputedStyle(el)
 			const overflowY = style.overflowY
@@ -218,8 +328,34 @@ function AppShell() {
 			return el.scrollHeight > el.clientHeight
 		}
 
+		const handleTouchStart = (e: TouchEvent) => {
+			const t = e.touches[0]
+			if (!t) return
+			touchStartX = t.clientX
+			touchStartY = t.clientY
+			const target = e.target as HTMLElement | null
+			const vw = window.innerWidth || document.documentElement.clientWidth || 0
+			const startedAtEdge = touchStartX <= EDGE_GUARD_PX || touchStartX >= vw - EDGE_GUARD_PX
+			// 保留可横向滚动容器（例如 Market 横向菜单）的手势，不拦截其内部 touch
+			edgeSwipeBlock = startedAtEdge && !hasHorizontalScrollableAncestor(target)
+		}
+
 		const handleTouchMove = (e: TouchEvent) => {
 			const target = e.target as HTMLElement | null
+
+			const touch = e.touches[0]
+			if (!touch) return
+
+			// 禁用 iOS/PWA 边缘左右滑动返回/前进手势
+			if (edgeSwipeBlock) {
+				const dx = touch.clientX - touchStartX
+				const dy = touch.clientY - touchStartY
+				if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) + 2) {
+					stopEvent(e)
+					return
+				}
+			}
+
 			if (!target) return
 
 			let el: HTMLElement | null = target
@@ -228,13 +364,11 @@ function AppShell() {
 			while (el && el !== root && !canScroll(el)) el = el.parentElement
 
 			if (!el || el === root) {
-				e.preventDefault()
+				stopEvent(e)
 				return
 			}
 
 			const current = el
-			const touch = e.touches[0]
-			if (!touch) return
 
 			if (bodyRef.current && current === bodyRef.current) {
 			return
@@ -250,11 +384,12 @@ function AppShell() {
 			const atBottom = current.scrollTop + current.clientHeight >= current.scrollHeight - 1
 
 			if ((atTop && deltaY > 0) || (atBottom && deltaY < 0)) {
-				e.preventDefault()
+				stopEvent(e)
 			}
 		}
 
 		const handleTouchEnd = (e: TouchEvent) => {
+			edgeSwipeBlock = false
 			const target = e.target as HTMLElement | null
 			if (!target) return
 
@@ -267,14 +402,19 @@ function AppShell() {
 			}
 		}
 
-		document.addEventListener("touchmove", handleTouchMove, { passive: false })
-		document.addEventListener("touchend", handleTouchEnd, { passive: true })
-		document.addEventListener("touchcancel", handleTouchEnd, { passive: true })
+		document.addEventListener("touchstart", handleTouchStart, capturePassiveStart)
+		document.addEventListener("touchmove", handleTouchMove, captureActiveMove)
+		document.addEventListener("touchend", handleTouchEnd, capturePassiveStart)
+		document.addEventListener("touchcancel", handleTouchEnd, capturePassiveStart)
+		// iOS 某些场景下 document 层拦截不足，补一层 window capture
+		window.addEventListener("touchmove", handleTouchMove, captureActiveMove)
 
 		return () => {
-			document.removeEventListener("touchmove", handleTouchMove as any)
-			document.removeEventListener("touchend", handleTouchEnd as any)
-			document.removeEventListener("touchcancel", handleTouchEnd as any)
+			document.removeEventListener("touchstart", handleTouchStart as any, captureOpts)
+			document.removeEventListener("touchmove", handleTouchMove as any, captureOpts)
+			document.removeEventListener("touchend", handleTouchEnd as any, captureOpts)
+			document.removeEventListener("touchcancel", handleTouchEnd as any, captureOpts)
+			window.removeEventListener("touchmove", handleTouchMove as any, captureOpts)
 		}
 	}, [])
 

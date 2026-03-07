@@ -87,6 +87,70 @@ import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import { useNfcRead } from '@/hooks/useNfcRead'
 
+const HISTORY_BALANCE_CACHE_KEY_PREFIX = 'beamio:history:balance:v1:'
+const getHistoryBalanceCacheKey = (keyID: string) => `${HISTORY_BALANCE_CACHE_KEY_PREFIX}${keyID.toLowerCase()}`
+const HISTORY_AA_BALANCE_CACHE_KEY_PREFIX = 'beamio:history:aa-balance:v1:'
+const getHistoryAaBalanceCacheKey = (aa: string) => `${HISTORY_AA_BALANCE_CACHE_KEY_PREFIX}${aa.toLowerCase()}`
+
+type HistoryBalanceCache = {
+	usdcbalance: number
+	usdcToUSD?: number
+	updatedAt: number
+}
+
+const readHistoryBalanceCache = (keyID: string): HistoryBalanceCache | null => {
+	if (!keyID || typeof window === 'undefined' || !window.localStorage) return null
+	try {
+		const raw = window.localStorage.getItem(getHistoryBalanceCacheKey(keyID))
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as Partial<HistoryBalanceCache>
+		if (!Number.isFinite(Number(parsed?.usdcbalance))) return null
+		return {
+			usdcbalance: Number(parsed.usdcbalance),
+			usdcToUSD: Number.isFinite(Number(parsed?.usdcToUSD)) ? Number(parsed?.usdcToUSD) : undefined,
+			updatedAt: Number.isFinite(Number(parsed?.updatedAt)) ? Number(parsed?.updatedAt) : Date.now(),
+		}
+	} catch {
+		return null
+	}
+}
+
+const writeHistoryBalanceCache = (keyID: string, usdcbalance: number, usdcToUSD?: number) => {
+	if (!keyID || typeof window === 'undefined' || !window.localStorage) return
+	try {
+		const payload: HistoryBalanceCache = {
+			usdcbalance,
+			usdcToUSD,
+			updatedAt: Date.now(),
+		}
+		window.localStorage.setItem(getHistoryBalanceCacheKey(keyID), JSON.stringify(payload))
+	} catch {}
+}
+
+const readHistoryAaBalanceCache = (aa: string): string | null => {
+	if (!aa || typeof window === 'undefined' || !window.localStorage) return null
+	try {
+		const raw = window.localStorage.getItem(getHistoryAaBalanceCacheKey(aa))
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as { aaAccountUsdcBalance?: string | number } | null
+		const val = parsed?.aaAccountUsdcBalance
+		if (val == null) return null
+		return String(val)
+	} catch {
+		return null
+	}
+}
+
+const writeHistoryAaBalanceCache = (aa: string, aaAccountUsdcBalance: string) => {
+	if (!aa || typeof window === 'undefined' || !window.localStorage) return
+	try {
+		window.localStorage.setItem(
+			getHistoryAaBalanceCacheKey(aa),
+			JSON.stringify({ aaAccountUsdcBalance, updatedAt: Date.now() })
+		)
+	} catch {}
+}
+
 /** NFC 读取余额底部滑出页：仅当用户按下「读取 NFC 卡」时走 NFC 流程，其余时刻忽略 */
 function NfcCheckBalanceBottomSheet({
 	open,
@@ -643,6 +707,8 @@ export default function MyWalletDashboardNew() {
 	const [passSearchTerm, setPassSearchTerm] = useState('')
 	const [allItems, setAllItems] = useState<TransferHistork[]>([])
 	const [loading, setLoading] = useState(false)
+	const [eoaBalanceDataState, setEoaBalanceDataState] = useState<'cached' | 'synced' | 'stale'>('synced')
+	const [aaBalanceDataState, setAaBalanceDataState] = useState<'cached' | 'synced' | 'stale'>('synced')
 	const [itemTx, setItemTx] = useState<TransferHistork>()
 	const [showTxDetail, setShowTxDetail] = useState(false)
 	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
@@ -756,6 +822,12 @@ export default function MyWalletDashboardNew() {
 		if (!isFinite(rate) || !isFinite(n)) return 0
 		return n * rate
 	}, [ccsaBalance, fxRateUSDCToCurrency])
+
+	const getDataStateBadge = useCallback((state: 'cached' | 'synced' | 'stale') => {
+		if (state === 'cached') return { text: 'Cached', cls: 'bg-white/20 text-white/90', syncedIcon: false }
+		if (state === 'stale') return { text: 'Refresh failed', cls: 'bg-amber-500/25 text-amber-100', syncedIcon: false }
+		return { text: 'Synced now', cls: 'bg-emerald-500/25 text-emerald-100', syncedIcon: true }
+	}, [])
 
 	// 进入时检查 historyPayData：若有 searchResult 则打开 PayScreen 并传入
 	useEffect(() => {
@@ -932,6 +1004,7 @@ export default function MyWalletDashboardNew() {
 		const aa = profilesRef.current?.[0]?.aaAccount
 		if (!aa) {
 			setAaAccountUsdcBalance('0')
+			setAaBalanceDataState('synced')
 			return '0'
 		}
 		// 单飞：相同请求不重复发出
@@ -945,6 +1018,8 @@ export default function MyWalletDashboardNew() {
 				const balanceRaw = await usdcContract.balanceOf(aa)
 				const bal = ethers.formatUnits(balanceRaw, 6)
 				setAaAccountUsdcBalance(bal)
+				writeHistoryAaBalanceCache(aa, bal)
+				setAaBalanceDataState('synced')
 				return bal
 			} catch (e) {
 				if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
@@ -952,10 +1027,13 @@ export default function MyWalletDashboardNew() {
 					const bal = await getUsdcBalanceFromApi(aa)
 					if (bal != null) {
 						setAaAccountUsdcBalance(bal)
+						writeHistoryAaBalanceCache(aa, bal)
+						setAaBalanceDataState('synced')
 						return bal
 					}
 				}
 				// RPC 错误且无可信兜底：不更新余额，返回 null 让调用方保留原值
+				setAaBalanceDataState('stale')
 				return null
 			} finally {
 				loadAaAccountBalanceInFlightRef.current = null
@@ -964,6 +1042,18 @@ export default function MyWalletDashboardNew() {
 		loadAaAccountBalanceInFlightRef.current = run()
 		return loadAaAccountBalanceInFlightRef.current
 	}, [])
+
+	// EOA 余额刷新：仅在链上/可信接口成功返回时更新余额并写缓存；失败时保留当前（缓存）值
+	const refreshEoaBalance = useCallback(async (keyID: string): Promise<boolean> => {
+		const result = await getBalanceProcess(keyID, setUsdcbalance, setUsdcToUSD)
+		if (result.success && Number.isFinite(Number(result.balance))) {
+			writeHistoryBalanceCache(keyID, Number(result.balance), result.usdcToUSD)
+			setEoaBalanceDataState('synced')
+			return true
+		}
+		setEoaBalanceDataState('stale')
+		return false
+	}, [setUsdcbalance, setUsdcToUSD])
 
 	// 拉取 EOA 交易历史（与 MyWalletDashboard 一致，供 Active & Pending / History 展示）
 	const loadEoaHistory = useCallback(async () => {
@@ -1194,12 +1284,26 @@ export default function MyWalletDashboardNew() {
 		const keyID = profile?.keyID ?? ''
 		if (!keyID) return
 		if (!myAddress) setMyAddress(keyID)
+		const cachedBalance = readHistoryBalanceCache(keyID)
+		if (cachedBalance) {
+			setUsdcbalance(cachedBalance.usdcbalance)
+			if (typeof cachedBalance.usdcToUSD === 'number') setUsdcToUSD(cachedBalance.usdcToUSD)
+			setEoaBalanceDataState('cached')
+		}
+		const aa = profile?.aaAccount
+		if (aa) {
+			const cachedAaBalance = readHistoryAaBalanceCache(aa)
+			if (cachedAaBalance != null) {
+				setAaAccountUsdcBalance(cachedAaBalance)
+				setAaBalanceDataState('cached')
+			}
+		}
 		const id = requestAnimationFrame(() => {
-			getBalanceProcess(keyID, setUsdcbalance, setUsdcToUSD)
+			refreshEoaBalance(keyID)
 			loadAaAccountBalanceRef.current()
 		})
 		return () => cancelAnimationFrame(id)
-	}, [profiles?.[0]?.keyID, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD])
+	}, [profiles?.[0]?.keyID, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD, refreshEoaBalance])
 
 	// 拉取 CCSA 与 基础设施卡 资产（分开，基础设施卡 token#0 不合并入 CCSA 总额）；基础设施卡 metadata 优先从 beamioApi 拉取 card_owner + metadata_json，并拉取 per-NFT metadata（含 background_color）用于 Pass 渲染
 	useEffect(() => {
@@ -1355,7 +1459,7 @@ export default function MyWalletDashboardNew() {
 		if (source === 'eoa') setEoaReflash(true)
 		else setAaReflash(true)
 		try {
-			await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+			await refreshEoaBalance(profile.keyID)
 			await loadAaAccountBalance()
 			await loadEoaHistory()
 			refetchUserCards()
@@ -1363,7 +1467,7 @@ export default function MyWalletDashboardNew() {
 			if (source === 'eoa') setEoaReflash(false)
 			else setAaReflash(false)
 		}
-	}, [eoaReflash, aaReflash, profiles, setUsdcbalance, setUsdcToUSD, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
+	}, [eoaReflash, aaReflash, profiles, refreshEoaBalance, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
 
 	// 单独刷新 CCSA 与 基础设施卡 资产（分开）；基础设施卡 metadata 优先从 beamioApi 拉取
 	const refreshCcsaAssets = useCallback(async () => {
@@ -1844,7 +1948,7 @@ export default function MyWalletDashboardNew() {
 	return (
 		<>
 		{/* h-full min-h-0 修复 Android WebView 中 flex+overflow 导致主内容不可见；min-h-screen 保证内容不足时仍占满视口 */}
-		<div className="w-full h-full min-h-0 min-h-screen bg-[#F2F2F7] font-sans antialiased overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+		<div className="w-full h-[100dvh] min-h-0 box-border bg-[#F2F2F7] font-sans antialiased overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
 				{/* 固定独立胶囊：Title + 按钮组，悬浮于顶部，随滚动渐隐 */}
 				{!activeView && (
 					<div
@@ -1856,19 +1960,21 @@ export default function MyWalletDashboardNew() {
 							<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Wallet</h1>
 						</div>
 						{/* 按钮组胶囊 */}
-						<div className="flex items-center gap-2 px-2 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
-							<button
-								type="button"
-								onClick={() => {
-									setPayScreenMode('aa-eoa-transfer')
-									setAaPanelOpen('Pay')
-									setShowFooter(false)
-								}}
-								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
-								title="Transfer between Main Vault and Express Pay"
-							>
-								<ArrowLeftRight className="w-5 h-5" strokeWidth={2.4} />
-							</button>
+						<div className="flex items-center gap-2 px-2 py-1 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
+							{profiles?.[0]?.aaAccount ? (
+								<button
+									type="button"
+									onClick={() => {
+										setPayScreenMode('aa-eoa-transfer')
+										setAaPanelOpen('Pay')
+										setShowFooter(false)
+									}}
+									className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
+									title="Transfer between Main Vault and Express Pay"
+								>
+									<ArrowLeftRight className="w-5 h-5" strokeWidth={2.4} />
+								</button>
+							) : null}
 							<button
 								type="button"
 								onClick={() => setIsManagingCards(true)}
@@ -1926,6 +2032,14 @@ export default function MyWalletDashboardNew() {
 											<img src={base_icon} alt="Base" className={`w-5 h-5 object-contain ${eoaReflash ? 'animate-spin opacity-80' : ''}`} />
 										</button>
 										<span className="font-medium text-lg tracking-wide">USDC on Base</span>
+										{(() => {
+											const badge = getDataStateBadge(eoaBalanceDataState)
+												return (
+													<span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide inline-flex items-center justify-center ${badge.cls}`}>
+														{badge.syncedIcon ? <Check className="w-3 h-3 text-emerald-200" strokeWidth={3} /> : badge.text}
+													</span>
+												)
+										})()}
 									</div>
 									<div className="text-right">
 										<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
@@ -1988,6 +2102,14 @@ export default function MyWalletDashboardNew() {
 												<Zap className="w-4 h-4 fill-current" />
 											</div>
 											<span className="font-medium text-lg tracking-wide">Express Pay</span>
+											{(() => {
+												const badge = getDataStateBadge(aaBalanceDataState)
+												return (
+													<span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide inline-flex items-center justify-center ${badge.cls}`}>
+														{badge.syncedIcon ? <Check className="w-3 h-3 text-emerald-200" strokeWidth={3} /> : badge.text}
+													</span>
+												)
+											})()}
 										</div>
 										<div className="flex items-center justify-end gap-2 text-right">
 											<button
@@ -1996,20 +2118,17 @@ export default function MyWalletDashboardNew() {
 													e.stopPropagation()
 													handleAaRelayQR()
 												}}
-												className="p-2 rounded-full bg-white/20 hover:bg-white/30 border border-white/20 flex items-center justify-center transition-colors"
-												title="显示扣款 QR（5 分钟有效）"
-												aria-label="显示扣款 QR"
+												className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 border border-white/20 inline-flex items-center gap-2 transition-colors"
+												title="Pay with QR (valid 5 min)"
+												aria-label="Pay with QR"
 											>
 												{aaRelaySigning ? (
-													<Loader className="w-5 h-5 animate-spin text-white" />
+													<Loader className="w-4 h-4 animate-spin text-white shrink-0" />
 												) : (
-													<QrCode className="w-5 h-5 text-white" />
+													<QrCode className="w-4 h-4 text-white shrink-0" />
 												)}
+												<span className="text-xs font-semibold text-white">Pay with QR</span>
 											</button>
-											<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
-												{formatWithThousands(aaAccountUsdcBalance || '0')}
-												<span className="text-xs font-medium ml-1 opacity-80">USDC</span>
-											</h2>
 										</div>
 									</div>
 									<div className="text-center mb-10">

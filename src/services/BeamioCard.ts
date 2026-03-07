@@ -1929,20 +1929,79 @@ export type BUnitLedgerEntry = {
   baseTxHash?: string;
   /** CoNET originalPaymentHash (e.g. requestHash for requestAccounting), link to mainnet.conet.network/tx/ */
   originalPaymentHash?: string;
+  /** Raw transaction from indexer (for View Smart Receipt), unchanged fields */
+  rawTx: Record<string, unknown>;
 };
+
+function serializeJsonSafe(value: unknown): unknown {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map((item) => serializeJsonSafe(item));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = serializeJsonSafe(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** Serialize raw tx from ethers to JSON-safe object (bigint -> string), keep original transaction fields */
+function serializeRawTx(tx: unknown): Record<string, unknown> {
+  if (tx == null || typeof tx !== "object") return {};
+  const t = tx as Record<string, unknown>;
+  return {
+    id: serializeJsonSafe(t.id),
+    originalPaymentHash: serializeJsonSafe(t.originalPaymentHash),
+    chainId: serializeJsonSafe(t.chainId),
+    txCategory: serializeJsonSafe(t.txCategory),
+    displayJson: serializeJsonSafe(t.displayJson),
+    timestamp: serializeJsonSafe(t.timestamp),
+    payer: serializeJsonSafe(t.payer),
+    payee: serializeJsonSafe(t.payee),
+    finalRequestAmountFiat6: serializeJsonSafe(t.finalRequestAmountFiat6),
+    finalRequestAmountUSDC6: serializeJsonSafe(t.finalRequestAmountUSDC6),
+    isAAAccount: serializeJsonSafe(t.isAAAccount),
+    fees: serializeJsonSafe(t.fees),
+    meta: serializeJsonSafe(t.meta),
+    exists: serializeJsonSafe(t.exists),
+  };
+}
+
+/** rawTx must contain the core on-chain Transaction fields */
+function hasRequiredRawTxFields(rawTx: Record<string, unknown>): boolean {
+  return (
+    typeof rawTx.id === "string" &&
+    typeof rawTx.txCategory === "string" &&
+    typeof rawTx.payer === "string" &&
+    typeof rawTx.payee === "string" &&
+    (typeof rawTx.timestamp === "number" || typeof rawTx.timestamp === "string")
+  );
+}
 
 /**
  * 从 BeamioIndexerDiamond 获取 B-Unit 记账明细（claim、USDC 购买、焚烧）
  * 优先通过 beamio API 获取（避免浏览器 CORS），失败时回退到直接 RPC。
  */
-export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitLedgerEntry[]> => {
+export const getBUnitLedgerFromIndexer = async (
+  account: string,
+  options?: { throwOnError?: boolean }
+): Promise<BUnitLedgerEntry[]> => {
   if (!account || !ethers.isAddress(account)) return [];
   try {
     const res = await fetch(`${beamioApi}/api/getBUnitLedger?address=${encodeURIComponent(account)}`);
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data.every((e: unknown) => e && typeof e === 'object' && 'id' in (e as object))) {
-        return data as BUnitLedgerEntry[];
+        const entries = data as BUnitLedgerEntry[];
+        // Ledger entries are valid only when bound to rawTx. Any missing/malformed rawTx triggers on-chain rebuild.
+        const allEntriesBoundToRawTx = entries.every((entry) =>
+          !!entry &&
+          !!entry.rawTx &&
+          typeof entry.rawTx === "object" &&
+          hasRequiredRawTxFields(entry.rawTx)
+        );
+        if (allEntriesBoundToRawTx) return entries;
       }
     }
   } catch (e) {
@@ -1954,6 +2013,45 @@ export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitL
     const indexer = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_GET_ACCOUNT_TX_ABI, conetDepinProvider);
     const page = await indexer.getAccountTransactionsPaged(account, 0, 100);
     const decimals = 6;
+
+    // Build lookup: hash (id or originalPaymentHash) -> original USDC amount from Recent Activity–style records
+    const linkedPaymentUsdcByHash = new Map<string, number>();
+    const TX_BUINT_EXCLUDE_FOR_LINK = new Set([
+      TX_BUINT_CLAIM.toLowerCase(),
+      TX_BUINT_USDC.toLowerCase(),
+      TX_REQUEST_ACCOUNTING.toLowerCase(),
+      TX_SEND_USDC.toLowerCase(),
+      TX_X402_SEND.toLowerCase(),
+      ethers.keccak256(ethers.toUtf8Bytes("buintBurn")).toLowerCase(),
+      ...["sendUSDC", "cardTopup", "issueCard", "x402Send"].map((n) => ethers.keccak256(ethers.toUtf8Bytes(n)).toLowerCase()),
+    ]);
+    for (const tx of page) {
+      if (!tx?.exists) continue;
+      const cat = (typeof tx.txCategory === "string" ? tx.txCategory : tx.txCategory != null ? "0x" + BigInt(tx.txCategory).toString(16).padStart(64, "0") : "").toLowerCase();
+      if (TX_BUINT_EXCLUDE_FOR_LINK.has(cat)) continue;
+      const usdc6 = Number(tx.finalRequestAmountUSDC6 ?? 0);
+      const idHex = typeof tx.id === "string" ? tx.id : tx.id != null ? "0x" + BigInt(tx.id).toString(16).padStart(64, "0") : "";
+      const ophRaw = (tx as { originalPaymentHash?: string | bigint })?.originalPaymentHash;
+      const ophHex = ophRaw != null && ophRaw !== ethers.ZeroHash
+        ? (typeof ophRaw === "string" ? ophRaw : "0x" + BigInt(ophRaw).toString(16).padStart(64, "0"))
+        : "";
+      if (idHex && ethers.isHexString(idHex) && ethers.dataLength(idHex) === 32) {
+        linkedPaymentUsdcByHash.set(idHex.toLowerCase(), usdc6);
+      }
+      if (ophHex && ethers.isHexString(ophHex) && ethers.dataLength(ophHex) === 32) {
+        linkedPaymentUsdcByHash.set(ophHex.toLowerCase(), usdc6);
+      }
+      try {
+        const dj = (tx as { displayJson?: string })?.displayJson ?? "";
+        if (dj) {
+          const j = JSON.parse(dj) as { requestHash?: string };
+          if (j?.requestHash && ethers.isHexString(j.requestHash) && ethers.dataLength(j.requestHash) === 32) {
+            linkedPaymentUsdcByHash.set(j.requestHash.toLowerCase(), usdc6);
+          }
+        }
+      } catch {}
+    }
+
     const entries: BUnitLedgerEntry[] = [];
     for (const tx of page) {
       if (!tx?.exists) continue;
@@ -1970,6 +2068,9 @@ export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitL
       const txHashShort = txIdHex.length > 10 ? `${txIdHex.slice(0, 6)}...${txIdHex.slice(-4)}` : txIdHex;
 
       const baseEntry = { time: timeStr, timestamp: ts, txHash: txHashShort, network: "CoNET L1" as const, status: "Completed" as const };
+      const rawTx = serializeRawTx(tx);
+      if (!hasRequiredRawTxFields(rawTx)) continue;
+
       if (txCategory === TX_BUINT_CLAIM && payee === accountLower) {
         entries.push({
           ...baseEntry,
@@ -1979,6 +2080,7 @@ export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitL
           amount: amountBUnits,
           type: "reward",
           linkedUsdc: "N/A",
+          rawTx,
         });
       } else if (txCategory === TX_BUINT_USDC && payee === accountLower) {
         const usdcAmount = amountUSDC6 > 0 ? amountUSDC6 / 10 ** decimals : amountBUnits / 100;
@@ -2000,6 +2102,7 @@ export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitL
           type: "refuel",
           linkedUsdc: usdcStr,
           baseTxHash,
+          rawTx,
         });
       } else if (payee === buintLower && payer === accountLower) {
         const rawOphVal = (tx as { originalPaymentHash?: string | bigint })?.originalPaymentHash;
@@ -2016,13 +2119,21 @@ export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitL
           : "";
         const baseTxHash = !isRequestAccounting && ophHex && ethers.dataLength(ophHex) === 32 ? ophHex : undefined;
         const originalPaymentHash = isRequestAccounting && ophHex && ethers.dataLength(ophHex) === 32 ? ophHex : undefined;
-        const title = (isRequestAccounting || isSendUSDC || isX402Send) ? "Service Fee (0.8%)" : "B-Unit Burn";
+        // TX_SEND_USDC / TX_X402_SEND: fixed 2 buint → Network Fee; requestAccounting: 0.8% protocol → Service Fee (0.8%)
+        const title = (isSendUSDC || isX402Send) ? "Network Fee" : isRequestAccounting ? "Service Fee (0.8%)" : "B-Unit Burn";
         const subtitle = isRequestAccounting
           ? `Payment Request ${ophHex ? ophHex.slice(-3) : "—"}`
           : (isSendUSDC || isX402Send)
             ? ""
             : (amountUSDC6 > 0 ? `Paid ${(amountUSDC6 / 10 ** decimals).toFixed(2)} USDC` : "Gas / Fee");
         const isServiceFee = amountUSDC6 > 0 || isRequestAccounting || isSendUSDC || isX402Send;
+        // Resolve linked USDC from Recent Activity: match by originalPaymentHash or baseTxHash
+        let linkedUsdcStr = amountUSDC6 > 0 ? `${(amountUSDC6 / 10 ** decimals).toFixed(2)} USDC` : "N/A";
+        const lookupHash = (baseTxHash ?? originalPaymentHash ?? "").toLowerCase();
+        if (lookupHash && linkedPaymentUsdcByHash.has(lookupHash)) {
+          const linkedUsdc6 = linkedPaymentUsdcByHash.get(lookupHash)!;
+          linkedUsdcStr = linkedUsdc6 > 0 ? `${(linkedUsdc6 / 10 ** decimals).toFixed(2)} USDC` : "N/A";
+        }
         entries.push({
           ...baseEntry,
           id: txIdHex,
@@ -2030,16 +2141,18 @@ export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitL
           subtitle,
           amount: -amountBUnits,
           type: isServiceFee ? "fee" : "gas",
-          linkedUsdc: amountUSDC6 > 0 ? `${(amountUSDC6 / 10 ** decimals).toFixed(2)} USDC` : "N/A",
+          linkedUsdc: linkedUsdcStr,
           baseTxHash,
           originalPaymentHash,
+          rawTx,
         });
       }
     }
     entries.sort((a, b) => b.timestamp - a.timestamp);
-    return entries;
+    return entries.filter((entry) => hasRequiredRawTxFields(entry.rawTx));
   } catch (e) {
     if (typeof console !== 'undefined' && console.error) console.error('[getBUnitLedgerFromIndexer] RPC failed:', e);
+    if (options?.throwOnError) throw e;
     return [];
   }
 };

@@ -390,16 +390,18 @@ const App = () => {
 
 
  const FuelView = () => (
-   <div className="animate-in slide-in-from-right duration-500 flex flex-col min-h-screen pb-32 bg-[#fdfdff]">
-     <div className="px-6 pt-10 flex items-center gap-4">
+   <div className="animate-in slide-in-from-right duration-500 flex flex-col min-h-screen pb-32 bg-[#fdfdff] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pb-[calc(8rem+env(safe-area-inset-bottom))]">
+     {/* Beamio protocol: 返回按钮+title 对齐 Home 胶囊 top: max(1rem, env(safe-area-inset-top)) */}
+     <div className="px-6 flex items-center gap-4 shrink-0" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
        <button onClick={() => setCurrentView('home')} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 text-slate-600 hover:bg-slate-50 transition-colors">
          <ChevronRight size={22} className="rotate-180" />
        </button>
        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Fuel Center</h2>
      </div>
 
-
-     <div className="px-6 pt-8 space-y-6">
+     {/* Beamio protocol: 首内容 Network Fuel Balance 对齐 Home 首内容；上移 5rem */}
+     <div className="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+       <div className="px-6 pt-6 mt-4 space-y-6">
        <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-50 relative overflow-hidden group">
          <div className="flex justify-between items-center mb-1">
            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Fuel Balance</p>
@@ -573,6 +575,7 @@ const App = () => {
              <span className="text-[24px] font-black text-orange-500 leading-none">{estimatedServiceFee} <span className="text-[11px] text-orange-500/70">B-Units</span></span>
            </div>
          </div>
+       </div>
        </div>
      </div>
    </div>

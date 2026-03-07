@@ -1397,26 +1397,32 @@ export const isBeamioAndroidWebView = () => {
 }
 
 let processing = false
-export const getBalanceProcess = async (keyID: string,  setBalance: (val: number) => void, setUsdcToUsd: (val: number) => void) => {
+export const getBalanceProcess = async (
+	keyID: string,
+	setBalance: (val: number) => void,
+	setUsdcToUsd: (val: number) => void
+): Promise<{ success: boolean; balance?: number; usdcToUSD?: number }> => {
 	if (processing) {
-		return
+		return { success: false }
 	}
 	processing = true
-	const ba = await getBalance(keyID)
-	if (!ba) {
+	try {
+		const ba = await getBalance(keyID)
+		if (!ba) {
+			return { success: false }
+		}
+		
+		const usdc = Number(ba.usdc)
+		setBalance(usdc)
+		const ethUsdc = typeof ba.oracle?.eth === 'object' && ba.oracle.eth && 'usdc' in ba.oracle.eth
+			? ba.oracle.eth.usdc
+			: '1'
+		const usdcToUSD = usdc * Number(ethUsdc)
+		setUsdcToUsd(usdcToUSD)
+		return { success: true, balance: usdc, usdcToUSD }
+	} finally {
 		processing = false
-		return 
 	}
-	
-	const usdc = Number(ba.usdc)
-
-	setBalance(usdc)
-	const ethUsdc = typeof ba.oracle?.eth === 'object' && ba.oracle.eth && 'usdc' in ba.oracle.eth
-		? ba.oracle.eth.usdc
-		: '1'
-	const usdcToUSD = usdc * Number(ethUsdc)
-	setUsdcToUsd(usdcToUSD)
-	processing = false
 }
 
 const listenning = async (listenningProcess: boolean, setListenningProcess: (val: boolean) => void, keyID: string, setBalance: (val: number) => void, setUsdcToUsd: (val: number) => void) => {

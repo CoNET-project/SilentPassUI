@@ -593,7 +593,7 @@ const ActiveHistoryPannelNew = ({
 					let { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
 					if (String(tx.txCategory ?? '') === TX_BUINT_USDC && amPayee) {
 						title = 'Fuel Yield (1:100)'
-						handle = 'System Top-up'
+						handle = 'USDC Top-up'
 					}
 					const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
 					const metaRaw = (tx as RawTxRecord).meta
@@ -987,7 +987,7 @@ const ActiveHistoryPannelNew = ({
 										? internalTitle
 										: tx.title
 		const subtitleText = tx.type === 'fuel_yield'
-			? 'System Top-up'
+			? 'USDC Top-up'
 			: isReqExpired
 				? ((tx.forText ?? '').trim() || 'Link Invalidated')
 				: isReqCanceled
@@ -1007,7 +1007,7 @@ const ActiveHistoryPannelNew = ({
 									: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
 
 		const iconBg = tx.type === 'fuel_yield'
-			? colorForType(tx.type)
+			? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
 			: isInternalTransfer
 			? (payeeAddr.toLowerCase() === eoaAddr
 				? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
@@ -1026,10 +1026,11 @@ const ActiveHistoryPannelNew = ({
 			: null
 		// Add to Express Pay (EOA→AA): 负数用黑色，不显示绿色。Vouchers 下则反转：EOA→AA 为 + 绿色
 		const amountIsGreen = tx.type === 'fuel_yield'
-			? true
+			? false
 			: vouchersInternalAmount
 				? vouchersInternalAmount.green
 				: !isAddToExpressPay && ((tx.isInbound && tx.amountUSDC > 0) || (isWithdrawToMain && tx.amountUSDC > 0))
+		const fuelYieldSpentUsdc = tx.amountUSDC > 0 ? tx.amountUSDC : Math.abs(tx.amountFiat) / 100
 
 		return (
 			<div
@@ -1052,7 +1053,9 @@ const ActiveHistoryPannelNew = ({
 					<div
 						className={`w-9 h-9 rounded-[10px] flex items-center justify-center shadow-sm shrink-0 ${iconBg}`}
 					>
-						{(isEoaReceived && tx.type !== 'request_fulfilled') ? (
+						{tx.type === 'fuel_yield' ? (
+							<ArrowUpRight size={16} strokeWidth={2} />
+						) : (isEoaReceived && tx.type !== 'request_fulfilled') ? (
 							<ArrowDownLeft size={16} strokeWidth={2} />
 						) : (isEoaSent || isAASent) ? (
 							<ArrowUpRight size={16} strokeWidth={2} />
@@ -1108,7 +1111,7 @@ const ActiveHistoryPannelNew = ({
 						{tx.type === 'request_create' && !isReqExpired && !isReqCanceled ? (
 							<span className="text-[#FF9500]">Pending</span>
 						) : tx.type === 'fuel_yield' ? (
-							<>{tx.amountFiat > 0 ? '+' : ''}{Math.round(tx.amountFiat)}</>
+							<>-{formatAmount(fuelYieldSpentUsdc, 'USDC')}</>
 						) : isReqExpired || isReqCanceled ? (
 							formatAmountWithCurrencyProtocol(Math.abs(tx.amountFiat), tx.currencyCode as ICurrency)
 						) : (
@@ -1121,7 +1124,7 @@ const ActiveHistoryPannelNew = ({
 						)}
 					</div>
 					{tx.type === 'fuel_yield' ? (
-						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">B-Units</span>
+						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">USDC</span>
 					) : tx.amountUSDC !== 0 && tx.type !== 'request_create' && tx.type !== 'request_expired' ? (
 						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
 							{Math.abs(tx.amountUSDC).toFixed(2)} USDC
@@ -1323,13 +1326,17 @@ const ActiveHistoryPannelNew = ({
 								const showGreenArrow = !selectedTxMySideIsAA && selectedTx.isInbound && selectedTx.type !== 'internal_transfer'
 								// 自己是收款方时，与列表对齐：request_fulfilled 用 QrCode，transfer_in 用 ArrowDownLeft
 								const isReceiver = selectedTx.isInbound && selectedTx.type !== 'internal_transfer'
-								const detailIcon = isReceiver && selectedTx.type === 'request_fulfilled'
+								const detailIcon = selectedTx.type === 'fuel_yield'
+									? <ArrowUpRight size={36} strokeWidth={2} />
+									: isReceiver && selectedTx.type === 'request_fulfilled'
 									? iconForType(selectedTx.type, 36, selectedTx)
 									: showGreenArrow ? <ArrowDownLeft size={36} strokeWidth={2} /> : (isReqExpiredDetail || isReqCanceledDetail)
 										? <XCircle size={36} strokeWidth={2} />
 										: iconForType(selectedTx.type, 36, selectedTx)
 								// AA→EOA 蓝色背景白色 icon；EOA→AA 紫色背景白色 icon；Request Expired / Canceled 使用灰色
-								const capsuleBg = isInternalToEoa
+								const capsuleBg = selectedTx.type === 'fuel_yield'
+									? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-300'
+									: isInternalToEoa
 									? 'bg-[#1562f0] text-white dark:bg-[#1562f0] dark:text-white'
 									: isInternalToAa
 										? 'bg-[#AF52DE] text-white dark:bg-[#AF52DE] dark:text-white'
@@ -1363,7 +1370,7 @@ const ActiveHistoryPannelNew = ({
 									const amountColorClass = ((selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && (isRequestExpired(selectedTx) || canceledHashes.has(getOriginalPaymentHash(selectedTx))))
 										? 'text-gray-400 dark:text-slate-500'
 										: selectedTx.type === 'fuel_yield'
-											? 'text-[#34C759]'
+											? 'text-black dark:text-white'
 											: activeTab === 'Vouchers' && selectedTx.type === 'internal_transfer'
 												? (detailAmtGreen ? 'text-[#34C759]' : 'text-black dark:text-white')
 												: 'text-black dark:text-white'
@@ -1377,7 +1384,7 @@ const ActiveHistoryPannelNew = ({
 										: (selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && isRequestExpired(selectedTx)
 										? 'Request Expired'
 										: selectedTx.type === 'fuel_yield'
-										? `+${Math.round(selectedTx.amountFiat)} B-Units`
+										? `-${formatAmount(selectedTx.amountUSDC > 0 ? selectedTx.amountUSDC : (Math.abs(selectedTx.amountFiat) / 100), 'USDC')} USDC`
 										: selectedTx.type === 'request_create' || selectedTx.type === 'request_expired'
 										? `Requesting ${formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)} ${selectedTx.currencyCode}`
 										: selectedTx.amountUSDC === 0
@@ -1395,7 +1402,7 @@ const ActiveHistoryPannelNew = ({
 							{selectedTx.type !== 'request_create' && selectedTx.type !== 'request_expired' && selectedTx.amountUSDC !== 0 && (
 								<p className="text-[14px] font-medium text-blue-600 dark:text-blue-400 mt-0.5">
 									{selectedTx.type === 'fuel_yield'
-										? `Paid ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`
+										? `Received +${Number(selectedTx.amountFiat).toFixed(2)} B-Units`
 										: `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`}
 								</p>
 							)}
@@ -1418,8 +1425,8 @@ const ActiveHistoryPannelNew = ({
 							</div>
 						</div>
 
-						{/* displayJson 附带的 title / forText 等文字信息：无 forText 则不显示；title 为 'Beamio Transfer' 时不显示 */}
-						{(selectedTx.forText ?? selectedTx.handle) && (
+						{/* displayJson 附带的 title / forText 等文字信息：Fuel Yield detail 中不显示该 note 卡片 */}
+						{selectedTx.type !== 'fuel_yield' && (selectedTx.forText ?? selectedTx.handle) && (
 							<div className="mb-6 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 px-4 py-3">
 								{selectedTx.title !== 'Transaction' && selectedTx.title !== 'Beamio Transfer' && (
 									<p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedTx.title}</p>
@@ -1665,7 +1672,7 @@ const ActiveHistoryPannelNew = ({
 									{selectedTx.type === 'fuel_yield' ? 'Source' : selectedTx.isInbound ? 'Received From' : getOriginalPaymentHash(selectedTx) ? 'Paid To' : 'Send To'}
 								</span>
 								<span className="font-semibold text-black dark:text-white flex items-center gap-1.5">
-									{selectedTx.type === 'fuel_yield' ? 'System Top-up' : detailTitleText}
+									{selectedTx.type === 'fuel_yield' ? 'USDC Top-up' : detailTitleText}
 									{selectedTx.type !== 'fuel_yield' && selectedTx.counterpartyAddress && ethers.isAddress(selectedTx.counterpartyAddress) && (
 										<button
 											type="button"
@@ -1687,6 +1694,12 @@ const ActiveHistoryPannelNew = ({
 								</span>
 							</div>
 							)}
+							{selectedTx.type === 'fuel_yield' && (
+								<div className="flex justify-between items-center text-[14px]">
+									<span className="text-gray-500 dark:text-slate-400 font-medium">Network GAS</span>
+									<span className="font-semibold text-black dark:text-white">Beamio Donation</span>
+								</div>
+							)}
 							{selectedTx.type !== 'fuel_yield' && selectedTx.currencyCode !== 'USDC' && Math.abs(selectedTx.amountFiat) > 0 && selectedTx.amountUSDC !== 0 && (
 							<div className="flex justify-between items-center text-[14px]">
 								<span className="text-gray-500 dark:text-slate-400 font-medium">Exchange Rate</span>
@@ -1695,59 +1708,53 @@ const ActiveHistoryPannelNew = ({
 								</span>
 							</div>
 							)}
-							<div className="flex justify-between items-center text-[14px]">
-								<span className="text-gray-500 dark:text-slate-400 font-medium">Network Gas</span>
-								<span className="flex items-center gap-2">
-									{!getOriginalPaymentHash(selectedTx) && selectedTx.isInbound ? (
-										<span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-slate-700/60 border border-gray-200 dark:border-slate-600 px-2.5 py-1">
-											<Fuel size={14} className="text-gray-500 dark:text-slate-400 shrink-0" />
-											<span className="font-semibold text-gray-700 dark:text-slate-300">0 B-Units</span>
+							{(() => {
+								let networkGasBUnits = 0
+								if (!getOriginalPaymentHash(selectedTx) && selectedTx.isInbound) {
+									networkGasBUnits = 0
+								} else if (
+									selectedTx.type === 'internal_transfer' ||
+									(!selectedTxMySideIsAA && (selectedTx.type === 'transfer_out' || selectedTx.type === 'transfer_in')) ||
+									sendToNoOph
+								) {
+									const txWithFees = fullTransactionFromChain ?? (selectedTx.rawTransaction as RawTxRecord | undefined)
+									const chainBUnits = extractBServiceUnits(txWithFees?.fees)
+									networkGasBUnits = sendToNoOph ? 2 : (chainBUnits > 0 ? chainBUnits : 2)
+								}
+								const roundedGas = Number(networkGasBUnits.toFixed(2))
+								if (roundedGas <= 0) return null
+								return (
+									<div className="flex justify-between items-center text-[14px]">
+										<span className="text-gray-500 dark:text-slate-400 font-medium">Network Gas</span>
+										<span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 px-2.5 py-1">
+											<Fuel size={14} className="text-orange-500 shrink-0" />
+											<span className="font-semibold text-orange-500">-{roundedGas.toFixed(2)} B-Units</span>
 										</span>
-									) : (
-										<>
-											{/* <span className="font-bold text-[#34C759] bg-[#34C759]/10 px-2 py-0.5 rounded text-[12px]">Sponsored</span> */}
-											{(selectedTx.type === 'internal_transfer' || (!selectedTxMySideIsAA && (selectedTx.type === 'transfer_out' || selectedTx.type === 'transfer_in')) || sendToNoOph) ? (() => {
-												const txWithFees = fullTransactionFromChain ?? (selectedTx.rawTransaction as RawTxRecord | undefined)
-												const chainBUnits = extractBServiceUnits(txWithFees?.fees)
-												const bUnits = sendToNoOph ? 2 : (chainBUnits > 0 ? chainBUnits : 2)
-												const displayVal = bUnits > 0 ? `-${Math.round(bUnits)}` : '0'
-
-												return (
-													<span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-slate-700/60 border border-gray-200 dark:border-slate-600 px-2.5 py-1">
-														<Fuel size={14} className="text-gray-500 dark:text-slate-400 shrink-0" />
-														<span className="font-semibold text-gray-700 dark:text-slate-300">{displayVal} B-Units</span>
-													</span>
-												)
-											})() : (
-												<span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-slate-700/60 border border-gray-200 dark:border-slate-600 px-2.5 py-1">
-													<Fuel size={14} className="text-gray-500 dark:text-slate-400 shrink-0" />
-													<span className="font-semibold text-gray-700 dark:text-slate-300">0 B-Units</span>
-												</span>
-											)}
-										</>
-									)}
-								</span>
-							</div>
-							<div className="flex justify-between items-center text-[14px]">
-								<span className="text-gray-500 dark:text-slate-400 font-medium">Beamio Fee</span>
-								<span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-slate-700/60 border border-gray-200 dark:border-slate-600 px-2.5 py-1">
-									<Fuel size={14} className="text-gray-500 dark:text-slate-400 shrink-0" />
-									<span className="font-semibold text-gray-700 dark:text-slate-300">
-										{(() => {
-											// Prefer fullTransactionFromChain (getTransactionFullByTxId) for fees; fallback to rawTransaction
-											const txWithFees = fullTransactionFromChain ?? (selectedTx.rawTransaction as RawTxRecord | undefined)
-											let bUnits = extractBServiceUnits(txWithFees?.fees)
-											// 链上 fees 为 0 的 request_create：按金额计算预期 Beamio Fee 作为回退（历史记录）
-											if (bUnits === 0 && selectedTx.type === 'request_create') {
-												const rawAmt = txWithFees?.finalRequestAmountUSDC6 ?? (selectedTx.rawTransaction as RawTxRecord)?.finalRequestAmountUSDC6
-												const amt6 = rawAmt != null ? Number(rawAmt) : Math.round(selectedTx.amountUSDC * 1e6)
-												bUnits = calcRequestCreateFeeBUnits(amt6)
-											}
-											return `${Math.round(bUnits)} B-Units`
-										})()}
-									</span>
-								</span>
-							</div>
+									</div>
+								)
+							})()}
+							{(() => {
+								// Prefer fullTransactionFromChain (getTransactionFullByTxId) for fees; fallback to rawTransaction
+								const txWithFees = fullTransactionFromChain ?? (selectedTx.rawTransaction as RawTxRecord | undefined)
+								let bUnits = extractBServiceUnits(txWithFees?.fees)
+								// 链上 fees 为 0 的 request_create：按金额计算预期 Beamio Fee 作为回退（历史记录）
+								if (bUnits === 0 && selectedTx.type === 'request_create') {
+									const rawAmt = txWithFees?.finalRequestAmountUSDC6 ?? (selectedTx.rawTransaction as RawTxRecord)?.finalRequestAmountUSDC6
+									const amt6 = rawAmt != null ? Number(rawAmt) : Math.round(selectedTx.amountUSDC * 1e6)
+									bUnits = calcRequestCreateFeeBUnits(amt6)
+								}
+								const roundedFee = Number(bUnits.toFixed(2))
+								if (roundedFee <= 0) return null
+								return (
+									<div className="flex justify-between items-center text-[14px]">
+										<span className="text-gray-500 dark:text-slate-400 font-medium">Beamio Fee</span>
+										<span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 px-2.5 py-1">
+											<Fuel size={14} className="text-orange-500 shrink-0" />
+											<span className="font-semibold text-orange-500">{roundedFee.toFixed(2)} B-Units</span>
+										</span>
+									</div>
+								)
+							})()}
 						</div>
 
 						<div className="space-y-3 mb-8">

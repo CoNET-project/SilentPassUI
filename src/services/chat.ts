@@ -370,7 +370,7 @@ function startGossip(
 
   const node = getRandomNode(nodes)!
   const config: TimeoutConfig = {
-    connectTimeout: 5_000,
+    connectTimeout: 12_000,
     idleTimeout: 60_000,
     readOperationTimeout: 20_000,
     retryDelay: 2_000,
@@ -437,6 +437,7 @@ function startGossip(
       clearTimeout(connectTimer);
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
+      markGossipNodeHealthy(node.domain)
       console.log(`[SSE] Connected [${node.ip_addr}]`);
       reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
@@ -526,6 +527,9 @@ function startGossip(
       if (err.name !== 'AbortError') {
           console.error(`[SSE] Connection Error:`, msg);
           callback?.(msg);
+      }
+      if (msg === 'connect_timeout' || msg === 'idle_timeout' || msg === 'Failed to fetch') {
+        markGossipNodeBad(node.domain)
       }
       
       triggerRelaunch();
@@ -645,6 +649,12 @@ export const connectToGossipNode = async (
   const rootSignal = myController.signal;
 
   try {
+      const routeNodes = pickRouteNodesByArmoredKey(nodes, nodeArmoredPublicKey)
+      if (!routeNodes.length) {
+        console.error('[Gossip] No route node matches current router armored public key')
+        return
+      }
+
       // ... (加密/准备逻辑保持不变) ...
       const wallet = new ethers.Wallet(privateKeyArmor);
       const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
@@ -663,11 +673,18 @@ export const connectToGossipNode = async (
       const userPgpKeyID = pgpPublicArmored ? await getPublicKeyArmoredKeyID(pgpPublicArmored) : '';
 
       console.log("🚀 [Gossip] Starting new connection...");
+      const gossipBody = JSON.stringify({ data: postData })
+      const healthyNodes = await pickHealthyGossipNodes(routeNodes)
+      console.log(`[Gossip] Route healthy nodes ${healthyNodes.length}/${routeNodes.length}`)
+      if (!healthyNodes.length) {
+        console.error('[Gossip] No healthy route node available, skip connect')
+        return
+      }
 
       // 启动递归循环，传入 nodes 数组，重连时随机换 node
       startGossip(
-        nodes, 
-        JSON.stringify({ data: postData }), 
+        healthyNodes, 
+        gossipBody, 
         async (err, _data) => {
             // 回调卫语句：如果总开关关了，不要处理任何数据
             if (rootSignal.aborted) return;
@@ -745,6 +762,62 @@ async function postWithTimeout(url: string, init: RequestInit, timeoutMs = 12_00
   } finally {
     clearTimeout(t)
   }
+}
+
+const gossipHealthyCache = new Map<string, number>()
+const GOSSIP_HEALTH_TTL_MS = 120_000
+
+const markGossipNodeHealthy = (domain: string) => {
+	gossipHealthyCache.set(domain, Date.now() + GOSSIP_HEALTH_TTL_MS)
+}
+
+const markGossipNodeBad = (domain: string) => {
+	gossipHealthyCache.delete(domain)
+}
+
+const isGossipNodeHealthy = (domain: string) => {
+	const exp = gossipHealthyCache.get(domain) || 0
+	return exp > Date.now()
+}
+
+const normalizeArmoredKey = (v?: string) => (v || '').replace(/\r/g, '').trim()
+
+const pickRouteNodesByArmoredKey = (nodes: nodeInfo[], routerArmoredPublicKey: string) => {
+	const target = normalizeArmoredKey(routerArmoredPublicKey)
+	if (!target) return []
+	return nodes.filter(n => normalizeArmoredKey(n.armoredPublicKey) === target)
+}
+
+const probeGossipNode = async (node: nodeInfo, timeoutMs = 4_000) => {
+	// Probe HTTPS root page (served by CoNET-SI server.ts) to validate domain reachability.
+	const url = `https://${node.domain}.conet.network/`
+	try {
+		const res = await postWithTimeout(url, {
+			method: 'GET',
+			headers: { 'Accept': 'text/html' }
+		}, timeoutMs)
+		if (res.ok) {
+			markGossipNodeHealthy(node.domain)
+			return true
+		}
+	} catch {
+		// ignore probe errors
+	}
+	markGossipNodeBad(node.domain)
+	return false
+}
+
+const pickHealthyGossipNodes = async (nodes: nodeInfo[]): Promise<nodeInfo[]> => {
+	if (!nodes.length) return []
+
+	const cached = nodes.filter(n => isGossipNodeHealthy(n.domain))
+	if (cached.length >= 2) return cached
+
+	const sample = getRandomNodes(nodes, Math.min(10, nodes.length))
+	const checks = await Promise.all(sample.map(async node => ({ node, ok: await probeGossipNode(node) })))
+	const healthy = checks.filter(n => n.ok).map(n => n.node)
+
+	return healthy
 }
 
 

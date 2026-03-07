@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Fuel, Plus, Minus, ChevronRight, RefreshCw, Filter, Link2, X, Check, ExternalLink, Code, Calculator } from 'lucide-react'
+import { Fuel, Plus, ChevronRight, RefreshCw, Filter, X, Check, ExternalLink, Code, Calculator } from 'lucide-react'
 import { getBUnitLedgerFromIndexer, signBUnitRefuel3009, type BUnitLedgerEntry } from '@/services/BeamioCard'
 import { purchaseBUnitFromBase, getUsdcBalanceFromApi } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -28,6 +28,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
   const bUnits = bUnitBalance != null ? Math.floor(bUnitBalance.total) : 0
   const [usdcBalance, setUsdcBalance] = useState<number | null>(null)
   const [refuelAmount, setRefuelAmount] = useState(5)
+  const [refuelAmountStr, setRefuelAmountStr] = useState('5')
   const [isRefueling, setIsRefueling] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [ledgerFilter, setLedgerFilter] = useState('all')
@@ -37,6 +38,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
   const [selectedDetail, setSelectedDetail] = useState<LogEntry | null>(null)
   const [showJson, setShowJson] = useState(false)
   const [refuelError, setRefuelError] = useState<string | null>(null)
+  const [refuelSuccess, setRefuelSuccess] = useState<string | null>(null)
   const [calcAmount, setCalcAmount] = useState(100)
 
   const fetchLedger = () => {
@@ -77,10 +79,15 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
   useEffect(() => {
     if (amountConfig.disabled && amountConfig.max === 0) {
       setRefuelAmount(MIN_PURCHASE_USD)
+      setRefuelAmountStr(String(MIN_PURCHASE_USD))
     } else if (!amountConfig.disabled && refuelAmount > amountConfig.max) {
-      setRefuelAmount(amountConfig.max)
+      const v = amountConfig.max
+      setRefuelAmount(v)
+      setRefuelAmountStr(v % 1 === 0 ? String(v) : v.toFixed(2))
     } else if (!amountConfig.disabled && refuelAmount < amountConfig.min) {
-      setRefuelAmount(amountConfig.min)
+      const v = amountConfig.min
+      setRefuelAmount(v)
+      setRefuelAmountStr(String(v))
     }
   }, [amountConfig, refuelAmount])
 
@@ -95,6 +102,12 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
     if (ledgerFilter === 'all') return bUnitsLedger
     return bUnitsLedger.filter((log: LogEntry) => log.type === ledgerFilter)
   }, [bUnitsLedger, ledgerFilter])
+
+  const effectiveRefuelAmount = useMemo(() => {
+    const v = parseFloat(refuelAmountStr)
+    if (!Number.isFinite(v) || v <= 0) return 0
+    return Math.min(amountConfig.max, Math.max(amountConfig.min, Math.round(v * 100) / 100))
+  }, [refuelAmountStr, amountConfig.min, amountConfig.max])
 
   /** Fee Estimator: 0.8% of receive amount (USDC), min 2 max 200 B-Units; >=5000 USDC → 500 B-Units */
   const estimatedServiceFee = useMemo(() => {
@@ -112,12 +125,14 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
       return
     }
     setRefuelError(null)
+    setRefuelSuccess(null)
     setIsRefueling(true)
     try {
-      const usdcAmount = String(refuelAmount)
+      const usdcAmount = String(effectiveRefuelAmount)
       const payload = await signBUnitRefuel3009(pk, usdcAmount)
       const result = await purchaseBUnitFromBase(payload)
       if (result.success) {
+        setRefuelSuccess(result.txHash ?? '')
         onRefresh?.()
         fetchLedger()
         // Miner vote on CoNET can take 1–3 min. Poll in background for up to 2 min to pick up minted balance.
@@ -140,6 +155,11 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
     } finally {
       setIsRefueling(false)
     }
+  }
+
+  const resetRefuelState = () => {
+    setRefuelSuccess(null)
+    setRefuelError(null)
   }
 
   const handleRefresh = () => {
@@ -190,75 +210,113 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-50 dark:border-slate-700 space-y-6">
-          <div className="flex justify-between items-center">
-            <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Select Amount</h3>
-            <div className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 border ${amountConfig.disabled ? 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600' : 'bg-[#eef6ff] dark:bg-blue-900/20 border-blue-200/60 dark:border-blue-700/50'}`}>
-              <Link2 size={14} className={amountConfig.disabled ? 'text-slate-400' : 'text-[#1562f0]'} strokeWidth={2.5} />
-              <span className={`text-base font-black ${amountConfig.disabled ? 'text-slate-400 dark:text-slate-500' : 'text-[#1562f0]'}`}>
-                ${refuelAmount % 1 === 0 ? refuelAmount : refuelAmount.toFixed(2)}
-              </span>
-              <span className={`text-[10px] font-bold uppercase ${amountConfig.disabled ? 'text-slate-400' : 'text-blue-400 dark:text-blue-400'}`}>USDC</span>
+          {isRefueling ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <RefreshCw size={48} className="animate-spin text-orange-500" />
+              <p className="text-[15px] font-semibold text-slate-600 dark:text-slate-300">Processing refuel...</p>
+              <p className="text-[12px] text-slate-500 dark:text-slate-400">Please wait</p>
             </div>
-          </div>
-
-          {amountConfig.disabled ? (
-            <div className="rounded-xl bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 px-4 py-4 text-center text-[13px] font-medium text-slate-500 dark:text-slate-400">
-              {usdcBalance === null ? 'Loading USDC balance...' : usdcBalance < MIN_PURCHASE_USD ? 'Minimum purchase is $1. Add USDC on Base to refuel.' : 'No USDC on Base. Add USDC to refuel.'}
+          ) : refuelSuccess !== null ? (
+            <div className="flex flex-col items-center py-6 gap-4">
+              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
+                <Check size={32} strokeWidth={3} className="text-green-500" />
+              </div>
+              <p className="text-[18px] font-black text-green-600 dark:text-green-400">Success</p>
+              {refuelSuccess.startsWith('0x') && (
+                <a
+                  href={`https://basescan.org/tx/${refuelSuccess}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[12px] font-mono text-[#1562f0] hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                >
+                  {refuelSuccess.slice(0, 10)}...{refuelSuccess.slice(-8)}
+                  <ExternalLink size={14} strokeWidth={2.5} />
+                </a>
+              )}
+              <button
+                onClick={resetRefuelState}
+                className="mt-2 text-[13px] font-semibold text-orange-500 hover:text-orange-600"
+              >
+                Refuel Again
+              </button>
             </div>
           ) : (
-          <div className="flex items-center gap-4 px-1">
-            <button
-              onClick={() => setRefuelAmount(prev => Math.max(amountConfig.min, Math.round((prev - amountConfig.step) * 100) / 100))}
-              disabled={amountConfig.disabled}
-              className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 dark:border-slate-600 flex items-center justify-center text-slate-400 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Minus size={20} strokeWidth={2.5} />
-            </button>
-            <input
-              type="range"
-              min={amountConfig.min}
-              max={amountConfig.max}
-              step={amountConfig.step}
-              value={refuelAmount}
-              onChange={e => setRefuelAmount(Number(e.target.value))}
-              disabled={amountConfig.disabled}
-              className="flex-1 h-2 bg-slate-100 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-[#1562f0] disabled:cursor-not-allowed disabled:opacity-50"
-            />
-            <button
-              onClick={() => setRefuelAmount(prev => Math.min(amountConfig.max, Math.round((prev + amountConfig.step) * 100) / 100))}
-              disabled={amountConfig.disabled}
-              className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 dark:border-slate-600 flex items-center justify-center text-slate-400 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus size={20} strokeWidth={2.5} />
-            </button>
-          </div>
-          )}
+            <>
+              
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-1">Minimum refuel amount: 1 USDC</p>
 
-          {!amountConfig.disabled && (
-          <div className="bg-[#f8f9fc] dark:bg-slate-700/30 p-5 rounded-[1.5rem]">
-            <div className="flex justify-between items-center">
-              <span className="text-[14px] font-black text-slate-800 dark:text-slate-200">You receive</span>
-              <span className="text-[22px] font-black text-orange-500 leading-none">
-                +{Math.round(refuelAmount * 100)} <span className="text-[10px] font-bold opacity-60">B-Units</span>
-              </span>
-            </div>
-            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">$1 = 100 B-Units (no fee)</p>
-          </div>
-          )}
+              {amountConfig.disabled ? (
+                <div className="rounded-xl bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 px-4 py-4 text-center text-[13px] font-medium text-slate-500 dark:text-slate-400">
+                  {usdcBalance === null ? 'Loading USDC balance...' : usdcBalance < MIN_PURCHASE_USD ? 'Minimum purchase is $1. Add USDC on Base to refuel.' : 'No USDC on Base. Add USDC to refuel.'}
+                </div>
+              ) : (
+              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-600 focus-within:border-orange-500 transition-colors">
+                <span className="text-2xl font-bold text-orange-400">$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={refuelAmountStr}
+                  onFocus={e => {
+                    const input = e.target
+                    requestAnimationFrame(() => {
+                      const len = input.value.length
+                      input.setSelectionRange(len, len)
+                    })
+                  }}
+                  onChange={e => {
+                    const raw = e.target.value
+                      .replace(/,/g, '.')
+                      .replace(/[^0-9.]/g, '')
+                      .replace(/(\..*)\./g, '$1')
+                    setRefuelAmountStr(raw)
+                  }}
+                  onBlur={e => {
+                    const raw = (e.target as HTMLInputElement).value.replace(/,/g, '.')
+                    const v = parseFloat(raw)
+                    if (!Number.isFinite(v) || v <= 0) {
+                      const clamped = amountConfig.min
+                      setRefuelAmount(clamped)
+                      setRefuelAmountStr(String(clamped))
+                      return
+                    }
+                    const clamped = Math.min(amountConfig.max, Math.max(amountConfig.min, Math.round(v * 100) / 100))
+                    setRefuelAmount(clamped)
+                    setRefuelAmountStr(clamped % 1 === 0 ? String(clamped) : clamped.toFixed(2))
+                  }}
+                  disabled={amountConfig.disabled}
+                  className="bg-transparent border-none outline-none text-[28px] font-black w-full text-slate-800 dark:text-slate-100 leading-none"
+                />
+                <span className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase">USDC</span>
+              </div>
+              )}
 
-          {refuelError && (
-            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-2 text-[13px] font-medium text-red-600 dark:text-red-400">
-              {refuelError}
-            </div>
-          )}
+              {!amountConfig.disabled && (
+              <div className="bg-[#f8f9fc] dark:bg-slate-700/30 p-5 rounded-[1.5rem]">
+                <div className="flex justify-between items-center">
+                  <span className="text-[14px] font-black text-slate-800 dark:text-slate-200">You receive</span>
+                  <span className="text-[22px] font-black text-orange-500 leading-none">
+                    +{Math.round(effectiveRefuelAmount * 100)} <span className="text-[10px] font-bold opacity-60">B-Units</span>
+                  </span>
+                </div>
+                <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">$1 = 100 B-Units (no fee)</p>
+              </div>
+              )}
 
-          <button
-            onClick={handleRefuel}
-            disabled={isRefueling || amountConfig.disabled || refuelAmount <= 0}
-            className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:shadow-none transition-all flex items-center justify-center gap-2"
-          >
-            {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={20} fill="currentColor" strokeWidth={1.5} /> Refuel Now</>}
-          </button>
+              {refuelError && (
+                <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-2 text-[13px] font-medium text-red-600 dark:text-red-400">
+                  {refuelError}
+                </div>
+              )}
+
+              <button
+                onClick={handleRefuel}
+                disabled={amountConfig.disabled || effectiveRefuelAmount <= 0}
+                className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+              >
+                <Fuel size={20} fill="currentColor" strokeWidth={1.5} /> Refuel Now
+              </button>
+            </>
+          )}
         </div>
 
         <div className="space-y-4">

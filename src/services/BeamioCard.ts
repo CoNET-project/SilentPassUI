@@ -1857,6 +1857,29 @@ const INDEXER_GET_ACCOUNT_TX_ABI = [
 /** BUnit 相关 txCategory（keccak256） */
 const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes("buintClaim"));
 const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes("buintUSDC"));
+const TX_REQUEST_ACCOUNTING = ethers.keccak256(ethers.toUtf8Bytes("requestAccounting"));
+const TX_SEND_USDC = ethers.keccak256(ethers.toUtf8Bytes("sendUSDC"));
+const TX_X402_SEND = ethers.keccak256(ethers.toUtf8Bytes("x402Send"));
+
+/**
+ * 直接从 CoNET RPC 查询 BUint 余额（total, free, paid）。6 位精度。无需 API 服务器。
+ */
+export const getBUnitBalanceFromConetRpc = async (account: string): Promise<{ total: number; free: number; paid: number }> => {
+  if (!account || !ethers.isAddress(account)) return { total: 0, free: 0, paid: 0 };
+  try {
+    const contract = new ethers.Contract(CONET_BUINT_ADDRESS, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
+    const [total, free, paid] = await contract.balanceOfAll(account);
+    const decimals = 6;
+    return {
+      total: Number(total) / 10 ** decimals,
+      free: Number(free) / 10 ** decimals,
+      paid: Number(paid) / 10 ** decimals
+    };
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceFromConetRpc] RPC failed:', e);
+    return { total: 0, free: 0, paid: 0 };
+  }
+};
 
 /**
  * 查询 CoNET 主网 BUint 余额（total, free, paid）。6 位精度。
@@ -1904,6 +1927,8 @@ export type BUnitLedgerEntry = {
   network: string;
   /** Base mainnet tx hash for USDC refuel (when available from displayJson) */
   baseTxHash?: string;
+  /** CoNET originalPaymentHash (e.g. requestHash for requestAccounting), link to mainnet.conet.network/tx/ */
+  originalPaymentHash?: string;
 };
 
 /**
@@ -1977,23 +2002,37 @@ export const getBUnitLedgerFromIndexer = async (account: string): Promise<BUnitL
           baseTxHash,
         });
       } else if (payee === buintLower && payer === accountLower) {
-        let baseTxHash: string | undefined;
-        try {
-          const displayJson = (tx as { displayJson?: string })?.displayJson ?? "";
-          if (displayJson) {
-            const parsed = JSON.parse(displayJson) as { baseTxHash?: string };
-            if (parsed?.baseTxHash && ethers.isHexString(parsed.baseTxHash)) baseTxHash = parsed.baseTxHash;
-          }
-        } catch {}
+        const rawOphVal = (tx as { originalPaymentHash?: string | bigint })?.originalPaymentHash;
+        const rawOph = rawOphVal != null
+          ? (typeof rawOphVal === "string" ? rawOphVal : "0x" + BigInt(rawOphVal).toString(16).padStart(64, "0"))
+          : undefined;
+        const txCatNorm = (typeof txCategory === "string" ? txCategory : txCategory != null ? "0x" + BigInt(txCategory).toString(16).padStart(64, "0") : "").toLowerCase();
+        const isRequestAccounting = txCatNorm === TX_REQUEST_ACCOUNTING.toLowerCase();
+        const isSendUSDC = txCatNorm === TX_SEND_USDC.toLowerCase();
+        const isX402Send = txCatNorm === TX_X402_SEND.toLowerCase();
+        // requestAccounting 的 originalPaymentHash 是 requestHash，用 CoNET 链接；其他用 Base 链接
+        const ophHex = rawOph && rawOph !== ethers.ZeroHash && ethers.isHexString(rawOph) && ethers.dataLength(rawOph) === 32
+          ? (rawOph.startsWith("0x") ? rawOph : "0x" + rawOph)
+          : "";
+        const baseTxHash = !isRequestAccounting && ophHex && ethers.dataLength(ophHex) === 32 ? ophHex : undefined;
+        const originalPaymentHash = isRequestAccounting && ophHex && ethers.dataLength(ophHex) === 32 ? ophHex : undefined;
+        const title = (isRequestAccounting || isSendUSDC || isX402Send) ? "Service Fee (0.8%)" : "B-Unit Burn";
+        const subtitle = isRequestAccounting
+          ? `Payment Request ${ophHex ? ophHex.slice(-3) : "—"}`
+          : (isSendUSDC || isX402Send)
+            ? ""
+            : (amountUSDC6 > 0 ? `Paid ${(amountUSDC6 / 10 ** decimals).toFixed(2)} USDC` : "Gas / Fee");
+        const isServiceFee = amountUSDC6 > 0 || isRequestAccounting || isSendUSDC || isX402Send;
         entries.push({
           ...baseEntry,
           id: txIdHex,
-          title: "B-Unit Burn",
-          subtitle: amountUSDC6 > 0 ? `Paid ${(amountUSDC6 / 10 ** decimals).toFixed(2)} USDC` : "Gas / Fee",
+          title,
+          subtitle,
           amount: -amountBUnits,
-          type: amountUSDC6 > 0 ? "fee" : "gas",
+          type: isServiceFee ? "fee" : "gas",
           linkedUsdc: amountUSDC6 > 0 ? `${(amountUSDC6 / 10 ** decimals).toFixed(2)} USDC` : "N/A",
           baseTxHash,
+          originalPaymentHash,
         });
       }
     }

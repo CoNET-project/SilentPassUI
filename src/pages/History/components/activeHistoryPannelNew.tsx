@@ -66,8 +66,21 @@ const TX_REQUEST_CANCEL = ethers.keccak256(ethers.toUtf8Bytes('request_cancel:co
 const TX_CARDMINT = ethers.keccak256(ethers.toUtf8Bytes('cardmint:confirmed'))
 /** B-Unit Claim（Network Welcome Grant）：Recent Activity 中排除 */
 const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes('buintClaim'))
-/** B-Unit USDC 购买（Fuel Yield 1:100）：与 B-Units Ledger 描述对齐 */
+/** B-Unit USDC 购买（Fuel Yield 1:100）：Recent Activity 中仅显示此类 B-Unit 记账 */
 const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes('buintUSDC'))
+/** requestAccounting B-Unit 收费（Service Fee 0.8%）：Recent Activity 中排除 */
+const TX_REQUEST_ACCOUNTING = ethers.keccak256(ethers.toUtf8Bytes('requestAccounting'))
+/** B-Unit 焚烧默认 kind（未登记 kind 时）：Recent Activity 中排除 */
+const TX_BUINT_BURN = ethers.keccak256(ethers.toUtf8Bytes('buintBurn'))
+/** B-Unit 焚烧 kind 名称：Recent Activity 中排除（只显示 buintUSDC） */
+const TX_BUINT_BURN_KINDS = ['sendUSDC', 'cardTopup', 'issueCard', 'x402Send'].map((n) => ethers.keccak256(ethers.toUtf8Bytes(n)))
+/** B-Unit 相关 txCategory 排除集合（Recent Activity 中只显示 TX_BUINT_USDC） */
+const TX_BUINT_EXCLUDE = new Set([
+	TX_BUINT_CLAIM,
+	TX_REQUEST_ACCOUNTING,
+	TX_BUINT_BURN,
+	...TX_BUINT_BURN_KINDS,
+].map((h) => h.toLowerCase()))
 
 type TxDisplayType =
 	| 'merchant_pay'
@@ -216,6 +229,29 @@ interface RawTxRecord {
 }
 
 const FEE_INFO_KEYS = ['gasChainType', 'gasWei', 'gasUSDC6', 'serviceUSDC6', 'bServiceUSDC6', 'bServiceUnits6', 'feePayer'] as const
+/** FeeInfo 下标：5=bServiceUnits6, 4=bServiceUSDC6（readme 7.2） */
+const FEE_IDX_B_SERVICE_USDC6 = 4
+const FEE_IDX_B_SERVICE_UNITS6 = 5
+
+/** 从 fees（可能为 array 或 object）提取 B-Units 数量 */
+function extractBServiceUnits(fees: unknown): number {
+	if (!fees || typeof fees !== 'object') return 0
+	const f = fees as Record<string | number, unknown>
+	const units6 = f.bServiceUnits6 ?? f['bServiceUnits6'] ?? f[FEE_IDX_B_SERVICE_UNITS6]
+	if (units6 != null) return Number(units6) / 1e6
+	const usdc6 = f.bServiceUSDC6 ?? f['bServiceUSDC6'] ?? f[FEE_IDX_B_SERVICE_USDC6]
+	if (usdc6 != null) return Number(usdc6) * 100 / 1e6 // 100 B-Units = 1 USDC
+	return 0
+}
+
+/** request_create 预期 Beamio Fee（0.8%, min 2 max 200, 500 if >=5000 USDC）。链上 fees 为 0 时用于 UI 回退 */
+function calcRequestCreateFeeBUnits(amountUSDC6: number | string | bigint): number {
+	const amt = Number(amountUSDC6)
+	if (!Number.isFinite(amt) || amt <= 0) return 0
+	if (amt >= 5_000_000_000) return 500 // >=5000 USDC (6 decimals)
+	let fee = Math.ceil((amt / 1e6) * 0.008) // 0.8% of amount in USDC
+	return Math.min(Math.max(fee, 2), 200)
+}
 const META_KEYS = ['requestAmountFiat6', 'requestAmountUSDC6', 'currencyFiat', 'discountAmountFiat6', 'discountRateBps', 'taxAmountFiat6', 'taxRateBps', 'afterNotePayer', 'afterNotePayee'] as const
 const ROUTE_ITEM_KEYS = ['asset', 'amountE6', 'assetType', 'source', 'tokenId', 'itemCurrencyType', 'offsetInRequestCurrencyE6'] as const
 
@@ -546,7 +582,8 @@ const ActiveHistoryPannelNew = ({
 				const list = Array.isArray(page) ? page : []
 				for (const tx of list) {
 					if (!tx?.exists) continue
-					if (String(tx.txCategory ?? '') === TX_BUINT_CLAIM) continue
+					const cat = String(tx.txCategory ?? '').toLowerCase()
+					if (TX_BUINT_EXCLUDE.has(cat)) continue
 					const id = typeof tx.id === 'string' ? tx.id : tx.id != null ? ethers.hexlify(tx.id as ethers.BytesLike) : ethers.ZeroHash
 					if (seen.has(id)) continue
 					seen.add(id)
@@ -1670,8 +1707,9 @@ const ActiveHistoryPannelNew = ({
 										<>
 											{/* <span className="font-bold text-[#34C759] bg-[#34C759]/10 px-2 py-0.5 rounded text-[12px]">Sponsored</span> */}
 											{(selectedTx.type === 'internal_transfer' || (!selectedTxMySideIsAA && (selectedTx.type === 'transfer_out' || selectedTx.type === 'transfer_in')) || sendToNoOph) ? (() => {
-												const raw = selectedTx.rawTransaction as RawTxRecord | undefined
-												const bUnits = sendToNoOph ? 2 : (raw?.fees?.bServiceUnits6 != null ? Number(raw.fees.bServiceUnits6) / 1e6 : 2)
+												const txWithFees = fullTransactionFromChain ?? (selectedTx.rawTransaction as RawTxRecord | undefined)
+												const chainBUnits = extractBServiceUnits(txWithFees?.fees)
+												const bUnits = sendToNoOph ? 2 : (chainBUnits > 0 ? chainBUnits : 2)
 												const displayVal = bUnits > 0 ? `-${Math.round(bUnits)}` : '0'
 
 												return (
@@ -1696,8 +1734,15 @@ const ActiveHistoryPannelNew = ({
 									<Fuel size={14} className="text-gray-500 dark:text-slate-400 shrink-0" />
 									<span className="font-semibold text-gray-700 dark:text-slate-300">
 										{(() => {
-											const raw = selectedTx.rawTransaction as RawTxRecord | undefined
-											const bUnits = raw?.fees?.bServiceUnits6 != null ? Number(raw.fees.bServiceUnits6) / 1e6 : 0
+											// Prefer fullTransactionFromChain (getTransactionFullByTxId) for fees; fallback to rawTransaction
+											const txWithFees = fullTransactionFromChain ?? (selectedTx.rawTransaction as RawTxRecord | undefined)
+											let bUnits = extractBServiceUnits(txWithFees?.fees)
+											// 链上 fees 为 0 的 request_create：按金额计算预期 Beamio Fee 作为回退（历史记录）
+											if (bUnits === 0 && selectedTx.type === 'request_create') {
+												const rawAmt = txWithFees?.finalRequestAmountUSDC6 ?? (selectedTx.rawTransaction as RawTxRecord)?.finalRequestAmountUSDC6
+												const amt6 = rawAmt != null ? Number(rawAmt) : Math.round(selectedTx.amountUSDC * 1e6)
+												bUnits = calcRequestCreateFeeBUnits(amt6)
+											}
 											return `${Math.round(bUnits)} B-Units`
 										})()}
 									</span>

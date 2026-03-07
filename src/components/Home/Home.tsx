@@ -924,6 +924,10 @@ const Home = ({}) => {
 										showActiveTab={false}
 										hideOuterFrame
 										onClose={() => setShowPayMeSheet(false)}
+										onShowFuelCenter={() => {
+											setShowPayMeSheet(false)
+											setShowFuelView(true)
+										}}
 									/>
 								</div>
 							</motion.div>
@@ -1083,10 +1087,14 @@ const Home = ({}) => {
 							
 							{showAlphaHowItWorks === 'Pay' && <PayScreen 
 								beamioer={userPreviewItem||undefined}
-
 								close={path => {
 									setShowAlphaHowItWorks('')
-								}} />}
+								}}
+								onShowFuelCenter={() => {
+									setShowAlphaHowItWorks('')
+									setShowFuelView(true)
+								}}
+							/>}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
 							{showAlphaHowItWorks === 'CoinbaseRamps' && <BeamioAddUSDCFlow />}
 							{showAlphaHowItWorks === 'BeamioContactProfilePreview' && userPreviewItem && 
@@ -1221,6 +1229,11 @@ const Home = ({}) => {
 									close={() => {
 										setSettingsOpen('')
 										setShowFooter(true)
+									}}
+									onShowFuelCenter={() => {
+										setSettingsOpen('')
+										setShowFooter(true)
+										setShowFuelView(true)
 									}}
 								/>
 							)}

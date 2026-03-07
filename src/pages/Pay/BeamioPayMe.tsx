@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, useRef } from "react"
-import { Copy, Check, MessageCircle, Share2, Plus, Wallet, CreditCard } from "lucide-react"
+import { Copy, Check, MessageCircle, Share2, Plus, Wallet, CreditCard, Loader, XCircle, Fuel } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { ethers } from "ethers"
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import {AuthorizationSign, getBalanceProcess, generateCODE, generateRequestHash} from '@/services/beamio'
-import { postToEndpoint } from '@/utils/utils'
+import { getBUnitBalanceFromConetRpc } from '@/services/BeamioCard'
+import { baseEndpoint } from '@/utils/constants'
 import bIcon from '@/components/assets/logo512.png'
 import { QRCodeCanvas } from 'qrcode.react'
 import PaymentLink from './PaymentLink'
@@ -18,11 +19,12 @@ import { X } from 'lucide-react'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 
 const showPaylinkSite = 'https://beamio.app'
-/** 0.8% fee, min 0.02, max 2 USDC */
-const calcFeeUsdc = (amountUsdc: number) => {
+/** B-Unit fee: 0.8% of amount in USDC, 100 B-Units = 1 USDC. Min 2, max 200 B-Units; >=5000 USDC → 500 B-Units */
+const calcFeeBUnits = (amountUsdc: number) => {
 	if (!isFinite(amountUsdc) || amountUsdc <= 0) return 0
-	const raw = amountUsdc * 0.008
-	return Number((Math.min(Math.max(raw, 0.02), 2)).toFixed(4))
+	if (amountUsdc >= 5000) return 500
+	const raw = Math.ceil(amountUsdc * 0.8)
+	return Math.min(Math.max(raw, 2), 200)
 }
 const getImg = (avatarSeed: string|undefined) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || '@Beamio').toString()}`
@@ -44,6 +46,8 @@ type BeamioPayMeProps = {
 	hideName?: boolean
 	/** 是否隐藏主卡片外框（shadow/ring），用于底部滑出面板等嵌入场景 */
 	hideOuterFrame?: boolean
+	/** B-Unit 不足时点击「Go to Fuel Center」的回调，用于跳转显示 Fuel Center 供用户 topup */
+	onShowFuelCenter?: () => void
 }
 
 const displayName = (item: beamio|null) => {
@@ -60,7 +64,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	relayPayload = null,
 	onClose,
 	hideName = false,
-	hideOuterFrame = false
+	hideOuterFrame = false,
+	onShowFuelCenter
   } = props
 
 	const [copied, setCopied] = useState(false)
@@ -89,6 +94,10 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	const [showAmountInput, setShowAmountInput] = useState(false)
 	/** 指定金额的 paymentUrl（类似 TenKeyInput 的 bill），为 null 时 QR 显示 successUrl（任意金额） */
 	const [billPaymentUrl, setBillPaymentUrl] = useState<string | null>(null)
+	/** 等待服务器确认的 paymentUrl；成功后才写入 billPaymentUrl */
+	const [pendingPaymentUrl, setPendingPaymentUrl] = useState<string | null>(null)
+	/** requestAccounting 失败时的错误信息（如 B-Unit 不足） */
+	const [accountingError, setAccountingError] = useState<string | null>(null)
 	/** 请求金额（所选 currency 的原生数量，不换算 USDC） */
 	const [billAmount, setBillAmount] = useState("")
 	const [billCurrency, setBillCurrency] = useState<ICurrency>('USD')
@@ -114,7 +123,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		return `${showPaylinkSite}?${params.toString()}`
 	}, [beamio?.accountName, receivingMode, merchantAA, myAddress])
 	const qrValue = billPaymentUrl ?? successUrl
-	const handleDoneAmount = () => {
+	const handleDoneAmount = async () => {
 		const amt = Number(billAmount)
 		if (!amt || amt <= 0) {
 			setAmountError("Please enter a valid amount")
@@ -128,6 +137,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		setAmountError("")
 		setAccountingStatus('loading')
 		setAccountingSyncTx(null)
+		setAccountingError(null)
 		const requestHash = generateRequestHash()
 		const params = new URLSearchParams({
 			Amount: billAmount,
@@ -140,25 +150,73 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		if (billForText.trim()) params.set('forText', billForText.trim())
 		if (billValidDays >= 1) params.set('validDays', String(Math.floor(billValidDays)))
 		const url = `https://beamio.app/Vouchers?${params.toString()}`
-		setBillPaymentUrl(url)
+		setPendingPaymentUrl(url)
 		setShowAmountInput(false)
-		postToEndpoint<{ success?: boolean; indexed?: boolean; syncTx?: string }>(`${showPaylinkSite}/api/requestAccounting`, true, {
-			requestHash,
-			payee: toAddress,
-			amount: billAmount,
-			currency: billCurrency,
-			forText: billForText.trim() || undefined,
-			validDays: Math.max(1, Math.floor(billValidDays)),
+
+		// UI 自检（客户端直接从 CoNET 查余额）：0.8% 费用，min 2 max 200 B-Units，>=5000 USDC 时 500
+		try {
+			const amt = Number(billAmount)
+			const usdcToUSD = Number(currencyData?.USDC) ?? 1
+			const curToUSD = billCurrency === 'USDC' ? 1 : (Number((currencyData as Record<string, number>)?.[billCurrency]) ?? 1)
+			const amountUSDC = billCurrency === 'USDC' ? amt : amt / curToUSD / usdcToUSD
+			let feeBUnits = Math.ceil(amountUSDC * 0.8)
+			if (amountUSDC >= 5000) feeBUnits = 500
+			else feeBUnits = Math.min(Math.max(feeBUnits, 2), 200)
+
+			let payerEOA: string
+			const code = await baseEndpoint.getCode(toAddress)
+			if (code && code !== '0x' && code.length > 2) {
+				const aaRead = new ethers.Contract(toAddress, ['function owner() view returns (address)'], baseEndpoint)
+				const owner = await aaRead.owner()
+				if (!owner || owner === ethers.ZeroAddress) {
+					setAccountingError('Cannot determine payee owner for B-Unit fee check')
+					setAccountingStatus('error')
+					return
+				}
+				payerEOA = ethers.getAddress(owner)
+			} else {
+				payerEOA = ethers.getAddress(toAddress)
+			}
+
+			const { total } = await getBUnitBalanceFromConetRpc(payerEOA)
+			if (total < feeBUnits) {
+				setAccountingError(`Insufficient B-Units: payee needs ${feeBUnits} B-Units for requestAccounting (balance: ${total} B-Units)`)
+				setAccountingStatus('error')
+				return
+			}
+		} catch (e) {
+			setAccountingError((e as Error)?.message ?? 'B-Unit balance check failed')
+			setAccountingStatus('error')
+			return
+		}
+
+		fetch(`${showPaylinkSite}/api/requestAccounting`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+			body: JSON.stringify({
+				requestHash,
+				payee: toAddress,
+				amount: billAmount,
+				currency: billCurrency,
+				forText: billForText.trim() || undefined,
+				validDays: Math.max(1, Math.floor(billValidDays)),
+			}),
 		})
-			.then((res) => {
-				if (res && typeof res === 'object' && res.indexed && res.syncTx) {
+			.then(async (res) => {
+				const data = res.ok ? await res.json().catch(() => null) : await res.json().catch(() => ({}))
+				if (res.ok && data && typeof data === 'object' && data.indexed && data.syncTx) {
+					setBillPaymentUrl(url)
+					setPendingPaymentUrl(null)
 					setAccountingStatus('success')
-					setAccountingSyncTx(res.syncTx)
+					setAccountingSyncTx(data.syncTx)
 				} else {
+					const errMsg = (data && typeof data === 'object' && typeof data.error === 'string') ? data.error : (res.ok ? 'Failed to record' : 'Request failed')
+					setAccountingError(errMsg)
 					setAccountingStatus('error')
 				}
 			})
-			.catch(() => {
+			.catch((err) => {
+				setAccountingError(err instanceof Error ? err.message : 'Network error')
 				setAccountingStatus('error')
 			})
 	}
@@ -301,7 +359,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 							)
 						})()}
 
-						{/* QR Card - 金额输入展开时隐藏，小屏紧凑 */}
+						{/* QR Card - 金额输入展开时隐藏，小屏紧凑；创建 paymentRequest 时先 loading，成功才显示 QR，B-Unit 不足等错误明确展示 */}
 						{!showAmountInput && (
 							<div className="mt-1.5 sm:mt-3 flex justify-center">
 							<div className="relative isolate">
@@ -318,7 +376,56 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								"
 								/>
 
-								{/* QR 白底板：小屏 200px，大屏 264px */}
+								{/* Loading：等待 requestAccounting 服务器确认 */}
+								{pendingPaymentUrl && accountingStatus === 'loading' && (
+									<div className="relative z-10 flex flex-col items-center justify-center rounded-[20px] sm:rounded-[28px] bg-white p-8 sm:p-12 shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)] min-w-[200px] min-h-[200px]">
+										<Loader className="w-12 h-12 text-sky-500 animate-spin" strokeWidth={2} />
+										<p className="mt-3 text-sm text-slate-600 dark:text-slate-400">Creating payment request…</p>
+									</div>
+								)}
+
+								{/* Error：B-Unit 不足等，明确展示错误；支持 Go to Fuel Center 跳转 topup */}
+								{pendingPaymentUrl && accountingStatus === 'error' && (
+									<div className="relative z-10 flex flex-col items-center rounded-[20px] sm:rounded-[28px] bg-white dark:bg-slate-800 p-6 sm:p-8 shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)] max-w-[280px]">
+										<XCircle className="w-12 h-12 text-amber-500 dark:text-amber-400 shrink-0" />
+										<p className="mt-3 text-sm font-medium text-slate-900 dark:text-slate-100 text-center">
+											{accountingError && /insufficient b-units/i.test(accountingError) ? 'Insufficient B-Units' : 'Request failed'}
+										</p>
+										<p className="mt-1 text-xs text-slate-600 dark:text-slate-400 text-center break-words">{accountingError ?? 'Unknown error'}</p>
+										<div className="mt-4 w-full flex flex-col gap-2">
+											{accountingError && /insufficient b-units/i.test(accountingError) && onShowFuelCenter && (
+												<button
+													type="button"
+													onClick={() => {
+														setPendingPaymentUrl(null)
+														setAccountingError(null)
+														setAccountingStatus('idle')
+														onShowFuelCenter()
+													}}
+													className="w-full py-2.5 px-4 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-semibold text-sm hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors flex items-center justify-center gap-2"
+												>
+													<Fuel className="w-4 h-4" strokeWidth={2.5} />
+													Go to Fuel Center
+												</button>
+											)}
+											<button
+												type="button"
+												onClick={() => {
+													setPendingPaymentUrl(null)
+													setAccountingError(null)
+													setAccountingStatus('idle')
+													setShowAmountInput(true)
+												}}
+												className="w-full py-2.5 px-4 rounded-xl bg-sky-100 dark:bg-sky-900/40 text-blue-600 dark:text-blue-400 font-semibold text-sm hover:bg-sky-200 dark:hover:bg-sky-900/60 transition-colors"
+											>
+												Try again
+											</button>
+										</div>
+									</div>
+								)}
+
+								{/* QR 白底板：服务器成功后才显示 */}
+								{!(pendingPaymentUrl && (accountingStatus === 'loading' || accountingStatus === 'error')) && (
 								<div className="relative z-10 flex justify-center">
 									<div
 										className="
@@ -345,6 +452,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 										/>
 									</div>
 								</div>
+								)}
 								
 								{/* <div className="mt-6 text-center">
 									<div className="mt-3 text-[18px] font-semibold text-slate-500">
@@ -356,14 +464,13 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 							</div>
 						)}
 
-						{/* 费率计算卡片：指定金额时显示在 QR 下方，Requesting 使用用户输入的 currency */}
+						{/* 费率计算卡片：指定金额时显示在 QR 下方，Requesting 使用用户输入的 currency；Fee 对齐 B-Unit 费率 */}
 						{billPaymentUrl && billAmount && (() => {
 							const amtOrig = Number(billAmount)
 							const usdcRate = Number(currencyData?.USDC) ?? 1
 							const usdToCur = billCurrency === 'USDC' ? 1 : (Number((currencyData as any)?.[billCurrency]) ?? 1)
-							const amt = billCurrency === 'USDC' ? amtOrig : amtOrig / (usdToCur * usdcRate)
-							const fee = calcFeeUsdc(amt)
-							const estReceive = amt - fee
+							const amtUsdc = billCurrency === 'USDC' ? amtOrig : amtOrig / (usdToCur * usdcRate)
+							const feeBUnits = calcFeeBUnits(amtUsdc)
 							const usdcToUSD = Number(currencyData?.USDC) ?? 1
 							const usdToFiat = billCurrency === 'USDC' ? 1 : (Number((currencyData as any)?.[billCurrency]) ?? 1)
 							const requestingDisplay = billCurrency === 'USDC'
@@ -378,15 +485,15 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 										</div>
 										<div className="flex justify-between items-center">
 											<span className="text-slate-500 dark:text-slate-400 text-sm">Fee (0.8%)</span>
-											<span className="text-slate-500 dark:text-slate-400">- {formatAmount(fee, 'USDC')} USDC</span>
+											<span className="text-slate-500 dark:text-slate-400">- {feeBUnits} B-Units</span>
 										</div>
 										<div className="border-t border-slate-200 dark:border-slate-600 pt-2">
 											<div className="flex justify-between items-start">
 												<span className="font-semibold text-green-600 dark:text-green-400 text-sm">Est. Receive</span>
 												<div className="text-right">
-													<span className="font-semibold text-green-600 dark:text-green-400">{formatAmount(estReceive, 'USDC')} USDC</span>
+													<span className="font-semibold text-green-600 dark:text-green-400">{formatAmount(amtUsdc, 'USDC')} USDC</span>
 													{billCurrency !== 'USDC' && currencyData?.USDC != null && currencyData?.[billCurrency] != null && (() => {
-														const estReceiveFiat = estReceive * usdcToUSD * usdToFiat
+														const estReceiveFiat = amtUsdc * usdcToUSD * usdToFiat
 														return (
 															<div className="text-xs text-slate-500 dark:text-slate-400 mt-0">
 																≈ {fiatPrefix(billCurrency)} {formatAmount(estReceiveFiat, billCurrency)}
@@ -496,8 +603,8 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 							</div>
 						)}
 
-						{/* Actions - 金额输入期间隐藏，Copy 左 Share 右，图标在文字左侧 */}
-						{!showAmountInput && (
+						{/* Actions - 金额输入期间隐藏；创建 paymentRequest 的 loading/error 期间也隐藏 */}
+						{!showAmountInput && !(pendingPaymentUrl && (accountingStatus === 'loading' || accountingStatus === 'error')) && (
 						<div className="mt-3 sm:mt-10 flex gap-2 sm:gap-3">
 							<button
 								type="button"

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Fuel, Plus, Minus, ChevronRight, RefreshCw, Filter, Link2, X, Check, ExternalLink, Code } from 'lucide-react'
+import { Fuel, Plus, Minus, ChevronRight, RefreshCw, Filter, Link2, X, Check, ExternalLink, Code, Calculator } from 'lucide-react'
 import { getBUnitLedgerFromIndexer, signBUnitRefuel3009, type BUnitLedgerEntry } from '@/services/BeamioCard'
 import { purchaseBUnitFromBase, getUsdcBalanceFromApi } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -11,6 +11,7 @@ type LogEntry = BUnitLedgerEntry & { type: string }
 const isBuintClaim = (log: LogEntry) => log.title === 'BUnit Claim' && log.subtitle === 'Free claim'
 const isRefuel = (log: LogEntry) => log.type === 'refuel'
 const hasBaseTxHash = (log: LogEntry) => !!(log as BUnitLedgerEntry & { baseTxHash?: string }).baseTxHash
+const hasOriginalPaymentHash = (log: LogEntry) => !!(log as BUnitLedgerEntry & { originalPaymentHash?: string }).originalPaymentHash
 const displayTitle = (log: LogEntry) => (isBuintClaim(log) ? 'Network Welcome Grant' : log.title)
 /** Subtitle hidden for Network Welcome Grant and Fuel Yield (1:100) */
 const showSubtitle = (log: LogEntry) => !isBuintClaim(log) && log.title !== 'Fuel Yield (1:100)'
@@ -36,6 +37,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
   const [selectedDetail, setSelectedDetail] = useState<LogEntry | null>(null)
   const [showJson, setShowJson] = useState(false)
   const [refuelError, setRefuelError] = useState<string | null>(null)
+  const [calcAmount, setCalcAmount] = useState(100)
 
   const fetchLedger = () => {
     if (!account) {
@@ -93,6 +95,15 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
     if (ledgerFilter === 'all') return bUnitsLedger
     return bUnitsLedger.filter((log: LogEntry) => log.type === ledgerFilter)
   }, [bUnitsLedger, ledgerFilter])
+
+  /** Fee Estimator: 0.8% of receive amount (USDC), min 2 max 200 B-Units; >=5000 USDC → 500 B-Units */
+  const estimatedServiceFee = useMemo(() => {
+    const amt = Number(calcAmount)
+    if (!Number.isFinite(amt) || amt <= 0) return 2
+    if (amt >= 5000) return 500
+    const rawFee = Math.ceil(amt * 0.8)
+    return Math.min(Math.max(rawFee, 2), 200)
+  }, [calcAmount])
 
   const handleRefuel = async () => {
     const pk = profiles?.[0]?.privateKeyArmor
@@ -330,6 +341,44 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
             )}
           </div>
         </div>
+
+        <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-50 dark:border-slate-700 space-y-6">
+          <div className="flex items-center gap-2">
+            <Calculator size={18} className="text-orange-400" />
+            <h3 className="font-bold text-[15px] text-slate-800 dark:text-slate-100">Fee Estimator</h3>
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold ml-1 tracking-widest">Receive Amount (USDC)</label>
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4 mt-2 border border-slate-100 dark:border-slate-600 focus-within:border-orange-500 transition-colors">
+              <span className="text-2xl font-bold text-orange-400">$</span>
+              <input
+                type="number"
+                value={calcAmount}
+                onChange={e => setCalcAmount(Number(e.target.value) || 0)}
+                min={0}
+                step={1}
+                className="bg-transparent border-none outline-none text-[28px] font-black w-full text-slate-800 dark:text-slate-100 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+          </div>
+          <div className="space-y-2.5 px-1">
+            <div className="flex justify-between text-[13px] text-slate-500 dark:text-slate-400 font-medium items-center">
+              <span>Service Fee (0.8%)</span>
+              <div className="flex items-center gap-1.5 bg-orange-500/10 px-2 py-0.5 rounded text-orange-500">
+                <Fuel size={12} fill="currentColor" />
+                <span className="font-bold">{estimatedServiceFee} B-Units</span>
+              </div>
+            </div>
+            <div className="flex justify-between text-[13px] text-slate-500 dark:text-slate-400 font-medium">
+              <span>Network Gas</span>
+              <span className="text-green-500 dark:text-green-400 font-bold">Waived</span>
+            </div>
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-600 flex justify-between items-end mt-2">
+              <span className="text-[14px] font-bold text-slate-800 dark:text-slate-100">Total Fuel Cost</span>
+              <span className="text-[24px] font-black text-orange-500 leading-none">{estimatedServiceFee} <span className="text-[11px] text-orange-500/70">B-Units</span></span>
+            </div>
+          </div>
+        </div>
         </div>
       </div>
 
@@ -389,10 +438,10 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                   <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">Linked USDC</span>
                   <span className="text-[13px] font-bold text-blue-500">{selectedDetail.linkedUsdc}</span>
                 </div>
-                <div className={`flex justify-between items-center px-4 py-3 ${hasBaseTxHash(selectedDetail) ? 'border-b border-dashed border-slate-200 dark:border-slate-600' : ''}`}>
+                <div className={`flex justify-between items-center px-4 py-3 ${(hasBaseTxHash(selectedDetail) || hasOriginalPaymentHash(selectedDetail)) ? 'border-b border-dashed border-slate-200 dark:border-slate-600' : ''}`}>
                   <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">Network</span>
                   <span className="text-[13px] font-bold text-slate-800 dark:text-slate-100">
-                    {hasBaseTxHash(selectedDetail) ? 'Base Mainnet' : selectedDetail.network}
+                    {hasBaseTxHash(selectedDetail) ? 'Base Mainnet' : hasOriginalPaymentHash(selectedDetail) ? 'CoNET L1' : selectedDetail.network}
                   </span>
                 </div>
                 {hasBaseTxHash(selectedDetail) && (
@@ -405,6 +454,20 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-mono font-semibold text-[#1562f0] hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                   >
                     {(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash!.slice(0, 10)}...{(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash!.slice(-8)}
+                    <ExternalLink size={12} strokeWidth={2.5} />
+                  </a>
+                </div>
+                )}
+                {hasOriginalPaymentHash(selectedDetail) && !hasBaseTxHash(selectedDetail) && (
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">TxHash</span>
+                  <a
+                    href={`https://mainnet.conet.network/tx/${(selectedDetail as LogEntry & { originalPaymentHash: string }).originalPaymentHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-mono font-semibold text-[#1562f0] hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                  >
+                    {(selectedDetail as LogEntry & { originalPaymentHash: string }).originalPaymentHash!.slice(0, 10)}...{(selectedDetail as LogEntry & { originalPaymentHash: string }).originalPaymentHash!.slice(-8)}
                     <ExternalLink size={12} strokeWidth={2.5} />
                   </a>
                 </div>

@@ -11,7 +11,7 @@ import ConformView from './ConformView'
 import base_ex from '@/components/assets/base-ex.svg'
 import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
-import { X, Check, Plus, Camera, ArrowRight, ArrowLeft, Wallet, CreditCard, Zap } from "lucide-react"
+import { X, Check, Plus, Camera, ArrowRight, ArrowLeft, Wallet, CreditCard, Zap, Fuel, XCircle } from "lucide-react"
 import NetworkFeeGas from '../components/networkFee'
 import ShowTotal from '../components/ShowTotal_send'
 import { fiatPrefix, formatAmount } from '@/services/currency'
@@ -20,7 +20,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
 import { ethers } from 'ethers'
 import { beamioApiBase, signAAtoEOA_USDC_with_BeamioContainerMainRelayed } from '@/services/AAaccount'
-import { getAAAccount } from '@/services/BeamioCard'
+import { getAAAccount, getBUnitBalanceFromConetRpc } from '@/services/BeamioCard'
 import { baseEndpoint } from '@/utils/constants'
 import contracts from '@/utils/contracts'
 
@@ -98,9 +98,11 @@ type Props = {
 	aaAccountUsdcBalance?: string | number
 	/** 挂载时自动聚焦金额输入框（如从扫码地址进入） */
 	focusAmountOnMount?: boolean
+	/** B-Unit 不足时点击「Go to Fuel Center」的回调，用于跳转显示 Fuel Center 供用户 topup */
+	onShowFuelCenter?: () => void
 }
 
-export default function PayScreen ({close, beamioer, preferredToAddress, mode = 'eoa-pay', aaAccountUsdcBalance, focusAmountOnMount}: Props) {
+export default function PayScreen ({close, beamioer, preferredToAddress, mode = 'eoa-pay', aaAccountUsdcBalance, focusAmountOnMount, onShowFuelCenter}: Props) {
 	
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
@@ -129,6 +131,8 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 	const [recentRecipients, setRecentRecipients] = useState<searchResult[]>(() => loadRecentRecipients())
 	/** 受益方为 AA 时 true，用于显示 Smart Routing 胶囊并走 Smart Routing 支付 */
 	const [isPayeeAA, setIsPayeeAA] = useState<boolean | null>(null)
+	/** B-Unit 不足预检失败时的错误信息 */
+	const [bunitError, setBunitError] = useState<string | null>(null)
 
 	const selectItem = (selected: searchResult) => {
 		setItem(selected)
@@ -456,6 +460,24 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 				setProcessing(false)
 				return
 			}
+			// B-Unit 预检（客户端直接从 CoNET 查余额）：AA owner 需 >= 2 B-Units
+			try {
+				const aaRead = new ethers.Contract(aaAccount, ['function owner() view returns (address)'], baseEndpoint)
+				const owner = await aaRead.owner()
+				const payerEOA = owner && owner !== ethers.ZeroAddress ? ethers.getAddress(owner) : null
+				if (payerEOA) {
+					const { total } = await getBUnitBalanceFromConetRpc(payerEOA)
+					if (total < 2) {
+						setBunitError(`Insufficient B-Units: payer needs 2 B-Units for transfer fee (balance: ${total} B-Units)`)
+						setProcessing(false)
+						return
+					}
+				}
+			} catch (e) {
+				setSendError((e as Error)?.message ?? 'B-Unit balance check failed')
+				setProcessing(false)
+				return
+			}
 			try {
 				// 签字送出前检查 currency，避免记账时遗失
 				if (!currentCurrency || !String(currentCurrency).trim()) {
@@ -571,6 +593,19 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 				} finally {
 					setProcessing(false)
 				}
+			}
+		}
+		// B-Unit 预检（客户端直接从 CoNET 查余额）：EOA 转账需 >= 2 B-Units
+		if (myAddress && ethers.isAddress(myAddress)) {
+			try {
+				const { total } = await getBUnitBalanceFromConetRpc(myAddress)
+				if (total < 2) {
+					setBunitError(`Insufficient B-Units: payer needs 2 B-Units for transfer fee (balance: ${total} B-Units)`)
+					return
+				}
+			} catch (e) {
+				setSendError((e as Error)?.message ?? 'B-Unit balance check failed')
+				return
 			}
 		}
 		const bo = beamio
@@ -743,6 +778,34 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 				{/* 现在外层已经有 p-2 / space-y-4，你要更松就改成 p-4 */}
 				<Success messageData={message} />
 			</>
+			) : bunitError ? (
+			<div className="flex-1 px-5 pt-6 pb-8 flex flex-col items-center justify-center bg-transparent text-inherit">
+				<XCircle className="w-14 h-14 text-amber-500 dark:text-amber-400 shrink-0" />
+				<p className="mt-4 text-lg font-semibold text-slate-800 dark:text-slate-100 text-center">Insufficient B-Units</p>
+				<p className="mt-2 text-sm text-slate-600 dark:text-slate-400 text-center break-words max-w-[320px]">{bunitError}</p>
+				<div className="mt-6 w-full space-y-3 max-w-[280px]">
+					{onShowFuelCenter && (
+						<button
+							type="button"
+							onClick={() => {
+								setBunitError(null)
+								onShowFuelCenter()
+							}}
+							className="w-full py-3 px-4 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-semibold text-sm hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors flex items-center justify-center gap-2"
+						>
+							<Fuel className="w-4 h-4" strokeWidth={2.5} />
+							Go to Fuel Center
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={() => setBunitError(null)}
+						className="w-full py-3 px-4 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+					>
+						Back
+					</button>
+				</div>
+			</div>
 			) : (
 			<>
 				{/* ====== 下面这一整段你原来的 CardContent 里面内容，原封不动贴进来 ====== */}

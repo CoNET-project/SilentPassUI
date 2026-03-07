@@ -29,6 +29,14 @@ import {
 // --- Design Tokens ---
 const BEAMIO_BLUE = '#1562f0';
 
+/** B-Unit fee: 0.8% of amount in USDC, 100 B-Units = 1 USDC. Min 2, max 200 B-Units; >=5000 USDC → 500 B-Units */
+const calcFeeBUnits = (amountUsdc: number) => {
+  if (!isFinite(amountUsdc) || amountUsdc <= 0) return 0;
+  if (amountUsdc >= 5000) return 500;
+  const raw = Math.ceil(amountUsdc * 0.8);
+  return Math.min(Math.max(raw, 2), 200);
+};
+
 /** Transaction 类型：从 mock 数据推断，供 selectedTx 与 filteredTransactions 使用 */
 type TxItem = {
   id: string
@@ -68,8 +76,7 @@ const TRANSACTIONS: TxItem[] = [
     accountType: 'AA', 
     isMixed: false,
     route: [],
-    // 修正：按照 0.8% 费率计算。50 * 0.008 = 0.40 USDC = 40 B-Units
-    fees: { gas: 0, service: 0, bUnits: 40, gasBUnits: 0 }, 
+    fees: { gas: 0, service: 0, bUnits: calcFeeBUnits(50), gasBUnits: 0 },
     hashes: { base: null, conet: '0x9a8...b7c6' },
     meta: { requestAmount: 50.00 }
   },
@@ -248,8 +255,7 @@ const TRANSACTIONS: TxItem[] = [
     accountType: 'AA', 
     isMixed: false,
     route: [],
-    // 修正：按照 0.8% 费率计算。20 * 0.008 = 0.16 USDC = 16 B-Units
-    fees: { gas: 0, service: 0, bUnits: 16, gasBUnits: 0 }, 
+    fees: { gas: 0, service: 0, bUnits: calcFeeBUnits(20), gasBUnits: 0 },
     hashes: { base: null, conet: '0x3c2...a1b0' },
     meta: { requestAmount: 20.00 }
   }

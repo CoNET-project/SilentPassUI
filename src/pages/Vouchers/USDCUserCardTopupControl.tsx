@@ -155,7 +155,8 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 		let usdc6: string | undefined
 		if (typeof usdcHuman === "string" && usdcHuman.trim() !== "") {
 			try {
-				usdc6 = (await cardAmountToUsdc6(usdcHuman.trim())).toString()
+				const rawUsdc6 = await cardAmountToUsdc6(usdcHuman.trim())
+				usdc6 = toBufferedUsdc6(rawUsdc6).toString()
 			} catch {
 				usdc6 = "0"
 			}
@@ -279,6 +280,14 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 		return q.usdc6
 	}
 
+	// Non-USDC currencies: round converted USDC to 2dp, then add 0.01 USDC safety margin.
+	const toBufferedUsdc6 = (rawUsdc6: bigint) => {
+		if (cardCurrency === "USDC") return rawUsdc6
+		const CENT_USDC6 = 10_000n
+		const rounded2 = ((rawUsdc6 + (CENT_USDC6 / 2n)) / CENT_USDC6) * CENT_USDC6
+		return rounded2 + CENT_USDC6
+	}
+
 	const minTier = tiers[0]
 	const nextTier = useMemo(() => tiers.find((t) => t.minUsdc6 > points6), [tiers, points6])
 	const selectedTier = useMemo(
@@ -370,7 +379,8 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 		}
 		let amount6 = 0n
 		try {
-			amount6 = await cardAmountToUsdc6(amount || "0")
+			const rawUsdc6 = await cardAmountToUsdc6(amount || "0")
+			amount6 = toBufferedUsdc6(rawUsdc6)
 		} catch {
 			setError(`Invalid ${cardCurrency} amount.`)
 			return

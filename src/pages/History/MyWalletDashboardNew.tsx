@@ -151,6 +151,38 @@ const writeHistoryAaBalanceCache = (aa: string, aaAccountUsdcBalance: string) =>
 	} catch {}
 }
 
+const getHistoryUserCardsCacheKey = (profile: profile): string => {
+	const eoa = String(profile?.keyID ?? '').trim().toLowerCase()
+	const aa = String(profile?.aaAccount ?? '').trim().toLowerCase()
+	return `${eoa}|${aa}`
+}
+
+const readHistoryUserCardsCache = (profile: profile): UserCardInfo[] => {
+	const key = getHistoryUserCardsCacheKey(profile)
+	if (!key || key === '|') return []
+	const root = CoNET_Data as any
+	const fromStore = root?.historyUserCards?.[key]
+	if (Array.isArray(fromStore)) return fromStore as UserCardInfo[]
+	const fallback = profile?.issuedCards
+	return Array.isArray(fallback) ? (fallback as UserCardInfo[]) : []
+}
+
+const writeHistoryUserCardsCache = (profile: profile, cards: UserCardInfo[]) => {
+	const key = getHistoryUserCardsCacheKey(profile)
+	if (!key || key === '|') return
+	const temp = CoNET_Data as any
+	if (!temp) return
+	if (!temp.historyUserCards || typeof temp.historyUserCards !== 'object') {
+		temp.historyUserCards = {}
+	}
+	temp.historyUserCards[key] = cards
+	if (temp?.profiles?.[0]) {
+		temp.profiles[0] = { ...temp.profiles[0], issuedCards: cards }
+	}
+	setCoNET_Data(temp)
+	storeSystemData()
+}
+
 /** NFC 读取余额底部滑出页：仅当用户按下「读取 NFC 卡」时走 NFC 流程，其余时刻忽略 */
 function NfcCheckBalanceBottomSheet({
 	open,
@@ -978,17 +1010,13 @@ export default function MyWalletDashboardNew() {
 						next[0] = { ...next[0], issuedCards: cards }
 						return next
 					})
-					const temp = CoNET_Data
-					if (temp?.profiles?.[0]) {
-						temp.profiles[0] = { ...temp.profiles[0], issuedCards: cards }
-						setCoNET_Data(temp)
-						storeSystemData()
-					}
+					// trusted=true 视为有效链上/后端数据，回写本地缓存（historyUserCards + issuedCards）
+					writeHistoryUserCardsCache(profile as profile, cards)
 				}
 			})
 			.catch(() => {
 				// 异常时使用 profile 缓存
-				const cached = profile?.issuedCards ?? []
+				const cached = readHistoryUserCardsCache(profile as profile)
 				setUserCards(cached)
 			})
 	}, [setProfiles])
@@ -1363,6 +1391,19 @@ export default function MyWalletDashboardNew() {
 	// ref 稳定 identity，避免 refetchUserCards 触发 effect 重跑导致 RPC 循环
 	const refetchUserCardsRef = useRef(refetchUserCards)
 	refetchUserCardsRef.current = refetchUserCards
+	// 进入 /history 先读本地卡片缓存，避免首屏空白；随后后台刷新有效数据
+	useEffect(() => {
+		const p = profilesRef.current?.[0]
+		if (!p) return
+		const cached = readHistoryUserCardsCache(p as profile)
+		if (cached.length > 0) {
+			setUserCards(cached)
+		}
+		const id = requestAnimationFrame(() => {
+			refetchUserCardsRef.current()
+		})
+		return () => cancelAnimationFrame(id)
+	}, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
 	// 进入任意「卡」视图（CCSA、基础设施卡、用户卡）时拉取 userCards，以便 isCardViewWithRedeemList 能匹配用户卡并显示 Redeem 列表
 	useEffect(() => {
 		if (!activeView || activeView === 'eoa' || activeView === 'aa') return

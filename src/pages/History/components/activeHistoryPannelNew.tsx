@@ -64,6 +64,12 @@ const TX_VOUCHER_BURN = ethers.keccak256(ethers.toUtf8Bytes('voucher_burn:confir
 const TX_REQUEST_CANCEL = ethers.keccak256(ethers.toUtf8Bytes('request_cancel:confirmed'))
 /** 新卡发行与 Top Up 共用 */
 const TX_CARDMINT = ethers.keccak256(ethers.toUtf8Bytes('cardmint:confirmed'))
+/** Top Up 首次发行新卡 */
+const TX_ISSUE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('iuuseNewCard'))
+/** Top Up 升级新卡 */
+const TX_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('upgradeNewCard'))
+/** 普通 Top Up */
+const TX_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('topupCard'))
 /** B-Unit Claim（Network Welcome Grant）：Recent Activity 中排除 */
 const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes('buintClaim'))
 /** B-Unit USDC 购买（Fuel Yield 1:100）：Recent Activity 中仅显示此类 B-Unit 记账 */
@@ -503,6 +509,13 @@ const ActiveHistoryPannelNew = ({
 	const detailTitleText = selectedTx
 		? (() => {
 				if (selectedTx.type === 'fuel_yield') return 'Fuel Yield (1:100)'
+				const selectedRaw = selectedTx.rawTransaction as RawTxRecord | undefined
+				const selectedCat = String(selectedRaw?.txCategory ?? '').toLowerCase()
+				if (
+					selectedCat === TX_ISSUE_NEW_CARD.toLowerCase() ||
+					selectedCat === TX_UPGRADE_NEW_CARD.toLowerCase() ||
+					selectedCat === TX_TOPUP_CARD.toLowerCase()
+				) return selectedTx.title
 				if (selectedTx.type === 'internal_transfer' && eoa && aa) {
 					const rawTx = selectedTx.rawTransaction as RawTxRecord | undefined
 					const payeeAddr = (extractAddr(rawTx?.payee) ?? '').toLowerCase()
@@ -594,6 +607,26 @@ const ActiveHistoryPannelNew = ({
 					if (String(tx.txCategory ?? '') === TX_BUINT_USDC && amPayee) {
 						title = 'Fuel Yield (1:100)'
 						handle = 'USDC Top-up'
+					}
+					const txCategoryLower = String(tx.txCategory ?? '').toLowerCase()
+					if (
+						txCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase() ||
+						txCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase() ||
+						txCategoryLower === TX_TOPUP_CARD.toLowerCase()
+					) {
+						let cardName = ''
+						try {
+							const j = JSON.parse(tx.displayJson ?? '{}')
+							cardName = String(j.cardName ?? '').trim()
+						} catch {}
+						const baseName = (cardName || title || 'Membership').replace(/\s*card\s*$/i, '').trim() || 'Membership'
+						if (txCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase()) {
+							title = `Buy ${baseName} Card`
+						} else if (txCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase()) {
+							title = `Upgrade ${baseName} Card`
+						} else {
+							title = `Top Up ${baseName} Card`
+						}
 					}
 					const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
 					const metaRaw = (tx as RawTxRecord).meta
@@ -957,6 +990,10 @@ const ActiveHistoryPannelNew = ({
 			? `${tx.counterpartyAddress.slice(0, 6)}…${tx.counterpartyAddress.slice(-4)}`
 			: ''
 		const counterpartyLabel = fullName || beamioTag || safeHandle || shortAddr || 'Unknown'
+		const rowTxCategory = String(rawTx?.txCategory ?? '').toLowerCase()
+		const isIssueNewCardTx = rowTxCategory === TX_ISSUE_NEW_CARD.toLowerCase()
+		const isUpgradeNewCardTx = rowTxCategory === TX_UPGRADE_NEW_CARD.toLowerCase()
+		const isTopupCardTx = rowTxCategory === TX_TOPUP_CARD.toLowerCase()
 		const isPendingRequesting = (tx.type === 'request_create' || tx.type === 'request_expired') && !isReqExpired && !isReqCanceled
 		const isRequestFulfilled = tx.type === 'request_fulfilled'
 		// 自己是支付方且对方是 AA 账户时：Title = "Paid to @beamioTag"，subtitle = forText（payee 非己方地址且能解析出 beamioTag 时，视为对方为 Beamio/AA 用户）
@@ -967,6 +1004,8 @@ const ActiveHistoryPannelNew = ({
 		const sendToNoOph = (isEoaSent || isAASent) && !getOriginalPaymentHash(tx) && (fullName || beamioTag)
 		const titleText = tx.type === 'fuel_yield'
 			? 'Fuel Yield (1:100)'
+			: (isIssueNewCardTx || isUpgradeNewCardTx || isTopupCardTx)
+				? tx.title
 			: isReqExpired
 				? 'Request Expired'
 				: isReqCanceled

@@ -5,12 +5,12 @@ import {
 	getCardMetadataFromApi,
 	getCardMetadataFromUri,
 	getCardTiersFromContract,
+	getEOAUSDCBalance,
 	getMyAssets,
-	postUSDCUserCardTopupPreview,
 	postUSDCUserCardTopup,
+	quoteUSDCForPoints,
 	quoteCurrencyAmountInUSDC,
 	type USDCUserCardTopupIntent,
-	type USDCUserCardTopupPreviewPayload,
 } from "@/services/BeamioCard"
 
 type TierItem = {
@@ -98,10 +98,10 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 	const [topupIntent, setTopupIntent] = useState<USDCUserCardTopupIntent>("topup")
 	const [amount, setAmount] = useState("1")
 	const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(null)
-	const [previewLoading, setPreviewLoading] = useState(false)
-	const [preview, setPreview] = useState<USDCUserCardTopupPreviewPayload | null>(null)
-	const [amountCheckOk, setAmountCheckOk] = useState<boolean | null>(null)
 	const [usdcPerCurrencyUnit, setUsdcPerCurrencyUnit] = useState<number>(1)
+	const [insufficientUsdcBalance, setInsufficientUsdcBalance] = useState(false)
+	const [balanceCheckLoading, setBalanceCheckLoading] = useState(false)
+	const [liveUsdcBalance, setLiveUsdcBalance] = useState<string>("0")
 
 	useEffect(() => {
 		let alive = true
@@ -137,6 +137,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 					.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : 1))
 				setTiers(merged)
 				setAssets(myAssets)
+				setLiveUsdcBalance(String(myAssets?.usdcBalance ?? "0"))
 			} catch (e: any) {
 				if (!alive) return
 				setError(e?.message ?? "Failed to load card information.")
@@ -149,34 +150,6 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 			alive = false
 		}
 	}, [cardAddress, profile])
-
-	const fetchPreview = async (intent: "auto" | USDCUserCardTopupIntent, usdcHuman?: string) => {
-		if (!profile?.keyID) return null
-		let usdc6: string | undefined
-		if (typeof usdcHuman === "string" && usdcHuman.trim() !== "") {
-			try {
-				const rawUsdc6 = await cardAmountToUsdc6(usdcHuman.trim())
-				usdc6 = toBufferedUsdc6(rawUsdc6).toString()
-			} catch {
-				usdc6 = "0"
-			}
-		}
-		setPreviewLoading(true)
-		const ret = await postUSDCUserCardTopupPreview({
-			cardAddress,
-			from: profile.keyID,
-			intent,
-			usdcAmount: usdc6,
-		})
-		setPreviewLoading(false)
-		if (!ret.success || !ret.preview) {
-			setError(ret.error ?? "Failed to preview top-up requirements.")
-			return null
-		}
-		setPreview(ret.preview)
-		if (ret.amountCheck) setAmountCheckOk(ret.amountCheck.ok)
-		return ret
-	}
 
 	const points6 = useMemo(() => {
 		try {
@@ -273,11 +246,25 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 			: "0.00"
 	}
 
+	const points6ToCardAmountCeil = (points6: bigint) => {
+		const raw = Number(ethers.formatUnits(points6, 6))
+		if (!Number.isFinite(raw)) return "0.00"
+		const factor = 10 ** cardCurrencyDecimals
+		const ceiled = Math.ceil((raw - 1e-12) * factor) / factor
+		return ceiled.toLocaleString("en-US", {
+			minimumFractionDigits: cardCurrencyDecimals,
+			maximumFractionDigits: cardCurrencyDecimals,
+		})
+	}
+
 	const cardAmountToUsdc6 = async (human: string): Promise<bigint> => {
 		const normalized = human.replace(/,/g, "").trim()
-		if (cardCurrency === "USDC") return ethers.parseUnits(normalized, 6)
-		const q = await quoteCurrencyAmountInUSDC(cardAddress, cardCurrency, normalized)
-		return q.usdc6
+		const q = await quoteUSDCForPoints(cardAddress, normalized)
+		const points6 = BigInt(q.points6)
+		const unitPriceUSDC6 = BigInt(q.unitPriceUSDC6)
+		const POINTS_ONE = 1_000_000n
+		// Keep frontend conversion conservative and aligned with backend min checks (ceil division).
+		return (points6 * unitPriceUSDC6 + (POINTS_ONE - 1n)) / POINTS_ONE
 	}
 
 	// Non-USDC currencies: round converted USDC to 2dp, then add 0.01 USDC safety margin.
@@ -297,7 +284,6 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 
 	const applyTierSelection = (tier: TierItem) => {
 		setSelectedTierIndex(tier.index)
-		setAmountCheckOk(null)
 		if (!hasMembership) {
 			setTopupIntent("first_purchase")
 			setAmount(points6ToCardAmount(tier.minUsdc6))
@@ -336,30 +322,6 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 		setAmount("1")
 	}, [loading, hasMembership, minTier?.minUsdc6, nextTier, points6, selectedTier, cardCurrency, usdcPerCurrencyUnit])
 
-	useEffect(() => {
-		if (loading || !profile?.keyID) return
-		if (selectedTier) return
-		fetchPreview("auto").then((ret) => {
-			if (!ret?.preview) return
-			try {
-				const recommended = usdc6ToCardAmount(BigInt(ret.preview.recommendedUsdc6 || ret.preview.requiredMinUsdc6))
-				if (!amount || Number(amount) <= 0) setAmount(recommended)
-			} catch {
-				// ignore
-			}
-		})
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [loading, profile?.keyID, cardAddress, selectedTier])
-
-	useEffect(() => {
-		if (loading || !profile?.keyID || !amount) return
-		const timer = setTimeout(() => {
-			fetchPreview("auto", amount).catch(() => {})
-		}, 350)
-		return () => clearTimeout(timer)
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [amount, loading, profile?.keyID, cardAddress])
-
 	const requiredMinPoints6ForUi = useMemo(() => {
 		if (!hasMembership) {
 			return selectedTier?.minUsdc6 ?? minTier?.minUsdc6 ?? 1_000_000n
@@ -370,6 +332,81 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 		return MIN_TOPUP_USDC6
 	}, [hasMembership, minTier?.minUsdc6, points6, selectedTier])
 
+	const userUsdcBalance6 = useMemo(() => {
+		try {
+			return ethers.parseUnits(String(liveUsdcBalance || "0"), 6)
+		} catch {
+			return 0n
+		}
+	}, [liveUsdcBalance])
+
+	const amountBelowRequirement = useMemo(() => {
+		const raw = amount?.replace(/,/g, "").trim()
+		if (!raw) return false
+		try {
+			const inputPoints6 = ethers.parseUnits(raw, 6)
+			return inputPoints6 < requiredMinPoints6ForUi
+		} catch {
+			return false
+		}
+	}, [amount, requiredMinPoints6ForUi])
+
+	const amountToPoints6 = (human: string): bigint => {
+		const normalized = human.replace(/,/g, "").trim()
+		return ethers.parseUnits(normalized || "0", 6)
+	}
+
+	useEffect(() => {
+		let alive = true
+		let timer: ReturnType<typeof setTimeout> | null = null
+		const run = async () => {
+			if (!profile?.keyID) return
+			timer = setTimeout(async () => {
+				try {
+					const latestUsdc = await getEOAUSDCBalance(profile)
+					if (!alive) return
+					setLiveUsdcBalance(String(latestUsdc ?? "0"))
+				} catch {
+					// keep previous live balance on transient fetch error
+				}
+			}, 300)
+		}
+		void run()
+		return () => {
+			alive = false
+			if (timer) clearTimeout(timer)
+		}
+	}, [amount, cardAddress, profile?.keyID])
+
+	useEffect(() => {
+		let alive = true
+		const run = async () => {
+			const raw = amount?.replace(/,/g, "").trim()
+			if (!raw) {
+				if (!alive) return
+				setInsufficientUsdcBalance(false)
+				setBalanceCheckLoading(false)
+				return
+			}
+			setBalanceCheckLoading(true)
+			try {
+				const usdcRaw6 = await cardAmountToUsdc6(raw)
+				const usdcBuffered6 = toBufferedUsdc6(usdcRaw6)
+				if (!alive) return
+				setInsufficientUsdcBalance(usdcBuffered6 > userUsdcBalance6)
+			} catch {
+				if (!alive) return
+				setInsufficientUsdcBalance(false)
+			} finally {
+				if (alive) setBalanceCheckLoading(false)
+			}
+		}
+		void run()
+		return () => {
+			alive = false
+		}
+	}, [amount, cardAddress, cardCurrency, usdcPerCurrencyUnit, userUsdcBalance6])
+
 	const submit = async () => {
 		setError("")
 		setSuccess("")
@@ -378,18 +415,29 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 			return
 		}
 		let amount6 = 0n
+		let amountPoints6 = 0n
 		try {
+			amountPoints6 = amountToPoints6(amount || "0")
+			if (amountPoints6 < requiredMinPoints6ForUi) {
+				setError(`Minimum required is ${points6ToCardAmountCeil(requiredMinPoints6ForUi)} ${cardCurrency}.`)
+				return
+			}
 			const rawUsdc6 = await cardAmountToUsdc6(amount || "0")
 			amount6 = toBufferedUsdc6(rawUsdc6)
+			let finalBalance6 = userUsdcBalance6
+			try {
+				const latestUsdc = await getEOAUSDCBalance(profile)
+				setLiveUsdcBalance(latestUsdc)
+				finalBalance6 = ethers.parseUnits(latestUsdc, 6)
+			} catch {
+				// fallback to latest cached live balance
+			}
+			if (amount6 > finalBalance6) {
+				setError("Insufficient USDC balance.")
+				return
+			}
 		} catch {
 			setError(`Invalid ${cardCurrency} amount.`)
-			return
-		}
-		const previewRet = await fetchPreview("auto", amount)
-		if (!previewRet?.preview) return
-		if (previewRet.amountCheck && !previewRet.amountCheck.ok) {
-			const min6 = BigInt(previewRet.amountCheck.requiredMinUsdc6)
-			setError(`Minimum required is ${usdc6ToCardAmountCeil(min6)} ${cardCurrency}.`)
 			return
 		}
 		setSubmitting(true)
@@ -495,13 +543,15 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 						className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm"
 					/>
 					<div className="mt-1 text-xs text-slate-500">
-						Minimum required: {preview?.requiredMinUsdc6 ? usdc6ToCardAmountCeil(BigInt(preview.requiredMinUsdc6)) : points6ToCardAmount(requiredMinPoints6ForUi)} {cardCurrency}
+						Minimum required: {points6ToCardAmountCeil(requiredMinPoints6ForUi)} {cardCurrency}
 					</div>
 					<div className="mt-1 min-h-[1.25rem] text-xs">
-						{previewLoading ? (
-							<div className="text-slate-500">Checking requirements...</div>
-						) : amountCheckOk === false ? (
+						{amountBelowRequirement ? (
 							<div className="text-rose-600">Amount is below requirement.</div>
+						) : insufficientUsdcBalance ? (
+							<div className="text-rose-600">Insufficient USDC balance.</div>
+						) : balanceCheckLoading ? (
+							<div className="text-slate-400">Checking USDC balance...</div>
 						) : (
 							<div className="invisible">Amount is below requirement.</div>
 						)}
@@ -509,7 +559,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 				</div>
 				<button
 					onClick={submit}
-					disabled={submitting || previewLoading || amountCheckOk === false}
+					disabled={submitting || amountBelowRequirement || insufficientUsdcBalance || balanceCheckLoading}
 					className="w-full h-11 rounded-lg bg-[#1D5BFF] text-white font-semibold disabled:opacity-60"
 				>
 					{submitting ? "Submitting..." : "Top Up with Offline Signature"}

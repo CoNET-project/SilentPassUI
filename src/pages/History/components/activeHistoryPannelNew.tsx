@@ -1697,7 +1697,10 @@ const ActiveHistoryPannelNew = ({
 							{selectedTx.type === 'fuel_yield' && (
 								<div className="flex justify-between items-center text-[14px]">
 									<span className="text-gray-500 dark:text-slate-400 font-medium">Network GAS</span>
-									<span className="font-semibold text-black dark:text-white">Beamio Donation</span>
+									<span className="inline-flex items-center gap-1 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 px-2.5 py-1">
+										<Zap size={12} className="text-orange-500 shrink-0" />
+										<span className="font-semibold text-orange-500 text-[13px] leading-none">Sponsored</span>
+									</span>
 								</div>
 							)}
 							{selectedTx.type !== 'fuel_yield' && selectedTx.currencyCode !== 'USDC' && Math.abs(selectedTx.amountFiat) > 0 && selectedTx.amountUSDC !== 0 && (

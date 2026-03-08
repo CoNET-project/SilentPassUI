@@ -1395,6 +1395,16 @@ async function withGetMyAssetsMutex<T>(fn: () => Promise<T>): Promise<T> {
 	}
 }
 
+export const getEOAUSDCBalance = async (profile: profile): Promise<string> => {
+	const eoa = profile?.keyID?.trim()
+	if (!eoa || !ethers.isAddress(eoa)) {
+		throw new Error("getEOAUSDCBalance: profile.keyID (EOA) is required")
+	}
+	const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
+	const usdcBalanceRaw = await usdcContract.balanceOf(eoa)
+	return ethers.formatUnits(usdcBalanceRaw, 6)
+}
+
 export const getMyAssets = async (profile: profile, cardAddress: string): Promise<MyCardAssets | null> => {
 	const key = getMyAssetsCacheKey(profile, cardAddress)
 	const cached = getMyAssetsCache.get(key)

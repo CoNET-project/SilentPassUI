@@ -336,6 +336,8 @@ export const quotePointsForUSDC = async (
 }
 
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
+const usdcTopupEndpoint = `${beamioApi}/api/usdcTopup`
+const usdcTopupPreviewEndpoint = `${beamioApi}/api/usdcTopupPreview`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
@@ -688,6 +690,88 @@ export const postBuyCardPoints = async (
             postBuyCardPointsLock = false
         }
     }
+
+export type USDCUserCardTopupIntent = 'first_purchase' | 'upgrade' | 'topup'
+export type USDCUserCardTopupPreviewIntent = 'auto' | USDCUserCardTopupIntent
+
+export type USDCUserCardTopupPreviewPayload = {
+	intent: USDCUserCardTopupIntent
+	hasMembership: boolean
+	currentPoints6: string
+	currentTierIndex: number
+	minTierUsdc6: string
+	nextTierMinUsdc6?: string
+	requiredMinUsdc6: string
+	recommendedUsdc6: string
+}
+
+export const postUSDCUserCardTopupPreview = async (params: {
+	cardAddress: string
+	from: string
+	intent?: USDCUserCardTopupPreviewIntent
+	usdcAmount?: string
+}): Promise<{
+	success: boolean
+	error?: string
+	preview?: USDCUserCardTopupPreviewPayload
+	amountCheck?: { ok: boolean; requiredMinUsdc6: string; providedUsdc6: string }
+}> => {
+	const { cardAddress, from, intent = 'auto', usdcAmount } = params
+	try {
+		const response = await fetch(usdcTopupPreviewEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress,
+				from,
+				intent,
+				...(typeof usdcAmount === 'string' && usdcAmount.trim() !== '' && { usdcAmount: usdcAmount.trim() }),
+			}),
+		})
+		const data = await response.json().catch(() => ({}))
+		if (!response.ok) {
+			return { success: false, error: data?.error ?? 'USDC topup preview failed' }
+		}
+		return {
+			success: true,
+			preview: data?.preview,
+			amountCheck: data?.amountCheck,
+		}
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
+
+/** 通用 USDC Topup：用户离线签 EIP-3009，提交到新接口 /api/usdcTopup（Cluster 预检后转发 Master）。 */
+export const postUSDCUserCardTopup = async (params: {
+	profile: profile
+	cardAddress: string
+	usdcAmount: string | number
+	intent: USDCUserCardTopupIntent
+}): Promise<{ success: boolean; error?: string; txHash?: string; assets?: MyCardAssets | null }> => {
+	const { profile, cardAddress, usdcAmount, intent } = params
+	const usdcStr = typeof usdcAmount === 'number' ? String(usdcAmount) : String(usdcAmount ?? '')
+	if (!usdcStr || Number(usdcStr) <= 0) {
+		return { success: false, error: 'Invalid usdcAmount' }
+	}
+	try {
+		const request = await USDC2Token(profile.privateKeyArmor, usdcStr, cardAddress)
+		const body = JSON.stringify({ ...request, intent }, (_k, v) => (typeof v === 'bigint' ? String(v) : v))
+		const response = await fetch(usdcTopupEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body,
+		})
+		const data = await response.json().catch(() => ({}))
+		if (!response.ok) {
+			return { success: false, error: data?.error ?? 'USDC topup failed' }
+		}
+		const assets = await getMyAssets(profile, cardAddress)
+		return { success: true, txHash: data?.USDC_tx, assets }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
 
 /** 获取卡的 owner 地址。executeForOwner 要求签名者必须等于 card.owner()，AA 为 owner 时需用 EOA 签会失败。 */
 export const getCardOwner = async (cardAddress: string): Promise<string> => {

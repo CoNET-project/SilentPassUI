@@ -3,7 +3,7 @@ import { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle }
 import styles from './send.module.scss'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { CoNET_Data } from '@/utils/globals'
-import {AuthorizationSign, getBalanceProcess} from '@/services/beamio'
+import {AuthorizationSign} from '@/services/beamio'
 
 import {SendHistoryTable} from './SendHistory'
 import MyWalletDashboardNew from './MyWalletDashboardNew'

@@ -300,17 +300,16 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
 
   return (
     <div className="flex flex-col min-h-screen bg-[#fdfdff] dark:bg-slate-900 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pb-[calc(8rem+env(safe-area-inset-bottom))]">
-      {/* Beamio protocol: 返回按钮+title 对齐 Home 胶囊 top: max(1rem, env(safe-area-inset-top)) */}
-      <div className="px-6 flex items-center gap-4 shrink-0" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+      {/* Use fixed top spacing to keep Browser/PWA aligned */}
+      <div className="px-6 flex items-center gap-4 shrink-0 pt-4">
         <button onClick={onClose} className="w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
           <ChevronRight size={22} className="rotate-180" />
         </button>
         <h2 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Fuel Center</h2>
       </div>
 
-      {/* Beamio protocol: 首内容 Network Fuel Balance 对齐 Home 首内容；spacer 0 + -mt-12 使面板上移 5rem */}
+      {/* Content area */}
       <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
-        <div className="shrink-0" style={{ minHeight: 'env(safe-area-inset-top)' }} />
         <div className="px-6 pt-6 mt-4 space-y-6">
         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-50 dark:border-slate-700">
           <div className="flex justify-between items-center mb-1">

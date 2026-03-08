@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { ethers } from "ethers"
+import { Check, ExternalLink, RefreshCw } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {
 	getCardMetadataFromApi,
@@ -92,7 +93,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 	const [loading, setLoading] = useState(true)
 	const [submitting, setSubmitting] = useState(false)
 	const [error, setError] = useState("")
-	const [success, setSuccess] = useState("")
+	const [topupSuccessTxHash, setTopupSuccessTxHash] = useState<string | null>(null)
 	const [tiers, setTiers] = useState<TierItem[]>([])
 	const [assets, setAssets] = useState<any | null>(null)
 	const [topupIntent, setTopupIntent] = useState<USDCUserCardTopupIntent>("topup")
@@ -174,6 +175,11 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 		}
 		return maxIdx
 	}, [assets?.nfts])
+	const currentTierName = useMemo(() => {
+		if (currentTierIndex < 0) return ""
+		const t = tiers.find((x) => x.index === currentTierIndex)
+		return t?.name?.trim() || `Tier ${currentTierIndex + 1}`
+	}, [tiers, currentTierIndex])
 
 	const currentPointsDisplay = useMemo(() => {
 		const amount = Number(assets?.points ?? "0")
@@ -409,7 +415,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 
 	const submit = async () => {
 		setError("")
-		setSuccess("")
+		setTopupSuccessTxHash(null)
 		if (!profile?.privateKeyArmor) {
 			setError("Profile private key is missing.")
 			return
@@ -454,10 +460,15 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 				return
 			}
 			if (ret.assets) setAssets(ret.assets)
-			setSuccess(`Top-up submitted${ret.txHash ? `: ${ret.txHash.slice(0, 10)}...` : ""}`)
+			setTopupSuccessTxHash(ret.txHash ?? "")
 		} finally {
 			setSubmitting(false)
 		}
+	}
+
+	const resetTopupState = () => {
+		setError("")
+		setTopupSuccessTxHash(null)
 	}
 
 	if (loading) {
@@ -470,103 +481,142 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 				<h3 className="text-lg font-bold text-slate-900">USDC Top Up</h3>
 				<button className="text-sm text-slate-500 hover:text-slate-700" onClick={() => onClose?.(assets)}>Close</button>
 			</div>
-			<div className="rounded-xl border border-slate-200 bg-white p-4">
-				<div className="flex items-center justify-between mb-3">
-					<div />
-					<div className="text-xs text-slate-500">
-						Current points: <span className="font-semibold text-slate-700">{currentPointsDisplay}</span>
+			{!submitting ? (
+				<div className="rounded-xl border border-slate-200 bg-white p-4">
+					<div className="flex items-center justify-between mb-3">
+						<div />
+						<div className="text-xs text-slate-500">
+							Current points: <span className="font-semibold text-slate-700">{currentPointsDisplay}</span>
+						</div>
 					</div>
-				</div>
-				<div className="space-y-3">
-					{tiers.map((t) => {
-						const isCurrent = currentTierIndex === t.index
-						const isNext = nextTier?.index === t.index
-						const isSelected = selectedTierIndex === t.index
-						return (
-							<div
-								key={t.index}
-								className={`relative overflow-hidden rounded-2xl border p-4 ${
-									isSelected
-										? "cursor-pointer border-amber-300 ring-2 ring-amber-100"
-										: isCurrent
-											? "cursor-pointer border-emerald-300 ring-2 ring-emerald-100"
-											: isNext
-												? "cursor-pointer border-blue-300 ring-2 ring-blue-100"
-												: "cursor-pointer border-slate-200"
-								}`}
-								style={{ backgroundColor: t.backgroundColor || "#2C5535" }}
-								onClick={() => applyTierSelection(t)}
-							>
-								{t.image ? (
-									<img
-										src={t.image}
-										alt={t.name}
-										className="pointer-events-none absolute left-4 top-4 h-[calc(100%-2rem)] w-52 rounded-xl object-contain object-left opacity-95"
-									/>
-								) : null}
-								<div className="relative z-10">
-									<div className="flex items-center justify-end">
-										<div className="text-right text-sm font-bold text-white">{t.name}</div>
-									</div>
-									{t.description ? <div className="mt-1 text-right text-xs text-white/85">{t.description}</div> : null}
-									<div className="mt-3 flex items-end justify-end">
-										<div className="text-sm font-semibold text-emerald-200">{points6ToCardAmount(t.minUsdc6)} {cardCurrency}</div>
+					<div className="space-y-3">
+						{tiers.map((t) => {
+							const isCurrent = currentTierIndex === t.index
+							const isNext = nextTier?.index === t.index
+							const isSelected = selectedTierIndex === t.index
+							return (
+								<div
+									key={t.index}
+									className={`relative overflow-hidden rounded-2xl border p-4 ${
+										isSelected
+											? "cursor-pointer border-amber-300 ring-2 ring-amber-100"
+											: isCurrent
+												? "cursor-pointer border-emerald-300 ring-2 ring-emerald-100"
+												: isNext
+													? "cursor-pointer border-blue-300 ring-2 ring-blue-100"
+													: "cursor-pointer border-slate-200"
+									}`}
+									style={{ backgroundColor: t.backgroundColor || "#2C5535" }}
+									onClick={() => applyTierSelection(t)}
+								>
+									{t.image ? (
+										<img
+											src={t.image}
+											alt={t.name}
+											className="pointer-events-none absolute left-4 top-4 h-[calc(100%-2rem)] w-52 rounded-xl object-contain object-left opacity-95"
+										/>
+									) : null}
+									<div className="relative z-10">
+										<div className="flex items-center justify-end">
+											<div className="text-right text-sm font-bold text-white">{t.name}</div>
+										</div>
+										{t.description ? <div className="mt-1 text-right text-xs text-white/85">{t.description}</div> : null}
+										<div className="mt-3 flex items-end justify-end">
+											<div className="text-sm font-semibold text-emerald-200">{points6ToCardAmount(t.minUsdc6)} {cardCurrency}</div>
+										</div>
 									</div>
 								</div>
-							</div>
-						)
-					})}
-					{tiers.length === 0 && <div className="text-sm text-slate-500">No tier configured.</div>}
-				</div>
-				<div className="mt-1 text-xs text-slate-500">
-					Membership: <span className="font-semibold text-slate-700">{hasMembership ? "Yes" : "No"}</span>
-					{currentTierIndex >= 0 ? ` | Current tier: ${currentTierIndex + 1}` : ""}
-				</div>
-			</div>
-			<div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-				<div>
-					<div className="text-xs text-slate-500 mb-1">{cardCurrency} Amount</div>
-					<input
-						value={amount}
-						onChange={(e) => {
-							const raw = e.target.value
-							const cleaned = raw.replace(/[^\d.]/g, "")
-							const firstDot = cleaned.indexOf(".")
-							const normalized = firstDot >= 0
-								? `${cleaned.slice(0, firstDot + 1)}${cleaned.slice(firstDot + 1).replace(/\./g, "")}`
-								: cleaned
-							setAmount(normalized)
-						}}
-						type="text"
-						inputMode={cardCurrencyDecimals === 0 ? "numeric" : "decimal"}
-						pattern={cardCurrencyDecimals === 0 ? "[0-9]*" : "[0-9]*[.,]?[0-9]*"}
-						className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm"
-					/>
+							)
+						})}
+						{tiers.length === 0 && <div className="text-sm text-slate-500">No tier configured.</div>}
+					</div>
 					<div className="mt-1 text-xs text-slate-500">
-						Minimum required: {points6ToCardAmountCeil(requiredMinPoints6ForUi)} {cardCurrency}
-					</div>
-					<div className="mt-1 min-h-[1.25rem] text-xs">
-						{amountBelowRequirement ? (
-							<div className="text-rose-600">Amount is below requirement.</div>
-						) : insufficientUsdcBalance ? (
-							<div className="text-rose-600">Insufficient USDC balance.</div>
-						) : balanceCheckLoading ? (
-							<div className="text-slate-400">Checking USDC balance...</div>
-						) : (
-							<div className="invisible">Amount is below requirement.</div>
-						)}
+						Membership: <span className="font-semibold text-slate-700">{hasMembership ? "Yes" : "No"}</span>
+						{currentTierName ? ` | Current tier: ${currentTierName}` : ""}
 					</div>
 				</div>
-				<button
-					onClick={submit}
-					disabled={submitting || amountBelowRequirement || insufficientUsdcBalance || balanceCheckLoading}
-					className="w-full h-11 rounded-lg bg-[#1D5BFF] text-white font-semibold disabled:opacity-60"
-				>
-					{submitting ? "Submitting..." : "Top Up with Offline Signature"}
-				</button>
+			) : null}
+			<div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+				{submitting ? (
+					<div className="flex flex-col items-center justify-center py-10 gap-3">
+						<RefreshCw size={40} className="animate-spin text-[#1D5BFF]" />
+						<p className="text-sm font-semibold text-slate-600">Processing top-up...</p>
+						<p className="text-xs text-slate-500">Please wait</p>
+					</div>
+				) : topupSuccessTxHash !== null ? (
+					<div className="flex flex-col items-center py-4 gap-3">
+						<div className="w-14 h-14 rounded-full bg-emerald-500/20 flex items-center justify-center">
+							<Check size={28} strokeWidth={3} className="text-emerald-500" />
+						</div>
+						<p className="text-base font-bold text-emerald-600">Success</p>
+						{topupSuccessTxHash.startsWith("0x") ? (
+							<a
+								href={`https://basescan.org/tx/${topupSuccessTxHash}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-mono text-[#1D5BFF] hover:bg-slate-100"
+							>
+								{topupSuccessTxHash.slice(0, 10)}...{topupSuccessTxHash.slice(-8)}
+								<ExternalLink size={14} strokeWidth={2.5} />
+							</a>
+						) : null}
+						<button
+							onClick={resetTopupState}
+							className="mt-1 text-sm font-semibold text-[#1D5BFF] hover:text-[#1549cc]"
+						>
+							Top Up Again
+						</button>
+					</div>
+				) : (
+					<>
+						<div>
+							<div className="text-xs text-slate-500 mb-1">{cardCurrency} Amount</div>
+							<input
+								value={amount}
+								onChange={(e) => {
+									const raw = e.target.value
+									const cleaned = raw.replace(/[^\d.]/g, "")
+									const firstDot = cleaned.indexOf(".")
+									const normalized = firstDot >= 0
+										? `${cleaned.slice(0, firstDot + 1)}${cleaned.slice(firstDot + 1).replace(/\./g, "")}`
+										: cleaned
+									setAmount(normalized)
+								}}
+								type="text"
+								inputMode={cardCurrencyDecimals === 0 ? "numeric" : "decimal"}
+								pattern={cardCurrencyDecimals === 0 ? "[0-9]*" : "[0-9]*[.,]?[0-9]*"}
+								className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm"
+							/>
+							<div className="mt-1 text-xs text-slate-500">
+								Minimum required: {points6ToCardAmountCeil(requiredMinPoints6ForUi)} {cardCurrency}
+							</div>
+							<div className="mt-1 min-h-[1.25rem] text-xs">
+								{amountBelowRequirement ? (
+									<div className="text-rose-600">Amount is below requirement.</div>
+								) : insufficientUsdcBalance ? (
+									<div className="text-rose-600">Insufficient USDC balance.</div>
+								) : balanceCheckLoading ? (
+									<div className="text-slate-400">Checking USDC balance...</div>
+								) : (
+									<div className="invisible">Amount is below requirement.</div>
+								)}
+							</div>
+						</div>
+						{error ? (
+							<div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">
+								{error}
+							</div>
+						) : null}
+						<button
+							onClick={submit}
+							disabled={submitting || amountBelowRequirement || insufficientUsdcBalance || balanceCheckLoading}
+							className="w-full h-11 rounded-lg bg-[#1D5BFF] text-white font-semibold disabled:opacity-60"
+						>
+							Top Up with Offline Signature
+						</button>
+					</>
+				)}
 			</div>
-			{error && <div className="text-sm text-rose-600">{error}</div>}
-			{success && <div className="text-sm text-emerald-600">{success}</div>}
 		</div>
 	)
 }

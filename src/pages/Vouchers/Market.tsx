@@ -39,13 +39,16 @@ import {
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { getMyAssetsAggregated } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteCurrencyAmountInUSDC, quoteUSDCToCAD } from "@/services/BeamioCard"
+import { fiatPrefix } from "@/services/currency"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
 import USDCUserCardTopupControl from "./USDCUserCardTopupControl"
 import ShowPayQR from "./showPayQR"
 import cashTreesLog from "./assets/cashtreesLog.png"
 import phoIcon from "./assets/phoIcon.svg"
+import greenCard from "./assets/greenCard.png"
+import blackCard from "./assets/BlackCard.png"
 
 const THEME = { bg: "#F2F2F7" }
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
@@ -120,6 +123,7 @@ type HeroItem = {
   type: string
   color?: string
   overlay?: string
+  currency?: "CAD" | "USD" | "EUR" | "JPY" | "CNY" | "HKD" | "SGD" | "TWD"
   partners?: { name: string; icon: string; bg: string }[]
 }
 type CashTreesItem = HeroItem & {
@@ -129,6 +133,7 @@ type CashTreesItem = HeroItem & {
   maxPrice?: number
   customGradient?: string
   theme?: "black" | "green"
+  currency?: "CAD" | "USD" | "EUR" | "JPY" | "CNY" | "HKD" | "SGD" | "TWD"
   partners?: { name: string; address?: string; icon: string; bg: string }[]
 }
 
@@ -183,7 +188,7 @@ const LIMITED_FUEL_PACK_DATA: GenesisNodeData = {
 }
 
 const HERO_COLLECTION: HeroItem[] = [
-  { id: 101, tagline: "HAPPENING NOW", title: "CCSA Member Card", subtitle: "Unlock Exclusive Dining. First Partner: Osmanthus.", description: "Your gateway to a curated network of premier restaurants. Start your journey at Osmanthus, our inaugural partner, with exclusive perks and stored value acceptance.", features: ["Accepted at Osmanthus & Future Partners", "Priority Booking at Osmanthus", "Member-Only Tasting Menus", "Future Network Expansion"], image: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&q=80&w=800", merchant: "CCSA Alliance", location: "Aberdeen Centre, Richmond, BC", price: 150, type: "Membership", color: "text-white", overlay: "from-black/60 via-black/10 to-transparent", partners: [{ name: "Osmanthus", icon: "🌸", bg: "bg-yellow-100" }, { name: "Sen Pho", icon: "🍜", bg: "bg-orange-100" }, { name: "Longdhang", icon: "🥟", bg: "bg-red-100" }, { name: "More", icon: "+18", bg: "bg-gray-100 text-xs font-bold" }] },
+  { id: 101, tagline: "HAPPENING NOW", title: "CCSA Member Card", subtitle: "Unlock Exclusive Dining. First Partner: Osmanthus.", description: "Your gateway to a curated network of premier restaurants. Start your journey at Osmanthus, our inaugural partner, with exclusive perks and stored value acceptance.", features: ["Accepted at Osmanthus & Future Partners", "Priority Booking at Osmanthus", "Member-Only Tasting Menus", "Future Network Expansion"], image: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&q=80&w=800", merchant: "CCSA Alliance", location: "Aberdeen Centre, Richmond, BC", price: 150, type: "Membership", color: "text-white", overlay: "from-black/60 via-black/10 to-transparent", currency: "CAD", partners: [{ name: "Osmanthus", icon: "🌸", bg: "bg-yellow-100" }, { name: "Sen Pho", icon: "🍜", bg: "bg-orange-100" }, { name: "Longdhang", icon: "🥟", bg: "bg-red-100" }, { name: "More", icon: "+18", bg: "bg-gray-100 text-xs font-bold" }] },
   {
     id: 102,
     tagline: "LOCAL FAVORITE",
@@ -198,6 +203,7 @@ const HERO_COLLECTION: HeroItem[] = [
     type: "Membership",
     color: "text-white",
     overlay: "from-black/80 via-black/40 to-transparent",
+    currency: "CAD",
   },
 ]
 
@@ -224,6 +230,7 @@ const CASH_TREES_COLLECTION: CashTreesItem[] = [
     color: "text-white",
     customGradient: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.95) 100%)",
     theme: "black",
+    currency: "CAD",
   },
   {
     id: 202,
@@ -248,6 +255,7 @@ const CASH_TREES_COLLECTION: CashTreesItem[] = [
     color: "text-[#0e2a05]",
     customGradient: "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.6) 100%)",
     theme: "green",
+    currency: "CAD",
   },
 ]
 
@@ -416,6 +424,7 @@ const FuelPackCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () =>
 
 type InventoryInstance = { id: string; date: string; balance: string }
 type ViewingItem = (GenesisNodeData | HeroItem) & { icon?: React.ReactNode; bg?: string; shadow?: string }
+type PurchaseModalItem = ViewingItem & { minPrice?: number; maxPrice?: number; isVariablePrice?: boolean }
 
 const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: ViewingItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (item: ViewingItem) => void; onOpenWallet: () => void }) => {
   if (!item) return null
@@ -681,13 +690,28 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
         <button className="w-9 h-9 bg-transparent rounded-full flex items-center justify-center text-white shadow-sm hover:bg-white/10 transition-colors border border-white/30"><Share size={18} /></button>
       </div>
       <div className="relative w-full h-[45vh] shrink-0 bg-gray-900">
-        {heroItem.image && <img src={heroItem.image} className="w-full h-full object-cover" alt={heroItem.title} />}
-        {heroItem.customGradient ? (
-          <div className="absolute inset-0" style={{ background: heroItem.customGradient }} />
+        {isCashTrees ? (
+          <>
+            <div className="absolute inset-0 bg-[#ECECF1] flex items-center justify-center px-6">
+              <img
+                src={heroItem.id === 202 ? greenCard : blackCard}
+                alt={heroItem.title}
+                className="w-full max-w-[420px] object-contain rounded-[22px] shadow-[0_28px_55px_rgba(2,6,23,0.38),0_10px_22px_rgba(2,6,23,0.22)]"
+                draggable={false}
+              />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+          </>
         ) : (
-          <div className={`absolute inset-0 bg-gradient-to-t ${heroItem.overlay || "from-black/80 via-transparent to-black/30"}`} />
+          <>
+            {heroItem.image && <img src={heroItem.image} className="w-full h-full object-cover" alt={heroItem.title} />}
+            {heroItem.customGradient ? (
+              <div className="absolute inset-0" style={{ background: heroItem.customGradient }} />
+            ) : (
+              <div className={`absolute inset-0 bg-gradient-to-t ${heroItem.overlay || "from-black/80 via-transparent to-black/30"}`} />
+            )}
+          </>
         )}
-        {isCashTrees && <img src={cashTreesLog} alt="CashTrees" className="absolute top-[2.25rem] left-[3.25rem] w-32 h-20 object-contain z-10 opacity-90 drop-shadow-md" />}
         <div className="absolute bottom-0 left-0 w-full p-6 text-white"><span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-3 inline-block bg-[#1562f0]">{heroItem.type || "Voucher"}</span><h1 className="text-4xl font-bold leading-tight mb-2 shadow-sm">{heroItem.title}</h1><p className="text-lg text-white/90 font-medium">{heroItem.merchant}</p></div>
       </div>
       <div className="flex-1 px-6 py-8 pb-32">
@@ -699,6 +723,227 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
       </div>
       <div className="fixed bottom-0 w-full max-w-md backdrop-blur-xl border-t bg-white/90 border-gray-200 p-5 pb-8 z-50 flex gap-3">
         {count > 0 ? <><button onClick={onOpenWallet} className="flex-1 border-2 px-4 py-3.5 rounded-full font-bold text-[15px] active:scale-95 transition-transform flex items-center justify-center gap-2 bg-white border-gray-200 text-gray-900"><Wallet size={18} /> My Wallet <span className="text-xs px-1.5 py-0.5 rounded-md ml-1 bg-gray-200 text-gray-900">x{count}</span></button><button onClick={() => onBuy(item)} className="flex-[1.5] bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Buy Another <span className="opacity-80 font-medium text-xs ml-1">${item.price}</span></button></> : <div className="flex-1 flex gap-4 items-center"><div className="flex-1"><div className="text-xs uppercase font-bold text-gray-500">Total Price</div><div className="text-3xl font-bold tracking-tight text-gray-900">${item.price}</div></div><button onClick={() => onBuy(item)} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-full font-bold text-[17px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Purchase <ArrowRight size={20} /></button></div>}
+      </div>
+    </div>
+  )
+}
+
+type ProfileForAssets = { keyID?: string | null; aaAccount?: string | null }
+
+const PurchaseCreditsSheet = ({
+  open,
+  item,
+  ownsCard,
+  cardAddress,
+  profile,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  item: PurchaseModalItem | null
+  ownsCard: boolean
+  cardAddress: string
+  profile: ProfileForAssets | null | undefined
+  onClose: () => void
+  onConfirm: (amount: number) => void
+}) => {
+  const [amountText, setAmountText] = useState("")
+  const [upgradeCapsule, setUpgradeCapsule] = useState<{ amountNeededCad: number; nextTierName: string } | null>(null)
+
+  const { minAmount, maxAmount, quickOptions } = useMemo(() => {
+    const max = item?.maxPrice != null ? Number(item.maxPrice) : undefined
+    const quickOptions = [50, 100, 200]
+    const min = ownsCard ? 0.01 : 50
+    return { minAmount: min, maxAmount: max, quickOptions }
+  }, [item, ownsCard])
+
+  useEffect(() => {
+    if (!open) return
+    if (!item) {
+      setAmountText("")
+      return
+    }
+    setAmountText(String(item.price ?? 50))
+  }, [open, item, minAmount])
+
+  useEffect(() => {
+    if (!open || !ownsCard || !cardAddress || !profile?.keyID || !item) {
+      setUpgradeCapsule(null)
+      return
+    }
+    let cancelled = false
+    const run = async () => {
+      try {
+        const [contractTiers, meta, assets] = await Promise.all([
+          getCardTiersFromContract(cardAddress),
+          getCardMetadataFromApi(cardAddress).then((m) => m ?? getCardMetadataFromUri(cardAddress)),
+          getMyAssets(profile as Parameters<typeof getMyAssets>[0], cardAddress),
+        ])
+        if (cancelled) return
+        if (contractTiers.length === 0 || !assets) {
+          setUpgradeCapsule(null)
+          return
+        }
+        const nfts = (assets.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
+        const bestNft = nfts.length > 0 ? nfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+        const rawTier = bestNft?.tier
+        const currentTierIdx = rawTier != null && rawTier !== "Default/Max" ? Number(rawTier) : -1
+        const currentPoints = Number(assets.points ?? 0)
+
+        const sortedTiers = [...contractTiers].sort((a, b) => Number(BigInt(a.minUsdc6) - BigInt(b.minUsdc6)))
+        const nextTierIdx = sortedTiers.findIndex((t, i) => {
+          const min = Number(BigInt(t.minUsdc6) / 1_000_000n)
+          const currentMin = currentTierIdx >= 0 && currentTierIdx < contractTiers.length
+            ? Number(BigInt(contractTiers[currentTierIdx].minUsdc6) / 1_000_000n)
+            : -1
+          return min > currentMin
+        })
+        if (nextTierIdx < 0) {
+          setUpgradeCapsule(null)
+          return
+        }
+        const nextTier = sortedTiers[nextTierIdx]
+        const nextMinUsdc = Number(BigInt(nextTier.minUsdc6) / 1_000_000n)
+        const amountNeededUsdc = nextTier.upgradeByBalance
+          ? Math.max(0, nextMinUsdc - currentPoints)
+          : nextMinUsdc
+        if (amountNeededUsdc <= 0) {
+          setUpgradeCapsule(null)
+          return
+        }
+        const currency = (item as { currency?: string })?.currency ?? "CAD"
+        const amountNeededCad = Number(await quoteUSDCToCAD(cardAddress, amountNeededUsdc.toFixed(2)))
+        const nextTierContractIdx = contractTiers.findIndex((t) => t.minUsdc6 === nextTier.minUsdc6)
+        const tierMeta = meta?.tiers?.find((t) => t.index === nextTierContractIdx) ?? meta?.tiers?.[nextTierContractIdx]
+        const nextTierName = tierMeta?.name ?? `Tier ${nextTierContractIdx + 1}`
+        if (cancelled) return
+        setUpgradeCapsule({ amountNeededCad, nextTierName })
+      } catch {
+        if (!cancelled) setUpgradeCapsule(null)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [open, ownsCard, cardAddress, profile?.keyID, item])
+
+  if (!item) return null
+
+  const amount = Number(amountText)
+  const isAmountValid =
+    Number.isFinite(amount) &&
+    amount > 0 &&
+    amount >= minAmount &&
+    (maxAmount == null || amount <= maxAmount)
+
+  const currency = (item as { currency?: string })?.currency ?? "CAD"
+  const prefix = fiatPrefix(currency as Parameters<typeof fiatPrefix>[0])
+  const formatDollar = (n: number) => (Number.isInteger(n) ? `${n}` : n.toFixed(2))
+
+  return (
+    <div className={["fixed inset-0 z-[130]", open ? "pointer-events-auto" : "pointer-events-none"].join(" ")}>
+      <div
+        className={["absolute inset-0 bg-black/40 transition-opacity duration-300", open ? "opacity-100" : "opacity-0"].join(" ")}
+        onClick={onClose}
+      />
+      <div
+        className={[
+          "absolute inset-x-0 bottom-0 bg-white rounded-t-[36px] shadow-2xl",
+          "pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out",
+          open ? "translate-y-0" : "translate-y-full",
+        ].join(" ")}
+      >
+        <div className="pt-3 pb-1 flex justify-center">
+          <div className="h-1.5 w-16 rounded-full bg-slate-200" />
+        </div>
+        <div className="px-6 py-5">
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center active:scale-95 transition-transform"
+              aria-label="Close purchase panel"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <h3 className="text-lg font-bold text-slate-900 text-center mb-6">
+            Add credits to CashTrees Card
+          </h3>
+
+          <div className="flex items-baseline justify-center gap-2 mb-6">
+            <span className="text-2xl font-semibold text-slate-400 shrink-0">{prefix}</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              value={amountText}
+              onChange={(e) => {
+                const next = e.target.value.replace(/[^\d.]/g, "")
+                const firstDot = next.indexOf(".")
+                if (firstDot >= 0) {
+                  const normalized = next.slice(0, firstDot + 1) + next.slice(firstDot + 1).replace(/\./g, "")
+                  setAmountText(normalized)
+                  return
+                }
+                setAmountText(next)
+              }}
+              className="w-32 bg-transparent text-5xl leading-none font-bold text-slate-900 outline-none border-b-2 border-slate-300 pt-4 pb-0 focus:border-[#1562f0] text-center"
+              aria-label="Credit amount"
+            />
+          </div>
+
+          {quickOptions.length > 0 && (
+            <div className="flex items-center justify-center gap-2 mb-6 flex-wrap">
+              {quickOptions.map((opt) => {
+                const active = Number(amountText) === opt
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setAmountText(String(opt))}
+                    className={[
+                      "min-w-[72px] px-4 py-2.5 rounded-full text-[15px] font-bold transition-colors",
+                      active
+                        ? "bg-[#0A1540] text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                    ].join(" ")}
+                  >
+                    {prefix}{formatDollar(opt)}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {ownsCard && upgradeCapsule && amount > 0 && amount < upgradeCapsule.amountNeededCad && (
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-slate-100 text-slate-600 text-sm font-medium">
+                <Info className="w-4 h-4 text-slate-500 shrink-0" strokeWidth={2.5} />
+                <span>Load {prefix}{formatDollar(upgradeCapsule.amountNeededCad - amount)} more for {upgradeCapsule.nextTierName}</span>
+              </div>
+            </div>
+          )}
+
+          {!isAmountValid && (
+            <p className="text-xs text-rose-600 text-center mb-3">
+              {ownsCard
+                ? "Please enter a valid amount."
+                : `Amount must be at least ${prefix}50 for first purchase.${maxAmount != null ? ` Maximum ${prefix}${formatDollar(maxAmount)}.` : ""}`}
+            </p>
+          )}
+
+          <button
+            type="button"
+            disabled={!isAmountValid}
+            onClick={() => onConfirm(amount)}
+            className="w-full py-3.5 rounded-xl bg-[#1562f0] text-white text-[15px] font-bold disabled:opacity-50 active:scale-[0.98] transition-transform"
+          >
+            Confirm
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -850,6 +1095,9 @@ export default function Market() {
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
 	const [settingsOpen, setSettingsOpen] = useState<"" | "USDCTopup" | "showPayQR">("")
 	const [topupCardAddress, setTopupCardAddress] = useState<string>(INFRASTRUCTURE_CARD_ADDRESS)
+	const [purchaseSheetOpen, setPurchaseSheetOpen] = useState(false)
+	const [purchaseItem, setPurchaseItem] = useState<PurchaseModalItem | null>(null)
+	const [purchaseOwnsCard, setPurchaseOwnsCard] = useState(false)
 	const [viewingItem, setViewingItem] = useState<ViewingItem | null>(null)
 	const [inventory, setInventory] = useState<Record<number, InventoryInstance[]>>({})
 	const [purchasingGenesis, setPurchasingGenesis] = useState(false)
@@ -1187,10 +1435,9 @@ export default function Market() {
 				inventory={viewingItem.id === 101 ? (isMember ? [{ id: "#CCSA", date: "Active", balance: "Full" }] : []) : getOwnedInstances(viewingItem.id)}
 				onClose={() => setViewingItem(null)}
 				onBuy={(it) => {
-					setViewingItem(null)
-					setShowFooter(false)
-					setTopupCardAddress(INFRASTRUCTURE_CARD_ADDRESS)
-					setSettingsOpen("USDCTopup")
+					setPurchaseItem(it as PurchaseModalItem)
+					setPurchaseOwnsCard(getOwnedInstances(it.id).length > 0)
+					setPurchaseSheetOpen(true)
 				}}
 				onOpenWallet={viewingItem.id === 101 && isMember ? () => { setViewingItem(null); setOverlayMode("cardItem"); setShowCardDetail(true); setShowFooter(false); } : () => setViewingItem(null)}
 			/>
@@ -1202,6 +1449,25 @@ export default function Market() {
 				onConfirm={finalizeGenesis}
 			/>
 		)}
+
+		<PurchaseCreditsSheet
+			open={purchaseSheetOpen}
+			item={purchaseItem}
+			ownsCard={purchaseOwnsCard}
+			cardAddress={INFRASTRUCTURE_CARD_ADDRESS}
+			profile={profiles?.[0]}
+			onClose={() => {
+				setPurchaseSheetOpen(false)
+				setPurchaseItem(null)
+			}}
+			onConfirm={() => {
+				setPurchaseSheetOpen(false)
+				setPurchaseItem(null)
+				setShowFooter(false)
+				setTopupCardAddress(INFRASTRUCTURE_CARD_ADDRESS)
+				setSettingsOpen("USDCTopup")
+			}}
+		/>
 
 		<style>{`
 			.scrollbar-hide::-webkit-scrollbar { display: none; }

@@ -35,7 +35,7 @@ import {
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { searchUsername } from '@/services/beamio'
-import { conetDepinProvider, beamioApi } from '@/utils/constants'
+import { conetDepinProvider, beamioApi, baseEndpoint } from '@/utils/constants'
 import contracts from '@/utils/contracts'
 import { formatAmount, formatAmountWithCurrencyProtocol, getDecimals } from '@/services/currency'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
@@ -72,6 +72,8 @@ const TX_ISSUE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('iuuseNewCard'))
 const TX_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('upgradeNewCard'))
 /** 普通 Top Up */
 const TX_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('topupCard'))
+const NFT_START_ID = 100n
+const ISSUED_NFT_START_ID = 100_000_000_000n
 /** B-Unit Claim（Network Welcome Grant）：Recent Activity 中排除 */
 const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes('buintClaim'))
 /** B-Unit USDC 购买（Fuel Yield 1:100）：Recent Activity 中仅显示此类 B-Unit 记账 */
@@ -643,6 +645,10 @@ const ActiveHistoryPannelNew = ({
 		mergedBg?: string
 		mergedText?: '#000000' | '#FFFFFF'
 	}>({})
+	const [selectedCardTierColor, setSelectedCardTierColor] = useState<{
+		bg?: string
+		text?: '#000000' | '#FFFFFF'
+	}>({})
 	useEffect(() => {
 		let cancelled = false
 		const clear = () => setSelectedUpgradeTierColors({})
@@ -701,6 +707,73 @@ const ActiveHistoryPannelNew = ({
 		selectedCardAddress,
 		selectedCardMetaAmounts.requestAmountFiat6,
 		selectedCardMetaAmounts.discountAmountFiat6,
+	])
+	useEffect(() => {
+		let cancelled = false
+		const clear = () => setSelectedCardTierColor({})
+		if ((!selectedIsIssueNewCard && !selectedIsTopupCard) || !selectedCardAddress) {
+			clear()
+			return
+		}
+		const txPayer = extractAddr((selectedTx?.rawTransaction as RawTxRecord | undefined)?.payer)
+		const fallbackOwner = overrideAddress && ethers.isAddress(overrideAddress)
+			? ethers.getAddress(overrideAddress)
+			: (eoa && ethers.isAddress(eoa) ? ethers.getAddress(eoa) : (myAddress && ethers.isAddress(myAddress) ? ethers.getAddress(myAddress) : ''))
+		const ownerEOA = txPayer && ethers.isAddress(txPayer) ? ethers.getAddress(txPayer) : fallbackOwner
+		if (!ownerEOA) {
+			clear()
+			return
+		}
+		;(async () => {
+			try {
+				const cardRead = new ethers.Contract(
+					selectedCardAddress,
+					['function getOwnershipByEOA(address userEOA) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)'],
+					baseEndpoint
+				)
+				const [, nftsRaw] = await cardRead.getOwnershipByEOA(ownerEOA) as [bigint, Array<{ tokenId: bigint | string | number; isExpired?: boolean }>]
+				const nfts = Array.isArray(nftsRaw) ? nftsRaw : []
+				const membershipTokenIds = nfts
+					.map((n) => {
+						try {
+							return BigInt((n as { tokenId?: bigint | string | number })?.tokenId ?? 0)
+						} catch {
+							return 0n
+						}
+					})
+					.filter((tokenId) => tokenId >= NFT_START_ID && tokenId < ISSUED_NFT_START_ID)
+				if (!membershipTokenIds.length || cancelled) {
+					clear()
+					return
+				}
+				const currentTokenId = membershipTokenIds.reduce((max, cur) => (cur > max ? cur : max), 0n)
+				const cardAddressLower = selectedCardAddress.toLowerCase()
+				const metaRes = await fetch(`${beamioApi}/metadata/${cardAddressLower}${currentTokenId.toString()}.json`)
+				if (!metaRes.ok) return
+				const tierMeta = await metaRes.json().catch(() => ({} as Record<string, unknown>))
+				const props = (tierMeta?.properties ?? {}) as Record<string, unknown>
+				const pickedBg = normalizeHexColor(props?.background_color ?? tierMeta?.background_color)
+				if (!pickedBg) return
+				if (cancelled) return
+				setSelectedCardTierColor({
+					bg: pickedBg,
+					text: getReadableTextColor(pickedBg),
+				})
+			} catch {
+				// ignore metadata fetch errors; fallback to default colors
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [
+		selectedIsIssueNewCard,
+		selectedIsTopupCard,
+		selectedCardAddress,
+		selectedTx,
+		overrideAddress,
+		eoa,
+		myAddress,
 	])
 	const selectedPaidToLabel = useMemo(() => {
 		if (!selectedTx) return ''
@@ -1849,7 +1922,7 @@ const ActiveHistoryPannelNew = ({
 											isVoucher: true,
 											primary: selectedCardUnitLabel,
 											secondary: 'Voucher',
-											amountText: `+${(Number(selectedCardMetaAmounts.requestAmountFiat6) / 1e6).toFixed(2)}`,
+											amountText: `+${(Number(selectedCardMetaAmounts.requestAmountFiat6 + selectedCardMetaAmounts.discountAmountFiat6) / 1e6).toFixed(2)}`,
 											amountClass: 'text-[#34C759]',
 											iconBg: selectedUpgradeTierColors.upgradedBg ?? '#A855F7',
 											iconText: selectedUpgradeTierColors.upgradedText ?? '#FFFFFF',
@@ -1881,8 +1954,8 @@ const ActiveHistoryPannelNew = ({
 											secondary: 'Voucher',
 											amountText: `+${Math.abs(selectedTx.amountFiat).toFixed(2)}`,
 											amountClass: 'text-[#34C759]',
-											iconBg: '#A855F7',
-											iconText: '#FFFFFF',
+											iconBg: selectedCardTierColor.bg ?? '#A855F7',
+											iconText: selectedCardTierColor.text ?? '#FFFFFF',
 										},
 										{
 											key: 'cash',
@@ -1912,7 +1985,13 @@ const ActiveHistoryPannelNew = ({
 												<span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#F3E8FF] dark:bg-[#A855F7]/20">
 													<ArrowRightLeft size={14} className="text-[#A855F7] dark:text-[#C084FC]" />
 												</span>
-											) : <Zap size={16} className="text-[#1562f0]" />}
+											) : (selectedIsIssueNewCard || selectedIsTopupCard) ? (
+												<span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#F6EFE6] dark:bg-[#F6EFE6]/90">
+													<Zap size={13} className="text-[#FF9F1A]" />
+												</span>
+											) : (
+												<Zap size={16} className="text-[#1562f0]" />
+											)}
 											{selectedIsUpgradeNewCard ? 'Asset Merge & Upgrade' : 'Smart Routing'}
 										</h3>
 										<span className="text-[11px] font-bold text-gray-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded-md tracking-wide">AUTO</span>
@@ -1953,7 +2032,19 @@ const ActiveHistoryPannelNew = ({
 												<div key={idx} className="flex justify-between items-center">
 													<div className="flex items-center gap-3">
 														{isVoucher ? (
-															<div className="w-5 h-5 rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 bg-[#AF52DE] text-white">
+															<div
+																className={`rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 ${
+																	selectedIsCardTopupKind ? 'w-6 h-6' : 'w-5 h-5'
+																}`}
+																style={{
+																	backgroundColor: selectedIsIssueNewCard || selectedIsTopupCard
+																		? (selectedCardTierColor.bg ?? '#A855F7')
+																		: (selectedIsCardTopupKind ? '#A855F7' : '#AF52DE'),
+																	color: selectedIsIssueNewCard || selectedIsTopupCard
+																		? (selectedCardTierColor.text ?? '#FFFFFF')
+																		: '#FFFFFF',
+																}}
+															>
 																pts
 															</div>
 														) : (selectedIsCardTopupKind ? (
@@ -2053,6 +2144,7 @@ const ActiveHistoryPannelNew = ({
 							</div>
 							)}
 							{(() => {
+								if (selectedIsCardTopupKind) return null
 								let networkGasBUnits = 0
 								if (!getOriginalPaymentHash(selectedTx) && selectedTx.isInbound) {
 									networkGasBUnits = 0

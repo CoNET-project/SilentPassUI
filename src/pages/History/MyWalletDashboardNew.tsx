@@ -76,6 +76,8 @@ import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/uti
 import { getRedeemStatusBatchFromChain } from '@/services/BeamioCard'
 import base_icon from '@/components/assets/base-logo.png'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
+import greenCard from '../Vouchers/assets/greenCard.png'
+import blackCard from '../Vouchers/assets/BlackCard.png'
 import ActivePannel from './components/activePannel'
 import ActiveHistoryPannelNew from './components/activeHistoryPannelNew'
 import AccountBeo from './AccountBea'
@@ -859,7 +861,7 @@ export default function MyWalletDashboardNew() {
 	const getDataStateBadge = useCallback((state: 'cached' | 'synced' | 'stale') => {
 		if (state === 'cached') return { text: 'Cached', cls: 'bg-white/20 text-white/90', syncedIcon: false }
 		if (state === 'stale') return { text: 'Refresh failed', cls: 'bg-amber-500/25 text-amber-100', syncedIcon: false }
-		return { text: 'Synced now', cls: 'bg-emerald-500/25 text-emerald-100', syncedIcon: true }
+		return { text: 'Synced now', cls: 'bg-emerald-500/25 text-emerald-100', syncedIcon: false }
 	}, [])
 
 	// 进入时检查 historyPayData：若有 searchResult 则打开 PayScreen 并传入
@@ -2368,18 +2370,9 @@ export default function MyWalletDashboardNew() {
 						className={`absolute inset-x-0 bottom-0 rounded-t-[4px] transition-transform duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1) z-[80] flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.1)] ${
 							showDetailsPanel ? 'translate-y-0' : 'translate-y-[1000px] pointer-events-none'
 						}`}
-									style={{
+						style={{
 							top: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
-							background: selectedCard
-								? selectedCard.id === 'eoa'
-									? 'linear-gradient(180deg, #2563eb 0%, #9333ea 12%, #db2777 22%, rgba(242,242,247,0.97) 38%, #F2F2F7 48%, #F2F2F7 100%)'
-												: selectedCard.id === 'aa'
-										? 'linear-gradient(180deg, #7c3aed 0%, #a855f7 12%, #3b82f6 22%, rgba(242,242,247,0.97) 38%, #F2F2F7 48%, #F2F2F7 100%)'
-										: 'linear-gradient(180deg, #6366F144 0%, #8B5CF644 12%, #F2F2F744 38%, #F2F2F7 48%, #F2F2F7 100%)'
-								: '#F2F2F7',
-							...(selectedCard && selectedCard.id !== 'eoa' && selectedCard.id !== 'aa'
-								? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }
-								: {}),
+							background: 'linear-gradient(180deg, #f7f7fa 0%, #F2F2F7 42%, #F2F2F7 100%)',
 						}}
 					>
 						{/* Header：关闭、New NFT（仅卡详情）、设置 - VoucherDetailModal 风格，白色按钮在渐变上 */}
@@ -2387,7 +2380,7 @@ export default function MyWalletDashboardNew() {
 							<button
 								type="button"
 								onClick={() => setActiveView(null)}
-								className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
+								className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/90 border border-slate-200 hover:bg-white text-slate-700 transition-colors"
 								aria-label="Close"
 							>
 								<ChevronDown className="w-6 h-6" />
@@ -2397,7 +2390,7 @@ export default function MyWalletDashboardNew() {
 									<button
 										type="button"
 										onClick={() => setShowNewNftForm(true)}
-										className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
+										className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/90 border border-slate-200 hover:bg-white text-slate-700 transition-colors"
 										aria-label="New NFT"
 										title="New NFT"
 									>
@@ -2407,7 +2400,7 @@ export default function MyWalletDashboardNew() {
 							<button
 								type="button"
 								onClick={() => navigate('/settings')}
-									className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
+								className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/90 border border-slate-200 hover:bg-white text-slate-700 transition-colors"
 								aria-label="Settings"
 							>
 								<Settings className="w-6 h-6" />
@@ -2418,83 +2411,14 @@ export default function MyWalletDashboardNew() {
 						{/* 可滚动内容；背景透明，由面板容器的一条渐变统一呈现 */}
 						{selectedCard && (
 							<div className="flex-1 overflow-y-auto px-6 pt-2 pb-24 z-10 no-scrollbar">
-								{/* 卡片预览块 - VoucherDetailModal 风格；CCSA/其他在渐变上增加背景模糊 */}
-								<div
-									className={`w-full min-h-[14rem] rounded-[24px] p-6 text-white shadow-2xl relative overflow-hidden mb-8 ${selectedCard.id !== 'eoa' && selectedCard.id !== 'aa' ? 'backdrop-blur-md' : ''}`}
-									style={{
-										background:
-											selectedCard.id === 'eoa'
-												? 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)'
-												: selectedCard.id === 'aa'
-													? 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)'
-													: selectedCard.id === 'ccsa'
-														? 'linear-gradient(135deg, #6366F144, #8B5CF644, #F2F2F744)'
-														: (typeof selectedCard.bg === 'string' && selectedCard.bg.trim() ? selectedCard.bg : typeof selectedCard.gradient === 'string' && selectedCard.gradient.trim() ? selectedCard.gradient : 'linear-gradient(135deg, #6366F144, #8B5CF644, #F2F2F744)'),
-									}}
-								>
-									<div className="flex justify-between items-start mb-2">
-										<div className="flex flex-col">
-											<h2 className="text-4xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
-												{formatWithThousands(selectedCard.balance)}{' '}
-												<span className="text-xl font-medium ml-2 opacity-90">
-													{selectedCard.currency ?? (selectedCard.id === 'ccsa' ? 'CAD' : 'USDC')}
-												</span>
-											</h2>
-											<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-1">Balance</p>
-										</div>
-										{selectedCard.memberNo ? (
-											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
-												{selectedCard.memberNo.startsWith('M-') ? selectedCard.memberNo : `M-${selectedCard.memberNo}`}
-											</div>
-										) : selectedCard.id === 'ccsa' && ccsaAssets?.nfts?.find((n) => Number(n.tokenId) > 0) ? (
-											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
-												M-{String(ccsaAssets.nfts.find((n) => Number(n.tokenId) > 0)?.tokenId ?? '').padStart(6, '0')}
-											</div>
-										) : null}
-										{selectedCard.id === 'aa' && (
-											<div className="flex items-center gap-2 shrink-0 pt-2">
-												<button
-													type="button"
-													onClick={handleAaRelayQR}
-													disabled={aaRelaySigning || Number(aaAccountUsdcBalance || 0) <= 0}
-													className="p-2 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 transition-colors disabled:opacity-50"
-													title="显示扣款 QR（3 分钟有效）"
-												>
-													{aaRelaySigning ? <Loader className="w-5 h-5 animate-spin" /> : <QrCode className="w-5 h-5" />}
-												</button>
-												{selectedCard.address && (
-													<div className="text-xs font-mono opacity-80 tracking-widest text-right">
-														{selectedCard.address.slice(0, 6)}...{selectedCard.address.slice(-4)}
-													</div>
-												)}
-											</div>
-										)}
-										{selectedCard.id === 'eoa' && selectedCard.address && (
-											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
-												{selectedCard.address.slice(0, 6)}...{selectedCard.address.slice(-4)}
-											</div>
-										)}
-									</div>
-									<div className="mt-12 flex justify-between items-end">
-										<div className="flex items-center gap-3">
-											<div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/20">
-												{selectedCard.id === 'eoa' ? (
-													<Landmark className="w-7 h-7 text-white" />
-												) : selectedCard.id === 'aa' ? (
-													<Zap className="w-7 h-7 text-white fill-white" />
-												) : (
-													<Globe className="w-7 h-7 text-white" />
-												)}
-											</div>
-											<div>
-												<h3 className="font-bold text-xl leading-none">{selectedCard.name}</h3>
-												<span className="text-[10px] opacity-80 uppercase tracking-wider">
-													{selectedCard.id === 'eoa' ? 'Main Wallet' : selectedCard.id === 'aa' ? 'Express Pay' : (selectedCard.badge ?? 'Membership')}
-												</span>
-											</div>
-										</div>
-										<QrCode className="w-8 h-8 opacity-60" />
-									</div>
+								{/* 顶部预览：移除旧背景与 logo，改为居中展示 Market 卡片 */}
+								<div className="w-full min-h-[14rem] rounded-[24px] bg-[#ECECF1] border border-white/70 shadow-sm relative overflow-hidden mb-8 flex items-center justify-center px-4">
+									<img
+										src={selectedCard.id === 'ccsa' ? greenCard : blackCard}
+										alt="Market card preview"
+										className="w-full max-w-[420px] object-contain drop-shadow-[0_20px_40px_rgba(0,0,0,0.18)]"
+										draggable={false}
+									/>
 								</div>
 
 								{/* Actions - express 风格 */}

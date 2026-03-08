@@ -300,7 +300,10 @@ const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
           />
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0c]/80 to-[#0a0a0c]" />
           <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-48 h-20 rounded-[100%] blur-[80px] opacity-30 bg-blue-600" />
-          <div className="absolute top-12 inset-x-4 flex justify-between items-center z-10">
+          <div
+            className="absolute inset-x-4 flex justify-between items-center z-10"
+            style={{ top: 'max(3rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))' }}
+          >
             <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition border border-white/10"><X className="w-5 h-5" /></button>
             <button className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition border border-white/10"><Share className="w-5 h-5" /></button>
           </div>
@@ -414,7 +417,10 @@ const FuelPackDetailModal = ({ item, onClose, onBuy }: { item: ViewingItem; onCl
           />
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0c]/80 to-[#0a0a0c]" />
           <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-48 h-20 rounded-[100%] blur-[80px] opacity-30 bg-orange-600" />
-          <div className="absolute top-12 inset-x-4 flex justify-between items-center z-10">
+          <div
+            className="absolute inset-x-4 flex justify-between items-center z-10"
+            style={{ top: 'max(3rem, calc(env(safe-area-inset-top, 0px) + 0.75rem))' }}
+          >
             <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition border border-white/10"><X className="w-5 h-5" /></button>
             <button className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition border border-white/10"><Share className="w-5 h-5" /></button>
           </div>
@@ -510,7 +516,12 @@ const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: ViewingItem;
   }, [step])
   return (
     <div className="fixed inset-0 z-[100] bg-[#020617] text-white flex flex-col">
-      <div className="absolute top-0 right-0 p-6 z-50"><button onClick={onClose} className="bg-white/10 p-2 rounded-full hover:bg-white/20"><X size={20} /></button></div>
+      <div
+        className="absolute right-0 p-6 z-50"
+        style={{ top: 'max(1.5rem, env(safe-area-inset-top, 0px))' }}
+      >
+        <button onClick={onClose} className="bg-white/10 p-2 rounded-full hover:bg-white/20"><X size={20} /></button>
+      </div>
       {step === "check" && <div className="flex-1 flex flex-col items-center justify-center p-8 text-center"><div className="w-16 h-16 rounded-full border-4 border-blue-500 border-t-transparent animate-spin mb-6" /><h2 className="text-2xl font-bold mb-2">Verifying Eligibility</h2><p className="text-gray-400">Checking whitelist status and wallet age...</p></div>}
       {step === "shipping" && <div className="flex-1 flex flex-col p-6"><h2 className="text-3xl font-bold mb-2 pt-12">Where should we send your Node?</h2><p className="text-gray-400 mb-8">This pack includes physical hardware.</p><div className="space-y-4"><div className="bg-white/5 border border-white/10 p-4 rounded-xl"><label className="text-xs uppercase text-gray-500 font-bold block mb-2">Full Name</label><input type="text" defaultValue="Felix Chen" className="w-full bg-transparent text-white font-bold text-lg outline-none" /></div><div className="bg-white/5 border border-white/10 p-4 rounded-xl"><label className="text-xs uppercase text-gray-500 font-bold block mb-2">Shipping Address</label><input type="text" defaultValue="1288 Alberni St, Vancouver, BC" className="w-full bg-transparent text-white font-bold text-lg outline-none" /></div></div><div className="mt-auto"><div className="flex justify-between items-center mb-6 text-sm"><span className="text-gray-400">Hardware Delivery</span><span className="text-green-400 flex items-center gap-1"><Truck size={14} /> Est. 2 Weeks</span></div><button onClick={() => setStep("paying")} className="w-full bg-[#1562f0] py-4 rounded-full font-bold text-lg shadow-[0_0_30px_rgba(21,98,240,0.4)]">Confirm & Pay $999</button></div></div>}
       {(step === "paying" || step === "minting") && <div className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden"><div className="absolute inset-0 opacity-20 bg-gradient-to-br from-blue-900/40 via-transparent to-purple-900/40 mix-blend-screen" /><div className="relative z-10 bg-black/50 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-2xl"><div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 mx-auto"><Cpu size={40} className="text-blue-400 animate-pulse" /></div><h2 className="text-3xl font-bold mb-2">{step === "paying" ? "Processing Payment" : "Minting Genesis NFT"}</h2><p className="text-gray-400 font-mono text-sm">{step === "paying" ? "Securing funds on Base L2..." : "Deploying contract 0x71...9a2"}</p></div></div>}
@@ -525,7 +536,10 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
   const heroItem = item as HeroItem
   return (
     <div className="fixed inset-0 z-[80] bg-white overflow-y-auto flex flex-col">
-      <div className="absolute top-0 w-full p-4 flex justify-between items-center z-50">
+      <div
+        className="absolute w-full p-4 flex justify-between items-center z-50"
+        style={{ top: 'max(2rem, env(safe-area-inset-top, 0px))' }}
+      >
         <button onClick={onClose} className="w-9 h-9 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm hover:bg-white/30 transition-colors"><X size={20} /></button>
         <button className="w-9 h-9 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm hover:bg-white/30 transition-colors"><Share size={18} /></button>
       </div>

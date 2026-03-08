@@ -273,12 +273,13 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 		return (points6 * unitPriceUSDC6 + (POINTS_ONE - 1n)) / POINTS_ONE
 	}
 
-	// Non-USDC currencies: round converted USDC to 2dp, then add 0.01 USDC safety margin.
+	// Non-USDC currencies: +0.005 USDC then round to 2dp (standard half-up rounding).
 	const toBufferedUsdc6 = (rawUsdc6: bigint) => {
 		if (cardCurrency === "USDC") return rawUsdc6
 		const CENT_USDC6 = 10_000n
-		const rounded2 = ((rawUsdc6 + (CENT_USDC6 / 2n)) / CENT_USDC6) * CENT_USDC6
-		return rounded2 + CENT_USDC6
+		const ROUND_HALF_USDC6 = 5_000n // 0.005 USDC
+		const rounded2 = ((rawUsdc6 + ROUND_HALF_USDC6) / CENT_USDC6) * CENT_USDC6
+		return rounded2
 	}
 
 	const minTier = tiers[0]

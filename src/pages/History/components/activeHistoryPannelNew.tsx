@@ -42,6 +42,8 @@ import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
 import { QRCodeCanvas } from 'qrcode.react'
 import bIcon from '@/components/assets/logo512.png'
+import usdcIcon from '@/components/assets/usdc.png'
+import baseIcon from '@/components/assets/base-logo.png'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612'
 
@@ -135,6 +137,34 @@ function formatTime(ts: bigint): string {
 		minute: '2-digit',
 	})
 }
+
+const normalizeHexColor = (raw: unknown): string | null => {
+	if (typeof raw !== 'string') return null
+	const s = raw.trim().replace(/^#/, '')
+	if (!/^[0-9a-fA-F]{6}$/.test(s)) return null
+	return `#${s.toUpperCase()}`
+}
+
+const getReadableTextColor = (hexColor: string): '#000000' | '#FFFFFF' => {
+	const h = hexColor.replace('#', '')
+	if (h.length !== 6) return '#FFFFFF'
+	const r = parseInt(h.slice(0, 2), 16)
+	const g = parseInt(h.slice(2, 4), 16)
+	const b = parseInt(h.slice(4, 6), 16)
+	const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+	return luminance > 0.68 ? '#000000' : '#FFFFFF'
+}
+
+const UsdcBaseCompositeIcon = ({ className = '' }: { className?: string }) => (
+	<span className={`relative flex-shrink-0 ${className || 'w-4 h-4 min-w-[16px] min-h-[16px]'}`}>
+		<img src={usdcIcon} alt="USDC" className="block w-full h-full rounded-full object-contain" />
+		<img
+			src={baseIcon}
+			alt="Base"
+			className="block w-[62.5%] h-[62.5%] absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white object-contain"
+		/>
+	</span>
+)
 
 interface TxView {
 	id: string
@@ -538,6 +568,151 @@ const ActiveHistoryPannelNew = ({
 				return selectedTx.title
 		  })()
 		: ''
+	const selectedTxCategoryLower = selectedTx
+		? String((selectedTx.rawTransaction as RawTxRecord | undefined)?.txCategory ?? '').toLowerCase()
+		: ''
+	const selectedIsIssueNewCard =
+		selectedTxCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase()
+	const selectedIsUpgradeNewCard =
+		selectedTxCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase()
+	const selectedIsTopupCard =
+		selectedTxCategoryLower === TX_TOPUP_CARD.toLowerCase()
+	const selectedIsCardTopupKind = selectedIsIssueNewCard || selectedIsUpgradeNewCard || selectedIsTopupCard
+	const selectedCardName = useMemo(() => {
+		if (!selectedTx) return ''
+		try {
+			const j = JSON.parse((selectedTx.rawTransaction as RawTxRecord | undefined)?.displayJson ?? '{}')
+			const cardName = String(j.cardName ?? '').trim()
+			if (cardName) return cardName
+		} catch {}
+		const m = String(selectedTx.title ?? '').match(/^(?:Buy|Upgrade to|Reload)\s+(.+?)\s+Card$/i)
+		return (m?.[1] ?? '').trim()
+	}, [selectedTx])
+	const selectedCardUnitLabel = selectedCardName ? `$${selectedCardName}` : 'Card Voucher'
+	const selectedCardAddress = useMemo(() => {
+		if (!selectedTx) return ''
+		try {
+			const j = JSON.parse((selectedTx.rawTransaction as RawTxRecord | undefined)?.displayJson ?? '{}')
+			const addr = String(j.cardAddress ?? '').trim()
+			if (addr && ethers.isAddress(addr)) return ethers.getAddress(addr)
+		} catch {}
+		return ''
+	}, [selectedTx])
+	const selectedMergedUnitLabel = useMemo(() => {
+		if (!selectedCardName) return 'Merged Voucher'
+		const base = selectedCardName.split('-')[0]?.trim() || selectedCardName
+		return `$${base}`
+	}, [selectedCardName])
+	const selectedCardMetaAmounts = useMemo(() => {
+		const txMetaSource = ((fullTransactionFromChain as RawTxRecord | null)?.meta ??
+			(selectedTx?.rawTransaction as RawTxRecord | undefined)?.meta) as RawTxRecord['meta'] | unknown
+		const toBigIntSafe = (v: unknown): bigint => {
+			try {
+				if (typeof v === 'bigint') return v
+				if (typeof v === 'number') return BigInt(Math.trunc(v))
+				if (typeof v === 'string' && v.trim()) return BigInt(v)
+			} catch {}
+			return 0n
+		}
+		if (!txMetaSource || typeof txMetaSource !== 'object') {
+			return { requestAmountFiat6: 0n, discountAmountFiat6: 0n, requestAmountUSDC6: 0n }
+		}
+		if (Array.isArray(txMetaSource)) {
+			return {
+				requestAmountFiat6: toBigIntSafe(txMetaSource[0]),
+				discountAmountFiat6: toBigIntSafe(txMetaSource[3]),
+				requestAmountUSDC6: toBigIntSafe(txMetaSource[1]),
+			}
+		}
+		const metaObj = txMetaSource as RawTxRecord['meta']
+		return {
+			requestAmountFiat6: toBigIntSafe(metaObj?.requestAmountFiat6),
+			discountAmountFiat6: toBigIntSafe(metaObj?.discountAmountFiat6),
+			requestAmountUSDC6: toBigIntSafe(metaObj?.requestAmountUSDC6),
+		}
+	}, [selectedTx, fullTransactionFromChain])
+	const selectedCardTopupUSDCAmount = useMemo(() => {
+		if (!selectedTx) return 0
+		const fromMeta = Number(selectedCardMetaAmounts.requestAmountUSDC6) / 1e6
+		if (fromMeta > 0) return fromMeta
+		return Math.abs(selectedTx.amountUSDC)
+	}, [selectedTx, selectedCardMetaAmounts])
+	const [selectedUpgradeTierColors, setSelectedUpgradeTierColors] = useState<{
+		upgradedBg?: string
+		upgradedText?: '#000000' | '#FFFFFF'
+		mergedBg?: string
+		mergedText?: '#000000' | '#FFFFFF'
+	}>({})
+	useEffect(() => {
+		let cancelled = false
+		const clear = () => setSelectedUpgradeTierColors({})
+		if (!selectedIsUpgradeNewCard || !selectedCardAddress) {
+			clear()
+			return
+		}
+		const upgradedAmount6 = selectedCardMetaAmounts.requestAmountFiat6
+		const mergedAmount6 = selectedCardMetaAmounts.discountAmountFiat6
+		if (upgradedAmount6 <= 0n && mergedAmount6 <= 0n) {
+			clear()
+			return
+		}
+		;(async () => {
+			try {
+				const res = await fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(selectedCardAddress)}`)
+				if (!res.ok) return
+				const json = await res.json().catch(() => ({}))
+				const tiersRaw = (json?.metadata?.tiers ?? json?.tiers ?? []) as Array<Record<string, unknown>>
+				const tiers = tiersRaw
+					.map((t) => {
+						const minRaw = t?.minUsdc6
+						const bgRaw = t?.backgroundColor ?? t?.background_color
+						const bg = normalizeHexColor(bgRaw)
+						let minUsdc6 = 0n
+						try {
+							minUsdc6 = BigInt(String(minRaw ?? '0'))
+						} catch {}
+						return { minUsdc6, bg }
+					})
+					.filter((t) => t.bg)
+					.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : a.minUsdc6 > b.minUsdc6 ? 1 : 0))
+				if (!tiers.length || cancelled) return
+				const pickTierBg = (amount6: bigint) => {
+					const matched = tiers.filter((t) => amount6 >= t.minUsdc6)
+					return (matched[matched.length - 1] ?? tiers[0]).bg as string
+				}
+				const upgradedBg = upgradedAmount6 > 0n ? pickTierBg(upgradedAmount6) : undefined
+				const mergedBg = mergedAmount6 > 0n ? pickTierBg(mergedAmount6) : undefined
+				if (cancelled) return
+				setSelectedUpgradeTierColors({
+					upgradedBg,
+					upgradedText: upgradedBg ? getReadableTextColor(upgradedBg) : undefined,
+					mergedBg,
+					mergedText: mergedBg ? getReadableTextColor(mergedBg) : undefined,
+				})
+			} catch {
+				// ignore metadata fetch errors; fallback to default colors
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [
+		selectedIsUpgradeNewCard,
+		selectedCardAddress,
+		selectedCardMetaAmounts.requestAmountFiat6,
+		selectedCardMetaAmounts.discountAmountFiat6,
+	])
+	const selectedPaidToLabel = useMemo(() => {
+		if (!selectedTx) return ''
+		const rawHandle = (selectedTx.handle ?? '').trim()
+		if (rawHandle && !handleIsJson(rawHandle)) return rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`
+		if (detailBeamioTag) return detailBeamioTag.startsWith('@') ? detailBeamioTag : `@${detailBeamioTag}`
+		if (detailFullName) return detailFullName
+		if (selectedTx.counterpartyAddress && selectedTx.counterpartyAddress.length >= 10) {
+			return `${selectedTx.counterpartyAddress.slice(0, 6)}…${selectedTx.counterpartyAddress.slice(-4)}`
+		}
+		return 'Unknown'
+	}, [selectedTx, detailBeamioTag, detailFullName])
 
 	const load = useCallback(async () => {
 		const accounts: string[] = []
@@ -609,10 +784,12 @@ const ActiveHistoryPannelNew = ({
 						handle = 'USDC Top-up'
 					}
 					const txCategoryLower = String(tx.txCategory ?? '').toLowerCase()
-					if (
+					const isCardTopupLedgerTx =
 						txCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase() ||
 						txCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase() ||
 						txCategoryLower === TX_TOPUP_CARD.toLowerCase()
+					if (
+						isCardTopupLedgerTx
 					) {
 						let cardName = ''
 						try {
@@ -623,22 +800,25 @@ const ActiveHistoryPannelNew = ({
 						if (txCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase()) {
 							title = `Buy ${baseName} Card`
 						} else if (txCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase()) {
-							title = `Upgrade ${baseName} Card`
+							title = `Upgrade to ${baseName} Card`
 						} else {
-							title = `Top Up ${baseName} Card`
+							title = `Reload ${baseName} Card`
 						}
 					}
 					const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
 					const metaRaw = (tx as RawTxRecord).meta
-					// finalRequestAmountFiat6 = requestAmountFiat6 - discountAmountFiat6 + taxAmountFiat6（readme 7.2）
+					// 常规交易：finalRequestAmountFiat6 = requestAmountFiat6 - discountAmountFiat6 + taxAmountFiat6（readme 7.2）
+					// TopUp 分类（iuuse/upgrade/topupCard）：meta.requestAmountFiat6 被用于 currentTopupPoint，金额应取 finalRequestAmountFiat6
 					const req = metaRaw && typeof metaRaw === 'object'
 						? (Array.isArray(metaRaw)
 							? { requestAmountFiat6: metaRaw[0] ?? 0n, discountAmountFiat6: metaRaw[3] ?? 0n, taxAmountFiat6: metaRaw[5] ?? 0n }
 							: { requestAmountFiat6: (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n, discountAmountFiat6: (metaRaw as RawTxRecord['meta'])?.discountAmountFiat6 ?? 0n, taxAmountFiat6: (metaRaw as RawTxRecord['meta'])?.taxAmountFiat6 ?? 0n })
 						: null
-					const amountFiat6 = req
-						? req.requestAmountFiat6 - req.discountAmountFiat6 + req.taxAmountFiat6
-						: (tx.finalRequestAmountFiat6 ?? (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n)
+					const amountFiat6 = isCardTopupLedgerTx
+						? (tx.finalRequestAmountFiat6 ?? req?.requestAmountFiat6 ?? 0n)
+						: (req
+							? req.requestAmountFiat6 - req.discountAmountFiat6 + req.taxAmountFiat6
+							: (tx.finalRequestAmountFiat6 ?? (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n))
 					const amountFiat = Number(amountFiat6) / 1e6
 					const currencyFiatNum = (metaRaw && typeof metaRaw === 'object' && 'currencyFiat' in metaRaw)
 						? (metaRaw as { currencyFiat?: number }).currencyFiat
@@ -994,6 +1174,7 @@ const ActiveHistoryPannelNew = ({
 		const isIssueNewCardTx = rowTxCategory === TX_ISSUE_NEW_CARD.toLowerCase()
 		const isUpgradeNewCardTx = rowTxCategory === TX_UPGRADE_NEW_CARD.toLowerCase()
 		const isTopupCardTx = rowTxCategory === TX_TOPUP_CARD.toLowerCase()
+		const isCardTopupLedgerTx = isIssueNewCardTx || isUpgradeNewCardTx || isTopupCardTx
 		const isPendingRequesting = (tx.type === 'request_create' || tx.type === 'request_expired') && !isReqExpired && !isReqCanceled
 		const isRequestFulfilled = tx.type === 'request_fulfilled'
 		// 自己是支付方且对方是 AA 账户时：Title = "Paid to @beamioTag"，subtitle = forText（payee 非己方地址且能解析出 beamioTag 时，视为对方为 Beamio/AA 用户）
@@ -1045,7 +1226,9 @@ const ActiveHistoryPannelNew = ({
 									? (fullName ? (beamioTag ?? '') : '')
 									: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
 
-		const iconBg = tx.type === 'fuel_yield'
+		const iconBg = isCardTopupLedgerTx
+			? 'bg-[#F5F2FF] text-[#A855F7] dark:bg-[#A855F7]/20 dark:text-[#C084FC]'
+			: tx.type === 'fuel_yield'
 			? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
 			: isInternalTransfer
 			? (payeeAddr.toLowerCase() === eoaAddr
@@ -1094,6 +1277,8 @@ const ActiveHistoryPannelNew = ({
 					>
 						{tx.type === 'fuel_yield' ? (
 							<ArrowUpRight size={16} strokeWidth={2} />
+						) : isCardTopupLedgerTx ? (
+							<CreditCard size={16} strokeWidth={2.2} />
 						) : (isEoaReceived && tx.type !== 'request_fulfilled') ? (
 							<ArrowDownLeft size={16} strokeWidth={2} />
 						) : (isEoaSent || isAASent) ? (
@@ -1116,6 +1301,18 @@ const ActiveHistoryPannelNew = ({
 									{subtitleText}
 								</span>
 							) : null}
+							{(isIssueNewCardTx || isTopupCardTx) && (
+								<span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-semibold tracking-wide bg-[#FFF7ED] text-[#F59E0B] border border-[#FED7AA] dark:bg-[#F59E0B]/15 dark:text-[#FBBF24] dark:border-[#F59E0B]/35">
+									<Zap size={9} strokeWidth={2.2} className="shrink-0" />
+									<span className="leading-none">SPLIT</span>
+								</span>
+							)}
+							{isUpgradeNewCardTx && (
+								<span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-semibold tracking-wide bg-[#F3E8FF] text-[#8B5CF6] border border-[#E9D5FF] dark:bg-[#8B5CF6]/15 dark:text-[#C084FC] dark:border-[#8B5CF6]/35">
+									<ArrowRightLeft size={9} strokeWidth={2.2} className="shrink-0" />
+									<span className="leading-none">MERGED</span>
+								</span>
+							)}
 							{tx.type === 'request_fulfilled' && (
 								<span className="text-[8px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1 py-0 rounded-[4px]">
 									Request
@@ -1365,7 +1562,9 @@ const ActiveHistoryPannelNew = ({
 								const showGreenArrow = !selectedTxMySideIsAA && selectedTx.isInbound && selectedTx.type !== 'internal_transfer'
 								// 自己是收款方时，与列表对齐：request_fulfilled 用 QrCode，transfer_in 用 ArrowDownLeft
 								const isReceiver = selectedTx.isInbound && selectedTx.type !== 'internal_transfer'
-								const detailIcon = selectedTx.type === 'fuel_yield'
+								const detailIcon = selectedIsCardTopupKind
+									? <CreditCard size={36} strokeWidth={2.2} />
+									: selectedTx.type === 'fuel_yield'
 									? <ArrowUpRight size={36} strokeWidth={2} />
 									: isReceiver && selectedTx.type === 'request_fulfilled'
 									? iconForType(selectedTx.type, 36, selectedTx)
@@ -1373,7 +1572,9 @@ const ActiveHistoryPannelNew = ({
 										? <XCircle size={36} strokeWidth={2} />
 										: iconForType(selectedTx.type, 36, selectedTx)
 								// AA→EOA 蓝色背景白色 icon；EOA→AA 紫色背景白色 icon；Request Expired / Canceled 使用灰色
-								const capsuleBg = selectedTx.type === 'fuel_yield'
+								const capsuleBg = selectedIsCardTopupKind
+									? 'bg-[#A855F7] text-white dark:bg-[#A855F7] dark:text-white'
+									: selectedTx.type === 'fuel_yield'
 									? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-300'
 									: isInternalToEoa
 									? 'bg-[#1562f0] text-white dark:bg-[#1562f0] dark:text-white'
@@ -1442,7 +1643,11 @@ const ActiveHistoryPannelNew = ({
 								<p className="text-[14px] font-medium text-blue-600 dark:text-blue-400 mt-0.5">
 									{selectedTx.type === 'fuel_yield'
 										? `Received +${Number(selectedTx.amountFiat).toFixed(2)} B-Units`
-										: `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`}
+										: selectedIsUpgradeNewCard && selectedCardMetaAmounts.discountAmountFiat6 > 0n && selectedCardMetaAmounts.requestAmountFiat6 > 0n
+											? `Settled for ${formatAmount(Number(selectedCardMetaAmounts.discountAmountFiat6) / 1e6, selectedTx.currencyCode as ICurrency)} ${selectedMergedUnitLabel} + ${formatAmount(selectedCardTopupUSDCAmount, 'USDC')} USDC -> ${formatAmount(Number(selectedCardMetaAmounts.requestAmountFiat6) / 1e6, selectedTx.currencyCode as ICurrency)} ${selectedCardUnitLabel}`
+										: selectedIsCardTopupKind
+											? `Settled for ${formatAmount(selectedCardTopupUSDCAmount, 'USDC')} USDC -> ${formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)} ${selectedCardUnitLabel}`
+											: `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`}
 								</p>
 							)}
 							<p className="text-[15px] font-medium text-gray-500 dark:text-slate-400 mt-1">{selectedTx.timestamp}</p>
@@ -1635,26 +1840,110 @@ const ActiveHistoryPannelNew = ({
 							if (canceledHashes.has(getOriginalPaymentHash(selectedTx))) return null
 							const txWithRoute = fullTransactionFromChain ?? (selectedTx?.rawTransaction as unknown as Record<string, unknown>)
 							const routeArr = (txWithRoute?.route as RouteItemRecord[] | undefined) ?? []
-							if (routeArr.length === 0) return null
+							const useSyntheticRouting = selectedIsCardTopupKind && routeArr.length === 0 && selectedTx.amountUSDC !== 0
+							const syntheticRows = useSyntheticRouting
+								? (selectedIsUpgradeNewCard && selectedCardMetaAmounts.discountAmountFiat6 > 0n && selectedCardMetaAmounts.requestAmountFiat6 > 0n
+									? [
+										{
+											key: 'voucher-upgraded',
+											isVoucher: true,
+											primary: selectedCardUnitLabel,
+											secondary: 'Voucher',
+											amountText: `+${(Number(selectedCardMetaAmounts.requestAmountFiat6) / 1e6).toFixed(2)}`,
+											amountClass: 'text-[#34C759]',
+											iconBg: selectedUpgradeTierColors.upgradedBg ?? '#A855F7',
+											iconText: selectedUpgradeTierColors.upgradedText ?? '#FFFFFF',
+										},
+										{
+											key: 'voucher-merged',
+											isVoucher: true,
+											primary: selectedMergedUnitLabel,
+											secondary: 'Voucher · Merged',
+											amountText: `-${(Number(selectedCardMetaAmounts.discountAmountFiat6) / 1e6).toFixed(2)}`,
+											amountClass: 'text-black dark:text-white',
+											iconBg: selectedUpgradeTierColors.mergedBg ?? '#A855F7',
+											iconText: selectedUpgradeTierColors.mergedText ?? '#FFFFFF',
+										},
+										{
+											key: 'cash',
+											isVoucher: false,
+											primary: 'USDC',
+											secondary: 'Cash · Main Wallet (EOA)',
+											amountText: `-${selectedCardTopupUSDCAmount.toFixed(2)}`,
+											amountClass: 'text-black dark:text-white',
+										},
+									]
+									: [
+										{
+											key: 'voucher',
+											isVoucher: true,
+											primary: selectedCardUnitLabel,
+											secondary: 'Voucher',
+											amountText: `+${Math.abs(selectedTx.amountFiat).toFixed(2)}`,
+											amountClass: 'text-[#34C759]',
+											iconBg: '#A855F7',
+											iconText: '#FFFFFF',
+										},
+										{
+											key: 'cash',
+											isVoucher: false,
+											primary: 'USDC',
+											secondary: 'Cash · Main Wallet (EOA)',
+											amountText: `-${selectedCardTopupUSDCAmount.toFixed(2)}`,
+											amountClass: 'text-black dark:text-white',
+										},
+									])
+								: []
+							if (routeArr.length === 0 && !useSyntheticRouting) return null
 							// 付款时 payer 是我方，收款时 payer 是对方；route 的 source 0 表示资金来自 payer
 							const payerAddr = (extractAddr(txWithRoute?.payer) ?? '').toLowerCase()
 							const aaAddr = (aa ?? '').toLowerCase()
 							const isAA = selectedTx!.isInbound ? !!txWithRoute?.isAAAccount : (payerAddr === aaAddr)
-							const totalUSDC6 = typeof txWithRoute?.finalRequestAmountUSDC6 === 'string'
+							const totalUSDC6 = selectedCardMetaAmounts.requestAmountUSDC6 > 0n
+								? selectedCardMetaAmounts.requestAmountUSDC6
+								: (typeof txWithRoute?.finalRequestAmountUSDC6 === 'string'
 								? BigInt(txWithRoute.finalRequestAmountUSDC6 as string)
-								: (txWithRoute?.finalRequestAmountUSDC6 as bigint | undefined) ?? 0n
+								: (txWithRoute?.finalRequestAmountUSDC6 as bigint | undefined) ?? 0n)
 							return (
 								<div className="rounded-2xl bg-white dark:bg-slate-800/80 border border-gray-100 dark:border-slate-600/50 p-4 shadow-sm mb-6">
 									<div className="flex items-center justify-between mb-4">
 										<h3 className="flex items-center gap-2 text-[14px] font-bold text-black dark:text-white">
-											<Zap size={16} className="text-[#1562f0]" />
-											Smart Routing
+											{selectedIsUpgradeNewCard ? (
+												<span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#F3E8FF] dark:bg-[#A855F7]/20">
+													<ArrowRightLeft size={14} className="text-[#A855F7] dark:text-[#C084FC]" />
+												</span>
+											) : <Zap size={16} className="text-[#1562f0]" />}
+											{selectedIsUpgradeNewCard ? 'Asset Merge & Upgrade' : 'Smart Routing'}
 										</h3>
 										<span className="text-[11px] font-bold text-gray-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded-md tracking-wide">AUTO</span>
 									</div>
 									<div className="space-y-4 relative">
 										<div className="absolute left-[9px] top-3 bottom-3 w-[2px] bg-gray-100 dark:bg-slate-600 -z-10" />
-										{routeArr.map((item, idx) => {
+										{useSyntheticRouting && syntheticRows.map((row) => (
+											<div key={row.key} className="flex justify-between items-center">
+												<div className="flex items-center gap-3">
+													{row.isVoucher ? (
+														<div
+															className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 w-6 h-6"
+															style={{
+																backgroundColor: (row as { iconBg?: string }).iconBg ?? '#AF52DE',
+																color: (row as { iconText?: string }).iconText ?? '#FFFFFF',
+															}}
+														>
+															pts
+														</div>
+													) : (
+														<UsdcBaseCompositeIcon className="w-6 h-6" />
+													)}
+													<div className="flex flex-col">
+														<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">{row.primary}</span>
+														<span className="text-[12px] text-gray-400 dark:text-slate-400 font-medium">{row.secondary}</span>
+													</div>
+												</div>
+												<span className={`text-[15px] font-semibold ${row.amountClass}`}>{row.amountText}</span>
+											</div>
+										))}
+										{!useSyntheticRouting && routeArr.map((item, idx) => {
 											const amtE6 = BigInt(item.amountE6 ?? item.offsetInRequestCurrencyE6 ?? '0')
 											const amt = Number(amtE6) / 1e6
 											const src = Number(item.source ?? 0)
@@ -1663,11 +1952,17 @@ const ActiveHistoryPannelNew = ({
 											return (
 												<div key={idx} className="flex justify-between items-center">
 													<div className="flex items-center gap-3">
-														<div className={`w-5 h-5 rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 ${
-															isVoucher ? 'bg-[#AF52DE] text-white' : 'bg-[#1562f0] text-white'
-														}`}>
-															{isVoucher ? 'pts' : '$'}
-														</div>
+														{isVoucher ? (
+															<div className="w-5 h-5 rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 bg-[#AF52DE] text-white">
+																pts
+															</div>
+														) : (selectedIsCardTopupKind ? (
+															<UsdcBaseCompositeIcon className="w-6 h-6" />
+														) : (
+															<div className="w-5 h-5 rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 bg-[#1562f0] text-white">
+																$
+															</div>
+														))}
 														<div className="flex flex-col">
 															<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">{primary}</span>
 															<span className="text-[12px] text-gray-400 dark:text-slate-400 font-medium">{secondary}</span>
@@ -1708,10 +2003,10 @@ const ActiveHistoryPannelNew = ({
 							{selectedTx.type !== 'internal_transfer' && !(getOriginalPaymentHash(selectedTx) && (getStatus(selectedTx) === 'Waiting' || getStatus(selectedTx) === 'Expired' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
 							<div className="flex justify-between items-center text-[14px]">
 								<span className="text-gray-500 dark:text-slate-400 font-medium">
-									{selectedTx.type === 'fuel_yield' ? 'Source' : selectedTx.isInbound ? 'Received From' : getOriginalPaymentHash(selectedTx) ? 'Paid To' : 'Send To'}
+									{selectedTx.type === 'fuel_yield' ? 'Source' : selectedIsCardTopupKind ? 'Paid To' : selectedTx.isInbound ? 'Received From' : getOriginalPaymentHash(selectedTx) ? 'Paid To' : 'Send To'}
 								</span>
 								<span className="font-semibold text-black dark:text-white flex items-center gap-1.5">
-									{selectedTx.type === 'fuel_yield' ? 'USDC Top-up' : detailTitleText}
+									{selectedTx.type === 'fuel_yield' ? 'USDC Top-up' : (selectedIsCardTopupKind ? selectedPaidToLabel : detailTitleText)}
 									{selectedTx.type !== 'fuel_yield' && selectedTx.counterpartyAddress && ethers.isAddress(selectedTx.counterpartyAddress) && (
 										<button
 											type="button"
@@ -1745,8 +2040,15 @@ const ActiveHistoryPannelNew = ({
 							{selectedTx.type !== 'fuel_yield' && selectedTx.currencyCode !== 'USDC' && Math.abs(selectedTx.amountFiat) > 0 && selectedTx.amountUSDC !== 0 && (
 							<div className="flex justify-between items-center text-[14px]">
 								<span className="text-gray-500 dark:text-slate-400 font-medium">Exchange Rate</span>
-								<span className="font-semibold text-black dark:text-white">
-									1 {selectedTx.currencyCode} ≈ {(Math.abs(selectedTx.amountUSDC) / Math.abs(selectedTx.amountFiat)).toFixed(4)} USDC
+								<span className="font-semibold text-black dark:text-white text-right">
+									{selectedIsCardTopupKind ? (
+										<span className="flex flex-col items-end leading-tight gap-1">
+											<span>{`1 ${selectedTx.currencyCode} = 1 ${selectedIsUpgradeNewCard ? selectedMergedUnitLabel : selectedCardUnitLabel}`}</span>
+											<span>{`1 ${selectedTx.currencyCode} ≈ ${(selectedCardTopupUSDCAmount / Math.abs(selectedTx.amountFiat)).toFixed(2)} USDC`}</span>
+										</span>
+									) : (
+										`1 ${selectedTx.currencyCode} ≈ ${(Math.abs(selectedTx.amountUSDC) / Math.abs(selectedTx.amountFiat)).toFixed(4)} USDC`
+									)}
 								</span>
 							</div>
 							)}

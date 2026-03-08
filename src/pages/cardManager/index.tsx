@@ -23,8 +23,8 @@ const CURRENCY_META: Record<CreateBeamioCardParams["currency"], { flag: string; 
 	SGD: { flag: "🇸🇬", sym: "$" },
 }
 
-/** Target file size 49.5MB (reserve margin under 50MB limit) */
-const TARGET_MAX_BYTES = 49.5 * 1024 * 1024
+/** Target file size 37MB so base64 (~49MB) stays under server 50MB limit */
+const TARGET_MAX_BYTES = 37 * 1024 * 1024
 const IPFS_GET_FRAGMENT = "https://ipfs.conet.network/api/getFragment?hash="
 
 function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
@@ -51,7 +51,7 @@ function toBlobFormat(mime: string): "image/png" | "image/jpeg" | "image/webp" {
 }
 
 /**
- * Resize image to ≤49.5MB in one shot. Use original format; scale = sqrt(target/original).
+ * Resize image to ≤37MB in one shot (base64 stays under server 50MB limit). Use original format; scale = sqrt(target/original).
  * Maintain aspect ratio (no distortion). No iteration.
  */
 async function resizeToFitLimit(file: File, targetBytes: number): Promise<Blob> {
@@ -265,7 +265,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			let blob: Blob = file
 			if (!isSvg && file.size > TARGET_MAX_BYTES) {
 				blob = await resizeToFitLimit(file, TARGET_MAX_BYTES)
-				Toast.show({ content: "Image resized to <49.5MB", icon: "success" })
+				Toast.show({ content: "Image resized to <37MB", icon: "success" })
 			}
 			const reader = new FileReader()
 			const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -305,7 +305,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			let blob: Blob = file
 			if (!isSvg && file.size > TARGET_MAX_BYTES) {
 				blob = await resizeToFitLimit(file, TARGET_MAX_BYTES)
-				Toast.show({ content: "Image resized to <49.5MB", icon: "success" })
+				Toast.show({ content: "Image resized to <37MB", icon: "success" })
 			}
 			const reader = new FileReader()
 			const dataUrl = await new Promise<string>((resolve, reject) => {

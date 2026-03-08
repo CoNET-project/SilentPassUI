@@ -790,6 +790,7 @@ export default function MyWalletDashboardNew() {
 	const copyAddressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const copiedCardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const refreshAAAssetsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const eoaHistoryFetchSeqRef = useRef(0)
 
 	// 计算汇率
 	const fxRateUSDCToCurrency = useCallback(
@@ -1057,10 +1058,12 @@ export default function MyWalletDashboardNew() {
 
 	// 拉取 EOA 交易历史（与 MyWalletDashboard 一致，供 Active & Pending / History 展示）
 	const loadEoaHistory = useCallback(async () => {
+		const fetchSeq = ++eoaHistoryFetchSeqRef.current
 		if (!profiles?.length) return
 		const profile: profile = profiles[0]
 		const address = profile.keyID
 		if (!address || !ethers.isAddress(address)) {
+			if (fetchSeq !== eoaHistoryFetchSeqRef.current) return
 			setAllItems([])
 			setLoading(false)
 			return
@@ -1242,10 +1245,24 @@ export default function MyWalletDashboardNew() {
 					}
 				})
 			)
+			if (fetchSeq !== eoaHistoryFetchSeqRef.current) return
 			const merged = [...mappedPay, ...mappedLinks, ...mappedChecks].sort((a, b) => b.date - a.date)
-			setAllItems(merged)
+			setAllItems((prev) => {
+				if (prev.length === 0) return merged
+				const buildKey = (tx: TransferHistork) => `${tx.mode}:${tx.hash || tx.redeemHash || ''}:${tx.type}:${tx.address || ''}`
+				const prevKeys = new Set(prev.map(buildKey))
+				const newOnchainRecords = merged.filter((tx) => !prevKeys.has(buildKey(tx)))
+				// 链上历史默认不可变：没有新记录时保持旧引用，避免列表抖动
+				if (newOnchainRecords.length === 0) return prev
+				const mergedMap = new Map<string, TransferHistork>()
+				for (const tx of prev) mergedMap.set(buildKey(tx), tx)
+				for (const tx of newOnchainRecords) mergedMap.set(buildKey(tx), tx)
+				return Array.from(mergedMap.values()).sort((a, b) => b.date - a.date)
+			})
 		} finally {
-			setLoading(false)
+			if (fetchSeq === eoaHistoryFetchSeqRef.current) {
+				setLoading(false)
+			}
 		}
 	}, [profiles, myAddress, setMyAddress])
 
@@ -1671,6 +1688,48 @@ export default function MyWalletDashboardNew() {
 		return luminance < 0.5 ? 'white' : 'black'
 	}
 
+	const normalizeMetadataBackground = (raw?: string): string | undefined => {
+		if (!raw || typeof raw !== 'string') return undefined
+		const s = raw.trim()
+		if (!s) return undefined
+		return s.startsWith('#') ? s : `#${s.replace(/^#/, '')}`
+	}
+
+	const historyUserCardTiles = useMemo(() => {
+		return userCards.map((card) => {
+			const addr = card.cardAddress.toLowerCase()
+			const details = userCardDetails[addr]
+			const nfts = (details?.assets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
+			const bestNft = nfts.length > 0 ? nfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+			const rawTier = bestNft?.tier
+			const tierIdx = rawTier != null && rawTier !== 'Default/Max' ? Number(rawTier) : null
+			const tiers = details?.metadata?.tiers
+			const tierMeta =
+				tierIdx != null && Number.isInteger(tierIdx) && tiers?.length
+					? tiers.find((t) => t.index === tierIdx) ?? tiers[tierIdx]
+					: undefined
+			const nftMeta = details?.nftMetadata
+			const tierFallback = tierIdx != null ? `Tier ${tierIdx + 1}` : rawTier === 'Default/Max' ? 'Default' : 'No Tier NFT'
+			const tierName = nftMeta?.name ?? tierMeta?.name ?? tierFallback
+			const tierDescription = nftMeta?.description ?? tierMeta?.description ?? ''
+			const image = nftMeta?.image ?? tierMeta?.image ?? details?.metadata?.image
+			const nftBg = normalizeMetadataBackground((nftMeta as any)?.backgroundColor ?? (nftMeta as any)?.background_color)
+			const tierBg = normalizeMetadataBackground((tierMeta as any)?.backgroundColor ?? (tierMeta as any)?.background_color)
+			const bg = nftBg ?? tierBg ?? '#2C5535'
+			const pointsTopRight = details?.assets?.points != null ? formatWithThousands(details.assets.points) : '0.00'
+			return {
+				cardAddress: card.cardAddress,
+				name: details?.metadata?.name ?? card.name,
+				tierName,
+				tierDescription,
+				image,
+				bg,
+				pointsTopRight,
+				currency: card.currency,
+			}
+		})
+	}, [userCards, userCardDetails])
+
 	/** 当前 DETAILS 对应卡地址（仅当 activeView 为卡时有效） */
 	const cardAddressForDetails = activeView && activeView !== 'eoa' && activeView !== 'aa'
 		? (activeView === 'ccsa' ? CCSA_Card_Address : activeView)
@@ -1828,10 +1887,10 @@ export default function MyWalletDashboardNew() {
 			const infraNftMeta = infraCardMetadata?.nftMetadata
 			const infraTierName = infraNftMeta?.name ?? tierMeta?.name ?? (tierIndex != null ? `Tier ${tierIndex + 1}` : rawTier === 'Default/Max' ? 'Default' : undefined)
 			const infraTierDesc = infraNftMeta?.description ?? tierMeta?.description
-			const infraBg = infraNftMeta?.backgroundColor
-				? (infraNftMeta.backgroundColor.startsWith('#') ? infraNftMeta.backgroundColor : `#${infraNftMeta.backgroundColor.replace(/^#/, '')}`)
-				: 'linear-gradient(135deg, #0ea5e9, #06b6d4, #14b8a6)'
-			const infraTextColor = infraNftMeta?.backgroundColor ? textColorForBackground(infraNftMeta.backgroundColor) : 'white'
+			const infraBgRaw = normalizeMetadataBackground((infraNftMeta as any)?.backgroundColor ?? (infraNftMeta as any)?.background_color)
+				?? normalizeMetadataBackground((tierMeta as any)?.backgroundColor ?? (tierMeta as any)?.background_color)
+			const infraBg = infraBgRaw ?? '#2C5535'
+			const infraTextColor = infraBgRaw ? textColorForBackground(infraBgRaw) : 'white'
 			list.push({
 				id: BEAMIO_USER_CARD_ASSET_ADDRESS,
 				name: infraCardMetadata?.name ?? 'CashTrees Card',
@@ -1866,6 +1925,8 @@ export default function MyWalletDashboardNew() {
 			const tierName = nftMeta?.name ?? tierMeta?.name ?? tierFallback
 			const tierDescription = nftMeta?.description ?? tierMeta?.description
 			const cardImage = nftMeta?.image ?? details?.metadata?.image
+			const cardBgRaw = normalizeMetadataBackground((nftMeta as any)?.backgroundColor ?? (nftMeta as any)?.background_color)
+				?? normalizeMetadataBackground((tierMeta as any)?.backgroundColor ?? (tierMeta as any)?.background_color)
 			list.push({
 				id: uc.cardAddress,
 				name: details?.metadata?.name ?? uc.name,
@@ -1873,7 +1934,7 @@ export default function MyWalletDashboardNew() {
 				currency: uc.currency,
 				type: 'Stored Value',
 				memberNo: bestNft ? `M-${String(bestNft.tokenId).padStart(6, '0')}` : uc.cardAddress.slice(0, 10) + '...',
-				bg: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)',
+				bg: cardBgRaw ?? '#2C5535',
 				image: cardImage,
 				tier: tierName,
 				tierName,
@@ -2591,9 +2652,9 @@ export default function MyWalletDashboardNew() {
 											</div>
 											{history.length ? (
 												<div className="space-y-4">
-													{history.slice(0, 10).map((tx) => (
+													{history.slice(0, 10).map((tx, idx) => (
 														<div
-															key={`${tx.mode}-${tx.hash}-${tx.date}`}
+															key={`${tx.mode}-${tx.hash || tx.redeemHash || idx}`}
 															onClick={() => {
 																setItemTx(tx)
 																setShowTxDetail(true)
@@ -2757,19 +2818,42 @@ export default function MyWalletDashboardNew() {
 														</button>
 													)}
 												</div>
-												{userCards.length > 0 ? (
+												{historyUserCardTiles.length > 0 ? (
 												<div className="space-y-3">
-													{userCards.map((card) => (
+													{historyUserCardTiles.map((card) => (
 														<div
 															key={card.cardAddress}
-															className="flex items-start justify-between gap-3 p-4 rounded-2xl bg-white/85 dark:bg-slate-900/65 ring-1 ring-black/5 dark:ring-white/10"
+															className="relative overflow-hidden rounded-2xl border border-slate-200 p-4"
+															style={{ background: card.bg }}
 														>
-															<div className="flex-1 min-w-0">
-																<p className="font-semibold text-slate-900 dark:text-slate-100 text-[15px]">
+															{card.image ? (
+																<img
+																	src={card.image}
+																	alt={card.name}
+																	className="pointer-events-none absolute left-4 top-4 h-[calc(100%-2rem)] w-52 rounded-xl object-contain object-left opacity-95"
+																/>
+															) : null}
+															<div className="relative z-10 flex-1 min-w-0">
+																<div className="flex items-start justify-end mb-1">
+																	<div className="rounded-md bg-black/25 px-2 py-1 text-xs font-semibold text-white">
+																		{card.pointsTopRight} pts
+																	</div>
+																</div>
+																<p className="text-right text-sm font-bold text-white">
 																	{card.name}
 																</p>
-																<div className="flex items-center gap-1.5 mt-0.5">
-																	<p className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate" title={card.cardAddress}>
+																{card.tierName ? (
+																	<p className="mt-1 text-right text-xs text-white/85">
+																		{card.tierName}
+																	</p>
+																) : null}
+																{card.tierDescription ? (
+																	<p className="mt-1 text-right text-xs text-white/85">
+																		{card.tierDescription}
+																	</p>
+																) : null}
+																<div className="mt-2 flex items-center justify-end gap-1.5">
+																	<p className="truncate text-xs font-mono text-white/85" title={card.cardAddress}>
 																		{card.cardAddress.slice(0, 10)}...{card.cardAddress.slice(-8)}
 																	</p>
 																	<button
@@ -2778,7 +2862,7 @@ export default function MyWalletDashboardNew() {
 																			e.stopPropagation()
 																			copyCardAddress(card.cardAddress)
 																		}}
-																		className="shrink-0 p-1 rounded-md hover:bg-slate-200/70 dark:hover:bg-slate-700/50 transition-colors active:scale-95"
+																		className="shrink-0 rounded-md p-1 transition-colors active:scale-95 hover:bg-white/15"
 																		aria-label="Copy address"
 																	>
 																		<AnimatePresence mode="wait">
@@ -2789,7 +2873,7 @@ export default function MyWalletDashboardNew() {
 																					animate={{ scale: 1, opacity: 1 }}
 																					transition={{ type: 'spring', stiffness: 400, damping: 20 }}
 																				>
-																					<Check size={14} className="text-emerald-500 dark:text-emerald-400" strokeWidth={2.5} />
+																					<Check size={14} className="text-emerald-300" strokeWidth={2.5} />
 																				</motion.span>
 																			) : (
 																				<motion.span
@@ -2797,18 +2881,14 @@ export default function MyWalletDashboardNew() {
 																					initial={{ opacity: 1 }}
 																					exit={{ opacity: 0 }}
 																				>
-																					<Copy size={14} className="text-slate-500 dark:text-slate-400" strokeWidth={2} />
+																					<Copy size={14} className="text-white/80" strokeWidth={2} />
 																				</motion.span>
 																			)}
 																		</AnimatePresence>
 																	</button>
 																</div>
-																<div className="flex items-center gap-2 mt-1.5 text-sm text-slate-600 dark:text-slate-300">
-																	<span>{card.currency}</span>
-																	<span>·</span>
-																	<span>
-																		1 {fiatPrefix(card.currency as any)} = {formatAmount(Number(card.ptsPer1Currency), card.currency as any)} pts
-																	</span>
+																<div className="mt-1.5 text-right text-sm font-semibold text-emerald-200">
+																	{card.currency}
 																</div>
 															</div>
 														</div>

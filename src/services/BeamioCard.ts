@@ -447,6 +447,70 @@ async function fetchMyCardsFromApi(owners: string[]): Promise<UserCardInfo[]> {
 
 export type GetCardsResult = { cards: UserCardInfo[]; trusted: boolean }
 
+type LatestCardApiItem = {
+	cardAddress?: string
+	currency?: string
+	priceInCurrencyE6?: string | number
+	metadata?: {
+		shareTokenMetadata?: {
+			name?: string
+		}
+	}
+}
+
+async function fetchHeldCardsFromLatestForEOA(
+	eoa: string,
+	existingCardAddresses: Set<string>
+): Promise<UserCardInfo[]> {
+	if (!eoa || !ethers.isAddress(eoa)) return []
+	try {
+		const res = await fetch(`${beamioApi}/api/latestCards?limit=100`)
+		if (!res.ok) return []
+		const data = await res.json().catch(() => ({}))
+		const items = (Array.isArray(data?.items) ? data.items : []) as LatestCardApiItem[]
+		if (!items.length) return []
+
+		const ownershipAbi = [
+			'function getOwnershipByEOA(address userEOA) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
+		]
+
+		const checks = await Promise.all(
+			items.map(async (it) => {
+				const rawAddr = String(it?.cardAddress ?? '').trim()
+				if (!rawAddr || !ethers.isAddress(rawAddr)) return null
+				const addr = ethers.getAddress(rawAddr)
+				const key = addr.toLowerCase()
+				if (existingCardAddresses.has(key)) return null
+				try {
+					const card = new ethers.Contract(addr, ownershipAbi, baseEndpoint)
+					const [pt, nftsRaw] = await card.getOwnershipByEOA(eoa) as [bigint, Array<{ tokenId: bigint }>]
+					const hasPoints = (pt ?? 0n) > 0n
+					const hasNft = Array.isArray(nftsRaw) && nftsRaw.some((n) => Number(n?.tokenId ?? 0n) > 0)
+					if (!hasPoints && !hasNft) return null
+
+					const currency = String(it?.currency ?? 'CAD').toUpperCase()
+					const priceNum = Number(it?.priceInCurrencyE6 ?? 0)
+					const priceE6 = Number.isFinite(priceNum) && priceNum >= 0 ? priceNum : 0
+					const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
+					const cardName = String(it?.metadata?.shareTokenMetadata?.name ?? 'User Card').trim() || 'User Card'
+					return {
+						cardAddress: addr,
+						name: cardName,
+						currency,
+						priceE6: String(priceE6),
+						ptsPer1Currency: String(ptsPer1Currency),
+					} as UserCardInfo
+				} catch {
+					return null
+				}
+			})
+		)
+		return checks.filter((v): v is UserCardInfo => Boolean(v))
+	} catch {
+		return []
+	}
+}
+
 /** 同时查询 aaAccount 与 keyID 下的卡（去重合并）。用于 CardManager：展示用户自己发行的 BeamioUserCard，不耦合 CCSA。
  * 当 keyID 缺失时，会从 privateKeyArmor 推导 EOA 地址作为 fallback。
  * 若 CCSA 的 owner 与用户 EOA 匹配，则始终包含 CCSA（兜底：cardsOfOwner 有时因链上/格式问题不返回）。
@@ -557,6 +621,16 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 		if (merged.length === 0 && typeof console !== 'undefined' && console.warn) {
 			console.warn('[getCardsOfOwnerWithDetailsForProfile] 0 cards for owners:', uniqueOwners, '(EOA/keyID 须与创建卡时的 cardOwner 一致)')
 		}
+		// 补充：持有者视角（购买/领取）卡片。cardsOfOwner 仅覆盖 cardOwner，不覆盖持卡用户。
+		if (eoa && ethers.isAddress(eoa)) {
+			const holderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), seen)
+			for (const c of holderCards) {
+				const key = c.cardAddress.toLowerCase()
+				if (seen.has(key)) continue
+				seen.add(key)
+				merged.push(c)
+			}
+		}
 		return { cards: merged, trusted: true }
 	} catch (e) {
 		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
@@ -566,6 +640,16 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 		// 2. RPC 失败，尝试 API
 		try {
 			const apiItems = await fetchMyCardsFromApi(uniqueOwners)
+			const apiSeen = new Set(apiItems.map((c) => c.cardAddress.toLowerCase()))
+			if (eoa && ethers.isAddress(eoa)) {
+				const holderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), apiSeen)
+				for (const c of holderCards) {
+					const key = c.cardAddress.toLowerCase()
+					if (apiSeen.has(key)) continue
+					apiSeen.add(key)
+					apiItems.push(c)
+				}
+			}
 			if (apiItems.length === 0 && typeof console !== 'undefined' && console.warn) {
 				console.warn('[getCardsOfOwnerWithDetailsForProfile] API 返回 0 张卡。owners:', uniqueOwners)
 			}

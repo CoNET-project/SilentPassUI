@@ -261,21 +261,24 @@ const CASH_TREES_COLLECTION: CashTreesItem[] = [
   },
 ]
 
-const CashTreesGetButton = ({ price, count = 0, onClick, isVariable = false }: { price: number; count?: number; onClick: () => void; isVariable?: boolean }) => (
-  <button
-    onClick={(e) => { e.stopPropagation(); onClick(); }}
-    className="relative rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm active:scale-95 bg-black text-white hover:bg-gray-800 border border-white/90 flex items-center justify-center gap-1.5 px-5 py-1.5 min-w-[75px]"
-  >
-    {isVariable ? `Load $${price}+` : `$${price}`}
-    {count > 0 && (
-      <span className="flex items-center justify-center bg-white text-black text-[9px] h-4 min-w-[16px] px-1 rounded-full -mr-2 shadow-sm font-extrabold">
-        x{count}
-      </span>
-    )}
-  </button>
-)
+const CashTreesGetButton = ({ price, count = 0, onClick, isVariable = false, itemId, canUpgrade = true }: { price: number; count?: number; onClick: () => void; isVariable?: boolean; itemId?: number; canUpgrade?: boolean }) => {
+  // When user owns card and cannot upgrade: id 202 → hide button, id 201 → show "Topup"
+  if (count > 0 && !canUpgrade && itemId === 202) return null
+  const btnLabel = count > 0 && isVariable
+    ? (itemId === 201 ? (canUpgrade ? "Unlock VIP" : "Topup") : itemId === 202 ? "Topup" : `Load $${price}+`)
+    : isVariable ? `Load $${price}+` : `$${price}`
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className="relative rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm active:scale-95 bg-black text-white hover:bg-gray-800 border border-white/90 flex items-center justify-center gap-1.5 px-5 py-1.5 min-w-[75px]"
+    >
+      {btnLabel}
 
-const StoryCard = ({ item, count, onClick, onBuy }: { item: CashTreesItem; count: number; onClick: (i: CashTreesItem) => void; onBuy: (i: CashTreesItem) => void }) => {
+    </button>
+  )
+}
+
+const StoryCard = ({ item, count, onClick, onBuy, canUpgrade = true }: { item: CashTreesItem; count: number; onClick: (i: CashTreesItem) => void; onBuy: (i: CashTreesItem) => void; canUpgrade?: boolean }) => {
   const isBlackCard = item.theme === "black"
   const isDarkBg = item.theme === "black" || item.theme === "green"
   return (
@@ -324,6 +327,8 @@ const StoryCard = ({ item, count, onClick, onBuy }: { item: CashTreesItem; count
               count={count}
               onClick={() => onBuy(item)}
               isVariable={item.isVariablePrice}
+              itemId={item.id}
+              canUpgrade={canUpgrade}
             />
           </div>
         </div>
@@ -676,11 +681,12 @@ const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: ViewingItem;
   )
 }
 
-const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: { item: ViewingItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (item: ViewingItem) => void; onOpenWallet: () => void }) => {
+const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet, canUpgrade = true }: { item: ViewingItem; inventory: InventoryInstance[]; onClose: () => void; onBuy: (item: ViewingItem) => void; onOpenWallet: () => void; canUpgrade?: boolean }) => {
   if (!item) return null
   const count = inventory.length
   const heroItem = item as HeroItem & { customGradient?: string }
   const isCashTrees = item.id === 201 || item.id === 202
+  const ownsCardNoUpgrade = isCashTrees && count > 0 && !canUpgrade
   return (
     <div className="fixed inset-0 z-[80] bg-white overflow-y-auto flex flex-col">
       <div className="absolute top-0 inset-x-0 bg-black pointer-events-none" style={TOP_SAFE_FILL_STYLE} />
@@ -724,7 +730,13 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
         {heroItem.features && <div className="rounded-2xl p-5 mb-8 bg-[#F2F2F7]"><h4 className="text-sm font-bold uppercase tracking-wide mb-4 text-gray-900">What&apos;s Included</h4><div className="space-y-3">{(heroItem.features ?? []).map((f: string, idx: number) => <div key={idx} className="flex items-center gap-3"><div className="w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 bg-green-500"><Check size={12} strokeWidth={4} /></div><span className="font-medium text-gray-700">{f}</span></div>)}</div></div>}
       </div>
       <div className="fixed bottom-0 w-full max-w-md backdrop-blur-xl border-t bg-white/90 border-gray-200 p-5 pb-8 z-50 flex gap-3">
-        {count > 0 ? <><button onClick={onOpenWallet} className="flex-1 border-2 px-4 py-3.5 rounded-full font-bold text-[15px] active:scale-95 transition-transform flex items-center justify-center gap-2 bg-white border-gray-200 text-gray-900"><Wallet size={18} /> My Wallet <span className="text-xs px-1.5 py-0.5 rounded-md ml-1 bg-gray-200 text-gray-900">x{count}</span></button><button onClick={() => onBuy(item)} className="flex-[1.5] bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Buy Another <span className="opacity-80 font-medium text-xs ml-1">${item.price}</span></button></> : <div className="flex-1 flex gap-4 items-center"><div className="flex-1"><div className="text-xs uppercase font-bold text-gray-500">Total Price</div><div className="text-3xl font-bold tracking-tight text-gray-900">${item.price}</div></div><button onClick={() => onBuy(item)} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-full font-bold text-[17px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Purchase <ArrowRight size={20} /></button></div>}
+        {ownsCardNoUpgrade ? (
+          <button onClick={() => onBuy(item)} className="flex-1 bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Topup</button>
+        ) : count > 0 ? (
+          <><button onClick={onOpenWallet} className="flex-1 border-2 px-4 py-3.5 rounded-full font-bold text-[15px] active:scale-95 transition-transform flex items-center justify-center gap-2 bg-white border-gray-200 text-gray-900"><Wallet size={18} /> My Wallet <span className="text-xs px-1.5 py-0.5 rounded-md ml-1 bg-gray-200 text-gray-900">x{count}</span></button><button onClick={() => onBuy(item)} className="flex-[1.5] bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Buy Another <span className="opacity-80 font-medium text-xs ml-1">${item.price}</span></button></>
+        ) : (
+          <div className="flex-1 flex gap-4 items-center"><div className="flex-1"><div className="text-xs uppercase font-bold text-gray-500">Total Price</div><div className="text-3xl font-bold tracking-tight text-gray-900">${item.price}</div></div><button onClick={() => onBuy(item)} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-full font-bold text-[17px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Purchase <ArrowRight size={20} /></button></div>
+        )}
       </div>
     </div>
   )
@@ -1137,6 +1149,8 @@ export default function Market() {
 	const [settingsOpen, setSettingsOpen] = useState<"" | "USDCTopup" | "showPayQR">("")
 	const [topupContentReady, setTopupContentReady] = useState(false)
 	const [topupCardAddress, setTopupCardAddress] = useState<string>(USDC_TOPUP_CARD_ADDRESS)
+	/** Item id when opening topup from ProductDetailModal (201/202) - used for quick amount buttons */
+	const [topupItemId, setTopupItemId] = useState<number | null>(null)
 	const [purchaseSheetOpen, setPurchaseSheetOpen] = useState(false)
 	const [purchaseItem, setPurchaseItem] = useState<PurchaseModalItem | null>(null)
 	const [purchaseOwnsCard, setPurchaseOwnsCard] = useState(false)
@@ -1169,12 +1183,17 @@ export default function Market() {
 		return () => clearTimeout(t)
 	}, [settingsOpen])
 
+	const [topupCardAssets, setTopupCardAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 	const flash = async () => {
 		if (profiles?.length) {
 		await new Promise((r) => setTimeout(r, 500))
-		getMyAssetsAggregated(profiles[0])
-			.then(setMyAssets)
-			.catch((e) => console.warn(e))
+		Promise.all([
+			getMyAssetsAggregated(profiles[0]),
+			getMyAssets(profiles[0], USDC_TOPUP_CARD_ADDRESS),
+		]).then(([agg, topup]) => {
+			setMyAssets(agg ?? null)
+			setTopupCardAssets(topup ?? null)
+		}).catch((e) => console.warn(e))
 		}
 	}
 	useEffect(() => {
@@ -1189,6 +1208,18 @@ export default function Market() {
 		() => !!(myAssets?.nfts && myAssets.nfts.length > 0),
 		[myAssets]
 	)
+
+	/** For CashTrees 201/202: count=1 when user owns topup card; canUpgrade by tier (201: pts<100, 202: pts<50) */
+	const cashTreesCount = useMemo(() => (topupCardAssets?.nfts && topupCardAssets.nfts.length > 0) ? 1 : 0, [topupCardAssets])
+	const cashTreesPoints = useMemo(() => Number(topupCardAssets?.points ?? 0), [topupCardAssets])
+	const getCashTreesCanUpgrade = (itemId: number) => itemId === 201 ? cashTreesPoints < 100 : itemId === 202 ? cashTreesPoints < 50 : true
+
+	// When 202 detail would be hidden (owns card, cannot upgrade), clear viewingItem to avoid stale state
+	useEffect(() => {
+		if (viewingItem?.id === 202 && cashTreesCount > 0 && !getCashTreesCanUpgrade(202)) {
+			setViewingItem(null)
+		}
+	}, [viewingItem?.id, cashTreesCount, cashTreesPoints])
 
 	const membershipItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "membership"), [])
 	const eventsItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "events"), [])
@@ -1205,7 +1236,11 @@ export default function Market() {
 	}
 
 	const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] ?? []
-	const openDetail = (item: ViewingItem) => setViewingItem(item)
+	const openDetail = (item: ViewingItem) => {
+		// 202: when user owns card and cannot upgrade, do not show detail panel
+		if (item.id === 202 && cashTreesCount > 0 && !getCashTreesCanUpgrade(202)) return
+		setViewingItem(item)
+	}
 	const initiatePurchase = (item: ViewingItem) => {
 		if (item.id === 999) {
 			setViewingItem(null)
@@ -1265,9 +1300,10 @@ export default function Market() {
 				<StoryCard
 					key={item.id}
 					item={item}
-					count={getOwnedInstances(item.id).length}
+					count={item.id === 201 || item.id === 202 ? cashTreesCount : getOwnedInstances(item.id).length}
 					onClick={openDetail}
 					onBuy={(it) => initiatePurchase(it)}
+					canUpgrade={item.id === 201 || item.id === 202 ? getCashTreesCanUpgrade(item.id) : true}
 				/>
 			))}
 		</div>
@@ -1409,6 +1445,7 @@ export default function Market() {
 					onClick={() => {
 						setShowFooter(true)
 						setSettingsOpen("")
+						setTopupItemId(null)
 						setQrPayload("")
 					}}
 					aria-hidden
@@ -1427,7 +1464,7 @@ export default function Market() {
 							"w-full",
 							"bg-white dark:bg-slate-900",
 							"rounded-t-[22px]",
-							"min-h-[75vh]",
+							"min-h-[55vh]",
 							"max-h-[calc(100dvh-env(safe-area-inset-top)-12px)]",
 							"pb-[env(safe-area-inset-bottom)]",
 						].join(" ")}
@@ -1440,11 +1477,14 @@ export default function Market() {
 								topupContentReady && topupCardAddress ? (
 									<USDCUserCardTopupControl
 										cardAddress={topupCardAddress}
+										quickOptions={ undefined}
+										itemId={topupItemId ?? undefined}
 										onClose={(val) => {
 											if (val != null) {
 												setMyAssets((prev) => (prev ? { ...prev, ...val } : val))
 											}
 											setSettingsOpen("")
+											setTopupItemId(null)
 											setShowFooter(true)
 											closeCardDetail()
 											flash()
@@ -1482,17 +1522,19 @@ export default function Market() {
 				onBuy={() => setViewingItem(null)}
 			/>
 		)}
-		{viewingItem && viewingItem.id !== 999 && viewingItem.id !== 998 && (
+		{viewingItem && viewingItem.id !== 999 && viewingItem.id !== 998 && !(viewingItem.id === 202 && cashTreesCount > 0 && !getCashTreesCanUpgrade(202)) && (
 			<ProductDetailModal
 				item={viewingItem}
-				inventory={viewingItem.id === 101 ? (isMember ? [{ id: "#CCSA", date: "Active", balance: "Full" }] : []) : getOwnedInstances(viewingItem.id)}
+				inventory={viewingItem.id === 101 ? (isMember ? [{ id: "#CCSA", date: "Active", balance: "Full" }] : []) : (viewingItem.id === 201 || viewingItem.id === 202) ? (cashTreesCount > 0 ? [{ id: "#CT", date: "Active", balance: "Full" }] : []) : getOwnedInstances(viewingItem.id)}
 				onClose={() => setViewingItem(null)}
 				onBuy={(it) => {
 					setShowFooter(false)
 					setTopupCardAddress(USDC_TOPUP_CARD_ADDRESS)
+					setTopupItemId(it?.id ?? null)
 					setSettingsOpen("USDCTopup")
 				}}
 				onOpenWallet={viewingItem.id === 101 && isMember ? () => { setViewingItem(null); setOverlayMode("cardItem"); setShowCardDetail(true); setShowFooter(false); } : () => setViewingItem(null)}
+				canUpgrade={(viewingItem.id === 201 || viewingItem.id === 202) ? getCashTreesCanUpgrade(viewingItem.id) : true}
 			/>
 		)}
 		{purchasingGenesis && (

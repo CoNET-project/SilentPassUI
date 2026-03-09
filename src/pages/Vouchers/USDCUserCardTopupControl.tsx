@@ -29,6 +29,10 @@ type TierItem = {
 type Props = {
 	cardAddress: string
 	onClose?: (assets?: any) => void
+	/** Override quick amount buttons. id 201: [100] only; id 202: default [25, 50, 100]. Default when not from Market: [25, 50, 100] */
+	quickOptions?: number[]
+	/** Item id when opened from Market (201/202) - used to customize loadMoreHint: 201→Unlock VIP, 202→Top-up */
+	itemId?: number
 }
 
 const MIN_TOPUP_USDC6 = 100_000n // 0.1 USDC
@@ -99,7 +103,7 @@ const formatBalanceWithCurrencyProtocol = (amount: number, currency: string): { 
 	return { prefix, amount: amountText, suffix }
 }
 
-export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props) {
+export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOptions: quickOptionsProp, itemId }: Props) {
 	const navigate = useNavigate()
 	const { profiles } = useDaemonContext()
 	const profile = profiles?.[0]
@@ -324,7 +328,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 
 	const minTier = tiers[0]
 	const maxTier = tiers.length > 0 ? tiers[tiers.length - 1] : null
-	const quickOptions = useMemo(() => [25, 50, 100], [])
+	const quickOptions = useMemo(() => quickOptionsProp ?? [25, 50, 100], [quickOptionsProp])
 	const nextTier = useMemo(() => tiers.find((t) => t.minUsdc6 > points6), [tiers, points6])
 	const selectedTier = useMemo(
 		() => (selectedTierIndex == null ? null : tiers.find((t) => t.index === selectedTierIndex) ?? null),
@@ -605,7 +609,31 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 	}
 
 	if (loading) {
-		return <div className="p-6 text-sm text-slate-500">Loading card tiers...</div>
+		return (
+			<div className="p-6 space-y-4">
+				<div className="relative flex items-center justify-center py-1">
+					<div className="h-6 w-48 rounded bg-slate-200 animate-pulse" />
+					<button
+						className="absolute right-0 w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 active:scale-95 transition-all"
+						onClick={() => onClose?.()}
+						aria-label="Close"
+					>
+						<X size={22} strokeWidth={2.5} />
+					</button>
+				</div>
+				<div className="rounded-xl bg-white p-4 space-y-3">
+					<div className="flex flex-col items-center py-10 gap-4">
+						<div className="h-14 w-32 rounded-lg bg-slate-200 animate-pulse" />
+						<div className="flex gap-2">
+							<div className="h-10 w-20 rounded-full bg-slate-200 animate-pulse" />
+							<div className="h-10 w-20 rounded-full bg-slate-200 animate-pulse" />
+							<div className="h-10 w-20 rounded-full bg-slate-200 animate-pulse" />
+						</div>
+					</div>
+					<div className="h-11 rounded-full bg-slate-200 animate-pulse" />
+				</div>
+			</div>
+		)
 	}
 
 	return (
@@ -687,18 +715,18 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 					</motion.div>
 				)}
 			</AnimatePresence>
-			<div className="p-6 space-y-4">
-			<div className="relative flex items-center justify-center py-1">
-				<h3 className="text-lg font-bold text-slate-900 text-center">Add credits to {cardName || "CashTrees"} Card</h3>
+			<div className="p-6 space-y-4 relative">
 				<button
-					className="absolute right-0 w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 active:scale-95 transition-all"
+					className="absolute right-0 top-4 w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 active:scale-95 transition-all"
 					onClick={() => onClose?.(assets)}
 					aria-label="Close"
 				>
 					<X size={22} strokeWidth={2.5} />
 				</button>
+			<div className="flex items-center justify-center py-1">
+				<h3 className="text-lg font-bold text-slate-900 text-center">Add credits to CashTrees Card</h3>
 			</div>
-			<div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+			<div className="rounded-xl bg-white p-4 space-y-3">
 				{submitting ? (
 					<div className="flex flex-col items-center justify-center py-10 gap-3">
 						<RefreshCw size={40} className="animate-spin text-blue-600" />
@@ -737,17 +765,13 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 									value={amount}
 									onChange={(e) => {
 										const raw = e.target.value
-										const cleaned = raw.replace(/[^\d.]/g, "")
-										const firstDot = cleaned.indexOf(".")
-										const normalized = firstDot >= 0
-											? `${cleaned.slice(0, firstDot + 1)}${cleaned.slice(firstDot + 1).replace(/\./g, "")}`
-											: cleaned
-										setAmount(normalized)
+										const cleaned = raw.replace(/\D/g, "")
+										setAmount(cleaned)
 									}}
 									type="text"
-									inputMode={cardCurrencyDecimals === 0 ? "numeric" : "decimal"}
-									pattern={cardCurrencyDecimals === 0 ? "[0-9]*" : "[0-9]*[.,]?[0-9]*"}
-									className="w-32 bg-transparent text-5xl leading-none font-bold text-slate-900 outline-none border-b-2 border-slate-300 pt-4 pb-0 focus:border-[#1562f0] text-center"
+									inputMode="numeric"
+									pattern="[0-9]*"
+									className="w-56 min-w-[180px] bg-transparent text-5xl leading-none font-bold text-slate-900 outline-none border-b-2 border-slate-300 pt-4 pb-0 focus:border-[#1562f0] text-center"
 								/>
 							</div>
 							<div className="flex items-center justify-center gap-2 flex-wrap">
@@ -789,7 +813,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 							) : loadMoreHint ? (
 								<div className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-100 px-4 py-2.5 text-sm text-slate-600">
 									<Info size={18} className="shrink-0 text-slate-500" />
-									<span>Load {loadMoreHint.moreDisplay} more for {loadMoreHint.nextTierName}</span>
+									<span>{itemId === 201 ? "Unlock VIP" : itemId === 202 ? "Top-up" : `Load ${loadMoreHint.moreDisplay} more for ${loadMoreHint.nextTierName}`}</span>
 								</div>
 							) : null}
 						</div>

@@ -22,6 +22,18 @@ export type Icard = { cardAddress: string, userSignature: string, nonce: string,
 	const validAfter = now - BigInt(60)
 	const validBefore = now + BigInt(60)   
  */
+/** 用户拥有的卡片列表中不显示的卡地址（基础设施/系统卡） */
+const USER_CARD_DISPLAY_EXCLUDED = new Set([
+	'0xa86a8406b06bd6c332b4b380a0eaced822218eff',
+	'0xc0f1c74fb95100a97b532be53b266a54f41db615',
+	'0xecc5bdff6716847e45363befd3506b1d539c02d5',
+	'0x90ae2212ee70aca8671ab7f5238c828d13c6dea7',
+	'0x4879171d6c4693eaedcd8f448a785a31b2146e64',
+])
+
+const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
+	cards.filter((c) => !USER_CARD_DISPLAY_EXCLUDED.has(c.cardAddress.toLowerCase()))
+
 /** AA Factory 作为 UserCard gateway（与 config/base-addresses AA_FACTORY 一致） */
 const BeamioUserCardGatewayAddress = '0xD86403DD1755F7add19540489Ea10cdE876Cc1CE'.toLowerCase()
 const chainId8453 = 8453n
@@ -631,7 +643,7 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 				merged.push(c)
 			}
 		}
-		return { cards: merged, trusted: true }
+		return { cards: filterExcludedUserCards(merged), trusted: true }
 	} catch (e) {
 		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
 		if (typeof console !== 'undefined' && console.warn) {
@@ -653,13 +665,13 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 			if (apiItems.length === 0 && typeof console !== 'undefined' && console.warn) {
 				console.warn('[getCardsOfOwnerWithDetailsForProfile] API 返回 0 张卡。owners:', uniqueOwners)
 			}
-			return { cards: apiItems, trusted: true }
+			return { cards: filterExcludedUserCards(apiItems), trusted: true }
 		} catch (apiErr) {
 			if (typeof console !== 'undefined' && console.warn) {
 				console.warn('[getCardsOfOwnerWithDetailsForProfile] RPC+API 均失败，返回缓存。owners:', uniqueOwners, 'cached:', cached.length, (apiErr as Error)?.message ?? apiErr)
 			}
 			// 3. RPC 与 API 均失败，返回 profile 缓存的卡，不信任空 []
-			return { cards: cached, trusted: false }
+			return { cards: filterExcludedUserCards(cached), trusted: false }
 		}
 	}
 }

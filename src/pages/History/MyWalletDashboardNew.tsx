@@ -41,7 +41,6 @@ import {
 	Info,
 	ShieldCheck,
 	ChevronUp,
-	Search,
 	MinusCircle,
 	PlusCircle,
 	GripVertical,
@@ -84,6 +83,7 @@ import AccountBeo from './AccountBea'
 import { TransactionsItemDetail } from '@/pages/History/TransactionsItemDetail'
 import CardManager from '@/pages/cardManager'
 import TopUpRedeemForm from '@/pages/Vouchers/TopUpRedeemForm'
+import USDCUserCardTopupControl from '@/pages/Vouchers/USDCUserCardTopupControl'
 import AddAdminBottomSheet from './AddAdminBottomSheet'
 import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
@@ -550,6 +550,8 @@ interface Card {
 	currency?: string
 	/** 来自 pass 时用于显示会员号 M-xxxxxx */
 	memberNo?: string
+	/** 来自 pass 时用于显示卡面图片 */
+	image?: string
 }
 
 /** Manage Passes Overlay - 参照 exampleExpress ManageCardsOverlay，支持隐藏/恢复、重命名 */
@@ -738,11 +740,8 @@ export default function MyWalletDashboardNew() {
 
 	const [activeView, setActiveView] = useState<string | null>(null) // 'eoa' | 'aa' | 'ccsa' | null
 	const [isExpressExpanded, setIsExpressExpanded] = useState(false) // exampleExpress 风格：展开显示 passes
-	const [passSearchTerm, setPassSearchTerm] = useState('')
 	const [allItems, setAllItems] = useState<TransferHistork[]>([])
 	const [loading, setLoading] = useState(false)
-	const [eoaBalanceDataState, setEoaBalanceDataState] = useState<'cached' | 'synced' | 'stale'>('synced')
-	const [aaBalanceDataState, setAaBalanceDataState] = useState<'cached' | 'synced' | 'stale'>('synced')
 	const [itemTx, setItemTx] = useState<TransferHistork>()
 	const [showTxDetail, setShowTxDetail] = useState(false)
 	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
@@ -767,6 +766,11 @@ export default function MyWalletDashboardNew() {
 	const [topUpRedeemKey, setTopUpRedeemKey] = useState(0)
 	const [addAdminOpen, setAddAdminOpen] = useState(false)
 	const [addAdminKey, setAddAdminKey] = useState(0)
+	/** Holder topup: when user is holder (not issuer), Reload opens this sheet with selected card */
+	const [holderTopupOpen, setHolderTopupOpen] = useState(false)
+	const [holderTopupCardAddress, setHolderTopupCardAddress] = useState<string | null>(null)
+	/** Holder 卡在列表中展开的 pass id（非发行方点击后原地展开，不滑出面板） */
+	const [expandedPassId, setExpandedPassId] = useState<string | null>(null)
 	const [showRedeemListOpen, setShowRedeemListOpen] = useState(false)
 	const [showNewNftForm, setShowNewNftForm] = useState(false)
 	const [newNftTitle, setNewNftTitle] = useState('')
@@ -857,12 +861,6 @@ export default function MyWalletDashboardNew() {
 		if (!isFinite(rate) || !isFinite(n)) return 0
 		return n * rate
 	}, [ccsaBalance, fxRateUSDCToCurrency])
-
-	const getDataStateBadge = useCallback((state: 'cached' | 'synced' | 'stale') => {
-		if (state === 'cached') return { text: 'Cached', cls: 'bg-white/20 text-white/90', syncedIcon: false }
-		if (state === 'stale') return { text: 'Refresh failed', cls: 'bg-amber-500/25 text-amber-100', syncedIcon: false }
-		return { text: 'Synced now', cls: 'bg-emerald-500/25 text-emerald-100', syncedIcon: false }
-	}, [])
 
 	// 进入时检查 historyPayData：若有 searchResult 则打开 PayScreen 并传入
 	useEffect(() => {
@@ -1035,7 +1033,6 @@ export default function MyWalletDashboardNew() {
 		const aa = profilesRef.current?.[0]?.aaAccount
 		if (!aa) {
 			setAaAccountUsdcBalance('0')
-			setAaBalanceDataState('synced')
 			return '0'
 		}
 		// 单飞：相同请求不重复发出
@@ -1050,7 +1047,6 @@ export default function MyWalletDashboardNew() {
 				const bal = ethers.formatUnits(balanceRaw, 6)
 				setAaAccountUsdcBalance(bal)
 				writeHistoryAaBalanceCache(aa, bal)
-				setAaBalanceDataState('synced')
 				return bal
 			} catch (e) {
 				if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
@@ -1059,12 +1055,10 @@ export default function MyWalletDashboardNew() {
 					if (bal != null) {
 						setAaAccountUsdcBalance(bal)
 						writeHistoryAaBalanceCache(aa, bal)
-						setAaBalanceDataState('synced')
 						return bal
 					}
 				}
 				// RPC 错误且无可信兜底：不更新余额，返回 null 让调用方保留原值
-				setAaBalanceDataState('stale')
 				return null
 			} finally {
 				loadAaAccountBalanceInFlightRef.current = null
@@ -1079,10 +1073,8 @@ export default function MyWalletDashboardNew() {
 		const result = await getBalanceProcess(keyID, setUsdcbalance, setUsdcToUSD)
 		if (result.success && Number.isFinite(Number(result.balance))) {
 			writeHistoryBalanceCache(keyID, Number(result.balance), result.usdcToUSD)
-			setEoaBalanceDataState('synced')
 			return true
 		}
-		setEoaBalanceDataState('stale')
 		return false
 	}, [setUsdcbalance, setUsdcToUSD])
 
@@ -1335,14 +1327,12 @@ export default function MyWalletDashboardNew() {
 		if (cachedBalance) {
 			setUsdcbalance(cachedBalance.usdcbalance)
 			if (typeof cachedBalance.usdcToUSD === 'number') setUsdcToUSD(cachedBalance.usdcToUSD)
-			setEoaBalanceDataState('cached')
 		}
 		const aa = profile?.aaAccount
 		if (aa) {
 			const cachedAaBalance = readHistoryAaBalanceCache(aa)
 			if (cachedAaBalance != null) {
 				setAaAccountUsdcBalance(cachedAaBalance)
-				setAaBalanceDataState('cached')
 			}
 		}
 		const id = requestAnimationFrame(() => {
@@ -1670,26 +1660,18 @@ export default function MyWalletDashboardNew() {
 		[profiles, ccsaCardOwner, infraCardMetadata?.cardOwner, userCardDetails, userCards]
 	)
 
-	/** 判断某 cardId 是否为当前用户所拥有（用于点击时是否允许打开 DETAILS）：按创建者/owner 判断，非「持有 NFT」 */
+	/** 判断某 cardId 是否为当前用户所拥有（用于点击时是否允许打开 DETAILS）：CCSA 仅创建者；其余卡若在 passes 中（持有 NFT/points 或创建者）则可点击。使用 isCardCreator 与 userCards 等避免依赖 passes/isCcsaOwnerStrict 声明顺序 */
 	const isOwnerOfCard = useCallback(
-		(cardId: string) => isCardCreator(cardId),
-		[isCardCreator]
+		(cardId: string) => {
+			if (cardId === 'ccsa') return isCardCreator('ccsa')
+			if (cardId === BEAMIO_USER_CARD_ASSET_ADDRESS) {
+				const infraNfts = (infraCardAssets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0)
+				return infraNfts.length > 0 || isCardCreator(BEAMIO_USER_CARD_ASSET_ADDRESS)
+			}
+			return userCards.some((c) => c.cardAddress.toLowerCase() === cardId.toLowerCase())
+		},
+		[isCardCreator, infraCardAssets?.nfts, userCards]
 	)
-
-	const handleCardClick = (cardId: string) => {
-		if (!isOwnerOfCard(cardId)) return
-		// CCSA 二次校验：仅创建者才允许打开
-		if (cardId === 'ccsa' && !isCcsaOwnerStrict) return
-		setActiveView(activeView === cardId ? null : cardId)
-	}
-
-	// 打开 DETAILS PANEL 时隐藏 footer，关闭时恢复（避免 panel z-80 盖住 footer）
-	useEffect(() => {
-		setShowFooter(!activeView)
-	}, [activeView, setShowFooter])
-
-	/** 仅当用户是该卡的创建者/owner 时才允许显示 DETAILS 面板（按 card.owner() 判断，非持有 NFT） */
-	const isOwnerOfSelectedCard = useMemo(() => isCardCreator(activeView ?? ''), [activeView, isCardCreator])
 
 	/** CCSA 专属：当前用户是否为 CCSA 卡的创建者/owner（链上 card.owner()）。用于面板显示与清除 */
 	const isCcsaOwnerStrict = useMemo(
@@ -1703,15 +1685,36 @@ export default function MyWalletDashboardNew() {
 		[ccsaCardOwner, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount]
 	)
 
-	/** 是否允许显示 DETAILS 面板：ccsa 必须用 isCcsaOwnerStrict，其余用 isOwnerOfSelectedCard */
-	const showDetailsPanel = !!activeView && (activeView === 'ccsa' ? isCcsaOwnerStrict : isOwnerOfSelectedCard)
+	const handleCardClick = (cardId: string) => {
+		if (!isOwnerOfCard(cardId)) return
+		// CCSA 二次校验：仅创建者才允许打开
+		if (cardId === 'ccsa' && !isCcsaOwnerStrict) return
+		// 持有者（非发行方）：原地展开卡片，不滑出面板
+		if (cardId !== 'eoa' && cardId !== 'aa' && cardId !== 'ccsa' && cardId !== BEAMIO_USER_CARD_ASSET_ADDRESS && !isCardCreator(cardId)) {
+			setExpandedPassId((prev) => (prev === cardId ? null : cardId))
+			setActiveView(null)
+			return
+		}
+		setActiveView(activeView === cardId ? null : cardId)
+		setExpandedPassId(null)
+	}
 
-	// 若当前选中的卡用户不是 owner，则关闭 DETAILS（ccsa 用 isCcsaOwnerStrict，避免非 owner 通过任何方式打开）
+	// 打开 DETAILS PANEL 时隐藏 footer，关闭时恢复（避免 panel z-80 盖住 footer）
+	useEffect(() => {
+		setShowFooter(!activeView)
+	}, [activeView, setShowFooter])
+
+	/** 仅当用户是该卡的创建者/owner 时才允许显示 DETAILS 面板（按 card.owner() 判断，非持有 NFT） */
+	const isOwnerOfSelectedCard = useMemo(() => isCardCreator(activeView ?? ''), [activeView, isCardCreator])
+
+	/** 是否允许显示 DETAILS 面板：eoa/aa 或发行方卡显示；持有者卡不显示（改为原地展开） */
+	const showDetailsPanel = !!activeView && (activeView === 'eoa' || activeView === 'aa' || isCardCreator(activeView))
+
+	// 若当前选中的卡用户既非创建者也非持有者，则关闭 DETAILS
 	useEffect(() => {
 		if (!activeView) return
-		const isOwner = activeView === 'ccsa' ? isCcsaOwnerStrict : isOwnerOfSelectedCard
-		if (!isOwner) setActiveView(null)
-	}, [activeView, isOwnerOfSelectedCard, isCcsaOwnerStrict])
+		if (!showDetailsPanel) setActiveView(null)
+	}, [activeView, showDetailsPanel])
 
 	/** 根据背景色（#hex）返回合适文字颜色：深色背景用白字，浅色用黑字 */
 	const textColorForBackground = (hexOrCss: string | undefined): 'white' | 'black' => {
@@ -2015,10 +2018,7 @@ export default function MyWalletDashboardNew() {
 		[passes, archivedPassIds, passNicknames]
 	)
 
-	const filteredPasses = useMemo(
-		() => visiblePasses.filter((p) => p.displayName.toLowerCase().includes(passSearchTerm.toLowerCase())),
-		[visiblePasses, passSearchTerm]
-	)
+	const filteredPasses = visiblePasses
 
 	/** 当前选中的卡：优先从 cards（eoa/aa/ccsa）取，否则从 visiblePasses（基础设施卡、user card）合成 */
 	const selectedCard = useMemo((): Card | undefined => {
@@ -2040,6 +2040,7 @@ export default function MyWalletDashboardNew() {
 			bg: p.bg ?? '',
 			currency: p.currency,
 			memberNo: p.memberNo,
+			image: (p as { image?: string }).image,
 		}
 	}, [activeView, cards, visiblePasses])
 
@@ -2121,7 +2122,7 @@ export default function MyWalletDashboardNew() {
 						<div className={`relative h-[650px] perspective-1000 transition-transform duration-500 ${activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''}`}>
 							{/* LAYER 1: MAIN VAULT (EOA) - 点击折叠 express 或打开详情 */}
 							<div
-								onClick={() => (isExpressExpanded ? setIsExpressExpanded(false) : {})}
+								onClick={() => { if (isExpressExpanded) { setIsExpressExpanded(false); setExpandedPassId(null) } }}
 								className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'scale-90 opacity-100 translate-y-4 brightness-50' : 'scale-95 translate-y-16'}`}
 								style={{ background: 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)', zIndex: 10 }}
 							>
@@ -2136,14 +2137,6 @@ export default function MyWalletDashboardNew() {
 											<img src={base_icon} alt="Base" className={`w-5 h-5 object-contain ${eoaReflash ? 'animate-spin opacity-80' : ''}`} />
 										</button>
 										<span className="font-medium text-lg tracking-wide">USDC on Base</span>
-										{(() => {
-											const badge = getDataStateBadge(eoaBalanceDataState)
-												return (
-													<span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide inline-flex items-center justify-center ${badge.cls}`}>
-														{badge.syncedIcon ? <Check className="w-3 h-3 text-emerald-200" strokeWidth={3} /> : badge.text}
-													</span>
-												)
-										})()}
 									</div>
 									<div className="text-right">
 										<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
@@ -2194,6 +2187,7 @@ export default function MyWalletDashboardNew() {
 									onClick={() => {
 										const next = !isExpressExpanded
 										setIsExpressExpanded(next)
+										if (!next) setExpandedPassId(null)
 										// 展开时若当前是 CCSA DETAILS 且用户非 owner，则关闭 DETAILS，避免非 owner 看到从底部滑出的 CCSA 面板
 										if (next && activeView === 'ccsa' && !isCcsaOwnerStrict) setActiveView(null)
 									}}
@@ -2206,14 +2200,6 @@ export default function MyWalletDashboardNew() {
 												<Zap className="w-4 h-4 fill-current" />
 											</div>
 											<span className="font-medium text-lg tracking-wide">Express Pay</span>
-											{(() => {
-												const badge = getDataStateBadge(aaBalanceDataState)
-												return (
-													<span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide inline-flex items-center justify-center ${badge.cls}`}>
-														{badge.syncedIcon ? <Check className="w-3 h-3 text-emerald-200" strokeWidth={3} /> : badge.text}
-													</span>
-												)
-											})()}
 										</div>
 										<div className="flex items-center justify-end gap-2 text-right">
 											<button
@@ -2223,15 +2209,15 @@ export default function MyWalletDashboardNew() {
 													handleAaRelayQR()
 												}}
 												className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 border border-white/20 inline-flex items-center gap-2 transition-colors"
-												title="Pay with QR (valid 5 min)"
-												aria-label="Pay with QR"
+												title="Pay QR (valid 5 min)"
+												aria-label="Pay QR"
 											>
 												{aaRelaySigning ? (
 													<Loader className="w-4 h-4 animate-spin text-white shrink-0" />
 												) : (
 													<QrCode className="w-4 h-4 text-white shrink-0" />
 												)}
-												<span className="text-xs font-semibold text-white">Pay with QR</span>
+												<span className="text-xs font-semibold text-white">Pay QR</span>
 											</button>
 										</div>
 									</div>
@@ -2258,34 +2244,34 @@ export default function MyWalletDashboardNew() {
 								</div>
 							)}
 
-							{/* LAYER 3: PASSES (CCSA + userCards) - 展开时显示，exampleExpress 风格叠卡 */}
+							{/* LAYER 3: PASSES (CCSA + userCards) - 展开时显示，exampleExpress 风格叠卡；AA 展开时与 AA 卡之间增加 5rem 空间；持有者卡展开时以该卡为界，上方组上移、下方组下移，露出完整卡片 */}
 							{profiles?.[0]?.aaAccount && (
 								<div
-									className={`absolute top-[480px] w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isExpressExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-20 pointer-events-none'}`}
+									className={`absolute w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isExpressExpanded ? 'top-[calc(480px+5rem)] opacity-100 translate-y-0' : 'top-[480px] opacity-0 translate-y-20 pointer-events-none'}`}
 									style={{ zIndex: 15 }}
 								>
-									<div className="mb-4">
-										<div className="bg-white rounded-xl px-4 py-2 flex items-center shadow-sm border border-gray-100">
-											<Search className="w-4 h-4 text-gray-400 mr-2" />
-											<input
-												type="text"
-												placeholder="Search passes..."
-												className="bg-transparent text-sm w-full outline-none text-gray-700 placeholder-gray-400"
-												value={passSearchTerm}
-												onChange={(e) => setPassSearchTerm(e.target.value)}
-											/>
-										</div>
-									</div>
 									<div className="flex items-center justify-between px-2 mb-2">
 										<span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{filteredPasses.length} Passes</span>
 									</div>
 									<div className="relative pb-32">
 										{filteredPasses.length > 0 ? (
-											filteredPasses.map((pass, index) => {
-												const overlap = 135
-												const passTextColor = pass.textColor || 'white'
-												const isLightBg = passTextColor === 'black'
-												return (
+											(() => {
+												const expandedIndex = expandedPassId ? filteredPasses.findIndex((p) => p.id === expandedPassId) : -1
+												const splitOffset = 70
+												return filteredPasses.map((pass, index) => {
+													const overlap = 135
+													const passTextColor = pass.textColor || 'white'
+													const isLightBg = passTextColor === 'black'
+													const isHolderCard = pass.id !== 'eoa' && pass.id !== 'aa' && pass.id !== 'ccsa' && !isCardCreator(pass.id)
+													const isExpanded = isHolderCard && expandedPassId === pass.id
+													const scaleVal = isExpanded ? 1 : Math.max(0.95, 1 - index * 0.01)
+													const translateY = expandedIndex >= 0
+														? index <= expandedIndex
+															? -splitOffset
+															: splitOffset
+														: 0
+													const transformStr = `translateY(${translateY}px) scale(${scaleVal})`
+													return (
 													<div
 														key={pass.id}
 														onClick={() => {
@@ -2293,14 +2279,14 @@ export default function MyWalletDashboardNew() {
 															if (pass.id === 'ccsa' && !isCcsaOwnerStrict) return
 															handleCardClick(pass.id)
 														}}
-														className={`w-full h-48 rounded-[24px] p-6 shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform origin-top hover:translate-y-[-8px] border ${isLightBg ? 'border-black/10' : 'border-white/10'}`}
+														className={`w-full rounded-[24px] p-6 shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] origin-top hover:translate-y-[-8px] border ${isLightBg ? 'border-black/10' : 'border-white/10'} ${isExpanded ? 'min-h-[220px]' : 'h-48'}`}
 														style={{
 															background: pass.bg,
-															zIndex: index,
+															zIndex: isExpanded ? 100 : index,
 															marginTop: index === 0 ? 0 : `-${overlap}px`,
 															color: passTextColor,
-															boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
-															transform: `scale(${Math.max(0.95, 1 - index * 0.01)})`,
+															boxShadow: isExpanded ? '0 8px 32px rgba(0,0,0,0.2)' : '0 -4px 20px rgba(0,0,0,0.1)',
+															transform: transformStr,
 														}}
 													>
 														<div className="flex justify-between items-center mb-3">
@@ -2321,7 +2307,6 @@ export default function MyWalletDashboardNew() {
 																	<span className={`text-[10px] uppercase tracking-wider ${isLightBg ? 'text-gray-700 opacity-90' : 'text-white/70'}`}>
 																		{pass.tierName ?? pass.tier ?? pass.type}
 																	</span>
-																	
 																</div>
 															</div>
 															<div className="text-right">
@@ -2331,22 +2316,38 @@ export default function MyWalletDashboardNew() {
 																</h2>
 															</div>
 														</div>
-														<div className={`mt-auto pt-8 flex flex-col items-end gap-0.5 ${isLightBg ? 'text-gray-800 opacity-90' : 'opacity-90'}`}>
-															{/* 用户获得的 NFT 编号 */}
-															<p className="text-[10px] font-mono tracking-widest">NFT {pass.memberNo}</p>
-															{/* 该 NFT 的 tier */}
-															{/* {(pass.tierName ?? pass.tier) ? (
-																<p className={`text-[10px] ${isLightBg ? 'text-gray-700 opacity-80' : 'opacity-80'}`}>
-																	Tier: {pass.tierName ?? pass.tier}
-																</p>
-															) : null}
-															{pass.tierDescription ? (
-																<p className={`text-[9px] max-w-[80%] text-right line-clamp-1 ${isLightBg ? 'text-gray-600 opacity-60' : 'opacity-60'}`}>{pass.tierDescription}</p>
-															) : null} */}
-														</div>
+														{/* 持有者展开时显示 Reload + Gift 按钮 */}
+														{isExpanded ? (
+															<div className="mt-4 flex items-center justify-between gap-3">
+																<div className="flex gap-3">
+																	<button
+																		type="button"
+																		onClick={(e) => { e.stopPropagation(); if (ethers.isAddress(pass.id)) { setHolderTopupCardAddress(pass.id); setShowFooter(false); setHolderTopupOpen(true); } }}
+																		className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-medium text-sm ${isLightBg ? 'bg-black/10 text-gray-900 border border-black/10' : 'bg-white/20 text-white border border-white/20'}`}
+																	>
+																		<Plus className="w-4 h-4" style={{ color: passTextColor }} />
+																		<span>Reload</span>
+																	</button>
+																	<button
+																		type="button"
+																		onClick={(e) => { e.stopPropagation(); navigate('/settings') }}
+																		className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-medium text-sm ${isLightBg ? 'bg-black/10 text-gray-900 border border-black/10' : 'bg-white/20 text-white border border-white/20'}`}
+																	>
+																		<Gift className="w-4 h-4" style={{ color: passTextColor }} />
+																		<span>Gift</span>
+																	</button>
+																</div>
+																<p className={`text-[10px] font-mono tracking-widest shrink-0 ${isLightBg ? 'text-gray-700 opacity-90' : 'opacity-90'}`}>NFT {pass.memberNo}</p>
+															</div>
+														) : (
+															<div className={`mt-auto pt-8 flex flex-col items-end gap-0.5 ${isLightBg ? 'text-gray-800 opacity-90' : 'opacity-90'}`}>
+																<p className="text-[10px] font-mono tracking-widest">NFT {pass.memberNo}</p>
+															</div>
+														)}
 													</div>
 												)
 											})
+											})()
 										) : (
 											<div className="text-center py-10 text-gray-400 text-sm">No passes found</div>
 										)}
@@ -2386,7 +2387,7 @@ export default function MyWalletDashboardNew() {
 								<ChevronDown className="w-6 h-6" />
 							</button>
 							<div className="flex items-center gap-2">
-								{selectedCard && selectedCard.id !== 'eoa' && selectedCard.id !== 'aa' && (
+								{selectedCard && selectedCard.id !== 'eoa' && selectedCard.id !== 'aa' && isOwnerOfSelectedCard && (
 									<button
 										type="button"
 										onClick={() => setShowNewNftForm(true)}
@@ -2411,10 +2412,10 @@ export default function MyWalletDashboardNew() {
 						{/* 可滚动内容；背景透明，由面板容器的一条渐变统一呈现 */}
 						{selectedCard && (
 							<div className="flex-1 overflow-y-auto px-6 pt-2 pb-24 z-10 no-scrollbar">
-								{/* 顶部预览：移除旧背景与 logo，改为居中展示 Market 卡片 */}
+								{/* 顶部预览：CCSA 用 greenCard，user card 有 image 则用 image，否则 blackCard */}
 								<div className="w-full min-h-[14rem] rounded-[24px] bg-[#ECECF1] border border-white/70 shadow-sm relative overflow-hidden mb-8 flex items-center justify-center px-4">
 									<img
-										src={selectedCard.id === 'ccsa' ? greenCard : blackCard}
+										src={selectedCard.id === 'ccsa' ? greenCard : (selectedCard.image || blackCard)}
 										alt="Market card preview"
 										className="w-full max-w-[420px] object-contain drop-shadow-[0_20px_40px_rgba(0,0,0,0.18)]"
 										draggable={false}
@@ -2513,8 +2514,8 @@ export default function MyWalletDashboardNew() {
 											/>
 
 										</div>
-									) : (
-										/* CCSA Card：express 风格 Pay / Top Up / New NFT / Details 四键网格 */
+									) : isOwnerOfSelectedCard ? (
+										/* 发行方：Pay / Top Up / New NFT / Add Admin 四键网格 */
 										<div className="grid grid-cols-4 gap-3">
 											<ExpressAction
 												label="Pay"
@@ -2525,7 +2526,6 @@ export default function MyWalletDashboardNew() {
 													setVoucherPayAmount('')
 													setVoucherPayToAA('')
 													setVoucherPayError('')
-													// setScanIntent('payBill')
 													setShowFooter(false)
 													setActiveView(null)
 													setShowTenKeySlide(true)
@@ -2568,6 +2568,30 @@ export default function MyWalletDashboardNew() {
 														setShowFooter(false)
 														setAddAdminOpen(true)
 													}
+												}}
+											/>
+										</div>
+									) : (
+										/* 持有者（非发行方）：Reload 打开充值流程，Gift 跳转 Market */
+										<div className="grid grid-cols-2 gap-3">
+											<ExpressAction
+												label="Reload"
+												iconBgClass="bg-[#1562f0] shadow-blue-600/30"
+												icon={<Plus className="w-5 h-5" />}
+												onClick={() => {
+													if (selectedCard?.id && ethers.isAddress(selectedCard.id)) {
+														setHolderTopupCardAddress(selectedCard.id)
+														setShowFooter(false)
+														setHolderTopupOpen(true)
+													}
+												}}
+											/>
+											<ExpressAction
+												label="Gift"
+												iconBgClass="bg-green-500 shadow-green-500/30"
+												icon={<Gift className="w-5 h-5" />}
+												onClick={() => {
+													navigate('/settings')
 												}}
 											/>
 										</div>
@@ -3669,6 +3693,37 @@ export default function MyWalletDashboardNew() {
 								onClose={() => { setAddAdminOpen(false); setShowFooter(true) }}
 								onSuccess={() => refetchUserCards()}
 							/>
+						</div>
+					</div>
+				</div>
+
+				{/* Holder Topup：持有者（非发行方）Reload 打开充值流程 */}
+				<div
+					className={`fixed inset-0 z-[100] ${holderTopupOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+					aria-hidden={!holderTopupOpen}
+				>
+					<div
+						className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${holderTopupOpen ? 'opacity-100' : 'opacity-0'}`}
+						onClick={() => { setHolderTopupOpen(false); setHolderTopupCardAddress(null); setShowFooter(true) }}
+					/>
+					<div
+						className={`absolute inset-x-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-[22px] max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-hidden pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out ${holderTopupOpen ? 'translate-y-0' : 'translate-y-full'}`}
+					>
+						<div className="pt-2 pb-1 flex justify-center">
+							<div className="h-1 w-10 rounded-full bg-slate-500/70" />
+						</div>
+						<div className="px-4 pb-4 overflow-y-auto max-h-[calc(100dvh-60px)] flex flex-col">
+							{holderTopupCardAddress ? (
+								<USDCUserCardTopupControl
+									cardAddress={holderTopupCardAddress}
+									onClose={(assets) => {
+										setHolderTopupOpen(false)
+										setHolderTopupCardAddress(null)
+										setShowFooter(true)
+										if (assets) refetchUserCards()
+									}}
+								/>
+							) : null}
 						</div>
 					</div>
 				</div>

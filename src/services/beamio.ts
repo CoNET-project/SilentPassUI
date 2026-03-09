@@ -1942,7 +1942,7 @@ export const getFololowsData = async (wallet: string) => {
 
 //		curl -v "https://ipfs.conet.network/api/getFragment?hash=0x5de59d1bc6d7e11ef2c304163773d80089f39802cc77a9b3944fa4ea8fdbe42c"
 
-export const postToIPFS = async (profile: profile, image: string) => {
+export const postToIPFS = async (profile: profile, image: string): Promise<string | null> => {
 	const url = `${ipfsEndpoint}storageFragment`
 	const wallet = new ethers.Wallet(profile.privateKeyArmor)
 	const hash = keccak256(toUtf8Bytes(image))
@@ -1961,23 +1961,41 @@ export const postToIPFS = async (profile: profile, image: string) => {
 			body: JSON.stringify(body)
 		})
 
+		const respText = await resp.text()
+
 		if (!resp.ok) {
-			console.error("postToIPFS error: Response not OK", resp.status, resp.statusText)
-			return null
+			let errMsg = `IPFS upload failed: ${resp.status} ${resp.statusText}`
+			try {
+				const parsed = respText ? JSON.parse(respText) : null
+				if (parsed?.error) errMsg = parsed.error
+			} catch (_) {
+				if (respText) errMsg += ` - ${respText.slice(0, 200)}`
+			}
+			console.error("postToIPFS error:", errMsg)
+			throw new Error(errMsg)
 		}
 
-		// 可选：检查响应数据
-		const responseData = await resp.json().catch(() => null)
-		if (responseData && responseData.error) {
-			console.error("postToIPFS error:", responseData.error)
-			return null
+		if (respText) {
+			try {
+				const data = JSON.parse(respText)
+				if (data?.error) {
+					console.error("postToIPFS error:", data.error)
+					throw new Error(data.error)
+				}
+			} catch (e: any) {
+				if (e instanceof SyntaxError) {
+					// Non-JSON body, treat as success
+				} else {
+					throw e
+				}
+			}
 		}
-		
-	} catch (err) {
+
+		return hash
+	} catch (err: any) {
 		console.error("postToIPFS error:", err)
-		return null
+		throw err instanceof Error ? err : new Error(err?.message ?? "IPFS upload failed")
 	}
-	return hash
 }
 
 //			pgp workflow

@@ -265,7 +265,7 @@ const CashTreesGetButton = ({ price, count = 0, onClick, isVariable = false, ite
   // When user owns card and cannot upgrade: id 202 → hide button, id 201 → show "Topup"
   if (count > 0 && !canUpgrade && itemId === 202) return null
   const btnLabel = count > 0 && isVariable
-    ? (itemId === 201 ? (canUpgrade ? "Unlock VIP" : "Topup") : itemId === 202 ? "Topup" : `Load $${price}+`)
+    ? (itemId === 201 ? (canUpgrade ? "Upgrade VIP" : "Topup") : itemId === 202 ? "Topup" : `Load $${price}+`)
     : isVariable ? `Load $${price}+` : `$${price}`
   return (
     <button
@@ -733,9 +733,9 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet, can
         {ownsCardNoUpgrade ? (
           <button onClick={() => onBuy(item)} className="flex-1 bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Topup</button>
         ) : count > 0 ? (
-          <><button onClick={onOpenWallet} className="flex-1 border-2 px-4 py-3.5 rounded-full font-bold text-[15px] active:scale-95 transition-transform flex items-center justify-center gap-2 bg-white border-gray-200 text-gray-900"><Wallet size={18} /> My Wallet <span className="text-xs px-1.5 py-0.5 rounded-md ml-1 bg-gray-200 text-gray-900">x{count}</span></button><button onClick={() => onBuy(item)} className="flex-[1.5] bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Buy Another <span className="opacity-80 font-medium text-xs ml-1">${item.price}</span></button></>
+          <button onClick={() => onBuy(item)} className="flex-1 bg-[#1562f0] hover:bg-blue-600 text-white px-4 py-3.5 rounded-full font-bold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Reload</button>
         ) : (
-          <div className="flex-1 flex gap-4 items-center"><div className="flex-1"><div className="text-xs uppercase font-bold text-gray-500">Total Price</div><div className="text-3xl font-bold tracking-tight text-gray-900">${item.price}</div></div><button onClick={() => onBuy(item)} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-full font-bold text-[17px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Purchase <ArrowRight size={20} /></button></div>
+          <div className="flex-1 flex gap-4 items-center"><div className="flex-1"><div className="text-xs uppercase font-bold text-gray-500">Min. Load</div><div className="text-3xl font-bold tracking-tight text-gray-900">${item.price}</div></div><button onClick={() => onBuy(item)} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-full font-bold text-[17px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">Purchase <ArrowRight size={20} /></button></div>
         )}
       </div>
     </div>
@@ -1151,6 +1151,7 @@ export default function Market() {
 	const [topupCardAddress, setTopupCardAddress] = useState<string>(USDC_TOPUP_CARD_ADDRESS)
 	/** Item id when opening topup from ProductDetailModal (201/202) - used for quick amount buttons */
 	const [topupItemId, setTopupItemId] = useState<number | null>(null)
+	const [topupPresetAmountEmpty, setTopupPresetAmountEmpty] = useState(false)
 	const [purchaseSheetOpen, setPurchaseSheetOpen] = useState(false)
 	const [purchaseItem, setPurchaseItem] = useState<PurchaseModalItem | null>(null)
 	const [purchaseOwnsCard, setPurchaseOwnsCard] = useState(false)
@@ -1446,6 +1447,7 @@ export default function Market() {
 						setShowFooter(true)
 						setSettingsOpen("")
 						setTopupItemId(null)
+						setTopupPresetAmountEmpty(false)
 						setQrPayload("")
 					}}
 					aria-hidden
@@ -1479,12 +1481,15 @@ export default function Market() {
 										cardAddress={topupCardAddress}
 										quickOptions={ undefined}
 										itemId={topupItemId ?? undefined}
+										initialTierPreference={topupItemId === 201 ? "max" : topupItemId === 202 ? "min" : undefined}
+										presetAmountEmpty={topupPresetAmountEmpty}
 										onClose={(val) => {
 											if (val != null) {
 												setMyAssets((prev) => (prev ? { ...prev, ...val } : val))
 											}
 											setSettingsOpen("")
 											setTopupItemId(null)
+											setTopupPresetAmountEmpty(false)
 											setShowFooter(true)
 											closeCardDetail()
 											flash()
@@ -1531,6 +1536,7 @@ export default function Market() {
 					setShowFooter(false)
 					setTopupCardAddress(USDC_TOPUP_CARD_ADDRESS)
 					setTopupItemId(it?.id ?? null)
+					setTopupPresetAmountEmpty((it?.id === 201 || it?.id === 202) && cashTreesCount > 0)
 					setSettingsOpen("USDCTopup")
 				}}
 				onOpenWallet={viewingItem.id === 101 && isMember ? () => { setViewingItem(null); setOverlayMode("cardItem"); setShowCardDetail(true); setShowFooter(false); } : () => setViewingItem(null)}

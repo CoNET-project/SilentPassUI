@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { ethers } from "ethers"
 import { useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -33,9 +33,40 @@ type Props = {
 	quickOptions?: number[]
 	/** Item id when opened from Market (201/202) - used to customize loadMoreHint: 201→Unlock VIP, 202→Top-up */
 	itemId?: number
+	/** When user has no card: initial tier to select. 201→max (Black VIP), 202→min (Green). */
+	initialTierPreference?: "min" | "max"
+	/** When true, do not pre-fill amount (e.g. from Reload flow). */
+	presetAmountEmpty?: boolean
 }
 
 const MIN_TOPUP_USDC6 = 100_000n // 0.1 USDC
+
+const CARD_METADATA_STORAGE_PREFIX = "beamio_card_metadata_"
+
+type CachedCardMetadata = {
+	tiers: { index: number; minUsdc6: string; name: string; description?: string; image?: string; backgroundColor?: string; upgradeByBalance?: boolean }[]
+	cardName: string
+}
+
+function loadCardMetadataFromStorage(cardAddress: string): CachedCardMetadata | null {
+	try {
+		const key = `${CARD_METADATA_STORAGE_PREFIX}${cardAddress.toLowerCase()}`
+		const raw = localStorage.getItem(key)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as CachedCardMetadata
+		if (!parsed?.tiers || !Array.isArray(parsed.tiers) || typeof parsed.cardName !== "string") return null
+		return parsed
+	} catch {
+		return null
+	}
+}
+
+function saveCardMetadataToStorage(cardAddress: string, data: CachedCardMetadata) {
+	try {
+		const key = `${CARD_METADATA_STORAGE_PREFIX}${cardAddress.toLowerCase()}`
+		localStorage.setItem(key, JSON.stringify(data))
+	} catch {}
+}
 
 const getCurrencyDecimals = (currency: string) => {
 	const c = (currency || "USDC").toUpperCase()
@@ -103,7 +134,7 @@ const formatBalanceWithCurrencyProtocol = (amount: number, currency: string): { 
 	return { prefix, amount: amountText, suffix }
 }
 
-export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOptions: quickOptionsProp, itemId }: Props) {
+export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOptions: quickOptionsProp, itemId, initialTierPreference, presetAmountEmpty }: Props) {
 	const navigate = useNavigate()
 	const { profiles } = useDaemonContext()
 	const profile = profiles?.[0]
@@ -117,7 +148,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 	const [assets, setAssets] = useState<any | null>(null)
 	const [cardName, setCardName] = useState<string>("")
 	const [topupIntent, setTopupIntent] = useState<USDCUserCardTopupIntent>("topup")
-	const [amount, setAmount] = useState("1")
+	const [amount, setAmount] = useState("")
 	const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(null)
 	const [usdcPerCurrencyUnit, setUsdcPerCurrencyUnit] = useState<number>(1)
 	const [insufficientUsdcBalance, setInsufficientUsdcBalance] = useState(false)
@@ -128,6 +159,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		currentTier: TierItem | null
 		nextTier: TierItem | null
 	}>({ show: false, currentTier: null, nextTier: null })
+	const amountInputRef = useRef<HTMLInputElement>(null)
 
 	useEffect(() => {
 		let alive = true
@@ -139,11 +171,35 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 			}
 			try {
 				setLoading(true)
-				const [metaApi, metaUri, contractTiers, myAssets] = await Promise.all([
+				const cached = loadCardMetadataFromStorage(cardAddress)
+				if (cached && cached.tiers.length > 0) {
+					const merged: TierItem[] = cached.tiers.map((t) => ({
+						index: t.index,
+						minUsdc6: BigInt(t.minUsdc6 ?? "0"),
+						name: t.name,
+						description: t.description,
+						image: t.image,
+						backgroundColor: normalizeHexColor(t.backgroundColor),
+						upgradeByBalance: t.upgradeByBalance,
+					}))
+					if (!alive) return
+					setTiers(merged)
+					setCardName(cached.cardName)
+					const [myAssets, eoaUsdc] = await Promise.all([
+						getMyAssets(profile, cardAddress),
+						getEOAUSDCBalance(profile),
+					])
+					if (!alive) return
+					setAssets(myAssets)
+					setLiveUsdcBalance(String(eoaUsdc ?? "0"))
+					return
+				}
+				const [metaApi, metaUri, contractTiers, myAssets, eoaUsdc] = await Promise.all([
 					getCardMetadataFromApi(cardAddress),
 					getCardMetadataFromUri(cardAddress),
 					getCardTiersFromContract(cardAddress),
 					getMyAssets(profile, cardAddress),
+					getEOAUSDCBalance(profile),
 				])
 				if (!alive) return
 				const metaTiers = metaApi?.tiers ?? metaUri?.tiers ?? []
@@ -163,9 +219,21 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 					.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : 1))
 				setTiers(merged)
 				setAssets(myAssets)
-				setLiveUsdcBalance(String(myAssets?.usdcBalance ?? "0"))
+				setLiveUsdcBalance(String(eoaUsdc ?? "0"))
 				const name = (metaApi?.name ?? metaUri?.name ?? "").trim()
 				setCardName(name)
+				saveCardMetadataToStorage(cardAddress, {
+					tiers: merged.map((t) => ({
+						index: t.index,
+						minUsdc6: t.minUsdc6.toString(),
+						name: t.name,
+						description: t.description,
+						image: t.image,
+						backgroundColor: t.backgroundColor,
+						upgradeByBalance: t.upgradeByBalance,
+					})),
+					cardName: name,
+				})
 			} catch (e: any) {
 				if (!alive) return
 				setError(e?.message ?? "Failed to load card information.")
@@ -299,6 +367,13 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 			: "0.00"
 	}
 
+	/** For first_purchase/upgrade pre-fill: ceiling as integer, no decimals */
+	const points6ToCardAmountInt = (points6: bigint) => {
+		const raw = Number(ethers.formatUnits(points6, 6))
+		if (!Number.isFinite(raw)) return "0"
+		return String(Math.ceil(raw - 1e-9))
+	}
+
 	const points6ToCardAmountCeil = (points6: bigint) => {
 		const raw = Number(ethers.formatUnits(points6, 6))
 		if (!Number.isFinite(raw)) return "0.00"
@@ -328,7 +403,6 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 
 	const minTier = tiers[0]
 	const maxTier = tiers.length > 0 ? tiers[tiers.length - 1] : null
-	const quickOptions = useMemo(() => quickOptionsProp ?? [25, 50, 100], [quickOptionsProp])
 	const nextTier = useMemo(() => tiers.find((t) => t.minUsdc6 > points6), [tiers, points6])
 	const selectedTier = useMemo(
 		() => (selectedTierIndex == null ? null : tiers.find((t) => t.index === selectedTierIndex) ?? null),
@@ -341,11 +415,22 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		[hasMembership, effectiveCurrentTier]
 	)
 
+	/** When user has no card: min tier → [50, 75, 99]; non-min tier → [100, 200, 500]. Otherwise use prop or default. */
+	const quickOptions = useMemo(() => {
+		if (quickOptionsProp != null) return quickOptionsProp
+		if (!hasEffectiveMembership && minTier) {
+			const effectiveTier = selectedTier ?? minTier
+			const isMinTier = effectiveTier.minUsdc6 === minTier.minUsdc6
+			return isMinTier ? [50, 75, 99] : [100, 200, 500]
+		}
+		return [25, 50, 100]
+	}, [quickOptionsProp, hasEffectiveMembership, minTier, selectedTier])
+
 	const applyTierSelection = (tier: TierItem) => {
 		setSelectedTierIndex(tier.index)
 		if (!hasEffectiveMembership) {
 			setTopupIntent("first_purchase")
-			setAmount(points6ToCardAmount(tier.minUsdc6))
+			setAmount(points6ToCardAmountInt(tier.minUsdc6))
 			return
 		}
 		const shouldUpgrade = tier.minUsdc6 > points6
@@ -357,29 +442,39 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		setTopupIntent("upgrade")
 		if (tier.upgradeByBalance) {
 			const delta = tier.minUsdc6 > points6 ? tier.minUsdc6 - points6 : MIN_TOPUP_USDC6
-			setAmount(points6ToCardAmount(delta))
+			setAmount(points6ToCardAmountInt(delta))
 			return
 		}
-		setAmount(points6ToCardAmount(tier.minUsdc6))
+		setAmount(points6ToCardAmountInt(tier.minUsdc6))
 	}
 
 	useEffect(() => {
 		if (loading) return
 		if (selectedTier) return
+		if (presetAmountEmpty) {
+			setTopupIntent("topup")
+			setAmount("")
+			return
+		}
 		if (!hasEffectiveMembership) {
 			setTopupIntent("first_purchase")
-			setAmount(points6ToCardAmount(minTier?.minUsdc6 ?? 1_000_000n))
+			const tier = initialTierPreference === "max" && maxTier ? maxTier : minTier
+			const min6 = tier?.minUsdc6 ?? 1_000_000n
+			setAmount(points6ToCardAmountInt(min6))
+			if (initialTierPreference && tier) {
+				setSelectedTierIndex(tier.index)
+			}
 			return
 		}
 		if (nextTier) {
 			setTopupIntent("upgrade")
 			const delta = nextTier.minUsdc6 > points6 ? nextTier.minUsdc6 - points6 : MIN_TOPUP_USDC6
-			setAmount(points6ToCardAmount(delta))
+			setAmount(points6ToCardAmountInt(delta))
 			return
 		}
 		setTopupIntent("topup")
-		setAmount("1")
-	}, [loading, hasEffectiveMembership, minTier?.minUsdc6, nextTier, points6, selectedTier, cardCurrency, usdcPerCurrencyUnit])
+		setAmount("")
+	}, [loading, hasEffectiveMembership, minTier?.minUsdc6, maxTier, nextTier, points6, selectedTier, cardCurrency, usdcPerCurrencyUnit, initialTierPreference, presetAmountEmpty])
 
 	const requiredMinPoints6ForUi = useMemo(() => {
 		if (!hasEffectiveMembership) {
@@ -490,6 +585,13 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		}
 	}, [amount, cardAddress, profile?.keyID])
 
+	// Focus amount input when entering (after loading, not in success state)
+	useEffect(() => {
+		if (loading || topupSuccessTxHash) return
+		const t = setTimeout(() => amountInputRef.current?.focus(), 100)
+		return () => clearTimeout(t)
+	}, [loading, topupSuccessTxHash])
+
 	useEffect(() => {
 		let alive = true
 		const run = async () => {
@@ -534,12 +636,14 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 				return
 			}
 			amount6 = await cardAmountToSafeUsdc6(amount || "0")
-			// Upgrade: ensure USDC sent meets tier threshold (oracle+0.005+round may undercut)
+			// Upgrade: only bump when user's input is close to threshold (intended upgrade, rounding may undercut)
+			// If amount6 << threshold, user wants normal topup - do not bump
 			if (nextTier && effectiveCurrentTier) {
 				const amountNeededPoints6 = nextTier.upgradeByBalance
 					? (nextTier.minUsdc6 > points6 ? nextTier.minUsdc6 - points6 : 0n)
 					: nextTier.minUsdc6
-				if (amountNeededPoints6 > 0n && amount6 < amountNeededPoints6) {
+				const CLOSE_THRESHOLD = 95n // 95% - within 5% of threshold
+				if (amountNeededPoints6 > 0n && amount6 < amountNeededPoints6 && amount6 * 100n >= amountNeededPoints6 * CLOSE_THRESHOLD) {
 					amount6 = amountNeededPoints6
 				}
 			}
@@ -762,6 +866,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 									{formatBalanceWithCurrencyProtocol(0, cardCurrency).prefix}
 								</span>
 								<input
+									ref={amountInputRef}
 									value={amount}
 									onChange={(e) => {
 										const raw = e.target.value

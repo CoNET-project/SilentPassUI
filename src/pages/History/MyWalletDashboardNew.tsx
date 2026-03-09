@@ -2279,7 +2279,7 @@ export default function MyWalletDashboardNew() {
 															if (pass.id === 'ccsa' && !isCcsaOwnerStrict) return
 															handleCardClick(pass.id)
 														}}
-														className={`w-full rounded-[24px] p-6 shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] origin-top hover:translate-y-[-8px] border ${isLightBg ? 'border-black/10' : 'border-white/10'} ${isExpanded ? 'min-h-[220px]' : 'h-48'}`}
+														className={`w-full rounded-[24px] p-6 shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] origin-top hover:translate-y-[-8px] border flex flex-col ${isLightBg ? 'border-black/10' : 'border-white/10'} ${isExpanded ? 'min-h-[220px]' : 'h-48'}`}
 														style={{
 															background: pass.bg,
 															zIndex: isExpanded ? 100 : index,
@@ -2316,9 +2316,9 @@ export default function MyWalletDashboardNew() {
 																</h2>
 															</div>
 														</div>
-														{/* 持有者展开时显示 Reload + Gift 按钮 */}
+														{/* 持有者展开时显示 Reload + Gift 按钮，对齐卡片底部，距底 2rem */}
 														{isExpanded ? (
-															<div className="mt-4 flex items-center justify-between gap-3">
+															<div className="mt-auto flex items-center justify-between gap-3">
 																<div className="flex gap-3">
 																	<button
 																		type="button"
@@ -2340,7 +2340,7 @@ export default function MyWalletDashboardNew() {
 																<p className={`text-[10px] font-mono tracking-widest shrink-0 ${isLightBg ? 'text-gray-700 opacity-90' : 'opacity-90'}`}>NFT {pass.memberNo}</p>
 															</div>
 														) : (
-															<div className={`mt-auto pt-8 flex flex-col items-end gap-0.5 ${isLightBg ? 'text-gray-800 opacity-90' : 'opacity-90'}`}>
+															<div className={`mt-auto flex flex-col items-end gap-0.5 ${isLightBg ? 'text-gray-800 opacity-90' : 'opacity-90'}`}>
 																<p className="text-[10px] font-mono tracking-widest">NFT {pass.memberNo}</p>
 															</div>
 														)}
@@ -3716,6 +3716,7 @@ export default function MyWalletDashboardNew() {
 							{holderTopupCardAddress ? (
 								<USDCUserCardTopupControl
 									cardAddress={holderTopupCardAddress}
+									presetAmountEmpty
 									onClose={(assets) => {
 										setHolderTopupOpen(false)
 										setHolderTopupCardAddress(null)

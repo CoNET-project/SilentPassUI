@@ -25,6 +25,8 @@ const CURRENCY_META: Record<CreateBeamioCardParams["currency"], { flag: string; 
 
 /** Target file size 37MB so base64 (~49MB) stays under server 50MB limit */
 const TARGET_MAX_BYTES = 37 * 1024 * 1024
+/** When 413, retry with JPEG under this size (base64 ~1.3x; nginx default 1MB) */
+const JPEG_RETRY_MAX_BYTES = 700 * 1024
 const IPFS_GET_FRAGMENT = "https://ipfs.conet.network/api/getFragment?hash="
 
 function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
@@ -48,6 +50,35 @@ function toBlobFormat(mime: string): "image/png" | "image/jpeg" | "image/webp" {
 	if (mime === "image/png") return "image/png"
 	if (mime === "image/webp") return "image/webp"
 	return "image/jpeg"
+}
+
+/**
+ * Compress blob to JPEG to reduce size (e.g. when 413). Tries quality steps, then scales down if needed.
+ */
+async function compressToJpeg(blob: Blob, maxRawBytes: number): Promise<Blob> {
+	const img = await loadImageFromBlob(blob)
+	const w = img.naturalWidth || img.width
+	const h = img.naturalHeight || img.height
+	const canvas = document.createElement("canvas")
+	canvas.width = w
+	canvas.height = h
+	const ctx = canvas.getContext("2d")
+	if (!ctx) return blob
+	ctx.imageSmoothingEnabled = true
+	ctx.imageSmoothingQuality = "high"
+	ctx.drawImage(img, 0, 0, w, h)
+	for (const q of [0.85, 0.75, 0.65, 0.5, 0.35]) {
+		const out = await new Promise<Blob | null>((r) => canvas.toBlob((b) => r(b), "image/jpeg", q))
+		if (out && out.size <= maxRawBytes) return out
+	}
+	const scale = Math.sqrt((maxRawBytes * 0.9) / (blob.size || 1))
+	const tw = Math.max(1, Math.round(w * scale))
+	const th = Math.max(1, Math.round(h * scale))
+	canvas.width = tw
+	canvas.height = th
+	ctx.drawImage(img, 0, 0, tw, th)
+	const out = await new Promise<Blob | null>((r) => canvas.toBlob((b) => r(b), "image/jpeg", 0.7))
+	return out || blob
 }
 
 /**
@@ -267,13 +298,27 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 				blob = await resizeToFitLimit(file, TARGET_MAX_BYTES)
 				Toast.show({ content: "Image resized to <37MB", icon: "success" })
 			}
-			const reader = new FileReader()
-			const dataUrl = await new Promise<string>((resolve, reject) => {
-				reader.onload = () => resolve(String(reader.result))
-				reader.onerror = () => reject(reader.error)
-				reader.readAsDataURL(blob)
-			})
-			const hash = await postToIPFS(profile, dataUrl)
+			const toDataUrl = (b: Blob) =>
+				new Promise<string>((resolve, reject) => {
+					const r = new FileReader()
+					r.onload = () => resolve(String(r.result))
+					r.onerror = () => reject(r.error)
+					r.readAsDataURL(b)
+				})
+			let dataUrl = await toDataUrl(blob)
+			let hash: string | null = null
+			try {
+				hash = await postToIPFS(profile, dataUrl)
+			} catch (err: any) {
+				if (err?.message?.includes?.("413") && !isSvg) {
+					Toast.show({ content: "Compressing to JPEG…", icon: "loading" })
+					blob = await compressToJpeg(blob, JPEG_RETRY_MAX_BYTES)
+					dataUrl = await toDataUrl(blob)
+					hash = await postToIPFS(profile, dataUrl)
+				} else {
+					throw err
+				}
+			}
 			if (hash) {
 				const url = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`
 				updateTier(tierIndex, "image", url)
@@ -307,13 +352,27 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 				blob = await resizeToFitLimit(file, TARGET_MAX_BYTES)
 				Toast.show({ content: "Image resized to <37MB", icon: "success" })
 			}
-			const reader = new FileReader()
-			const dataUrl = await new Promise<string>((resolve, reject) => {
-				reader.onload = () => resolve(String(reader.result))
-				reader.onerror = () => reject(reader.error)
-				reader.readAsDataURL(blob)
-			})
-			const hash = await postToIPFS(profile, dataUrl)
+			const toDataUrl = (b: Blob) =>
+				new Promise<string>((resolve, reject) => {
+					const r = new FileReader()
+					r.onload = () => resolve(String(r.result))
+					r.onerror = () => reject(r.error)
+					r.readAsDataURL(b)
+				})
+			let dataUrl = await toDataUrl(blob)
+			let hash: string | null = null
+			try {
+				hash = await postToIPFS(profile, dataUrl)
+			} catch (err: any) {
+				if (err?.message?.includes?.("413") && !isSvg) {
+					Toast.show({ content: "Compressing to JPEG…", icon: "loading" })
+					blob = await compressToJpeg(blob, JPEG_RETRY_MAX_BYTES)
+					dataUrl = await toDataUrl(blob)
+					hash = await postToIPFS(profile, dataUrl)
+				} else {
+					throw err
+				}
+			}
 			if (hash) {
 				setMetaImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`)
 				Toast.show({ content: "Image uploaded", icon: "success" })

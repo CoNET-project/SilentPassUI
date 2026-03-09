@@ -39,7 +39,7 @@ import {
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteCurrencyAmountInUSDC, quoteUSDCToCAD } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteCurrencyAmountInUSDC, quoteUSDCToCAD, postUSDCUserCardTopup } from "@/services/BeamioCard"
 import { fiatPrefix } from "@/services/currency"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
@@ -53,6 +53,8 @@ import blackCard from "./assets/BlackCard.png"
 const THEME = { bg: "#F2F2F7" }
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 const INFRASTRUCTURE_CARD_ADDRESS = "0xf0Ce0ae91F74F67893E00307CabEa8C058939f03"
+/** Card address for USDC Top Up panel (purchasing/loading credits). */
+const USDC_TOPUP_CARD_ADDRESS = "0xf99018DfFdb0c5657C93ca14DB2900CEbe1168A7"
 
 const CATEGORIES = [
   { id: "membership", name: "Memberships", icon: <Store size={20} />, color: "bg-purple-100 text-purple-600" },
@@ -728,7 +730,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
   )
 }
 
-type ProfileForAssets = { keyID?: string | null; aaAccount?: string | null }
+type ProfileForTopup = { keyID?: string | null; aaAccount?: string | null; privateKeyArmor?: string | null }
 
 const PurchaseCreditsSheet = ({
   open,
@@ -737,18 +739,20 @@ const PurchaseCreditsSheet = ({
   cardAddress,
   profile,
   onClose,
-  onConfirm,
+  onSuccess,
 }: {
   open: boolean
   item: PurchaseModalItem | null
   ownsCard: boolean
   cardAddress: string
-  profile: ProfileForAssets | null | undefined
+  profile: ProfileForTopup | null | undefined
   onClose: () => void
-  onConfirm: (amount: number) => void
+  onSuccess?: (assets?: unknown) => void
 }) => {
   const [amountText, setAmountText] = useState("")
   const [upgradeCapsule, setUpgradeCapsule] = useState<{ amountNeededCad: number; nextTierName: string } | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
 
   const { minAmount, maxAmount, quickOptions } = useMemo(() => {
     const max = item?.maxPrice != null ? Number(item.maxPrice) : undefined
@@ -764,6 +768,7 @@ const PurchaseCreditsSheet = ({
       return
     }
     setAmountText(String(item.price ?? 50))
+    setSubmitError("")
   }, [open, item, minAmount])
 
   useEffect(() => {
@@ -825,6 +830,39 @@ const PurchaseCreditsSheet = ({
     run()
     return () => { cancelled = true }
   }, [open, ownsCard, cardAddress, profile?.keyID, item])
+
+  const handleConfirm = async () => {
+    if (!profile?.privateKeyArmor || !cardAddress || !item) return
+    const amt = Number(amountText)
+    if (!Number.isFinite(amt) || amt <= 0) return
+    setSubmitError("")
+    setSubmitting(true)
+    try {
+      const currency = (item as { currency?: string })?.currency ?? "CAD"
+      const { usdc } = await quoteCurrencyAmountInUSDC(cardAddress, currency, amt.toFixed(2))
+      const usdcNum = Number(usdc)
+      if (!Number.isFinite(usdcNum) || usdcNum <= 0) {
+        setSubmitError("Failed to convert amount.")
+        return
+      }
+      const intent = ownsCard ? "topup" as const : "first_purchase" as const
+      const ret = await postUSDCUserCardTopup({
+        profile: profile as Parameters<typeof postUSDCUserCardTopup>[0]["profile"],
+        cardAddress,
+        usdcAmount: usdc,
+        intent,
+      })
+      if (ret.success) {
+        onSuccess?.(ret.assets)
+      } else {
+        setSubmitError(ret.error ?? "Top-up failed.")
+      }
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : "Top-up failed.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   if (!item) return null
 
@@ -927,7 +965,10 @@ const PurchaseCreditsSheet = ({
             </div>
           )}
 
-          {!isAmountValid && (
+          {submitError && (
+            <p className="text-xs text-rose-600 text-center mb-3">{submitError}</p>
+          )}
+          {!isAmountValid && !submitError && (
             <p className="text-xs text-rose-600 text-center mb-3">
               {ownsCard
                 ? "Please enter a valid amount."
@@ -937,11 +978,11 @@ const PurchaseCreditsSheet = ({
 
           <button
             type="button"
-            disabled={!isAmountValid}
-            onClick={() => onConfirm(amount)}
+            disabled={!isAmountValid || submitting}
+            onClick={handleConfirm}
             className="w-full py-3.5 rounded-xl bg-[#1562f0] text-white text-[15px] font-bold disabled:opacity-50 active:scale-[0.98] transition-transform"
           >
-            Confirm
+            {submitting ? "Processing…" : "Confirm"}
           </button>
         </div>
       </div>
@@ -1094,7 +1135,8 @@ export default function Market() {
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
 	const [settingsOpen, setSettingsOpen] = useState<"" | "USDCTopup" | "showPayQR">("")
-	const [topupCardAddress, setTopupCardAddress] = useState<string>(INFRASTRUCTURE_CARD_ADDRESS)
+	const [topupContentReady, setTopupContentReady] = useState(false)
+	const [topupCardAddress, setTopupCardAddress] = useState<string>(USDC_TOPUP_CARD_ADDRESS)
 	const [purchaseSheetOpen, setPurchaseSheetOpen] = useState(false)
 	const [purchaseItem, setPurchaseItem] = useState<PurchaseModalItem | null>(null)
 	const [purchaseOwnsCard, setPurchaseOwnsCard] = useState(false)
@@ -1115,6 +1157,16 @@ export default function Market() {
 
 	useEffect(() => {
 		if (settingsOpen !== "showPayQR") setQrPayload("")
+	}, [settingsOpen])
+
+	// Defer USDCUserCardTopupControl mount until after sheet slide completes (300ms) to avoid mid-animation pause
+	useEffect(() => {
+		if (settingsOpen !== "USDCTopup") {
+			setTopupContentReady(false)
+			return
+		}
+		const t = setTimeout(() => setTopupContentReady(true), 320)
+		return () => clearTimeout(t)
 	}, [settingsOpen])
 
 	const flash = async () => {
@@ -1330,7 +1382,7 @@ export default function Market() {
 						beamio={myAssets?.cardOwner ?? null}
 						onPurchase={() => {
 							setShowFooter(false)
-							setTopupCardAddress(INFRASTRUCTURE_CARD_ADDRESS)
+							setTopupCardAddress(USDC_TOPUP_CARD_ADDRESS)
 							setSettingsOpen("USDCTopup")
 						}}
 						onOpenWallet={isMember ? () => setOverlayMode("cardItem") : undefined}
@@ -1365,6 +1417,7 @@ export default function Market() {
 					className={[
 						"absolute inset-x-0 bottom-0 z-[121]",
 						"transition-transform duration-300 ease-out",
+						"will-change-transform",
 						settingsOpen ? "translate-y-0" : "translate-y-full",
 					].join(" ")}
 					onTouchMove={(e) => e.stopPropagation()}
@@ -1374,8 +1427,8 @@ export default function Market() {
 							"w-full",
 							"bg-white dark:bg-slate-900",
 							"rounded-t-[22px]",
+							"min-h-[75vh]",
 							"max-h-[calc(100dvh-env(safe-area-inset-top)-12px)]",
-							"h-auto",
 							"pb-[env(safe-area-inset-bottom)]",
 						].join(" ")}
 					>
@@ -1384,7 +1437,7 @@ export default function Market() {
 						</div>
 						<div className="px-4 pb-4 overflow-y-auto">
 							{settingsOpen === "USDCTopup" && (
-								topupCardAddress ? (
+								topupContentReady && topupCardAddress ? (
 									<USDCUserCardTopupControl
 										cardAddress={topupCardAddress}
 										onClose={(val) => {
@@ -1397,9 +1450,9 @@ export default function Market() {
 											flash()
 										}}
 									/>
-								) : (
+								) : topupContentReady && !topupCardAddress ? (
 									<div className="p-6 text-sm text-rose-600">Card address is unavailable.</div>
-								)
+								) : null
 							)}
 							{settingsOpen === "showPayQR" && (
 								<ShowPayQR
@@ -1435,9 +1488,9 @@ export default function Market() {
 				inventory={viewingItem.id === 101 ? (isMember ? [{ id: "#CCSA", date: "Active", balance: "Full" }] : []) : getOwnedInstances(viewingItem.id)}
 				onClose={() => setViewingItem(null)}
 				onBuy={(it) => {
-					setPurchaseItem(it as PurchaseModalItem)
-					setPurchaseOwnsCard(getOwnedInstances(it.id).length > 0)
-					setPurchaseSheetOpen(true)
+					setShowFooter(false)
+					setTopupCardAddress(USDC_TOPUP_CARD_ADDRESS)
+					setSettingsOpen("USDCTopup")
 				}}
 				onOpenWallet={viewingItem.id === 101 && isMember ? () => { setViewingItem(null); setOverlayMode("cardItem"); setShowCardDetail(true); setShowFooter(false); } : () => setViewingItem(null)}
 			/>
@@ -1454,18 +1507,18 @@ export default function Market() {
 			open={purchaseSheetOpen}
 			item={purchaseItem}
 			ownsCard={purchaseOwnsCard}
-			cardAddress={INFRASTRUCTURE_CARD_ADDRESS}
+			cardAddress={USDC_TOPUP_CARD_ADDRESS}
 			profile={profiles?.[0]}
 			onClose={() => {
 				setPurchaseSheetOpen(false)
 				setPurchaseItem(null)
 			}}
-			onConfirm={() => {
+			onSuccess={() => {
 				setPurchaseSheetOpen(false)
 				setPurchaseItem(null)
-				setShowFooter(false)
-				setTopupCardAddress(INFRASTRUCTURE_CARD_ADDRESS)
-				setSettingsOpen("USDCTopup")
+				setViewingItem(null)
+				setShowFooter(true)
+				flash()
 			}}
 		/>
 

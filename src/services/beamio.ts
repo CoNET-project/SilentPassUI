@@ -80,7 +80,7 @@ export const getUsdcBalanceFromApi = async (address: string): Promise<string | n
 	return b?.usdc != null ? String(b.usdc) : null
 }
 
-const getBalance = async (address: string) => {
+export const getBalance = async (address: string) => {
 	if (!address) return null
 	// 熔断期仅使用 CoNET 节点（不向 API 服务器请求），withBaseRpc 内部会走 CoNET-only
 	try {
@@ -198,6 +198,22 @@ export const signAndClaimBUnits = async (
 		return { success: true, txHash: data.txHash }
 	} catch (e) {
 		return { success: false, error: (e as Error)?.message ?? 'Claim failed' }
+	}
+}
+
+/** 获取指定地址的 B-Units 余额（CoNET 链上） */
+export const getBUnitBalance = async (address: string): Promise<string | null> => {
+	if (!address || !ethers.isAddress(address)) return null
+	try {
+		const airdrop = new ethers.Contract(
+			CONET_BUNIT_AIRDROP_ADDRESS,
+			['function getBUnitBalance(address) view returns (uint256)'],
+			conetDepinProvider
+		)
+		const bal = await airdrop.getBUnitBalance(address)
+		return ethers.formatUnits(bal, 6)
+	} catch {
+		return null
 	}
 }
 
@@ -1711,6 +1727,10 @@ export const getUserInfo = async (keyID: string) => {
 export const restoreWithUserPin = async (username: string, pin: string, test = false) => {
 	try {
 		const hashedImg: string = await beamioAccountSC.getBase64ByAccountName(username)
+		if (!hashedImg || hashedImg.trim().length === 0) {
+			console.warn('[restoreWithUserPin] No recovery data on CoNET for Beamio Tag:', username, '- account may exist but base64 was never written')
+			return false
+		}
 		const objStr = fromBase64(hashedImg)
 		const obj = JSON.parse(objStr)
 

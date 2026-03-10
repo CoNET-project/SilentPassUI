@@ -2,7 +2,7 @@
 	"name": "beamio",
 	"version": "0.39.0",
 	"private": true,
-	"homepage": "/biz",
+	"homepage": "/app",
 	"dependencies": {
 		"@ant-design/icons": "^6.0.0",
 		"@coinbase/cbpay-js": "^2.4.0",

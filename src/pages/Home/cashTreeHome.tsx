@@ -53,7 +53,7 @@ const cashTreesHome = () => {
 					<div className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg border border-slate-100 mb-6">
 						<CashTreesLogo />
 					</div>
-					<h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Merchant OS</h1>
+					<h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Alliance OS</h1>
 					<p className="text-[13px] font-medium text-slate-500 mb-8">Access your decentralized store wallet</p>
 
 					<form onSubmit={handleLogin} className="w-full space-y-4">

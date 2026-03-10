@@ -1,16 +1,16 @@
 /**
  * Base 主网 RPC 模块
- * 使用 Beamio Base RPC（base-rpc.conet.network），支持 VITE_BASE_RPC 环境变量覆盖
+ * 使用 https://1rpc.io/base，支持 VITE_BASE_RPC 环境变量覆盖
  */
 import { ethers } from 'ethers'
 
 const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
-const BEAMIO_BASE_RPC = 'https://base-rpc.conet.network'
+const BEAMIO_BASE_RPC = 'https://1rpc.io/base'
 
 const _viteBaseRpc = typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_BASE_RPC?: string } }).env?.VITE_BASE_RPC
 
-/** Base 主网 RPC 列表（VITE_BASE_RPC 未设置时使用 base-rpc.conet.network） */
+/** Base 主网 RPC 列表（VITE_BASE_RPC 未设置时使用 1rpc.io/base） */
 export const BASE_RPC_URLS = _viteBaseRpc
 	? [_viteBaseRpc]
 	: [BEAMIO_BASE_RPC]
@@ -62,7 +62,7 @@ let _currentIndex = 0
 /** 获取当前 provider */
 function getCurrentProvider(): ethers.JsonRpcProvider {
 	const urls = getEffectiveUrls()
-	if (!urls.length) return createProvider('https://base-rpc.conet.network')
+	if (!urls.length) return createProvider('https://1rpc.io/base')
 	return createProvider(urls[_currentIndex] ?? urls[0])
 }
 

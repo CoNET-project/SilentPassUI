@@ -54,7 +54,7 @@ const THEME = { bg: "#F2F2F7" }
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 const INFRASTRUCTURE_CARD_ADDRESS = "0xf0Ce0ae91F74F67893E00307CabEa8C058939f03"
 /** Card address for USDC Top Up panel (purchasing/loading credits). */
-const USDC_TOPUP_CARD_ADDRESS = "0xf99018DfFdb0c5657C93ca14DB2900CEbe1168A7"
+const USDC_TOPUP_CARD_ADDRESS = "0x82b333da5c723da6e98fefecd96cb1ca304c6125"
 
 const CATEGORIES = [
   { id: "membership", name: "Memberships", icon: <Store size={20} />, color: "bg-purple-100 text-purple-600" },

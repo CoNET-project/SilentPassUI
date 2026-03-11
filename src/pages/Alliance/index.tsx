@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount } from '@/services/BeamioCard';
+import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json } from '@/services/BeamioCard';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
+import { ethers } from 'ethers';
+import { baseEndpoint } from '@/utils/constants';
+import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew';
 import { 
   LayoutDashboard, 
   CreditCard, 
@@ -142,6 +145,43 @@ const ledgerTransactions = [
 const shortenAddress = (addr: string, head = 6, tail = 4) =>
   addr && addr.length > head + tail ? `${addr.slice(0, head)}...${addr.slice(-tail)}` : addr || '—';
 
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x82b333da5c723da6e98fefecd96cb1ca304c6125';
+const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
+const EMPTY_OVERVIEW_METRICS = {
+  totalNetworkVolumeCad: '—',
+  activeMemberships: '—',
+  partnerLocations: '—',
+  fuelPoolBUnits: '—',
+};
+const EMPTY_ISSUED_CARD_SUMMARY = {
+  name: '—',
+  totalSupply: '—',
+};
+
+function loadTrustedCache<T>(key: string | null): T | null {
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(`${ALLIANCE_CACHE_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { value?: T };
+    return parsed?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function saveTrustedCache<T>(key: string | null, value: T) {
+  if (!key || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      `${ALLIANCE_CACHE_PREFIX}${key}`,
+      JSON.stringify({ value, updatedAt: Date.now() })
+    );
+  } catch {
+    // Ignore storage quota or privacy-mode failures.
+  }
+}
+
 // --- Sub-Components ---
 
 interface MetricCardProps {
@@ -210,6 +250,11 @@ const StatusBadge = ({ status }: { status: string }) => {
 // --- Main App ---
 
 export default function App() {
+  const aaAddressFetchSeq = useRef(0);
+  const overviewFetchSeq = useRef(0);
+  const eoaBalanceFetchSeq = useRef(0);
+  const aaBalanceFetchSeq = useRef(0);
+  const bUnitBalanceFetchSeq = useRef(0);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [posAmount, setPosAmount] = useState('0');
@@ -225,15 +270,139 @@ export default function App() {
   const profile = CoNET_Data?.profiles?.[0];
   const beamioTag = CoNET_Data?.beamio?.accountName ? `@${CoNET_Data.beamio.accountName}` : null;
   const eoaAddress = profile?.keyID ?? null;
+  const normalizedEoaAddress = eoaAddress?.toLowerCase() ?? null;
+  const normalizedCardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase();
+  const aaAddressCacheKey = normalizedEoaAddress ? `aa-address:${normalizedEoaAddress}` : null;
+  const overviewCacheKey = `overview:${normalizedCardAddress}`;
+  const issuedCardSummaryCacheKey = `issued-card-summary:${normalizedCardAddress}`;
+  const eoaUsdcBalanceCacheKey = normalizedEoaAddress ? `eoa-usdc:${normalizedEoaAddress}` : null;
+  const bUnitBalanceCacheKey = normalizedEoaAddress ? `bunit:${normalizedEoaAddress}` : null;
   const [aaAddress, setAaAddress] = useState<string | null>(null);
   useEffect(() => {
     if (!profile?.keyID) {
       setAaAddress(null);
       return;
     }
-    getAAAccount(profile).then(setAaAddress);
-  }, [profile?.keyID]);
+    setAaAddress(loadTrustedCache<string>(aaAddressCacheKey));
+
+    const requestId = ++aaAddressFetchSeq.current;
+    getAAAccount(profile)
+      .then((resolvedAddress) => {
+        if (requestId !== aaAddressFetchSeq.current || !resolvedAddress) return;
+        setAaAddress(resolvedAddress);
+        saveTrustedCache(aaAddressCacheKey, resolvedAddress);
+      })
+      .catch(() => {
+        // Keep the last trusted address if RPC/account resolution fails.
+      });
+  }, [aaAddressCacheKey, profile]);
+
+  // Fixed CashTrees BeamioUserCard contract address
+  const userCardContractAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
+
   const deployedContractAddress = aaAddress ?? eoaAddress ?? '—';
+
+  const [contractCopied, setContractCopied] = useState(false);
+  const handleCopyContract = () => {
+    if (!userCardContractAddress) return;
+    navigator.clipboard.writeText(userCardContractAddress).then(() => {
+      setContractCopied(true);
+      setTimeout(() => setContractCopied(false), 1500);
+    });
+  };
+
+  const [overviewMetrics, setOverviewMetrics] = useState(EMPTY_OVERVIEW_METRICS);
+  const [issuedCardSummary, setIssuedCardSummary] = useState(EMPTY_ISSUED_CARD_SUMMARY);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cachedOverview = loadTrustedCache<typeof EMPTY_OVERVIEW_METRICS>(overviewCacheKey);
+    const cachedIssuedCardSummary = loadTrustedCache<typeof EMPTY_ISSUED_CARD_SUMMARY>(issuedCardSummaryCacheKey);
+
+    setOverviewMetrics(cachedOverview ?? EMPTY_OVERVIEW_METRICS);
+    setIssuedCardSummary(cachedIssuedCardSummary ?? EMPTY_ISSUED_CARD_SUMMARY);
+
+    const loadOverviewMetrics = async () => {
+      if (!userCardContractAddress) {
+        return;
+      }
+
+      try {
+        const requestId = ++overviewFetchSeq.current;
+        const card = new ethers.Contract(
+          userCardContractAddress,
+          [
+            'function owner() view returns (address)',
+            'function totalActiveMemberships() view returns (uint256)',
+            'function totalMembershipIssued() view returns (uint256)',
+            'function totalMembershipIssuedByTierIndex(uint256) view returns (uint256)',
+            'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
+            'function adminList(uint256) view returns (address)',
+          ],
+          baseEndpoint
+        );
+
+        const [owner, totalActiveMemberships, totalMembershipIssued, metadata] = await Promise.all([
+          card.owner() as Promise<string>,
+          card.totalActiveMemberships() as Promise<bigint>,
+          card.totalMembershipIssued() as Promise<bigint>,
+          getCardMetadataFromApi(userCardContractAddress).then((meta) => meta ?? getCardMetadataFrom1155Json(userCardContractAddress)),
+        ]);
+
+        let totalNetworkVolumeCad = 0;
+        for (let i = 0; i < 16; i++) {
+          try {
+            const [issuedCount, tier] = await Promise.all([
+              card.totalMembershipIssuedByTierIndex(i) as Promise<bigint>,
+              card.tiers(i) as Promise<{ minUsdc6: bigint }>,
+            ]);
+            totalNetworkVolumeCad += Number(issuedCount) * Number(tier.minUsdc6) / 1_000_000;
+          } catch {
+            break;
+          }
+        }
+
+        let adminCount = 0;
+        for (let i = 0; i < 32; i++) {
+          try {
+            const admin = await card.adminList(i) as string;
+            if (!admin || admin === ethers.ZeroAddress) break;
+            adminCount += 1;
+          } catch {
+            break;
+          }
+        }
+
+        const partnerLocations = Math.max(adminCount - 1, 0);
+        const ownerBUnits = await getBUnitBalance(owner);
+
+        if (cancelled || requestId !== overviewFetchSeq.current) return;
+
+        const nextOverviewMetrics = {
+          totalNetworkVolumeCad: `$${formatWithThousands(totalNetworkVolumeCad, 0)}`,
+          activeMemberships: formatWithThousands(Number(totalActiveMemberships), 0),
+          partnerLocations: formatWithThousands(partnerLocations, 0),
+          fuelPoolBUnits: ownerBUnits != null ? formatWithThousands(ownerBUnits, 0) : '—',
+        };
+        const nextIssuedCardSummary = {
+          name: metadata?.name?.trim() || 'Issued Membership Card',
+          totalSupply: formatWithThousands(Number(totalMembershipIssued), 0),
+        };
+
+        setOverviewMetrics(nextOverviewMetrics);
+        setIssuedCardSummary(nextIssuedCardSummary);
+        saveTrustedCache(overviewCacheKey, nextOverviewMetrics);
+        saveTrustedCache(issuedCardSummaryCacheKey, nextIssuedCardSummary);
+      } catch {
+        // Keep the last trusted cache/state when RPC fetch fails.
+      }
+    };
+
+    loadOverviewMetrics();
+    return () => {
+      cancelled = true;
+    };
+  }, [issuedCardSummaryCacheKey, overviewCacheKey, userCardContractAddress]);
 
   const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
   useEffect(() => {
@@ -241,28 +410,64 @@ export default function App() {
       setEoaUsdcBalance(null);
       return;
     }
-    getBalance(eoaAddress).then((b) => setEoaUsdcBalance(b?.usdc ?? null));
-  }, [eoaAddress]);
+    setEoaUsdcBalance(loadTrustedCache<string>(eoaUsdcBalanceCacheKey));
+
+    const requestId = ++eoaBalanceFetchSeq.current;
+    getBalance(eoaAddress)
+      .then((balance) => {
+        if (requestId !== eoaBalanceFetchSeq.current || balance?.usdc == null) return;
+        setEoaUsdcBalance(balance.usdc);
+        saveTrustedCache(eoaUsdcBalanceCacheKey, balance.usdc);
+      })
+      .catch(() => {
+        // Keep the last trusted balance if the refresh fails.
+      });
+  }, [eoaAddress, eoaUsdcBalanceCacheKey]);
 
   const [aaUsdcBalance, setAaUsdcBalance] = useState<string | null>(null);
+  const aaUsdcBalanceCacheKey = (aaAddress ?? eoaAddress)?.toLowerCase()
+    ? `aa-usdc:${(aaAddress ?? eoaAddress)!.toLowerCase()}`
+    : null;
   useEffect(() => {
     const addr = aaAddress ?? eoaAddress;
     if (!addr || addr === '—') {
       setAaUsdcBalance(null);
       return;
     }
-    getBalance(addr).then((b) => setAaUsdcBalance(b?.usdc ?? null));
-  }, [aaAddress, eoaAddress]);
+    setAaUsdcBalance(loadTrustedCache<string>(aaUsdcBalanceCacheKey));
+
+    const requestId = ++aaBalanceFetchSeq.current;
+    getBalance(addr)
+      .then((balance) => {
+        if (requestId !== aaBalanceFetchSeq.current || balance?.usdc == null) return;
+        setAaUsdcBalance(balance.usdc);
+        saveTrustedCache(aaUsdcBalanceCacheKey, balance.usdc);
+      })
+      .catch(() => {
+        // Keep the last trusted balance if the refresh fails.
+      });
+  }, [aaAddress, aaUsdcBalanceCacheKey, eoaAddress]);
 
   const [bUnitBalance, setBUnitBalance] = useState<string | null>(null);
   useEffect(() => {
-    const addr = aaAddress ?? eoaAddress;
-    if (!addr) {
+    // B-Units are on CoNET and held by EOA (claimant); AA is on Base, use EOA only
+    if (!eoaAddress) {
       setBUnitBalance(null);
       return;
     }
-    getBUnitBalance(addr).then(setBUnitBalance);
-  }, [aaAddress, eoaAddress]);
+    setBUnitBalance(loadTrustedCache<string>(bUnitBalanceCacheKey));
+
+    const requestId = ++bUnitBalanceFetchSeq.current;
+    getBUnitBalance(eoaAddress)
+      .then((balance) => {
+        if (requestId !== bUnitBalanceFetchSeq.current || balance == null) return;
+        setBUnitBalance(balance);
+        saveTrustedCache(bUnitBalanceCacheKey, balance);
+      })
+      .catch(() => {
+        // Keep the last trusted balance if the refresh fails.
+      });
+  }, [bUnitBalanceCacheKey, eoaAddress]);
 
   // 新增：处理结算申请的函数
   const handleApproveSettlement = (id: string) => {
@@ -352,9 +557,21 @@ export default function App() {
               <h1 className="text-3xl font-black text-slate-900 tracking-tight">{activeTab === 'Ledger' ? '$CTree Ledger & Clearing' : activeTab}</h1>
               <div className="mt-2 flex items-center gap-3">
                 <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded-md">Fiat Anchor: CAD</span>
-                <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 font-mono text-xs shadow-sm">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleCopyContract}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleCopyContract(); }}
+                  className={`flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 font-mono text-xs shadow-sm cursor-pointer hover:bg-slate-50 transition-colors ${!userCardContractAddress ? 'cursor-default hover:bg-white' : ''}`}
+                  title={userCardContractAddress ?? undefined}
+                >
                     <FileText size={12} className="text-slate-400"/>
-                    <span>Contract: {deployedContractAddress !== '—' ? shortenAddress(deployedContractAddress) : '—'}</span>
+                    <span>Contract: {userCardContractAddress ? shortenAddress(userCardContractAddress) : '—'}</span>
+                    {userCardContractAddress && (
+                      <span className={`ml-0.5 inline-flex transition-all duration-200 ${contractCopied ? 'scale-110' : ''}`}>
+                        {contractCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} className="text-slate-400" />}
+                      </span>
+                    )}
                 </div>
               </div>
             </div>
@@ -377,10 +594,10 @@ export default function App() {
             {activeTab === 'Overview' && (
               <div className="space-y-8 animate-in fade-in duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <MetricCard title="Total Network Volume" value="$124,500" subValue="30-Day trailing (CAD)" change="+12.5%" isPositive={true} icon={<Activity size={24} />} />
-                  <MetricCard title="Active Memberships" value="1,695" subValue="Green & Black Cards" change="+42" isPositive={true} icon={<CreditCard size={24} />} colorClass="bg-blue-50 text-blue-600" />
-                  <MetricCard title="Partner Locations" value="2" subValue="Verified restaurants" change="Stable" isPositive={true} icon={<Utensils size={24} />} colorClass="bg-purple-50 text-purple-600" />
-                  <MetricCard title="CashTrees Fuel Pool" value="845K" subValue="B-Units for Mint/Top-ups" change="-2.1%" isPositive={false} icon={<Zap size={24} />} colorClass="bg-orange-50 text-orange-600" />
+                  <MetricCard title="Total Network Volume" value={overviewMetrics.totalNetworkVolumeCad} subValue="On-chain issued tier floor (CAD)" change="Live" isPositive={true} icon={<Activity size={24} />} />
+                  <MetricCard title="Active Memberships" value={overviewMetrics.activeMemberships} subValue="On-chain active memberships" change="Live" isPositive={true} icon={<CreditCard size={24} />} colorClass="bg-blue-50 text-blue-600" />
+                  <MetricCard title="Partner Locations" value={overviewMetrics.partnerLocations} subValue="On-chain admins excluding owner" change="Live" isPositive={true} icon={<Utensils size={24} />} colorClass="bg-purple-50 text-purple-600" />
+                  <MetricCard title="CashTrees Fuel Pool" value={overviewMetrics.fuelPoolBUnits} subValue="Owner B-Units for Mint/Top-ups" change="Live" isPositive={true} icon={<Zap size={24} />} colorClass="bg-orange-50 text-orange-600" />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -389,43 +606,7 @@ export default function App() {
                         <h2 className="font-bold text-lg text-slate-800">Live Network Activity</h2>
                         <button onClick={() => setActiveTab('Ledger')} className="text-sm font-bold text-emerald-600 hover:underline">View Ledger</button>
                       </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                              <th className="pb-3 pl-2">Event / Action</th>
-                              <th className="pb-3">User / Location</th>
-                              <th className="pb-3 text-right">Amount</th>
-                              <th className="pb-3 text-right pr-2">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {ledgerTransactions.slice(0,3).map(tx => (
-                              <tr key={tx.id} className="hover:bg-slate-50 border-b border-slate-50 transition-colors">
-                                <td className="py-4 pl-2">
-                                  <div className="flex items-center gap-3">
-                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type==='Mint'?'bg-blue-100 text-blue-600':tx.type==='Burn'?'bg-rose-100 text-rose-600':'bg-purple-100 text-purple-600'}`}>
-                                        {tx.type === 'Mint' ? <Sparkles size={16}/> : tx.type === 'Burn' ? <Flame size={16}/> : <ArrowRightLeft size={16}/>}
-                                      </div>
-                                      <div>
-                                        <div className="font-bold text-sm text-slate-900">{tx.type} {tx.type==='Transfer'?'Payment':'$CTree'}</div>
-                                        <div className="text-[10px] text-slate-500 font-mono truncate max-w-[150px]">{tx.note}</div>
-                                      </div>
-                                  </div>
-                                </td>
-                                <td className="py-4">
-                                  <div className="text-sm font-bold text-slate-700">{tx.to}</div>
-                                  <div className="text-[10px] text-slate-500">From: {tx.from}</div>
-                                </td>
-                                <td className={`py-4 text-right font-mono font-bold ${tx.type==='Mint'?'text-blue-600':tx.type==='Transfer'?'text-slate-600':'text-rose-600'}`}>
-                                  {tx.type==='Transfer'?'-':'+'} ${tx.amount}
-                                </td>
-                                <td className="py-4 text-right"><span className="text-[10px] font-bold px-2 py-1 rounded bg-slate-100 text-slate-600">{tx.status}</span></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <ActiveHistoryPannelNew title="Live Network Activity" compact compactLimit={3} bare embeddedInDrawer />
                    </div>
                    
                    <div className="bg-slate-900 rounded-2xl shadow-xl p-6 text-white relative overflow-hidden flex flex-col">
@@ -497,10 +678,10 @@ export default function App() {
                     <div className="text-right flex flex-col items-end">
                         <div className="flex items-center gap-2 mb-2">
                            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">CT</div>
-                           <span className="text-sm font-bold text-slate-500 uppercase tracking-widest">Global Supply</span>
+                           <span className="text-sm font-bold text-slate-500 uppercase tracking-widest">{issuedCardSummary.name}</span>
                         </div>
-                        <div className="text-4xl font-black text-slate-900 tracking-tight">1,250,000 <span className="text-lg text-slate-400 font-bold">$CTree</span></div>
-                        <div className="text-xs font-bold text-emerald-600 mt-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">ERC-1155 Token ID: 0</div>
+                        <div className="text-4xl font-black text-slate-900 tracking-tight">{issuedCardSummary.totalSupply} <span className="text-lg text-slate-400 font-bold">$CashTrees</span></div>
+                        <div className="text-xs font-bold text-emerald-600 mt-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">Total Membership Supply</div>
                     </div>
                  </div>
 

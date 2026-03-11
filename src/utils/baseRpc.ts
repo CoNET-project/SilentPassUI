@@ -1,6 +1,6 @@
 /**
  * Base 主网 RPC 自动切换模块
- * 使用 Beamio Base RPC（base-rpc.conet.network），故障时自动切换到 CoNET 代理节点
+ * 默认使用 1RPC Base RPC（1rpc.io/base），故障时自动切换到 CoNET 代理节点
  * 支持 CoNET allNodes：限流时仅使用 CoNET 节点，不向 API 服务器请求
  * 支持 VITE_BASE_RPC 环境变量覆盖（使用单节点，不切换）
  */
@@ -8,7 +8,7 @@ import { ethers } from 'ethers'
 
 const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
-const BEAMIO_BASE_RPC = 'https://base-rpc.conet.network'
+const BEAMIO_BASE_RPC = 'https://1rpc.io/base'
 
 const _viteBaseRpc = typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_BASE_RPC?: string } }).env?.VITE_BASE_RPC
 

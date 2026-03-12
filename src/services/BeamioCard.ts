@@ -30,10 +30,17 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 	'0xecc5bdff6716847e45363befd3506b1d539c02d5',
 	'0x90ae2212ee70aca8671ab7f5238c828d13c6dea7',
 	'0x4879171d6c4693eaedcd8f448a785a31b2146e64',
+	'0x82b333da5c723da6e98fefecd96cb1ca304c6125',
+	'0x9d098fa94d559b8cb223b9760e8bac3d07617c78',
+	'0x926deadb97d8badd1221060840b5a1cf46711a86',
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
 	cards.filter((c) => !USER_CARD_DISPLAY_EXCLUDED.has(c.cardAddress.toLowerCase()))
+
+/** 判断卡地址是否在 display exclude 列表中（用于持有者卡展示层过滤） */
+export const isCardExcludedFromDisplay = (cardAddress: string): boolean =>
+	USER_CARD_DISPLAY_EXCLUDED.has((cardAddress || '').trim().toLowerCase())
 
 /** AA Factory 作为 UserCard gateway（与 config/base-addresses AA_FACTORY 一致） */
 const BeamioUserCardGatewayAddress = '0xD86403DD1755F7add19540489Ea10cdE876Cc1CE'.toLowerCase()
@@ -473,11 +480,12 @@ type LatestCardApiItem = {
 
 async function fetchHeldCardsFromLatestForEOA(
 	eoa: string,
-	existingCardAddresses: Set<string>
+	existingCardAddresses: Set<string>,
+	aa?: string | null
 ): Promise<UserCardInfo[]> {
 	if (!eoa || !ethers.isAddress(eoa)) return []
 	try {
-		const res = await fetch(`${beamioApi}/api/latestCards?limit=100`)
+		const res = await fetch(`${beamioApi}/api/latestCards?limit=300`)
 		if (!res.ok) return []
 		const data = await res.json().catch(() => ({}))
 		const items = (Array.isArray(data?.items) ? data.items : []) as LatestCardApiItem[]
@@ -487,6 +495,8 @@ async function fetchHeldCardsFromLatestForEOA(
 			'function getOwnershipByEOA(address userEOA) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
 		]
 
+		const accountsToCheck = [eoa]
+		if (aa && ethers.isAddress(aa) && aa.toLowerCase() !== eoa.toLowerCase()) accountsToCheck.push(aa)
 		const checks = await Promise.all(
 			items.map(async (it) => {
 				const rawAddr = String(it?.cardAddress ?? '').trim()
@@ -496,9 +506,14 @@ async function fetchHeldCardsFromLatestForEOA(
 				if (existingCardAddresses.has(key)) return null
 				try {
 					const card = new ethers.Contract(addr, ownershipAbi, baseEndpoint)
-					const [pt, nftsRaw] = await card.getOwnershipByEOA(eoa) as [bigint, Array<{ tokenId: bigint }>]
-					const hasPoints = (pt ?? 0n) > 0n
-					const hasNft = Array.isArray(nftsRaw) && nftsRaw.some((n) => Number(n?.tokenId ?? 0n) > 0)
+					let hasPoints = false
+					let hasNft = false
+					for (const acct of accountsToCheck) {
+						const [pt, nftsRaw] = await card.getOwnershipByEOA(acct) as [bigint, Array<{ tokenId: bigint }>]
+						hasPoints = hasPoints || (pt ?? 0n) > 0n
+						hasNft = hasNft || (Array.isArray(nftsRaw) && nftsRaw.some((n) => Number(n?.tokenId ?? 0n) > 0))
+						if (hasPoints || hasNft) break
+					}
 					if (!hasPoints && !hasNft) return null
 
 					const currency = String(it?.currency ?? 'CAD').toUpperCase()
@@ -636,7 +651,7 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 		}
 		// 补充：持有者视角（购买/领取）卡片。cardsOfOwner 仅覆盖 cardOwner，不覆盖持卡用户。
 		if (eoa && ethers.isAddress(eoa)) {
-			const holderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), seen)
+			const holderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), seen, aa)
 			for (const c of holderCards) {
 				const key = c.cardAddress.toLowerCase()
 				if (seen.has(key)) continue
@@ -655,7 +670,7 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 			const apiItems = await fetchMyCardsFromApi(uniqueOwners)
 			const apiSeen = new Set(apiItems.map((c) => c.cardAddress.toLowerCase()))
 			if (eoa && ethers.isAddress(eoa)) {
-				const holderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), apiSeen)
+				const holderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), apiSeen, aa)
 				for (const c of holderCards) {
 					const key = c.cardAddress.toLowerCase()
 					if (apiSeen.has(key)) continue

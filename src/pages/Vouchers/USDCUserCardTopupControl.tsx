@@ -869,8 +869,15 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 									ref={amountInputRef}
 									value={amount}
 									onChange={(e) => {
-										const raw = e.target.value
-										const cleaned = raw.replace(/\D/g, "")
+										const raw = e.target.value.replace(/,/g, "")
+										// Allow digits and one decimal point; limit decimal places by currency
+										let cleaned = raw.replace(/[^\d.]/g, "")
+										const dotIdx = cleaned.indexOf(".")
+										if (dotIdx >= 0) {
+											const intPart = cleaned.slice(0, dotIdx)
+											const decPart = cleaned.slice(dotIdx + 1).replace(/\./g, "").slice(0, cardCurrencyDecimals)
+											cleaned = decPart.length > 0 ? `${intPart}.${decPart}` : intPart
+										}
 										setAmount(cleaned)
 									}}
 									type="text"

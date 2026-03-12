@@ -52,9 +52,8 @@ import blackCard from "./assets/BlackCard.png"
 
 const THEME = { bg: "#F2F2F7" }
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
-const INFRASTRUCTURE_CARD_ADDRESS = "0xf0Ce0ae91F74F67893E00307CabEa8C058939f03"
 /** Card address for USDC Top Up panel (purchasing/loading credits). */
-const USDC_TOPUP_CARD_ADDRESS = "0x82b333da5c723da6e98fefecd96cb1ca304c6125"
+const USDC_TOPUP_CARD_ADDRESS = "0x709DAe38D65a87289597EE79CB0d5d251A282E59"
 
 const CATEGORIES = [
   { id: "membership", name: "Memberships", icon: <Store size={20} />, color: "bg-purple-100 text-purple-600" },
@@ -1320,8 +1319,11 @@ export default function Market() {
 					type="button"
 					onClick={() => {
 						switch (cat.id) {
+							case 'events':
+								navigate("/cash-trees-alliance")
+								break
 							case 'dining':
-								navigate("/example-card-new")
+								navigate("/example-express")
 								break
 							case 'services':
 								navigate("/transfertion")

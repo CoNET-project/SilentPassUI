@@ -40,6 +40,7 @@ import BeamioTransactions from '@/pages/Vouchers/example/uelCenter'
 import MobilePOS from '@/pages/Vouchers/example/Pos'
 import CardManager from '@/pages/cardManager'
 import RenderActionPage from '@/renderAction'
+import CashTreesAlliance from '@/pages/Vouchers/example/CashTreesAlian'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
@@ -1161,16 +1162,14 @@ function AppShell() {
 				<Route path="/myWallet" element={<MyWallet />} />
 				<Route path="/HistoryAll" element={<HistoryAll />} />
 				<Route path="/vouchers-example" element={<VouchersExample />} />
-				<Route path="/express" element={<Express />} />
 				<Route path="/example-express" element={<ExampleExpress />} />
 				<Route path="/ten-key-input" element={<TenKeyInput />} />
 				<Route path="/example-card" element={<EmapmpleCard />} />
 				<Route path="/example-new-card" element={<NewCardExample />} />
-				<Route path="/example-card-new" element={<ExampleCardNew />} />
 				<Route path="/transfertion" element={<BeamioTransactions />} />
 				<Route path="/native-pos" element={<MobilePOS />} />
-				<Route path="/cardManager" element={<CardManager />} />
 				<Route path="/render-action" element={<RenderActionPage />} />
+				<Route path="/cash-trees-alliance" element={<CashTreesAlliance />} />
 				</Routes>
 				</div>
 			</div>

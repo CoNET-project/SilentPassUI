@@ -63,7 +63,7 @@ import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
-import { getMyAssets, getCardOwner, getCardMetadataFromUri, getCardMetadataFromApi, getCardMetadataFrom1155Json, getNftMetadataFromApi, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, signExecuteForOwner, encodeCreateIssuedNft, postCardCreateIssuedNft, getTierIndexForRedeemAmount, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch, type CardTierMetadata, type NftTierMetadata, type CardMetadataFromUri } from '@/services/BeamioCard'
+import { getMyAssets, getCardOwner, getCardMetadataFromUri, getCardMetadataFromApi, getCardMetadataFrom1155Json, getNftMetadataFromApi, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, signExecuteForOwner, encodeCreateIssuedNft, postCardCreateIssuedNft, getTierIndexForRedeemAmount, isCardExcludedFromDisplay, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch, type CardTierMetadata, type NftTierMetadata, type CardMetadataFromUri } from '@/services/BeamioCard'
 import { postToIPFS } from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
@@ -1742,7 +1742,11 @@ export default function MyWalletDashboardNew() {
 	}
 
 	const historyUserCardTiles = useMemo(() => {
-		return userCards.map((card) => {
+		// 持有者卡（非发行方）且在 filter list 中则不显示（本地缓存可能含旧数据）
+		const filtered = userCards.filter(
+			(card) => isCardCreator(card.cardAddress) || !isCardExcludedFromDisplay(card.cardAddress)
+		)
+		return filtered.map((card) => {
 			const addr = card.cardAddress.toLowerCase()
 			const details = userCardDetails[addr]
 			const nfts = (details?.assets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
@@ -1774,7 +1778,7 @@ export default function MyWalletDashboardNew() {
 				currency: card.currency,
 			}
 		})
-	}, [userCards, userCardDetails])
+	}, [userCards, userCardDetails, isCardCreator])
 
 	/** 当前 DETAILS 对应卡地址（仅当 activeView 为卡时有效） */
 	const cardAddressForDetails = activeView && activeView !== 'eoa' && activeView !== 'aa'
@@ -1954,6 +1958,8 @@ export default function MyWalletDashboardNew() {
 			}
 		}
 		userCards.forEach((uc) => {
+			// 持有者卡（非发行方）且在 filter list 中则不显示（本地缓存可能含旧数据）
+			if (!isCardCreator(uc.cardAddress) && isCardExcludedFromDisplay(uc.cardAddress)) return
 			const addr = uc.cardAddress.toLowerCase()
 			const details = userCardDetails[addr]
 			const nfts = details?.assets?.nfts?.filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[] | undefined

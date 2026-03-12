@@ -40,7 +40,7 @@ const CCSA_Card_Address = contracts.BeamioCardCCSA.address.toLowerCase()
 const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xa86a8406B06bD6c332b4b380A0EAced822218Eff'.toLowerCase()
 /** CashTrees 卡（Alliance FIXED_USER_CARD）：用户持有 $CTree 时需拉取并展示 */
 const CASH_TREES_CARD_ADDRESS = '0x82ceE96dB45933fE4b71D36fa8904508f929027C'.toLowerCase()
-/** 资产卡列表：CCSA + beamioUserCard + CashTrees，用于聚合查询 */
+/** 资产卡列表：用于 getMyAssetsAggregated 聚合查询。UI 展示的卡一览改为从 api/latestCards 拉取 */
 const ASSET_CARD_ADDRESSES = [CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, CASH_TREES_CARD_ADDRESS]
 
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());

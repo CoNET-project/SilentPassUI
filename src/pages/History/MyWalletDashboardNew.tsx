@@ -70,7 +70,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
 import type { RedeemStatusChain } from '@/services/BeamioCard'
 import { fiatPrefix, parseNodeEX, calcFeeFromReceived, formatTimev2, formatAmount, type ParsedNote } from '@/services/currency'
-import { CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, CASH_TREES_CARD_ADDRESS } from '@/utils/constants'
+import { CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, CASH_TREES_CARD_ADDRESS, beamioApi } from '@/utils/constants'
 import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { getRedeemStatusBatchFromChain } from '@/services/BeamioCard'
@@ -746,16 +746,20 @@ export default function MyWalletDashboardNew() {
 	const [itemTx, setItemTx] = useState<TransferHistork>()
 	const [showTxDetail, setShowTxDetail] = useState(false)
 	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
-	const [ccsaBalance, setCcsaBalance] = useState<string>('0')
-	const [ccsaAssets, setCcsaAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
-	const [infraCardBalance, setInfraCardBalance] = useState<string>('0')
-	const [infraCardAssets, setInfraCardAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
-	const [infraCardMetadata, setInfraCardMetadata] = useState<{ name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string; nftMetadata?: NftTierMetadata | null } | null>(null)
-	const [cashTreesBalance, setCashTreesBalance] = useState<string>('0')
-	const [cashTreesAssets, setCashTreesAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
-	const [cashTreesMetadata, setCashTreesMetadata] = useState<{ name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string; nftMetadata?: NftTierMetadata | null } | null>(null)
-	/** CCSA 卡的创建者/owner（链上 card.owner()），仅创建者能打开 CCSA 的 DETAILS */
-	const [ccsaCardOwner, setCcsaCardOwner] = useState<string | null>(null)
+	/** 从 api/latestCards 拉取的卡一览，用于 passes 展示（替代固定 CCSA/infra/CashTrees 列表） */
+	const [latestCardsItems, setLatestCardsItems] = useState<Array<{ cardAddress: string }>>([])
+	/** 每张资产卡的 assets + metadata，key = cardAddress 小写。含 latestCards 及 CCSA（主卡展示用） */
+	const [assetCardDetails, setAssetCardDetails] = useState<Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null }>>({})
+	/** 以下由 assetCardDetails 派生，供 cards/passes/isCardCreator 等兼容 */
+	const ccsaBalance = assetCardDetails[CCSA_Card_Address]?.assets?.points ?? '0'
+	const ccsaAssets = useMemo(() => assetCardDetails[CCSA_Card_Address]?.assets ? { points: assetCardDetails[CCSA_Card_Address]!.assets!.points, nfts: assetCardDetails[CCSA_Card_Address]!.assets!.nfts ?? [] } : null, [assetCardDetails])
+	const ccsaCardOwner = assetCardDetails[CCSA_Card_Address]?.cardOwner ?? null
+	const infraCardBalance = assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]?.assets?.points ?? '0'
+	const infraCardAssets = useMemo(() => assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]?.assets ? { points: assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]!.assets!.points, nfts: assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]!.assets!.nfts ?? [] } : null, [assetCardDetails])
+	const infraCardMetadata = useMemo(() => assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]?.metadata ? { ...assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]!.metadata!, nftMetadata: assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]?.nftMetadata } : null, [assetCardDetails])
+	const cashTreesBalance = assetCardDetails[CASH_TREES_CARD_ADDRESS]?.assets?.points ?? '0'
+	const cashTreesAssets = useMemo(() => assetCardDetails[CASH_TREES_CARD_ADDRESS]?.assets ? { points: assetCardDetails[CASH_TREES_CARD_ADDRESS]!.assets!.points, nfts: assetCardDetails[CASH_TREES_CARD_ADDRESS]!.assets!.nfts ?? [] } : null, [assetCardDetails])
+	const cashTreesMetadata = useMemo(() => assetCardDetails[CASH_TREES_CARD_ADDRESS]?.metadata ? { ...assetCardDetails[CASH_TREES_CARD_ADDRESS]!.metadata!, nftMetadata: assetCardDetails[CASH_TREES_CARD_ADDRESS]?.nftMetadata } : null, [assetCardDetails])
 	const [eoaReflash, setEoaReflash] = useState(false)
 	const [aaReflash, setAaReflash] = useState(false)
 	const [ccsaReflash, setCcsaReflash] = useState(false)
@@ -1346,59 +1350,68 @@ export default function MyWalletDashboardNew() {
 		return () => cancelAnimationFrame(id)
 	}, [profiles?.[0]?.keyID, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD, refreshEoaBalance])
 
-	// 拉取 CCSA、基础设施卡、CashTrees 资产（分开）；metadata 优先从 beamioApi 拉取，并拉取 per-NFT metadata 用于 Pass 渲染
+	// 1. 拉取 api/latestCards 作为需展示的卡一览（替代固定 CCSA/infra/CashTrees 列表）
+	useEffect(() => {
+		fetch(`${beamioApi}/api/latestCards?limit=100`)
+			.then((r) => (r.ok ? r.json() : { items: [] }))
+			.then((data: { items?: Array<{ cardAddress?: string }> }) => {
+				const items = (Array.isArray(data?.items) ? data.items : [])
+					.map((it) => {
+						const raw = String(it?.cardAddress ?? '').trim()
+						return raw && ethers.isAddress(raw) ? { cardAddress: ethers.getAddress(raw) } : null
+					})
+					.filter((x): x is { cardAddress: string } => x != null)
+				setLatestCardsItems(items)
+			})
+			.catch(() => setLatestCardsItems([]))
+	}, [])
+
+	// 2. 对 latestCards + CCSA（主卡展示）拉取 getMyAssets、metadata、getCardOwner，写入 assetCardDetails
 	useEffect(() => {
 		if (!profiles?.[0]) return
+		const profile = profiles[0]
+		const addrs = new Set<string>([CCSA_Card_Address, CASH_TREES_CARD_ADDRESS, ...latestCardsItems.map((i) => i.cardAddress.toLowerCase())])
+		const toFetch = Array.from(addrs).filter((a) => a && ethers.isAddress(a))
+		if (toFetch.length === 0) return
 		const id = setTimeout(() => {
-			const fetchInfraMeta = () =>
-				getCardMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS).then((apiMeta) => apiMeta ?? getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS))
-			const fetchCashTreesMeta = () =>
-				getCardMetadataFromApi(CASH_TREES_CARD_ADDRESS).then((apiMeta) => apiMeta ?? getCardMetadataFromUri(CASH_TREES_CARD_ADDRESS))
-			Promise.all([
-				getMyAssets(profiles[0], CCSA_Card_Address),
-				getMyAssets(profiles[0], BEAMIO_USER_CARD_ASSET_ADDRESS),
-				getMyAssets(profiles[0], CASH_TREES_CARD_ADDRESS),
-				fetchInfraMeta(),
-				fetchCashTreesMeta(),
-				getCardOwner(CCSA_Card_Address),
-			])
-				.then(async ([ccsa, infra, cashTrees, meta, cashTreesMeta, ccsaOwner]: [Awaited<ReturnType<typeof getMyAssets>>, Awaited<ReturnType<typeof getMyAssets>>, Awaited<ReturnType<typeof getMyAssets>>, Awaited<ReturnType<typeof getCardMetadataFromApi>>, Awaited<ReturnType<typeof getCardMetadataFromApi>>, string]) => {
-					if (ccsa?.points != null) setCcsaBalance(ccsa.points)
-					setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
-					setCcsaCardOwner(ccsaOwner ?? null)
-					if (infra?.points != null) setInfraCardBalance(infra.points)
-					setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
-					if (cashTrees?.points != null) setCashTreesBalance(cashTrees.points)
-					setCashTreesAssets(cashTrees ? { points: cashTrees.points, nfts: cashTrees.nfts ?? [] } : null)
-					let infraNftMetadata: NftTierMetadata | null = null
-					if (meta?.cardOwner && infra?.nfts?.length) {
-						const infraNfts = (infra.nfts ?? []).filter((n: { tokenId: string }) => Number(n.tokenId) > 0) as { tokenId: string }[]
-						const infraBestNft = infraNfts.length > 0 ? infraNfts.reduce((a: { tokenId: string }, b: { tokenId: string }) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
-						if (infraBestNft) infraNftMetadata = await getNftMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS, infraBestNft.tokenId)
+			Promise.all(
+				toFetch.map(async (cardAddr) => {
+					try {
+						const [assets, meta, cardOwner] = await Promise.all([
+							getMyAssets(profile, cardAddr),
+							getCardMetadataFromApi(cardAddr).then((m) => m ?? getCardMetadataFromUri(cardAddr)),
+							getCardOwner(cardAddr),
+						])
+						const nfts = (assets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
+						const bestNft = nfts.length > 0 ? nfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+						let nftMetadata: NftTierMetadata | null = null
+						if (meta?.cardOwner && bestNft) {
+							nftMetadata = await getNftMetadataFromApi(cardAddr, bestNft.tokenId)
+						}
+						return {
+							addr: cardAddr.toLowerCase(),
+							detail: {
+								assets: assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null,
+								metadata: meta ?? null,
+								cardOwner: cardOwner ?? null,
+								nftMetadata: nftMetadata ?? undefined,
+							},
+						}
+					} catch {
+						return { addr: cardAddr.toLowerCase(), detail: { assets: null, metadata: null, cardOwner: null } }
 					}
-					setInfraCardMetadata(meta ? { ...meta, nftMetadata: infraNftMetadata ?? undefined } : null)
-					let cashTreesNftMetadata: NftTierMetadata | null = null
-					if (cashTreesMeta?.cardOwner && cashTrees?.nfts?.length) {
-						const ctNfts = (cashTrees.nfts ?? []).filter((n: { tokenId: string }) => Number(n.tokenId) > 0) as { tokenId: string }[]
-						const ctBestNft = ctNfts.length > 0 ? ctNfts.reduce((a: { tokenId: string }, b: { tokenId: string }) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
-						if (ctBestNft) cashTreesNftMetadata = await getNftMetadataFromApi(CASH_TREES_CARD_ADDRESS, ctBestNft.tokenId)
-					}
-					setCashTreesMetadata(cashTreesMeta ? { ...cashTreesMeta, nftMetadata: cashTreesNftMetadata ?? undefined } : null)
 				})
-				.catch(() => {
-					setCcsaBalance('0')
-					setCcsaAssets(null)
-					setCcsaCardOwner(null)
-					setInfraCardBalance('0')
-					setInfraCardAssets(null)
-					setInfraCardMetadata(null)
-					setCashTreesBalance('0')
-					setCashTreesAssets(null)
-					setCashTreesMetadata(null)
+			).then((results) => {
+				const next: Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null }> = {}
+				results.forEach(({ addr, detail }) => {
+					next[addr] = detail
 				})
+				setAssetCardDetails(next)
+			})
+			.catch(() => setAssetCardDetails({}))
 		}, 150)
 		return () => clearTimeout(id)
-	}, [profiles])
+	}, [profiles, latestCardsItems])
 
 	// ref 稳定 identity，避免 refetchUserCards 触发 effect 重跑导致 RPC 循环
 	const refetchUserCardsRef = useRef(refetchUserCards)
@@ -1539,57 +1552,56 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [eoaReflash, aaReflash, profiles, refreshEoaBalance, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
 
-	// 单独刷新 CCSA、基础设施卡、CashTrees 资产（分开）；metadata 优先从 beamioApi 拉取
+	// 刷新资产卡：先拉取 latestCards，再刷新 assetCardDetails（含 CCSA）
 	const refreshCcsaAssets = useCallback(async () => {
 		if (ccsaReflash) return
 		const profile = profiles?.[0]
 		if (!profile) return
 		setCcsaReflash(true)
 		try {
-		const fetchInfraMeta = () =>
-			getCardMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS).then((m) => m ?? getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS))
-		const fetchCashTreesMeta = () =>
-			getCardMetadataFromApi(CASH_TREES_CARD_ADDRESS).then((m) => m ?? getCardMetadataFromUri(CASH_TREES_CARD_ADDRESS))
-		const [ccsa, infra, cashTrees, meta, cashTreesMeta, ccsaOwner] = await Promise.all([
-				getMyAssets(profile, CCSA_Card_Address),
-				getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS),
-				getMyAssets(profile, CASH_TREES_CARD_ADDRESS),
-			fetchInfraMeta(),
-			fetchCashTreesMeta(),
-			getCardOwner(CCSA_Card_Address),
-		])
-		const infraNfts = (infra?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
-		const infraBestNft = infraNfts.length > 0 ? infraNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
-		let infraNftMetadata: NftTierMetadata | null = null
-		if (meta?.cardOwner && infraBestNft) {
-			infraNftMetadata = await getNftMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS, infraBestNft.tokenId)
-		}
-		const ctNfts = (cashTrees?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
-		const ctBestNft = ctNfts.length > 0 ? ctNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
-		let cashTreesNftMetadata: NftTierMetadata | null = null
-		if (cashTreesMeta?.cardOwner && ctBestNft) {
-			cashTreesNftMetadata = await getNftMetadataFromApi(CASH_TREES_CARD_ADDRESS, ctBestNft.tokenId)
-		}
-			if (ccsa?.points != null) setCcsaBalance(ccsa.points)
-			setCcsaAssets(ccsa ? { points: ccsa.points, nfts: ccsa.nfts ?? [] } : null)
-		setCcsaCardOwner(ccsaOwner ?? null)
-			if (infra?.points != null) setInfraCardBalance(infra.points)
-			setInfraCardAssets(infra ? { points: infra.points, nfts: infra.nfts ?? [] } : null)
-		setInfraCardMetadata(meta ? { ...meta, nftMetadata: infraNftMetadata ?? undefined } : null)
-			if (cashTrees?.points != null) setCashTreesBalance(cashTrees.points)
-			setCashTreesAssets(cashTrees ? { points: cashTrees.points, nfts: cashTrees.nfts ?? [] } : null)
-			setCashTreesMetadata(cashTreesMeta ? { ...cashTreesMeta, nftMetadata: cashTreesNftMetadata ?? undefined } : null)
+			const res = await fetch(`${beamioApi}/api/latestCards?limit=100`)
+			const data = (res.ok ? await res.json() : { items: [] }) as { items?: Array<{ cardAddress?: string }> }
+			const items = (Array.isArray(data?.items) ? data.items : [])
+				.map((it) => {
+					const raw = String(it?.cardAddress ?? '').trim()
+					return raw && ethers.isAddress(raw) ? { cardAddress: ethers.getAddress(raw) } : null
+				})
+				.filter((x): x is { cardAddress: string } => x != null)
+			setLatestCardsItems(items)
+			const addrs = new Set<string>([CCSA_Card_Address, CASH_TREES_CARD_ADDRESS, ...items.map((i) => i.cardAddress.toLowerCase())])
+			const toFetch = Array.from(addrs).filter((a) => a && ethers.isAddress(a))
+			const results = await Promise.all(
+				toFetch.map(async (cardAddr) => {
+					try {
+						const [assets, meta, cardOwner] = await Promise.all([
+							getMyAssets(profile, cardAddr),
+							getCardMetadataFromApi(cardAddr).then((m) => m ?? getCardMetadataFromUri(cardAddr)),
+							getCardOwner(cardAddr),
+						])
+						const nfts = (assets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
+						const bestNft = nfts.length > 0 ? nfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+						let nftMetadata: NftTierMetadata | null = null
+						if (meta?.cardOwner && bestNft) nftMetadata = await getNftMetadataFromApi(cardAddr, bestNft.tokenId)
+						return {
+							addr: cardAddr.toLowerCase(),
+							detail: {
+								assets: assets ? { points: assets.points, nfts: assets.nfts ?? [] } : null,
+								metadata: meta ?? null,
+								cardOwner: cardOwner ?? null,
+								nftMetadata: nftMetadata ?? undefined,
+							},
+						}
+					} catch {
+						return { addr: cardAddr.toLowerCase(), detail: { assets: null, metadata: null, cardOwner: null } }
+					}
+				})
+			)
+			const next: Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null }> = {}
+			results.forEach(({ addr, detail }) => { next[addr] = detail })
+			setAssetCardDetails(next)
 		} catch (e) {
-			console.error('Failed to refresh CCSA assets:', e)
-			setCcsaBalance('0')
-			setCcsaAssets(null)
-			setCcsaCardOwner(null)
-			setInfraCardBalance('0')
-			setInfraCardAssets(null)
-			setInfraCardMetadata(null)
-			setCashTreesBalance('0')
-			setCashTreesAssets(null)
-			setCashTreesMetadata(null)
+			console.error('Failed to refresh asset cards:', e)
+			setAssetCardDetails({})
 		} finally {
 			setCcsaReflash(false)
 		}
@@ -1683,39 +1695,30 @@ export default function MyWalletDashboardNew() {
 				if (!ccsaCardOwner) return false
 				return userAddrs.includes(ethers.getAddress(ccsaCardOwner).toLowerCase())
 			}
-			if (cardId === BEAMIO_USER_CARD_ASSET_ADDRESS) {
-				const owner = infraCardMetadata?.cardOwner
-				if (!owner) return false
-				return userAddrs.includes(ethers.getAddress(owner).toLowerCase())
-			}
-			if (cardId === CASH_TREES_CARD_ADDRESS) {
-				const owner = cashTreesMetadata?.cardOwner
-				if (!owner) return false
-				return userAddrs.includes(ethers.getAddress(owner).toLowerCase())
-			}
-			// 用户创建的卡：优先用 metadata.cardOwner，无则用「在 userCards 中」（userCards 来自 cardsOfOwner，即创建者列表）
+			// latestCards 资产卡或固定卡：从 assetCardDetails 取 cardOwner
+			const assetOwner = assetCardDetails[cardId.toLowerCase()]?.cardOwner
+			if (assetOwner) return userAddrs.includes(ethers.getAddress(assetOwner).toLowerCase())
+			// 用户创建的卡：优先用 metadata.cardOwner，无则用「在 userCards 中」
 			const owner = userCardDetails[cardId.toLowerCase()]?.metadata?.cardOwner
 			if (owner) return userAddrs.includes(ethers.getAddress(owner).toLowerCase())
 			return userCards.some((c) => c.cardAddress.toLowerCase() === cardId.toLowerCase())
 		},
-		[profiles, ccsaCardOwner, infraCardMetadata?.cardOwner, cashTreesMetadata?.cardOwner, userCardDetails, userCards]
+		[profiles, ccsaCardOwner, assetCardDetails, userCardDetails, userCards]
 	)
 
-	/** 判断某 cardId 是否为当前用户所拥有（用于点击时是否允许打开 DETAILS）：CCSA 仅创建者；其余卡若在 passes 中（持有 NFT/points 或创建者）则可点击。使用 isCardCreator 与 userCards 等避免依赖 passes/isCcsaOwnerStrict 声明顺序 */
+	/** 判断某 cardId 是否为当前用户所拥有（用于点击时是否允许打开 DETAILS）：CCSA 仅创建者；其余卡若持有 NFT/points 或为创建者则可点击 */
 	const isOwnerOfCard = useCallback(
 		(cardId: string) => {
 			if (cardId === 'ccsa') return isCardCreator('ccsa')
-			if (cardId === BEAMIO_USER_CARD_ASSET_ADDRESS) {
-				const infraNfts = (infraCardAssets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0)
-				return infraNfts.length > 0 || isCardCreator(BEAMIO_USER_CARD_ASSET_ADDRESS)
-			}
-			if (cardId === CASH_TREES_CARD_ADDRESS) {
-				const ctNfts = (cashTreesAssets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0)
-				return ctNfts.length > 0 || Number(cashTreesBalance) > 0 || isCardCreator(CASH_TREES_CARD_ADDRESS)
+			const details = assetCardDetails[cardId.toLowerCase()]
+			if (details) {
+				const nfts = (details.assets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0)
+				const hasPoints = Number(details.assets?.points ?? 0) > 0
+				return nfts.length > 0 || hasPoints || isCardCreator(cardId)
 			}
 			return userCards.some((c) => c.cardAddress.toLowerCase() === cardId.toLowerCase())
 		},
-		[isCardCreator, infraCardAssets?.nfts, cashTreesAssets?.nfts, cashTreesBalance, userCards]
+		[isCardCreator, assetCardDetails, userCards]
 	)
 
 	/** CCSA 专属：当前用户是否为 CCSA 卡的创建者/owner（链上 card.owner()）。用于面板显示与清除 */
@@ -1947,61 +1950,27 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [cardAddressForDetails, newNftTitle, newNftValidAfter, newNftValidBefore, newNftMaxSupply, newNftPriceE6, newNftDescription, newNftImageUrl, newNftBackgroundColor, profiles])
 
-	// exampleExpress passes：CCSA + 基础设施卡 + userCards；BeamioUserCard 的 tier 来自合约，tier name/description 来自创建卡时写入的 metadata (0x{owner}.json)
+	// exampleExpress passes：从 api/latestCards 拉取的卡一览 + userCards；持有 NFT 或 points 时显示
 	const passes = useMemo(() => {
 		const list: { id: string; name: string; balance: string; currency: string; type: string; memberNo: string; bg: string; textColor?: string; image?: string; tier?: string; tierName?: string; tierDescription?: string }[] = []
 		if (profiles?.[0]?.aaAccount) {
-			// 可折叠 CCSA 卡：拥有该卡内 NFT 资产 或 是该卡的创建者/owner 均显示；仅创建者可点击打开 DETAILS
+			// CCSA 主卡：id 为 'ccsa' 以兼容 cards 与 isCardViewWithRedeemList
 			const ccsaNfts = (ccsaAssets?.nfts ?? []).filter((n) => { const id = Number(n.tokenId); return Number.isInteger(id) && id > 0 })
 			const showCcsa = ccsaNfts.length > 0 || isCardCreator('ccsa')
 			if (showCcsa) {
 				const nft = ccsaNfts.length > 0 ? ccsaNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
-			list.push({
-				id: 'ccsa',
-				name: 'CCSA CARD',
-				balance: formatWithThousands(ccsaBalance),
-				currency: 'CAD',
-				type: 'Membership',
-				memberNo: nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : '',
-				bg: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
-				textColor: 'white',
-			})
+				list.push({
+					id: 'ccsa',
+					name: 'CCSA CARD',
+					balance: formatWithThousands(ccsaBalance),
+					currency: 'CAD',
+					type: 'Membership',
+					memberNo: nft ? `M-${String(nft.tokenId).padStart(6, '0')}` : '',
+					bg: 'linear-gradient(135deg, #6366F1, #8B5CF6, #06B6D4)',
+					textColor: 'white',
+				})
 			}
-			// 基础设施卡：拥有该卡 NFT 资产 或 是该卡的创建者/owner 均显示；仅创建者可点击打开 DETAILS
-			const infraNfts = (infraCardAssets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
-			const showInfra = infraNfts.length > 0 || isCardCreator(BEAMIO_USER_CARD_ASSET_ADDRESS)
-			if (showInfra) {
-			const infraNft = infraNfts.length > 0
-				? infraNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a))
-				: undefined
-			const rawTier = infraNft?.tier
-			const tierIndex = rawTier != null && rawTier !== 'Default/Max' ? Number(rawTier) : null
-			const tierMeta = tierIndex != null && Number.isInteger(tierIndex) && infraCardMetadata?.tiers?.length
-				? infraCardMetadata.tiers.find((t) => t.index === tierIndex) ?? infraCardMetadata.tiers[tierIndex]
-				: undefined
-			const infraNftMeta = infraCardMetadata?.nftMetadata
-			const infraTierName = infraNftMeta?.name ?? tierMeta?.name ?? (tierIndex != null ? `Tier ${tierIndex + 1}` : rawTier === 'Default/Max' ? 'Default' : undefined)
-			const infraTierDesc = infraNftMeta?.description ?? tierMeta?.description
-			const infraBgRaw = normalizeMetadataBackground((infraNftMeta as any)?.backgroundColor ?? (infraNftMeta as any)?.background_color)
-				?? normalizeMetadataBackground((tierMeta as any)?.backgroundColor ?? (tierMeta as any)?.background_color)
-			const infraBg = infraBgRaw ?? '#2C5535'
-			const infraTextColor = infraBgRaw ? textColorForBackground(infraBgRaw) : 'white'
-			list.push({
-				id: BEAMIO_USER_CARD_ASSET_ADDRESS,
-				name: infraCardMetadata?.name ?? 'CashTrees Card',
-				balance: formatWithThousands(infraCardBalance),
-				currency: 'CAD',
-				type: 'Infrastructure',
-				memberNo: infraNft ? `M-${String(infraNft.tokenId).padStart(6, '0')}` : BEAMIO_USER_CARD_ASSET_ADDRESS.slice(0, 10) + '...',
-				bg: infraBg,
-				textColor: infraTextColor,
-				image: infraNftMeta?.image ?? infraCardMetadata?.image,
-				tier: infraTierName,
-				tierName: infraTierName,
-				tierDescription: infraTierDesc,
-			})
-			}
-			// CashTrees 卡 (0x82ce...)：持有 NFT 或 points 时显示；持有者点击原地展开，创建者可打开 DETAILS
+			// CashTrees (0x82ce)：API 过滤，单独拉取；持有 NFT 或 points 时显示
 			const cashTreesNfts = (cashTreesAssets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
 			const showCashTrees = cashTreesNfts.length > 0 || Number(cashTreesBalance) > 0 || isCardCreator(CASH_TREES_CARD_ADDRESS)
 			if (showCashTrees) {
@@ -2033,6 +2002,44 @@ export default function MyWalletDashboardNew() {
 					tierDescription: ctTierDesc,
 				})
 			}
+			// 从 latestCards 拉取的资产卡：持有 NFT 或 points 时显示
+			latestCardsItems.forEach((item) => {
+				const addr = item.cardAddress.toLowerCase()
+				if (addr === CCSA_Card_Address || addr === CASH_TREES_CARD_ADDRESS) return // CCSA、CashTrees 已单独处理
+				const details = assetCardDetails[addr]
+				const nfts = (details?.assets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
+				const hasPoints = Number(details?.assets?.points ?? 0) > 0
+				const show = nfts.length > 0 || hasPoints || isCardCreator(addr)
+				if (!show) return
+				const bestNft = nfts.length > 0 ? nfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
+				const meta = details?.metadata
+				const rawTier = bestNft?.tier
+				const tierIndex = rawTier != null && rawTier !== 'Default/Max' ? Number(rawTier) : null
+				const tierMeta = tierIndex != null && Number.isInteger(tierIndex) && meta?.tiers?.length
+					? meta.tiers.find((t) => t.index === tierIndex) ?? meta.tiers[tierIndex]
+					: undefined
+				const nftMeta = details?.nftMetadata
+				const tierName = nftMeta?.name ?? tierMeta?.name ?? (tierIndex != null ? `Tier ${tierIndex + 1}` : rawTier === 'Default/Max' ? 'Default' : undefined)
+				const tierDesc = nftMeta?.description ?? tierMeta?.description
+				const bgRaw = normalizeMetadataBackground((nftMeta as any)?.backgroundColor ?? (nftMeta as any)?.background_color)
+					?? normalizeMetadataBackground((tierMeta as any)?.backgroundColor ?? (tierMeta as any)?.background_color)
+				const bg = bgRaw ?? '#2C5535'
+				const textColor = bgRaw ? textColorForBackground(bgRaw) : 'white'
+				list.push({
+					id: addr,
+					name: meta?.name ?? addr.slice(0, 10) + '...',
+					balance: formatWithThousands(details?.assets?.points ?? '0'),
+					currency: 'CAD',
+					type: 'Stored Value',
+					memberNo: bestNft ? `M-${String(bestNft.tokenId).padStart(6, '0')}` : addr.slice(0, 10) + '...',
+					bg: bg,
+					textColor: textColor,
+					image: nftMeta?.image ?? meta?.image,
+					tier: tierName,
+					tierName: tierName,
+					tierDescription: tierDesc,
+				})
+			})
 		}
 		userCards.forEach((uc) => {
 			// 持有者卡（非发行方）且在 filter list 中则不显示（本地缓存可能含旧数据）
@@ -2071,7 +2078,7 @@ export default function MyWalletDashboardNew() {
 			})
 		})
 		return list
-	}, [profiles?.[0]?.aaAccount, isCardCreator, ccsaAssets?.nfts, ccsaBalance, infraCardAssets?.nfts, infraCardBalance, infraCardMetadata, cashTreesAssets?.nfts, cashTreesBalance, cashTreesMetadata, userCards, userCardDetails])
+	}, [profiles?.[0]?.aaAccount, isCardCreator, ccsaAssets?.nfts, ccsaBalance, cashTreesAssets?.nfts, cashTreesBalance, cashTreesMetadata, latestCardsItems, assetCardDetails, userCards, userCardDetails])
 
 	const updatePassStatus = useCallback((id: string, status: 'active' | 'archived') => {
 		setArchivedPassIds((prev) => {
@@ -2127,11 +2134,11 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [activeView, cards, visiblePasses])
 
-	/** 当前选中的是否为「展示 My BeamioUserCards + Redeem Active List」的卡（CCSA、基础设施卡、或自己创建的 user card） */
+	/** 当前选中的是否为「展示 My BeamioUserCards + Redeem Active List」的卡（CCSA、CashTrees、latestCards 资产卡、或自己创建的 user card） */
+	const latestCardsAddrs = useMemo(() => new Set([...latestCardsItems.map((i) => i.cardAddress.toLowerCase()), CASH_TREES_CARD_ADDRESS]), [latestCardsItems])
 	const isCardViewWithRedeemList =
 		selectedCard?.id === 'ccsa' ||
-		selectedCard?.id === BEAMIO_USER_CARD_ASSET_ADDRESS ||
-		selectedCard?.id === CASH_TREES_CARD_ADDRESS ||
+		(!!selectedCard?.id && latestCardsAddrs.has(selectedCard.id.toLowerCase())) ||
 		(!!selectedCard?.id && userCards.some((c) => c.cardAddress.toLowerCase() === selectedCard.id?.toLowerCase()))
 
 	return (
@@ -2834,7 +2841,8 @@ export default function MyWalletDashboardNew() {
 											</div>
 												</>
 											)}
-											{selectedCard.id === BEAMIO_USER_CARD_ASSET_ADDRESS && (
+											{/* Card Information：latestCards 资产卡（含 infra、CashTrees 等） */}
+											{selectedCard.id !== 'ccsa' && selectedCard.id && latestCardsAddrs.has(selectedCard.id.toLowerCase()) && (
 												<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 													<div className="flex items-center gap-2 mb-4">
 														<Info className="w-4 h-4 text-gray-400" />
@@ -2847,28 +2855,8 @@ export default function MyWalletDashboardNew() {
 														</div>
 														<div className="flex justify-between text-xs">
 															<span className="text-gray-500">Contract</span>
-															<span className="font-mono text-gray-500" title={BEAMIO_USER_CARD_ASSET_ADDRESS}>
-																{BEAMIO_USER_CARD_ASSET_ADDRESS.slice(0, 10)}...{BEAMIO_USER_CARD_ASSET_ADDRESS.slice(-8)}
-															</span>
-														</div>
-													</div>
-												</div>
-											)}
-											{selectedCard.id === CASH_TREES_CARD_ADDRESS && (
-												<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
-													<div className="flex items-center gap-2 mb-4">
-														<Info className="w-4 h-4 text-gray-400" />
-														<h3 className="font-bold text-gray-900">Card Information</h3>
-													</div>
-													<div className="space-y-3">
-														<div className="flex justify-between text-xs">
-															<span className="text-gray-500">Network</span>
-															<span className="font-medium text-gray-900">Base Mainnet</span>
-														</div>
-														<div className="flex justify-between text-xs">
-															<span className="text-gray-500">Contract</span>
-															<span className="font-mono text-gray-500" title={CASH_TREES_CARD_ADDRESS}>
-																{CASH_TREES_CARD_ADDRESS.slice(0, 10)}...{CASH_TREES_CARD_ADDRESS.slice(-8)}
+															<span className="font-mono text-gray-500" title={selectedCard.id}>
+																{selectedCard.id.slice(0, 10)}...{selectedCard.id.slice(-8)}
 															</span>
 														</div>
 													</div>
@@ -3515,25 +3503,7 @@ export default function MyWalletDashboardNew() {
 											setRedeemSuccessTx(null)
 											setRedeemDetails(null)
 											refetchUserCards()
-											if (profiles?.[0]) {
-												const fetchInfraMeta = () =>
-													getCardMetadataFromApi(BEAMIO_USER_CARD_ASSET_ADDRESS).then((m) => m ?? getCardMetadataFromUri(BEAMIO_USER_CARD_ASSET_ADDRESS))
-												const fetchCashTreesMeta = () =>
-													getCardMetadataFromApi(CASH_TREES_CARD_ADDRESS).then((m) => m ?? getCardMetadataFromUri(CASH_TREES_CARD_ADDRESS))
-												Promise.all([
-													getMyAssets(profiles[0], CCSA_Card_Address),
-													getMyAssets(profiles[0], BEAMIO_USER_CARD_ASSET_ADDRESS),
-													getMyAssets(profiles[0], CASH_TREES_CARD_ADDRESS),
-													fetchInfraMeta(),
-													fetchCashTreesMeta(),
-												]).then(([ccsa, infra, cashTrees, meta, cashTreesMeta]) => {
-													if (ccsa) setCcsaAssets({ points: ccsa.points, nfts: ccsa.nfts ?? [] }); if (ccsa?.points != null) setCcsaBalance(ccsa.points)
-													if (infra) setInfraCardAssets({ points: infra.points, nfts: infra.nfts ?? [] }); if (infra?.points != null) setInfraCardBalance(infra.points)
-													if (meta) setInfraCardMetadata(meta)
-													if (cashTrees) setCashTreesAssets({ points: cashTrees.points, nfts: cashTrees.nfts ?? [] }); if (cashTrees?.points != null) setCashTreesBalance(cashTrees.points)
-													if (cashTreesMeta) setCashTreesMetadata(cashTreesMeta)
-												})
-											}
+											refreshCcsaAssets()
 										}}
 										className="w-full py-4 rounded-2xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-base uppercase tracking-wide"
 									>

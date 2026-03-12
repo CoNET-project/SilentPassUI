@@ -155,7 +155,7 @@ const ledgerTransactions = [
 const shortenAddress = (addr: string, head = 6, tail = 4) =>
   addr && addr.length > head + tail ? `${addr.slice(0, head)}...${addr.slice(-tail)}` : addr || '—';
 
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x709DAe38D65a87289597EE79CB0d5d251A282E59';
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x536cab27c6488202FD86baE0581F143C725f5b4D';
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
 const EMPTY_OVERVIEW_METRICS = {
   totalNetworkVolumeCad: '—',

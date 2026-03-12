@@ -30,6 +30,10 @@ import {
 	ChevronRight,
 	ChevronLeft,
 	Zap,
+	Smartphone,
+	Nfc,
+	Globe,
+	Flame,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -63,6 +67,8 @@ const TX_VOUCHER_BURN = ethers.keccak256(ethers.toUtf8Bytes('voucher_burn:confir
 const TX_REQUEST_CANCEL = ethers.keccak256(ethers.toUtf8Bytes('request_cancel:confirmed'))
 /** 新卡发行与 Top Up 共用 */
 const TX_CARDMINT = ethers.keccak256(ethers.toUtf8Bytes('cardmint:confirmed'))
+/** USDC 购点触发首次发行新卡（purchasingCardProcess） */
+const TX_USDC_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcNewCard'))
 
 type TxDisplayType =
 	| 'merchant_pay'
@@ -87,7 +93,7 @@ function txCategoryToType(txCategory: string): TxDisplayType {
 	if (cat === TX_REQUEST_CREATE.toLowerCase()) return 'request_create'
 	if (cat === TX_REQUEST_EXPIRED.toLowerCase()) return 'request_expired'
 	if (cat === TX_TOPUP.toLowerCase()) return 'topup'
-	if (cat === TX_CARDMINT.toLowerCase()) return 'cardmint'
+	if (cat === TX_CARDMINT.toLowerCase() || cat === TX_USDC_NEW_CARD.toLowerCase()) return 'cardmint'
 	if (cat === TX_INTERNAL.toLowerCase()) return 'internal_transfer'
 	if (cat === TX_VOUCHER_BURN.toLowerCase()) return 'voucher_burn'
 	if (cat === TX_REQUEST_CANCEL.toLowerCase()) return 'request_cancel'
@@ -145,7 +151,31 @@ function formatCurrencySigned(amount: number, currencyCode: string) {
 	return `0.00 ${currencyCode}`
 }
 
-function parseDisplayJson(displayJson: string): { title: string; handle: string; forText?: string; card?: { title?: string; detail?: string; image?: string } } {
+/** Ledger 布局：TxDisplayType → Action 标签 (Mint/Transfer/Burn) */
+function typeToLedgerAction(type: TxDisplayType): { label: string; className: string } {
+	switch (type) {
+		case 'cardmint':
+		case 'topup':
+			return { label: 'Mint', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' }
+		case 'voucher_burn':
+			return { label: 'Burn', className: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' }
+		default:
+			return { label: 'Transfer', className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' }
+	}
+}
+
+/** 从 displayJson 推断 device 展示 */
+function getDeviceFromDisplayJson(displayJson: string): string {
+	try {
+		const j = JSON.parse(displayJson || '{}')
+		const src = j.source
+		if (src === 'purchasingCard' || src === 'web') return 'Beamio APP'
+		if (typeof j.device === 'string') return j.device
+	} catch {}
+	return 'Beamio APP'
+}
+
+function parseDisplayJson(displayJson: string): { title: string; handle: string; forText?: string; card?: { title?: string; detail?: string; image?: string }; cardAddress?: string; source?: string; topupCategory?: string } {
 	try {
 		const j = JSON.parse(displayJson || '{}')
 		const forText = typeof j.forText === 'string' ? j.forText.trim() : undefined
@@ -154,6 +184,9 @@ function parseDisplayJson(displayJson: string): { title: string; handle: string;
 			handle: j.handle ?? j.forText ?? j.note ?? '',
 			forText: forText || undefined,
 			card: j.card,
+			cardAddress: typeof j.cardAddress === 'string' ? j.cardAddress.trim() : undefined,
+			source: typeof j.source === 'string' ? j.source : undefined,
+			topupCategory: typeof j.topupCategory === 'string' ? j.topupCategory : undefined,
 		}
 	} catch {
 		return { title: 'Transaction', handle: displayJson?.slice(0, 40) ?? '' }
@@ -402,6 +435,8 @@ interface ActiveHistoryPannelNewProps {
 	title?: string
 	/** 覆盖查询地址，调试或指定展示某地址时使用；传入时优先于 profiles */
 	overrideAddress?: string
+	/** 仅显示 USDC 购卡/充值中 route 匹配此卡地址的 cardmint 交易（用于 Alliance Live Network Activity） */
+	filterByCardAddress?: string
 	/** compact 模式：只显示前 N 条，无 tab，顶部显示 All Activity 链接打开完整抽屉 */
 	compact?: boolean
 	/** compact 模式下的条数限制，默认 5 */
@@ -410,15 +445,19 @@ interface ActiveHistoryPannelNewProps {
 	embeddedInDrawer?: boolean
 	/** bare 模式：去除外部圆角、边框、阴影、边距，由父容器设置，避免内部 padding 影响页面左右边距 */
 	bare?: boolean
+	/** Ledger 表格布局：按图示 TX ID/ACTION、FROM→TO、DEVICE、TX HASH、AMOUNT、GAS PAID BY 列展示 */
+	ledgerLayout?: boolean
 }
 
 const ActiveHistoryPannelNew = ({
 	title = 'Indexer History',
 	overrideAddress,
+	filterByCardAddress,
 	compact = false,
 	compactLimit = 5,
 	embeddedInDrawer = false,
 	bare = false,
+	ledgerLayout = false,
 }: ActiveHistoryPannelNewProps) => {
 	const { profiles, myAddress, setShowFooter, setChatHomeItem, beamioUsers } = useDaemonContext()
 	const navigate = useNavigate()
@@ -870,6 +909,74 @@ const ActiveHistoryPannelNew = ({
 	/** 带符号的法币金额，用于展示（使用 meta.currencyFiat 对应币种） */
 	const amountFiatSigned = (tx: TxView) => (tx.isInbound ? tx.amountFiat : -tx.amountFiat)
 
+	function LedgerTxRow({ tx, onClick }: { tx: TxView; onClick: () => void }) {
+		const rawTx = tx.rawTransaction as RawTxRecord | undefined
+		const payerAddr = extractAddr(rawTx?.payer) ?? ''
+		const payeeAddr = extractAddr(rawTx?.payee) ?? ''
+		const { fullName: payerName, beamioTag: payerTag } = useCounterpartyProfile(payerAddr)
+		const { fullName: payeeName, beamioTag: payeeTag } = useCounterpartyProfile(payeeAddr)
+		const fromDisplay = payerName || payerTag || (payerAddr ? `${payerAddr.slice(0, 6)}…${payerAddr.slice(-4)}` : '—')
+		const toDisplay = payeeName || payeeTag || (payeeAddr ? `${payeeAddr.slice(0, 6)}…${payeeAddr.slice(-4)}` : '—')
+		const action = typeToLedgerAction(tx.type)
+		const device = getDeviceFromDisplayJson(rawTx?.displayJson ?? '')
+		const bUnits = rawTx?.fees?.bServiceUnits6 != null ? Number(rawTx.fees.bServiceUnits6) / 1e6 : 2
+		const gasDisplay = bUnits > 0 ? `${Math.round(bUnits)} B-Units` : '0 B-Units'
+		const isCashTreesGas = !rawTx?.fees?.feePayer || (rawTx.fees.feePayer as string) === ethers.ZeroAddress
+		const txIdShort = tx.id.startsWith('0x') && tx.id.length === 66 ? `TX-${tx.id.slice(2, 8)}` : tx.id.slice(0, 12)
+		return (
+			<tr
+				role="button"
+				tabIndex={0}
+				onClick={onClick}
+				onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
+				className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+			>
+				<td className="px-4 py-3 whitespace-nowrap">
+					<div className="font-mono text-xs text-slate-400 dark:text-slate-500 mb-1">{txIdShort} <span className="text-slate-300 dark:text-slate-600 ml-2">{tx.timestamp}</span></div>
+					<span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${action.className}`}>
+						{tx.type === 'cardmint' || tx.type === 'topup' ? <Coins size={12} /> : tx.type === 'voucher_burn' ? <Flame size={12} /> : <ArrowRightLeft size={12} />}
+						{action.label}
+					</span>
+					<div className="text-[10px] font-medium text-slate-600 dark:text-slate-400 mt-1 max-w-[180px] truncate" title={tx.title}>{tx.title}</div>
+				</td>
+				<td className="px-4 py-3 whitespace-nowrap">
+					<div className="font-bold text-sm text-slate-700 dark:text-slate-200 truncate max-w-[150px]" title={fromDisplay}>{fromDisplay}</div>
+					<div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[150px]" title={toDisplay}>→ {toDisplay}</div>
+				</td>
+				<td className="px-4 py-3">
+					<div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2.5 py-1.5 rounded-lg w-max">
+						{device === 'NFC Card' ? <Nfc size={14} className="text-blue-500" /> : device === 'Web Dashboard' ? <Globe size={14} className="text-slate-400" /> : <Smartphone size={14} className="text-emerald-500" />}
+						{device}
+					</div>
+				</td>
+				<td className="px-4 py-3">
+					{tx.txHash ? (
+						<a
+							href={`https://basescan.org/tx/${tx.txHash}`}
+							target="_blank"
+							rel="noopener noreferrer"
+							onClick={(e) => e.stopPropagation()}
+							className="flex items-center gap-1.5 text-xs font-mono text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 cursor-pointer w-max bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded border border-emerald-100 dark:border-emerald-800"
+						>
+							{tx.txHash.substring(0, 6)}...{tx.txHash.slice(-4)} <ExternalLink size={12} />
+						</a>
+					) : (
+						<span className="text-xs text-slate-400 dark:text-slate-500">—</span>
+					)}
+				</td>
+				<td className="px-4 py-3 text-right font-mono font-black text-slate-900 dark:text-white text-base">${Math.abs(tx.amountFiat).toFixed(2)}</td>
+				<td className="px-4 py-3 text-right whitespace-nowrap">
+					<div className={`text-xs font-bold ${isCashTreesGas ? 'text-emerald-600 dark:text-emerald-400' : 'text-orange-600 dark:text-orange-400'}`}>
+						{isCashTreesGas ? 'CashTrees' : 'Merchant'}
+					</div>
+					<div className="text-[10px] text-amber-600 dark:text-amber-400 font-mono mt-1 flex items-center justify-end gap-1">
+						<Zap size={10} /> {gasDisplay}
+					</div>
+				</td>
+			</tr>
+		)
+	}
+
 	function TxItemRow({ tx, activeTab: rowActiveTab }: { tx: TxView; activeTab?: 'All' | 'Cash' | 'Vouchers' }) {
 		const isInternalTransfer = tx.type === 'internal_transfer'
 		const isReqExpired = (tx.type === 'request_create' || tx.type === 'request_expired') && isRequestExpired(tx)
@@ -1104,8 +1211,8 @@ const ActiveHistoryPannelNew = ({
 			</div>
 			)}
 
-			{/* Segmented Control - 隐藏于 compact 模式 */}
-			{!compact && (
+			{/* Segmented Control - 隐藏于 compact 或 ledgerLayout 模式 */}
+			{!compact && !ledgerLayout && (
 			<div className="mb-5">
 				
 				<div className="flex bg-white dark:bg-slate-800/80 p-1.5 rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 dark:border-slate-700/50">
@@ -1162,13 +1269,37 @@ const ActiveHistoryPannelNew = ({
 				</div>
 			)}
 
-			{!error && items.length > 0 && (
+			{!error && items.length > 0 && ledgerLayout ? (
+				<div className="overflow-x-auto">
+					<table className="w-full">
+						<thead>
+							<tr className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 text-left text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">
+								<th className="px-4 py-3">TX ID / Action</th>
+								<th className="px-4 py-3">From → To</th>
+								<th className="px-4 py-3">Device</th>
+								<th className="px-4 py-3">Tx Hash</th>
+								<th className="px-4 py-3 text-right">Amount ($CTree)</th>
+								<th className="px-4 py-3 text-right">Gas Paid By</th>
+							</tr>
+						</thead>
+						<tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+							{displayItems.map((tx) => (
+								<LedgerTxRow
+									key={tx.id}
+									tx={tx}
+									onClick={() => { setShowJson(false); setSelectedTx(tx) }}
+								/>
+							))}
+						</tbody>
+					</table>
+				</div>
+			) : !error && items.length > 0 ? (
 				<div className="space-y-2 pb-3">
 					{displayItems.map((tx) => (
 						<TxItemRow key={tx.id} tx={tx} activeTab={activeTab} />
 					))}
 				</div>
-			)}
+			) : null}
 
 			{items.length > 0 && !error && (
 				<div className="pt-2 pb-1 text-center">
@@ -1212,6 +1343,8 @@ const ActiveHistoryPannelNew = ({
 									<ActiveHistoryPannelNew
 										title="Activity"
 										overrideAddress={overrideAddress}
+										filterByCardAddress={filterByCardAddress}
+										ledgerLayout={ledgerLayout}
 										compact={false}
 										embeddedInDrawer
 									/>

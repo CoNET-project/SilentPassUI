@@ -1,6 +1,6 @@
 {
 	"name": "beamio",
-	"version": "0.39.0",
+	"version": "0.39.1",
 	"private": true,
 	"homepage": "/app",
 	"dependencies": {
@@ -69,6 +69,9 @@
 		"web-vitals": "^2.1.4"
 	},
 	"scripts": {
+		"version:sync": "node scripts/sync-version.cjs",
+		"prestart": "node scripts/sync-version.cjs",
+		"prebuild": "node scripts/sync-version.cjs",
 		"start": "craco start",
 		"build:react": "CI=false env=production node node_modules/.bin/craco build",
 		"test": "craco test",

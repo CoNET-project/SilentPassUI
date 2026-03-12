@@ -4,6 +4,8 @@ import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json } fro
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
 import { baseEndpoint } from '@/utils/constants';
+import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses';
+import { APP_VERSION } from '@/version';
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew';
 import { 
   LayoutDashboard, 
@@ -155,7 +157,8 @@ const ledgerTransactions = [
 const shortenAddress = (addr: string, head = 6, tail = 4) =>
   addr && addr.length > head + tail ? `${addr.slice(0, head)}...${addr.slice(-tail)}` : addr || '—';
 
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x536cab27c6488202FD86baE0581F143C725f5b4D';
+/** CCSA 卡 (BeamioUserCard)，与 config/chainAddresses 保持一致 */
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x82ceE96dB45933fE4b71D36fa8904508f929027C'
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
 const EMPTY_OVERVIEW_METRICS = {
   totalNetworkVolumeCad: '—',
@@ -602,6 +605,7 @@ export default function App() {
                 <div>
                    <div className="text-[10px] text-slate-400 font-medium">Infrastructure by</div>
                    <div className="text-xs font-bold text-slate-700">Beamio Protocol</div>
+                   <div className="text-[10px] text-slate-400">v{APP_VERSION}</div>
                 </div>
              </div>
           ) : (
@@ -671,7 +675,7 @@ export default function App() {
                         <h2 className="font-bold text-lg text-slate-800">Live Network Activity</h2>
                         <button onClick={() => setActiveTab('Ledger')} className="text-sm font-bold text-emerald-600 hover:underline">View Ledger</button>
                       </div>
-                      <ActiveHistoryPannelNew title="Live Network Activity" compact compactLimit={3} bare embeddedInDrawer />
+                      <ActiveHistoryPannelNew title="Live Network Activity" compact compactLimit={3} bare embeddedInDrawer filterByCardAddress={FIXED_USER_CARD_CONTRACT_ADDRESS} ledgerLayout />
                    </div>
                    
                    <div className="bg-slate-900 rounded-2xl shadow-xl p-6 text-white relative overflow-hidden flex flex-col">

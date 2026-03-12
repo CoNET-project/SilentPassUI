@@ -1,8 +1,70 @@
 import { useState } from 'react'
 import { KeyRound, Wallet, ShieldCheck } from 'lucide-react'
-import { restoreWithUserPin } from '@/services/beamio'
+import { ethers } from 'ethers'
+import { restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio'
+import { setCoNET_Data } from '@/utils/globals'
+import { initChat } from '@/services/chat'
+import { getAAAccount } from '@/services/BeamioCard'
+import { useDaemonContext } from '@/providers/DaemonProvider'
 import MerchantOS from '@/pages/Vouchers/example/biz'
 
+/** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
+const assembleEncryptKeysObject = async (
+	temp: encrypt_keys_object,
+	setProfiles: (val: profile[]) => void,
+	setAllNodes: (val: nodeInfo[]) => void,
+	setGossip: (val: boolean) => void,
+	gossip: boolean,
+	setBeamio: (val: beamio) => void,
+	setCharts: React.Dispatch<React.SetStateAction<string[]>>,
+	setMyAddress: (val: string) => void
+) => {
+	const profiles = temp?.profiles
+	if (!temp || !profiles?.length) return
+
+	const loadUserInfo = (): Promise<beamio> =>
+		new Promise((resolve) => {
+			getUserInfo(profiles[0].keyID).then((userInfo) => {
+				if (!userInfo) {
+					setTimeout(() => resolve(loadUserInfo()), 1000)
+				} else {
+					resolve(userInfo)
+				}
+			})
+		})
+
+	const userInfo = await loadUserInfo()
+	if (!userInfo) return
+
+	const bo: beamio = userInfo
+	bo.initialLoading = true
+	temp.beamio = bo
+
+	// Fetch AA address from chain (profile from restoreWithUserPin has no aaAccount)
+	try {
+		const chainAa = await getAAAccount(profiles[0])
+		if (chainAa) {
+			const nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: chainAa } : p))
+			temp.profiles = nextProfiles
+			setProfiles(nextProfiles)
+		}
+	} catch {
+		// Keep last trusted; RPC failure does not overwrite
+	}
+
+	setCoNET_Data(temp)
+	setBeamio(bo)
+
+	await initChat(setProfiles, setAllNodes, setGossip, gossip, (message) => {
+		setCharts((prev) => [...prev, message])
+	})
+
+	await storeSystemData()
+	const eoa = profiles[0]?.keyID?.trim()
+	if (eoa && ethers.isAddress(eoa)) {
+		setMyAddress(eoa)
+	}
+}
 
 const BizHome = () => {
 	const [merchantTag, setMerchantTag] = useState('')
@@ -11,18 +73,39 @@ const BizHome = () => {
 	const [loginError, setLoginError] = useState('')
 	const [isLoggedIn, setIsLoggedIn] = useState(false)
 
+	const {
+		setProfiles,
+		setAllNodes,
+		setGossip,
+		gossip,
+		setBeamio,
+		setCharts,
+		setMyAddress,
+	} = useDaemonContext()
+
 	const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault()
 		setLoginError('')
 		setIsLoading(true)
 		try {
 			const username = merchantTag.startsWith('@') ? merchantTag.slice(1) : merchantTag
-			const ok = await restoreWithUserPin(username, password, true)
-			if (ok === true) {
-				setIsLoggedIn(true)
-			} else {
+			const result = await restoreWithUserPin(username, password, false)
+			const temp = result && typeof result === 'object' && result.profiles ? result : null
+			if (!temp) {
 				setLoginError('Invalid Beamio Tag or Recovery Password, please try again')
+				return
 			}
+			await assembleEncryptKeysObject(
+				temp,
+				setProfiles,
+				setAllNodes,
+				setGossip,
+				gossip,
+				setBeamio,
+				setCharts,
+				setMyAddress
+			)
+			setIsLoggedIn(true)
 		} catch {
 			setLoginError('Login failed, please try again later')
 		} finally {

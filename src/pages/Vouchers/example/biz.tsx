@@ -3,7 +3,10 @@ import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import BeamioMeMainScreen from '@/components/Setting';
-import { searchUsername } from '@/services/beamio';
+import { searchUsername, restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio';
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
+import { initChat } from '@/services/chat';
+import { getAAAccount } from '@/services/BeamioCard';
 import { signRegisterPOS, generateRegisterPOSNonce, registerPOSApi, signRemovePOS, removePOSApi, getMerchantPOSListFromCoNET } from '@/services/merchantPOS';
 import {
  LayoutDashboard,
@@ -55,6 +58,64 @@ const displayName = (item: { firstName?: string; lastName?: string; accountName?
   const lastname = String(lastRaw || '').split('\r\n') || []
   const fullName = `${first || ''} ${/^\{/.test(lastname[0] || '') ? '' : lastname[0] || ''}`.trim()
   return fullName || (item as { accountName?: string }).accountName || ''
+}
+
+/** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
+const assembleEncryptKeysObject = async (
+  temp: encrypt_keys_object,
+  setProfiles: (val: profile[]) => void,
+  setAllNodes: (val: nodeInfo[]) => void,
+  setGossip: (val: boolean) => void,
+  gossip: boolean,
+  setBeamio: (val: beamio) => void,
+  setCharts: React.Dispatch<React.SetStateAction<string[]>>,
+  setMyAddress: (val: string) => void
+) => {
+  const profiles = temp?.profiles
+  if (!temp || !profiles?.length) return
+
+  const loadUserInfo = (): Promise<beamio> =>
+    new Promise((resolve) => {
+      getUserInfo(profiles[0].keyID).then((userInfo) => {
+        if (!userInfo) {
+          setTimeout(() => resolve(loadUserInfo()), 1000)
+        } else {
+          resolve(userInfo)
+        }
+      })
+    })
+
+  const userInfo = await loadUserInfo()
+  if (!userInfo) return
+
+  const bo: beamio = userInfo
+  bo.initialLoading = true
+  temp.beamio = bo
+
+  // Fetch AA address from chain (profile from restoreWithUserPin has no aaAccount)
+  try {
+    const chainAa = await getAAAccount(profiles[0])
+    if (chainAa) {
+      const nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: chainAa } : p))
+      temp.profiles = nextProfiles
+      setProfiles(nextProfiles)
+    }
+  } catch {
+    // Keep last trusted; RPC failure does not overwrite
+  }
+
+  setCoNET_Data(temp)
+  setBeamio(bo)
+
+  await initChat(setProfiles, setAllNodes, setGossip, gossip, (message) => {
+    setCharts((prev) => [...prev, message])
+  })
+
+  await storeSystemData()
+  const eoa = profiles[0]?.keyID?.trim()
+  if (eoa && ethers.isAddress(eoa)) {
+    setMyAddress(eoa)
+  }
 }
 
 // --- Precise Mock Data reflecting the exact Discount & Source logic ---
@@ -124,12 +185,28 @@ const AddressRow = ({ label, icon: Icon, address, fullAddress }: { label: string
 };
 
 export default function MerchantOS() {
- const { beamio, profiles, myAddress } = useDaemonContext();
- const [currentView, setCurrentView] = useState('dashboard');
+ const {
+   beamio,
+   profiles,
+   myAddress,
+   setProfiles,
+   setAllNodes,
+   setGossip,
+   gossip,
+   setBeamio,
+   setCharts,
+   setMyAddress,
+ } = useDaemonContext();
+ const [currentView, setCurrentView] = useState<'login' | 'loading' | 'dashboard'>('login');
  const [activeTab, setActiveTab] = useState('Overview');
   const [merchantTag, setMerchantTag] = useState('@urbantea_van');
  const [password, setPassword] = useState('');
  const [loadingStep, setLoadingStep] = useState(0);
+ const [isLoginLoading, setIsLoginLoading] = useState(false);
+ const [loginError, setLoginError] = useState<string | null>(null);
+
+ // If CoNET_Data already initialized locally (from checkStorage), show dashboard
+ const isCoNETInitialized = !!(CoNET_Data?.profiles?.length && profiles?.length && beamio);
 
 
  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
@@ -178,6 +255,12 @@ export default function MerchantOS() {
    fetchTerminals();
  }, [fetchTerminals]);
 
+ useEffect(() => {
+   if (isCoNETInitialized && currentView === 'login') {
+     setCurrentView('dashboard');
+   }
+ }, [isCoNETInitialized, currentView]);
+
 
  // --- Financial Mock Data Logic ---
  const salesCTree = 1200.00;
@@ -215,13 +298,39 @@ export default function MerchantOS() {
  );
 
 
- const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
+ const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
    e.preventDefault();
-   setCurrentView('loading');
-   setTimeout(() => setLoadingStep(1), 800); 
-   setTimeout(() => setLoadingStep(2), 1600);
-   setTimeout(() => setLoadingStep(3), 2400);
-   setTimeout(() => setCurrentView('dashboard'), 3200);
+   setLoginError(null);
+   setIsLoginLoading(true);
+   try {
+     const username = merchantTag.startsWith('@') ? merchantTag.slice(1) : merchantTag;
+     const result = await restoreWithUserPin(username, password, false);
+     const temp = result && typeof result === 'object' && result.profiles ? result : null;
+     if (!temp) {
+       setLoginError('Invalid Beamio Tag or Recovery Password, please try again');
+       return;
+     }
+     setCurrentView('loading');
+     setTimeout(() => setLoadingStep(1), 800);
+     setTimeout(() => setLoadingStep(2), 1600);
+     setTimeout(() => setLoadingStep(3), 2400);
+     await assembleEncryptKeysObject(
+       temp,
+       setProfiles,
+       setAllNodes,
+       setGossip,
+       gossip,
+       setBeamio,
+       setCharts,
+       setMyAddress
+     );
+     setCurrentView('dashboard');
+   } catch {
+     setLoginError('Login failed, please try again later');
+   } finally {
+     setIsLoginLoading(false);
+     setLoadingStep(0);
+   }
  };
 
 
@@ -247,9 +356,10 @@ export default function MerchantOS() {
                <input
                  type="text"
                  value={merchantTag.replace('@', '')}
-                 onChange={(e) => setMerchantTag(`@${e.target.value}`)}
+                 onChange={(e) => setMerchantTag(e.target.value ? `@${e.target.value}` : '')}
                  className="w-full pl-9 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-semibold text-[15px] text-slate-900"
                  required
+                 disabled={isLoginLoading}
                />
              </div>
            </div>
@@ -268,16 +378,32 @@ export default function MerchantOS() {
                  placeholder="••••••••••••"
                  className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-medium text-[15px] tracking-widest text-slate-900"
                  required
+                 disabled={isLoginLoading}
                />
              </div>
            </div>
 
+           {loginError && (
+             <div className="text-[13px] font-medium text-rose-600 bg-rose-50 px-4 py-3 rounded-2xl border border-rose-100">
+               {loginError}
+             </div>
+           )}
 
            <button
              type="submit"
-             className="w-full bg-[#1562f0] text-white py-4 rounded-[20px] font-semibold text-[16px] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all mt-6 flex justify-center items-center gap-2"
+             disabled={isLoginLoading}
+             className="w-full bg-[#1562f0] hover:bg-[#1253d0] text-white py-4 rounded-[20px] font-semibold text-[16px] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all mt-6 flex justify-center items-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
            >
-             <Wallet size={18} /> Unlock Wallet 111
+             {isLoginLoading ? (
+               <>
+                 <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                 Unlocking...
+               </>
+             ) : (
+               <>
+                 <Wallet size={18} /> Unlock Wallet
+               </>
+             )}
            </button>
          </form>
 

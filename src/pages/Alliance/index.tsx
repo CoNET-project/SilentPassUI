@@ -126,10 +126,20 @@ const initialMerchants = [
   },
 ];
 
-const initialAssets = [
-  { id: 'AST-01', name: 'CashTrees Green Card', type: 'Standard Membership', minTopUp: '≥ 50 CAD', minted: 1500, activeHolders: 1420, status: 'Active', color: 'bg-emerald-500', mintRule: 'One-time Top-up' },
-  { id: 'AST-02', name: 'CashTrees Black VIP Card', type: 'VIP Membership', minTopUp: '≥ 100 CAD', minted: 280, activeHolders: 275, status: 'Active', color: 'bg-slate-900', mintRule: 'One-time Top-up' },
-];
+const TIER_COLOR_FALLBACKS = ['bg-emerald-500', 'bg-slate-900', 'bg-blue-600', 'bg-amber-600', 'bg-purple-600', 'bg-rose-600'];
+
+type TierAsset = {
+  id: string;
+  name: string;
+  type: string;
+  minTopUp: string;
+  minted: number;
+  activeHolders: number;
+  status: string;
+  color: string;
+  mintRule: string;
+  image?: string;
+};
 
 const ledgerTransactions = [
   { id: 'TX-9901', type: 'Mint', amount: '50.00', from: 'CashTrees Treasury', to: '@new_diner', note: 'Online Purchase (New Green Card)', time: '5 mins ago', status: 'Settled', gasPaidBy: 'CashTrees', gasAmount: '99 B-Units', device: 'Beamio APP', txHash: '0x3fA...8b2' },
@@ -145,7 +155,7 @@ const ledgerTransactions = [
 const shortenAddress = (addr: string, head = 6, tail = 4) =>
   addr && addr.length > head + tail ? `${addr.slice(0, head)}...${addr.slice(-tail)}` : addr || '—';
 
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x82b333da5c723da6e98fefecd96cb1ca304c6125';
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x709DAe38D65a87289597EE79CB0d5d251A282E59';
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
 const EMPTY_OVERVIEW_METRICS = {
   totalNetworkVolumeCad: '—',
@@ -313,14 +323,18 @@ export default function App() {
 
   const [overviewMetrics, setOverviewMetrics] = useState(EMPTY_OVERVIEW_METRICS);
   const [issuedCardSummary, setIssuedCardSummary] = useState(EMPTY_ISSUED_CARD_SUMMARY);
+  const tierAssetsCacheKey = `tier-assets:${normalizedCardAddress}`;
+  const [tierAssets, setTierAssets] = useState<TierAsset[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     const cachedOverview = loadTrustedCache<typeof EMPTY_OVERVIEW_METRICS>(overviewCacheKey);
     const cachedIssuedCardSummary = loadTrustedCache<typeof EMPTY_ISSUED_CARD_SUMMARY>(issuedCardSummaryCacheKey);
+    const cachedTierAssets = loadTrustedCache<TierAsset[]>(tierAssetsCacheKey);
 
     setOverviewMetrics(cachedOverview ?? EMPTY_OVERVIEW_METRICS);
     setIssuedCardSummary(cachedIssuedCardSummary ?? EMPTY_ISSUED_CARD_SUMMARY);
+    setTierAssets(cachedTierAssets ?? []);
 
     const loadOverviewMetrics = async () => {
       if (!userCardContractAddress) {
@@ -333,30 +347,79 @@ export default function App() {
           userCardContractAddress,
           [
             'function owner() view returns (address)',
-            'function totalActiveMemberships() view returns (uint256)',
             'function totalMembershipIssued() view returns (uint256)',
+            'function totalActiveMemberships() view returns (uint256)',
             'function totalMembershipIssuedByTierIndex(uint256) view returns (uint256)',
+            'function activeMembershipCountByTierIndex(uint256) view returns (uint256)',
+            'function getTiersCount() view returns (uint256)',
             'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
             'function adminList(uint256) view returns (address)',
+            'function totalSupply(uint256) view returns (uint256)',
+            'function totalSupply() view returns (uint256)',
+            'function exists(uint256) view returns (bool)',
           ],
           baseEndpoint
         );
 
-        const [owner, totalActiveMemberships, totalMembershipIssued, metadata] = await Promise.all([
+        const [owner, totalMembershipIssued, totalActiveMemberships, metadata] = await Promise.all([
           card.owner() as Promise<string>,
-          card.totalActiveMemberships() as Promise<bigint>,
           card.totalMembershipIssued() as Promise<bigint>,
+          card.totalActiveMemberships() as Promise<bigint>,
           getCardMetadataFromApi(userCardContractAddress).then((meta) => meta ?? getCardMetadataFrom1155Json(userCardContractAddress)),
         ]);
 
         let totalNetworkVolumeCad = 0;
-        for (let i = 0; i < 16; i++) {
+        try {
+          const totalSupplyById = card.getFunction('totalSupply(uint256)');
+          const pointsSupply0 = (await totalSupplyById.staticCall(0)) as bigint;
+          totalNetworkVolumeCad = Number(pointsSupply0) / 1_000_000;
+        } catch {
+          const tiersCount = Number(await card.getTiersCount());
+          const loopLimit = tiersCount > 0 ? tiersCount : 16;
+          for (let i = 0; i < loopLimit; i++) {
+            try {
+              const [issuedCount, tier] = await Promise.all([
+                card.totalMembershipIssuedByTierIndex(i) as Promise<bigint>,
+                card.tiers(i) as Promise<{ minUsdc6: bigint }>,
+              ]);
+              totalNetworkVolumeCad += Number(issuedCount) * Number(tier.minUsdc6) / 1_000_000;
+            } catch {
+              break;
+            }
+          }
+        }
+
+        const tiersCount = Number(await card.getTiersCount());
+        const tierAssetsList: TierAsset[] = [];
+
+        const loopLimit = tiersCount > 0 ? tiersCount : 16;
+        for (let i = 0; i < loopLimit; i++) {
           try {
-            const [issuedCount, tier] = await Promise.all([
+            const [issuedCount, activeCount, tier] = await Promise.all([
               card.totalMembershipIssuedByTierIndex(i) as Promise<bigint>,
-              card.tiers(i) as Promise<{ minUsdc6: bigint }>,
+              card.activeMembershipCountByTierIndex(i) as Promise<bigint>,
+              card.tiers(i) as Promise<{ minUsdc6: bigint; upgradeByBalance: boolean }>,
             ]);
-            totalNetworkVolumeCad += Number(issuedCount) * Number(tier.minUsdc6) / 1_000_000;
+
+            if (i < tiersCount) {
+              const metaTier = metadata?.tiers?.[i];
+              const minCad = Number(tier.minUsdc6) / 1_000_000;
+              const tierName = metaTier?.name?.trim() || (metadata?.name ? `${metadata.name} Tier ${i + 1}` : `Tier ${i + 1}`);
+              const tierType = metaTier?.description?.trim() || 'Membership';
+              const tierColor = metaTier?.backgroundColor?.trim() || TIER_COLOR_FALLBACKS[i % TIER_COLOR_FALLBACKS.length];
+              tierAssetsList.push({
+                id: `AST-${i}`,
+                name: tierName,
+                type: tierType,
+                minTopUp: `≥ ${formatWithThousands(minCad, 0)} CAD`,
+                minted: Number(issuedCount),
+                activeHolders: Number(activeCount),
+                status: 'Active',
+                color: tierColor,
+                mintRule: tier.upgradeByBalance ? 'Balance-based Upgrade' : 'One-time Top-up',
+                image: metaTier?.image?.trim() || undefined,
+              });
+            }
           } catch {
             break;
           }
@@ -391,8 +454,10 @@ export default function App() {
 
         setOverviewMetrics(nextOverviewMetrics);
         setIssuedCardSummary(nextIssuedCardSummary);
+        setTierAssets(tierAssetsList);
         saveTrustedCache(overviewCacheKey, nextOverviewMetrics);
         saveTrustedCache(issuedCardSummaryCacheKey, nextIssuedCardSummary);
+        saveTrustedCache(tierAssetsCacheKey, tierAssetsList);
       } catch {
         // Keep the last trusted cache/state when RPC fetch fails.
       }
@@ -402,7 +467,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [issuedCardSummaryCacheKey, overviewCacheKey, userCardContractAddress]);
+  }, [issuedCardSummaryCacheKey, overviewCacheKey, tierAssetsCacheKey, userCardContractAddress]);
 
   const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
   useEffect(() => {
@@ -518,7 +583,7 @@ export default function App() {
           <SidebarItem icon={Users} label="Members" active={activeTab === 'Members'} onClick={() => setActiveTab('Members')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Utensils} label="Restaurants" active={activeTab === 'Merchants'} onClick={() => setActiveTab('Merchants')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={BookOpen} label="Ledger & Clearing" active={activeTab === 'Ledger'} onClick={() => setActiveTab('Ledger')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={QrCode} label="Micro-POS" active={activeTab === 'POS'} onClick={() => setActiveTab('POS')} collapsed={isSidebarCollapsed} />
+          
           
           {!isSidebarCollapsed && <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-3 mt-8">Financial Hub</div>}
           <SidebarItem icon={Wallet} label="Wallet & Treasury" active={activeTab === 'Treasury'} onClick={() => setActiveTab('Treasury')} collapsed={isSidebarCollapsed} />
@@ -594,8 +659,8 @@ export default function App() {
             {activeTab === 'Overview' && (
               <div className="space-y-8 animate-in fade-in duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <MetricCard title="Total Network Volume" value={overviewMetrics.totalNetworkVolumeCad} subValue="On-chain issued tier floor (CAD)" change="Live" isPositive={true} icon={<Activity size={24} />} />
-                  <MetricCard title="Active Memberships" value={overviewMetrics.activeMemberships} subValue="On-chain active memberships" change="Live" isPositive={true} icon={<CreditCard size={24} />} colorClass="bg-blue-50 text-blue-600" />
+                  <MetricCard title="Total Network Volume" value={overviewMetrics.totalNetworkVolumeCad} subValue="On-chain totalSupply points (CAD)" change="Live" isPositive={true} icon={<Activity size={24} />} />
+                  <MetricCard title="Active Memberships" value={overviewMetrics.activeMemberships} subValue="On-chain totalActiveMemberships (activatedCount)" change="Live" isPositive={true} icon={<CreditCard size={24} />} colorClass="bg-blue-50 text-blue-600" />
                   <MetricCard title="Partner Locations" value={overviewMetrics.partnerLocations} subValue="On-chain admins excluding owner" change="Live" isPositive={true} icon={<Utensils size={24} />} colorClass="bg-purple-50 text-purple-600" />
                   <MetricCard title="CashTrees Fuel Pool" value={overviewMetrics.fuelPoolBUnits} subValue="Owner B-Units for Mint/Top-ups" change="Live" isPositive={true} icon={<Zap size={24} />} colorClass="bg-orange-50 text-orange-600" />
                 </div>
@@ -978,15 +1043,28 @@ export default function App() {
                    <p className="text-sm text-slate-500 mt-1">ERC-1155 Dynamic Allocation: Each minted card sequentially generates a unique NFT ID. Card tier (Green/Black) is automatically determined by the user's initial top-up amount.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {initialAssets.map(asset => (
-                    <div key={asset.id} className={`${asset.color} rounded-[32px] p-8 shadow-xl relative overflow-hidden transition-transform hover:-translate-y-1`}>
+                  {tierAssets.length === 0 ? (
+                    <div className="col-span-full py-12 text-center text-slate-500 bg-slate-50 rounded-2xl border border-slate-100">
+                      <p className="font-medium">No tier metadata available yet.</p>
+                      <p className="text-sm mt-1">Tier cards will appear once the issued card has tiers configured on-chain and metadata is loaded.</p>
+                    </div>
+                  ) : tierAssets.map(asset => (
+                    <div
+                      key={asset.id}
+                      className={`rounded-[32px] p-8 shadow-xl relative overflow-hidden transition-transform hover:-translate-y-1 ${asset.color.startsWith('#') ? '' : asset.color}`}
+                      style={asset.color.startsWith('#') ? { backgroundColor: asset.color } : undefined}
+                    >
                       {/* Decorative background elements */}
                       <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
                       <div className="absolute bottom-0 left-0 w-40 h-40 bg-black/10 rounded-full blur-2xl -ml-10 -mb-10 pointer-events-none"></div>
                       
                       <div className="relative z-10 flex justify-between items-start mb-12">
-                        <div className={`w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shadow-inner`}>
-                          <CreditCard size={28} strokeWidth={1.5} />
+                        <div className={`w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shadow-inner overflow-hidden`}>
+                          {asset.image ? (
+                            <img src={asset.image} alt="" className="w-full h-full object-contain" />
+                          ) : (
+                            <CreditCard size={28} strokeWidth={1.5} />
+                          )}
                         </div>
                         <div className="flex flex-col items-end">
                            <StatusBadge status={asset.status} />
@@ -1014,7 +1092,7 @@ export default function App() {
                            <div className="w-full bg-black/30 h-1.5 rounded-full overflow-hidden mt-2">
                              <div 
                                className="h-full bg-white rounded-full relative" 
-                               style={{ width: `${(asset.activeHolders / asset.minted) * 100}%` }}
+                               style={{ width: `${asset.minted > 0 ? (asset.activeHolders / asset.minted) * 100 : 0}%` }}
                              >
                                 <div className="absolute right-0 top-0 bottom-0 w-4 bg-white/50 animate-pulse"></div>
                              </div>

@@ -158,7 +158,7 @@ const shortenAddress = (addr: string, head = 6, tail = 4) =>
   addr && addr.length > head + tail ? `${addr.slice(0, head)}...${addr.slice(-tail)}` : addr || '—';
 
 /** CCSA 卡 (BeamioUserCard)，与 config/chainAddresses 保持一致 */
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x82ceE96dB45933fE4b71D36fa8904508f929027C'
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x4CC2e5A596791cb71E34d7B3177e60f6aB3f73eD'
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
 const EMPTY_OVERVIEW_METRICS = {
   totalNetworkVolumeCad: '—',

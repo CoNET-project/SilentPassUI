@@ -39,7 +39,7 @@ import {
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteCurrencyAmountInUSDC, quoteUSDCToCAD, postUSDCUserCardTopup } from "@/services/BeamioCard"
+import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteCurrencyAmountInUSDC, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
 import { fiatPrefix } from "@/services/currency"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
@@ -850,17 +850,17 @@ const PurchaseCreditsSheet = ({
     setSubmitting(true)
     try {
       const currency = (item as { currency?: string })?.currency ?? "CAD"
-      const { usdc } = await quoteCurrencyAmountInUSDC(cardAddress, currency, amt.toFixed(2))
-      const usdcNum = Number(usdc)
-      if (!Number.isFinite(usdcNum) || usdcNum <= 0) {
+      const amount6 = await currencyAmountToSafeUsdc6(cardAddress, currency, amountText)
+      if (amount6 <= 0n) {
         setSubmitError("Failed to convert amount.")
         return
       }
+      const usdcAmount = safeUsdc6ToAmountString(amount6)
       const intent = ownsCard ? "topup" as const : "first_purchase" as const
       const ret = await postUSDCUserCardTopup({
         profile: profile as Parameters<typeof postUSDCUserCardTopup>[0]["profile"],
         cardAddress,
-        usdcAmount: usdc,
+        usdcAmount,
         intent,
       })
       if (ret.success) {

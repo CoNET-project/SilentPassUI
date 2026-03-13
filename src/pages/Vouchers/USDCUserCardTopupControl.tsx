@@ -6,6 +6,7 @@ import { Check, Crown, Info, RefreshCw, Wallet, X } from "lucide-react"
 import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {
+	currencyAmountToSafeUsdc6,
 	getCardMetadataFromApi,
 	getCardMetadataFromUri,
 	getCardTiersFromContract,
@@ -13,6 +14,7 @@ import {
 	getMyAssets,
 	postUSDCUserCardTopup,
 	quoteCurrencyAmountInUSDC,
+	safeUsdc6ToAmountString,
 	type USDCUserCardTopupIntent,
 } from "@/services/BeamioCard"
 
@@ -385,22 +387,6 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		})
 	}
 
-	/**
-	 * Convert card currency amount to USDC via oracle, add 0.005 buffer, round to 2dp (half-up).
-	 * Ensures safe card issuance when first purchase has currency→USDC conversion rounding errors.
-	 * Returns USDC6 in 2-decimal precision (no raw 6-decimal amounts sent).
-	 */
-	const cardAmountToSafeUsdc6 = async (human: string): Promise<bigint> => {
-		const normalized = human.replace(/,/g, "").trim()
-		if (!normalized || Number(normalized) <= 0) return 0n
-		const { usdc6 } = await quoteCurrencyAmountInUSDC(cardAddress, cardCurrency, normalized)
-		const BUFFER_USDC6 = 5_000n // 0.005 USDC
-		const CENT_USDC6 = 10_000n
-		const ROUND_HALF_USDC6 = 5_000n
-		const buffered = usdc6 + BUFFER_USDC6
-		return ((buffered + ROUND_HALF_USDC6) / CENT_USDC6) * CENT_USDC6
-	}
-
 	const minTier = tiers[0]
 	const maxTier = tiers.length > 0 ? tiers[tiers.length - 1] : null
 	const nextTier = useMemo(() => tiers.find((t) => t.minUsdc6 > points6), [tiers, points6])
@@ -604,7 +590,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 			}
 			setBalanceCheckLoading(true)
 			try {
-				const usdcSafe6 = await cardAmountToSafeUsdc6(raw)
+				const usdcSafe6 = await currencyAmountToSafeUsdc6(cardAddress, cardCurrency, raw)
 				if (!alive) return
 				setInsufficientUsdcBalance(usdcSafe6 > userUsdcBalance6)
 			} catch {
@@ -635,7 +621,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 				setError(`Minimum required is ${points6ToCardAmountCeil(requiredMinPoints6ForUi)} ${cardCurrency}.`)
 				return
 			}
-			amount6 = await cardAmountToSafeUsdc6(amount || "0")
+			amount6 = await currencyAmountToSafeUsdc6(cardAddress, cardCurrency, amount || "0")
 			// Upgrade: only bump when user's input is close to threshold (intended upgrade, rounding may undercut)
 			// If amount6 << threshold, user wants normal topup - do not bump
 			if (nextTier && effectiveCurrentTier) {
@@ -665,7 +651,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		}
 		setSubmitting(true)
 		try {
-			const amountUSDC = Number(ethers.formatUnits(amount6, 6)).toFixed(2)
+			const amountUSDC = safeUsdc6ToAmountString(amount6)
 			const ret = await postUSDCUserCardTopup({
 				profile,
 				cardAddress,

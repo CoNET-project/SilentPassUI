@@ -314,6 +314,26 @@ export const quoteCurrencyAmountInUSDC = async (
 	return { usdc6, usdc: ethers.formatUnits(usdc6, 6) }
 }
 
+/** 唯一规则：原始 currency amount 按排价转 USDC → +0.0002 USDC → 三位小数四舍五入。用于 Confirm 签名。 */
+export const currencyAmountToSafeUsdc6 = async (
+	cardAddress: string,
+	cardCurrency: string,
+	amountHuman: string
+): Promise<bigint> => {
+	const normalized = amountHuman.replace(/,/g, '').trim()
+	if (!normalized || Number(normalized) <= 0) return 0n
+	const { usdc6 } = await quoteCurrencyAmountInUSDC(cardAddress, cardCurrency, normalized)
+	const BUFFER_USDC6 = 200n // +0.0002 USDC
+	const MILLI_USDC6 = 1_000n // 0.001 USDC (3 decimals)
+	const ROUND_HALF_USDC6 = 500n // half-up
+	const buffered = usdc6 + BUFFER_USDC6
+	return ((buffered + ROUND_HALF_USDC6) / MILLI_USDC6) * MILLI_USDC6
+}
+
+/** 将 usdc6 格式化为三位小数字符串（与 currencyAmountToSafeUsdc6 输出一致） */
+export const safeUsdc6ToAmountString = (usdc6: bigint): string =>
+	Number(ethers.formatUnits(usdc6, 6)).toFixed(3)
+
 /**
  * Convert USDC amount (human-readable string) to CAD using chain oracle.
  * Uses quoteCurrencyAmountInUSDC(CARD, 'CAD', '1') to get USDC per 1 CAD, then CAD = usdcAmount / thatRate.

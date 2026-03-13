@@ -1950,16 +1950,23 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [cardAddressForDetails, newNftTitle, newNftValidAfter, newNftValidBefore, newNftMaxSupply, newNftPriceE6, newNftDescription, newNftImageUrl, newNftBackgroundColor, profiles])
 
-	// exampleExpress passes：从 api/latestCards 拉取的卡一览 + userCards；持有 NFT 或 points 时显示
+	// exampleExpress passes：从 api/latestCards 拉取的卡一览 + userCards；持有 NFT 或 points 时显示；按 id 去重
 	const passes = useMemo(() => {
 		const list: { id: string; name: string; balance: string; currency: string; type: string; memberNo: string; bg: string; textColor?: string; image?: string; tier?: string; tierName?: string; tierDescription?: string }[] = []
+		const seenIds = new Set<string>()
+		const addIfNew = (id: string, item: (typeof list)[0]) => {
+			const key = id.toLowerCase()
+			if (seenIds.has(key)) return
+			seenIds.add(key)
+			list.push(item)
+		}
 		if (profiles?.[0]?.aaAccount) {
 			// CCSA 主卡：id 为 'ccsa' 以兼容 cards 与 isCardViewWithRedeemList
 			const ccsaNfts = (ccsaAssets?.nfts ?? []).filter((n) => { const id = Number(n.tokenId); return Number.isInteger(id) && id > 0 })
 			const showCcsa = ccsaNfts.length > 0 || isCardCreator('ccsa')
 			if (showCcsa) {
 				const nft = ccsaNfts.length > 0 ? ccsaNfts.reduce((a, b) => (Number(b.tokenId) > Number(a.tokenId) ? b : a)) : undefined
-				list.push({
+				addIfNew('ccsa', {
 					id: 'ccsa',
 					name: 'CCSA CARD',
 					balance: formatWithThousands(ccsaBalance),
@@ -1987,7 +1994,7 @@ export default function MyWalletDashboardNew() {
 					?? normalizeMetadataBackground((tierMeta as any)?.backgroundColor ?? (tierMeta as any)?.background_color)
 				const ctBg = ctBgRaw ?? '#2C5535'
 				const ctTextColor = ctBgRaw ? textColorForBackground(ctBgRaw) : 'white'
-				list.push({
+				addIfNew(CASH_TREES_CARD_ADDRESS, {
 					id: CASH_TREES_CARD_ADDRESS,
 					name: cashTreesMetadata?.name ?? 'CashTrees',
 					balance: formatWithThousands(cashTreesBalance),
@@ -2005,7 +2012,7 @@ export default function MyWalletDashboardNew() {
 			// 从 latestCards 拉取的资产卡：持有 NFT 或 points 时显示
 			latestCardsItems.forEach((item) => {
 				const addr = item.cardAddress.toLowerCase()
-				if (addr === CCSA_Card_Address || addr === CASH_TREES_CARD_ADDRESS) return // CCSA、CashTrees 已单独处理
+				if (addr === CCSA_Card_Address.toLowerCase() || addr === CASH_TREES_CARD_ADDRESS.toLowerCase()) return // CCSA、CashTrees 已单独处理
 				const details = assetCardDetails[addr]
 				const nfts = (details?.assets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
 				const hasPoints = Number(details?.assets?.points ?? 0) > 0
@@ -2025,7 +2032,7 @@ export default function MyWalletDashboardNew() {
 					?? normalizeMetadataBackground((tierMeta as any)?.backgroundColor ?? (tierMeta as any)?.background_color)
 				const bg = bgRaw ?? '#2C5535'
 				const textColor = bgRaw ? textColorForBackground(bgRaw) : 'white'
-				list.push({
+				addIfNew(addr, {
 					id: addr,
 					name: meta?.name ?? addr.slice(0, 10) + '...',
 					balance: formatWithThousands(details?.assets?.points ?? '0'),
@@ -2063,7 +2070,7 @@ export default function MyWalletDashboardNew() {
 			const cardImage = nftMeta?.image ?? details?.metadata?.image
 			const cardBgRaw = normalizeMetadataBackground((nftMeta as any)?.backgroundColor ?? (nftMeta as any)?.background_color)
 				?? normalizeMetadataBackground((tierMeta as any)?.backgroundColor ?? (tierMeta as any)?.background_color)
-			list.push({
+			addIfNew(uc.cardAddress, {
 				id: uc.cardAddress,
 				name: details?.metadata?.name ?? uc.name,
 				balance: details?.assets?.points != null ? formatWithThousands(details.assets.points) : '—',

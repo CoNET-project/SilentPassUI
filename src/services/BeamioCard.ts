@@ -662,6 +662,22 @@ export const getCardOwner = async (cardAddress: string): Promise<string> => {
 	return ethers.getAddress(await card.owner())
 }
 
+/** ISSUED_NFT_START_ID from BeamioERC1155Logic (100_000_000_000) */
+export const ISSUED_NFT_START_ID = 100_000_000_000n
+
+/** 从合约读取 issuedNftIndex（下一个将分配的 tokenId） */
+export const getIssuedNftIndex = async (cardAddress: string): Promise<bigint> => {
+	const card = new ethers.Contract(cardAddress, ['function issuedNftIndex() view returns (uint256)'], baseEndpoint)
+	return BigInt(await card.issuedNftIndex())
+}
+
+/** 生成随机 redeem code（用于 KYB 兑换 NFT） */
+export const generateRedeemCode = (): { code: string; hash: string } => {
+	const code = `KYB-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+	const hash = ethers.keccak256(ethers.toUtf8Bytes(code))
+	return { code, hash }
+}
+
 /** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。
  * 注意：签名者（从 privateKey 恢复的 EOA）必须等于 card.owner()。若卡 owner 为 AA 地址，用 EOA 签会 revert UC_InvalidSignature。 */
 export const signExecuteForOwner = async (
@@ -733,27 +749,51 @@ export const encodeCreateRedeem = (
     ])
 }
 
-/** 提交批量创建 redeem 到 API cardCreateRedeem。使用 createRedeemBatch，无需 toUserEOA。 */
+/** 构建 createRedeem 的 calldata（供 executeForOwner 使用）。用于兑换 NFT：tokenIds=[ISSUED_NFT_START_ID], amounts=[1] */
+export const encodeCreateRedeemForNft = (
+    hash: string,
+    validAfter: number,
+    validBefore: number,
+    tokenId: bigint = ISSUED_NFT_START_ID
+): string => {
+    const tokenIds = [tokenId]
+    const amounts = [1n]
+    return createRedeemInterface.encodeFunctionData('createRedeem', [
+        hash,
+        0n,
+        0n,
+        validAfter,
+        validBefore,
+        tokenIds,
+        amounts,
+    ])
+}
+
+/** 提交批量创建 redeem 到 API cardCreateRedeem。使用 createRedeemBatch，无需 toUserEOA。支持 tokenIds/amounts 用于 NFT redeem */
 export const postCardCreateRedeem = async (payload: {
     cardAddress: string
     codes: string[]
-    points6: string | number
+    points6?: string | number
     validAfter: number
     validBefore: number
     deadline: number
     nonce: string
     ownerSignature: string
+    tokenIds?: (string | number)[]
+    amounts?: (string | number)[]
 }): Promise<{ success: boolean; error?: string; codes?: string[] }> => {
     try {
+        const tokenIds = payload.tokenIds ?? ['0']
+        const amounts = payload.amounts ?? [String(payload.points6 ?? 0)]
         const body = {
             cardAddress: payload.cardAddress,
             codes: payload.codes,
-            points6: String(payload.points6),
+            points6: String(payload.points6 ?? 0),
             attr: 0,
             validAfter: payload.validAfter,
             validBefore: payload.validBefore,
-            tokenIds: ['0'],
-            amounts: [String(payload.points6)],
+            tokenIds,
+            amounts,
             deadline: payload.deadline,
             nonce: payload.nonce,
             ownerSignature: payload.ownerSignature,
@@ -791,6 +831,22 @@ const createIssuedNftInterface = new ethers.Interface([
     'function createIssuedNft(bytes32 title, uint64 validAfter, uint64 validBefore, uint256 maxSupply, uint256 priceInCurrency6, bytes32 sharedMetadataHash)',
 ])
 
+const mintIssuedNftByGatewayInterface = new ethers.Interface([
+    'function mintIssuedNftByGateway(address userEOA, uint256 tokenId, uint256 amount)',
+])
+
+/** 构建 mintIssuedNftByGateway 的 calldata（供 executeForOwner 使用）。Owner 离线签字后由 API 代付 gas 执行，将 issued NFT mint 到目标地址 */
+export const encodeMintIssuedNftToAddress = (
+    targetAddress: string,
+    tokenId: bigint = ISSUED_NFT_START_ID,
+    amount: bigint = 1n
+): string =>
+    mintIssuedNftByGatewayInterface.encodeFunctionData('mintIssuedNftByGateway', [
+        ethers.getAddress(targetAddress),
+        tokenId,
+        amount,
+    ])
+
 /** 构建 createIssuedNft 的 calldata（供 executeForOwner 使用）。title 为字符串时用 keccak256(toUtf8Bytes(title))；sharedMetadataHash 省略或 "0" 表示无，由服务端组装 EIP-1155 metadata */
 export const encodeCreateIssuedNft = (
     title: string,
@@ -819,6 +875,7 @@ export const encodeCreateIssuedNft = (
 }
 
 const cardCreateIssuedNftEndpoint = `${beamioApi}/api/cardCreateIssuedNft`
+const cardMintIssuedNftToAddressEndpoint = `${beamioApi}/api/cardMintIssuedNftToAddress`
 
 /** 提交 createIssuedNft 到 API cardCreateIssuedNft。Cluster 预检后转发 Master executeForOwner 代付 gas 上链。可选 description、image（IPFS/fragment link）、background_color 用于服务端组装 EIP-1155 metadata */
 export const postCardCreateIssuedNft = async (payload: {
@@ -843,6 +900,30 @@ export const postCardCreateIssuedNft = async (payload: {
     } catch (e: any) {
         return { success: false, error: e?.message ?? String(e) }
     }
+}
+
+/** 提交 owner 签名的 mintIssuedNftToAddress 到 API cardMintIssuedNftToAddress。Cluster 预检 targetAddress、签名有效后编码并转发 Master executeForOwner */
+export const postCardMintIssuedNftToAddress = async (payload: {
+	cardAddress: string
+	targetAddress: string
+	tokenId?: string | number
+	amount?: string | number
+	deadline: number
+	nonce: string
+	ownerSignature: string
+}): Promise<{ success: boolean; hash?: string; error?: string }> => {
+	try {
+		const res = await fetch(cardMintIssuedNftToAddressEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		})
+		const data = await res.json()
+		if (!res.ok) return { success: false, error: data.error ?? 'cardMintIssuedNftToAddress failed' }
+		return { success: true, hash: data.hash }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
 }
 
 /** 提交 addAdmin 到 API cardAddAdmin。Cluster 预检 newAdmin 为 EOA 后转发 Master executeForOwner 排队，返回 tx hash */

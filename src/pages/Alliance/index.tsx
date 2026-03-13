@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json } from '@/services/BeamioCard';
+import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, getIssuedNftIndex, postCardCreateIssuedNft, postCardCreateRedeem, postCardMintIssuedNftToAddress, signExecuteForOwner, encodeCreateIssuedNft, encodeCreateRedeemForNft, encodeMintIssuedNftToAddress, generateRedeemCode, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { searchUsername } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
 import { baseEndpoint } from '@/utils/constants';
@@ -78,7 +79,8 @@ import {
   Check,
   AlertTriangle,
   Smartphone,
-  Nfc
+  Nfc,
+  Loader2
 } from 'lucide-react';
 
 // --- Types & Mock Data ---
@@ -160,6 +162,18 @@ const shortenAddress = (addr: string, head = 6, tail = 4) =>
 /** CCSA 卡 (BeamioUserCard)，与 config/chainAddresses 保持一致 */
 const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x4CC2e5A596791cb71E34d7B3177e60f6aB3f73eD'
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
+const ALLIANCE_RESTAURANTS_KEY = 'alliance:restaurants:local';
+
+type LocalRestaurant = {
+  id: string
+  name: string
+  cuisine: string
+  cityArea: string
+  handle: string
+  kybCode?: string
+  kybLink?: string
+  createdAt: number
+}
 const EMPTY_OVERVIEW_METRICS = {
   totalNetworkVolumeCad: '—',
   activeMemberships: '—',
@@ -272,6 +286,244 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [posAmount, setPosAmount] = useState('0');
   const [isMerchantModalOpen, setIsMerchantModalOpen] = useState(false);
+
+  // Onboard Restaurant form
+  const [restaurantName, setRestaurantName] = useState('');
+  const [restaurantCuisine, setRestaurantCuisine] = useState('');
+  const [restaurantCity, setRestaurantCity] = useState('');
+  const [restaurantHandle, setRestaurantHandle] = useState('');
+  const [isGeneratingKyb, setIsGeneratingKyb] = useState(false);
+  const [kybError, setKybError] = useState<string | null>(null);
+  const [kybSuccess, setKybSuccess] = useState<{ code: string; link: string } | null>(null);
+  const [kybLinkCopied, setKybLinkCopied] = useState(false);
+  const [handleError, setHandleError] = useState(false);
+  const [handleResolved, setHandleResolved] = useState<{ username: string; address?: string; image?: string; first_name?: string; last_name?: string } | null>(null);
+  const [handleChecking, setHandleChecking] = useState(false);
+  const handleValidateAbortRef = useRef<boolean>(false);
+
+  const validateHandle = useCallback(async (raw: string) => {
+    const handle = raw.trim().replace(/^@/, '');
+    if (!handle) {
+      setHandleError(false);
+      setHandleResolved(null);
+      return;
+    }
+    handleValidateAbortRef.current = false;
+    setHandleChecking(true);
+    setHandleError(false);
+    setHandleResolved(null);
+    try {
+      const res = await searchUsername(handle);
+      if (handleValidateAbortRef.current) return;
+      const results = res?.results ?? [];
+      const norm = handle.toLowerCase();
+      const match = results.find((r: { username?: string; accountName?: string }) => {
+        const u = (r?.username ?? r?.accountName ?? '').toLowerCase();
+        return u === norm;
+      });
+      if (match) {
+        setHandleResolved({
+          username: match.username ?? match.accountName ?? handle,
+          address: (match as { address?: string }).address,
+          image: match.image,
+          first_name: match.first_name,
+          last_name: match.last_name,
+        });
+        setHandleError(false);
+      } else {
+        setHandleResolved(null);
+        setHandleError(true);
+      }
+    } catch {
+      if (!handleValidateAbortRef.current) {
+        setHandleResolved(null);
+        setHandleError(true);
+      }
+    } finally {
+      if (!handleValidateAbortRef.current) setHandleChecking(false);
+    }
+  }, []);
+
+  const closeMerchantModal = useCallback(() => {
+    setIsMerchantModalOpen(false);
+    setRestaurantName('');
+    setRestaurantCuisine('');
+    setRestaurantCity('');
+    setRestaurantHandle('');
+    setKybError(null);
+    setKybSuccess(null);
+    setKybLinkCopied(false);
+    setHandleError(false);
+    setHandleResolved(null);
+  }, []);
+
+  // Local restaurants from localStorage
+  const [localRestaurants, setLocalRestaurants] = useState<LocalRestaurant[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem(ALLIANCE_RESTAURANTS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as LocalRestaurant[];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  });
+
+  const saveLocalRestaurants = (list: LocalRestaurant[]) => {
+    setLocalRestaurants(list);
+    try { window.localStorage.setItem(ALLIANCE_RESTAURANTS_KEY, JSON.stringify(list)); } catch { /* ignore */ }
+  };
+
+  const handleRegistrationMerchant = async () => {
+    if (!handleResolved?.address) return;
+    const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
+    const ownerPk = profile?.privateKeyArmor;
+    if (!ownerPk) {
+      setKybError('Wallet not connected. Connect with card owner to register merchant.');
+      return;
+    }
+    setKybError(null);
+    setKybSuccess(null);
+    setIsGeneratingKyb(true);
+    try {
+      let issuedIdx: bigint;
+      try {
+        issuedIdx = await getIssuedNftIndex(cardAddress);
+      } catch {
+        issuedIdx = ISSUED_NFT_START_ID;
+      }
+      if (issuedIdx === ISSUED_NFT_START_ID) {
+        const now = Math.floor(Date.now() / 1000);
+        const validAfter = now - 60;
+        const validBefore = now + 365 * 86400;
+        const data = encodeCreateIssuedNft('MerchantsManagement', validAfter, validBefore, 10000, 0, ethers.ZeroHash);
+        const deadline = now + 300;
+        const nonce = ethers.hexlify(ethers.randomBytes(32));
+        const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, data, deadline, nonce);
+        const r = await postCardCreateIssuedNft({ cardAddress, data, deadline, nonce, ownerSignature });
+        if (!r.success) {
+          setKybError(r.error ?? 'Failed to create MerchantsManagement NFT type');
+          return;
+        }
+      }
+      const mintData = encodeMintIssuedNftToAddress(handleResolved.address, ISSUED_NFT_START_ID, 1n);
+      const now = Math.floor(Date.now() / 1000);
+      const deadline = now + 300;
+      const nonce = ethers.hexlify(ethers.randomBytes(32));
+      const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, mintData, deadline, nonce);
+      const res = await postCardMintIssuedNftToAddress({
+        cardAddress,
+        targetAddress: handleResolved.address,
+        tokenId: String(ISSUED_NFT_START_ID),
+        amount: 1,
+        deadline,
+        nonce,
+        ownerSignature,
+      });
+      if (!res.success) {
+        setKybError(res.error ?? 'Failed to mint MerchantsManagement NFT');
+        return;
+      }
+      setKybSuccess({ code: '', link: `Merchant @${handleResolved.username} registered. MerchantsManagement NFT minted.` });
+    } catch (e: any) {
+      setKybError(e?.message ?? String(e) ?? 'Failed to register merchant');
+    } finally {
+      setIsGeneratingKyb(false);
+    }
+  };
+
+  const handleGenerateKybLink = async () => {
+    const name = restaurantName.trim();
+    const cuisine = restaurantCuisine.trim();
+    const city = restaurantCity.trim();
+    const handle = restaurantHandle.trim().replace(/^@/, '');
+    if (!name) {
+      setKybError('Restaurant Name is required');
+      return;
+    }
+    if (handleError) {
+      setKybError('Handle not found. Please enter a valid beamioTag or leave it empty.');
+      return;
+    }
+    setKybError(null);
+    setKybSuccess(null);
+    setIsGeneratingKyb(true);
+    try {
+      const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
+      let issuedIdx: bigint;
+      try {
+        issuedIdx = await getIssuedNftIndex(cardAddress);
+      } catch (e: unknown) {
+        // Contract may not have issuedNftIndex (older impl) or RPC returned BAD_DATA; fallback to start ID
+        issuedIdx = ISSUED_NFT_START_ID;
+      }
+      const ownerPk = profile?.privateKeyArmor;
+      if (!ownerPk) {
+        setKybError('Wallet not connected. Connect with card owner to generate KYB link.');
+        return;
+      }
+      const tokenIdForRedeem = ISSUED_NFT_START_ID;
+      if (issuedIdx === ISSUED_NFT_START_ID) {
+        const now = Math.floor(Date.now() / 1000);
+        const validAfter = now - 60;
+        const validBefore = now + 365 * 86400;
+        const data = encodeCreateIssuedNft('MerchantsManagement', validAfter, validBefore, 10000, 0, ethers.ZeroHash);
+        const deadline = now + 300;
+        const nonce = ethers.hexlify(ethers.randomBytes(32));
+        const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, data, deadline, nonce);
+        const r = await postCardCreateIssuedNft({ cardAddress, data, deadline, nonce, ownerSignature });
+        if (!r.success) {
+          setKybError(r.error ?? 'Failed to create special NFT');
+          return;
+        }
+      }
+      const { code, hash } = generateRedeemCode();
+      const now = Math.floor(Date.now() / 1000);
+      const validAfter = now - 60;
+      const validBefore = now + 365 * 86400;
+      const redeemData = encodeCreateRedeemForNft(hash, validAfter, validBefore, tokenIdForRedeem);
+      const deadline = now + 300;
+      const nonce = ethers.hexlify(ethers.randomBytes(32));
+      const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, redeemData, deadline, nonce);
+      const redeemRes = await postCardCreateRedeem({
+        cardAddress,
+        codes: [code],
+        validAfter,
+        validBefore,
+        deadline,
+        nonce,
+        ownerSignature,
+        tokenIds: [String(tokenIdForRedeem)],
+        amounts: ['1'],
+      });
+      if (!redeemRes.success) {
+        setKybError(redeemRes.error ?? 'Failed to create redeem');
+        return;
+      }
+      const kybLink = `https://biz.beamio.app/app?redeemCode=${encodeURIComponent(code)}`;
+      const resolvedHandle = handleResolved?.username ? `@${handleResolved.username}` : (handle ? `@${handle}` : '');
+      const rest: LocalRestaurant = {
+        id: `rest-${Date.now()}`,
+        name,
+        cuisine,
+        cityArea: city,
+        handle: resolvedHandle,
+        kybCode: code,
+        kybLink,
+        createdAt: Date.now(),
+      };
+      saveLocalRestaurants([...localRestaurants, rest]);
+      setKybSuccess({ code, link: kybLink });
+      setRestaurantName('');
+      setRestaurantCuisine('');
+      setRestaurantCity('');
+      setRestaurantHandle('');
+      setHandleResolved(null);
+    } catch (e: any) {
+      setKybError(e?.message ?? String(e) ?? 'Failed to generate KYB link');
+    } finally {
+      setIsGeneratingKyb(false);
+    }
+  };
 
   // 新增：模拟待处理的结算申请状态
   const [settlementRequests, setSettlementRequests] = useState([
@@ -890,49 +1142,53 @@ export default function App() {
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100">
-                          {initialMerchants.map((m) => (
-                             <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                          {localRestaurants.map((r) => (
+                             <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4">
                                    <div className="flex items-center gap-3">
-                                      <img src={m.logo} alt="" className="w-12 h-12 rounded-xl bg-slate-200 object-cover border border-slate-100 shadow-sm" />
+                                      <img src="https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=100&h=100&fit=crop" alt="" className="w-12 h-12 rounded-xl bg-slate-200 object-cover border border-slate-100 shadow-sm" />
                                       <div>
-                                         <div className="font-bold text-sm text-slate-900">{m.name}</div>
-                                         <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500">
-                                            <MapPin size={10} className="text-emerald-500"/> {m.location}
+                                         <div className="flex items-center gap-2">
+                                            <span className="font-bold text-sm text-slate-900">{r.name}</span>
+                                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-bold uppercase">Saved</span>
                                          </div>
+                                         <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500">
+                                            <MapPin size={10} className="text-emerald-500"/> {r.cityArea || '—'}
+                                         </div>
+                                         {r.handle && (
+                                           <div className="text-[10px] text-slate-400 font-mono mt-0.5">{r.handle}</div>
+                                         )}
                                       </div>
                                    </div>
                                 </td>
                                 <td className="px-6 py-4">
                                    <div className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
-                                      <Users size={14} className="text-blue-500"/> {m.activeMembers}
+                                      <Users size={14} className="text-blue-500"/> 0
                                    </div>
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                   <div className="font-bold text-emerald-600">${m.volume}</div>
+                                   <div className="font-bold text-emerald-600">—</div>
                                    <div className="text-[10px] text-slate-400 font-medium">$CTree via Transfers</div>
                                 </td>
                                 <td className="px-6 py-4 text-right bg-slate-50">
-                                   <div className="font-bold text-slate-700">${m.fiatCollected}</div>
+                                   <div className="font-bold text-slate-700">—</div>
                                    <div className="text-[10px] text-slate-400 font-medium">CAD kept via offline Mints</div>
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-2">
-                                        <Zap size={14} className={m.bUnitsBalance < 50 ? "text-rose-500" : "text-amber-500"} />
-                                        <span className={`font-mono font-bold ${m.bUnitsBalance < 50 ? "text-rose-600" : "text-slate-700"}`}>
-                                            {m.bUnitsBalance}
-                                        </span>
+                                        <Zap size={14} className="text-amber-500" />
+                                        <span className="font-mono font-bold text-slate-700">—</span>
                                     </div>
                                     <div className="text-[10px] text-slate-400 font-medium mt-1">
                                         Bears 0.8% fee per dining TX
                                     </div>
-                                    {m.bUnitsBalance < 50 && (
-                                        <div className="text-[10px] text-rose-500 font-medium mt-1 flex items-center gap-1">
-                                            <AlertTriangle size={10}/> Low Fuel Warning
-                                        </div>
-                                    )}
                                 </td>
-                                <td className="px-6 py-4 text-right"><button className="text-slate-400 hover:text-emerald-600"><Settings size={18}/></button></td>
+                                <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                  {r.kybLink && (
+                                    <a href={r.kybLink} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:text-emerald-700 text-sm font-medium" title="KYB Link">KYB</a>
+                                  )}
+                                  <button className="text-slate-400 hover:text-emerald-600"><Settings size={18}/></button>
+                                </td>
                              </tr>
                           ))}
                        </tbody>
@@ -1485,40 +1741,113 @@ export default function App() {
       {/* --- MERCHANT ONBOARD MODAL --- */}
       {isMerchantModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMerchantModalOpen(false)}></div>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeMerchantModal}></div>
             <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-md relative z-10 p-8 animate-in fade-in zoom-in duration-200">
                <div className="flex justify-between items-center mb-8">
                   <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
                      <Utensils className="text-emerald-600" size={28}/> Onboard Restaurant
                   </h3>
-                  <button onClick={() => setIsMerchantModalOpen(false)} className="text-slate-400 hover:text-black bg-slate-100 p-2 rounded-full"><X size={20}/></button>
+                  <button onClick={closeMerchantModal} className="text-slate-400 hover:text-black bg-slate-100 p-2 rounded-full"><X size={20}/></button>
                </div>
                
                <div className="space-y-5">
+                  {kybError && (
+                    <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-medium">{kybError}</div>
+                  )}
+                  {kybSuccess ? (
+                    <div className="p-4 bg-emerald-50 text-emerald-800 rounded-xl text-sm border border-emerald-200">
+                      <div className="font-bold mb-2">{kybSuccess.link.startsWith('http') ? 'KYB Link generated' : 'Merchant registered'}</div>
+                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-emerald-200">
+                        <span className="flex-1 break-all text-slate-800 font-medium">{kybSuccess.link}</span>
+                        {kybSuccess.link.startsWith('http') && (
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(kybSuccess!.link).then(() => {
+                                setKybLinkCopied(true);
+                                setTimeout(() => setKybLinkCopied(false), 2000);
+                              });
+                            }}
+                            className="flex-shrink-0 p-2 rounded-lg hover:bg-emerald-100 transition-colors"
+                            title="Copy link"
+                          >
+                            {kybLinkCopied ? (
+                              <Check className="w-5 h-5 text-emerald-600 animate-in zoom-in duration-200" />
+                            ) : (
+                              <Copy className="w-5 h-5 text-slate-600" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   <div>
                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Restaurant Name</label>
-                     <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Sen Pho + Cafe" />
+                     <input type="text" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Sen Pho + Cafe" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                       <div>
                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Cuisine</label>
-                         <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Vietnamese" />
+                         <input type="text" value={restaurantCuisine} onChange={(e) => setRestaurantCuisine(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Vietnamese" />
                       </div>
                       <div>
                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">City/Area</label>
-                         <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Kerrisdale" />
+                         <input type="text" value={restaurantCity} onChange={(e) => setRestaurantCity(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Kerrisdale" />
                       </div>
                   </div>
                   <div>
-                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Handle Reservation</label>
-                     <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
-                        <input type="text" className="w-full pl-9 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="senpho_kerr" />
-                     </div>
+                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Handle Reservation <span className="text-slate-400 font-normal">(optional)</span></label>
+                     {handleResolved ? (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                           <img src={handleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${handleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-emerald-200 object-cover" />
+                           <div className="flex flex-col gap-0.5">
+                              <span className="font-mono font-bold text-emerald-700">@{handleResolved.username}</span>
+                              {handleResolved.address && (
+                                <span className="text-[10px] text-slate-500 font-mono" title={handleResolved.address}>{shortenAddress(handleResolved.address)}</span>
+                              )}
+                           </div>
+                           <button type="button" onClick={() => { setHandleResolved(null); setRestaurantHandle(''); setHandleError(false); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear handle"><X size={16} /></button>
+                        </div>
+                     ) : (
+                        <div className="relative">
+                           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
+                           <input
+                              type="text"
+                              value={restaurantHandle}
+                              onChange={(e) => {
+                                 setRestaurantHandle(e.target.value);
+                                 setHandleResolved(null);
+                                 setHandleError(false);
+                              }}
+                              onBlur={() => {
+                                 handleValidateAbortRef.current = false;
+                                 validateHandle(restaurantHandle);
+                              }}
+                              onFocus={() => { handleValidateAbortRef.current = true; }}
+                              className={`w-full pl-9 pr-4 py-4 bg-slate-50 border rounded-2xl focus:outline-none focus:ring-2 font-bold placeholder:text-slate-400 ${handleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
+                              placeholder="senpho_kerr"
+                           />
+                           {handleChecking && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-slate-400" />}
+                           {handleError && !handleChecking && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-rose-500 text-xs font-medium">Not found</span>}
+                        </div>
+                     )}
                   </div>
-                  <button className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-black transition-transform active:scale-95 flex items-center justify-center gap-2 mt-4">
-                     Generate KYB Link <ArrowRight size={18}/>
+                  <button
+                    onClick={handleResolved ? handleRegistrationMerchant : handleGenerateKybLink}
+                    disabled={isGeneratingKyb}
+                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-black transition-transform active:scale-95 flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                     {isGeneratingKyb ? (
+                       <>
+                         <Loader2 className="w-5 h-5 animate-spin" />
+                         {handleResolved ? 'Registering...' : 'Generating...'}
+                       </>
+                     ) : (
+                       <>{handleResolved ? 'Registration Merchant' : 'Generate KYB Link'} <ArrowRight size={18}/></>
+                     )}
                   </button>
+                    </>
+                  )}
                </div>
             </div>
           </div>

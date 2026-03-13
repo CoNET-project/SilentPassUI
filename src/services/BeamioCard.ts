@@ -671,13 +671,6 @@ export const getIssuedNftIndex = async (cardAddress: string): Promise<bigint> =>
 	return BigInt(await card.issuedNftIndex())
 }
 
-/** 生成随机 redeem code（用于 KYB 兑换 NFT） */
-export const generateRedeemCode = (): { code: string; hash: string } => {
-	const code = `KYB-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-	const hash = ethers.keccak256(ethers.toUtf8Bytes(code))
-	return { code, hash }
-}
-
 /** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。
  * 注意：签名者（从 privateKey 恢复的 EOA）必须等于 card.owner()。若卡 owner 为 AA 地址，用 EOA 签会 revert UC_InvalidSignature。 */
 export const signExecuteForOwner = async (
@@ -769,10 +762,31 @@ export const encodeCreateRedeemForNft = (
     ])
 }
 
-/** 提交批量创建 redeem 到 API cardCreateRedeem。使用 createRedeemBatch，无需 toUserEOA。支持 tokenIds/amounts 用于 NFT redeem */
+/** 构建 createRedeemBatch 的 calldata（供 executeForOwner 使用）。与 API buildCardCreateRedeemBatchData 一致。
+ * 使用 hashes 而非 codes，秘密 redeem code 不离开客户端。 */
+export const encodeCreateRedeemBatchForNft = (
+    hashes: string[],
+    validAfter: number,
+    validBefore: number,
+    tokenIds: (string | number | bigint)[],
+    amounts: (string | number | bigint)[]
+): string => {
+    return createRedeemBatchInterface.encodeFunctionData('createRedeemBatch', [
+        hashes,
+        0n,
+        0n,
+        validAfter,
+        validBefore,
+        tokenIds.map((t) => BigInt(t)),
+        amounts.map((a) => BigInt(a)),
+    ])
+}
+
+/** 提交批量创建 redeem 到 API cardCreateRedeem。使用 createRedeemBatch，无需 toUserEOA。
+ * 必须传 hashes（不传 codes），秘密 redeem code 不离开客户端、不记录在链上。 */
 export const postCardCreateRedeem = async (payload: {
     cardAddress: string
-    codes: string[]
+    hashes: string[]
     points6?: string | number
     validAfter: number
     validBefore: number
@@ -781,13 +795,13 @@ export const postCardCreateRedeem = async (payload: {
     ownerSignature: string
     tokenIds?: (string | number)[]
     amounts?: (string | number)[]
-}): Promise<{ success: boolean; error?: string; codes?: string[] }> => {
+}): Promise<{ success: boolean; error?: string }> => {
     try {
         const tokenIds = payload.tokenIds ?? ['0']
         const amounts = payload.amounts ?? [String(payload.points6 ?? 0)]
         const body = {
             cardAddress: payload.cardAddress,
-            codes: payload.codes,
+            hashes: payload.hashes,
             points6: String(payload.points6 ?? 0),
             attr: 0,
             validAfter: payload.validAfter,
@@ -805,7 +819,7 @@ export const postCardCreateRedeem = async (payload: {
         })
         const data = await res.json()
         if (!res.ok) return { success: false, error: data.error ?? 'cardCreateRedeem failed' }
-        return { success: true, codes: payload.codes }
+        return { success: true }
     } catch (e: any) {
         return { success: false, error: e?.message ?? String(e) }
     }

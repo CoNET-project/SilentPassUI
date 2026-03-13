@@ -38,8 +38,9 @@ import {
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { searchUsername } from '@/services/beamio'
-import { conetDepinProvider, beamioApi } from '@/utils/constants'
+import { conetDepinProvider, beamioApi, getConetWsProvider } from '@/utils/constants'
 import contracts from '@/utils/contracts'
+import { getCardOwner, getAAAccount } from '@/services/BeamioCard'
 import { formatAmount, formatAmountWithCurrencyProtocol, getDecimals } from '@/services/currency'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
@@ -48,10 +49,16 @@ import bIcon from '@/components/assets/logo512.png'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612'
 
-/** Indexer 合约 ABI：列表查询 + 完整 Transaction 查询（含 payer/payee/route） */
+/** TransactionRecord tuple（与 Indexer 合约一致） */
+const TX_RECORD_TUPLE =
+	'(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)'
+
+/** Indexer 合约 ABI：列表查询 + 完整 Transaction 查询（含 payer/payee/route）+ 事件订阅 */
 const INDEXER_ABI = [
-	'function getAccountTransactionsByMonthOffsetPaged(address account, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, (bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
+	`function getAccountTransactionsByMonthOffsetPaged(address account, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_RECORD_TUPLE}[] page)`,
+	`function getAssetTransactionsPaged(address asset, uint256 offset, uint256 limit) view returns (${TX_RECORD_TUPLE}[] page)`,
 	'function getTransactionFullByTxId(bytes32 txId) view returns ((bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta))',
+	'event TransactionRecordSynced(uint256 indexed actionId, bytes32 indexed txId, bytes32 indexed txCategory, address payer, address payee)',
 ] as const
 
 /** txCategory 预设 hash（与 readme 一致） */
@@ -62,6 +69,15 @@ const TX_REQUEST_FULFILLED = ethers.keccak256(ethers.toUtf8Bytes('request_fulfil
 const TX_REQUEST_CREATE = ethers.keccak256(ethers.toUtf8Bytes('request_create:confirmed'))
 const TX_REQUEST_EXPIRED = ethers.keccak256(ethers.toUtf8Bytes('request_expired:confirmed'))
 const TX_TOPUP = ethers.keccak256(ethers.toUtf8Bytes('topup:confirmed'))
+/** readme 2.3：USDC/NFC/Redeem Top Up 细分，均使用 meta.requestAmountFiat6=currentTopupPoint */
+const TX_USDC_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcTopupCard'))
+const TX_USDC_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcUpgradeNewCard'))
+const TX_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('topupCard'))
+const TX_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('newCard'))
+const TX_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('upgradeNewCard'))
+const TX_REDEEM_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('redeemNewCard'))
+const TX_REDEEM_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('redeemUpgradeNewCard'))
+const TX_REDEEM_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('redeemTopupCard'))
 const TX_INTERNAL = ethers.keccak256(ethers.toUtf8Bytes('internal_transfer:confirmed'))
 const TX_VOUCHER_BURN = ethers.keccak256(ethers.toUtf8Bytes('voucher_burn:confirmed'))
 const TX_REQUEST_CANCEL = ethers.keccak256(ethers.toUtf8Bytes('request_cancel:confirmed'))
@@ -93,6 +109,17 @@ function txCategoryToType(txCategory: string): TxDisplayType {
 	if (cat === TX_REQUEST_CREATE.toLowerCase()) return 'request_create'
 	if (cat === TX_REQUEST_EXPIRED.toLowerCase()) return 'request_expired'
 	if (cat === TX_TOPUP.toLowerCase()) return 'topup'
+	if (
+		cat === TX_USDC_TOPUP_CARD.toLowerCase() ||
+		cat === TX_USDC_UPGRADE_NEW_CARD.toLowerCase() ||
+		cat === TX_TOPUP_CARD.toLowerCase() ||
+		cat === TX_NEW_CARD.toLowerCase() ||
+		cat === TX_UPGRADE_NEW_CARD.toLowerCase() ||
+		cat === TX_REDEEM_NEW_CARD.toLowerCase() ||
+		cat === TX_REDEEM_UPGRADE_NEW_CARD.toLowerCase() ||
+		cat === TX_REDEEM_TOPUP_CARD.toLowerCase()
+	)
+		return 'topup'
 	if (cat === TX_CARDMINT.toLowerCase() || cat === TX_USDC_NEW_CARD.toLowerCase()) return 'cardmint'
 	if (cat === TX_INTERNAL.toLowerCase()) return 'internal_transfer'
 	if (cat === TX_VOUCHER_BURN.toLowerCase()) return 'voucher_burn'
@@ -243,6 +270,39 @@ interface RawTxRecord {
 
 const FEE_INFO_KEYS = ['gasChainType', 'gasWei', 'gasUSDC6', 'serviceUSDC6', 'bServiceUSDC6', 'bServiceUnits6', 'feePayer'] as const
 const META_KEYS = ['requestAmountFiat6', 'requestAmountUSDC6', 'currencyFiat', 'discountAmountFiat6', 'discountRateBps', 'taxAmountFiat6', 'taxRateBps', 'afterNotePayer', 'afterNotePayee'] as const
+/** TransactionRecord 元组：id,oph,chainId,txCategory,displayJson,timestamp,payer,payee,fReqFiat6,fReqUSDC6,isAA,fees,meta,exists → 索引 0–13 */
+const TX_EXISTS_INDEX = 13
+/** 将 Indexer 返回的 tx（可能为 array 或 object）规范为 RawTxRecord。ethers 有时返回 struct 为 tuple。 */
+function normalizeTxRecord(tx: unknown): RawTxRecord | null {
+	if (!tx || typeof tx !== 'object') return null
+	const arr = Array.isArray(tx)
+	const exists = arr ? (tx as unknown[])[TX_EXISTS_INDEX] : (tx as Record<string, unknown>).exists
+	if (exists === false || exists === 0 || exists === 0n) return null
+	const o = arr
+		? (() => {
+				const a = tx as unknown[]
+				const fees = a[11]
+				const meta = a[12]
+				return {
+					id: a[0],
+					originalPaymentHash: a[1],
+					chainId: a[2],
+					txCategory: a[3],
+					displayJson: a[4],
+					timestamp: a[5],
+					payer: a[6],
+					payee: a[7],
+					finalRequestAmountFiat6: a[8],
+					finalRequestAmountUSDC6: a[9],
+					isAAAccount: a[10],
+					fees: Array.isArray(fees) && fees.length >= 7 ? arrayToNamed(fees, FEE_INFO_KEYS) : fees,
+					meta: Array.isArray(meta) && meta.length >= 9 ? arrayToNamed(meta, META_KEYS) : meta,
+					exists: a[TX_EXISTS_INDEX],
+				}
+		  })()
+		: (tx as RawTxRecord)
+	return o as RawTxRecord
+}
 const ROUTE_ITEM_KEYS = ['asset', 'amountE6', 'assetType', 'source', 'tokenId', 'itemCurrencyType', 'offsetInRequestCurrencyE6'] as const
 
 /** RouteSource: 0=MainUSDC, 1=UserCardPoint, 2=UserCardCoupon, 3=UserCardCashVoucher, 4=TipAppend */
@@ -447,6 +507,8 @@ interface ActiveHistoryPannelNewProps {
 	bare?: boolean
 	/** Ledger 表格布局：按图示 TX ID/ACTION、FROM→TO、DEVICE、TX HASH、AMOUNT、GAS PAID BY 列展示 */
 	ledgerLayout?: boolean
+	/** 当 Indexer 收到新交易记录时回调（用于刷新 Total Network Volume、Active Memberships 等指标） */
+	onNewTransactionIndexed?: () => void
 }
 
 const ActiveHistoryPannelNew = ({
@@ -458,6 +520,7 @@ const ActiveHistoryPannelNew = ({
 	embeddedInDrawer = false,
 	bare = false,
 	ledgerLayout = false,
+	onNewTransactionIndexed,
 }: ActiveHistoryPannelNewProps) => {
 	const { profiles, myAddress, setShowFooter, setChatHomeItem, beamioUsers } = useDaemonContext()
 	const navigate = useNavigate()
@@ -532,9 +595,36 @@ const ActiveHistoryPannelNew = ({
 			// profiles 无有效地址时，回退到 myAddress
 			if (accounts.length === 0 && myAddress && ethers.isAddress(myAddress))
 				accounts.push(ethers.getAddress(myAddress))
+			// Live Network Activity：filterByCardAddress 时加入卡 owner 及对应 AA 作为查询账户（含 AA 记账）
+			if (filterByCardAddress && ethers.isAddress(filterByCardAddress)) {
+				let owner: string | null = null
+				try {
+					owner = await getCardOwner(filterByCardAddress)
+				} catch {
+					// Base RPC 在浏览器中可能失败（如 CORS），回退到 beamio API
+					try {
+						const res = await fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(filterByCardAddress)}`)
+						if (res.ok) {
+							const data = (await res.json()) as { cardOwner?: string }
+							if (data?.cardOwner && ethers.isAddress(data.cardOwner)) owner = ethers.getAddress(data.cardOwner)
+						}
+					} catch {}
+				}
+				if (owner && ethers.isAddress(owner)) {
+					const ownerAddr = ethers.getAddress(owner)
+					if (!accounts.some((a) => a.toLowerCase() === ownerAddr.toLowerCase()))
+						accounts.push(ownerAddr)
+					try {
+						const aaForOwner = await getAAAccount({ keyID: ownerAddr } as Parameters<typeof getAAAccount>[0])
+						if (aaForOwner && ethers.isAddress(aaForOwner) && !accounts.some((a) => a.toLowerCase() === aaForOwner.toLowerCase()))
+							accounts.push(ethers.getAddress(aaForOwner))
+					} catch {}
+				}
+			}
 		}
 
-		if (accounts.length === 0) {
+		// filterByCardAddress 时即使 accounts 为空也可仅查 asset（RouteItem.asset 匹配）
+		if (accounts.length === 0 && !(filterByCardAddress && ethers.isAddress(filterByCardAddress))) {
 			setItems([])
 			setLoading(false)
 			return
@@ -545,7 +635,6 @@ const ActiveHistoryPannelNew = ({
 		try {
 			const indexer = new ethers.Contract(BEAMIO_INDEXER, INDEXER_ABI, conetDepinProvider)
 			const TX_FILTER = ethers.ZeroHash
-
 			const INDEXER_TIMEOUT_MS = 15_000
 			const withTimeout = <T,>(p: Promise<T>): Promise<T> =>
 				Promise.race([
@@ -555,87 +644,133 @@ const ActiveHistoryPannelNew = ({
 					),
 				])
 
-			const results = await withTimeout(
-				Promise.all(
-					accounts.map((account) =>
-						indexer.getAccountTransactionsByMonthOffsetPaged(
-							account,
-							0, // periodOffset: 0 = 本月
-							0, // pageOffset
-							30, // pageLimit：受益人交易多时，20 条可能不足，导致最新收款被截断
-							TX_FILTER
+			const pageLimit = filterByCardAddress ? 50 : 30
+			const accountPromises =
+				accounts.length > 0
+					? accounts.map((account) =>
+							indexer.getAccountTransactionsByMonthOffsetPaged(account, 0, 0, pageLimit, TX_FILTER)
 						)
-					)
-				)
-			)
+					: []
+			let accountResults: unknown[] =
+				accountPromises.length > 0
+					? ((await withTimeout(Promise.all(accountPromises))) as unknown[])
+					: []
+			if (
+				filterByCardAddress &&
+				accounts.length > 0 &&
+				accountResults.every((r) => {
+					const p = (r as { page?: unknown[] }).page ?? (r as unknown[])[3]
+					return !Array.isArray(p) || p.length === 0
+				})
+			) {
+				try {
+					accountResults = (await withTimeout(
+						Promise.all(
+							accounts.map((account) =>
+								indexer.getAccountTransactionsByMonthOffsetPaged(account, 1, 0, pageLimit, TX_FILTER)
+							)
+						)
+					)) as unknown[]
+				} catch {
+					// 上月查询失败时继续用本月结果
+				}
+			}
+			let assetResult: unknown = null
+			if (filterByCardAddress && ethers.isAddress(filterByCardAddress)) {
+				try {
+					assetResult = await withTimeout(indexer.getAssetTransactionsPaged(filterByCardAddress, 0, 50))
+				} catch {
+					// 忽略 asset 查询失败，仍展示 account 结果
+				}
+			}
 
 			const seen = new Set<string>()
 			const merged: TxView[] = []
 
-			for (const res of results) {
-				const [, , , page] = res as [bigint, bigint, bigint, RawTxRecord[]]
-				const list = Array.isArray(page) ? page : []
-				for (const tx of list) {
-					if (!tx?.exists) continue
-					const id = typeof tx.id === 'string' ? tx.id : tx.id != null ? ethers.hexlify(tx.id as ethers.BytesLike) : ethers.ZeroHash
-					if (seen.has(id)) continue
-					seen.add(id)
+			const processPage = (list: unknown[]) => {
+				for (const txRaw of list) {
+					try {
+						const tx = normalizeTxRecord(txRaw)
+						if (!tx) continue
+						const id = typeof tx.id === 'string' ? tx.id : tx.id != null ? ethers.hexlify(tx.id as ethers.BytesLike) : ethers.ZeroHash
+						if (seen.has(id)) continue
+						seen.add(id)
 
-					const type = txCategoryToType(tx.txCategory ?? '')
-					const { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
-					const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
-					const metaRaw = (tx as RawTxRecord).meta
-					// finalRequestAmountFiat6 = requestAmountFiat6 - discountAmountFiat6 + taxAmountFiat6（readme 7.2）
-					const req = metaRaw && typeof metaRaw === 'object'
-						? (Array.isArray(metaRaw)
-							? { requestAmountFiat6: metaRaw[0] ?? 0n, discountAmountFiat6: metaRaw[3] ?? 0n, taxAmountFiat6: metaRaw[5] ?? 0n }
-							: { requestAmountFiat6: (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n, discountAmountFiat6: (metaRaw as RawTxRecord['meta'])?.discountAmountFiat6 ?? 0n, taxAmountFiat6: (metaRaw as RawTxRecord['meta'])?.taxAmountFiat6 ?? 0n })
-						: null
-					const amountFiat6 = req
-						? req.requestAmountFiat6 - req.discountAmountFiat6 + req.taxAmountFiat6
-						: (tx.finalRequestAmountFiat6 ?? (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n)
-					const amountFiat = Number(amountFiat6) / 1e6
-					const currencyFiatNum = (metaRaw && typeof metaRaw === 'object' && 'currencyFiat' in metaRaw)
-						? (metaRaw as { currencyFiat?: number }).currencyFiat
-						: (Array.isArray(metaRaw) ? metaRaw[2] : (metaRaw as Record<number, unknown>)?.[2])
-					const currencyCode = currencyFiatToCode(Number(currencyFiatNum ?? 1))
-					const amPayee = accounts.some((a) => a.toLowerCase() === (tx.payee ?? '').toLowerCase())
-					const isInbound = amPayee
-					const tsRaw = tx.timestamp ?? 0n
-					const tsMs = Number(tsRaw) < 10_000_000_000 ? Number(tsRaw) * 1000 : Number(tsRaw)
+						const type = txCategoryToType(tx.txCategory ?? '')
+						const { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
+						const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
+						const metaRaw = (tx as RawTxRecord).meta
+						const req = metaRaw && typeof metaRaw === 'object'
+							? (Array.isArray(metaRaw)
+								? { requestAmountFiat6: metaRaw[0] ?? 0n, discountAmountFiat6: metaRaw[3] ?? 0n, taxAmountFiat6: metaRaw[5] ?? 0n }
+								: { requestAmountFiat6: (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n, discountAmountFiat6: (metaRaw as RawTxRecord['meta'])?.discountAmountFiat6 ?? 0n, taxAmountFiat6: (metaRaw as RawTxRecord['meta'])?.taxAmountFiat6 ?? 0n })
+							: null
+						// Top Up 分类（readme 7.2）：公式 amountFiat6 = requestAmountFiat6 - discountAmountFiat6 + taxAmountFiat6 不适用。
+						// Top Up 专用语义：meta.requestAmountFiat6 = currentTopupPoint（本次增加的 points，E6），直接用于 Amount ($CTree)
+						const amountFiat6 =
+							type === 'topup'
+								? (req?.requestAmountFiat6 ?? (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? tx.finalRequestAmountFiat6 ?? 0n)
+								: req
+									? req.requestAmountFiat6 - req.discountAmountFiat6 + req.taxAmountFiat6
+									: (tx.finalRequestAmountFiat6 ?? (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n)
+						const amountFiat = Number(amountFiat6) / 1e6
+						const currencyFiatNum = (metaRaw && typeof metaRaw === 'object' && 'currencyFiat' in metaRaw)
+							? (metaRaw as { currencyFiat?: number }).currencyFiat
+							: (Array.isArray(metaRaw) ? metaRaw[2] : (metaRaw as Record<number, unknown>)?.[2])
+						const currencyCode = currencyFiatToCode(Number(currencyFiatNum ?? 1))
+						const amPayee = accounts.some((a) => a.toLowerCase() === (tx.payee ?? '').toLowerCase())
+						const isInbound = amPayee
+						const tsRaw = tx.timestamp ?? 0n
+						const tsMs = Number(tsRaw) < 10_000_000_000 ? Number(tsRaw) * 1000 : Number(tsRaw)
 
-					const counterparty = amPayee ? (tx.payer ?? '') : (tx.payee ?? '')
-					const payerAddr = (tx.payer ?? '').toLowerCase()
-					const payeeAddr = (tx.payee ?? '').toLowerCase()
-					const isEoaAaInternal =
-						accounts.length >= 2 &&
-						accounts.some((a) => a.toLowerCase() === payerAddr) &&
-						accounts.some((a) => a.toLowerCase() === payeeAddr) &&
-						payerAddr !== payeeAddr
-					const resolvedType = isEoaAaInternal ? 'internal_transfer' : type
-					merged.push({
-						id,
-						type: resolvedType,
-						title: title ?? 'Transaction',
-						handle: handle ?? '',
-						forText: forText || undefined,
-						timestamp: formatTime(tsRaw),
-						timestampMs: tsMs,
-						amountUSDC,
-						amountFiat,
-						currencyCode,
-						isInbound,
-						isAA: !!tx.isAAAccount,
-						txHash: id.startsWith('0x') && id.length === 66 ? id : '',
-						counterpartyAddress: counterparty || undefined,
-						rawTransaction: tx as RawTxRecord,
-						card: card?.image ? card : undefined,
-					})
+						const counterparty = amPayee ? (tx.payer ?? '') : (tx.payee ?? '')
+						const payerAddr = (tx.payer ?? '').toLowerCase()
+						const payeeAddr = (tx.payee ?? '').toLowerCase()
+						const isEoaAaInternal =
+							accounts.length >= 2 &&
+							accounts.some((a) => a.toLowerCase() === payerAddr) &&
+							accounts.some((a) => a.toLowerCase() === payeeAddr) &&
+							payerAddr !== payeeAddr
+						const resolvedType = isEoaAaInternal ? 'internal_transfer' : type
+						merged.push({
+							id,
+							type: resolvedType,
+							title: title ?? 'Transaction',
+							handle: handle ?? '',
+							forText: forText || undefined,
+							timestamp: formatTime(tsRaw),
+							timestampMs: tsMs,
+							amountUSDC,
+							amountFiat,
+							currencyCode,
+							isInbound,
+							isAA: !!tx.isAAAccount,
+							txHash: id.startsWith('0x') && id.length === 66 ? id : '',
+							counterpartyAddress: counterparty || undefined,
+							rawTransaction: tx as RawTxRecord,
+							card: card?.image ? card : undefined,
+						})
+					} catch {
+						// 单条 tx 解析失败（如 ethers "out of result range"）时跳过，不中断整页
+					}
 				}
 			}
 
+			for (const res of accountResults) {
+				const page = (res as { page?: unknown[] }).page ?? (res as unknown[])[3]
+				processPage(Array.isArray(page) ? page : [])
+			}
+			if (assetResult) {
+				// getAssetTransactionsPaged 返回 (tuple[] page)：ethers 可能返回 array 直接、{ page } 或单元素 tuple [page]
+				const page = Array.isArray(assetResult)
+					? (assetResult.length === 1 && Array.isArray(assetResult[0]) ? (assetResult[0] as unknown[]) : assetResult)
+					: ((assetResult as { page?: unknown[] }).page ?? [])
+				processPage(page)
+			}
+
 			merged.sort((a, b) => b.timestampMs - a.timestampMs)
-			setItems(merged.slice(0, 30))
+			const itemLimit = filterByCardAddress ? 10 : 30
+			setItems(merged.slice(0, itemLimit))
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
 			setError(msg)
@@ -643,7 +778,7 @@ const ActiveHistoryPannelNew = ({
 		} finally {
 			setLoading(false)
 		}
-	}, [eoa, aa, overrideAddress, myAddress])
+	}, [eoa, aa, overrideAddress, myAddress, filterByCardAddress])
 
 	const handleRefresh = useCallback(() => {
 		if (refreshLockRef.current) return
@@ -654,6 +789,46 @@ const ActiveHistoryPannelNew = ({
 	useEffect(() => {
 		load()
 	}, [load])
+
+	// CoNET WSS 订阅 BeamioIndexerDiamond TransactionRecordSynced，新记录即时刷新 Live Network Activity 与指标
+	useEffect(() => {
+		const accounts: string[] = []
+		if (overrideAddress && ethers.isAddress(overrideAddress)) {
+			accounts.push(ethers.getAddress(overrideAddress))
+		} else {
+			if (eoa && ethers.isAddress(eoa)) accounts.push(ethers.getAddress(eoa))
+			if (aa && ethers.isAddress(aa) && aa.toLowerCase() !== eoa?.toLowerCase())
+				accounts.push(ethers.getAddress(aa))
+			if (accounts.length === 0 && myAddress && ethers.isAddress(myAddress))
+				accounts.push(ethers.getAddress(myAddress))
+		}
+		const accountSet = new Set(accounts.map((a) => a.toLowerCase()))
+
+		let indexer: ethers.Contract | null = null
+		const listener = (_actionId: bigint, _txId: string, _txCategory: string, payer: string, payee: string) => {
+			const payerL = (payer ?? '').toLowerCase()
+			const payeeL = (payee ?? '').toLowerCase()
+			const involvesUs = accountSet.size > 0 && (accountSet.has(payerL) || accountSet.has(payeeL))
+			const isNetworkView = !!filterByCardAddress
+			if (involvesUs || isNetworkView) {
+				load()
+				onNewTransactionIndexed?.()
+			}
+		}
+
+		try {
+			const wsProvider = getConetWsProvider()
+			indexer = new ethers.Contract(BEAMIO_INDEXER, INDEXER_ABI, wsProvider)
+			indexer.on('TransactionRecordSynced', listener)
+		} catch {
+			// WSS 不可用时静默失败，仍可依赖轮询/手动刷新
+		}
+
+		return () => {
+			indexer?.off('TransactionRecordSynced', listener)
+			// 使用单例 provider，不 destroy，避免 "provider destroyed; cancelled request" 竞态
+		}
+	}, [eoa, aa, overrideAddress, myAddress, filterByCardAddress, load, onNewTransactionIndexed])
 
 	// Detail Sheet 打开时隐藏 global footer，关闭时恢复
 	useEffect(() => {
@@ -1346,6 +1521,7 @@ const ActiveHistoryPannelNew = ({
 										filterByCardAddress={filterByCardAddress}
 										ledgerLayout={ledgerLayout}
 										compact={false}
+										onNewTransactionIndexed={onNewTransactionIndexed}
 										embeddedInDrawer
 									/>
 								</div>

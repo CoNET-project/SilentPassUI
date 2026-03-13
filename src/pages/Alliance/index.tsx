@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, getIssuedNftIndex, postCardCreateIssuedNft, postCardCreateRedeem, postCardMintIssuedNftToAddress, signExecuteForOwner, encodeCreateIssuedNft, encodeCreateRedeemForNft, encodeMintIssuedNftToAddress, generateRedeemCode, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
-import { searchUsername } from '@/services/beamio';
+import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, getIssuedNftIndex, postCardCreateIssuedNft, postCardCreateRedeem, postCardMintIssuedNftToAddress, signExecuteForOwner, encodeCreateIssuedNft, encodeCreateRedeemBatchForNft, encodeMintIssuedNftToAddress, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { searchUsername, generateCODE } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
 import { baseEndpoint } from '@/utils/constants';
@@ -296,7 +296,7 @@ export default function App() {
   const [kybError, setKybError] = useState<string | null>(null);
   const [kybSuccess, setKybSuccess] = useState<{ code: string; link: string } | null>(null);
   const [kybLinkCopied, setKybLinkCopied] = useState(false);
-  const [handleError, setHandleError] = useState(false);
+  const [handleError, setHandleError] = useState<string | null>(null);
   const [handleResolved, setHandleResolved] = useState<{ username: string; address?: string; image?: string; first_name?: string; last_name?: string } | null>(null);
   const [handleChecking, setHandleChecking] = useState(false);
   const handleValidateAbortRef = useRef<boolean>(false);
@@ -304,13 +304,13 @@ export default function App() {
   const validateHandle = useCallback(async (raw: string) => {
     const handle = raw.trim().replace(/^@/, '');
     if (!handle) {
-      setHandleError(false);
+      setHandleError(null);
       setHandleResolved(null);
       return;
     }
     handleValidateAbortRef.current = false;
     setHandleChecking(true);
-    setHandleError(false);
+    setHandleError(null);
     setHandleResolved(null);
     try {
       const res = await searchUsername(handle);
@@ -322,22 +322,40 @@ export default function App() {
         return u === norm;
       });
       if (match) {
+        const addr = (match as { address?: string }).address;
+        if (addr && ethers.isAddress(addr)) {
+          try {
+            const card = new ethers.Contract(
+              FIXED_USER_CARD_CONTRACT_ADDRESS,
+              ['function balanceOf(address account, uint256 id) view returns (uint256)'],
+              baseEndpoint
+            );
+            const bal = (await card.balanceOf(addr, ISSUED_NFT_START_ID)) as bigint;
+            if (bal > 0n) {
+              setHandleResolved(null);
+              setHandleError('Already registered as merchant');
+              return;
+            }
+          } catch {
+            // RPC failure: fail open, allow capsule assembly; server will reject if already registered
+          }
+        }
         setHandleResolved({
           username: match.username ?? match.accountName ?? handle,
-          address: (match as { address?: string }).address,
+          address: addr,
           image: match.image,
           first_name: match.first_name,
           last_name: match.last_name,
         });
-        setHandleError(false);
+        setHandleError(null);
       } else {
         setHandleResolved(null);
-        setHandleError(true);
+        setHandleError('Not found');
       }
     } catch {
       if (!handleValidateAbortRef.current) {
         setHandleResolved(null);
-        setHandleError(true);
+        setHandleError('Not found');
       }
     } finally {
       if (!handleValidateAbortRef.current) setHandleChecking(false);
@@ -353,7 +371,7 @@ export default function App() {
     setKybError(null);
     setKybSuccess(null);
     setKybLinkCopied(false);
-    setHandleError(false);
+    setHandleError(null);
     setHandleResolved(null);
   }, []);
 
@@ -371,6 +389,14 @@ export default function App() {
   const saveLocalRestaurants = (list: LocalRestaurant[]) => {
     setLocalRestaurants(list);
     try { window.localStorage.setItem(ALLIANCE_RESTAURANTS_KEY, JSON.stringify(list)); } catch { /* ignore */ }
+  };
+
+  const addLocalRestaurant = (rest: LocalRestaurant) => {
+    setLocalRestaurants((prev) => {
+      const next = [...prev, rest];
+      try { window.localStorage.setItem(ALLIANCE_RESTAURANTS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
   };
 
   const handleRegistrationMerchant = async () => {
@@ -423,6 +449,15 @@ export default function App() {
         setKybError(res.error ?? 'Failed to mint MerchantsManagement NFT');
         return;
       }
+      const rest: LocalRestaurant = {
+        id: `rest-${Date.now()}`,
+        name: restaurantName.trim() || `@${handleResolved.username}`,
+        cuisine: restaurantCuisine.trim(),
+        cityArea: restaurantCity.trim(),
+        handle: `@${handleResolved.username}`,
+        createdAt: Date.now(),
+      };
+      addLocalRestaurant(rest);
       setKybSuccess({ code: '', link: `Merchant @${handleResolved.username} registered. MerchantsManagement NFT minted.` });
     } catch (e: any) {
       setKybError(e?.message ?? String(e) ?? 'Failed to register merchant');
@@ -441,7 +476,7 @@ export default function App() {
       return;
     }
     if (handleError) {
-      setKybError('Handle not found. Please enter a valid beamioTag or leave it empty.');
+      setKybError(handleError === 'Already registered as merchant' ? handleError : 'Handle not found. Please enter a valid beamioTag or leave it empty.');
       return;
     }
     setKybError(null);
@@ -476,24 +511,26 @@ export default function App() {
           return;
         }
       }
-      const { code, hash } = generateRedeemCode();
+      const { code, hash } = generateCODE('');
       const now = Math.floor(Date.now() / 1000);
       const validAfter = now - 60;
       const validBefore = now + 365 * 86400;
-      const redeemData = encodeCreateRedeemForNft(hash, validAfter, validBefore, tokenIdForRedeem);
+      const tokenIds = [String(tokenIdForRedeem)];
+      const amounts = ['1'];
+      const redeemData = encodeCreateRedeemBatchForNft([hash], validAfter, validBefore, tokenIds, amounts);
       const deadline = now + 300;
       const nonce = ethers.hexlify(ethers.randomBytes(32));
       const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, redeemData, deadline, nonce);
       const redeemRes = await postCardCreateRedeem({
         cardAddress,
-        codes: [code],
+        hashes: [hash],
         validAfter,
         validBefore,
         deadline,
         nonce,
         ownerSignature,
-        tokenIds: [String(tokenIdForRedeem)],
-        amounts: ['1'],
+        tokenIds,
+        amounts,
       });
       if (!redeemRes.success) {
         setKybError(redeemRes.error ?? 'Failed to create redeem');
@@ -511,7 +548,7 @@ export default function App() {
         kybLink,
         createdAt: Date.now(),
       };
-      saveLocalRestaurants([...localRestaurants, rest]);
+      addLocalRestaurant(rest);
       setKybSuccess({ code, link: kybLink });
       setRestaurantName('');
       setRestaurantCuisine('');
@@ -580,6 +617,11 @@ export default function App() {
   const [issuedCardSummary, setIssuedCardSummary] = useState(EMPTY_ISSUED_CARD_SUMMARY);
   const tierAssetsCacheKey = `tier-assets:${normalizedCardAddress}`;
   const [tierAssets, setTierAssets] = useState<TierAsset[]>([]);
+  const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
+
+  const handleNewTransactionIndexed = useCallback(() => {
+    setOverviewRefreshTrigger((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -722,7 +764,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [issuedCardSummaryCacheKey, overviewCacheKey, tierAssetsCacheKey, userCardContractAddress]);
+  }, [issuedCardSummaryCacheKey, overviewCacheKey, tierAssetsCacheKey, userCardContractAddress, overviewRefreshTrigger]);
 
   const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
   useEffect(() => {
@@ -927,7 +969,7 @@ export default function App() {
                         <h2 className="font-bold text-lg text-slate-800">Live Network Activity</h2>
                         <button onClick={() => setActiveTab('Ledger')} className="text-sm font-bold text-emerald-600 hover:underline">View Ledger</button>
                       </div>
-                      <ActiveHistoryPannelNew title="Live Network Activity" compact compactLimit={3} bare embeddedInDrawer filterByCardAddress={FIXED_USER_CARD_CONTRACT_ADDRESS} ledgerLayout />
+                      <ActiveHistoryPannelNew title="Live Network Activity" compact compactLimit={10} bare embeddedInDrawer filterByCardAddress={FIXED_USER_CARD_CONTRACT_ADDRESS} ledgerLayout onNewTransactionIndexed={handleNewTransactionIndexed} />
                    </div>
                    
                    <div className="bg-slate-900 rounded-2xl shadow-xl p-6 text-white relative overflow-hidden flex flex-col">
@@ -1806,7 +1848,7 @@ export default function App() {
                                 <span className="text-[10px] text-slate-500 font-mono" title={handleResolved.address}>{shortenAddress(handleResolved.address)}</span>
                               )}
                            </div>
-                           <button type="button" onClick={() => { setHandleResolved(null); setRestaurantHandle(''); setHandleError(false); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear handle"><X size={16} /></button>
+                           <button type="button" onClick={() => { setHandleResolved(null); setRestaurantHandle(''); setHandleError(null); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear handle"><X size={16} /></button>
                         </div>
                      ) : (
                         <div className="relative">
@@ -1817,7 +1859,7 @@ export default function App() {
                               onChange={(e) => {
                                  setRestaurantHandle(e.target.value);
                                  setHandleResolved(null);
-                                 setHandleError(false);
+                                 setHandleError(null);
                               }}
                               onBlur={() => {
                                  handleValidateAbortRef.current = false;
@@ -1828,7 +1870,7 @@ export default function App() {
                               placeholder="senpho_kerr"
                            />
                            {handleChecking && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-slate-400" />}
-                           {handleError && !handleChecking && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-rose-500 text-xs font-medium">Not found</span>}
+                           {handleError && !handleChecking && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-rose-500 text-xs font-medium">{handleError}</span>}
                         </div>
                      )}
                   </div>

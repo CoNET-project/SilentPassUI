@@ -12,7 +12,7 @@ import {
     signExecuteForOwner,
     getCardOwner,
     postCardCreateRedeem,
-    encodeCreateRedeemBatch,
+    encodeCreateRedeemBatchForNft,
     type UserCardInfo,
     type CardRedeemBatch,
     type CardRedeemItem,
@@ -88,11 +88,12 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
                 return
             }
 
-            const codes: string[] = []
+            const items: { code: string; hash: string }[] = []
             for (let i = 0; i < quantity; i++) {
-                const { code } = generateCODE('')
-                codes.push(code)
+                const { code, hash } = generateCODE('')
+                items.push({ code, hash })
             }
+            const hashes = items.map((i) => i.hash)
 
             const now = Math.floor(Date.now() / 1000)
             const validAfter = now - 60
@@ -100,7 +101,9 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
             const deadline = now + 3600
             const nonce = ethers.hexlify(ethers.randomBytes(32))
 
-            const data = encodeCreateRedeemBatch(codes, points6, validAfter, validBefore)
+            const tokenIds = ['0']
+            const amounts = [points6.toString()]
+            const data = encodeCreateRedeemBatchForNft(hashes, validAfter, validBefore, tokenIds, amounts)
             const ownerSignature = await signExecuteForOwner(
                 profile.privateKeyArmor,
                 selectedCard.cardAddress,
@@ -111,21 +114,20 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
 
             const result = await postCardCreateRedeem({
                 cardAddress: selectedCard.cardAddress,
-                codes,
+                hashes,
                 points6: points6.toString(),
                 validAfter,
                 validBefore,
                 deadline,
                 nonce,
                 ownerSignature,
+                tokenIds,
+                amounts,
             })
 
-            if (result.success && result.codes) {
+            if (result.success) {
                 const batchId = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-                const items: CardRedeemItem[] = result.codes.map((code) => ({
-                    code,
-                    hash: ethers.keccak256(ethers.toUtf8Bytes(code)),
-                }))
+                const batchItems: CardRedeemItem[] = items.map(({ code, hash }) => ({ code, hash }))
                 const batch: CardRedeemBatch = {
                     batchId,
                     cardAddress: selectedCard.cardAddress,
@@ -135,7 +137,7 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
                     pointsHuman: pointsInput,
                     ptsPer1Currency: selectedCard.ptsPer1Currency,
                     createdAt: Date.now(),
-                    items,
+                    items: batchItems,
                 }
                 const prev = CoNET_Data
                 const updatedList: CardRedeemBatch[] = prev

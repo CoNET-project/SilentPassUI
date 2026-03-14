@@ -31,6 +31,7 @@ export default function AddAdminBottomSheet({ userCards, onClose, onSuccess }: P
     const { profiles } = useDaemonContext()
     const [selectedCard, setSelectedCard] = useState<UserCardInfo | null>(userCards[0] ?? null)
     const [addressInput, setAddressInput] = useState('')
+    const [metadataInput, setMetadataInput] = useState('')
     const [thresholdInput, setThresholdInput] = useState('1')
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
@@ -82,7 +83,7 @@ export default function AddAdminBottomSheet({ userCards, onClose, onSuccess }: P
             const now = Math.floor(Date.now() / 1000)
             const deadline = now + 3600
             const nonce = ethers.hexlify(ethers.randomBytes(32))
-            const data = encodeAddAdmin(newAdmin, threshold)
+            const data = encodeAddAdmin(newAdmin, threshold, metadataInput.trim())
 
             const ownerSignature = await signExecuteForOwner(
                 profile.privateKeyArmor,
@@ -202,6 +203,20 @@ export default function AddAdminBottomSheet({ userCards, onClose, onSuccess }: P
                         value={addressInput}
                         onChange={(e) => setAddressInput(e.target.value)}
                         className="w-full h-12 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1D5BFF]/50 font-mono text-sm"
+                    />
+                </div>
+
+                {/* Metadata (optional) */}
+                <div className="mb-4">
+                    <label className="block text-[11px] font-semibold tracking-wider uppercase text-slate-500 dark:text-slate-400 mb-2">
+                        Metadata (optional)
+                    </label>
+                    <input
+                        type="text"
+                        placeholder="e.g. Partner: Store #001"
+                        value={metadataInput}
+                        onChange={(e) => setMetadataInput(e.target.value)}
+                        className="w-full h-12 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1D5BFF]/50 text-sm"
                     />
                 </div>
 

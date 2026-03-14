@@ -43,6 +43,7 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 	'0x407e9974a927af2860780645997778be7b0e8e23',
 	'0xea7b248cfcd457c4884371c55ae5afb0f428c483',
 	'0xe1666f0309529df18e7986064a337c981baea178',
+	'0x4cc2e5a596791cb71e34d7b3177e60f6ab3f73ed',
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
@@ -393,6 +394,8 @@ const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
+const cardCreateRedeemAdminEndpoint = `${beamioApi}/api/cardCreateRedeemAdmin`
+const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 
 /** 用户兑换 redeem 码：提交到 API，服务端调用 redeemForUser，将点数 mint 到用户 AA */
 export const postCardRedeem = async (
@@ -1038,13 +1041,41 @@ const cancelRedeemInterface = new ethers.Interface([
 export const encodeCancelRedeem = (code: string): string =>
     cancelRedeemInterface.encodeFunctionData('cancelRedeem', [code])
 
-const addAdminInterface = new ethers.Interface([
-    'function addAdmin(address newAdmin, uint256 newThreshold)',
+const adminManagerInterface = new ethers.Interface([
+    'function adminManager(address to, bool admin, uint256 newThreshold, string metadata)',
 ])
 
-/** 构建 addAdmin 的 calldata（供 executeForOwner 使用）。newAdmin 必须为 EOA，newThreshold 为所需签名数（通常 1） */
-export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint): string =>
-    addAdminInterface.encodeFunctionData('addAdmin', [newAdmin, BigInt(newThreshold)])
+/** 构建 adminManager 的 calldata。admin=true 添加并写入 metadata，admin=false 移除（metadata 可传空，移除时 metadata 保留可查） */
+export const encodeAdminManager = (to: string, admin: boolean, newThreshold: number | bigint, metadata: string = ''): string =>
+    adminManagerInterface.encodeFunctionData('adminManager', [to, admin, BigInt(newThreshold), metadata])
+
+/** 便捷：添加 admin（带 metadata） */
+export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint, metadata: string = ''): string =>
+    encodeAdminManager(newAdmin, true, newThreshold, metadata)
+
+/** 便捷：移除 admin */
+export const encodeRemoveAdmin = (adminToRemove: string, newThreshold: number | bigint): string =>
+    encodeAdminManager(adminToRemove, false, newThreshold, '')
+
+const createRedeemAdminInterface = new ethers.Interface([
+    'function createRedeemAdmin(bytes32 hash, string metadata, uint64 validAfter, uint64 validBefore)',
+])
+
+/** 构建 createRedeemAdmin 的 calldata（供 executeForOwner 使用）。hash=keccak256(secretCode)，owner 离线签字后由 API 代付 gas 执行。 */
+export const encodeCreateRedeemAdmin = (
+    hash: string,
+    metadata: string,
+    validAfter: number,
+    validBefore: number
+): string => {
+    const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
+    return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
+        hashBytes32,
+        metadata,
+        BigInt(validAfter),
+        BigInt(validBefore),
+    ])
+}
 
 const appendTierInterface = new ethers.Interface([
     'function appendTier(uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
@@ -1122,7 +1153,7 @@ export const postCardCreateIssuedNft = async (payload: {
     }
 }
 
-/** 提交 addAdmin 到 API cardAddAdmin。Cluster 预检 newAdmin 为 EOA 后转发 Master executeForOwner 排队，返回 tx hash */
+/** 提交 adminManager 到 API cardAdminManager。Cluster 预检后转发 Master executeForOwner 排队，返回 tx hash */
 export const postCardAddAdmin = async (payload: {
     cardAddress: string
     data: string
@@ -1148,6 +1179,71 @@ export const postCardAddAdmin = async (payload: {
         return { success: true, hash: data.hash }
     } catch (e: any) {
         return { success: false, error: e?.message ?? String(e) }
+    }
+}
+
+/** 提交 createRedeemAdmin 到 API cardCreateRedeemAdmin。Cluster 预检后转发 Master executeForOwner 代付 gas 上链。 */
+export const postCardCreateRedeemAdmin = async (payload: {
+    cardAddress: string
+    data: string
+    deadline: number
+    nonce: string
+    ownerSignature: string
+}): Promise<{ success: boolean; hash?: string; error?: string }> => {
+    try {
+        const res = await fetch(cardCreateRedeemAdminEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'cardCreateRedeemAdmin failed' }
+        return { success: true, hash: data.hash }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
+
+/** 用户兑换 redeem-admin 码：提交到 API，服务端调用 redeemAdminForUser，将 to 添加为 admin */
+export const postCardRedeemAdmin = async (
+    cardAddress: string,
+    redeemCode: string,
+    to: string
+): Promise<{ success: boolean; tx?: string; error?: string; status?: number }> => {
+    if (!cardAddress || !redeemCode?.trim() || !to || !ethers.isAddress(to) || !ethers.isAddress(cardAddress)) {
+        return { success: false, error: 'Invalid cardAddress, redeemCode, or to' }
+    }
+    const trimmedCode = redeemCode.trim()
+    try {
+        const res = await fetch(cardRedeemAdminEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cardAddress, redeemCode: trimmedCode, to }),
+        })
+        let data: { success?: boolean; error?: string; tx?: string } = {}
+        try {
+            const text = await res.text()
+            if (text) data = JSON.parse(text) as typeof data
+        } catch {
+            // response might be HTML (e.g. 404 page)
+        }
+        if (!res.ok) {
+            const errMsg = data.error ?? (data as { message?: string }).message ?? `HTTP ${res.status}`
+            if (typeof console !== 'undefined' && console.warn) {
+                console.warn('[postCardRedeemAdmin] failed:', { status: res.status, url: cardRedeemAdminEndpoint, error: errMsg })
+            }
+            return { success: false, error: errMsg, status: res.status }
+        }
+        if (data.success !== false && data.tx) {
+            return { success: true, tx: data.tx }
+        }
+        return { success: false, error: data.error ?? 'Redeem admin failed (no tx returned)', status: res.status }
+    } catch (e) {
+        const msg = (e as Error)?.message ?? 'Redeem admin request failed'
+        if (typeof console !== 'undefined' && console.error) {
+            console.error('[postCardRedeemAdmin] fetch error:', e)
+        }
+        return { success: false, error: msg }
     }
 }
 

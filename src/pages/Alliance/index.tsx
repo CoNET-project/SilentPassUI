@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, getIssuedNftIndex, postCardCreateIssuedNft, postCardCreateRedeem, postCardMintIssuedNftToAddress, signExecuteForOwner, encodeCreateIssuedNft, encodeCreateRedeemBatchForNft, encodeMintIssuedNftToAddress, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, getIssuedNftIndex, postCardCreateIssuedNft, postCardCreateRedeemAdmin, postCardMintIssuedNftToAddress, signExecuteForOwner, encodeCreateIssuedNft, encodeCreateRedeemAdmin, encodeMintIssuedNftToAddress, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
 import { searchUsername, generateCODE } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
@@ -160,9 +160,10 @@ const shortenAddress = (addr: string, head = 6, tail = 4) =>
   addr && addr.length > head + tail ? `${addr.slice(0, head)}...${addr.slice(-tail)}` : addr || '—';
 
 /** CCSA 卡 (BeamioUserCard)，与 config/chainAddresses 保持一致 */
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0xcdAb59228695bbF2137d56382395f854267194E1'
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0xda36bd32418cAC424DbffD07617094d1884E629C'
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
 const ALLIANCE_RESTAURANTS_KEY = 'alliance:restaurants:local';
+const ZERO_ADDRESS = ethers.ZeroAddress;
 
 type LocalRestaurant = {
   id: string
@@ -174,6 +175,18 @@ type LocalRestaurant = {
   kybLink?: string
   createdAt: number
 }
+type OnchainAdminEntry = {
+  address: string
+  metadata: string
+  metadataTitle: string
+  metadataSubtitle: string
+  parent: string
+  role: 'Owner' | 'Direct Admin' | 'Sub Admin'
+}
+type PendingRedeemAdminEntry = {
+  hash: string
+  status: 'Active' | 'Expired'
+}
 const EMPTY_OVERVIEW_METRICS = {
   totalNetworkVolumeCad: '—',
   activeMemberships: '—',
@@ -184,6 +197,43 @@ const EMPTY_ISSUED_CARD_SUMMARY = {
   name: '—',
   totalSupply: '—',
 };
+const EMPTY_ONCHAIN_ADMINS: OnchainAdminEntry[] = [];
+const EMPTY_PENDING_REDEEM_ADMINS: PendingRedeemAdminEntry[] = [];
+
+function summarizeAdminMetadata(raw: string): { title: string; subtitle: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { title: 'No metadata', subtitle: '' };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const title = [
+      parsed.name,
+      parsed.title,
+      parsed.restaurantName,
+      parsed.handle,
+      parsed.username,
+    ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim();
+    const subtitle = [
+      parsed.location,
+      parsed.cityArea,
+      parsed.city,
+      parsed.description,
+      parsed.note,
+    ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+    return {
+      title: title ?? 'JSON metadata',
+      subtitle,
+    };
+  } catch {
+    const compact = trimmed.replace(/\s+/g, ' ');
+    return {
+      title: compact.length > 48 ? `${compact.slice(0, 48)}...` : compact,
+      subtitle: '',
+    };
+  }
+}
 
 function loadTrustedCache<T>(key: string | null): T | null {
   if (!key || typeof window === 'undefined') return null;
@@ -259,6 +309,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: SidebarI
 const StatusBadge = ({ status }: { status: string }) => {
   const styles: Record<string, string> = {
     'Active': 'bg-emerald-100 text-emerald-700',
+    'Expired': 'bg-amber-100 text-amber-700',
     'Verified': 'bg-emerald-100 text-emerald-700',
     'Pending': 'bg-amber-100 text-amber-700',
     'Completed': 'bg-emerald-100 text-emerald-700',
@@ -484,60 +535,38 @@ export default function App() {
     setIsGeneratingKyb(true);
     try {
       const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
-      let issuedIdx: bigint;
-      try {
-        issuedIdx = await getIssuedNftIndex(cardAddress);
-      } catch (e: unknown) {
-        // Contract may not have issuedNftIndex (older impl) or RPC returned BAD_DATA; fallback to start ID
-        issuedIdx = ISSUED_NFT_START_ID;
-      }
       const ownerPk = profile?.privateKeyArmor;
       if (!ownerPk) {
         setKybError('Wallet not connected. Connect with card owner to generate KYB link.');
         return;
       }
-      const tokenIdForRedeem = ISSUED_NFT_START_ID;
-      if (issuedIdx === ISSUED_NFT_START_ID) {
-        const now = Math.floor(Date.now() / 1000);
-        const validAfter = now - 60;
-        const validBefore = now + 365 * 86400;
-        const data = encodeCreateIssuedNft('MerchantsManagement', validAfter, validBefore, 10000, 0, ethers.ZeroHash);
-        const deadline = now + 300;
-        const nonce = ethers.hexlify(ethers.randomBytes(32));
-        const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, data, deadline, nonce);
-        const r = await postCardCreateIssuedNft({ cardAddress, data, deadline, nonce, ownerSignature });
-        if (!r.success) {
-          setKybError(r.error ?? 'Failed to create special NFT');
-          return;
-        }
-      }
       const { code, hash } = generateCODE('');
       const now = Math.floor(Date.now() / 1000);
       const validAfter = now - 60;
       const validBefore = now + 365 * 86400;
-      const tokenIds = [String(tokenIdForRedeem)];
-      const amounts = ['1'];
-      const redeemData = encodeCreateRedeemBatchForNft([hash], validAfter, validBefore, tokenIds, amounts);
+      const resolvedHandle = handleResolved?.username ? `@${handleResolved.username}` : (handle ? `@${handle}` : '');
+      const metadata = JSON.stringify({
+        restaurantName: name,
+        cuisine,
+        cityArea: city,
+        handle: resolvedHandle,
+      });
+      const redeemAdminData = encodeCreateRedeemAdmin(hash, metadata, validAfter, validBefore);
       const deadline = now + 300;
       const nonce = ethers.hexlify(ethers.randomBytes(32));
-      const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, redeemData, deadline, nonce);
-      const redeemRes = await postCardCreateRedeem({
+      const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, redeemAdminData, deadline, nonce);
+      const redeemRes = await postCardCreateRedeemAdmin({
         cardAddress,
-        hashes: [hash],
-        validAfter,
-        validBefore,
+        data: redeemAdminData,
         deadline,
         nonce,
         ownerSignature,
-        tokenIds,
-        amounts,
       });
       if (!redeemRes.success) {
-        setKybError(redeemRes.error ?? 'Failed to create redeem');
+        setKybError(redeemRes.error ?? 'Failed to create redeem admin');
         return;
       }
-      const kybLink = `https://biz.beamio.app/app?redeemCode=${encodeURIComponent(code)}`;
-      const resolvedHandle = handleResolved?.username ? `@${handleResolved.username}` : (handle ? `@${handle}` : '');
+      const kybLink = `https://biz.beamio.app/app?redeemCode=${encodeURIComponent(code)}&redeemAdmin=1`;
       const rest: LocalRestaurant = {
         id: `rest-${Date.now()}`,
         name,
@@ -617,6 +646,10 @@ export default function App() {
   const [issuedCardSummary, setIssuedCardSummary] = useState(EMPTY_ISSUED_CARD_SUMMARY);
   const tierAssetsCacheKey = `tier-assets:${normalizedCardAddress}`;
   const [tierAssets, setTierAssets] = useState<TierAsset[]>([]);
+  const onchainAdminsCacheKey = `admins:${normalizedCardAddress}`;
+  const pendingRedeemAdminsCacheKey = `redeem-admins:${normalizedCardAddress}`;
+  const [onchainAdmins, setOnchainAdmins] = useState<OnchainAdminEntry[]>([]);
+  const [pendingRedeemAdmins, setPendingRedeemAdmins] = useState<PendingRedeemAdminEntry[]>([]);
   const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
 
   const handleNewTransactionIndexed = useCallback(() => {
@@ -628,10 +661,14 @@ export default function App() {
     const cachedOverview = loadTrustedCache<typeof EMPTY_OVERVIEW_METRICS>(overviewCacheKey);
     const cachedIssuedCardSummary = loadTrustedCache<typeof EMPTY_ISSUED_CARD_SUMMARY>(issuedCardSummaryCacheKey);
     const cachedTierAssets = loadTrustedCache<TierAsset[]>(tierAssetsCacheKey);
+    const cachedOnchainAdmins = loadTrustedCache<OnchainAdminEntry[]>(onchainAdminsCacheKey);
+    const cachedPendingRedeemAdmins = loadTrustedCache<PendingRedeemAdminEntry[]>(pendingRedeemAdminsCacheKey);
 
     setOverviewMetrics(cachedOverview ?? EMPTY_OVERVIEW_METRICS);
     setIssuedCardSummary(cachedIssuedCardSummary ?? EMPTY_ISSUED_CARD_SUMMARY);
     setTierAssets(cachedTierAssets ?? []);
+    setOnchainAdmins(cachedOnchainAdmins ?? EMPTY_ONCHAIN_ADMINS);
+    setPendingRedeemAdmins(cachedPendingRedeemAdmins ?? EMPTY_PENDING_REDEEM_ADMINS);
 
     const loadOverviewMetrics = async () => {
       if (!userCardContractAddress) {
@@ -648,9 +685,11 @@ export default function App() {
             'function totalActiveMemberships() view returns (uint256)',
             'function totalMembershipIssuedByTierIndex(uint256) view returns (uint256)',
             'function activeMembershipCountByTierIndex(uint256) view returns (uint256)',
-            'function getTiersCount() view returns (uint256)',
             'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
-            'function getAdminList() view returns (address[])',
+            'function getGlobalStatsFull(uint8,uint256,uint256) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 adminCount)',
+            'function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)',
+            'function getRedeemAdminList() view returns (bytes32[] memory)',
+            'function getRedeemAdminStatus(bytes32 hash) view returns (bool active)',
             'function totalSupply(uint256) view returns (uint256)',
             'function totalSupply() view returns (uint256)',
           ],
@@ -670,9 +709,7 @@ export default function App() {
           const pointsSupply0 = (await totalSupplyById.staticCall(0)) as bigint;
           totalNetworkVolumeCad = Number(pointsSupply0) / 1_000_000;
         } catch {
-          const tiersCount = Number(await card.getTiersCount());
-          const loopLimit = tiersCount > 0 ? tiersCount : 16;
-          for (let i = 0; i < loopLimit; i++) {
+          for (let i = 0; i < 64; i++) {
             try {
               const [issuedCount, tier] = await Promise.all([
                 card.totalMembershipIssuedByTierIndex(i) as Promise<bigint>,
@@ -685,11 +722,8 @@ export default function App() {
           }
         }
 
-        const tiersCount = Number(await card.getTiersCount());
         const tierAssetsList: TierAsset[] = [];
-
-        const loopLimit = tiersCount > 0 ? tiersCount : 16;
-        for (let i = 0; i < loopLimit; i++) {
+        for (let i = 0; i < 64; i++) {
           try {
             const [issuedCount, activeCount, tier] = await Promise.all([
               card.totalMembershipIssuedByTierIndex(i) as Promise<bigint>,
@@ -697,35 +731,88 @@ export default function App() {
               card.tiers(i) as Promise<{ minUsdc6: bigint; upgradeByBalance: boolean }>,
             ]);
 
-            if (i < tiersCount) {
-              const metaTier = metadata?.tiers?.[i];
-              const minCad = Number(tier.minUsdc6) / 1_000_000;
-              const tierName = metaTier?.name?.trim() || (metadata?.name ? `${metadata.name} Tier ${i + 1}` : `Tier ${i + 1}`);
-              const tierType = metaTier?.description?.trim() || 'Membership';
-              const tierColor = metaTier?.backgroundColor?.trim() || TIER_COLOR_FALLBACKS[i % TIER_COLOR_FALLBACKS.length];
-              tierAssetsList.push({
-                id: `AST-${i}`,
-                name: tierName,
-                type: tierType,
-                minTopUp: `≥ ${formatWithThousands(minCad, 0)} CAD`,
-                minted: Number(issuedCount),
-                activeHolders: Number(activeCount),
-                status: 'Active',
-                color: tierColor,
-                mintRule: tier.upgradeByBalance ? 'Balance-based Upgrade' : 'One-time Top-up',
-                image: metaTier?.image?.trim() || undefined,
-              });
-            }
+            const metaTier = metadata?.tiers?.[i];
+            const minCad = Number(tier.minUsdc6) / 1_000_000;
+            const tierName = metaTier?.name?.trim() || (metadata?.name ? `${metadata.name} Tier ${i + 1}` : `Tier ${i + 1}`);
+            const tierType = metaTier?.description?.trim() || 'Membership';
+            const tierColor = metaTier?.backgroundColor?.trim() || TIER_COLOR_FALLBACKS[i % TIER_COLOR_FALLBACKS.length];
+            tierAssetsList.push({
+              id: `AST-${i}`,
+              name: tierName,
+              type: tierType,
+              minTopUp: `≥ ${formatWithThousands(minCad, 0)} CAD`,
+              minted: Number(issuedCount),
+              activeHolders: Number(activeCount),
+              status: 'Active',
+              color: tierColor,
+              mintRule: tier.upgradeByBalance ? 'Balance-based Upgrade' : 'One-time Top-up',
+              image: metaTier?.image?.trim() || undefined,
+            });
           } catch {
             break;
           }
         }
 
-        const adminList = await card.getAdminList() as string[];
-        const adminCount = adminList.filter((admin) => !!admin && admin !== ethers.ZeroAddress).length;
-
+        let adminCount = 0;
+        try {
+          const globalStats = await card.getGlobalStatsFull(0, 0n, 0n) as { adminCount: bigint };
+          adminCount = Number(globalStats.adminCount);
+        } catch {
+          // Fallback: owner counts as 1, partnerLocations = 0
+        }
         const partnerLocations = Math.max(adminCount - 1, 0);
         const ownerBUnits = await getBUnitBalance(owner);
+        const nextOnchainAdmins: OnchainAdminEntry[] = [];
+        let didLoadOnchainAdmins = false;
+        try {
+          const [admins, metadatas, parents] = await card.getAdminListWithMetadata() as [string[], string[], string[]];
+          didLoadOnchainAdmins = true;
+          for (let i = 0; i < admins.length; i++) {
+            const address = admins[i];
+            const metadataRaw = metadatas[i] ?? '';
+            const parent = parents[i] ?? ZERO_ADDRESS;
+            const { title, subtitle } = summarizeAdminMetadata(metadataRaw);
+            nextOnchainAdmins.push({
+              address,
+              metadata: metadataRaw,
+              metadataTitle: title,
+              metadataSubtitle: subtitle,
+              parent,
+              role: address.toLowerCase() === owner.toLowerCase()
+                ? 'Owner'
+                : parent.toLowerCase() === ZERO_ADDRESS.toLowerCase()
+                  ? 'Direct Admin'
+                  : 'Sub Admin',
+            });
+          }
+        } catch {
+          // Keep trusted cached admin directory when RPC query fails.
+        }
+
+        const nextPendingRedeemAdmins: PendingRedeemAdminEntry[] = [];
+        let didLoadPendingRedeemAdmins = false;
+        try {
+          const hashes = await card.getRedeemAdminList() as string[];
+          didLoadPendingRedeemAdmins = true;
+          const statuses = await Promise.all(
+            hashes.map(async (hash) => {
+              try {
+                const active = await card.getRedeemAdminStatus(hash) as boolean;
+                return active ? 'Active' : 'Expired';
+              } catch {
+                return 'Active';
+              }
+            })
+          );
+          for (let i = 0; i < hashes.length; i++) {
+            nextPendingRedeemAdmins.push({
+              hash: hashes[i],
+              status: statuses[i],
+            });
+          }
+        } catch {
+          // Keep trusted cached redeem-admin list when RPC query fails.
+        }
 
         if (cancelled || requestId !== overviewFetchSeq.current) return;
 
@@ -743,6 +830,14 @@ export default function App() {
         setOverviewMetrics(nextOverviewMetrics);
         setIssuedCardSummary(nextIssuedCardSummary);
         setTierAssets(tierAssetsList);
+        if (didLoadOnchainAdmins) {
+          setOnchainAdmins(nextOnchainAdmins);
+          saveTrustedCache(onchainAdminsCacheKey, nextOnchainAdmins);
+        }
+        if (didLoadPendingRedeemAdmins) {
+          setPendingRedeemAdmins(nextPendingRedeemAdmins);
+          saveTrustedCache(pendingRedeemAdminsCacheKey, nextPendingRedeemAdmins);
+        }
         saveTrustedCache(overviewCacheKey, nextOverviewMetrics);
         saveTrustedCache(issuedCardSummaryCacheKey, nextIssuedCardSummary);
         saveTrustedCache(tierAssetsCacheKey, tierAssetsList);
@@ -755,7 +850,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [issuedCardSummaryCacheKey, overviewCacheKey, tierAssetsCacheKey, userCardContractAddress, overviewRefreshTrigger]);
+  }, [issuedCardSummaryCacheKey, onchainAdminsCacheKey, overviewCacheKey, pendingRedeemAdminsCacheKey, tierAssetsCacheKey, userCardContractAddress, overviewRefreshTrigger]);
 
   const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
   useEffect(() => {
@@ -1136,14 +1231,14 @@ export default function App() {
                        <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center"><Utensils size={24}/></div>
                        <div>
                           <div className="text-sm font-bold text-slate-400 uppercase tracking-widest">Network Partners</div>
-                          <div className="text-2xl font-black text-slate-900">2 <span className="text-sm text-slate-500 font-medium">Locations</span></div>
+                          <div className="text-2xl font-black text-slate-900">{formatWithThousands(onchainAdmins.filter((item) => item.role !== 'Owner').length, 0)} <span className="text-sm text-slate-500 font-medium">Admins</span></div>
                        </div>
                     </div>
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
                        <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><Users size={24}/></div>
                        <div>
                           <div className="text-sm font-bold text-slate-400 uppercase tracking-widest">Linked Diners</div>
-                          <div className="text-2xl font-black text-slate-900">697 <span className="text-sm text-slate-500 font-medium">Active Cards</span></div>
+                          <div className="text-2xl font-black text-slate-900">{overviewMetrics.activeMemberships} <span className="text-sm text-slate-500 font-medium">Active Cards</span></div>
                        </div>
                     </div>
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -1163,6 +1258,109 @@ export default function App() {
                  </div>
 
                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                       <div>
+                          <h3 className="text-lg font-black text-slate-900">Current Admins</h3>
+                          <p className="text-xs text-slate-500 mt-1">Live on-chain admin directory with stored metadata.</p>
+                       </div>
+                       <div className="text-sm font-bold text-slate-500">{formatWithThousands(onchainAdmins.length, 0)} total</div>
+                    </div>
+                    <table className="w-full">
+                       <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-100 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                             <th className="px-6 py-4">Admin</th>
+                             <th className="px-6 py-4">Metadata</th>
+                             <th className="px-6 py-4">Parent</th>
+                             <th className="px-6 py-4 text-right">Role</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100">
+                          {onchainAdmins.length > 0 ? onchainAdmins.map((admin) => (
+                            <tr key={admin.address} className="hover:bg-slate-50 transition-colors">
+                               <td className="px-6 py-4">
+                                  <div className="font-mono text-sm font-bold text-slate-900">{shortenAddress(admin.address)}</div>
+                                  <div className="text-[10px] text-slate-400 mt-1">{admin.address}</div>
+                               </td>
+                               <td className="px-6 py-4">
+                                  <div className="font-semibold text-sm text-slate-800">{admin.metadataTitle}</div>
+                                  <div className="text-[10px] text-slate-500 mt-1">{admin.metadataSubtitle || admin.metadata || '—'}</div>
+                               </td>
+                               <td className="px-6 py-4">
+                                  <div className="font-mono text-sm text-slate-700">
+                                    {admin.parent.toLowerCase() === ZERO_ADDRESS.toLowerCase() ? 'Owner Root' : shortenAddress(admin.parent)}
+                                  </div>
+                                  {admin.parent.toLowerCase() !== ZERO_ADDRESS.toLowerCase() && (
+                                    <div className="text-[10px] text-slate-400 mt-1">{admin.parent}</div>
+                                  )}
+                               </td>
+                               <td className="px-6 py-4 text-right">
+                                  <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase ${
+                                    admin.role === 'Owner'
+                                      ? 'bg-slate-900 text-white'
+                                      : admin.role === 'Direct Admin'
+                                        ? 'bg-emerald-50 text-emerald-600'
+                                        : 'bg-blue-50 text-blue-600'
+                                  }`}>
+                                    {admin.role}
+                                  </span>
+                               </td>
+                            </tr>
+                          )) : (
+                            <tr>
+                               <td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-400">No on-chain admins loaded yet.</td>
+                            </tr>
+                          )}
+                       </tbody>
+                    </table>
+                 </div>
+
+                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                       <div>
+                          <h3 className="text-lg font-black text-slate-900">Pending Redeem Admins</h3>
+                          <p className="text-xs text-slate-500 mt-1">Unconsumed redeem-admin hashes currently stored on-chain.</p>
+                       </div>
+                       <div className="text-sm font-bold text-slate-500">{formatWithThousands(pendingRedeemAdmins.length, 0)} pending</div>
+                    </div>
+                    <table className="w-full">
+                       <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-100 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                             <th className="px-6 py-4">Redeem Hash</th>
+                             <th className="px-6 py-4">Status</th>
+                             <th className="px-6 py-4 text-right">Notes</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100">
+                          {pendingRedeemAdmins.length > 0 ? pendingRedeemAdmins.map((item) => (
+                            <tr key={item.hash} className="hover:bg-slate-50 transition-colors">
+                               <td className="px-6 py-4">
+                                  <div className="font-mono text-sm font-bold text-slate-900">{shortenAddress(item.hash, 12, 8)}</div>
+                                  <div className="text-[10px] text-slate-400 mt-1 break-all">{item.hash}</div>
+                               </td>
+                               <td className="px-6 py-4">
+                                  <StatusBadge status={item.status} />
+                               </td>
+                               <td className="px-6 py-4 text-right text-[11px] text-slate-500">
+                                  Metadata is not exposed by the current card getter.
+                               </td>
+                            </tr>
+                          )) : (
+                            <tr>
+                               <td colSpan={3} className="px-6 py-8 text-center text-sm text-slate-400">No pending redeem-admin hashes.</td>
+                            </tr>
+                          )}
+                       </tbody>
+                    </table>
+                 </div>
+
+                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                       <div>
+                          <h3 className="text-lg font-black text-slate-900">Saved Restaurant Drafts</h3>
+                          <p className="text-xs text-slate-500 mt-1">Local draft entries created from this dashboard.</p>
+                       </div>
+                       <div className="text-sm font-bold text-slate-500">{formatWithThousands(localRestaurants.length, 0)} saved</div>
+                    </div>
                     <table className="w-full">
                        <thead>
                           <tr className="bg-slate-50/80 border-b border-slate-100 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -1183,6 +1381,9 @@ export default function App() {
                                       <div>
                                          <div className="flex items-center gap-2">
                                             <span className="font-bold text-sm text-slate-900">{r.name}</span>
+                                            {r.cuisine && (
+                                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">{r.cuisine}</span>
+                                            )}
                                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-bold uppercase">Saved</span>
                                          </div>
                                          <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500">

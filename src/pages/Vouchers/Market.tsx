@@ -41,6 +41,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteCurrencyAmountInUSDC, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
 import { fiatPrefix } from "@/services/currency"
+import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
 import USDCUserCardTopupControl from "./USDCUserCardTopupControl"
@@ -52,8 +53,8 @@ import blackCard from "./assets/BlackCard.png"
 
 const THEME = { bg: "#F2F2F7" }
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
-/** Card address for USDC Top Up panel (purchasing/loading credits). */
-const USDC_TOPUP_CARD_ADDRESS = "0x63a6251A51939F6c47Ba0CEfF5984E5c9F031605"
+/** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
+const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 
 const CATEGORIES = [
   { id: "membership", name: "Memberships", icon: <Store size={20} />, color: "bg-purple-100 text-purple-600" },

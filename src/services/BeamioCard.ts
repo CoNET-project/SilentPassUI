@@ -1063,16 +1063,27 @@ export const encodeRemoveAdmin = (adminToRemove: string, newThreshold: number | 
 
 const createRedeemAdminInterface = new ethers.Interface([
     'function createRedeemAdmin(bytes32 hash, string metadata, uint64 validAfter, uint64 validBefore)',
+    'function createRedeemAdmin(bytes32 hash, string metadata, uint64 validAfter, uint64 validBefore, uint256 mintLimit)',
 ])
 
-/** 构建 createRedeemAdmin 的 calldata（供 executeForOwner 使用）。hash=keccak256(secretCode)，owner 离线签字后由 API 代付 gas 执行。 */
+/** 构建 createRedeemAdmin 的 calldata（供 executeForOwner 使用）。hash=keccak256(secretCode)，owner 离线签字后由 API 代付 gas 执行。mintLimitPoints6 可选，0 或省略表示无限制。 */
 export const encodeCreateRedeemAdmin = (
     hash: string,
     metadata: string,
     validAfter: number,
-    validBefore: number
+    validBefore: number,
+    mintLimitPoints6?: bigint
 ): string => {
     const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
+    if (mintLimitPoints6 != null && mintLimitPoints6 > 0n) {
+        return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
+            hashBytes32,
+            metadata,
+            BigInt(validAfter),
+            BigInt(validBefore),
+            mintLimitPoints6,
+        ])
+    }
     return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
         hashBytes32,
         metadata,

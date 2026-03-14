@@ -149,7 +149,7 @@ import { BASE_MAINNET_FACTORIES } from '../config/chainAddresses'
 	},
 
 	BeamioDiamond: {
-		address: '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612',
+		address: '0x9d481CC9Da04456e98aE2FD6eB6F18e37bf72eb5',
 		network: 'CONET DePIN',
 		abi: {
 			ActionFacet: ActionFacetAbi,

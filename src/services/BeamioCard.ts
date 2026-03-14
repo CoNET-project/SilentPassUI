@@ -44,6 +44,9 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 	'0xea7b248cfcd457c4884371c55ae5afb0f428c483',
 	'0xe1666f0309529df18e7986064a337c981baea178',
 	'0x4cc2e5a596791cb71e34d7b3177e60f6ab3f73ed',
+	'0xcdab59228695bbf2137d56382395f854267194e1',
+	'0x3957724e39e3db4f9f5fb263dd18e73fe8a67581',
+	'0x4cb611a14b1441d36183f125503f2c72af5b8fc8',
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
@@ -2176,7 +2179,7 @@ export const getLatest20UserActions_Lite = async (
 const CONET_BUINT_ADDRESS = "0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879";
 
 /** BeamioIndexerDiamond 地址（CoNET） */
-const BEAMIO_INDEXER_DIAMOND = "0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612";
+const BEAMIO_INDEXER_DIAMOND = "0x9d481CC9Da04456e98aE2FD6eB6F18e37bf72eb5";
 
 const BUINT_BALANCE_OF_ALL_ABI = [
   "function balanceOfAll(address account) external view returns (uint256 total, uint256 free, uint256 paid)"

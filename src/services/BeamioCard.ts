@@ -43,6 +43,7 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 	'0x407e9974a927af2860780645997778be7b0e8e23',
 	'0xea7b248cfcd457c4884371c55ae5afb0f428c483',
 	'0xe1666f0309529df18e7986064a337c981baea178',
+	'0x4cc2e5a596791cb71e34d7b3177e60f6ab3f73ed',
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
@@ -310,6 +311,9 @@ const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
+const cardCreateRedeemAdminEndpoint = `${beamioApi}/api/cardCreateRedeemAdmin`
+const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
+const cardClearAdminMintCounterEndpoint = `${beamioApi}/api/cardClearAdminMintCounter`
 
 /** 用户兑换 redeem 码：提交到 API，服务端调用 redeemForUser，将点数 mint 到用户 AA */
 export const postCardRedeem = async (
@@ -833,13 +837,41 @@ const cancelRedeemInterface = new ethers.Interface([
 export const encodeCancelRedeem = (code: string): string =>
     cancelRedeemInterface.encodeFunctionData('cancelRedeem', [code])
 
-const addAdminInterface = new ethers.Interface([
-    'function addAdmin(address newAdmin, uint256 newThreshold)',
+const adminManagerInterface = new ethers.Interface([
+    'function adminManager(address to, bool admin, uint256 newThreshold, string metadata)',
 ])
 
-/** 构建 addAdmin 的 calldata（供 executeForOwner 使用）。newAdmin 必须为 EOA，newThreshold 为所需签名数（通常 1） */
-export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint): string =>
-    addAdminInterface.encodeFunctionData('addAdmin', [newAdmin, BigInt(newThreshold)])
+/** 构建 adminManager 的 calldata。admin=true 添加并写入 metadata，admin=false 移除（metadata 可传空） */
+export const encodeAdminManager = (to: string, admin: boolean, newThreshold: number | bigint, metadata: string = ''): string =>
+    adminManagerInterface.encodeFunctionData('adminManager', [to, admin, BigInt(newThreshold), metadata])
+
+/** 便捷：添加 admin（带 metadata） */
+export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint, metadata: string = ''): string =>
+    encodeAdminManager(newAdmin, true, newThreshold, metadata)
+
+/** 便捷：移除 admin */
+export const encodeRemoveAdmin = (adminToRemove: string, newThreshold: number | bigint): string =>
+    encodeAdminManager(adminToRemove, false, newThreshold, '')
+
+const createRedeemAdminInterface = new ethers.Interface([
+    'function createRedeemAdmin(bytes32 hash, string metadata, uint64 validAfter, uint64 validBefore)',
+])
+
+/** 构建 createRedeemAdmin 的 calldata（供 executeForOwner 使用）。hash=keccak256(secretCode)，owner 离线签字后由 API 代付 gas 执行。 */
+export const encodeCreateRedeemAdmin = (
+    hash: string,
+    metadata: string,
+    validAfter: number,
+    validBefore: number
+): string => {
+    const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
+    return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
+        hashBytes32,
+        metadata,
+        BigInt(validAfter),
+        BigInt(validBefore),
+    ])
+}
 
 const createIssuedNftInterface = new ethers.Interface([
     'function createIssuedNft(bytes32 title, uint64 validAfter, uint64 validBefore, uint256 maxSupply, uint256 priceInCurrency6, bytes32 sharedMetadataHash)',
@@ -940,7 +972,7 @@ export const postCardMintIssuedNftToAddress = async (payload: {
 	}
 }
 
-/** 提交 addAdmin 到 API cardAddAdmin。Cluster 预检 newAdmin 为 EOA 后转发 Master executeForOwner 排队，返回 tx hash */
+/** 提交 adminManager 到 API cardAddAdmin。Cluster 预检后转发 Master executeForOwner 排队，返回 tx hash */
 export const postCardAddAdmin = async (payload: {
     cardAddress: string
     data: string
@@ -964,6 +996,184 @@ export const postCardAddAdmin = async (payload: {
         const data = await res.json()
         if (!res.ok) return { success: false, error: data.error ?? 'cardAddAdmin failed' }
         return { success: true, hash: data.hash }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
+
+/** 提交 createRedeemAdmin 到 API cardCreateRedeemAdmin。Cluster 预检后转发 Master executeForOwner 代付 gas 上链。 */
+export const postCardCreateRedeemAdmin = async (payload: {
+    cardAddress: string
+    data: string
+    deadline: number
+    nonce: string
+    ownerSignature: string
+}): Promise<{ success: boolean; hash?: string; error?: string }> => {
+    try {
+        const res = await fetch(cardCreateRedeemAdminEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'cardCreateRedeemAdmin failed' }
+        return { success: true, hash: data.hash }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
+
+/** 用户兑换 redeem-admin 码：提交到 API，服务端调用 redeemAdminForUser，将 to 添加为 admin */
+export const postCardRedeemAdmin = async (
+    cardAddress: string,
+    redeemCode: string,
+    to: string
+): Promise<{ success: boolean; tx?: string; error?: string; status?: number }> => {
+    if (!cardAddress || !redeemCode?.trim() || !to || !ethers.isAddress(to) || !ethers.isAddress(cardAddress)) {
+        return { success: false, error: 'Invalid cardAddress, redeemCode, or to' }
+    }
+    const trimmedCode = redeemCode.trim()
+    try {
+        const res = await fetch(cardRedeemAdminEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cardAddress, redeemCode: trimmedCode, to }),
+        })
+        let data: { success?: boolean; error?: string; tx?: string } = {}
+        try {
+            const text = await res.text()
+            if (text) data = JSON.parse(text) as typeof data
+        } catch {
+            // response might be HTML (e.g. 404 page)
+        }
+        if (!res.ok) {
+            const errMsg = data.error ?? (data as { message?: string }).message ?? `HTTP ${res.status}`
+            if (typeof console !== 'undefined' && console.warn) {
+                console.warn('[postCardRedeemAdmin] failed:', { status: res.status, url: cardRedeemAdminEndpoint, error: errMsg })
+            }
+            return { success: false, error: errMsg, status: res.status }
+        }
+        if (data.success !== false && data.tx) {
+            return { success: true, tx: data.tx }
+        }
+        return { success: false, error: data.error ?? 'Redeem admin failed (no tx returned)', status: res.status }
+    } catch (e) {
+        const msg = (e as Error)?.message ?? 'Redeem admin request failed'
+        if (typeof console !== 'undefined' && console.error) {
+            console.error('[postCardRedeemAdmin] fetch error:', e)
+        }
+        return { success: false, error: msg }
+    }
+}
+
+/** EIP-712 签名：Admin 授权 executeForAdmin(cardAddr, data, deadline, nonce)。通用接口，支持 mintPointsByAdmin、burnPointsByAdmin、adminManager 等。
+ * 签名者必须为 card.isAdmin(signer)。 */
+export const signExecuteForAdmin = async (
+    adminPrivateKey: string,
+    cardAddress: string,
+    data: string,
+    deadline: number,
+    nonce: string
+): Promise<string> => {
+    const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
+    const domain = { name: 'BeamioUserCardFactory', version: '1', chainId: 8453, verifyingContract: contracts.BeamioCardFactory.address }
+    const types = { ExecuteForAdmin: [{ name: 'cardAddress', type: 'address' }, { name: 'dataHash', type: 'bytes32' }, { name: 'deadline', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }] }
+    const dataHash = ethers.keccak256(data)
+    const value = { cardAddress: ethers.getAddress(cardAddress), dataHash, deadline, nonce: nonce.startsWith('0x') ? nonce : ethers.keccak256(ethers.toUtf8Bytes(nonce)) }
+    return wallet.signTypedData(domain, types, value)
+}
+
+const burnPointsByAdminInterface = new ethers.Interface(['function burnPointsByAdmin(address target, uint256 amount)'])
+
+/** 构建 burnPointsByAdmin 的 calldata。target 为被 burn 的地址，amount 为 type(uint256).max 表示 burn 全部。 */
+export const encodeBurnPointsByAdmin = (target: string, amount: bigint): string =>
+    burnPointsByAdminInterface.encodeFunctionData('burnPointsByAdmin', [ethers.getAddress(target), amount])
+
+/** Admin 离线签字授权 burn 某一地址的 token 0。signer 必须为 card admin；target 为被 burn 的地址；amount 为 type(uint256).max 表示 burn 全部。 */
+export const signBurnPointsByAdmin = async (
+    adminPrivateKey: string,
+    cardAddress: string,
+    target: string,
+    amount: bigint,
+    deadline: number,
+    nonce: string
+): Promise<{ data: string; adminSignature: string }> => {
+    const data = encodeBurnPointsByAdmin(target, amount)
+    const adminSignature = await signExecuteForAdmin(adminPrivateKey, cardAddress, data, deadline, nonce)
+    return { data, adminSignature }
+}
+
+/** EIP-712 签名：Parent admin 授权 clearAdminMintCounter(cardAddress, subordinate)。签名者必须为 card.adminParent(subordinate)。 */
+export const signClearAdminMintCounter = async (
+    parentPrivateKey: string,
+    cardAddress: string,
+    subordinate: string,
+    deadline: number,
+    nonce: string
+): Promise<string> => {
+    const wallet = new ethers.Wallet(parentPrivateKey, baseEndpoint)
+    const domain = { name: 'BeamioUserCardFactory', version: '1', chainId: 8453, verifyingContract: contracts.BeamioCardFactory.address }
+    const types = { ClearAdminMintCounter: [{ name: 'cardAddress', type: 'address' }, { name: 'subordinate', type: 'address' }, { name: 'deadline', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }] }
+    const nonceBytes = nonce.length === 66 && nonce.startsWith('0x') ? (nonce as `0x${string}`) : ethers.keccak256(ethers.toUtf8Bytes(nonce)) as `0x${string}`
+    const value = { cardAddress: ethers.getAddress(cardAddress), subordinate: ethers.getAddress(subordinate), deadline, nonce: nonceBytes }
+    return wallet.signTypedData(domain, types, value)
+}
+
+/** Admin 提交 burn 自己的 token 0。使用 /api/nfcTopup（与 mint 共用 executeForAdmin 队列）。 */
+export const postBurnPointsByAdmin = async (payload: {
+    cardAddr: string
+    data: string
+    deadline: number
+    nonce: string
+    adminSignature: string
+}): Promise<{ success: boolean; tx?: string; error?: string }> => {
+    try {
+        const res = await fetch(`${beamioApi}/api/nfcTopup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'burnPointsByAdmin failed' }
+        return { success: true, tx: data.tx }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
+
+/** Parent admin 提交清零 subordinate 的 mint 计数。Cluster 预检 signer==adminParent(subordinate)，Master 调用 Indexer。 */
+export const postCardClearAdminMintCounter = async (payload: {
+    cardAddress: string
+    subordinate: string
+    deadline: number
+    nonce: string
+    adminSignature: string
+}): Promise<{ success: boolean; tx?: string; error?: string }> => {
+    try {
+        const res = await fetch(cardClearAdminMintCounterEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'cardClearAdminMintCounter failed' }
+        return { success: true, tx: data.tx }
+    } catch (e: any) {
+        return { success: false, error: e?.message ?? String(e) }
+    }
+}
+
+/** 查询 card 的 admin 列表，连同 metadata、parent、mintCounter 一起回送 */
+export const getCardAdminsWithMintCounter = async (cardAddress: string): Promise<{
+    success: boolean
+    admins?: Array<{ address: string; metadata: string; parent: string; mintCounter: string }>
+    error?: string
+}> => {
+    try {
+        const res = await fetch(`${beamioApi}/api/cardAdmins?cardAddress=${encodeURIComponent(cardAddress)}`)
+        const data = await res.json()
+        if (!res.ok) return { success: false, error: data.error ?? 'getCardAdmins failed' }
+        return { success: true, admins: data.admins ?? [] }
     } catch (e: any) {
         return { success: false, error: e?.message ?? String(e) }
     }

@@ -650,10 +650,9 @@ export default function App() {
             'function activeMembershipCountByTierIndex(uint256) view returns (uint256)',
             'function getTiersCount() view returns (uint256)',
             'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
-            'function adminList(uint256) view returns (address)',
+            'function getAdminList() view returns (address[])',
             'function totalSupply(uint256) view returns (uint256)',
             'function totalSupply() view returns (uint256)',
-            'function exists(uint256) view returns (bool)',
           ],
           baseEndpoint
         );
@@ -722,16 +721,8 @@ export default function App() {
           }
         }
 
-        let adminCount = 0;
-        for (let i = 0; i < 32; i++) {
-          try {
-            const admin = await card.adminList(i) as string;
-            if (!admin || admin === ethers.ZeroAddress) break;
-            adminCount += 1;
-          } catch {
-            break;
-          }
-        }
+        const adminList = await card.getAdminList() as string[];
+        const adminCount = adminList.filter((admin) => !!admin && admin !== ethers.ZeroAddress).length;
 
         const partnerLocations = Math.max(adminCount - 1, 0);
         const ownerBUnits = await getBUnitBalance(owner);

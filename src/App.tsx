@@ -37,7 +37,6 @@ import EmapmpleCard from '@/pages/Vouchers/example/ExampleCard'
 import NewCardExample from '@/pages/Vouchers/example/newCardExample'
 import BeamioTransactions from '@/pages/Vouchers/example/transfertion'
 import MobilePOS from '@/pages/Vouchers/example/nativeApp'
-import MerchantOS from '@/pages/Vouchers/example/biz'
 import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -1036,7 +1035,6 @@ function AppShell() {
 				<Route path="/example-card" element={<EmapmpleCard />} />
 				<Route path="/example-new-card" element={<NewCardExample />} />
 				<Route path="/transfertion" element={<BeamioTransactions />} />
-				<Route path="/native-pos" element={<MerchantOS />} />
 				<Route path="/cardManager" element={<CardManager />} />
 				</Routes>
 				</div>

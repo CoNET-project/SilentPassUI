@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdmin, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
 import { searchUsername, generateCODE, redeemCodeHash } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
 import { baseEndpoint } from '@/utils/constants';
-import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses';
+import { BASE_MAINNET_FACTORIES, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
 import { APP_VERSION } from '@/version';
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew';
 import { 
@@ -159,8 +159,8 @@ const ledgerTransactions = [
 const shortenAddress = (addr: string, head = 6, tail = 4) =>
   addr && addr.length > head + tail ? `${addr.slice(0, head)}...${addr.slice(-tail)}` : addr || '—';
 
-/** CCSA 卡 (BeamioUserCard)，与 config/chainAddresses 保持一致 */
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0xda36bd32418cAC424DbffD07617094d1884E629C'
+/** CashTrees 卡 (BeamioUserCard)，与 chainAddresses 保持一致 */
+const FIXED_USER_CARD_CONTRACT_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
 const ALLIANCE_RESTAURANTS_KEY = 'alliance:restaurants:local';
 const ZERO_ADDRESS = ethers.ZeroAddress;
@@ -350,6 +350,7 @@ export default function App() {
   const [handleError, setHandleError] = useState<string | null>(null);
   const [handleResolved, setHandleResolved] = useState<{ username: string; address?: string; image?: string; first_name?: string; last_name?: string } | null>(null);
   const [handleChecking, setHandleChecking] = useState(false);
+  const [topupLimit, setTopupLimit] = useState('1000');
   const handleValidateAbortRef = useRef<boolean>(false);
 
   const validateHandle = useCallback(async (raw: string) => {
@@ -419,6 +420,7 @@ export default function App() {
     setRestaurantCuisine('');
     setRestaurantCity('');
     setRestaurantHandle('');
+    setTopupLimit('1000');
     setKybError(null);
     setKybSuccess(null);
     setKybLinkCopied(false);
@@ -468,7 +470,9 @@ export default function App() {
         cityArea: restaurantCity.trim(),
         handle: `@${handleResolved.username}`,
       });
-      const data = encodeAddAdmin(handleResolved.address, 1, metadata);
+      const limitNum = Math.max(0, Number(topupLimit) || 1000);
+      const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
+      const data = encodeAddAdminWithMintLimit(handleResolved.address, 1, metadata, mintLimitPoints6);
       const now = Math.floor(Date.now() / 1000);
       const deadline = now + 300;
       const nonce = ethers.hexlify(ethers.randomBytes(32));
@@ -535,7 +539,9 @@ export default function App() {
         cityArea: city,
         handle: resolvedHandle,
       });
-      const redeemAdminData = encodeCreateRedeemAdmin(hash, metadata, validAfter, validBefore);
+      const limitNum = Math.max(0, Number(topupLimit) || 1000);
+      const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
+      const redeemAdminData = encodeCreateRedeemAdmin(hash, metadata, validAfter, validBefore, mintLimitPoints6);
       const deadline = now + 300;
       const nonce = ethers.hexlify(ethers.randomBytes(32));
       const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, redeemAdminData, deadline, nonce);
@@ -2116,6 +2122,19 @@ export default function App() {
                            {handleError && !handleChecking && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-rose-500 text-xs font-medium">{handleError}</span>}
                         </div>
                      )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Top-up Limit (CAD)</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={topupLimit}
+                      onChange={(e) => setTopupLimit(e.target.value.replace(/[^\d.]/g, ''))}
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold"
+                      placeholder="1000"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">Max CAD the merchant can top-up for customers. Default 1000.</p>
                   </div>
                   <button
                     onClick={handleResolved ? handleRegistrationMerchant : handleGenerateKybLink}

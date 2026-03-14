@@ -844,6 +844,7 @@ export const encodeCancelRedeem = (code: string): string =>
 
 const adminManagerInterface = new ethers.Interface([
     'function adminManager(address to, bool admin, uint256 newThreshold, string metadata)',
+    'function adminManager(address to, bool admin, uint256 newThreshold, string metadata, uint256 mintLimit)',
 ])
 
 /** 构建 adminManager 的 calldata。admin=true 添加并写入 metadata，admin=false 移除（metadata 可传空） */
@@ -854,12 +855,22 @@ export const encodeAdminManager = (to: string, admin: boolean, newThreshold: num
 export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint, metadata: string = ''): string =>
     encodeAdminManager(newAdmin, true, newThreshold, metadata)
 
+/** 便捷：添加 admin（带 metadata 和 topup limit）。mintLimitPoints6 为 points6 精度（如 1000 CAD = 1000e6） */
+export const encodeAddAdminWithMintLimit = (
+    newAdmin: string,
+    newThreshold: number | bigint,
+    metadata: string,
+    mintLimitPoints6: bigint
+): string =>
+    adminManagerInterface.encodeFunctionData('adminManager', [newAdmin, true, BigInt(newThreshold), metadata, mintLimitPoints6])
+
 /** 便捷：移除 admin */
 export const encodeRemoveAdmin = (adminToRemove: string, newThreshold: number | bigint): string =>
     encodeAdminManager(adminToRemove, false, newThreshold, '')
 
 const createRedeemAdminInterface = new ethers.Interface([
     'function createRedeemAdmin(bytes32 hash, string metadata, uint64 validAfter, uint64 validBefore)',
+    'function createRedeemAdmin(bytes32 hash, string metadata, uint64 validAfter, uint64 validBefore, uint256 mintLimit)',
 ])
 
 /** 构建 createRedeemAdmin 的 calldata（供 executeForOwner 使用）。hash=keccak256(secretCode)，owner 离线签字后由 API 代付 gas 执行。 */
@@ -867,9 +878,19 @@ export const encodeCreateRedeemAdmin = (
     hash: string,
     metadata: string,
     validAfter: number,
-    validBefore: number
+    validBefore: number,
+    mintLimitPoints6?: bigint
 ): string => {
     const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
+    if (mintLimitPoints6 != null && mintLimitPoints6 > 0n) {
+        return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
+            hashBytes32,
+            metadata,
+            BigInt(validAfter),
+            BigInt(validBefore),
+            mintLimitPoints6,
+        ])
+    }
     return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
         hashBytes32,
         metadata,

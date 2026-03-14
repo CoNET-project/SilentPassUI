@@ -8,14 +8,10 @@ import { ethers } from 'ethers'
 
 const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
-const BEAMIO_BASE_RPC = 'https://1rpc.io/base'
+const BEAMIO_BASE_RPC = 'https://base-rpc.publicnode.com'
 
-const _viteBaseRpc = typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_BASE_RPC?: string } }).env?.VITE_BASE_RPC
-
-/** Base 主网 RPC 列表（VITE_BASE_RPC 未设置时：多节点 fallback，RPC 限流/失败时自动切换） */
-export const BASE_RPC_URLS = _viteBaseRpc
-	? [_viteBaseRpc]
-	: [BEAMIO_BASE_RPC]
+/** Base 主网 RPC 列表 */
+export const BASE_RPC_URLS = [BEAMIO_BASE_RPC]
 
 /** 检测是否为 RPC 配额/网络类错误（应触发切换） */
 export const isRpcQuotaOrNetworkError = (err: unknown): boolean => {

@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
-import { BASE_MAINNET_FACTORIES, BASE_TREASURY } from "@/config/chainAddresses";
+import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -2176,11 +2176,6 @@ export const getLatest20UserActions_Lite = async (
 	return uniqueFiltered.slice(0, 20)
 };
 
-/** CoNET 主网 BUint 合约地址 */
-const CONET_BUINT_ADDRESS = "0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879";
-
-/** BeamioIndexerDiamond 地址（CoNET） */
-const BEAMIO_INDEXER_DIAMOND = "0x9d481CC9Da04456e98aE2FD6eB6F18e37bf72eb5";
 
 const BUINT_BALANCE_OF_ALL_ABI = [
   "function balanceOfAll(address account) external view returns (uint256 total, uint256 free, uint256 paid)"
@@ -2203,7 +2198,7 @@ const TX_X402_SEND = ethers.keccak256(ethers.toUtf8Bytes("x402Send"));
 export const getBUnitBalanceFromConetRpc = async (account: string): Promise<{ total: number; free: number; paid: number }> => {
   if (!account || !ethers.isAddress(account)) return { total: 0, free: 0, paid: 0 };
   try {
-    const contract = new ethers.Contract(CONET_BUINT_ADDRESS, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
+    const contract = new ethers.Contract(CONET_BUINT, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
     const [total, free, paid] = await contract.balanceOfAll(account);
     const decimals = 6;
     return {
@@ -2235,7 +2230,7 @@ export const getBUnitBalanceOnConet = async (account: string): Promise<{ total: 
     if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceOnConet] API fallback failed:', e);
   }
   try {
-    const contract = new ethers.Contract(CONET_BUINT_ADDRESS, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
+    const contract = new ethers.Contract(CONET_BUINT, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
     const [total, free, paid] = await contract.balanceOfAll(account);
     const decimals = 6;
     return {
@@ -2344,7 +2339,7 @@ export const getBUnitLedgerFromIndexer = async (
     if (typeof console !== 'undefined' && console.error) console.error('[getBUnitLedgerFromIndexer] API fallback failed:', e);
   }
   const accountLower = account.toLowerCase();
-  const buintLower = CONET_BUINT_ADDRESS.toLowerCase();
+  const buintLower = CONET_BUINT.toLowerCase();
   try {
     const indexer = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_GET_ACCOUNT_TX_ABI, conetDepinProvider);
     const page = await indexer.getAccountTransactionsPaged(account, 0, 100);

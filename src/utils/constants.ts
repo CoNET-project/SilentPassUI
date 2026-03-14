@@ -47,7 +47,7 @@ const SilentPassOfficial = 'A8Vk2LsNqKktabs4xPY4YUmYxBoDqcTdxY5em4EQm8v1'
 
 const CCSA_Card_Address = contracts.BeamioCardCCSA.address.toLowerCase()
 /** 与 CCSA 同等对待的资产卡：用户查询资产时同时查找此卡与 CCSA（基础设施卡，新创建卡合约地址） */
-const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xa86a8406B06bD6c332b4b380A0EAced822218Eff'.toLowerCase()
+const BEAMIO_USER_CARD_ASSET_ADDRESS = '0x5aF645042411bD68eC80C8b2C781d422343e95C9'.toLowerCase()
 /** 资产卡列表：CCSA + beamioUserCard，用于聚合查询 */
 const ASSET_CARD_ADDRESSES = [CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS]
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, getIssuedNftIndex, postCardCreateIssuedNft, postCardCreateRedeemAdmin, postCardMintIssuedNftToAddress, signExecuteForOwner, encodeCreateIssuedNft, encodeCreateRedeemAdmin, encodeMintIssuedNftToAddress, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
-import { searchUsername, generateCODE } from '@/services/beamio';
+import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdmin, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { searchUsername, generateCODE, redeemCodeHash } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
 import { baseEndpoint } from '@/utils/constants';
@@ -462,42 +462,26 @@ export default function App() {
     setKybSuccess(null);
     setIsGeneratingKyb(true);
     try {
-      let issuedIdx: bigint;
-      try {
-        issuedIdx = await getIssuedNftIndex(cardAddress);
-      } catch {
-        issuedIdx = ISSUED_NFT_START_ID;
-      }
-      if (issuedIdx === ISSUED_NFT_START_ID) {
-        const now = Math.floor(Date.now() / 1000);
-        const validAfter = now - 60;
-        const validBefore = now + 365 * 86400;
-        const data = encodeCreateIssuedNft('MerchantsManagement', validAfter, validBefore, 10000, 0, ethers.ZeroHash);
-        const deadline = now + 300;
-        const nonce = ethers.hexlify(ethers.randomBytes(32));
-        const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, data, deadline, nonce);
-        const r = await postCardCreateIssuedNft({ cardAddress, data, deadline, nonce, ownerSignature });
-        if (!r.success) {
-          setKybError(r.error ?? 'Failed to create MerchantsManagement NFT type');
-          return;
-        }
-      }
-      const mintData = encodeMintIssuedNftToAddress(handleResolved.address, ISSUED_NFT_START_ID, 1n);
+      const metadata = JSON.stringify({
+        restaurantName: restaurantName.trim() || `@${handleResolved.username}`,
+        cuisine: restaurantCuisine.trim(),
+        cityArea: restaurantCity.trim(),
+        handle: `@${handleResolved.username}`,
+      });
+      const data = encodeAddAdmin(handleResolved.address, 1, metadata);
       const now = Math.floor(Date.now() / 1000);
       const deadline = now + 300;
       const nonce = ethers.hexlify(ethers.randomBytes(32));
-      const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, mintData, deadline, nonce);
-      const res = await postCardMintIssuedNftToAddress({
+      const ownerSignature = await signExecuteForOwner(ownerPk, cardAddress, data, deadline, nonce);
+      const res = await postCardAddAdmin({
         cardAddress,
-        targetAddress: handleResolved.address,
-        tokenId: String(ISSUED_NFT_START_ID),
-        amount: 1,
+        data,
         deadline,
         nonce,
         ownerSignature,
       });
       if (!res.success) {
-        setKybError(res.error ?? 'Failed to mint MerchantsManagement NFT');
+        setKybError(res.error ?? 'Failed to register merchant as admin');
         return;
       }
       const rest: LocalRestaurant = {
@@ -509,7 +493,7 @@ export default function App() {
         createdAt: Date.now(),
       };
       addLocalRestaurant(rest);
-      setKybSuccess({ code: '', link: `Merchant @${handleResolved.username} registered. MerchantsManagement NFT minted.` });
+      setKybSuccess({ code: '', link: `Merchant @${handleResolved.username} registered as admin successfully.` });
     } catch (e: any) {
       setKybError(e?.message ?? String(e) ?? 'Failed to register merchant');
     } finally {
@@ -834,9 +818,76 @@ export default function App() {
           setOnchainAdmins(nextOnchainAdmins);
           saveTrustedCache(onchainAdminsCacheKey, nextOnchainAdmins);
         }
-        if (didLoadPendingRedeemAdmins) {
-          setPendingRedeemAdmins(nextPendingRedeemAdmins);
-          saveTrustedCache(pendingRedeemAdminsCacheKey, nextPendingRedeemAdmins);
+        if (didLoadPendingRedeemAdmins || didLoadOnchainAdmins) {
+          if (didLoadPendingRedeemAdmins) {
+            setPendingRedeemAdmins(nextPendingRedeemAdmins);
+            saveTrustedCache(pendingRedeemAdminsCacheKey, nextPendingRedeemAdmins);
+          }
+          // Sync local restaurants: remove entries that don't exist on chain
+          const ownerLower = (owner || '').toLowerCase();
+          const userEoa = (eoaAddress || '').toLowerCase();
+          const userAa = (aaAddress ?? '').toLowerCase();
+          if (ownerLower && (ownerLower === userEoa || ownerLower === userAa)) {
+            const activeHashes = didLoadPendingRedeemAdmins
+              ? new Set(
+                  nextPendingRedeemAdmins
+                    .filter((e) => e.status === 'Active')
+                    .map((e) => (e.hash || '').toLowerCase())
+                )
+              : new Set<string>();
+
+            // Build chain admin list under user (owner sees all; direct admin sees sub-admins)
+            const adminsUnderUser = didLoadOnchainAdmins
+              ? nextOnchainAdmins.filter((a) => {
+                  const isOwner = ownerLower === userEoa || ownerLower === userAa;
+                  if (isOwner) return a.role !== 'Owner'; // owner sees all non-owner admins
+                  const p = (a.parent || '').toLowerCase();
+                  return p === userEoa || p === userAa;
+                })
+              : [];
+
+            // Parse metadata to get restaurant identifiers on chain (restaurantName, handle)
+            const chainRestaurantKeys = new Set<string>();
+            const norm = (s: string) => (s ?? '').trim().replace(/^@/, '').toLowerCase();
+            for (const a of adminsUnderUser) {
+              try {
+                const meta = a.metadata?.trim();
+                if (!meta) continue;
+                const parsed = JSON.parse(meta) as { restaurantName?: string; handle?: string };
+                const name = norm(parsed?.restaurantName ?? '');
+                const handle = norm(parsed?.handle ?? '');
+                if (name || handle) chainRestaurantKeys.add(`${name}|${handle}`);
+              } catch {
+                // ignore invalid metadata
+              }
+            }
+
+            setLocalRestaurants((prev) => {
+              const toKeep = prev.filter((r) => {
+                if (r.kybCode) {
+                  if (!didLoadPendingRedeemAdmins) return true; // no chain data, keep
+                  try {
+                    const h = redeemCodeHash(r.kybCode, '').toLowerCase();
+                    return activeHashes.has(h);
+                  } catch {
+                    return false;
+                  }
+                }
+                // No kybCode: must exist in chain admin list under user
+                if (!didLoadOnchainAdmins) return true; // no chain data, keep
+                const name = norm(r.name ?? '');
+                const handle = norm(r.handle ?? '');
+                const key = `${name}|${handle}`;
+                return chainRestaurantKeys.has(key);
+              });
+              if (toKeep.length < prev.length) {
+                try {
+                  window.localStorage.setItem(ALLIANCE_RESTAURANTS_KEY, JSON.stringify(toKeep));
+                } catch {}
+              }
+              return toKeep;
+            });
+          }
         }
         saveTrustedCache(overviewCacheKey, nextOverviewMetrics);
         saveTrustedCache(issuedCardSummaryCacheKey, nextIssuedCardSummary);
@@ -850,7 +901,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [issuedCardSummaryCacheKey, onchainAdminsCacheKey, overviewCacheKey, pendingRedeemAdminsCacheKey, tierAssetsCacheKey, userCardContractAddress, overviewRefreshTrigger]);
+  }, [eoaAddress, aaAddress, issuedCardSummaryCacheKey, onchainAdminsCacheKey, overviewCacheKey, pendingRedeemAdminsCacheKey, tierAssetsCacheKey, userCardContractAddress, overviewRefreshTrigger]);
 
   const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
   useEffect(() => {
@@ -1990,7 +2041,7 @@ export default function App() {
                   )}
                   {kybSuccess ? (
                     <div className="p-4 bg-emerald-50 text-emerald-800 rounded-xl text-sm border border-emerald-200">
-                      <div className="font-bold mb-2">{kybSuccess.link.startsWith('http') ? 'KYB Link generated' : 'Merchant registered'}</div>
+                      <div className="font-bold mb-2">{kybSuccess.link.startsWith('http') ? 'KYB Link generated' : 'Success'}</div>
                       <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-emerald-200">
                         <span className="flex-1 break-all text-slate-800 font-medium">{kybSuccess.link}</span>
                         {kybSuccess.link.startsWith('http') && (

@@ -160,7 +160,7 @@ const shortenAddress = (addr: string, head = 6, tail = 4) =>
   addr && addr.length > head + tail ? `${addr.slice(0, head)}...${addr.slice(-tail)}` : addr || '—';
 
 /** CCSA 卡 (BeamioUserCard)，与 config/chainAddresses 保持一致 */
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x4CC2e5A596791cb71E34d7B3177e60f6aB3f73eD'
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0xcdAb59228695bbF2137d56382395f854267194E1'
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
 const ALLIANCE_RESTAURANTS_KEY = 'alliance:restaurants:local';
 

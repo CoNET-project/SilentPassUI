@@ -21,7 +21,7 @@ import {
 	cardAbi,
 	BeamioCardFactoryAbi
   } from "./abis"
-import { BASE_MAINNET_FACTORIES } from '../config/chainAddresses'
+import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainAddresses'
 
   import beamioConetABI from '@/services/ABI/beamioConetABI.json'
   import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
@@ -149,7 +149,7 @@ import { BASE_MAINNET_FACTORIES } from '../config/chainAddresses'
 	},
 
 	BeamioDiamond: {
-		address: '0x9d481CC9Da04456e98aE2FD6eB6F18e37bf72eb5',
+		address: BEAMIO_INDEXER_DIAMOND,
 		network: 'CONET DePIN',
 		abi: {
 			ActionFacet: ActionFacetAbi,

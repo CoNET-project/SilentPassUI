@@ -87,6 +87,76 @@ const MOCK_TRANSACTIONS = [
  },
 ];
 
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0xda36bd32418cAC424DbffD07617094d1884E629C'
+const BASE_RPC_URL = 'https://1rpc.io/base'
+const BEAMIO_APP_URL = 'https://beamio.app'
+const baseRpcProvider = new ethers.JsonRpcProvider(BASE_RPC_URL)
+const BIZ_CACHE_PREFIX = 'beamio:biz-example:'
+const USER_CARD_ADMIN_READ_ABI = [
+  'function owner() view returns (address)',
+  'function isAdmin(address) view returns (bool)',
+  'function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)',
+  'function getAdminStatsFull(address admin, uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 mintCounterFromClear, uint256 burnCounterFromClear, uint256 transferCounterFromClear, uint256 redeemMintCounterFromClear, uint256 usdcMintCounterFromClear, address[] subordinates)',
+] as const
+
+type FixedUserCardMetadata = {
+  name?: string
+  description?: string
+  image?: string
+  cardOwner?: string
+}
+
+const firstNonEmptyString = (...values: unknown[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
+const parseFixedUserCardMetadata = (raw: unknown, cardOwner?: string): FixedUserCardMetadata | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const meta = raw as Record<string, unknown>;
+  const share = meta.shareTokenMetadata && typeof meta.shareTokenMetadata === 'object'
+    ? meta.shareTokenMetadata as Record<string, unknown>
+    : null;
+
+  const parsed: FixedUserCardMetadata = {
+    name: firstNonEmptyString(share?.name, meta.name),
+    description: firstNonEmptyString(share?.description, meta.description),
+    image: firstNonEmptyString(share?.image, meta.image),
+    ...(cardOwner ? { cardOwner } : {}),
+  };
+
+  return parsed.name || parsed.description || parsed.image || parsed.cardOwner ? parsed : null;
+}
+
+const amountE6ToDisplayNumber = (value: bigint): number => Number(value) / 1_000_000
+
+function loadTrustedCache<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(`${BIZ_CACHE_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { value?: T };
+    return parsed?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function saveTrustedCache<T>(key: string, value: T) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      `${BIZ_CACHE_PREFIX}${key}`,
+      JSON.stringify({ value, updatedAt: Date.now() })
+    );
+  } catch {
+    // Ignore storage failures.
+  }
+}
 
 const fmtAddr = (a: string | undefined) => (a && a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : (a || '—'));
 
@@ -126,6 +196,15 @@ const AddressRow = ({ label, icon: Icon, address, fullAddress }: { label: string
 export default function MerchantOS() {
  const { beamio, profiles, myAddress } = useDaemonContext();
  const [activeTab, setActiveTab] = useState('Overview');
+ const fixedCardAdminsCacheKey = `card-admins:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
+ const linkedMerchantAdminsCacheKey = `linked-merchants:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
+ const fixedCardMetadataCacheKey = `card-metadata:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
+ const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
+ const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
+ const [fixedCardMetadata, setFixedCardMetadata] = useState<FixedUserCardMetadata | null>(() => loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey));
+ const grossSalesCacheKey = `gross-sales:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:${(profiles?.[0]?.aaAccount ?? '').toLowerCase()}`
+ const [grossSalesTotal, setGrossSalesTotal] = useState<number | null>(() => loadTrustedCache<number>(grossSalesCacheKey));
+ const [linkedMerchantLookupDone, setLinkedMerchantLookupDone] = useState(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) !== null);
 
 
  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
@@ -146,6 +225,14 @@ export default function MerchantOS() {
  const [removeTerminalError, setRemoveTerminalError] = useState<string | null>(null);
 
  const merchant = profiles?.[0]?.keyID ?? myAddress;
+ const adminCandidateAddresses = [
+   profiles?.[0]?.aaAccount,
+   profiles?.[0]?.keyID,
+   myAddress,
+ ].filter((address): address is string => !!address && ethers.isAddress(address))
+   .map((address) => ethers.getAddress(address));
+ const normalizedAdminCandidates = adminCandidateAddresses.map((address) => address.toLowerCase());
+ const effectiveAdminAddress = fixedCardAdmins.find((address) => normalizedAdminCandidates.includes(address.toLowerCase())) ?? null;
 
  const fetchTerminals = useCallback(async () => {
    if (!merchant || !ethers.isAddress(merchant)) {
@@ -174,11 +261,196 @@ export default function MerchantOS() {
    fetchTerminals();
  }, [fetchTerminals]);
 
+ useEffect(() => {
+   let cancelled = false;
+   const cachedAllAdmins = loadTrustedCache<string[]>(fixedCardAdminsCacheKey);
+   const cachedAdmins = loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey);
+
+   if (cachedAllAdmins !== null) {
+     setFixedCardAdmins(cachedAllAdmins);
+   }
+
+   if (cachedAdmins !== null) {
+     setLinkedMerchantAdmins(cachedAdmins);
+     setLinkedMerchantLookupDone(true);
+   }
+
+   const loadLinkedMerchantAdmins = async () => {
+    const card = new ethers.Contract(
+      FIXED_USER_CARD_CONTRACT_ADDRESS,
+      USER_CARD_ADMIN_READ_ABI,
+      baseRpcProvider
+    );
+
+     try {
+       const [owner, adminResult] = await Promise.all([
+         card.owner() as Promise<string>,
+         card.getAdminListWithMetadata() as Promise<[string[], string[], string[]]>,
+       ]);
+       const [admins] = adminResult;
+       const nextLinkedMerchantAdmins = admins.filter((address) => address.toLowerCase() !== owner.toLowerCase());
+
+       if (cancelled) return;
+
+       setFixedCardAdmins(admins);
+       setLinkedMerchantAdmins(nextLinkedMerchantAdmins);
+       setLinkedMerchantLookupDone(true);
+       saveTrustedCache(fixedCardAdminsCacheKey, admins);
+       saveTrustedCache(linkedMerchantAdminsCacheKey, nextLinkedMerchantAdmins);
+     } catch {
+      try {
+        const fallbackChecks = await Promise.all(
+          adminCandidateAddresses.map(async (address) => ({
+            address,
+            isAdmin: await card.isAdmin(address) as boolean,
+          }))
+        );
+        const fallbackAdmins = fallbackChecks
+          .filter((entry) => entry.isAdmin)
+          .map((entry) => entry.address);
+
+        if (cancelled) return;
+
+        if (fallbackAdmins.length > 0) {
+          setFixedCardAdmins(fallbackAdmins);
+          setLinkedMerchantAdmins(fallbackAdmins);
+          setLinkedMerchantLookupDone(true);
+          saveTrustedCache(fixedCardAdminsCacheKey, fallbackAdmins);
+          saveTrustedCache(linkedMerchantAdminsCacheKey, fallbackAdmins);
+          return;
+        }
+      } catch {
+        // Fall through to trusted cache.
+      }
+
+      if (cancelled) return;
+      if (cachedAllAdmins !== null) {
+        setFixedCardAdmins(cachedAllAdmins);
+      }
+      if (cachedAdmins !== null) {
+        setLinkedMerchantAdmins(cachedAdmins);
+        setLinkedMerchantLookupDone(true);
+       }
+     }
+   };
+
+   void loadLinkedMerchantAdmins();
+
+   return () => {
+     cancelled = true;
+   };
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey]);
+
+ useEffect(() => {
+   let cancelled = false;
+   const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
+
+   if (cachedMetadata) {
+     setFixedCardMetadata(cachedMetadata);
+   }
+
+   const loadFixedCardMetadata = async () => {
+     const normalizedCardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase().replace(/^0x/, '');
+     const metadataResource = `0x${normalizedCardAddress}${'0'.repeat(64)}.json`;
+
+     try {
+       const apiRes = await fetch(
+         `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(FIXED_USER_CARD_CONTRACT_ADDRESS)}`
+       );
+       if (apiRes.ok) {
+         const apiData = await apiRes.json() as { cardOwner?: string; metadata?: unknown };
+         const parsed = parseFixedUserCardMetadata(apiData.metadata, typeof apiData.cardOwner === 'string' ? apiData.cardOwner : undefined);
+         if (parsed && !cancelled) {
+           setFixedCardMetadata(parsed);
+           saveTrustedCache(fixedCardMetadataCacheKey, parsed);
+           return;
+         }
+       }
+     } catch {
+       // Fall through to ERC-1155 metadata endpoint.
+     }
+
+     try {
+       const metadataRes = await fetch(`${BEAMIO_APP_URL}/api/metadata/${metadataResource}`);
+       if (!metadataRes.ok) return;
+       const metadataJson = await metadataRes.json();
+       const parsed = parseFixedUserCardMetadata(metadataJson);
+       if (!parsed || cancelled) return;
+       setFixedCardMetadata(parsed);
+       saveTrustedCache(fixedCardMetadataCacheKey, parsed);
+     } catch {
+       if (!cancelled && cachedMetadata) {
+         setFixedCardMetadata(cachedMetadata);
+       }
+     }
+   };
+
+   void loadFixedCardMetadata();
+
+   return () => {
+     cancelled = true;
+   };
+ }, [fixedCardMetadataCacheKey]);
+
+ useEffect(() => {
+   let cancelled = false;
+   const cachedGrossSales = loadTrustedCache<number>(grossSalesCacheKey);
+
+   if (cachedGrossSales !== null) {
+     setGrossSalesTotal(cachedGrossSales);
+   }
+
+   if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
+     return () => {
+       cancelled = true;
+     };
+   }
+
+   const loadGrossSales = async () => {
+     try {
+       const card = new ethers.Contract(
+         FIXED_USER_CARD_CONTRACT_ADDRESS,
+         USER_CARD_ADMIN_READ_ABI,
+         baseRpcProvider
+       );
+       const stats = await card.getAdminStatsFull(effectiveAdminAddress, 0, 0, 0) as { cumulativeTransferAmount: bigint };
+       const nextGrossSalesTotal = amountE6ToDisplayNumber(stats.cumulativeTransferAmount);
+
+       if (cancelled) return;
+
+       setGrossSalesTotal(nextGrossSalesTotal);
+       saveTrustedCache(grossSalesCacheKey, nextGrossSalesTotal);
+     } catch {
+       if (!cancelled && cachedGrossSales !== null) {
+         setGrossSalesTotal(cachedGrossSales);
+       }
+     }
+   };
+
+   void loadGrossSales();
+
+   return () => {
+     cancelled = true;
+   };
+ }, [effectiveAdminAddress, grossSalesCacheKey]);
+
+ const hasLinkedMerchant = linkedMerchantAdmins.length > 0;
+ const hideTransactionsPanel = linkedMerchantLookupDone && !hasLinkedMerchant;
+ const isFixedUserCardAdmin = fixedCardAdmins.some((address) => normalizedAdminCandidates.includes(address.toLowerCase()));
+ const showFixedCardMetadata = activeTab === 'Overview' && isFixedUserCardAdmin;
+ const showOverviewSummary = isFixedUserCardAdmin;
+
+ useEffect(() => {
+   if (hideTransactionsPanel && activeTab === 'Transactions') {
+     setActiveTab('Overview');
+   }
+ }, [activeTab, hideTransactionsPanel]);
+
 
  // --- Financial Mock Data Logic ---
  const salesCTree = 1200.00;
  const salesUSDC = 645.50;
- const totalSales = salesCTree + salesUSDC;
+ const totalSales = grossSalesTotal ?? 0;
 
 
  const tipsCTree = 200.00;
@@ -423,7 +695,9 @@ export default function MerchantOS() {
        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto overflow-x-hidden">
          {!isSidebarCollapsed && <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-2 whitespace-nowrap">Store Management</p>}
          <NavItem icon={LayoutDashboard} label="Daily Dashboard" isActive={activeTab === 'Overview'} onClick={() => setActiveTab('Overview')} collapsed={isSidebarCollapsed} />
-         <NavItem icon={Receipt} label="Transactions" isActive={activeTab === 'Transactions'} onClick={() => setActiveTab('Transactions')} collapsed={isSidebarCollapsed} />
+         {!hideTransactionsPanel && (
+           <NavItem icon={Receipt} label="Transactions" isActive={activeTab === 'Transactions'} onClick={() => setActiveTab('Transactions')} collapsed={isSidebarCollapsed} />
+         )}
          <NavItem icon={Wallet} label="Payouts & Bank" isActive={activeTab === 'Payouts'} onClick={() => setActiveTab('Payouts')} collapsed={isSidebarCollapsed} />
         
          <div className={isSidebarCollapsed ? 'mt-6' : 'mt-8'}></div>
@@ -467,8 +741,100 @@ export default function MerchantOS() {
 
 
        <div className="flex-1 min-h-0 relative overflow-y-auto p-10">
-         {activeTab === 'Overview' && (
-           <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500">
+        {activeTab === 'Overview' && (
+          <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
+            {showFixedCardMetadata && (
+              <div className="flex justify-end">
+                <div className="w-full max-w-xl h-[280px] relative rounded-[32px] overflow-hidden border border-slate-800 shadow-[0_0_30px_rgba(21,98,240,0.15)] bg-gradient-to-br from-slate-950 via-slate-900 to-[#0a0a0c]">
+                  {fixedCardMetadata?.image ? (
+                    <img
+                      src={fixedCardMetadata.image}
+                      alt={fixedCardMetadata?.name || 'Merchant card'}
+                      className="absolute inset-0 w-full h-full object-cover opacity-35 mix-blend-screen"
+                    />
+                  ) : null}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/45 to-[#0a0a0c]" />
+                  <div className="absolute -right-8 -top-8 w-36 h-36 rounded-full bg-[#1562f0]/25 blur-[70px]" />
+                  <div className="absolute -left-10 bottom-8 w-40 h-40 rounded-full bg-emerald-500/10 blur-[90px]" />
+
+                  <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white/10 border border-white/15 backdrop-blur-sm shrink-0 flex items-center justify-center">
+                          {fixedCardMetadata?.image ? (
+                            <img
+                              src={fixedCardMetadata.image}
+                              alt={fixedCardMetadata?.name || 'Merchant card'}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Building2 size={22} className="text-white/70" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="inline-flex bg-[#1562f0]/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-[0.18em]">
+                            Linked Merchant Card
+                          </span>
+                          <p className="text-white/55 text-[11px] font-mono mt-2 truncate">
+                            {FIXED_USER_CARD_CONTRACT_ADDRESS}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-white/8 backdrop-blur-md rounded-2xl border border-white/10 px-3 py-2 text-right shrink-0">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Status</p>
+                        <p className="text-[13px] font-semibold text-emerald-300 mt-1">Admin Access</p>
+                      </div>
+                    </div>
+
+                    <div className="max-w-md">
+                      <p className="text-white text-[32px] font-extrabold tracking-tight leading-tight">
+                        {fixedCardMetadata?.name || 'Merchant Card'}
+                      </p>
+                      <p className="text-white/65 text-[13px] mt-3 leading-relaxed line-clamp-3">
+                        {fixedCardMetadata?.description || 'Metadata loaded from the linked Beamio merchant card.'}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/6 backdrop-blur-md rounded-[24px] border border-white/10 px-5 py-4 flex items-end justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 mb-1">Merchant Owner</p>
+                        <p className="text-[15px] font-semibold text-white truncate">
+                          {fixedCardMetadata?.cardOwner ? fmtAddr(fixedCardMetadata.cardOwner) : 'Unavailable'}
+                        </p>
+                      </div>
+                      <div className="min-w-0 text-right">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 mb-1">Network</p>
+                        <p className="text-[15px] font-semibold text-blue-300">Base</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          {!showOverviewSummary ? (
+            <div>
+              <div className="bg-white rounded-[32px] p-12 shadow-sm border border-slate-100 min-h-[320px] flex items-center justify-center text-center">
+                <div className="max-w-lg">
+                  <div className="w-16 h-16 mx-auto mb-6 rounded-3xl bg-slate-100 flex items-center justify-center text-slate-500">
+                    <ShieldCheck size={30} />
+                  </div>
+                  <p className="text-[28px] font-semibold text-black tracking-tight">Admin access required to view merchant summary</p>
+                </div>
+              </div>
+            </div>
+          ) : hideTransactionsPanel ? (
+            <div>
+              <div className="bg-white rounded-[32px] p-12 shadow-sm border border-slate-100 min-h-[320px] flex items-center justify-center text-center">
+                <div className="max-w-lg">
+                  <div className="w-16 h-16 mx-auto mb-6 rounded-3xl bg-slate-100 flex items-center justify-center text-slate-500">
+                    <Building2 size={30} />
+                  </div>
+                  <p className="text-[28px] font-semibold text-black tracking-tight">Not associated with any linked merchant</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+           <div className="space-y-8">
              {/* Row 1: Operations Metrics */}
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               
@@ -479,7 +845,7 @@ export default function MerchantOS() {
                      <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center">
                         <TrendingUp size={24} className="text-slate-700" />
                      </div>
-                     <span className="bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg text-[12px] font-bold">Today</span>
+                    <span className="bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg text-[12px] font-bold">Cumulative</span>
                    </div>
                    <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Gross Sales</p>
                    <p className="text-[40px] font-light text-black tracking-tighter leading-none">${totalSales.toFixed(2)}</p>
@@ -625,10 +991,12 @@ export default function MerchantOS() {
 
              </div>
            </div>
-         )}
+          )}
+          </div>
+        )}
 
 
-         {activeTab === 'Transactions' && (
+        {activeTab === 'Transactions' && !hideTransactionsPanel && (
            <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-300">
               <div className="flex justify-between items-center mb-2">
                 <div className="relative">

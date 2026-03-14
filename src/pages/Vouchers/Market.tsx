@@ -53,7 +53,7 @@ import blackCard from "./assets/BlackCard.png"
 const THEME = { bg: "#F2F2F7" }
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (purchasing/loading credits). */
-const USDC_TOPUP_CARD_ADDRESS = "0x4CC2e5A596791cb71E34d7B3177e60f6aB3f73eD"
+const USDC_TOPUP_CARD_ADDRESS = "0xcdab59228695bbf2137d56382395f854267194e1"
 
 const CATEGORIES = [
   { id: "membership", name: "Memberships", icon: <Store size={20} />, color: "bg-purple-100 text-purple-600" },

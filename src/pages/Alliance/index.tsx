@@ -575,7 +575,7 @@ export default function App() {
         setKybError(redeemRes.error ?? 'Failed to create redeem admin');
         return;
       }
-      const kybLink = `https://biz.beamio.app/app?redeemCode=${encodeURIComponent(code)}&redeemAdmin=1`;
+      const kybLink = `https://biz.beamio.app/biz/?redeemCode=${encodeURIComponent(code)}&redeemAdmin=1&card=${cardAddress}`;
       const rest: LocalRestaurant = {
         id: `rest-${Date.now()}`,
         name,

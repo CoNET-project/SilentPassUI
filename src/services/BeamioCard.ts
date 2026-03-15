@@ -1958,16 +1958,17 @@ async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
 	}
 }
 
-export const getAAAccount = async (profile: profile): Promise<string | null> => {
-	const eoa = profile?.keyID?.trim()
-	if (!eoa || !ethers.isAddress(eoa)) return null
+/** Resolve EOA to AA address via AA Factory. Returns null if EOA has no AA account. */
+export const getAAAccountByEOA = async (eoa: string): Promise<string | null> => {
+	if (!eoa?.trim() || !ethers.isAddress(eoa)) return null
+	const addr = eoa.trim()
 	try {
 		const accountFactory = new ethers.Contract(
 			contracts.BeamioAAAcountFactory.address,
 			BeamioAAAcountFactoryAbi,
 			baseEndpoint
 		)
-		const account = await accountFactory.primaryAccountOf(eoa)
+		const account = await accountFactory.primaryAccountOf(addr)
 		if (account === ethers.ZeroAddress) return null
 		const code = await baseEndpoint.getCode(account)
 		if (code === '0x') return null
@@ -1975,13 +1976,19 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
 			await aa.factory()
 		} catch (e: any) {
-			throw new Error(`getAAAccount: factory() not available: ${e?.shortMessage ?? e?.message}`)
+			throw new Error(`getAAAccountByEOA: factory() not available: ${e?.shortMessage ?? e?.message}`)
 		}
 		return account
 	} catch (error: any) {
-		console.warn(`[getAAAccount] RPC failed: ${error.message}, fallback to API`)
-		return fetchAAAccountFromApi(eoa)
+		console.warn(`[getAAAccountByEOA] RPC failed: ${(error as Error).message}, fallback to API`)
+		return fetchAAAccountFromApi(addr)
 	}
+}
+
+export const getAAAccount = async (profile: profile): Promise<string | null> => {
+	const eoa = profile?.keyID?.trim()
+	if (!eoa || !ethers.isAddress(eoa)) return null
+	return getAAAccountByEOA(eoa)
 }
 
 const mapActionToBeamioResponse = (

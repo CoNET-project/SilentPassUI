@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { getAAAccount, getAAAccountByEOA, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
 import { searchUsername, generateCODE, redeemCodeHash } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
@@ -348,7 +348,7 @@ export default function App() {
   const [kybSuccess, setKybSuccess] = useState<{ code: string; link: string } | null>(null);
   const [kybLinkCopied, setKybLinkCopied] = useState(false);
   const [handleError, setHandleError] = useState<string | null>(null);
-  const [handleResolved, setHandleResolved] = useState<{ username: string; address?: string; image?: string; first_name?: string; last_name?: string } | null>(null);
+  const [handleResolved, setHandleResolved] = useState<{ username: string; address?: string; addressAA?: string; image?: string; first_name?: string; last_name?: string } | null>(null);
   const [handleChecking, setHandleChecking] = useState(false);
   const [topupLimit, setTopupLimit] = useState('1000');
   const handleValidateAbortRef = useRef<boolean>(false);
@@ -391,6 +391,23 @@ export default function App() {
           } catch {
             // RPC failure: fail open, allow capsule assembly; server will reject if already registered
           }
+          // Registration Merchant requires AA account; resolve EOA -> AA
+          const addressAA = await getAAAccountByEOA(addr);
+          if (!addressAA) {
+            setHandleResolved(null);
+            setHandleError('User has no Beamio AA account. Registration Merchant requires AA.');
+            return;
+          }
+          setHandleResolved({
+            username: match.username ?? match.accountName ?? handle,
+            address: addr,
+            addressAA,
+            image: match.image,
+            first_name: match.first_name,
+            last_name: match.last_name,
+          });
+          setHandleError(null);
+          return;
         }
         setHandleResolved({
           username: match.username ?? match.accountName ?? handle,
@@ -453,7 +470,8 @@ export default function App() {
   };
 
   const handleRegistrationMerchant = async () => {
-    if (!handleResolved?.address) return;
+    const adminAddress = handleResolved?.addressAA ?? handleResolved?.address;
+    if (!adminAddress) return;
     const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
     const ownerPk = profile?.privateKeyArmor;
     if (!ownerPk) {
@@ -472,7 +490,7 @@ export default function App() {
       });
       const limitNum = Math.max(0, Number(topupLimit) || 1000);
       const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
-      const data = encodeAddAdminWithMintLimit(handleResolved.address, 1, metadata, mintLimitPoints6);
+      const data = encodeAddAdminWithMintLimit(adminAddress, 1, metadata, mintLimitPoints6);
       const now = Math.floor(Date.now() / 1000);
       const deadline = now + 300;
       const nonce = ethers.hexlify(ethers.randomBytes(32));
@@ -2154,17 +2172,17 @@ export default function App() {
                     <p className="text-[11px] text-slate-400 mt-1">Max CAD the merchant can top-up for customers. Default 1000.</p>
                   </div>
                   <button
-                    onClick={handleResolved ? handleRegistrationMerchant : handleGenerateKybLink}
+                    onClick={handleResolved?.addressAA ? handleRegistrationMerchant : handleGenerateKybLink}
                     disabled={isGeneratingKyb}
                     className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-black transition-transform active:scale-95 flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                      {isGeneratingKyb ? (
                        <>
                          <Loader2 className="w-5 h-5 animate-spin" />
-                         {handleResolved ? 'Registering...' : 'Generating...'}
+                         {handleResolved?.addressAA ? 'Registering...' : 'Generating...'}
                        </>
                      ) : (
-                       <>{handleResolved ? 'Registration Merchant' : 'Generate KYB Link'} <ArrowRight size={18}/></>
+                       <>{handleResolved?.addressAA ? 'Registration Merchant' : 'Generate KYB Link'} <ArrowRight size={18}/></>
                      )}
                   </button>
                     </>

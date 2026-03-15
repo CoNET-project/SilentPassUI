@@ -470,7 +470,8 @@ export default function App() {
   };
 
   const handleRegistrationMerchant = async () => {
-    const adminAddress = handleResolved?.addressAA ?? handleResolved?.address;
+    if (!handleResolved) return;
+    const adminAddress = handleResolved.addressAA ?? handleResolved.address;
     if (!adminAddress) return;
     const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
     const ownerPk = profile?.privateKeyArmor;

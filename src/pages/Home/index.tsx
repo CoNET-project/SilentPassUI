@@ -13,7 +13,7 @@ const HomePage = ({}) => {
 	const [splashVisible, setSplashVisible] = useState(true)
 	const [showInstallSheet, setShowInstallSheet] = useState(false)
 	const init = async () => {
-		const CoNETData: encrypt_keys_object = await checkStorage()
+		const CoNETData: encrypt_keys_object = await checkStorage(false)
 		if (CoNETData && CoNETData?.beamio?.initialLoading) {
 			setSplashVisible(false)
 			return
@@ -21,6 +21,7 @@ const HomePage = ({}) => {
 		
 		setIsInitialLoading(true)
 		setShowBeamioOnboardingModal(true)
+		setSplashVisible(false) // Hide splash so BeamioOnboardingModal (Create/Restore) is visible
 	}
 
 	useEffect(() => {

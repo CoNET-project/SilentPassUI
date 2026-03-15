@@ -7,6 +7,7 @@ import { initChat } from '@/services/chat'
 import { getAAAccount } from '@/services/BeamioCard'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import MerchantOS from '@/pages/Vouchers/example/biz'
+import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
 
 /** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
 const assembleEncryptKeysObject = async (
@@ -72,6 +73,7 @@ const BizHome = () => {
 	const [isLoading, setIsLoading] = useState(false)
 	const [loginError, setLoginError] = useState('')
 	const [isLoggedIn, setIsLoggedIn] = useState(false)
+	const [showNewBiz, setShowNewBiz] = useState(false)
 
 	const {
 		setProfiles,
@@ -113,6 +115,9 @@ const BizHome = () => {
 		}
 	}
 
+	if (showNewBiz) {
+		return <NewMerchantOS />
+	}
 	if (isLoggedIn) {
 		return <MerchantOS />
 	}
@@ -201,10 +206,14 @@ const BizHome = () => {
 						</button>
 					</form>
 
-					<div className="mt-8 flex items-center gap-2 text-[11px] font-bold text-slate-400">
+					<button
+						type="button"
+						onClick={() => setShowNewBiz(true)}
+						className="mt-8 flex items-center gap-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+					>
 						<ShieldCheck size={14} className="text-emerald-500" />
 						<span>Local EOA Derivation • Zero-Knowledge Architecture</span>
-					</div>
+					</button>
 				</div>
 			</div>
 		</div>

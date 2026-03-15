@@ -295,6 +295,7 @@ const createCardEndpoint = `${beamioApi}/api/createCard`
 const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
+const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 
 /** 用户兑换 redeem 码：提交到 API，服务端调用 redeemForUser，将点数 mint 到用户 AA */
@@ -335,6 +336,79 @@ export const postCardRedeem = async (
 		const msg = (e as Error)?.message ?? 'Redeem request failed'
 		if (typeof console !== 'undefined' && console.error) {
 			console.error('[postCardRedeem] fetch error:', e)
+		}
+		return { success: false, error: msg }
+	}
+}
+
+/** 链上校验 redeem-admin 码是否有效（未过期、未使用）：hash = keccak256(toUtf8Bytes(redeemCode)) */
+export const checkRedeemAdminCodeValid = async (
+	cardAddress: string,
+	redeemCode: string
+): Promise<boolean> => {
+	if (!cardAddress || !redeemCode?.trim() || !ethers.isAddress(cardAddress)) return false
+	try {
+		const hash = ethers.keccak256(ethers.toUtf8Bytes(redeemCode.trim()))
+		const cardAbi = ['function getRedeemAdminStatus(bytes32 hash) view returns (bool active)']
+		const card = new ethers.Contract(cardAddress, cardAbi, baseEndpoint)
+		const active = await card.getRedeemAdminStatus(hash)
+		return !!active
+	} catch {
+		return false
+	}
+}
+
+/** 链上校验 EOA 是否为指定卡的 admin（避免重复兑换浪费 redeem code） */
+export const isCardAdmin = async (cardAddress: string, eoa: string): Promise<boolean> => {
+	if (!cardAddress || !eoa || !ethers.isAddress(cardAddress) || !ethers.isAddress(eoa)) return false
+	try {
+		const cardAbi = ['function isAdmin(address a) view returns (bool)']
+		const card = new ethers.Contract(cardAddress, cardAbi, baseEndpoint)
+		const ok = await card.isAdmin(eoa)
+		return !!ok
+	} catch {
+		return false
+	}
+}
+
+/** 用户兑换 redeem-admin 码：提交到 API，服务端调用 redeemAdminForUser，将 to 添加为 admin */
+export const postCardRedeemAdmin = async (
+	cardAddress: string,
+	redeemCode: string,
+	to: string
+): Promise<{ success: boolean; tx?: string; error?: string; status?: number }> => {
+	if (!cardAddress || !redeemCode?.trim() || !to || !ethers.isAddress(to) || !ethers.isAddress(cardAddress)) {
+		return { success: false, error: 'Invalid cardAddress, redeemCode, or to' }
+	}
+	const trimmedCode = redeemCode.trim()
+	try {
+		const res = await fetch(cardRedeemAdminEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ cardAddress, redeemCode: trimmedCode, to }),
+		})
+		let data: { success?: boolean; error?: string; tx?: string } = {}
+		try {
+			const text = await res.text()
+			if (text) data = JSON.parse(text) as typeof data
+		} catch {
+			// response might be HTML (e.g. 404 page)
+		}
+		if (!res.ok) {
+			const errMsg = data.error ?? (data as { message?: string }).message ?? `HTTP ${res.status}`
+			if (typeof console !== 'undefined' && console.warn) {
+				console.warn('[postCardRedeemAdmin] failed:', { status: res.status, url: cardRedeemAdminEndpoint, error: errMsg })
+			}
+			return { success: false, error: errMsg, status: res.status }
+		}
+		if (data.success !== false && data.tx) {
+			return { success: true, tx: data.tx }
+		}
+		return { success: false, error: data.error ?? 'Redeem admin failed (no tx returned)', status: res.status }
+	} catch (e) {
+		const msg = (e as Error)?.message ?? 'Redeem admin request failed'
+		if (typeof console !== 'undefined' && console.error) {
+			console.error('[postCardRedeemAdmin] fetch error:', e)
 		}
 		return { success: false, error: msg }
 	}
@@ -1600,21 +1674,32 @@ const getICurrency = (currency: bigint | number): ICurrency => {
 
 
 
-/** RPC 失败时从 API 获取 AA 地址 */
+const _isDev = typeof import.meta !== 'undefined' && (import.meta as { env?: { DEV?: boolean } }).env?.DEV
+
+/** RPC 失败或 primaryAccountOf 为空时从 API 获取 AA 地址 */
 async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
 	try {
 		const res = await fetch(`${beamioApi}/api/getAAAccount?eoa=${encodeURIComponent(eoa)}`)
-		if (!res.ok) return null
+		if (!res.ok) {
+			if (_isDev) console.warn('[getAAAccount] API returned', res.status, res.statusText)
+			return null
+		}
 		const data = await res.json().catch(() => ({}))
-		return data?.account ?? null
-	} catch {
+		const account = data?.account ?? null
+		if (!account && _isDev) console.warn('[getAAAccount] API response missing account field:', data)
+		return account
+	} catch (e) {
+		if (_isDev) console.warn('[getAAAccount] API fetch failed:', e)
 		return null
 	}
 }
 
 export const getAAAccount = async (profile: profile): Promise<string | null> => {
 	const eoa = profile?.keyID?.trim()
-	if (!eoa || !ethers.isAddress(eoa)) return null
+	if (!eoa || !ethers.isAddress(eoa)) {
+		if (_isDev) console.warn('[getAAAccount] Invalid eoa: missing or invalid keyID')
+		return null
+	}
 	try {
 		const accountFactory = new ethers.Contract(
 			contracts.BeamioAAAcountFactory.address,
@@ -1622,9 +1707,15 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 			baseEndpoint
 		)
 		const account = await accountFactory.primaryAccountOf(eoa)
-		if (account === ethers.ZeroAddress) return null
+		if (account === ethers.ZeroAddress) {
+			if (_isDev) console.warn('[getAAAccount] primaryAccountOf returned ZeroAddress for', eoa)
+			return fetchAAAccountFromApi(eoa)
+		}
 		const code = await baseEndpoint.getCode(account)
-		if (code === '0x') return null
+		if (code === '0x') {
+			if (_isDev) console.warn('[getAAAccount] Account has no bytecode at', account)
+			return fetchAAAccountFromApi(eoa)
+		}
 		try {
 			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
 			await aa.factory()

@@ -363,7 +363,7 @@ function AppShell() {
 
 	const init = async (temp?: encrypt_keys_object) => {
 
-		const isAcc = await checkStorage()
+		const isAcc = await checkStorage(false)
 		if (!isAcc) {
 			setIsInitialLoading(true)
 			return 

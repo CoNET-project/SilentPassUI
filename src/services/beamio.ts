@@ -1113,7 +1113,7 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
 	return tmpData
 }
 
-export const checkStorage = async () => {
+export const checkStorage = async (checkcacheStorage = true) => {
   try {
     const database = PouchDB(localDatabaseName, { auto_compaction: true });
     const doc = await database.get("init", { latest: true });
@@ -1121,21 +1121,7 @@ export const checkStorage = async () => {
     setCoNET_Data(data);
     return data
   } catch {
-    // IndexedDB 为空时，尝试从 Cache Storage 恢复（解决 iOS PWA 与 Safari 存储隔离问题）
-    const cached = await cacheStorageRestore()
-    if (cached) {
-      try {
-        const data = JSON.parse(Buffer.from(cached, "base64").toString());
-        if (data && typeof data === 'object' && data.profiles && Array.isArray(data.profiles)) {
-          setCoNET_Data(data);
-          const database = PouchDB(localDatabaseName, { auto_compaction: true });
-          await database.post({ _id: "init", title: cached });
-          return data
-        }
-      } catch (e) {
-        console.warn('[checkStorage] cache restore parse failed:', e)
-      }
-    }
+   
     return null
   }
 }

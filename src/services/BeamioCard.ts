@@ -1077,7 +1077,7 @@ export const encodeCreateRedeemAdmin = (
 ): string => {
     const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
     if (mintLimitPoints6 != null && mintLimitPoints6 > 0n) {
-        return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
+        return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin(bytes32,string,uint64,uint64,uint256)', [
             hashBytes32,
             metadata,
             BigInt(validAfter),
@@ -1085,7 +1085,7 @@ export const encodeCreateRedeemAdmin = (
             mintLimitPoints6,
         ])
     }
-    return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
+    return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin(bytes32,string,uint64,uint64)', [
         hashBytes32,
         metadata,
         BigInt(validAfter),

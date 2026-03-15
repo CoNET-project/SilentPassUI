@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getAAAccountByEOA, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
 import { searchUsername, generateCODE, redeemCodeHash } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
@@ -354,8 +354,8 @@ export default function App() {
   const handleValidateAbortRef = useRef<boolean>(false);
 
   const validateHandle = useCallback(async (raw: string) => {
-    const handle = raw.trim().replace(/^@/, '');
-    if (!handle) {
+    const trimmed = raw.trim().replace(/^@/, '');
+    if (!trimmed) {
       setHandleError(null);
       setHandleResolved(null);
       return;
@@ -365,14 +365,25 @@ export default function App() {
     setHandleError(null);
     setHandleResolved(null);
     try {
-      const res = await searchUsername(handle);
+      const isAddressSearch = ethers.isAddress(trimmed);
+      const searchKey = isAddressSearch ? ethers.getAddress(trimmed) : trimmed;
+      const res = await searchUsername(searchKey);
       if (handleValidateAbortRef.current) return;
       const results = res?.results ?? [];
-      const norm = handle.toLowerCase();
-      const match = results.find((r: { username?: string; accountName?: string }) => {
-        const u = (r?.username ?? r?.accountName ?? '').toLowerCase();
-        return u === norm;
-      });
+      const norm = trimmed.toLowerCase();
+      let match: { username?: string; accountName?: string; address?: string; image?: string; first_name?: string; last_name?: string } | undefined;
+      if (isAddressSearch) {
+        match = results.find((r: { address?: string }) => {
+          const a = (r?.address ?? '').toLowerCase();
+          return a === norm;
+        }) ?? results[0];
+        if (match && !match.address) (match as { address?: string }).address = searchKey;
+      } else {
+        match = results.find((r: { username?: string; accountName?: string }) => {
+          const u = (r?.username ?? r?.accountName ?? '').toLowerCase();
+          return u === norm;
+        });
+      }
       if (match) {
         const addr = (match as { address?: string }).address;
         if (addr && ethers.isAddress(addr)) {
@@ -391,17 +402,10 @@ export default function App() {
           } catch {
             // RPC failure: fail open, allow capsule assembly; server will reject if already registered
           }
-          // Registration Merchant requires AA account; resolve EOA -> AA
-          const addressAA = await getAAAccountByEOA(addr);
-          if (!addressAA) {
-            setHandleResolved(null);
-            setHandleError('User has no Beamio AA account. Registration Merchant requires AA.');
-            return;
-          }
           setHandleResolved({
-            username: match.username ?? match.accountName ?? handle,
+            username: match.username ?? match.accountName ?? (isAddressSearch ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : trimmed),
             address: addr,
-            addressAA,
+            addressAA: undefined,
             image: match.image,
             first_name: match.first_name,
             last_name: match.last_name,
@@ -410,11 +414,18 @@ export default function App() {
           return;
         }
         setHandleResolved({
-          username: match.username ?? match.accountName ?? handle,
+          username: match.username ?? match.accountName ?? trimmed,
           address: addr,
           image: match.image,
           first_name: match.first_name,
           last_name: match.last_name,
+        });
+        setHandleError(null);
+      } else if (isAddressSearch) {
+        setHandleResolved({
+          username: `${searchKey.slice(0, 6)}…${searchKey.slice(-4)}`,
+          address: searchKey,
+          addressAA: undefined,
         });
         setHandleError(null);
       } else {
@@ -2120,7 +2131,9 @@ export default function App() {
                         </div>
                      ) : (
                         <div className="relative">
-                           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
+                           {!restaurantHandle.startsWith('0x') && (
+                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
+                           )}
                            <input
                               type="text"
                               value={restaurantHandle}
@@ -2135,8 +2148,8 @@ export default function App() {
                               }}
                               onFocus={() => { handleValidateAbortRef.current = true; }}
                               onKeyDown={(e) => e.key === 'Enter' && validateHandle(restaurantHandle)}
-                              className={`w-full pl-9 pr-14 py-4 bg-slate-50 border rounded-2xl focus:outline-none focus:ring-2 font-bold placeholder:text-slate-400 ${handleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
-                              placeholder="senpho_kerr"
+                              className={`w-full pr-14 py-4 bg-slate-50 border rounded-2xl focus:outline-none focus:ring-2 font-bold placeholder:text-slate-400 ${restaurantHandle.startsWith('0x') ? 'pl-4' : 'pl-9'} ${handleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
+                              placeholder="@handle or 0x..."
                            />
                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                               {handleChecking ? (
@@ -2173,17 +2186,17 @@ export default function App() {
                     <p className="text-[11px] text-slate-400 mt-1">Max CAD the merchant can top-up for customers. Default 1000.</p>
                   </div>
                   <button
-                    onClick={handleResolved?.addressAA ? handleRegistrationMerchant : handleGenerateKybLink}
+                    onClick={handleResolved?.address ? handleRegistrationMerchant : handleGenerateKybLink}
                     disabled={isGeneratingKyb}
                     className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-black transition-transform active:scale-95 flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                      {isGeneratingKyb ? (
                        <>
                          <Loader2 className="w-5 h-5 animate-spin" />
-                         {handleResolved?.addressAA ? 'Registering...' : 'Generating...'}
+                         {handleResolved?.address ? 'Registering...' : 'Generating...'}
                        </>
                      ) : (
-                       <>{handleResolved?.addressAA ? 'Registration Merchant' : 'Generate KYB Link'} <ArrowRight size={18}/></>
+                       <>{handleResolved?.address ? 'Registration Merchant' : 'Generate KYB Link'} <ArrowRight size={18}/></>
                      )}
                   </button>
                     </>

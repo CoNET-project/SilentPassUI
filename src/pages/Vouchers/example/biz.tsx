@@ -47,14 +47,47 @@ import {
 const getImg = (avatarSeed: string | undefined) =>
   `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || '@Beamio')}`;
 
-/** beamio 表示 name 的 protocol，与 Home displayName 一致 */
-const displayName = (item: { firstName?: string; lastName?: string; accountName?: string } | null | undefined) => {
+/** beamio 表示 name 的 protocol，与 Home displayName 一致；兼容 first_name/last_name 与 firstName/lastName */
+const displayName = (item: { firstName?: string; lastName?: string; first_name?: string; last_name?: string; accountName?: string } | null | undefined) => {
   if (!item) return ''
-  const first = (item as { firstName?: string }).firstName ?? ''
-  const lastRaw = (item as { lastName?: string }).lastName ?? ''
+  const first = (item as { firstName?: string; first_name?: string }).firstName ?? (item as { first_name?: string }).first_name ?? ''
+  const lastRaw = (item as { lastName?: string; last_name?: string }).lastName ?? (item as { last_name?: string }).last_name ?? ''
   const lastname = String(lastRaw || '').split('\r\n') || []
   const fullName = `${first || ''} ${/^\{/.test(lastname[0] || '') ? '' : lastname[0] || ''}`.trim()
-  return fullName || (item as { accountName?: string }).accountName || ''
+  const tag = (item as { accountName?: string; username?: string }).accountName ?? (item as { username?: string }).username
+  return fullName || tag || ''
+}
+
+/** Beamio 胶囊：左侧头像，右侧 first_name + last_name 及 @beamioTag */
+type BeamioProfile = { first_name?: string; firstName?: string; last_name?: string; lastName?: string; accountName?: string; username?: string; image?: string } | null
+const BeamioCapsule = ({ item, fallbackAddress, className = '' }: { item: BeamioProfile; fallbackAddress?: string; className?: string }) => {
+  const tag = item ? ((item as { accountName?: string }).accountName ?? (item as { username?: string }).username) : undefined
+  const beamioTag = tag ? `@${tag}` : undefined
+  if (item && (displayName(item) || beamioTag)) {
+    return (
+      <div className={`inline-flex items-center gap-3 rounded-full pl-1 pr-4 py-1.5 ${className}`}>
+        <img
+          src={item.image ? item.image : getImg(tag)}
+          alt={beamioTag ?? ''}
+          className="w-9 h-9 rounded-full object-cover border border-white/20 shrink-0"
+        />
+        <div className="flex flex-col items-start min-w-0">
+          <span className="text-[13px] font-semibold text-white truncate max-w-full leading-tight">
+            {displayName(item) || '—'}
+          </span>
+          {beamioTag && (
+            <span className="text-[11px] font-medium text-white/70 truncate max-w-full leading-tight">
+              {beamioTag}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
+  if (fallbackAddress && fallbackAddress.length >= 10) {
+    return <AddressCapsule address={fallbackAddress} className={className} />
+  }
+  return <span className="text-[13px] text-white/60">Unavailable</span>
 }
 
 // --- Precise Mock Data reflecting the exact Discount & Source logic ---
@@ -87,7 +120,8 @@ const MOCK_TRANSACTIONS = [
  },
 ];
 
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0xda36bd32418cAC424DbffD07617094d1884E629C'
+/** 指定商户卡地址 - 必须使用此卡 */
+const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x48952F9EA1231b59e5c5FA1a99BC657B122CFDfD'
 const BASE_RPC_URL = 'https://1rpc.io/base'
 const BEAMIO_APP_URL = 'https://beamio.app'
 const baseRpcProvider = new ethers.JsonRpcProvider(BASE_RPC_URL)
@@ -160,6 +194,33 @@ function saveTrustedCache<T>(key: string, value: T) {
 
 const fmtAddr = (a: string | undefined) => (a && a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : (a || '—'));
 
+/** 地址胶囊：短缩地址 + 右侧 copy 图标，点击复制到剪贴板，成功后显示绿色 check */
+const AddressCapsule = ({ address, className = '' }: { address: string; className?: string }) => {
+  const [copied, setCopied] = useState(false);
+  const short = fmtAddr(address);
+  const handleCopy = useCallback(async () => {
+    if (!address || address.length < 10) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  }, [address]);
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={`inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full font-mono text-[11px] font-semibold border transition-colors ${className}`}
+      title="Copy address"
+    >
+      <span className="truncate">{short}</span>
+      {copied ? <Check size={12} className="shrink-0 text-emerald-500" /> : <Copy size={12} className="shrink-0 opacity-70 hover:opacity-100" />}
+    </button>
+  );
+};
+
 const AddressRow = ({ label, icon: Icon, address, fullAddress }: { label: string; icon: LucideIcon; address: string; fullAddress: string }) => {
   const [copied, setCopied] = useState(false);
   const hasAddress = !!fullAddress && fullAddress.length >= 10;
@@ -202,10 +263,24 @@ export default function MerchantOS() {
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
  const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
  const [fixedCardMetadata, setFixedCardMetadata] = useState<FixedUserCardMetadata | null>(() => loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey));
+ const [merchantOwnerProfile, setMerchantOwnerProfile] = useState<BeamioProfile>(null);
  const grossSalesCacheKey = `gross-sales:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:${(profiles?.[0]?.aaAccount ?? '').toLowerCase()}`
  const [grossSalesTotal, setGrossSalesTotal] = useState<number | null>(() => loadTrustedCache<number>(grossSalesCacheKey));
  const [linkedMerchantLookupDone, setLinkedMerchantLookupDone] = useState(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) !== null);
+ const [adminRetryCount, setAdminRetryCount] = useState(0);
 
+ const clearCardCacheAndRetry = useCallback(() => {
+   try {
+     const keys = [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey];
+     keys.forEach((k) => window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${k}`));
+     setFixedCardAdmins([]);
+     setLinkedMerchantAdmins([]);
+     setLinkedMerchantLookupDone(false);
+     setAdminRetryCount((c) => c + 1);
+   } catch {
+     setAdminRetryCount((c) => c + 1);
+   }
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey]);
 
  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
  const [payoutStep, setPayoutStep] = useState(1);
@@ -339,7 +414,7 @@ export default function MerchantOS() {
    return () => {
      cancelled = true;
    };
- }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey]);
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, adminRetryCount]);
 
  useEffect(() => {
    let cancelled = false;
@@ -391,6 +466,27 @@ export default function MerchantOS() {
      cancelled = true;
    };
  }, [fixedCardMetadataCacheKey]);
+
+ useEffect(() => {
+   const owner = fixedCardMetadata?.cardOwner;
+   if (!owner || !ethers.isAddress(owner)) {
+     setMerchantOwnerProfile(null);
+     return;
+   }
+   let cancelled = false;
+   const load = async () => {
+     try {
+       const res = await searchUsername(owner);
+       const peer = res?.results?.[0];
+       if (cancelled) return;
+       setMerchantOwnerProfile(peer ?? null);
+     } catch {
+       if (!cancelled) setMerchantOwnerProfile(null);
+     }
+   };
+   void load();
+   return () => { cancelled = true; };
+ }, [fixedCardMetadata?.cardOwner]);
 
  useEffect(() => {
    let cancelled = false;
@@ -775,14 +871,14 @@ export default function MerchantOS() {
                           <span className="inline-flex bg-[#1562f0]/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-[0.18em]">
                             Linked Merchant Card
                           </span>
-                          <p className="text-white/55 text-[11px] font-mono mt-2 truncate">
-                            {FIXED_USER_CARD_CONTRACT_ADDRESS}
-                          </p>
+                          <div className="mt-2">
+                            <AddressCapsule address={FIXED_USER_CARD_CONTRACT_ADDRESS} className="bg-white/10 border-white/15 text-white/80 hover:bg-white/15" />
+                          </div>
                         </div>
                       </div>
                       <div className="bg-white/8 backdrop-blur-md rounded-2xl border border-white/10 px-3 py-2 text-right shrink-0">
                         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Status</p>
-                        <p className="text-[13px] font-semibold text-emerald-300 mt-1">Admin Access</p>
+                        <p className="text-[13px] font-semibold text-emerald-300 mt-1">Franchise Merchant</p>
                       </div>
                     </div>
 
@@ -795,18 +891,7 @@ export default function MerchantOS() {
                       </p>
                     </div>
 
-                    <div className="bg-white/6 backdrop-blur-md rounded-[24px] border border-white/10 px-5 py-4 flex items-end justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 mb-1">Merchant Owner</p>
-                        <p className="text-[15px] font-semibold text-white truncate">
-                          {fixedCardMetadata?.cardOwner ? fmtAddr(fixedCardMetadata.cardOwner) : 'Unavailable'}
-                        </p>
-                      </div>
-                      <div className="min-w-0 text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 mb-1">Network</p>
-                        <p className="text-[15px] font-semibold text-blue-300">Base</p>
-                      </div>
-                    </div>
+                    <BeamioCapsule item={merchantOwnerProfile} fallbackAddress={fixedCardMetadata?.cardOwner} className="bg-white/8 border border-white/10" />
                   </div>
                 </div>
               </div>
@@ -819,6 +904,34 @@ export default function MerchantOS() {
                     <ShieldCheck size={30} />
                   </div>
                   <p className="text-[28px] font-semibold text-black tracking-tight">Admin access required to view merchant summary</p>
+                  {linkedMerchantLookupDone && fixedCardAdmins.length > 0 && (
+                    <div className="mt-6 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-left">
+                      <p className="text-[12px] font-bold text-slate-500 uppercase tracking-widest mb-2">Card admins (connect with one)</p>
+                      {fixedCardAdmins.map((a) => (
+                        <p key={a} className="text-[13px] font-mono text-slate-700 mb-1">{a}</p>
+                      ))}
+                      <p className="text-[11px] text-slate-400 mt-3">Your addresses: AA {fmtAddr(profiles?.[0]?.aaAccount)} · KeyID {fmtAddr(profiles?.[0]?.keyID)} · EOA {fmtAddr(myAddress)}</p>
+                      <button
+                        type="button"
+                        onClick={clearCardCacheAndRetry}
+                        className="mt-3 text-[12px] font-semibold text-slate-500 hover:text-slate-700"
+                      >
+                        Clear cache & retry
+                      </button>
+                    </div>
+                  )}
+                  {linkedMerchantLookupDone && fixedCardAdmins.length === 0 && (
+                    <div className="mt-4">
+                      <p className="text-[14px] text-slate-500 mb-2">Could not fetch admin list.</p>
+                      <button
+                        type="button"
+                        onClick={clearCardCacheAndRetry}
+                        className="text-[13px] font-semibold text-[#1562f0] hover:underline"
+                      >
+                        Clear cache & retry
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

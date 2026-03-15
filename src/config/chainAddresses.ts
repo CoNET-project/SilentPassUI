@@ -1,15 +1,34 @@
 /**
- * 合约地址 - 从全局 config/contract-addresses.ts 导入，禁止在此定义。
+ * bizSite 是独立项目，发布/构建时不能跨项目相对引用 BeamioContract 根仓配置。
+ * 本文件必须保持自包含，地址由同步脚本或手工更新。
  */
-export {
-  BASE_MAINNET_CHAIN_ID,
-  BASE_AA_FACTORY,
-  BASE_CARD_FACTORY,
-  BASE_CCSA_CARD_ADDRESS,
-  BASE_TREASURY,
-  BEAMIO_USER_CARD_ASSET_ADDRESS,
-  USDC_BASE,
-  BASE_MAINNET_FACTORIES,
-  CONTRACT_ADDRESSES,
-  BEAMIO_INDEXER_DIAMOND,
-} from '../../../../config/contract-addresses'
+export const BASE_MAINNET_CHAIN_ID = 8453
+
+export const BASE_AA_FACTORY = '0xD86403DD1755F7add19540489Ea10cdE876Cc1CE'
+export const BASE_CARD_FACTORY = '0xfB5E3F2AbFe24DC17970d78245BeF56aAE8cb71a'
+export const BASE_CCSA_CARD_ADDRESS = '0x2032A363BB2cf331142391fC0DAd21D6504922C7'
+export const BASE_TREASURY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'
+export const BEAMIO_USER_CARD_ASSET_ADDRESS = '0x48952F9EA1231b59e5c5FA1a99BC657B122CFDfD'
+export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+export const BEAMIO_INDEXER_DIAMOND = '0x9d481CC9Da04456e98aE2FD6eB6F18e37bf72eb5'
+
+export const BASE_MAINNET_FACTORIES = {
+  AA_FACTORY: BASE_AA_FACTORY,
+  CARD_FACTORY: BASE_CARD_FACTORY,
+  BeamioCardCCSA_ADDRESS: BASE_CCSA_CARD_ADDRESS,
+} as const
+
+export const CONTRACT_ADDRESSES = {
+  base: {
+    chainId: BASE_MAINNET_CHAIN_ID,
+    aaFactory: BASE_AA_FACTORY,
+    cardFactory: BASE_CARD_FACTORY,
+    ccsaCard: BASE_CCSA_CARD_ADDRESS,
+    baseTreasury: BASE_TREASURY,
+    usdc: USDC_BASE,
+  },
+  conet: {
+    chainId: 224400,
+    beamioIndexerDiamond: BEAMIO_INDEXER_DIAMOND,
+  },
+} as const

@@ -850,7 +850,7 @@ const adminManagerInterface = new ethers.Interface([
 
 /** 构建 adminManager 的 calldata。admin=true 添加并写入 metadata，admin=false 移除（metadata 可传空） */
 export const encodeAdminManager = (to: string, admin: boolean, newThreshold: number | bigint, metadata: string = ''): string =>
-    adminManagerInterface.encodeFunctionData('adminManager', [to, admin, BigInt(newThreshold), metadata])
+    adminManagerInterface.encodeFunctionData('adminManager(address,bool,uint256,string)', [to, admin, BigInt(newThreshold), metadata])
 
 /** 便捷：添加 admin（带 metadata） */
 export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint, metadata: string = ''): string =>
@@ -863,7 +863,7 @@ export const encodeAddAdminWithMintLimit = (
     metadata: string,
     mintLimitPoints6: bigint
 ): string =>
-    adminManagerInterface.encodeFunctionData('adminManager', [newAdmin, true, BigInt(newThreshold), metadata, mintLimitPoints6])
+    adminManagerInterface.encodeFunctionData('adminManager(address,bool,uint256,string,uint256)', [newAdmin, true, BigInt(newThreshold), metadata, mintLimitPoints6])
 
 /** 便捷：移除 admin */
 export const encodeRemoveAdmin = (adminToRemove: string, newThreshold: number | bigint): string =>
@@ -884,7 +884,7 @@ export const encodeCreateRedeemAdmin = (
 ): string => {
     const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
     if (mintLimitPoints6 != null && mintLimitPoints6 > 0n) {
-        return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
+        return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin(bytes32,string,uint64,uint64,uint256)', [
             hashBytes32,
             metadata,
             BigInt(validAfter),
@@ -892,7 +892,7 @@ export const encodeCreateRedeemAdmin = (
             mintLimitPoints6,
         ])
     }
-    return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin', [
+    return createRedeemAdminInterface.encodeFunctionData('createRedeemAdmin(bytes32,string,uint64,uint64)', [
         hashBytes32,
         metadata,
         BigInt(validAfter),

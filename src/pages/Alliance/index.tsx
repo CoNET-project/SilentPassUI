@@ -2115,11 +2115,28 @@ export default function App() {
                                  validateHandle(restaurantHandle);
                               }}
                               onFocus={() => { handleValidateAbortRef.current = true; }}
-                              className={`w-full pl-9 pr-4 py-4 bg-slate-50 border rounded-2xl focus:outline-none focus:ring-2 font-bold placeholder:text-slate-400 ${handleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
+                              onKeyDown={(e) => e.key === 'Enter' && validateHandle(restaurantHandle)}
+                              className={`w-full pl-9 pr-14 py-4 bg-slate-50 border rounded-2xl focus:outline-none focus:ring-2 font-bold placeholder:text-slate-400 ${handleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
                               placeholder="senpho_kerr"
                            />
-                           {handleChecking && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-slate-400" />}
-                           {handleError && !handleChecking && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-rose-500 text-xs font-medium">{handleError}</span>}
+                           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                              {handleChecking ? (
+                                 <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                              ) : (
+                                 <>
+                                    {handleError && <span className="text-rose-500 text-xs font-medium">{handleError}</span>}
+                                    <button
+                                       type="button"
+                                       onClick={() => validateHandle(restaurantHandle)}
+                                       className="p-2 rounded-lg hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 transition-colors"
+                                       title="Search"
+                                       aria-label="Search handle"
+                                    >
+                                       <Search className="w-4 h-4" />
+                                    </button>
+                                 </>
+                              )}
+                           </div>
                         </div>
                      )}
                   </div>

@@ -80,7 +80,7 @@ export const getUsdcBalanceFromApi = async (address: string): Promise<string | n
 	return b?.usdc != null ? String(b.usdc) : null
 }
 
-const getBalance = async (address: string) => {
+export const getBalance = async (address: string) => {
 	if (!address) return null
 	// 熔断期仅使用 CoNET 节点（不向 API 服务器请求），withBaseRpc 内部会走 CoNET-only
 	try {

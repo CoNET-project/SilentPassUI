@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
-import { storeSystemData } from '@/services/beamio';
+import { storeSystemData, getBalance, formatWithThousands } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername } from '@/services/beamio';
 import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdmin, postCardAddAdminByAdmin, encodeAddAdminWithMintLimit, signExecuteForOwner, signExecuteForAdmin, getCardOwner } from '@/services/BeamioCard';
@@ -459,6 +459,7 @@ export default function MerchantOS() {
  const [activeTab, setActiveTab] = useState('Overview');
  const fixedCardAdminsCacheKey = `card-admins:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
  const linkedMerchantAdminsCacheKey = `linked-merchants:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
+ const linkedTerminalsCacheKey = `${BIZ_CACHE_PREFIX}linked-terminals:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
  const fixedCardMetadataCacheKey = `card-metadata:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
  const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
@@ -483,10 +484,8 @@ export default function MerchantOS() {
  const [activeContact, setActiveContact] = useState('c1');
  const [chatInput, setChatInput] = useState('');
 
- const isAaUnlocked = !!(profiles?.[0]?.aaAccount?.trim());
- const eoaBalance = isAaUnlocked ? 5420.00 : 0.00;
- const aaUsdcBalance = isAaUnlocked ? 125.50 : 0.00;
- const aaBUnits = isAaUnlocked ? 13300 : 20;
+ const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
+ const [subordinateBalances, setSubordinateBalances] = useState<Record<string, string | null>>({});
 
  const handleApplyAlliance = useCallback((aId: AllianceId) => {
    setApplyingAlliance(aId);
@@ -517,17 +516,21 @@ export default function MerchantOS() {
      invalidateFetchCache('indexer:tips');
      const keys = [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey];
      keys.forEach((k) => window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${k}`));
+     try {
+       window.localStorage.removeItem(linkedTerminalsCacheKey);
+     } catch { /* ignore */ }
      ['admin-stats-today:', 'admin-tips-today:'].forEach((prefix) => {
        Object.keys(window.localStorage).filter((k) => k.startsWith(BIZ_CACHE_PREFIX + prefix)).forEach((k) => window.localStorage.removeItem(k));
      });
      setFixedCardAdmins([]);
      setLinkedMerchantAdmins([]);
+     setTerminals([]);
      setLinkedMerchantLookupDone(false);
      setAdminRetryCount((c) => c + 1);
    } catch {
      setAdminRetryCount((c) => c + 1);
    }
- }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey]);
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey, linkedTerminalsCacheKey]);
 
  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
  const [payoutStep, setPayoutStep] = useState(1);
@@ -535,8 +538,10 @@ export default function MerchantOS() {
  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
 
- // 新增：终端管理状态（从 CoNET 合约获取）
- const [terminals, setTerminals] = useState<Array<{ id: string; tag: string; name: string; eoa: string; status: string; lastActive: string }>>([]);
+ /** 终端记录类型 */
+ type TerminalRecord = { id: string; tag: string; name: string; eoa: string; status: string; lastActive: string };
+ // 新增：终端管理状态（链上 + 本地存储）
+ const [terminals, setTerminals] = useState<TerminalRecord[]>(() => loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? []);
  const [terminalsLoading, setTerminalsLoading] = useState(false);
  const [isAddTerminalOpen, setIsAddTerminalOpen] = useState(false);
  const [newTerminalTag, setNewTerminalTag] = useState('');
@@ -671,7 +676,7 @@ export default function MerchantOS() {
    return () => { cancelled = true; };
  }, [profiles, setProfiles, myAddress]);
 
- /** Fetch subordinate admins: owner sees parent=0 admins; admin sees parent=userEOA admins. Uses getAdminSubordinatesWithMetadata(admin). */
+ /** Fetch subordinate admins: owner sees parent=0 admins; admin sees parent=userEOA admins. Merges chain data with local storage. */
 const fetchTerminals = useCallback(async () => {
   const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
   if (!userEOA || !ethers.isAddress(userEOA)) {
@@ -688,30 +693,36 @@ const fetchTerminals = useCallback(async () => {
       (userAA && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userAA));
     const parentAdmin = isOwner ? ethers.ZeroAddress : ethers.getAddress(userEOA);
     const [subordinates, metadatas] = await card.getAdminSubordinatesWithMetadata(parentAdmin) as [string[], string[]];
-    setTerminals(
-      (subordinates ?? []).map((addr: string, idx: number) => {
-        let name = 'POS Terminal';
-        let tag = fmtAddr(addr);
-        try {
-          const metaStr = metadatas?.[idx];
-          const meta = typeof metaStr === 'string' && metaStr ? JSON.parse(metaStr) : null;
-          if (meta?.deviceName) name = meta.deviceName;
-          if (meta?.handle) tag = meta.handle.startsWith('@') ? meta.handle : `@${meta.handle}`;
-        } catch {
-          /* ignore */
-        }
-        return {
-          id: addr,
-          tag,
-          name,
-          eoa: fmtAddr(addr),
-          status: 'Active',
-          lastActive: 'On-chain',
-        };
-      })
-    );
+    const fromChain: TerminalRecord[] = (subordinates ?? []).map((addr: string, idx: number) => {
+      let name = 'POS Terminal';
+      let tag = fmtAddr(addr);
+      try {
+        const metaStr = metadatas?.[idx];
+        const meta = typeof metaStr === 'string' && metaStr ? JSON.parse(metaStr) : null;
+        if (meta?.deviceName) name = meta.deviceName;
+        if (meta?.handle) tag = meta.handle.startsWith('@') ? meta.handle : `@${meta.handle}`;
+      } catch {
+        /* ignore */
+      }
+      return {
+        id: addr,
+        tag,
+        name,
+        eoa: fmtAddr(addr),
+        status: 'Active',
+        lastActive: 'On-chain',
+      };
+    });
+    const chainIds = new Set(fromChain.map((t) => t.id.toLowerCase()));
+    const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
+    const localOnly = cached.filter((t) => !chainIds.has(t.id.toLowerCase()));
+    const merged = [...fromChain, ...localOnly];
+    saveTrustedCache(linkedTerminalsCacheKey, merged);
+    setTerminals(merged);
   } catch {
-    setTerminals([]);
+    const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey);
+    if (cached?.length) setTerminals(cached);
+    else setTerminals([]);
   } finally {
     setTerminalsLoading(false);
   }
@@ -720,6 +731,41 @@ const fetchTerminals = useCallback(async () => {
  useEffect(() => {
    fetchTerminals();
  }, [fetchTerminals, adminRetryCount]);
+
+ // Fetch real EOA USDC balance for The Vault
+ useEffect(() => {
+   const eoaAddr = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+   if (!eoaAddr || !ethers.isAddress(eoaAddr)) {
+     setEoaUsdcBalance(null);
+     return;
+   }
+   let cancelled = false;
+   void fetchWithCache(`eoa:usdc:${eoaAddr.toLowerCase()}`, () => getBalance(eoaAddr)).then((b) => {
+     if (!cancelled && b?.usdc != null) setEoaUsdcBalance(b.usdc);
+   });
+   return () => { cancelled = true; };
+ }, [profiles, myAddress, overviewRefreshTrigger]);
+
+ // Fetch USDC balance for each subordinate admin (terminals)
+ useEffect(() => {
+   const addrs = terminals.filter((t) => t.id && ethers.isAddress(t.id)).map((t) => ethers.getAddress(t.id));
+   if (addrs.length === 0) {
+     setSubordinateBalances({});
+     return;
+   }
+   let cancelled = false;
+   void Promise.all(
+     addrs.map((addr) =>
+       fetchWithCache(`eoa:usdc:${addr.toLowerCase()}`, () => getBalance(addr)).then((b) => ({ addr, usdc: b?.usdc ?? null }))
+     )
+   ).then((results) => {
+     if (cancelled) return;
+     const next: Record<string, string | null> = {};
+     results.forEach(({ addr, usdc }) => { next[addr.toLowerCase()] = usdc; });
+     setSubordinateBalances(next);
+   });
+   return () => { cancelled = true; };
+ }, [terminals, overviewRefreshTrigger]);
 
  // URL 带 redeemAdmin 时：校验 code 有效、EOA 非 admin 后，向 endpoint 完成 redeem admin，成功后刷新 admin 列表
  useEffect(() => {
@@ -1003,6 +1049,7 @@ const fetchTerminals = useCallback(async () => {
  const handleOverviewRefresh = useCallback(() => {
    invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
    invalidateFetchCache('indexer:tips');
+   invalidateFetchCache('eoa:usdc:');
    setOverviewRefreshing(true);
    setOverviewRefreshTrigger((t) => t + 1);
    setTimeout(() => setOverviewRefreshing(false), 2500);
@@ -1735,7 +1782,7 @@ const fetchTerminals = useCallback(async () => {
                      <div className="mb-4">
                         <p className="text-[13px] font-medium text-slate-400 mb-2">Cold Storage (Base L2)</p>
                         <div className="flex items-baseline gap-2">
-                           <p className="text-[48px] sm:text-[56px] font-light tracking-tight leading-none">{eoaBalance.toFixed(2)}</p>
+                           <p className="text-[48px] sm:text-[56px] font-light tracking-tight leading-none">{eoaUsdcBalance != null ? formatWithThousands(eoaUsdcBalance) : '—'}</p>
                            <span className="text-xl text-slate-500 font-light">USDC</span>
                         </div>
                      </div>
@@ -1756,91 +1803,50 @@ const fetchTerminals = useCallback(async () => {
                    </div>
                 </div>
 
-                <div className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between relative overflow-hidden xl:col-span-2">
-                   {!isAaUnlocked && (
-                     <div className="absolute inset-0 backdrop-blur-xl bg-[#f5f5f7]/80 z-20 flex flex-col items-center justify-center text-center p-8 rounded-[32px]">
-                       <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
-                         <Lock size={32} className="text-slate-400" />
+             {/* Subordinate admin Smart Terminal cards: one full card per subordinate */}
+             {terminals.map((term) => {
+               const addr = term.id?.toLowerCase();
+               const bal = addr ? subordinateBalances[addr] : null;
+               return (
+                 <div key={term.id} className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between relative overflow-hidden mt-6">
+                   <div className="flex justify-between items-start mb-8">
+                     <div className="flex items-center gap-4">
+                       <div className="w-14 h-14 bg-slate-50 rounded-[20px] flex items-center justify-center border border-slate-100/80">
+                         <Zap size={28} className="text-[#1562f0]" />
                        </div>
-                       <h3 className="text-[24px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
-                       <p className="text-[15px] font-medium text-slate-500 max-w-md mb-8 leading-relaxed">
-                         Your AA wallet is currently inactive. Unlock zero-gas ecosystem routing by purchasing a Fuel Pack or joining an Alliance.
-                       </p>
-                       <div className="flex gap-4">
-                         <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95 flex items-center gap-2">
-                           <Fuel size={18} /> Buy Fuel
-                         </button>
-                         <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-blue-600 transition-colors shadow-lg shadow-[#1562f0]/20 active:scale-95 flex items-center gap-2">
-                           <Hexagon size={18} /> Join Alliance
-                         </button>
+                       <div>
+                         <h4 className="text-[20px] font-semibold text-slate-900 tracking-tight flex items-center gap-2">Smart Terminal <span className="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">ERC-4337</span></h4>
+                         <p className="text-[13px] text-slate-500 font-medium mt-1">{term.name}</p>
+                         <div className="mt-1"><AddressCapsule address={term.id} className="bg-slate-100/80 border-slate-200/80 text-slate-700" /></div>
                        </div>
-                     </div>
-                   )}
-
-                   <div className={`relative z-10 ${!isAaUnlocked ? 'opacity-30 blur-sm pointer-events-none select-none' : ''}`}>
-                     <div className="flex justify-between items-start mb-8">
-                        <div className="flex items-center gap-4">
-                           <div className="w-14 h-14 bg-slate-50 rounded-[20px] flex items-center justify-center border border-slate-100/80">
-                              <Zap size={28} className="text-[#1562f0]" />
-                           </div>
-                           <div>
-                              <h4 className="text-[20px] font-semibold text-slate-900 tracking-tight flex items-center gap-2">Smart Terminal <span className="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">ERC-4337</span></h4>
-                              <p className="text-[13px] text-slate-400 font-mono mt-1">{fmtAddr(profiles?.[0]?.aaAccount)}</p>
-                           </div>
-                        </div>
-                     </div>
-
-                     <div className="flex flex-nowrap gap-4 sm:gap-5 mb-8 overflow-x-auto scrollbar-hide pb-2">
-                        <div className="bg-slate-50/80 rounded-[24px] p-5 sm:p-6 border border-slate-100/50 shrink-0 w-[160px] sm:w-[180px]">
-                           <p className="text-[13px] font-medium text-slate-500 mb-2">Liquid Reserve</p>
-                           <div className="flex items-baseline gap-1">
-                              <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">{aaUsdcBalance.toFixed(2)}</p>
-                              <span className="text-[14px] text-slate-500 font-medium">USDC</span>
-                           </div>
-                        </div>
-                        {joinedAlliances.map((aId) => {
-                          const alliance = alliancesDb[aId];
-                          return (
-                            <div key={aId} className={`${alliance.themeLightBg} rounded-[24px] p-5 sm:p-6 border border-white/50 shrink-0 w-[160px] sm:w-[180px]`}>
-                               <p className={`text-[13px] font-medium ${alliance.themeText} mb-2`}>{alliance.id} Vouchers</p>
-                               <div className="flex items-baseline gap-1">
-                                  <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">{alliance.aaBalance.toFixed(2)}</p>
-                                  <span className={`text-[14px] ${alliance.themeText} font-medium`}>{alliance.token}</span>
-                               </div>
-                            </div>
-                          );
-                        })}
-                     </div>
-
-                     <div className="bg-slate-900 rounded-[24px] p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-800 shadow-inner">
-                        <div className="flex items-center gap-4 text-white">
-                           <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
-                              <Fuel size={20} className="text-orange-500" />
-                           </div>
-                           <div>
-                              <p className="text-[12px] font-medium text-slate-400 mb-0.5">Protocol Fuel</p>
-                              <p className="text-[18px] font-mono font-semibold text-white tracking-tight">{aaBUnits.toLocaleString()} B-Units</p>
-                           </div>
-                        </div>
-                        <button onClick={() => { setActiveTab('Market'); setSelectedProduct('fuel'); }} className="w-full sm:w-auto text-[14px] font-semibold bg-orange-500 text-white px-5 py-2.5 rounded-[12px] hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20 active:scale-[0.98]">
-                           Refill
-                        </button>
                      </div>
                    </div>
-
-                   <div className={`relative z-10 mt-8 ${!isAaUnlocked ? 'opacity-30 blur-sm pointer-events-none select-none' : ''}`}>
-                     <div className="relative flex items-center py-4">
-                        <div className="flex-grow border-t border-slate-100"></div>
-                        <span className="flex-shrink-0 mx-4 text-slate-300">
-                           <ArrowRightLeft size={18} className="text-slate-300" />
-                        </span>
-                        <div className="flex-grow border-t border-slate-100"></div>
+                   <div className="mb-6">
+                     <p className="text-[13px] font-medium text-slate-500 mb-2">Liquid Reserve (Base L2)</p>
+                     <div className="flex items-baseline gap-2">
+                       <p className="text-[40px] sm:text-[48px] font-light tracking-tight leading-none">{bal != null ? formatWithThousands(bal) : '—'}</p>
+                       <span className="text-xl text-slate-500 font-light">USDC</span>
                      </div>
+                   </div>
+                   <div className="bg-slate-900 rounded-[24px] p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-800 shadow-inner">
+                     <div className="flex items-center gap-4 text-white">
+                       <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
+                         <Fuel size={20} className="text-orange-500" />
+                       </div>
+                       <div>
+                         <p className="text-[12px] font-medium text-slate-400 mb-0.5">Protocol Fuel</p>
+                         <p className="text-[18px] font-mono font-semibold text-white tracking-tight">—</p>
+                       </div>
+                     </div>
+                   </div>
+                   <div className="mt-6">
                      <button className="w-full bg-slate-50 text-slate-700 py-4 sm:py-5 rounded-[20px] text-[16px] font-semibold transition-all border border-slate-200 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center gap-2 active:scale-[0.98]">
-                        Transfer Funds
+                       Transfer Funds
                      </button>
                    </div>
-                </div>
+                 </div>
+               );
+             })}
              </div>
 
              {joinedAlliances.length > 0 && (
@@ -2012,6 +2018,7 @@ const fetchTerminals = useCallback(async () => {
                <p className="text-[15px] font-medium text-slate-500 mt-1">Manage your Ecosystem NFTs (ERC-1155) that grant routing logic and settlement privileges.</p>
              </div>
 
+             {isFixedUserCardAdmin && (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
                 {joinedAlliances.map((aId) => {
                   const alliance = alliancesDb[aId];
@@ -2080,6 +2087,7 @@ const fetchTerminals = useCallback(async () => {
                   </div>
                 )}
              </div>
+             )}
            </div>
          )}
 
@@ -2226,7 +2234,7 @@ const fetchTerminals = useCallback(async () => {
                           <td colSpan={4} className="px-8 py-16 text-center text-slate-500">
                             <span className="inline-flex items-center gap-2">
                               <span className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-                              Loading from CoNET...
+                              Loading terminals...
                             </span>
                           </td>
                         </tr>
@@ -2481,6 +2489,18 @@ const fetchTerminals = useCallback(async () => {
                   if (!res.success) {
                     throw new Error(res.error ?? 'Failed to register device as admin');
                   }
+                  const newTerminal: TerminalRecord = {
+                    id: adminAddress,
+                    tag: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : fmtAddr(adminAddress),
+                    name: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
+                    eoa: fmtAddr(adminAddress),
+                    status: 'Active',
+                    lastActive: 'On-chain',
+                  };
+                  const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
+                  const next = [...cached.filter((t) => t.id.toLowerCase() !== adminAddress.toLowerCase()), newTerminal];
+                  saveTrustedCache(linkedTerminalsCacheKey, next);
+                  setTerminals(next);
                   closeAddTerminalModal();
                   invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
                   try {

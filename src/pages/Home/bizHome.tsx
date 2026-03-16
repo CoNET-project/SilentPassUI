@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { KeyRound, Wallet, ShieldCheck } from 'lucide-react'
+import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
 import { restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio'
 import { setCoNET_Data } from '@/utils/globals'
@@ -206,14 +207,17 @@ const BizHome = () => {
 						</button>
 					</form>
 
-					<button
-						type="button"
-						onClick={() => setShowNewBiz(true)}
-						className="mt-8 flex items-center gap-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-					>
-						<ShieldCheck size={14} className="text-emerald-500" />
-						<span>Local EOA Derivation • Zero-Knowledge Architecture</span>
-					</button>
+					<div className="mt-8 flex flex-col items-center gap-1">
+						<button
+							type="button"
+							onClick={() => setShowNewBiz(true)}
+							className="flex items-center gap-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+						>
+							<ShieldCheck size={14} className="text-emerald-500" />
+							<span>Local EOA Derivation • Zero-Knowledge Architecture</span>
+						</button>
+						<span className="text-[10px] text-slate-400 font-medium">v{APP_VERSION}</span>
+					</div>
 				</div>
 			</div>
 		</div>

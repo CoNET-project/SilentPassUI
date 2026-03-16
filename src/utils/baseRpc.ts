@@ -21,9 +21,13 @@ export const BASE_RPC_URLS = _viteBaseRpc
 export const isRpcQuotaOrNetworkError = (err: unknown): boolean => {
 	const msg = String((err as Error)?.message ?? err)
 	const code = (err as { statusCode?: number; status?: number })?.statusCode ?? (err as { status?: number })?.status
+	const info = (err as { info?: { responseStatus?: number } })?.info
+	const status = code ?? info?.responseStatus
 	return (
-		code === 429 ||
+		status === 429 ||
+		status === 502 ||
 		/429|Too [Mm]any [Rr]equests/i.test(msg) ||
+		/502|Bad Gateway/i.test(msg) ||
 		/Exceeded the quota usage/i.test(msg) ||
 		/-32001|-32005/i.test(msg) ||
 		/BAD_DATA/i.test(msg) ||

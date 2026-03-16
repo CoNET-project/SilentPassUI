@@ -1963,6 +1963,17 @@ async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
 	}
 }
 
+/** 为 EOA 确保存在 AA（无则创建），返回 AA 地址。登记 admin 前 UI 必须传 EOA 调用此接口获取 AA，再构建 adminManager(AA,...) 并签字。 */
+export const ensureAAForEOA = async (eoa: string): Promise<string> => {
+	if (!eoa?.trim() || !ethers.isAddress(eoa)) throw new Error('Invalid EOA')
+	const addr = ethers.getAddress(eoa.trim())
+	const res = await fetch(`${beamioApi}/api/ensureAAForEOA?eoa=${encodeURIComponent(addr)}`)
+	const data = await res.json()
+	if (!res.ok) throw new Error(data?.error ?? 'Failed to ensure AA for EOA')
+	if (!data?.aa || !ethers.isAddress(data.aa)) throw new Error('Invalid AA response')
+	return ethers.getAddress(data.aa)
+}
+
 /** Resolve EOA to AA address via AA Factory. Returns null if EOA has no AA account. */
 export const getAAAccountByEOA = async (eoa: string): Promise<string | null> => {
 	if (!eoa?.trim() || !ethers.isAddress(eoa)) return null

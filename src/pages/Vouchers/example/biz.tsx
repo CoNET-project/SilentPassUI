@@ -7,7 +7,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { storeSystemData, getBalance, formatWithThousands } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername } from '@/services/beamio';
-import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdmin, postCardAddAdminByAdmin, encodeAddAdminWithMintLimit, signExecuteForOwner, signExecuteForAdmin, getCardOwner } from '@/services/BeamioCard';
+import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdmin, postCardAddAdminByAdmin, encodeAddAdminWithMintLimit, signExecuteForOwner, signExecuteForAdmin, getCardOwner, ensureAAForEOA } from '@/services/BeamioCard';
 import { conetDepinProvider } from '@/utils/constants';
 import { BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
@@ -420,7 +420,9 @@ const AddressCapsule = ({ address, className = '' }: { address: string; classNam
   );
 };
 
-const AddressRow = ({ label, icon: Icon, address, fullAddress }: { label: string; icon: LucideIcon; address: string; fullAddress: string }) => {
+type AaRefreshStatus = 'idle' | 'loading' | 'success' | 'error';
+
+const AddressRow = ({ label, icon: Icon, address, fullAddress, onRefresh, refreshStatus = 'idle' }: { label: string; icon: LucideIcon; address: string; fullAddress: string; onRefresh?: () => void; refreshStatus?: AaRefreshStatus }) => {
   const [copied, setCopied] = useState(false);
   const hasAddress = !!fullAddress && fullAddress.length >= 10;
   const handleCopy = useCallback(async () => {
@@ -433,12 +435,25 @@ const AddressRow = ({ label, icon: Icon, address, fullAddress }: { label: string
       // ignore
     }
   }, [fullAddress, hasAddress]);
+  const isRefreshDisabled = refreshStatus !== 'idle';
+  const renderRefreshButton = () => {
+    if (refreshStatus === 'loading') {
+      return <Loader2 size={14} className="shrink-0 animate-spin text-slate-400" />;
+    }
+    if (refreshStatus === 'success') {
+      return <Check size={14} className="shrink-0 text-emerald-500" />;
+    }
+    if (refreshStatus === 'error') {
+      return <AlertTriangle size={14} className="shrink-0 text-amber-500" />;
+    }
+    return <RefreshCw size={14} className="shrink-0" />;
+  };
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight flex items-center gap-1 shrink-0 leading-none whitespace-nowrap"><Icon size={11} className="shrink-0" /> {label}</span>
       <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden justify-end">
         <span className={`text-[11px] font-mono font-bold bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm truncate leading-none inline-flex items-center min-w-0 ${hasAddress ? 'text-[#1562f0]' : 'text-slate-400'}`}>{address}</span>
-        {hasAddress && (
+        {hasAddress ? (
           <button
             type="button"
             onClick={handleCopy}
@@ -446,6 +461,16 @@ const AddressRow = ({ label, icon: Icon, address, fullAddress }: { label: string
             title="Copy"
           >
             {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+          </button>
+        ) : onRefresh && (
+          <button
+            type="button"
+            onClick={isRefreshDisabled ? undefined : onRefresh}
+            disabled={isRefreshDisabled}
+            className={`shrink-0 p-1 rounded-md flex items-center justify-center transition-colors ${isRefreshDisabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
+            title={refreshStatus === 'loading' ? 'Fetching...' : refreshStatus === 'success' ? 'Success' : refreshStatus === 'error' ? 'Failed' : 'Retry fetch AA'}
+          >
+            {renderRefreshButton()}
           </button>
         )}
       </div>
@@ -474,6 +499,7 @@ export default function MerchantOS() {
  const [linkedMerchantLookupDone, setLinkedMerchantLookupDone] = useState(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) !== null);
  const [adminRetryCount, setAdminRetryCount] = useState(0);
  const [redeemAdminInProgress, setRedeemAdminInProgress] = useState(false);
+ const [aaRefreshStatus, setAaRefreshStatus] = useState<AaRefreshStatus>('idle');
 
  // Store Wallets, Market, Messages, Partner Alliances
  const [joinedAlliances, setJoinedAlliances] = useState<AllianceId[]>([]);
@@ -648,28 +674,96 @@ export default function MerchantOS() {
  const adminStatsTodayCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-stats-today`;
  const adminTipsTodayCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:tips-today`;
 
- // On entry: if profiles[0] exists but aaAccount is empty, fetch from chain and update
- useEffect(() => {
+ const handleRefreshAA = useCallback(async () => {
    const p0 = profiles?.[0];
-   if (!p0 || p0.aaAccount?.trim()) return;
-   const eoa = (p0.keyID?.trim() || myAddress?.trim()) || '';
-   if (!eoa || !ethers.isAddress(eoa)) return;
-   let cancelled = false;
-   const run = async () => {
-     try {
-       const profileForFetch = p0.keyID?.trim() ? p0 : { ...p0, keyID: myAddress };
-       const chainAa = await getAAAccount(profileForFetch);
-       if (cancelled || !chainAa) return;
-       const nextProfiles = profiles.map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
+   const eoa = (p0?.keyID?.trim() || myAddress?.trim()) || '';
+   if (!eoa || !ethers.isAddress(eoa)) {
+     setAaRefreshStatus('error');
+     setTimeout(() => setAaRefreshStatus('idle'), 3000);
+     return;
+   }
+   setAaRefreshStatus('loading');
+   try {
+     const profileForFetch = p0?.keyID?.trim() ? p0 : { ...(p0 ?? {}), keyID: myAddress };
+     const chainAa = await getAAAccount(profileForFetch);
+     if (!chainAa || !ethers.isAddress(chainAa)) {
+       if (process.env.NODE_ENV !== 'production') console.warn('[handleRefreshAA] getAAAccount returned no valid AA for eoa:', eoa, 'chainAa:', chainAa);
+       setAaRefreshStatus('error');
+       setTimeout(() => setAaRefreshStatus('idle'), 3000);
+       return;
+     }
+     if (p0) {
+       const nextProfiles = (profiles ?? []).map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
        setProfiles(nextProfiles);
        const temp = CoNET_Data;
        if (temp?.profiles?.length) {
          temp.profiles = temp.profiles.map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
          setCoNET_Data(temp);
-         await storeSystemData();
+         try {
+           await storeSystemData();
+         } catch (e) {
+           if (process.env.NODE_ENV !== 'production') console.warn('[handleRefreshAA] storeSystemData failed (non-fatal):', e);
+         }
+       }
+     } else {
+       setProfiles([{ keyID: myAddress, aaAccount: chainAa } as profile]);
+       const temp = CoNET_Data;
+       if (temp) {
+         temp.profiles = [{ keyID: myAddress, aaAccount: chainAa } as profile];
+         setCoNET_Data(temp);
+         try {
+           await storeSystemData();
+         } catch (e) {
+           if (process.env.NODE_ENV !== 'production') console.warn('[handleRefreshAA] storeSystemData failed (non-fatal):', e);
+         }
+       }
+     }
+     setAaRefreshStatus('success');
+     setTimeout(() => setAaRefreshStatus('idle'), 3000);
+   } catch (e) {
+     if (process.env.NODE_ENV !== 'production') console.warn('[handleRefreshAA] error:', e);
+     setAaRefreshStatus('error');
+     setTimeout(() => setAaRefreshStatus('idle'), 3000);
+   }
+ }, [profiles, setProfiles, myAddress]);
+
+ // On entry: if profiles[0] exists but aaAccount is empty, or myAddress exists without profile, fetch AA from chain and update
+ useEffect(() => {
+   const p0 = profiles?.[0];
+   const eoa = (p0?.keyID?.trim() || myAddress?.trim()) || '';
+   if (!eoa || !ethers.isAddress(eoa)) return;
+   if (p0?.aaAccount?.trim()) return;
+   let cancelled = false;
+   const run = async (retryCount = 0) => {
+     if (cancelled) return;
+     try {
+       const profileForFetch = p0?.keyID?.trim() ? p0 : { ...(p0 ?? {}), keyID: myAddress };
+       const chainAa = await getAAAccount(profileForFetch);
+       if (cancelled) return;
+       if (!chainAa) {
+         if (retryCount === 0) setTimeout(() => run(1), 2500);
+         return;
+       }
+       if (p0) {
+         const nextProfiles = (profiles ?? []).map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
+         setProfiles(nextProfiles);
+         const temp = CoNET_Data;
+         if (temp?.profiles?.length) {
+           temp.profiles = temp.profiles.map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
+           setCoNET_Data(temp);
+           await storeSystemData();
+         }
+       } else {
+         setProfiles([{ keyID: myAddress, aaAccount: chainAa } as profile]);
+         const temp = CoNET_Data;
+         if (temp) {
+           temp.profiles = [{ keyID: myAddress, aaAccount: chainAa } as profile];
+           setCoNET_Data(temp);
+           await storeSystemData();
+         }
        }
      } catch {
-       // Keep last trusted; RPC failure does not overwrite
+       if (retryCount === 0) setTimeout(() => run(1), 2500);
      }
    };
    void run();
@@ -1292,6 +1386,11 @@ const fetchTerminals = useCallback(async () => {
                 icon={Cpu}
                 address={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return a && ethers.isAddress(a) ? fmtAddr(ethers.getAddress(a)) : 'Locked'; })()}
                 fullAddress={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return a && ethers.isAddress(a) ? ethers.getAddress(a) : ''; })()}
+                onRefresh={(() => { 
+					const a = profiles?.[0]?.aaAccount?.trim(); 
+					return !(a && ethers.isAddress(a)) ? handleRefreshAA : undefined; 
+				})()}
+                refreshStatus={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return !(a && ethers.isAddress(a)) ? aaRefreshStatus : 'idle'; })()}
               />
               <div className="h-[1px] w-full bg-slate-200/50"></div>
               <AddressRow
@@ -2434,11 +2533,11 @@ const fetchTerminals = useCallback(async () => {
                   if (!userEOA || !ethers.isAddress(userEOA)) {
                     throw new Error('Wallet address not available.');
                   }
-                  let adminAddress: string;
+                  let adminEOA: string;
                   if (pos && ethers.isAddress(pos)) {
-                    adminAddress = ethers.getAddress(pos);
+                    adminEOA = ethers.getAddress(pos);
                   } else if (ethers.isAddress(raw)) {
-                    adminAddress = ethers.getAddress(raw);
+                    adminEOA = ethers.getAddress(raw);
                   } else {
                     const tagRaw = raw as string;
                     const tag = tagRaw.startsWith('@') ? tagRaw.slice(1) : tagRaw;
@@ -2447,8 +2546,9 @@ const fetchTerminals = useCallback(async () => {
                     if (!peer?.address || !ethers.isAddress(peer.address)) {
                       throw new Error(`Could not resolve @${tag} to an address. Check the Beamio Tag.`);
                     }
-                    adminAddress = ethers.getAddress(peer.address);
+                    adminEOA = ethers.getAddress(peer.address);
                   }
+                  const aa = await ensureAAForEOA(adminEOA);
                   const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
                   const metadata = JSON.stringify({
                     deviceName: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
@@ -2456,7 +2556,7 @@ const fetchTerminals = useCallback(async () => {
                   });
                   const limitNum = Math.max(1, parseFloat(String(newTerminalMintLimit).replace(/[^0-9.]/g, '')) || 1000);
                   const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
-                  const data = encodeAddAdminWithMintLimit(adminAddress, 1, metadata, mintLimitPoints6);
+                  const data = encodeAddAdminWithMintLimit(aa, 1, metadata, mintLimitPoints6);
                   const now = Math.floor(Date.now() / 1000);
                   const deadline = now + 300;
                   const nonce = ethers.hexlify(ethers.randomBytes(32));
@@ -2490,15 +2590,15 @@ const fetchTerminals = useCallback(async () => {
                     throw new Error(res.error ?? 'Failed to register device as admin');
                   }
                   const newTerminal: TerminalRecord = {
-                    id: adminAddress,
-                    tag: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : fmtAddr(adminAddress),
+                    id: aa,
+                    tag: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : fmtAddr(adminEOA),
                     name: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
-                    eoa: fmtAddr(adminAddress),
+                    eoa: fmtAddr(adminEOA),
                     status: 'Active',
                     lastActive: 'On-chain',
                   };
                   const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
-                  const next = [...cached.filter((t) => t.id.toLowerCase() !== adminAddress.toLowerCase()), newTerminal];
+                  const next = [...cached.filter((t) => t.id.toLowerCase() !== aa.toLowerCase()), newTerminal];
                   saveTrustedCache(linkedTerminalsCacheKey, next);
                   setTerminals(next);
                   closeAddTerminalModal();

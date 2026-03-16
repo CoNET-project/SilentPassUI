@@ -299,6 +299,17 @@ const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardAddAdminByAdminEndpoint = `${beamioApi}/api/cardAddAdminByAdmin`
 
+/** 为 EOA 确保存在 AA（无则创建），返回 AA 地址。登记 admin 前 UI 必须传 EOA 调用此接口获取 AA，再构建 adminManager(AA,...) 并签字。 */
+export const ensureAAForEOA = async (eoa: string): Promise<string> => {
+	if (!eoa?.trim() || !ethers.isAddress(eoa)) throw new Error('Invalid EOA')
+	const addr = ethers.getAddress(eoa.trim())
+	const res = await fetch(`${beamioApi}/api/ensureAAForEOA?eoa=${encodeURIComponent(addr)}`)
+	const data = await res.json()
+	if (!res.ok) throw new Error(data?.error ?? 'Failed to ensure AA for EOA')
+	if (!data?.aa || !ethers.isAddress(data.aa)) throw new Error('Invalid AA response')
+	return ethers.getAddress(data.aa)
+}
+
 /** 用户兑换 redeem 码：提交到 API，服务端调用 redeemForUser，将点数 mint 到用户 AA */
 export const postCardRedeem = async (
 	cardAddress: string,
@@ -1768,6 +1779,33 @@ async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
 	}
 }
 
+/** 使用 AA Factory 预测 index=0 的 AA 地址，并在链上验证是否已部署。primaryAccountOf 与 API 均失败时的回退。 */
+async function tryPredictedAAFromFactory(eoa: string): Promise<string | null> {
+	try {
+		const accountFactory = new ethers.Contract(
+			contracts.BeamioAAAcountFactory.address,
+			BeamioAAAcountFactoryAbi,
+			baseEndpoint
+		)
+		const getAddressFn = accountFactory.getFunction('getAddress(address,uint256)')
+		const predicted = await getAddressFn(ethers.getAddress(eoa.trim()), 0n)
+		if (!predicted || predicted === ethers.ZeroAddress) return null
+		const addr = ethers.getAddress(predicted)
+		const code = await baseEndpoint.getCode(addr)
+		if (!code || code === '0x') return null
+		try {
+			const aa = new ethers.Contract(addr, ['function factory() view returns (address)'], baseEndpoint)
+			await aa.factory()
+		} catch {
+			return null
+		}
+		if (_isDev) console.warn('[getAAAccount] fallback: predicted AA verified on-chain for', eoa)
+		return addr
+	} catch {
+		return null
+	}
+}
+
 export const getAAAccount = async (profile: profile): Promise<string | null> => {
 	const eoa = profile?.keyID?.trim()
 	if (!eoa || !ethers.isAddress(eoa)) {
@@ -1783,12 +1821,16 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 		const account = await accountFactory.primaryAccountOf(eoa)
 		if (account === ethers.ZeroAddress) {
 			if (_isDev) console.warn('[getAAAccount] primaryAccountOf returned ZeroAddress for', eoa)
-			return fetchAAAccountFromApi(eoa)
+			const fromApi = await fetchAAAccountFromApi(eoa)
+			if (fromApi && ethers.isAddress(fromApi)) return fromApi
+			return tryPredictedAAFromFactory(eoa)
 		}
 		const code = await baseEndpoint.getCode(account)
 		if (code === '0x') {
 			if (_isDev) console.warn('[getAAAccount] Account has no bytecode at', account)
-			return fetchAAAccountFromApi(eoa)
+			const fromApi = await fetchAAAccountFromApi(eoa)
+			if (fromApi && ethers.isAddress(fromApi)) return fromApi
+			return tryPredictedAAFromFactory(eoa)
 		}
 		try {
 			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
@@ -1799,7 +1841,9 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 		return account
 	} catch (error: any) {
 		console.warn(`[getAAAccount] RPC failed: ${error.message}, fallback to API`)
-		return fetchAAAccountFromApi(eoa)
+		const fromApi = await fetchAAAccountFromApi(eoa)
+		if (fromApi && ethers.isAddress(fromApi)) return fromApi
+		return tryPredictedAAFromFactory(eoa)
 	}
 }
 

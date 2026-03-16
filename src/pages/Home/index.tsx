@@ -18,7 +18,8 @@ const HomePage = ({}) => {
 			setSplashVisible(false)
 			return
 		}
-		
+		// 无账户时也要隐藏 splash，让用户看到 Create/Restore 入口
+		setSplashVisible(false)
 		setIsInitialLoading(true)
 		setShowBeamioOnboardingModal(true)
 	}
@@ -57,7 +58,9 @@ const HomePage = ({}) => {
 			{/* 首次进入 Home 时显示 Install Web App，引导添加到主屏幕 */}
 			<InstallTerminalSheet
 				open={showInstallSheet && !isStandalone}
-				onClose={() => setShowInstallSheet(false)}
+				onClose={() => 
+					setShowInstallSheet(false)
+				}
 				onRemindLater={() => setShowInstallSheet(false)}
 				beamioTag={beamioTag}
 			/>

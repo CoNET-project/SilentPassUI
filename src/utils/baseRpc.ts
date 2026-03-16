@@ -8,18 +8,26 @@ import { ethers } from 'ethers'
 
 const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
-const BEAMIO_BASE_RPC = 'https://base-rpc.publicnode.com'
+/** Beamio Base RPC 标准：HTTP 使用 https://1rpc.io/base */
+const BEAMIO_BASE_RPC = 'https://1rpc.io/base'
 
-/** Base 主网 RPC 列表 */
-export const BASE_RPC_URLS = [BEAMIO_BASE_RPC]
+/** CoNET 稳定 Base RPC 代理（替代动态节点，避免 502 Bad Gateway） */
+const CONET_BASE_RPC = 'https://base-rpc.conet.network'
+
+/** Base 主网 RPC 列表：1rpc 优先，CoNET 稳定代理作 fallback */
+export const BASE_RPC_URLS = [BEAMIO_BASE_RPC, CONET_BASE_RPC]
 
 /** 检测是否为 RPC 配额/网络类错误（应触发切换） */
 export const isRpcQuotaOrNetworkError = (err: unknown): boolean => {
 	const msg = String((err as Error)?.message ?? err)
 	const code = (err as { statusCode?: number; status?: number })?.statusCode ?? (err as { status?: number })?.status
+	const info = (err as { info?: { responseStatus?: number } })?.info
+	const status = code ?? info?.responseStatus
 	return (
-		code === 429 ||
+		status === 429 ||
+		status === 502 ||
 		/429|Too [Mm]any [Rr]equests/i.test(msg) ||
+		/502|Bad Gateway/i.test(msg) ||
 		/Exceeded the quota usage/i.test(msg) ||
 		/-32001|-32005/i.test(msg) ||
 		/BAD_DATA/i.test(msg) ||
@@ -47,18 +55,8 @@ export function setRpcDegradedGetter(getter: (() => boolean) | null): void {
 	_rpcDegradedGetter = getter
 }
 
-/** 从 CoNET 节点构建 Base RPC URL */
-function conetNodeToBaseRpcUrl(node: BaseRpcNodeInfo): string {
-	return `https://${node.domain}.conet.network/base-rpc`
-}
-
-/** 获取当前有效 URL 列表：限流时仅 CoNET 代理；否则 Beamio RPC 优先，CoNET 代理作 fallback */
+/** 获取当前有效 URL 列表：使用 Beamio 标准（1rpc + CoNET 稳定代理），不再使用动态节点避免 502 */
 function getEffectiveUrls(): string[] {
-	const nodes = _nodeProvider?.() ?? []
-	const conetUrls = nodes.map(conetNodeToBaseRpcUrl)
-	const isDegraded = _rpcDegradedGetter?.() ?? false
-	if (isDegraded && conetUrls.length > 0) return conetUrls
-	if (conetUrls.length > 0) return [...BASE_RPC_URLS, ...conetUrls]
 	return BASE_RPC_URLS
 }
 
@@ -103,23 +101,9 @@ export function resetBaseRpcIndex(): void {
 	_hasPickedRandomStart = false
 }
 
-/** 等待 allNodes 内有节点（限流时需使用 CoNET 节点前调用） */
-export function waitForConetNodes(maxWaitMs = 30000): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const nodes = _nodeProvider?.()
-		if (nodes && nodes.length > 0) return resolve()
-		const start = Date.now()
-		const t = setInterval(() => {
-			const n = _nodeProvider?.()
-			if (n && n.length > 0) {
-				clearInterval(t)
-				resolve()
-			} else if (Date.now() - start >= maxWaitMs) {
-				clearInterval(t)
-				reject(new Error('Base RPC: Timeout waiting for CoNET node'))
-			}
-		}, 300)
-	})
+/** 等待 allNodes 内有节点（已弃用：现使用稳定 RPC，不再依赖动态节点） */
+export function waitForConetNodes(_maxWaitMs = 30000): Promise<void> {
+	return Promise.resolve()
 }
 
 /**

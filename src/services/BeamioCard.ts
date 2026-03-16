@@ -1990,6 +1990,25 @@ export const getAAAccountByEOA = async (eoa: string): Promise<string | null> => 
 	}
 }
 
+/** When EOA has no deployed AA, predict the AA address via factory.getAddress(creator, 0). Same logic as endpoint createAccountFor. */
+export const getPredictedAAAddressByEOA = async (eoa: string): Promise<string | null> => {
+	if (!eoa?.trim() || !ethers.isAddress(eoa)) return null
+	const addr = ethers.getAddress(eoa.trim())
+	try {
+		const accountFactory = new ethers.Contract(
+			contracts.BeamioAAAcountFactory.address,
+			BeamioAAAcountFactoryAbi,
+			baseEndpoint
+		)
+		const getAddressFn = accountFactory.getFunction('getAddress(address,uint256)')
+		const predicted = await getAddressFn(addr, 0n)
+		if (!predicted || predicted === ethers.ZeroAddress) return null
+		return ethers.getAddress(predicted)
+	} catch {
+		return null
+	}
+}
+
 export const getAAAccount = async (profile: profile): Promise<string | null> => {
 	const eoa = profile?.keyID?.trim()
 	if (!eoa || !ethers.isAddress(eoa)) return null

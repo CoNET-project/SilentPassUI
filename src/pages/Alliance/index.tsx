@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { getAAAccount, getAAAccountByEOA, getPredictedAAAddressByEOA, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
 import { searchUsername, generateCODE, redeemCodeHash } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
@@ -80,7 +80,9 @@ import {
   AlertTriangle,
   Smartphone,
   Nfc,
-  Loader2
+  Loader2,
+  RefreshCw,
+  SlidersHorizontal
 } from 'lucide-react';
 
 // --- Types & Mock Data ---
@@ -130,7 +132,26 @@ const initialMerchants = [
   },
 ];
 
-const TIER_COLOR_FALLBACKS = ['bg-emerald-500', 'bg-slate-900', 'bg-blue-600', 'bg-amber-600', 'bg-purple-600', 'bg-rose-600'];
+const TIER_COLOR_FALLBACKS = ['bg-[#96EB3C]', 'bg-slate-900', 'bg-blue-600', 'bg-amber-600', 'bg-purple-600', 'bg-rose-600'];
+
+/** Returns true if background is dark → use white text; false → use dark text. Uses relative luminance (WCAG). */
+function isBackgroundDark(color: string): boolean {
+  const hexMatch = color.match(/#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b/) ?? color.match(/\[#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\]/);
+  if (hexMatch) {
+    let hex = hexMatch[1];
+    if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    const r = parseInt(hex.slice(0, 2), 16) / 255;
+    const g = parseInt(hex.slice(2, 4), 16) / 255;
+    const b = parseInt(hex.slice(4, 6), 16) / 255;
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    return luminance < 0.5;
+  }
+  const darkPatterns = /slate-9|blue-6|purple-6|rose-6|2a6808|212121|6B4BEF/i;
+  const lightPatterns = /96EB3C|amber-6|emerald-4/i;
+  if (lightPatterns.test(color)) return false;
+  if (darkPatterns.test(color)) return true;
+  return true;
+}
 
 type TierAsset = {
   id: string;
@@ -143,6 +164,19 @@ type TierAsset = {
   color: string;
   mintRule: string;
   image?: string;
+};
+
+/** CashTrees Partner Card - Merchant License NFT (always shown in Assets) */
+const PARTNER_CARD_ASSET: TierAsset = {
+  id: 'AST-PARTNER',
+  name: 'CashTrees Partner Card',
+  type: 'Merchant License NFT',
+  minTopUp: 'KYB Approved',
+  minted: 2,
+  activeHolders: 2,
+  status: 'Active',
+  color: '#6B4BEF',
+  mintRule: 'Authorized Partner',
 };
 
 const ledgerTransactions = [
@@ -271,13 +305,13 @@ interface MetricCardProps {
   colorClass?: string;
 }
 
-const MetricCard = ({ title, value, subValue, change, isPositive, icon, colorClass = "bg-emerald-50 text-emerald-600" }: MetricCardProps) => (
+const MetricCard = ({ title, value, subValue, change, isPositive, icon, colorClass = "bg-[#96EB3C]/20 text-[#6ea32b]" }: MetricCardProps) => (
   <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
     <div className="flex justify-between items-start mb-4">
       <div className={`p-2 rounded-lg ${colorClass} group-hover:scale-110 transition-transform`}>
         {icon}
       </div>
-      <span className={`text-sm font-medium px-2 py-1 rounded-full ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+      <span className={`text-sm font-medium px-2 py-1 rounded-full ${isPositive ? 'bg-[#96EB3C]/20 text-[#6ea32b]' : 'bg-red-50 text-red-600'}`}>
         {change}
       </span>
     </div>
@@ -298,7 +332,7 @@ interface SidebarItemProps {
 const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: SidebarItemProps) => (
   <button 
     onClick={onClick}
-    className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'space-x-3 px-4'} py-3 rounded-lg transition-all ${active ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+    className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'space-x-3 px-4'} py-3 rounded-lg transition-all ${active ? 'bg-[#96EB3C] text-slate-900 shadow-[0_4px_16px_rgba(150,235,60,0.4)]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
     title={collapsed ? label : undefined}
   >
     <Icon size={20} />
@@ -308,11 +342,11 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: SidebarI
 
 const StatusBadge = ({ status }: { status: string }) => {
   const styles: Record<string, string> = {
-    'Active': 'bg-emerald-100 text-emerald-700',
+    'Active': 'bg-[#96EB3C]/20 text-[#548a1b]',
     'Expired': 'bg-amber-100 text-amber-700',
-    'Verified': 'bg-emerald-100 text-emerald-700',
+    'Verified': 'bg-[#96EB3C]/20 text-[#548a1b]',
     'Pending': 'bg-amber-100 text-amber-700',
-    'Completed': 'bg-emerald-100 text-emerald-700',
+    'Completed': 'bg-[#96EB3C]/20 text-[#548a1b]',
     'Settled': 'bg-slate-100 text-slate-700',
     'Burn': 'bg-rose-100 text-rose-700',
     'Mint': 'bg-blue-100 text-blue-700',
@@ -402,10 +436,21 @@ export default function App() {
           } catch {
             // RPC failure: fail open, allow capsule assembly; server will reject if already registered
           }
+          let addressAA: string | undefined;
+          try {
+            let aa = await getAAAccountByEOA(addr);
+            if (!aa && ethers.isAddress(addr)) {
+              aa = await getPredictedAAAddressByEOA(addr);
+            }
+            if (aa && ethers.isAddress(aa)) addressAA = aa;
+          } catch {
+            /* RPC/API failure: fallback to EOA in handleRegistrationMerchant */
+          }
+          if (handleValidateAbortRef.current) return;
           setHandleResolved({
             username: match.username ?? match.accountName ?? (isAddressSearch ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : trimmed),
             address: addr,
-            addressAA: undefined,
+            addressAA,
             image: match.image,
             first_name: match.first_name,
             last_name: match.last_name,
@@ -422,10 +467,21 @@ export default function App() {
         });
         setHandleError(null);
       } else if (isAddressSearch) {
+        let addressAA: string | undefined;
+        try {
+          let aa = await getAAAccountByEOA(searchKey);
+          if (!aa && ethers.isAddress(searchKey)) {
+            aa = await getPredictedAAAddressByEOA(searchKey);
+          }
+          if (aa && ethers.isAddress(aa)) addressAA = aa;
+        } catch {
+          /* RPC/API failure: fallback to EOA in handleRegistrationMerchant */
+        }
+        if (handleValidateAbortRef.current) return;
         setHandleResolved({
           username: `${searchKey.slice(0, 6)}…${searchKey.slice(-4)}`,
           address: searchKey,
-          addressAA: undefined,
+          addressAA,
         });
         setHandleError(null);
       } else {
@@ -671,9 +727,16 @@ export default function App() {
   const [onchainAdmins, setOnchainAdmins] = useState<OnchainAdminEntry[]>([]);
   const [pendingRedeemAdmins, setPendingRedeemAdmins] = useState<PendingRedeemAdminEntry[]>([]);
   const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
+  const [overviewRefreshing, setOverviewRefreshing] = useState(false);
 
   const handleNewTransactionIndexed = useCallback(() => {
     setOverviewRefreshTrigger((n) => n + 1);
+  }, []);
+
+  const handleOverviewRefresh = useCallback(() => {
+    setOverviewRefreshing(true);
+    setOverviewRefreshTrigger((n) => n + 1);
+    setTimeout(() => setOverviewRefreshing(false), 3000);
   }, []);
 
   useEffect(() => {
@@ -773,14 +836,28 @@ export default function App() {
           }
         }
 
-        let adminCount = 0;
-        try {
-          const globalStats = await card.getGlobalStatsFull(0, 0n, 0n) as { adminCount: bigint };
-          adminCount = Number(globalStats.adminCount);
-        } catch {
-          // Fallback: owner counts as 1, partnerLocations = 0
+        // Fallback: when chain tier loop yields nothing but API metadata has tiers (e.g. RPC timeout, contract mismatch)
+        if (tierAssetsList.length === 0 && metadata?.tiers && Array.isArray(metadata.tiers) && metadata.tiers.length > 0) {
+          for (let i = 0; i < metadata.tiers.length; i++) {
+            const t = metadata.tiers[i];
+            const minUsdc6 = t.minUsdc6 != null ? String(t.minUsdc6).trim() : '0';
+            const minCad = parseInt(minUsdc6, 10) / 1_000_000;
+            const tierColor = t.backgroundColor?.trim() || TIER_COLOR_FALLBACKS[i % TIER_COLOR_FALLBACKS.length];
+            tierAssetsList.push({
+              id: `AST-${i}`,
+              name: t.name?.trim() || (metadata?.name ? `${metadata.name} Tier ${i + 1}` : `Tier ${i + 1}`),
+              type: t.description?.trim() || 'Membership',
+              minTopUp: `≥ ${formatWithThousands(Number.isNaN(minCad) ? 0 : minCad, 0)} CAD`,
+              minted: 0,
+              activeHolders: 0,
+              status: 'Active',
+              color: tierColor,
+              mintRule: (t as { upgradeByBalance?: boolean }).upgradeByBalance ? 'Balance-based Upgrade' : 'One-time Top-up',
+              image: t.image?.trim() || undefined,
+            });
+          }
         }
-        const partnerLocations = Math.max(adminCount - 1, 0);
+
         const ownerBUnits = await getBUnitBalance(owner);
         const nextOnchainAdmins: OnchainAdminEntry[] = [];
         let didLoadOnchainAdmins = false;
@@ -808,6 +885,10 @@ export default function App() {
         } catch {
           // Keep trusted cached admin directory when RPC query fails.
         }
+        // Partner Locations = only direct admins under owner (parent=0), exclude sub-admins (second layer)
+        const partnerLocations = didLoadOnchainAdmins
+          ? nextOnchainAdmins.filter((a) => a.role === 'Direct Admin').length
+          : 0;
 
         const nextPendingRedeemAdmins: PendingRedeemAdminEntry[] = [];
         let didLoadPendingRedeemAdmins = false;
@@ -1028,37 +1109,36 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 selection:bg-emerald-100">
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 selection:bg-[#96EB3C]/30 selection:text-slate-900">
       
       {/* Sidebar */}
       <aside className={`bg-white border-r border-slate-200 flex flex-col fixed h-full z-20 transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}>
-            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-200 group-hover:bg-emerald-700 transition-colors">
+            <div className="w-10 h-10 bg-[#96EB3C] rounded-xl flex items-center justify-center flex-shrink-0 shadow-[0_4px_16px_rgba(150,235,60,0.4)] group-hover:bg-[#86d635] transition-colors">
               <span className="text-white font-black text-2xl">C</span>
             </div>
             {!isSidebarCollapsed && (
               <div className="flex flex-col">
                 <span className="font-black text-xl tracking-tighter text-slate-900 leading-none">CashTrees</span>
-                <span className="text-[9px] font-bold text-emerald-600 tracking-widest uppercase mt-1">Alliance OS</span>
+                <span className="text-[9px] font-bold text-[#7abf30] tracking-widest uppercase mt-1">Alliance OS</span>
               </div>
             )}
           </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {!isSidebarCollapsed && <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-3 mt-4">Command Center</div>}
+        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto no-scrollbar">
+          {!isSidebarCollapsed && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-4">Command Center</div>}
           <SidebarItem icon={LayoutDashboard} label="Overview" active={activeTab === 'Overview'} onClick={() => setActiveTab('Overview')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={CreditCard} label="Asset Factory" active={activeTab === 'Assets'} onClick={() => setActiveTab('Assets')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Users} label="Members" active={activeTab === 'Members'} onClick={() => setActiveTab('Members')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Utensils} label="Restaurants" active={activeTab === 'Merchants'} onClick={() => setActiveTab('Merchants')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={BookOpen} label="Ledger & Clearing" active={activeTab === 'Ledger'} onClick={() => setActiveTab('Ledger')} collapsed={isSidebarCollapsed} />
           
-          
-          {!isSidebarCollapsed && <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-3 mt-8">Financial Hub</div>}
+          {!isSidebarCollapsed && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-8">Financial Hub</div>}
           <SidebarItem icon={Wallet} label="Wallet & Treasury" active={activeTab === 'Treasury'} onClick={() => setActiveTab('Treasury')} collapsed={isSidebarCollapsed} />
           
-          {!isSidebarCollapsed && <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-3 mt-8">System</div>}
+          {!isSidebarCollapsed && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-8">System</div>}
           <SidebarItem icon={MessageSquare} label="Chat" active={activeTab === 'Chat'} onClick={() => setActiveTab('Chat')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={ShieldCheck} label="Audit Logs" active={activeTab === 'Audit'} onClick={() => setActiveTab('Audit')} collapsed={isSidebarCollapsed} />
         </nav>
@@ -1090,9 +1170,22 @@ export default function App() {
         {activeTab !== 'Chat' && activeTab !== 'POS' && (
           <header className="p-8 pb-4 flex justify-between items-end">
             <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight">{activeTab === 'Ledger' ? '$CTree Ledger & Clearing' : activeTab}</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{activeTab === 'Ledger' ? '$CTree Ledger & Clearing' : activeTab}</h1>
+                {activeTab === 'Overview' && (
+                  <button
+                    onClick={handleOverviewRefresh}
+                    disabled={overviewRefreshing}
+                    className="flex items-center justify-center p-2 rounded-xl text-slate-500 hover:text-[#96EB3C] hover:bg-[#96EB3C]/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+                    title="Refresh from chain"
+                    aria-label="Refresh overview from chain"
+                  >
+                    <RefreshCw size={20} className={overviewRefreshing ? 'animate-spin' : ''} />
+                  </button>
+                )}
+              </div>
               <div className="mt-2 flex items-center gap-3">
-                <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded-md">Fiat Anchor: CAD</span>
+                <span className="bg-[#96EB3C]/20 text-[#548a1b] text-xs font-bold px-2 py-1 rounded-md">Fiat Anchor: CAD</span>
                 <div
                   role="button"
                   tabIndex={0}
@@ -1105,19 +1198,19 @@ export default function App() {
                     <span>Contract: {userCardContractAddress ? shortenAddress(userCardContractAddress) : '—'}</span>
                     {userCardContractAddress && (
                       <span className={`ml-0.5 inline-flex transition-all duration-200 ${contractCopied ? 'scale-110' : ''}`}>
-                        {contractCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} className="text-slate-400" />}
+                        {contractCopied ? <Check size={12} className="text-[#96EB3C]" /> : <Copy size={12} className="text-slate-400" />}
                       </span>
                     )}
                 </div>
               </div>
             </div>
             {activeTab === 'Merchants' && (
-              <button onClick={() => setIsMerchantModalOpen(true)} className="flex items-center space-x-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-black shadow-lg">
+              <button onClick={() => setIsMerchantModalOpen(true)} className="flex items-center space-x-2 px-5 py-2.5 bg-[#96EB3C] text-slate-900 rounded-xl text-sm font-bold hover:bg-[#86d635] shadow-[0_4px_16px_rgba(150,235,60,0.3)]">
                 <Utensils size={16} /><span>Onboard Restaurant</span>
               </button>
             )}
             {activeTab === 'Assets' && (
-              <button className="flex items-center space-x-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 shadow-lg">
+              <button className="flex items-center space-x-2 px-5 py-2.5 bg-[#96EB3C] text-slate-900 rounded-xl text-sm font-bold hover:bg-[#86d635] shadow-[0_4px_16px_rgba(150,235,60,0.3)]">
                 <Plus size={16} /><span>New Asset</span>
               </button>
             )}
@@ -1132,7 +1225,7 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <MetricCard title="Total Network Volume" value={overviewMetrics.totalNetworkVolumeCad} subValue="On-chain totalSupply points (CAD)" change="Live" isPositive={true} icon={<Activity size={24} />} />
                   <MetricCard title="Active Memberships" value={overviewMetrics.activeMemberships} subValue="On-chain totalActiveMemberships (activatedCount)" change="Live" isPositive={true} icon={<CreditCard size={24} />} colorClass="bg-blue-50 text-blue-600" />
-                  <MetricCard title="Partner Locations" value={overviewMetrics.partnerLocations} subValue="On-chain admins excluding owner" change="Live" isPositive={true} icon={<Utensils size={24} />} colorClass="bg-purple-50 text-purple-600" />
+                  <MetricCard title="Partner Locations" value={overviewMetrics.partnerLocations} subValue="Direct admins under owner (excl. sub-admins)" change="Live" isPositive={true} icon={<Utensils size={24} />} colorClass="bg-purple-50 text-purple-600" />
                   <MetricCard title="CashTrees Fuel Pool" value={overviewMetrics.fuelPoolBUnits} subValue="Owner B-Units for Mint/Top-ups" change="Live" isPositive={true} icon={<Zap size={24} />} colorClass="bg-orange-50 text-orange-600" />
                 </div>
 
@@ -1140,38 +1233,38 @@ export default function App() {
                    <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                       <div className="flex justify-between items-center mb-6">
                         <h2 className="font-bold text-lg text-slate-800">Live Network Activity</h2>
-                        <button onClick={() => setActiveTab('Ledger')} className="text-sm font-bold text-emerald-600 hover:underline">View Ledger</button>
+                        <button onClick={() => setActiveTab('Ledger')} className="text-sm font-bold text-[#82cc33] hover:text-[#6ea32b] hover:underline">View Ledger</button>
                       </div>
                       <ActiveHistoryPannelNew title="Live Network Activity" compact compactLimit={10} bare embeddedInDrawer filterByCardAddress={FIXED_USER_CARD_CONTRACT_ADDRESS} ledgerLayout onNewTransactionIndexed={handleNewTransactionIndexed} />
                    </div>
                    
                    <div className="bg-slate-900 rounded-2xl shadow-xl p-6 text-white relative overflow-hidden flex flex-col">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                      <h2 className="font-bold text-lg mb-6 relative z-10 flex items-center gap-2"><ShieldAlert size={20} className="text-emerald-400"/> System Health</h2>
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-[#96EB3C]/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                      <h2 className="font-bold text-lg mb-6 relative z-10 flex items-center gap-2"><ShieldAlert size={20} className="text-[#96EB3C]"/> System Health</h2>
                       
                       <div className="space-y-5 relative z-10 flex-1">
                          <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center">
                             <div className="flex items-center gap-3">
-                               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                               <div className="w-2 h-2 rounded-full bg-[#96EB3C] animate-pulse"></div>
                                <span className="text-sm font-medium text-slate-200">EOA Signer Nodes</span>
                             </div>
-                            <span className="text-xs font-bold text-emerald-400">Online</span>
+                            <span className="text-xs font-bold text-[#96EB3C]">Online</span>
                          </div>
                          
                          <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center">
                             <div className="flex items-center gap-3">
-                               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                               <div className="w-2 h-2 rounded-full bg-[#96EB3C] animate-pulse"></div>
                                <span className="text-sm font-medium text-slate-200">AA Contracts</span>
                             </div>
-                            <span className="text-xs font-bold text-emerald-400">Active</span>
+                            <span className="text-xs font-bold text-[#96EB3C]">Active</span>
                          </div>
                          
                          <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center">
                             <div className="flex items-center gap-3">
-                               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                               <div className="w-2 h-2 rounded-full bg-[#96EB3C] animate-pulse"></div>
                                <span className="text-sm font-medium text-slate-200">USDC Liquidity</span>
                             </div>
-                            <span className="text-xs font-bold text-emerald-400">Stable</span>
+                            <span className="text-xs font-bold text-[#96EB3C]">Stable</span>
                          </div>
 
                          <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
@@ -1195,9 +1288,9 @@ export default function App() {
                         <p className="text-sm text-slate-500 mt-1">Multisig and Account Abstraction Identity on the Beamio Network</p>
                         <div className="mt-5 space-y-3">
                             <div className="flex items-center gap-2">
-                               <BadgeCheck size={18} className="text-emerald-500"/>
+                               <BadgeCheck size={18} className="text-[#96EB3C]"/>
                                <span className="font-bold text-slate-700 w-24">BeamioTag:</span> 
-                               <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-md text-sm font-mono font-bold">{beamioTag ?? '—'}</span>
+                               <span className="bg-[#96EB3C]/20 text-[#548a1b] px-3 py-1 rounded-md text-sm font-mono font-bold">{beamioTag ?? '—'}</span>
                             </div>
                             <div className="flex items-center gap-2">
                                <Wallet size={18} className="text-slate-400"/>
@@ -1213,11 +1306,11 @@ export default function App() {
                     </div>
                     <div className="text-right flex flex-col items-end">
                         <div className="flex items-center gap-2 mb-2">
-                           <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">CT</div>
+                           <div className="w-8 h-8 rounded-full bg-[#96EB3C]/20 text-[#6ea32b] flex items-center justify-center font-bold">CT</div>
                            <span className="text-sm font-bold text-slate-500 uppercase tracking-widest">{issuedCardSummary.name}</span>
                         </div>
                         <div className="text-4xl font-black text-slate-900 tracking-tight">{issuedCardSummary.totalSupply} <span className="text-lg text-slate-400 font-bold">$CashTrees</span></div>
-                        <div className="text-xs font-bold text-emerald-600 mt-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">Total Membership Supply</div>
+                        <div className="text-xs font-bold text-[#6ea32b] mt-2 bg-[#96EB3C]/10 px-3 py-1 rounded-full border border-[#96EB3C]/30">Total Membership Supply</div>
                     </div>
                  </div>
 
@@ -1241,7 +1334,7 @@ export default function App() {
                                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Role & Authority</div>
                                  <div className="font-bold text-sm text-slate-700">Primary Signer (1/1)</div>
                              </div>
-                             <CheckCircle2 size={20} className="text-emerald-500"/>
+                             <CheckCircle2 size={20} className="text-[#96EB3C]"/>
                           </div>
                           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Wallet Assets</div>
@@ -1255,9 +1348,9 @@ export default function App() {
 
                     {/* AA Smart Account */}
                     <div className="bg-slate-900 rounded-3xl shadow-xl p-8 flex flex-col text-white relative overflow-hidden">
-                       <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                       <div className="absolute top-0 right-0 w-48 h-48 bg-[#96EB3C]/20 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
                        <div className="flex items-center gap-4 mb-6 relative z-10">
-                          <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center"><Cpu size={24}/></div>
+                          <div className="w-12 h-12 bg-[#96EB3C]/20 text-[#96EB3C] rounded-2xl flex items-center justify-center"><Cpu size={24}/></div>
                           <div>
                              <h3 className="font-bold text-lg text-white">AA Smart Account</h3>
                              <p className="text-xs text-slate-400">ERC-4337 Programmable Vault</p>
@@ -1266,7 +1359,7 @@ export default function App() {
                        <div className="space-y-4 flex-1 relative z-10">
                           <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Contract Address</div>
-                             <div className="font-mono text-sm text-emerald-400" title={aaAddress ?? eoaAddress ?? undefined}>{deployedContractAddress !== '—' ? shortenAddress(deployedContractAddress) : '—'}</div>
+                             <div className="font-mono text-sm text-[#96EB3C]" title={aaAddress ?? eoaAddress ?? undefined}>{deployedContractAddress !== '—' ? shortenAddress(deployedContractAddress) : '—'}</div>
                           </div>
                           <div className="grid grid-cols-2 gap-4">
                              <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
@@ -1284,7 +1377,7 @@ export default function App() {
                                 <Coins size={24} className="text-blue-400"/>
                                 {aaUsdcBalance != null ? formatWithThousands(aaUsdcBalance) : '—'} <span className="text-sm text-slate-400 font-medium">USDC</span>
                              </div>
-                             <div className="text-[10px] text-emerald-400 mt-2 flex items-center gap-1">
+                             <div className="text-[10px] text-[#96EB3C] mt-2 flex items-center gap-1">
                                 <Download size={12}/> Automatically receives USDC from In-App purchases
                              </div>
                           </div>
@@ -1329,7 +1422,7 @@ export default function App() {
                        </div>
                     </div>
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                       <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><Receipt size={24}/></div>
+                       <div className="w-12 h-12 bg-[#96EB3C]/20 text-[#6ea32b] rounded-xl flex items-center justify-center"><Receipt size={24}/></div>
                        <div>
                           <div className="text-sm font-bold text-slate-400 uppercase tracking-widest">Avg. Ticket Size</div>
                           <div className="text-2xl font-black text-slate-900">$30.25 <span className="text-sm text-slate-500 font-medium">CAD</span></div>
@@ -1340,66 +1433,10 @@ export default function App() {
                  <div className="flex items-center gap-4">
                     <div className="relative">
                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                       <input type="text" placeholder="Search restaurants or locations..." className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 w-80 shadow-sm" />
+                       <input type="text" placeholder="Search restaurants or locations..." className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-4 focus:ring-[#96EB3C]/30 focus:border-[#96EB3C]/50 w-80 shadow-sm" />
                     </div>
                  </div>
 
-                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                    <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                       <div>
-                          <h3 className="text-lg font-black text-slate-900">Current Admins</h3>
-                          <p className="text-xs text-slate-500 mt-1">Live on-chain admin directory with stored metadata.</p>
-                       </div>
-                       <div className="text-sm font-bold text-slate-500">{formatWithThousands(onchainAdmins.length, 0)} total</div>
-                    </div>
-                    <table className="w-full">
-                       <thead>
-                          <tr className="bg-slate-50/80 border-b border-slate-100 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
-                             <th className="px-6 py-4">Admin</th>
-                             <th className="px-6 py-4">Metadata</th>
-                             <th className="px-6 py-4">Parent</th>
-                             <th className="px-6 py-4 text-right">Role</th>
-                          </tr>
-                       </thead>
-                       <tbody className="divide-y divide-slate-100">
-                          {onchainAdmins.length > 0 ? onchainAdmins.map((admin) => (
-                            <tr key={admin.address} className="hover:bg-slate-50 transition-colors">
-                               <td className="px-6 py-4">
-                                  <div className="font-mono text-sm font-bold text-slate-900">{shortenAddress(admin.address)}</div>
-                                  <div className="text-[10px] text-slate-400 mt-1">{admin.address}</div>
-                               </td>
-                               <td className="px-6 py-4">
-                                  <div className="font-semibold text-sm text-slate-800">{admin.metadataTitle}</div>
-                                  <div className="text-[10px] text-slate-500 mt-1">{admin.metadataSubtitle || admin.metadata || '—'}</div>
-                               </td>
-                               <td className="px-6 py-4">
-                                  <div className="font-mono text-sm text-slate-700">
-                                    {admin.parent.toLowerCase() === ZERO_ADDRESS.toLowerCase() ? 'Owner Root' : shortenAddress(admin.parent)}
-                                  </div>
-                                  {admin.parent.toLowerCase() !== ZERO_ADDRESS.toLowerCase() && (
-                                    <div className="text-[10px] text-slate-400 mt-1">{admin.parent}</div>
-                                  )}
-                               </td>
-                               <td className="px-6 py-4 text-right">
-                                  <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase ${
-                                    admin.role === 'Owner'
-                                      ? 'bg-slate-900 text-white'
-                                      : admin.role === 'Direct Admin'
-                                        ? 'bg-emerald-50 text-emerald-600'
-                                        : 'bg-blue-50 text-blue-600'
-                                  }`}>
-                                    {admin.role}
-                                  </span>
-                               </td>
-                            </tr>
-                          )) : (
-                            <tr>
-                               <td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-400">No on-chain admins loaded yet.</td>
-                            </tr>
-                          )}
-                       </tbody>
-                    </table>
-                 </div>
 
                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                     <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
@@ -1450,65 +1487,77 @@ export default function App() {
                     </div>
                     <table className="w-full">
                        <thead>
-                          <tr className="bg-slate-50/80 border-b border-slate-100 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
-                             <th className="px-6 py-4">Restaurant & Location</th>
-                             <th className="px-6 py-4">Cardholders</th>
-                             <th className="px-6 py-4 text-right">Dining Rev. ($CTree)</th>
-                             <th className="px-6 py-4 text-right bg-slate-100/50">Fiat Collected (Offline)</th>
-                             <th className="px-6 py-4">B-Units Balance</th>
-                             <th className="px-6 py-4 text-right">Actions</th>
+                          <tr className="bg-slate-50/50 border-b border-black/[0.04] text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                             <th className="px-6 py-5">Restaurant & Location</th>
+                             <th className="px-6 py-5">Cardholders</th>
+                             <th className="px-6 py-5 text-right">Unsettled $CTree (Rev)</th>
+                             <th className="px-6 py-5 text-right bg-slate-50">Unsettled Fiat (Offline)</th>
+                             <th className="px-6 py-5">Mint Quota & Risk</th>
+                             <th className="px-6 py-5">B-Units Balance</th>
+                             <th className="px-6 py-5 text-right">Actions</th>
                           </tr>
                        </thead>
-                       <tbody className="divide-y divide-slate-100">
+                       <tbody className="divide-y divide-black/[0.02]">
                           {localRestaurants.map((r) => (
-                             <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-6 py-4">
-                                   <div className="flex items-center gap-3">
-                                      <img src="https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=100&h=100&fit=crop" alt="" className="w-12 h-12 rounded-xl bg-slate-200 object-cover border border-slate-100 shadow-sm" />
+                             <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="px-6 py-5">
+                                   <div className="flex items-center gap-4">
+                                      <img src="https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=100&h=100&fit=crop" alt="" className="w-12 h-12 rounded-[14px] bg-slate-200 object-cover border border-black/[0.05] shadow-sm" />
                                       <div>
-                                         <div className="flex items-center gap-2">
-                                            <span className="font-bold text-sm text-slate-900">{r.name}</span>
-                                            {r.cuisine && (
-                                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">{r.cuisine}</span>
-                                            )}
-                                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-bold uppercase">Saved</span>
+                                         <div className="font-bold text-[15px] text-slate-900">{r.name}</div>
+                                         <div className="flex items-center gap-1 mt-1 text-[11px] text-slate-500 font-medium">
+                                            <MapPin size={12} className="text-slate-400"/> {r.cityArea || '—'}
                                          </div>
-                                         <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500">
-                                            <MapPin size={10} className="text-emerald-500"/> {r.cityArea || '—'}
-                                         </div>
+                                         {r.cuisine && (
+                                           <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium mt-1 inline-block">{r.cuisine}</span>
+                                         )}
                                          {r.handle && (
                                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">{r.handle}</div>
                                          )}
+                                         <span className="text-[9px] px-2 py-0.5 rounded-full bg-[#96EB3C]/20 text-[#548a1b] font-bold uppercase mt-1 inline-block">Saved</span>
                                       </div>
                                    </div>
                                 </td>
-                                <td className="px-6 py-4">
-                                   <div className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
-                                      <Users size={14} className="text-blue-500"/> 0
+                                <td className="px-6 py-5">
+                                   <div className="flex items-center gap-1.5 text-[15px] font-bold text-slate-700">
+                                      <Users size={16} className="text-[#1562f0]"/> 0
                                    </div>
                                 </td>
-                                <td className="px-6 py-4 text-right">
-                                   <div className="font-bold text-emerald-600">—</div>
-                                   <div className="text-[10px] text-slate-400 font-medium">$CTree via Transfers</div>
+                                <td className="px-6 py-5 text-right">
+                                   <div className="font-bold text-[16px] text-[#6ea32b]">—</div>
                                 </td>
-                                <td className="px-6 py-4 text-right bg-slate-50">
-                                   <div className="font-bold text-slate-700">—</div>
-                                   <div className="text-[10px] text-slate-400 font-medium">CAD kept via offline Mints</div>
+                                <td className="px-6 py-5 text-right bg-slate-50/50">
+                                   <div className="font-bold text-[16px] text-slate-800">—</div>
                                 </td>
-                                <td className="px-6 py-4">
+                                <td className="px-6 py-5">
+                                   <div className="w-full max-w-[150px]">
+                                      <div className="flex justify-between text-[11px] font-bold mb-1.5">
+                                         <span className="text-slate-500">Usage: —</span>
+                                         <span className="text-slate-400">Limit: —</span>
+                                      </div>
+                                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                         <div className="h-full bg-slate-200 transition-all duration-500" style={{width: '0%'}}></div>
+                                      </div>
+                                   </div>
+                                </td>
+                                <td className="px-6 py-5">
                                     <div className="flex items-center gap-2">
                                         <Zap size={14} className="text-amber-500" />
-                                        <span className="font-mono font-bold text-slate-700">—</span>
+                                        <span className="font-mono font-bold text-[15px] text-slate-700">—</span>
                                     </div>
-                                    <div className="text-[10px] text-slate-400 font-medium mt-1">
+                                    <div className="text-[11px] text-slate-400 font-medium mt-1">
                                         Bears 0.8% fee per dining TX
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                                  {r.kybLink && (
-                                    <a href={r.kybLink} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:text-emerald-700 text-sm font-medium" title="KYB Link">KYB</a>
-                                  )}
-                                  <button className="text-slate-400 hover:text-emerald-600"><Settings size={18}/></button>
+                                <td className="px-6 py-5 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    {r.kybLink && (
+                                      <a href={r.kybLink} target="_blank" rel="noopener noreferrer" className="text-[#82cc33] hover:text-[#6ea32b] text-sm font-medium" title="KYB Link">KYB</a>
+                                    )}
+                                    <button className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-[#96EB3C]/20 hover:text-[#7abf30] text-slate-700 px-4 py-2.5 rounded-[12px] text-[13px] font-bold transition-colors active:scale-95">
+                                      <SlidersHorizontal size={14}/> Manage
+                                    </button>
+                                  </div>
                                 </td>
                              </tr>
                           ))}
@@ -1540,7 +1589,7 @@ export default function App() {
                     </div>
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
                        <div className="flex items-center gap-3 mb-2">
-                          <div className="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center"><CreditCard size={16}/></div>
+                          <div className="w-8 h-8 bg-[#96EB3C]/20 text-[#6ea32b] rounded-lg flex items-center justify-center"><CreditCard size={16}/></div>
                           <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">Green Cards</span>
                        </div>
                        <div className="text-2xl font-black text-slate-900">1,420 <span className="text-sm text-slate-500 font-medium">Cards</span></div>
@@ -1557,7 +1606,7 @@ export default function App() {
                  <div className="flex items-center justify-between gap-4">
                     <div className="relative">
                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                       <input type="text" placeholder="Search by handle or AA address..." className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 w-80 shadow-sm" />
+                       <input type="text" placeholder="Search by handle or AA address..." className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-4 focus:ring-[#96EB3C]/30 focus:border-[#96EB3C]/50 w-80 shadow-sm" />
                     </div>
                     <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 shadow-sm">
                        <Filter size={16}/> Filter by Tier
@@ -1597,7 +1646,7 @@ export default function App() {
                                    <span className={`px-2.5 py-1 rounded text-xs font-bold ${
                                       member.tier === 'Black VIP Card' 
                                       ? 'bg-slate-900 text-amber-400 border border-slate-800' 
-                                      : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                      : 'bg-[#96EB3C]/20 text-[#5a961d] border border-[#96EB3C]/30'
                                    }`}>
                                       {member.tier}
                                    </span>
@@ -1607,7 +1656,7 @@ export default function App() {
                                    <div className="text-[10px] text-slate-400 font-medium">{member.currency}</div>
                                 </td>
                                 <td className="px-6 py-4"><StatusBadge status={member.status} /></td>
-                                <td className="px-6 py-4 text-right"><button className="text-slate-400 hover:text-emerald-600"><Settings size={18}/></button></td>
+                                <td className="px-6 py-4 text-right"><button className="text-slate-400 hover:text-[#82cc33]"><Settings size={18}/></button></td>
                              </tr>
                           ))}
                        </tbody>
@@ -1619,97 +1668,97 @@ export default function App() {
             {/* --- ASSETS --- */}
             {activeTab === 'Assets' && (
               <div className="space-y-6 animate-in fade-in">
-                <div className="mb-4">
-                   <h2 className="text-xl font-black text-slate-900">CashTrees Membership Cards</h2>
-                   <p className="text-sm text-slate-500 mt-1">ERC-1155 Dynamic Allocation: Each minted card sequentially generates a unique NFT ID. Card tier (Green/Black) is automatically determined by the user's initial top-up amount.</p>
+                <div className="mb-6">
+                   <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">CashTrees NFT Assets</h2>
+                   <p className="text-[15px] text-slate-500 mt-2 font-medium max-w-4xl leading-relaxed">ERC-1155 Dynamic Allocation: User cards are minted based on top-up amounts. The <strong className="text-slate-700">Partner Card</strong> is a Merchant License NFT granting the authority to accept $CTree payments and process offline mints/top-ups.</p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {tierAssets.length === 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {tierAssets.length === 0 && (
                     <div className="col-span-full py-12 text-center text-slate-500 bg-slate-50 rounded-2xl border border-slate-100">
                       <p className="font-medium">No tier metadata available yet.</p>
                       <p className="text-sm mt-1">Tier cards will appear once the issued card has tiers configured on-chain and metadata is loaded.</p>
                     </div>
-                  ) : tierAssets.map(asset => (
+                  )}
+                  {[...tierAssets, PARTNER_CARD_ASSET].map(asset => {
+                    const useLightText = isBackgroundDark(asset.color);
+                    return (
                     <div
                       key={asset.id}
-                      className={`rounded-[32px] p-8 shadow-xl relative overflow-hidden transition-transform hover:-translate-y-1 ${asset.color.startsWith('#') ? '' : asset.color}`}
+                      className={`rounded-[32px] p-8 shadow-[0_16px_40px_rgba(0,0,0,0.1)] relative overflow-hidden transition-transform duration-300 hover:-translate-y-1.5 ${asset.color.startsWith('#') ? '' : asset.color}`}
                       style={asset.color.startsWith('#') ? { backgroundColor: asset.color } : undefined}
                     >
-                      {/* Decorative background elements */}
                       <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
                       <div className="absolute bottom-0 left-0 w-40 h-40 bg-black/10 rounded-full blur-2xl -ml-10 -mb-10 pointer-events-none"></div>
                       
-                      <div className="relative z-10 flex justify-between items-start mb-12">
-                        <div className={`w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white border border-white/30 shadow-inner overflow-hidden`}>
+                      <div className="relative z-10 flex justify-between items-start mb-14">
+                        <div className={`w-14 h-14 rounded-[18px] bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner overflow-hidden ${useLightText ? 'text-white' : 'text-slate-900'}`}>
                           {asset.image ? (
                             <img src={asset.image} alt="" className="w-full h-full object-contain" />
                           ) : (
-                            <CreditCard size={28} strokeWidth={1.5} />
+                            <CreditCard size={28} strokeWidth={2} />
                           )}
                         </div>
                         <div className="flex flex-col items-end">
                            <StatusBadge status={asset.status} />
-                           <div className="mt-2 text-white/80 text-xs font-bold bg-black/20 px-3 py-1 rounded-lg border border-white/10">
-                              Mint Threshold: {asset.minTopUp}
+                           <div className={`mt-3 text-[11px] font-bold bg-black/10 px-3 py-1.5 rounded-[10px] border border-black/5 uppercase tracking-widest ${useLightText ? 'text-white/90' : 'text-slate-800'}`}>
+                              Threshold: {asset.minTopUp}
                            </div>
                         </div>
                       </div>
                       
                       <div className="relative z-10">
-                        <p className="text-white/80 text-sm font-bold tracking-widest uppercase mb-1">{asset.type}</p>
-                        <h3 className="font-black text-3xl text-white tracking-tight mb-8">{asset.name}</h3>
+                        <p className={`text-[13px] font-bold tracking-widest uppercase mb-1.5 ${useLightText ? 'text-white/80' : 'text-slate-700'}`}>{asset.type}</p>
+                        <h3 className={`font-black text-3xl tracking-tight mb-8 leading-tight ${useLightText ? 'text-white' : 'text-slate-900'}`}>{asset.name}</h3>
                         
-                        <div className="bg-black/20 backdrop-blur-sm rounded-2xl p-5 border border-white/10">
-                           <div className="flex justify-between items-end mb-3">
+                        <div className={`backdrop-blur-md rounded-[24px] p-6 border shadow-inner ${useLightText ? 'bg-black/10 border-black/5' : 'bg-black/5 border-black/5'}`}>
+                           <div className="flex justify-between items-end mb-4">
                              <div>
-                               <div className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1">Mint Rule</div>
-                               <div className="text-white font-bold text-lg mt-1">{asset.mintRule} <span className="font-mono text-emerald-300 ml-1">{asset.minTopUp}</span></div>
+                               <div className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${useLightText ? 'text-white/60' : 'text-slate-600'}`}>Mint Rule</div>
+                               <div className={`font-extrabold text-[15px] ${useLightText ? 'text-white' : 'text-slate-800'}`}>{asset.mintRule} <span className="font-mono ml-1.5">{asset.minTopUp}</span></div>
                              </div>
                              <div className="text-right">
-                                <div className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1">Circulation</div>
-                                <div className="text-white font-bold text-sm mt-1">{asset.activeHolders} Active / {asset.minted} Minted</div>
+                                <div className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${useLightText ? 'text-white/60' : 'text-slate-600'}`}>Circulation</div>
+                                <div className={`font-bold text-[13px] ${useLightText ? 'text-white' : 'text-slate-800'}`}>{asset.activeHolders} Active <span className="mx-1 opacity-50">/</span> {asset.minted} Minted</div>
                              </div>
                            </div>
-                           <div className="w-full bg-black/30 h-1.5 rounded-full overflow-hidden mt-2">
+                           <div className={`w-full h-2 rounded-full overflow-hidden mt-3 ${useLightText ? 'bg-white/20' : 'bg-black/20'}`}>
                              <div 
-                               className="h-full bg-white rounded-full relative" 
+                               className={`h-full rounded-full relative ${useLightText ? 'bg-white' : 'bg-slate-800'}`} 
                                style={{ width: `${asset.minted > 0 ? (asset.activeHolders / asset.minted) * 100 : 0}%` }}
                              >
-                                <div className="absolute right-0 top-0 bottom-0 w-4 bg-white/50 animate-pulse"></div>
+                                <div className={`absolute right-0 top-0 bottom-0 w-6 animate-pulse ${useLightText ? 'bg-white/50' : 'bg-white/30'}`}></div>
                              </div>
                            </div>
                         </div>
                       </div>
                     </div>
-                  ))}
+                  );})}
                 </div>
                 
                 {/* Acquisition & Top-up Channels */}
-                <div className="mt-12 bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
-                    <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2"><ArrowUpRight className="text-emerald-500"/> Acquisition & Top-up Channels</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Online */}
-                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><Globe size={20}/></div>
-                                <h4 className="font-bold text-slate-900">Online (In-App)</h4>
+                <div className="mt-12 bg-white rounded-[32px] border border-black/[0.04] shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-10">
+                    <h3 className="text-xl font-extrabold text-slate-900 mb-8 flex items-center gap-2.5 tracking-tight"><ArrowUpRight className="text-[#96EB3C]" strokeWidth={3}/> Acquisition & Top-up Channels</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                        <div className="p-8 bg-[#F5F5F7] rounded-[24px] border border-black/[0.03]">
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="w-12 h-12 rounded-[16px] bg-[#1562f0]/10 text-[#1562f0] flex items-center justify-center shadow-inner"><Globe size={24}/></div>
+                                <h4 className="font-extrabold text-lg text-slate-900">Online (In-App)</h4>
                             </div>
-                            <ul className="space-y-3 text-sm text-slate-600">
-                                <li className="flex gap-2 items-start"><CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5"/> <span><strong>Payment Currency:</strong> USDC (Web3 Native).</span></li>
-                                <li className="flex gap-2 items-start"><CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5"/> <span><strong>Card Balance Base:</strong> CAD (1 $CTree = 1 CAD).</span></li>
-                                <li className="flex gap-2 items-start"><CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5"/> <span><strong>Oracle Logic:</strong> Uses <strong>Coinbase Oracle</strong> to fetch real-time USDC/CAD rates. The exact USDC amount is deposited to the AA Smart Account, and the equivalent <strong>$CTree</strong> balance is minted to the user's Card.</span></li>
+                            <ul className="space-y-4 text-[14px] text-slate-600 font-medium">
+                                <li className="flex gap-3 items-start"><CheckCircle2 size={18} className="text-[#1562f0] shrink-0 mt-0.5"/> <span><strong className="text-slate-800">Payment Currency:</strong> USDC (Web3 Native).</span></li>
+                                <li className="flex gap-3 items-start"><CheckCircle2 size={18} className="text-[#1562f0] shrink-0 mt-0.5"/> <span><strong className="text-slate-800">Card Balance Base:</strong> CAD (1 $CTree = 1 CAD).</span></li>
+                                <li className="flex gap-3 items-start"><CheckCircle2 size={18} className="text-[#1562f0] shrink-0 mt-0.5"/> <span><strong className="text-slate-800">Oracle Logic:</strong> Uses <strong className="text-[#1562f0]">Coinbase Oracle</strong> to fetch real-time USDC/CAD rates. Exact USDC is deposited to the AA Smart Account, and equivalent <strong className="text-slate-800">$CTree</strong> balance is minted.</span></li>
                             </ul>
                         </div>
-                        {/* Offline */}
-                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><Store size={20}/></div>
-                                <h4 className="font-bold text-slate-900">Offline (Physical Stores)</h4>
+                        <div className="p-8 bg-[#F5F5F7] rounded-[24px] border border-black/[0.03]">
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="w-12 h-12 rounded-[16px] bg-[#96EB3C]/20 text-[#6ea32b] flex items-center justify-center shadow-inner"><Store size={24}/></div>
+                                <h4 className="font-extrabold text-lg text-slate-900">Offline (Physical Stores)</h4>
                             </div>
-                            <ul className="space-y-3 text-sm text-slate-600">
-                                <li className="flex gap-2 items-start"><CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5"/> <span><strong>Supported Currency:</strong> CAD (Fiat).</span></li>
-                                <li className="flex gap-2 items-start"><CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5"/> <span><strong>Hardware / Access:</strong> NFC 424 DNA physical cards or the Beamio APP.</span></li>
-                                <li className="flex gap-2 items-start"><CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5"/> <span><strong>Example Flow:</strong> A consumer pays 50 CAD at a store POS, installs the Beamio APP (or taps their NFC card), and instantly redeems/mints a Green Card securely tied to their Smart Account.</span></li>
+                            <ul className="space-y-4 text-[14px] text-slate-600 font-medium">
+                                <li className="flex gap-3 items-start"><CheckCircle2 size={18} className="text-[#82cc33] shrink-0 mt-0.5"/> <span><strong className="text-slate-800">Supported Currency:</strong> CAD (Fiat).</span></li>
+                                <li className="flex gap-3 items-start"><CheckCircle2 size={18} className="text-[#82cc33] shrink-0 mt-0.5"/> <span><strong className="text-slate-800">Hardware / Access:</strong> NFC 424 DNA physical cards or the Beamio APP.</span></li>
+                                <li className="flex gap-3 items-start"><CheckCircle2 size={18} className="text-[#82cc33] shrink-0 mt-0.5"/> <span><strong className="text-slate-800">Example Flow:</strong> A consumer pays 50 CAD at a store POS, taps their NFC card, and instantly mints a Green Card securely tied to their Smart Account. Fiat remains with the merchant pending future clearing.</span></li>
                             </ul>
                         </div>
                     </div>
@@ -1732,7 +1781,7 @@ export default function App() {
                       <div>
                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">CashTrees Fuel Pool</div>
                          <div className="font-black text-xl leading-none">845,000 <span className="text-xs font-normal text-slate-400">B-Units</span></div>
-                         <div className="text-[9px] text-emerald-400 mt-1">Platform pays for Mint/Top-ups only</div>
+                         <div className="text-[9px] text-[#96EB3C] mt-1">Platform pays for Mint/Top-ups only</div>
                       </div>
                    </div>
                  </div>
@@ -1791,11 +1840,11 @@ export default function App() {
                                          </div>
                                       </div>
                                    ) : (
-                                      <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg">
-                                         <Banknote size={14} className="text-emerald-600"/>
+                                      <div className="inline-flex items-center gap-2 bg-[#96EB3C]/10 border border-[#96EB3C]/20 px-3 py-1.5 rounded-lg">
+                                         <Banknote size={14} className="text-[#6ea32b]"/>
                                          <div>
-                                            <div className="text-xs font-bold text-emerald-800">CAD Bank Wire</div>
-                                            <div className="text-[10px] font-bold text-emerald-600 mt-0.5">SLA: {req.timeline} (Next Biz Day)</div>
+                                            <div className="text-xs font-bold text-[#548a1b]">CAD Bank Wire</div>
+                                            <div className="text-[10px] font-bold text-[#6ea32b] mt-0.5">SLA: {req.timeline} (Next Biz Day)</div>
                                          </div>
                                       </div>
                                    )}
@@ -1803,7 +1852,7 @@ export default function App() {
                                 <td className="px-6 py-4 text-right">
                                    <button 
                                       onClick={() => handleApproveSettlement(req.id)}
-                                      className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-md active:scale-95"
+                                      className="inline-flex items-center gap-1.5 bg-[#96EB3C] hover:bg-[#86d635] text-slate-900 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-[0_4px_12px_rgba(150,235,60,0.3)] active:scale-95"
                                    >
                                       <Check size={16}/> Approve
                                    </button>
@@ -1818,7 +1867,7 @@ export default function App() {
                  {/* Clearing Matrix (The core of the business logic) */}
                  <div className="bg-white border border-slate-200 rounded-3xl shadow-sm p-8 mb-8">
                     <div className="flex items-center gap-3 mb-6">
-                       <Calculator className="text-emerald-600" size={24}/>
+                       <Calculator className="text-[#6ea32b]" size={24}/>
                        <h3 className="text-lg font-bold text-slate-900">Merchant Clearing Matrix</h3>
                     </div>
                     <div className="overflow-x-auto">
@@ -1846,7 +1895,7 @@ export default function App() {
                                    <td className="py-5 text-right font-mono font-bold text-rose-600">${m.fiatCollected}</td>
                                    <td className="py-5 text-center text-slate-300">=</td>
                                    <td className="py-5 text-right pr-4">
-                                      <div className={`font-mono font-black text-lg ${net > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                      <div className={`font-mono font-black text-lg ${net > 0 ? 'text-[#96EB3C]' : 'text-rose-600'}`}>
                                          ${Math.abs(net).toFixed(2)}
                                       </div>
                                       <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase">
@@ -1897,18 +1946,18 @@ export default function App() {
                                    </td>
                                    <td className="px-6 py-4">
                                       <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg w-max">
-                                         {tx.device === 'NFC Card' ? <Nfc size={14} className="text-blue-500"/> : tx.device === 'Beamio APP' ? <Smartphone size={14} className="text-emerald-500"/> : <Globe size={14} className="text-slate-400"/>}
+                                         {tx.device === 'NFC Card' ? <Nfc size={14} className="text-blue-500"/> : tx.device === 'Beamio APP' ? <Smartphone size={14} className="text-[#96EB3C]"/> : <Globe size={14} className="text-slate-400"/>}
                                          {tx.device}
                                       </div>
                                    </td>
                                    <td className="px-6 py-4">
-                                      <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-600 hover:text-emerald-700 cursor-pointer w-max bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                                      <div className="flex items-center gap-1.5 text-xs font-mono text-[#82cc33] hover:text-[#6ea32b] cursor-pointer w-max bg-[#96EB3C]/10 px-2 py-1 rounded border border-[#96EB3C]/20">
                                          {tx.txHash} <ExternalLink size={12}/>
                                       </div>
                                    </td>
                                    <td className="px-6 py-4 text-right font-mono font-black text-slate-900 text-lg">${tx.amount}</td>
                                    <td className="px-6 py-4 text-right whitespace-nowrap">
-                                      <div className={`text-xs font-bold ${tx.gasPaidBy === 'CashTrees' ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                      <div className={`text-xs font-bold ${tx.gasPaidBy === 'CashTrees' ? 'text-[#82cc33]' : 'text-orange-600'}`}>
                                          {tx.gasPaidBy}
                                       </div>
                                       <div className="text-[10px] text-amber-600 font-mono mt-1 flex items-center justify-end gap-1">
@@ -1952,11 +2001,11 @@ export default function App() {
                          ))}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                         <button className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl flex flex-col items-center justify-center shadow-lg shadow-emerald-100">
+                         <button className="bg-[#96EB3C] hover:bg-[#86d635] text-slate-900 font-bold py-4 rounded-xl flex flex-col items-center justify-center shadow-[0_4px_16px_rgba(150,235,60,0.3)]">
                             <Camera size={20} />
                             <span className="text-[8px] uppercase tracking-widest mt-1">Scan User</span>
                          </button>
-                         <button className="bg-white border-2 border-emerald-600 text-emerald-600 font-bold py-4 rounded-xl flex flex-col items-center justify-center">
+                         <button className="bg-white border-2 border-[#96EB3C] text-[#6ea32b] font-bold py-4 rounded-xl flex flex-col items-center justify-center">
                             <QrCode size={20} />
                             <span className="text-[8px] uppercase tracking-widest mt-1">Receive</span>
                          </button>
@@ -1978,7 +2027,7 @@ export default function App() {
                        </div>
                     </div>
                     <div className="flex-1 overflow-y-auto">
-                       <div className="p-4 border-b border-slate-100 cursor-pointer bg-emerald-50 border-l-4 border-l-emerald-600">
+                       <div className="p-4 border-b border-slate-100 cursor-pointer bg-[#96EB3C]/10 border-l-4 border-l-[#96EB3C]">
                           <div className="flex justify-between items-start mb-1">
                               <div className="flex items-center gap-3">
                                   <img src={initialMerchants[0].logo} alt="" className="w-10 h-10 rounded-full object-cover" />
@@ -1987,7 +2036,7 @@ export default function App() {
                                     <span className="text-[10px] text-slate-500">@osmanthus_van</span>
                                   </div>
                               </div>
-                              <span className="text-[10px] font-bold text-emerald-600">10:42 AM</span>
+                              <span className="text-[10px] font-bold text-[#82cc33]">10:42 AM</span>
                           </div>
                           <p className="text-xs text-slate-600 truncate mt-1">Rate adjustment request for Q1...</p>
                        </div>
@@ -1999,7 +2048,7 @@ export default function App() {
                           <img src={initialMerchants[0].logo} alt="" className="w-12 h-12 rounded-xl object-cover" />
                           <div>
                              <div className="font-bold text-lg text-slate-900 flex items-center gap-2">Osmanthus <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 font-bold uppercase">Merchant</span></div>
-                             <div className="text-xs text-slate-500 flex items-center gap-1"><Lock size={10} className="text-emerald-500"/> End-to-End Encrypted</div>
+                             <div className="text-xs text-slate-500 flex items-center gap-1"><Lock size={10} className="text-[#96EB3C]"/> End-to-End Encrypted</div>
                           </div>
                        </div>
                     </div>
@@ -2016,7 +2065,7 @@ export default function App() {
                        <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
                           <button className="p-2 text-slate-400 hover:text-slate-600"><PlusCircle size={24}/></button>
                           <input type="text" placeholder="Type a message..." className="flex-1 bg-transparent border-none focus:outline-none text-sm py-2" />
-                          <button className="p-2.5 rounded-xl bg-emerald-600 text-white"><Send size={18}/></button>
+                          <button className="p-2.5 rounded-xl bg-[#96EB3C] hover:bg-[#86d635] text-slate-900"><Send size={18}/></button>
                        </div>
                     </div>
                  </div>
@@ -2048,7 +2097,7 @@ export default function App() {
                         </div>
                         <div className="text-right">
                            <div className="text-xs font-bold text-slate-500">2025-12-10</div>
-                           <div className="text-[10px] text-emerald-600 font-bold">On-Chain Verified</div>
+                           <div className="text-[10px] text-[#6ea32b] font-bold">On-Chain Verified</div>
                         </div>
                       </div>
                     ))}
@@ -2066,7 +2115,7 @@ export default function App() {
             <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-md relative z-10 p-8 animate-in fade-in zoom-in duration-200">
                <div className="flex justify-between items-center mb-8">
                   <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                     <Utensils className="text-emerald-600" size={28}/> Onboard Restaurant
+                     <Utensils className="text-[#82cc33]" size={28}/> Onboard Restaurant
                   </h3>
                   <button onClick={closeMerchantModal} className="text-slate-400 hover:text-black bg-slate-100 p-2 rounded-full"><X size={20}/></button>
                </div>
@@ -2076,9 +2125,9 @@ export default function App() {
                     <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-medium">{kybError}</div>
                   )}
                   {kybSuccess ? (
-                    <div className="p-4 bg-emerald-50 text-emerald-800 rounded-xl text-sm border border-emerald-200">
+                    <div className="p-4 bg-[#96EB3C]/10 text-[#548a1b] rounded-xl text-sm border border-[#96EB3C]/20">
                       <div className="font-bold mb-2">{kybSuccess.link.startsWith('http') ? 'KYB Link generated' : 'Success'}</div>
-                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-emerald-200">
+                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-[#96EB3C]/20">
                         <span className="flex-1 break-all text-slate-800 font-medium">{kybSuccess.link}</span>
                         {kybSuccess.link.startsWith('http') && (
                           <button
@@ -2088,11 +2137,11 @@ export default function App() {
                                 setTimeout(() => setKybLinkCopied(false), 2000);
                               });
                             }}
-                            className="flex-shrink-0 p-2 rounded-lg hover:bg-emerald-100 transition-colors"
+                            className="flex-shrink-0 p-2 rounded-lg hover:bg-[#96EB3C]/10 transition-colors"
                             title="Copy link"
                           >
                             {kybLinkCopied ? (
-                              <Check className="w-5 h-5 text-emerald-600 animate-in zoom-in duration-200" />
+                              <Check className="w-5 h-5 text-[#96EB3C] animate-in zoom-in duration-200" />
                             ) : (
                               <Copy className="w-5 h-5 text-slate-600" />
                             )}
@@ -2104,30 +2153,32 @@ export default function App() {
                     <>
                   <div>
                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Restaurant Name</label>
-                     <input type="text" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Sen Pho + Cafe" />
+                     <input type="text" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-bold" placeholder="e.g. Sen Pho + Cafe" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                       <div>
                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Cuisine</label>
-                         <input type="text" value={restaurantCuisine} onChange={(e) => setRestaurantCuisine(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Vietnamese" />
+                         <input type="text" value={restaurantCuisine} onChange={(e) => setRestaurantCuisine(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-bold" placeholder="e.g. Vietnamese" />
                       </div>
                       <div>
                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">City/Area</label>
-                         <input type="text" value={restaurantCity} onChange={(e) => setRestaurantCity(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold" placeholder="e.g. Kerrisdale" />
+                         <input type="text" value={restaurantCity} onChange={(e) => setRestaurantCity(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-bold" placeholder="e.g. Kerrisdale" />
                       </div>
                   </div>
                   <div>
                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Handle Reservation <span className="text-slate-400 font-normal">(optional)</span></label>
                      {handleResolved ? (
-                        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                           <img src={handleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${handleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-emerald-200 object-cover" />
+                        <div className="flex items-center gap-2 p-3 bg-[#96EB3C]/10 border border-[#96EB3C]/20 rounded-2xl">
+                           <img src={handleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${handleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-[#96EB3C]/20 object-cover" />
                            <div className="flex flex-col gap-0.5">
-                              <span className="font-mono font-bold text-emerald-700">@{handleResolved.username}</span>
-                              {handleResolved.address && (
-                                <span className="text-[10px] text-slate-500 font-mono" title={handleResolved.address}>{shortenAddress(handleResolved.address)}</span>
-                              )}
+                              <span className="font-mono font-bold text-[#548a1b]">@{handleResolved.username}</span>
+                              {handleResolved.addressAA ? (
+                                <span className="text-[10px] text-slate-500 font-mono" title={handleResolved.addressAA}>AA: {shortenAddress(handleResolved.addressAA)}</span>
+                              ) : handleResolved.address ? (
+                                <span className="text-[10px] text-slate-500 font-mono" title={handleResolved.address}>EOA: {shortenAddress(handleResolved.address)}</span>
+                              ) : null}
                            </div>
-                           <button type="button" onClick={() => { setHandleResolved(null); setRestaurantHandle(''); setHandleError(null); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear handle"><X size={16} /></button>
+                           <button type="button" onClick={() => { setHandleResolved(null); setRestaurantHandle(''); setHandleError(null); }} className="ml-auto p-1 rounded-lg hover:bg-[#96EB3C]/10 text-[#6ea32b]" aria-label="Clear handle"><X size={16} /></button>
                         </div>
                      ) : (
                         <div className="relative">
@@ -2148,7 +2199,7 @@ export default function App() {
                               }}
                               onFocus={() => { handleValidateAbortRef.current = true; }}
                               onKeyDown={(e) => e.key === 'Enter' && validateHandle(restaurantHandle)}
-                              className={`w-full pr-14 py-4 bg-slate-50 border rounded-2xl focus:outline-none focus:ring-2 font-bold placeholder:text-slate-400 ${restaurantHandle.startsWith('0x') ? 'pl-4' : 'pl-9'} ${handleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
+                              className={`w-full pr-14 py-4 bg-slate-50 border rounded-2xl focus:outline-none focus:ring-2 font-bold placeholder:text-slate-400 ${restaurantHandle.startsWith('0x') ? 'pl-4' : 'pl-9'} ${handleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-[#96EB3C] focus:ring-[#96EB3C]/20'}`}
                               placeholder="@handle or 0x..."
                            />
                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -2180,7 +2231,7 @@ export default function App() {
                       pattern="[0-9]*"
                       value={topupLimit}
                       onChange={(e) => setTopupLimit(e.target.value.replace(/[^\d.]/g, ''))}
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-bold"
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-bold"
                       placeholder="1000"
                     />
                     <p className="text-[11px] text-slate-400 mt-1">Max CAD the merchant can top-up for customers. Default 1000.</p>

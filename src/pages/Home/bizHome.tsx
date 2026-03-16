@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { KeyRound, Wallet, ShieldCheck } from 'lucide-react'
+import { KeyRound, Wallet, ShieldCheck, ArrowLeft } from 'lucide-react'
+import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
 import { restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio'
 import { setCoNET_Data } from '@/utils/globals'
 import { initChat } from '@/services/chat'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import Alliance from '@/pages/Alliance'
+import NewAllianceDemo from '@/pages/Vouchers/example/newAllianceDemo'
 
 /** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
 const assembleEncryptKeysObject = async (
@@ -58,6 +60,7 @@ const BizHome = () => {
 	const [isLoading, setIsLoading] = useState(false)
 	const [loginError, setLoginError] = useState('')
 	const [isLoggedIn, setIsLoggedIn] = useState(false)
+	const [showDemo, setShowDemo] = useState(false)
 
 	const {
 		setProfiles,
@@ -101,6 +104,21 @@ const BizHome = () => {
 
 	if (isLoggedIn) {
 		return <Alliance />
+	}
+
+	if (showDemo) {
+		return (
+			<div className="fixed inset-0 z-50 bg-[#F5F5F7]">
+				<NewAllianceDemo />
+				<button
+					onClick={() => setShowDemo(false)}
+					className="fixed top-4 right-4 z-[60] flex items-center gap-2 px-4 py-2.5 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-black/5 text-slate-600 hover:text-slate-900 font-semibold transition-colors"
+				>
+					<ArrowLeft size={18} />
+					Back to Login
+				</button>
+			</div>
+		)
 	}
 
 	return (
@@ -187,9 +205,15 @@ const BizHome = () => {
 						</button>
 					</form>
 
-					<div className="mt-8 flex items-center gap-2 text-[11px] font-bold text-slate-400">
-						<ShieldCheck size={14} className="text-emerald-500" />
-						<span>Local EOA Derivation • Zero-Knowledge Architecture</span>
+					<div
+						onClick={() => setShowDemo(true)}
+						className="mt-8 flex flex-col items-center gap-1"
+					>
+						<div className="flex items-center gap-2 text-[11px] font-bold text-slate-400 cursor-pointer hover:text-slate-600 transition-colors">
+							<ShieldCheck size={14} className="text-emerald-500" />
+							<span>Local EOA Derivation • Zero-Knowledge Architecture</span>
+						</div>
+						<span className="text-[10px] text-slate-400 font-medium">v{APP_VERSION}</span>
 					</div>
 				</div>
 			</div>

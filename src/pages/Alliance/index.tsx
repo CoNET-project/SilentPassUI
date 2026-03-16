@@ -547,7 +547,10 @@ export default function App() {
     setIsGeneratingKyb(true);
     setKybGeneratingPhase('ensureAA');
     try {
-      const aa = await ensureAAForEOA(adminEOA);
+      const adminAA = await ensureAAForEOA(adminEOA);
+      if (!adminAA || adminAA.toLowerCase() === adminEOA.toLowerCase()) {
+        throw new Error('Admin must be AA address, not EOA. ensureAAForEOA failed.');
+      }
       setKybGeneratingPhase('register');
       const metadata = JSON.stringify({
         restaurantName: restaurantName.trim() || `@${handleResolved.username}`,
@@ -557,7 +560,7 @@ export default function App() {
       });
       const limitNum = Math.max(0, Number(topupLimit) || 1000);
       const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
-      const data = encodeAddAdminWithMintLimit(aa, 1, metadata, mintLimitPoints6);
+      const data = encodeAddAdminWithMintLimit(adminAA, 1, metadata, mintLimitPoints6);
       const now = Math.floor(Date.now() / 1000);
       const deadline = now + 300;
       const nonce = ethers.hexlify(ethers.randomBytes(32));

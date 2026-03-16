@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useNavigate } from 'react-router-dom';
@@ -7,9 +7,11 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { storeSystemData } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername } from '@/services/beamio';
-import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount } from '@/services/BeamioCard';
+import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdmin, postCardAddAdminByAdmin, encodeAddAdminWithMintLimit, signExecuteForOwner, signExecuteForAdmin, getCardOwner } from '@/services/BeamioCard';
+import { conetDepinProvider } from '@/utils/constants';
+import { BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
-import { signRegisterPOS, generateRegisterPOSNonce, registerPOSApi, signRemovePOS, removePOSApi, getMerchantPOSListFromCoNET } from '@/services/merchantPOS';
+import { generateRegisterPOSNonce, signRemovePOS, removePOSApi } from '@/services/merchantPOS';
 import {
  LayoutDashboard,
  Receipt,
@@ -62,7 +64,11 @@ import {
  ChevronRight,
  Sparkles,
  Box,
- ShieldCheck
+ ShieldCheck,
+ RefreshCw,
+ Leaf,
+ Loader2,
+ ArrowRight
 } from 'lucide-react';
 
 const getImg = (avatarSeed: string | undefined) =>
@@ -255,8 +261,26 @@ const USER_CARD_ADMIN_READ_ABI = [
   'function owner() view returns (address)',
   'function isAdmin(address) view returns (bool)',
   'function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)',
+  'function getAdminSubordinatesWithMetadata(address admin) view returns (address[] subordinates, string[] metadatas, address[] parents)',
   'function getAdminStatsFull(address admin, uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 mintCounterFromClear, uint256 burnCounterFromClear, uint256 transferCounterFromClear, uint256 redeemMintCounterFromClear, uint256 usdcMintCounterFromClear, address[] subordinates)',
+  'function getGlobalStatsFull(uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 adminCount)',
 ] as const
+
+/** BeamioIndexerDiamond ActionFacet: getAccountTransactionsByCurrentPeriodOffsetPaged */
+const INDEXER_ACTION_ABI = [
+  'function getAccountTransactionsByCurrentPeriodOffsetPaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
+] as const
+
+/** BeamioIndexerDiamond BeamioUserCardStatsFacet: getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged (asset=card, account=0 for all) */
+const INDEXER_ASSET_STATS_ABI = [
+  'function getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(address asset, address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
+] as const
+
+const CHAIN_ID_FILTER_ALL = ethers.MaxUint256
+
+const PERIOD_DAY = 1
+/** keccak256("merchant_pay:tip_updated") - tip transactions */
+const TX_MERCHANT_PAY_TIP_UPDATED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:tip_updated'))
 
 type FixedUserCardMetadata = {
   name?: string
@@ -292,6 +316,56 @@ const parseFixedUserCardMetadata = (raw: unknown, cardOwner?: string): FixedUser
 }
 
 const amountE6ToDisplayNumber = (value: bigint): number => Number(value) / 1_000_000
+
+/** In-memory fetch cache: 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
+const FETCH_TTL_MS = 30_000;
+const fetchCache = new Map<string, { value: unknown; fetchedAt: number }>();
+const fetchInProgress = new Map<string, Promise<unknown>>();
+let globalFetchQueue: Promise<void> = Promise.resolve();
+
+async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const cached = fetchCache.get(key) as { value: T; fetchedAt: number } | undefined;
+  if (cached && (now - cached.fetchedAt) < FETCH_TTL_MS) {
+    return cached.value;
+  }
+
+  const existing = fetchInProgress.get(key);
+  if (existing) {
+    return existing as Promise<T>;
+  }
+
+  const run = async (): Promise<T> => {
+    await globalFetchQueue;
+    const result = await fetcher();
+    return result;
+  };
+
+  const promise = run()
+    .then((value) => {
+      fetchCache.set(key, { value, fetchedAt: Date.now() });
+      fetchInProgress.delete(key);
+      return value;
+    })
+    .catch((err) => {
+      fetchInProgress.delete(key);
+      throw err;
+    });
+
+  globalFetchQueue = globalFetchQueue.then(() => promise).then((): void => undefined, (): void => undefined);
+  fetchInProgress.set(key, promise);
+  return promise as Promise<T>;
+}
+
+/** Invalidate cache for a key (e.g. after redeem admin) */
+function invalidateFetchCache(prefix: string) {
+  for (const k of fetchCache.keys()) {
+    if (k.startsWith(prefix)) fetchCache.delete(k);
+  }
+  for (const k of fetchInProgress.keys()) {
+    if (k.startsWith(prefix)) fetchInProgress.delete(k);
+  }
+}
 
 function loadTrustedCache<T>(key: string): T | null {
   if (typeof window === 'undefined') return null;
@@ -390,8 +464,12 @@ export default function MerchantOS() {
  const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
  const [fixedCardMetadata, setFixedCardMetadata] = useState<FixedUserCardMetadata | null>(() => loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey));
  const [merchantOwnerProfile, setMerchantOwnerProfile] = useState<BeamioProfile>(null);
- const grossSalesCacheKey = `gross-sales:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:${(profiles?.[0]?.aaAccount ?? '').toLowerCase()}`
+ const grossSalesCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-gross-sales`
  const [grossSalesTotal, setGrossSalesTotal] = useState<number | null>(() => loadTrustedCache<number>(grossSalesCacheKey));
+ const [adminStatsToday, setAdminStatsToday] = useState<{ grossSales: number; topUps: number } | null>(null);
+ const [adminTipsToday, setAdminTipsToday] = useState<number | null>(null);
+ const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
+ const [overviewRefreshing, setOverviewRefreshing] = useState(false);
  const [linkedMerchantLookupDone, setLinkedMerchantLookupDone] = useState(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) !== null);
  const [adminRetryCount, setAdminRetryCount] = useState(0);
  const [redeemAdminInProgress, setRedeemAdminInProgress] = useState(false);
@@ -435,8 +513,13 @@ export default function MerchantOS() {
 
  const clearCardCacheAndRetry = useCallback(() => {
    try {
+     invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+     invalidateFetchCache('indexer:tips');
      const keys = [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey];
      keys.forEach((k) => window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${k}`));
+     ['admin-stats-today:', 'admin-tips-today:'].forEach((prefix) => {
+       Object.keys(window.localStorage).filter((k) => k.startsWith(BIZ_CACHE_PREFIX + prefix)).forEach((k) => window.localStorage.removeItem(k));
+     });
      setFixedCardAdmins([]);
      setLinkedMerchantAdmins([]);
      setLinkedMerchantLookupDone(false);
@@ -462,6 +545,90 @@ export default function MerchantOS() {
  const [deleteTerminalToRemove, setDeleteTerminalToRemove] = useState<{ id: string; tag: string; name: string; eoa: string } | null>(null);
  const [removeTerminalLoading, setRemoveTerminalLoading] = useState(false);
  const [removeTerminalError, setRemoveTerminalError] = useState<string | null>(null);
+ const [newDeviceName, setNewDeviceName] = useState('');
+ const [newTerminalMintLimit, setNewTerminalMintLimit] = useState('1000');
+ const [deviceHandleResolved, setDeviceHandleResolved] = useState<{ username: string; address: string; image?: string } | null>(null);
+ const [deviceHandleError, setDeviceHandleError] = useState<string | null>(null);
+ const [deviceHandleChecking, setDeviceHandleChecking] = useState(false);
+ const deviceValidateAbortRef = useRef<boolean>(false);
+
+ const validateDeviceHandle = useCallback(async (raw: string) => {
+   const trimmed = raw.trim().replace(/^@/, '');
+   if (!trimmed) {
+     setDeviceHandleError(null);
+     setDeviceHandleResolved(null);
+     return;
+   }
+   deviceValidateAbortRef.current = false;
+   setDeviceHandleChecking(true);
+   setDeviceHandleError(null);
+   setDeviceHandleResolved(null);
+   try {
+     const isAddressSearch = ethers.isAddress(trimmed);
+     const searchKey = isAddressSearch ? ethers.getAddress(trimmed) : trimmed;
+     const res = await searchUsername(searchKey);
+     if (deviceValidateAbortRef.current) return;
+     const results = res?.results ?? [];
+     const norm = trimmed.toLowerCase();
+     let match: { username?: string; accountName?: string; address?: string; image?: string } | undefined;
+     if (isAddressSearch) {
+       match = results.find((r: { address?: string }) => {
+         const a = (r?.address ?? '').toLowerCase();
+         return a === norm;
+       }) ?? results[0];
+       if (match && !match.address) (match as { address?: string }).address = searchKey;
+     } else {
+       match = results.find((r: { username?: string; accountName?: string }) => {
+         const u = (r?.username ?? r?.accountName ?? '').toLowerCase();
+         return u === norm;
+       });
+     }
+     if (match) {
+       const addr = (match as { address?: string }).address;
+       if (addr && ethers.isAddress(addr)) {
+         setDeviceHandleResolved({
+           username: match.username ?? match.accountName ?? (isAddressSearch ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : trimmed),
+           address: addr,
+           image: match.image,
+         });
+         setDeviceHandleError(null);
+         return;
+       }
+       setDeviceHandleResolved({
+         username: match.username ?? match.accountName ?? trimmed,
+         address: addr ?? '',
+         image: match.image,
+       });
+       setDeviceHandleError(null);
+     } else if (isAddressSearch) {
+       setDeviceHandleResolved({
+         username: `${searchKey.slice(0, 6)}…${searchKey.slice(-4)}`,
+         address: searchKey,
+       });
+       setDeviceHandleError(null);
+     } else {
+       setDeviceHandleResolved(null);
+       setDeviceHandleError('Not found');
+     }
+   } catch {
+     if (!deviceValidateAbortRef.current) {
+       setDeviceHandleResolved(null);
+       setDeviceHandleError('Not found');
+     }
+   } finally {
+     if (!deviceValidateAbortRef.current) setDeviceHandleChecking(false);
+   }
+ }, []);
+
+ const closeAddTerminalModal = useCallback(() => {
+   setIsAddTerminalOpen(false);
+   setNewTerminalTag('');
+   setNewDeviceName('');
+   setNewTerminalMintLimit('1000');
+   setLinkTerminalError(null);
+   setDeviceHandleError(null);
+   setDeviceHandleResolved(null);
+ }, []);
 
  const merchant = profiles?.[0]?.keyID ?? myAddress;
  const adminCandidateAddresses = [
@@ -472,6 +639,9 @@ export default function MerchantOS() {
    .map((address) => ethers.getAddress(address));
  const normalizedAdminCandidates = adminCandidateAddresses.map((address) => address.toLowerCase());
  const effectiveAdminAddress = fixedCardAdmins.find((address) => normalizedAdminCandidates.includes(address.toLowerCase())) ?? null;
+ /** Card-level cache keys: stats and tips are for the whole card, not per-admin */
+ const adminStatsTodayCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-stats-today`;
+ const adminTipsTodayCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:tips-today`;
 
  // On entry: if profiles[0] exists but aaAccount is empty, fetch from chain and update
  useEffect(() => {
@@ -501,32 +671,55 @@ export default function MerchantOS() {
    return () => { cancelled = true; };
  }, [profiles, setProfiles, myAddress]);
 
- const fetchTerminals = useCallback(async () => {
-   if (!merchant || !ethers.isAddress(merchant)) {
-     setTerminals([]);
-     return;
-   }
-   setTerminalsLoading(true);
-   try {
-     const posList = await getMerchantPOSListFromCoNET(merchant);
-     setTerminals(posList.map((pos, idx) => ({
-       id: pos,
-       tag: fmtAddr(pos),
-       name: `POS Terminal ${idx + 1}`,
-       eoa: fmtAddr(pos),
-       status: 'Active',
-       lastActive: 'On-chain',
-     })));
-   } catch {
-     setTerminals([]);
-   } finally {
-     setTerminalsLoading(false);
-   }
- }, [merchant]);
+ /** Fetch subordinate admins: owner sees parent=0 admins; admin sees parent=userEOA admins. Uses getAdminSubordinatesWithMetadata(admin). */
+const fetchTerminals = useCallback(async () => {
+  const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+  if (!userEOA || !ethers.isAddress(userEOA)) {
+    setTerminals([]);
+    return;
+  }
+  setTerminalsLoading(true);
+  try {
+    const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProvider);
+    const cardOwner = await card.owner() as string;
+    const userAA = profiles?.[0]?.aaAccount?.trim();
+    const isOwner =
+      (cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA)) ||
+      (userAA && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userAA));
+    const parentAdmin = isOwner ? ethers.ZeroAddress : ethers.getAddress(userEOA);
+    const [subordinates, metadatas] = await card.getAdminSubordinatesWithMetadata(parentAdmin) as [string[], string[]];
+    setTerminals(
+      (subordinates ?? []).map((addr: string, idx: number) => {
+        let name = 'POS Terminal';
+        let tag = fmtAddr(addr);
+        try {
+          const metaStr = metadatas?.[idx];
+          const meta = typeof metaStr === 'string' && metaStr ? JSON.parse(metaStr) : null;
+          if (meta?.deviceName) name = meta.deviceName;
+          if (meta?.handle) tag = meta.handle.startsWith('@') ? meta.handle : `@${meta.handle}`;
+        } catch {
+          /* ignore */
+        }
+        return {
+          id: addr,
+          tag,
+          name,
+          eoa: fmtAddr(addr),
+          status: 'Active',
+          lastActive: 'On-chain',
+        };
+      })
+    );
+  } catch {
+    setTerminals([]);
+  } finally {
+    setTerminalsLoading(false);
+  }
+}, [profiles, myAddress]);
 
  useEffect(() => {
    fetchTerminals();
- }, [fetchTerminals]);
+ }, [fetchTerminals, adminRetryCount]);
 
  // URL 带 redeemAdmin 时：校验 code 有效、EOA 非 admin 后，向 endpoint 完成 redeem admin，成功后刷新 admin 列表
  useEffect(() => {
@@ -592,13 +785,13 @@ export default function MerchantOS() {
      setLinkedMerchantLookupDone(true);
    }
 
-   const loadLinkedMerchantAdmins = async () => {
-    const card = new ethers.Contract(
-      FIXED_USER_CARD_CONTRACT_ADDRESS,
-      USER_CARD_ADMIN_READ_ABI,
-      baseRpcProvider
-    );
-
+   const cardKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admins`;
+   void fetchWithCache(cardKey, async () => {
+     const card = new ethers.Contract(
+       FIXED_USER_CARD_CONTRACT_ADDRESS,
+       USER_CARD_ADMIN_READ_ABI,
+       baseRpcProvider
+     );
      try {
        const [owner, adminResult] = await Promise.all([
          card.owner() as Promise<string>,
@@ -606,56 +799,39 @@ export default function MerchantOS() {
        ]);
        const [admins] = adminResult;
        const nextLinkedMerchantAdmins = admins.filter((address) => address.toLowerCase() !== owner.toLowerCase());
-
-       if (cancelled) return;
-
-       setFixedCardAdmins(admins);
-       setLinkedMerchantAdmins(nextLinkedMerchantAdmins);
-       setLinkedMerchantLookupDone(true);
-       saveTrustedCache(fixedCardAdminsCacheKey, admins);
-       saveTrustedCache(linkedMerchantAdminsCacheKey, nextLinkedMerchantAdmins);
+       return { admins, linkedMerchantAdmins: nextLinkedMerchantAdmins };
      } catch {
-      try {
-        const fallbackChecks = await Promise.all(
-          adminCandidateAddresses.map(async (address) => ({
-            address,
-            isAdmin: await card.isAdmin(address) as boolean,
-          }))
-        );
-        const fallbackAdmins = fallbackChecks
-          .filter((entry) => entry.isAdmin)
-          .map((entry) => entry.address);
-
-        if (cancelled) return;
-
-        if (fallbackAdmins.length > 0) {
-          setFixedCardAdmins(fallbackAdmins);
-          setLinkedMerchantAdmins(fallbackAdmins);
-          setLinkedMerchantLookupDone(true);
-          saveTrustedCache(fixedCardAdminsCacheKey, fallbackAdmins);
-          saveTrustedCache(linkedMerchantAdminsCacheKey, fallbackAdmins);
-          return;
-        }
-      } catch {
-        // Fall through to trusted cache.
-      }
-
-      if (cancelled) return;
-      if (cachedAllAdmins !== null) {
-        setFixedCardAdmins(cachedAllAdmins);
-      }
-      if (cachedAdmins !== null) {
-        setLinkedMerchantAdmins(cachedAdmins);
-        setLinkedMerchantLookupDone(true);
+       const fallbackChecks = await Promise.all(
+         adminCandidateAddresses.map(async (address) => ({
+           address,
+           isAdmin: await card.isAdmin(address) as boolean,
+         }))
+       );
+       const fallbackAdmins = fallbackChecks
+         .filter((entry) => entry.isAdmin)
+         .map((entry) => entry.address);
+       if (fallbackAdmins.length > 0) {
+         return { admins: fallbackAdmins, linkedMerchantAdmins: fallbackAdmins };
        }
+       throw new Error('fallback failed');
      }
-   };
+   }).then((result) => {
+     if (cancelled) return;
+     setFixedCardAdmins(result.admins);
+     setLinkedMerchantAdmins(result.linkedMerchantAdmins);
+     setLinkedMerchantLookupDone(true);
+     saveTrustedCache(fixedCardAdminsCacheKey, result.admins);
+     saveTrustedCache(linkedMerchantAdminsCacheKey, result.linkedMerchantAdmins);
+   }).catch(() => {
+     if (cancelled) return;
+     if (cachedAllAdmins !== null) setFixedCardAdmins(cachedAllAdmins);
+     if (cachedAdmins !== null) {
+       setLinkedMerchantAdmins(cachedAdmins);
+       setLinkedMerchantLookupDone(true);
+     }
+   });
 
-   void loadLinkedMerchantAdmins();
-
-   return () => {
-     cancelled = true;
-   };
+   return () => { cancelled = true; };
  }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, adminRetryCount]);
 
  useEffect(() => {
@@ -666,47 +842,33 @@ export default function MerchantOS() {
      setFixedCardMetadata(cachedMetadata);
    }
 
-   const loadFixedCardMetadata = async () => {
+   const metaKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:metadata`;
+   void fetchWithCache(metaKey, async () => {
+     const apiRes = await fetch(
+       `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(FIXED_USER_CARD_CONTRACT_ADDRESS)}`
+     );
+     if (apiRes.ok) {
+       const apiData = await apiRes.json() as { cardOwner?: string; metadata?: unknown };
+       const parsed = parseFixedUserCardMetadata(apiData.metadata, typeof apiData.cardOwner === 'string' ? apiData.cardOwner : undefined);
+       if (parsed) return parsed;
+     }
      const normalizedCardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase().replace(/^0x/, '');
      const metadataResource = `0x${normalizedCardAddress}${'0'.repeat(64)}.json`;
+     const metadataRes = await fetch(`${BEAMIO_APP_URL}/api/metadata/${metadataResource}`);
+     if (!metadataRes.ok) throw new Error('metadata fetch failed');
+     const metadataJson = await metadataRes.json();
+     const parsed = parseFixedUserCardMetadata(metadataJson);
+     if (!parsed) throw new Error('metadata parse failed');
+     return parsed;
+   }).then((parsed) => {
+     if (cancelled) return;
+     setFixedCardMetadata(parsed);
+     saveTrustedCache(fixedCardMetadataCacheKey, parsed);
+   }).catch(() => {
+     if (!cancelled && cachedMetadata) setFixedCardMetadata(cachedMetadata);
+   });
 
-     try {
-       const apiRes = await fetch(
-         `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(FIXED_USER_CARD_CONTRACT_ADDRESS)}`
-       );
-       if (apiRes.ok) {
-         const apiData = await apiRes.json() as { cardOwner?: string; metadata?: unknown };
-         const parsed = parseFixedUserCardMetadata(apiData.metadata, typeof apiData.cardOwner === 'string' ? apiData.cardOwner : undefined);
-         if (parsed && !cancelled) {
-           setFixedCardMetadata(parsed);
-           saveTrustedCache(fixedCardMetadataCacheKey, parsed);
-           return;
-         }
-       }
-     } catch {
-       // Fall through to ERC-1155 metadata endpoint.
-     }
-
-     try {
-       const metadataRes = await fetch(`${BEAMIO_APP_URL}/api/metadata/${metadataResource}`);
-       if (!metadataRes.ok) return;
-       const metadataJson = await metadataRes.json();
-       const parsed = parseFixedUserCardMetadata(metadataJson);
-       if (!parsed || cancelled) return;
-       setFixedCardMetadata(parsed);
-       saveTrustedCache(fixedCardMetadataCacheKey, parsed);
-     } catch {
-       if (!cancelled && cachedMetadata) {
-         setFixedCardMetadata(cachedMetadata);
-       }
-     }
-   };
-
-   void loadFixedCardMetadata();
-
-   return () => {
-     cancelled = true;
-   };
+   return () => { cancelled = true; };
  }, [fixedCardMetadataCacheKey]);
 
  useEffect(() => {
@@ -733,50 +895,118 @@ export default function MerchantOS() {
  useEffect(() => {
    let cancelled = false;
    const cachedGrossSales = loadTrustedCache<number>(grossSalesCacheKey);
+   const cachedStatsToday = loadTrustedCache<{ grossSales: number; topUps: number }>(adminStatsTodayCacheKey);
 
    if (cachedGrossSales !== null) {
      setGrossSalesTotal(cachedGrossSales);
    }
-
-   if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
-     return () => {
-       cancelled = true;
-     };
+   if (cachedStatsToday !== null) {
+     setAdminStatsToday(cachedStatsToday);
    }
 
-   const loadGrossSales = async () => {
-     try {
-       const card = new ethers.Contract(
+   if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
+     return () => { cancelled = true; };
+   }
+
+   const statsKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-stats`;
+   void fetchWithCache(statsKey, async () => {
+     const card = new ethers.Contract(
+       FIXED_USER_CARD_CONTRACT_ADDRESS,
+       USER_CARD_ADMIN_READ_ABI,
+       baseRpcProvider
+     );
+     const [cumulativeRes, todayRes] = await Promise.all([
+       card.getGlobalStatsFull(0, 0, 0) as Promise<{ cumulativeTransferAmount: bigint }>,
+       card.getGlobalStatsFull(PERIOD_DAY, 0, 0) as Promise<{ periodTransferAmount: bigint; periodUSDCMint: bigint }>,
+     ]);
+     return {
+       grossSalesTotal: amountE6ToDisplayNumber(cumulativeRes.cumulativeTransferAmount),
+       statsToday: {
+         grossSales: amountE6ToDisplayNumber(todayRes.periodTransferAmount),
+         topUps: amountE6ToDisplayNumber(todayRes.periodUSDCMint),
+       },
+     };
+   }).then((result) => {
+     if (cancelled) return;
+     setGrossSalesTotal(result.grossSalesTotal);
+     setAdminStatsToday(result.statsToday);
+     saveTrustedCache(grossSalesCacheKey, result.grossSalesTotal);
+     saveTrustedCache(adminStatsTodayCacheKey, result.statsToday);
+   }).catch(() => {
+     if (!cancelled && cachedGrossSales !== null) setGrossSalesTotal(cachedGrossSales);
+     if (!cancelled && cachedStatsToday !== null) setAdminStatsToday(cachedStatsToday);
+   });
+
+   return () => { cancelled = true; };
+ }, [effectiveAdminAddress, grossSalesCacheKey, adminStatsTodayCacheKey, overviewRefreshTrigger]);
+
+ useEffect(() => {
+   let cancelled = false;
+   const cachedTips = loadTrustedCache<number>(adminTipsTodayCacheKey);
+
+   if (cachedTips !== null) {
+     setAdminTipsToday(cachedTips);
+   }
+
+   if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
+     return () => { cancelled = true; };
+   }
+
+   const tipsKey = `indexer:tips:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:today`;
+   void fetchWithCache(tipsKey, async () => {
+     const indexer = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
+     let totalTips6 = 0n;
+     let pageOffset = 0;
+     const pageLimit = 100;
+     const ACCOUNT_MODE_ALL = 0;
+
+     while (true) {
+       const [total, , , page] = await indexer.getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(
          FIXED_USER_CARD_CONTRACT_ADDRESS,
-         USER_CARD_ADMIN_READ_ABI,
-         baseRpcProvider
-       );
-       const stats = await card.getAdminStatsFull(effectiveAdminAddress, 0, 0, 0) as { cumulativeTransferAmount: bigint };
-       const nextGrossSalesTotal = amountE6ToDisplayNumber(stats.cumulativeTransferAmount);
+         ethers.ZeroAddress,
+         PERIOD_DAY,
+         0,
+         pageOffset,
+         pageLimit,
+         TX_MERCHANT_PAY_TIP_UPDATED,
+         ACCOUNT_MODE_ALL,
+         CHAIN_ID_FILTER_ALL
+       ) as [bigint, bigint, bigint, Array<{ finalRequestAmountUSDC6: bigint }>];
 
-       if (cancelled) return;
-
-       setGrossSalesTotal(nextGrossSalesTotal);
-       saveTrustedCache(grossSalesCacheKey, nextGrossSalesTotal);
-     } catch {
-       if (!cancelled && cachedGrossSales !== null) {
-         setGrossSalesTotal(cachedGrossSales);
+       for (const tx of page) {
+         totalTips6 += tx.finalRequestAmountUSDC6;
        }
+
+       if (page.length < pageLimit || pageOffset + page.length >= Number(total)) break;
+       pageOffset += page.length;
      }
-   };
 
-   void loadGrossSales();
+     return amountE6ToDisplayNumber(totalTips6);
+   }).then((nextTips) => {
+     if (cancelled) return;
+     setAdminTipsToday(nextTips);
+     saveTrustedCache(adminTipsTodayCacheKey, nextTips);
+   }).catch(() => {
+     if (!cancelled && cachedTips !== null) setAdminTipsToday(cachedTips);
+   });
 
-   return () => {
-     cancelled = true;
-   };
- }, [effectiveAdminAddress, grossSalesCacheKey]);
+   return () => { cancelled = true; };
+ }, [effectiveAdminAddress, adminTipsTodayCacheKey, overviewRefreshTrigger]);
 
- const hasLinkedMerchant = linkedMerchantAdmins.length > 0;
- const hideTransactionsPanel = linkedMerchantLookupDone && !hasLinkedMerchant;
  const isFixedUserCardAdmin = fixedCardAdmins.some((address) => normalizedAdminCandidates.includes(address.toLowerCase()));
+ const hasLinkedMerchant = linkedMerchantAdmins.length > 0;
+ /** When user is admin (incl. owner), always show panels. linkedMerchantAdmins excludes owner, so owner-only would wrongly hide. */
+ const hideTransactionsPanel = linkedMerchantLookupDone && !hasLinkedMerchant && !isFixedUserCardAdmin;
  const showFixedCardMetadata = activeTab === 'Overview' && isFixedUserCardAdmin;
  const showOverviewSummary = isFixedUserCardAdmin;
+
+ const handleOverviewRefresh = useCallback(() => {
+   invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+   invalidateFetchCache('indexer:tips');
+   setOverviewRefreshing(true);
+   setOverviewRefreshTrigger((t) => t + 1);
+   setTimeout(() => setOverviewRefreshing(false), 2500);
+ }, []);
 
  useEffect(() => {
    if (hideTransactionsPanel && activeTab === 'Transactions') {
@@ -785,18 +1015,16 @@ export default function MerchantOS() {
  }, [activeTab, hideTransactionsPanel]);
 
 
- // --- Financial Mock Data Logic ---
- const salesCTree = 1200.00;
- const salesUSDC = 645.50;
- const totalSales = grossSalesTotal ?? 0;
+ // --- Financial Data: real when isFixedUserCardAdmin, else mock ---
+ const totalSales = isFixedUserCardAdmin ? (adminStatsToday?.grossSales ?? grossSalesTotal ?? 0) : (grossSalesTotal ?? 0);
+ const totalTips = isFixedUserCardAdmin ? (adminTipsToday ?? 0) : (200 + 142);
+ const topUpsIssued = isFixedUserCardAdmin ? (adminStatsToday?.topUps ?? 0) : 850.00;
 
-
- const tipsCTree = 200.00;
- const tipsUSDC = 142.00;
- const totalTips = tipsCTree + tipsUSDC;
-
-
- const topUpsIssued = 850.00;
+ // When admin: chain gives totals only; show in $CTree capsule. When mock: use explicit split.
+ const salesCTree = isFixedUserCardAdmin ? totalSales : 1200.00;
+ const salesUSDC = isFixedUserCardAdmin ? 0 : 645.50;
+ const tipsCTree = isFixedUserCardAdmin ? totalTips : 200.00;
+ const tipsUSDC = isFixedUserCardAdmin ? 0 : 142.00;
 
 
  const totalCTreeReceived = salesCTree + tipsCTree;
@@ -1066,6 +1294,17 @@ export default function MerchantOS() {
        <header className="h-20 bg-white/60 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-10 sticky top-0 z-10 shrink-0">
          <h2 className="text-2xl font-bold text-black tracking-tight">{activeTab}</h2>
          <div className="flex items-center gap-6">
+           {activeTab === 'Overview' && isFixedUserCardAdmin && (
+             <button
+               type="button"
+               onClick={handleOverviewRefresh}
+               disabled={overviewRefreshing}
+               className="p-2.5 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+               title="Refresh panel data"
+             >
+               <RefreshCw size={20} className={overviewRefreshing ? 'animate-spin' : ''} />
+             </button>
+           )}
            <span className="text-[13px] font-semibold text-slate-500">{dateString}</span>
            {activeTab !== 'Settings' && (
              <>
@@ -1204,14 +1443,27 @@ export default function MerchantOS() {
                    <p className="text-[40px] font-light text-black tracking-tighter leading-none">${totalSales.toFixed(2)}</p>
                  </div>
                  <div className="mt-6 pt-6 border-t border-slate-100">
-                   <div className="bg-slate-50 px-4 py-3 rounded-2xl border border-slate-100 flex items-center gap-2">
-                     <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                       <span className="text-[12px] font-bold text-blue-600">$</span>
+                   <div className="flex flex-wrap gap-3">
+                     <div className="bg-slate-50 px-4 py-3 rounded-2xl border border-slate-100 flex items-center gap-2 shrink-0">
+                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                         <span className="text-[12px] font-bold text-blue-600">$</span>
+                       </div>
+                       <div>
+                         <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-widest">USDC</span>
+                         <span className="text-[16px] font-black text-slate-800">${salesUSDC.toFixed(2)}</span>
+                       </div>
                      </div>
-                     <div>
-                       <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-widest">USDC</span>
-                       <span className="text-[16px] font-black text-slate-800">${salesUSDC.toFixed(2)}</span>
-                     </div>
+                     {isFixedUserCardAdmin && (
+                       <div className="bg-emerald-50 px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2 shrink-0">
+                         <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                           <Leaf size={14} className="text-emerald-600" />
+                         </div>
+                         <div>
+                           <span className="text-[10px] text-emerald-700 font-bold block uppercase tracking-widest">$CTree</span>
+                           <span className="text-[16px] font-black text-emerald-800">${salesCTree.toFixed(2)}</span>
+                         </div>
+                       </div>
+                     )}
                    </div>
                  </div>
                </div>
@@ -1228,14 +1480,27 @@ export default function MerchantOS() {
                    <p className="text-[40px] font-light text-black tracking-tighter leading-none">${totalTips.toFixed(2)}</p>
                  </div>
                  <div className="mt-6 pt-6 border-t border-slate-100">
-                   <div className="bg-slate-50 px-4 py-3 rounded-2xl border border-slate-100 flex items-center gap-2">
-                     <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                       <span className="text-[12px] font-bold text-blue-600">$</span>
+                   <div className="flex flex-wrap gap-3">
+                     <div className="bg-slate-50 px-4 py-3 rounded-2xl border border-slate-100 flex items-center gap-2 shrink-0">
+                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                         <span className="text-[12px] font-bold text-blue-600">$</span>
+                       </div>
+                       <div>
+                         <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-widest">USDC</span>
+                         <span className="text-[16px] font-black text-slate-800">${tipsUSDC.toFixed(2)}</span>
+                       </div>
                      </div>
-                     <div>
-                       <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-widest">USDC</span>
-                       <span className="text-[16px] font-black text-slate-800">${tipsUSDC.toFixed(2)}</span>
-                     </div>
+                     {isFixedUserCardAdmin && (
+                       <div className="bg-emerald-50 px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2 shrink-0">
+                         <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                           <Leaf size={14} className="text-emerald-600" />
+                         </div>
+                         <div>
+                           <span className="text-[10px] text-emerald-700 font-bold block uppercase tracking-widest">$CTree</span>
+                           <span className="text-[16px] font-black text-emerald-800">${tipsCTree.toFixed(2)}</span>
+                         </div>
+                       </div>
+                     )}
                    </div>
                  </div>
                </div>
@@ -1252,7 +1517,19 @@ export default function MerchantOS() {
                    <p className="text-[40px] font-light text-black tracking-tighter leading-none">${topUpsIssued.toFixed(2)}</p>
                  </div>
                  <div className="mt-6 pt-6 border-t border-slate-100">
-                   <p className="text-[12px] text-slate-400 text-center">No active issuing networks.</p>
+                   {isFixedUserCardAdmin ? (
+                     <div className="bg-emerald-50 px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2">
+                       <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                         <ArrowUpFromLine size={14} className="text-emerald-600" />
+                       </div>
+                       <div>
+                         <span className="text-[10px] text-emerald-700 font-bold block uppercase tracking-widest">Issued $CTree</span>
+                         <span className="text-[16px] font-black text-emerald-800">${topUpsIssued.toFixed(2)}</span>
+                       </div>
+                     </div>
+                   ) : (
+                     <p className="text-[12px] text-slate-400 text-center">No active issuing networks.</p>
+                   )}
                  </div>
                </div>
 
@@ -2021,7 +2298,7 @@ export default function MerchantOS() {
      {/* --- ADD TERMINAL MODAL --- */}
      {isAddTerminalOpen && (
        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setIsAddTerminalOpen(false)}></div>
+         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={closeAddTerminalModal}></div>
          <div className="relative bg-white rounded-[40px] shadow-2xl w-full max-w-md p-8 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
                <div className="flex items-center gap-3">
@@ -2030,7 +2307,7 @@ export default function MerchantOS() {
                   </div>
                   <h2 className="text-xl font-bold tracking-tight text-black">Link New Terminal</h2>
                </div>
-               <button onClick={() => setIsAddTerminalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-black transition-colors">
+               <button onClick={closeAddTerminalModal} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-black transition-colors">
                  <X size={20} />
                </button>
             </div>
@@ -2043,16 +2320,85 @@ export default function MerchantOS() {
                 </p>
               </div>
 
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2">Device Name</label>
+                <input
+                  type="text"
+                  value={newDeviceName}
+                  onChange={(e) => setNewDeviceName(e.target.value)}
+                  placeholder="e.g. POS Terminal 1"
+                  className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-semibold text-[15px] text-slate-900"
+                />
+              </div>
 
-              <div className="space-y-1.5">
-                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">Terminal Beamio Tag / EOA Address</label>
-                 <input
-                   type="text"
-                   value={newTerminalTag}
-                   onChange={(e) => { setNewTerminalTag(e.target.value); setLinkTerminalError(null); }}
-                   placeholder="e.g. @ut_reg3 or 0x..."
-                   className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-semibold text-[15px] text-slate-900 font-mono"
-                 />
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2">Top-Up Limit (CAD)</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={newTerminalMintLimit}
+                  onChange={(e) => setNewTerminalMintLimit(e.target.value)}
+                  placeholder="e.g. 1000"
+                  className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-semibold text-[15px] text-slate-900"
+                />
+                <p className="text-[11px] text-slate-500 mt-1 ml-1">Max in-store top-up amount this terminal can process per transaction.</p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2">Terminal Beamio Tag / EOA Address</label>
+                {deviceHandleResolved && deviceHandleResolved.address ? (
+                  <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                    <img src={deviceHandleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${deviceHandleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-emerald-200 object-cover" />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono font-bold text-emerald-700">@{deviceHandleResolved.username}</span>
+                      <span className="text-[10px] text-slate-500 font-mono" title={deviceHandleResolved.address}>{fmtAddr(deviceHandleResolved.address)}</span>
+                    </div>
+                    <button type="button" onClick={() => { setDeviceHandleResolved(null); setNewTerminalTag(''); setDeviceHandleError(null); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear"><X size={16} /></button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    {!newTerminalTag.startsWith('0x') && (
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
+                    )}
+                    <input
+                      type="text"
+                      value={newTerminalTag}
+                      onChange={(e) => {
+                        setNewTerminalTag(e.target.value);
+                        setDeviceHandleResolved(null);
+                        setDeviceHandleError(null);
+                        setLinkTerminalError(null);
+                      }}
+                      onBlur={() => {
+                        deviceValidateAbortRef.current = false;
+                        validateDeviceHandle(newTerminalTag);
+                      }}
+                      onFocus={() => { deviceValidateAbortRef.current = true; }}
+                      onKeyDown={(e) => e.key === 'Enter' && validateDeviceHandle(newTerminalTag)}
+                      placeholder="@handle or 0x..."
+                      className={`w-full pr-14 py-3.5 bg-white border rounded-2xl focus:outline-none focus:ring-2 font-semibold text-[15px] text-slate-900 font-mono placeholder:text-slate-400 ${newTerminalTag.startsWith('0x') ? 'pl-4' : 'pl-9'} ${deviceHandleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-[#1562f0] focus:ring-[#1562f0]/20'}`}
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {deviceHandleChecking ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                      ) : (
+                        <>
+                          {deviceHandleError && <span className="text-rose-500 text-xs font-medium">{deviceHandleError}</span>}
+                          <button
+                            type="button"
+                            onClick={() => validateDeviceHandle(newTerminalTag)}
+                            className="p-2 rounded-lg hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 transition-colors"
+                            title="Search"
+                            aria-label="Search handle"
+                          >
+                            <Search className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {linkTerminalError && (
@@ -2066,23 +2412,25 @@ export default function MerchantOS() {
 
             <button
               onClick={async () => {
+                const pos = deviceHandleResolved?.address;
                 const raw = ((newTerminalTag ?? '') as string).trim();
-                if (!raw) return;
+                if (!pos && !raw) return;
                 setLinkTerminalError(null);
                 setLinkTerminalLoading(true);
                 try {
-                  const merchant = profiles?.[0]?.keyID ?? myAddress;
-                  if (!merchant || !ethers.isAddress(merchant)) {
-                    throw new Error('Merchant EOA not found. Please unlock your wallet first.');
+                  const pk = profiles?.[0]?.privateKeyArmor;
+                  if (!pk) {
+                    throw new Error('Wallet not connected. Connect with card owner or admin to register device.');
                   }
-                  const privateKey = profiles?.[0]?.privateKeyArmor;
-                  if (!privateKey) {
-                    throw new Error('Private key not available. Please unlock your wallet.');
+                  const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+                  if (!userEOA || !ethers.isAddress(userEOA)) {
+                    throw new Error('Wallet address not available.');
                   }
-                  const pkHex = privateKey.startsWith('0x') ? privateKey : '0x' + privateKey;
-                  let pos: string;
-                  if (ethers.isAddress(raw)) {
-                    pos = ethers.getAddress(raw);
+                  let adminAddress: string;
+                  if (pos && ethers.isAddress(pos)) {
+                    adminAddress = ethers.getAddress(pos);
+                  } else if (ethers.isAddress(raw)) {
+                    adminAddress = ethers.getAddress(raw);
                   } else {
                     const tagRaw = raw as string;
                     const tag = tagRaw.startsWith('@') ? tagRaw.slice(1) : tagRaw;
@@ -2091,34 +2439,71 @@ export default function MerchantOS() {
                     if (!peer?.address || !ethers.isAddress(peer.address)) {
                       throw new Error(`Could not resolve @${tag} to an address. Check the Beamio Tag.`);
                     }
-                    pos = ethers.getAddress(peer.address);
+                    adminAddress = ethers.getAddress(peer.address);
                   }
-                  const deadline = Math.floor(Date.now() / 1000) + 60 * 15;
-                  const nonce = generateRegisterPOSNonce();
-                  const signature = await signRegisterPOS(pkHex, merchant, pos, deadline, nonce);
-                  const result = await registerPOSApi({ merchant, pos, deadline, nonce, signature });
-                  if (!result.success) {
-                    throw new Error(result.error ?? 'Register failed');
+                  const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
+                  const metadata = JSON.stringify({
+                    deviceName: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
+                    handle: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : '',
+                  });
+                  const limitNum = Math.max(1, parseFloat(String(newTerminalMintLimit).replace(/[^0-9.]/g, '')) || 1000);
+                  const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
+                  const data = encodeAddAdminWithMintLimit(adminAddress, 1, metadata, mintLimitPoints6);
+                  const now = Math.floor(Date.now() / 1000);
+                  const deadline = now + 300;
+                  const nonce = ethers.hexlify(ethers.randomBytes(32));
+                  const cardOwner = await getCardOwner(cardAddress);
+                  const isOwner = cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA);
+                  const isAdminUser = await isCardAdmin(cardAddress, userEOA);
+                  if (!isOwner && !isAdminUser) {
+                    throw new Error('Wallet must be card owner or admin to register device.');
                   }
-                  setIsAddTerminalOpen(false);
-                  setNewTerminalTag('');
+                  let res: { success: boolean; error?: string; hash?: string };
+                  if (isOwner) {
+                    const ownerSignature = await signExecuteForOwner(pk, cardAddress, data, deadline, nonce);
+                    res = await postCardAddAdmin({
+                      cardAddress,
+                      data,
+                      deadline,
+                      nonce,
+                      ownerSignature,
+                    });
+                  } else {
+                    const adminSignature = await signExecuteForAdmin(pk, cardAddress, data, deadline, nonce);
+                    res = await postCardAddAdminByAdmin({
+                      cardAddress,
+                      data,
+                      deadline,
+                      nonce,
+                      adminSignature,
+                    });
+                  }
+                  if (!res.success) {
+                    throw new Error(res.error ?? 'Failed to register device as admin');
+                  }
+                  closeAddTerminalModal();
+                  invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+                  try {
+                    window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
+                  } catch { /* ignore */ }
+                  setAdminRetryCount((c) => c + 1);
                   await fetchTerminals();
                 } catch (e: unknown) {
-                  setLinkTerminalError((e as Error)?.message ?? 'Failed to link terminal');
+                  setLinkTerminalError((e as Error)?.message ?? 'Failed to register device');
                 } finally {
                   setLinkTerminalLoading(false);
                 }
               }}
-              disabled={linkTerminalLoading || !newTerminalTag?.trim()}
+              disabled={linkTerminalLoading || (!deviceHandleResolved?.address && !newTerminalTag?.trim())}
               className="w-full bg-black text-white py-4 rounded-[16px] font-semibold text-[16px] hover:bg-slate-800 transition-all active:scale-[0.98] shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {linkTerminalLoading ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Authorizing...
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Registering...
                 </>
               ) : (
-                'Authorize & Link'
+                <>Registration Device <ArrowRight size={18}/></>
               )}
             </button>
          </div>

@@ -2490,13 +2490,13 @@ export default function App() {
       {/* --- B-UNIT PURCHASE (FUEL) MODAL --- */}
       {isFuelModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !isRefueling && setIsFuelModalOpen(false)} aria-hidden="true" />
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !isRefueling && !refuelSuccess && setIsFuelModalOpen(false)} aria-hidden="true" />
           <div className="bg-white rounded-[2rem] shadow-[0_24px_48px_rgba(0,0,0,0.1)] w-full max-w-md relative z-10 p-6 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
                 <Fuel size={24} className="text-orange-500" fill="currentColor" /> Purchase B-Units
               </h3>
-              <button onClick={() => !isRefueling && setIsFuelModalOpen(false)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors shrink-0" disabled={isRefueling}>
+              <button onClick={() => !isRefueling && !refuelSuccess && setIsFuelModalOpen(false)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors shrink-0" disabled={isRefueling || !!refuelSuccess}>
                 <X size={20} />
               </button>
             </div>
@@ -2512,11 +2512,11 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-4 px-1">
-                <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount - 1))} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all" disabled={isRefueling}>
+                <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount - 1))} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all" disabled={isRefueling || !!refuelSuccess}>
                   <Minus size={20} />
                 </button>
-                <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={(e) => setRefuelAmount(Number(e.target.value))} className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" disabled={isRefueling} />
-                <button onClick={() => setRefuelAmount(refuelAmount + 1)} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all" disabled={isRefueling}>
+                <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={(e) => setRefuelAmount(Number(e.target.value))} className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" disabled={isRefueling || !!refuelSuccess} />
+                <button onClick={() => setRefuelAmount(refuelAmount + 1)} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all" disabled={isRefueling || !!refuelSuccess}>
                   <Plus size={20} />
                 </button>
               </div>
@@ -2541,23 +2541,32 @@ export default function App() {
               )}
 
               {refuelError && (
-                <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-medium">{refuelError}</div>
-              )}
-              {refuelSuccess && (
-                <div className="p-3 bg-[#96EB3C]/10 text-[#548a1b] rounded-xl text-sm font-medium flex items-center gap-2">
-                  <Check size={18} /> {refuelSuccess}
+                <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-medium flex items-center gap-2 animate-in fade-in duration-200">
+                  <AlertTriangle size={18} className="shrink-0" />
+                  {refuelError}
                 </div>
               )}
 
               <button
                 onClick={handleRefuel}
-                disabled={isRefueling}
+                disabled={isRefueling || !!refuelSuccess}
                 className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
               >
                 {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={18} fill="currentColor" /> Refuel Now</>}
               </button>
             </div>
           </div>
+
+          {/* Success toast (uelCenter-style) */}
+          {refuelSuccess && (
+            <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-[1.5rem] shadow-2xl flex items-center gap-3 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="bg-green-500 rounded-full p-1"><CheckCircle2 size={18} className="text-white" /></div>
+              <div>
+                <p className="text-[13px] font-black">Refuel Successful</p>
+                <p className="text-[10px] text-white/50 font-bold tracking-widest mt-0.5"><span className="uppercase">Synced</span> +{refuelAmount * 100 - REFUEL_GAS_COST} B-Units</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

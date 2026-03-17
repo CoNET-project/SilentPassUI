@@ -7,7 +7,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { storeSystemData, getBalance, formatWithThousands } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername } from '@/services/beamio';
-import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdminByAdmin, postCardAddAdmin, encodeAddAdminWithMintLimit, signExecuteForAdmin, signExecuteForOwner } from '@/services/BeamioCard';
+import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdminByAdmin, postCardAddAdmin, encodeAddAdminWithMintLimit, signExecuteForAdmin, signExecuteForOwner, getPredictedAAAddress } from '@/services/BeamioCard';
 import { conetDepinProvider } from '@/utils/constants';
 import { BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
@@ -2569,6 +2569,7 @@ const fetchTerminals = useCallback(async () => {
                     }
                     adminEOA = ethers.getAddress(peer.address);
                   }
+                  const predictedAA = await getPredictedAAAddress(adminEOA);
                   const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
                   const metadata = JSON.stringify({
                     deviceName: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
@@ -2576,28 +2577,19 @@ const fetchTerminals = useCallback(async () => {
                   });
                   const limitNum = Math.max(1, parseFloat(String(newTerminalMintLimit).replace(/[^0-9.]/g, '')) || 1000);
                   const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
-                  const data = encodeAddAdminWithMintLimit(adminEOA, 1, metadata, mintLimitPoints6);
+                  const data = encodeAddAdminWithMintLimit(predictedAA, 1, metadata, mintLimitPoints6);
                   const now = Math.floor(Date.now() / 1000);
                   const deadline = now + 300;
                   const nonce = ethers.hexlify(ethers.randomBytes(32));
                   const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProvider);
                   const cardOwner = (await card.owner()) as string;
-                  let userAA = profiles?.[0]?.aaAccount?.trim();
-                  if (!userAA && userEOA) {
-                    const profileForFetch = profiles?.[0]?.keyID ? profiles[0] : { keyID: userEOA } as profile;
-                    userAA = (await getAAAccount(profileForFetch)) ?? undefined;
-                  }
+                  const userAA = profiles?.[0]?.aaAccount?.trim();
                   const isOwner =
                     (cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA)) ||
                     (userAA && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userAA));
-                  const isAdminEOA = await isCardAdmin(cardAddress, userEOA);
-                  const isAdminAA = !!(userAA && ethers.isAddress(userAA) && (await isCardAdmin(cardAddress, userAA)));
-                  const isAdminUser = isAdminEOA || isAdminAA;
+                  const isAdminUser = await isCardAdmin(cardAddress, userEOA);
                   if (!isAdminUser && !isOwner) {
                     throw new Error('Wallet must be card owner or admin to register device.');
-                  }
-                  if (isAdminAA && !isAdminEOA) {
-                    throw new Error('Your AA is admin but your EOA must be admin to sign. Ask the card owner to add your EOA as admin first.');
                   }
                   let res: { success: boolean; error?: string; hash?: string; txHash?: string };
                   if (isOwner && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA)) {
@@ -2627,7 +2619,7 @@ const fetchTerminals = useCallback(async () => {
                     throw new Error(res.error ?? 'Failed to register device as admin');
                   }
                   const newTerminal: TerminalRecord = {
-                    id: ethers.getAddress(adminEOA),
+                    id: predictedAA,
                     tag: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : fmtAddr(adminEOA),
                     name: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
                     eoa: fmtAddr(adminEOA),
@@ -2635,7 +2627,7 @@ const fetchTerminals = useCallback(async () => {
                     lastActive: 'On-chain',
                   };
                   const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
-                  const next = [...cached.filter((t) => t.id.toLowerCase() !== adminEOA.toLowerCase()), newTerminal];
+                  const next = [...cached.filter((t) => t.id.toLowerCase() !== predictedAA.toLowerCase()), newTerminal];
                   saveTrustedCache(linkedTerminalsCacheKey, next);
                   setTerminals(next);
                   closeAddTerminalModal();

@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
-import { BASE_MAINNET_FACTORIES } from "@/config/chainAddresses";
+import { BASE_MAINNET_FACTORIES, BASE_TREASURY } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -13,6 +13,63 @@ import { Theater } from "lucide-react";
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
 export type Icard = { cardAddress: string, userSignature: string, nonce: string, usdcAmount: string, from: string, validAfter: number, validBefore: number }
+
+/** B-Unit Refuel EIP-3009 payload for purchaseBUnitFromBase API */
+export type IBUnitRefuelPayload = {
+	from: string
+	amount: string
+	validAfter: number
+	validBefore: number
+	nonce: string
+	signature: string
+}
+
+/**
+ * 为 Refuel Now 生成 EIP-3009 签名：USDC 转至 BaseTreasury 购买 B-Unit。
+ * 用户离线签字，服务端提交 BaseTreasury.purchaseBUnitWith3009Authorization。
+ */
+export const signBUnitRefuel3009 = async (
+	userPrivateKey: string,
+	usdcAmountHuman: string
+): Promise<IBUnitRefuelPayload> => {
+	const usdcAmount6 = ethers.parseUnits(usdcAmountHuman, 6)
+	if (usdcAmount6 < 1_000_000n) throw new Error("Minimum purchase is 1 USDC")
+	const userWallet = new ethers.Wallet(userPrivateKey, baseEndpoint)
+	const chainId = (await baseEndpoint.getNetwork()).chainId
+	const now = Math.floor(Date.now() / 1000)
+	const validAfter = 0
+	const validBefore = now + 3600
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	const signature = await userWallet.signTypedData(
+		{ name: "USD Coin", version: "2", chainId, verifyingContract: USDCContract_BASE },
+		{
+			TransferWithAuthorization: [
+				{ name: "from", type: "address" },
+				{ name: "to", type: "address" },
+				{ name: "value", type: "uint256" },
+				{ name: "validAfter", type: "uint256" },
+				{ name: "validBefore", type: "uint256" },
+				{ name: "nonce", type: "bytes32" },
+			],
+		},
+		{
+			from: userWallet.address,
+			to: BASE_TREASURY,
+			value: usdcAmount6,
+			validAfter: BigInt(validAfter),
+			validBefore: BigInt(validBefore),
+			nonce,
+		}
+	)
+	return {
+		from: userWallet.address,
+		amount: usdcAmount6.toString(),
+		validAfter,
+		validBefore,
+		nonce,
+		signature,
+	}
+}
 
 
 

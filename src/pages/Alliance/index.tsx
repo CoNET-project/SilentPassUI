@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getAAAccountByEOA, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { getAAAccount, getAAAccountByEOA, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID, signBUnitRefuel3009 } from '@/services/BeamioCard';
 import { searchUsername, generateCODE, redeemCodeHash } from '@/services/beamio';
-import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
+import { getBalance, getBUnitBalance, formatWithThousands, purchaseBUnitFromBase, getUsdcBalanceFromApi } from '@/services/beamio';
 import { ethers } from 'ethers';
 import { baseEndpoint } from '@/utils/constants';
 import { BASE_MAINNET_FACTORIES, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
@@ -83,7 +83,10 @@ import {
   Loader2,
   RefreshCw,
   SlidersHorizontal,
-  Menu
+  Menu,
+  Fuel,
+  Minus,
+  Plus
 } from 'lucide-react';
 
 // --- Types & Mock Data ---
@@ -313,9 +316,10 @@ interface MetricCardProps {
   isPositive: boolean;
   icon: React.ReactNode;
   colorClass?: string;
+  bottomRightAction?: React.ReactNode;
 }
 
-const MetricCard = ({ title, value, subValue, change, isPositive, icon, colorClass = "bg-[#96EB3C]/20 text-[#6ea32b]" }: MetricCardProps) => (
+const MetricCard = ({ title, value, subValue, change, isPositive, icon, colorClass = "bg-[#96EB3C]/20 text-[#6ea32b]", bottomRightAction }: MetricCardProps) => (
   <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
     <div className="flex justify-between items-start mb-4">
       <div className={`p-2 rounded-lg ${colorClass} group-hover:scale-110 transition-transform`}>
@@ -328,6 +332,11 @@ const MetricCard = ({ title, value, subValue, change, isPositive, icon, colorCla
     <h3 className="text-slate-500 text-sm font-bold tracking-wide uppercase mb-1">{title}</h3>
     <p className="text-3xl font-black text-slate-900 tracking-tight">{value}</p>
     {subValue && <p className="text-xs text-slate-400 mt-1 font-medium">{subValue}</p>}
+    {bottomRightAction && (
+      <div className="absolute bottom-4 right-4">
+        {bottomRightAction}
+      </div>
+    )}
   </div>
 );
 
@@ -395,6 +404,13 @@ export default function App() {
     setIsMobileMenuOpen(false);
   }, []);
   const [isMerchantModalOpen, setIsMerchantModalOpen] = useState(false);
+  const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
+  const [refuelAmount, setRefuelAmount] = useState(5);
+  const [isRefueling, setIsRefueling] = useState(false);
+  const [refuelError, setRefuelError] = useState<string | null>(null);
+  const [refuelSuccess, setRefuelSuccess] = useState<string | null>(null);
+  const [fuelUsdcBalance, setFuelUsdcBalance] = useState<number | null>(null);
+  const REFUEL_GAS_COST = 2;
 
   // Onboard Restaurant form
   const [restaurantName, setRestaurantName] = useState('');
@@ -775,6 +791,48 @@ export default function App() {
     setOverviewRefreshTrigger((n) => n + 1);
     setTimeout(() => setOverviewRefreshing(false), 3000);
   }, []);
+
+  useEffect(() => {
+    if (isFuelModalOpen && eoaAddress) {
+      getUsdcBalanceFromApi(eoaAddress)
+        .then((s) => setFuelUsdcBalance(s != null ? Number(s) : null))
+        .catch(() => setFuelUsdcBalance(null));
+    }
+  }, [isFuelModalOpen, eoaAddress]);
+
+  const handleRefuel = useCallback(async () => {
+    const pk = profile?.privateKeyArmor;
+    if (!pk || !eoaAddress) {
+      setRefuelError('Wallet not ready. Please unlock or sign in.');
+      return;
+    }
+    const usdcBal = fuelUsdcBalance ?? 0;
+    if (usdcBal < refuelAmount) {
+      setRefuelError('Insufficient USDC balance.');
+      return;
+    }
+    setRefuelError(null);
+    setRefuelSuccess(null);
+    setIsRefueling(true);
+    try {
+      const payload = await signBUnitRefuel3009(pk, String(refuelAmount));
+      const result = await purchaseBUnitFromBase(payload);
+      if (result.success) {
+        setRefuelSuccess(result.txHash ?? 'Success');
+        setOverviewRefreshTrigger((n) => n + 1);
+        setTimeout(() => {
+          setIsFuelModalOpen(false);
+          setRefuelSuccess(null);
+        }, 2500);
+      } else {
+        setRefuelError(result.error ?? 'Refuel failed');
+      }
+    } catch (e) {
+      setRefuelError((e as Error)?.message ?? 'Refuel failed');
+    } finally {
+      setIsRefueling(false);
+    }
+  }, [profile?.privateKeyArmor, eoaAddress, fuelUsdcBalance, refuelAmount]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1299,7 +1357,24 @@ export default function App() {
                   <MetricCard title="All-Time Volume" value={overviewMetrics.totalNetworkVolumeCad} subValue="Total Network Volume (CAD)" change="Live" isPositive={true} icon={<Activity size={24} />} />
                   <MetricCard title="Active Memberships" value={overviewMetrics.activeMemberships} subValue="Green & Black Cards" change="Live" isPositive={true} icon={<CreditCard size={24} />} colorClass="bg-blue-50 text-blue-600" />
                   <MetricCard title="Partner Locations" value={overviewMetrics.partnerLocations} subValue="Verified restaurants" change="Live" isPositive={true} icon={<Utensils size={24} />} colorClass="bg-purple-50 text-purple-600" />
-                  <MetricCard title="CashTrees Fuel Pool" value={overviewMetrics.fuelPoolBUnits} subValue="B-Units for Mint/Top-ups" change="Live" isPositive={true} icon={<Zap size={24} />} colorClass="bg-orange-50 text-orange-600" />
+                  <MetricCard
+                    title="CashTrees Fuel Pool"
+                    value={overviewMetrics.fuelPoolBUnits}
+                    subValue="B-Units for Mint/Top-ups"
+                    change="Live"
+                    isPositive={true}
+                    icon={<Zap size={24} />}
+                    colorClass="bg-orange-50 text-orange-600"
+                    bottomRightAction={
+                      <button
+                        onClick={() => { setIsFuelModalOpen(true); setRefuelError(null); setRefuelSuccess(null); }}
+                        className="w-10 h-10 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-200 active:scale-95 transition-all"
+                        title="Purchase B-Units"
+                      >
+                        <Fuel size={20} fill="currentColor" />
+                      </button>
+                    }
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -2392,6 +2467,80 @@ export default function App() {
                </div>
             </div>
           </div>
+      )}
+
+      {/* --- B-UNIT PURCHASE (FUEL) MODAL --- */}
+      {isFuelModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !isRefueling && setIsFuelModalOpen(false)} aria-hidden="true" />
+          <div className="bg-white rounded-[2rem] shadow-[0_24px_48px_rgba(0,0,0,0.1)] w-full max-w-md relative z-10 p-6 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
+                <Fuel size={24} className="text-orange-500" fill="currentColor" /> Purchase B-Units
+              </h3>
+              <button onClick={() => !isRefueling && setIsFuelModalOpen(false)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors shrink-0" disabled={isRefueling}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Select Amount</h4>
+                <div className="bg-[#eef6ff] px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                  <Coins size={14} className="text-[#1562f0]" />
+                  <span className="text-base font-black text-[#1562f0]">${refuelAmount}</span>
+                  <span className="text-[10px] text-blue-400 font-bold uppercase">USDC</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 px-1">
+                <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount - 1))} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all" disabled={isRefueling}>
+                  <Minus size={20} />
+                </button>
+                <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={(e) => setRefuelAmount(Number(e.target.value))} className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" disabled={isRefueling} />
+                <button onClick={() => setRefuelAmount(refuelAmount + 1)} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all" disabled={isRefueling}>
+                  <Plus size={20} />
+                </button>
+              </div>
+
+              <div className="bg-[#f8f9fc] p-5 rounded-[1.5rem] space-y-3">
+                <div className="flex justify-between text-[13px] font-bold">
+                  <span className="text-slate-400">Fuel Yield (1:100)</span>
+                  <span className="text-slate-800">+{refuelAmount * 100} B-Units</span>
+                </div>
+                <div className="flex justify-between text-[13px] font-bold">
+                  <span className="text-slate-400 tracking-tight">Refuel Fee (Shadow Gas)</span>
+                  <span className="text-red-400">-{REFUEL_GAS_COST} B-Units</span>
+                </div>
+                <div className="border-t border-slate-200 pt-3 flex justify-between items-center mt-1">
+                  <span className="text-[14px] font-black text-slate-800">Net Deposit</span>
+                  <span className="text-[22px] font-black text-orange-500 leading-none">+{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[10px] font-bold opacity-60">B-Units</span></span>
+                </div>
+              </div>
+
+              {fuelUsdcBalance != null && (
+                <p className="text-[12px] text-slate-500 font-medium">USDC Balance: {formatWithThousands(fuelUsdcBalance, 2)}</p>
+              )}
+
+              {refuelError && (
+                <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-medium">{refuelError}</div>
+              )}
+              {refuelSuccess && (
+                <div className="p-3 bg-[#96EB3C]/10 text-[#548a1b] rounded-xl text-sm font-medium flex items-center gap-2">
+                  <Check size={18} /> {refuelSuccess}
+                </div>
+              )}
+
+              <button
+                onClick={handleRefuel}
+                disabled={isRefueling}
+                className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+              >
+                {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={18} fill="currentColor" /> Refuel Now</>}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

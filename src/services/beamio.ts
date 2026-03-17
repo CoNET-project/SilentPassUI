@@ -201,6 +201,25 @@ export const signAndClaimBUnits = async (
 	}
 }
 
+/** B-Unit Refuel EIP-3009 payload (matches BeamioCard.IBUnitRefuelPayload) */
+export type BUnitRefuelPayload = { from: string; amount: string; validAfter: number; validBefore: number; nonce: string; signature: string }
+
+/** 提交 Refuel B-Unit 请求到 API。Cluster 预检后转发 Master，Master 提交 BaseTreasury.purchaseBUnitWith3009Authorization。 */
+export const purchaseBUnitFromBase = async (payload: BUnitRefuelPayload): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+	try {
+		const res = await fetch(`${beamioApi}/api/purchaseBUnitFromBase`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		})
+		const data = await res.json().catch(() => ({}))
+		if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
+		return { success: true, txHash: data.txHash }
+	} catch (e) {
+		return { success: false, error: (e as Error)?.message ?? 'Refuel failed' }
+	}
+}
+
 /** 获取指定地址的 B-Units 余额（CoNET 链上） */
 export const getBUnitBalance = async (address: string): Promise<string | null> => {
 	if (!address || !ethers.isAddress(address)) return null

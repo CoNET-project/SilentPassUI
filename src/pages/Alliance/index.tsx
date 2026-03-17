@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CoNET_Data } from '@/utils/globals';
-import { getAAAccount, getAAAccountByEOA, ensureAAForEOA, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
+import { getAAAccount, getAAAccountByEOA, getCardMetadataFromApi, getCardMetadataFrom1155Json, postCardCreateRedeemAdmin, postCardAddAdmin, signExecuteForOwner, encodeCreateRedeemAdmin, encodeAddAdminWithMintLimit, ISSUED_NFT_START_ID } from '@/services/BeamioCard';
 import { searchUsername, generateCODE, redeemCodeHash } from '@/services/beamio';
 import { getBalance, getBUnitBalance, formatWithThousands } from '@/services/beamio';
 import { ethers } from 'ethers';
@@ -402,7 +402,7 @@ export default function App() {
   const [restaurantCity, setRestaurantCity] = useState('');
   const [restaurantHandle, setRestaurantHandle] = useState('');
   const [isGeneratingKyb, setIsGeneratingKyb] = useState(false);
-  const [kybGeneratingPhase, setKybGeneratingPhase] = useState<'ensureAA' | 'register' | null>(null);
+  const [kybGeneratingPhase, setKybGeneratingPhase] = useState<'register' | null>(null);
   const [kybError, setKybError] = useState<string | null>(null);
   const [kybSuccess, setKybSuccess] = useState<{ code: string; link: string } | null>(null);
   const [kybLinkCopied, setKybLinkCopied] = useState(false);
@@ -583,13 +583,8 @@ export default function App() {
     setKybError(null);
     setKybSuccess(null);
     setIsGeneratingKyb(true);
-    setKybGeneratingPhase('ensureAA');
+    setKybGeneratingPhase('register');
     try {
-      const adminAA = await ensureAAForEOA(adminEOA);
-      if (!adminAA || adminAA.toLowerCase() === adminEOA.toLowerCase()) {
-        throw new Error('Admin must be AA address, not EOA. ensureAAForEOA failed.');
-      }
-      setKybGeneratingPhase('register');
       const metadata = JSON.stringify({
         restaurantName: restaurantName.trim() || `@${handleResolved.username}`,
         cuisine: restaurantCuisine.trim(),
@@ -598,7 +593,7 @@ export default function App() {
       });
       const limitNum = Math.max(0, Number(topupLimit) || 1000);
       const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
-      const data = encodeAddAdminWithMintLimit(adminAA, 1, metadata, mintLimitPoints6);
+      const data = encodeAddAdminWithMintLimit(adminEOA, 1, metadata, mintLimitPoints6);
       const now = Math.floor(Date.now() / 1000);
       const deadline = now + 300;
       const nonce = ethers.hexlify(ethers.randomBytes(32));
@@ -609,19 +604,20 @@ export default function App() {
         deadline,
         nonce,
         ownerSignature,
+        adminEOA,
       });
       if (!res.success) {
         setKybError(res.error ?? 'Failed to register merchant as admin');
         return;
       }
       const rest: LocalRestaurant = {
-        id: adminAA.toLowerCase(),
+        id: adminEOA.toLowerCase(),
         name: restaurantName.trim() || `@${handleResolved.username}`,
         cuisine: restaurantCuisine.trim(),
         cityArea: restaurantCity.trim(),
         handle: `@${handleResolved.username}`,
         createdAt: Date.now(),
-        address: ethers.getAddress(adminAA),
+        address: ethers.getAddress(adminEOA),
       };
       addLocalRestaurant(rest);
       setKybSuccess({ code: '', link: `Merchant @${handleResolved.username} registered as admin successfully.` });
@@ -2369,7 +2365,7 @@ export default function App() {
                        {isGeneratingKyb ? (
                          <>
                            <Loader2 className="w-5 h-5 animate-spin" />
-                           {kybGeneratingPhase === 'ensureAA' ? 'Ensuring AA account...' : 'Registering...'}
+                           {kybGeneratingPhase === 'register' ? 'Registering...' : 'Register'}
                          </>
                        ) : (
                          <>Mint Partner NFT & Authorize <Sparkles size={18} strokeWidth={2.5}/></>

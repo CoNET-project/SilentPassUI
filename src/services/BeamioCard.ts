@@ -1004,21 +1004,25 @@ export const postCardMintIssuedNftToAddress = async (payload: {
 	}
 }
 
-/** 提交 adminManager 到 API cardAddAdmin。Cluster 预检后转发 Master executeForOwner 排队，返回 tx hash */
+/** 提交 adminManager 到 API cardAddAdmin。若传 adminEOA，Cluster 会先 ensureAAForEOA 再执行。 */
 export const postCardAddAdmin = async (payload: {
     cardAddress: string
     data: string
     deadline: number
     nonce: string
     ownerSignature: string
+    adminEOA?: string
 }): Promise<{ success: boolean; hash?: string; error?: string }> => {
     try {
-        const body = {
+        const body: Record<string, unknown> = {
             cardAddress: payload.cardAddress,
             data: payload.data,
             deadline: payload.deadline,
             nonce: payload.nonce,
             ownerSignature: payload.ownerSignature,
+        }
+        if (payload.adminEOA && ethers.isAddress(payload.adminEOA)) {
+            body.adminEOA = ethers.getAddress(payload.adminEOA)
         }
         const res = await fetch(cardAddAdminEndpoint, {
             method: 'POST',

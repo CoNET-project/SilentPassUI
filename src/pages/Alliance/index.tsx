@@ -85,8 +85,7 @@ import {
   SlidersHorizontal,
   Menu,
   Fuel,
-  Minus,
-  Plus
+  Minus
 } from 'lucide-react';
 
 // --- Types & Mock Data ---
@@ -330,13 +329,15 @@ const MetricCard = ({ title, value, subValue, change, isPositive, icon, colorCla
       </span>
     </div>
     <h3 className="text-slate-500 text-sm font-bold tracking-wide uppercase mb-1">{title}</h3>
-    <p className="text-3xl font-black text-slate-900 tracking-tight">{value}</p>
+    <div className="flex items-center justify-between gap-4">
+      <p className="text-3xl font-black text-slate-900 tracking-tight">{value}</p>
+      {bottomRightAction && (
+        <div className="shrink-0">
+          {bottomRightAction}
+        </div>
+      )}
+    </div>
     {subValue && <p className="text-xs text-slate-400 mt-1 font-medium">{subValue}</p>}
-    {bottomRightAction && (
-      <div className="absolute bottom-4 right-4">
-        {bottomRightAction}
-      </div>
-    )}
   </div>
 );
 
@@ -781,6 +782,7 @@ export default function App() {
   const [pendingRedeemAdmins, setPendingRedeemAdmins] = useState<PendingRedeemAdminEntry[]>([]);
   const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
   const [overviewRefreshing, setOverviewRefreshing] = useState(false);
+  const [bUnitRefreshTrigger, setBUnitRefreshTrigger] = useState(0);
 
   const handleNewTransactionIndexed = useCallback(() => {
     setOverviewRefreshTrigger((n) => n + 1);
@@ -819,7 +821,23 @@ export default function App() {
       const result = await purchaseBUnitFromBase(payload);
       if (result.success) {
         setRefuelSuccess(result.txHash ?? 'Success');
+        // Immediate refresh of B-unit balance in Overview panel
         setOverviewRefreshTrigger((n) => n + 1);
+        setBUnitRefreshTrigger((n) => n + 1);
+        // Invalidate caches so next fetch uses fresh chain data
+        try {
+          if (overviewCacheKey) window.localStorage.removeItem(`${ALLIANCE_CACHE_PREFIX}${overviewCacheKey}`);
+          if (bUnitBalanceCacheKey) window.localStorage.removeItem(`${ALLIANCE_CACHE_PREFIX}${bUnitBalanceCacheKey}`);
+        } catch { /* ignore */ }
+        // Poll for up to 2 min (CoNET mint can take 1–3 min) to pick up new balance
+        const pollMs = 5000;
+        const pollCount = 24;
+        for (let i = 0; i < pollCount; i++) {
+          setTimeout(() => {
+            setOverviewRefreshTrigger((n) => n + 1);
+            setBUnitRefreshTrigger((n) => n + 1);
+          }, (i + 1) * pollMs);
+        }
         setTimeout(() => {
           setIsFuelModalOpen(false);
           setRefuelSuccess(null);
@@ -832,7 +850,7 @@ export default function App() {
     } finally {
       setIsRefueling(false);
     }
-  }, [profile?.privateKeyArmor, eoaAddress, fuelUsdcBalance, refuelAmount]);
+  }, [profile?.privateKeyArmor, eoaAddress, fuelUsdcBalance, refuelAmount, overviewCacheKey, bUnitBalanceCacheKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1190,7 +1208,7 @@ export default function App() {
       .catch(() => {
         // Keep the last trusted balance if the refresh fails.
       });
-  }, [bUnitBalanceCacheKey, eoaAddress]);
+  }, [bUnitBalanceCacheKey, eoaAddress, bUnitRefreshTrigger]);
 
   // 新增：处理结算申请的函数
   const handleApproveSettlement = (id: string) => {

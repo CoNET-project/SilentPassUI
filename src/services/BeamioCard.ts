@@ -383,17 +383,13 @@ export const checkRedeemAdminCodeValid = async (
 	}
 }
 
-/** 链上校验 EOA 是否为指定卡的 admin（避免重复兑换浪费 redeem code） */
+/** 链上校验 EOA 是否为指定卡的 admin（避免重复兑换浪费 redeem code）。RPC 失败时抛出，不得将失败当作「非 admin」的信任信息。 */
 export const isCardAdmin = async (cardAddress: string, eoa: string): Promise<boolean> => {
 	if (!cardAddress || !eoa || !ethers.isAddress(cardAddress) || !ethers.isAddress(eoa)) return false
-	try {
-		const cardAbi = ['function isAdmin(address a) view returns (bool)']
-		const card = new ethers.Contract(cardAddress, cardAbi, baseEndpoint)
-		const ok = await card.isAdmin(eoa)
-		return !!ok
-	} catch {
-		return false
-	}
+	const cardAbi = ['function isAdmin(address a) view returns (bool)']
+	const card = new ethers.Contract(cardAddress, cardAbi, baseEndpoint)
+	const ok = await card.isAdmin(eoa)
+	return !!ok
 }
 
 /** 用户兑换 redeem-admin 码：提交到 API，服务端调用 redeemAdminForUser，将 to 添加为 admin */

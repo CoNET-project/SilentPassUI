@@ -838,10 +838,6 @@ export default function App() {
             setBUnitRefreshTrigger((n) => n + 1);
           }, (i + 1) * pollMs);
         }
-        setTimeout(() => {
-          setIsFuelModalOpen(false);
-          setRefuelSuccess(null);
-        }, 2500);
       } else {
         setRefuelError(result.error ?? 'Refuel failed');
       }
@@ -2490,83 +2486,105 @@ export default function App() {
       {/* --- B-UNIT PURCHASE (FUEL) MODAL --- */}
       {isFuelModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !isRefueling && !refuelSuccess && setIsFuelModalOpen(false)} aria-hidden="true" />
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => !isRefueling && setIsFuelModalOpen(false)} aria-hidden="true" />
           <div className="bg-white rounded-[2rem] shadow-[0_24px_48px_rgba(0,0,0,0.1)] w-full max-w-md relative z-10 p-6 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
                 <Fuel size={24} className="text-orange-500" fill="currentColor" /> Purchase B-Units
               </h3>
-              <button onClick={() => !isRefueling && !refuelSuccess && setIsFuelModalOpen(false)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors shrink-0" disabled={isRefueling || !!refuelSuccess}>
+              <button onClick={() => !isRefueling && setIsFuelModalOpen(false)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors shrink-0" disabled={isRefueling}>
                 <X size={20} />
               </button>
             </div>
 
             <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Select Amount</h4>
-                <div className="bg-[#eef6ff] px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-                  <Coins size={14} className="text-[#1562f0]" />
-                  <span className="text-base font-black text-[#1562f0]">${refuelAmount}</span>
-                  <span className="text-[10px] text-blue-400 font-bold uppercase">USDC</span>
+              {isRefueling ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-4">
+                  <RefreshCw size={48} className="animate-spin text-orange-500" />
+                  <p className="text-[15px] font-semibold text-slate-600">Processing refuel...</p>
+                  <p className="text-[12px] text-slate-500">Please wait</p>
                 </div>
-              </div>
+              ) : refuelSuccess !== null ? (
+                <div className="flex flex-col items-center py-6 gap-4">
+                  <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <Check size={32} strokeWidth={3} className="text-green-500" />
+                  </div>
+                  <p className="text-[18px] font-black text-green-600">Success</p>
+                  {refuelSuccess.startsWith('0x') && (
+                    <a
+                      href={`https://basescan.org/tx/${refuelSuccess}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 border border-slate-200 text-[12px] font-mono text-[#1562f0] hover:bg-slate-200 transition-colors"
+                    >
+                      {refuelSuccess.slice(0, 10)}...{refuelSuccess.slice(-8)}
+                      <ExternalLink size={14} strokeWidth={2.5} />
+                    </a>
+                  )}
+                  <button
+                    onClick={() => { setRefuelSuccess(null); setRefuelError(null); }}
+                    className="mt-2 text-[13px] font-semibold text-orange-500 hover:text-orange-600"
+                  >
+                    Refuel Again
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Select Amount</h4>
+                    <div className="bg-[#eef6ff] px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                      <Coins size={14} className="text-[#1562f0]" />
+                      <span className="text-base font-black text-[#1562f0]">${refuelAmount}</span>
+                      <span className="text-[10px] text-blue-400 font-bold uppercase">USDC</span>
+                    </div>
+                  </div>
 
-              <div className="flex items-center gap-4 px-1">
-                <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount - 1))} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all" disabled={isRefueling || !!refuelSuccess}>
-                  <Minus size={20} />
-                </button>
-                <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={(e) => setRefuelAmount(Number(e.target.value))} className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" disabled={isRefueling || !!refuelSuccess} />
-                <button onClick={() => setRefuelAmount(refuelAmount + 1)} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all" disabled={isRefueling || !!refuelSuccess}>
-                  <Plus size={20} />
-                </button>
-              </div>
+                  <div className="flex items-center gap-4 px-1">
+                    <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount - 1))} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all">
+                      <Minus size={20} />
+                    </button>
+                    <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={(e) => setRefuelAmount(Number(e.target.value))} className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" />
+                    <button onClick={() => setRefuelAmount(refuelAmount + 1)} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all">
+                      <Plus size={20} />
+                    </button>
+                  </div>
 
-              <div className="bg-[#f8f9fc] p-5 rounded-[1.5rem] space-y-3">
-                <div className="flex justify-between text-[13px] font-bold">
-                  <span className="text-slate-400">Fuel Yield (1:100)</span>
-                  <span className="text-slate-800">+{refuelAmount * 100} B-Units</span>
-                </div>
-                <div className="flex justify-between text-[13px] font-bold">
-                  <span className="text-slate-400 tracking-tight">Refuel Fee (Shadow Gas)</span>
-                  <span className="text-red-400">-{REFUEL_GAS_COST} B-Units</span>
-                </div>
-                <div className="border-t border-slate-200 pt-3 flex justify-between items-center mt-1">
-                  <span className="text-[14px] font-black text-slate-800">Net Deposit</span>
-                  <span className="text-[22px] font-black text-orange-500 leading-none">+{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[10px] font-bold opacity-60">B-Units</span></span>
-                </div>
-              </div>
+                  <div className="bg-[#f8f9fc] p-5 rounded-[1.5rem] space-y-3">
+                    <div className="flex justify-between text-[13px] font-bold">
+                      <span className="text-slate-400">Fuel Yield (1:100)</span>
+                      <span className="text-slate-800">+{refuelAmount * 100} B-Units</span>
+                    </div>
+                    <div className="flex justify-between text-[13px] font-bold">
+                      <span className="text-slate-400 tracking-tight">Refuel Fee (Shadow Gas)</span>
+                      <span className="text-red-400">-{REFUEL_GAS_COST} B-Units</span>
+                    </div>
+                    <div className="border-t border-slate-200 pt-3 flex justify-between items-center mt-1">
+                      <span className="text-[14px] font-black text-slate-800">Net Deposit</span>
+                      <span className="text-[22px] font-black text-orange-500 leading-none">+{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[10px] font-bold opacity-60">B-Units</span></span>
+                    </div>
+                  </div>
 
-              {fuelUsdcBalance != null && (
-                <p className="text-[12px] text-slate-500 font-medium">USDC Balance: {formatWithThousands(fuelUsdcBalance, 2)}</p>
+                  {fuelUsdcBalance != null && (
+                    <p className="text-[12px] text-slate-500 font-medium">USDC Balance: {formatWithThousands(fuelUsdcBalance, 2)}</p>
+                  )}
+
+                  {refuelError && (
+                    <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-medium flex items-center gap-2 animate-in fade-in duration-200">
+                      <AlertTriangle size={18} className="shrink-0" />
+                      {refuelError}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleRefuel}
+                    className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+                  >
+                    <Fuel size={18} fill="currentColor" /> Refuel Now
+                  </button>
+                </>
               )}
-
-              {refuelError && (
-                <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-medium flex items-center gap-2 animate-in fade-in duration-200">
-                  <AlertTriangle size={18} className="shrink-0" />
-                  {refuelError}
-                </div>
-              )}
-
-              <button
-                onClick={handleRefuel}
-                disabled={isRefueling || !!refuelSuccess}
-                className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
-              >
-                {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={18} fill="currentColor" /> Refuel Now</>}
-              </button>
             </div>
           </div>
-
-          {/* Success toast (uelCenter-style) */}
-          {refuelSuccess && (
-            <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-[1.5rem] shadow-2xl flex items-center gap-3 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
-              <div className="bg-green-500 rounded-full p-1"><CheckCircle2 size={18} className="text-white" /></div>
-              <div>
-                <p className="text-[13px] font-black">Refuel Successful</p>
-                <p className="text-[10px] text-white/50 font-bold tracking-widest mt-0.5"><span className="uppercase">Synced</span> +{refuelAmount * 100 - REFUEL_GAS_COST} B-Units</p>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -82,7 +82,8 @@ import {
   Nfc,
   Loader2,
   RefreshCw,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Menu
 } from 'lucide-react';
 
 // --- Types & Mock Data ---
@@ -208,6 +209,15 @@ type LocalRestaurant = {
   kybCode?: string
   kybLink?: string
   createdAt: number
+  /** Chain address (AA or EOA) - unique ID for deduplication */
+  address?: string
+  /** Optional chain data when merchant is registered */
+  volume?: string
+  fiatCollected?: string
+  mintQuota?: number
+  activeMembers?: number
+  bUnitsBalance?: number
+  logo?: string
 }
 type OnchainAdminEntry = {
   address: string
@@ -369,7 +379,21 @@ export default function App() {
   const bUnitBalanceFetchSeq = useRef(0);
   const [activeTab, setActiveTab] = useState('Overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [posAmount, setPosAmount] = useState('0');
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) setIsMobileMenuOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+  }, []);
   const [isMerchantModalOpen, setIsMerchantModalOpen] = useState(false);
 
   // Onboard Restaurant form
@@ -385,7 +409,10 @@ export default function App() {
   const [handleError, setHandleError] = useState<string | null>(null);
   const [handleResolved, setHandleResolved] = useState<{ username: string; address?: string; addressAA?: string; image?: string; first_name?: string; last_name?: string } | null>(null);
   const [handleChecking, setHandleChecking] = useState(false);
+  const [handleStatus, setHandleStatus] = useState<'idle' | 'searching' | 'found' | 'available'>('idle');
   const [topupLimit, setTopupLimit] = useState('1000');
+  const [maxTopupPerTx, setMaxTopupPerTx] = useState('1000');
+  const [maxSpendPerTx, setMaxSpendPerTx] = useState('500');
   const handleValidateAbortRef = useRef<boolean>(false);
 
   const validateHandle = useCallback(async (raw: string) => {
@@ -393,10 +420,12 @@ export default function App() {
     if (!trimmed) {
       setHandleError(null);
       setHandleResolved(null);
+      setHandleStatus('idle');
       return;
     }
     handleValidateAbortRef.current = false;
     setHandleChecking(true);
+    setHandleStatus('searching');
     setHandleError(null);
     setHandleResolved(null);
     try {
@@ -432,6 +461,7 @@ export default function App() {
             if (bal > 0n) {
               setHandleResolved(null);
               setHandleError('Already registered as merchant');
+              setHandleStatus('idle');
               return;
             }
           } catch {
@@ -454,6 +484,7 @@ export default function App() {
             last_name: match.last_name,
           });
           setHandleError(null);
+          setHandleStatus('found');
           return;
         }
         setHandleResolved({
@@ -464,6 +495,7 @@ export default function App() {
           last_name: match.last_name,
         });
         setHandleError(null);
+        setHandleStatus('found');
       } else if (isAddressSearch) {
         let addressAA: string | undefined;
         try {
@@ -479,14 +511,17 @@ export default function App() {
           addressAA,
         });
         setHandleError(null);
+        setHandleStatus('found');
       } else {
         setHandleResolved(null);
         setHandleError('Not found');
+        setHandleStatus('available');
       }
     } catch {
       if (!handleValidateAbortRef.current) {
         setHandleResolved(null);
         setHandleError('Not found');
+        setHandleStatus('idle');
       }
     } finally {
       if (!handleValidateAbortRef.current) setHandleChecking(false);
@@ -500,11 +535,14 @@ export default function App() {
     setRestaurantCity('');
     setRestaurantHandle('');
     setTopupLimit('1000');
+    setMaxTopupPerTx('1000');
+    setMaxSpendPerTx('500');
     setKybError(null);
     setKybSuccess(null);
     setKybLinkCopied(false);
     setHandleError(null);
     setHandleResolved(null);
+    setHandleStatus('idle');
     setKybGeneratingPhase(null);
   }, []);
 
@@ -577,12 +615,13 @@ export default function App() {
         return;
       }
       const rest: LocalRestaurant = {
-        id: `rest-${Date.now()}`,
+        id: adminAA.toLowerCase(),
         name: restaurantName.trim() || `@${handleResolved.username}`,
         cuisine: restaurantCuisine.trim(),
         cityArea: restaurantCity.trim(),
         handle: `@${handleResolved.username}`,
         createdAt: Date.now(),
+        address: ethers.getAddress(adminAA),
       };
       addLocalRestaurant(rest);
       setKybSuccess({ code: '', link: `Merchant @${handleResolved.username} registered as admin successfully.` });
@@ -602,8 +641,8 @@ export default function App() {
       setKybError('Restaurant Name is required');
       return;
     }
-    if (handleError) {
-      setKybError(handleError === 'Already registered as merchant' ? handleError : 'Handle not found. Please enter a valid beamioTag or leave it empty.');
+    if (handleError === 'Already registered as merchant') {
+      setKybError(handleError);
       return;
     }
     setKybError(null);
@@ -965,46 +1004,58 @@ export default function App() {
                 })
               : [];
 
-            // Parse metadata to get restaurant identifiers on chain (restaurantName, handle)
-            const chainRestaurantKeys = new Set<string>();
-            const norm = (s: string) => (s ?? '').trim().replace(/^@/, '').toLowerCase();
-            for (const a of adminsUnderUser) {
-              try {
-                const meta = a.metadata?.trim();
-                if (!meta) continue;
-                const parsed = JSON.parse(meta) as { restaurantName?: string; handle?: string };
-                const name = norm(parsed?.restaurantName ?? '');
-                const handle = norm(parsed?.handle ?? '');
-                if (name || handle) chainRestaurantKeys.add(`${name}|${handle}`);
-              } catch {
-                // ignore invalid metadata
-              }
-            }
-
+            // Build trusted list from chain: use address as unique ID, deduplicate, remove non-existent
             setLocalRestaurants((prev) => {
-              const toKeep = prev.filter((r) => {
-                if (r.kybCode) {
-                  if (!didLoadPendingRedeemAdmins) return true; // no chain data, keep
+              const merged: LocalRestaurant[] = [];
+              const seen = new Set<string>();
+              if (didLoadOnchainAdmins) {
+                for (const a of adminsUnderUser) {
+                  const addr = a.address.toLowerCase();
+                  if (seen.has(addr)) continue;
+                  seen.add(addr);
+                  const local = prev.find((r) => r.address?.toLowerCase() === addr);
+                  let parsed: { restaurantName?: string; handle?: string; cuisine?: string; cityArea?: string } = {};
                   try {
-                    const h = redeemCodeHash(r.kybCode, '').toLowerCase();
-                    return activeHashes.has(h);
+                    parsed = a.metadata?.trim() ? (JSON.parse(a.metadata) as typeof parsed) : {};
                   } catch {
-                    return false;
+                    /* ignore */
+                  }
+                  merged.push({
+                    id: addr,
+                    name: local?.name ?? parsed?.restaurantName?.trim() ?? `0x${addr.slice(2, 6)}…${addr.slice(-4)}`,
+                    cuisine: local?.cuisine ?? parsed?.cuisine?.trim() ?? '',
+                    cityArea: local?.cityArea ?? parsed?.cityArea?.trim() ?? '',
+                    handle: local?.handle ?? parsed?.handle?.trim() ?? '',
+                    kybCode: local?.kybCode,
+                    kybLink: local?.kybLink,
+                    createdAt: local?.createdAt ?? Date.now(),
+                    address: ethers.getAddress(a.address),
+                  });
+                }
+              }
+              // Keep pending KYB (not yet on chain): has kybCode and active hash
+              if (didLoadPendingRedeemAdmins) {
+                for (const r of prev) {
+                  if (r.kybCode && !r.address) {
+                    try {
+                      const h = redeemCodeHash(r.kybCode, '').toLowerCase();
+                      if (activeHashes.has(h)) merged.push(r);
+                    } catch {
+                      /* skip */
+                    }
                   }
                 }
-                // No kybCode: must exist in chain admin list under user
-                if (!didLoadOnchainAdmins) return true; // no chain data, keep
-                const name = norm(r.name ?? '');
-                const handle = norm(r.handle ?? '');
-                const key = `${name}|${handle}`;
-                return chainRestaurantKeys.has(key);
-              });
-              if (toKeep.length < prev.length) {
-                try {
-                  window.localStorage.setItem(ALLIANCE_RESTAURANTS_KEY, JSON.stringify(toKeep));
-                } catch {}
               }
-              return toKeep;
+              if (!didLoadOnchainAdmins) {
+                return prev;
+              }
+              const next = merged.length > 0 ? merged : prev.filter((r) => r.kybCode);
+              try {
+                window.localStorage.setItem(ALLIANCE_RESTAURANTS_KEY, JSON.stringify(next));
+              } catch {
+                /* ignore */
+              }
+              return next;
             });
           }
         }
@@ -1111,42 +1162,57 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 selection:bg-[#96EB3C]/30 selection:text-slate-900">
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 selection:bg-[#96EB3C]/30 selection:text-slate-900 overflow-hidden">
       
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+          onClick={() => setIsMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`bg-white border-r border-slate-200 flex flex-col fixed h-full z-20 transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}>
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 ease-in-out
+          ${isMobileMenuOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'}
+          lg:relative lg:translate-x-0 ${isSidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}
+      >
+        <div className={`p-5 border-b border-slate-100 flex items-center justify-between ${isSidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}`}>
+          <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => window.innerWidth >= 1024 && setIsSidebarCollapsed(!isSidebarCollapsed)}>
             <div className="w-10 h-10 bg-[#96EB3C] rounded-xl flex items-center justify-center flex-shrink-0 shadow-[0_4px_16px_rgba(150,235,60,0.4)] group-hover:bg-[#86d635] transition-colors">
               <span className="text-white font-black text-2xl">C</span>
             </div>
-            {!isSidebarCollapsed && (
+            {(!isSidebarCollapsed || isMobileMenuOpen) && (
               <div className="flex flex-col">
                 <span className="font-black text-xl tracking-tighter text-slate-900 leading-none">CashTrees</span>
                 <span className="text-[9px] font-bold text-[#7abf30] tracking-widest uppercase mt-1">Alliance OS</span>
               </div>
             )}
           </div>
+          <button className="lg:hidden p-2 text-slate-400 hover:text-slate-800 bg-slate-100 rounded-full shrink-0" onClick={() => setIsMobileMenuOpen(false)} aria-label="Close menu">
+            <X size={20} />
+          </button>
         </div>
 
         <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto no-scrollbar">
-          {!isSidebarCollapsed && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-4">Command Center</div>}
-          <SidebarItem icon={LayoutDashboard} label="Overview" active={activeTab === 'Overview'} onClick={() => setActiveTab('Overview')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={CreditCard} label="Asset Factory" active={activeTab === 'Assets'} onClick={() => setActiveTab('Assets')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={Users} label="Members" active={activeTab === 'Members'} onClick={() => setActiveTab('Members')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={Utensils} label="Restaurants" active={activeTab === 'Merchants'} onClick={() => setActiveTab('Merchants')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={BookOpen} label="Ledger & Clearing" active={activeTab === 'Ledger'} onClick={() => setActiveTab('Ledger')} collapsed={isSidebarCollapsed} />
+          {(!isSidebarCollapsed || isMobileMenuOpen) && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-4">Command Center</div>}
+          <SidebarItem icon={LayoutDashboard} label="Overview" active={activeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+          <SidebarItem icon={CreditCard} label="Asset Factory" active={activeTab === 'Assets'} onClick={() => handleTabChange('Assets')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+          <SidebarItem icon={Users} label="Members" active={activeTab === 'Members'} onClick={() => handleTabChange('Members')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+          <SidebarItem icon={Utensils} label="Restaurants" active={activeTab === 'Merchants'} onClick={() => handleTabChange('Merchants')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+          <SidebarItem icon={BookOpen} label="Ledger & Clearing" active={activeTab === 'Ledger'} onClick={() => handleTabChange('Ledger')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
           
-          {!isSidebarCollapsed && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-8">Financial Hub</div>}
-          <SidebarItem icon={Wallet} label="Wallet & Treasury" active={activeTab === 'Treasury'} onClick={() => setActiveTab('Treasury')} collapsed={isSidebarCollapsed} />
+          {(!isSidebarCollapsed || isMobileMenuOpen) && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-8">Financial Hub</div>}
+          <SidebarItem icon={Wallet} label="Wallet & Treasury" active={activeTab === 'Treasury'} onClick={() => handleTabChange('Treasury')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
           
-          {!isSidebarCollapsed && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-8">System</div>}
-          <SidebarItem icon={MessageSquare} label="Chat" active={activeTab === 'Chat'} onClick={() => setActiveTab('Chat')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={ShieldCheck} label="Audit Logs" active={activeTab === 'Audit'} onClick={() => setActiveTab('Audit')} collapsed={isSidebarCollapsed} />
+          {(!isSidebarCollapsed || isMobileMenuOpen) && <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 mt-8">System</div>}
+          <SidebarItem icon={MessageSquare} label="Chat" active={activeTab === 'Chat'} onClick={() => handleTabChange('Chat')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+          <SidebarItem icon={ShieldCheck} label="Audit Logs" active={activeTab === 'Audit'} onClick={() => handleTabChange('Audit')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
         </nav>
 
         <div className="p-4 border-t border-slate-100 bg-slate-50">
-          {!isSidebarCollapsed ? (
+          {(!isSidebarCollapsed || isMobileMenuOpen) ? (
              <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                   <span className="text-white font-bold text-lg italic">B</span>
@@ -1166,14 +1232,22 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
+      <main className="flex-1 flex flex-col transition-all duration-300 min-w-0 ml-0">
         
         {/* Header */}
         {activeTab !== 'Chat' && activeTab !== 'POS' && (
-          <header className="p-8 pb-4 flex justify-between items-end">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{activeTab === 'Ledger' ? '$CTree Ledger & Clearing' : activeTab}</h1>
+          <header className="p-4 sm:p-8 pb-4 flex justify-between items-end">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                className="lg:hidden p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-full transition-colors shrink-0"
+                onClick={() => setIsMobileMenuOpen(true)}
+                aria-label="Open menu"
+              >
+                <Menu size={24} />
+              </button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-none">{activeTab === 'Ledger' ? '$CTree Ledger & Clearing' : activeTab}</h1>
                 {activeTab === 'Overview' && (
                   <button
                     onClick={handleOverviewRefresh}
@@ -1185,8 +1259,8 @@ export default function App() {
                     <RefreshCw size={20} className={overviewRefreshing ? 'animate-spin' : ''} />
                   </button>
                 )}
-              </div>
-              <div className="mt-2 flex items-center gap-3">
+                </div>
+                <div className="mt-2 flex items-center gap-3">
                 <span className="bg-[#96EB3C]/20 text-[#548a1b] text-xs font-bold px-2 py-1 rounded-md">Fiat Anchor: CAD</span>
                 <div
                   role="button"
@@ -1204,6 +1278,7 @@ export default function App() {
                       </span>
                     )}
                 </div>
+                </div>
               </div>
             </div>
             {activeTab === 'Merchants' && (
@@ -1219,16 +1294,16 @@ export default function App() {
           </header>
         )}
 
-        <div className="flex-1 overflow-y-auto p-8 pt-4">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 pt-4">
             
             {/* --- OVERVIEW --- */}
             {activeTab === 'Overview' && (
               <div className="space-y-8 animate-in fade-in duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <MetricCard title="Total Network Volume" value={overviewMetrics.totalNetworkVolumeCad} subValue="On-chain totalSupply points (CAD)" change="Live" isPositive={true} icon={<Activity size={24} />} />
-                  <MetricCard title="Active Memberships" value={overviewMetrics.activeMemberships} subValue="On-chain totalActiveMemberships (activatedCount)" change="Live" isPositive={true} icon={<CreditCard size={24} />} colorClass="bg-blue-50 text-blue-600" />
-                  <MetricCard title="Partner Locations" value={overviewMetrics.partnerLocations} subValue="Direct admins under owner (excl. sub-admins)" change="Live" isPositive={true} icon={<Utensils size={24} />} colorClass="bg-purple-50 text-purple-600" />
-                  <MetricCard title="CashTrees Fuel Pool" value={overviewMetrics.fuelPoolBUnits} subValue="Owner B-Units for Mint/Top-ups" change="Live" isPositive={true} icon={<Zap size={24} />} colorClass="bg-orange-50 text-orange-600" />
+                  <MetricCard title="All-Time Volume" value={overviewMetrics.totalNetworkVolumeCad} subValue="Total Network Volume (CAD)" change="Live" isPositive={true} icon={<Activity size={24} />} />
+                  <MetricCard title="Active Memberships" value={overviewMetrics.activeMemberships} subValue="Green & Black Cards" change="Live" isPositive={true} icon={<CreditCard size={24} />} colorClass="bg-blue-50 text-blue-600" />
+                  <MetricCard title="Partner Locations" value={overviewMetrics.partnerLocations} subValue="Verified restaurants" change="Live" isPositive={true} icon={<Utensils size={24} />} colorClass="bg-purple-50 text-purple-600" />
+                  <MetricCard title="CashTrees Fuel Pool" value={overviewMetrics.fuelPoolBUnits} subValue="B-Units for Mint/Top-ups" change="Live" isPositive={true} icon={<Zap size={24} />} colorClass="bg-orange-50 text-orange-600" />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1479,8 +1554,8 @@ export default function App() {
                     </table>
                  </div>
 
-                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                    <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                 <div className="bg-white border border-black/[0.04] rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] overflow-hidden">
+                    <div className="px-6 py-5 border-b border-black/[0.04] flex items-center justify-between">
                        <div>
                           <h3 className="text-lg font-black text-slate-900">Saved Restaurant Drafts</h3>
                           <p className="text-xs text-slate-500 mt-1">Local draft entries created from this dashboard.</p>
@@ -1500,11 +1575,20 @@ export default function App() {
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-black/[0.02]">
-                          {localRestaurants.map((r) => (
+                          {localRestaurants.map((r) => {
+                             const rev = r.volume != null ? parseFloat(r.volume) : 0;
+                             const fiat = r.fiatCollected != null ? parseFloat(r.fiatCollected) : 0;
+                             const owedToAlliance = r.mintQuota != null ? Math.max(0, fiat - rev) : 0;
+                             const quotaUsage = r.mintQuota != null && r.mintQuota > 0 ? (owedToAlliance / r.mintQuota) * 100 : 0;
+                             const isHighRisk = r.mintQuota != null && quotaUsage > 80;
+                             const bUnits = r.bUnitsBalance ?? 0;
+                             const hasChainData = r.volume != null || r.fiatCollected != null || r.mintQuota != null;
+
+                             return (
                              <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-5">
                                    <div className="flex items-center gap-4">
-                                      <img src="https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=100&h=100&fit=crop" alt="" className="w-12 h-12 rounded-[14px] bg-slate-200 object-cover border border-black/[0.05] shadow-sm" />
+                                      <img src={r.logo || 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=100&h=100&fit=crop'} alt="" className="w-12 h-12 rounded-[14px] bg-slate-200 object-cover border border-black/[0.05] shadow-sm" />
                                       <div>
                                          <div className="font-bold text-[15px] text-slate-900">{r.name}</div>
                                          <div className="flex items-center gap-1 mt-1 text-[11px] text-slate-500 font-medium">
@@ -1516,40 +1600,54 @@ export default function App() {
                                          {r.handle && (
                                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">{r.handle}</div>
                                          )}
-                                         <span className="text-[9px] px-2 py-0.5 rounded-full bg-[#96EB3C]/20 text-[#548a1b] font-bold uppercase mt-1 inline-block">Saved</span>
+                                         {!hasChainData && (
+                                           <span className="text-[9px] px-2 py-0.5 rounded-full bg-[#96EB3C]/20 text-[#548a1b] font-bold uppercase mt-1 inline-block">Saved</span>
+                                         )}
                                       </div>
                                    </div>
                                 </td>
                                 <td className="px-6 py-5">
                                    <div className="flex items-center gap-1.5 text-[15px] font-bold text-slate-700">
-                                      <Users size={16} className="text-[#1562f0]"/> 0
+                                      <Users size={16} className="text-[#1562f0]"/> {r.activeMembers ?? 0}
                                    </div>
                                 </td>
                                 <td className="px-6 py-5 text-right">
-                                   <div className="font-bold text-[16px] text-[#6ea32b]">—</div>
+                                   <div className="font-bold text-[16px] text-emerald-600">{hasChainData && r.volume != null ? `$${r.volume}` : '—'}</div>
                                 </td>
                                 <td className="px-6 py-5 text-right bg-slate-50/50">
-                                   <div className="font-bold text-[16px] text-slate-800">—</div>
+                                   <div className="font-bold text-[16px] text-slate-800">{hasChainData && r.fiatCollected != null ? `$${r.fiatCollected}` : '—'}</div>
                                 </td>
                                 <td className="px-6 py-5">
                                    <div className="w-full max-w-[150px]">
                                       <div className="flex justify-between text-[11px] font-bold mb-1.5">
-                                         <span className="text-slate-500">Usage: —</span>
-                                         <span className="text-slate-400">Limit: —</span>
+                                         <span className="text-slate-500">Usage: {r.mintQuota != null ? `${quotaUsage.toFixed(1)}%` : '—'}</span>
+                                         <span className="text-slate-400">Limit: {r.mintQuota != null ? `${r.mintQuota / 1000}k` : '—'}</span>
                                       </div>
                                       <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                         <div className="h-full bg-slate-200 transition-all duration-500" style={{width: '0%'}}></div>
+                                         <div className={`h-full transition-all duration-500 ${isHighRisk ? 'bg-rose-500' : 'bg-[#96EB3C]'}`} style={{ width: `${Math.min(100, quotaUsage)}%` }}></div>
                                       </div>
+                                      {isHighRisk && (
+                                         <div className="mt-2 inline-flex items-center gap-1 bg-rose-50 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wide">
+                                            <Ban size={12}/> Minting Suspended
+                                         </div>
+                                      )}
                                    </div>
                                 </td>
                                 <td className="px-6 py-5">
                                     <div className="flex items-center gap-2">
-                                        <Zap size={14} className="text-amber-500" />
-                                        <span className="font-mono font-bold text-[15px] text-slate-700">—</span>
+                                        <Zap size={16} className={bUnits < 50 && hasChainData ? 'text-rose-500' : 'text-orange-500'} />
+                                        <span className={`font-mono font-bold text-[15px] ${bUnits < 50 && hasChainData ? 'text-rose-600' : 'text-slate-700'}`}>
+                                            {hasChainData ? bUnits : '—'}
+                                        </span>
                                     </div>
                                     <div className="text-[11px] text-slate-400 font-medium mt-1">
                                         Bears 0.8% fee per dining TX
                                     </div>
+                                    {bUnits < 50 && hasChainData && (
+                                        <div className="text-[10px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 bg-rose-50 px-2 py-0.5 w-max rounded-md">
+                                            <AlertTriangle size={10}/> Low Fuel Warning
+                                        </div>
+                                    )}
                                 </td>
                                 <td className="px-6 py-5 text-right">
                                   <div className="flex items-center justify-end gap-2">
@@ -1562,7 +1660,7 @@ export default function App() {
                                   </div>
                                 </td>
                              </tr>
-                          ))}
+                          )})}
                        </tbody>
                     </table>
                  </div>
@@ -2113,16 +2211,16 @@ export default function App() {
       {/* --- MERCHANT ONBOARD MODAL --- */}
       {isMerchantModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeMerchantModal}></div>
-            <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-md relative z-10 p-8 animate-in fade-in zoom-in duration-200">
-               <div className="flex justify-between items-center mb-8">
-                  <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                     <Utensils className="text-[#82cc33]" size={28}/> Onboard Restaurant
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeMerchantModal}></div>
+            <div className="bg-white rounded-[32px] shadow-[0_24px_48px_rgba(0,0,0,0.1)] w-full max-w-md relative z-10 p-8 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+               <div className="flex justify-between items-center mb-6 flex-shrink-0">
+                  <h3 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2.5 tracking-tight">
+                     <Utensils className="text-[#82cc33]" size={28} strokeWidth={2.5}/> Onboard Restaurant
                   </h3>
-                  <button onClick={closeMerchantModal} className="text-slate-400 hover:text-black bg-slate-100 p-2 rounded-full"><X size={20}/></button>
+                  <button onClick={closeMerchantModal} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors shrink-0"><X size={20}/></button>
                </div>
                
-               <div className="space-y-5">
+               <div className="space-y-6 overflow-y-auto pr-2 pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                   {kybError && (
                     <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm font-medium">{kybError}</div>
                   )}
@@ -2154,106 +2252,145 @@ export default function App() {
                   ) : (
                     <>
                   <div>
-                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Restaurant Name</label>
-                     <input type="text" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-bold" placeholder="e.g. Sen Pho + Cafe" />
+                     <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Restaurant Name</label>
+                     <input type="text" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="w-full p-4 bg-[#F5F5F7] border border-black/[0.04] rounded-[16px] focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-semibold transition-all" placeholder="e.g. Sen Pho + Cafe" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                       <div>
-                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Cuisine</label>
-                         <input type="text" value={restaurantCuisine} onChange={(e) => setRestaurantCuisine(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-bold" placeholder="e.g. Vietnamese" />
+                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Cuisine</label>
+                         <input type="text" value={restaurantCuisine} onChange={(e) => setRestaurantCuisine(e.target.value)} className="w-full p-4 bg-[#F5F5F7] border border-black/[0.04] rounded-[16px] focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-semibold transition-all" placeholder="e.g. Vietnamese" />
                       </div>
                       <div>
-                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">City/Area</label>
-                         <input type="text" value={restaurantCity} onChange={(e) => setRestaurantCity(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-bold" placeholder="e.g. Kerrisdale" />
+                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">City/Area</label>
+                         <input type="text" value={restaurantCity} onChange={(e) => setRestaurantCity(e.target.value)} className="w-full p-4 bg-[#F5F5F7] border border-black/[0.04] rounded-[16px] focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-semibold transition-all" placeholder="e.g. Kerrisdale" />
                       </div>
                   </div>
+                  
+                  {/* Dynamic Handle Verification Section */}
                   <div>
-                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Handle Reservation <span className="text-slate-400 font-normal">(optional)</span></label>
+                     <div className="flex justify-between items-end mb-2">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest">Beamio Handle (Search or Reserve)</label>
+                        {handleStatus === 'found' && <span className="text-[10px] font-bold text-[#1562f0] flex items-center gap-1"><CheckCircle2 size={12}/> Merchant Found</span>}
+                        {handleStatus === 'available' && <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12}/> Handle Available</span>}
+                     </div>
                      {handleResolved ? (
-                        <div className="flex items-center gap-2 p-3 bg-[#96EB3C]/10 border border-[#96EB3C]/20 rounded-2xl">
-                           <img src={handleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${handleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-[#96EB3C]/20 object-cover" />
-                           <div className="flex flex-col gap-0.5">
-                              <span className="font-mono font-bold text-[#548a1b]">@{handleResolved.username}</span>
+                        <div className="flex items-center gap-3 p-4 bg-[#1562f0]/5 border border-[#1562f0]/10 rounded-[16px]">
+                           <img src={handleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${handleResolved.username}`} alt="" className="w-10 h-10 rounded-full border border-[#1562f0]/20 object-cover" />
+                           <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                              <span className="font-mono font-bold text-[#1562f0]">@{handleResolved.username}</span>
                               {handleResolved.addressAA ? (
                                 <span className="text-[10px] text-slate-500 font-mono" title={handleResolved.addressAA}>AA: {shortenAddress(handleResolved.addressAA)}</span>
                               ) : handleResolved.address ? (
                                 <span className="text-[10px] text-slate-500 font-mono" title={handleResolved.address}>EOA: {shortenAddress(handleResolved.address)}</span>
                               ) : null}
                            </div>
-                           <button type="button" onClick={() => { setHandleResolved(null); setRestaurantHandle(''); setHandleError(null); }} className="ml-auto p-1 rounded-lg hover:bg-[#96EB3C]/10 text-[#6ea32b]" aria-label="Clear handle"><X size={16} /></button>
+                           <button type="button" onClick={() => { setHandleResolved(null); setRestaurantHandle(''); setHandleError(null); setHandleStatus('idle'); }} className="p-2 rounded-lg hover:bg-[#1562f0]/10 text-slate-500" aria-label="Clear handle"><X size={16} /></button>
                         </div>
                      ) : (
-                        <div className="relative">
-                           {!restaurantHandle.startsWith('0x') && (
-                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
-                           )}
-                           <input
-                              type="text"
-                              value={restaurantHandle}
-                              onChange={(e) => {
-                                 setRestaurantHandle(e.target.value);
-                                 setHandleResolved(null);
-                                 setHandleError(null);
-                              }}
-                              onBlur={() => {
-                                 handleValidateAbortRef.current = false;
-                                 validateHandle(restaurantHandle);
-                              }}
-                              onFocus={() => { handleValidateAbortRef.current = true; }}
-                              onKeyDown={(e) => e.key === 'Enter' && validateHandle(restaurantHandle)}
-                              className={`w-full pr-14 py-4 bg-slate-50 border rounded-2xl focus:outline-none focus:ring-2 font-bold placeholder:text-slate-400 ${restaurantHandle.startsWith('0x') ? 'pl-4' : 'pl-9'} ${handleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-[#96EB3C] focus:ring-[#96EB3C]/20'}`}
-                              placeholder="@handle or 0x..."
-                           />
-                           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                              {handleChecking ? (
-                                 <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                              ) : (
-                                 <>
-                                    {handleError && <span className="text-rose-500 text-xs font-medium">{handleError}</span>}
-                                    <button
-                                       type="button"
-                                       onClick={() => validateHandle(restaurantHandle)}
-                                       className="p-2 rounded-lg hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 transition-colors"
-                                       title="Search"
-                                       aria-label="Search handle"
-                                    >
-                                       <Search className="w-4 h-4" />
-                                    </button>
-                                 </>
-                              )}
+                        <div className="flex items-center gap-3">
+                           <div className="relative flex-1">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
+                              <input
+                                 type="text"
+                                 value={restaurantHandle}
+                                 onChange={(e) => { setRestaurantHandle(e.target.value); setHandleStatus('idle'); setHandleError(null); }}
+                                 onKeyDown={(e) => e.key === 'Enter' && validateHandle(restaurantHandle)}
+                                 className={`w-full pl-10 pr-4 py-4 bg-[#F5F5F7] border rounded-[16px] focus:outline-none focus:ring-4 font-semibold transition-all ${handleStatus === 'found' ? 'border-[#1562f0]/30 focus:border-[#1562f0] focus:ring-[#1562f0]/20' : 'border-black/[0.04] focus:border-[#96EB3C] focus:ring-[#96EB3C]/20'} ${handleError ? 'border-rose-500' : ''}`}
+                                 placeholder="@handle or 0x..."
+                              />
                            </div>
+                           <button onClick={() => validateHandle(restaurantHandle)} className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-4 px-6 rounded-[16px] transition-all active:scale-95 whitespace-nowrap" disabled={handleChecking}>
+                              {handleChecking ? 'Checking...' : 'Verify'}
+                           </button>
                         </div>
                      )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Top-up Limit (CAD)</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={topupLimit}
-                      onChange={(e) => setTopupLimit(e.target.value.replace(/[^\d.]/g, ''))}
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-bold"
-                      placeholder="1000"
-                    />
-                    <p className="text-[11px] text-slate-400 mt-1">Max CAD the merchant can top-up for customers. Default 1000.</p>
-                  </div>
-                  <button
-                    onClick={handleResolved?.address ? handleRegistrationMerchant : handleGenerateKybLink}
-                    disabled={isGeneratingKyb}
-                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-black transition-transform active:scale-95 flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                     {isGeneratingKyb ? (
-                       <>
-                         <Loader2 className="w-5 h-5 animate-spin" />
-                         {handleResolved?.address
-                           ? (kybGeneratingPhase === 'ensureAA' ? 'Ensuring AA account...' : 'Registering...')
-                           : 'Generating...'}
-                       </>
-                     ) : (
-                       <>{handleResolved?.address ? 'Registration Merchant' : 'Generate KYB Link'} <ArrowRight size={18}/></>
+                     
+                     {handleStatus === 'found' && (
+                        <div className="mt-3 p-4 bg-[#1562f0]/5 border border-[#1562f0]/10 rounded-[16px] flex items-start gap-3">
+                            <BadgeCheck size={20} className="text-[#1562f0] shrink-0 mt-0.5" />
+                            <div className="text-[12px] font-medium text-[#1562f0]">
+                                <strong className="block text-[13px] mb-1">Existing Merchant OS User</strong>
+                                The Smart Account for this handle is already verified. We will mint and airdrop the <strong>CashTrees Partner NFT</strong> directly to authorize alliance features.
+                            </div>
+                        </div>
                      )}
-                  </button>
+                     
+                     {handleStatus === 'available' && (
+                        <div className="mt-3 p-4 bg-emerald-50/50 border border-emerald-100 rounded-[16px] flex items-start gap-3">
+                            <Store size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+                            <div className="text-[12px] font-medium text-emerald-700">
+                                <strong className="block text-[13px] mb-1">New Merchant</strong>
+                                Handle is available. A KYB link will be generated to onboard the merchant and deploy their Smart Account.
+                            </div>
+                        </div>
+                     )}
+                     {handleError && handleStatus !== 'available' && (
+                        <div className="mt-2 text-[11px] font-medium text-rose-600">{handleError}</div>
+                     )}
+                  </div>
+
+                  {/* Financial Limits & Risk Control */}
+                  <div className="pt-6 border-t border-black/[0.04]">
+                     <h4 className="text-[12px] font-extrabold text-slate-800 uppercase tracking-widest mb-4">Financial Limits & Risk Control</h4>
+                     <div className="space-y-5">
+                         <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Max Cumulative Quota (CAD)</label>
+                            <div className="relative">
+                               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                               <input type="text" inputMode="numeric" value={topupLimit} onChange={(e) => setTopupLimit(e.target.value.replace(/[^\d.]/g, ''))} className="w-full pl-10 pr-4 py-4 bg-[#F5F5F7] border border-black/[0.04] rounded-[16px] focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-semibold font-mono transition-all" placeholder="e.g. 50000" />
+                            </div>
+                         </div>
+                         <div className="grid grid-cols-2 gap-4">
+                             <div>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Max Top-up / TX</label>
+                                <div className="relative">
+                                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                   <input type="text" inputMode="numeric" value={maxTopupPerTx} onChange={(e) => setMaxTopupPerTx(e.target.value.replace(/[^\d.]/g, ''))} className="w-full pl-10 pr-4 py-4 bg-[#F5F5F7] border border-black/[0.04] rounded-[16px] focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-semibold font-mono transition-all" placeholder="e.g. 1000" />
+                                </div>
+                             </div>
+                             <div>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">Max Spend / TX</label>
+                                <div className="relative">
+                                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                   <input type="text" inputMode="numeric" value={maxSpendPerTx} onChange={(e) => setMaxSpendPerTx(e.target.value.replace(/[^\d.]/g, ''))} className="w-full pl-10 pr-4 py-4 bg-[#F5F5F7] border border-black/[0.04] rounded-[16px] focus:outline-none focus:border-[#96EB3C] focus:ring-4 focus:ring-[#96EB3C]/20 font-semibold font-mono transition-all" placeholder="e.g. 500" />
+                                </div>
+                             </div>
+                         </div>
+                     </div>
+                  </div>
+
+                  {/* Dynamic Submit Button */}
+                  {handleStatus === 'found' ? (
+                     <button
+                       onClick={handleRegistrationMerchant}
+                       disabled={isGeneratingKyb}
+                       className="w-full bg-[#1562f0] text-white py-4 rounded-[16px] font-bold shadow-[0_4px_16px_rgba(21,98,240,0.3)] hover:bg-[#1250c4] transition-all active:scale-95 flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                     >
+                       {isGeneratingKyb ? (
+                         <>
+                           <Loader2 className="w-5 h-5 animate-spin" />
+                           {kybGeneratingPhase === 'ensureAA' ? 'Ensuring AA account...' : 'Registering...'}
+                         </>
+                       ) : (
+                         <>Mint Partner NFT & Authorize <Sparkles size={18} strokeWidth={2.5}/></>
+                       )}
+                     </button>
+                  ) : (
+                     <button
+                       onClick={handleGenerateKybLink}
+                       disabled={isGeneratingKyb || !restaurantName.trim()}
+                       className="w-full bg-[#96EB3C] text-slate-900 py-4 rounded-[16px] font-bold shadow-[0_4px_16px_rgba(150,235,60,0.3)] hover:bg-[#86d635] transition-all active:scale-95 flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                     >
+                       {isGeneratingKyb ? (
+                         <>
+                           <Loader2 className="w-5 h-5 animate-spin" />
+                           Generating...
+                         </>
+                       ) : (
+                         <>Generate KYB Link <ArrowRight size={18} strokeWidth={2.5}/></>
+                       )}
+                     </button>
+                  )}
                     </>
                   )}
                </div>

@@ -7,7 +7,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { storeSystemData, getBalance, formatWithThousands } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername } from '@/services/beamio';
-import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdmin, postCardAddAdminByAdmin, encodeAddAdminWithMintLimit, signExecuteForOwner, signExecuteForAdmin, getCardOwner, ensureAAForEOA } from '@/services/BeamioCard';
+import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdminByAdmin, encodeAddAdminWithMintLimit, signExecuteForAdmin, getPredictedAAAddress } from '@/services/BeamioCard';
 import { conetDepinProvider } from '@/utils/constants';
 import { BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
@@ -68,7 +68,8 @@ import {
  RefreshCw,
  Leaf,
  Loader2,
- ArrowRight
+ ArrowRight,
+ Menu
 } from 'lucide-react';
 
 const getImg = (avatarSeed: string | undefined) =>
@@ -168,68 +169,6 @@ const INITIAL_ALLIANCES_DB = {
       { title: 'Full Access: $CTree', desc: 'Process payments, issue cards, and handle upgrades at POS.' },
       { title: 'CAD Trust Settlement', desc: 'Unlock fiat payouts via local MSB.' },
       { title: 'Membership Routing', desc: 'Auto-apply VIP tier discounts.' }
-    ]
-  },
-  CCSA: {
-    id: 'CCSA',
-    name: 'CCSA Alliance',
-    nftName: 'CCSA Franchise Node',
-    token: '$CCSA',
-    nftBg: 'bg-[#581c87]',
-    nftBorder: 'border-[#7e22ce]',
-    themeLightBg: 'bg-purple-50',
-    themeText: 'text-purple-600',
-    sales: 450.00,
-    tips: 50.00,
-    topUps: 120.00,
-    aaBalance: 380.00,
-    canTopUp: true,
-    mintQuota: 10000.00,
-    privileges: [
-      { title: 'Full Access: $CCSA', desc: 'Process payments, issue cards, and handle upgrades at POS.' },
-      { title: 'B2B Supply Chain', desc: 'Pay wholesale suppliers in $CCSA.' },
-      { title: 'Cross-Store Discounts', desc: 'Shared loyalty across 100+ stores.' }
-    ]
-  },
-  SenPho: {
-    id: 'SenPho',
-    name: 'Sen Pho Franchise',
-    nftName: 'Sen Pho Master License',
-    token: '$PHO',
-    nftBg: 'bg-[#991b1b]',
-    nftBorder: 'border-[#b91c1c]',
-    themeLightBg: 'bg-red-50',
-    themeText: 'text-red-600',
-    sales: 850.00,
-    tips: 110.00,
-    topUps: 0.00,
-    aaBalance: 660.00,
-    canTopUp: false,
-    mintQuota: null as number | null,
-    privileges: [
-      { title: 'Consumption Only: $PHO', desc: 'Process payments. Top-ups and upgrades disabled.' },
-      { title: 'HQ Franchise Settlement', desc: 'Direct corporate treasury payouts.' },
-      { title: 'Inventory Purchasing', desc: 'Use $PHO for wholesale ingredients.' }
-    ]
-  },
-  UrbanPlay: {
-    id: 'UrbanPlay',
-    name: 'UrbanPlay Pass',
-    nftName: 'UrbanPlay Vendor Node',
-    token: '$UPASS',
-    nftBg: 'bg-[#0f766e]',
-    nftBorder: 'border-[#0d9488]',
-    themeLightBg: 'bg-teal-50',
-    themeText: 'text-teal-600',
-    sales: 120.00,
-    tips: 0.00,
-    topUps: 0.00,
-    aaBalance: 120.00,
-    canTopUp: false,
-    mintQuota: null as number | null,
-    privileges: [
-      { title: 'Consumption Only: $UPASS', desc: 'Process payments. Top-ups and upgrades disabled.' },
-      { title: 'Event Ticketing', desc: 'Validate Class-B NFT tickets.' }
     ]
   }
 };
@@ -562,6 +501,20 @@ export default function MerchantOS() {
  const [payoutStep, setPayoutStep] = useState(1);
   // New state for sidebar toggle
  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+ const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+ useEffect(() => {
+   const handleResize = () => {
+     if (window.innerWidth >= 1024) setIsMobileMenuOpen(false);
+   };
+   window.addEventListener('resize', handleResize);
+   return () => window.removeEventListener('resize', handleResize);
+ }, []);
+
+ const handleTabChange = useCallback((tab: string) => {
+   setActiveTab(tab);
+   setIsMobileMenuOpen(false);
+ }, []);
 
 
  /** 终端记录类型 */
@@ -770,7 +723,7 @@ export default function MerchantOS() {
    return () => { cancelled = true; };
  }, [profiles, setProfiles, myAddress]);
 
- /** Fetch subordinate admins: owner sees parent=0 admins; admin sees parent=userEOA admins. Merges chain data with local storage. */
+ /** Fetch subordinate admins from chain: owner sees parent=0 admins; admin sees parent=userEOA admins. Uses only trusted chain data; removes items not on chain. Item id = wallet address (unique). */
 const fetchTerminals = useCallback(async () => {
   const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
   if (!userEOA || !ethers.isAddress(userEOA)) {
@@ -787,7 +740,15 @@ const fetchTerminals = useCallback(async () => {
       (userAA && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userAA));
     const parentAdmin = isOwner ? ethers.ZeroAddress : ethers.getAddress(userEOA);
     const [subordinates, metadatas] = await card.getAdminSubordinatesWithMetadata(parentAdmin) as [string[], string[]];
-    const fromChain: TerminalRecord[] = (subordinates ?? []).map((addr: string, idx: number) => {
+    const seen = new Set<string>();
+    const fromChain: TerminalRecord[] = [];
+    for (let idx = 0; idx < (subordinates ?? []).length; idx++) {
+      const addr = (subordinates ?? [])[idx];
+      if (!addr || !ethers.isAddress(addr)) continue;
+      const id = ethers.getAddress(addr);
+      const idLower = id.toLowerCase();
+      if (seen.has(idLower)) continue;
+      seen.add(idLower);
       let name = 'POS Terminal';
       let tag = fmtAddr(addr);
       try {
@@ -798,21 +759,17 @@ const fetchTerminals = useCallback(async () => {
       } catch {
         /* ignore */
       }
-      return {
-        id: addr,
+      fromChain.push({
+        id,
         tag,
         name,
         eoa: fmtAddr(addr),
         status: 'Active',
         lastActive: 'On-chain',
-      };
-    });
-    const chainIds = new Set(fromChain.map((t) => t.id.toLowerCase()));
-    const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
-    const localOnly = cached.filter((t) => !chainIds.has(t.id.toLowerCase()));
-    const merged = [...fromChain, ...localOnly];
-    saveTrustedCache(linkedTerminalsCacheKey, merged);
-    setTerminals(merged);
+      });
+    }
+    saveTrustedCache(linkedTerminalsCacheKey, fromChain);
+    setTerminals(fromChain);
   } catch {
     const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey);
     if (cached?.length) setTerminals(cached);
@@ -1346,16 +1303,27 @@ const fetchTerminals = useCallback(async () => {
  const renderDashboard = () => (
    <div className="flex h-screen bg-[#f5f5f7] font-sans text-slate-900 overflow-hidden selection:bg-[#1562f0]/20">
     
+     {isMobileMenuOpen && (
+       <div
+         className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+         onClick={() => setIsMobileMenuOpen(false)}
+         aria-hidden="true"
+       />
+     )}
+
      {/* --- Sidebar --- */}
      <aside
-       className={`bg-white border-r border-slate-200 flex flex-col z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-24' : 'w-72'}`}
+       className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 ease-in-out
+         ${isMobileMenuOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'}
+         lg:relative lg:translate-x-0 ${isSidebarCollapsed ? 'lg:w-24' : 'lg:w-72'}`}
      >
-       <div className={`p-6 pb-6 ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
-         <div
-           className="flex items-center gap-4 mb-6 cursor-pointer group"
-           onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-           title="Toggle Sidebar"
-         >
+       <div className={`p-6 pb-6 ${isSidebarCollapsed ? 'lg:flex lg:justify-center' : ''}`}>
+         <div className={`flex items-center justify-between mb-6 ${isSidebarCollapsed && !isMobileMenuOpen ? 'lg:justify-center' : ''}`}>
+           <div
+             className="flex items-center gap-4 cursor-pointer group"
+             onClick={() => window.innerWidth >= 1024 && setIsSidebarCollapsed(!isSidebarCollapsed)}
+             title="Toggle Sidebar"
+           >
            <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md border border-slate-100 shrink-0 group-hover:shadow-lg transition-all bg-white flex items-center justify-center">
               {beamio ? (
                 <img
@@ -1377,9 +1345,17 @@ const fetchTerminals = useCallback(async () => {
                </p>
              </div>
            )}
+           </div>
+           <button
+             type="button"
+             onClick={() => setIsMobileMenuOpen(false)}
+             className="lg:hidden p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors shrink-0"
+             aria-label="Close menu"
+           >
+             <X size={20} />
+           </button>
          </div>
-        
-         {!isSidebarCollapsed && (
+         {(!isSidebarCollapsed || isMobileMenuOpen) && (
            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3 overflow-hidden whitespace-nowrap">
               <AddressRow
                 label="Smart AA"
@@ -1405,27 +1381,27 @@ const fetchTerminals = useCallback(async () => {
 
 
        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto overflow-x-hidden">
-         {!isSidebarCollapsed && <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-2 whitespace-nowrap">Store Management</p>}
-         <NavItem icon={LayoutDashboard} label="Daily Dashboard" isActive={activeTab === 'Overview'} onClick={() => setActiveTab('Overview')} collapsed={isSidebarCollapsed} />
+         {(!isSidebarCollapsed || isMobileMenuOpen) && <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-2 whitespace-nowrap">Store Management</p>}
+         <NavItem icon={LayoutDashboard} label="Daily Dashboard" isActive={activeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          {!hideTransactionsPanel && (
-           <NavItem icon={Receipt} label="Transactions" isActive={activeTab === 'Transactions'} onClick={() => setActiveTab('Transactions')} collapsed={isSidebarCollapsed} />
+           <NavItem icon={Receipt} label="Transactions" isActive={activeTab === 'Transactions'} onClick={() => handleTabChange('Transactions')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          )}
-         <NavItem icon={Wallet} label="Store Wallets" isActive={activeTab === 'Wallets'} onClick={() => setActiveTab('Wallets')} collapsed={isSidebarCollapsed} />
-         <NavItem icon={Store} label="Market" isActive={activeTab === 'Market'} onClick={() => setActiveTab('Market')} collapsed={isSidebarCollapsed} />
-         <NavItem icon={MessageSquare} label="Messages" isActive={activeTab === 'Messages'} onClick={() => setActiveTab('Messages')} collapsed={isSidebarCollapsed} />
-         <NavItem icon={Hexagon} label="Partner Alliances" isActive={activeTab === 'Alliances'} onClick={() => setActiveTab('Alliances')} collapsed={isSidebarCollapsed} />
+         <NavItem icon={Wallet} label="Store Wallets" isActive={activeTab === 'Wallets'} onClick={() => handleTabChange('Wallets')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Store} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={MessageSquare} label="Messages" isActive={activeTab === 'Messages'} onClick={() => handleTabChange('Messages')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Hexagon} label="Partner Alliances" isActive={activeTab === 'Alliances'} onClick={() => handleTabChange('Alliances')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
         
-         <div className={isSidebarCollapsed ? 'mt-6' : 'mt-8'}></div>
-         {!isSidebarCollapsed && <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 whitespace-nowrap">Configuration</p>}
-         <NavItem icon={Users} label="Staff Terminals" isActive={activeTab === 'Staff'} onClick={() => setActiveTab('Staff')} collapsed={isSidebarCollapsed} />
-         <NavItem icon={Settings} label="Store Settings" isActive={activeTab === 'Settings'} onClick={() => setActiveTab('Settings')} collapsed={isSidebarCollapsed} />
+         <div className={(isSidebarCollapsed && !isMobileMenuOpen) ? 'mt-6' : 'mt-8'}></div>
+         {(!isSidebarCollapsed || isMobileMenuOpen) && <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 whitespace-nowrap">Configuration</p>}
+         <NavItem icon={Users} label="Staff Terminals" isActive={activeTab === 'Staff'} onClick={() => handleTabChange('Staff')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Settings} label="Store Settings" isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
        </nav>
 
 
        <div className="p-6">
          <button
            onClick={() => { window.location.href = '/' }}
-           className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-center gap-2 px-4'} py-3 rounded-2xl text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors font-semibold text-[15px]`}
+           className={`w-full flex items-center ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'justify-center gap-2 px-4'} py-3 rounded-2xl text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors font-semibold text-[15px]`}
            title="Lock Wallet"
          >
            <LogOut size={18} className="shrink-0" />
@@ -1436,9 +1412,19 @@ const fetchTerminals = useCallback(async () => {
 
 
      {/* --- Main Content Area --- */}
-     <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out">
-       <header className="h-20 bg-white/60 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-10 sticky top-0 z-10 shrink-0">
-         <h2 className="text-2xl font-bold text-black tracking-tight">{activeTab}</h2>
+     <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out min-w-0">
+       <header className="h-20 bg-white/60 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-4 sm:px-10 sticky top-0 z-10 shrink-0 gap-4">
+         <div className="flex items-center gap-3 min-w-0">
+           <button
+             type="button"
+             onClick={() => setIsMobileMenuOpen(true)}
+             className="lg:hidden p-2.5 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors shrink-0"
+             aria-label="Open menu"
+           >
+             <Menu size={22} />
+           </button>
+           <h2 className="text-xl sm:text-2xl font-bold text-black tracking-tight truncate">{activeTab}</h2>
+         </div>
          <div className="flex items-center gap-6">
            {activeTab === 'Overview' && isFixedUserCardAdmin && (
              <button
@@ -1466,7 +1452,7 @@ const fetchTerminals = useCallback(async () => {
        </header>
 
 
-       <div className="flex-1 min-h-0 relative overflow-y-auto p-10">
+       <div className="flex-1 min-h-0 relative overflow-y-auto p-4 sm:p-10">
         {activeTab === 'Overview' && (
           <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
             {SHOW_LINKED_MERCHANT_CARD_PANEL && showFixedCardMetadata && (
@@ -1948,6 +1934,24 @@ const fetchTerminals = useCallback(async () => {
              })}
              </div>
 
+             {isFixedUserCardAdmin && joinedAlliances.length === 0 && (
+               <div className="pt-8 mt-8 border-t border-slate-200/60">
+                 <div
+                   onClick={() => setActiveTab('Alliances')}
+                   className="bg-white rounded-[32px] border border-slate-200 border-dashed p-8 cursor-pointer hover:bg-slate-50 transition-colors flex items-center gap-4 group"
+                 >
+                   <div className="w-14 h-14 rounded-2xl bg-[#1562f0]/10 flex items-center justify-center shrink-0 group-hover:bg-[#1562f0]/15 transition-colors">
+                     <Hexagon size={24} className="text-[#1562f0]" />
+                   </div>
+                   <div className="flex-1 min-w-0">
+                     <h4 className="text-[18px] font-semibold text-slate-900">Partner Alliances</h4>
+                     <p className="text-[14px] text-slate-500 mt-1">Manage your Merchant License NFTs and join new alliances.</p>
+                   </div>
+                   <ChevronRight size={20} className="text-slate-400 shrink-0" />
+                 </div>
+               </div>
+             )}
+
              {joinedAlliances.length > 0 && (
                <div className="pt-8 mt-8 border-t border-slate-200/60">
                  <h4 className="text-[18px] font-semibold text-slate-900 mb-6">Alliance Fiat Settlements</h4>
@@ -2117,9 +2121,26 @@ const fetchTerminals = useCallback(async () => {
                <p className="text-[15px] font-medium text-slate-500 mt-1">Manage your Ecosystem NFTs (ERC-1155) that grant routing logic and settlement privileges.</p>
              </div>
 
+             {!isFixedUserCardAdmin && (
+             <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-8 text-center">
+               <h4 className="text-[18px] font-semibold text-amber-800 mb-2">Admin Required</h4>
+               <p className="text-[14px] font-medium text-amber-700/90 max-w-[480px] mx-auto leading-relaxed mb-8">
+                 Connect with a card admin wallet (EOA or AA) to view and manage Partner Alliances. Your connected wallet or profile must be an admin of the merchant card.
+               </p>
+               <button
+                 type="button"
+                 onClick={clearCardCacheAndRetry}
+                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold text-[14px] transition-colors"
+               >
+                 <RefreshCw size={16} />
+                 Retry admin check
+               </button>
+             </div>
+             )}
+
              {isFixedUserCardAdmin && (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-                {joinedAlliances.map((aId) => {
+                {(Object.keys(alliancesDb) as AllianceId[]).map((aId) => {
                   const alliance = alliancesDb[aId];
                   return (
                     <div key={aId} className={`${alliance.nftBg} rounded-[32px] shadow-[0_16px_40px_rgba(0,0,0,0.25)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border ${alliance.nftBorder}`}>
@@ -2548,7 +2569,7 @@ const fetchTerminals = useCallback(async () => {
                     }
                     adminEOA = ethers.getAddress(peer.address);
                   }
-                  const aa = await ensureAAForEOA(adminEOA);
+                  const predictedAA = await getPredictedAAAddress(adminEOA);
                   const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
                   const metadata = JSON.stringify({
                     deviceName: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
@@ -2556,41 +2577,28 @@ const fetchTerminals = useCallback(async () => {
                   });
                   const limitNum = Math.max(1, parseFloat(String(newTerminalMintLimit).replace(/[^0-9.]/g, '')) || 1000);
                   const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
-                  const data = encodeAddAdminWithMintLimit(aa, 1, metadata, mintLimitPoints6);
+                  const data = encodeAddAdminWithMintLimit(predictedAA, 1, metadata, mintLimitPoints6);
                   const now = Math.floor(Date.now() / 1000);
                   const deadline = now + 300;
                   const nonce = ethers.hexlify(ethers.randomBytes(32));
-                  const cardOwner = await getCardOwner(cardAddress);
-                  const isOwner = cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA);
                   const isAdminUser = await isCardAdmin(cardAddress, userEOA);
-                  if (!isOwner && !isAdminUser) {
-                    throw new Error('Wallet must be card owner or admin to register device.');
+                  if (!isAdminUser) {
+                    throw new Error('Wallet must be card admin to register device.');
                   }
-                  let res: { success: boolean; error?: string; hash?: string };
-                  if (isOwner) {
-                    const ownerSignature = await signExecuteForOwner(pk, cardAddress, data, deadline, nonce);
-                    res = await postCardAddAdmin({
-                      cardAddress,
-                      data,
-                      deadline,
-                      nonce,
-                      ownerSignature,
-                    });
-                  } else {
-                    const adminSignature = await signExecuteForAdmin(pk, cardAddress, data, deadline, nonce);
-                    res = await postCardAddAdminByAdmin({
-                      cardAddress,
-                      data,
-                      deadline,
-                      nonce,
-                      adminSignature,
-                    });
-                  }
+                  const adminSignature = await signExecuteForAdmin(pk, cardAddress, data, deadline, nonce);
+                  const res = await postCardAddAdminByAdmin({
+                    cardAddress,
+                    data,
+                    deadline,
+                    nonce,
+                    adminSignature,
+                    adminEOA,
+                  });
                   if (!res.success) {
                     throw new Error(res.error ?? 'Failed to register device as admin');
                   }
                   const newTerminal: TerminalRecord = {
-                    id: aa,
+                    id: predictedAA,
                     tag: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : fmtAddr(adminEOA),
                     name: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
                     eoa: fmtAddr(adminEOA),
@@ -2598,7 +2606,7 @@ const fetchTerminals = useCallback(async () => {
                     lastActive: 'On-chain',
                   };
                   const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
-                  const next = [...cached.filter((t) => t.id.toLowerCase() !== aa.toLowerCase()), newTerminal];
+                  const next = [...cached.filter((t) => t.id.toLowerCase() !== predictedAA.toLowerCase()), newTerminal];
                   saveTrustedCache(linkedTerminalsCacheKey, next);
                   setTerminals(next);
                   closeAddTerminalModal();
@@ -2678,6 +2686,11 @@ const fetchTerminals = useCallback(async () => {
                    const result = await removePOSApi({ merchant, pos, deadline, nonce, signature });
                    if (!result.success) throw new Error(result.error ?? 'Remove failed');
                    setDeleteTerminalToRemove(null);
+                   const posLower = pos.toLowerCase();
+                   const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
+                   const afterRemove = cached.filter((t) => t.id.toLowerCase() !== posLower);
+                   saveTrustedCache(linkedTerminalsCacheKey, afterRemove);
+                   setTerminals(afterRemove);
                    await fetchTerminals();
                  } catch (e: unknown) {
                    setRemoveTerminalError((e as Error)?.message ?? 'Failed to revoke terminal');

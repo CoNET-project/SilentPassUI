@@ -299,6 +299,19 @@ const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardAddAdminByAdminEndpoint = `${beamioApi}/api/cardAddAdminByAdmin`
 
+/** 通过 Factory 预测 EOA 的 AA 地址（index=0）。用于离线签字前构建 adminManager(predictedAA,...)，无需先部署。Endpoint 收到 adminEOA 后会 ensureAAForEOA 再执行。 */
+export const getPredictedAAAddress = async (eoa: string): Promise<string> => {
+	if (!eoa?.trim() || !ethers.isAddress(eoa)) throw new Error('Invalid EOA')
+	const accountFactory = new ethers.Contract(
+		contracts.BeamioAAAcountFactory.address,
+		BeamioAAAcountFactoryAbi,
+		baseEndpoint
+	)
+	const predicted = await accountFactory.getFunction('getAddress(address,uint256)')(ethers.getAddress(eoa.trim()), 0n)
+	if (!predicted || predicted === ethers.ZeroAddress) throw new Error('Factory returned invalid predicted AA address')
+	return ethers.getAddress(predicted)
+}
+
 /** 为 EOA 确保存在 AA（无则创建），返回 AA 地址。登记 admin 前 UI 必须传 EOA 调用此接口获取 AA，再构建 adminManager(AA,...) 并签字。 */
 export const ensureAAForEOA = async (eoa: string): Promise<string> => {
 	if (!eoa?.trim() || !ethers.isAddress(eoa)) throw new Error('Invalid EOA')
@@ -961,21 +974,25 @@ export const postCardCreateIssuedNft = async (payload: {
     }
 }
 
-/** 提交 addAdmin 到 API cardAddAdmin。Cluster 预检 newAdmin 为 EOA 后转发 Master executeForOwner 排队，返回 tx hash */
+/** 提交 addAdmin 到 API cardAddAdmin。若传 adminEOA，Cluster 会先 ensureAAForEOA 再执行。 */
 export const postCardAddAdmin = async (payload: {
     cardAddress: string
     data: string
     deadline: number
     nonce: string
     ownerSignature: string
+    adminEOA?: string
 }): Promise<{ success: boolean; hash?: string; error?: string }> => {
     try {
-        const body = {
+        const body: Record<string, unknown> = {
             cardAddress: payload.cardAddress,
             data: payload.data,
             deadline: payload.deadline,
             nonce: payload.nonce,
             ownerSignature: payload.ownerSignature,
+        }
+        if (payload.adminEOA && ethers.isAddress(payload.adminEOA)) {
+            body.adminEOA = ethers.getAddress(payload.adminEOA)
         }
         const res = await fetch(cardAddAdminEndpoint, {
             method: 'POST',
@@ -990,21 +1007,25 @@ export const postCardAddAdmin = async (payload: {
     }
 }
 
-/** 提交 addAdmin 到 API cardAddAdminByAdmin。Admin 为自己下层登记 admin，Cluster 预检 adminSignature 的 signer 为 card admin 后转发 Master executeForAdmin */
+/** 提交 addAdmin 到 API cardAddAdminByAdmin。若传 adminEOA，Cluster 会先 ensureAAForEOA 再执行。 */
 export const postCardAddAdminByAdmin = async (payload: {
 	cardAddress: string
 	data: string
 	deadline: number
 	nonce: string
 	adminSignature: string
+	adminEOA?: string
 }): Promise<{ success: boolean; hash?: string; error?: string }> => {
 	try {
-		const body = {
+		const body: Record<string, unknown> = {
 			cardAddress: payload.cardAddress,
 			data: payload.data,
 			deadline: payload.deadline,
 			nonce: payload.nonce,
 			adminSignature: payload.adminSignature,
+		}
+		if (payload.adminEOA && ethers.isAddress(payload.adminEOA)) {
+			body.adminEOA = ethers.getAddress(payload.adminEOA)
 		}
 		const res = await fetch(cardAddAdminByAdminEndpoint, {
 			method: 'POST',

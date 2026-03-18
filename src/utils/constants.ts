@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import contracts from './contracts'
-import { baseEndpoint } from './baseRpc'
+import { baseEndpoint, baseRpcProviderDirect } from './baseRpc'
 import { BEAMIO_USER_CARD_ASSET_ADDRESS as BEAMIO_USER_CARD_ASSET } from '../config/chainAddresses'
 const localDatabaseName = "conet";
 const apiv3_endpoint = `https://apiv3.conet.network/api/`;
@@ -118,6 +118,7 @@ export {
 	pgpCoNET,
 	GuardianNodesMainnet,
 	baseEndpoint,  // 来自 baseRpc，带自动切换免费 RPC
+	baseRpcProviderDirect,  // 直连 1rpc.io/base，用于对 BAD_DATA 敏感的合约调用
 	USDCContract_BASE,
 	beamioApi,
 	voucherRelayApi,

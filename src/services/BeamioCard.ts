@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
-import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
+import { baseEndpoint, baseRpcProviderDirect, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
@@ -24,6 +24,7 @@ export type Icard = { cardAddress: string, userSignature: string, nonce: string,
  */
 /** 用户拥有的卡片列表中不显示的卡地址（基础设施/系统卡） */
 const USER_CARD_DISPLAY_EXCLUDED = new Set([
+	'0x02bae511632354584b198951b42ec73bacbc4e98',
 	'0xa86a8406b06bd6c332b4b380a0eaced822218eff',
 	'0xc0f1c74fb95100a97b532be53b266a54f41db615',
 	'0xecc5bdff6716847e45363befd3506b1d539c02d5',
@@ -383,13 +384,14 @@ export const checkRedeemAdminCodeValid = async (
 	}
 }
 
-/** 链上校验 EOA 是否为指定卡的 admin（避免重复兑换浪费 redeem code）。RPC 失败时抛出，不得将失败当作「非 admin」的信任信息。 */
+/** 链上校验 EOA 是否为指定卡的 admin（避免重复兑换浪费 redeem code）。RPC 失败时抛出，不得将失败当作「非 admin」的信任信息。
+ * 使用 baseRpcProviderDirect 直连 1rpc.io/base，避免 baseEndpoint Proxy 路由到 CoNET 节点时返回 0x 导致 BAD_DATA。 */
 export const isCardAdmin = async (cardAddress: string, eoa: string): Promise<boolean> => {
 	if (!cardAddress || !eoa || !ethers.isAddress(cardAddress) || !ethers.isAddress(eoa)) return false
-	const cardAbi = ['function isAdmin(address a) view returns (bool)']
-	const card = new ethers.Contract(cardAddress, cardAbi, baseEndpoint)
-	const ok = await card.isAdmin(eoa)
-	return !!ok
+	const cardAbi = ['function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)']
+	const card = new ethers.Contract(cardAddress, cardAbi, baseRpcProviderDirect)
+	const [admins] = (await card.getAdminListWithMetadata()) as [string[]]
+	return admins.some((a) => a.toLowerCase() === ethers.getAddress(eoa).toLowerCase())
 }
 
 /** 用户兑换 redeem-admin 码：提交到 API，服务端调用 redeemAdminForUser，将 to 添加为 admin */

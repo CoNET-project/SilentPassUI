@@ -75,6 +75,9 @@ function createProvider(url: string): ethers.JsonRpcProvider {
 	return new ethers.JsonRpcProvider(url, BASE_NETWORK, { staticNetwork: true })
 }
 
+/** 直连 Beamio Base RPC（1rpc.io/base），不经过 Proxy 切换。用于对 BAD_DATA 敏感的合约调用（如 isAdmin、getAdminListWithMetadata），避免 CoNET 代理返回 0x。 */
+export const baseRpcProviderDirect = createProvider(BASE_RPC_URLS[0] ?? BEAMIO_BASE_RPC)
+
 /** 当前使用的 RPC 索引；CoNET 节点时首次随机选取 */
 let _currentIndex = 0
 

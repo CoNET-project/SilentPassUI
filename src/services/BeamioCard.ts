@@ -24,6 +24,7 @@ export type Icard = { cardAddress: string, userSignature: string, nonce: string,
  */
 /** 用户拥有的卡片列表中不显示的卡地址（基础设施/系统卡） */
 const USER_CARD_DISPLAY_EXCLUDED = new Set([
+	'0x02bae511632354584b198951b42ec73bacbc4e98',
 	'0xf99018dffdb0c5657c93ca14db2900cebe1168a7',
 	'0xa86a8406b06bd6c332b4b380a0eaced822218eff',
 	'0xc0f1c74fb95100a97b532be53b266a54f41db615',

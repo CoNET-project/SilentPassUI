@@ -75,6 +75,8 @@ import {
 const getImg = (avatarSeed: string | undefined) =>
   `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || '@Beamio')}`;
 
+const USDC_ICON_URL = 'https://assets.coingecko.com/coins/images/6319/small/usdc.png';
+
 /** beamio 表示 name 的 protocol，与 Home displayName 一致；兼容 first_name/last_name 与 firstName/lastName */
 const displayName = (item: { firstName?: string; lastName?: string; first_name?: string; last_name?: string; accountName?: string } | null | undefined) => {
   if (!item) return ''
@@ -1451,6 +1453,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  const totalTips = isFixedUserCardAdmin ? (adminTipsToday ?? 0) : (200 + 142);
  // Panel 3: cumulativeMint (all-time in-store top-ups issued)
  const topUpsIssued = isFixedUserCardAdmin ? (cumulativeMintTotal ?? 0) : 850.00;
+const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when linked)
 
  // When admin: chain gives totals only; show in $CTree capsule. When mock: use explicit split.
  const salesCTree = isFixedUserCardAdmin ? totalSales : 1200.00;
@@ -1894,104 +1897,93 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
           ) : (
            <div className="space-y-8">
              {/* Row 1: Operations Metrics - 4 panels */}
-             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               
                {/* Panel 1: Total Gross Sales */}
-               <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
+               <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
                  <div>
                    <div className="flex justify-between items-start mb-4">
-                     <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center">
+                     <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center">
                         <TrendingUp size={24} className="text-slate-700" />
                      </div>
-                     <span className="bg-sky-100 text-sky-600 px-2.5 py-1 rounded-full text-[12px] font-medium">All-time</span>
+                     <span className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full text-[12px] font-medium">Today</span>
                    </div>
-                   <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Gross Sales</p>
-                   <p className="text-[40px] font-light text-black tracking-tighter leading-none">${totalSales.toFixed(2)}</p>
+                   <p className="text-[13px] text-slate-500 mb-1">Total Gross Sales (CAD Base)</p>
+                   <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${totalSales.toFixed(2)}</p>
                  </div>
-                 <div className="mt-6 pt-6 border-t border-slate-100">
-                   <div className="flex flex-wrap gap-3">
-                     <div className="bg-slate-50 px-4 py-3 rounded-2xl border border-slate-100 flex items-center gap-2 shrink-0">
-                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                         <span className="text-[12px] font-bold text-blue-600">$</span>
-                       </div>
-                       <div>
-                         <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-widest">USDC</span>
-                         <span className="text-[16px] font-black text-slate-800">${salesUSDC.toFixed(2)}</span>
-                       </div>
+                 <div className="mt-6 flex flex-wrap gap-3">
+                   <div className="bg-blue-50/50 px-4 py-3 rounded-2xl flex flex-col gap-1 shrink-0 min-w-[140px]">
+                     <div className="flex items-center gap-1">
+                       <img src={USDC_ICON_URL} alt="USDC" className="w-[11px] h-[11px] rounded-full shrink-0 object-cover" />
+                       <span className="text-[12px] font-semibold text-blue-600">USDC Payments</span>
                      </div>
-                     {isFixedUserCardAdmin && (
-                       <div className="bg-emerald-50 px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2 shrink-0">
-                         <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                           <Leaf size={14} className="text-emerald-600" />
-                         </div>
-                         <div>
-                           <span className="text-[10px] text-emerald-700 font-bold block uppercase tracking-widest">$CTree</span>
-                           <span className="text-[16px] font-black text-emerald-800">${salesCTree.toFixed(2)}</span>
-                         </div>
-                       </div>
-                     )}
+                     <span className="text-[18px] font-bold text-blue-600">${salesUSDC.toFixed(2)}</span>
+                     <span className="text-[11px] text-slate-500">≈ ${(salesUSDC * 1.35).toFixed(2)} CAD</span>
+                   </div>
+                   <div className="bg-emerald-50/50 px-4 py-3 rounded-2xl flex flex-col gap-1 shrink-0 min-w-[140px]">
+                     <div className="flex items-center gap-1">
+					 <Ticket size={14} className="text-emerald-600" />
+                       
+                       <span className="text-[12px] font-semibold text-emerald-600">$CTree</span>
+                     </div>
+                     <span className="text-[18px] font-bold text-black">${salesCTree.toFixed(2)}</span>
+                     <span className="text-[11px] text-slate-500">≈ ${salesCTree.toFixed(2)} CAD</span>
                    </div>
                  </div>
                </div>
 
                {/* Panel 2: Tips Collected */}
-               <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
+               <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
                  <div>
                    <div className="flex justify-between items-start mb-4">
                      <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center">
                         <Heart size={24} className="text-rose-500 fill-rose-100" />
                      </div>
                    </div>
-                   <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tips Collected</p>
-                   <p className="text-[40px] font-light text-black tracking-tighter leading-none">${totalTips.toFixed(2)}</p>
+                   <p className="text-[13px] text-slate-500 mb-1">Tips Collected (CAD Base)</p>
+                   <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${totalTips.toFixed(2)}</p>
                  </div>
-                 <div className="mt-6 pt-6 border-t border-slate-100">
-                   <div className="flex flex-wrap gap-3">
-                     <div className="bg-slate-50 px-4 py-3 rounded-2xl border border-slate-100 flex items-center gap-2 shrink-0">
-                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                         <span className="text-[12px] font-bold text-blue-600">$</span>
-                       </div>
-                       <div>
-                         <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-widest">USDC</span>
-                         <span className="text-[16px] font-black text-slate-800">${tipsUSDC.toFixed(2)}</span>
-                       </div>
+                 <div className="mt-6 flex flex-wrap gap-3">
+                   <div className="bg-blue-50/50 px-4 py-3 rounded-2xl flex flex-col gap-1 shrink-0 min-w-[140px]">
+                     <div className="flex items-center gap-1">
+                       <img src={USDC_ICON_URL} alt="USDC" className="w-[11px] h-[11px] rounded-full shrink-0 object-cover" />
+                       <span className="text-[12px] font-semibold text-blue-600">USDC Payments</span>
                      </div>
-                     {isFixedUserCardAdmin && (
-                       <div className="bg-emerald-50 px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2 shrink-0">
-                         <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                           <Leaf size={14} className="text-emerald-600" />
-                         </div>
-                         <div>
-                           <span className="text-[10px] text-emerald-700 font-bold block uppercase tracking-widest">$CTree</span>
-                           <span className="text-[16px] font-black text-emerald-800">${tipsCTree.toFixed(2)}</span>
-                         </div>
-                       </div>
-                     )}
+                     <span className="text-[18px] font-bold text-blue-600">${tipsUSDC.toFixed(2)}</span>
+                     <span className="text-[11px] text-slate-500">≈ ${(tipsUSDC * 1.35).toFixed(2)} CAD</span>
+                   </div>
+                   <div className="bg-emerald-50/50 px-4 py-3 rounded-2xl flex flex-col gap-1 shrink-0 min-w-[140px]">
+                     <div className="flex items-center gap-1">
+                       <Ticket size={14} className="text-emerald-600" />
+                       <span className="text-[12px] font-semibold text-emerald-600">$CTree</span>
+                     </div>
+                     <span className="text-[18px] font-bold text-black">${tipsCTree.toFixed(2)}</span>
+                     <span className="text-[11px] text-slate-500">≈ ${tipsCTree.toFixed(2)} CAD</span>
                    </div>
                  </div>
                </div>
 
                {/* Panel 3: In-Store Top-Ups */}
-               <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
+               <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
                  <div>
                    <div className="flex justify-between items-start mb-4">
-                     <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center">
+                     <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
                         <ArrowUpFromLine size={24} className="text-emerald-600" />
                      </div>
                    </div>
-                   <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-1">In-Store Top-Ups</p>
-                   <p className="text-[40px] font-light text-black tracking-tighter leading-none">${topUpsIssued.toFixed(2)}</p>
+                   <p className="text-[13px] text-slate-500 mb-1">In-Store Top-Ups</p>
+                   <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${topUpsIssued.toFixed(2)}</p>
                  </div>
                  <div className="mt-6 pt-6 border-t border-slate-100">
                    {isFixedUserCardAdmin ? (
-                     <div className="bg-emerald-50 px-4 py-3 rounded-2xl border border-emerald-100 flex items-center gap-2">
-                       <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                         <ArrowUpFromLine size={14} className="text-emerald-600" />
+                     <div className="bg-rose-50 px-4 py-3 rounded-2xl flex items-center justify-between">
+                       <div className="flex flex-col gap-0.5">
+                         <span className="text-[12px] font-semibold text-slate-700">Issued $CTree</span>
+                         <span className="text-[12px] font-medium text-rose-600">
+                           Quota: ${(topUpsIssued / 1000).toFixed(1)}k / ${(topUpsQuota / 1000).toFixed(0)}k
+                         </span>
                        </div>
-                       <div>
-                         <span className="text-[10px] text-emerald-700 font-bold block uppercase tracking-widest">Issued $CTree</span>
-                         <span className="text-[16px] font-black text-emerald-800">${topUpsIssued.toFixed(2)}</span>
-                       </div>
+                       <span className="text-[18px] font-bold text-rose-600">${topUpsIssued.toFixed(2)}</span>
                      </div>
                    ) : (
                      <p className="text-[12px] text-slate-400 text-center">No active issuing networks.</p>

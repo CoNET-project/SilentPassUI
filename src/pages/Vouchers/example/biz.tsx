@@ -9,7 +9,7 @@ import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername } from '@/services/beamio';
 import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdminByAdmin, postCardAddAdmin, encodeAddAdminWithMintLimit, signExecuteForAdmin, signExecuteForOwner, getPredictedAAAddress } from '@/services/BeamioCard';
 import { conetDepinProvider } from '@/utils/constants';
-import { BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses';
+import { BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { generateRegisterPOSNonce, signRemovePOS, removePOSApi } from '@/services/merchantPOS';
 import {
@@ -189,7 +189,7 @@ const MOCK_MESSAGES = [
 ];
 
 /** 指定商户卡地址 - 必须使用此卡 */
-const FIXED_USER_CARD_CONTRACT_ADDRESS = '0x02BAe511632354584b198951B42eC73BACBc4E98'
+const FIXED_USER_CARD_CONTRACT_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 const BASE_RPC_URL = 'https://1rpc.io/base'
 const BEAMIO_APP_URL = 'https://beamio.app'
 const baseRpcProvider = new ethers.JsonRpcProvider(BASE_RPC_URL)

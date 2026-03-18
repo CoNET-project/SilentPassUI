@@ -135,6 +135,10 @@ type TxDisplayRow = {
   status: string
   hash: string
   terminal: string
+  /** top-level admin for reporting (admin topup flows) */
+  topAdmin?: string
+  /** subordinate that processed this tx (admin topup flows) */
+  subordinate?: string
 }
 
 // --- Precise Mock Data reflecting the exact Discount & Source logic ---
@@ -225,21 +229,23 @@ const USER_CARD_ADMIN_READ_ABI = [
   'function getGlobalStatsFull(uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 adminCount)',
 ] as const
 
+const TX_PAGE_TUPLE = 'tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists, address topAdmin, address subordinate)';
+
 /** BeamioIndexerDiamond ActionFacet: getAccountTransactionsByCurrentPeriodOffsetPaged */
 const INDEXER_ACTION_ABI = [
-  'function getAccountTransactionsByCurrentPeriodOffsetPaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
+  `function getAccountTransactionsByCurrentPeriodOffsetPaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
 ] as const
 
 /** BeamioIndexerDiamond BeamioUserCardStatsFacet: getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged (asset=card, account=0 for all) */
 const INDEXER_ASSET_STATS_ABI = [
-  'function getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(address asset, address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
-  'function getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(address asset, address topAdmin, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
-  'function getAssetTransactionsBySubordinateAndCurrentPeriodOffsetAndAccountModePaged(address asset, address subordinate, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
+  `function getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(address asset, address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
+  `function getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(address asset, address topAdmin, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
+  `function getAssetTransactionsBySubordinateAndCurrentPeriodOffsetAndAccountModePaged(address asset, address subordinate, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
 ] as const
 
 /** BeamioIndexerDiamond ActionFacet: getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged (7 params, no chainIdFilter) */
 const INDEXER_ACCOUNT_ABI = [
-  'function getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
+  `function getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
 ] as const
 
 const CHAIN_ID_FILTER_ALL = ethers.MaxUint256
@@ -1246,16 +1252,18 @@ const fetchTerminals = useCallback(async () => {
      const ACCOUNT_MODE_ALL = 0;
      const indexerAccount = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ACCOUNT_ABI, conetDepinProvider);
      const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
-     type TxRow = { id: string; txCategory: string; displayJson: string; timestamp: bigint; payer: string; payee: string; finalRequestAmountFiat6: bigint; finalRequestAmountUSDC6: bigint; meta?: { afterNotePayer?: string; afterNotePayee?: string }; exists?: boolean };
+     type TxRow = { id: string; txCategory: string; displayJson: string; timestamp: bigint; payer: string; payee: string; finalRequestAmountFiat6: bigint; finalRequestAmountUSDC6: bigint; meta?: { afterNotePayer?: string; afterNotePayee?: string }; exists?: boolean; topAdmin?: string; subordinate?: string };
      const seen = new Set<string>();
-     const all: Array<{ id: string; txCategory: string; displayJson: string; timestamp: string; payer: string; payee: string; finalRequestAmountFiat6: string; finalRequestAmountUSDC6: string; meta?: { afterNotePayer?: string; afterNotePayee?: string } }> = [];
+     const all: Array<{ id: string; txCategory: string; displayJson: string; timestamp: string; payer: string; payee: string; finalRequestAmountFiat6: string; finalRequestAmountUSDC6: string; meta?: { afterNotePayer?: string; afterNotePayee?: string }; topAdmin?: string; subordinate?: string }> = [];
      const addPage = (page: TxRow[] | undefined) => {
        for (const tx of page ?? []) {
          if (!tx?.exists || !tx?.id) continue;
          const id = String(tx.id);
          if (seen.has(id)) continue;
          seen.add(id);
-         all.push({ id: String(tx.id), txCategory: String(tx.txCategory), displayJson: tx.displayJson ?? '', timestamp: String(tx.timestamp), payer: tx.payer, payee: tx.payee, finalRequestAmountFiat6: String(tx.finalRequestAmountFiat6 ?? 0n), finalRequestAmountUSDC6: String(tx.finalRequestAmountUSDC6 ?? 0n), meta: tx.meta });
+         const topAdmin = tx.topAdmin && tx.topAdmin !== ethers.ZeroAddress ? tx.topAdmin : undefined;
+         const subordinate = tx.subordinate && tx.subordinate !== ethers.ZeroAddress ? tx.subordinate : undefined;
+         all.push({ id: String(tx.id), txCategory: String(tx.txCategory), displayJson: tx.displayJson ?? '', timestamp: String(tx.timestamp), payer: tx.payer, payee: tx.payee, finalRequestAmountFiat6: String(tx.finalRequestAmountFiat6 ?? 0n), finalRequestAmountUSDC6: String(tx.finalRequestAmountUSDC6 ?? 0n), meta: tx.meta, topAdmin, subordinate });
        }
      };
      const queryAccount = async (account: string) => {
@@ -1374,6 +1382,8 @@ const fetchTerminals = useCallback(async () => {
          status: 'Settled',
          hash: hashShort,
          terminal: typeof terminal === 'string' ? terminal : '—',
+         topAdmin: tx.topAdmin && tx.topAdmin !== ethers.ZeroAddress ? tx.topAdmin : undefined,
+         subordinate: tx.subordinate && tx.subordinate !== ethers.ZeroAddress ? tx.subordinate : undefined,
        };
      });
      setIndexerTransactions(mapped);
@@ -2054,7 +2064,7 @@ const fetchTerminals = useCallback(async () => {
                                )}
                                <div className="font-bold text-[15px] text-black whitespace-nowrap">{tx.type}</div>
                              </div>
-                             <div className="flex items-center gap-2 text-[12px] font-medium text-slate-500 mt-2 pl-11 whitespace-nowrap">
+                             <div className="flex items-center gap-2 text-[12px] font-medium text-slate-500 mt-2 pl-11 whitespace-nowrap flex-wrap">
                                <span>{tx.dateStr || dateString}, {tx.time}</span>
                                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
                                <span>{tx.id}</span>
@@ -2063,6 +2073,16 @@ const fetchTerminals = useCallback(async () => {
                                <span className="flex items-center gap-1 text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded" title="Processed by terminal">
                                  <MonitorSmartphone size={10}/> {tx.terminal}
                                </span>
+                               {/* Top Admin: 展示 admin topup 记账的 topAdmin */}
+                               {tx.topAdmin && (
+                                 <>
+                                   <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                                   <span className="flex items-center gap-1 text-slate-600" title="Top Admin (reporting)">
+                                     Top Admin:
+                                   </span>
+                                   <AddressCapsule address={tx.topAdmin} className="bg-slate-100 border-slate-200 text-slate-700" />
+                                 </>
+                               )}
                              </div>
                            </td>
 

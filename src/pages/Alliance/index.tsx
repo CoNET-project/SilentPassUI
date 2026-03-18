@@ -198,6 +198,10 @@ const shortenAddress = (addr: string, head = 6, tail = 4) =>
 
 /** CashTrees 卡 (BeamioUserCard)，与 chainAddresses 保持一致 */
 const FIXED_USER_CARD_CONTRACT_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
+/** CashTrees 商户 topAdmin，Live Network Activity 固定拉取其 Charge/topup */
+const CASH_TREES_PARTNER_TOP_ADMIN = '0x8Eb31413EC7Ce13367a39eae203e6659e8F6f32D'
+/** CashTrees 终端 subordinate，Live Network Activity 固定拉取其 Charge/topup */
+const CASH_TREES_PARTNER_SUBORDINATE = '0x9817536864A74D2484e18213Cc7a8bAE30c04b66'
 const ALLIANCE_CACHE_PREFIX = 'alliance:index:trusted:';
 const ALLIANCE_RESTAURANTS_KEY = 'alliance:restaurants:local';
 const ZERO_ADDRESS = ethers.ZeroAddress;
@@ -1397,7 +1401,7 @@ export default function App() {
                         <h2 className="font-bold text-lg text-slate-800">Live Network Activity</h2>
                         <button onClick={() => setActiveTab('Ledger')} className="text-sm font-bold text-[#82cc33] hover:text-[#6ea32b] hover:underline">View Ledger</button>
                       </div>
-                      <ActiveHistoryPannelNew title="Live Network Activity" compact compactLimit={10} bare embeddedInDrawer filterByCardAddress={FIXED_USER_CARD_CONTRACT_ADDRESS} ledgerLayout onNewTransactionIndexed={handleNewTransactionIndexed} />
+                      <ActiveHistoryPannelNew title="Live Network Activity" compact compactLimit={10} bare embeddedInDrawer filterByCardAddress={FIXED_USER_CARD_CONTRACT_ADDRESS} filterByTopAdmin={aaAddress ?? undefined} filterBySubordinate={eoaAddress ?? undefined} filterByAdditionalTopAdmins={[CASH_TREES_PARTNER_TOP_ADMIN]} filterByAdditionalSubordinates={[CASH_TREES_PARTNER_SUBORDINATE]} ledgerLayout onNewTransactionIndexed={handleNewTransactionIndexed} localFirst={!!(aaAddress || eoaAddress)} />
                    </div>
                    
                    <div className="bg-slate-900 rounded-2xl shadow-xl p-6 text-white relative overflow-hidden flex flex-col">

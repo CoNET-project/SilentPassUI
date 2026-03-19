@@ -26,7 +26,7 @@ import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
-import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
+import { BASE_MAINNET_FACTORIES, BEAMIO_ORACLE_CONET } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
 
@@ -566,6 +566,21 @@ export const parseOracleToCurrencyData = (data: { usdcad?: string | number; usdj
 
 /** 全局 Oracle 刷新间隔：5 分钟 */
 export const ORACLE_REFRESH_MS = 5 * 60 * 1000
+
+const BEAMIO_ORACLE_ABI = ['function getRate(uint8 c) view returns (uint256)'] as const
+const BEAMIO_CURRENCY_CAD = 0
+
+/** 从 CoNET 链上 BeamioOracle 读取 CAD 汇率。getRate(CAD) 返回「1 CAD = X USD」E18。用于顶部 bar 显示 1 CAD ≈ X USDC */
+export const getOracleCadUsdcFromConet = async (): Promise<number | null> => {
+	try {
+		const oracle = new ethers.Contract(BEAMIO_ORACLE_CONET, BEAMIO_ORACLE_ABI, conetDepinProvider)
+		const rateRaw = await oracle.getRate(BEAMIO_CURRENCY_CAD) as bigint
+		const rate = Number(ethers.formatUnits(rateRaw, 18))
+		return rate > 0 ? rate : null
+	} catch {
+		return null
+	}
+}
 
 
 export const estimateGasUSDC = async (amount: number, to: string) => {

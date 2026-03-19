@@ -6,9 +6,9 @@ import { useDaemonContext } from '@/providers/DaemonProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { storeSystemData, getBalance, formatWithThousands } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
-import { searchUsername } from '@/services/beamio';
+import { searchUsername, getOracleCadUsdcFromConet } from '@/services/beamio';
 import { checkRedeemAdminCodeValid, isCardAdmin, postCardRedeemAdmin, getAAAccount, postCardAddAdminByAdmin, postCardAddAdmin, encodeAddAdminWithMintLimit, signExecuteForAdmin, signExecuteForOwner } from '@/services/BeamioCard';
-import { conetDepinProvider } from '@/utils/constants';
+import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect } from '@/utils/constants';
 import { BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { generateRegisterPOSNonce, signRemovePOS, removePOSApi } from '@/services/merchantPOS';
@@ -69,13 +69,26 @@ import {
  Leaf,
  Loader2,
  ArrowRight,
- Menu
+ Menu,
+ CalendarDays
 } from 'lucide-react';
 
 const getImg = (avatarSeed: string | undefined) =>
   `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || '@Beamio')}`;
 
 const USDC_ICON_URL = 'https://assets.coingecko.com/coins/images/6319/small/usdc.png';
+const BASE_ICON_URL = 'https://beamio.app/app/static/media/base-logo.275b67e94556e30ce59b.png';
+
+/** USDC on Base 复合图标：主圆标 + 右下 Base 角标（beamio-usdc-base-composite-icon） */
+const UsdcBaseCompositeIcon = ({ size = 16, badgeSize }: { size?: number; badgeSize?: number }) => {
+  const bs = badgeSize ?? Math.round(size * 0.625);
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size, minWidth: size, minHeight: size }}>
+      <img src={USDC_ICON_URL} alt="USDC" className="block w-full h-full rounded-full object-contain" />
+      <img src={BASE_ICON_URL} alt="Base" className="block absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white" style={{ width: bs, height: bs }} />
+    </div>
+  );
+};
 
 /** beamio 表示 name 的 protocol，与 Home displayName 一致；兼容 first_name/last_name 与 firstName/lastName */
 const displayName = (item: { firstName?: string; lastName?: string; first_name?: string; last_name?: string; accountName?: string } | null | undefined) => {
@@ -143,36 +156,6 @@ type TxDisplayRow = {
   subordinate?: string
 }
 
-// --- Precise Mock Data reflecting the exact Discount & Source logic ---
-// 更新：每条记录增加了 `terminal` 字段，用于追溯是哪台终端完成的收款
-const MOCK_TRANSACTIONS: TxDisplayRow[] = [
- {
-   id: 'TX-1042', dateStr: '', time: '14:22 PM', type: 'Charge', subtotal: 85.00, tip: 15.00, total: 100.00,
-   method: 'Mixed', ctreeAmount: 40.00, usdcAmount: 60.00,
-   source: 'APP', beamioTag: '@alice_chen', status: 'Settled', hash: '0x1a...f9', terminal: '@ut_reg1'
- },
- {
-   id: 'TX-1043', dateStr: '', time: '15:05 PM', type: 'In-Store Top-Up', subtotal: 100.00, tip: 0.00, total: 100.00,
-   method: 'Issued $CTree', ctreeAmount: 100.00, usdcAmount: 0,
-   source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x2b...e4', terminal: '@ut_reg1'
- },
- {
-   id: 'TX-1044', dateStr: '', time: '16:10 PM', type: 'Charge', subtotal: 12.50, tip: 2.00, total: 14.50,
-   method: '$CTree (Green Tier)', ctreeAmount: 14.50, usdcAmount: 0,
-   source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x3c...d1', terminal: '@ut_kiosk2'
- },
- {
-   id: 'TX-1045', dateStr: '', time: '16:45 PM', type: 'Charge', subtotal: 45.00, tip: 5.00, total: 50.00,
-   method: 'USDC (No Discount)', ctreeAmount: 0, usdcAmount: 50.00,
-   source: 'APP', beamioTag: '@bobby_s', status: 'Settled', hash: '0x4d...c2', terminal: '@ut_reg1'
- },
- {
-   id: 'TX-1046', dateStr: '', time: '17:30 PM', type: 'Charge', subtotal: 75.00, tip: 10.00, total: 85.00,
-   method: '$CTree (Black Tier)', ctreeAmount: 85.00, usdcAmount: 0,
-   source: 'APP', beamioTag: '@char_w', status: 'Settled', hash: '0x5e...b3', terminal: '@ut_kiosk2'
- },
-];
-
 // Alliance database for Store Wallets, Partner Alliances
 const INITIAL_ALLIANCES_DB = {
   CashTrees: {
@@ -215,10 +198,13 @@ const MOCK_MESSAGES = [
 
 /** 指定商户卡地址 - 必须使用此卡 */
 const FIXED_USER_CARD_CONTRACT_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
-const BASE_RPC_URL = 'https://1rpc.io/base'
+const CONET_BUINT_ADDRESS = '0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879'
+const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)'] as const
 const BEAMIO_APP_URL = 'https://beamio.app'
-const baseRpcProvider = new ethers.JsonRpcProvider(BASE_RPC_URL)
+/** Use baseEndpoint (CoNET fallback) for stats; baseRpcProviderDirect for isAdmin (avoid CoNET 0x BAD_DATA) */
 const BIZ_CACHE_PREFIX = 'beamio:biz-example:'
+/** Fallback when CoNET oracle fetch fails */
+const ORACLE_CAD_USDC_FALLBACK = 0.740
 /** Set to false to hide the Linked Merchant Card panel */
 const SHOW_LINKED_MERCHANT_CARD_PANEL = false
 const USER_CARD_ADMIN_READ_ABI = [
@@ -292,6 +278,9 @@ const parseFixedUserCardMetadata = (raw: unknown, cardOwner?: string): FixedUser
 }
 
 const amountE6ToDisplayNumber = (value: bigint): number => Number(value) / 1_000_000
+
+/** Unified Base overview feeder: 15s interval, single batch to reduce RPC load */
+const FEEDER_INTERVAL_MS = 15_000;
 
 /** In-memory fetch cache: 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
 const FETCH_TTL_MS = 30_000;
@@ -458,20 +447,34 @@ export default function MerchantOS() {
  const { beamio, profiles, myAddress, setProfiles } = useDaemonContext();
  const navigate = useNavigate();
  const [activeTab, setActiveTab] = useState('Overview');
+ const [timeFilter, setTimeFilter] = useState('Today');
+ const [oracleCadUsdc, setOracleCadUsdc] = useState<number | null>(null);
+ const [activeLedger, setActiveLedger] = useState<'All' | 'AA' | 'EOA'>('All');
+ const [txSearchTerm, setTxSearchTerm] = useState('');
+ const [txFilterTerminal, setTxFilterTerminal] = useState('All');
+ const [txFilterType, setTxFilterType] = useState('All');
  const fixedCardAdminsCacheKey = `card-admins:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:v2`;
  const linkedMerchantAdminsCacheKey = `linked-merchants:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:v2`;
- const linkedTerminalsCacheKey = `${BIZ_CACHE_PREFIX}linked-terminals:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
  const fixedCardMetadataCacheKey = `card-metadata:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
+ const currentEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase();
+ const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
  const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
  const [fixedCardMetadata, setFixedCardMetadata] = useState<FixedUserCardMetadata | null>(() => loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey));
  const [merchantOwnerProfile, setMerchantOwnerProfile] = useState<BeamioProfile>(null);
- const grossSalesCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-gross-sales`
- const cumulativeMintCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:cumulative-mint`
+ const grossSalesCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-gross-sales`;
+ const cumulativeMintCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:cumulative-mint`;
+ const adminStatsTodayCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-stats-today`;
+ const adminTipsTodayCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:tips-today`;
  const [grossSalesTotal, setGrossSalesTotal] = useState<number | null>(() => loadTrustedCache<number>(grossSalesCacheKey));
  const [cumulativeMintTotal, setCumulativeMintTotal] = useState<number | null>(() => loadTrustedCache<number>(cumulativeMintCacheKey));
  const [adminStatsToday, setAdminStatsToday] = useState<{ grossSales: number; topUps: number } | null>(null);
+ const [adminNetworkSummaryToday, setAdminNetworkSummaryToday] = useState<{ cadVol: number; txCount: number; usdc: number; vouchers: number } | null>(null);
  const [adminTipsToday, setAdminTipsToday] = useState<number | null>(null);
+ const [adminMintLimitQuota, setAdminMintLimitQuota] = useState<number | null>(null);
+ const [adminMintCounterFromClear, setAdminMintCounterFromClear] = useState<number | null>(null);
+ const [protocolFuelReserveBalance, setProtocolFuelReserveBalance] = useState<number | null>(null);
+ const [protocolFuelConsumptionToday, setProtocolFuelConsumptionToday] = useState<number | null>(null);
  const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
  const [overviewRefreshing, setOverviewRefreshing] = useState(false);
  const [linkedMerchantLookupDone, setLinkedMerchantLookupDone] = useState(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) !== null);
@@ -480,6 +483,11 @@ export default function MerchantOS() {
  const [aaRefreshStatus, setAaRefreshStatus] = useState<AaRefreshStatus>('idle');
  const [indexerTransactions, setIndexerTransactions] = useState<TxDisplayRow[]>([]);
  const [indexerTransactionsLoading, setIndexerTransactionsLoading] = useState(false);
+ /** Chain-verified admin status (EOA-scoped): local cache first, chain fetch as backup (beamio-ai-onchain-fetch) */
+ const isAdminTrustedCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:is-admin`;
+ const [isCurrentUserCardAdmin, setIsCurrentUserCardAdmin] = useState<boolean | null>(() =>
+   currentEoa && ethers.isAddress(currentEoa) ? (loadTrustedCache<boolean>(isAdminTrustedCacheKey) ?? null) : null
+ );
 
  // Store Wallets, Market, Messages, Partner Alliances
  const [joinedAlliances, setJoinedAlliances] = useState<AllianceId[]>([]);
@@ -491,6 +499,8 @@ export default function MerchantOS() {
  const [chatInput, setChatInput] = useState('');
 
  const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
+ const [aaUsdcBalance, setAaUsdcBalance] = useState<string | null>(null);
+ const [aaBUnits, setAaBUnits] = useState<number | null>(null);
  const [subordinateBalances, setSubordinateBalances] = useState<Record<string, string | null>>({});
 
  const handleApplyAlliance = useCallback((aId: AllianceId) => {
@@ -518,25 +528,30 @@ export default function MerchantOS() {
 
  const clearCardCacheAndRetry = useCallback(() => {
    try {
-     invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
-     invalidateFetchCache('indexer:tips');
-     const keys = [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey];
+   invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+   invalidateFetchCache('indexer:tips');
+   invalidateFetchCache('eoa:');
+     const keys = [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey, cumulativeMintCacheKey, adminStatsTodayCacheKey, adminTipsTodayCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey];
      keys.forEach((k) => window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${k}`));
-     try {
-       window.localStorage.removeItem(linkedTerminalsCacheKey);
-     } catch { /* ignore */ }
-     ['admin-stats-today:', 'admin-tips-today:'].forEach((prefix) => {
-       Object.keys(window.localStorage).filter((k) => k.startsWith(BIZ_CACHE_PREFIX + prefix)).forEach((k) => window.localStorage.removeItem(k));
-     });
+     Object.keys(window.localStorage).filter((k) => (k.startsWith(BIZ_CACHE_PREFIX + 'card:') && (k.includes('mint-limit-quota') || k.includes('quota-and-mint-counter'))) || (k.startsWith(BIZ_CACHE_PREFIX) && k.includes('buint:balance:'))).forEach((k) => window.localStorage.removeItem(k));
      setFixedCardAdmins([]);
      setLinkedMerchantAdmins([]);
+     setIsCurrentUserCardAdmin(null);
      setTerminals([]);
      setLinkedMerchantLookupDone(false);
+     setGrossSalesTotal(null);
+     setCumulativeMintTotal(null);
+     setAdminStatsToday(null);
+     setAdminTipsToday(null);
+     setAdminMintLimitQuota(null);
+     setAdminMintCounterFromClear(null);
+     setProtocolFuelReserveBalance(null);
+     setProtocolFuelConsumptionToday(null);
      setAdminRetryCount((c) => c + 1);
    } catch {
      setAdminRetryCount((c) => c + 1);
    }
- }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey, linkedTerminalsCacheKey]);
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, grossSalesCacheKey, cumulativeMintCacheKey, adminStatsTodayCacheKey, adminTipsTodayCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey]);
 
  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
  const [payoutStep, setPayoutStep] = useState(1);
@@ -551,6 +566,60 @@ export default function MerchantOS() {
    window.addEventListener('resize', handleResize);
    return () => window.removeEventListener('resize', handleResize);
  }, []);
+
+ /** Oracle CAD/USDC from CoNET BeamioOracle — fetch on mount and every 10 min */
+ useEffect(() => {
+   const fetchOracle = () => {
+     getOracleCadUsdcFromConet().then((rate) => {
+       if (rate != null) setOracleCadUsdc(rate);
+     });
+   };
+   fetchOracle();
+   const interval = setInterval(fetchOracle, 10 * 60 * 1000);
+   return () => clearInterval(interval);
+ }, []);
+
+ /** Reset metrics state when EOA changes: avoid showing previous EOA's cached data (beamio-ai-onchain-fetch: cache key must include EOA, invalidate on switch) */
+ const prevEoaRef = React.useRef<string | null>(null);
+ useEffect(() => {
+   if (prevEoaRef.current !== null && prevEoaRef.current !== currentEoa) {
+     const oldEoa = prevEoaRef.current;
+     invalidateFetchCache('eoa:');
+     invalidateFetchCache('aa:');
+     invalidateFetchCache('indexer:tx');
+     invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+     try {
+       Object.keys(window.localStorage)
+         .filter((k) => k.startsWith(`${BIZ_CACHE_PREFIX}eoa:${oldEoa}:`))
+         .forEach((k) => window.localStorage.removeItem(k));
+       // Clear card-level admin caches on EOA switch: production may reuse localStorage from previous user,
+       // causing isFixedUserCardAdmin to show admin content to non-admin when cache + stale identity align.
+       window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
+       window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${linkedMerchantAdminsCacheKey}`);
+     } catch { /* ignore */ }
+     setFixedCardAdmins([]);
+     setLinkedMerchantAdmins([]);
+     setLinkedMerchantLookupDone(false);
+     setGrossSalesTotal(null);
+     setCumulativeMintTotal(null);
+     setAdminStatsToday(null);
+     setAdminNetworkSummaryToday(null);
+     setAdminTipsToday(null);
+     setAdminMintLimitQuota(null);
+     setAdminMintCounterFromClear(null);
+     setProtocolFuelReserveBalance(null);
+     setProtocolFuelConsumptionToday(null);
+     setIndexerTransactions([]);
+     setTerminals([]);
+     setSubordinateBalances({});
+     setTerminalStats({});
+     setAaUsdcBalance(null);
+     setAaBUnits(null);
+     setIsCurrentUserCardAdmin(null);
+     setAdminRetryCount((c) => c + 1);
+   }
+   prevEoaRef.current = currentEoa;
+ }, [currentEoa, fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey]);
 
  const handleTabChange = useCallback((tab: string) => {
    setActiveTab(tab);
@@ -665,10 +734,11 @@ export default function MerchantOS() {
  ].filter((address): address is string => !!address && ethers.isAddress(address))
    .map((address) => ethers.getAddress(address));
  const normalizedAdminCandidates = adminCandidateAddresses.map((address) => address.toLowerCase());
- const effectiveAdminAddress = fixedCardAdmins.find((address) => normalizedAdminCandidates.includes(address.toLowerCase())) ?? null;
- /** Card-level cache keys: stats and tips are for the whole card, not per-admin */
- const adminStatsTodayCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-stats-today`;
- const adminTipsTodayCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:tips-today`;
+ /** Use current EOA (local account) only: if not admin, show "-" (no fallback to AA). Align with cache keys & isAdmin. */
+ const localEoa = (currentEoa ?? '').trim();
+ const effectiveAdminAddress = localEoa && ethers.isAddress(localEoa) && fixedCardAdmins.some((addr) => addr.toLowerCase() === ethers.getAddress(localEoa).toLowerCase())
+   ? ethers.getAddress(localEoa)
+   : null;
 
  const handleRefreshAA = useCallback(async () => {
    const p0 = profiles?.[0];
@@ -777,7 +847,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   }
   if (!opts?.silent) setTerminalsLoading(true);
   try {
-    const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProvider);
+    const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
     const cardOwner = await card.owner() as string;
     const userAA = profiles?.[0]?.aaAccount?.trim();
     const isOwner =
@@ -791,10 +861,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
       const addr = (subordinates ?? [])[idx];
       if (!addr || !ethers.isAddress(addr)) continue;
       let eoa: string;
-      const code = await baseRpcProvider.getCode(addr);
+      const code = await baseEndpoint.getCode(addr);
       if (code && code !== '0x' && code.length > 2) {
         try {
-          const ownerRes = await baseRpcProvider.call({ to: addr, data: '0x8da5cb5b' });
+          const ownerRes = await baseEndpoint.call({ to: addr, data: '0x8da5cb5b' });
           if (ownerRes && typeof ownerRes === 'string' && ownerRes.length >= 66) {
             eoa = ethers.getAddress('0x' + ownerRes.slice(-40));
           } else {
@@ -846,7 +916,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   } finally {
     if (!opts?.silent) setTerminalsLoading(false);
   }
-}, [profiles, myAddress]);
+}, [profiles, myAddress, linkedTerminalsCacheKey]);
 
  useEffect(() => {
    fetchTerminals();
@@ -865,6 +935,39 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    });
    return () => { cancelled = true; };
  }, [profiles, myAddress, overviewRefreshTrigger]);
+
+ // Fetch AA USDC balance for Smart Terminal panel
+ useEffect(() => {
+   const aaAddr = profiles?.[0]?.aaAccount?.trim();
+   if (!aaAddr || !ethers.isAddress(aaAddr)) {
+     setAaUsdcBalance(null);
+     return;
+   }
+   let cancelled = false;
+   void fetchWithCache(`aa:usdc:${aaAddr.toLowerCase()}`, () => getBalance(aaAddr)).then((b) => {
+     if (!cancelled && b?.usdc != null) setAaUsdcBalance(b.usdc);
+   });
+   return () => { cancelled = true; };
+ }, [profiles, overviewRefreshTrigger]);
+
+ // Fetch AA B-Units (Protocol Fuel) for Smart Terminal panel
+ useEffect(() => {
+   const aaAddr = profiles?.[0]?.aaAccount?.trim();
+   if (!aaAddr || !ethers.isAddress(aaAddr)) {
+     setAaBUnits(null);
+     return;
+   }
+   let cancelled = false;
+   const cacheKey = `aa:${aaAddr.toLowerCase()}:buint:balance`;
+   void fetchWithCache(cacheKey, async () => {
+     const buint = new ethers.Contract(CONET_BUINT_ADDRESS, ERC20_BALANCE_ABI, conetDepinProvider);
+     const raw = await buint.balanceOf(aaAddr) as bigint;
+     return Number(raw) / 1_000_000;
+   }).then((balance) => {
+     if (!cancelled) setAaBUnits(balance);
+   });
+   return () => { cancelled = true; };
+ }, [profiles, overviewRefreshTrigger]);
 
  // Fetch USDC balance for each subordinate admin (terminals)
  useEffect(() => {
@@ -895,7 +998,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      return;
    }
    let cancelled = false;
-   const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProvider);
+   const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
    void Promise.all(
      addrs.map(async (addr) => {
        const key = addr.toLowerCase();
@@ -909,7 +1012,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
            } catch {
              const iface = new ethers.Interface([...USER_CARD_ADMIN_READ_ABI]);
              const calldata = iface.encodeFunctionData('getAdminStatsFull', [addr, 0, 0, 0]);
-             const hex = await baseRpcProvider.call({ to: FIXED_USER_CARD_CONTRACT_ADDRESS, data: calldata });
+             const hex = await baseEndpoint.call({ to: FIXED_USER_CARD_CONTRACT_ADDRESS, data: calldata });
              const raw = (hex as string).replace(/^0x/, '');
              if (raw.length >= 1344) {
                const transferHex = raw.substring(1280, 1344);
@@ -1029,7 +1132,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      const card = new ethers.Contract(
        FIXED_USER_CARD_CONTRACT_ADDRESS,
        USER_CARD_ADMIN_READ_ABI,
-       baseRpcProvider
+       baseEndpoint
      );
      try {
        const [owner, adminResult] = await Promise.all([
@@ -1096,44 +1199,38 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    });
 
    return () => { cancelled = true; };
- }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, adminRetryCount]);
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, adminRetryCount, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress]);
 
+ /** Admin status: local cache first (fast show/hide), chain fetch as backup. Only write cache on chain success (trusted). */
  useEffect(() => {
-   let cancelled = false;
-   const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
-
-   if (cachedMetadata) {
-     setFixedCardMetadata(cachedMetadata);
+   if (!currentEoa || !ethers.isAddress(currentEoa)) {
+     setIsCurrentUserCardAdmin(false);
+     return;
    }
-
-   const metaKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:metadata`;
-   void fetchWithCache(metaKey, async () => {
-     const apiRes = await fetch(
-       `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(FIXED_USER_CARD_CONTRACT_ADDRESS)}`
-     );
-     if (apiRes.ok) {
-       const apiData = await apiRes.json() as { cardOwner?: string; metadata?: unknown };
-       const parsed = parseFixedUserCardMetadata(apiData.metadata, typeof apiData.cardOwner === 'string' ? apiData.cardOwner : undefined);
-       if (parsed) return parsed;
+   let cancelled = false;
+   const cached = loadTrustedCache<boolean>(isAdminTrustedCacheKey);
+   if (cached !== null) setIsCurrentUserCardAdmin(cached);
+   const fetchKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:is-admin`;
+   void fetchWithCache(fetchKey, async () => {
+     const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const addrs = [
+       profiles?.[0]?.aaAccount,
+       profiles?.[0]?.keyID,
+       myAddress,
+     ].filter((a): a is string => !!a && ethers.isAddress(a)).map((a) => ethers.getAddress(a));
+     if (addrs.length === 0) return false;
+     const checks = await Promise.all(addrs.map((addr) => card.isAdmin(addr) as Promise<boolean>));
+     return checks.some(Boolean);
+   }).then((ok) => {
+     if (!cancelled) {
+       setIsCurrentUserCardAdmin(ok);
+       saveTrustedCache(isAdminTrustedCacheKey, ok);
      }
-     const normalizedCardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase().replace(/^0x/, '');
-     const metadataResource = `0x${normalizedCardAddress}${'0'.repeat(64)}.json`;
-     const metadataRes = await fetch(`${BEAMIO_APP_URL}/api/metadata/${metadataResource}`);
-     if (!metadataRes.ok) throw new Error('metadata fetch failed');
-     const metadataJson = await metadataRes.json();
-     const parsed = parseFixedUserCardMetadata(metadataJson);
-     if (!parsed) throw new Error('metadata parse failed');
-     return parsed;
-   }).then((parsed) => {
-     if (cancelled) return;
-     setFixedCardMetadata(parsed);
-     saveTrustedCache(fixedCardMetadataCacheKey, parsed);
    }).catch(() => {
-     if (!cancelled && cachedMetadata) setFixedCardMetadata(cachedMetadata);
+     if (!cancelled && cached === null) setIsCurrentUserCardAdmin(false);
    });
-
    return () => { cancelled = true; };
- }, [fixedCardMetadataCacheKey]);
+ }, [currentEoa, isAdminTrustedCacheKey, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID, myAddress, overviewRefreshTrigger, adminRetryCount]);
 
  useEffect(() => {
    const owner = fixedCardMetadata?.cardOwner;
@@ -1156,114 +1253,339 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    return () => { cancelled = true; };
  }, [fixedCardMetadata?.cardOwner]);
 
+ /** Init: resolve EOA from same source as left menu (Owner EOA capsule), then start 15s feeder */
+ const [feederEoa, setFeederEoa] = useState<string | null>(null);
  useEffect(() => {
-   let cancelled = false;
+   const menuEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   const resolved = menuEoa && ethers.isAddress(menuEoa) ? ethers.getAddress(menuEoa) : (fixedCardMetadata?.cardOwner && ethers.isAddress(fixedCardMetadata.cardOwner) ? ethers.getAddress(fixedCardMetadata.cardOwner) : null);
+   if (resolved) setFeederEoa(resolved);
+ }, [profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
+
+ /** Unified Base overview feeder: single batch every 15s; only starts when feederEoa is set (init complete) */
+ const feederInProgressRef = useRef(false);
+ const feederCancelledRef = useRef(false);
+ const feederAccountRef = useRef('');
+ feederAccountRef.current = feederEoa ?? '';
+ useEffect(() => {
+   if (activeTab !== 'Overview') return;
+   if (!feederEoa || !ethers.isAddress(feederEoa)) return;
+   feederCancelledRef.current = false;
+   const account = feederEoa;
+   const effectiveAdmin = effectiveAdminAddress ?? '';
+
+   // Load trusted cache for immediate display
    const cachedGrossSales = loadTrustedCache<number>(grossSalesCacheKey);
    const cachedCumulativeMint = loadTrustedCache<number>(cumulativeMintCacheKey);
    const cachedStatsToday = loadTrustedCache<{ grossSales: number; topUps: number }>(adminStatsTodayCacheKey);
-
-   if (cachedGrossSales !== null) {
-     setGrossSalesTotal(cachedGrossSales);
+   const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
+   const networkSummaryCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary-today`;
+   /** Use account (current EOA) for quota cache key so we fetch even when fixedCardAdmins not yet loaded */
+   const quotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${account && ethers.isAddress(account) ? ethers.getAddress(account).toLowerCase() : ''}:quota-and-mint-counter`;
+   const buintBalanceCacheKey = `eoa:${account.toLowerCase()}:buint:balance`;
+   const aa = profiles?.[0]?.aaAccount?.trim();
+   const accountsToQuery = account && ethers.isAddress(account) ? [ethers.getAddress(account)] : [];
+   if (aa && ethers.isAddress(aa) && account && ethers.getAddress(aa).toLowerCase() !== ethers.getAddress(account).toLowerCase()) {
+     accountsToQuery.push(ethers.getAddress(aa));
    }
-   if (cachedCumulativeMint !== null) {
-     setCumulativeMintTotal(cachedCumulativeMint);
-   }
-   if (cachedStatsToday !== null) {
-     setAdminStatsToday(cachedStatsToday);
-   }
-
-   if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
-     return () => { cancelled = true; };
-   }
-
-   const statsKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:global-stats`;
-   void fetchWithCache(statsKey, async () => {
-     const card = new ethers.Contract(
-       FIXED_USER_CARD_CONTRACT_ADDRESS,
-       USER_CARD_ADMIN_READ_ABI,
-       baseRpcProvider
-     );
-     const [cumulativeRes, todayRes] = await Promise.all([
-       card.getGlobalStatsFull(0, 0, 0) as Promise<{ cumulativeTransferAmount: bigint; cumulativeMint: bigint }>,
-       card.getGlobalStatsFull(PERIOD_DAY, 0, 0) as Promise<{ periodTransferAmount: bigint; periodUSDCMint: bigint }>,
-     ]);
-     return {
-       grossSalesTotal: amountE6ToDisplayNumber(cumulativeRes.cumulativeTransferAmount),
-       cumulativeMintTotal: amountE6ToDisplayNumber(cumulativeRes.cumulativeMint),
-       statsToday: {
-         grossSales: amountE6ToDisplayNumber(todayRes.periodTransferAmount),
-         topUps: amountE6ToDisplayNumber(todayRes.periodUSDCMint),
-       },
-     };
-   }).then((result) => {
-     if (cancelled) return;
-     setGrossSalesTotal(result.grossSalesTotal);
-     setCumulativeMintTotal(result.cumulativeMintTotal);
-     setAdminStatsToday(result.statsToday);
-     saveTrustedCache(grossSalesCacheKey, result.grossSalesTotal);
-     saveTrustedCache(cumulativeMintCacheKey, result.cumulativeMintTotal);
-     saveTrustedCache(adminStatsTodayCacheKey, result.statsToday);
-   }).catch(() => {
-     if (!cancelled && cachedGrossSales !== null) setGrossSalesTotal(cachedGrossSales);
-     if (!cancelled && cachedCumulativeMint !== null) setCumulativeMintTotal(cachedCumulativeMint);
-     if (!cancelled && cachedStatsToday !== null) setAdminStatsToday(cachedStatsToday);
-   });
-
-   return () => { cancelled = true; };
- }, [effectiveAdminAddress, grossSalesCacheKey, cumulativeMintCacheKey, adminStatsTodayCacheKey, overviewRefreshTrigger]);
-
- useEffect(() => {
-   let cancelled = false;
+   const aaForKey = aa && ethers.isAddress(aa) ? ethers.getAddress(aa).toLowerCase() : '';
+   const consumptionCacheKey = `eoa:${account.toLowerCase()}${aaForKey ? `:aa:${aaForKey}` : ''}:buint:consumption-today`;
+   const cachedNetworkSummary = loadTrustedCache<{ cadVol: number; txCount: number; usdc: number; vouchers: number }>(networkSummaryCacheKey);
+   const cachedQuota = loadTrustedCache<{ quota: number; mintCounterFromClear: number }>(quotaCacheKey);
+   const cachedBuintBalance = loadTrustedCache<number>(buintBalanceCacheKey);
+   const cachedConsumption = loadTrustedCache<number>(consumptionCacheKey);
    const cachedTips = loadTrustedCache<number>(adminTipsTodayCacheKey);
 
-   if (cachedTips !== null) {
-     setAdminTipsToday(cachedTips);
+   if (cachedGrossSales !== null) setGrossSalesTotal(cachedGrossSales);
+   if (cachedCumulativeMint !== null) setCumulativeMintTotal(cachedCumulativeMint);
+   if (cachedStatsToday !== null) setAdminStatsToday(cachedStatsToday);
+   if (cachedMetadata != null) setFixedCardMetadata(cachedMetadata);
+   if (cachedNetworkSummary != null) setAdminNetworkSummaryToday(cachedNetworkSummary);
+   if (cachedQuota != null) {
+     setAdminMintLimitQuota(cachedQuota.quota);
+     setAdminMintCounterFromClear(cachedQuota.mintCounterFromClear);
    }
+   if (cachedBuintBalance != null) setProtocolFuelReserveBalance(cachedBuintBalance);
+   if (cachedConsumption != null) setProtocolFuelConsumptionToday(cachedConsumption);
+   if (cachedTips !== null) setAdminTipsToday(cachedTips);
 
-   if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
-     return () => { cancelled = true; };
-   }
-
-   const tipsKey = `indexer:tips:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:today`;
-   void fetchWithCache(tipsKey, async () => {
-     const indexer = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
-     let totalTips6 = 0n;
-     let pageOffset = 0;
-     const pageLimit = 100;
+   const runFeeder = async () => {
+     if (feederInProgressRef.current) return;
+     feederInProgressRef.current = true;
+     const account = feederAccountRef.current || feederEoa;
+     const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
+     const buint = new ethers.Contract(CONET_BUINT_ADDRESS, ERC20_BALANCE_ABI, conetDepinProvider);
+     const indexerAccount = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ACCOUNT_ABI, conetDepinProvider);
+     const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
      const ACCOUNT_MODE_ALL = 0;
 
-     while (true) {
-       const [total, , , page] = await indexer.getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(
-         FIXED_USER_CARD_CONTRACT_ADDRESS,
-         ethers.ZeroAddress,
-         PERIOD_DAY,
-         0,
-         pageOffset,
-         pageLimit,
-         TX_MERCHANT_PAY_TIP_UPDATED,
-         ACCOUNT_MODE_ALL,
-         CHAIN_ID_FILTER_ALL
-       ) as [bigint, bigint, bigint, Array<{ finalRequestAmountUSDC6: bigint }>];
+     const feederWork = async () => {
+       await globalFetchQueue;
 
-       for (const tx of page) {
-         totalTips6 += tx.finalRequestAmountUSDC6;
+       // 0. Card metadata (HTTP, merged into 15s refresh)
+       if (!feederCancelledRef.current) {
+         try {
+           const apiRes = await fetch(
+             `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(FIXED_USER_CARD_CONTRACT_ADDRESS)}`
+           );
+           let parsed: FixedUserCardMetadata | null = null;
+           if (apiRes.ok) {
+             const apiData = await apiRes.json() as { cardOwner?: string; metadata?: unknown };
+             parsed = parseFixedUserCardMetadata(apiData.metadata, typeof apiData.cardOwner === 'string' ? apiData.cardOwner : undefined);
+           }
+           if (!parsed) {
+             const normalizedCardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase().replace(/^0x/, '');
+             const metadataResource = `0x${normalizedCardAddress}${'0'.repeat(64)}.json`;
+             const metadataRes = await fetch(`${BEAMIO_APP_URL}/api/metadata/${metadataResource}`);
+             if (metadataRes.ok) {
+               const metadataJson = await metadataRes.json();
+               parsed = parseFixedUserCardMetadata(metadataJson);
+             }
+           }
+           if (parsed && !feederCancelledRef.current) {
+             setFixedCardMetadata(parsed);
+             saveTrustedCache(fixedCardMetadataCacheKey, parsed);
+           }
+         } catch {
+           if (!feederCancelledRef.current && cachedMetadata != null) setFixedCardMetadata(cachedMetadata);
+         }
        }
 
-       if (page.length < pageLimit || pageOffset + page.length >= Number(total)) break;
-       pageOffset += page.length;
+       // 1. Global stats (gross sales, cumulative mint, admin stats today)
+       type CumulativeRes = { cumulativeTransferAmount: bigint; cumulativeMint: bigint };
+       type TodayRes = { periodTransferAmount: bigint; periodUSDCMint: bigint };
+       let cumulativeRes: CumulativeRes | null = null;
+       let todayRes: TodayRes | null = null;
+       try {
+         const [c0, c1] = await Promise.all([
+           card.getGlobalStatsFull(0, 0, 0) as Promise<CumulativeRes & { periodTransferAmount: bigint; periodUSDCMint: bigint }>,
+           card.getGlobalStatsFull(PERIOD_DAY, 0, 0) as Promise<TodayRes>,
+         ]);
+         cumulativeRes = { cumulativeTransferAmount: c0.cumulativeTransferAmount, cumulativeMint: c0.cumulativeMint };
+         todayRes = { periodTransferAmount: c1.periodTransferAmount, periodUSDCMint: c1.periodUSDCMint };
+       } catch {
+         const [admins, , parents] = (await card.getAdminListWithMetadata()) as [string[], string[], string[]];
+         const owner = (await card.owner()) as string;
+         const zero = ethers.ZeroAddress;
+         const rootAdmins = admins.filter((_, i) => {
+           const p = (parents?.[i] ?? zero) as string;
+           return !p || p === zero || p.toLowerCase() === owner.toLowerCase();
+         });
+         const sum = (a: bigint, b: bigint) => a + b;
+         let cumTransferAmount = 0n, cumMint = 0n, periodTransferAmount = 0n, periodUSDCMint = 0n;
+         for (const admin of rootAdmins) {
+           const [s0, s1] = await Promise.all([
+             card.getAdminStatsFull(admin, 0, 0, 0) as Promise<{ cumulativeTransferAmount: bigint; cumulativeMint: bigint }>,
+             card.getAdminStatsFull(admin, PERIOD_DAY, 0, 0) as Promise<{ periodTransferAmount: bigint; periodUSDCMint: bigint }>,
+           ]);
+           cumTransferAmount = sum(cumTransferAmount, s0.cumulativeTransferAmount);
+           cumMint = sum(cumMint, s0.cumulativeMint);
+           periodTransferAmount = sum(periodTransferAmount, s1.periodTransferAmount);
+           periodUSDCMint = sum(periodUSDCMint, s1.periodUSDCMint);
+         }
+         cumulativeRes = { cumulativeTransferAmount: cumTransferAmount, cumulativeMint: cumMint };
+         todayRes = { periodTransferAmount, periodUSDCMint };
+       }
+       if (!feederCancelledRef.current) {
+         const grossSalesTotal = amountE6ToDisplayNumber(cumulativeRes!.cumulativeTransferAmount);
+         const cumulativeMintTotal = amountE6ToDisplayNumber(cumulativeRes!.cumulativeMint);
+         const statsToday = { grossSales: amountE6ToDisplayNumber(todayRes!.periodTransferAmount), topUps: amountE6ToDisplayNumber(todayRes!.periodUSDCMint) };
+         setGrossSalesTotal(grossSalesTotal);
+         setCumulativeMintTotal(cumulativeMintTotal);
+         setAdminStatsToday(statsToday);
+         saveTrustedCache(grossSalesCacheKey, grossSalesTotal);
+         saveTrustedCache(cumulativeMintCacheKey, cumulativeMintTotal);
+         saveTrustedCache(adminStatsTodayCacheKey, statsToday);
+       }
+
+       // 2. Admin network summary (when admin)
+       if (effectiveAdmin && ethers.isAddress(effectiveAdmin) && !feederCancelledRef.current) {
+         try {
+           const res = await card.getAdminStatsFull(effectiveAdmin, PERIOD_DAY, 0, 0) as { periodTransferAmount: bigint; periodTransfer: bigint; periodUSDCMint: bigint; periodMint: bigint };
+           const summary = {
+             cadVol: amountE6ToDisplayNumber(res.periodTransferAmount),
+             txCount: Number(res.periodTransfer),
+             usdc: amountE6ToDisplayNumber(res.periodUSDCMint),
+             vouchers: amountE6ToDisplayNumber(res.periodMint),
+           };
+           if (!feederCancelledRef.current) {
+             setAdminNetworkSummaryToday(summary);
+             saveTrustedCache(networkSummaryCacheKey, summary);
+           }
+         } catch {
+           if (!feederCancelledRef.current && cachedNetworkSummary != null) setAdminNetworkSummaryToday(cachedNetworkSummary);
+         }
+       } else if (!effectiveAdmin || !ethers.isAddress(effectiveAdmin)) {
+         setAdminNetworkSummaryToday(null);
+       }
+
+       // 3. Admin quota and mintCounterFromClear (account from feederAccountRef at execution time)
+       if (account && ethers.isAddress(account) && !feederCancelledRef.current) {
+         const step3QuotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${ethers.getAddress(account).toLowerCase()}:quota-and-mint-counter`;
+         const step3CachedQuota = loadTrustedCache<{ quota: number; mintCounterFromClear: number }>(step3QuotaCacheKey);
+         const cardDirect = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+         try {
+           const adminLower = ethers.getAddress(account).toLowerCase();
+           const fetchStatsWithRawFallback = async (): Promise<{ mintCounterFromClear: bigint }> => {
+             try {
+               const r = await cardDirect.getAdminStatsFull(account, 0, 0, 0) as { mintCounterFromClear: bigint };
+               return r;
+             } catch {
+               const iface = new ethers.Interface([...USER_CARD_ADMIN_READ_ABI]);
+               const calldata = iface.encodeFunctionData('getAdminStatsFull', [account, 0, 0, 0]);
+               const hex = await baseRpcProviderDirect.call({ to: FIXED_USER_CARD_CONTRACT_ADDRESS, data: calldata });
+               const raw = (hex as string).replace(/^0x/, '');
+               if (raw.length >= 1344) {
+                 const structOffset = Number(BigInt('0x' + raw.slice(0, 64)));
+                 const base = structOffset / 32;
+                 const mintHex = raw.slice((base + 16) * 64, (base + 17) * 64);
+                 return { mintCounterFromClear: BigInt('0x' + mintHex) };
+               }
+               throw new Error('AdminStatsFull raw parse failed');
+             }
+           };
+           const [adminListRes, statsRes] = await Promise.all([
+             cardDirect.getAdminListWithMetadata().catch(() => null) as Promise<[string[], string[]] | null>,
+             fetchStatsWithRawFallback(),
+           ]);
+           const [admins, metadatas] = adminListRes ?? [[], []];
+           const idx = admins.findIndex((a: string) => a.toLowerCase() === adminLower);
+           let quotaDisplay = 0;
+           if (idx >= 0 && metadatas[idx]) {
+             try {
+               const meta = JSON.parse(metadatas[idx]) as { mintLimit?: number | string; mintLimitE6?: number | string };
+               const ml = meta.mintLimit, ml6 = meta.mintLimitE6;
+               if (typeof ml === 'number' && ml > 0) quotaDisplay = ml;
+               else if (typeof ml === 'string' && /^\d+(\.\d+)?$/.test(ml)) quotaDisplay = parseFloat(ml);
+               else if (typeof ml6 === 'number' && ml6 > 0) quotaDisplay = ml6 / 1_000_000;
+               else if (typeof ml6 === 'string' && /^\d+$/.test(ml6)) quotaDisplay = parseInt(ml6, 10) / 1_000_000;
+             } catch { /* ignore */ }
+           }
+           if (quotaDisplay <= 0) {
+             const limitRes = await cardDirect.getAdminAirdropLimit(account) as { limit: bigint; unlimited: boolean };
+             quotaDisplay = limitRes.unlimited ? Number.MAX_SAFE_INTEGER : amountE6ToDisplayNumber(limitRes.limit);
+           }
+           const mintCounterFromClear = amountE6ToDisplayNumber(statsRes.mintCounterFromClear);
+           const result = { quota: quotaDisplay, mintCounterFromClear };
+           if (process.env.NODE_ENV !== 'production') {
+             console.warn('[feeder] Issued $CTree: fetched', { account: account.slice(0, 10) + '…', quota: result.quota, mintCounterFromClear: result.mintCounterFromClear, idx, adminsLen: admins.length });
+           }
+           if (!feederCancelledRef.current) {
+             setAdminMintLimitQuota(result.quota);
+             setAdminMintCounterFromClear(result.mintCounterFromClear);
+             saveTrustedCache(step3QuotaCacheKey, result);
+           }
+         } catch (e) {
+           if (process.env.NODE_ENV !== 'production') {
+             console.warn('[feeder] Issued $CTree quota fetch failed:', e);
+           }
+           if (!feederCancelledRef.current && step3CachedQuota != null) {
+             setAdminMintLimitQuota(step3CachedQuota.quota);
+             setAdminMintCounterFromClear(step3CachedQuota.mintCounterFromClear);
+           }
+         }
+       } else if (!account || !ethers.isAddress(account)) {
+         setAdminMintLimitQuota(null);
+         setAdminMintCounterFromClear(null);
+       }
+
+       // 4. Protocol Fuel Reserve (BUint balance)
+       if (account && ethers.isAddress(account) && !feederCancelledRef.current) {
+         try {
+           const raw = await buint.balanceOf(account) as bigint;
+           const balance = Number(raw) / 1_000_000;
+           if (!feederCancelledRef.current) {
+             setProtocolFuelReserveBalance(balance);
+             saveTrustedCache(buintBalanceCacheKey, balance);
+           }
+         } catch {
+           if (!feederCancelledRef.current && cachedBuintBalance != null) setProtocolFuelReserveBalance(cachedBuintBalance);
+         }
+       } else {
+         setProtocolFuelReserveBalance(null);
+       }
+
+       // 5. Protocol Fuel Consumption today
+       if (accountsToQuery.length > 0 && !feederCancelledRef.current) {
+         try {
+           let totalUnits6 = 0n;
+           for (const acc of accountsToQuery) {
+             try {
+               const [, , , page] = await indexerAccount.getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged(acc, PERIOD_DAY, 0, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL) as [bigint, bigint, bigint, Array<{ fees?: { bServiceUnits6?: bigint } }>];
+               for (const tx of page ?? []) totalUnits6 += tx?.fees?.bServiceUnits6 ?? 0n;
+             } catch { /* ignore */ }
+           }
+           const consumption = Number(totalUnits6) / 1_000_000;
+           if (!feederCancelledRef.current) {
+             setProtocolFuelConsumptionToday(consumption);
+             saveTrustedCache(consumptionCacheKey, consumption);
+           }
+         } catch {
+           if (!feederCancelledRef.current && cachedConsumption != null) setProtocolFuelConsumptionToday(cachedConsumption);
+         }
+       }
+
+       // 6. Admin tips today
+       if (effectiveAdmin && ethers.isAddress(effectiveAdmin) && !feederCancelledRef.current) {
+         try {
+           let totalTips6 = 0n;
+           let pageOffset = 0;
+           const pageLimit = 100;
+           while (true) {
+             const [total, , , page] = await indexerAsset.getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(
+               FIXED_USER_CARD_CONTRACT_ADDRESS, ethers.ZeroAddress, PERIOD_DAY, 0, pageOffset, pageLimit,
+               TX_MERCHANT_PAY_TIP_UPDATED, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL
+             ) as [bigint, bigint, bigint, Array<{ finalRequestAmountUSDC6: bigint }>];
+             for (const tx of page ?? []) totalTips6 += tx.finalRequestAmountUSDC6;
+             if (!page || page.length < pageLimit || pageOffset + page.length >= Number(total)) break;
+             pageOffset += page.length;
+           }
+           const nextTips = amountE6ToDisplayNumber(totalTips6);
+           if (!feederCancelledRef.current) {
+             setAdminTipsToday(nextTips);
+             saveTrustedCache(adminTipsTodayCacheKey, nextTips);
+           }
+         } catch {
+           if (!feederCancelledRef.current && cachedTips !== null) setAdminTipsToday(cachedTips);
+         }
+       } else if (!effectiveAdmin || !ethers.isAddress(effectiveAdmin)) {
+         setAdminTipsToday(null);
+       }
+     };
+
+     try {
+       const feederPromise = feederWork();
+       globalFetchQueue = globalFetchQueue.then(() => feederPromise).then((): void => undefined, (): void => undefined);
+       await feederPromise;
+     } catch {
+       /* keep trusted cache on failure */
+     } finally {
+       feederInProgressRef.current = false;
      }
+   };
 
-     return amountE6ToDisplayNumber(totalTips6);
-   }).then((nextTips) => {
-     if (cancelled) return;
-     setAdminTipsToday(nextTips);
-     saveTrustedCache(adminTipsTodayCacheKey, nextTips);
-   }).catch(() => {
-     if (!cancelled && cachedTips !== null) setAdminTipsToday(cachedTips);
-   });
-
-   return () => { cancelled = true; };
- }, [effectiveAdminAddress, adminTipsTodayCacheKey, overviewRefreshTrigger]);
+   void runFeeder();
+   const id = setInterval(runFeeder, FEEDER_INTERVAL_MS);
+   return () => {
+     feederCancelledRef.current = true;
+     clearInterval(id);
+   };
+ }, [
+   activeTab,
+   feederEoa,
+   overviewRefreshTrigger,
+   effectiveAdminAddress,
+   fixedCardAdmins,
+   currentEoa,
+   grossSalesCacheKey,
+   cumulativeMintCacheKey,
+   adminStatsTodayCacheKey,
+   adminTipsTodayCacheKey,
+   fixedCardMetadataCacheKey,
+   fixedCardMetadata?.cardOwner,
+   profiles?.[0]?.keyID,
+   profiles?.[0]?.aaAccount,
+   myAddress,
+ ]);
 
  // Fetch BeamioIndexerDiamond transactions: admin UI shows only this admin's accounting (account-based, excludes subordinates).
  useEffect(() => {
@@ -1275,7 +1597,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    setIndexerTransactionsLoading(true);
    const userAA = profiles?.[0]?.aaAccount?.trim();
    const userAAAddr = userAA && ethers.isAddress(userAA) ? ethers.getAddress(userAA) : '';
-   const txKey = `indexer:tx:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdminAddress.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
+   const txKey = `eoa:${currentEoa}:indexer:tx:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdminAddress.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
    void fetchWithCache(txKey, async () => {
      const ACCOUNT_MODE_ALL = 0;
      const indexerAccount = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ACCOUNT_ABI, conetDepinProvider);
@@ -1421,24 +1743,40 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      if (!cancelled) setIndexerTransactionsLoading(false);
    });
    return () => { cancelled = true; };
- }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, overviewRefreshTrigger]);
+ }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa, overviewRefreshTrigger]);
 
  const isFixedUserCardAdmin = fixedCardAdmins.some((address) => normalizedAdminCandidates.includes(address.toLowerCase()));
+ /** Chain-verified admin for UI: only true when chain confirms; avoids persisted-session/cache showing admin to non-admin on production */
+ const isAdminForUI = isCurrentUserCardAdmin === true;
  const hasLinkedMerchant = linkedMerchantAdmins.length > 0;
  /** When user is admin (incl. owner), always show panels. linkedMerchantAdmins excludes owner, so owner-only would wrongly hide. */
- const hideTransactionsPanel = linkedMerchantLookupDone && !hasLinkedMerchant && !isFixedUserCardAdmin;
- const showFixedCardMetadata = activeTab === 'Overview' && isFixedUserCardAdmin;
- const showOverviewSummary = isFixedUserCardAdmin;
+ const hideTransactionsPanel = linkedMerchantLookupDone && !hasLinkedMerchant && !isAdminForUI;
+ const showFixedCardMetadata = activeTab === 'Overview' && isAdminForUI;
+ const showOverviewSummary = isAdminForUI;
 
  const handleOverviewRefresh = useCallback(() => {
    invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
    invalidateFetchCache('indexer:tips');
    invalidateFetchCache('indexer:tx');
-   invalidateFetchCache('eoa:usdc:');
+   invalidateFetchCache('eoa:');
+   invalidateFetchCache('aa:');
+   try {
+     [grossSalesCacheKey, cumulativeMintCacheKey, adminStatsTodayCacheKey, adminTipsTodayCacheKey].forEach((k) =>
+       window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${k}`)
+     );
+     const adminSummaryPrefix = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:`;
+     Object.keys(window.localStorage)
+       .filter((k) =>
+         k.startsWith(`${BIZ_CACHE_PREFIX}${adminSummaryPrefix}`) ||
+         (k.startsWith(`${BIZ_CACHE_PREFIX}card:`) && (k.includes('quota-and-mint-counter') || k.includes('mint-limit-quota'))) ||
+         (k.startsWith(BIZ_CACHE_PREFIX) && (k.includes('buint:balance') || k.includes('buint:consumption')))
+       )
+       .forEach((k) => window.localStorage.removeItem(k));
+   } catch { /* ignore */ }
    setOverviewRefreshing(true);
    setOverviewRefreshTrigger((t) => t + 1);
    setTimeout(() => setOverviewRefreshing(false), 2500);
- }, []);
+ }, [currentEoa, grossSalesCacheKey, cumulativeMintCacheKey, adminStatsTodayCacheKey, adminTipsTodayCacheKey]);
 
  useEffect(() => {
    if (hideTransactionsPanel && activeTab === 'Transactions') {
@@ -1447,19 +1785,23 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  }, [activeTab, hideTransactionsPanel]);
 
 
- // --- Financial Data: real when isFixedUserCardAdmin, else mock ---
+ // --- Financial Data: always use real data; show 0 when not available (no AA / not admin) ---
  // Panel 1: cumulativeTransferAmount (all-time gross sales)
- const totalSales = isFixedUserCardAdmin ? (grossSalesTotal ?? 0) : (grossSalesTotal ?? 0);
- const totalTips = isFixedUserCardAdmin ? (adminTipsToday ?? 0) : (200 + 142);
+ const totalSales = grossSalesTotal ?? 0;
+ const totalTips = adminTipsToday ?? 0;
  // Panel 3: cumulativeMint (all-time in-store top-ups issued)
- const topUpsIssued = isFixedUserCardAdmin ? (cumulativeMintTotal ?? 0) : 850.00;
-const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when linked)
+ const topUpsIssued = cumulativeMintTotal ?? 0;
+const topUpsQuota = adminMintLimitQuota ?? 0; // denominator: mint limit from chain
+const topUpsUsedFromClear = adminMintCounterFromClear ?? 0; // numerator: mintCounterFromClear from chain
 
- // When admin: chain gives totals only; show in $CTree capsule. When mock: use explicit split.
- const salesCTree = isFixedUserCardAdmin ? totalSales : 1200.00;
- const salesUSDC = isFixedUserCardAdmin ? 0 : 645.50;
- const tipsCTree = isFixedUserCardAdmin ? totalTips : 200.00;
- const tipsUSDC = isFixedUserCardAdmin ? 0 : 142.00;
+const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // B-Units from CoNET BUint.balanceOf
+const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // Today's consumption from indexer
+
+ // Chain gives totals; show in $CTree capsule. When not admin / no data, show 0.
+ const salesCTree = totalSales;
+ const salesUSDC = 0;
+ const tipsCTree = totalTips;
+ const tipsUSDC = 0;
 
 
  const totalCTreeReceived = salesCTree + tipsCTree;
@@ -1762,8 +2104,29 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
            </button>
            <h2 className="text-xl sm:text-2xl font-bold text-black tracking-tight truncate">{activeTab}</h2>
          </div>
-         <div className="flex items-center gap-6">
-           {activeTab === 'Overview' && isFixedUserCardAdmin && (
+         <div className="flex items-center gap-4 sm:gap-6">
+           {/* ORACLE LIVE FEED SIMULATOR */}
+           <div className="hidden lg:flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
+             <RefreshCw size={12} className="text-[#1562f0] animate-[spin_4s_linear_infinite]" />
+             <span className="text-[11px] font-bold text-slate-500 tracking-wider">ORACLE: 1 CAD ≈ {(oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK).toFixed(2)} USDC</span>
+           </div>
+           {/* GLOBAL TIME FILTER SELECTION */}
+           <div className="hidden sm:flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-slate-200/60 rounded-xl px-2 py-1.5 shadow-sm">
+             <CalendarDays size={14} className="text-slate-400 ml-1" />
+             <select
+               value={timeFilter}
+               onChange={(e) => setTimeFilter(e.target.value)}
+               className="bg-transparent text-[14px] font-medium text-slate-700 focus:outline-none cursor-pointer appearance-none pl-1 pr-6"
+               style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.25rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em 1em' }}
+             >
+               <option value="Today">Today, {dateString}</option>
+               <option value="This Week">This Week</option>
+               <option value="This Month">This Month</option>
+               <option value="This Quarter">This Quarter</option>
+               <option value="This Year">This Year</option>
+             </select>
+           </div>
+           {activeTab === 'Overview' && isAdminForUI && (
              <button
                type="button"
                onClick={handleOverviewRefresh}
@@ -1774,7 +2137,6 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                <RefreshCw size={20} className={overviewRefreshing ? 'animate-spin' : ''} />
              </button>
            )}
-           <span className="text-[13px] font-semibold text-slate-500">{dateString}</span>
            {activeTab !== 'Settings' && (
              <>
                <div className="h-6 w-[1px] bg-slate-200"></div>
@@ -1849,7 +2211,8 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                 </div>
               </div>
             )}
-          {!showOverviewSummary ? (
+          {/* When no AA account: show Welcome panel */}
+          {!profiles?.[0]?.aaAccount?.trim() && (
             <div>
               <div className="bg-[#1562f0] rounded-[32px] p-8 sm:p-12 shadow-lg shadow-[#1562f0]/20 relative overflow-hidden min-h-[280px] flex flex-col justify-center">
                 {redeemAdminInProgress && (
@@ -1867,14 +2230,14 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
-                      onClick={() => navigate('/settings')}
+                      onClick={() => setActiveTab('Market')}
                       className="bg-white text-[#1562f0] px-6 py-3 rounded-[14px] font-semibold text-[14px] hover:bg-slate-50 transition-colors shadow-sm border border-[#1562f0]/20"
                     >
                       Buy Fuel Pack
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate('/vouchers-example')}
+                      onClick={() => setActiveTab('Alliances')}
                       className="bg-[#1562f0] border border-white/30 text-white px-6 py-3 rounded-[14px] font-semibold text-[14px] hover:bg-white/10 transition-colors shadow-sm"
                     >
                       Join Alliance
@@ -1883,22 +2246,11 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                 </div>
               </div>
             </div>
-          ) : hideTransactionsPanel ? (
-            <div>
-              <div className="bg-white rounded-[32px] p-12 shadow-sm border border-slate-100 min-h-[320px] flex items-center justify-center text-center">
-                <div className="max-w-lg">
-                  <div className="w-16 h-16 mx-auto mb-6 rounded-3xl bg-slate-100 flex items-center justify-center text-slate-500">
-                    <Building2 size={30} />
-                  </div>
-                  <p className="text-[28px] font-semibold text-black tracking-tight">Not associated with any linked merchant</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-           <div className="space-y-8">
-             {/* Row 1: Operations Metrics - 4 panels */}
+          )}
+          {/* Always show metrics panels */}
+          <div className="space-y-8">
+             {/* Row 1: Panels 1-4, 2 per row */}
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              
                {/* Panel 1: Total Gross Sales */}
                <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
                  <div>
@@ -1911,24 +2263,25 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                    <p className="text-[13px] text-slate-500 mb-1">Total Gross Sales (CAD Base)</p>
                    <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${totalSales.toFixed(2)}</p>
                  </div>
-                 <div className="mt-6 flex flex-wrap gap-3">
-                   <div className="bg-blue-50/50 px-4 py-3 rounded-2xl flex flex-col gap-1 shrink-0 min-w-[140px]">
+                 <div className="mt-4 flex flex-wrap gap-3">
+                   <div className="bg-blue-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
                      <div className="flex items-center gap-1">
-                       <img src={USDC_ICON_URL} alt="USDC" className="w-[11px] h-[11px] rounded-full shrink-0 object-cover" />
-                       <span className="text-[12px] font-semibold text-blue-600">USDC Payments</span>
+                       <img src={USDC_ICON_URL} alt="USDC" className="w-[10px] h-[10px] rounded-full shrink-0 object-cover" />
+                       <span className="text-[11px] font-semibold text-blue-600">USDC Payments</span>
                      </div>
-                     <span className="text-[18px] font-bold text-blue-600">${salesUSDC.toFixed(2)}</span>
-                     <span className="text-[11px] text-slate-500">≈ ${(salesUSDC * 1.35).toFixed(2)} CAD</span>
+                     <span className="text-[16px] font-bold text-blue-600">${salesUSDC.toFixed(2)}</span>
+                     <span className="text-[10px] text-slate-500">≈ ${(salesUSDC * 1.35).toFixed(2)} CAD</span>
                    </div>
-                   <div className="bg-emerald-50/50 px-4 py-3 rounded-2xl flex flex-col gap-1 shrink-0 min-w-[140px]">
+                   {isAdminForUI && (
+                   <div className="bg-emerald-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
                      <div className="flex items-center gap-1">
-					 <Ticket size={14} className="text-emerald-600" />
-                       
-                       <span className="text-[12px] font-semibold text-emerald-600">$CTree</span>
+					 <Ticket size={12} className="text-emerald-600" />
+                       <span className="text-[11px] font-semibold text-emerald-600">$CTree</span>
                      </div>
-                     <span className="text-[18px] font-bold text-black">${salesCTree.toFixed(2)}</span>
-                     <span className="text-[11px] text-slate-500">≈ ${salesCTree.toFixed(2)} CAD</span>
+                     <span className="text-[16px] font-bold text-black">${salesCTree.toFixed(2)}</span>
+                     <span className="text-[10px] text-slate-500">≈ ${salesCTree.toFixed(2)} CAD</span>
                    </div>
+                   )}
                  </div>
                </div>
 
@@ -1943,23 +2296,25 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                    <p className="text-[13px] text-slate-500 mb-1">Tips Collected (CAD Base)</p>
                    <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${totalTips.toFixed(2)}</p>
                  </div>
-                 <div className="mt-6 flex flex-wrap gap-3">
-                   <div className="bg-blue-50/50 px-4 py-3 rounded-2xl flex flex-col gap-1 shrink-0 min-w-[140px]">
+                 <div className="mt-4 flex flex-wrap gap-3">
+                   <div className="bg-blue-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
                      <div className="flex items-center gap-1">
-                       <img src={USDC_ICON_URL} alt="USDC" className="w-[11px] h-[11px] rounded-full shrink-0 object-cover" />
-                       <span className="text-[12px] font-semibold text-blue-600">USDC Payments</span>
+                       <img src={USDC_ICON_URL} alt="USDC" className="w-[10px] h-[10px] rounded-full shrink-0 object-cover" />
+                       <span className="text-[11px] font-semibold text-blue-600">USDC Payments</span>
                      </div>
-                     <span className="text-[18px] font-bold text-blue-600">${tipsUSDC.toFixed(2)}</span>
-                     <span className="text-[11px] text-slate-500">≈ ${(tipsUSDC * 1.35).toFixed(2)} CAD</span>
+                     <span className="text-[16px] font-bold text-blue-600">${tipsUSDC.toFixed(2)}</span>
+                     <span className="text-[10px] text-slate-500">≈ ${(tipsUSDC * 1.35).toFixed(2)} CAD</span>
                    </div>
-                   <div className="bg-emerald-50/50 px-4 py-3 rounded-2xl flex flex-col gap-1 shrink-0 min-w-[140px]">
+                   {isAdminForUI && (
+                   <div className="bg-emerald-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
                      <div className="flex items-center gap-1">
-                       <Ticket size={14} className="text-emerald-600" />
-                       <span className="text-[12px] font-semibold text-emerald-600">$CTree</span>
+                       <Ticket size={12} className="text-emerald-600" />
+                       <span className="text-[11px] font-semibold text-emerald-600">$CTree</span>
                      </div>
-                     <span className="text-[18px] font-bold text-black">${tipsCTree.toFixed(2)}</span>
-                     <span className="text-[11px] text-slate-500">≈ ${tipsCTree.toFixed(2)} CAD</span>
+                     <span className="text-[16px] font-bold text-black">${tipsCTree.toFixed(2)}</span>
+                     <span className="text-[10px] text-slate-500">≈ ${tipsCTree.toFixed(2)} CAD</span>
                    </div>
+                   )}
                  </div>
                </div>
 
@@ -1975,16 +2330,20 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                    <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${topUpsIssued.toFixed(2)}</p>
                  </div>
                  <div className="mt-6 pt-6 border-t border-slate-100">
-                   {isFixedUserCardAdmin ? (
-                     <div className="bg-rose-50 px-4 py-3 rounded-2xl flex items-center justify-between">
-                       <div className="flex flex-col gap-0.5">
-                         <span className="text-[12px] font-semibold text-slate-700">Issued $CTree</span>
-                         <span className="text-[12px] font-medium text-rose-600">
-                           Quota: ${(topUpsIssued / 1000).toFixed(1)}k / ${(topUpsQuota / 1000).toFixed(0)}k
-                         </span>
+                   {isAdminForUI ? (
+                     effectiveAdminAddress ? (
+                       <div className="bg-rose-50 px-4 py-3 rounded-2xl flex items-center justify-between">
+                         <div className="flex flex-col gap-0.5">
+                           <span className="text-[12px] font-semibold text-slate-700">Issued $CTree</span>
+                           <span className="text-[12px] font-medium text-rose-600">
+                             Quota: ${(topUpsUsedFromClear / 1000).toFixed(1)}k / {topUpsQuota >= 1e15 ? 'Unlimited' : `$${(topUpsQuota / 1000).toFixed(0)}k`}
+                           </span>
+                         </div>
+                         <span className="text-[18px] font-bold text-rose-600">${topUpsUsedFromClear.toFixed(2)}</span>
                        </div>
-                       <span className="text-[18px] font-bold text-rose-600">${topUpsIssued.toFixed(2)}</span>
-                     </div>
+                     ) : (
+                       <p className="text-[12px] text-slate-500 text-center font-medium">—</p>
+                     )
                    ) : (
                      <p className="text-[12px] text-slate-400 text-center">No active issuing networks.</p>
                    )}
@@ -1992,50 +2351,179 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                </div>
 
                {/* Panel 4: Protocol Fuel Reserve */}
-               <div className="bg-gradient-to-br from-zinc-900 to-black rounded-[32px] p-8 shadow-xl border border-white/10 flex flex-col justify-between text-white">
+               <div className="bg-gradient-to-br from-zinc-900 to-black rounded-[48px] p-10 shadow-xl border border-white/10 flex flex-col justify-between text-white">
                  <div>
                    <div className="flex justify-between items-start mb-4">
-                     <div className="w-12 h-12 bg-amber-500/20 rounded-2xl flex items-center justify-center">
+                     <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/30">
                         <Fuel size={24} className="text-amber-500" />
                      </div>
-                     <span className="bg-amber-500/20 text-amber-500 px-2.5 py-1 rounded-full text-[12px] font-medium flex items-center gap-1">
-                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> LOCKED
+                     <span className="bg-transparent border border-amber-500/50 text-amber-500 px-2.5 py-1 rounded-full text-[12px] font-medium flex items-center gap-1">
+                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> ACTIVE
                      </span>
                    </div>
-                   <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-1">Protocol Fuel Reserve</p>
-                   <p className="text-[40px] font-bold text-white tracking-tighter leading-none">{20}</p>
+                   <p className="text-[13px] text-slate-400 mb-1">Protocol Fuel Reserve</p>
+                   <p className="text-[40px] font-bold text-white tracking-tighter leading-none">{protocolFuelReserve.toLocaleString()}</p>
                  </div>
-                 <div className="mt-6 pt-6 border-t border-white/10">
-                   <p className="text-[13px] text-slate-400 mb-2">Today&apos;s Consumption</p>
-                   <p className="text-[16px] font-semibold text-amber-500">0 Units</p>
+                 <div className="mt-6 pt-6 border-t border-white/10 flex items-center justify-between">
+                   <p className="text-[13px] text-slate-400">Today&apos;s Consumption</p>
+                   <p className="text-[16px] font-semibold text-amber-500">{protocolFuelConsumptionTodayVal >= 0 ? '' : '-'}{Math.abs(protocolFuelConsumptionTodayVal).toLocaleString()} Units</p>
                  </div>
                  <button
                    type="button"
                    onClick={() => { setActiveTab('Market'); setSelectedProduct('fuel'); }}
-                   className="mt-6 w-full bg-amber-500 text-black py-4 rounded-[16px] font-bold text-[15px] hover:bg-amber-400 transition-colors"
+                   className="mt-6 w-full bg-transparent border-2 border-amber-500 text-amber-500 py-4 rounded-[16px] font-bold text-[15px] hover:bg-amber-500/10 transition-colors"
                  >
                    Top Up Fuel
                  </button>
                </div>
              </div>
+
+             {/* Row 2: Panels 5-6, 2 per row — only when user has AA */}
+             {profiles?.[0]?.aaAccount && (
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+               {/* Panel 5: Direct Crypto Revenue */}
+               <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
+                 <div>
+                   <div className="flex justify-between items-start mb-4">
+                     <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
+                        <UsdcBaseCompositeIcon size={32} badgeSize={20} />
+                     </div>
+                     <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[12px] font-medium">Self-Custody</span>
+                   </div>
+                   <p className="text-[13px] text-slate-500 mb-1">Direct Crypto Revenue</p>
+                   <div className="flex items-baseline gap-2 mb-4">
+                     <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${totalUSDCBalance.toFixed(2)}</p>
+                     <span className="text-[14px] font-medium text-slate-500 uppercase">USDC</span>
+                   </div>
+                   <p className="text-[13px] font-medium text-slate-500 leading-relaxed max-w-sm">
+                     Direct payments routed to your AA wallet. CashTrees does not settle this balance.
+                   </p>
+                 </div>
+                 <button
+                   type="button"
+                   className="w-full bg-slate-50 text-slate-700 py-4 rounded-[16px] font-semibold text-[15px] hover:bg-slate-100 hover:text-slate-900 border border-slate-200 transition-all flex items-center justify-center gap-2"
+                 >
+                   Off-ramp via Coinbase <ExternalLink size={18} />
+                 </button>
+               </div>
+
+               {/* Panel 6: CashTrees Settlement */}
+               <div className="bg-slate-900 rounded-[48px] p-10 shadow-xl border border-slate-800 flex flex-col justify-between text-white relative overflow-hidden">
+                 <div className="absolute top-0 right-0 w-64 h-64 bg-[#1562f0]/20 rounded-full blur-[80px] -mr-10 -mt-10 pointer-events-none" />
+                 <div className="relative z-10">
+                   <div className="flex justify-between items-start mb-6">
+                     <p className="text-[14px] font-semibold text-[#1562f0] flex items-center gap-2">
+                       <Ticket size={18} /> CashTrees Settlement
+                     </p>
+                     <span className="bg-white/10 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-[12px] font-medium border border-white/5">Net Balance</span>
+                   </div>
+                   <div className="flex items-baseline gap-2 mb-6">
+                     <p className="text-5xl sm:text-[56px] font-light tracking-tight leading-none">${netSettlementBalance.toFixed(2)}</p>
+                     <span className="text-xl sm:text-2xl text-slate-400 font-light">CAD</span>
+                   </div>
+                   <div className="flex items-center gap-3 text-[14px] font-medium text-slate-400 bg-black/20 p-4 rounded-[20px] w-max backdrop-blur-sm border border-white/5">
+                     <span className="text-white">+${totalCTreeReceived.toFixed(2)} Recv</span>
+                     <span className="text-slate-600">|</span>
+                     <span className="text-rose-400">-${topUpsIssued.toFixed(2)} Issued</span>
+                   </div>
+                 </div>
+                 <button
+                   type="button"
+                   onClick={() => setIsPayoutModalOpen(true)}
+                   className="relative z-10 w-full bg-[#1562f0] text-white py-4 rounded-[20px] font-semibold text-[17px] hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] mt-6"
+                 >
+                   <Landmark size={20} /> Request CAD Settlement
+                 </button>
+               </div>
+             </div>
+             )}
            </div>
-          )}
           </div>
         )}
 
 
-        {activeTab === 'Transactions' && !hideTransactionsPanel && (
-           <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-300">
-              <div className="flex justify-between items-center mb-2">
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input type="text" placeholder="Search receipt ID, hash..." className="pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl w-80 text-[14px] font-medium focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all shadow-sm" />
-                </div>
-                <button className="flex items-center gap-2 bg-white border border-slate-200 px-5 py-3 rounded-2xl text-[14px] font-semibold text-slate-700 hover:bg-slate-50 shadow-sm">
-                  <Filter size={16} /> Filter by Date
+        {activeTab === 'Transactions' && !hideTransactionsPanel && (() => {
+           const txList = indexerTransactions;
+           const filteredTx = txList.filter((tx) => {
+             if (activeLedger === 'AA' && !profiles?.[0]?.aaAccount) return false;
+             const isVaultTx = tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault';
+             const matchLedger = activeLedger === 'All' || (activeLedger === 'EOA' && isVaultTx) || (activeLedger === 'AA' && !isVaultTx);
+             const matchSearch = !txSearchTerm.trim() || tx.id.toLowerCase().includes(txSearchTerm.toLowerCase()) || tx.hash.toLowerCase().includes(txSearchTerm.toLowerCase()) || (tx.beamioTag && tx.beamioTag.toLowerCase().includes(txSearchTerm.toLowerCase()));
+             const matchType = txFilterType === 'All' || tx.type === txFilterType;
+             const matchTerminal = txFilterTerminal === 'All' || tx.terminal === txFilterTerminal || (txFilterTerminal === 'The Vault' && tx.terminal?.toLowerCase().includes('vault'));
+             return matchLedger && matchSearch && matchType && matchTerminal;
+           });
+           const summaryTxCount = isAdminForUI && adminNetworkSummaryToday ? adminNetworkSummaryToday.txCount : 0;
+           const summaryTotalCAD = isAdminForUI && adminNetworkSummaryToday ? adminNetworkSummaryToday.cadVol : 0;
+           const summaryTotalUSDC = isAdminForUI && adminNetworkSummaryToday ? adminNetworkSummaryToday.usdc : 0;
+           const summaryTotalVouchers = isAdminForUI && adminNetworkSummaryToday ? adminNetworkSummaryToday.vouchers : 0;
+
+           return (
+           <div className="max-w-[1400px] mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-300">
+              <div className="flex bg-white/60 backdrop-blur-xl p-1.5 rounded-[20px] w-max mb-2 sm:mb-4 border border-slate-200/50 shadow-sm">
+                <button type="button" onClick={() => setActiveLedger('All')} className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all ${activeLedger === 'All' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}>
+                  All Ledgers
+                </button>
+                <button type="button" onClick={() => setActiveLedger('AA')} disabled={!profiles?.[0]?.aaAccount} className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all flex items-center gap-1.5 ${activeLedger === 'AA' ? 'bg-white text-[#1562f0] shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                  <Zap size={16} className={!profiles?.[0]?.aaAccount ? 'opacity-50' : ''} /> Smart Terminal (AA)
+                  {!profiles?.[0]?.aaAccount && <Lock size={12} className="ml-1 opacity-50" />}
+                </button>
+                <button type="button" onClick={() => setActiveLedger('EOA')} className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all flex items-center gap-1.5 ${activeLedger === 'EOA' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}>
+                  <Shield size={16} className={activeLedger === 'EOA' ? 'text-emerald-500' : ''} /> The Vault (EOA)
                 </button>
               </div>
 
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                <div className="relative w-full sm:w-auto">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <input type="text" placeholder="Search receipt, hash..." value={txSearchTerm} onChange={(e) => setTxSearchTerm(e.target.value)} className="pl-12 pr-4 py-3.5 sm:py-3 bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-[20px] sm:rounded-2xl w-full sm:w-80 text-[15px] font-medium focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 focus:border-[#1562f0] transition-all shadow-sm" />
+                </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
+                  <select value={txFilterTerminal} onChange={(e) => setTxFilterTerminal(e.target.value)} className="bg-white/80 backdrop-blur-xl border border-slate-200/80 px-4 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 cursor-pointer appearance-none shrink-0">
+                    <option value="All">All Terminals</option>
+                    {terminals.map((t) => (
+                      <option key={t.tag} value={t.tag}>{t.name} ({t.tag})</option>
+                    ))}
+                    <option value="The Vault">The Vault (EOA)</option>
+                  </select>
+                  <select value={txFilterType} onChange={(e) => setTxFilterType(e.target.value)} className="bg-white/80 backdrop-blur-xl border border-slate-200/80 px-4 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 cursor-pointer appearance-none shrink-0">
+                    <option value="All">All Actions</option>
+                    <option value="Charge">Charge</option>
+                    <option value="In-Store Top-Up">Top-Up</option>
+                    <option value="Tip">Tip</option>
+                  </select>
+                  <button type="button" className="flex items-center justify-center gap-2 bg-white/80 backdrop-blur-xl border border-slate-200/80 px-5 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm shrink-0">
+                    <Filter size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white/60 backdrop-blur-xl border border-slate-200/50 rounded-[20px] p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                    <Activity size={14} className="text-[#1562f0]" />
+                    {txFilterTerminal === 'All' ? `Network Summary (${timeFilter})` : `${txFilterTerminal} Summary (${timeFilter})`}
+                  </h3>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl sm:text-[28px] font-light text-slate-900 tracking-tight">${summaryTotalCAD.toFixed(2)}</span>
+                    <span className="text-[14px] font-medium text-slate-500">CAD Vol.</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 sm:gap-4 w-full sm:w-auto">
+                  <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
+                    <span className="text-[11px] text-slate-400 font-semibold mb-0.5">Transactions</span>
+                    <span className="text-[15px] font-bold text-slate-800">{summaryTxCount}</span>
+                  </div>
+                  <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
+                    <span className="text-[11px] text-[#1562f0] font-semibold mb-0.5 flex items-center gap-1"><Coins size={10} /> USDC</span>
+                    <span className="text-[15px] font-bold text-slate-800">{summaryTotalUSDC.toFixed(2)}</span>
+                  </div>
+                  <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
+                    <span className="text-[11px] text-emerald-500 font-semibold mb-0.5 flex items-center gap-1"><Ticket size={10} /> Vouchers</span>
+                    <span className="text-[15px] font-bold text-slate-800">{summaryTotalVouchers.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
 
               <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
                 <table className="w-full">
@@ -2057,17 +2545,20 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                             </span>
                           </td>
                         </tr>
-                      ) : (isFixedUserCardAdmin ? indexerTransactions : MOCK_TRANSACTIONS).length === 0 ? (
+                      ) : filteredTx.length === 0 ? (
                         <tr>
                           <td colSpan={4} className="px-8 py-16 text-center text-slate-500">
                             <div className="space-y-2">
-                              <p>No transactions yet.</p>
-                              <p className="text-[12px] text-slate-400 max-w-md mx-auto">Transactions will appear here when you process Charges at your terminal. Ensure the POS sends payee as your AA address.</p>
+                              <Search size={32} className="mx-auto text-slate-300" />
+                              <p className="text-[15px] font-medium">{(txSearchTerm || txFilterTerminal !== 'All' || txFilterType !== 'All' || activeLedger !== 'All') ? 'No transactions found for the current filters.' : 'No transactions yet.'}</p>
+                              {!txSearchTerm && txFilterTerminal === 'All' && txFilterType === 'All' && activeLedger === 'All' && (
+                                <p className="text-[12px] text-slate-400 max-w-md mx-auto">Transactions will appear here when you process Charges at your terminal. Ensure the POS sends payee as your AA address.</p>
+                              )}
                             </div>
                           </td>
                         </tr>
                       ) : (
-                      (isFixedUserCardAdmin ? indexerTransactions : MOCK_TRANSACTIONS).map((tx, idx) => (
+                      filteredTx.map((tx, idx) => (
                         <tr key={idx} className="hover:bg-slate-50 transition-colors group">
                           
                            {/* Column 1: Tx Info */}
@@ -2203,7 +2694,8 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                 </table>
               </div>
            </div>
-         )}
+           );
+         })()}
 
          {/* --- STORE WALLETS TAB --- */}
          {activeTab === 'Wallets' && (
@@ -2213,8 +2705,9 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                <p className="text-[15px] font-medium text-slate-500 mt-1">Manage your Tethered Hybrid Architecture: The Vault (EOA) & Smart Terminal (AA).</p>
              </div>
 
-             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
-                <div className="bg-slate-900 rounded-[32px] p-6 sm:p-8 shadow-2xl text-white relative overflow-hidden flex flex-col justify-between border border-slate-800/50 xl:col-span-1">
+             <div className="flex flex-col gap-6 lg:gap-8">
+                <div className="flex flex-wrap gap-6 lg:gap-8">
+                <div className="bg-slate-900 rounded-[32px] p-6 sm:p-8 shadow-2xl text-white relative overflow-hidden flex flex-col justify-between border border-slate-800/50 min-w-[500px] flex-1">
                    <div className="absolute top-0 right-0 w-80 h-80 bg-[#1562f0]/20 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none"></div>
                    <div className="relative z-10">
                      <div className="flex justify-between items-start mb-8">
@@ -2252,12 +2745,99 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                    </div>
                 </div>
 
+             {/* Smart Terminal Locked — shown when user has no AA account, to the right of The Vault */}
+             {!profiles?.[0]?.aaAccount && (
+               <div className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col items-center justify-center text-center relative overflow-hidden min-w-[500px] flex-1">
+                 <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+                   <Lock size={32} className="text-slate-400" />
+                 </div>
+                 <h3 className="text-[24px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
+                 <p className="text-[15px] font-medium text-slate-500 max-w-md mb-8 leading-relaxed">
+                   Your AA wallet is currently inactive to prevent attacks. Unlock zero-gas ecosystem routing by purchasing a Fuel Pack or joining an Alliance.
+                 </p>
+                 <div className="flex gap-4">
+                   <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95 flex items-center gap-2">
+                     <Fuel size={18} /> Buy Fuel
+                   </button>
+                   <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-blue-600 transition-colors shadow-lg shadow-[#1562f0]/20 active:scale-95 flex items-center gap-2">
+                     <Hexagon size={18} /> Join Alliance
+                   </button>
+                 </div>
+               </div>
+             )}
+
+             {/* Smart Terminal (AA) — shown when user has AA account, to the right of The Vault */}
+             {profiles?.[0]?.aaAccount && (
+               <div className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between relative overflow-hidden min-w-[500px] flex-1">
+                 <div className="flex justify-between items-start mb-8">
+                   <div className="flex items-center gap-4">
+                     <div className="w-14 h-14 bg-slate-50 rounded-[20px] flex items-center justify-center border border-slate-100/80">
+                       <Zap size={28} className="text-[#1562f0]" />
+                     </div>
+                     <div>
+                       <h4 className="text-[20px] font-semibold text-slate-900 tracking-tight flex items-center gap-2">Smart Terminal <span className="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">ERC-4337</span></h4>
+                       <p className="text-[13px] text-slate-400 font-mono mt-1">{fmtAddr(profiles?.[0]?.aaAccount)}</p>
+                     </div>
+                   </div>
+                 </div>
+                 <div className="flex flex-nowrap gap-4 sm:gap-5 mb-8 overflow-x-auto scrollbar-hide pb-2">
+                   <div className="bg-slate-50/80 rounded-[24px] p-5 sm:p-6 border border-slate-100/50 shrink-0 min-w-[200px] sm:min-w-[240px] w-max">
+                     <p className="text-[13px] font-medium text-slate-500 mb-1">Liquid Reserve</p>
+                     <div className="flex items-baseline gap-1.5 mb-0.5">
+                       <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">${aaUsdcBalance != null ? (parseFloat(aaUsdcBalance) / (oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK)).toFixed(2) : '—'}</p>
+                       <span className="text-[14px] text-slate-500 font-medium">CAD</span>
+                     </div>
+                     <span className="text-[11px] text-[#1562f0] font-medium">{aaUsdcBalance != null ? parseFloat(aaUsdcBalance).toFixed(2) : '—'} USDC</span>
+                   </div>
+                   {joinedAlliances.map((aId) => {
+                     const alliance = alliancesDb[aId];
+                     return (
+                       <div key={aId} className={`${alliance.themeLightBg} rounded-[24px] p-5 sm:p-6 border border-white/50 shrink-0 min-w-[200px] sm:min-w-[240px] w-max`}>
+                         <p className={`text-[13px] font-medium ${alliance.themeText} mb-1 truncate`}>{alliance.id} Vouchers</p>
+                         <div className="flex items-baseline gap-1.5 mb-0.5">
+                           <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">{alliance.aaBalance.toFixed(2)}</p>
+                           <span className={`text-[14px] ${alliance.themeText} font-medium`}>{alliance.token}</span>
+                         </div>
+                         <span className={`text-[11px] ${alliance.themeText} opacity-70 font-medium`}>≈ ${alliance.aaBalance.toFixed(2)} CAD</span>
+                       </div>
+                     );
+                   })}
+                 </div>
+                 <div className="bg-slate-900 rounded-[24px] p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-800 shadow-inner">
+                   <div className="flex items-center gap-4 text-white">
+                     <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
+                       <Fuel size={20} className="text-orange-500" />
+                     </div>
+                     <div>
+                       <p className="text-[12px] font-medium text-slate-400 mb-0.5">Protocol Fuel</p>
+                       <p className="text-[18px] font-mono font-semibold text-white tracking-tight">{aaBUnits != null ? aaBUnits.toLocaleString() : '—'} B-Units</p>
+                     </div>
+                   </div>
+                   <button type="button" onClick={() => { setActiveTab('Market'); setSelectedProduct('fuel'); }} className="w-full sm:w-auto text-[14px] font-semibold bg-orange-500 text-white px-5 py-2.5 rounded-[12px] hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20 active:scale-[0.98]">
+                     Refill
+                   </button>
+                 </div>
+                 <div className="relative flex items-center py-4 mt-6">
+                   <div className="flex-grow border-t border-slate-100"></div>
+                   <span className="flex-shrink-0 mx-4 text-slate-300">
+                     <ArrowRightLeft size={18} className="text-slate-300" />
+                   </span>
+                   <div className="flex-grow border-t border-slate-100"></div>
+                 </div>
+                 <button type="button" className="w-full bg-slate-50 text-slate-700 py-4 sm:py-5 rounded-[20px] text-[16px] font-semibold transition-all border border-slate-200 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center gap-2 active:scale-[0.98]">
+                   Transfer Funds
+                 </button>
+               </div>
+             )}
+                </div>
+
              {/* Subordinate admin Smart Terminal cards: one full card per subordinate */}
+             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
              {terminals.map((term) => {
                const addr = term.id?.toLowerCase();
                const bal = addr ? subordinateBalances[addr] : null;
                return (
-                 <div key={term.id} className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between relative overflow-hidden mt-6">
+                 <div key={term.id} className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between relative overflow-hidden">
                    <div className="flex justify-between items-start mb-8">
                      <div className="flex items-center gap-4">
                        <div className="w-14 h-14 bg-slate-50 rounded-[20px] flex items-center justify-center border border-slate-100/80">
@@ -2298,7 +2878,7 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
              })}
              </div>
 
-             {isFixedUserCardAdmin && joinedAlliances.length === 0 && (
+             {isAdminForUI && joinedAlliances.length === 0 && (
                <div className="pt-8 mt-8 border-t border-slate-200/60">
                  <div
                    onClick={() => setActiveTab('Alliances')}
@@ -2398,6 +2978,7 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                </div>
              )}
            </div>
+           </div>
          )}
 
          {/* --- MARKET TAB --- */}
@@ -2407,10 +2988,49 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Market</h3>
                <p className="text-[15px] font-medium text-slate-500 mt-1">Acquire physical infrastructure and protocol fuel for your node.</p>
              </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80">
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+                {/* Starter Fuel Pack */}
+                
+                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
+                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-emerald-500/10 via-transparent to-transparent pointer-events-none"></div>
+                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
+                    <div>
+                      <div className="flex justify-between items-center mb-10">
+                        <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Starter</span>
+                        <span className="text-[13px] font-mono font-medium text-slate-400">Unlimited</span>
+                      </div>
+                      <div className="flex justify-center mb-10 relative">
+                        <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="w-28 h-28 bg-[#1a1c23] border border-emerald-500/30 rounded-[28px] flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(16,185,129,0.15)] relative z-10">
+                          <Zap size={36} className="text-emerald-500" strokeWidth={1.5} />
+                          <div className="text-center">
+                            <div className="text-[18px] font-bold text-emerald-500 leading-none">100</div>
+                            <div className="text-[9px] font-bold text-emerald-500/70 tracking-widest uppercase mt-1">B-Units</div>
+                          </div>
+                        </div>
+                      </div>
+                      <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Starter Fuel Pack</h4>
+                      <p className="text-[14px] font-medium text-emerald-500/80 mt-2 uppercase tracking-widest">AA Account Activation</p>
+                    </div>
+                    <div className="mt-10 flex items-center justify-between bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md">
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Pricing</p>
+                        <div className="flex items-baseline gap-1.5">
+                          <p className="text-[24px] font-bold text-white">$1</p>
+                          <span className="text-[13px] font-medium text-slate-500">USDC</span>
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedProduct('starter')} className="bg-emerald-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 active:scale-95">
+                        View
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+
+                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
                   <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-orange-500/10 via-transparent to-transparent pointer-events-none"></div>
-                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5">
+                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
                     <div>
                       <div className="flex justify-between items-center mb-10">
                         <span className="bg-orange-500/10 text-orange-500 border border-orange-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Package A</span>
@@ -2443,9 +3063,9 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                   </div>
                 </div>
 
-                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80">
+                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
                   <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-[#1562f0]/15 via-transparent to-transparent pointer-events-none"></div>
-                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5">
+                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
                     <div>
                       <div className="flex justify-between items-center mb-10">
                         <span className="bg-[#1562f0]/10 text-[#1562f0] border border-[#1562f0]/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Package B</span>
@@ -2485,24 +3105,22 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                <p className="text-[15px] font-medium text-slate-500 mt-1">Manage your Ecosystem NFTs (ERC-1155) that grant routing logic and settlement privileges.</p>
              </div>
 
-             {!isFixedUserCardAdmin && (
-             <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-8 text-center">
-               <h4 className="text-[18px] font-semibold text-amber-800 mb-2">Admin Required</h4>
-               <p className="text-[14px] font-medium text-amber-700/90 max-w-[480px] mx-auto leading-relaxed mb-8">
-                 Connect with a card admin wallet (EOA or AA) to view and manage Partner Alliances. Your connected wallet or profile must be an admin of the merchant card.
+             {!isAdminForUI && (
+             <div 
+               onClick={() => setIsJoinAllianceModalOpen(true)}
+               className="bg-white/50 backdrop-blur-xl rounded-[32px] p-8 border border-slate-200 border-dashed flex flex-col items-center justify-center text-center min-h-[380px] hover:bg-slate-50 transition-colors cursor-pointer group"
+             >
+               <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                 <Plus size={24} className="text-[#1562f0]" />
+               </div>
+               <h4 className="text-[18px] font-semibold text-slate-900 mb-2">Join New Alliance</h4>
+               <p className="text-[14px] font-medium text-slate-500 max-w-[220px] leading-relaxed">
+                 Discover and apply for Partner NFTs via KYB to unlock new business networks.
                </p>
-               <button
-                 type="button"
-                 onClick={clearCardCacheAndRetry}
-                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold text-[14px] transition-colors"
-               >
-                 <RefreshCw size={16} />
-                 Retry admin check
-               </button>
              </div>
              )}
 
-             {isFixedUserCardAdmin && (
+             {isAdminForUI && (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
                 {(Object.keys(alliancesDb) as AllianceId[]).map((aId) => {
                   const alliance = alliancesDb[aId];
@@ -2687,7 +3305,31 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
 
          {/* --- STAFF TERMINALS TAB --- */}
          {activeTab === 'Staff' && (
-           <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-300">
+           <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative">
+             {!isAdminForUI && (
+               <div className="flex flex-col items-start justify-center min-h-[400px] py-12">
+                 <div className="w-full max-w-[400px] bg-white rounded-[32px] shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-100 flex flex-col items-center text-center p-10">
+                   <div className="w-16 h-16 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+                     <Lock size={28} className="text-slate-400" />
+                   </div>
+                   <h3 className="text-[22px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
+                   <p className="text-[14px] font-medium text-slate-500 max-w-[360px] leading-relaxed mb-8">
+                     Staff terminals operate on zero-gas AA routing. Unlock your Smart Terminal by purchasing a Fuel Pack or joining an Alliance before linking devices.
+                   </p>
+                   <div className="flex flex-wrap justify-center gap-3">
+                     <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-md flex items-center gap-2">
+                       <Fuel size={18} /> Buy Fuel
+                     </button>
+                     <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-blue-600 transition-colors shadow-md flex items-center gap-2">
+                       <Hexagon size={18} /> Join Alliance
+                     </button>
+                   </div>
+                 </div>
+               </div>
+             )}
+
+             {isAdminForUI && (
+           <div className="space-y-6">
               <div className="flex justify-between items-end mb-6">
                 <div>
                   <h3 className="text-2xl font-bold text-black tracking-tight">Staff Terminals</h3>
@@ -2791,6 +3433,8 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                    </tbody>
                 </table>
               </div>
+           </div>
+             )}
            </div>
          )}
 
@@ -2965,7 +3609,7 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
                   const now = Math.floor(Date.now() / 1000);
                   const deadline = now + 300;
                   const nonce = ethers.hexlify(ethers.randomBytes(32));
-                  const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProvider);
+                  const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
                   const cardOwner = (await card.owner()) as string;
                   const userAA = profiles?.[0]?.aaAccount?.trim();
                   const isOwner =
@@ -3180,51 +3824,56 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-6 sm:py-12 font-sans">
          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedProduct(null)}></div>
          <div className="relative bg-[#0f1115] w-full max-w-[500px] h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 border border-white/10">
-            <div className={`relative h-48 sm:h-56 shrink-0 bg-gradient-to-b ${selectedProduct === 'fuel' ? 'from-orange-900/40' : 'from-blue-900/40'} to-[#0f1115]`}>
+            <div className={`relative h-48 sm:h-56 shrink-0 bg-gradient-to-b ${selectedProduct === 'fuel' ? 'from-orange-900/40' : selectedProduct === 'starter' ? 'from-emerald-900/40' : 'from-blue-900/40'} to-[#0f1115]`}>
               <button onClick={() => setSelectedProduct(null)} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={22} /></button>
               <div className="absolute bottom-6 left-8 right-8">
-                 <span className={`inline-block px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase mb-3 border ${selectedProduct === 'fuel' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-blue-500/20 text-blue-400 border-blue-500/30'}`}>
-                    {selectedProduct === 'fuel' ? 'Merchant Prepaid' : 'Hardware + License'}
+                 <span className={`inline-block px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase mb-3 border ${selectedProduct === 'fuel' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : selectedProduct === 'starter' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-blue-500/20 text-blue-400 border-blue-500/30'}`}>
+                    {selectedProduct === 'fuel' ? 'Merchant Prepaid' : selectedProduct === 'starter' ? 'AA Activation' : 'Hardware + License'}
                  </span>
                  <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-1">
-                    {selectedProduct === 'fuel' ? 'Limited Fuel Pack' : 'Genesis Node Pack'}
+                    {selectedProduct === 'fuel' ? 'Limited Fuel Pack' : selectedProduct === 'starter' ? 'Starter Fuel Pack' : 'Genesis Node Pack'}
                  </h2>
                  <p className="text-[15px] font-medium text-slate-400">
-                    {selectedProduct === 'fuel' ? 'The Store Clearing Fuel' : 'The Infrastructure Backbone'}
+                    {selectedProduct === 'fuel' ? 'The Store Clearing Fuel' : selectedProduct === 'starter' ? 'The perfect entry to smart routing' : 'The Infrastructure Backbone'}
                  </p>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-8 pt-4 pb-32 scrollbar-hide space-y-8">
               <div className="flex gap-4">
                 <div className="flex-1 bg-white/5 rounded-[24px] p-5 flex items-center gap-4 border border-white/5">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${selectedProduct === 'fuel' ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
-                    {selectedProduct === 'fuel' ? <Database size={20} /> : <Cpu size={20} />}
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${selectedProduct === 'fuel' ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : selectedProduct === 'starter' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
+                    {selectedProduct === 'fuel' ? <Database size={20} /> : selectedProduct === 'starter' ? <Zap size={20} /> : <Cpu size={20} />}
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : 'Security'}</p>
-                    <p className="text-[16px] font-bold text-white leading-tight">{selectedProduct === 'fuel' ? '100k B-Units' : 'ATECC608 Vault'}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : selectedProduct === 'starter' ? 'Volume' : 'Security'}</p>
+                    <p className="text-[16px] font-bold text-white leading-tight">{selectedProduct === 'fuel' ? '100k B-Units' : selectedProduct === 'starter' ? '100 B-Units' : 'ATECC608 Vault'}</p>
                   </div>
                 </div>
                 <div className="flex-1 bg-white/5 rounded-[24px] p-5 flex items-center gap-4 border border-white/5">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${selectedProduct === 'fuel' ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
-                    {selectedProduct === 'fuel' ? <Sparkles size={20} /> : <Activity size={20} />}
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${selectedProduct === 'fuel' ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : selectedProduct === 'starter' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
+                    {selectedProduct === 'fuel' ? <Sparkles size={20} /> : selectedProduct === 'starter' ? <Cpu size={20} /> : <Activity size={20} />}
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Discount' : 'Yield'}</p>
-                    <p className="text-[16px] font-bold text-white leading-tight">{selectedProduct === 'fuel' ? '50% Tech Off' : '5% Network'}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Discount' : selectedProduct === 'starter' ? 'AA Account' : 'Yield'}</p>
+                    <p className="text-[16px] font-bold text-white leading-tight">{selectedProduct === 'fuel' ? '50% Tech Off' : selectedProduct === 'starter' ? 'Unlocked' : '5% Network'}</p>
                   </div>
                 </div>
               </div>
               <div className="bg-[#16181d] rounded-[24px] p-6 border border-white/5">
                 <div className="flex items-center gap-2 mb-6">
                   <Lock size={16} className="text-slate-500" />
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct === 'fuel' ? 'The Merchant Arsenal' : 'The Tangible Edge'}</span>
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct === 'fuel' ? 'The Merchant Arsenal' : selectedProduct === 'starter' ? 'Entry Arsenal' : 'The Tangible Edge'}</span>
                 </div>
                 <div className="space-y-6">
                   {selectedProduct === 'fuel' ? (
                     <div className="flex gap-4">
                       <Database size={20} className="text-orange-500 shrink-0 mt-0.5" />
                       <div><h4 className="text-[15px] font-bold text-white mb-1">100,000 B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System value of $1,000 USDC. Instant clearing fuel to process your daily retail volume.</p></div>
+                    </div>
+                  ) : selectedProduct === 'starter' ? (
+                    <div className="flex gap-4">
+                      <Zap size={20} className="text-emerald-500 shrink-0 mt-0.5" />
+                      <div><h4 className="text-[15px] font-bold text-white mb-1">100 B-Units + AA Activation</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">Unlock your Smart Terminal with zero-gas ecosystem routing. The perfect entry to smart routing.</p></div>
                     </div>
                   ) : (
                     <div className="flex gap-4">
@@ -3238,10 +3887,10 @@ const topUpsQuota = 20000; // mint quota for Issued $CTree (from alliance when l
             <div className="absolute bottom-0 inset-x-0 p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent pt-12 flex items-center justify-between border-t border-white/5">
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Due</p>
-                <div className="flex items-baseline gap-1.5"><p className="text-[32px] font-bold text-white leading-none">{selectedProduct === 'fuel' ? '499' : '999'}</p><span className="text-[14px] font-medium text-slate-500">USDC</span></div>
+                <div className="flex items-baseline gap-1.5"><p className="text-[32px] font-bold text-white leading-none">{selectedProduct === 'fuel' ? '499' : selectedProduct === 'starter' ? '1' : '999'}</p><span className="text-[14px] font-medium text-slate-500">USDC</span></div>
               </div>
-              <button onClick={handleMarketPurchase} className={`flex items-center gap-2 px-8 py-4 rounded-[16px] font-semibold text-[16px] text-white transition-all shadow-lg active:scale-95 ${selectedProduct === 'fuel' ? 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/20' : 'bg-[#1562f0] hover:bg-blue-500 shadow-[#1562f0]/20'}`}>
-                {selectedProduct === 'fuel' ? 'Secure Fuel' : 'Secure Node'} <ChevronRight size={18} />
+              <button onClick={handleMarketPurchase} className={`flex items-center gap-2 px-8 py-4 rounded-[16px] font-semibold text-[16px] text-white transition-all shadow-lg active:scale-95 ${selectedProduct === 'fuel' ? 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/20' : selectedProduct === 'starter' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-[#1562f0] hover:bg-blue-500 shadow-[#1562f0]/20'}`}>
+                {selectedProduct === 'fuel' ? 'Secure Fuel' : selectedProduct === 'starter' ? 'Activate AA' : 'Secure Node'} <ChevronRight size={18} />
               </button>
             </div>
          </div>

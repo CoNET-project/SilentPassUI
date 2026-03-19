@@ -30,6 +30,9 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 	'0xecc5bdff6716847e45363befd3506b1d539c02d5',
 	'0x90ae2212ee70aca8671ab7f5238c828d13c6dea7',
 	'0x4879171d6c4693eaedcd8f448a785a31b2146e64',
+	'0x66be7ec7111145becdfc2b5aa63143d6be1e3dd4',
+	'0x97a1453254a7d0b4bfa5f9b402047ce49deed9c9',
+	'0x1829fa7dfe1a4afbea40978eb57dbb7d6237381d',
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>

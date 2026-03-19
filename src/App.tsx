@@ -361,68 +361,8 @@ function AppShell() {
 		}
 	}, [])
 
-	const init = async (temp?: encrypt_keys_object) => {
-
-		const isAcc = await checkStorage(false)
-		if (!isAcc) {
-			setIsInitialLoading(true)
-			return 
-		}
-
-		temp = temp||isAcc
-	
-		const profiles = temp?.profiles
-		
-
-		
-		if (!temp || !profiles ) {
-			setIsInitialLoading(true)
-			return 
-		}
-
-		setProfiles(profiles)
-
-		
-		const loadUserInfo = (): Promise<beamio> => new Promise(async (resolve) => {
-			const userInfo = await getUserInfo(profiles[0].keyID)
-			if (!userInfo) {
-				return setTimeout(async () => {
-					return resolve(await loadUserInfo())
-				}, 1000)
-			}
-			return resolve(userInfo)
-		})
-			
-		const userInfo = await loadUserInfo()
-		if (!userInfo) return
-		
-		const bo: beamio = userInfo
-
-		await initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
-			setChartsRef.current((prev: string[]) => [...prev, message])
-		})
-		
-		
-		bo.initialLoading = true
-		
-		
-		
-		setBeamio (bo)
-		temp.beamio = bo
-		
-		setCoNET_Data(temp)
-		await storeSystemData()
-		const eoa = profiles[0]?.keyID?.trim()
-		if (eoa && ethers.isAddress(eoa)) setMyAddress(eoa)
-		setIsInitialLoading(false)
-
-  	}
-
-	// 首次进入显示
+	// context 由 BeamioOnboardingModal / bizHome 各自 init 填充，不再在此执行 init 以免覆盖
 	useEffect(() => {
-		init()
-		
-
 		const t = setTimeout(() => setFooterVisible(true), 0)
 		return () => {
 			clearTimeout(t)

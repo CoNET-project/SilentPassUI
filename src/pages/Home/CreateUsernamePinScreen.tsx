@@ -225,6 +225,11 @@ const SecureWalletPassword = ({
 }) => {
   const [password, setPassword] = useState("")
   const [show, setShow] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
 
   // Validation logic can be stricter if needed
   const isValidLength = password.trim().length >= 6
@@ -243,6 +248,7 @@ const SecureWalletPassword = ({
         <div className="mt-8">
           <div className="relative">
             <input
+              ref={inputRef}
               readOnly={loading}
               type={show ? "text" : "password"}
               autoComplete="new-password"

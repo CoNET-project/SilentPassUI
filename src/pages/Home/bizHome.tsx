@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { KeyRound, Wallet, ShieldCheck } from 'lucide-react'
+import { KeyRound, Wallet, ShieldCheck, CheckCircle2 } from 'lucide-react'
 import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
 import { restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio'
@@ -19,7 +19,8 @@ const assembleEncryptKeysObject = async (
 	gossip: boolean,
 	setBeamio: (val: beamio) => void,
 	setCharts: React.Dispatch<React.SetStateAction<string[]>>,
-	setMyAddress: (val: string) => void
+	setMyAddress: (val: string) => void,
+	onProgress?: (step: number) => void
 ) => {
 	const profiles = temp?.profiles
 	if (!temp || !profiles?.length) return
@@ -56,6 +57,7 @@ const assembleEncryptKeysObject = async (
 
 	setCoNET_Data(temp)
 	setBeamio(bo)
+	onProgress?.(2) // Securing done, starting sync
 
 	await initChat(setProfiles, setAllNodes, setGossip, gossip, (message) => {
 		setCharts((prev) => [...prev, message])
@@ -68,10 +70,17 @@ const assembleEncryptKeysObject = async (
 	}
 }
 
+const LOGIN_STAGES = [
+	'Deriving Local EOA via ZK-Proof',
+	'Securing Vault Infrastructure',
+	'Syncing Ledger State',
+] as const
+
 const BizHome = () => {
 	const [merchantTag, setMerchantTag] = useState('')
 	const [password, setPassword] = useState('')
 	const [isLoading, setIsLoading] = useState(false)
+	const [loadingStep, setLoadingStep] = useState(0)
 	const [loginError, setLoginError] = useState('')
 	const [isLoggedIn, setIsLoggedIn] = useState(false)
 	const [showNewBiz, setShowNewBiz] = useState(false)
@@ -90,14 +99,18 @@ const BizHome = () => {
 		e.preventDefault()
 		setLoginError('')
 		setIsLoading(true)
+		setLoadingStep(0)
+		let willTransitionToHome = false
 		try {
 			const username = merchantTag.startsWith('@') ? merchantTag.slice(1) : merchantTag
 			const result = await restoreWithUserPin(username, password, false)
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
 				setLoginError('Invalid Beamio Tag or Recovery Password, please try again')
+				setLoadingStep(0)
 				return
 			}
+			setLoadingStep(1)
 			await assembleEncryptKeysObject(
 				temp,
 				setProfiles,
@@ -106,13 +119,22 @@ const BizHome = () => {
 				gossip,
 				setBeamio,
 				setCharts,
-				setMyAddress
+				setMyAddress,
+				setLoadingStep
 			)
-			setIsLoggedIn(true)
+			setLoadingStep(3)
+			willTransitionToHome = true
+			setTimeout(() => {
+				setIsLoggedIn(true)
+				setIsLoading(false)
+			}, 400)
 		} catch {
 			setLoginError('Login failed, please try again later')
+			setLoadingStep(0)
 		} finally {
-			setIsLoading(false)
+			if (!willTransitionToHome) {
+				setIsLoading(false)
+			}
 		}
 	}
 
@@ -121,6 +143,43 @@ const BizHome = () => {
 	}
 	if (isLoggedIn) {
 		return <MerchantOS />
+	}
+
+	if (isLoading) {
+		return (
+			<div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#1562f0]/20">
+				<div className="w-full max-w-[420px] bg-white/80 backdrop-blur-3xl rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white p-12 flex flex-col items-center justify-center relative overflow-hidden">
+					<div className="w-16 h-16 border-[3px] border-slate-100 border-t-[#1562f0] rounded-full animate-spin mb-10" />
+					<div className="space-y-5 w-full">
+						{LOGIN_STAGES.map((text, idx) => (
+							<div
+								key={idx}
+								className={`flex items-center gap-4 transition-all duration-700 ${loadingStep >= idx ? 'opacity-100 translate-y-0' : 'opacity-50 translate-y-0'}`}
+							>
+								<div
+									className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors duration-500 shrink-0 ${
+										loadingStep > idx ? 'bg-[#1562f0] text-white' : 'bg-slate-100 text-slate-300'
+									}`}
+								>
+									{loadingStep > idx ? (
+										<CheckCircle2 size={16} />
+									) : loadingStep === idx ? (
+										<span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-[#1562f0] rounded-full animate-spin" />
+									) : (
+										<div className="w-2 h-2 rounded-full bg-slate-300" />
+									)}
+								</div>
+								<span
+									className={`text-[15px] ${loadingStep > idx ? 'font-semibold text-slate-900' : 'font-medium text-slate-400'}`}
+								>
+									{text}
+								</span>
+							</div>
+						))}
+					</div>
+				</div>
+			</div>
+		)
 	}
 
 	return (
@@ -214,7 +273,7 @@ const BizHome = () => {
 							className="flex items-center gap-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
 						>
 							<ShieldCheck size={14} className="text-emerald-500" />
-							<span>Local EOA Derivation • Zero-Knowledge Architecture</span>
+							<span>Local EOA Derivation • Zero-Knowledge</span>
 						</button>
 						<span className="text-[10px] text-slate-400 font-medium">v{APP_VERSION}</span>
 					</div>

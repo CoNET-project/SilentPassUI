@@ -611,6 +611,9 @@ export default function App() {
         cuisine: restaurantCuisine.trim(),
         cityArea: restaurantCity.trim(),
         handle: `@${handleResolved.username}`,
+        mintLimit: Math.max(0, Number(topupLimit) || 1000),
+        maxTopupPerTx: Math.max(0, Number(maxTopupPerTx) || 1000),
+        maxSpendPerTx: Math.max(0, Number(maxSpendPerTx) || 500),
       });
       const limitNum = Math.max(0, Number(topupLimit) || 1000);
       const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
@@ -682,6 +685,9 @@ export default function App() {
         cuisine,
         cityArea: city,
         handle: resolvedHandle,
+        mintLimit: Math.max(0, Number(topupLimit) || 1000),
+        maxTopupPerTx: Math.max(0, Number(maxTopupPerTx) || 1000),
+        maxSpendPerTx: Math.max(0, Number(maxSpendPerTx) || 500),
       });
       const limitNum = Math.max(0, Number(topupLimit) || 1000);
       const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));

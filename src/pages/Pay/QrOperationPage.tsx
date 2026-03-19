@@ -61,7 +61,11 @@ export default function QrOperationPage() {
     let cancelled = false
     setMerchantError(null)
     setMerchantSigning(true)
-    signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(profiles[0], "10000", { deadlineSeconds: 3 * 60 })
+    signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
+      { privateKeyArmor: profiles[0].privateKeyArmor, aaAccount: profiles[0].aaAccount },
+      "0",
+      { deadlineSeconds: 300 }
+    )
       .then((payload) => {
         if (!cancelled) {
           setMerchantPayload(payload)

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useNavigate } from 'react-router-dom';
@@ -456,7 +456,8 @@ export default function MerchantOS() {
  const fixedCardAdminsCacheKey = `card-admins:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:v2`;
  const linkedMerchantAdminsCacheKey = `linked-merchants:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:v2`;
  const fixedCardMetadataCacheKey = `card-metadata:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
- const currentEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase();
+ // Prefer non-empty keyID; empty string must not block myAddress (?? only skips null/undefined).
+ const currentEoa = ((profiles?.[0]?.keyID?.trim() || myAddress?.trim()) || '').toLowerCase();
  const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
  const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
@@ -734,11 +735,22 @@ export default function MerchantOS() {
  ].filter((address): address is string => !!address && ethers.isAddress(address))
    .map((address) => ethers.getAddress(address));
  const normalizedAdminCandidates = adminCandidateAddresses.map((address) => address.toLowerCase());
- /** Use current EOA (local account) only: if not admin, show "-" (no fallback to AA). Align with cache keys & isAdmin. */
- const localEoa = (currentEoa ?? '').trim();
- const effectiveAdminAddress = localEoa && ethers.isAddress(localEoa) && fixedCardAdmins.some((addr) => addr.toLowerCase() === ethers.getAddress(localEoa).toLowerCase())
-   ? ethers.getAddress(localEoa)
-   : null;
+ /** First linked identity in fixedCardAdmins (EOA preferred, then AA) so UI matches isAdmin when only AA is listed. */
+ const effectiveAdminAddress = useMemo(() => {
+  const adminSet = new Set(fixedCardAdmins.map((a) => ethers.getAddress(a).toLowerCase()));
+  const tryMatch = (raw: string | undefined | null) => {
+   const t = typeof raw === 'string' ? raw.trim() : '';
+   if (!t || !ethers.isAddress(t)) return null;
+   const a = ethers.getAddress(t);
+   return adminSet.has(a.toLowerCase()) ? a : null;
+  };
+  return (
+   tryMatch(profiles?.[0]?.keyID) ??
+   tryMatch(myAddress) ??
+   tryMatch(profiles?.[0]?.aaAccount) ??
+   null
+  );
+ }, [fixedCardAdmins, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress]);
 
  const handleRefreshAA = useCallback(async () => {
    const p0 = profiles?.[0];
@@ -1002,16 +1014,17 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    void Promise.all(
      addrs.map(async (addr) => {
        const key = addr.toLowerCase();
+       const ninetyDaysAgo = Math.floor(Date.now() / 1000) - 90 * 86400;
        let transferAmountFromClear = 0;
        let mintCounterFromClear = 0;
        let remainingAvailable = 0;
        try {
-         const statsRes = await fetchWithCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin-stats:${key}`, async () => {
+         const statsRes = await fetchWithCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin-stats:${key}:90d`, async () => {
            try {
-             return await card.getAdminStatsFull(addr, 0, 0, 0) as { transferAmountFromClear: bigint; mintCounterFromClear: bigint };
+             return await card.getAdminStatsFull(addr, 0, 0, ninetyDaysAgo) as { transferAmountFromClear: bigint; mintCounterFromClear: bigint };
            } catch {
              const iface = new ethers.Interface([...USER_CARD_ADMIN_READ_ABI]);
-             const calldata = iface.encodeFunctionData('getAdminStatsFull', [addr, 0, 0, 0]);
+             const calldata = iface.encodeFunctionData('getAdminStatsFull', [addr, 0, 0, ninetyDaysAgo]);
              const hex = await baseEndpoint.call({ to: FIXED_USER_CARD_CONTRACT_ADDRESS, data: calldata });
              const raw = (hex as string).replace(/^0x/, '');
              if (raw.length >= 1344) {
@@ -1256,7 +1269,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  /** Init: resolve EOA from same source as left menu (Owner EOA capsule), then start 15s feeder */
  const [feederEoa, setFeederEoa] = useState<string | null>(null);
  useEffect(() => {
-   const menuEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   const menuEoa = (profiles?.[0]?.keyID?.trim() || myAddress?.trim() || '').trim();
    const resolved = menuEoa && ethers.isAddress(menuEoa) ? ethers.getAddress(menuEoa) : (fixedCardMetadata?.cardOwner && ethers.isAddress(fixedCardMetadata.cardOwner) ? ethers.getAddress(fixedCardMetadata.cardOwner) : null);
    if (resolved) setFeederEoa(resolved);
  }, [profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
@@ -1272,6 +1285,12 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    feederCancelledRef.current = false;
    const account = feederEoa;
    const effectiveAdmin = effectiveAdminAddress ?? '';
+   const quotaAddrForCache =
+    effectiveAdmin && ethers.isAddress(effectiveAdmin)
+     ? ethers.getAddress(effectiveAdmin)
+     : account && ethers.isAddress(account)
+       ? ethers.getAddress(account)
+       : '';
 
    // Load trusted cache for immediate display
    const cachedGrossSales = loadTrustedCache<number>(grossSalesCacheKey);
@@ -1279,8 +1298,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const cachedStatsToday = loadTrustedCache<{ grossSales: number; topUps: number }>(adminStatsTodayCacheKey);
    const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
    const networkSummaryCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary-today`;
-   /** Use account (current EOA) for quota cache key so we fetch even when fixedCardAdmins not yet loaded */
-   const quotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${account && ethers.isAddress(account) ? ethers.getAddress(account).toLowerCase() : ''}:quota-and-mint-counter`;
+   /** Prefer resolved effective admin for quota key; fall back to feeder EOA before fixedCardAdmins loads */
+   const quotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${quotaAddrForCache.toLowerCase()}:quota-and-mint-counter`;
    const buintBalanceCacheKey = `eoa:${account.toLowerCase()}:buint:balance`;
    const aa = profiles?.[0]?.aaAccount?.trim();
    const accountsToQuery = account && ethers.isAddress(account) ? [ethers.getAddress(account)] : [];
@@ -1351,44 +1370,50 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        }
 
        // 1. Global stats (gross sales, cumulative mint, admin stats today)
+       // cumulativeStartTs=0 → ~5y hourly loop → gas/RPC fail; fallback used same 0 → catch throws → cumulativeRes null → cumulativeRes! aborts entire feeder (steps 2–6 never run).
+       const ninetyDaysAgo = Math.floor(Date.now() / 1000) - 90 * 86400;
        type CumulativeRes = { cumulativeTransferAmount: bigint; cumulativeMint: bigint };
        type TodayRes = { periodTransferAmount: bigint; periodUSDCMint: bigint };
        let cumulativeRes: CumulativeRes | null = null;
        let todayRes: TodayRes | null = null;
        try {
          const [c0, c1] = await Promise.all([
-           card.getGlobalStatsFull(0, 0, 0) as Promise<CumulativeRes & { periodTransferAmount: bigint; periodUSDCMint: bigint }>,
-           card.getGlobalStatsFull(PERIOD_DAY, 0, 0) as Promise<TodayRes>,
+           card.getGlobalStatsFull(0, 0, ninetyDaysAgo) as Promise<CumulativeRes & { periodTransferAmount: bigint; periodUSDCMint: bigint }>,
+           card.getGlobalStatsFull(PERIOD_DAY, 0, ninetyDaysAgo) as Promise<TodayRes>,
          ]);
          cumulativeRes = { cumulativeTransferAmount: c0.cumulativeTransferAmount, cumulativeMint: c0.cumulativeMint };
          todayRes = { periodTransferAmount: c1.periodTransferAmount, periodUSDCMint: c1.periodUSDCMint };
        } catch {
-         const [admins, , parents] = (await card.getAdminListWithMetadata()) as [string[], string[], string[]];
-         const owner = (await card.owner()) as string;
-         const zero = ethers.ZeroAddress;
-         const rootAdmins = admins.filter((_, i) => {
-           const p = (parents?.[i] ?? zero) as string;
-           return !p || p === zero || p.toLowerCase() === owner.toLowerCase();
-         });
-         const sum = (a: bigint, b: bigint) => a + b;
-         let cumTransferAmount = 0n, cumMint = 0n, periodTransferAmount = 0n, periodUSDCMint = 0n;
-         for (const admin of rootAdmins) {
-           const [s0, s1] = await Promise.all([
-             card.getAdminStatsFull(admin, 0, 0, 0) as Promise<{ cumulativeTransferAmount: bigint; cumulativeMint: bigint }>,
-             card.getAdminStatsFull(admin, PERIOD_DAY, 0, 0) as Promise<{ periodTransferAmount: bigint; periodUSDCMint: bigint }>,
-           ]);
-           cumTransferAmount = sum(cumTransferAmount, s0.cumulativeTransferAmount);
-           cumMint = sum(cumMint, s0.cumulativeMint);
-           periodTransferAmount = sum(periodTransferAmount, s1.periodTransferAmount);
-           periodUSDCMint = sum(periodUSDCMint, s1.periodUSDCMint);
+         try {
+           const [admins, , parents] = (await card.getAdminListWithMetadata()) as [string[], string[], string[]];
+           const owner = (await card.owner()) as string;
+           const zero = ethers.ZeroAddress;
+           const rootAdmins = admins.filter((_, i) => {
+             const p = (parents?.[i] ?? zero) as string;
+             return !p || p === zero || p.toLowerCase() === owner.toLowerCase();
+           });
+           const sum = (a: bigint, b: bigint) => a + b;
+           let cumTransferAmount = 0n, cumMint = 0n, periodTransferAmount = 0n, periodUSDCMint = 0n;
+           for (const admin of rootAdmins) {
+             const [s0, s1] = await Promise.all([
+               card.getAdminStatsFull(admin, 0, 0, ninetyDaysAgo) as Promise<{ cumulativeTransferAmount: bigint; cumulativeMint: bigint }>,
+               card.getAdminStatsFull(admin, PERIOD_DAY, 0, ninetyDaysAgo) as Promise<{ periodTransferAmount: bigint; periodUSDCMint: bigint }>,
+             ]);
+             cumTransferAmount = sum(cumTransferAmount, s0.cumulativeTransferAmount);
+             cumMint = sum(cumMint, s0.cumulativeMint);
+             periodTransferAmount = sum(periodTransferAmount, s1.periodTransferAmount);
+             periodUSDCMint = sum(periodUSDCMint, s1.periodUSDCMint);
+           }
+           cumulativeRes = { cumulativeTransferAmount: cumTransferAmount, cumulativeMint: cumMint };
+           todayRes = { periodTransferAmount, periodUSDCMint };
+         } catch {
+           /* keep cumulativeRes/todayRes null; do not throw — later steps must still run */
          }
-         cumulativeRes = { cumulativeTransferAmount: cumTransferAmount, cumulativeMint: cumMint };
-         todayRes = { periodTransferAmount, periodUSDCMint };
        }
-       if (!feederCancelledRef.current) {
-         const grossSalesTotal = amountE6ToDisplayNumber(cumulativeRes!.cumulativeTransferAmount);
-         const cumulativeMintTotal = amountE6ToDisplayNumber(cumulativeRes!.cumulativeMint);
-         const statsToday = { grossSales: amountE6ToDisplayNumber(todayRes!.periodTransferAmount), topUps: amountE6ToDisplayNumber(todayRes!.periodUSDCMint) };
+       if (!feederCancelledRef.current && cumulativeRes && todayRes) {
+         const grossSalesTotal = amountE6ToDisplayNumber(cumulativeRes.cumulativeTransferAmount);
+         const cumulativeMintTotal = amountE6ToDisplayNumber(cumulativeRes.cumulativeMint);
+         const statsToday = { grossSales: amountE6ToDisplayNumber(todayRes.periodTransferAmount), topUps: amountE6ToDisplayNumber(todayRes.periodUSDCMint) };
          setGrossSalesTotal(grossSalesTotal);
          setCumulativeMintTotal(cumulativeMintTotal);
          setAdminStatsToday(statsToday);
@@ -1400,7 +1425,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        // 2. Admin network summary (when admin)
        if (effectiveAdmin && ethers.isAddress(effectiveAdmin) && !feederCancelledRef.current) {
          try {
-           const res = await card.getAdminStatsFull(effectiveAdmin, PERIOD_DAY, 0, 0) as { periodTransferAmount: bigint; periodTransfer: bigint; periodUSDCMint: bigint; periodMint: bigint };
+           const res = await card.getAdminStatsFull(effectiveAdmin, PERIOD_DAY, 0, ninetyDaysAgo) as { periodTransferAmount: bigint; periodTransfer: bigint; periodUSDCMint: bigint; periodMint: bigint };
            const summary = {
              cadVol: amountE6ToDisplayNumber(res.periodTransferAmount),
              txCount: Number(res.periodTransfer),
@@ -1418,20 +1443,24 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          setAdminNetworkSummaryToday(null);
        }
 
-       // 3. Admin quota and mintCounterFromClear (account from feederAccountRef at execution time)
-       if (account && ethers.isAddress(account) && !feederCancelledRef.current) {
-         const step3QuotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${ethers.getAddress(account).toLowerCase()}:quota-and-mint-counter`;
+       // 3. Admin quota and mintCounterFromClear — same address as Issued $CTree UI (effective admin, else feeder EOA)
+       const baseAcct = feederAccountRef.current || feederEoa;
+       const eaResolved = effectiveAdmin && ethers.isAddress(effectiveAdmin) ? ethers.getAddress(effectiveAdmin) : '';
+       const quotaAccount =
+        eaResolved || (baseAcct && ethers.isAddress(baseAcct) ? ethers.getAddress(baseAcct) : '');
+       if (quotaAccount && ethers.isAddress(quotaAccount) && !feederCancelledRef.current) {
+         const step3QuotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${ethers.getAddress(quotaAccount).toLowerCase()}:quota-and-mint-counter`;
          const step3CachedQuota = loadTrustedCache<{ quota: number; mintCounterFromClear: number }>(step3QuotaCacheKey);
          const cardDirect = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
          try {
-           const adminLower = ethers.getAddress(account).toLowerCase();
+           const adminLower = ethers.getAddress(quotaAccount).toLowerCase();
            const fetchStatsWithRawFallback = async (): Promise<{ mintCounterFromClear: bigint }> => {
              try {
-               const r = await cardDirect.getAdminStatsFull(account, 0, 0, 0) as { mintCounterFromClear: bigint };
+               const r = await cardDirect.getAdminStatsFull(quotaAccount, 0, 0, ninetyDaysAgo) as { mintCounterFromClear: bigint };
                return r;
              } catch {
                const iface = new ethers.Interface([...USER_CARD_ADMIN_READ_ABI]);
-               const calldata = iface.encodeFunctionData('getAdminStatsFull', [account, 0, 0, 0]);
+               const calldata = iface.encodeFunctionData('getAdminStatsFull', [quotaAccount, 0, 0, ninetyDaysAgo]);
                const hex = await baseRpcProviderDirect.call({ to: FIXED_USER_CARD_CONTRACT_ADDRESS, data: calldata });
                const raw = (hex as string).replace(/^0x/, '');
                if (raw.length >= 1344) {
@@ -1461,13 +1490,13 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              } catch { /* ignore */ }
            }
            if (quotaDisplay <= 0) {
-             const limitRes = await cardDirect.getAdminAirdropLimit(account) as { limit: bigint; unlimited: boolean };
+             const limitRes = await cardDirect.getAdminAirdropLimit(quotaAccount) as { limit: bigint; unlimited: boolean };
              quotaDisplay = limitRes.unlimited ? Number.MAX_SAFE_INTEGER : amountE6ToDisplayNumber(limitRes.limit);
            }
            const mintCounterFromClear = amountE6ToDisplayNumber(statsRes.mintCounterFromClear);
            const result = { quota: quotaDisplay, mintCounterFromClear };
            if (process.env.NODE_ENV !== 'production') {
-             console.warn('[feeder] Issued $CTree: fetched', { account: account.slice(0, 10) + '…', quota: result.quota, mintCounterFromClear: result.mintCounterFromClear, idx, adminsLen: admins.length });
+             console.warn('[feeder] Issued $CTree: fetched', { quotaAccount: quotaAccount.slice(0, 10) + '…', quota: result.quota, mintCounterFromClear: result.mintCounterFromClear, idx, adminsLen: admins.length });
            }
            if (!feederCancelledRef.current) {
              setAdminMintLimitQuota(result.quota);
@@ -1483,7 +1512,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              setAdminMintCounterFromClear(step3CachedQuota.mintCounterFromClear);
            }
          }
-       } else if (!account || !ethers.isAddress(account)) {
+       } else if (!quotaAccount || !ethers.isAddress(quotaAccount)) {
          setAdminMintLimitQuota(null);
          setAdminMintCounterFromClear(null);
        }

@@ -1,21 +1,17 @@
 /**
  * Base 主网 RPC 自动切换模块
- * 默认使用 1RPC Base RPC（1rpc.io/base），故障时自动切换到 CoNET 代理节点
- * 支持 CoNET allNodes：限流时仅使用 CoNET 节点，不向 API 服务器请求
+ * 默认使用 CoNET 官方 Base RPC（https://base-rpc.conet.network）
  * 支持 VITE_BASE_RPC 环境变量覆盖（使用单节点，不切换）
  */
 import { ethers } from 'ethers'
 
 const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
-/** Beamio Base RPC 标准：HTTP 使用 https://1rpc.io/base */
-const BEAMIO_BASE_RPC = 'https://1rpc.io/base'
+/** CoNET 官方 Base HTTP RPC（项目默认） */
+const CONET_BASE_HTTP = 'https://base-rpc.conet.network'
 
-/** CoNET 稳定 Base RPC 代理（替代动态节点，避免 502 Bad Gateway） */
-const CONET_BASE_RPC = 'https://base-rpc.conet.network'
-
-/** Base 主网 RPC 列表：1rpc 优先，CoNET 稳定代理作 fallback */
-export const BASE_RPC_URLS = [BEAMIO_BASE_RPC, CONET_BASE_RPC]
+/** Base 主网 RPC 列表（单节点；切换逻辑保留供限流重试同一端点） */
+export const BASE_RPC_URLS = [CONET_BASE_HTTP]
 
 /** 检测是否为 RPC 配额/网络类错误（应触发切换） */
 export const isRpcQuotaOrNetworkError = (err: unknown): boolean => {
@@ -55,7 +51,7 @@ export function setRpcDegradedGetter(getter: (() => boolean) | null): void {
 	_rpcDegradedGetter = getter
 }
 
-/** 获取当前有效 URL 列表：使用 Beamio 标准（1rpc + CoNET 稳定代理），不再使用动态节点避免 502 */
+/** 获取当前有效 URL 列表：CoNET 官方 Base RPC */
 function getEffectiveUrls(): string[] {
 	return BASE_RPC_URLS
 }
@@ -71,7 +67,7 @@ let _currentIndex = 0
 /** 获取当前 provider（使用 _currentIndex） */
 function getCurrentProvider(): ethers.JsonRpcProvider {
 	const urls = getEffectiveUrls()
-	if (!urls.length) return createProvider(BASE_RPC_URLS[0] ?? BEAMIO_BASE_RPC)
+	if (!urls.length) return createProvider(BASE_RPC_URLS[0] ?? CONET_BASE_HTTP)
 	return createProvider(urls[_currentIndex] ?? urls[0])
 }
 
@@ -86,7 +82,7 @@ export function switchToNextBaseRpc(): ethers.JsonRpcProvider {
 	const urls = getEffectiveUrls()
 	const n = Math.max(1, urls.length)
 	_currentIndex = (_currentIndex + 1) % n
-	return createProvider(urls[_currentIndex] ?? BASE_RPC_URLS[0] ?? BEAMIO_BASE_RPC)
+	return createProvider(urls[_currentIndex] ?? BASE_RPC_URLS[0] ?? CONET_BASE_HTTP)
 }
 
 /** 获取当前 RPC URL（便于调试） */

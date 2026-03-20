@@ -1,6 +1,6 @@
 /**
  * Base 主网 RPC 自动切换模块
- * 使用 https://1rpc.io/base，故障时自动切换到 CoNET 代理节点
+ * 使用 https://base-rpc.conet.network，故障时自动切换到 CoNET 代理节点
  * 支持 CoNET allNodes：限流时仅使用 CoNET 节点，不向 API 服务器请求
  * 支持 VITE_BASE_RPC 环境变量覆盖（使用单节点，不切换）
  */
@@ -8,7 +8,7 @@ import { ethers } from 'ethers'
 
 const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
-const BEAMIO_BASE_RPC = 'https://1rpc.io/base'
+const BEAMIO_BASE_RPC = 'https://base-rpc.conet.network'
 
 const _viteBaseRpc = typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_BASE_RPC?: string } }).env?.VITE_BASE_RPC
 
@@ -60,7 +60,7 @@ function conetNodeToBaseRpcUrl(node: BaseRpcNodeInfo): string {
 	return `https://${node.domain}.conet.network/base-rpc`
 }
 
-/** 获取当前有效 URL 列表：限流时仅 CoNET 代理；否则 Beamio RPC 优先，CoNET 代理作 fallback */
+/** 获取当前有效 URL 列表：限流时仅 CoNET 分布式 /base-rpc；否则官方 base-rpc.conet.network 优先，分布式代理作 fallback */
 function getEffectiveUrls(): string[] {
 	const nodes = _nodeProvider?.() ?? []
 	const conetUrls = nodes.map(conetNodeToBaseRpcUrl)
@@ -75,7 +75,7 @@ function createProvider(url: string): ethers.JsonRpcProvider {
 	return new ethers.JsonRpcProvider(url, BASE_NETWORK, { staticNetwork: true })
 }
 
-/** 直连 Beamio Base RPC（1rpc.io/base），不经过 Proxy 切换。用于对 BAD_DATA 敏感的合约调用（如 isAdmin、getAdminListWithMetadata），避免 CoNET 代理返回 0x。 */
+/** 直连 CoNET 官方 Base RPC（base-rpc.conet.network），不经过 Proxy 切换。用于对 BAD_DATA 敏感的合约调用（如 isAdmin、getAdminListWithMetadata），避免分布式代理返回异常。 */
 export const baseRpcProviderDirect = createProvider(BASE_RPC_URLS[0] ?? BEAMIO_BASE_RPC)
 
 /** 当前使用的 RPC 索引；CoNET 节点时首次随机选取 */

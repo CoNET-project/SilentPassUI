@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
  LayoutDashboard,
  Receipt,
@@ -55,7 +56,11 @@ import {
  Building2,
  SlidersHorizontal,
  RefreshCcw,
- CalendarDays
+ CalendarDays,
+ Camera,
+ Copy,
+ Share2,
+ Check
 } from 'lucide-react';
 
 // ==========================================
@@ -79,6 +84,7 @@ const INITIAL_ALLIANCES_DB = {
     themeLightBg: 'bg-emerald-50',
     themeText: 'text-emerald-600',
     sales: 5000.00,       
+    discounts: 150.00,
     tips: 0.00,
     topUps: 20000.00,     
     aaBalance: 1400.00,
@@ -104,6 +110,7 @@ const INITIAL_ALLIANCES_DB = {
     themeLightBg: 'bg-purple-50',
     themeText: 'text-purple-600',
     sales: 20000.00,      
+    discounts: 890.00,
     tips: 0.00,
     topUps: 5000.00,      
     aaBalance: 380.00,
@@ -128,6 +135,7 @@ const INITIAL_ALLIANCES_DB = {
     themeLightBg: 'bg-red-50',
     themeText: 'text-red-600',
     sales: 850.00,
+    discounts: 0.00,
     tips: 110.00,
     topUps: 0.00,
     aaBalance: 660.00,
@@ -150,6 +158,7 @@ const INITIAL_ALLIANCES_DB = {
     themeLightBg: 'bg-teal-50',
     themeText: 'text-teal-600',
     sales: 120.00,
+    discounts: 0.00,
     tips: 0.00,
     topUps: 0.00,
     aaBalance: 120.00,
@@ -164,7 +173,6 @@ const INITIAL_ALLIANCES_DB = {
 };
 
 type AllianceId = keyof typeof INITIAL_ALLIANCES_DB;
-type TxRow = typeof INITIAL_TRANSACTIONS[number];
 
 // --- Precise Mock Data ---
 const INITIAL_TRANSACTIONS = [
@@ -172,15 +180,17 @@ const INITIAL_TRANSACTIONS = [
  { id: 'TX-1048', time: '11:05 AM', type: 'P2P Send', subtotal: 500.00, tip: 0, total: 500.00, method: 'Direct USDC', ctreeAmount: 0, usdcAmount: 370.00, source: 'EOA', beamioTag: '@supplier_bob', status: 'Settled', hash: '0x9a...b2', terminal: 'The Vault', bUnits: 2, tier: null, requiredAlliance: null, wallet: 'EOA' },
  { id: 'TX-1042', time: '14:22 PM', type: 'Charge', subtotal: 85.00, tip: 15.00, total: 100.00, method: 'Mixed', ctreeAmount: 40.00, usdcAmount: 44.40, source: 'APP', beamioTag: '@alice_chen', status: 'Settled', hash: '0x1a...f9', terminal: '@ut_reg1', bUnits: 80, tier: 'Standard', requiredAlliance: 'CashTrees', wallet: 'AA' }, 
  { id: 'TX-1043', time: '15:05 PM', type: 'In-Store Top-Up', subtotal: 100.00, tip: 0.00, total: 100.00, method: 'Issued $CTree', ctreeAmount: 100.00, usdcAmount: 0, source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x2b...e4', terminal: '@ut_reg1', bUnits: 2, tier: null, requiredAlliance: 'CashTrees', wallet: 'AA' },
- { id: 'TX-1044', time: '16:10 PM', type: 'Charge', subtotal: 12.50, tip: 2.00, total: 14.50, method: '$CTree (Green Tier)', ctreeAmount: 14.50, usdcAmount: 0, source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x3c...d1', terminal: '@ut_kiosk2', bUnits: 12, tier: 'Green Card', requiredAlliance: 'CashTrees', wallet: 'AA' },
+ { id: 'TX-1044', time: '16:10 PM', type: 'Charge', subtotal: 12.50, tip: 2.00, total: 14.50, method: '$CTree (Green Tier)', ctreeAmount: 14.50, usdcAmount: 0, source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x3c...d1', terminal: '@ut_kiosk2', bUnits: 12, tier: 'Green Card', requiredAlliance: 'CashTrees', wallet: 'AA', discount: { percent: 10, amount: 1.39 } },
  { id: 'TX-1045', time: '16:45 PM', type: 'Charge', subtotal: 45.00, tip: 5.00, total: 50.00, method: 'USDC (No Discount)', ctreeAmount: 0, usdcAmount: 37.00, source: 'APP', beamioTag: '@bobby_s', status: 'Settled', hash: '0x4d...c2', terminal: '@ut_reg1', bUnits: 40, tier: 'Standard', requiredAlliance: null, wallet: 'AA' }, 
- { id: 'TX-1046', time: '17:30 PM', type: 'Charge', subtotal: 75.00, tip: 10.00, total: 85.00, method: '$CTree (Black Tier)', ctreeAmount: 85.00, usdcAmount: 0, source: 'APP', beamioTag: '@char_w', status: 'Settled', hash: '0x5e...b3', terminal: '@ut_kiosk2', bUnits: 68, tier: 'Black VIP', requiredAlliance: 'CashTrees', wallet: 'AA' },
+ { id: 'TX-1046', time: '17:30 PM', type: 'Charge', subtotal: 75.00, tip: 10.00, total: 85.00, method: '$CTree (Black Tier)', ctreeAmount: 85.00, usdcAmount: 0, source: 'APP', beamioTag: '@char_w', status: 'Settled', hash: '0x5e...b3', terminal: '@ut_kiosk2', bUnits: 68, tier: 'Black VIP', requiredAlliance: 'CashTrees', wallet: 'AA', discount: { percent: 20, amount: 18.75 } },
  { id: 'TX-1047', time: '18:15 PM', type: 'Charge', subtotal: 120.00, tip: 18.00, total: 138.00, method: '$CCSA VIP', ctreeAmount: 0, usdcAmount: 0, ccsaAmount: 138.00, source: 'NFC', beamioTag: '@steven_liu', status: 'Settled', hash: '0x8f...a1', terminal: '@ut_reg1', bUnits: 110, tier: 'CCSA Member', requiredAlliance: 'CCSA', wallet: 'AA' }
 ];
 
+type LedgerTx = (typeof INITIAL_TRANSACTIONS)[number];
+
 const INITIAL_TERMINALS = [
- { id: 'TM-001', tag: '@ut_reg1', name: 'Main Register 1', eoa: '0x1A2B...3C4D', status: 'Active', lastActive: '2 mins ago', quota: 10000 },
- { id: 'TM-002', tag: '@ut_kiosk2', name: 'Self-Serve Kiosk', eoa: '0x9F8E...7D6C', status: 'Active', lastActive: '1 hr ago', quota: 5000 },
+ { id: 'TM-001', tag: '@ut_reg1', name: 'Main Register 1', eoa: '0x1A2B...3C4D', status: 'Active', lastActive: '2 mins ago', quota: 10000, issued: 8500 },
+ { id: 'TM-002', tag: '@ut_kiosk2', name: 'Self-Serve Kiosk', eoa: '0x9F8E...7D6C', status: 'Active', lastActive: '1 hr ago', quota: 5000, issued: 1200 },
 ];
 
 const MOCK_CONTACTS = [
@@ -218,11 +228,28 @@ export default function MerchantOS() {
  const [applyingAlliance, setApplyingAlliance] = useState<AllianceId | null>(null); 
 
  // ==========================================
+ // FUEL & MARKET STATE
+ // ==========================================
+ const [customFuelAmount, setCustomFuelAmount] = useState('');
+ const [purchasedFuel, setPurchasedFuel] = useState(0); 
+
+ // ==========================================
  // ROUTING RULES STATE
  // ==========================================
  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
  const [configAllianceId, setConfigAllianceId] = useState<AllianceId | null>(null);
  const [tempDiscounts, setTempDiscounts] = useState<Record<string, number>>({});
+
+ // ==========================================
+ // EOA VAULT ACTIONS STATE (Send / Receive)
+ // ==========================================
+ const [eoaSpent, setEoaSpent] = useState(0); 
+ const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+ const [sendStep, setSendStep] = useState(1);
+ const [sendRecipient, setSendRecipient] = useState('');
+ const [sendAmount, setSendAmount] = useState('');
+ const [sendMemo, setSendMemo] = useState('');
+ const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
 
  // ==========================================
  // SETTLEMENT & PAYOUT STATE
@@ -235,7 +262,7 @@ export default function MerchantOS() {
  const [payoutMethod, setPayoutMethod] = useState('USDC'); 
  const [payoutStep, setPayoutStep] = useState(1); 
  
- const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+ const [selectedProduct, setSelectedProduct] = useState<'fuel' | 'starter' | 'custom_fuel' | 'node' | null>(null);
  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
 
@@ -252,7 +279,7 @@ export default function MerchantOS() {
  const [foundTerminalEoa, setFoundTerminalEoa] = useState('');
 
  // Transactions State
- const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
+ const [transactions, setTransactions] = useState<LedgerTx[]>(INITIAL_TRANSACTIONS);
  const [activeLedger, setActiveLedger] = useState('All'); 
  const [searchTerm, setSearchTerm] = useState('');
  const [filterType, setFilterType] = useState('All');
@@ -290,6 +317,12 @@ export default function MerchantOS() {
  };
 
  const handleMarketPurchase = () => {
+   if (selectedProduct === 'custom_fuel') {
+     setPurchasedFuel(prev => prev + (Number(customFuelAmount) * 100));
+     setCustomFuelAmount('');
+   } else if (selectedProduct === 'starter') {
+     setPurchasedFuel(prev => prev + 100);
+   }
    setIsAaUnlocked(true); 
    setSelectedProduct(null);
    setActiveTab('Wallets'); 
@@ -299,31 +332,28 @@ export default function MerchantOS() {
    setConfigAllianceId(aId);
    const initial: Record<string, number> = {};
    if (alliancesDb[aId].tiers) {
-     alliancesDb[aId].tiers.forEach((t: { id: string; discount: number }) => { initial[t.id] = t.discount; });
+     alliancesDb[aId].tiers.forEach(t => { initial[t.id] = t.discount; });
    }
    setTempDiscounts(initial);
    setIsConfigModalOpen(true);
  };
 
  const handleSaveConfig = () => {
-   const aId = configAllianceId;
-   if (!aId) return;
+   if (!configAllianceId) return;
+   const cid = configAllianceId;
    setAlliancesDb(prev => {
-     const updatedTiers = prev[aId].tiers.map((t: { id: string; discount: number; name: string; iconType: string }) => ({
+     const updatedTiers = prev[cid].tiers.map(t => ({
        ...t,
        discount: tempDiscounts[t.id] ?? t.discount
      }));
      return {
        ...prev,
-       [aId]: { ...prev[aId], tiers: updatedTiers }
+       [cid]: { ...prev[cid], tiers: updatedTiers }
      };
    });
    setIsConfigModalOpen(false);
  };
 
- // ==========================================
- // TERMINAL LINKING LOGIC
- // ==========================================
  const handleVerifyTerminalTag = () => {
    if (!newTerminalTag) return;
    setIsVerifyingTag(true);
@@ -343,7 +373,8 @@ export default function MerchantOS() {
        eoa: foundTerminalEoa,
        status: 'Active',
        lastActive: 'Just now',
-       quota: parseFloat(newTerminalQuota) || 0
+       quota: parseFloat(newTerminalQuota) || 0,
+       issued: 0 
      }]);
      closeTerminalModal();
    }
@@ -360,12 +391,60 @@ export default function MerchantOS() {
    }, 300);
  };
 
+ const handleResetTerminal = (id: string) => {
+   setTerminals(terminals.map(t => 
+     t.id === id ? { ...t, issued: 0, lastActive: 'Just reset' } : t
+   ));
+ };
+
+ // ==========================================
+ // SEND FUNDS LOGIC
+ // ==========================================
+ const handleConfirmSend = () => {
+   setSendStep(3);
+   
+   const sendVal = parseFloat(sendAmount) || 0;
+   setEoaSpent(prev => prev + sendVal);
+
+   const newTx = {
+     id: `TX-${Math.floor(1000 + Math.random() * 9000)}`,
+     time: new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'}),
+     type: 'P2P Send',
+     subtotal: sendVal,
+     tip: 0,
+     total: sendVal,
+     method: 'Direct USDC',
+     ctreeAmount: 0,
+     usdcAmount: sendVal,
+     source: 'EOA',
+     beamioTag: sendRecipient || '@unknown',
+     status: 'Settled',
+     hash: '0x' + Math.random().toString(16).slice(2, 10),
+     terminal: 'The Vault',
+     bUnits: 2,
+     tier: null,
+     requiredAlliance: null,
+     wallet: 'EOA'
+   };
+   setTransactions(prev => [newTx as unknown as LedgerTx, ...prev]);
+ };
+
+ const handleCloseSendModal = () => {
+   setIsSendModalOpen(false);
+   setTimeout(() => {
+     setSendStep(1);
+     setSendRecipient('');
+     setSendAmount('');
+     setSendMemo('');
+   }, 300);
+ };
+
  // ==========================================
  // EXECUTE SETTLEMENT
  // ==========================================
  const executeSettlement = () => {
-   const aId = payoutAlliance;
-   if (!aId) return;
+   const allianceKey = payoutAlliance;
+   if (!allianceKey) return;
    setPayoutStep(2); 
    
    setTimeout(() => {
@@ -373,8 +452,8 @@ export default function MerchantOS() {
      
      setAlliancesDb(prev => ({
        ...prev,
-       [aId]: {
-         ...prev[aId],
+       [allianceKey]: {
+         ...prev[allianceKey],
          sales: 0,
          tips: 0,
          topUps: 0,
@@ -408,10 +487,10 @@ export default function MerchantOS() {
        terminal: 'Smart Contract', 
        bUnits: 2, 
        tier: null, 
-       requiredAlliance: aId, 
+       requiredAlliance: allianceKey, 
        wallet: payoutMethod === 'USDC' ? 'AA' : 'EOA'
      };
-     setTransactions(prev => [newTx as unknown as TxRow, ...prev]);
+     setTransactions(prev => [newTx as unknown as LedgerTx, ...prev]);
 
    }, 3000); 
  };
@@ -425,45 +504,48 @@ export default function MerchantOS() {
      case 'This Month': return 30;
      case 'This Quarter': return 90;
      case 'This Year': return 365;
-     default: return 1; // 'Today'
+     default: return 1; 
    }
  };
  const flowMultiplier = getTimeMultiplier();
 
  // --- Dynamic Financial Logic (CAD BASE CURRENCY CONVERSION) ---
  // Snapshots (Do not scale with time)
- const eoaBalanceUSDC = isAaUnlocked ? 5420.00 : 0.00; 
+ const eoaBalanceUSDC = (isAaUnlocked ? 5420.00 : 0.00) - eoaSpent; 
  const aaUsdcBalance = isAaUnlocked ? 125.50 : 0.00;
  const eoaBalance_CAD = eoaBalanceUSDC / ORACLE_CAD_USDC; 
  const aaUsdcBalance_CAD = aaUsdcBalance / ORACLE_CAD_USDC; 
- const aaBUnits = isAaUnlocked ? 13300 : 20; 
+ const aaBUnits = (isAaUnlocked ? 13300 : 20) + purchasedFuel; 
 
- // Flows (Scale with time range selected)
  const baseSalesCAD_viaUSDC = isAaUnlocked ? 872.30 : 0.00; 
+ const baseDiscountsCAD_viaUSDC = isAaUnlocked ? 45.50 : 0.00; 
  const baseTipsCAD_viaUSDC = isAaUnlocked ? 191.89 : 0.00;
 
  const salesCAD_viaUSDC = baseSalesCAD_viaUSDC * flowMultiplier; 
+ const discountsCAD_viaUSDC = baseDiscountsCAD_viaUSDC * flowMultiplier; 
  const tipsCAD_viaUSDC = baseTipsCAD_viaUSDC * flowMultiplier;
 
  const usdcCollectedFromSales = salesCAD_viaUSDC * ORACLE_CAD_USDC;
  const usdcCollectedFromTips = tipsCAD_viaUSDC * ORACLE_CAD_USDC;
 
  let totalSalesCAD = salesCAD_viaUSDC;
+ let totalDiscountsCAD = discountsCAD_viaUSDC; 
  let totalTipsCAD = tipsCAD_viaUSDC;
  let totalTopUpsCAD = 0;
 
  joinedAlliances.forEach(aId => {
    totalSalesCAD += (alliancesDb[aId].sales * flowMultiplier);
+   totalDiscountsCAD += ((alliancesDb[aId].discounts || 0) * flowMultiplier);
    totalTipsCAD += (alliancesDb[aId].tips * flowMultiplier);
    totalTopUpsCAD += (alliancesDb[aId].topUps * flowMultiplier);
  });
 
- const calculateTxNetValueCAD = (tx: TxRow) => {
+ const calculateTxNetValueCAD = (tx: LedgerTx) => {
    if (tx.type.includes('Top-Up') || tx.type.includes('Settlement') || tx.type.includes('Withdrawal')) {
       if (tx.method.includes('USDC') || tx.type.includes('P2P Send')) return tx.usdcAmount / ORACLE_CAD_USDC;
       return tx.total; 
    }
-   return (tx.usdcAmount / ORACLE_CAD_USDC) + (tx.ctreeAmount ?? 0) + (tx.ccsaAmount ?? 0);
+   return (tx.usdcAmount / ORACLE_CAD_USDC) + (tx.ctreeAmount || 0) + (tx.ccsaAmount ?? 0);
  }
 
  const today = new Date();
@@ -490,7 +572,7 @@ export default function MerchantOS() {
    setTimeout(() => {
      if (isInviteFlow) {
        setIsAaUnlocked(true);
-       setJoinedAlliances(['CashTrees', 'CCSA']);
+       setJoinedAlliances(['CashTrees', 'CCSA'] satisfies AllianceId[]);
        setActiveTab('Wallets'); 
      } else {
        setIsAaUnlocked(false);
@@ -572,7 +654,13 @@ export default function MerchantOS() {
    </div>
  );
 
- const NavItem = ({ icon: Icon, label, isActive, onClick, collapsed }: { icon: React.ElementType; label: string; isActive: boolean; onClick: () => void; collapsed?: boolean }) => (
+ const NavItem = ({ icon: Icon, label, isActive, onClick, collapsed }: {
+   icon: LucideIcon;
+   label: string;
+   isActive: boolean;
+   onClick: () => void;
+   collapsed: boolean;
+ }) => (
    <button
      onClick={onClick}
      className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'gap-3 px-4'} py-3.5 rounded-[16px] transition-all duration-200 ${
@@ -587,7 +675,6 @@ export default function MerchantOS() {
    </button>
  );
 
- // --- Dashboard Layout & Content ---
  const renderDashboard = () => (
    <div className="flex h-screen bg-[#f5f5f7] font-sans text-slate-900 overflow-hidden selection:bg-[#1562f0]/20">
     
@@ -598,6 +685,7 @@ export default function MerchantOS() {
        />
      )}
 
+     {/* SIDEBAR */}
      <aside
        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white/80 backdrop-blur-3xl border-r border-slate-200/50 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 ease-in-out
          ${isMobileMenuOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'} 
@@ -678,6 +766,8 @@ export default function MerchantOS() {
      </aside>
 
      <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out">
+       
+       {/* HEADER */}
        <header className="h-16 sm:h-20 bg-white/70 backdrop-blur-2xl border-b border-slate-200/50 flex items-center justify-between px-4 sm:px-8 lg:px-10 sticky top-0 z-10 shrink-0">
          <div className="flex items-center gap-3 sm:gap-4">
            <button 
@@ -689,13 +779,11 @@ export default function MerchantOS() {
            <h2 className="text-xl sm:text-[26px] font-semibold text-slate-900 tracking-tight">{activeTab}</h2>
          </div>
          <div className="flex items-center gap-4 sm:gap-6">
-           {/* ORACLE LIVE FEED SIMULATOR */}
            <div className="hidden lg:flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
              <RefreshCcw size={12} className="text-[#1562f0] animate-[spin_4s_linear_infinite]" />
              <span className="text-[11px] font-bold text-slate-500 tracking-wider">ORACLE: 1 CAD ≈ {ORACLE_CAD_USDC.toFixed(2)} USDC</span>
            </div>
            
-           {/* GLOBAL TIME FILTER SELECTION */}
            <div className="hidden sm:flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-slate-200/60 rounded-xl px-2 py-1.5 shadow-sm">
              <CalendarDays size={14} className="text-slate-400 ml-1" />
              <select
@@ -719,13 +807,13 @@ export default function MerchantOS() {
          </div>
        </header>
 
+       {/* MAIN CONTENT AREA */}
        <div className="flex-1 overflow-y-auto p-4 sm:p-8 lg:p-10 pb-24 sm:pb-10 scrollbar-hide">
          
          {/* --- 1. OVERVIEW TAB --- */}
          {activeTab === 'Overview' && (
            <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500">
              
-             {/* If brand new merchant & AA Locked, show Welcome/Onboarding Banner */}
              {!isAaUnlocked && (
                <div className="bg-[#1562f0] rounded-[24px] p-6 sm:p-8 text-white shadow-lg shadow-[#1562f0]/20 relative overflow-hidden">
                  <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
@@ -750,9 +838,8 @@ export default function MerchantOS() {
                </div>
              )}
 
-             {/* Metrics Row */}
              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
-               {/* Gross Sales */}
+               {/* Net Sales */}
                <div className="bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-shadow xl:col-span-1">
                  <div>
                    <div className="flex justify-between items-start mb-4">
@@ -761,11 +848,18 @@ export default function MerchantOS() {
                      </div>
                      <span className="bg-[#1562f0]/10 text-[#1562f0] px-3 py-1.5 rounded-full text-[12px] font-semibold">{timeFilter}</span>
                    </div>
-                   <p className="text-[14px] font-medium text-slate-500 mb-1">Total Gross Sales (CAD Base)</p>
+                   <p className="text-[14px] font-medium text-slate-500 mb-1">Net Sales Revenue (CAD Base)</p>
                    <p className="text-4xl sm:text-[40px] font-light text-slate-900 tracking-tight leading-none">${totalSalesCAD.toFixed(2)}</p>
+                   
+                   {totalDiscountsCAD > 0 && (
+                     <div className="mt-3 flex items-center gap-1.5">
+                       <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100/50 px-2 py-1 rounded-md shadow-sm">
+                         Auto-Discounts Applied: ${totalDiscountsCAD.toFixed(2)}
+                       </span>
+                     </div>
+                   )}
                  </div>
                  
-                 {/* HORIZONTAL SCROLL FOR MULTI-ALLIANCE */}
                  <div className="flex flex-nowrap gap-3 mt-8 pt-6 border-t border-slate-100/80 overflow-x-auto scrollbar-hide pb-1">
                     <div className="bg-blue-50/50 px-4 py-3 rounded-[16px] shrink-0 w-[140px]">
                        <span className="text-[11px] text-[#1562f0] font-medium block mb-1 flex items-center gap-1.5"><Coins size={12}/> USDC Payments</span>
@@ -798,7 +892,6 @@ export default function MerchantOS() {
                    <p className="text-4xl sm:text-[40px] font-light text-slate-900 tracking-tight leading-none">${totalTipsCAD.toFixed(2)}</p>
                  </div>
                  
-                 {/* HORIZONTAL SCROLL FOR MULTI-ALLIANCE */}
                  <div className="flex flex-nowrap gap-3 mt-8 pt-6 border-t border-slate-100/80 overflow-x-auto scrollbar-hide pb-1">
                     <div className="bg-blue-50/50 px-4 py-3 rounded-[16px] shrink-0 w-[140px]">
                        <span className="text-[11px] text-[#1562f0] font-medium block mb-1 flex items-center gap-1.5"><Coins size={12}/> USDC Payments</span>
@@ -833,7 +926,6 @@ export default function MerchantOS() {
                    <p className="text-4xl sm:text-[40px] font-light text-slate-900 tracking-tight leading-none">${totalTopUpsCAD.toFixed(2)}</p>
                  </div>
                  
-                 {/* SCROLLABLE VERTICAL LIST FOR TOP-UPS */}
                  <div className="mt-8 pt-6 border-t border-slate-100/80 flex flex-col gap-2 max-h-[85px] overflow-y-auto scrollbar-hide pr-2">
                     {joinedAlliances.filter(aId => alliancesDb[aId].canTopUp).length === 0 ? (
                       <p className="text-[12px] text-slate-400 font-medium">No active issuing networks.</p>
@@ -882,7 +974,7 @@ export default function MerchantOS() {
                        <span className="text-[13px] font-bold text-orange-400">{isAaUnlocked ? `-${420 * flowMultiplier} Units` : '0 Units'}</span>
                     </div>
                     <button 
-                      onClick={() => { setActiveTab('Market'); setSelectedProduct('fuel'); }}
+                      onClick={() => { setActiveTab('Market'); setSelectedProduct(isAaUnlocked ? 'custom_fuel' : 'starter'); }}
                       className="w-full bg-white/5 hover:bg-orange-500 hover:text-white hover:border-orange-500 text-orange-500 border border-orange-500/30 py-2.5 rounded-[12px] text-[13px] font-semibold transition-all flex items-center justify-center gap-2"
                     >
                       Top Up Fuel
@@ -890,6 +982,92 @@ export default function MerchantOS() {
                  </div>
                </div>
              </div>
+
+             {/* SETTLEMENT & CUSTODY ROW */}
+             {isAaUnlocked && (
+               <div className="pt-2 border-t border-slate-200/60 mt-8">
+                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mt-6">
+                   {/* 1. Direct Crypto Revenue Card */}
+                   <div className="bg-white rounded-[32px] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between">
+                     <div>
+                       <div className="flex justify-between items-center mb-6">
+                          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center border border-blue-100/50">
+                            <Coins size={24} className="text-[#1562f0]" />
+                          </div>
+                          <span className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide">Self-Custody</span>
+                       </div>
+                       <p className="text-[13px] font-medium text-slate-500 mb-1">Direct Crypto Revenue</p>
+                       <div className="flex items-baseline gap-2 mb-4">
+                         <p className="text-4xl sm:text-[44px] font-semibold text-slate-900 tracking-tight">${aaUsdcBalance.toFixed(2)}</p>
+                         <span className="text-[14px] font-bold text-slate-400">USDC</span>
+                       </div>
+                       <p className="text-[13px] font-medium text-slate-500 leading-relaxed mb-8 max-w-sm">
+                         Direct payments routed to your AA wallet. Ecosystem networks do not settle this balance.
+                       </p>
+                     </div>
+                     <button className="w-full bg-white border-2 border-slate-100 text-slate-700 py-3.5 rounded-[16px] font-bold text-[14px] hover:bg-slate-50 hover:border-slate-200 transition-colors flex items-center justify-center gap-2">
+                       Off-ramp via Coinbase <ExternalLink size={16} />
+                     </button>
+                   </div>
+
+                   {/* 2. Dynamic Alliance Settlement Cards */}
+                   {joinedAlliances.map(aId => {
+                      const alliance = alliancesDb[aId];
+                      const totalReceived = (alliance.sales + alliance.tips) * flowMultiplier;
+                      const topUps = alliance.topUps * flowMultiplier;
+                      const netBalance = totalReceived - topUps;
+                      const isQuotaExceeded = alliance.mintQuota && topUps >= alliance.mintQuota;
+
+                      return (
+                        <div key={`overview-settle-${aId}`} className="bg-[#0B1221] rounded-[32px] p-6 sm:p-8 shadow-[0_16px_40px_rgba(0,0,0,0.15)] flex flex-col justify-between border border-[#1E293B] relative overflow-hidden group">
+                          <div className="absolute top-0 right-0 w-64 h-64 bg-[#3B82F6]/10 rounded-full blur-[60px] -mr-20 -mt-20 pointer-events-none"></div>
+                          <div className="relative z-10">
+                             <div className="flex justify-between items-center mb-6">
+                               <div className="flex items-center gap-2 text-[#3B82F6]">
+                                 <Ticket size={18} />
+                                 <span className="text-[14px] font-bold">{alliance.name} Settlement</span>
+                               </div>
+                               <span className="bg-[#1A233A] text-slate-300 border border-white/5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide">Net Balance</span>
+                             </div>
+                             <div className="flex items-baseline gap-2 mb-6">
+                               <p className="text-4xl sm:text-[48px] font-light text-white tracking-tight leading-none">
+                                 {netBalance < 0 ? `-$${Math.abs(netBalance).toFixed(2)}` : `$${netBalance.toFixed(2)}`}
+                               </p>
+                               <span className="text-[16px] text-slate-400 font-light">CAD</span>
+                             </div>
+                             <div className="flex items-center gap-2 bg-[#131B2F] w-max px-4 py-2.5 rounded-[14px] border border-[#1E293B] mb-8">
+                               <span className="text-[12px] font-bold text-emerald-400">+${totalReceived.toFixed(2)} Recv</span>
+                               <span className="text-slate-600">|</span>
+                               <span className="text-[12px] font-bold text-rose-400">-${topUps.toFixed(2)} Issued</span>
+                             </div>
+                          </div>
+                          <button
+                             onClick={() => {
+                               setPayoutAlliance(aId);
+                               setSettlementNetBalance(Math.abs(netBalance));
+                               setSettlementType(netBalance >= 0 ? 'PAYOUT' : 'REMIT');
+                               setSettlementConsumed(totalReceived);
+                               setPayoutStep(1);
+                               setIsPayoutModalOpen(true);
+                             }}
+                             className={`w-full text-white py-4 rounded-[16px] font-bold text-[15px] transition-all flex items-center justify-center gap-2 relative z-10 ${
+                               netBalance >= 0 
+                                 ? 'bg-blue-600 shadow-[0_8px_20px_rgba(37,99,235,0.25)] hover:bg-blue-500 hover:shadow-[0_12px_24px_rgba(37,99,235,0.35)]'
+                                 : isQuotaExceeded
+                                   ? 'bg-rose-500 shadow-[0_8px_20px_rgba(244,63,94,0.25)] hover:bg-rose-600'
+                                   : 'bg-blue-600 shadow-[0_8px_20px_rgba(37,99,235,0.25)] hover:bg-blue-500'
+                             }`}
+                           >
+                             {netBalance >= 0 ? <Landmark size={18} /> : isQuotaExceeded ? <Lock size={18} /> : <Landmark size={18} />}
+                             {netBalance >= 0 ? 'Request CAD Settlement' : isQuotaExceeded ? 'Remit to Unlock' : 'Request CAD Settlement'}
+                          </button>
+                        </div>
+                      )
+                   })}
+                 </div>
+               </div>
+             )}
+
            </div>
          )}
 
@@ -911,7 +1089,7 @@ export default function MerchantOS() {
             const summaryTxCount = filteredTransactions.length * flowMultiplier;
             const summaryTotalCAD = filteredTransactions.reduce((sum, tx) => sum + calculateTxNetValueCAD(tx), 0) * flowMultiplier;
             const summaryTotalUSDC = filteredTransactions.reduce((sum, tx) => sum + (tx.usdcAmount || 0), 0) * flowMultiplier;
-            const summaryTotalVouchers = filteredTransactions.reduce((sum, tx) => sum + (tx.ctreeAmount ?? 0) + (tx.ccsaAmount ?? 0), 0) * flowMultiplier;
+            const summaryTotalVouchers = filteredTransactions.reduce((sum, tx) => sum + (tx.ctreeAmount || 0) + (tx.ccsaAmount || 0), 0) * flowMultiplier;
 
             return (
            <div className="max-w-[1400px] mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-300">
@@ -1135,6 +1313,13 @@ export default function MerchantOS() {
                                        <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${(tx.ccsaAmount ?? 0).toFixed(2)} CAD</span>
                                      </div>
                                    )}
+                                   {tx.discount && (
+                                     <div className="flex items-center gap-1.5 mt-1">
+                                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded shadow-sm">
+                                         Auto-Routing: {tx.discount.percent}% Off
+                                       </span>
+                                     </div>
+                                   )}
                                    {(tx.type.includes('Settlement') || tx.type.includes('Remittance')) && (
                                      <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
                                        <Landmark size={15} className={tx.status === 'Pending' ? 'text-amber-500' : 'text-emerald-500'} /> 
@@ -1173,6 +1358,11 @@ export default function MerchantOS() {
                                       ? 'text-emerald-600' 
                                       : tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
                                  }`}>
+                                   {tx.discount && (
+                                     <span className="text-[14px] text-slate-400 line-through mr-2 font-medium opacity-60">
+                                       ${(txTotalCAD + tx.discount.amount).toFixed(2)}
+                                     </span>
+                                   )}
                                    {tx.type.includes('Top-Up') || tx.type.includes('Settlement') || tx.type === 'Receive' ? '+' : ''}${txTotalCAD.toFixed(2)}
                                  </div>
                                  <div className={`text-[12px] font-medium mt-1 whitespace-nowrap ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
@@ -1226,11 +1416,11 @@ export default function MerchantOS() {
                    </div>
                    {/* UPDATED EOA BUTTONS: Explicit B-Units Cost Mentioned */}
                    <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4">
-                      <button className="bg-[#1562f0] text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] flex flex-col items-center justify-center gap-1">
+                      <button onClick={() => setIsSendModalOpen(true)} className="bg-[#1562f0] text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] flex flex-col items-center justify-center gap-1">
                          <div className="flex items-center gap-1.5"><Send size={16} /> P2P Send</div>
                          <span className="text-[10px] bg-blue-900/30 px-1.5 rounded">2 B-Units</span>
                       </button>
-                      <button className="bg-white/10 backdrop-blur-md text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-white/20 border border-white/5 active:scale-[0.98] flex flex-col items-center justify-center gap-1">
+                      <button onClick={() => setIsReceiveModalOpen(true)} className="bg-white/10 backdrop-blur-md text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-white/20 border border-white/5 active:scale-[0.98] flex flex-col items-center justify-center gap-1">
                          <div className="flex items-center gap-1.5"><QrCode size={16} /> Receive</div>
                          <span className="text-[10px] bg-white/10 px-1.5 rounded">0.8% Fee (Min 2)</span>
                       </button>
@@ -1313,7 +1503,7 @@ export default function MerchantOS() {
                               <p className="text-[18px] font-mono font-semibold text-white tracking-tight">{aaBUnits.toLocaleString()} B-Units</p>
                            </div>
                         </div>
-                        <button onClick={() => { setActiveTab('Market'); setSelectedProduct('fuel'); }} className="w-full sm:w-auto text-[14px] font-semibold bg-orange-500 text-white px-5 py-2.5 rounded-[12px] hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20 active:scale-[0.98]">
+                        <button onClick={() => { setActiveTab('Market'); setSelectedProduct(isAaUnlocked ? 'custom_fuel' : 'starter'); }} className="w-full sm:w-auto text-[14px] font-semibold bg-orange-500 text-white px-5 py-2.5 rounded-[12px] hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20 active:scale-[0.98]">
                            Refill
                         </button>
                      </div>
@@ -1334,7 +1524,7 @@ export default function MerchantOS() {
                 </div>
              </div>
 
-             {/* UPGRADED: HIGH-DENSITY TABLE FOR SETTLEMENT POOLS with QUOTA LOGIC */}
+             {/* UPGRADED: HIGH-DENSITY TABLE FOR SETTLEMENT POOLS */}
              {joinedAlliances.length > 0 && (
                <div className="pt-8 mt-8 border-t border-slate-200/60">
                  <h4 className="text-[18px] font-semibold text-slate-900 mb-6">Alliance Fiat Settlements</h4>
@@ -1353,9 +1543,10 @@ export default function MerchantOS() {
                        <tbody className="divide-y divide-slate-100/80">
                          {joinedAlliances.map(aId => {
                            const alliance = alliancesDb[aId];
-                           const totalReceived = alliance.sales + alliance.tips;
-                           const netBalance = totalReceived - alliance.topUps;
-                           const isQuotaExceeded = alliance.mintQuota && alliance.topUps >= alliance.mintQuota;
+                           const totalReceived = (alliance.sales + alliance.tips) * flowMultiplier;
+                           const topUps = alliance.topUps * flowMultiplier;
+                           const netBalance = totalReceived - topUps;
+                           const isQuotaExceeded = alliance.mintQuota && topUps >= alliance.mintQuota;
                            
                            return (
                              <tr key={`settle-${aId}`} className="hover:bg-slate-50/50 transition-colors">
@@ -1370,22 +1561,20 @@ export default function MerchantOS() {
                                    </div>
                                  </div>
                                </td>
-                               
                                <td className="px-6 py-5 text-right font-medium text-slate-600 text-[15px]">
                                  +${totalReceived.toFixed(2)}
                                </td>
-                               
                                <td className="px-6 py-5 text-right font-medium text-[15px]">
                                  {alliance.canTopUp ? (
                                    <div className="flex flex-col items-end gap-1.5">
                                      <span className={`${isQuotaExceeded ? 'text-rose-600' : 'text-slate-800'} font-bold`}>
-                                       -${alliance.topUps.toFixed(2)}
+                                       -${topUps.toFixed(2)}
                                      </span>
                                      {alliance.mintQuota && (
                                        <div className="w-28 bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
                                           <div 
-                                            className={`h-full rounded-full transition-all duration-500 ${isQuotaExceeded ? 'bg-rose-500' : alliance.topUps >= alliance.mintQuota * 0.8 ? 'bg-amber-400' : 'bg-emerald-500'}`} 
-                                            style={{ width: `${Math.min(100, (alliance.topUps / alliance.mintQuota) * 100)}%` }}
+                                            className={`h-full rounded-full transition-all duration-500 ${isQuotaExceeded ? 'bg-rose-500' : topUps >= alliance.mintQuota * 0.8 ? 'bg-amber-400' : 'bg-emerald-500'}`} 
+                                            style={{ width: `${Math.min(100, (topUps / alliance.mintQuota) * 100)}%` }}
                                           ></div>
                                        </div>
                                      )}
@@ -1399,7 +1588,6 @@ export default function MerchantOS() {
                                    <span className="inline-block text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md tracking-wide uppercase">Consumption Only</span>
                                  )}
                                </td>
-                               
                                <td className="px-6 py-5 text-right">
                                  <div className={`font-bold text-[18px] leading-none ${netBalance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
                                    {netBalance >= 0 ? `$${netBalance.toFixed(2)}` : `-$${Math.abs(netBalance).toFixed(2)}`}
@@ -1408,7 +1596,6 @@ export default function MerchantOS() {
                                    {netBalance >= 0 ? 'Due to You' : 'Due to Alliance'}
                                  </div>
                                </td>
-                               
                                <td className="px-8 py-5 text-center">
                                  <button 
                                    onClick={() => {
@@ -1451,40 +1638,73 @@ export default function MerchantOS() {
                <p className="text-[15px] font-medium text-slate-500 mt-1">Acquire physical infrastructure and protocol fuel for your node.</p>
              </div>
              
-             {/* UPDATED TO 3 COLUMNS */}
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-                
-                {/* Product 0: Starter Fuel Pack (1 USDC) */}
+                {/* Product 0: Starter Fuel Pack (1 USDC) OR Custom Refill */}
                 <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
                   <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-emerald-500/10 via-transparent to-transparent pointer-events-none"></div>
                   <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
-                    <div>
-                      <div className="flex justify-between items-center mb-10">
-                        <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Starter</span>
-                        <span className="text-[13px] font-mono font-medium text-slate-400">Unlimited</span>
-                      </div>
-                      <div className="flex justify-center mb-10 relative">
-                        <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        <div className="w-28 h-28 bg-[#1a1c23] border border-emerald-500/30 rounded-[28px] flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(16,185,129,0.15)] relative z-10">
-                          <Zap size={36} className="text-emerald-500" strokeWidth={1.5} />
-                          <div className="text-center">
-                            <div className="text-[18px] font-bold text-emerald-500 leading-none">100</div>
-                            <div className="text-[9px] font-bold text-emerald-500/70 tracking-widest uppercase mt-1">B-Units</div>
+                    {!isAaUnlocked ? (
+                      <div>
+                        <div className="flex justify-between items-center mb-10">
+                          <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Starter</span>
+                          <span className="text-[13px] font-mono font-medium text-slate-400">Unlimited</span>
+                        </div>
+                        <div className="flex justify-center mb-10 relative">
+                          <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                          <div className="w-28 h-28 bg-[#1a1c23] border border-emerald-500/30 rounded-[28px] flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(16,185,129,0.15)] relative z-10">
+                            <Zap size={36} className="text-emerald-500" strokeWidth={1.5} />
+                            <div className="text-center">
+                              <div className="text-[18px] font-bold text-emerald-500 leading-none">100</div>
+                              <div className="text-[9px] font-bold text-emerald-500/70 tracking-widest uppercase mt-1">B-Units</div>
+                            </div>
                           </div>
                         </div>
+                        <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Starter Fuel Pack</h4>
+                        <p className="text-[14px] font-medium text-emerald-500/80 mt-2 uppercase tracking-widest">AA Account Activation</p>
                       </div>
-                      <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Starter Fuel Pack</h4>
-                      <p className="text-[14px] font-medium text-emerald-500/80 mt-2 uppercase tracking-widest">AA Account Activation</p>
-                    </div>
+                    ) : (
+                      <div>
+                        <div className="flex justify-between items-center mb-6">
+                          <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Custom Refill</span>
+                          <span className="text-[13px] font-mono font-medium text-slate-400">0.01 USDC / Unit</span>
+                        </div>
+                        <div className="flex justify-center mb-10 relative">
+                          <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                          <div className="w-full bg-[#1a1c23] border border-emerald-500/30 rounded-[28px] p-6 flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(16,185,129,0.15)] relative z-10">
+                            <span className="text-[12px] font-bold text-emerald-500/70 tracking-widest uppercase mb-2 mt-2">Enter Amount</span>
+                            <div className="flex items-center gap-2 border-b border-emerald-500/50 pb-2 mb-2 w-3/4 justify-center">
+                              <span className="text-xl text-white font-medium">$</span>
+                              <input 
+                                type="number" 
+                                min="1" 
+                                value={customFuelAmount} 
+                                onChange={(e)=>setCustomFuelAmount(e.target.value)} 
+                                className="bg-transparent text-4xl font-bold text-white w-full text-center focus:outline-none placeholder-white/20" 
+                                placeholder="0" 
+                              />
+                            </div>
+                            <div className="text-center mt-2 mb-2">
+                              <div className="text-[13px] font-bold text-emerald-500/70 tracking-widest uppercase">Yields {(Number(customFuelAmount) || 0) * 100} B-Units</div>
+                            </div>
+                          </div>
+                        </div>
+                        <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Custom Fuel Top-Up</h4>
+                        <p className="text-[14px] font-medium text-emerald-500/80 mt-2 uppercase tracking-widest">Pay as you go routing</p>
+                      </div>
+                    )}
+                    
                     <div className="mt-10 flex items-center justify-between bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md">
                       <div>
-                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Pricing</p>
+                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Total</p>
                         <div className="flex items-baseline gap-1.5">
-                          <p className="text-[24px] font-bold text-white">$1</p>
+                          <p className="text-[24px] font-bold text-white">${!isAaUnlocked ? '1' : (customFuelAmount || '0')}</p>
                           <span className="text-[13px] font-medium text-slate-500">USDC</span>
                         </div>
                       </div>
-                      <button onClick={() => setSelectedProduct('starter')} className="bg-emerald-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 active:scale-95">
+                      <button 
+                        onClick={() => setSelectedProduct(!isAaUnlocked ? 'starter' : 'custom_fuel')} 
+                        disabled={isAaUnlocked && (!customFuelAmount || Number(customFuelAmount) <= 0)}
+                        className="bg-emerald-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
                         View
                       </button>
                     </div>
@@ -1658,25 +1878,23 @@ export default function MerchantOS() {
          {activeTab === 'Staff' && (
            <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative">
              
-             {/* LOCKED STATE: STANDALONE CARD */}
+             {/* LOCKED STATE OVERLAY FOR STAFF TERMINALS */}
              {!isAaUnlocked && (
-               <div className="flex flex-col items-center justify-center min-h-[400px] py-12">
-                 <div className="w-full bg-white rounded-[32px] shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-100 flex flex-col items-center text-center p-10">
-                   <div className="w-16 h-16 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
-                     <Lock size={28} className="text-slate-400" />
-                   </div>
-                   <h3 className="text-[22px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
-                   <p className="text-[14px] font-medium text-slate-500 max-w-[360px] leading-relaxed mb-8">
-                     Staff terminals operate on zero-gas AA routing. Unlock your Smart Terminal by purchasing a Fuel Pack or joining an Alliance before linking devices.
-                   </p>
-                   <div className="flex flex-wrap justify-center gap-3">
-                     <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-md flex items-center gap-2">
-                       <Fuel size={18} /> Buy Fuel
-                     </button>
-                     <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-blue-600 transition-colors shadow-md flex items-center gap-2">
-                       <Hexagon size={18} /> Join Alliance
-                     </button>
-                   </div>
+               <div className="absolute inset-0 backdrop-blur-xl bg-[#f5f5f7]/60 z-20 flex flex-col items-center justify-center text-center p-8 rounded-[32px]">
+                 <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+                   <Lock size={32} className="text-slate-400" />
+                 </div>
+                 <h3 className="text-[24px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
+                 <p className="text-[15px] font-medium text-slate-500 max-w-md mb-8 leading-relaxed">
+                   Staff terminals operate on zero-gas AA routing. Unlock your Smart Terminal by purchasing a Fuel Pack or joining an Alliance before linking devices.
+                 </p>
+                 <div className="flex gap-4">
+                   <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95 flex items-center gap-2">
+                     <Fuel size={18} /> Buy Fuel
+                   </button>
+                   <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-blue-600 transition-colors shadow-lg shadow-[#1562f0]/20 active:scale-95 flex items-center gap-2">
+                     <Hexagon size={18} /> Join Alliance
+                   </button>
                  </div>
                </div>
              )}
@@ -1697,13 +1915,13 @@ export default function MerchantOS() {
 
                 <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[700px]">
-                       <thead>
+                    <table className="w-full min-w-[800px]">
+                       <thead className="bg-slate-50/50 text-left border-b border-slate-100/80">
                          <tr className="bg-slate-50/50 text-left border-b border-slate-100/80">
                            <th className="px-6 sm:px-8 py-5 text-[12px] font-semibold text-slate-400">Terminal Identity</th>
                            <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Linked EOA Address</th>
                            <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-center">Status</th>
-                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-right">Issuing Quota</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-right">Daily Issuance</th>
                            <th className="px-6 sm:px-8 py-5 text-[12px] font-semibold text-slate-400 text-right">Actions</th>
                          </tr>
                        </thead>
@@ -1735,14 +1953,28 @@ export default function MerchantOS() {
                                  <div className="text-[12px] font-medium text-slate-400 mt-2">{term.lastActive}</div>
                                </td>
                                <td className="px-6 py-6 text-right">
-                                 <span className="font-semibold text-[15px] text-slate-900">
-                                   ${term.quota ? term.quota.toLocaleString() : '0'}
-                                 </span>
-                                 <div className="text-[12px] font-medium text-slate-400 mt-1">CAD Daily</div>
+                                 <div className="flex flex-col items-end gap-1.5">
+                                   <span className="font-semibold text-[15px] text-slate-900">
+                                     ${(term.issued || 0).toLocaleString()} <span className="text-slate-400 text-[13px] font-medium">/ ${term.quota.toLocaleString()} CAD</span>
+                                   </span>
+                                   <div className="w-24 bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+                                      <div 
+                                        className={`h-full rounded-full transition-all duration-500 ${(term.issued || 0) >= term.quota ? 'bg-rose-500' : (term.issued || 0) >= term.quota * 0.8 ? 'bg-amber-400' : 'bg-emerald-500'}`} 
+                                        style={{ width: `${Math.min(100, term.quota > 0 ? ((term.issued || 0) / term.quota) * 100 : 0)}%` }}
+                                      ></div>
+                                   </div>
+                                 </div>
                                </td>
-                               <td className="px-6 sm:px-8 py-6 text-right">
+                               <td className="px-6 sm:px-8 py-6 text-right flex items-center justify-end gap-2">
+                                 <button 
+                                   onClick={() => handleResetTerminal(term.id)}
+                                   className="p-3 bg-blue-50 text-[#1562f0] rounded-[14px] hover:bg-[#1562f0] hover:text-white transition-colors" 
+                                   title="Settle & Reset to Zero"
+                                 >
+                                   <RefreshCcw size={18} />
+                                 </button>
                                  <button className="p-3 bg-rose-50 text-rose-500 rounded-[14px] hover:bg-rose-500 hover:text-white transition-colors" title="Revoke Authorization">
-                                   <Trash2 size={20} />
+                                   <Trash2 size={18} />
                                  </button>
                                </td>
                             </tr>
@@ -1904,8 +2136,275 @@ export default function MerchantOS() {
      </main>
 
      {/* ========================================================= */}
-     {/* GLOBAL MODALS (MOVED OUTSIDE OF TABS TO PREVENT DUPLICATION) */}
+     {/* GLOBAL MODALS */}
      {/* ========================================================= */}
+
+     {/* --- SEND EOA FUNDS MODAL --- */}
+     {isSendModalOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={handleCloseSendModal}></div>
+         <div className="relative bg-[#0f1115] w-full max-w-[440px] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 border border-white/10">
+
+            {/* SEND STEP 1: INPUT */}
+            {sendStep === 1 && (
+               <>
+                 <div className="relative p-6 shrink-0 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] border-b border-white/5">
+                   <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+                   <button onClick={handleCloseSendModal} className="absolute top-6 right-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={20} /></button>
+                   <div className="text-center mt-2 relative z-10">
+                     <div className="w-12 h-12 bg-[#1562f0]/20 rounded-full flex items-center justify-center text-[#1562f0] mx-auto mb-3 border border-[#1562f0]/30">
+                       <Send size={20} />
+                     </div>
+                     <h2 className="text-[20px] font-bold tracking-tight text-white mb-1">Send USDC</h2>
+                     <p className="text-[13px] font-medium text-slate-400">P2P transfer via Base L2</p>
+                   </div>
+                 </div>
+
+                 <div className="p-6 sm:p-8 flex flex-col items-center">
+                   <div className="w-full relative mb-6">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input
+                        type="text"
+                        placeholder="@BeamioTag, address, or paste link"
+                        value={sendRecipient}
+                        onChange={(e) => setSendRecipient(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-[16px] focus:outline-none focus:border-[#1562f0] transition-all font-medium text-[14px] text-white placeholder:text-slate-500"
+                      />
+                   </div>
+
+                   {/* Recent Contacts avatars */}
+                   <div className="w-full flex gap-4 mb-8 px-2 overflow-x-auto scrollbar-hide">
+                      {MOCK_CONTACTS.map((c, i) => (
+                        <div key={i} className="flex flex-col items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setSendRecipient(c.tag)}>
+                           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-[14px] ${c.avatarBg} shadow-sm border border-white/10`}>
+                              {c.avatarText}
+                           </div>
+                           <span className="text-[10px] font-semibold text-slate-400 truncate w-14 text-center">{c.tag}</span>
+                        </div>
+                      ))}
+                   </div>
+
+                   {/* Amount Input */}
+                   <div className="flex items-center justify-center gap-2 mb-8">
+                      <span className="text-[28px] font-semibold text-slate-500 mt-1">$</span>
+                      <input
+                        type="number"
+                        placeholder="0.00"
+                        value={sendAmount}
+                        onChange={(e) => setSendAmount(e.target.value)}
+                        className="bg-transparent text-[56px] font-semibold text-white w-[180px] text-center focus:outline-none placeholder:text-slate-600"
+                      />
+                   </div>
+
+                   {/* Paying From box */}
+                   <div className="w-full bg-white/5 border border-white/10 rounded-[20px] p-4 flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                         <div className="w-10 h-10 bg-black/40 rounded-[12px] flex items-center justify-center text-[#1562f0] border border-white/5">
+                            <Wallet size={20} />
+                         </div>
+                         <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Paying From</p>
+                            <p className="text-[14px] font-semibold text-white flex items-center gap-1.5">
+                              Main Vault <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded font-bold border border-emerald-500/20">Secure • EOA</span>
+                            </p>
+                         </div>
+                      </div>
+                      <div className="text-right">
+                         <p className="text-[14px] font-bold text-white">CA$ {eoaBalance_CAD.toFixed(2)}</p>
+                         <p className="text-[11px] font-medium text-slate-400">≈ {eoaBalanceUSDC.toFixed(2)} USDC</p>
+                      </div>
+                   </div>
+
+                   {/* Memo input */}
+                   <div className="w-full relative mb-2">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 p-1.5 bg-black/40 rounded-md border border-white/5">
+                         <Camera size={14} />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="What's this for?"
+                        value={sendMemo}
+                        onChange={(e) => setSendMemo(e.target.value)}
+                        className="w-full pl-14 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-[16px] focus:outline-none font-medium text-[14px] text-white placeholder:text-slate-500 focus:border-[#1562f0] transition-colors"
+                      />
+                   </div>
+                 </div>
+
+                 <div className="p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent border-t border-white/5 shrink-0">
+                   <button
+                      onClick={() => setSendStep(2)}
+                      disabled={!sendAmount || parseFloat(sendAmount) <= 0 || !sendRecipient}
+                      className={`w-full py-4 rounded-[20px] font-bold text-[16px] transition-all ${
+                        (!sendAmount || parseFloat(sendAmount) <= 0 || !sendRecipient)
+                          ? 'bg-white/5 text-slate-500 cursor-not-allowed border border-white/5'
+                          : 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98]'
+                      }`}
+                   >
+                      Continue
+                   </button>
+                 </div>
+               </>
+            )}
+
+            {/* SEND STEP 2: CONFIRM */}
+            {sendStep === 2 && (
+               <>
+                 <div className="relative p-6 shrink-0 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] border-b border-white/5">
+                   <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+                   <button onClick={() => setSendStep(1)} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><ArrowRightLeft size={20} /></button>
+                 </div>
+                 
+                 <div className="p-6 sm:p-8 flex flex-col items-center animate-in slide-in-from-right-4 duration-300">
+                   
+                   <div className="mb-8 flex flex-col items-center -mt-12 relative z-10">
+                      <div className="flex w-20 h-20 rounded-full bg-slate-900 overflow-hidden mb-4 border-4 border-[#0f1115] shadow-[0_8px_30px_rgba(0,0,0,0.5)] relative">
+                         <div className="w-1/2 h-full bg-[#1562f0]"></div>
+                         <div className="w-1/2 h-full bg-emerald-500"></div>
+                         <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-[20px] drop-shadow-md">
+                            {sendRecipient.replace('@', '').substring(0, 2).toUpperCase()}
+                         </div>
+                      </div>
+                      <h3 className="text-[22px] font-bold text-white mb-0.5">{sendRecipient}</h3>
+                      <p className="text-[13px] font-mono text-[#1562f0]">0xd5b0...9ea3</p>
+                   </div>
+
+                   <div className="w-full bg-white/5 border border-white/10 rounded-[24px] p-5 shadow-sm mb-4">
+                      <div className="flex justify-between items-center mb-1">
+                         <span className="text-[18px] font-bold text-slate-300">Total</span>
+                         <div className="text-right">
+                           <span className="text-[24px] font-bold text-white leading-none">{parseFloat(sendAmount).toFixed(4)} USDC</span>
+                         </div>
+                      </div>
+                      <div className="flex justify-between items-end">
+                         <span className="text-[13px] font-medium text-slate-500">Amount</span>
+                         <span className="text-[13px] font-medium text-slate-400">≈ CAD {(parseFloat(sendAmount) / ORACLE_CAD_USDC).toFixed(2)}</span>
+                      </div>
+                   </div>
+
+                   <div className="w-full flex justify-between items-center px-4 py-5 border-b border-white/5 mb-4">
+                      <span className="text-[14px] font-bold text-slate-300">Network fee</span>
+                      <div className="flex items-center gap-1.5 bg-[#1562f0]/10 text-[#1562f0] px-3 py-1.5 rounded-full border border-[#1562f0]/20">
+                         <Sparkles size={14} />
+                         <span className="text-[13px] font-bold">Sponsored</span>
+                      </div>
+                   </div>
+                 </div>
+
+                 <div className="p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent border-t border-white/5 shrink-0">
+                   <button 
+                      onClick={handleConfirmSend}
+                      className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98] transition-all"
+                   >
+                      Confirm & Sign
+                   </button>
+                 </div>
+               </>
+            )}
+
+            {/* SEND STEP 3: SUCCESS */}
+            {sendStep === 3 && (
+               <div className="p-8 flex flex-col items-center animate-in zoom-in-95 duration-400 py-16 h-full justify-center">
+                 <div className="w-24 h-24 bg-[#1562f0] rounded-full flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(21,98,240,0.5)]">
+                    <Check size={48} className="text-white" strokeWidth={2.5} />
+                 </div>
+                 
+                 <h3 className="text-[20px] font-semibold text-slate-300 mb-3">Successfully sent</h3>
+                 <div className="text-[40px] font-bold text-white mb-4 leading-none">
+                    {parseFloat(sendAmount).toFixed(4)} USDC
+                 </div>
+                 <p className="text-[14px] font-medium text-slate-500 mb-12 text-center max-w-xs">
+                    It may take a few seconds to appear on-chain.
+                 </p>
+
+                 <div className="w-full space-y-3 mt-auto">
+                    <button 
+                      onClick={handleCloseSendModal}
+                      className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-[#1562f0] text-white hover:bg-blue-600 active:scale-[0.98] transition-all shadow-[0_8px_20px_rgba(21,98,240,0.25)]"
+                    >
+                      Done
+                    </button>
+                    <button 
+                      className="w-full py-4.5 rounded-[20px] font-bold text-[15px] bg-white/5 text-white hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-white/5"
+                    >
+                      <Activity size={16} /> View transaction
+                    </button>
+                 </div>
+               </div>
+            )}
+
+         </div>
+       </div>
+     )}
+
+
+     {/* --- RECEIVE MODAL --- */}
+     {isReceiveModalOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsReceiveModalOpen(false)}></div>
+         <div className="relative bg-[#0f1115] w-full max-w-[400px] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 border border-white/10">
+            
+            {/* Dark Header */}
+            <div className="relative p-6 shrink-0 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] border-b border-white/5 flex flex-col items-center">
+              <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+              <button onClick={() => setIsReceiveModalOpen(false)} className="absolute top-6 right-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={20} /></button>
+              
+              <div className="w-16 h-16 bg-[#1562f0]/20 rounded-full border border-[#1562f0]/30 flex items-center justify-center text-[#1562f0] mb-4 mt-2 shadow-[0_0_20px_rgba(21,98,240,0.2)] relative z-10">
+                <Store size={28} />
+              </div>
+              <h3 className="text-[22px] font-bold text-white tracking-tight leading-tight relative z-10">Urban Tea Van</h3>
+              <p className="text-[14px] font-semibold text-slate-400 mb-5 relative z-10">{merchantTag || '@urbantea_van'}</p>
+
+              <div className="flex items-center gap-2 relative z-10">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Main Vault (EOA)</span>
+                <div className="flex items-center gap-1.5 bg-[#1562f0]/10 text-[#1562f0] px-2.5 py-1.5 rounded border border-[#1562f0]/20 text-[12px] font-mono font-medium">
+                  <Wallet size={12} /> 0x8B49...A9C3
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-8 pb-8 pt-8 flex flex-col items-center relative">
+               
+               {/* Glowing behind QR to pop against dark background */}
+               <div className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 bg-[#1562f0]/30 blur-[60px] rounded-full pointer-events-none"></div>
+               
+               {/* QR Code - Keeps white background to ensure scan readability */}
+               <div className="w-64 h-64 bg-white rounded-[24px] shadow-[0_0_40px_rgba(21,98,240,0.15)] border border-white/20 p-4 flex items-center justify-center relative mb-10 z-10">
+                 {/* Fake QR Pattern */}
+                 <div className="w-full h-full grid grid-cols-5 grid-rows-5 gap-1 opacity-80">
+                   {Array.from({length: 25}).map((_, i) => (
+                     <div key={i} className={`rounded-sm ${i%2===0 || i%3===0 ? 'bg-black' : 'bg-transparent'} ${i===12 ? 'opacity-0' : ''}`}></div>
+                   ))}
+                 </div>
+                 {/* Positioned squares in corners to look like QR */}
+                 <div className="absolute top-6 left-6 w-10 h-10 border-[4px] border-black rounded flex items-center justify-center"><div className="w-4 h-4 bg-black rounded-sm"></div></div>
+                 <div className="absolute top-6 right-6 w-10 h-10 border-[4px] border-black rounded flex items-center justify-center"><div className="w-4 h-4 bg-black rounded-sm"></div></div>
+                 <div className="absolute bottom-6 left-6 w-10 h-10 border-[4px] border-black rounded flex items-center justify-center"><div className="w-4 h-4 bg-black rounded-sm"></div></div>
+                 
+                 {/* Center Logo */}
+                 <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-14 h-14 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center p-1">
+                       <div className="w-full h-full bg-gradient-to-br from-[#1562f0] to-[#0a3d99] rounded-lg flex items-center justify-center text-white font-bold text-xl italic shadow-inner">
+                         B
+                       </div>
+                    </div>
+                 </div>
+               </div>
+
+               {/* Action Buttons styled for dark theme */}
+               <div className="w-full flex gap-3 relative z-10">
+                 <button className="flex-1 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-[20px] font-bold text-[15px] transition-colors flex items-center justify-center gap-2 active:scale-95">
+                   <Copy size={18} /> Copy
+                 </button>
+                 <button className="flex-1 py-4 bg-[#1562f0] hover:bg-blue-600 text-white rounded-[20px] font-bold text-[15px] transition-colors flex items-center justify-center gap-2 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-95">
+                   <Share2 size={18} /> Share
+                 </button>
+               </div>
+
+            </div>
+         </div>
+       </div>
+     )}
 
      {/* --- ADD TERMINAL MODAL --- */}
      {isAddTerminalOpen && (
@@ -2102,7 +2601,7 @@ export default function MerchantOS() {
                <button 
                  onClick={handleSaveConfig}
                  disabled={!hasTiers}
-                 className={`w-full py-4.5 rounded-[20px] font-semibold text-[16px] transition-all flex items-center justify-center gap-2 ${
+                 className={`w-full py-4 sm:py-5 rounded-[20px] font-semibold text-[16px] transition-all flex items-center justify-center gap-2 ${
                    hasTiers 
                      ? 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98]' 
                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -2141,8 +2640,8 @@ export default function MerchantOS() {
 
             <div className="space-y-4 mb-8">
               {(Object.keys(alliancesDb) as AllianceId[])
-                .filter(id => !joinedAlliances.includes(id))
-                .map(aId => {
+                .filter((id) => !joinedAlliances.includes(id))
+                .map((aId) => {
                   const alliance = alliancesDb[aId];
                   return (
                     <div key={aId} className="border border-slate-200 rounded-[20px] p-5 hover:border-[#1562f0]/50 hover:bg-[#1562f0]/5 transition-all">
@@ -2322,22 +2821,23 @@ export default function MerchantOS() {
        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 sm:py-12 font-sans">
          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedProduct(null)}></div>
          <div className="relative bg-[#0f1115] w-full max-w-[500px] h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 border border-white/10">
-            <div className={`relative h-48 sm:h-56 shrink-0 bg-gradient-to-b ${selectedProduct === 'fuel' ? 'from-orange-900/40' : selectedProduct === 'starter' ? 'from-emerald-900/40' : 'from-blue-900/40'} to-[#0f1115]`}>
+            <div className={`relative h-48 sm:h-56 shrink-0 bg-gradient-to-b ${selectedProduct === 'fuel' ? 'from-orange-900/40' : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'from-emerald-900/40' : 'from-blue-900/40'} to-[#0f1115]`}>
               <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
               <button onClick={() => setSelectedProduct(null)} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={22} /></button>
               <div className="absolute bottom-6 left-8 right-8">
                  <span className={`inline-block px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase mb-3 border ${
                     selectedProduct === 'fuel' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 
                     selectedProduct === 'starter' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                    selectedProduct === 'custom_fuel' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
                     'bg-blue-500/20 text-blue-400 border-blue-500/30'
                  }`}>
-                    {selectedProduct === 'fuel' ? 'Merchant Prepaid' : selectedProduct === 'starter' ? 'AA Activation' : 'Hardware + License'}
+                    {selectedProduct === 'fuel' ? 'Merchant Prepaid' : selectedProduct === 'starter' ? 'AA Activation' : selectedProduct === 'custom_fuel' ? 'Custom Top-Up' : 'Hardware + License'}
                  </span>
                  <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-1">
-                    {selectedProduct === 'fuel' ? 'Limited Fuel Pack' : selectedProduct === 'starter' ? 'Starter Fuel Pack' : 'Genesis Node Pack'}
+                    {selectedProduct === 'fuel' ? 'Limited Fuel Pack' : selectedProduct === 'starter' ? 'Starter Fuel Pack' : selectedProduct === 'custom_fuel' ? 'Custom Fuel Refill' : 'Genesis Node Pack'}
                  </h2>
                  <p className="text-[15px] font-medium text-slate-400">
-                    {selectedProduct === 'fuel' ? 'The Store Clearing Fuel' : selectedProduct === 'starter' ? 'The perfect entry to smart routing' : 'The Infrastructure Backbone'}
+                    {selectedProduct === 'fuel' ? 'The Store Clearing Fuel' : selectedProduct === 'starter' ? 'The perfect entry to smart routing' : selectedProduct === 'custom_fuel' ? 'Flexible routing power on demand' : 'The Infrastructure Backbone'}
                  </p>
               </div>
             </div>
@@ -2346,34 +2846,36 @@ export default function MerchantOS() {
                 <div className="flex-1 bg-white/5 rounded-[24px] p-5 flex items-center gap-4 border border-white/5">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${
                      selectedProduct === 'fuel' ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : 
-                     selectedProduct === 'starter' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 
+                     (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 
                      'bg-blue-500/10 border-blue-500/20 text-blue-500'
                   }`}>
-                    {selectedProduct === 'fuel' ? <Database size={20} /> : selectedProduct === 'starter' ? <Zap size={20} /> : <Cpu size={20} />}
+                    {selectedProduct === 'fuel' ? <Database size={20} /> : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? <Zap size={20} /> : <Cpu size={20} />}
                   </div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : selectedProduct === 'starter' ? 'Volume' : 'Security'}</p>
-                    <p className="text-[16px] font-bold text-white leading-tight">{selectedProduct === 'fuel' ? '100k B-Units' : selectedProduct === 'starter' ? '100 B-Units' : 'ATECC608 Vault'}</p>
+                    <p className="text-[16px] font-bold text-white leading-tight">
+                      {selectedProduct === 'fuel' ? '100k B-Units' : selectedProduct === 'starter' ? '100 B-Units' : selectedProduct === 'custom_fuel' ? `${(Number(customFuelAmount) || 0) * 100} B-Units` : 'ATECC608 Vault'}
+                    </p>
                   </div>
                 </div>
                 <div className="flex-1 bg-white/5 rounded-[24px] p-5 flex items-center gap-4 border border-white/5">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${
                      selectedProduct === 'fuel' ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : 
-                     selectedProduct === 'starter' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 
+                     (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 
                      'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
                   }`}>
-                    {selectedProduct === 'fuel' ? <Sparkles size={20} /> : selectedProduct === 'starter' ? <Cpu size={20} /> : <Activity size={20} />}
+                    {selectedProduct === 'fuel' ? <Sparkles size={20} /> : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? <Cpu size={20} /> : <Activity size={20} />}
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Discount' : selectedProduct === 'starter' ? 'AA Account' : 'Yield'}</p>
-                    <p className="text-[16px] font-bold text-white leading-tight">{selectedProduct === 'fuel' ? '50% Tech Off' : selectedProduct === 'starter' ? 'Unlocked' : '5% Network'}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Discount' : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'AA Account' : 'Yield'}</p>
+                    <p className="text-[16px] font-bold text-white leading-tight">{selectedProduct === 'fuel' ? '50% Tech Off' : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'Unlocked' : '5% Network'}</p>
                   </div>
                 </div>
               </div>
               <div className="bg-[#16181d] rounded-[24px] p-6 border border-white/5">
                 <div className="flex items-center gap-2 mb-6">
                   <Lock size={16} className="text-slate-500" />
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct === 'fuel' ? 'The Merchant Arsenal' : selectedProduct === 'starter' ? 'Entry Arsenal' : 'The Tangible Edge'}</span>
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct === 'fuel' ? 'The Merchant Arsenal' : selectedProduct === 'starter' ? 'Entry Arsenal' : selectedProduct === 'custom_fuel' ? 'Refill Arsenal' : 'The Tangible Edge'}</span>
                 </div>
                 <div className="space-y-6">
                   {selectedProduct === 'fuel' ? (
@@ -2390,6 +2892,13 @@ export default function MerchantOS() {
                         <div><h4 className="text-[15px] font-bold text-white mb-1">100 B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System value of $1 USDC. Instant AA contract deployment to unlock smart routing.</p></div>
                       </div>
                     </>
+                  ) : selectedProduct === 'custom_fuel' ? (
+                    <>
+                      <div className="flex gap-4">
+                        <Zap size={20} className="text-emerald-500 shrink-0 mt-0.5" />
+                        <div><h4 className="text-[15px] font-bold text-white mb-1">{(Number(customFuelAmount) || 0) * 100} B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System value of ${customFuelAmount || 0} USDC. Instant clearing fuel to process your daily retail volume.</p></div>
+                      </div>
+                    </>
                   ) : (
                     <>
                       <div className="flex gap-4">
@@ -2404,14 +2913,19 @@ export default function MerchantOS() {
             <div className="absolute bottom-0 inset-x-0 p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent pt-12 flex items-center justify-between border-t border-white/5">
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Due</p>
-                <div className="flex items-baseline gap-1.5"><p className="text-[32px] font-bold text-white leading-none">{selectedProduct === 'fuel' ? '499' : selectedProduct === 'starter' ? '1' : '999'}</p><span className="text-[14px] font-medium text-slate-500">USDC</span></div>
+                <div className="flex items-baseline gap-1.5">
+                  <p className="text-[32px] font-bold text-white leading-none">
+                    {selectedProduct === 'fuel' ? '499' : selectedProduct === 'starter' ? '1' : selectedProduct === 'custom_fuel' ? customFuelAmount : '999'}
+                  </p>
+                  <span className="text-[14px] font-medium text-slate-500">USDC</span>
+                </div>
               </div>
               <button onClick={handleMarketPurchase} className={`flex items-center gap-2 px-8 py-4 rounded-[16px] font-semibold text-[16px] text-white transition-all shadow-lg active:scale-95 ${
                  selectedProduct === 'fuel' ? 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/20' : 
-                 selectedProduct === 'starter' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' : 
+                 (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' : 
                  'bg-[#1562f0] hover:bg-blue-500 shadow-[#1562f0]/20'
               }`}>
-                {selectedProduct === 'fuel' ? 'Secure Fuel' : selectedProduct === 'starter' ? 'Activate AA' : 'Secure Node'} <ChevronRight size={18} />
+                {selectedProduct === 'fuel' ? 'Secure Fuel' : selectedProduct === 'starter' ? 'Activate AA' : selectedProduct === 'custom_fuel' ? 'Refill Fuel' : 'Secure Node'} <ChevronRight size={18} />
               </button>
             </div>
          </div>

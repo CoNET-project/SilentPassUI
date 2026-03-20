@@ -1,12 +1,12 @@
 /**
  * Base 主网 RPC 模块
- * 使用 https://base-rpc.publicnode.com
+ * 使用 CoNET 官方 https://base-rpc.conet.network
  */
 import { ethers } from 'ethers'
 
 const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
-const BEAMIO_BASE_RPC = 'https://base-rpc.publicnode.com'
+const BEAMIO_BASE_RPC = 'https://base-rpc.conet.network'
 
 /** Base 主网 RPC 列表 */
 export const BASE_RPC_URLS = [BEAMIO_BASE_RPC]
@@ -29,20 +29,20 @@ export const isRpcQuotaOrNetworkError = (err: unknown): boolean => {
 	)
 }
 
-/** @deprecated 不再使用 conet.network 节点作为 Base RPC，保留空实现以兼容调用方 */
+/** CoNET 分布式节点信息（保留类型；当前默认不注入，仅用官方 base-rpc） */
 export type BaseRpcNodeInfo = { domain: string }
 
-/** @deprecated 不再使用 conet.network 节点 */
+/** 可选：注入 allNodes 以使用 https://{domain}.conet.network/base-rpc（当前为空实现） */
 export function setBaseRpcNodeProvider(_getter: (() => BaseRpcNodeInfo[]) | null): void {
 	// no-op
 }
 
-/** @deprecated 不再使用 conet.network 节点 */
+/** 可选：限流熔断（当前为空实现） */
 export function setRpcDegradedGetter(_getter: (() => boolean) | null): void {
 	// no-op
 }
 
-/** 获取当前有效 URL 列表（仅 BASE_RPC_URLS，不再包含 conet 节点） */
+/** 获取当前有效 URL 列表 */
 function getEffectiveUrls(): string[] {
 	return BASE_RPC_URLS
 }
@@ -88,7 +88,7 @@ export function resetBaseRpcIndex(): void {
 	_hasPickedRandomStart = false
 }
 
-/** @deprecated 不再使用 conet.network 节点，立即 resolve */
+/** 等待 CoNET 节点列表（当前无分布式节点时立即 resolve） */
 export function waitForConetNodes(_maxWaitMs = 30000): Promise<void> {
 	return Promise.resolve()
 }

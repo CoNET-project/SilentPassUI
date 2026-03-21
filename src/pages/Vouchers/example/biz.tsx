@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
-import { storeSystemData, getBalance, formatWithThousands } from '@/services/beamio';
+import { storeSystemData, getBalance, formatWithThousands, purchaseBUnitFromBase } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername, getOracleCadUsdcFromConet } from '@/services/beamio';
 import {
@@ -19,6 +20,7 @@ import {
   signExecuteForOwner,
   getCardMetadataFromApi,
   getCardMetadataFrom1155Json,
+  signBUnitRefuel3009,
   type CardTierMetadata,
 } from '@/services/BeamioCard';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect, CONET_MAINNET_WSS } from '@/utils/constants';
@@ -607,6 +609,8 @@ type TierRoutingDiscountsV1 = {
   infrastructureCard: string;
   currencyType: number;
   updatedAt: number;
+  /** Sales / VAT tax rate in percent (0–100), e.g. 8.25. Devices read `tierRoutingDiscounts.taxRatePercent`. */
+  taxRatePercent: number;
   tiers: Array<{
     chainTierIndex: number;
     tierId: string;
@@ -626,6 +630,77 @@ function mergeTerminalAdminMetadataJson(existingJson: string | undefined, tierRo
     }
   }
   return JSON.stringify({ ...base, tierRoutingDiscounts: tierRouting });
+}
+
+/** Parse `tierRoutingDiscounts` from subordinate admin metadata JSON; must match infrastructure card. */
+function tryParseTierRoutingFromAdminMetadataJson(
+  metaJson: string,
+  infrastructureCardAddress: string
+): { taxRatePercent: number; tierDiscountsById: Record<string, number> } | null {
+  const want = ethers.getAddress(infrastructureCardAddress);
+  let root: unknown;
+  try {
+    root = JSON.parse(metaJson);
+  } catch {
+    return null;
+  }
+  if (!root || typeof root !== 'object' || Array.isArray(root)) return null;
+  const trRaw = (root as Record<string, unknown>).tierRoutingDiscounts;
+  if (!trRaw || typeof trRaw !== 'object' || Array.isArray(trRaw)) return null;
+  const tr = trRaw as Record<string, unknown>;
+  const ver = tr.schemaVersion;
+  if (ver !== undefined && ver !== null && Number(ver) !== 1) return null;
+  const infra = tr.infrastructureCard;
+  if (typeof infra !== 'string' || !ethers.isAddress(infra)) return null;
+  if (ethers.getAddress(infra) !== want) return null;
+
+  let taxRatePercent = 0;
+  const tTax = tr.taxRatePercent;
+  if (typeof tTax === 'number' && Number.isFinite(tTax)) taxRatePercent = tTax;
+  else if (typeof tTax === 'string' && tTax.trim()) {
+    const n = Number(tTax);
+    if (Number.isFinite(n)) taxRatePercent = n;
+  }
+  taxRatePercent = Math.min(100, Math.max(0, Math.round(taxRatePercent * 100) / 100));
+
+  const tierDiscountsById: Record<string, number> = {};
+  const tiers = tr.tiers;
+  if (Array.isArray(tiers)) {
+    for (const row of tiers) {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+      const r = row as Record<string, unknown>;
+      const dp = r.discountPercent;
+      let discount = NaN;
+      if (typeof dp === 'number' && Number.isFinite(dp)) discount = dp;
+      else if (typeof dp === 'string' && dp.trim()) {
+        const n = Number(dp);
+        if (Number.isFinite(n)) discount = n;
+      }
+      if (!Number.isFinite(discount)) continue;
+      discount = Math.min(100, Math.max(0, Math.round(discount)));
+      const idx = r.chainTierIndex;
+      const tid = r.tierId;
+      if (typeof idx === 'number' && Number.isInteger(idx)) {
+        tierDiscountsById[`chain-tier-${idx}`] = discount;
+      }
+      if (typeof tid === 'string' && tid.startsWith('chain-tier-')) {
+        tierDiscountsById[tid] = discount;
+      }
+    }
+  }
+  return { taxRatePercent, tierDiscountsById };
+}
+
+function pickTierRoutingFromSubordinateMetadatas(
+  metadatas: string[],
+  infrastructureCardAddress: string
+): { taxRatePercent: number; tierDiscountsById: Record<string, number> } | null {
+  for (const m of metadatas) {
+    if (typeof m !== 'string' || !m.trim()) continue;
+    const p = tryParseTierRoutingFromAdminMetadataJson(m, infrastructureCardAddress);
+    if (p) return p;
+  }
+  return null;
 }
 
 /** Transaction.id without 0x, first 6 hex chars (In-Store Top-Up subtitle tx segment) */
@@ -1216,6 +1291,8 @@ export default function MerchantOS() {
  /** BUint units consumed in the header time range (indexer), not calendar “today” only */
  const [protocolFuelConsumptionToday, setProtocolFuelConsumptionToday] = useState<number | null>(null);
  const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
+ /** Refetch CoNET indexer tx list when entering Transactions or on a 30s tick there (Overview feeder uses Base card stats, not this list). */
+ const [txListPollTick, setTxListPollTick] = useState(0);
  const [overviewRefreshing, setOverviewRefreshing] = useState(false);
  const [linkedMerchantLookupDone, setLinkedMerchantLookupDone] = useState(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) !== null);
  const [adminRetryCount, setAdminRetryCount] = useState(0);
@@ -1223,8 +1300,16 @@ export default function MerchantOS() {
  const [aaRefreshStatus, setAaRefreshStatus] = useState<AaRefreshStatus>('idle');
  const [indexerTransactions, setIndexerTransactions] = useState<TxDisplayRow[]>([]);
  const [indexerTransactionsLoading, setIndexerTransactionsLoading] = useState(false);
+ /** Background refetch while a local list is already shown (do not replace table with spinner). */
+ const [indexerTransactionsRefreshing, setIndexerTransactionsRefreshing] = useState(false);
+ /** Row keys (indexerTxId) that should play slide-in-from-right on this paint; cleared after animation. */
+ const [txSlideInKeys, setTxSlideInKeys] = useState<string[]>([]);
+ const indexerTxListCountRef = useRef(0);
+ useEffect(() => {
+   indexerTxListCountRef.current = indexerTransactions.length;
+ }, [indexerTransactions.length]);
  const [rawTxJsonModal, setRawTxJsonModal] = useState<TxDisplayRow | null>(null);
- /** Top-Up Customer & Source: payer/payee address (lowercase) → @beamioTag from searchUsername */
+ /** Transactions table: payer/payee address (lowercase) → @beamioTag from searchUsername (Top-Up / Charge / Tip) */
  const [txReportingBeamioTagByAddress, setTxReportingBeamioTagByAddress] = useState<Record<string, string>>({});
  /** Chain-verified admin status (EOA-scoped): local cache first, chain fetch as backup (beamio-ai-onchain-fetch) */
  const isAdminTrustedCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:is-admin`;
@@ -1239,6 +1324,12 @@ export default function MerchantOS() {
  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
  const [configAllianceId, setConfigAllianceId] = useState<AllianceId | null>(null);
  const [tempDiscounts, setTempDiscounts] = useState<Record<string, number>>({});
+ /** POS tax rate (%) written into `tierRoutingDiscounts.taxRatePercent` for Smart Terminal metadata */
+ const [routingTaxRatePercent, setRoutingTaxRatePercent] = useState(0);
+ /** After on-chain tiers load, hydrate form from `getAdminSubordinatesWithMetadata` (same parentAdmin as deploy). */
+ const routingModalHydratedFromChainRef = useRef(false);
+ const routingHydrateAsyncGenRef = useRef(0);
+ const lastRoutingHydrateWalletTagRef = useRef<string | null>(null);
  /** On-chain BeamioUserCard tiers when routing modal is open for `ALLIANCE_ID_FOR_FIXED_USER_CARD` */
  const [routingModalChainTiers, setRoutingModalChainTiers] = useState<BeamioUserCardChainTier[] | null>(null);
  /** `BeamioUserCard.currency()` uint8 — aligns with `BeamioCurrency.CurrencyType` */
@@ -1252,6 +1343,13 @@ export default function MerchantOS() {
  const [applyingAlliance, setApplyingAlliance] = useState<AllianceId | null>(null);
  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
  const [customFuelAmount, setCustomFuelAmount] = useState('');
+ const [marketRefuelProcessing, setMarketRefuelProcessing] = useState(false);
+ const [marketRefuelSuccess, setMarketRefuelSuccess] = useState<string | null>(null);
+ const [marketRefuelError, setMarketRefuelError] = useState<string | null>(null);
+ const marketCustomFuelUsdc = useMemo(() => {
+   const v = Number(String(customFuelAmount).replace(/,/g, '.'));
+   return Number.isFinite(v) ? v : NaN;
+ }, [customFuelAmount]);
  const [activeContact, setActiveContact] = useState('c1');
  const [chatInput, setChatInput] = useState('');
 
@@ -1270,13 +1368,88 @@ export default function MerchantOS() {
    }, 2500);
  }, []);
 
- const handleMarketPurchase = useCallback(() => {
+ const closeMarketProductModal = useCallback(() => {
+   setSelectedProduct(null);
+   setMarketRefuelProcessing(false);
+   setMarketRefuelSuccess(null);
+   setMarketRefuelError(null);
+ }, []);
+
+ const resetMarketRefuelSuccess = useCallback(() => {
+   setMarketRefuelSuccess(null);
+   setMarketRefuelError(null);
+ }, []);
+
+ const handleMarketPurchase = useCallback(async () => {
+   if (selectedProduct === 'custom_fuel') {
+     const pk = profiles?.[0]?.privateKeyArmor;
+     const account = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+     if (!pk || !account) {
+       setMarketRefuelError('Wallet not ready. Please unlock or sign in.');
+       return;
+     }
+     const amountHuman = String(customFuelAmount).replace(/,/g, '.').trim();
+     let need6: bigint;
+     try {
+       need6 = ethers.parseUnits(amountHuman, 6);
+     } catch {
+       setMarketRefuelError('Invalid USDC amount');
+       return;
+     }
+     if (need6 < 1_000_000n) {
+       setMarketRefuelError('Minimum purchase is 1 USDC');
+       return;
+     }
+     const bal = await getBalance(account);
+     if (!bal?.usdc) {
+       setMarketRefuelError('Unable to verify USDC balance. Please try again.');
+       return;
+     }
+     let avail6: bigint;
+     try {
+       avail6 = ethers.parseUnits(String(bal.usdc).trim(), 6);
+     } catch {
+       setMarketRefuelError('Unable to verify USDC balance. Please try again.');
+       return;
+     }
+     if (avail6 < need6) {
+       setMarketRefuelError(
+         `Insufficient USDC on Base. You have ${ethers.formatUnits(avail6, 6)} USDC; this refill requires ${ethers.formatUnits(need6, 6)} USDC.`
+       );
+       return;
+     }
+     setMarketRefuelError(null);
+     setMarketRefuelSuccess(null);
+     setMarketRefuelProcessing(true);
+     try {
+       const payload = await signBUnitRefuel3009(pk, amountHuman);
+       const result = await purchaseBUnitFromBase(payload);
+       if (result.success) {
+         setMarketRefuelSuccess(result.txHash ?? '');
+         setOverviewRefreshTrigger((t) => t + 1);
+         const pollMs = 5000;
+         const pollCount = 24;
+         for (let i = 0; i < pollCount; i++) {
+           window.setTimeout(() => {
+             setOverviewRefreshTrigger((t) => t + 1);
+           }, (i + 1) * pollMs);
+         }
+       } else {
+         setMarketRefuelError(result.error ?? 'Refuel failed');
+       }
+     } catch (e) {
+       setMarketRefuelError((e as Error)?.message ?? 'Refuel failed');
+     } finally {
+       setMarketRefuelProcessing(false);
+     }
+     return;
+   }
    setSelectedProduct((prev) => {
      if (prev === 'custom_fuel') setCustomFuelAmount('');
      return null;
    });
    setActiveTab('Wallets');
- }, []);
+ }, [selectedProduct, profiles, myAddress, customFuelAmount]);
 
  const handleRemitToAlliance = useCallback((aId: AllianceId) => {
    setAlliancesDb((prev) => ({
@@ -1296,11 +1469,14 @@ export default function MerchantOS() {
      });
    }
    setTempDiscounts(initial);
+   setRoutingTaxRatePercent(0);
    setIsConfigModalOpen(true);
  }, [alliancesDb]);
 
  useEffect(() => {
    if (!isConfigModalOpen || configAllianceId !== ALLIANCE_ID_FOR_FIXED_USER_CARD) {
+     routingModalHydratedFromChainRef.current = false;
+     lastRoutingHydrateWalletTagRef.current = null;
      setRoutingModalChainTiers(null);
      setRoutingModalChainCurrencyType(null);
      setRoutingModalCardTiersMeta(null);
@@ -1357,6 +1533,103 @@ export default function MerchantOS() {
      return next;
    });
  }, [isConfigModalOpen, configAllianceId, routingModalChainTiers]);
+
+ /** Load routing tax + tier discounts from first matching subordinate metadata on chain (fallback: local defaults / 0). */
+ useEffect(() => {
+   if (!isConfigModalOpen || configAllianceId !== ALLIANCE_ID_FOR_FIXED_USER_CARD) return;
+   if (routingModalTiersLoading || routingModalTiersError || !routingModalChainTiers?.length) return;
+
+   const walletTag = `${(profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase()}|${(profiles?.[0]?.aaAccount ?? '').toLowerCase()}`;
+   if (walletTag !== lastRoutingHydrateWalletTagRef.current) {
+     lastRoutingHydrateWalletTagRef.current = walletTag;
+     routingModalHydratedFromChainRef.current = false;
+   }
+   if (routingModalHydratedFromChainRef.current) return;
+
+   const tiersSnapshot = routingModalChainTiers;
+   const myGen = ++routingHydrateAsyncGenRef.current;
+
+   void (async () => {
+     try {
+       const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
+       const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+       const cardOwner = ((await card.owner()) as string)?.trim();
+       if (myGen !== routingHydrateAsyncGenRef.current) return;
+       const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+       const userAA = profiles?.[0]?.aaAccount?.trim();
+
+       let parentAdmin: string = ethers.ZeroAddress;
+       if (userEOA && ethers.isAddress(userEOA)) {
+         const ownerNorm = cardOwner && ethers.isAddress(cardOwner) ? ethers.getAddress(cardOwner) : '';
+         const isOwner =
+           (!!ownerNorm && ownerNorm === ethers.getAddress(userEOA)) ||
+           (!!userAA &&
+             ethers.isAddress(userAA) &&
+             !!ownerNorm &&
+             ownerNorm === ethers.getAddress(userAA));
+         if (!isOwner) {
+           const ok = await isCardAdmin(cardAddress, userEOA);
+           if (ok) parentAdmin = ethers.getAddress(userEOA);
+         }
+       }
+
+       if (myGen !== routingHydrateAsyncGenRef.current) return;
+       const [, metadatas] = (await card.getAdminSubordinatesWithMetadata(parentAdmin)) as [string[], string[]];
+       const picked = pickTierRoutingFromSubordinateMetadatas(
+         (metadatas ?? []).map((m) => (typeof m === 'string' ? m : '')),
+         cardAddress
+       );
+
+       if (myGen !== routingHydrateAsyncGenRef.current) return;
+       routingModalHydratedFromChainRef.current = true;
+
+       if (picked) {
+         setRoutingTaxRatePercent(picked.taxRatePercent);
+         setTempDiscounts((prev) => {
+           const next = { ...prev };
+           for (const ct of tiersSnapshot) {
+             const id = `chain-tier-${ct.index}`;
+             if (picked.tierDiscountsById[id] !== undefined) next[id] = picked.tierDiscountsById[id]!;
+             else if (next[id] === undefined) next[id] = 0;
+           }
+           return next;
+         });
+       } else {
+         setTempDiscounts((prev) => {
+           const next = { ...prev };
+           for (const ct of tiersSnapshot) {
+             const id = `chain-tier-${ct.index}`;
+             if (next[id] === undefined) next[id] = 0;
+           }
+           return next;
+         });
+       }
+     } catch {
+       if (myGen !== routingHydrateAsyncGenRef.current) return;
+       routingModalHydratedFromChainRef.current = true;
+       setTempDiscounts((prev) => {
+         const next = { ...prev };
+         for (const ct of tiersSnapshot) {
+           const id = `chain-tier-${ct.index}`;
+           if (next[id] === undefined) next[id] = 0;
+         }
+         return next;
+       });
+     }
+   })();
+
+   return () => {
+     routingHydrateAsyncGenRef.current += 1;
+   };
+ }, [
+   isConfigModalOpen,
+   configAllianceId,
+   routingModalChainTiers,
+   routingModalTiersLoading,
+   routingModalTiersError,
+   profiles,
+   myAddress,
+ ]);
 
  const clearCardCacheAndRetry = useCallback(() => {
    try {
@@ -1817,11 +2090,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      const parentAdmin = isOwner ? ethers.ZeroAddress : ethers.getAddress(userEOA);
      const [subordinates, metadatas] = (await card.getAdminSubordinatesWithMetadata(parentAdmin)) as [string[], string[]];
      const currencyType = routingModalChainCurrencyType ?? 0;
+     const taxClamped = Math.min(100, Math.max(0, Number(routingTaxRatePercent)));
+     const taxRatePercent = Number.isFinite(taxClamped) ? Math.round(taxClamped * 100) / 100 : 0;
      const tierPayload: TierRoutingDiscountsV1 = {
        schemaVersion: 1,
        infrastructureCard: ethers.getAddress(cardAddress),
        currencyType,
        updatedAt: Math.floor(Date.now() / 1000),
+       taxRatePercent,
        tiers: routingModalChainTiers.map((ct) => {
          const tid = `chain-tier-${ct.index}`;
          return {
@@ -1897,6 +2173,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  }, [
    configAllianceId,
    tempDiscounts,
+   routingTaxRatePercent,
    routingModalChainTiers,
    routingModalCardTiersMeta,
    routingModalChainCurrencyType,
@@ -2163,6 +2440,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  const feederAccountRef = useRef('');
  /** Session dedup for BeamioIndexerDiamond WSS `TransactionRecordSynced` (by txId hex) */
  const indexerInboundWssSeenRef = useRef<Set<string>>(new Set());
+ /** Detect transition into Transactions tab to invalidate indexer cache (same render cycle as tx fetch effect). */
+ const prevActiveTabForTxRef = useRef<string>(activeTab);
  feederAccountRef.current = feederEoa ?? '';
  useEffect(() => {
    if (!BIZ_OVERVIEW_FEEDER_TABS.has(activeTab)) return;
@@ -2500,10 +2779,17 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  useEffect(() => {
    if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
      setIndexerTransactions([]);
+     setIndexerTransactionsLoading(false);
+     setIndexerTransactionsRefreshing(false);
      return;
    }
    let cancelled = false;
-   setIndexerTransactionsLoading(true);
+   const hadLocalList = indexerTxListCountRef.current > 0;
+   if (hadLocalList) {
+     setIndexerTransactionsRefreshing(true);
+   } else {
+     setIndexerTransactionsLoading(true);
+   }
    const userAA = profiles?.[0]?.aaAccount?.trim();
    const userAAAddr = userAA && ethers.isAddress(userAA) ? ethers.getAddress(userAA) : '';
    const txKey = `eoa:${currentEoa}:indexer:tx:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdminAddress.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
@@ -2659,15 +2945,61 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
      const merged =
        eoaKey ? mergeRenumberTxDisplays(mapped, loadInboundTxDisplayCache(eoaKey)) : mapped;
-     setIndexerTransactions(merged);
+     let slideKeysForAnim: string[] = [];
+     setIndexerTransactions((prev) => {
+       const prevIds = new Set(prev.map((t) => String(t.indexerTxId || t.id)));
+       const firstOldIdx = merged.findIndex((m) => prevIds.has(String(m.indexerTxId || m.id)));
+       let newAtTop: TxDisplayRow[] = [];
+       if (prev.length > 0) {
+         if (firstOldIdx < 0) {
+           newAtTop = merged.filter((m) => !prevIds.has(String(m.indexerTxId || m.id)));
+         } else if (firstOldIdx > 0) {
+           newAtTop = merged.slice(0, firstOldIdx);
+         }
+       }
+       slideKeysForAnim = newAtTop.map((t) => String(t.indexerTxId || t.id));
+       return merged;
+     });
+     if (slideKeysForAnim.length > 0) {
+       setTxSlideInKeys(slideKeysForAnim);
+       window.setTimeout(() => setTxSlideInKeys([]), 880);
+     }
      if (eoaKey) saveInboundTxDisplayCache(eoaKey, merged);
    }).catch(() => {
-     if (!cancelled) setIndexerTransactions([]);
+     if (!cancelled) {
+       setIndexerTransactions((p) => (p.length > 0 ? p : []));
+     }
    }).finally(() => {
-     if (!cancelled) setIndexerTransactionsLoading(false);
+     if (!cancelled) {
+       setIndexerTransactionsLoading(false);
+       setIndexerTransactionsRefreshing(false);
+     }
    });
    return () => { cancelled = true; };
- }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa, overviewRefreshTrigger]);
+ }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa, overviewRefreshTrigger, txListPollTick]);
+
+ /** Entering Transactions: Overview may already reflect new Base stats while indexer list was cached or never polled on this tab. */
+ useEffect(() => {
+   const enteredTx = activeTab === 'Transactions' && prevActiveTabForTxRef.current !== 'Transactions';
+   prevActiveTabForTxRef.current = activeTab;
+   if (!enteredTx) return;
+   if (currentEoa && ethers.isAddress(currentEoa)) {
+     invalidateFetchCache(`eoa:${currentEoa}:indexer:tx:`);
+   }
+   setTxListPollTick((n) => n + 1);
+ }, [activeTab, currentEoa]);
+
+ /** While on Transactions, periodically invalidate indexer tx cache so the list catches new records without relying only on WSS. */
+ useEffect(() => {
+   if (activeTab !== 'Transactions') return;
+   const id = window.setInterval(() => {
+     if (currentEoa && ethers.isAddress(currentEoa)) {
+       invalidateFetchCache(`eoa:${currentEoa}:indexer:tx:`);
+     }
+     setTxListPollTick((n) => n + 1);
+   }, 30_000);
+   return () => window.clearInterval(id);
+ }, [activeTab, currentEoa]);
 
  /** WSS: CoNET BeamioIndexerDiamond `TransactionRecordSynced` → inbound rows for user EOA/AA (payer|payee|topAdmin|subordinate) */
  useEffect(() => {
@@ -2761,12 +3093,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    };
  }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa]);
 
- /** Resolve payer / payee beamioTag for In-Store Top-Up Customer & Source (searchUsername + fetchWithCache) */
+ /** Resolve payer / payee beamioTag for Customer & Source (searchUsername + fetchWithCache). Includes Charge/Tip, not only Top-Up — AA payer may differ from profile accounts.address. */
  useEffect(() => {
    if (activeTab !== 'Transactions') return;
-   const topUps = indexerTransactions.filter((t) => t.type.includes('Top-Up'));
+   const tagSourceTxs = indexerTransactions.filter(
+     (t) => t.type.includes('Top-Up') || t.type === 'Charge' || t.type === 'Tip'
+   );
    const addrs = new Set<string>();
-   for (const tx of topUps) {
+   for (const tx of tagSourceTxs) {
      const raw = tx.raw as Record<string, unknown>;
      const payer = typeof raw.payer === 'string' ? raw.payer : '';
      const payee = typeof raw.payee === 'string' ? raw.payee : '';
@@ -2784,7 +3118,9 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              const ck = ethers.getAddress(lower);
              const res = await searchUsername(ck);
              const results = (res?.results ?? []) as Array<{ address?: string; username?: string; accountName?: string }>;
-             const peer = results.find((r) => (r?.address ?? '').toLowerCase() === lower) ?? results[0];
+             const exact = results.find((r) => (r?.address ?? '').toLowerCase() === lower);
+             const withName = results.find((r) => !!(r?.username ?? r?.accountName));
+             const peer = exact ?? withName ?? results[0];
              const u = peer?.username ?? peer?.accountName;
              if (!u) return '';
              return u.startsWith('@') ? u : `@${u}`;
@@ -3624,6 +3960,16 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
               </div>
 
               <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
+                {indexerTransactionsRefreshing ? (
+                  <div
+                    className="flex items-center justify-center gap-2 py-2.5 px-4 border-b border-slate-100/90 text-[12px] font-medium text-slate-600 bg-slate-50/50"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 text-[#1562f0]" aria-hidden />
+                    <span>Updating transactions…</span>
+                  </div>
+                ) : null}
                 <table className="w-full min-w-[1000px]">
                    <thead>
                      <tr className="bg-slate-50/50 text-left border-b border-slate-100/80">
@@ -3634,8 +3980,9 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                        <th className="px-8 py-5 text-[13px] font-medium text-slate-500 text-right">Net Value (CAD Base)</th>
                      </tr>
                    </thead>
+                   <LayoutGroup id="merchant-os-tx-table">
                    <tbody className="divide-y divide-slate-100/80">
-                      {indexerTransactionsLoading ? (
+                      {indexerTransactionsLoading && indexerTransactions.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="px-8 py-16 text-center text-slate-500">
                             <span className="inline-flex items-center gap-2">
@@ -3660,8 +4007,18 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                       filteredTx.map((tx, idx) => {
                         const isVaultTerminal = tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault';
                         const txTotalCAD = calculateTxNetValueCAD(tx);
+                        const rowKey = String(tx.indexerTxId || tx.id || `idx-${idx}`);
+                        const slideIn = txSlideInKeys.includes(rowKey);
                         return (
-                        <tr key={tx.indexerTxId || tx.id || idx} className="hover:bg-slate-50/50 transition-colors group">
+                        <motion.tr
+                          key={rowKey}
+                          layout="position"
+                          initial={slideIn ? { x: 120, opacity: 0.65 } : false}
+                          animate={{ x: 0, opacity: 1 }}
+                          transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.88 }}
+                          style={{ display: 'table-row' }}
+                          className="hover:bg-slate-50/50 transition-colors group"
+                        >
                            <td className="px-8 py-5 align-middle">
                              <div className="flex items-center gap-4">
                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
@@ -3676,7 +4033,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                </div>
                                <div>
                                  <div className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.type}</div>
-                                 {tx.type.includes('Top-Up') ? (
+                                 {tx.type.includes('Top-Up') || tx.type === 'Charge' ? (
                                    <div className="text-[13px] text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
                                      <span className="whitespace-nowrap">
                                        TX-{indexerTxIdBodyPrefix6(tx.indexerTxId)} • {tx.time}
@@ -3725,7 +4082,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
 
                            <td className="px-6 py-5 align-middle">
                              <div className="flex flex-col gap-1.5">
-                               {tx.type.includes('Top-Up') ? (
+                               {tx.type.includes('Top-Up') || (tx.type === 'Charge' && !isVaultTerminal) ? (
                                  (() => {
                                    const raw = tx.raw as Record<string, unknown>;
                                    const payerAddr =
@@ -3741,7 +4098,20 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                    const payerTag = payerLower ? txReportingBeamioTagByAddress[payerLower] : '';
                                    const payeeTag = payeeLower ? txReportingBeamioTagByAddress[payeeLower] : '';
                                    const payerHandle = payerTag ? payerTag.replace(/^@/, '') : '';
-                                   const useNfcSubtitle = payerHandle.startsWith('CashTreeDamo_');
+                                   let displayJsonSource = ''
+                                   try {
+                                     const dj = raw.displayJson
+                                     if (typeof dj === 'string' && dj.trim()) {
+                                       const o = JSON.parse(dj) as { source?: string }
+                                       if (typeof o?.source === 'string') displayJsonSource = o.source.toLowerCase()
+                                     }
+                                   } catch { /* ignore */ }
+                                   const beamioTagPlain = tx.beamioTag ? tx.beamioTag.replace(/^@/, '') : ''
+                                   const useNfcSubtitle = tx.type.includes('Top-Up')
+                                     ? payerHandle.startsWith('CashTreeDamo_')
+                                     : tx.source === 'NFC' ||
+                                       displayJsonSource === 'container' ||
+                                       /nfc/i.test(beamioTagPlain)
                                    return (
                                      <>
                                        <div className="flex items-center gap-2 flex-wrap">
@@ -3749,6 +4119,8 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                            <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{payerTag}</span>
                                          ) : payerAddr ? (
                                            <AddressCapsule address={payerAddr} className="bg-slate-100 border-slate-200 text-slate-700" />
+                                         ) : tx.type === 'Charge' ? (
+                                           <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
                                          ) : (
                                            <span className="font-medium text-[15px] text-slate-500">—</span>
                                          )}
@@ -3769,6 +4141,8 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                            <span className="whitespace-nowrap">{payeeTag}</span>
                                          ) : payeeAddr ? (
                                            <AddressCapsule address={payeeAddr} className="bg-slate-50 border-slate-200 text-slate-600 text-[12px]" />
+                                         ) : tx.type === 'Charge' && tx.terminal ? (
+                                           <span className="whitespace-nowrap">{tx.terminal}</span>
                                          ) : (
                                            <span className="text-slate-400">—</span>
                                          )}
@@ -3950,10 +4324,11 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                {tx.status === 'Pending' ? 'Pending Settlement' : tx.tip > 0 ? `Incl. $${(tx.tip / cadOracle).toFixed(2)} Tip` : isVaultTerminal ? 'Treasury TX' : 'No Tip'}
                              </div>
                            </td>
-                        </tr>
+                        </motion.tr>
                         );
                       }))}
                    </tbody>
+                   </LayoutGroup>
                 </table>
               </div>
            </div>
@@ -5190,6 +5565,40 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                  </div>
                ) : (
                  <div className="space-y-6">
+                   {useOnChainTiers && hasTiers ? (
+                     <div className="bg-white border border-slate-200 rounded-[20px] p-5 shadow-sm">
+                       <label htmlFor="biz-routing-tax-rate" className="block text-[13px] font-semibold text-slate-700 mb-2">
+                         Registered tax rate (%)
+                       </label>
+                       <p className="text-[12px] text-slate-500 mb-3 leading-relaxed">
+                         Stored in each Smart Terminal&apos;s on-chain admin metadata as{' '}
+                         <span className="font-mono text-slate-600">tierRoutingDiscounts.taxRatePercent</span> for the device to apply at checkout.
+                       </p>
+                       <input
+                         id="biz-routing-tax-rate"
+                         type="number"
+                         inputMode="decimal"
+                         min={0}
+                         max={100}
+                         step={0.01}
+                         autoComplete="off"
+                         enterKeyHint="done"
+                         value={Number.isFinite(routingTaxRatePercent) ? routingTaxRatePercent : 0}
+                         onChange={(e) => {
+                           const raw = e.target.value;
+                           if (raw === '' || raw === '-') {
+                             setRoutingTaxRatePercent(0);
+                             return;
+                           }
+                           const n = Number(raw);
+                           if (!Number.isFinite(n)) return;
+                           setRoutingTaxRatePercent(Math.min(100, Math.max(0, n)));
+                         }}
+                         className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] font-semibold tabular-nums text-slate-900 outline-none focus:border-[#1562f0] focus:ring-2 focus:ring-[#1562f0]/20 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                       />
+                       <p className="text-[11px] text-slate-400 mt-2">Default 0%. Range 0–100.</p>
+                     </div>
+                   ) : null}
                    {tiersForUi.map((tier) => (
                      <div key={tier.id} className="bg-white border border-slate-200 rounded-[20px] p-5 shadow-sm">
                        <div className="mb-4 flex items-center gap-3">
@@ -5337,11 +5746,11 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
      {/* --- PRODUCT MARKET DETAIL MODAL --- */}
      {selectedProduct && (
        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-6 sm:py-12 font-sans">
-         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedProduct(null)}></div>
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={closeMarketProductModal}></div>
          <div className="relative bg-[#0f1115] w-full max-w-[500px] h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 border border-white/10">
             <div className={`relative h-48 sm:h-56 shrink-0 bg-gradient-to-b ${selectedProduct === 'fuel' ? 'from-orange-900/40' : selectedProduct === 'starter' || selectedProduct === 'custom_fuel' ? 'from-emerald-900/40' : 'from-blue-900/40'} to-[#0f1115]`}>
               <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none" />
-              <button type="button" onClick={() => setSelectedProduct(null)} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={22} /></button>
+              <button type="button" onClick={closeMarketProductModal} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={22} /></button>
               <div className="absolute bottom-6 left-8 right-8">
                  <span className={`inline-block px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase mb-3 border ${
                     selectedProduct === 'fuel' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
@@ -5359,7 +5768,48 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                  </p>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-8 pt-4 pb-32 scrollbar-hide space-y-8">
+            {selectedProduct === 'custom_fuel' && (marketRefuelProcessing || marketRefuelSuccess !== null) ? (
+              <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 min-h-[240px]">
+                {marketRefuelProcessing ? (
+                  <div className="flex flex-col items-center justify-center gap-4">
+                    <RefreshCw size={48} className="animate-spin text-orange-500" />
+                    <p className="text-[15px] font-semibold text-slate-300">Processing refuel...</p>
+                    <p className="text-[12px] text-slate-500">Please wait</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
+                      <Check size={32} strokeWidth={3} className="text-green-500" />
+                    </div>
+                    <p className="text-[18px] font-black text-green-400">Success</p>
+                    {marketRefuelSuccess != null && marketRefuelSuccess.startsWith('0x') && (
+                      <a
+                        href={`https://basescan.org/tx/${marketRefuelSuccess}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[12px] font-mono text-[#1562f0] hover:bg-white/10 transition-colors"
+                      >
+                        {marketRefuelSuccess.slice(0, 10)}...{marketRefuelSuccess.slice(-8)}
+                        <ExternalLink size={14} strokeWidth={2.5} />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={resetMarketRefuelSuccess}
+                      className="mt-2 text-[13px] font-semibold text-orange-500 hover:text-orange-400"
+                    >
+                      Refuel Again
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+            <div
+              className={`flex-1 overflow-y-auto p-8 pt-4 scrollbar-hide space-y-8 ${
+                selectedProduct === 'custom_fuel' ? 'pb-44' : 'pb-32'
+              }`}
+            >
               <div className="flex gap-4">
                 <div className="flex-1 bg-white/5 rounded-[24px] p-5 flex items-center gap-4 border border-white/5">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${
@@ -5419,29 +5869,58 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                   )}
                 </div>
               </div>
+              {selectedProduct === 'custom_fuel' && marketRefuelError ? (
+                <div className="rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3 text-[13px] font-medium text-red-300">
+                  {marketRefuelError}
+                </div>
+              ) : null}
             </div>
+            {selectedProduct === 'custom_fuel' ? (
+              <div className="absolute bottom-0 inset-x-0 p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent pt-32	flex flex-col gap-4 ">
+                <div className="flex items-center justify-between w-full">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Due</p>
+                    <div className="flex items-baseline gap-1.5">
+                      <p className="text-[32px] font-bold text-white leading-none">{customFuelAmount || '0'}</p>
+                      <span className="text-[14px] font-medium text-slate-500">USDC</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleMarketPurchase()}
+                  disabled={marketRefuelProcessing || !Number.isFinite(marketCustomFuelUsdc) || marketCustomFuelUsdc < 1}
+                  className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-600 disabled:text-slate-400 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+                >
+                  <Fuel size={20} fill="currentColor" strokeWidth={1.5} /> Refuel Now
+                </button>
+              </div>
+            ) : (
             <div className="absolute bottom-0 inset-x-0 p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent pt-12 flex items-center justify-between border-t border-white/5">
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Due</p>
                 <div className="flex items-baseline gap-1.5">
                   <p className="text-[32px] font-bold text-white leading-none">
-                    {selectedProduct === 'fuel' ? '499' : selectedProduct === 'starter' ? '1' : selectedProduct === 'custom_fuel' ? customFuelAmount : '999'}
+                    {selectedProduct === 'fuel' ? '499' : selectedProduct === 'starter' ? '1' : '999'}
                   </p>
                   <span className="text-[14px] font-medium text-slate-500">USDC</span>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={handleMarketPurchase}
+                onClick={() => void handleMarketPurchase()}
                 className={`flex items-center gap-2 px-8 py-4 rounded-[16px] font-semibold text-[16px] text-white transition-all shadow-lg active:scale-95 ${
                  selectedProduct === 'fuel' ? 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/20' :
-                 selectedProduct === 'starter' || selectedProduct === 'custom_fuel' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' :
+                 selectedProduct === 'starter' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' :
                  'bg-[#1562f0] hover:bg-blue-500 shadow-[#1562f0]/20'
               }`}
               >
-                {selectedProduct === 'fuel' ? 'Secure Fuel' : selectedProduct === 'starter' ? 'Activate AA' : selectedProduct === 'custom_fuel' ? 'Refill Fuel' : 'Secure Node'} <ChevronRight size={18} />
+                {selectedProduct === 'fuel' ? 'Secure Fuel' : selectedProduct === 'starter' ? 'Activate AA' : 'Secure Node'} <ChevronRight size={18} />
               </button>
             </div>
+            )}
+              </>
+            )}
          </div>
        </div>
      )}

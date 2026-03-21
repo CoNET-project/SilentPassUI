@@ -89,14 +89,14 @@ export const getBalance = async (address: string) => {
 			withBaseRpc((p) => p.getBalance(address)),
 			getOracle(),
 		])
-		if (oracle) {
-			// getBalanceProcess 期望 oracle.eth.usdc（USDC→USD 汇率）
-			const oracleForBalance = { ...oracle, eth: { usdc: oracle.usdc ?? '1' } }
-			return {
-				eth: ethers.formatUnits(eth as bigint, 18).toString(),
-				usdc: ethers.formatUnits(usdc as bigint, 6).toString(),
-				oracle: oracleForBalance,
-			}
+		// Always return USDC/ETH once RPC succeeded. Oracle is only for FX metadata; if getOracle() fails,
+		// returning null here used to drop a valid balanceOf — Vault / Wallets showed wrong empty or stale values.
+		const oracleSafe = oracle ?? { usdc: '1' }
+		const oracleForBalance = { ...oracleSafe, eth: { usdc: oracleSafe.usdc ?? '1' } }
+		return {
+			eth: ethers.formatUnits(eth as bigint, 18).toString(),
+			usdc: ethers.formatUnits(usdc as bigint, 6).toString(),
+			oracle: oracleForBalance,
 		}
 	} catch (err) {
 		if (isRpcQuotaOrNetworkError(err)) reportRpcFailure()
@@ -198,6 +198,22 @@ export const signAndClaimBUnits = async (
 		return { success: true, txHash: data.txHash }
 	} catch (e) {
 		return { success: false, error: (e as Error)?.message ?? 'Claim failed' }
+	}
+}
+
+/** 提交 Refuel B-Unit 请求到 API。Cluster 预检后转发 Master，Master 提交 BaseTreasury.purchaseBUnitWith3009Authorization。 */
+export const purchaseBUnitFromBase = async (payload: import('./BeamioCard').IBUnitRefuelPayload): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+	try {
+		const res = await fetch(`${beamioApi}/api/purchaseBUnitFromBase`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		})
+		const data = await res.json().catch(() => ({}))
+		if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
+		return { success: true, txHash: data.txHash }
+	} catch (e) {
+		return { success: false, error: (e as Error)?.message ?? 'Refuel failed' }
 	}
 }
 

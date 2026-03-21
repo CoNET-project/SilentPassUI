@@ -22,11 +22,12 @@ import {
   signExecuteForOwner,
   getCardMetadataFromApi,
   getCardMetadataFrom1155Json,
+  getNftMetadataFromApi,
   signBUnitRefuel3009,
   type CardTierMetadata,
 } from '@/services/BeamioCard';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect, CONET_MAINNET_WSS } from '@/utils/constants';
-import { BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
+import { BASE_AA_FACTORY, BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { generateRegisterPOSNonce, signRemovePOS, removePOSApi } from '@/services/merchantPOS';
 import {
@@ -153,8 +154,8 @@ const BeamioCapsule = ({ item, fallbackAddress, className = '' }: { item: Beamio
   return <span className="text-[13px] text-white/60">Unavailable</span>
 }
 
-/** Display row for Transactions table */
-type TxDisplayRow = {
+/** Display row for Transactions table (without nested tip to avoid recursive type) */
+type TxDisplayRowCore = {
   /** Receipt row label e.g. TX-1001 */
   id: string
   /** Indexer `Transaction.id` (bytes32 hex, lowercase). Unique for localStorage keys e.g. `${BIZ_CACHE_PREFIX}topup:${indexerTxId}` */
@@ -186,6 +187,11 @@ type TxDisplayRow = {
    * `route` is [] when not returned by paged facet ABI. Shown inside modal with the rest of this row.
    */
   raw: Record<string, unknown>
+}
+
+/** Parent Charge may embed merged TX_TIP line (readme `originalPaymentHash` → parent `id`) */
+type TxDisplayRow = TxDisplayRowCore & {
+  tipRaw?: TxDisplayRowCore
 }
 
 /** Normalized row after indexer page fetch or WSS + getTransactionFullByTxId → map to TxDisplayRow */
@@ -349,9 +355,10 @@ const INDEXER_ASSET_STATS_ABI = [
   `function getAssetTransactionsBySubordinateAndCurrentPeriodOffsetAndAccountModePaged(address asset, address subordinate, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
 ] as const
 
-/** BeamioIndexerDiamond ActionFacet: getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged (7 params, no chainIdFilter) */
+/** BeamioIndexerDiamond ActionFacet: account + topAdmin ledger (topAdmin 列表含 route 仅为 USDC 的 TX_TIP，不经由卡 asset 索引) */
 const INDEXER_ACCOUNT_ABI = [
   `function getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
+  `function getTopAdminTransactionsByCurrentPeriodOffsetAndAccountModePaged(address topAdmin, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
 ] as const
 
 const CHAIN_ID_FILTER_ALL = ethers.MaxUint256
@@ -398,8 +405,10 @@ function overviewPeriodConsumptionCaption(tf: string): string {
       return "Today's Consumption"
   }
 }
-/** keccak256("merchant_pay:tip_updated") - tip transactions */
+/** keccak256("merchant_pay:tip_updated") - legacy tip transactions */
 const TX_MERCHANT_PAY_TIP_UPDATED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:tip_updated'))
+/** keccak256("TX_TIP") - NFC Container / Charge 独立小费行（与 x402sdk MemberCard 一致） */
+const TX_TIP_LEDGER_CATEGORY = ethers.keccak256(ethers.toUtf8Bytes('TX_TIP'))
 const TX_MERCHANT_PAY_CONFIRMED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:confirmed'))
 const TX_CATEGORY_ZERO = ethers.ZeroHash
 
@@ -949,7 +958,9 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[]): TxDisplayR
   return rows.map((tx, idx) => {
     const bUnits = Number(tx.bServiceUnits6 ?? '0') / 1_000_000
     const cat = String(tx.txCategory ?? '')
-    const isTip = cat === TX_MERCHANT_PAY_TIP_UPDATED
+    const catLower = cat.toLowerCase()
+    const isTip =
+      cat === TX_MERCHANT_PAY_TIP_UPDATED || catLower === TX_TIP_LEDGER_CATEGORY.toLowerCase()
     const isTopUp = INDEXER_TX_TOPUP_CATEGORIES.has(cat as `0x${string}`)
     const type: TxDisplayRow['type'] = isTip ? 'Tip' : isTopUp ? 'In-Store Top-Up' : 'Charge'
     const total6 = Number(tx.finalRequestAmountUSDC6 ?? '0') / 1_000_000
@@ -960,7 +971,9 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[]): TxDisplayR
       if (tx.displayJson) display = JSON.parse(tx.displayJson) as typeof display
     } catch { /* ignore */ }
     const handle = display.handle?.replace(/^@/, '') ? `@${display.handle!.replace(/^@/, '')}` : null
-    const source: 'APP' | 'NFC' = (display.source ?? '').toLowerCase().includes('nfc') ? 'NFC' : 'APP'
+    const srcLower = (display.source ?? '').toLowerCase()
+    const source: 'APP' | 'NFC' =
+      srcLower.includes('nfc') || srcLower === 'container' || srcLower === 'open-container' ? 'NFC' : 'APP'
     const terminal = display.terminal ?? (display.handle ? display.handle : '—')
     const d = new Date(Number(tx.timestamp ?? 0) * 1000)
     const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -1023,6 +1036,64 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[]): TxDisplayR
   })
 }
 
+function txDisplayRowTimestampSec(r: TxDisplayRow): number {
+  try {
+    return Number(BigInt(String((r.raw as { timestamp?: string }).timestamp ?? '0')))
+  } catch {
+    return 0
+  }
+}
+
+/** Drop `tipRaw` for nesting under parent (TX_TIP child row). */
+function txDisplayRowWithoutTipRaw(r: TxDisplayRow): TxDisplayRowCore {
+  const { tipRaw: _t, ...rest } = r
+  return rest
+}
+
+/**
+ * TX_TIP rows: `originalPaymentHash` = parent main payment `id` (readme).
+ * Merge into parent Charge: set `tipRaw`, `tip`, `total` = subtotal + tip; remove standalone tip rows.
+ */
+function mergeTipRowsIntoParentCharges(rows: TxDisplayRow[]): TxDisplayRow[] {
+  const zero = ethers.ZeroHash.toLowerCase()
+  const charges = rows.filter((r) => r.type === 'Charge')
+  const tips = rows.filter((r) => r.type === 'Tip')
+  const rest = rows.filter((r) => r.type !== 'Charge' && r.type !== 'Tip')
+  const absorbedTipKeys = new Set<string>()
+  const mergedCharges: TxDisplayRow[] = []
+
+  for (const p of charges) {
+    const pid = p.indexerTxId.toLowerCase()
+    const matching = tips.filter((t) => {
+      const oph = (t.originalPaymentHash ?? '').toLowerCase().trim()
+      return oph && oph !== zero && oph === pid
+    })
+    if (matching.length === 0) {
+      mergedCharges.push(p)
+      continue
+    }
+    for (const t of matching) absorbedTipKeys.add(t.indexerTxId.toLowerCase())
+    const tipTotalUSDC = matching.reduce((s, t) => s + (Number.isFinite(t.usdcAmount) ? t.usdcAmount : 0), 0)
+    const [primaryTip] = [...matching].sort((a, b) => txDisplayRowTimestampSec(b) - txDisplayRowTimestampSec(a))
+    mergedCharges.push({
+      ...p,
+      tipRaw: txDisplayRowWithoutTipRaw(primaryTip),
+      tip: tipTotalUSDC,
+      total: p.subtotal + tipTotalUSDC,
+    })
+  }
+
+  const orphanTips = tips.filter((t) => !absorbedTipKeys.has(t.indexerTxId.toLowerCase()))
+  const combined = [...rest, ...mergedCharges, ...orphanTips]
+  combined.sort((a, b) => {
+    const ta = txDisplayRowTimestampSec(a)
+    const tb = txDisplayRowTimestampSec(b)
+    if (tb !== ta) return tb - ta
+    return b.indexerTxId.localeCompare(a.indexerTxId)
+  })
+  return combined
+}
+
 function mergeRenumberTxDisplays(fetched: TxDisplayRow[], cachedInbound: TxDisplayRow[]): TxDisplayRow[] {
   const byId = new Map<string, TxDisplayRow>()
   for (const r of fetched) byId.set(r.indexerTxId.toLowerCase(), r)
@@ -1082,6 +1153,198 @@ function beamioFiatCurrencyLabel(code: unknown): string {
   const n = typeof code === 'number' && Number.isFinite(code) ? code : Number(code)
   if (!Number.isFinite(n) || n < 0 || n >= BEAMIO_FIAT_CURRENCY_LABELS.length) return 'CAD'
   return BEAMIO_FIAT_CURRENCY_LABELS[n]
+}
+
+/** `TransactionMeta.discountRateBps` → display percent (1000 bps = 10%). Returns null if absent or zero. */
+function discountRateBpsToPercentOffLabel(bpsRaw: unknown): string | null {
+  const n = typeof bpsRaw === 'bigint' ? Number(bpsRaw) : typeof bpsRaw === 'string' ? Number.parseInt(bpsRaw, 10) : Number(bpsRaw)
+  if (!Number.isFinite(n) || n <= 0) return null
+  const pct = n / 100
+  if (!Number.isFinite(pct) || pct <= 0) return null
+  if (Number.isInteger(pct)) return String(pct)
+  const rounded = Math.round(pct * 10) / 10
+  return String(rounded).replace(/\.0$/, '')
+}
+
+const BEAMIO_USER_CARD_OWNERSHIP_ABI = [
+  'function getOwnership(address user) view returns (uint256 pt, tuple(uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
+  'function getOwnershipByEOA(address userEOA) view returns (uint256 pt, tuple(uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
+  'function activeMembershipId(address user) view returns (uint256)',
+  'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
+] as const
+
+function normalizeNftBackgroundHex(input: string | undefined | null): string | null {
+  if (input == null || typeof input !== 'string') return null
+  const s = input.trim()
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s
+  if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+    const h = s.slice(1)
+    return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`
+  }
+  return null
+}
+
+async function readBeamioUserCardTiersLength(card: ethers.Contract): Promise<number> {
+  const c = card as ethers.Contract & { tiers: (i: bigint) => Promise<unknown> }
+  let n = 0
+  for (let i = 0; i < 64; i++) {
+    try {
+      await c.tiers(BigInt(i))
+      n = i + 1
+    } catch {
+      break
+    }
+  }
+  return n
+}
+
+/** Matches BeamioUserCard `_findBestValidMembership`: max `tiers[tierIdx].minUsdc6` among trackable NFTs. */
+async function pickInfraTierTokenIdByMaxMinUsdc6(
+  card: ethers.Contract,
+  nfts: readonly { tokenId: bigint; tierIndexOrMax: bigint; isExpired: boolean }[]
+): Promise<bigint | null> {
+  const MAX = ethers.MaxUint256
+  const alive = nfts.filter((n) => !n.isExpired && n.tokenId !== 0n)
+  if (alive.length === 0) return null
+  const tiersLen = await readBeamioUserCardTiersLength(card)
+  const c = card as ethers.Contract & { tiers: (i: bigint) => Promise<[bigint, bigint, bigint, boolean]> }
+  let bestId: bigint | null = null
+  let bestMin = -1n
+  let fallbackId: bigint | null = null
+  for (const n of alive) {
+    const tierIdx = n.tierIndexOrMax
+    if (tierIdx === MAX || tierIdx >= BigInt(tiersLen)) {
+      if (fallbackId === null) fallbackId = n.tokenId
+      continue
+    }
+    let minU: bigint
+    try {
+      const row = await c.tiers(tierIdx)
+      minU = BigInt(row[0].toString())
+    } catch {
+      continue
+    }
+    if (bestId === null || minU > bestMin) {
+      bestId = n.tokenId
+      bestMin = minU
+    }
+  }
+  if (bestId != null) return bestId
+  return fallbackId
+}
+
+const BEAMIO_AA_FACTORY_ABI = ['function beamioAccountOf(address) view returns (address)'] as const
+
+/** Same account the card uses for active membership: payer AA, or EOA → primary AA. */
+async function resolveMembershipAccountForCard(
+  payerAddress: string,
+  provider: ethers.Provider,
+  isContract: boolean
+): Promise<string | null> {
+  const norm = ethers.getAddress(payerAddress)
+  if (isContract) return norm
+  try {
+    const factory = new ethers.Contract(BASE_AA_FACTORY, BEAMIO_AA_FACTORY_ABI, provider)
+    const aa = await factory.beamioAccountOf(norm)
+    const a = typeof aa === 'string' ? aa : String(aa)
+    if (!a || !ethers.isAddress(a) || ethers.getAddress(a) === ethers.ZeroAddress) return null
+    return ethers.getAddress(a)
+  } catch {
+    return null
+  }
+}
+
+async function resolveInfraTierTokenIdForPayer(
+  payerAddress: string,
+  provider: ethers.Provider,
+  cardAddress: string,
+  isContract: boolean,
+  nfts: { tokenId: bigint; tierIndexOrMax: bigint; isExpired: boolean }[]
+): Promise<bigint | null> {
+  const card = new ethers.Contract(cardAddress, BEAMIO_USER_CARD_OWNERSHIP_ABI, provider)
+  const acct = await resolveMembershipAccountForCard(payerAddress, provider, isContract)
+  if (acct) {
+    try {
+      const raw = await card.activeMembershipId(acct)
+      const tid = BigInt(String(raw))
+      if (tid > 0n) return tid
+    } catch {
+      /* fall through */
+    }
+  }
+  return await pickInfraTierTokenIdByMaxMinUsdc6(card, nfts)
+}
+
+function infraTierCapsulePresentation(bgHex: string | undefined): { wrap: React.CSSProperties; fg: string } {
+  const hex = bgHex ? normalizeNftBackgroundHex(bgHex) ?? undefined : undefined
+  if (!hex) {
+    return {
+      wrap: {
+        backgroundColor: 'color-mix(in srgb, rgb(16 185 129) 14%, white)',
+        borderColor: 'color-mix(in srgb, rgb(5 150 105) 32%, rgb(226 232 240))',
+        borderWidth: 1,
+        borderStyle: 'solid',
+      },
+      fg: 'rgb(6 95 70)',
+    }
+  }
+  return {
+    wrap: {
+      backgroundColor: `color-mix(in srgb, ${hex} 24%, white)`,
+      borderColor: `color-mix(in srgb, ${hex} 50%, rgb(148 163 184))`,
+      borderWidth: 1,
+      borderStyle: 'solid',
+    },
+    fg: `color-mix(in srgb, ${hex} 35%, rgb(15 23 42))`,
+  }
+}
+
+async function fetchPayerInfraTierCapsuleMeta(
+  payerAddress: string,
+  provider: ethers.Provider,
+  cardAddress: string
+): Promise<{ name: string; backgroundColor?: string } | null> {
+  const addr = ethers.getAddress(payerAddress)
+  const card = new ethers.Contract(cardAddress, BEAMIO_USER_CARD_OWNERSHIP_ABI, provider)
+  let nfts: { tokenId: bigint; tierIndexOrMax: bigint; isExpired: boolean }[] = []
+  let isContract = false
+  try {
+    const code = await provider.getCode(addr)
+    isContract = Boolean(code && code !== '0x' && code.length > 2)
+    const [, rawList] = isContract
+      ? ((await card.getOwnership(addr)) as unknown as [bigint, { tokenId: bigint; tierIndexOrMax: bigint; isExpired: boolean }[]])
+      : ((await card.getOwnershipByEOA(addr)) as unknown as [bigint, { tokenId: bigint; tierIndexOrMax: bigint; isExpired: boolean }[]])
+    nfts = (rawList ?? []).map((row) => {
+      const o = row as Record<string, unknown> | unknown[]
+      const tokenId =
+        o != null && typeof o === 'object' && !Array.isArray(o) && o.tokenId != null
+          ? BigInt(String(o.tokenId))
+          : Array.isArray(o) && o[0] != null
+            ? BigInt(String(o[0]))
+            : 0n
+      const tierIndexOrMax =
+        o != null && typeof o === 'object' && !Array.isArray(o) && o.tierIndexOrMax != null
+          ? BigInt(String(o.tierIndexOrMax))
+          : Array.isArray(o) && o[2] != null
+            ? BigInt(String(o[2]))
+            : ethers.MaxUint256
+      const isExpired =
+        o != null && typeof o === 'object' && !Array.isArray(o)
+          ? Boolean(o.isExpired)
+          : Array.isArray(o)
+            ? Boolean(o[4])
+            : false
+      return { tokenId, tierIndexOrMax, isExpired }
+    })
+  } catch {
+    return null
+  }
+  const tid = await resolveInfraTierTokenIdForPayer(addr, provider, cardAddress, isContract, nfts)
+  if (tid == null) return null
+  const meta = await getNftMetadataFromApi(cardAddress, Number(tid))
+  const name = (meta?.name ?? '').trim() || `Tier #${tid.toString()}`
+  const bg = normalizeNftBackgroundHex(meta?.backgroundColor)
+  return { name, ...(bg ? { backgroundColor: bg } : {}) }
 }
 
 /** `finalRequestAmountFiat6` is in `meta.currencyFiat`; approximate CAD using the same oracle as this page (1 CAD ≈ cadOracle USDC). Already-CAD amounts pass through. */
@@ -1326,6 +1589,10 @@ export default function MerchantOS() {
  const [rawTxJsonModal, setRawTxJsonModal] = useState<TxDisplayRow | null>(null);
  /** Transactions table: payer/payee address (lowercase) → @beamioTag from searchUsername (Top-Up / Charge / Tip) */
  const [txReportingBeamioTagByAddress, setTxReportingBeamioTagByAddress] = useState<Record<string, string>>({});
+ /** Charge payer → infrastructure card tier capsule (metadata.name + background_color from per-NFT JSON) */
+ const [chargePayerInfraTierCapsuleByPayer, setChargePayerInfraTierCapsuleByPayer] = useState<
+   Record<string, { name: string; backgroundColor?: string } | null>
+ >({});
  /** Chain-verified admin status (EOA-scoped): local cache first, chain fetch as backup (beamio-ai-onchain-fetch) */
  const isAdminTrustedCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:is-admin`;
  const [isCurrentUserCardAdmin, setIsCurrentUserCardAdmin] = useState<boolean | null>(() =>
@@ -1396,14 +1663,15 @@ export default function MerchantOS() {
  }, []);
 
  const handleMarketPurchase = useCallback(async () => {
-   if (selectedProduct === 'custom_fuel') {
+   if (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') {
      const pk = profiles?.[0]?.privateKeyArmor;
      const account = (profiles?.[0]?.keyID ?? myAddress)?.trim();
      if (!pk || !account) {
        setMarketRefuelError('Wallet not ready. Please unlock or sign in.');
        return;
      }
-     const amountHuman = String(customFuelAmount).replace(/,/g, '.').trim();
+     const amountHuman =
+       selectedProduct === 'starter' ? '1' : String(customFuelAmount).replace(/,/g, '.').trim();
      let need6: bigint;
      try {
        need6 = ethers.parseUnits(amountHuman, 6);
@@ -2979,13 +3247,42 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
       await queryAssetByTopAdmin(myAddr);
       await queryAssetBySubordinate(myAddr);
     }
+    /** TX_TIP 等仅把 USDC 记入 assetActionIds[USDC]，不会出现在 getAssetTransactions*(asset=卡)。topAdminActionIds 含全量。 */
+    const queryTopAdminLedger = async (topAdmin: string) => {
+      for (const periodOffset of [0, 1, 2]) {
+        try {
+          const [total, , , page] = await indexerAccount.getTopAdminTransactionsByCurrentPeriodOffsetAndAccountModePaged(
+            topAdmin,
+            PERIOD_DAY,
+            periodOffset,
+            0,
+            100,
+            TX_CATEGORY_ZERO,
+            ACCOUNT_MODE_ALL
+          ) as [bigint, bigint, bigint, TxRow[]]
+          addPage(page)
+          if (Number(total) <= 100) return
+        } catch {
+          return
+        }
+      }
+    }
+    await queryTopAdminLedger(effectiveAdminAddress)
+    if (userAAAddr && userAAAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase()) {
+      await queryTopAdminLedger(userAAAddr)
+    }
+    if (myAddr && myAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase() && myAddr.toLowerCase() !== userAAAddr.toLowerCase()) {
+      await queryTopAdminLedger(myAddr)
+    }
     return all.sort((a, b) => Number(BigInt(b.timestamp) - BigInt(a.timestamp))).slice(0, 50);
    }).then((rows) => {
      if (cancelled) return;
      const mapped = mapIndexerFetchedRowsToDisplay(rows);
      const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
-     const merged =
-       eoaKey ? mergeRenumberTxDisplays(mapped, loadInboundTxDisplayCache(eoaKey)) : mapped;
+     const deduped = mergeRenumberTxDisplays(mapped, eoaKey ? loadInboundTxDisplayCache(eoaKey) : []);
+     const absorbedTips = mergeTipRowsIntoParentCharges(deduped);
+     const capped = absorbedTips.slice(0, 80);
+     const merged = capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }));
      let slideKeysForAnim: string[] = [];
      setIndexerTransactions((prev) => {
        const prevIds = new Set(prev.map((t) => String(t.indexerTxId || t.id)));
@@ -3096,7 +3393,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        }
        const [display] = mapIndexerFetchedRowsToDisplay([row]);
        setIndexerTransactions((prev) => {
-         const merged = mergeRenumberTxDisplays([display], prev);
+         const deduped = mergeRenumberTxDisplays([display], prev);
+         const absorbedTips = mergeTipRowsIntoParentCharges(deduped);
+         const capped = absorbedTips.slice(0, 80);
+         const merged = capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }));
          saveInboundTxDisplayCache(eoaKey, merged);
          return merged;
        });
@@ -3174,6 +3474,42 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      );
      if (!cancelled && Object.keys(updates).length > 0) {
        setTxReportingBeamioTagByAddress((p) => ({ ...p, ...updates }));
+     }
+   })();
+   return () => {
+     cancelled = true;
+   };
+ }, [activeTab, indexerTransactions]);
+
+ /** Charge rows: resolve payer tier on `BEAMIO_USER_CARD_ASSET_ADDRESS` for Customer & Source capsule */
+ useEffect(() => {
+   if (activeTab !== 'Transactions') return;
+   const payers = new Set<string>();
+   for (const tx of indexerTransactions) {
+     if (tx.type !== 'Charge') continue;
+     const raw = tx.raw as Record<string, unknown>;
+     const payer = typeof raw.payer === 'string' ? raw.payer : '';
+     if (payer && ethers.isAddress(payer)) payers.add(ethers.getAddress(payer).toLowerCase());
+   }
+   if (payers.size === 0) return;
+   let cancelled = false;
+   void (async () => {
+     const updates: Record<string, { name: string; backgroundColor?: string } | null> = {};
+     await Promise.all(
+       [...payers].map(async (lower) => {
+         try {
+           const cacheKey = `payer:${lower}:infra:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:tier-capsule-v2`;
+           const val = await fetchWithCache(cacheKey, async () =>
+             fetchPayerInfraTierCapsuleMeta(ethers.getAddress(lower), baseRpcProviderDirect, FIXED_USER_CARD_CONTRACT_ADDRESS)
+           );
+           updates[lower] = val as { name: string; backgroundColor?: string } | null;
+         } catch {
+           updates[lower] = null;
+         }
+       })
+     );
+     if (!cancelled) {
+       setChargePayerInfraTierCapsuleByPayer((prev) => ({ ...prev, ...updates }));
      }
    })();
    return () => {
@@ -3906,16 +4242,77 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
            const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
            const calculateTxNetValueCAD = (tx: TxDisplayRow) => {
              if (tx.type.includes('Top-Up')) return tx.ctreeAmount || 0;
+             let tipCadExtra = 0
+             if (tx.type === 'Charge' && tx.tipRaw) {
+               const tr = tx.tipRaw.raw as Record<string, unknown>
+               const tipFiat = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
+               const tipMeta = parseIndexerMetaTuple(tr.meta)
+               if (tipFiat > 0) {
+                 const tipCur = beamioFiatCurrencyLabel(Number(tipMeta.currencyFiat))
+                 tipCadExtra = approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
+               } else if (tx.tipRaw.usdcAmount > 0) {
+                 tipCadExtra = tx.tipRaw.usdcAmount / cadOracle
+               }
+             }
              if (tx.type === 'Charge') {
                const raw = tx.raw as Record<string, unknown>
                const meta = parseIndexerMetaTuple(raw.meta)
                const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
                if (finalFiat > 0) {
                  const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
-                 return approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle)
+                 return approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle) + tipCadExtra
                }
+               return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0) + tipCadExtra
              }
              return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0);
+           };
+           /** Tip portion in CAD (merged Charge + tipRaw). */
+           const mergedChargeTipCad = (tx: TxDisplayRow): number => {
+             if (tx.type !== 'Charge' || !tx.tipRaw) return 0
+             const tr = tx.tipRaw.raw as Record<string, unknown>
+             const tipFiat = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
+             const tipMeta = parseIndexerMetaTuple(tr.meta)
+             if (tipFiat > 0) {
+               const tipCur = beamioFiatCurrencyLabel(Number(tipMeta.currencyFiat))
+               return approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
+             }
+             if (tx.tipRaw.usdcAmount > 0) return tx.tipRaw.usdcAmount / cadOracle
+             if (tx.tip > 0) return tx.tip / cadOracle
+             return 0
+           };
+           /**
+            * Pre–tier-discount “sticker” total in CAD (subtotal + tax + tip from NFC displayJson),
+            * so strikethrough can sit above final net when tier discount applies.
+            */
+           const chargeBreakdownStrikeCad = (tx: TxDisplayRow): number | null => {
+             if (tx.type !== 'Charge' || !tx.tipRaw) return null
+             try {
+               const raw = tx.raw as Record<string, unknown>
+               const dj = raw.displayJson
+               if (typeof dj !== 'string' || !dj.trim()) return null
+               const o = JSON.parse(dj) as {
+                 chargeBreakdown?: {
+                   requestCurrency?: string
+                   subtotalCurrencyAmount?: string
+                   taxAmountCurrencyAmount?: string
+                   tipCurrencyAmount?: string
+                 }
+               }
+               const b = o.chargeBreakdown
+               if (!b) return null
+               const sub = parseFloat(String(b.subtotalCurrencyAmount ?? '').replace(/,/g, ''))
+               const tax = parseFloat(String(b.taxAmountCurrencyAmount ?? '').replace(/,/g, ''))
+               const tip = parseFloat(String(b.tipCurrencyAmount ?? '').replace(/,/g, ''))
+               if (!Number.isFinite(sub) || !Number.isFinite(tax) || !Number.isFinite(tip)) return null
+               const sum = sub + tax + tip
+               if (!(sum > 0)) return null
+               const cur = String(b.requestCurrency ?? 'CAD').toUpperCase()
+               if (cur === 'CAD') return sum
+               if (cur === 'USD' || cur === 'USDC') return sum / cadOracle
+               return null
+             } catch {
+               return null
+             }
            };
            const filteredTx = txList.filter((tx) => {
              if (activeLedger === 'AA' && !profiles?.[0]?.aaAccount) return false;
@@ -3925,11 +4322,13 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
              const topUpShortLabel = tx.type.includes('Top-Up')
                ? `TX-${indexerTxIdBodyPrefix6(tx.indexerTxId)}`.toLowerCase()
                : '';
+             const tipRawId = tx.tipRaw?.indexerTxId?.toLowerCase() ?? ''
              const matchSearch =
                !txSearchTerm.trim() ||
                tx.id.toLowerCase().includes(q) ||
                tx.indexerTxId.toLowerCase().includes(q) ||
                indexerTxIdBodyPrefix6(tx.indexerTxId).includes(q.replace(/^0x/, '')) ||
+               (tipRawId && (tipRawId.includes(q) || indexerTxIdBodyPrefix6(tipRawId).includes(q.replace(/^0x/, '')))) ||
                (topUpShortLabel && topUpShortLabel.includes(q)) ||
                tx.hash.toLowerCase().includes(q) ||
                (tx.beamioTag && tx.beamioTag.toLowerCase().includes(q));
@@ -4083,7 +4482,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                </div>
                                <div>
                                  <div className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.type}</div>
-                                 {tx.type.includes('Top-Up') || tx.type === 'Charge' ? (
+                                 {tx.type.includes('Top-Up') || tx.type === 'Charge' || tx.type === 'Tip' ? (
                                    <div className="text-[13px] text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
                                      <span className="whitespace-nowrap">
                                        TX-{indexerTxIdBodyPrefix6(tx.indexerTxId)} • {tx.time}
@@ -4132,7 +4531,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
 
                            <td className="px-6 py-5 align-middle">
                              <div className="flex flex-col gap-1.5">
-                               {tx.type.includes('Top-Up') || (tx.type === 'Charge' && !isVaultTerminal) ? (
+                               {tx.type.includes('Top-Up') || ((tx.type === 'Charge' || tx.type === 'Tip') && !isVaultTerminal) ? (
                                  (() => {
                                    const raw = tx.raw as Record<string, unknown>;
                                    const payerAddr =
@@ -4148,6 +4547,12 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                    const payerTag = payerLower ? txReportingBeamioTagByAddress[payerLower] : '';
                                    const payeeTag = payeeLower ? txReportingBeamioTagByAddress[payeeLower] : '';
                                    const payerHandle = payerTag ? payerTag.replace(/^@/, '') : '';
+                                   const tierCap =
+                                     tx.type === 'Charge' && payerLower
+                                       ? chargePayerInfraTierCapsuleByPayer[payerLower]
+                                       : undefined;
+                                   const tierPres =
+                                     tierCap != null && tierCap.name ? infraTierCapsulePresentation(tierCap.backgroundColor) : null;
                                    let displayJsonSource = ''
                                    try {
                                      const dj = raw.displayJson
@@ -4164,16 +4569,31 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                        /nfc/i.test(beamioTagPlain)
                                    return (
                                      <>
-                                       <div className="flex items-center gap-2 flex-wrap">
+                                       <div className="flex items-center gap-2 flex-wrap min-w-0">
                                          {payerTag ? (
                                            <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{payerTag}</span>
                                          ) : payerAddr ? (
                                            <AddressCapsule address={payerAddr} className="bg-slate-100 border-slate-200 text-slate-700" />
-                                         ) : tx.type === 'Charge' ? (
+                                         ) : tx.type === 'Charge' || tx.type === 'Tip' ? (
                                            <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
                                          ) : (
                                            <span className="font-medium text-[15px] text-slate-500">—</span>
                                          )}
+                                         {tx.type === 'Charge' && tierCap != null && tierPres ? (
+                                           <span
+                                             className="inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1"
+                                             style={tierPres.wrap}
+                                             title="Payer membership tier (infrastructure card NFT metadata)"
+                                           >
+                                             <ShieldCheck size={14} className="shrink-0" strokeWidth={2.25} style={{ color: tierPres.fg }} />
+                                             <span
+                                               className="text-[11px] font-bold whitespace-nowrap max-w-[160px] truncate"
+                                               style={{ color: tierPres.fg }}
+                                             >
+                                               {tierCap.name}
+                                             </span>
+                                           </span>
+                                         ) : null}
                                        </div>
                                        <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium flex-wrap">
                                          {useNfcSubtitle ? (
@@ -4191,7 +4611,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                            <span className="whitespace-nowrap">{payeeTag}</span>
                                          ) : payeeAddr ? (
                                            <AddressCapsule address={payeeAddr} className="bg-slate-50 border-slate-200 text-slate-600 text-[12px]" />
-                                         ) : tx.type === 'Charge' && tx.terminal ? (
+                                         ) : (tx.type === 'Charge' || tx.type === 'Tip') && tx.terminal ? (
                                            <span className="whitespace-nowrap">{tx.terminal}</span>
                                          ) : (
                                            <span className="text-slate-400">—</span>
@@ -4238,7 +4658,40 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
 
                            <td className="px-6 py-5 align-middle">
                              <div className="flex flex-col gap-1.5">
-                               {tx.type.includes('Top-Up') ? (
+                               {tx.type === 'Charge' ? (() => {
+                                 const raw = tx.raw as Record<string, unknown>
+                                 const meta = parseIndexerMetaTuple(raw.meta)
+                                 const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
+                                 const pctOffStr = discountRateBpsToPercentOffLabel(meta.discountRateBps)
+                                 if (!(finalFiat > 0)) {
+                                   return <span className="text-[13px] font-medium text-slate-400">—</span>
+                                 }
+                                 const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
+                                 const cadApprox = approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle)
+                                 return (
+                                   <div className="flex flex-col gap-1.5 items-start">
+                                     <div className="flex items-start gap-2">
+                                       <Ticket size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                                       <div className="flex flex-col min-w-0">
+                                         <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
+                                           {finalFiat.toFixed(2)}{' '}
+                                           <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
+                                         </div>
+                                         <span className="text-[11px] text-slate-400 font-medium mt-0.5">
+                                           ≈ ${cadApprox.toFixed(2)} CAD
+                                         </span>
+                                       </div>
+                                     </div>
+                                     {pctOffStr ? (
+                                       <div className="w-fit rounded-lg border border-emerald-200 bg-emerald-50/90 px-2.5 py-1">
+                                         <span className="text-[11px] font-bold text-emerald-800">
+                                           Auto-Routing: {pctOffStr}% Off
+                                         </span>
+                                       </div>
+                                     ) : null}
+                                   </div>
+                                 )
+                               })() : tx.type.includes('Top-Up') ? (
                                  (() => {
                                    const meta = parseIndexerMetaTuple(tx.raw.meta)
                                    const reqFiat = parseIndexerUintE6Field(meta.requestAmountFiat6)
@@ -4314,28 +4767,6 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                    <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
                                  </div>
                                )}
-                               {tx.type === 'Charge' && (() => {
-                                 const raw = tx.raw as Record<string, unknown>
-                                 const meta = parseIndexerMetaTuple(raw.meta)
-                                 const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
-                                 if (!(finalFiat > 0)) return null
-                                 const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
-                                 const cadApprox = approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle)
-                                 return (
-                                   <div className="flex items-start gap-2 pt-1.5 border-t border-slate-100/80 mt-0.5">
-                                     <Receipt size={15} className="text-slate-400 shrink-0 mt-0.5" />
-                                     <div className="flex flex-col min-w-0">
-                                       <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
-                                         {finalFiat.toFixed(2)}{' '}
-                                         <span className="text-[12px] text-slate-400 font-medium">{curLabel}</span>
-                                       </div>
-                                       <span className="text-[11px] text-slate-400 font-medium mt-0.5">
-                                         ≈ ${cadApprox.toFixed(2)} CAD
-                                       </span>
-                                     </div>
-                                   </div>
-                                 )
-                               })()}
                              </div>
                            </td>
 
@@ -4385,16 +4816,48 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                            </td>
 
                            <td className="px-8 py-5 align-middle text-right">
-                             <div className={`font-semibold text-[18px] tracking-tight whitespace-nowrap ${
-                               tx.type.includes('Top-Up') ? 'text-emerald-600' :
-                               tx.type === 'Tip' ? 'text-rose-600' :
-                               tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
-                             }`}>
-                               {tx.type.includes('Top-Up') ? '+' : ''}${txTotalCAD.toFixed(2)}
-                             </div>
-                             <div className={`text-[12px] font-medium mt-1 whitespace-nowrap ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
-                               {tx.status === 'Pending' ? 'Pending Settlement' : tx.tip > 0 ? `Incl. $${(tx.tip / cadOracle).toFixed(2)} Tip` : isVaultTerminal ? 'Treasury TX' : 'No Tip'}
-                             </div>
+                             {tx.type === 'Charge' && tx.tipRaw ? (() => {
+                               const tipCadCol = mergedChargeTipCad(tx)
+                               const strikeCad = chargeBreakdownStrikeCad(tx)
+                               const showStrike =
+                                 strikeCad != null && strikeCad > txTotalCAD + 0.015
+                               const mainCls =
+                                 tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
+                               return (
+                                 <div className="flex flex-col items-end gap-1">
+                                   <div className="flex items-baseline justify-end gap-2 flex-wrap">
+                                     {showStrike ? (
+                                       <span className="text-[15px] font-normal text-slate-400 line-through whitespace-nowrap tabular-nums">
+                                         ${strikeCad.toFixed(2)}
+                                       </span>
+                                     ) : null}
+                                     <span className={`font-semibold text-[18px] tracking-tight whitespace-nowrap tabular-nums ${mainCls}`}>
+                                       ${txTotalCAD.toFixed(2)}
+                                     </span>
+                                   </div>
+                                   <div className={`text-[12px] font-medium whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
+                                     {tx.status === 'Pending'
+                                       ? 'Pending Settlement'
+                                       : tipCadCol > 0
+                                         ? `Incl. $${tipCadCol.toFixed(2)} Tip`
+                                         : 'No Tip'}
+                                   </div>
+                                 </div>
+                               )
+                             })() : (
+                               <>
+                                 <div className={`font-semibold text-[18px] tracking-tight whitespace-nowrap tabular-nums ${
+                                   tx.type.includes('Top-Up') ? 'text-emerald-600' :
+                                   tx.type === 'Tip' ? 'text-rose-600' :
+                                   tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
+                                 }`}>
+                                   {tx.type.includes('Top-Up') ? '+' : ''}${txTotalCAD.toFixed(2)}
+                                 </div>
+                                 <div className={`text-[12px] font-medium mt-1 whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
+                                   {tx.status === 'Pending' ? 'Pending Settlement' : tx.tip > 0 ? `Incl. $${(tx.tip / cadOracle).toFixed(2)} Tip` : isVaultTerminal ? 'Treasury TX' : 'No Tip'}
+                                 </div>
+                               </>
+                             )}
                            </td>
                         </motion.tr>
                         );
@@ -6020,7 +6483,8 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                  </p>
               </div>
             </div>
-            {selectedProduct === 'custom_fuel' && (marketRefuelProcessing || marketRefuelSuccess !== null) ? (
+            {(selectedProduct === 'custom_fuel' || selectedProduct === 'starter') &&
+            (marketRefuelProcessing || marketRefuelSuccess !== null) ? (
               <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 min-h-[240px]">
                 {marketRefuelProcessing ? (
                   <div className="flex flex-col items-center justify-center gap-4">
@@ -6121,7 +6585,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                   )}
                 </div>
               </div>
-              {selectedProduct === 'custom_fuel' && marketRefuelError ? (
+              {(selectedProduct === 'custom_fuel' || selectedProduct === 'starter') && marketRefuelError ? (
                 <div className="rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3 text-[13px] font-medium text-red-300">
                   {marketRefuelError}
                 </div>
@@ -6161,11 +6625,12 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
               <button
                 type="button"
                 onClick={() => void handleMarketPurchase()}
+                disabled={selectedProduct === 'starter' && marketRefuelProcessing}
                 className={`flex items-center gap-2 px-8 py-4 rounded-[16px] font-semibold text-[16px] text-white transition-all shadow-lg active:scale-95 ${
                  selectedProduct === 'fuel' ? 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/20' :
                  selectedProduct === 'starter' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' :
                  'bg-[#1562f0] hover:bg-blue-500 shadow-[#1562f0]/20'
-              }`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {selectedProduct === 'fuel' ? 'Secure Fuel' : selectedProduct === 'starter' ? 'Activate AA' : 'Secure Node'} <ChevronRight size={18} />
               </button>

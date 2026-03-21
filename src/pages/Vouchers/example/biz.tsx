@@ -17,6 +17,8 @@ import {
   postCardAddAdmin,
   encodeAddAdminWithMintLimit,
   signExecuteForAdmin,
+  signClearAdminMintCounter,
+  postCardClearAdminMintCounter,
   signExecuteForOwner,
   getCardMetadataFromApi,
   getCardMetadataFrom1155Json,
@@ -279,6 +281,7 @@ const USER_CARD_ADMIN_READ_ABI = [
   'function getAdminSubordinatesWithMetadata(address admin) view returns (address[] subordinates, string[] metadatas, address[] parents)',
   'function getAdminStatsFull(address admin, uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 mintCounterFromClear, uint256 burnCounterFromClear, uint256 transferCounterFromClear, uint256 transferAmountFromClear, uint256 redeemMintCounterFromClear, uint256 usdcMintCounterFromClear, address[] subordinates)',
   'function getAdminAirdropLimit(address admin) view returns (address admin, address parent, uint256 limit, uint256 usedFromClear, uint256 remainingAvailable, bool unlimited)',
+  'function adminParent(address admin) view returns (address)',
   'function getGlobalStatsFull(uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 adminCount)',
 ] as const
 
@@ -1744,6 +1747,9 @@ export default function MerchantOS() {
  const [deleteTerminalToRemove, setDeleteTerminalToRemove] = useState<{ id: string; tag: string; name: string; eoa: string } | null>(null);
  const [removeTerminalLoading, setRemoveTerminalLoading] = useState(false);
  const [removeTerminalError, setRemoveTerminalError] = useState<string | null>(null);
+ const [resetTerminalLimitModal, setResetTerminalLimitModal] = useState<TerminalRecord | null>(null);
+ const [resetTerminalLimitLoading, setResetTerminalLimitLoading] = useState(false);
+ const [resetTerminalLimitError, setResetTerminalLimitError] = useState<string | null>(null);
  const [newDeviceName, setNewDeviceName] = useState('');
  const [newTerminalMintLimit, setNewTerminalMintLimit] = useState('1000');
  const [deviceHandleResolved, setDeviceHandleResolved] = useState<{ username: string; address: string; image?: string } | null>(null);
@@ -2026,10 +2032,33 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   }
 }, [profiles, myAddress, linkedTerminalsCacheKey]);
 
- /** Force next 15s overview feeder tick (Staff terminal stats are updated inside that daemon only). */
- const refreshAllTerminalStats = useCallback(() => {
-   setOverviewRefreshTrigger((t) => t + 1);
- }, []);
+ /** Map Staff terminal row (EOA id) to on-chain subordinate address (AA or EOA) for adminParent / clear counter. */
+ const resolveTerminalChainSubordinate = useCallback(
+   async (terminalEoaId: string): Promise<string> => {
+     const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+     if (!userEOA || !ethers.isAddress(userEOA)) {
+       throw new Error('Wallet not connected.');
+     }
+     const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const cardOwner = (await card.owner()) as string;
+     const userAA = profiles?.[0]?.aaAccount?.trim();
+     const isOwner =
+       (cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA)) ||
+       (userAA && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userAA));
+     const parentAdmin = isOwner ? ethers.ZeroAddress : ethers.getAddress(userEOA);
+     const [subordinates] = (await card.getAdminSubordinatesWithMetadata(parentAdmin)) as [string[]];
+     const want = terminalEoaId.toLowerCase();
+     for (const subAddr of subordinates ?? []) {
+       if (!subAddr || !ethers.isAddress(subAddr)) continue;
+       const e = await resolveSubordinateAdminEoa(subAddr, baseRpcProviderDirect);
+       if (e.toLowerCase() === want) {
+         return ethers.getAddress(subAddr);
+       }
+     }
+     return ethers.getAddress(terminalEoaId);
+   },
+   [profiles, myAddress],
+ );
 
  const handleSignDeployRules = useCallback(async () => {
    if (!configAllianceId) return;
@@ -5113,9 +5142,12 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => refreshAllTerminalStats()}
+                                  onClick={() => {
+                                    setResetTerminalLimitError(null);
+                                    setResetTerminalLimitModal(term);
+                                  }}
                                   className="p-3 bg-blue-50 text-[#1562f0] rounded-[14px] hover:bg-[#1562f0] hover:text-white transition-colors"
-                                  title="Refresh stats from chain"
+                                  title="Reset terminal issuance limit (parent admin)"
                                 >
                                   <RefreshCcw size={18} />
                                 </button>
@@ -5459,6 +5491,183 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                  </>
                ) : (
                  'Revoke'
+               )}
+             </button>
+           </div>
+         </div>
+       </div>
+     )}
+
+     {/* --- RESET TERMINAL ISSUANCE LIMIT (parent admin clear mint counter) --- */}
+     {resetTerminalLimitModal && (
+       <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+         <div
+           className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+           onClick={() =>
+             !resetTerminalLimitLoading && (setResetTerminalLimitModal(null), setResetTerminalLimitError(null))
+           }
+         />
+         <div className="relative bg-white rounded-[40px] shadow-2xl w-full max-w-md p-8 animate-in zoom-in-95 duration-200">
+           <div className="flex justify-between items-center mb-6">
+             <div className="flex items-center gap-3">
+               <div className="w-12 h-12 bg-blue-50 text-[#1562f0] rounded-2xl flex items-center justify-center">
+                 <RefreshCcw size={24} />
+               </div>
+               <h2 className="text-xl font-bold tracking-tight text-black">Reset Terminal Limit</h2>
+             </div>
+             <button
+               type="button"
+               onClick={() =>
+                 !resetTerminalLimitLoading && (setResetTerminalLimitModal(null), setResetTerminalLimitError(null))
+               }
+               className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-black transition-colors disabled:opacity-50"
+             >
+               <X size={20} />
+             </button>
+           </div>
+           <p className="text-[14px] text-slate-600 mb-3">
+             Clears this terminal&apos;s mint counter on-chain (parent admin signature). After reset, Daily Issuance used
+             returns to zero until the next feeder refresh.
+           </p>
+           <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 mb-4 space-y-2">
+             <div className="font-semibold text-slate-900">{resetTerminalLimitModal.name}</div>
+             <div className="text-[13px] text-slate-500">{resetTerminalLimitModal.tag}</div>
+             <AddressCapsule
+               address={ethers.getAddress(resetTerminalLimitModal.id)}
+               className="bg-white border-slate-200 text-slate-700 max-w-full"
+             />
+           </div>
+           {(() => {
+             const s = terminalStats[resetTerminalLimitModal.id.toLowerCase()];
+             if (s == null) {
+               return (
+                 <p className="text-[14px] text-slate-500 mb-4">
+                   Quota stats not loaded yet. Staff stats refresh on a short interval, or use Refresh stats below.
+                 </p>
+               );
+             }
+             const issued = s.mintCounterFromClear;
+             const unlimited = s.remainingAvailable >= Number.MAX_SAFE_INTEGER;
+             const quota = unlimited ? null : issued + s.remainingAvailable;
+             return (
+               <div className="mb-4 space-y-1 text-[15px]">
+                 <div className="flex justify-between gap-4 text-slate-700">
+                   <span className="text-slate-500">Used (points, 6 decimals)</span>
+                   <span className="font-semibold tabular-nums text-slate-900">
+                     ${issued.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                   </span>
+                 </div>
+                 <div className="flex justify-between gap-4 text-slate-700">
+                   <span className="text-slate-500">Cap</span>
+                   <span className="font-semibold tabular-nums text-slate-900">
+                     {quota != null
+                       ? `$${quota.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                       : 'Unlimited'}
+                   </span>
+                 </div>
+               </div>
+             );
+           })()}
+           <button
+             type="button"
+             onClick={() => setOverviewRefreshTrigger((t) => t + 1)}
+             disabled={resetTerminalLimitLoading}
+             className="mb-4 w-full py-2.5 rounded-xl text-[13px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+           >
+             Refresh stats from chain (next feeder tick)
+           </button>
+           {resetTerminalLimitError && (
+             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[13px] font-medium text-amber-800">
+               {resetTerminalLimitError}
+             </div>
+           )}
+           <div className="flex gap-3">
+             <button
+               type="button"
+               onClick={() =>
+                 !resetTerminalLimitLoading && (setResetTerminalLimitModal(null), setResetTerminalLimitError(null))
+               }
+               disabled={resetTerminalLimitLoading}
+               className="flex-1 py-3.5 rounded-2xl text-[15px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+             >
+               Cancel
+             </button>
+             <button
+               type="button"
+               onClick={async () => {
+                 if (!resetTerminalLimitModal) return;
+                 setResetTerminalLimitError(null);
+                 const pk = profiles?.[0]?.privateKeyArmor;
+                 if (!pk) {
+                   setResetTerminalLimitError('Unlock your wallet to sign.');
+                   return;
+                 }
+                 setResetTerminalLimitLoading(true);
+                 try {
+                   const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+                   if (!userEOA || !ethers.isAddress(userEOA)) {
+                     throw new Error('Wallet address not available.');
+                   }
+                   const chainSub = await resolveTerminalChainSubordinate(resetTerminalLimitModal.id);
+                   const card = new ethers.Contract(
+                     FIXED_USER_CARD_CONTRACT_ADDRESS,
+                     USER_CARD_ADMIN_READ_ABI,
+                     baseRpcProviderDirect,
+                   );
+                   const parent = (await card.adminParent(chainSub)) as string;
+                   if (!parent || parent === ethers.ZeroAddress) {
+                     throw new Error(
+                       'This terminal has no parent admin on-chain. Owner-added admins cannot be cleared this way.',
+                     );
+                   }
+                   if (ethers.getAddress(parent) !== ethers.getAddress(userEOA)) {
+                     throw new Error(
+                       `Connect the parent admin wallet (${parent}) to reset this terminal. Current wallet: ${userEOA}.`,
+                     );
+                   }
+                   const deadline = Math.floor(Date.now() / 1000) + 600;
+                   const nonce = ethers.hexlify(ethers.randomBytes(32));
+                   const adminSignature = await signClearAdminMintCounter(
+                     pk,
+                     FIXED_USER_CARD_CONTRACT_ADDRESS,
+                     chainSub,
+                     deadline,
+                     nonce,
+                   );
+                   const res = await postCardClearAdminMintCounter({
+                     cardAddress: FIXED_USER_CARD_CONTRACT_ADDRESS,
+                     subordinate: chainSub,
+                     deadline,
+                     nonce,
+                     adminSignature,
+                   });
+                   if (!res.success) {
+                     throw new Error(res.error ?? 'Reset failed');
+                   }
+                   setResetTerminalLimitModal(null);
+                   setOverviewRefreshTrigger((t) => t + 1);
+                   invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+                   try {
+                     window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
+                   } catch {
+                     /* ignore */
+                   }
+                 } catch (e: unknown) {
+                   setResetTerminalLimitError(e instanceof Error ? e.message : 'Reset failed');
+                 } finally {
+                   setResetTerminalLimitLoading(false);
+                 }
+               }}
+               disabled={resetTerminalLimitLoading}
+               className="flex-1 py-3.5 rounded-2xl text-[15px] font-semibold bg-[#1562f0] text-white hover:bg-[#1254d0] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+             >
+               {resetTerminalLimitLoading ? (
+                 <>
+                   <Loader2 className="w-5 h-5 animate-spin" />
+                   Resetting…
+                 </>
+               ) : (
+                 'Reset'
                )}
              </button>
            </div>

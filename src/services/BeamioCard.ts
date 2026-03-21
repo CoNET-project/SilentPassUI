@@ -359,6 +359,7 @@ const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
 const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardAddAdminByAdminEndpoint = `${beamioApi}/api/cardAddAdminByAdmin`
+const cardClearAdminMintCounterEndpoint = `${beamioApi}/api/cardClearAdminMintCounter`
 
 /** 通过 Factory 预测 EOA 的 AA 地址（index=0）。用于离线签字前构建 adminManager(predictedAA,...)，无需先部署。Endpoint 收到 adminEOA 后会 ensureAAForEOA 再执行。 */
 export const getPredictedAAAddress = async (eoa: string): Promise<string> => {
@@ -833,6 +834,71 @@ export const signExecuteForAdmin = async (
 	const dataHash = ethers.keccak256(data)
 	const value = { cardAddress, dataHash, deadline, nonce }
 	return wallet.signTypedData(domain, types, value)
+}
+
+/** EIP-712：上层 admin 清零下层 admin 的 mint 计数（与 MemberCard cardClearAdminMintCounterPreCheck / Factory 一致）。 */
+export const signClearAdminMintCounter = async (
+	adminPrivateKey: string,
+	cardAddress: string,
+	subordinate: string,
+	deadline: number,
+	nonceHex: string
+): Promise<string> => {
+	const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
+	const factoryAddress = contracts.BeamioCardFactory.address
+	const domain = {
+		name: 'BeamioUserCardFactory',
+		version: '1',
+		chainId: 8453,
+		verifyingContract: factoryAddress,
+	}
+	const types = {
+		ClearAdminMintCounter: [
+			{ name: 'cardAddress', type: 'address' },
+			{ name: 'subordinate', type: 'address' },
+			{ name: 'deadline', type: 'uint256' },
+			{ name: 'nonce', type: 'bytes32' },
+		],
+	}
+	const n =
+		nonceHex.length === 66 && nonceHex.startsWith('0x')
+			? (nonceHex as `0x${string}`)
+			: (ethers.keccak256(ethers.toUtf8Bytes(nonceHex)) as `0x${string}`)
+	const value = {
+		cardAddress: ethers.getAddress(cardAddress),
+		subordinate: ethers.getAddress(subordinate),
+		deadline,
+		nonce: n,
+	}
+	return wallet.signTypedData(domain, types, value)
+}
+
+/** Parent admin 签 ClearAdminMintCounter 后提交 Cluster → Master（Base Factory + CoNET Indexer）。 */
+export const postCardClearAdminMintCounter = async (payload: {
+	cardAddress: string
+	subordinate: string
+	deadline: number
+	nonce: string
+	adminSignature: string
+}): Promise<{ success: boolean; tx?: string; error?: string }> => {
+	try {
+		const res = await fetch(cardClearAdminMintCounterEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: ethers.getAddress(payload.cardAddress),
+				subordinate: ethers.getAddress(payload.subordinate),
+				deadline: payload.deadline,
+				nonce: payload.nonce,
+				adminSignature: payload.adminSignature,
+			}),
+		})
+		const data = await res.json()
+		if (!res.ok) return { success: false, error: data.error ?? 'cardClearAdminMintCounter failed' }
+		return { success: true, tx: data.tx }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
 }
 
 /** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。

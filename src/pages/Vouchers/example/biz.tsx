@@ -1084,6 +1084,18 @@ function beamioFiatCurrencyLabel(code: unknown): string {
   return BEAMIO_FIAT_CURRENCY_LABELS[n]
 }
 
+/** `finalRequestAmountFiat6` is in `meta.currencyFiat`; approximate CAD using the same oracle as this page (1 CAD ≈ cadOracle USDC). Already-CAD amounts pass through. */
+function approximateCadFromFinalRequestFiat6(
+  finalFiatAmount: number,
+  currencyLabel: string,
+  cadOracle: number
+): number {
+  if (!Number.isFinite(finalFiatAmount) || finalFiatAmount <= 0) return 0
+  if (!Number.isFinite(cadOracle) || cadOracle <= 0) return 0
+  if (currencyLabel === 'CAD') return finalFiatAmount
+  return finalFiatAmount / cadOracle
+}
+
 /** Append " Card" when the display name does not already end with "Card" (case-insensitive). */
 function tierDisplayNameWithCardSuffix(rawName: string): string {
   const t = rawName.trim()
@@ -3894,6 +3906,15 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
            const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
            const calculateTxNetValueCAD = (tx: TxDisplayRow) => {
              if (tx.type.includes('Top-Up')) return tx.ctreeAmount || 0;
+             if (tx.type === 'Charge') {
+               const raw = tx.raw as Record<string, unknown>
+               const meta = parseIndexerMetaTuple(raw.meta)
+               const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
+               if (finalFiat > 0) {
+                 const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
+                 return approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle)
+               }
+             }
              return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0);
            };
            const filteredTx = txList.filter((tx) => {
@@ -4293,12 +4314,34 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                    <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
                                  </div>
                                )}
+                               {tx.type === 'Charge' && (() => {
+                                 const raw = tx.raw as Record<string, unknown>
+                                 const meta = parseIndexerMetaTuple(raw.meta)
+                                 const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
+                                 if (!(finalFiat > 0)) return null
+                                 const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
+                                 const cadApprox = approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle)
+                                 return (
+                                   <div className="flex items-start gap-2 pt-1.5 border-t border-slate-100/80 mt-0.5">
+                                     <Receipt size={15} className="text-slate-400 shrink-0 mt-0.5" />
+                                     <div className="flex flex-col min-w-0">
+                                       <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
+                                         {finalFiat.toFixed(2)}{' '}
+                                         <span className="text-[12px] text-slate-400 font-medium">{curLabel}</span>
+                                       </div>
+                                       <span className="text-[11px] text-slate-400 font-medium mt-0.5">
+                                         ≈ ${cadApprox.toFixed(2)} CAD
+                                       </span>
+                                     </div>
+                                   </div>
+                                 )
+                               })()}
                              </div>
                            </td>
 
                            <td className="px-6 py-5 align-middle">
                              <div className="flex flex-col items-start gap-2">
-                               {tx.type.includes('Top-Up') && /^0x[0-9a-fA-F]{64}$/.test(tx.indexerTxId) ? (
+                               {(tx.type.includes('Top-Up') || tx.type === 'Charge') && /^0x[0-9a-fA-F]{64}$/.test(tx.indexerTxId) ? (
                                  <a
                                    href={`https://basescan.org/tx/${tx.indexerTxId}`}
                                    target="_blank"

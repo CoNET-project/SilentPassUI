@@ -423,6 +423,70 @@ const INDEXER_TX_TOPUP_CATEGORIES = new Set([
   ethers.keccak256(ethers.toUtf8Bytes('redeemTopupCard')),
 ] as const)
 
+/** B-Unit Airdrop ↔ indexer rows (readme 2.3 + MemberCard consume kinds) — not merchant Charge/Top-Up. */
+const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes('buintClaim'))
+const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes('buintUSDC'))
+const TX_BUINT_BURN = ethers.keccak256(ethers.toUtf8Bytes('buintBurn'))
+const TX_BUINT_REQUEST_ACCOUNTING = ethers.keccak256(ethers.toUtf8Bytes('requestAccounting'))
+const TX_BUINT_SEND_USDC = ethers.keccak256(ethers.toUtf8Bytes('sendUSDC'))
+const TX_BUINT_X402_SEND = ethers.keccak256(ethers.toUtf8Bytes('x402Send'))
+const TX_BUINT_NFC_TOPUP_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('nfcTopup:bunitService'))
+
+const INDEXER_BUINT_LEDGER_CATEGORY_HEX_LOWER = new Set([
+  TX_BUINT_CLAIM.toLowerCase(),
+  TX_BUINT_USDC.toLowerCase(),
+  TX_BUINT_BURN.toLowerCase(),
+  TX_BUINT_REQUEST_ACCOUNTING.toLowerCase(),
+  TX_BUINT_SEND_USDC.toLowerCase(),
+  TX_BUINT_X402_SEND.toLowerCase(),
+  TX_BUINT_NFC_TOPUP_SERVICE.toLowerCase(),
+])
+
+function normalizeIndexerTxCategoryHex(cat: unknown): string {
+  if (cat == null) return ''
+  if (typeof cat === 'string') {
+    const s = cat.trim()
+    if (!s) return ''
+    if (s.startsWith('0x')) return s.toLowerCase()
+    try {
+      return ethers.hexlify(s as ethers.BytesLike).toLowerCase()
+    } catch {
+      try {
+        return (`0x${BigInt(s).toString(16).padStart(64, '0')}`).toLowerCase()
+      } catch {
+        return ''
+      }
+    }
+  }
+  try {
+    return ethers.hexlify(cat as ethers.BytesLike).toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+function isIndexerBuintLedgerCategory(cat: unknown): boolean {
+  const h = normalizeIndexerTxCategoryHex(cat)
+  return h !== '' && INDEXER_BUINT_LEDGER_CATEGORY_HEX_LOWER.has(h)
+}
+
+function isIndexerBuintConsumePayee(payee: unknown): boolean {
+  const p = typeof payee === 'string' && ethers.isAddress(payee) ? ethers.getAddress(payee).toLowerCase() : ''
+  return p === CONET_BUINT_ADDRESS.toLowerCase()
+}
+
+/** Exclude from Merchant OS Transactions: B-Unit claim / USDC mint / consume (any registered kind). */
+function isIndexerFetchedRowBunitLedger(tx: { txCategory: string; payee: string }): boolean {
+  if (isIndexerBuintLedgerCategory(tx.txCategory)) return true
+  return isIndexerBuintConsumePayee(tx.payee)
+}
+
+function txDisplayRowIsIndexerBunitLedger(r: TxDisplayRow): boolean {
+  const raw = r.raw as { txCategory?: unknown; payee?: unknown }
+  if (isIndexerBuintLedgerCategory(raw.txCategory)) return true
+  return isIndexerBuintConsumePayee(raw.payee)
+}
+
 const INDEXER_READ_FULL_AND_EVENT_ABI = [
   `function getTransactionFullByTxId(bytes32 txId) view returns (tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, address topAdmin, address subordinate, tuple(address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta) full_)`,
   'event TransactionRecordSynced(uint256 indexed actionId, bytes32 indexed txId, bytes32 indexed txCategory, address payer, address payee)',
@@ -3164,6 +3228,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      const addPage = (page: TxRow[] | undefined) => {
        for (const tx of page ?? []) {
          if (!tx?.exists || !tx?.id) continue;
+         if (isIndexerFetchedRowBunitLedger({ txCategory: String(tx.txCategory), payee: tx.payee ?? '' })) continue;
          const id = String(tx.id);
          if (seen.has(id)) continue;
          seen.add(id);
@@ -3388,6 +3453,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        }
        const row = transactionFullToFetchedRow(full);
        if (!row) {
+         indexerInboundWssSeenRef.current.delete(tid);
+         return;
+       }
+       if (isIndexerFetchedRowBunitLedger({ txCategory: row.txCategory, payee: row.payee ?? '' })) {
          indexerInboundWssSeenRef.current.delete(tid);
          return;
        }
@@ -4315,6 +4384,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
              }
            };
            const filteredTx = txList.filter((tx) => {
+             if (txDisplayRowIsIndexerBunitLedger(tx)) return false;
              if (activeLedger === 'AA' && !profiles?.[0]?.aaAccount) return false;
              const isVaultTx = tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault';
              const matchLedger = activeLedger === 'All' || (activeLedger === 'EOA' && isVaultTx) || (activeLedger === 'AA' && !isVaultTx);

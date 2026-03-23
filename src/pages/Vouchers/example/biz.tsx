@@ -273,6 +273,10 @@ const ROUTING_ONCHAIN_TIERS_CACHE_KEY = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS
 const ROUTING_TIER_METADATA_CACHE_KEY = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:routing-tier-metadata`
 const CONET_BUINT_ADDRESS = '0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879'
 const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)'] as const
+/** ERC-1155 `POINTS_ID` on BeamioUserCard is 0 — AA-held points balance for voucher display */
+const BEAMIO_USER_CARD_ERC1155_BALANCE_ABI = [
+  'function balanceOf(address account, uint256 id) view returns (uint256)',
+] as const
 const BEAMIO_APP_URL = 'https://beamio.app'
 /** BeamioUserCard read: prefer baseRpcProviderDirect for stats/isAdmin (avoids baseEndpoint proxy decode issues; Issued $CTree path already uses direct). */
 const BIZ_CACHE_PREFIX = 'beamio:biz-example:'
@@ -535,6 +539,10 @@ const amountE6ToDisplayNumber = (value: bigint): number => Number(value) / 1_000
  * ethers v6 `Contract.getAdminStatsFull` often throws BAD_DATA — same layout as `scripts/fetchAdminStats.mjs` `parseStatsFull`.
  */
 function parseGetAdminStatsFullReturnHex(rawHex: string): {
+  cumulativeMint: bigint
+  cumulativeTransfer: bigint
+  cumulativeTransferAmount: bigint
+  cumulativeUSDCMint: bigint
   periodMint: bigint
   periodBurn: bigint
   periodTransfer: bigint
@@ -560,6 +568,10 @@ function parseGetAdminStatsFullReturnHex(rawHex: string): {
   const minWords = base + 23
   if (hex.length < minWords * 64) return null
   return {
+    cumulativeMint: u256(base + 0),
+    cumulativeTransfer: u256(base + 2),
+    cumulativeTransferAmount: u256(base + 3),
+    cumulativeUSDCMint: u256(base + 5),
     periodMint: u256(base + 8),
     periodBurn: u256(base + 9),
     periodTransfer: u256(base + 10),
@@ -589,7 +601,7 @@ async function callGetAdminStatsFullParsed(
   return parseGetAdminStatsFullReturnHex(typeof raw === 'string' ? raw : '')
 }
 
-/** Linked POS / subordinate admin row — filled only by the 15s overview feeder tick (Overview + Staff tabs). */
+/** Linked POS / subordinate admin row — filled only by the overview feeder tick (Overview + Staff tabs). */
 type BizTerminalChainStats = {
   transferAmountFromClear: number
   mintCounterFromClear: number
@@ -1438,8 +1450,8 @@ function formatMinUsdc6WithCurrencyLabel(minUsdc6: bigint, currencyType: number)
   return `${formatted} ${beamioFiatCurrencyLabel(currencyType)}`
 }
 
-/** Unified Base overview feeder: 15s interval, single batch to reduce RPC load (Overview + Staff tabs). */
-const FEEDER_INTERVAL_MS = 15_000;
+/** Unified Base overview feeder: 6s interval, single batch to reduce RPC load (Overview + Staff tabs). */
+const FEEDER_INTERVAL_MS = 6_000;
 /** Tabs where the feeder runs; other tabs do not start this interval (avoids duplicate RPC with per-control effects). */
 const BIZ_OVERVIEW_FEEDER_TABS = new Set(['Overview', 'Staff']);
 
@@ -1626,7 +1638,16 @@ export default function MerchantOS() {
  const [merchantOwnerProfile, setMerchantOwnerProfile] = useState<BeamioProfile>(null);
  const adminTipsTodayCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:tips:p${overviewPeriodType}`;
  const [adminNetworkSummaryToday, setAdminNetworkSummaryToday] = useState<{ cadVol: number; txCount: number; usdc: number; vouchers: number } | null>(null);
+ /** Chain cumulative admin subtree stats (not tied to Overview date filter) — same shape as period summary */
+ const [adminNetworkSummaryLifetime, setAdminNetworkSummaryLifetime] = useState<{
+   cadVol: number
+   txCount: number
+   usdc: number
+   vouchers: number
+ } | null>(null);
  const [adminTipsToday, setAdminTipsToday] = useState<number | null>(null);
+ /** All-time tip USDC (human) from indexer, multi-year scan — CashTrees Settlement panel only */
+ const [adminTipsLifetimeUSDC, setAdminTipsLifetimeUSDC] = useState<number | null>(null);
  const [adminMintLimitQuota, setAdminMintLimitQuota] = useState<number | null>(null);
  const [adminMintCounterFromClear, setAdminMintCounterFromClear] = useState<number | null>(null);
  const [protocolFuelReserveBalance, setProtocolFuelReserveBalance] = useState<number | null>(null);
@@ -1701,6 +1722,8 @@ export default function MerchantOS() {
 
  const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
  const [aaUsdcBalance, setAaUsdcBalance] = useState<string | null>(null);
+ /** `balanceOf(AA, 0)` on `BEAMIO_USER_CARD_ASSET_ADDRESS` (points token), human units (÷1e6) */
+ const [aaUserCardPointsToken0Balance, setAaUserCardPointsToken0Balance] = useState<number | null>(null);
  const [subordinateBalances, setSubordinateBalances] = useState<Record<string, string | null>>({});
 
  const handleApplyAlliance = useCallback((aId: AllianceId) => {
@@ -1994,16 +2017,27 @@ export default function MerchantOS() {
      setTerminals([]);
      setLinkedMerchantLookupDone(false);
      setAdminNetworkSummaryToday(null);
+     setAdminNetworkSummaryLifetime(null);
      setAdminTipsToday(null);
+     setAdminTipsLifetimeUSDC(null);
      setAdminMintLimitQuota(null);
      setAdminMintCounterFromClear(null);
      setProtocolFuelReserveBalance(null);
      setProtocolFuelConsumptionToday(null);
      setAdminRetryCount((c) => c + 1);
+     try {
+       Object.keys(window.localStorage)
+         .filter(
+           (k) =>
+             k.startsWith(`${BIZ_CACHE_PREFIX}eoa:${currentEoa}:`) &&
+             (k.includes('network-summary:lifetime') || k.includes(':tips:lifetime'))
+         )
+         .forEach((k) => window.localStorage.removeItem(k));
+     } catch { /* ignore */ }
    } catch {
      setAdminRetryCount((c) => c + 1);
    }
- }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, adminTipsTodayCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey]);
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, adminTipsTodayCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey, currentEoa]);
 
  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
  const [payoutStep, setPayoutStep] = useState(1);
@@ -2054,7 +2088,9 @@ export default function MerchantOS() {
      setLinkedMerchantAdmins([]);
      setLinkedMerchantLookupDone(false);
      setAdminNetworkSummaryToday(null);
+     setAdminNetworkSummaryLifetime(null);
      setAdminTipsToday(null);
+     setAdminTipsLifetimeUSDC(null);
      setAdminMintLimitQuota(null);
      setAdminMintCounterFromClear(null);
      setProtocolFuelReserveBalance(null);
@@ -2588,6 +2624,35 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    return () => { cancelled = true; };
  }, [profiles, overviewRefreshTrigger]);
 
+ // CashTrees / infrastructure card: AA balance of ERC-1155 id 0 (points) on fixed BeamioUserCard
+ useEffect(() => {
+   const aaAddr = profiles?.[0]?.aaAccount?.trim();
+   if (!aaAddr || !ethers.isAddress(aaAddr)) {
+     setAaUserCardPointsToken0Balance(null);
+     return;
+   }
+   let cancelled = false;
+   const key = `aa:beamioUserCard:balanceOf0:${ethers.getAddress(aaAddr).toLowerCase()}:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
+   void fetchWithCache(key, async () => {
+     const card = new ethers.Contract(
+       FIXED_USER_CARD_CONTRACT_ADDRESS,
+       BEAMIO_USER_CARD_ERC1155_BALANCE_ABI,
+       baseRpcProviderDirect
+     );
+     const raw = await card.balanceOf(ethers.getAddress(aaAddr), 0n);
+     return amountE6ToDisplayNumber(BigInt(raw.toString()));
+   })
+     .then((n) => {
+       if (!cancelled && Number.isFinite(n)) setAaUserCardPointsToken0Balance(n);
+     })
+     .catch(() => {
+       if (!cancelled) setAaUserCardPointsToken0Balance(null);
+     });
+   return () => {
+     cancelled = true;
+   };
+ }, [profiles, overviewRefreshTrigger]);
+
  // Fetch USDC balance for each subordinate admin (terminals)
  useEffect(() => {
    const addrs = terminals.filter((t) => t.id && ethers.isAddress(t.id)).map((t) => ethers.getAddress(t.id));
@@ -2799,7 +2864,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    return () => { cancelled = true; };
  }, [fixedCardMetadata?.cardOwner]);
 
- /** Init: resolve EOA from same source as left menu (Owner EOA capsule), then start 15s feeder */
+ /** Init: resolve EOA from same source as left menu (Owner EOA capsule), then start 6s feeder */
  const [feederEoa, setFeederEoa] = useState<string | null>(null);
  useEffect(() => {
    const menuEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
@@ -2807,10 +2872,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    if (resolved) setFeederEoa(resolved);
  }, [profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
 
- /** Unified Base overview feeder: every 15s on Overview + Staff tabs. Card metadata without login; Overview dashboard uses current EOA admin subtree + today (not global card totals). Staff terminal stats share this tick. */
+ /** Unified Base overview feeder: every 6s on Overview + Staff tabs. Card metadata without login; Overview dashboard uses current EOA admin subtree + today (not global card totals). Staff terminal stats share this tick. */
  const feederInProgressRef = useRef(false);
  const feederCancelledRef = useRef(false);
  const feederAccountRef = useRef('');
+ /** Full indexer scan for all-time tips (CashTrees Settlement); throttled — bump nonce on Overview refresh. */
+ const tipsLifetimeScanNonceRef = useRef(0);
+ const tipsLifetimeAppliedNonceRef = useRef(0);
+ const tipsLifetimeLastFullFetchMsRef = useRef(0);
  /** Session dedup for BeamioIndexerDiamond WSS `TransactionRecordSynced` (by txId hex) */
  const indexerInboundWssSeenRef = useRef<Set<string>>(new Set());
  /** Detect transition into Transactions tab to invalidate indexer cache (same render cycle as tx fetch effect). */
@@ -2826,6 +2895,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    // Load trusted cache for immediate display
    const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
    const networkSummaryCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:p${overviewPeriodType}`;
+   const networkSummaryLifetimeCacheKey =
+     effectiveAdmin && ethers.isAddress(effectiveAdmin)
+       ? `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:lifetime`
+       : '';
+   const adminTipsLifetimeStorageKey =
+     effectiveAdmin && ethers.isAddress(effectiveAdmin)
+       ? `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:tips:lifetime`
+       : '';
    /** Use account (current EOA) for quota cache key so we fetch even when fixedCardAdmins not yet loaded */
    const quotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${accountResolved ? accountResolved.toLowerCase() : ''}:quota-and-mint-counter`;
    const buintBalanceCacheKey = accountResolved ? `eoa:${accountResolved.toLowerCase()}:buint:balance` : '';
@@ -2833,6 +2910,15 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const accountsToQuery = accountResolved ? [accountResolved] : [];
    if (aa && ethers.isAddress(aa) && accountResolved && ethers.getAddress(aa).toLowerCase() !== accountResolved.toLowerCase()) {
      accountsToQuery.push(ethers.getAddress(aa));
+   }
+   /** EOA + AA addresses for BUint reserve read (same closure as cache key — do not use stale empty `account` inside async feederWork). */
+   const buintReserveTargets: string[] = [];
+   if (accountResolved) {
+     const mainAc = ethers.getAddress(accountResolved);
+     buintReserveTargets.push(mainAc);
+     if (aa && ethers.isAddress(aa) && ethers.getAddress(aa).toLowerCase() !== mainAc.toLowerCase()) {
+       buintReserveTargets.push(ethers.getAddress(aa));
+     }
    }
    const aaForKey = aa && ethers.isAddress(aa) ? ethers.getAddress(aa).toLowerCase() : '';
    const consumptionCacheKey = accountResolved
@@ -2843,13 +2929,19 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const cachedBuintBalance = buintBalanceCacheKey ? loadTrustedCache<number>(buintBalanceCacheKey) : null;
    const cachedConsumption = consumptionCacheKey ? loadTrustedCache<number>(consumptionCacheKey) : null;
    const cachedTips = loadTrustedCache<number>(adminTipsTodayCacheKey);
+   const cachedNetworkSummaryLifetime =
+     networkSummaryLifetimeCacheKey ? loadTrustedCache<{ cadVol: number; txCount: number; usdc: number; vouchers: number }>(networkSummaryLifetimeCacheKey) : null;
+   const cachedTipsLifetime = adminTipsLifetimeStorageKey ? loadTrustedCache<number>(adminTipsLifetimeStorageKey) : null;
 
    if (cachedMetadata != null) setFixedCardMetadata(cachedMetadata);
    if (effectiveAdmin && ethers.isAddress(effectiveAdmin)) {
      if (cachedNetworkSummary != null) setAdminNetworkSummaryToday(cachedNetworkSummary);
      else setAdminNetworkSummaryToday(null);
+     if (cachedNetworkSummaryLifetime != null) setAdminNetworkSummaryLifetime(cachedNetworkSummaryLifetime);
+     else setAdminNetworkSummaryLifetime(null);
    } else {
      setAdminNetworkSummaryToday(null);
+     setAdminNetworkSummaryLifetime(null);
    }
    if (cachedQuota != null && accountResolved) {
      setAdminMintLimitQuota(cachedQuota.quota);
@@ -2861,8 +2953,11 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    if (effectiveAdmin && ethers.isAddress(effectiveAdmin)) {
      if (cachedTips !== null) setAdminTipsToday(cachedTips);
      else setAdminTipsToday(null);
+     if (cachedTipsLifetime !== null) setAdminTipsLifetimeUSDC(cachedTipsLifetime);
+     else setAdminTipsLifetimeUSDC(null);
    } else {
      setAdminTipsToday(null);
+     setAdminTipsLifetimeUSDC(null);
    }
 
      const runFeeder = async () => {
@@ -2879,7 +2974,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      const feederWork = async () => {
        await globalFetchQueue;
 
-       // 0. Card metadata (HTTP, merged into 15s refresh)
+       // 0. Card metadata (HTTP, merged into 6s refresh)
        if (!feederCancelledRef.current) {
          try {
            const apiRes = await fetch(
@@ -2926,16 +3021,31 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              };
              setAdminNetworkSummaryToday(summary);
              saveTrustedCache(networkSummaryCacheKey, summary);
+             const lifetimeSummary = {
+               cadVol: amountE6ToDisplayNumber(parsed.cumulativeTransferAmount),
+               txCount: Number(parsed.cumulativeTransfer),
+               usdc: amountE6ToDisplayNumber(parsed.cumulativeUSDCMint),
+               vouchers: amountE6ToDisplayNumber(parsed.cumulativeMint),
+             };
+             setAdminNetworkSummaryLifetime(lifetimeSummary);
+             if (networkSummaryLifetimeCacheKey) saveTrustedCache(networkSummaryLifetimeCacheKey, lifetimeSummary);
            } else if (!feederCancelledRef.current && cachedNetworkSummary != null) {
              setAdminNetworkSummaryToday(cachedNetworkSummary);
+             if (cachedNetworkSummaryLifetime != null) setAdminNetworkSummaryLifetime(cachedNetworkSummaryLifetime);
+             else setAdminNetworkSummaryLifetime(null);
            } else if (!feederCancelledRef.current) {
              setAdminNetworkSummaryToday(null);
+             setAdminNetworkSummaryLifetime(null);
            }
          } catch {
            if (!feederCancelledRef.current && cachedNetworkSummary != null) setAdminNetworkSummaryToday(cachedNetworkSummary);
+           if (!feederCancelledRef.current && cachedNetworkSummaryLifetime != null) {
+             setAdminNetworkSummaryLifetime(cachedNetworkSummaryLifetime);
+           }
          }
        } else if (!effectiveAdmin || !ethers.isAddress(effectiveAdmin)) {
          setAdminNetworkSummaryToday(null);
+         setAdminNetworkSummaryLifetime(null);
        }
 
        // 2. Admin quota and mintCounterFromClear (account from feederAccountRef at execution time)
@@ -3025,31 +3135,36 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          }
        }
 
-       // 3. Protocol Fuel Reserve: CoNET BUint.balanceOf sum for user EOA + AA (same 15s feeder tick as indexer diamond consumption below)
-       if (account && ethers.isAddress(account) && !feederCancelledRef.current) {
+       // 3. Protocol Fuel Reserve: CoNET BUint.balanceOf sum for user EOA + AA (same 6s feeder tick as indexer diamond consumption below).
+       // Trusted-cache protocol: only overwrite on full successful read; partial RPC failure → keep last trusted (persisted + in-memory).
+       if (accountResolved && buintReserveTargets.length > 0 && !feederCancelledRef.current) {
+         const stepBuintKey = buintBalanceCacheKey;
          try {
-           const aaLive = profiles?.[0]?.aaAccount?.trim();
-           const buintTargets: string[] = [ethers.getAddress(account)];
-           if (aaLive && ethers.isAddress(aaLive) && ethers.getAddress(aaLive).toLowerCase() !== ethers.getAddress(account).toLowerCase()) {
-             buintTargets.push(ethers.getAddress(aaLive));
-           }
            let sumRaw = 0n;
-           for (const addr of buintTargets) {
+           let allOk = true;
+           for (const addr of buintReserveTargets) {
              try {
                sumRaw += (await buint.balanceOf(addr)) as bigint;
              } catch {
-               /* one address failed; continue */
+               allOk = false;
+               break;
              }
            }
-           const balance = Number(sumRaw) / 1_000_000;
-           if (!feederCancelledRef.current) {
+           if (allOk && !feederCancelledRef.current) {
+             const balance = Number(sumRaw) / 1_000_000;
              setProtocolFuelReserveBalance(balance);
-             if (buintBalanceCacheKey) saveTrustedCache(buintBalanceCacheKey, balance);
+             if (stepBuintKey) saveTrustedCache(stepBuintKey, balance);
+           } else if (!feederCancelledRef.current) {
+             const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
+             if (fb != null) setProtocolFuelReserveBalance(fb);
            }
          } catch {
-           if (!feederCancelledRef.current && cachedBuintBalance != null) setProtocolFuelReserveBalance(cachedBuintBalance);
+           if (!feederCancelledRef.current) {
+             const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
+             if (fb != null) setProtocolFuelReserveBalance(fb);
+           }
          }
-       } else {
+       } else if (!accountResolved) {
          setProtocolFuelReserveBalance(null);
        }
 
@@ -3112,6 +3227,61 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          }
        } else if (!effectiveAdmin || !ethers.isAddress(effectiveAdmin)) {
          setAdminTipsToday(null);
+       }
+
+       // 5b. All-time admin tips (indexer): PERIOD_YEAR buckets + pagination — CashTrees Settlement only; throttled to limit RPC load
+       const TIPS_LIFETIME_MIN_INTERVAL_MS = 120_000;
+       const forceTipsLifetime = tipsLifetimeScanNonceRef.current !== tipsLifetimeAppliedNonceRef.current;
+       const tipsLifetimeDue =
+         forceTipsLifetime || Date.now() - tipsLifetimeLastFullFetchMsRef.current >= TIPS_LIFETIME_MIN_INTERVAL_MS;
+       if (effectiveAdmin && ethers.isAddress(effectiveAdmin) && adminTipsLifetimeStorageKey && tipsLifetimeDue && !feederCancelledRef.current) {
+         try {
+           let totalTips6 = 0n;
+           const pageLimit = 100;
+           const maxYearOffsets = 24;
+           let emptyYearStreak = 0;
+           for (let yearOff = 0; yearOff < maxYearOffsets; yearOff++) {
+             if (feederCancelledRef.current) break;
+             let pageOffset = 0;
+             let yearSum6 = 0n;
+             let reportedTotal = 0n;
+             while (true) {
+               const [total, , , page] = await indexerAsset.getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(
+                 FIXED_USER_CARD_CONTRACT_ADDRESS,
+                 ethers.getAddress(effectiveAdmin),
+                 PERIOD_YEAR,
+                 yearOff,
+                 pageOffset,
+                 pageLimit,
+                 TX_MERCHANT_PAY_TIP_UPDATED,
+                 ACCOUNT_MODE_ALL,
+                 CHAIN_ID_FILTER_ALL
+               ) as [bigint, bigint, bigint, Array<{ finalRequestAmountUSDC6: bigint }>];
+               reportedTotal = total;
+               for (const tx of page ?? []) yearSum6 += tx.finalRequestAmountUSDC6;
+               if (!page || page.length < pageLimit || pageOffset + page.length >= Number(total)) break;
+               pageOffset += page.length;
+             }
+             totalTips6 += yearSum6;
+             if (Number(reportedTotal) === 0 && yearSum6 === 0n) {
+               emptyYearStreak += 1;
+               if (emptyYearStreak >= 4) break;
+             } else {
+               emptyYearStreak = 0;
+             }
+           }
+           const nextLifetimeTips = amountE6ToDisplayNumber(totalTips6);
+           if (!feederCancelledRef.current) {
+             setAdminTipsLifetimeUSDC(nextLifetimeTips);
+             saveTrustedCache(adminTipsLifetimeStorageKey, nextLifetimeTips);
+             tipsLifetimeAppliedNonceRef.current = tipsLifetimeScanNonceRef.current;
+             tipsLifetimeLastFullFetchMsRef.current = Date.now();
+           }
+         } catch {
+           if (!feederCancelledRef.current && cachedTipsLifetime !== null) setAdminTipsLifetimeUSDC(cachedTipsLifetime);
+         }
+       } else if (!effectiveAdmin || !ethers.isAddress(effectiveAdmin)) {
+         setAdminTipsLifetimeUSDC(null);
        }
      };
 
@@ -3611,6 +3781,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  const showOverviewSummary = isAdminForUI;
 
  const handleOverviewRefresh = useCallback(() => {
+   tipsLifetimeScanNonceRef.current += 1;
    invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
    invalidateFetchCache('indexer:tips');
    invalidateFetchCache('indexer:tx');
@@ -3651,7 +3822,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 const topUpsQuota = adminMintLimitQuota ?? 0; // denominator: mint limit from chain
 const topUpsUsedFromClear = adminMintCounterFromClear ?? 0; // numerator: mintCounterFromClear from chain
 
-const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // B-Units: CoNET BUint.balanceOf(EOA)+balanceOf(AA) from 15s Overview feeder
+const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // B-Units: CoNET BUint.balanceOf(EOA)+balanceOf(AA) from 6s Overview feeder
 const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // Today's consumption from indexer
 
  // Chain gives totals; show in $CTree capsule. When not admin / no data, show 0.
@@ -3663,6 +3834,15 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
 
  const totalCTreeReceived = salesCTree + tipsCTree;
  const netSettlementBalance = totalCTreeReceived - topUpsIssued;
+ /** CashTrees Settlement + CAD payout drawer: chain cumulative subtree + all-time tips — independent of header day/week/month/quarter/year */
+ const adminLifetime = adminNetworkSummaryLifetime;
+ const totalSalesLifetime = effectiveAdminAddress && adminLifetime ? adminLifetime.cadVol : 0;
+ const totalTipsLifetime = adminTipsLifetimeUSDC ?? 0;
+ const topUpsIssuedLifetime = effectiveAdminAddress && adminLifetime ? adminLifetime.vouchers : 0;
+ const salesCTreeLifetime = totalSalesLifetime;
+ const tipsCTreeLifetime = totalTipsLifetime;
+ const totalCTreeReceivedLifetime = salesCTreeLifetime + tipsCTreeLifetime;
+ const netSettlementBalanceLifetime = totalCTreeReceivedLifetime - topUpsIssuedLifetime;
  const totalUSDCBalance = salesUSDC + tipsUSDC;
 
 
@@ -3696,8 +3876,8 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
    if (!isPayoutModalOpen) return null;
 
 
-   const allianceFee = netSettlementBalance * 0.03;
-   const finalBankAmount = netSettlementBalance - allianceFee;
+   const allianceFee = netSettlementBalanceLifetime * 0.03;
+   const finalBankAmount = netSettlementBalanceLifetime - allianceFee;
 
 
    return (
@@ -3725,7 +3905,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
              <div className="space-y-6 animate-in fade-in">
                <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-100">
                  <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-2">Net Settlement Due</p>
-                 <p className="text-5xl font-light text-black tracking-tighter mb-1">${netSettlementBalance.toFixed(2)}</p>
+                 <p className="text-5xl font-light text-black tracking-tighter mb-1">${netSettlementBalanceLifetime.toFixed(2)}</p>
                  <p className="text-[14px] font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded inline-block mt-2">
                    CashTrees owes you CAD
                  </p>
@@ -3741,12 +3921,12 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                  <div className="p-6 space-y-4">
                    <div className="flex justify-between items-center">
                      <span className="text-[14px] text-slate-500 font-medium">$CTree Received (Sales & Tips)</span>
-                     <span className="text-[15px] font-semibold text-black">+${totalCTreeReceived.toFixed(2)}</span>
+                     <span className="text-[15px] font-semibold text-black">+${totalCTreeReceivedLifetime.toFixed(2)}</span>
                    </div>
                   
                    <div className="flex justify-between items-center">
                      <span className="text-[14px] text-slate-500 font-medium">$CTree Issued (In-Store Top-Ups)</span>
-                     <span className="text-[15px] font-semibold text-rose-500">-${topUpsIssued.toFixed(2)}</span>
+                     <span className="text-[15px] font-semibold text-rose-500">-${topUpsIssuedLifetime.toFixed(2)}</span>
                    </div>
                   
                    <div className="pt-4 border-t border-slate-100 flex justify-between items-center text-slate-400">
@@ -4282,13 +4462,13 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                      <span className="bg-white/10 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-[12px] font-medium border border-white/5">Net Balance</span>
                    </div>
                    <div className="flex items-baseline gap-2 mb-6">
-                     <p className="text-5xl sm:text-[56px] font-light tracking-tight leading-none">${netSettlementBalance.toFixed(2)}</p>
+                     <p className="text-5xl sm:text-[56px] font-light tracking-tight leading-none">${netSettlementBalanceLifetime.toFixed(2)}</p>
                      <span className="text-xl sm:text-2xl text-slate-400 font-light">CAD</span>
                    </div>
                    <div className="flex items-center gap-3 text-[14px] font-medium text-slate-400 bg-black/20 p-4 rounded-[20px] w-max backdrop-blur-sm border border-white/5">
-                     <span className="text-white">+${totalCTreeReceived.toFixed(2)} Recv</span>
+                     <span className="text-white">+${totalCTreeReceivedLifetime.toFixed(2)} Recv</span>
                      <span className="text-slate-600">|</span>
-                     <span className="text-rose-400">-${topUpsIssued.toFixed(2)} Issued</span>
+                     <span className="text-rose-400">-${topUpsIssuedLifetime.toFixed(2)} Issued</span>
                    </div>
                  </div>
                  <button
@@ -4473,7 +4653,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                   </div>
                   <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
                     <span className="text-[11px] text-emerald-500 font-semibold mb-0.5 flex items-center gap-1"><Ticket size={10} /> Vouchers</span>
-                    <span className="text-[15px] font-bold text-slate-800">{summaryTotalVouchers.toFixed(2)}</span>
+                    <span className="text-[15px] font-bold text-slate-800">{summaryTotalCAD.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -4623,20 +4803,8 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                        : undefined;
                                    const tierPres =
                                      tierCap != null && tierCap.name ? infraTierCapsulePresentation(tierCap.backgroundColor) : null;
-                                   let displayJsonSource = ''
-                                   try {
-                                     const dj = raw.displayJson
-                                     if (typeof dj === 'string' && dj.trim()) {
-                                       const o = JSON.parse(dj) as { source?: string }
-                                       if (typeof o?.source === 'string') displayJsonSource = o.source.toLowerCase()
-                                     }
-                                   } catch { /* ignore */ }
-                                   const beamioTagPlain = tx.beamioTag ? tx.beamioTag.replace(/^@/, '') : ''
-                                   const useNfcSubtitle = tx.type.includes('Top-Up')
-                                     ? payerHandle.startsWith('CashTreeDamo_')
-                                     : tx.source === 'NFC' ||
-                                       displayJsonSource === 'container' ||
-                                       /nfc/i.test(beamioTagPlain)
+                                   /** Same as In-Store Top-Up: NFC only when payer tag is CashTreeDamo_* (Android POS / NFC path). */
+                                   const useNfcSubtitle = payerHandle.startsWith('CashTreeDamo_')
                                    return (
                                      <>
                                        <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -4737,18 +4905,35 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                    return <span className="text-[13px] font-medium text-slate-400">—</span>
                                  }
                                  const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
-                                 const cadApprox = approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle)
+                                 const mainCad = approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle)
+                                 let tipFiatAdd = 0
+                                 let tipUsdcAdd = 0
+                                 if (tx.tipRaw) {
+                                   const tr = tx.tipRaw.raw as Record<string, unknown>
+                                   tipFiatAdd = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
+                                   if (!(tipFiatAdd > 0) && tx.tipRaw.usdcAmount > 0) tipUsdcAdd = tx.tipRaw.usdcAmount
+                                 }
+                                 const tipUsdcAsDisplayFiat =
+                                   tipUsdcAdd > 0
+                                     ? curLabel === 'CAD'
+                                       ? tipUsdcAdd / cadOracle
+                                       : curLabel === 'USD' || curLabel === 'USDC'
+                                         ? tipUsdcAdd
+                                         : tipUsdcAdd / cadOracle
+                                     : 0
+                                 const displayFiatFull = finalFiat + tipFiatAdd + tipUsdcAsDisplayFiat
+                                 const cadApproxFull = mainCad + mergedChargeTipCad(tx)
                                  return (
                                    <div className="flex flex-col gap-1.5 items-start">
                                      <div className="flex items-start gap-2">
                                        <Ticket size={15} className="text-emerald-500 shrink-0 mt-0.5" />
                                        <div className="flex flex-col min-w-0">
                                          <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
-                                           {finalFiat.toFixed(2)}{' '}
+                                           {displayFiatFull.toFixed(2)}{' '}
                                            <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
                                          </div>
                                          <span className="text-[11px] text-slate-400 font-medium mt-0.5">
-                                           ≈ ${cadApprox.toFixed(2)} CAD
+                                           ≈ ${cadApproxFull.toFixed(2)} CAD
                                          </span>
                                        </div>
                                      </div>
@@ -4875,7 +5060,7 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                                ) : tx.bUnits > 0 ? (
                                  <div className="flex items-center gap-1.5 bg-orange-50 px-2 py-1 rounded-md border border-orange-500/10 cursor-help" title={`Protocol Fee: ${(tx.bUnits * 0.01).toFixed(2)} USDC`}>
                                    <Fuel size={12} className="text-orange-500 shrink-0" />
-                                   <span className="text-[11px] font-bold text-orange-500">{tx.bUnits} B-Units</span>
+                                   <span className="text-[11px] font-bold text-orange-500">{tx.bUnits.toFixed(2)} B-Units</span>
                                  </div>
                                ) : (
                                  <div className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-md border border-slate-200/50">
@@ -5034,14 +5219,24 @@ const protocolFuelConsumptionTodayVal = protocolFuelConsumptionToday ?? 0; // To
                    </div>
                    {effectiveJoinedAlliances.map((aId) => {
                      const alliance = alliancesDb[aId];
+                     const useAaCardPoints0 =
+                       aId === ALLIANCE_ID_FOR_FIXED_USER_CARD && Boolean(profiles?.[0]?.aaAccount?.trim());
+                     const displayVoucherNum: number | null = useAaCardPoints0
+                       ? aaUserCardPointsToken0Balance
+                       : alliance.aaBalance;
+                     const voucherPending = useAaCardPoints0 && displayVoucherNum === null;
                      return (
                        <div key={aId} className={`${alliance.themeLightBg} rounded-[24px] p-5 sm:p-6 border border-white/50 shrink-0 min-w-[200px] sm:min-w-[240px] w-max`}>
                          <p className={`text-[13px] font-medium ${alliance.themeText} mb-1 truncate`}>{alliance.id} Vouchers</p>
                          <div className="flex items-baseline gap-1.5 mb-0.5">
-                           <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">{alliance.aaBalance.toFixed(2)}</p>
+                           <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">
+                             {voucherPending ? '—' : displayVoucherNum!.toFixed(2)}
+                           </p>
                            <span className={`text-[14px] ${alliance.themeText} font-medium`}>{alliance.token}</span>
                          </div>
-                         <span className={`text-[11px] ${alliance.themeText} opacity-70 font-medium`}>≈ ${alliance.aaBalance.toFixed(2)} CAD</span>
+                         <span className={`text-[11px] ${alliance.themeText} opacity-70 font-medium`}>
+                           ≈ ${voucherPending ? '—' : displayVoucherNum!.toFixed(2)} CAD
+                         </span>
                        </div>
                      );
                    })}

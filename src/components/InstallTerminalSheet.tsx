@@ -5,6 +5,10 @@ import { Share2, PlusSquare, MoreVertical, Download, Smartphone, X, Sparkles } f
 const isIOS = typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent)
 const STORAGE_KEY = "beamio_install_terminal_seen"
 
+/** 与 LoadingPage / RecoveryQRScreen 主色一致（Tailwind 任意类内请写死 #hex） */
+export const CASHTREES_PRIMARY_LIME = "#96EB3C"
+export const CASHTREES_PRIMARY_INK = "#0F172A"
+
 export function getInstallTerminalSeen(): boolean {
 	if (typeof window === "undefined") return true
 	try {
@@ -79,8 +83,8 @@ export default function InstallTerminalSheet({
                 /* iOS PWA 首次启动：指导使用 Restore Wallet */
                 <>
                   <div className="flex items-start gap-4 mb-6">
-                    <div className="h-14 w-14 rounded-2xl bg-[#1652f0] flex items-center justify-center shrink-0">
-                      <span className="text-2xl font-bold text-white">B</span>
+                    <div className="h-14 w-14 rounded-2xl bg-[#96EB3C] flex items-center justify-center shrink-0 shadow-[0_10px_28px_rgba(150,235,60,0.35)]">
+                      <span className="text-2xl font-bold text-[#0F172A]">C</span>
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
@@ -97,8 +101,8 @@ export default function InstallTerminalSheet({
                 <>
                   {/* Header: icon + title + close */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className="h-14 w-14 rounded-2xl bg-[#1652f0] flex items-center justify-center shrink-0">
-                      <Smartphone className="w-7 h-7 text-white" strokeWidth={2} />
+                    <div className="h-14 w-14 rounded-2xl bg-[#96EB3C] flex items-center justify-center shrink-0 shadow-[0_10px_28px_rgba(150,235,60,0.35)]">
+                      <Smartphone className="w-7 h-7 text-[#0F172A]" strokeWidth={2} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
@@ -208,9 +212,9 @@ export default function InstallTerminalSheet({
 
                   {/* Seamless Setup */}
                   {beamioTag && (
-                    <div className="mt-4 p-4 rounded-xl bg-sky-50 dark:bg-sky-900/20 border border-sky-100 dark:border-sky-800/50">
+                    <div className="mt-4 p-4 rounded-xl bg-[#96EB3C]/12 dark:bg-[#96EB3C]/10 border border-[#96EB3C]/25 dark:border-[#96EB3C]/20">
                       <div className="flex items-start gap-3">
-                        <Sparkles className="w-5 h-5 text-[#1652f0] shrink-0 mt-0.5" strokeWidth={2} />
+                        <Sparkles className="w-5 h-5 text-[#96EB3C] shrink-0 mt-0.5" strokeWidth={2} />
                         <div>
                           <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-200">Seamless Setup</p>
                           <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400 leading-snug">

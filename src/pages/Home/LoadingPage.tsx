@@ -33,6 +33,8 @@ import packageJson from '../../../package.json'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
+/** `public/logo512.png` — respects `package.json` homepage / `PUBLIC_URL` */
+const CASHTREES_LOGO_PWA = `${process.env.PUBLIC_URL ?? ''}/logo512.png`
 const ISSUED_NFT_START_ID = 100_000_000_000
 
 /** 从 NFT tokenId 推导卡号显示：issued NFT 用序号，tier NFT 用 tokenId */
@@ -44,7 +46,7 @@ function formatMemberNo(tokenId: string | number): string {
 	return `M-${String(n).padStart(6, '0')}`
 }
 
-// Simple mobile-style onboarding modal for Beamio
+// Simple mobile-style onboarding modal for CashTrees (SilentPass UI shell)
 // TailwindCSS-based layout
 
 type Props = {
@@ -105,7 +107,7 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 				</div>
 				<div className="mt-4 text-center space-y-3 max-w-xs mx-auto">
 					<h1 className="text-3xl font-bold text-slate-900 tracking-tight">Activate Your Card.</h1>
-					<p className="text-slate-500 text-[15px] font-medium leading-relaxed">Create a secure Beamio wallet to claim this membership. No app download required yet.</p>
+					<p className="text-slate-500 text-[15px] font-medium leading-relaxed">Create a secure CashTrees wallet to claim this membership. No app download required yet.</p>
 				</div>
 			</div>
 			<div className="p-6 pb-10 mb-40 bg-gradient-to-t from-[#F5F5F7] to-transparent z-20">
@@ -453,107 +455,84 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
       pb-[env(safe-area-inset-bottom)]
       pl-[env(safe-area-inset-left)]
       pr-[env(safe-area-inset-right)]
-      w-full h-screen bg-white relative
+      w-full h-screen bg-[#F8F9FA] relative
     "
   >
-    {APP_VERSION && <div className="absolute top-[env(safe-area-inset-top)] right-6 md:right-8 z-10 text-[11px] text-slate-500/30">v{APP_VERSION}</div>}
+    {APP_VERSION && <div className="absolute top-[env(safe-area-inset-top)] right-6 md:right-8 z-10 text-[11px] text-slate-400/50">v{APP_VERSION}</div>}
     <div className="h-full max-w-lg mx-auto px-6 md:px-8">
       <div className="h-full flex flex-col items-center">
-        {/* 上方留白（贴近截图的“更空”感觉） */}
-        <div className="flex-1" />
+        <div className="flex-1 min-h-4" />
 
-        {/* Logo + 标题区 */}
         <div className="flex flex-col items-center text-center">
-          {/* App icon */}
-          <div
-            className="
-              w-[86px] h-[86px] rounded-[26px]
-              bg-white
-              ring-1 ring-slate-200/70
-              shadow-[0_14px_28px_rgba(15,23,42,0.10)]
-              flex items-center justify-center
-            "
-          >
-            <span
-              className="text-[44px] font-extrabold leading-none"
-              style={{ color: "#1652f0" }} // Beamio Blue
-            >
-              B
-            </span>
+          <img
+            src={CASHTREES_LOGO_PWA}
+            alt="CashTrees"
+            className="w-[172px] h-[172px] object-contain select-none"
+            draggable={false}
+          />
+
+          <div className="mt-2 text-[40px] md:text-[44px] font-extrabold tracking-[-0.02em] text-[#0F172A]">
+            CashTrees
           </div>
 
-          {/* Beamio */}
-          <div className="mt-6 text-[44px] font-extrabold tracking-[-0.02em] text-slate-900">
-            Beamio
-          </div>
-
-          {/* Slogan */}
-          <div className="mt-3 text-[22px] leading-snug text-slate-500">
-            The Commerce State Layer for
-            USDC.
-          </div>
+          <p className="mt-1.5 max-w-[280px] text-[15px] md:text-base font-normal leading-snug text-slate-500">
+            Local Spending, Simplified.
+          </p>
         </div>
 
-        {/* iOS PWA 提示：从 Safari 添加到主屏幕后，PWA 无法读取浏览器数据，需用恢复码还原 */}
         {isStandalone && (
-          <div className="w-full mt-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+          <div className="w-full mt-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
             <p className="text-[15px] font-medium text-amber-800 dark:text-amber-200 leading-snug">
               Opened from home screen? Wallet data from Safari doesn&apos;t transfer. Use <strong>Restore Wallet</strong> with your recovery code below.
             </p>
           </div>
         )}
 
-        {/* 按钮区 */}
-        <div className="w-full mt-10">
+        <div className="w-full mt-6 space-y-4">
           <AppButton
             fullWidth
             className="
-              rounded-[999px] py-8 text-[18px] font-semibold
-              shadow-[0_14px_30px_rgba(22,82,240,0.28)]
-              active:shadow-[0_10px_20px_rgba(22,82,240,0.22)]
+              rounded-[999px] !h-auto min-h-[56px] py-5 text-[17px] font-bold
+              !bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28]
+              !text-[#0F172A]
+              !shadow-[0_14px_32px_rgba(150,235,60,0.42)]
+              active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)]
+              focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50
             "
-            style={{ backgroundColor: "#1652f0" }}
             onClick={() => setSettingsOpen("CreateUsernamePinScreen")}
           >
             Create Wallet
           </AppButton>
 
-          <div className="mt-4">
-            <AppButton
-              fullWidth
-              variant="secondary"
-              className="
-                rounded-[999px] py-8 text-[18px] font-semibold
-                bg-white
-                border border-slate-200
-                text-slate-900
-                shadow-[0_10px_24px_rgba(15,23,42,0.08)]
-                active:shadow-[0_7px_16px_rgba(15,23,42,0.06)]
-              "
-              onClick={() => setSettingsOpen("RestoreEntryScreen")}
-            >
-              Restore Wallet
-            </AppButton>
-          </div>
+          <AppButton
+            fullWidth
+            variant="secondary"
+            className="
+              rounded-[999px] !h-auto min-h-[56px] py-5 text-[17px] font-bold
+              !bg-white hover:!bg-slate-50
+              border border-slate-200/90
+              !text-[#0F172A]
+              !shadow-[0_10px_26px_rgba(15,23,42,0.07)]
+              active:!shadow-[0_7px_18px_rgba(15,23,42,0.05)]
+            "
+            onClick={() => setSettingsOpen("RestoreEntryScreen")}
+          >
+            Restore Wallet
+          </AppButton>
         </div>
 
-        {/* 底部提示 */}
-        <div className="flex-1" />
-        {/* 底部提示（安全区感知） */}
-			<div
-			className="
-				sticky bottom-0
-				w-full
-				pt-4
-				pb-[calc(18px+env(safe-area-inset-bottom))]
-				text-[18px]
-				text-slate-400
-				text-center
-				bg-white
-			"
-			>
-			Gas Sponsored. Non-custodial.
-			</div>
+        <div className="flex-1 min-h-4" />
+
+        <div
+          className="
+            sticky bottom-0 w-full
+            pt-4 pb-[calc(14px+env(safe-area-inset-bottom))]
+            text-[13px] font-normal text-slate-400 text-center
+            bg-[#F8F9FA]
+          "
+        >
+          Card Ready. Non-custodial.
+        </div>
       </div>
     </div>
   </div>
@@ -656,14 +635,17 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 						) : (
 						/* Wallet Ready - redeem 进行中或非 redeem 流程 */
 						<div className="w-full max-w-lg mx-auto px-6 md:px-8 min-h-full flex flex-col">
-							{/* Header: Logo + Beamio Wallet + VAULT ACTIVE */}
+							{/* Header: Logo + CashTrees Wallet + VAULT ACTIVE */}
 							<div className="flex items-center justify-between pt-6 pb-4">
-								<div className="flex items-center gap-2.5">
-									<div className="h-9 w-9 rounded-xl bg-[#1652f0] flex items-center justify-center text-white font-bold text-lg">
-										B
-									</div>
+								<div className="flex items-center gap-1.5">
+									<img
+										src={CASHTREES_LOGO_PWA}
+										alt=""
+										className="h-[72px] w-[72px] object-contain shrink-0 select-none"
+										draggable={false}
+									/>
 									<span className="text-base font-semibold text-slate-900 dark:text-slate-100">
-										Beamio Wallet
+										CashTrees Wallet
 									</span>
 								</div>
 								<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">

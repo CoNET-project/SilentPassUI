@@ -4,6 +4,11 @@ import { onWalletEvent, restoreWithRedeem } from '@/services/beamio'
 import ScanBtn from '@/components/scanBtn/ScanButton' // 引入 ScanBtn
 import { Scan, AlertCircle } from 'lucide-react' 
 import { useDaemonContext } from '@/providers/DaemonProvider'
+
+/** 与 LoadingPage 主色一致 */
+export const CASHTREES_PRIMARY_LIME = '#96EB3C'
+export const CASHTREES_PRIMARY_INK = '#0F172A'
+
 type RestoreWithQRScreenProps = {
   onRestore: (temp: encrypt_keys_object) => void
   /** 从 URL 等途径预填的 recovery code（如 PWA 从 Save to Home Screen 携带） */
@@ -109,23 +114,23 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
             <ScanBtn />
         </div>
 
-        {/* 深色扫描按钮 (UI 触发器) */}
+        {/* Scan QR — 主色与 LoadingPage 一致 */}
         <div className="mt-8">
           <button
             type="button"
-            onClick={onOpenScanner} // 点击这里 -> 触发上面的 ScanBtn
+            onClick={onOpenScanner}
             className="
               w-full h-[64px]
               rounded-[20px]
-              bg-[#0F172A] 
-              text-white text-[18px] font-bold
+              bg-[#96EB3C] hover:bg-[#8ADC32] active:bg-[#7ECF28]
+              text-[#0F172A] text-[18px] font-bold
               flex items-center justify-center gap-2.5
-              active:scale-[0.98] transition-transform
-              shadow-[0_10px_20px_rgba(15,23,42,0.15)]
+              active:scale-[0.98] transition-all
+              shadow-[0_12px_28px_rgba(150,235,60,0.35)]
             "
           >
             <Scan className="w-6 h-6" strokeWidth={2.5} />
-            	Scan QR
+            Scan QR
           </button>
         </div>
 
@@ -153,7 +158,7 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
               resize-none outline-none
               shadow-[0_4px_12px_rgba(0,0,0,0.02)]
               transition-all
-              focus:border-blue-400 focus:ring-4 focus:ring-blue-50
+              focus:border-[#96EB3C]/50 focus:ring-4 focus:ring-[#96EB3C]/12
               ${error ? 'border-red-300 ring-4 ring-red-50' : 'border-slate-200'}
             `}
             placeholder="Paste your code string here..."
@@ -178,12 +183,12 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
           fullWidth
           disabled={loading || !recoveryCode.trim()}
           loading={loading}
-          className="
-            h-[64px] rounded-full
-            text-[20px] font-bold
-            bg-[#2563EB] hover:bg-[#1d4ed8]
-            shadow-[0_12px_30px_rgba(37,99,235,0.3)]
-          "
+          className={`
+            h-[64px] rounded-full text-[20px] font-bold
+            ${!recoveryCode.trim() && !loading
+              ? '!bg-slate-200 !text-slate-400 cursor-not-allowed !shadow-none'
+              : '!bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28] !text-[#0F172A] !shadow-[0_12px_30px_rgba(150,235,60,0.42)] active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50 disabled:!opacity-90'}
+          `}
         >
           Restore Wallet
         </AppButton>

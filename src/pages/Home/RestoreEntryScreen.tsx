@@ -1,6 +1,10 @@
 import React from 'react'
 import { QrCode, User } from 'lucide-react'
 
+/** 与 LoadingPage 主色一致（样式类内使用字面量 #hex 供 Tailwind JIT 扫描） */
+export const CASHTREES_PRIMARY_LIME = '#96EB3C'
+export const CASHTREES_PRIMARY_INK = '#0F172A'
+
 type RestoreEntryScreenProps = {
   onUseRecoveryQR: () => void
   onUseUsernamePin: () => void
@@ -33,9 +37,9 @@ const RestoreEntryScreen = ({
             transition-transform active:scale-[0.98]
           "
         >
-          {/* Icon Container: Blue */}
-          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
-            <QrCode className="w-7 h-7 text-[#1652f0]" strokeWidth={2.5} />
+          {/* Icon Container: CashTrees primary */}
+          <div className="w-14 h-14 rounded-full bg-[#96EB3C]/18 flex items-center justify-center">
+            <QrCode className="w-7 h-7 text-[#96EB3C]" strokeWidth={2.5} />
           </div>
 
           <div>

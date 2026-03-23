@@ -122,7 +122,7 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
                 text-[24px] font-bold text-slate-900
                 placeholder:text-slate-300 placeholder:font-bold
                 outline-none transition-all
-                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
+                focus:border-[#96EB3C]/50 focus:ring-4 focus:ring-[#96EB3C]/12
                 disabled:opacity-70
                 ${status === 'invalid' ? 'border-orange-200 ring-4 ring-orange-50 focus:border-orange-300 focus:ring-orange-100' : ''}
               `}
@@ -200,8 +200,8 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
             h-[64px] rounded-full
             text-[20px] font-bold tracking-wide
             ${isValid
-              ? 'bg-[#1652f0] hover:bg-[#1345ca] shadow-[0_12px_30px_rgba(22,82,240,0.3)] text-white'
-              : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
+              ? '!bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28] !text-[#0F172A] !shadow-[0_12px_30px_rgba(150,235,60,0.42)] active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50'
+              : '!bg-slate-200 !text-slate-400 cursor-not-allowed !shadow-none'}
           `}
           onClick={onNext}
         >
@@ -253,7 +253,7 @@ const SecureWalletPassword = ({
                 text-[20px] font-semibold text-slate-900
                 placeholder:text-slate-300 placeholder:font-medium
                 outline-none transition-all
-                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
+                focus:border-[#96EB3C]/50 focus:ring-4 focus:ring-[#96EB3C]/12
               "
               value={password}
               placeholder="Set Password (6+ chars)" // Matches Screenshot 3
@@ -289,7 +289,7 @@ const SecureWalletPassword = ({
               <ShieldCheck className="w-7 h-7 text-slate-400" />
             </div>
             <div className="text-[16px] leading-snug text-slate-500 font-medium pt-0.5">
-              Beamio is non-custodial. We cannot reset this.
+              CashTrees is non-custodial. We cannot reset this.
             </div>
           </div>
         </div>
@@ -305,8 +305,8 @@ const SecureWalletPassword = ({
             text-[20px] font-bold
             transition-all duration-200
             ${canSubmit 
-              ? 'bg-[#1652f0] shadow-[0_12px_30px_rgba(22,82,240,0.3)] text-white' 
-              : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
+              ? '!bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28] !text-[#0F172A] !shadow-[0_12px_30px_rgba(150,235,60,0.42)] active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50' 
+              : '!bg-slate-200 !text-slate-400 cursor-not-allowed !shadow-none'}
           `}
           onClick={() => {
             if (password.trim().length < 6) return
@@ -389,10 +389,10 @@ const CreateUsernamePinScreen = forwardRef<
     return (
       <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
         <div className="relative mb-8">
-          <div className="w-20 h-20 bg-[#1652f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-blue-500/40">
-            <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
+          <div className="w-20 h-20 bg-[#96EB3C] rounded-[28px] flex items-center justify-center shadow-[0_14px_40px_rgba(150,235,60,0.38)]">
+            <Loader className="w-9 h-9 text-[#0F172A] animate-spin" strokeWidth={2.5} />
           </div>
-          <div className="absolute -inset-4 bg-[#1652f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
+          <div className="absolute -inset-4 bg-[#96EB3C] rounded-[40px] opacity-10 blur-xl animate-pulse" />
         </div>
         <div className="w-full max-w-sm space-y-6">
           {steps.map((s, idx) => {
@@ -405,14 +405,14 @@ const CreateUsernamePinScreen = forwardRef<
                   className={[
                     'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors',
                     isCompleted && 'bg-emerald-500',
-                    isActive && 'bg-[#1652f0]',
+                    isActive && 'bg-[#96EB3C]',
                     !isCompleted && !isActive && 'bg-slate-200',
                   ].filter(Boolean).join(' ')}
                 >
                   {isCompleted ? (
                     <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
                   ) : isActive ? (
-                    <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
+                    <Icon className="w-5 h-5 text-[#0F172A]" strokeWidth={2.5} />
                   ) : (
                     <Icon className="w-5 h-5 text-slate-400" strokeWidth={2.5} />
                   )}
@@ -421,7 +421,7 @@ const CreateUsernamePinScreen = forwardRef<
                   <p
                     className={[
                       'font-semibold text-[15px] transition-colors',
-                      isActive && 'text-[#1652f0]',
+                      isActive && 'text-[#0F172A] font-bold',
                       isCompleted && 'text-slate-700',
                       !isCompleted && !isActive && 'text-slate-400',
                     ].filter(Boolean).join(' ')}

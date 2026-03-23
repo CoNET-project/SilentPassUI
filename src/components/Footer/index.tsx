@@ -431,7 +431,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					animate={iconTarget}
 					transition={iconTransition}
 				>
-					{active ? <span className="inline-flex [&_path]:!fill-[#1652f0] [&_path]:!fill-opacity-100">{iconBlue}</span> : <span className={`inline-flex [&_path]:!fill-opacity-100 ${isDarkUnderneath ? '[&_path]:!fill-black' : '[&_path]:!fill-white'}`}>{iconGrey}</span>}
+					{active ? <span className="inline-flex [&_path]:!fill-[#96EB3C] [&_path]:!fill-opacity-100">{iconBlue}</span> : <span className={`inline-flex [&_path]:!fill-opacity-100 ${isDarkUnderneath ? '[&_path]:!fill-black' : '[&_path]:!fill-white'}`}>{iconGrey}</span>}
 
 					{badge && (
 						<span
@@ -455,7 +455,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				<motion.div
 					className={`
 						text-[9px] leading-none font-medium
-						${active ? 'text-[#1652f0]' : isDarkUnderneath ? 'text-black/80' : 'text-white/90'}
+						${active ? 'text-[#96EB3C]' : isDarkUnderneath ? 'text-black/80' : 'text-white/90'}
 					`}
 					animate={
 						active && (phase === 'impact' || phase === 'settling')

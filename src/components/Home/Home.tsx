@@ -16,7 +16,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, ArrowUpRight, ArrowDownLeft, Plus, Fuel } 
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Info, Send, QrCode } 
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -723,9 +723,12 @@ const Home = ({}) => {
 	}, [showLinkPay])
 
 
+	/** Home 主视觉：浅灰底 + 青柠强调（与产品 mock 对齐） */
+	const homeAccent = '#7ED321'
+
 	return (
 		<div className="
-		bg-[#F2F2F7]
+		bg-[#F4F5F7]
 		pb-[env(safe-area-inset-bottom)]
 		pl-[env(safe-area-inset-left)]
 		pr-[env(safe-area-inset-right)]
@@ -753,27 +756,31 @@ const Home = ({}) => {
 					style={{ top: 'max(1rem, env(safe-area-inset-top))', opacity: capsuleOpacity, pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
 					aria-label="Open wallet"
 				>
-					<div className="flex items-center space-x-2.5 px-3 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50 group active:scale-[0.98] transition-transform">
-						{beamio ? (
-							<img
-								src={beamio.image ? beamio.image : getImg(beamio.accountName)}
-								alt={beamio.accountName}
-								className="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 shadow-sm"
-								draggable={false}
-							/>
-						) : (
-							<div className="w-9 h-9 bg-slate-200 dark:bg-slate-600 rounded-full flex items-center justify-center border border-gray-200 dark:border-slate-500 text-lg text-gray-500">
-								?
-							</div>
-						)}
-						<div className="flex flex-col items-start">
-							<span className="text-xs font-bold text-gray-500 dark:text-slate-400 leading-tight">
-								{displayName(beamio) || 'User'}
-							</span>
-							<span className="text-base font-bold text-gray-900 dark:text-slate-100 leading-tight">
-								@{beamio?.accountName ?? '@Beamio'}
-							</span>
+					<div
+						className="flex items-center gap-2.5 pl-2 pr-4 py-2 bg-white dark:bg-slate-800 rounded-full shadow-[0_4px_24px_rgba(15,23,42,0.08)] border border-slate-100/90 dark:border-slate-700/80 group active:scale-[0.98] transition-transform"
+					>
+						<div
+							className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shrink-0 text-base font-bold text-white"
+							style={{ backgroundColor: homeAccent }}
+						>
+							{beamio?.image ? (
+								<img
+									src={beamio.image}
+									alt={beamio.accountName}
+									className="w-full h-full object-cover"
+									draggable={false}
+								/>
+							) : (
+								<span className="leading-none">
+									{(beamio?.accountName || 'B').replace(/^@/, '').charAt(0).toUpperCase() || '?'}
+								</span>
+							)}
 						</div>
+						<span
+							className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100"
+						>
+							@{beamio?.accountName?.replace(/^@/, '') || 'Beamio'}
+						</span>
 					</div>
 				</button>
 			)}
@@ -785,82 +792,95 @@ const Home = ({}) => {
 						{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
 						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
 
-						{/* Content - exampleExpress style */}
-						<div className="px-5 pt-6 space-y-6">
-							{/* Total Valuation - exampleExpress style */}
-							<div className="text-center py-4">
-								<button
-									type="button"
-									onClick={() => setShowFuelView(true)}
-									className="inline-flex items-center rounded-full border border-orange-200 dark:border-orange-800/50 overflow-hidden shadow-sm mb-4 transition active:scale-[0.98] cursor-pointer hover:opacity-90"
-								>
-									<div className="inline-flex items-center gap-1.5 pl-4 pr-2 py-1.5 bg-white dark:bg-slate-800">
-										<Fuel size={14} className="text-orange-500 fill-current" />
-										<span className="text-[11px] font-semibold text-gray-700 dark:text-slate-300">Network Fuel</span>
-									</div>
-									<div className="inline-flex items-center px-3 py-1.5 bg-orange-100 dark:bg-orange-900/30">
-										<span className="text-[11px] font-bold text-orange-600 dark:text-orange-400">
-											{bUnitBalance != null ? Math.floor(bUnitBalance.total) : "—"} B-Units
-										</span>
-									</div>
-								</button>
-								<h2 className="text-sm font-medium text-gray-500 mb-1 tracking-wide">
-									Total Valuation ({currency})
-								</h2>
-								<div className="flex justify-center items-baseline text-gray-900">
+						{/* Content — 浅底、白卡片、青柠强调 */}
+						<div className="px-5 pt-4 space-y-8">
+							{/* Total Purchasing Power */}
+							<div className="text-center pt-2">
+								<div className="inline-flex items-center justify-center gap-1.5 mb-3">
+									<h2 className="text-sm font-medium text-[#64748B] dark:text-slate-400 tracking-wide">
+										Total Purchasing Power
+									</h2>
+									<button
+										type="button"
+										className="p-0.5 rounded-full text-[#7ED321] hover:opacity-80 transition-opacity"
+										aria-label="About purchasing power"
+										title="Includes your Main Wallet (USDC), Smart Account balance, and linked card value, shown in your display currency."
+									>
+										<Info className="w-4 h-4" strokeWidth={2.25} />
+									</button>
+								</div>
+								<div className="flex justify-center items-start text-[#0F172A] dark:text-slate-100 gap-0.5">
 									{(() => {
 										const { symbol, whole, decimal } = getValuationParts()
 										return (
 											<>
-												{symbol && <span className="text-3xl font-medium mr-1">{symbol}</span>}
-												<span className="text-5xl font-extrabold tracking-tight">{whole}</span>
-												<span className="text-3xl font-bold text-gray-400">.{decimal}</span>
+												{symbol ? (
+													<span className="text-xl font-medium text-[#64748B] dark:text-slate-400 pt-2 tabular-nums">
+														{symbol}
+													</span>
+												) : null}
+												<span className="text-[3.25rem] leading-none font-extrabold tracking-tight tabular-nums">
+													{whole}
+												</span>
+												<span className="text-xl font-medium text-[#64748B] dark:text-slate-400 pt-2 tabular-nums">
+													.{decimal}
+												</span>
 											</>
 										)
 									})()}
 								</div>
 							</div>
 
-							{/* Send | Receive + Add Cash - exampleExpress grid，蓝色背景 + 白字 */}
-							<div className="grid grid-cols-2 gap-3">
+							{/* Add Cash | Send | Pay */}
+							<div className="grid grid-cols-3 gap-2.5">
+								<button
+									type="button"
+									onClick={handleAddFunds}
+									className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-slate-800 rounded-[26px] shadow-[0_8px_28px_rgba(15,23,42,0.07)] border border-slate-100/90 dark:border-slate-700/50 py-5 px-2 active:scale-[0.97] transition-transform"
+								>
+									<div
+										className="w-12 h-12 rounded-full flex items-center justify-center"
+										style={{ backgroundColor: homeAccent }}
+									>
+										<Plus className="w-6 h-6 text-[#0F172A]" strokeWidth={2.5} />
+									</div>
+									<span className="text-[13px] font-bold text-center leading-tight text-[#0F172A] dark:text-slate-100">
+										Add Cash
+									</span>
+								</button>
 								<button
 									type="button"
 									onClick={() => {
 										setSettingsOpen('Pay')
 										setShowFooter(false)
 									}}
-									className="bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 p-4 rounded-[28px] shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-transform flex flex-col justify-between h-32 group text-white"
+									className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-slate-800 rounded-[26px] shadow-[0_8px_28px_rgba(15,23,42,0.07)] border border-slate-100/90 dark:border-slate-700/50 py-5 px-2 active:scale-[0.97] transition-transform"
 								>
-									<div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center self-start group-hover:bg-white/30 transition-colors">
-										<ArrowUpRight className="w-5 h-5 text-white" />
+									<div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+										<Send className="w-5 h-5 text-[#0F172A] dark:text-slate-100" strokeWidth={2.2} />
 									</div>
-									<div className="text-left">
-										<span className="block font-bold text-white">Send</span>
-										<span className="text-xs text-white/80">0 Gas USDC</span>
-									</div>
+									<span className="text-[13px] font-bold text-[#0F172A] dark:text-slate-100">Send</span>
 								</button>
-								<div className="space-y-3">
-									<button
-										type="button"
-										onClick={() => setShowPayMeSheet(true)}
-										className="w-full bg-white p-3 rounded-[24px] shadow-sm border border-gray-100 active:scale-[0.98] transition-transform flex items-center space-x-3"
-									>
-										<div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center">
-											<ArrowDownLeft className="w-5 h-5 text-green-600" />
-										</div>
-										<span className="font-bold text-gray-900 text-sm">Receive</span>
-									</button>
-									<button
-										type="button"
-										onClick={handleAddFunds}
-										className="w-full bg-white p-3 rounded-[24px] shadow-sm border border-gray-100 active:scale-[0.98] transition-transform flex items-center space-x-3"
-									>
-										<div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
-											<Plus className="w-5 h-5 text-gray-600" />
-										</div>
-										<span className="font-bold text-gray-900 text-sm">Add Cash</span>
-									</button>
-								</div>
+								<button
+									type="button"
+									onClick={() => navigate('/Pay')}
+									className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-slate-800 rounded-[26px] shadow-[0_8px_28px_rgba(15,23,42,0.07)] border border-slate-100/90 dark:border-slate-700/50 py-5 px-2 active:scale-[0.97] transition-transform"
+								>
+									<div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+										<QrCode className="w-5 h-5 text-[#0F172A] dark:text-slate-100" strokeWidth={2.2} />
+									</div>
+									<span className="text-[13px] font-bold text-[#0F172A] dark:text-slate-100">Pay</span>
+								</button>
+							</div>
+
+							<div className="flex justify-center -mt-2">
+								<button
+									type="button"
+									onClick={() => setShowPayMeSheet(true)}
+									className="text-xs font-semibold text-[#64748B] dark:text-slate-400 hover:text-[#7ED321] dark:hover:text-[#7ED321] transition-colors"
+								>
+									Receive
+								</button>
 							</div>
 
 							{show200OK && (
@@ -875,7 +895,14 @@ const Home = ({}) => {
 							)}
 
 							{/* Recent Activity - 与 Total Valuation、Send/Receive 同层级，左右边距统一 px-5；bare 无外层圆角/边框/边距，内部控件与上方对齐 */}
-							<ActiveHistoryPannelNew title="Recent Activity" compact compactLimit={5} bare />
+							<ActiveHistoryPannelNew
+								title="Recent Activity"
+								compact
+								compactLimit={5}
+								bare
+								sectionTitleClassName="text-base font-bold text-[#0F172A] dark:text-slate-100 tracking-tight"
+								viewAllClassName="text-[#7ED321] hover:text-[#6bc11a]"
+							/>
 						</div>
 
 						<div className="h-[128px] pb-[env(safe-area-inset-bottom)] pointer-events-none" />

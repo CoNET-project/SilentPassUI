@@ -5,6 +5,10 @@ import { Download, Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw } from '
 import bIcon from '@/components/assets/logo512.png'
 import { useNavigate } from 'react-router-dom'
 
+/** 与 LoadingPage / CreateUsernamePinScreen 主色一致（Tailwind 任意类请写死 #hex，勿拼进模板字符串） */
+export const CASHTREES_PRIMARY_LIME = '#96EB3C'
+export const CASHTREES_PRIMARY_INK = '#0F172A'
+
 export const ACTIVATING_STEPS = [
   { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
   { id: 1, title: 'Deploying Smart Vault', desc: 'Establishing storage on Base', icon: Lock },
@@ -98,10 +102,10 @@ const RecoveryQRScreen = ({
     return (
       <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
         <div className="relative mb-8">
-          <div className="w-20 h-20 bg-[#1652f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-blue-500/40">
-            <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
+          <div className="w-20 h-20 bg-[#96EB3C] rounded-[28px] flex items-center justify-center shadow-[0_14px_40px_rgba(150,235,60,0.38)]">
+            <Loader className="w-9 h-9 text-[#0F172A] animate-spin" strokeWidth={2.5} />
           </div>
-          <div className="absolute -inset-4 bg-[#1652f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
+          <div className="absolute -inset-4 bg-[#96EB3C] rounded-[40px] opacity-10 blur-xl animate-pulse" />
         </div>
         <div className="w-full max-w-sm space-y-6">
           {ACTIVATING_STEPS.map((step, idx) => {
@@ -114,7 +118,7 @@ const RecoveryQRScreen = ({
                   className={[
                     'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors',
                     isCompleted && 'bg-emerald-500',
-                    isActive && 'bg-[#1652f0]',
+                    isActive && 'bg-[#96EB3C]',
                     !isCompleted && !isActive && 'bg-slate-200',
                   ]
                     .filter(Boolean)
@@ -123,7 +127,7 @@ const RecoveryQRScreen = ({
                   {isCompleted ? (
                     <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
                   ) : isActive ? (
-                    <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
+                    <Icon className="w-5 h-5 text-[#0F172A]" strokeWidth={2.5} />
                   ) : (
                     <Icon className="w-5 h-5 text-slate-400" strokeWidth={2.5} />
                   )}
@@ -132,7 +136,7 @@ const RecoveryQRScreen = ({
                   <p
                     className={[
                       'font-semibold text-[15px] transition-colors',
-                      isActive && 'text-[#1652f0]',
+                      isActive && 'text-[#0F172A] font-bold',
                       isCompleted && 'text-slate-700',
                       !isCompleted && !isActive && 'text-slate-400',
                     ]
@@ -183,7 +187,7 @@ const RecoveryQRScreen = ({
               bg-white
               rounded-[32px]
               
-			  shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+			  shadow-[0_26px_50px_rgba(150,235,60,0.2),0_10px_22px_rgba(0,0,0,0.08)]
               border border-slate-100
             "
           >
@@ -308,8 +312,8 @@ const RecoveryQRScreen = ({
              text-[22px] font-bold
              transition-all duration-200
              ${isConfirmed
-               ? 'bg-[#1652f0] shadow-[0_12px_30px_rgba(22,82,240,0.3)] text-white' 
-               : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
+               ? '!bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28] !text-[#0F172A] !shadow-[0_12px_30px_rgba(150,235,60,0.42)] active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50' 
+               : '!bg-slate-200 !text-slate-400 cursor-not-allowed !shadow-none'}
            `}
         >
           {isRedeemFlow ? 'Continue' : 'Open Wallet'}

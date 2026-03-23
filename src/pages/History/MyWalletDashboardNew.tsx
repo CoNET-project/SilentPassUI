@@ -40,7 +40,6 @@ import {
 	Star,
 	Info,
 	ShieldCheck,
-	ChevronUp,
 	MinusCircle,
 	PlusCircle,
 	GripVertical,
@@ -49,12 +48,17 @@ import {
 	SmartphoneNfc,
 	Loader2,
 	X,
-	Cpu,
 	Layers,
 	ImagePlus,
 	Trash2,
 	TreePine,
+	ArrowDownToLine,
+	Radio,
+	Wallet,
+	ChevronRight,
+	Store,
 } from 'lucide-react'
+import { QRCodeCanvas } from 'qrcode.react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
 import BankingBridge from './components/BankingBridge'
@@ -74,7 +78,6 @@ import { CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, CASH_TREES_CARD_ADDR
 import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { getRedeemStatusBatchFromChain } from '@/services/BeamioCard'
-import base_icon from '@/components/assets/base-logo.png'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import greenCard from '../Vouchers/assets/greenCard.png'
 import blackCard from '../Vouchers/assets/BlackCard.png'
@@ -601,7 +604,7 @@ const ManageCardsOverlay = ({
 				</p>
 				<div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-6">
 					{activePasses.map((pass) => {
-						const Icon = pass.id === 'ccsa' ? Globe : pass.id === BEAMIO_USER_CARD_ASSET_ADDRESS ? Cpu : pass.id === CASH_TREES_CARD_ADDRESS ? TreePine : CreditCard
+						const Icon = pass.id === 'ccsa' ? Globe : pass.id === CASH_TREES_CARD_ADDRESS ? TreePine : CreditCard
 						const isEditing = editingId === pass.id
 						const displayTitle = pass.nickname || pass.name
 						return (
@@ -681,7 +684,7 @@ const ManageCardsOverlay = ({
 						<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">Hidden</p>
 						<div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-8">
 							{hiddenPasses.map((pass) => {
-								const Icon = pass.id === 'ccsa' ? Globe : pass.id === BEAMIO_USER_CARD_ASSET_ADDRESS ? Cpu : pass.id === CASH_TREES_CARD_ADDRESS ? TreePine : CreditCard
+								const Icon = pass.id === 'ccsa' ? Globe : pass.id === CASH_TREES_CARD_ADDRESS ? TreePine : CreditCard
 								return (
 									<div
 										key={pass.id}
@@ -740,7 +743,6 @@ export default function MyWalletDashboardNew() {
 	} = useDaemonContext()
 
 	const [activeView, setActiveView] = useState<string | null>(null) // 'eoa' | 'aa' | 'ccsa' | null
-	const [isExpressExpanded, setIsExpressExpanded] = useState(false) // exampleExpress 风格：展开显示 passes
 	const [allItems, setAllItems] = useState<TransferHistork[]>([])
 	const [loading, setLoading] = useState(false)
 	const [itemTx, setItemTx] = useState<TransferHistork>()
@@ -749,17 +751,18 @@ export default function MyWalletDashboardNew() {
 	/** 从 api/latestCards 拉取的卡一览，用于 passes 展示（替代固定 CCSA/infra/CashTrees 列表） */
 	const [latestCardsItems, setLatestCardsItems] = useState<Array<{ cardAddress: string }>>([])
 	/** 每张资产卡的 assets + metadata，key = cardAddress 小写。含 latestCards 及 CCSA（主卡展示用） */
-	const [assetCardDetails, setAssetCardDetails] = useState<Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null }>>({})
+	const [assetCardDetails, setAssetCardDetails] = useState<Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null; cardCurrency?: ICurrency }>>({})
 	/** 以下由 assetCardDetails 派生，供 cards/passes/isCardCreator 等兼容 */
 	const ccsaBalance = assetCardDetails[CCSA_Card_Address]?.assets?.points ?? '0'
 	const ccsaAssets = useMemo(() => assetCardDetails[CCSA_Card_Address]?.assets ? { points: assetCardDetails[CCSA_Card_Address]!.assets!.points, nfts: assetCardDetails[CCSA_Card_Address]!.assets!.nfts ?? [] } : null, [assetCardDetails])
 	const ccsaCardOwner = assetCardDetails[CCSA_Card_Address]?.cardOwner ?? null
-	const infraCardBalance = assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]?.assets?.points ?? '0'
-	const infraCardAssets = useMemo(() => assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]?.assets ? { points: assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]!.assets!.points, nfts: assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]!.assets!.nfts ?? [] } : null, [assetCardDetails])
-	const infraCardMetadata = useMemo(() => assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]?.metadata ? { ...assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]!.metadata!, nftMetadata: assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS]?.nftMetadata } : null, [assetCardDetails])
 	const cashTreesBalance = assetCardDetails[CASH_TREES_CARD_ADDRESS]?.assets?.points ?? '0'
 	const cashTreesAssets = useMemo(() => assetCardDetails[CASH_TREES_CARD_ADDRESS]?.assets ? { points: assetCardDetails[CASH_TREES_CARD_ADDRESS]!.assets!.points, nfts: assetCardDetails[CASH_TREES_CARD_ADDRESS]!.assets!.nfts ?? [] } : null, [assetCardDetails])
 	const cashTreesMetadata = useMemo(() => assetCardDetails[CASH_TREES_CARD_ADDRESS]?.metadata ? { ...assetCardDetails[CASH_TREES_CARD_ADDRESS]!.metadata!, nftMetadata: assetCardDetails[CASH_TREES_CARD_ADDRESS]?.nftMetadata } : null, [assetCardDetails])
+	/** 基础设施卡 BEAMIO_USER_CARD：ERC-1155 tokenId 0（POINTS）余额与链上 currency()，供 Universal Pass Total Balance */
+	const universalPassInfraDetail = assetCardDetails[BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase()]
+	const universalPassPointsBalance = universalPassInfraDetail?.assets?.points ?? '0'
+	const universalPassCardCurrency: ICurrency = universalPassInfraDetail?.cardCurrency ?? 'USDC'
 	const [eoaReflash, setEoaReflash] = useState(false)
 	const [aaReflash, setAaReflash] = useState(false)
 	const [ccsaReflash, setCcsaReflash] = useState(false)
@@ -768,6 +771,11 @@ export default function MyWalletDashboardNew() {
 	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
 	/** Add Cash 后：父容器内显示 BeamioAddUSDCFlow 的 Coinbase 确认画面（204-221） */
 	const [eoaAddUsdcOpen, setEoaAddUsdcOpen] = useState(false)
+	/** CashTrees Add Cash 全屏底栏（对齐 renderAction Wallet Add Cash） */
+	type AddCashSheetMode = 'methods' | 'store_qr' | 'coinbase' | 'convert'
+	const [showAddCashModal, setShowAddCashModal] = useState(false)
+	const [addCashMode, setAddCashMode] = useState<AddCashSheetMode>('methods')
+	const [addAmount, setAddAmount] = useState('')
 	const [aaPanelOpen, setAaPanelOpen] = useState<'' | 'Pay' | 'BeamioPayMeQR'>('')
 	const [ccsaCreateCardOpen, setCcsaCreateCardOpen] = useState(false)
 	const [topUpRedeemOpen, setTopUpRedeemOpen] = useState(false)
@@ -869,6 +877,18 @@ export default function MyWalletDashboardNew() {
 		if (!isFinite(rate) || !isFinite(n)) return 0
 		return n * rate
 	}, [ccsaBalance, fxRateUSDCToCurrency])
+
+	/** Universal Pass 副行：USDC→CAD 或已为 CAD 时同值；其他币种不显示 */
+	const universalPassApproxCad = useMemo(() => {
+		const n = Number(universalPassPointsBalance || 0)
+		if (!isFinite(n)) return 0
+		if (universalPassCardCurrency === 'USDC') {
+			const rate = fxRateUSDCToCurrency('CAD')
+			return isFinite(rate) ? n * rate : 0
+		}
+		if (universalPassCardCurrency === 'CAD') return n
+		return 0
+	}, [universalPassPointsBalance, universalPassCardCurrency, fxRateUSDCToCurrency])
 
 	// 进入时检查 historyPayData：若有 searchResult 则打开 PayScreen 并传入
 	useEffect(() => {
@@ -992,6 +1012,51 @@ export default function MyWalletDashboardNew() {
 		setEoaPanelOpen('')
 		setEoaAddUsdcOpen(false)
 		setPendingPayTarget(null)
+	}, [setShowFooter])
+
+	const closeAddCashModal = useCallback(() => {
+		setShowAddCashModal(false)
+		setAddCashMode('methods')
+		setAddAmount('')
+		setShowFooter(true)
+	}, [setShowFooter])
+
+	const openAddCashModal = useCallback(() => {
+		setAddAmount('')
+		setAddCashMode('methods')
+		setShowAddCashModal(true)
+		setShowFooter(false)
+	}, [setShowFooter])
+
+	const storeDepositQrValue = useMemo(() => {
+		const tag = beamio?.accountName?.trim()
+		if (tag) return `https://beamio.app?beamio=${encodeURIComponent(tag)}`
+		if (myAddress && ethers.isAddress(myAddress)) return ethers.getAddress(myAddress)
+		return 'https://beamio.app'
+	}, [beamio?.accountName, myAddress])
+
+	const addCashCadRate = useMemo(() => fxRateUSDCToCurrency('CAD'), [fxRateUSDCToCurrency])
+	const addCashCadPreview = useMemo(() => {
+		const v = parseFloat(addAmount)
+		if (!Number.isFinite(v) || !Number.isFinite(addCashCadRate)) return '0.00'
+		return (v * addCashCadRate).toFixed(2)
+	}, [addAmount, addCashCadRate])
+
+	const handleAddCashContinueCoinbase = useCallback(() => {
+		setShowAddCashModal(false)
+		setAddCashMode('methods')
+		setAddAmount('')
+		setEoaPanelOpen('BankingBridge')
+		setEoaAddUsdcOpen(true)
+		setShowFooter(false)
+	}, [setShowFooter])
+
+	const handleAddCashConfirmConvert = useCallback(() => {
+		setShowAddCashModal(false)
+		setAddCashMode('methods')
+		setAddAmount('')
+		setEoaPanelOpen('BankingBridge')
+		setShowFooter(false)
 	}, [setShowFooter])
 
 	const closeAaPanel = useCallback(() => {
@@ -1370,7 +1435,12 @@ export default function MyWalletDashboardNew() {
 	useEffect(() => {
 		if (!profiles?.[0]) return
 		const profile = profiles[0]
-		const addrs = new Set<string>([CCSA_Card_Address, CASH_TREES_CARD_ADDRESS, ...latestCardsItems.map((i) => i.cardAddress.toLowerCase())])
+		const addrs = new Set<string>([
+			CCSA_Card_Address.toLowerCase(),
+			CASH_TREES_CARD_ADDRESS.toLowerCase(),
+			BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase(),
+			...latestCardsItems.map((i) => i.cardAddress.toLowerCase()),
+		])
 		const toFetch = Array.from(addrs).filter((a) => a && ethers.isAddress(a))
 		if (toFetch.length === 0) return
 		const id = setTimeout(() => {
@@ -1395,6 +1465,7 @@ export default function MyWalletDashboardNew() {
 								metadata: meta ?? null,
 								cardOwner: cardOwner ?? null,
 								nftMetadata: nftMetadata ?? undefined,
+								cardCurrency: assets?.cardCurrency,
 							},
 						}
 					} catch {
@@ -1402,7 +1473,7 @@ export default function MyWalletDashboardNew() {
 					}
 				})
 			).then((results) => {
-				const next: Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null }> = {}
+				const next: Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null; cardCurrency?: ICurrency }> = {}
 				results.forEach(({ addr, detail }) => {
 					next[addr] = detail
 				})
@@ -1434,26 +1505,23 @@ export default function MyWalletDashboardNew() {
 		if (!activeView || activeView === 'eoa' || activeView === 'aa') return
 		refetchUserCardsRef.current()
 	}, [activeView])
-	// 展开 Express Pay（显示 passes）时拉取 userCards，否则 passes 中的「用户自己发行的卡」永远为空（refetchUserCards 此前仅在点击某张卡后才触发）
+	// 有 Express Pay（AA）时拉取 userCards，供 Passes 与 Redeem 列表使用
 	useEffect(() => {
-		if (!isExpressExpanded) return
 		const p = profilesRef.current?.[0]
-		if (!p || (!p.aaAccount && !p.keyID && !p.privateKeyArmor)) return
+		if (!p?.aaAccount) return
 		refetchUserCardsRef.current()
-	}, [isExpressExpanded])
+	}, [profiles?.[0]?.aaAccount])
 
-	// 从 CoNET_Data 同步 redeem 列表：展开 Express Pay 时（刷新后历史记录）、version 变化时（创建/关闭表单后）
-	// 若 onSuccess 刚回传了列表，优先使用且不清空 ref，避免 effect 后续用 CoNET_Data 覆盖
+	// 从 CoNET_Data 同步 redeem 列表：version 变化时（创建/关闭表单后）；有 AA 时生效
 	useEffect(() => {
-		if (!isExpressExpanded) return
+		if (!profilesRef.current?.[0]?.aaAccount) return
 		const fromSuccess = pendingRedeemsFromSuccessRef.current
 		if (fromSuccess && fromSuccess.length > 0) {
 			setCardRedeemsBatches(fromSuccess)
-			// 不在此处清空 ref，由 onClose 或 mount 时清空，保证创建后不被打断
 		} else {
 			setCardRedeemsBatches(((CoNET_Data as any)?.cardRedeems ?? []) as CardRedeemBatch[])
 		}
-	}, [cardRedeemsVersion, isExpressExpanded])
+	}, [cardRedeemsVersion, profiles?.[0]?.aaAccount])
 
 	// 挂载时清空 pending ref，确保首次加载从 CoNET_Data 读取
 	useEffect(() => {
@@ -1568,7 +1636,12 @@ export default function MyWalletDashboardNew() {
 				})
 				.filter((x): x is { cardAddress: string } => x != null)
 			setLatestCardsItems(items)
-			const addrs = new Set<string>([CCSA_Card_Address, CASH_TREES_CARD_ADDRESS, ...items.map((i) => i.cardAddress.toLowerCase())])
+			const addrs = new Set<string>([
+				CCSA_Card_Address.toLowerCase(),
+				CASH_TREES_CARD_ADDRESS.toLowerCase(),
+				BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase(),
+				...items.map((i) => i.cardAddress.toLowerCase()),
+			])
 			const toFetch = Array.from(addrs).filter((a) => a && ethers.isAddress(a))
 			const results = await Promise.all(
 				toFetch.map(async (cardAddr) => {
@@ -1589,6 +1662,7 @@ export default function MyWalletDashboardNew() {
 								metadata: meta ?? null,
 								cardOwner: cardOwner ?? null,
 								nftMetadata: nftMetadata ?? undefined,
+								cardCurrency: assets?.cardCurrency,
 							},
 						}
 					} catch {
@@ -1596,7 +1670,7 @@ export default function MyWalletDashboardNew() {
 					}
 				})
 			)
-			const next: Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null }> = {}
+			const next: Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null; cardCurrency?: ICurrency }> = {}
 			results.forEach(({ addr, detail }) => { next[addr] = detail })
 			setAssetCardDetails(next)
 		} catch (e) {
@@ -2013,6 +2087,7 @@ export default function MyWalletDashboardNew() {
 			latestCardsItems.forEach((item) => {
 				const addr = item.cardAddress.toLowerCase()
 				if (addr === CCSA_Card_Address.toLowerCase() || addr === CASH_TREES_CARD_ADDRESS.toLowerCase()) return // CCSA、CashTrees 已单独处理
+				if (addr === BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase()) return // 不在钱包展示基础设施合约卡
 				const details = assetCardDetails[addr]
 				const nfts = (details?.assets?.nfts ?? []).filter((n) => Number(n.tokenId) > 0) as { tokenId: string; tier?: string }[]
 				const hasPoints = Number(details?.assets?.points ?? 0) > 0
@@ -2172,7 +2247,7 @@ export default function MyWalletDashboardNew() {
 										setAaPanelOpen('Pay')
 										setShowFooter(false)
 									}}
-									className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
+									className="w-9 h-9 rounded-full flex items-center justify-center text-[#65A30D] active:scale-95 transition-transform hover:bg-gray-50 dark:hover:bg-slate-700/50"
 									title="Transfer between Main Vault and Express Pay"
 								>
 									<ArrowLeftRight className="w-5 h-5" strokeWidth={2.4} />
@@ -2181,7 +2256,7 @@ export default function MyWalletDashboardNew() {
 							<button
 								type="button"
 								onClick={() => setIsManagingCards(true)}
-								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
+								className="w-9 h-9 rounded-full flex items-center justify-center text-[#65A30D] active:scale-95 transition-transform hover:bg-gray-50 dark:hover:bg-slate-700/50"
 								title="Edit cards"
 							>
 								<Edit2 className="w-5 h-5" strokeWidth={2.4} />
@@ -2193,13 +2268,13 @@ export default function MyWalletDashboardNew() {
 										setCcsaCreateCardOpen(true)
 										setShowFooter(false)
 									} else {
-										navigate('/settings')
+										openAddCashModal()
 									}
 								}}
-								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
-								title={profiles?.[0]?.aaAccount ? 'Create BeamioUserCard' : 'Add card / Settings'}
+								className="w-9 h-9 rounded-full flex items-center justify-center bg-[#96EB3C] text-gray-900 shadow-sm hover:bg-[#8ad936] active:scale-95 transition-transform"
+								title={profiles?.[0]?.aaAccount ? 'Create BeamioUserCard' : 'Add cash'}
 							>
-								<Plus className="w-5 h-5" />
+								<Plus className="w-5 h-5" strokeWidth={2.4} />
 							</button>
 						</div>
 					</div>
@@ -2217,240 +2292,142 @@ export default function MyWalletDashboardNew() {
 					>
 						{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
 						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
-						<div className={`relative h-[650px] perspective-1000 transition-transform duration-500 ${activeView === 'eoa' ? 'translate-y-[100px] opacity-50 blur-sm pointer-events-none' : ''}`}>
-							{/* LAYER 1: MAIN VAULT (EOA) - 点击折叠 express 或打开详情 */}
-							<div
-								onClick={() => { if (isExpressExpanded) { setIsExpressExpanded(false); setExpandedPassId(null) } }}
-								className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'scale-90 opacity-100 translate-y-4 brightness-50' : 'scale-95 translate-y-16'}`}
-								style={{ background: 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)', zIndex: 10 }}
-							>
-								<div className="flex justify-between items-start mb-8">
-									<div className="flex items-center space-x-2">
+						<div className="relative w-full pb-8">
+							{/* 无 AA — CashTrees 引导；有 AA — Universal Pass + 基础设施卡 + Bind + Passes 纵向排列（非叠卡） */}
+							{!profiles?.[0]?.aaAccount ? (
+								<div className="w-full transition-all duration-500">
+									<div className="bg-gradient-to-b from-gray-100 to-white border-2 border-dashed border-gray-300 rounded-[2rem] p-8 flex flex-col items-center justify-center text-center relative overflow-hidden min-h-[360px] shadow-sm">
+										<div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-gray-400 mb-6 shadow-sm border border-gray-100">
+											<Wallet size={36} strokeWidth={1.5} />
+										</div>
+										<h2 className="text-xl font-bold text-gray-900 mb-2">Get Started with CashTrees</h2>
+										<p className="text-sm text-gray-500 mb-8 leading-relaxed px-2">
+											Deploy a new smart wallet or sync your existing physical card.
+										</p>
 										<button
 											type="button"
-											className="inline-flex items-center justify-center w-8 h-8 rounded-full border-2 border-white/30 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-[0.95]"
-											onClick={(e) => { e.stopPropagation(); reflashProcess('eoa') }}
-											disabled={eoaReflash}
+											onClick={openAddCashModal}
+											className="w-full bg-[#96EB3C] hover:bg-[#8ad936] active:scale-95 text-gray-900 py-4 rounded-2xl font-bold transition-all shadow-[0_4px_14px_rgba(150,235,60,0.4)] flex items-center justify-center gap-2"
 										>
-											<img src={base_icon} alt="Base" className={`w-5 h-5 object-contain ${eoaReflash ? 'animate-spin opacity-80' : ''}`} />
+											<ArrowDownToLine size={18} className="text-gray-900" />
+											Add Cash to Activate
 										</button>
-										<span className="font-medium text-lg tracking-wide">USDC on Base</span>
-									</div>
-									<div className="text-right">
-										<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
-											{formatWithThousands(usdcbalance || '0')}
-											<span className="text-xs font-medium ml-1 opacity-80">USDC</span>
-										</h2>
-									</div>
-								</div>
-								<div className="text-center mb-10">
-									<div className="flex items-baseline justify-center">
-										<span className="text-6xl font-bold tracking-tighter">{formatWithThousands(usdcbalance || '0')}</span>
-										<span className="text-xl font-medium ml-2 opacity-80">USDC</span>
-									</div>
-									<div className="text-white/70 font-medium">≈ CA$ {formatWithThousands(balanceFiat)}</div>
-								</div>
-								{myAddress && (
-									<button
-										type="button"
-										onClick={(e) => { e.stopPropagation(); copyAddress(myAddress, 'eoa') }}
-										className="bg-black/20 backdrop-blur-md px-4 py-2 rounded-full inline-flex items-center space-x-2 border border-white/10 font-mono text-sm mx-auto block w-fit"
-									>
-										<span>{myAddress.slice(0, 6)}...{myAddress.slice(-4)}</span>
-										{addressCopied === 'eoa' ? <Check className="w-3 h-3 opacity-70" /> : <Copy className="w-3 h-3 opacity-70" />}
-									</button>
-								)}
-							</div>
-
-							{/* LAYER 2: EXPRESS PAY (AA) - 点击展开/折叠 passes，或创建入口 */}
-							{!profiles?.[0]?.aaAccount ? (
-								<div
-									className="absolute top-0 w-full rounded-[32px] p-6 text-white shadow-lg transition-all duration-500"
-									style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)', transform: 'translateY(150px)', zIndex: 20 }}
-								>
-									<button
-										type="button"
-										onClick={() => navigate('/settings')}
-										className="relative w-full h-full p-6 flex flex-col justify-center items-center cursor-pointer overflow-hidden border-2 border-dashed border-white/30"
-									>
-										<div className="z-10 bg-white/10 p-4 rounded-full mb-3 backdrop-blur-sm">
-											<Plus size={32} className="text-white" />
+										<div className="flex items-center w-full my-5 opacity-70">
+											<div className="flex-1 border-t border-gray-200" />
+											<span className="px-3 text-[10px] text-gray-400 font-bold uppercase tracking-widest">OR</span>
+											<div className="flex-1 border-t border-gray-200" />
 										</div>
-										<h3 className="text-xl font-bold z-10">Create Express Pay</h3>
-										<p className="text-white/70 text-sm mt-2 z-10 text-center px-8">Unlock gas-free payments & exclusive vouchers</p>
-									</button>
+										<button
+											type="button"
+											onClick={() => {
+												setShowFooter(false)
+												navigate('/settings')
+											}}
+											className="w-full bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 text-gray-700 py-4 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+										>
+											<Radio size={18} className="text-[#65A30D]" />
+											Sync Existing Card
+										</button>
+									</div>
 								</div>
 							) : (
-								<div
-									onClick={() => {
-										const next = !isExpressExpanded
-										setIsExpressExpanded(next)
-										if (!next) setExpandedPassId(null)
-										// 展开时若当前是 CCSA DETAILS 且用户非 owner，则关闭 DETAILS，避免非 owner 看到从底部滑出的 CCSA 面板
-										if (next && activeView === 'ccsa' && !isCcsaOwnerStrict) setActiveView(null)
-									}}
-									className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-[0_20px_50px_-12px_rgba(79,70,229,0.5)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'translate-y-[240px]' : 'translate-y-[150px]'}`}
-									style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)', zIndex: 20 }}
-								>
-									<div className="flex justify-between items-center mb-8">
-										<div className="flex items-center space-x-2">
-											<div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center">
-												<Zap className="w-4 h-4 fill-current" />
+								<div className="w-full flex flex-col gap-4">
+									{/* Universal Pass — 白卡 + 淡绿光晕（对齐 renderAction index） */}
+									<div
+										className="relative w-full bg-gradient-to-br from-white to-[#F8F9FA] dark:from-slate-900 dark:to-slate-800 rounded-[2.5rem] p-7 text-gray-900 dark:text-slate-100 shadow-xl shadow-gray-200/50 dark:shadow-black/20 overflow-hidden border border-gray-100 dark:border-slate-700"
+									>
+										<div className="absolute -top-20 -right-20 w-64 h-64 bg-[#96EB3C] rounded-full blur-[80px] opacity-20 pointer-events-none" />
+										<div className="absolute -bottom-20 -left-20 w-64 h-64 bg-[#96EB3C] rounded-full blur-[80px] opacity-10 pointer-events-none" />
+										<div className="flex justify-between items-start mb-6 relative z-10">
+											<div className="flex items-center min-w-0">
+												<div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-800 flex items-center justify-center mr-3 border border-gray-100 dark:border-slate-600 shadow-sm shrink-0">
+													<Zap size={22} className="text-[#65A30D] fill-[#65A30D]" />
+												</div>
+												<div className="min-w-0">
+													<span className="font-extrabold text-xl block tracking-tight text-gray-900 dark:text-slate-100">Universal Pass</span>
+													{profiles?.[0]?.aaAccount ? (
+														<button
+															type="button"
+															onClick={(e) => { e.stopPropagation(); copyAddress(profiles[0].aaAccount, 'aa') }}
+															className="flex items-center gap-1.5 mt-1.5 bg-gray-100/80 dark:bg-slate-800/80 border border-gray-200/60 dark:border-slate-600 px-2 py-0.5 rounded-md w-max shadow-sm hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors max-w-full"
+														>
+															<span className="text-[10px] text-gray-500 dark:text-slate-400 font-mono tracking-widest font-semibold truncate">
+																{profiles[0].aaAccount.slice(0, 6)}…{profiles[0].aaAccount.slice(-4)}
+															</span>
+															{addressCopied === 'aa' ? <Check size={10} className="text-emerald-500 shrink-0" /> : <Copy size={10} className="text-gray-400 shrink-0" />}
+														</button>
+													) : null}
+												</div>
 											</div>
-											<span className="font-medium text-lg tracking-wide">Express Pay</span>
+											<div className="flex items-center gap-2 shrink-0">
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation()
+														handleAaRelayQR()
+													}}
+													className="px-3 py-1.5 rounded-full bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 inline-flex items-center gap-2 transition-colors"
+													title="Pay QR (valid 5 min)"
+													aria-label="Pay QR"
+												>
+													{aaRelaySigning ? (
+														<Loader className="w-4 h-4 animate-spin text-gray-700 dark:text-slate-200 shrink-0" />
+													) : (
+														<QrCode className="w-4 h-4 text-gray-800 dark:text-slate-200 shrink-0" />
+													)}
+													<span className="text-xs font-semibold text-gray-900 dark:text-slate-100">Pay QR</span>
+												</button>
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation()
+														setActiveView('aa')
+														setShowFooter(false)
+													}}
+													className="w-8 h-8 rounded-full bg-gray-50 dark:bg-slate-800 flex items-center justify-center text-gray-400 border border-gray-100 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors shadow-sm"
+													title="Details"
+													aria-label="Details"
+												>
+													<Info size={16} strokeWidth={2.5} />
+												</button>
+											</div>
 										</div>
-										<div className="flex items-center justify-end gap-2 text-right">
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation()
-													handleAaRelayQR()
-												}}
-												className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 border border-white/20 inline-flex items-center gap-2 transition-colors"
-												title="Pay QR (valid 5 min)"
-												aria-label="Pay QR"
-											>
-												{aaRelaySigning ? (
-													<Loader className="w-4 h-4 animate-spin text-white shrink-0" />
-												) : (
-													<QrCode className="w-4 h-4 text-white shrink-0" />
-												)}
-												<span className="text-xs font-semibold text-white">Pay QR</span>
-											</button>
+										<div className="relative z-10 mt-8">
+											<p className="text-sm text-gray-500 dark:text-slate-400 font-semibold mb-1">Total Balance</p>
+											<div className="flex items-baseline flex-wrap gap-x-1">
+												{universalPassCardCurrency === 'USDC' ? (
+													<span className="text-3xl font-semibold mr-1 text-gray-400 dark:text-slate-500">$</span>
+												) : fiatPrefix(universalPassCardCurrency) ? (
+													<span className="text-3xl font-semibold mr-1 text-gray-400 dark:text-slate-500">{fiatPrefix(universalPassCardCurrency)}</span>
+												) : null}
+												<p className="text-5xl font-extrabold tracking-tighter text-gray-900 dark:text-slate-100 tabular-nums">
+													{formatAmount(Number(universalPassPointsBalance || 0), universalPassCardCurrency)}
+												</p>
+												{universalPassCardCurrency !== 'CAD' ? (
+													<span className="text-lg font-medium ml-2 text-gray-500 dark:text-slate-400">{universalPassCardCurrency}</span>
+												) : null}
+											</div>
+											{universalPassCardCurrency === 'USDC' ? (
+												<p className="text-gray-500 dark:text-slate-400 font-medium text-sm mt-2">≈ CA$ {formatWithThousands(universalPassApproxCad)}</p>
+											) : null}
 										</div>
 									</div>
-									<div className="text-center mb-10">
-										<div className="flex items-baseline justify-center">
-											<span className="text-6xl font-bold tracking-tighter text-[#4ade80]">{formatWithThousands(aaAccountUsdcBalance)}</span>
-											<span className="text-xl font-medium ml-2 opacity-80 text-[#4ade80]">USDC</span>
-										</div>
-										<div className="text-[#4ade80]/70 font-medium">≈ CA$ {formatWithThousands(aaBalanceFiat)}</div>
-									</div>
-									{profiles?.[0]?.aaAccount && (
+
+									{/* Bind Physical Card（对齐 renderAction，位于 Passes 列表之上） */}
+									<div className="pt-1">
 										<button
 											type="button"
-											onClick={(e) => { e.stopPropagation(); copyAddress(profiles[0].aaAccount, 'aa') }}
-											className="bg-black/20 backdrop-blur-md px-4 py-2 rounded-full inline-flex items-center space-x-2 border border-white/10 font-mono text-sm mx-auto block w-fit"
+											onClick={() => {
+												setShowFooter(false)
+												navigate('/settings')
+											}}
+											className="w-full h-20 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-[1.5rem] flex items-center justify-center text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-slate-100 hover:border-[#96EB3C] transition-all cursor-pointer shadow-sm group"
 										>
-											<span>{profiles[0].aaAccount.slice(0, 6)}...{profiles[0].aaAccount.slice(-4)}</span>
-											{addressCopied === 'aa' ? <Check className="w-3 h-3 opacity-70" /> : <Copy className="w-3 h-3 opacity-70" />}
+											<div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center mr-3 group-hover:bg-[#96EB3C]/20 transition-colors">
+												<Plus size={18} className="text-gray-500 group-hover:text-[#65A30D] transition-colors" />
+											</div>
+											<span className="font-bold tracking-tight text-[15px]">Bind Physical Card</span>
 										</button>
-									)}
-									<div className="absolute bottom-4 right-6 opacity-50 animate-bounce">
-										{isExpressExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-									</div>
-								</div>
-							)}
-
-							{/* LAYER 3: PASSES (CCSA + userCards) - 展开时显示，exampleExpress 风格叠卡；AA 展开时与 AA 卡之间增加 5rem 空间；持有者卡展开时以该卡为界，上方组上移、下方组下移，露出完整卡片 */}
-							{profiles?.[0]?.aaAccount && (
-								<div
-									className={`absolute w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isExpressExpanded ? 'top-[calc(480px+5rem)] opacity-100 translate-y-0' : 'top-[480px] opacity-0 translate-y-20 pointer-events-none'}`}
-									style={{ zIndex: 15 }}
-								>
-									<div className="flex items-center justify-between px-2 mb-2">
-										<span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{filteredPasses.length} Passes</span>
-									</div>
-									<div className="relative pb-32">
-										{filteredPasses.length > 0 ? (
-											(() => {
-												const expandedIndex = expandedPassId ? filteredPasses.findIndex((p) => p.id === expandedPassId) : -1
-												const splitOffset = 70
-												return filteredPasses.map((pass, index) => {
-													const overlap = 135
-													const passTextColor = pass.textColor || 'white'
-													const isLightBg = passTextColor === 'black'
-													const isHolderCard = pass.id !== 'eoa' && pass.id !== 'aa' && pass.id !== 'ccsa' && !isCardCreator(pass.id)
-													const isExpanded = isHolderCard && expandedPassId === pass.id
-													const scaleVal = isExpanded ? 1 : Math.max(0.95, 1 - index * 0.01)
-													const translateY = expandedIndex >= 0
-														? index <= expandedIndex
-															? -splitOffset
-															: splitOffset
-														: 0
-													const transformStr = `translateY(${translateY}px) scale(${scaleVal})`
-													return (
-													<div
-														key={pass.id}
-														onClick={() => {
-															// 非 CCSA owner 点 CCSA 卡不打开 DETAILS（列表理论上不展示 CCSA，此处兜底）
-															if (pass.id === 'ccsa' && !isCcsaOwnerStrict) return
-															handleCardClick(pass.id)
-														}}
-														className={`w-full rounded-[24px] p-6 shadow-lg relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] origin-top hover:translate-y-[-8px] border flex flex-col ${isLightBg ? 'border-black/10' : 'border-white/10'} ${isExpanded ? 'min-h-[220px]' : 'h-48'}`}
-														style={{
-															background: pass.bg,
-															zIndex: isExpanded ? 100 : index,
-															marginTop: index === 0 ? 0 : `-${overlap}px`,
-															color: passTextColor,
-															boxShadow: isExpanded ? '0 8px 32px rgba(0,0,0,0.2)' : '0 -4px 20px rgba(0,0,0,0.1)',
-															transform: transformStr,
-														}}
-													>
-														<div className="flex justify-between items-center mb-3">
-															<div className="flex items-center gap-3">
-																<div className={`w-8 h-8 rounded-full backdrop-blur-md flex items-center justify-center overflow-hidden shrink-0 ${isLightBg ? 'bg-black/10 border border-black/10' : 'bg-white/20 border border-white/10'}`}>
-																	{pass.image ? (
-																		<img src={pass.image} alt="" className="w-full h-full object-cover" />
-																	) : pass.id === 'ccsa' ? (
-																		<Globe className="w-4 h-4" style={{ color: passTextColor }} />
-																	) : pass.id === BEAMIO_USER_CARD_ASSET_ADDRESS ? (
-																		<Cpu className="w-4 h-4" style={{ color: passTextColor }} />
-																	) : pass.id === CASH_TREES_CARD_ADDRESS ? (
-																		<TreePine className="w-4 h-4" style={{ color: passTextColor }} />
-																	) : (
-																		<CreditCard className="w-4 h-4" style={{ color: passTextColor }} />
-																	)}
-																</div>
-																<div className="flex flex-col min-w-0">
-																	<h3 className={`font-bold text-sm leading-tight drop-shadow-sm truncate ${isLightBg ? 'text-gray-900' : 'text-white/90'}`}>{pass.displayName}</h3>
-																	<span className={`text-[10px] uppercase tracking-wider ${isLightBg ? 'text-gray-700 opacity-90' : 'text-white/70'}`}>
-																		{pass.tierName ?? pass.tier ?? pass.type}
-																	</span>
-																</div>
-															</div>
-															<div className="text-right">
-																<h2 className={`text-2xl font-bold tracking-tight leading-none drop-shadow-sm ${isLightBg ? 'text-gray-900' : 'text-white'}`}>
-																	{pass.balance}
-																	<span className={`text-xs font-medium ml-1 ${isLightBg ? 'text-gray-700 opacity-80' : 'opacity-80'}`}>{pass.currency}</span>
-																</h2>
-															</div>
-														</div>
-														{/* 持有者展开时显示 Reload + Gift 按钮，对齐卡片底部，距底 2rem */}
-														{isExpanded ? (
-															<div className="mt-auto flex items-center justify-between gap-3">
-																<div className="flex gap-3">
-																	<button
-																		type="button"
-																		onClick={(e) => { e.stopPropagation(); if (ethers.isAddress(pass.id)) { setHolderTopupCardAddress(pass.id); setShowFooter(false); setHolderTopupOpen(true); } }}
-																		className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-medium text-sm ${isLightBg ? 'bg-black/10 text-gray-900 border border-black/10' : 'bg-white/20 text-white border border-white/20'}`}
-																	>
-																		<Plus className="w-4 h-4" style={{ color: passTextColor }} />
-																		<span>Reload</span>
-																	</button>
-																	<button
-																		type="button"
-																		onClick={(e) => { e.stopPropagation(); navigate('/settings') }}
-																		className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-medium text-sm ${isLightBg ? 'bg-black/10 text-gray-900 border border-black/10' : 'bg-white/20 text-white border border-white/20'}`}
-																	>
-																		<Gift className="w-4 h-4" style={{ color: passTextColor }} />
-																		<span>Gift</span>
-																	</button>
-																</div>
-																<p className={`text-[10px] font-mono tracking-widest shrink-0 ${isLightBg ? 'text-gray-700 opacity-90' : 'opacity-90'}`}>NFT {pass.memberNo}</p>
-															</div>
-														) : (
-															<div className={`mt-auto flex flex-col items-end gap-0.5 ${isLightBg ? 'text-gray-800 opacity-90' : 'opacity-90'}`}>
-																<p className="text-[10px] font-mono tracking-widest">NFT {pass.memberNo}</p>
-															</div>
-														)}
-													</div>
-												)
-											})
-											})()
-										) : (
-											<div className="text-center py-10 text-gray-400 text-sm">No passes found</div>
-										)}
 									</div>
 								</div>
 							)}
@@ -2512,7 +2489,7 @@ export default function MyWalletDashboardNew() {
 						{/* 可滚动内容；背景透明，由面板容器的一条渐变统一呈现 */}
 						{selectedCard && (
 							<div className="flex-1 overflow-y-auto px-6 pt-2 pb-24 z-10 no-scrollbar">
-								{/* 顶部预览：CCSA 用 greenCard，user card 有 image 则用 image，否则 blackCard */}
+								{/* 顶部预览：CCSA 用 greenCard；其余用 image / blackCard */}
 								<div className="w-full min-h-[14rem] rounded-[24px] bg-[#ECECF1] border border-white/70 shadow-sm relative overflow-hidden mb-8 flex items-center justify-center px-4">
 									<img
 										src={selectedCard.id === 'ccsa' ? greenCard : (selectedCard.image || blackCard)}
@@ -2848,8 +2825,10 @@ export default function MyWalletDashboardNew() {
 											</div>
 												</>
 											)}
-											{/* Card Information：latestCards 资产卡（含 infra、CashTrees 等） */}
-											{selectedCard.id !== 'ccsa' && selectedCard.id && latestCardsAddrs.has(selectedCard.id.toLowerCase()) && (
+											{/* Card Information：latestCards 资产卡（如 CashTrees） */}
+											{selectedCard.id !== 'ccsa' &&
+												selectedCard.id &&
+												latestCardsAddrs.has(selectedCard.id.toLowerCase()) && (
 												<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 													<div className="flex items-center gap-2 mb-4">
 														<Info className="w-4 h-4 text-gray-400" />
@@ -3173,6 +3152,216 @@ export default function MyWalletDashboardNew() {
 										{newNftSubmitting ? 'Submitting…' : 'Create NFT'}
 									</button>
 								</div>
+							</div>
+						</div>
+					</div>
+				)}
+
+				{/* Add Cash：CashTrees 多步底栏（对齐 renderAction index Add Cash） */}
+				{showAddCashModal && (
+					<div className="fixed inset-0 z-[110] flex flex-col pointer-events-auto">
+						<button
+							type="button"
+							className="absolute inset-0 bg-gray-900/40 backdrop-blur-md border-0 cursor-default"
+							onClick={closeAddCashModal}
+							aria-label="Close"
+						/>
+						<div className="mt-auto bg-white dark:bg-slate-900 rounded-t-[2.5rem] p-6 relative z-10 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] h-[85dvh] max-h-[85dvh] pb-[env(safe-area-inset-bottom)] animate-slide-up overflow-hidden">
+							<div className="mx-auto w-12 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full mb-6 shrink-0" />
+							<div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
+								{addCashMode === 'methods' ? (
+									<>
+										<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">Add Cash</h3>
+										<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center">Select how you want to fund your balance</p>
+										<div className="space-y-3 mb-6">
+											<h4 className="text-sm font-bold text-gray-900 dark:text-slate-100 mb-3 px-1">Funding Source</h4>
+											<button
+												type="button"
+												onClick={() => setAddCashMode('store_qr')}
+												className="w-full text-left bg-white dark:bg-slate-800 border border-[#96EB3C]/50 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-[#96EB3C]/10 active:scale-[0.98] transition-all relative overflow-hidden group"
+											>
+												<div className="absolute top-0 right-0 w-24 h-24 bg-[#96EB3C]/20 rounded-full -mr-10 -mt-10 blur-xl group-hover:bg-[#96EB3C]/30 transition-colors pointer-events-none" />
+												<div className="flex items-center relative z-10 min-w-0">
+													<div className="w-10 h-10 bg-[#96EB3C] rounded-xl flex items-center justify-center mr-3 shadow-sm shrink-0">
+														<Store className="text-gray-900" size={20} />
+													</div>
+													<div className="min-w-0">
+														<p className="font-bold text-gray-900 dark:text-slate-100">Deposit Cash at Store</p>
+														<p className="text-xs text-gray-600 dark:text-slate-400">Give cash to an Alliance cashier</p>
+													</div>
+												</div>
+												<QrCode className="text-gray-900 dark:text-slate-100 relative z-10 shrink-0" size={20} />
+											</button>
+											<button
+												type="button"
+												onClick={() => setAddCashMode('coinbase')}
+												className="w-full text-left bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
+											>
+												<div className="flex items-center min-w-0">
+													<div className="w-10 h-10 bg-[#0052FF] rounded-xl flex items-center justify-center mr-3 shadow-sm shrink-0">
+														<span className="text-white font-bold text-xl">C</span>
+													</div>
+													<div className="min-w-0">
+														<p className="font-bold text-gray-900 dark:text-slate-100">Coinbase Pay</p>
+														<p className="text-xs text-gray-500 dark:text-slate-400">Buy USDC securely with debit/credit</p>
+													</div>
+												</div>
+												<ChevronRight className="text-gray-400 shrink-0" size={20} />
+											</button>
+											<button
+												type="button"
+												onClick={() => setAddCashMode('convert')}
+												className="w-full text-left bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
+											>
+												<div className="flex items-center min-w-0">
+													<div className="w-10 h-10 bg-blue-50 dark:bg-slate-700 border border-blue-100 dark:border-slate-600 rounded-xl flex items-center justify-center mr-3 shrink-0">
+														<ArrowLeftRight className="text-blue-600 dark:text-blue-400" size={20} />
+													</div>
+													<div className="min-w-0">
+														<p className="font-bold text-gray-900 dark:text-slate-100">Top up with USDC</p>
+														<p className="text-xs text-gray-500 dark:text-slate-400">Convert crypto to Network CA$</p>
+													</div>
+												</div>
+												<ChevronRight className="text-gray-400 shrink-0" size={20} />
+											</button>
+										</div>
+									</>
+								) : addCashMode === 'store_qr' ? (
+									<>
+										<div className="flex items-center mb-6 w-full relative">
+											<button type="button" onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-0">
+												<ChevronRight className="rotate-180 mr-1" size={16} /> Back
+											</button>
+											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Store Deposit</h3>
+										</div>
+										<div className="flex flex-col items-center justify-center pb-8 pt-4">
+											<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center max-w-[260px] leading-relaxed">
+												Show this code to any <span className="font-bold text-gray-900 dark:text-slate-100">Alliance Cashier</span> and hand them your paper cash.
+											</p>
+											<div className="w-64 h-64 bg-white dark:bg-slate-800 rounded-[2rem] p-4 mb-6 shadow-md border border-gray-100 dark:border-slate-600">
+												<div className="w-full h-full bg-gray-50 dark:bg-slate-900 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border border-gray-200 dark:border-slate-600">
+													<QRCodeCanvas value={storeDepositQrValue} size={200} level="M" includeMargin />
+													<div className="absolute bg-white dark:bg-slate-800 p-1 rounded-full shadow-sm border border-gray-100 dark:border-slate-600">
+														<div className="w-8 h-8 bg-[#96EB3C] rounded-full flex items-center justify-center text-gray-900 font-bold text-lg" aria-hidden>🌳</div>
+													</div>
+												</div>
+											</div>
+											<div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 px-5 py-3 rounded-full border border-gray-200 dark:border-slate-600 shadow-inner mt-2">
+												<div className="w-2 h-2 bg-[#65A30D] rounded-full animate-pulse" />
+												<span className="text-xs font-bold text-gray-600 dark:text-slate-300 tracking-wide uppercase">Waiting for cashier scan...</span>
+											</div>
+										</div>
+									</>
+								) : addCashMode === 'coinbase' ? (
+									<>
+										<div className="flex items-center mb-6 w-full relative">
+											<button type="button" onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-0">
+												<ChevronRight className="rotate-180 mr-1" size={16} /> Back
+											</button>
+											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Coinbase Pay</h3>
+										</div>
+										<div className="flex flex-col items-center justify-center pt-4 w-full pb-8">
+											<div className="w-16 h-16 bg-[#0052FF] rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-6">C</div>
+											<h4 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">Buy USDC directly</h4>
+											<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center px-4">
+												You will be securely redirected to Coinbase to complete your purchase. The USDC will be deposited to your Base network wallet automatically.
+											</p>
+											<div className="w-full max-w-[280px] bg-gray-50 dark:bg-slate-800 rounded-2xl p-4 border border-gray-200 dark:border-slate-600 mb-8 shadow-sm">
+												<div className="flex justify-between items-center mb-3 gap-2">
+													<span className="text-xs text-gray-500 font-medium shrink-0">To Wallet</span>
+													<span className="text-xs font-mono text-gray-900 dark:text-slate-100 font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600 truncate max-w-[58%]">
+														{myAddress && ethers.isAddress(myAddress) ? `${myAddress.slice(0, 6)}…${myAddress.slice(-4)}` : '—'}
+													</span>
+												</div>
+												<div className="flex justify-between items-center">
+													<span className="text-xs text-gray-500 font-medium">Network</span>
+													<div className="flex items-center bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600">
+														<div className="w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center mr-1.5" />
+														<span className="text-xs font-bold text-gray-900 dark:text-slate-100">Base</span>
+													</div>
+												</div>
+											</div>
+											<button
+												type="button"
+												onClick={handleAddCashContinueCoinbase}
+												className="w-full max-w-[280px] py-4 bg-[#0052FF] hover:bg-blue-700 active:scale-95 text-white rounded-2xl font-bold transition-all shadow-md flex items-center justify-center"
+											>
+												Continue to Coinbase
+											</button>
+										</div>
+									</>
+								) : (
+									<>
+										<div className="flex items-center mb-6 w-full relative">
+											<button type="button" onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-0">
+												<ChevronRight className="rotate-180 mr-1" size={16} /> Back
+											</button>
+											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Top Up</h3>
+										</div>
+										<div className="flex flex-col pt-2 w-full pb-8">
+											<div className="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl p-5 mb-2 relative shadow-inner">
+												<div className="flex justify-between items-center mb-2">
+													<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">From (USDC)</span>
+													<span className="text-xs font-bold text-gray-400">Bal: {formatWithThousands(String(usdcbalance ?? '0'))}</span>
+												</div>
+												<div className="flex items-center justify-between gap-2">
+													<input
+														type="number"
+														placeholder="0.00"
+														value={addAmount}
+														onChange={(e) => setAddAmount(e.target.value)}
+														inputMode="decimal"
+														autoComplete="off"
+														className="bg-transparent text-3xl font-bold text-gray-900 dark:text-slate-100 outline-none w-1/2 min-w-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+													/>
+													<div className="flex items-center bg-white dark:bg-slate-900 px-3 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-slate-600 shrink-0">
+														<div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-[10px] mr-1.5">$</div>
+														<span className="text-sm font-bold text-gray-900 dark:text-slate-100">USDC</span>
+													</div>
+												</div>
+											</div>
+											<div className="flex justify-center -my-4 relative z-10">
+												<div className="w-10 h-10 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-full flex items-center justify-center shadow-sm">
+													<ArrowDownToLine size={18} className="text-gray-400" />
+												</div>
+											</div>
+											<div className="bg-white dark:bg-slate-800 border border-[#96EB3C]/50 rounded-3xl p-5 mt-2 relative shadow-sm">
+												<div className="flex justify-between items-center mb-2">
+													<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">To (Network Balance)</span>
+												</div>
+												<div className="flex items-center justify-between gap-2">
+													<span className="text-3xl font-bold text-[#65A30D] tabular-nums">{addCashCadPreview}</span>
+													<div className="flex items-center bg-gray-50 dark:bg-slate-900 px-3 py-1.5 rounded-full border border-gray-100 dark:border-slate-600 shrink-0">
+														<span className="text-sm font-bold text-gray-700 dark:text-slate-200">CA$</span>
+													</div>
+												</div>
+											</div>
+											<div className="mt-8 bg-gray-50 dark:bg-slate-800 rounded-2xl p-4 border border-gray-200 dark:border-slate-600">
+												<div className="flex justify-between text-sm mb-2">
+													<span className="text-gray-500 dark:text-slate-400">Rate</span>
+													<span className="font-semibold text-gray-900 dark:text-slate-100">
+														{Number.isFinite(addCashCadRate) ? `1 USDC = ${addCashCadRate.toFixed(4)} CAD` : '—'}
+													</span>
+												</div>
+												<div className="flex justify-between items-center text-sm pt-2">
+													<span className="text-gray-500 dark:text-slate-400">Network Fee</span>
+													<div className="flex flex-col items-end">
+														<span className="font-bold text-[#65A30D] bg-[#96EB3C]/20 px-2 py-0.5 rounded-md">Free</span>
+														<span className="text-[10px] text-gray-400 mt-1">Sponsored by CashTrees</span>
+													</div>
+												</div>
+											</div>
+											<button
+												type="button"
+												onClick={handleAddCashConfirmConvert}
+												className="w-full py-4 mt-6 bg-[#96EB3C] hover:bg-[#8ad936] active:scale-95 text-gray-900 rounded-2xl font-bold transition-all shadow-[0_4px_14px_rgba(150,235,60,0.4)] flex items-center justify-center gap-2"
+											>
+												<ArrowDownToLine size={20} className="text-gray-900" />
+												Confirm Top Up
+											</button>
+										</div>
+									</>
+								)}
 							</div>
 						</div>
 					</div>

@@ -3,6 +3,10 @@ import { AppButton } from '@/components/button/AppButton'
 import { restoreWithUserPin } from '@/services/beamio'
 import { Eye, EyeOff, AlertCircle } from "lucide-react"
 
+/** 与 LoadingPage 主色一致 */
+export const CASHTREES_PRIMARY_LIME = '#96EB3C'
+export const CASHTREES_PRIMARY_INK = '#0F172A'
+
 type RestoreWithUsernamePinScreenProps = {
   onRestore: (temp: encrypt_keys_object) => Promise<void> | void
 }
@@ -96,7 +100,7 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
                 text-[20px] font-bold text-slate-900
                 placeholder:text-slate-300 placeholder:font-bold
                 outline-none transition-all
-                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
+                focus:border-[#96EB3C]/50 focus:ring-4 focus:ring-[#96EB3C]/12
                 ${error && !username ? 'border-red-200 ring-4 ring-red-50' : ''}
               `}
               placeholder="beamio" // 对应截图中的 placeholder
@@ -123,7 +127,7 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
                 text-[20px] font-bold text-slate-900
                 placeholder:text-slate-300 placeholder:font-bold placeholder:tracking-widest
                 outline-none transition-all
-                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
+                focus:border-[#96EB3C]/50 focus:ring-4 focus:ring-[#96EB3C]/12
                 ${error && !pin ? 'border-red-200 ring-4 ring-red-50' : ''}
               `}
               placeholder="......" // 对应截图中的 dots
@@ -180,11 +184,10 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
           disabled={loading}
           loading={loading}
           className="
-            h-[64px] rounded-full
-            text-[20px] font-bold
-            bg-[#1652f0] hover:bg-[#1345ca]
-            shadow-[0_12px_30px_rgba(22,82,240,0.3)]
-            text-white
+            h-[64px] rounded-full text-[20px] font-bold
+            !bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28] disabled:!opacity-90
+            !text-[#0F172A] !shadow-[0_12px_30px_rgba(150,235,60,0.42)] active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)]
+            focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50
           "
         >
           Restore

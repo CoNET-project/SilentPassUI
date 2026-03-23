@@ -491,6 +491,10 @@ interface ActiveHistoryPannelNewProps {
 	embeddedInDrawer?: boolean
 	/** bare 模式：去除外部圆角、边框、阴影、边距，由父容器设置，避免内部 padding 影响页面左右边距 */
 	bare?: boolean
+	/** 自定义区块标题 class（如 Home 青柠主题） */
+	sectionTitleClassName?: string
+	/** 自定义 compact「View all」按钮 class；不传则沿用默认蓝色链接样式 */
+	viewAllClassName?: string
 }
 
 const ActiveHistoryPannelNew = ({
@@ -500,6 +504,8 @@ const ActiveHistoryPannelNew = ({
 	compactLimit = 5,
 	embeddedInDrawer = false,
 	bare = false,
+	sectionTitleClassName,
+	viewAllClassName,
 }: ActiveHistoryPannelNewProps) => {
 	const { profiles, myAddress, setShowFooter, setChatHomeItem, beamioUsers } = useDaemonContext()
 	const navigate = useNavigate()
@@ -1456,7 +1462,14 @@ const ActiveHistoryPannelNew = ({
 			{!embeddedInDrawer && (
 			<div className="flex items-center justify-between mb-4">
 				<div className="flex items-center gap-2">
-					<h3 className="text-[14px] font-bold text-black dark:text-white tracking-tight">{title}</h3>
+					<h3
+						className={
+							sectionTitleClassName ??
+							'text-[14px] font-bold text-black dark:text-white tracking-tight'
+						}
+					>
+						{title}
+					</h3>
 					<button
 						type="button"
 						onClick={handleRefresh}
@@ -1475,7 +1488,10 @@ const ActiveHistoryPannelNew = ({
 					<button
 						type="button"
 						onClick={() => setShowFullDrawer(true)}
-						className="flex items-center gap-1 text-[12px] font-semibold text-[#1562f0] hover:text-[#0d47c7] transition-colors"
+						className={[
+							'flex items-center gap-1 text-[12px] font-semibold transition-colors',
+							viewAllClassName ?? 'text-[#1562f0] hover:text-[#0d47c7]',
+						].join(' ')}
 					>
 						View all
 						<ChevronRight size={16} strokeWidth={2.5} />

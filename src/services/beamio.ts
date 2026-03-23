@@ -791,12 +791,54 @@ export const generateCODE = (passcode: string) => {
 	})
 }
 
+/**
+ * NFC Link App（基础设施卡 redeem）：链上 `createRedeemBatch` 存 `keccak256(utf8(publicRedeemCode))`，
+ * 与合约 `consumeRedeem` / `cancelRedeem` 对单一 code 字符串的 hash 一致。
+ */
+export const composeNfcLinkAppRedeemCodeForChain = (publicRedeemCode: string): string => publicRedeemCode
+
+export const nfcLinkAppRedeemPackedHash = (publicRedeemCode: string): string =>
+	ethers.keccak256(ethers.toUtf8Bytes(publicRedeemCode))
+
+/** POS Link App 深链，如 https://beamio.app/app/?nftRedeemcode=...&tagid=...&uid=...&counter=... */
+export type NfcLinkAppDeepLinkParsed = {
+	nftRedeemcode: string
+	tagid: string
+	uid: string
+	counter: string
+}
+
+export const parseNfcLinkAppDeepLink = (raw: string): NfcLinkAppDeepLinkParsed | null => {
+	try {
+		const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.app')
+		const code = (u.searchParams.get('nftRedeemcode') ?? u.searchParams.get('NFTREDEEMCODE') ?? '').trim()
+		const tagid = (u.searchParams.get('tagid') ?? u.searchParams.get('tagId') ?? '').trim().replace(/^0x/i, '')
+		const uid = (u.searchParams.get('uid') ?? '').trim().replace(/^0x/i, '')
+		const counter = (u.searchParams.get('counter') ?? '').trim()
+		if (!code || code.toLowerCase() === 'null') return null
+		if (!/^[0-9A-Fa-f]{16}$/.test(tagid)) return null
+		if (!/^[0-9A-Fa-f]{14}$/.test(uid)) return null
+		if (!counter || !/^\d+$/.test(counter)) return null
+		return {
+			nftRedeemcode: decodeURIComponent(code),
+			tagid: tagid.toUpperCase(),
+			uid: uid.toLowerCase(),
+			counter,
+		}
+	} catch {
+		return null
+	}
+}
+
+export const isNfcLinkAppDeepLink = (raw: string): boolean => parseNfcLinkAppDeepLink(raw) != null
+
 /** 生成 request 唯一 hash（bytes32），供 URL 与链上 originalPaymentHash 使用 */
 export const generateRequestHash = (): string => {
 	const seed = uuid62.v4() + '-' + Date.now() + '-' + Math.random().toString(36).slice(2)
 	return ethers.keccak256(ethers.toUtf8Bytes(seed))
 }
 
+//		https://beamio.app/app/?nftRedeemcode=null&tagid=${tagid}&uid=${uid}&counter=${counter}
 
 /**
  * 将金额格式化为人类可读的文字形式
@@ -1541,6 +1583,57 @@ const isValidEthersPrivateKey = (pk: unknown): pk is string => {
 	if (!pk || typeof pk !== 'string') return false
 	const s = String(pk).trim().replace(/^0x/i, '')
 	return /^[0-9a-fA-F]{64}$/.test(s)
+}
+
+export const postNfcLinkAppClaimWithKey = async (
+	params: NfcLinkAppDeepLinkParsed & { privateKey: string }
+): Promise<{ success: boolean; address?: string; redeemTxHash?: string | null; error?: string }> => {
+	const res = await fetch(`${beamioApi}/api/nfcLinkAppClaimWithKey`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			nftRedeemcode: params.nftRedeemcode,
+			tagid: params.tagid,
+			uid: params.uid,
+			counter: params.counter,
+			privateKey: params.privateKey.trim(),
+		}),
+	})
+	const data = (await res.json().catch(() => ({}))) as {
+		success?: boolean
+		address?: string
+		redeemTxHash?: string | null
+		error?: string
+	}
+	return {
+		success: res.ok && data.success === true,
+		address: data.address,
+		redeemTxHash: data.redeemTxHash,
+		error: data.error ?? (!res.ok ? 'Request failed' : undefined),
+	}
+}
+
+/** 使用当前登录 Beamio 档案私钥完成 NFC Link App 换绑（须已登录） */
+export const claimNfcLinkAppWithCurrentWallet = async (
+	parsed: NfcLinkAppDeepLinkParsed
+): Promise<{ success: boolean; address?: string; redeemTxHash?: string | null; error?: string }> => {
+	if (!CoNET_Data?.profiles?.length || !CoNET_Data.profiles[0]?.privateKeyArmor) {
+		return { success: false, error: 'Please sign in first.' }
+	}
+	const pk = CoNET_Data.profiles[0].privateKeyArmor
+	if (!isValidEthersPrivateKey(pk)) {
+		return { success: false, error: 'Wallet key unavailable.' }
+	}
+	return postNfcLinkAppClaimWithKey({ ...parsed, privateKey: pk })
+}
+
+/** 若 raw 为 Link App 深链则发起换绑并返回结果；否则返回 null */
+export const handleNfcLinkAppDeepLinkScan = async (
+	raw: string
+): Promise<{ success: boolean; address?: string; redeemTxHash?: string | null; error?: string } | null> => {
+	const p = parseNfcLinkAppDeepLink(raw)
+	if (!p) return null
+	return claimNfcLinkAppWithCurrentWallet(p)
 }
 
 export const postBeamio = async (beamio: beamio, privateKey: string) => {

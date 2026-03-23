@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Search, ChevronLeft} from 'lucide-react'
-import { searchUsername, storeSystemData } from '@/services/beamio'
+import { searchUsername, storeSystemData, handleNfcLinkAppDeepLinkScan } from '@/services/beamio'
+import { Toast } from 'antd-mobile'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { CoNET_Data, setCoNET_Data, } from '@/utils/globals'
@@ -123,6 +124,19 @@ const SearchInputWithDropdown =
 				navigate('/History')
 				return
 			}
+
+			const nfcLinkRes = await handleNfcLinkAppDeepLinkScan(url.href)
+			if (nfcLinkRes !== null) {
+				setLoading(false)
+				setShowDropdown(false)
+				closeWindow('/History')
+				Toast.show({
+					icon: nfcLinkRes.success ? 'success' : 'fail',
+					content: nfcLinkRes.success ? 'NFC card linked to your wallet.' : (nfcLinkRes.error || 'Link failed'),
+				})
+				navigate('/History')
+				return
+			}
 	
 			let code = searchParams.get("code")||''
 			const _secureCode = searchParams.get("secureCode")||searchParams.get("securecode")||''
@@ -210,7 +224,7 @@ const SearchInputWithDropdown =
 				url = new URL(qq)
 			} catch {
 				// 智能对应：无协议时，尝试以 beamio.app 为 base 解析
-				if (/redeemcode=|beamiocard=/i.test(qq)) {
+				if (/nftRedeemcode=|redeemcode=|beamiocard=/i.test(qq)) {
 					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.app')
 				} else if ((/Amount=/i.test(qq) && /Vouchers|beamio\.app/i.test(qq)) && !/^https?:\/\//i.test(qq)) {
 					// Vouchers 支付 URL 无协议时补全（如 beamio.app/Vouchers?Amount=... 或 /Vouchers?Amount=...）

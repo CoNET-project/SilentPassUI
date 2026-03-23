@@ -13,7 +13,7 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
-import { checkStorage, searchUsername, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits } from "@/services/beamio"
+import { checkStorage, searchUsername, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits, handleNfcLinkAppDeepLinkScan } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
@@ -929,6 +929,16 @@ function AppShell() {
 
 	setScanData("")
 
+    const nfcLinkRes = await handleNfcLinkAppDeepLinkScan(url)
+    if (nfcLinkRes !== null) {
+      navigate('/History')
+      Toast.show({
+        icon: nfcLinkRes.success ? 'success' : 'fail',
+        content: nfcLinkRes.success ? 'NFC card linked to your wallet.' : (nfcLinkRes.error || 'Link failed'),
+      })
+      return
+    }
+
     // BeamioUserCard redeem URL: beamiocard + redeemcode → 打开 redeem 面板并预填
     if (_redeemcode?.trim()) {
       setRedeemFromUrl({
@@ -1003,6 +1013,15 @@ function AppShell() {
         setScanIntent('voucherPay')
         setVoucherPayFromScan(true)
         navigate('/History')
+        return
+      }
+      const nfcLinkFromScan = await handleNfcLinkAppDeepLinkScan(scanData)
+      if (nfcLinkFromScan !== null) {
+        setScanData('')
+        Toast.show({
+          icon: nfcLinkFromScan.success ? 'success' : 'fail',
+          content: nfcLinkFromScan.success ? 'NFC card linked to your wallet.' : (nfcLinkFromScan.error || 'Link failed'),
+        })
         return
       }
       if (isRedeemUrl(scanData)) {

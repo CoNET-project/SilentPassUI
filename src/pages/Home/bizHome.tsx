@@ -10,6 +10,21 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import MerchantOS from '@/pages/Vouchers/example/biz'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
 
+/**
+ * Primary CTA lime — matches `cashTreeHome` / `biz.tsx` Merchant OS.
+ * Hover / active / on-color: `#8ADC32`, `#7ECF28`, `#0F172A`.
+ */
+const BIZ_UI_PRIMARY = '#96EB3C'
+
+const bizUiPrimarySolid =
+	'bg-[#96EB3C] text-[#0F172A] hover:bg-[#8ADC32] active:bg-[#7ECF28] shadow-[0_14px_32px_rgba(150,235,60,0.42)] active:shadow-[0_10px_24px_rgba(150,235,60,0.32)]'
+
+const inputFocusPrimary =
+	'focus:outline-none focus:ring-2 focus:ring-[#96EB3C]/30 focus:border-[#96EB3C]'
+
+/** `public/logo512.png` (respects `homepage` e.g. `/biz`) */
+const BIZ_PUBLIC_LOGO512 = `${process.env.PUBLIC_URL ?? ''}/logo512.png`
+
 /** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
 const assembleEncryptKeysObject = async (
 	temp: encrypt_keys_object,
@@ -147,9 +162,12 @@ const BizHome = () => {
 
 	if (isLoading) {
 		return (
-			<div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#1562f0]/20">
+			<div
+				data-biz-ui-primary={BIZ_UI_PRIMARY}
+				className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#96EB3C]/30"
+			>
 				<div className="w-full max-w-[420px] bg-white/80 backdrop-blur-3xl rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white p-12 flex flex-col items-center justify-center relative overflow-hidden">
-					<div className="w-16 h-16 border-[3px] border-slate-100 border-t-[#1562f0] rounded-full animate-spin mb-10" />
+					<div className="w-16 h-16 border-[3px] border-slate-100 border-t-[#96EB3C] rounded-full animate-spin mb-10" />
 					<div className="space-y-5 w-full">
 						{LOGIN_STAGES.map((text, idx) => (
 							<div
@@ -158,13 +176,13 @@ const BizHome = () => {
 							>
 								<div
 									className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors duration-500 shrink-0 ${
-										loadingStep > idx ? 'bg-[#1562f0] text-white' : 'bg-slate-100 text-slate-300'
+										loadingStep > idx ? 'bg-[#96EB3C] text-[#0F172A]' : 'bg-slate-100 text-slate-300'
 									}`}
 								>
 									{loadingStep > idx ? (
 										<CheckCircle2 size={16} />
 									) : loadingStep === idx ? (
-										<span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-[#1562f0] rounded-full animate-spin" />
+										<span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-[#96EB3C] rounded-full animate-spin" />
 									) : (
 										<div className="w-2 h-2 rounded-full bg-slate-300" />
 									)}
@@ -183,26 +201,18 @@ const BizHome = () => {
 	}
 
 	return (
-		<div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#1562f0]/20">
+		<div
+			data-biz-ui-primary={BIZ_UI_PRIMARY}
+			className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#96EB3C]/30"
+		>
 			<div className="w-full max-w-md bg-white rounded-[40px] shadow-[0_20px_60px_rgba(0,0,0,0.05)] border border-slate-100 p-10 overflow-hidden relative">
-				<div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
+				<div className="absolute top-0 right-0 w-64 h-64 bg-[#96EB3C]/15 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 				<div className="relative z-10 flex flex-col items-center">
-					<div
-						className="
-							w-[70px] h-[70px] rounded-[20px] mb-6
-							bg-white
-							ring-1 ring-slate-200/70
-							shadow-[0_14px_28px_rgba(15,23,42,0.10)]
-							flex items-center justify-center
-						"
-					>
-						<span
-							className="text-[48px] font-extrabold italic leading-none"
-							style={{ color: '#1652f0' }}
-						>
-							B
-						</span>
-					</div>
+					<img
+						src={BIZ_PUBLIC_LOGO512}
+						alt="Beamio"
+						className="h-[140px] w-[140px] mb-6 object-contain"
+					/>
 					<h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Merchant OS</h1>
 					<p className="text-[13px] font-medium text-slate-500 mb-8">Access your decentralized store wallet</p>
 
@@ -217,7 +227,7 @@ const BizHome = () => {
 									type="text"
 									value={merchantTag.replace('@', '')}
 									onChange={(e) => setMerchantTag(e.target.value ? `@${e.target.value}` : '')}
-									className="w-full pl-9 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-semibold text-[15px] text-slate-900"
+									className={`w-full pl-9 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl ${inputFocusPrimary} transition-all font-semibold text-[15px] text-slate-900`}
 									required
 									disabled={isLoading}
 								/>
@@ -235,7 +245,7 @@ const BizHome = () => {
 									value={password}
 									onChange={(e) => setPassword(e.target.value)}
 									placeholder="••••••••••••"
-									className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-medium text-[15px] tracking-widest text-slate-900"
+									className={`w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl ${inputFocusPrimary} transition-all font-medium text-[15px] tracking-widest text-slate-900`}
 									required
 									disabled={isLoading}
 								/>
@@ -251,16 +261,16 @@ const BizHome = () => {
 						<button
 							type="submit"
 							disabled={isLoading}
-							className="w-full bg-[#1562f0] hover:bg-[#1253d0] text-white py-4 rounded-[20px] font-semibold text-[16px] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all mt-6 flex justify-center items-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
+							className={`w-full py-4 rounded-[20px] font-semibold text-[16px] transition-all mt-6 flex justify-center items-center gap-2 hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:bg-[#96EB3C] disabled:shadow-none ${bizUiPrimarySolid}`}
 						>
 							{isLoading ? (
 								<>
-									<span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+									<span className="w-5 h-5 border-2 border-[#0F172A]/25 border-t-[#0F172A] rounded-full animate-spin shrink-0" />
 									Unlocking...
 								</>
 							) : (
 								<>
-									<Wallet size={18} /> Unlock Wallet ···
+									<Wallet size={18} /> Unlock Wallet
 								</>
 							)}
 						</button>
@@ -272,7 +282,7 @@ const BizHome = () => {
 							onClick={() => setShowNewBiz(true)}
 							className="flex items-center gap-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
 						>
-							<ShieldCheck size={14} className="text-emerald-500" />
+							<ShieldCheck size={14} className="text-[#96EB3C]" />
 							<span>Local EOA Derivation • Zero-Knowledge</span>
 						</button>
 						<span className="text-[10px] text-slate-400 font-medium">v{APP_VERSION}</span>

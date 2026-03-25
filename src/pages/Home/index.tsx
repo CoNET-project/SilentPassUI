@@ -39,7 +39,7 @@ const HomePage = ({}) => {
 	const beamioTag = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('beamioTag') || '') : ''
 
 	return (
-		<div className="w-full h-full">
+		<div className="flex min-h-0 h-full w-full flex-col">
 			{splashVisible && <SplashScreen />}
 			{showBeamioOnboardingModal ? (
 				<BeamioOnboardingModal
@@ -51,7 +51,9 @@ const HomePage = ({}) => {
 					onInitComplete={() => setSplashVisible(false)}
 				/>
 			) : (
-				<Home />
+				<div className="flex min-h-0 w-full flex-1 flex-col">
+					<Home />
+				</div>
 			)}
 			{/* 首次进入 Home 时显示 Install Web App，引导添加到主屏幕 */}
 			<InstallTerminalSheet

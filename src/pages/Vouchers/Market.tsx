@@ -1,20 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import {
-  Search,
-  Store,
-  Crown,
-  CreditCard as CardIcon,
-  Coffee,
-  Music,
-  ShoppingCart,
-  Utensils,
-  Ticket,
-  Gamepad2,
-  Car,
   ChevronRight,
   Server,
-  Trophy,
   Sparkles,
   Activity,
   Zap,
@@ -35,59 +23,28 @@ import {
   Banknote,
   PackageOpen,
   ArrowLeft,
+  Star,
+  Clock,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteCurrencyAmountInUSDC, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
+import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
 import { fiatPrefix } from "@/services/currency"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
 import USDCUserCardTopupControl from "./USDCUserCardTopupControl"
 import ShowPayQR from "./showPayQR"
-import cashTreesLog from "./assets/cashtreesLog.png"
-import phoIcon from "./assets/phoIcon.svg"
 import greenCard from "./assets/greenCard.png"
 import blackCard from "./assets/BlackCard.png"
 
-const THEME = { bg: "#F2F2F7" }
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
 const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 
-const CATEGORIES = [
-  { id: "membership", name: "Memberships", icon: <Store size={20} />, color: "bg-purple-100 text-purple-600" },
-  { id: "events", name: "Events", icon: <Trophy size={20} />, color: "bg-pink-100 text-pink-600" },
-  { id: "dining", name: "Dining", icon: <Utensils size={20} />, color: "bg-orange-100 text-orange-600" },
-  { id: "retail", name: "Retail", icon: <ShoppingCart size={20} />, color: "bg-blue-100 text-blue-600" },
-  { id: "services", name: "Services", icon: <Sparkles size={20} />, color: "bg-emerald-100 text-emerald-600" },
-]
-
-const SectionHeader = ({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) => (
-  <div className="flex justify-between items-end px-5 mb-3 mt-8">
-    <h3 className="text-[22px] font-bold text-gray-900 tracking-tight leading-none">{title}</h3>
-    {action && (
-      <button onClick={onAction} className="text-[#1562f0] text-[15px] font-medium active:opacity-60">
-        {action}
-      </button>
-    )}
-  </div>
-)
-
-const GetButton = ({ price, count = 0, onClick }: { price: number; count?: number; onClick: () => void }) => (
-  <button
-    onClick={(e) => { e.stopPropagation(); onClick(); }}
-    className="relative pl-5 pr-5 py-1.5 rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm min-w-[75px] active:scale-95 bg-[#F2F2F7] text-[#1562f0] hover:bg-[#1562f0] hover:text-white flex items-center justify-center gap-1.5"
-  >
-    {price > 0 ? `CA$${price}` : "View"}
-    {count > 0 && (
-      <span className="flex items-center justify-center bg-blue-100 text-blue-600 text-[9px] h-4 min-w-[16px] px-1 rounded-full -mr-2 border border-blue-200 shadow-sm">
-        x{count}
-      </span>
-    )}
-  </button>
-)
+/** Browse / Top Vouchers removed — empty list so stale HMR chunks never throw ReferenceError on `MARKET_ITEMS`. */
+const MARKET_ITEMS: unknown[] = []
 
 type GenesisFeature = { title: string; desc: string; icon: React.ReactNode }
 type GenesisNodeData = {
@@ -127,16 +84,6 @@ type HeroItem = {
   overlay?: string
   currency?: "CAD" | "USD" | "EUR" | "JPY" | "CNY" | "HKD" | "SGD" | "TWD"
   partners?: { name: string; icon: string; bg: string }[]
-}
-type CashTreesItem = HeroItem & {
-  merchantLogo?: string
-  isVariablePrice?: boolean
-  minPrice?: number
-  maxPrice?: number
-  customGradient?: string
-  theme?: "black" | "green"
-  currency?: "CAD" | "USD" | "EUR" | "JPY" | "CNY" | "HKD" | "SGD" | "TWD"
-  partners?: { name: string; address?: string; icon: string; bg: string }[]
 }
 
 const GENESIS_NODE_DATA: GenesisNodeData = {
@@ -208,134 +155,6 @@ const HERO_COLLECTION: HeroItem[] = [
     currency: "CAD",
   },
 ]
-
-const CASH_TREES_COLLECTION: CashTreesItem[] = [
-  {
-    id: 201,
-    title: "CashTrees Black VIP",
-    tagline: "",
-    subtitle: "Load $100+ to unlock maximum merchant discounts.",
-    description: "Experience premium dining with exclusive rewards. Discount rates are set by individual merchants. The entire bill must be paid with this CashTrees card to apply the discount.",
-    features: ["Merchant-Defined VIP Discounts", "Sen Pho + Cafe: 10% Off", "Priority Reservations", "Valid at Kerrisdale & Champlain Heights"],
-    image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
-    merchant: "",
-    location: "Vancouver, BC",
-    merchantLogo: phoIcon,
-    partners: [
-      { name: "Kerrisdale", address: "6290 East Blvd, Vancouver, BC", icon: "📍", bg: "bg-gray-800 text-white" },
-      { name: "Champlain Heights", address: "7056 Kerr St, Vancouver, BC", icon: "📍", bg: "bg-black text-white" },
-    ],
-    price: 100,
-    isVariablePrice: true,
-    minPrice: 100,
-    type: "CashTrees VIP",
-    color: "text-white",
-    customGradient: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.95) 100%)",
-    theme: "black",
-    currency: "CAD",
-  },
-  {
-    id: 202,
-    title: "CashTrees Green Card",
-    tagline: "",
-    subtitle: "Load $50 - $99 to unlock standard discounts.",
-    description: "Start enjoying authentic dining with CashTrees rewards. Discount rates are set by individual merchants. The entire bill must be paid with this CashTrees card to apply the discount.",
-    features: ["Merchant-Defined Standard Discounts", "Sen Pho + Cafe: 5% Off", "Instant Digital Setup", "Valid at Kerrisdale & Champlain Heights"],
-    image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
-    merchant: "",
-    location: "Vancouver, BC",
-    merchantLogo: phoIcon,
-    partners: [
-      { name: "Kerrisdale", address: "6290 East Blvd, Vancouver, BC", icon: "📍", bg: "bg-white text-green-700" },
-      { name: "Champlain Heights", address: "7056 Kerr St, Vancouver, BC", icon: "📍", bg: "bg-green-100 text-green-800" },
-    ],
-    price: 50,
-    isVariablePrice: true,
-    minPrice: 50,
-    maxPrice: 99.99,
-    type: "CashTrees Member",
-    color: "text-[#0e2a05]",
-    customGradient: "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.6) 100%)",
-    theme: "green",
-    currency: "CAD",
-  },
-]
-
-const CashTreesGetButton = ({ price, count = 0, onClick, isVariable = false, itemId, canUpgrade = true }: { price: number; count?: number; onClick: () => void; isVariable?: boolean; itemId?: number; canUpgrade?: boolean }) => {
-  // When user owns card and cannot upgrade: id 202 → hide button, id 201 → show "Topup"
-  if (count > 0 && !canUpgrade && itemId === 202) return null
-  const btnLabel = count > 0 && isVariable
-    ? (itemId === 201 ? (canUpgrade ? "Upgrade VIP" : "Topup") : itemId === 202 ? "Topup" : `Load $${price}+`)
-    : isVariable ? `Load $${price}+` : `$${price}`
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className="relative rounded-full font-bold text-[13px] transition-all duration-200 shadow-sm active:scale-95 bg-black text-white hover:bg-gray-800 border border-white/90 flex items-center justify-center gap-1.5 px-5 py-1.5 min-w-[75px]"
-    >
-      {btnLabel}
-
-    </button>
-  )
-}
-
-const StoryCard = ({ item, count, onClick, onBuy, canUpgrade = true }: { item: CashTreesItem; count: number; onClick: (i: CashTreesItem) => void; onBuy: (i: CashTreesItem) => void; canUpgrade?: boolean }) => {
-  const isBlackCard = item.theme === "black"
-  const isDarkBg = item.theme === "black" || item.theme === "green"
-  return (
-    <div
-      onClick={() => onClick(item)}
-      className="snap-center relative min-w-[340px] h-[460px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300 shrink-0"
-    >
-      <img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={item.title} />
-      <div className="absolute inset-0" style={{ background: item.customGradient }} />
-      <img src={cashTreesLog} alt="CashTrees" className="absolute top-5 left-5 w-16 h-10 object-contain z-10 opacity-90 drop-shadow-md" />
-      <div className="absolute inset-0 flex flex-col justify-between p-7">
-        <div className="mt-8">
-          <h2 className={`${item.id === 202 ? "text-[#9ecc3c]" : isDarkBg ? "text-white" : "text-[#0e2a05]"} text-4xl font-extrabold leading-[1.1] tracking-tight drop-shadow-lg w-4/5 mb-3`}>
-            {item.title}
-          </h2>
-          <p className={`${isDarkBg ? "text-gray-200" : "text-[#1a4a0a]"} text-[15px] font-medium leading-snug line-clamp-2 drop-shadow-md w-11/12`}>
-            {item.subtitle}
-          </p>
-        </div>
-        <div className={`${item.id === 202 ? "bg-[#9ecc3c] border-[#9ecc3c]/50" : isBlackCard ? "bg-black/80 border-gray-700" : "bg-black/70 border-gray-600"} backdrop-blur-xl border rounded-[24px] p-4 flex items-center justify-between shadow-lg`}>
-          <div className="flex items-center gap-3.5">
-            <div className="w-[60px] h-[60px] flex items-center justify-center text-2xl shrink-0">
-              {item.merchantLogo ? (
-                typeof item.merchantLogo === "string" && (item.merchantLogo.startsWith("/") || item.merchantLogo.startsWith("http") || item.merchantLogo.includes(".svg")) ? (
-                  <img src={item.merchantLogo} alt={item.merchant} className="w-full h-full object-contain" />
-                ) : (
-                  item.merchantLogo
-                )
-              ) : (
-                "🍜"
-              )}
-            </div>
-            <div className="flex flex-col">
-              <span className={`${isDarkBg ? "text-white" : "text-[#0e2a05]"} font-bold text-[15px] leading-tight`}>
-                {item.merchant}
-              </span>
-              {/* <div className="flex items-center gap-1.5 mt-0.5">
-                <CardIcon size={12} className={isDarkBg ? "text-gray-400" : "text-[#1a4a0a]"} />
-                <span className={`${isDarkBg ? "text-gray-300" : "text-[#1a4a0a]"} text-[11px] font-bold uppercase tracking-wide`}>CashTrees</span>
-              </div> */}
-            </div>
-          </div>
-          <div onClick={(e) => e.stopPropagation()}>
-            <CashTreesGetButton
-              price={item.price}
-              count={count}
-              onClick={() => onBuy(item)}
-              isVariable={item.isVariablePrice}
-              itemId={item.id}
-              canUpgrade={canUpgrade}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 const GenesisCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () => void }) => (
   <div
@@ -1002,148 +821,11 @@ const PurchaseCreditsSheet = ({
   )
 }
 
-type MarketItem = {
-  id: string
-  category: string
-  name: string
-  fiatPrice: number
-  fiatCurrency: string
-  imageColor: string
-  icon: React.ReactNode
-  desc?: string
-  type: string
-  topUpOptions?: number[] | null
-}
-
-const MARKET_ITEMS: MarketItem[] = [
-  {
-    id: "m1",
-    category: "membership",
-    name: "CCSA Member Card",
-    fiatPrice: 150,
-    fiatCurrency: "CA$",
-    imageColor: "bg-gradient-to-br from-purple-600 to-indigo-600",
-    icon: <Store size={24} className="text-white" />,
-    desc: "Unlock Exclusive Dining. First Partner: Osmanthus.",
-    type: "Membership",
-    topUpOptions: [50, 100, 200],
-  },
-  {
-    id: "m3",
-    category: "membership",
-    name: "Elite Golf Pass",
-    fiatPrice: 500,
-    fiatCurrency: "CA$",
-    imageColor: "bg-gradient-to-br from-emerald-600 to-teal-800",
-    icon: <Store size={24} className="text-white" />,
-    desc: "Access to 50+ Golf Courses",
-    type: "Membership",
-    topUpOptions: [100, 500],
-  },
-  {
-    id: "m6",
-    category: "membership",
-    name: "Gamer Pro",
-    fiatPrice: 60,
-    fiatCurrency: "CA$",
-    imageColor: "bg-gradient-to-br from-red-500 to-orange-600",
-    icon: <Gamepad2 size={24} className="text-white" />,
-    desc: "Monthly Game Credits",
-    type: "Membership",
-    topUpOptions: [60],
-  },
-  {
-    id: "m2",
-    category: "dining",
-    name: "Starbucks",
-    fiatPrice: 20,
-    fiatCurrency: "CA$",
-    imageColor: "bg-green-700",
-    icon: <Coffee size={24} className="text-white" />,
-    desc: "Coffee & Snacks",
-    type: "Voucher",
-    topUpOptions: [10, 20, 50],
-  },
-  {
-    id: "m7",
-    category: "dining",
-    name: "Tim Hortons",
-    fiatPrice: 15,
-    fiatCurrency: "CA$",
-    imageColor: "bg-red-700",
-    icon: <Coffee size={24} className="text-white" />,
-    desc: "Coffee & Donuts",
-    type: "Voucher",
-    topUpOptions: [15, 30],
-  },
-  {
-    id: "m8",
-    category: "dining",
-    name: "Uber Eats",
-    fiatPrice: 25,
-    fiatCurrency: "CA$",
-    imageColor: "bg-green-900",
-    icon: <Utensils size={24} className="text-white" />,
-    desc: "Food Delivery",
-    type: "Voucher",
-    topUpOptions: [25, 50, 100],
-  },
-  {
-    id: "m4",
-    category: "retail",
-    name: "Whole Foods",
-    fiatPrice: 50,
-    fiatCurrency: "CA$",
-    imageColor: "bg-blue-800",
-    icon: <ShoppingCart size={24} className="text-white" />,
-    desc: "Organic Groceries",
-    type: "Voucher",
-    topUpOptions: [50, 100],
-  },
-  {
-    id: "m5",
-    category: "services",
-    name: "Uber Ride",
-    fiatPrice: 25,
-    fiatCurrency: "CA$",
-    imageColor: "bg-slate-900",
-    icon: <Car size={24} className="text-white" />,
-    desc: "Ride Credits",
-    type: "Voucher",
-    topUpOptions: [25, 50, 100],
-  },
-  {
-    id: "m9",
-    category: "services",
-    name: "Spotify",
-    fiatPrice: 10,
-    fiatCurrency: "CA$",
-    imageColor: "bg-green-500",
-    icon: <Music size={24} className="text-white" />,
-    desc: "Premium Sub",
-    type: "Voucher",
-    topUpOptions: [10, 30, 60],
-  },
-  {
-    id: "t1",
-    category: "events",
-    name: "Neon City Festival",
-    fiatPrice: 150,
-    fiatCurrency: "CA$",
-    imageColor: "bg-gradient-to-tr from-pink-500 via-red-500 to-yellow-500",
-    icon: <Music size={24} className="text-white" />,
-    desc: "Weekend Pass • Sep 24-26",
-    type: "Ticket",
-    topUpOptions: null,
-  },
-]
-
 export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, myAddress, setShowFooter, beamio } = useDaemonContext()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
-	const [activeFilter, setActiveFilter] = useState<string | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
 	const [settingsOpen, setSettingsOpen] = useState<"" | "USDCTopup" | "showPayQR">("")
@@ -1184,50 +866,22 @@ export default function Market() {
 		return () => clearTimeout(t)
 	}, [settingsOpen])
 
-	const [topupCardAssets, setTopupCardAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 	const flash = async () => {
 		if (profiles?.length) {
 		await new Promise((r) => setTimeout(r, 500))
-		Promise.all([
-			getMyAssetsAggregated(profiles[0]),
-			getMyAssets(profiles[0], USDC_TOPUP_CARD_ADDRESS),
-		]).then(([agg, topup]) => {
-			setMyAssets(agg ?? null)
-			setTopupCardAssets(topup ?? null)
-		}).catch((e) => console.warn(e))
+		getMyAssetsAggregated(profiles[0])
+			.then((agg) => setMyAssets(agg ?? null))
+			.catch((e) => console.warn(e))
 		}
 	}
 	useEffect(() => {
 		flash()
 	}, [myAddress, profiles?.length])
 
-	const numOfNfts = useMemo(() => {
-		if (!myAssets?.nfts?.[0]) return 0
-		return myAssets.nfts[0].tokenId ?? 0
-	}, [myAssets])
 	const isMember = useMemo(
 		() => !!(myAssets?.nfts && myAssets.nfts.length > 0),
 		[myAssets]
 	)
-
-	/** For CashTrees 201/202: count=1 when user owns topup card; canUpgrade by tier (201: pts<100, 202: pts<50) */
-	const cashTreesCount = useMemo(() => (topupCardAssets?.nfts && topupCardAssets.nfts.length > 0) ? 1 : 0, [topupCardAssets])
-	const cashTreesPoints = useMemo(() => Number(topupCardAssets?.points ?? 0), [topupCardAssets])
-	const getCashTreesCanUpgrade = (itemId: number) => itemId === 201 ? cashTreesPoints < 100 : itemId === 202 ? cashTreesPoints < 50 : true
-
-	// When 202 detail would be hidden (owns card, cannot upgrade), clear viewingItem to avoid stale state
-	useEffect(() => {
-		if (viewingItem?.id === 202 && cashTreesCount > 0 && !getCashTreesCanUpgrade(202)) {
-			setViewingItem(null)
-		}
-	}, [viewingItem?.id, cashTreesCount, cashTreesPoints])
-
-	const membershipItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "membership"), [])
-	const eventsItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "events"), [])
-	const diningItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "dining"), [])
-	const retailItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "retail"), [])
-	const servicesItems = useMemo(() => MARKET_ITEMS.filter((i) => i.category === "services"), [])
-
 
 	const closeCardDetail = () => {
 		setShowCardDetail(false)
@@ -1237,35 +891,7 @@ export default function Market() {
 	}
 
 	const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] ?? []
-	const openDetail = (item: ViewingItem) => {
-		// 202: when user owns card and cannot upgrade, do not show detail panel
-		if (item.id === 202 && cashTreesCount > 0 && !getCashTreesCanUpgrade(202)) return
-		setViewingItem(item)
-	}
-	const initiatePurchase = (item: ViewingItem) => {
-		if (item.id === 999) {
-			setViewingItem(null)
-			setPurchasingGenesis(true)
-			return
-		}
-		if (getOwnedInstances(item.id).length > 0) {
-			openDetail(item)
-			return
-		}
-		if ((item as HeroItem).id === 101) {
-			setViewingItem(null)
-			setShowFooter(false)
-			setOverlayMode("cardDetail")
-			setShowCardDetail(true)
-			return
-		}
-		// CashTrees cards: open detail modal to view/purchase
-		if (item.id === 201 || item.id === 202) {
-			openDetail(item)
-			return
-		}
-		setViewingItem(null)
-	}
+
 	const finalizeGenesis = () => {
 		setPurchasingGenesis(false)
 		const newId = "#GN-" + (248 + getOwnedInstances(999).length)
@@ -1273,14 +899,9 @@ export default function Market() {
 		setViewingItem(GENESIS_NODE_DATA)
 	}
 
-	const filteredItems = useMemo(() => {
-		if (!activeFilter) return MARKET_ITEMS
-		return MARKET_ITEMS.filter((i) => i.category === activeFilter)
-	}, [activeFilter])
-
 	return (
 		<>
-		<div className="w-full h-full min-h-0 h-screen bg-[#F2F2F7] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100">
+		<div className="w-full h-full min-h-0 h-screen bg-[#F1F8ED] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100">
 		{/* 固定独立胶囊：Title，与 /history 一致，随滚动渐隐 */}
 		<div
 			className="fixed left-0 right-0 z-30 flex items-center justify-between px-5 transition-opacity duration-300"
@@ -1295,95 +916,128 @@ export default function Market() {
 		<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 min-h-0 overflow-y-auto pb-24">
 		{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
 		<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
-		{/* HERO CARDS: CashTrees (ExampleCardNew StoryCard design) */}
-		<div className="flex gap-4 overflow-x-auto px-5 pb-8 scrollbar-hide snap-x snap-mandatory">
-			{CASH_TREES_COLLECTION.map((item) => (
-				<StoryCard
-					key={item.id}
-					item={item}
-					count={item.id === 201 || item.id === 202 ? cashTreesCount : getOwnedInstances(item.id).length}
-					onClick={openDetail}
-					onBuy={(it) => initiatePurchase(it)}
-					canUpgrade={item.id === 201 || item.id === 202 ? getCashTreesCanUpgrade(item.id) : true}
-				/>
-			))}
-		</div>
 
-		<div className="h-px bg-gray-200 mx-5 mb-2" />
+		{/* Discover：与 renderAction Store 标签一致（联盟商家 + 限时券票样式） */}
+		<div className="animate-in fade-in duration-300 pb-8">
+			<div className="px-6 pt-2 mb-6">
+				<h1 className="text-4xl font-extrabold text-gray-900 dark:text-slate-100 tracking-tight">Discover</h1>
+				<div className="flex items-center mt-2 bg-yellow-100 dark:bg-yellow-950/50 text-yellow-800 dark:text-yellow-200 px-3 py-1 rounded-md w-max shadow-sm border border-yellow-200/50 dark:border-yellow-800/50">
+					<Sparkles size={12} className="mr-1.5 shrink-0" />
+					<span className="text-[11px] font-bold uppercase tracking-wider">Alliance Members & Offers</span>
+				</div>
+			</div>
 
-		{/* Browse by Category (ExampleCard style) */}
-		<SectionHeader title="Browse by Category" />
-		<div className="flex gap-3 overflow-x-auto px-5 pb-4 scrollbar-hide">
-			{CATEGORIES.map((cat) => (
-				<button
-					key={cat.id}
-					type="button"
-					onClick={() => {
-						switch (cat.id) {
-							case 'events':
-								navigate("/cash-trees-alliance")
-								break
-							case 'dining':
-								navigate("/example-express")
-								break
-							case 'services':
-								navigate("/transfertion")
-								break
-							case 'retail':
-								navigate("/render-action")
-								break
-						}
-					}}
-					className={`flex flex-col items-center gap-2 min-w-[72px] active:opacity-60 transition-opacity shrink-0 ${
-						activeFilter === cat.id ? "opacity-100" : ""
-					}`}
-				>
-					<div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-sm ${
-						activeFilter === cat.id ? "ring-2 ring-[#1562f0] ring-offset-2 " : ""
-					}${cat.color}`}>
-						{cat.icon}
+			<div className="px-6 space-y-6">
+				{/* 卡券 1：Sen Pho + Cafe — 自动抵扣 */}
+				<div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all duration-300 group relative">
+					<div className="h-32 relative overflow-hidden bg-orange-50 dark:bg-orange-950/30 rounded-t-[2rem]">
+						<span className="text-7xl absolute opacity-30 flex items-center justify-center w-full h-full">🍜</span>
+						<img
+							src="https://images.unsplash.com/photo-1585032226651-759b368d7246?auto=format&fit=crop&q=80&w=800"
+							alt="Sen Pho + Cafe"
+							className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out z-10"
+							onError={(e) => {
+								const el = e.currentTarget
+								el.style.display = "none"
+							}}
+						/>
+						<div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 to-transparent z-20" />
+						<div className="absolute bottom-4 left-5 right-5 z-30 flex justify-between items-end">
+							<h3 className="font-extrabold text-xl text-white tracking-tight drop-shadow-md">Sen Pho + Cafe</h3>
+						</div>
 					</div>
-					<span className="text-[11px] font-semibold text-gray-500">{cat.name}</span>
-				</button>
-			))}
-		</div>
 
-		{/* Top Vouchers / Filtered List (ExampleCard list style) */}
-		<SectionHeader
-			title={activeFilter ? `${CATEGORIES.find((c) => c.id === activeFilter)?.name ?? "Items"}` : "Top Vouchers"}
-		/>
-		<div className="px-5 grid grid-cols-1 gap-y-0 bg-white rounded-[24px] shadow-sm divide-y divide-gray-100/80 mx-5 overflow-hidden">
-			{(activeFilter ? filteredItems : []).slice(0, 8).map((item, index) => (
-				<div
-					key={item.id}
-					className="flex items-center gap-4 p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
-					onClick={() => {
-						navigate("/example-card")
-					}}
-				>
-					<div className="font-bold text-lg text-gray-300 w-4">{index + 1}</div>
-					<div className={`w-14 h-14 rounded-[14px] ${item.imageColor} flex items-center justify-center text-white shadow-sm shrink-0 group-hover:scale-105 transition-transform`}>
-						{item.icon}
+					<div className="relative h-6 bg-white dark:bg-slate-900 z-30">
+						<div className="absolute -left-3 top-0 w-6 h-6 bg-[#F1F8ED] dark:bg-[#0f172a] rounded-full shadow-inner border-r border-gray-100 dark:border-slate-700" />
+						<div className="absolute -right-3 top-0 w-6 h-6 bg-[#F1F8ED] dark:bg-[#0f172a] rounded-full shadow-inner border-l border-gray-100 dark:border-slate-700" />
+						<div className="absolute top-3 left-6 right-6 border-t-2 border-dashed border-gray-200 dark:border-slate-600" />
 					</div>
-					<div className="flex-1 min-w-0 pr-2">
-						<div className="font-semibold text-gray-900 truncate text-[16px]">{item.name}</div>
-						<div className="text-[13px] text-gray-500 mt-0.5">{item.type} • {item.fiatCurrency}{item.fiatPrice}</div>
-					</div>
-					<div className="flex flex-col items-end gap-1">
-						<GetButton price={item.fiatPrice} onClick={() => {
-							navigate("/example-card")
-						}} />
+
+					<div className="px-5 pb-5 pt-1 bg-white dark:bg-slate-900 rounded-b-[2rem] z-30 relative">
+						<div className="flex justify-between items-start mb-4">
+							<div>
+								<div className="flex items-center gap-1.5 mb-1">
+									<Star size={14} className="text-yellow-500 fill-yellow-500" />
+									<span className="text-xs font-bold text-yellow-600 dark:text-yellow-400 uppercase tracking-wider">Alliance Member</span>
+								</div>
+								<p className="text-sm text-gray-500 dark:text-slate-400 font-medium">10% Off All Menu Items</p>
+							</div>
+						</div>
+
+						<div className="flex justify-between items-center bg-gray-50 dark:bg-slate-800/80 p-3 rounded-2xl border border-gray-100 dark:border-slate-700">
+							<div className="flex flex-col">
+								<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mb-0.5">How to use</span>
+								<span className="text-sm font-bold text-gray-700 dark:text-slate-200">Pay with CashTrees</span>
+							</div>
+							<div className="bg-[#96EB3C]/20 text-[#65A30D] dark:text-[#9AE66E] dark:bg-[#96EB3C]/15 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm">
+								<ShieldCheck size={14} /> Auto-Applied
+							</div>
+						</div>
 					</div>
 				</div>
-			))}
+
+				{/* 卡券 2：Cha Cha Matcha — Claim */}
+				<div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all duration-300 group relative">
+					<div className="h-32 relative overflow-hidden bg-green-50 dark:bg-green-950/30 rounded-t-[2rem]">
+						<span className="text-6xl absolute opacity-30 flex items-center justify-center w-full h-full">🧋</span>
+						<img
+							src="https://images.unsplash.com/photo-1558855567-1a42823b18d2?auto=format&fit=crop&q=80&w=800"
+							alt="Boba Tea"
+							className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out z-10"
+							onError={(e) => {
+								const el = e.currentTarget
+								el.style.display = "none"
+							}}
+						/>
+						<div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 to-transparent z-20" />
+						<div className="absolute bottom-4 left-5 right-5 z-30">
+							<h3 className="font-extrabold text-xl text-white tracking-tight drop-shadow-md">Cha Cha Matcha</h3>
+						</div>
+
+						<div className="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1 z-30">
+							<Clock size={12} />
+							Ends Tomorrow
+						</div>
+					</div>
+
+					<div className="relative h-6 bg-white dark:bg-slate-900 z-30">
+						<div className="absolute -left-3 top-0 w-6 h-6 bg-[#F1F8ED] dark:bg-[#0f172a] rounded-full shadow-inner border-r border-gray-100 dark:border-slate-700" />
+						<div className="absolute -right-3 top-0 w-6 h-6 bg-[#F1F8ED] dark:bg-[#0f172a] rounded-full shadow-inner border-l border-gray-100 dark:border-slate-700" />
+						<div className="absolute top-3 left-6 right-6 border-t-2 border-dashed border-gray-200 dark:border-slate-600" />
+					</div>
+
+					<div className="px-5 pb-5 pt-1 bg-white dark:bg-slate-900 rounded-b-[2rem] z-30 relative">
+						<div className="flex justify-between items-start mb-4">
+							<div>
+								<div className="flex items-center gap-1.5 mb-1">
+									<Zap size={14} className="text-red-500 fill-red-500" />
+									<span className="text-xs font-bold text-red-500 uppercase tracking-wider">Limited Voucher</span>
+								</div>
+								<p className="text-sm text-gray-500 dark:text-slate-400 font-medium">1 Free Brown Sugar Boba</p>
+							</div>
+						</div>
+
+						<div className="flex justify-between items-center bg-gray-50 dark:bg-slate-800/80 p-3 rounded-2xl border border-gray-100 dark:border-slate-700">
+							<div className="flex flex-col">
+								<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mb-0.5">Your Price</span>
+								<div className="flex items-center">
+									<span className="text-sm font-bold text-gray-400 dark:text-slate-500 line-through mr-1.5">$7.50</span>
+									<span className="text-xl font-extrabold text-[#65A30D] leading-none">FREE</span>
+								</div>
+							</div>
+							<button
+								type="button"
+								onClick={() => navigate("/")}
+								className="bg-gray-900 dark:bg-slate-100 hover:bg-gray-800 dark:hover:bg-white text-white dark:text-gray-900 px-5 py-2.5 rounded-xl font-bold text-sm transition-colors shadow-sm active:scale-95 flex items-center gap-1.5"
+							>
+								Claim Now
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
 		</div>
 
-		<div className="px-8 pb-10 text-center mt-8">
-			<p className="text-[10px] text-gray-400 leading-relaxed">
-				Prices may vary by location. All assets are secured on Base Mainnet.<br />
-				Beamio Inc. © 2026
-			</p>
-		</div>
 		</div>
 		</div>
 
@@ -1530,20 +1184,20 @@ export default function Market() {
 				onBuy={() => setViewingItem(null)}
 			/>
 		)}
-		{viewingItem && viewingItem.id !== 999 && viewingItem.id !== 998 && !(viewingItem.id === 202 && cashTreesCount > 0 && !getCashTreesCanUpgrade(202)) && (
+		{viewingItem && viewingItem.id !== 999 && viewingItem.id !== 998 && (
 			<ProductDetailModal
 				item={viewingItem}
-				inventory={viewingItem.id === 101 ? (isMember ? [{ id: "#CCSA", date: "Active", balance: "Full" }] : []) : (viewingItem.id === 201 || viewingItem.id === 202) ? (cashTreesCount > 0 ? [{ id: "#CT", date: "Active", balance: "Full" }] : []) : getOwnedInstances(viewingItem.id)}
+				inventory={viewingItem.id === 101 ? (isMember ? [{ id: "#CCSA", date: "Active", balance: "Full" }] : []) : getOwnedInstances(viewingItem.id)}
 				onClose={() => setViewingItem(null)}
 				onBuy={(it) => {
 					setShowFooter(false)
 					setTopupCardAddress(USDC_TOPUP_CARD_ADDRESS)
 					setTopupItemId(it?.id ?? null)
-					setTopupPresetAmountEmpty((it?.id === 201 || it?.id === 202) && cashTreesCount > 0)
+					setTopupPresetAmountEmpty(false)
 					setSettingsOpen("USDCTopup")
 				}}
 				onOpenWallet={viewingItem.id === 101 && isMember ? () => { setViewingItem(null); setOverlayMode("cardItem"); setShowCardDetail(true); setShowFooter(false); } : () => setViewingItem(null)}
-				canUpgrade={(viewingItem.id === 201 || viewingItem.id === 202) ? getCashTreesCanUpgrade(viewingItem.id) : true}
+				canUpgrade
 			/>
 		)}
 		{purchasingGenesis && (
@@ -1574,8 +1228,6 @@ export default function Market() {
 		/>
 
 		<style>{`
-			.scrollbar-hide::-webkit-scrollbar { display: none; }
-			.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 			@keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 			@keyframes scan {
 				0% { top: 0%; opacity: 0; }

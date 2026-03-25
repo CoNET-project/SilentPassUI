@@ -16,7 +16,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Info, Send, QrCode } 
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info } 
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -27,9 +27,12 @@ import baseIcon from '@/components/assets/base-logo.png'
 import PayScreen from '@/pages/Pay/send'
 
 import { ethers } from 'ethers'
+import { QRCodeCanvas } from 'qrcode.react'
+import bIcon from '@/components/assets/logo512.png'
 import { baseEndpoint } from '@/utils/constants'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
-import { getAAAccount, getMyAssetsAggregated, getBUnitBalanceOnConet } from '@/services/BeamioCard'
+import { getAAAccount, getMyAssets, getMyAssetsAggregated, getBUnitBalanceOnConet } from '@/services/BeamioCard'
+import { BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
@@ -37,6 +40,8 @@ import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import BankingBridge from '@/pages/History/components/BankingBridge'
 import FuelView from './FuelView'
+import ShowPayQR from '@/pages/Vouchers/showPayQR'
+import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 
 
 
@@ -93,11 +98,57 @@ const Home = ({}) => {
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
+	/** Home Pay/Receive 底栏（对齐 renderAction Pay|Receive 交互） */
+	const [showPayReceiveSheet, setShowPayReceiveSheet] = useState(false)
+	const [payReceiveQrMode, setPayReceiveQrMode] = useState<'pay' | 'receive'>('receive')
+	/** Pay 模式：与 MyWalletDashboardNew AA relay QR 同源（OpenContainer relay 签名 JSON） */
+	const [payRelayQRPayload, setPayRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
+	const [payRelayQRLoading, setPayRelayQRLoading] = useState(false)
 	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
 	const [showFuelView, setShowFuelView] = useState(false)
 	/** Add Cash 后：底部 sheet 内显示 Coinbase 确认 (204-221)，非全屏 */
 	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
+	const [aaAddrCopied, setAaAddrCopied] = useState(false)
+	/** CashTrees 卡点击：AA USDC + 基础设施卡 points（token #0 口径，与 getMyAssets 一致） */
+	const [showCashTreesBalanceDetails, setShowCashTreesBalanceDetails] = useState(false)
+	const [cashTreesBalanceLoading, setCashTreesBalanceLoading] = useState(false)
+	const [cashTreesBalanceError, setCashTreesBalanceError] = useState<string | null>(null)
+	const [cashTreesSheetAaUsdc, setCashTreesSheetAaUsdc] = useState<string | null>(null)
+	const [cashTreesSheetPoints0, setCashTreesSheetPoints0] = useState<string | null>(null)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
+
+	/** 链上 / 本地已存在与 EOA 不同的 Smart Account 地址时视为已激活 AA */
+	const hasAAWallet = useMemo(() => {
+		const aa = profiles?.[0]?.aaAccount
+		if (!aa || typeof aa !== 'string' || aa.length < 4) return false
+		const eoa = (profiles?.[0]?.keyID || '').toLowerCase()
+		return aa.toLowerCase() !== eoa
+	}, [profiles?.[0]?.aaAccount, profiles?.[0]?.keyID])
+
+	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
+	/** 已登录 EOA、尚未部署 AA 时在首页展示激活引导（与 renderAction Activate Wallet 对齐） */
+	const showActivateWalletPanel = Boolean(profiles?.[0]?.keyID) && !hasAAWallet
+
+	/** 与 BeamioPayMe `successUrl` 在 EOA 模式下一致：任意金额收款链接，wallet=EOA */
+	const activateWalletEoaQrValue = useMemo(() => {
+		if (!beamio?.accountName) return ''
+		const params = new URLSearchParams({ beamio: beamio.accountName })
+		const walletAddr =
+			myAddress && ethers.isAddress(myAddress)
+				? myAddress
+				: profiles?.[0]?.keyID && ethers.isAddress(profiles[0].keyID)
+					? profiles[0].keyID
+					: null
+		if (walletAddr) params.set('wallet', walletAddr)
+		return `https://beamio.app?${params.toString()}`
+	}, [beamio?.accountName, myAddress, profiles?.[0]?.keyID])
+
+	/** Activate Wallet 引导展示期间隐藏全局 Footer（与 Pay/Receive 等底栏一致） */
+	useEffect(() => {
+		if (!showActivateWalletPanel) return
+		setShowFooter(false)
+		return () => setShowFooter(true)
+	}, [showActivateWalletPanel, setShowFooter])
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -726,15 +777,134 @@ const Home = ({}) => {
 	/** Home 主视觉：浅灰底 + 青柠强调（与产品 mock 对齐） */
 	const homeAccent = '#7ED321'
 
+	const userBeamioTagDisplay = useMemo(
+		() => `@${(beamio?.accountName || '').replace(/^@/, '') || 'beamio'}`,
+		[beamio?.accountName]
+	)
+
+	/** CashTrees 卡片区：AA 短地址、USDC 总余额展示（与 renderAction home 一致） */
+	const cashTreesCardDisplay = useMemo(() => {
+		const aaFull = (profiles?.[0]?.aaAccount ?? '').trim()
+		const n = Number(usdcbalance)
+		const safe = Number.isFinite(n) ? Math.max(0, n) : 0
+		const [whole, frac = '00'] = safe.toFixed(2).split('.')
+		// 实体 NFC 绑定状态暂无单一链上字段；未接 NFC 旗标前与 renderAction 默认一致（Virtual + Bind）
+		return { aaFull, aaShort: fmtAddr(aaFull), whole, frac, isPhysicalCardBound: false }
+	}, [profiles?.[0]?.aaAccount, usdcbalance])
+
+	const copyCashTreesAaAddress = async () => {
+		if (!cashTreesCardDisplay.aaFull) return
+		try {
+			await navigator.clipboard.writeText(cashTreesCardDisplay.aaFull)
+			setAaAddrCopied(true)
+			window.setTimeout(() => setAaAddrCopied(false), 2000)
+		} catch {
+			// ignore
+		}
+	}
+
+	const openCashTreesBalanceSheet = () => {
+		setShowCashTreesBalanceDetails(true)
+		setShowFooter(false)
+	}
+
+	const closeCashTreesBalanceSheet = () => {
+		setShowCashTreesBalanceDetails(false)
+		setShowFooter(true)
+		setCashTreesBalanceError(null)
+	}
+
+	const formatCashTreesUsd2 = (raw: string | null | undefined) => {
+		const n = Number(raw ?? '')
+		if (!Number.isFinite(n)) return '—'
+		return `$${n.toFixed(2)}`
+	}
+
+	useEffect(() => {
+		if (!showCashTreesBalanceDetails || !profiles?.[0]) return
+		const profile = profiles[0]
+		let cancelled = false
+		setCashTreesBalanceLoading(true)
+		setCashTreesBalanceError(null)
+		setCashTreesSheetAaUsdc(null)
+		setCashTreesSheetPoints0(null)
+		getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS)
+			.then((res) => {
+				if (cancelled) return
+				setCashTreesSheetAaUsdc(res?.usdcBalance ?? '0')
+				setCashTreesSheetPoints0(res?.points ?? '0')
+			})
+			.catch((e: unknown) => {
+				if (!cancelled) setCashTreesBalanceError(e instanceof Error ? e.message : 'Failed to load balances')
+			})
+			.finally(() => {
+				if (!cancelled) setCashTreesBalanceLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [showCashTreesBalanceDetails, profiles?.[0]?.keyID])
+
+	const closePayReceiveSheet = () => {
+		setShowPayReceiveSheet(false)
+		setPayReceiveQrMode('receive')
+		setPayRelayQRPayload(null)
+		setPayRelayQRLoading(false)
+		setShowFooter(true)
+	}
+
+	/** Pay tab：生成 / 每分钟刷新 Open Relay QR（与 MyWalletDashboardNew handleAaRelayQR 一致） */
+	useEffect(() => {
+		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay') return
+		const profile = profiles?.[0]
+		if (!profile?.privateKeyArmor || !profile?.aaAccount) {
+			setPayRelayQRPayload(null)
+			setPayRelayQRLoading(false)
+			return
+		}
+		let cancelled = false
+		let intervalId: number | undefined
+
+		const signOnce = async (isInitial: boolean) => {
+			if (isInitial) {
+				setPayRelayQRLoading(true)
+				setPayRelayQRPayload(null)
+			}
+			try {
+				const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
+					{ privateKeyArmor: profile.privateKeyArmor, aaAccount: profile.aaAccount },
+					'0',
+					{ deadlineSeconds: 300 }
+				)
+				if (!cancelled) setPayRelayQRPayload(payload)
+			} catch (e) {
+				console.error('[Home] signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen failed:', e)
+				if (isInitial && !cancelled) setPayRelayQRPayload(null)
+			} finally {
+				if (isInitial && !cancelled) setPayRelayQRLoading(false)
+			}
+		}
+
+		void signOnce(true)
+		intervalId = window.setInterval(() => void signOnce(false), 60_000)
+
+		return () => {
+			cancelled = true
+			if (intervalId) clearInterval(intervalId)
+			setPayRelayQRPayload(null)
+			setPayRelayQRLoading(false)
+		}
+	}, [showPayReceiveSheet, payReceiveQrMode, profiles?.[0]?.privateKeyArmor, profiles?.[0]?.aaAccount])
+
+	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；改为单层 flex 链并写死 flex-basis */
+	const homeScrollUsesSingleFlexChain = showActivateWalletPanel && !openSearch
+
 	return (
-		<div className="
-		bg-[#F4F5F7]
-		pb-[env(safe-area-inset-bottom)]
-		pl-[env(safe-area-inset-left)]
-		pr-[env(safe-area-inset-right)]
-		w-full h-screen
-		h-full flex flex-col text-slate-900
-		">
+		<div
+			className="
+		box-border flex h-full min-h-[100vh] w-full flex-col bg-[#F1F8ED] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-slate-900
+		"
+		>
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
 				<button
 					type="button"
@@ -785,50 +955,230 @@ const Home = ({}) => {
 				</button>
 			)}
 
-			{/* Phone frame - exampleExpress style；min-h-0 修复 Android WebView 中 flex+overflow 导致内容不可见 */}
-			<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 min-h-0 flex flex-col overflow-y-auto pb-44">
-				{!openSearch && (
-					<>
-						{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
-						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
+			{/*
+				默认：外层 overflow-hidden + 内层 overflow-y-auto。
+				Activate Wallet：去掉外层 overflow-hidden，并对滚动层写 flex: 1 1 0% + minHeight: 0，避免 Android WebView 可视区域塌条只露出顶部胶囊。
+			*/}
+			<div
+				className={
+					homeScrollUsesSingleFlexChain
+						? 'flex min-h-0 flex-1 flex-col'
+						: 'flex min-h-0 flex-1 flex-col overflow-hidden'
+				}
+			>
+				<div
+					ref={setScrollRef}
+					onScroll={onCapsuleScroll}
+					className={
+						homeScrollUsesSingleFlexChain
+							? 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-24'
+							: 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-44'
+					}
+					style={
+						homeScrollUsesSingleFlexChain
+							? { WebkitOverflowScrolling: 'touch', flex: '1 1 0%', minHeight: 0 }
+							: { WebkitOverflowScrolling: 'touch' }
+					}
+				>
+					{!openSearch && (
+						<>
+							{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
+							<div
+								className="shrink-0"
+								style={{ minHeight: 'calc(env(safe-area-inset-top, 0px) + 5rem)' }}
+							/>
 
-						{/* Content — 浅底、白卡片、青柠强调 */}
-						<div className="px-5 pt-4 space-y-8">
-							{/* Total Purchasing Power */}
-							<div className="text-center pt-2">
-								<div className="inline-flex items-center justify-center gap-1.5 mb-3">
-									<h2 className="text-sm font-medium text-[#64748B] dark:text-slate-400 tracking-wide">
-										Total Purchasing Power
-									</h2>
-									<button
-										type="button"
-										className="p-0.5 rounded-full text-[#7ED321] hover:opacity-80 transition-opacity"
-										aria-label="About purchasing power"
-										title="Includes your Main Wallet (USDC), Smart Account balance, and linked card value, shown in your display currency."
-									>
-										<Info className="w-4 h-4" strokeWidth={2.25} />
-									</button>
+							{/* Content — 浅底、白卡片、青柠强调 */}
+							<div className="space-y-8 px-5 pt-4">
+							{showActivateWalletPanel ? (
+								<div className="px-1 pt-2 pb-4">
+									{/* WebView：isolate 限制叠层；避免负 z-index 在部分 WebView 下吞掉后续兄弟节点绘制 */}
+									<div className="relative isolate flex flex-col items-center rounded-[2.5rem] border border-gray-100 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+										<div className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-[10px] font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest">
+											Action Required
+										</div>
+										<h2 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 text-center tracking-tight">
+											Activate Wallet
+										</h2>
+										<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center leading-relaxed">
+											Your app is currently in EOA mode. Load cash or sync a card to deploy your Smart Account.
+										</p>
+
+										<div className="w-full bg-gray-50 dark:bg-slate-800/80 rounded-3xl p-5 mb-4 border border-gray-200 dark:border-slate-600 flex flex-col items-center">
+											<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+												<Store size={14} aria-hidden /> Option 1: Store Deposit
+											</span>
+											<div
+												className="mb-3 flex flex-col items-center justify-center w-full max-w-[min(100%,280px)] select-none"
+												role="img"
+												aria-label="Store deposit payment QR code. Show to cashier to scan."
+											>
+												{/* 与 BeamioPayMe EOA 收款 QR 同款：仅展示，不触发 Pay Me 底栏 */}
+												<div className="mt-1 flex w-full justify-center">
+													<div className="relative">
+														<div
+															aria-hidden
+															className="pointer-events-none absolute inset-[-8px] z-0 rounded-[28px] bg-[radial-gradient(60%_60%_at_50%_40%,rgba(132,120,255,0.22),rgba(132,120,255,0.06)_55%,transparent_72%)] opacity-90"
+														/>
+														<div className="relative z-10 flex justify-center">
+															<div
+																className="
+																	rounded-[20px] bg-white
+																	p-2
+																	shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+																	border-2 border-[#96EB3C]
+																"
+															>
+																{activateWalletEoaQrValue ? (
+																	<QRCodeCanvas
+																		value={activateWalletEoaQrValue}
+																		size={180}
+																		level="H"
+																		includeMargin={false}
+																		bgColor="#ffffff"
+																		fgColor="#000000"
+																		imageSettings={{
+																			src: bIcon,
+																			height: 56,
+																			width: 56,
+																			excavate: true,
+																		}}
+																		className="block"
+																	/>
+																) : (
+																	<div className="w-[180px] h-[180px] flex items-center justify-center text-xs text-gray-400 text-center px-4">
+																		Loading payment link…
+																	</div>
+																)}
+															</div>
+														</div>
+													</div>
+												</div>
+											</div>
+											<div className="flex items-center gap-1.5 bg-gray-200/50 dark:bg-slate-700/50 px-2 py-1 rounded-md mb-2 max-w-full">
+												<span className="text-[10px] text-gray-500 dark:text-slate-400 font-mono font-semibold truncate">
+													EOA: {eoaAddressShort}
+												</span>
+											</div>
+											<p className="text-xs text-gray-500 dark:text-slate-400 text-center font-medium">
+												Show QR to cashier to load cash.
+											</p>
+										</div>
+
+										<button
+											type="button"
+											className="w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#96EB3C]/10 dark:hover:bg-[#96EB3C]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex flex-col items-center cursor-pointer group text-left"
+										>
+											<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+												<CreditCard size={14} aria-hidden /> Option 2: Got a Card?
+											</span>
+											<div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center mb-2 shadow-sm border border-gray-100 dark:border-slate-600 group-hover:scale-110 transition-transform">
+												<Radio size={20} className="text-[#65A30D]" aria-hidden />
+											</div>
+											<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Sync NFC Card</p>
+											<p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Tap funded card to phone.</p>
+										</button>
+									</div>
 								</div>
-								<div className="flex justify-center items-start text-[#0F172A] dark:text-slate-100 gap-0.5">
-									{(() => {
-										const { symbol, whole, decimal } = getValuationParts()
-										return (
-											<>
-												{symbol ? (
-													<span className="text-xl font-medium text-[#64748B] dark:text-slate-400 pt-2 tabular-nums">
-														{symbol}
+							) : (
+								<>
+							{/* CashTrees 卡（对齐 renderAction index 199–266） */}
+							<div className="pt-2 pb-2">
+								<div
+									role="button"
+									tabIndex={0}
+									onClick={openCashTreesBalanceSheet}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault()
+											openCashTreesBalanceSheet()
+										}
+									}}
+									className="relative bg-gradient-to-br from-[#8AE131] to-[#67AD0F] dark:from-[#6fb828] dark:to-[#4f9410] rounded-[2rem] p-6 text-gray-900 shadow-xl shadow-[#96EB3C]/20 dark:shadow-[#65A30D]/15 overflow-hidden transform transition-transform hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer border border-[#96EB3C]/40 dark:border-[#65A30D]/50"
+								>
+									<div className="absolute top-0 right-0 w-48 h-48 bg-white/20 rounded-full -mr-16 -mt-16 blur-3xl pointer-events-none" />
+
+									<div className="flex justify-between items-center mb-8 relative z-10">
+										<div className="flex items-center min-w-0">
+											<img
+												src={`${process.env.PUBLIC_URL ?? ''}/logo512.png`}
+												alt="CashTrees"
+												className="w-[4.5rem] h-[4.5rem] mr-3 shrink-0 object-contain"
+												draggable={false}
+											/>
+											<div className="flex flex-col items-start justify-center min-w-0">
+												<span className="font-extrabold text-[22px] tracking-tight text-gray-900 leading-none mb-1.5">CashTrees</span>
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation()
+														void copyCashTreesAaAddress()
+													}}
+													disabled={!cashTreesCardDisplay.aaFull}
+													className="flex items-center gap-1.5 bg-gray-900/10 border border-gray-900/5 px-2 py-0.5 rounded-md shadow-sm hover:bg-gray-900/20 transition-colors max-w-full disabled:opacity-50"
+													aria-label="Copy Smart Account address"
+												>
+													<span className="text-[10px] text-gray-800 font-mono tracking-widest font-semibold uppercase truncate">
+														{cashTreesCardDisplay.aaShort}
 													</span>
-												) : null}
-												<span className="text-[3.25rem] leading-none font-extrabold tracking-tight tabular-nums">
-													{whole}
-												</span>
-												<span className="text-xl font-medium text-[#64748B] dark:text-slate-400 pt-2 tabular-nums">
-													.{decimal}
-												</span>
-											</>
-										)
-									})()}
+													{aaAddrCopied ? (
+														<Check size={10} className="text-gray-800 shrink-0" strokeWidth={3} aria-hidden />
+													) : (
+														<Copy size={10} className="text-gray-700 shrink-0" aria-hidden />
+													)}
+												</button>
+											</div>
+										</div>
+										<button
+											type="button"
+											onClick={(e) => {
+												e.stopPropagation()
+												openCashTreesBalanceSheet()
+											}}
+											className="w-8 h-8 rounded-full bg-gray-900/10 flex items-center justify-center text-gray-900 backdrop-blur-sm border border-gray-900/5 hover:bg-gray-900/20 transition-colors shadow-sm shrink-0"
+											aria-label="Balance details"
+										>
+											<Info size={16} strokeWidth={2.5} aria-hidden />
+										</button>
+									</div>
+
+									<div className="relative z-10 flex justify-between items-end gap-3">
+										<div className="min-w-0">
+											<p className="text-sm text-gray-800 font-bold mb-0.5 opacity-90 tracking-wide">Total Balance</p>
+											<div className="flex items-baseline flex-wrap">
+												<span className="text-3xl font-bold mr-1 opacity-80">$</span>
+												<p className="text-[44px] font-extrabold tracking-tighter text-gray-900 leading-none">
+													{cashTreesCardDisplay.whole}
+													<span className="text-3xl font-bold text-gray-800/80">.{cashTreesCardDisplay.frac}</span>
+												</p>
+											</div>
+										</div>
+
+										<div className="flex items-center bg-gray-900/10 backdrop-blur-md border border-gray-900/5 px-3 py-1.5 rounded-full shadow-sm mb-1.5 shrink-0">
+											<div className="relative flex h-2 w-2 mr-2">
+												<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+												<span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+											</div>
+											<span className="text-[10px] font-bold text-gray-900 tracking-wider uppercase">
+												{cashTreesCardDisplay.isPhysicalCardBound ? 'Card Linked' : 'Virtual Active'}
+											</span>
+										</div>
+									</div>
 								</div>
+
+								{!cashTreesCardDisplay.isPhysicalCardBound && (
+									<div className="flex justify-center mt-4 animate-in zoom-in-95 duration-300">
+										<button
+											type="button"
+											onClick={() => navigate('/myWallet')}
+											className="flex items-center gap-1.5 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:text-[#65A30D] dark:hover:text-[#9AE66E] hover:border-[#96EB3C]/50 transition-all active:scale-95"
+										>
+											<Plus size={14} strokeWidth={2.5} aria-hidden />
+											<Radio size={14} aria-hidden />
+											<span className="text-[12px] font-bold uppercase tracking-wider ml-0.5">Bind Physical Card</span>
+										</button>
+									</div>
+								)}
 							</div>
 
 							{/* Add Cash | Send | Pay */}
@@ -863,25 +1213,20 @@ const Home = ({}) => {
 								</button>
 								<button
 									type="button"
-									onClick={() => navigate('/Pay')}
+									onClick={() => {
+										setPayReceiveQrMode('receive')
+										setShowPayReceiveSheet(true)
+										setShowFooter(false)
+									}}
 									className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-slate-800 rounded-[26px] shadow-[0_8px_28px_rgba(15,23,42,0.07)] border border-slate-100/90 dark:border-slate-700/50 py-5 px-2 active:scale-[0.97] transition-transform"
 								>
 									<div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
 										<QrCode className="w-5 h-5 text-[#0F172A] dark:text-slate-100" strokeWidth={2.2} />
 									</div>
-									<span className="text-[13px] font-bold text-[#0F172A] dark:text-slate-100">Pay</span>
+									<span className="text-[13px] font-bold text-[#0F172A] dark:text-slate-100">Pay/Receive</span>
 								</button>
 							</div>
 
-							<div className="flex justify-center -mt-2">
-								<button
-									type="button"
-									onClick={() => setShowPayMeSheet(true)}
-									className="text-xs font-semibold text-[#64748B] dark:text-slate-400 hover:text-[#7ED321] dark:hover:text-[#7ED321] transition-colors"
-								>
-									Receive
-								</button>
-							</div>
 
 							{show200OK && (
 								<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
@@ -903,11 +1248,14 @@ const Home = ({}) => {
 								sectionTitleClassName="text-base font-bold text-[#0F172A] dark:text-slate-100 tracking-tight"
 								viewAllClassName="text-[#7ED321] hover:text-[#6bc11a]"
 							/>
+								</>
+							)}
 						</div>
 
-						<div className="h-[128px] pb-[env(safe-area-inset-bottom)] pointer-events-none" />
-					</>
-				)}
+							<div className="pointer-events-none h-[128px] shrink-0 pb-[env(safe-area-inset-bottom,0px)]" />
+						</>
+					)}
+				</div>
 			</div>
 
 
@@ -956,6 +1304,233 @@ const Home = ({}) => {
 											setShowFuelView(true)
 										}}
 									/>
+								</div>
+							</motion.div>
+						</>
+					)}
+				</AnimatePresence>,
+				document.body
+			)}
+
+			{/* CashTrees 卡：Balance Details（链上 AA USDC + 基础设施卡 points / token #0，对齐 renderAction 1082–1131） */}
+			{createPortal(
+				<AnimatePresence>
+					{showCashTreesBalanceDetails && (
+						<motion.div
+							key="cash-trees-balance-details"
+							className="fixed inset-0 z-[10050] flex flex-col justify-end pointer-events-none"
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							transition={{ duration: 0.2 }}
+						>
+							{/* 单根子树：避免 Fragment 下双 motion 时 AnimatePresence 只驱动第一个，底栏卡在 y:100% 仅见蒙版 */}
+							<div
+								className="absolute inset-0 pointer-events-auto bg-gray-900/40 dark:bg-black/50 backdrop-blur-md"
+								onClick={closeCashTreesBalanceSheet}
+								aria-hidden
+							/>
+							<motion.div
+								className="relative z-10 w-full max-h-[85dvh] pointer-events-auto bg-[#F1F8ED] dark:bg-slate-900 rounded-t-[2.5rem] p-6 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-gray-200/80 dark:border-slate-700 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] overflow-y-auto overscroll-contain"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="mx-auto w-12 h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full mb-6 shrink-0" />
+
+								<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">Balance Details</h3>
+								<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center">AA USDC and infrastructure card (token #0) balance</p>
+
+								{cashTreesBalanceLoading && (
+									<div className="flex flex-col items-center justify-center py-10 gap-3 mb-4">
+										<Loader2 className="w-10 h-10 text-[#65A30D] animate-spin" aria-hidden />
+										<span className="text-sm text-gray-500 dark:text-slate-400">Loading balances…</span>
+									</div>
+								)}
+
+								{cashTreesBalanceError && !cashTreesBalanceLoading && (
+									<p className="text-sm text-amber-600 dark:text-amber-400 text-center mb-6">{cashTreesBalanceError}</p>
+								)}
+
+								{!cashTreesBalanceLoading && !cashTreesBalanceError && (
+									<div className="w-full bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden flex flex-col mb-8">
+										{/* 1：AA 钱包 USDC（getMyAssets 内对 aaAccount 的 USDC balanceOf） */}
+										<div className="p-4 flex items-center justify-between border-b border-gray-100/50 dark:border-slate-700">
+											<div className="flex items-center gap-3 min-w-0">
+												<div className="w-10 h-10 bg-gray-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center border border-gray-200 dark:border-slate-600 shrink-0 relative">
+													<div className="relative w-7 h-7 shrink-0">
+														<img src={usdcIcon} alt="" className="block w-7 h-7 rounded-full object-contain" />
+														<img src={baseIcon} alt="" className="block w-4 h-4 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
+													</div>
+												</div>
+												<div className="flex flex-col min-w-0">
+													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">AA Wallet (USDC)</span>
+													<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-0.5">Smart Account on Base</span>
+												</div>
+											</div>
+											<div className="text-right shrink-0 pl-2">
+												<span className="text-lg font-bold text-gray-900 dark:text-slate-100">{formatCashTreesUsd2(cashTreesSheetAaUsdc)}</span>
+											</div>
+										</div>
+
+										{/* 2：基础设施卡 token #0 / points（合约 points 余额，与 getMyAssets.points 一致） */}
+										<div className="p-4 flex items-center justify-between bg-gradient-to-r from-[#96EB3C]/15 to-transparent dark:from-[#65A30D]/20 dark:to-transparent">
+											<div className="flex items-center gap-3 min-w-0">
+												<div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-[#96EB3C]/30 dark:border-[#65A30D]/40 text-lg shrink-0" aria-hidden>
+													🌳
+												</div>
+												<div className="flex flex-col min-w-0">
+													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">Infrastructure Card</span>
+													<span className="text-[10px] text-[#65A30D] dark:text-[#9AE66E] font-bold uppercase tracking-wider mt-0.5">Eligible for Store Discounts</span>
+												</div>
+											</div>
+											<div className="text-right shrink-0 pl-2">
+												<span className="text-lg font-bold text-gray-900 dark:text-slate-100">{formatCashTreesUsd2(cashTreesSheetPoints0)}</span>
+											</div>
+										</div>
+									</div>
+								)}
+
+								<button
+									type="button"
+									onClick={closeCashTreesBalanceSheet}
+									className="w-full py-4 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 active:scale-[0.98] text-gray-900 dark:text-slate-100 rounded-2xl font-bold transition-all shadow-sm border border-gray-200 dark:border-slate-600 shrink-0"
+								>
+									Close
+								</button>
+							</motion.div>
+						</motion.div>
+					)}
+				</AnimatePresence>,
+				document.body
+			)}
+
+			{/* Pay / Receive 底栏（对齐 renderAction index Pay|Receive） */}
+			{createPortal(
+				<AnimatePresence>
+					{showPayReceiveSheet && (
+						<>
+							<motion.div
+								className="fixed inset-0 z-[10020] bg-gray-900/40 dark:bg-black/50 backdrop-blur-sm"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+								transition={{ duration: 0.2 }}
+								onClick={closePayReceiveSheet}
+							/>
+							<motion.div
+								className="fixed left-0 right-0 bottom-0 z-[10021] bg-white dark:bg-slate-900 rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] flex flex-col max-h-[90dvh] pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="w-12 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full mx-auto mt-4 mb-2 shrink-0" />
+								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain px-6 pb-4">
+									<div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-full mb-6 w-full max-w-[240px] mx-auto shadow-inner">
+										<button
+											type="button"
+											onClick={() => setPayReceiveQrMode('pay')}
+											className={`flex-1 py-2 text-sm font-bold rounded-full transition-all duration-300 ${
+												payReceiveQrMode === 'pay'
+													? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-slate-100'
+													: 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
+											}`}
+										>
+											Pay
+										</button>
+										<button
+											type="button"
+											onClick={() => setPayReceiveQrMode('receive')}
+											className={`flex-1 py-2 text-sm font-bold rounded-full transition-all duration-300 ${
+												payReceiveQrMode === 'receive'
+													? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-slate-100'
+													: 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
+											}`}
+										>
+											Receive
+										</button>
+									</div>
+
+									{payReceiveQrMode === 'pay' ? (
+										<div className="flex flex-col items-center w-full min-h-[min(460px,55dvh)]">
+											<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-1 tracking-tight text-center">
+												Pay with {userBeamioTagDisplay}
+											</h3>
+											<p className="text-sm text-gray-500 dark:text-slate-400 mb-4 text-center">
+												Show this code to cashier to pay.
+											</p>
+											<div className="w-full flex flex-col items-center mb-4">
+												{payRelayQRLoading && !payRelayQRPayload && (
+													<div className="flex flex-col items-center justify-center py-10 gap-3">
+														<Loader2 className="w-10 h-10 text-[#65A30D] animate-spin" aria-hidden />
+														<span className="text-sm text-gray-500 dark:text-slate-400">Generating pay code...</span>
+													</div>
+												)}
+												{payRelayQRPayload && (
+													<ShowPayQR
+														successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
+														beamio={beamio ?? null}
+														qrValue={JSON.stringify({
+															...payRelayQRPayload,
+															validBefore: payRelayQRPayload.deadline,
+														})}
+														hideActions
+														hideUrl
+														hideName
+													/>
+												)}
+												{!payRelayQRLoading && !payRelayQRPayload && (
+													<p className="text-sm text-center text-amber-600 dark:text-amber-400 px-4 max-w-sm">
+														{!profiles?.[0]?.aaAccount
+															? 'Smart Account required to show pay QR.'
+															: 'Could not generate pay code. Close and try again.'}
+													</p>
+												)}
+											</div>
+											<div className="flex items-center gap-2 mb-6">
+												<div className="w-2 h-2 bg-[#65A30D] rounded-full animate-pulse" />
+												<span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
+													Auto-refreshes every minute
+												</span>
+											</div>
+											<button
+												type="button"
+												onClick={closePayReceiveSheet}
+												className="mt-auto w-full rounded-full border border-[#96EB3C]/50 bg-gradient-to-r from-[#8AE131] to-[#67AD0F] py-4 font-bold text-gray-900 shadow-md shadow-[#96EB3C]/25 transition-all hover:opacity-95 active:scale-[0.98] dark:border-[#65A30D]/50 dark:from-[#6fb828] dark:to-[#4f9410] dark:shadow-[#65A30D]/20"
+											>
+												Done
+											</button>
+										</div>
+									) : (
+										<div className="w-full flex flex-col min-h-[min(460px,55dvh)]">
+											{/* Receive：与 BeamioPayMe / Alliance PayMe 一致（AmountCurrency、备注、Valid for days、requestAccounting、B-Unit 摘要） */}
+											<div className="w-full max-w-[540px] mx-auto px-0">
+												<BeamioPayMe
+													showActiveTab={false}
+													hideOuterFrame
+													hideEoaReceivingToggle
+													hideReceivingWalletHeading
+													receivePanelLimeButtons
+													onClose={closePayReceiveSheet}
+													onShowFuelCenter={() => {
+														closePayReceiveSheet()
+														setShowFuelView(true)
+													}}
+												/>
+											</div>
+											<button
+												type="button"
+												onClick={closePayReceiveSheet}
+												className="mt-4 w-full shrink-0 rounded-full border border-[#96EB3C]/50 bg-gradient-to-r from-[#8AE131] to-[#67AD0F] py-4 font-bold text-gray-900 shadow-md shadow-[#96EB3C]/25 transition-all hover:opacity-95 active:scale-[0.98] dark:border-[#65A30D]/50 dark:from-[#6fb828] dark:to-[#4f9410] dark:shadow-[#65A30D]/20"
+											>
+												Done
+											</button>
+										</div>
+									)}
 								</div>
 							</motion.div>
 						</>

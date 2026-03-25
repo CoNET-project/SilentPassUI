@@ -48,6 +48,14 @@ type BeamioPayMeProps = {
 	hideOuterFrame?: boolean
 	/** B-Unit 不足时点击「Go to Fuel Center」的回调，用于跳转显示 Fuel Center 供用户 topup */
 	onShowFuelCenter?: () => void
+	/**
+	 * 嵌入 Receive 底栏等：不展示 EOA 切换，仅使用 Smart Account（无 AA 时仍用 EOA 地址与链接，但不出现「Main Vault (EOA)」选项）
+	 */
+	hideEoaReceivingToggle?: boolean
+	/** 嵌入场景：不展示「Express Pay (Smart Account)」/「Main Vault (EOA)」标题行，仅保留地址胶囊 */
+	hideReceivingWalletHeading?: boolean
+	/** Home Receive 等：主操作/次操作按钮使用 CashTrees 青柠绿，与全站主色一致 */
+	receivePanelLimeButtons?: boolean
 }
 
 const displayName = (item: beamio|null) => {
@@ -65,8 +73,24 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	onClose,
 	hideName = false,
 	hideOuterFrame = false,
-	onShowFuelCenter
+	onShowFuelCenter,
+	hideEoaReceivingToggle = false,
+	hideReceivingWalletHeading = false,
+	receivePanelLimeButtons = false,
   } = props
+
+	const limePrimaryBtn =
+		'w-full rounded-xl border border-[#96EB3C]/50 bg-gradient-to-r from-[#8AE131] to-[#67AD0F] py-2.5 px-4 font-semibold text-sm text-gray-900 shadow-sm transition hover:opacity-95 active:scale-[0.98] sm:py-3 dark:border-[#65A30D]/40 dark:from-[#6fb828] dark:to-[#4f9410]'
+	const defaultPrimaryBtn =
+		'w-full rounded-xl bg-[var(--beamio-brand,#2F78FF)] py-2.5 px-4 font-semibold text-sm text-white transition hover:opacity-90 active:scale-[0.98] sm:py-3'
+	const limeSecondaryBtn =
+		'flex w-full items-center justify-center gap-2 rounded-xl bg-[#96EB3C]/25 px-3 py-2.5 font-semibold text-sm text-[#3f6212] transition hover:bg-[#96EB3C]/35 active:scale-[0.98] sm:px-4 sm:py-3 dark:bg-[#65A30D]/20 dark:text-[#BEF264] dark:hover:bg-[#65A30D]/30'
+	const defaultSecondaryBtn =
+		'w-full rounded-xl bg-sky-100 px-3 py-2.5 font-semibold text-sm text-blue-600 transition-colors hover:bg-sky-200 sm:px-4 sm:py-3 dark:bg-sky-900/40 dark:text-blue-400 dark:hover:bg-sky-900/60'
+	const limeShareBtn =
+		'flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#96EB3C]/50 bg-gradient-to-r from-[#8AE131] to-[#67AD0F] py-2.5 px-3 font-semibold text-sm text-gray-900 shadow-sm transition hover:opacity-95 active:scale-[0.98] sm:gap-2 sm:px-4 sm:py-3 dark:border-[#65A30D]/40 dark:from-[#6fb828] dark:to-[#4f9410]'
+	const defaultShareBtn =
+		'flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black py-2.5 px-3 font-semibold text-sm text-white transition hover:opacity-90 active:scale-[0.98] sm:gap-2 sm:px-4 sm:py-3 dark:bg-slate-100 dark:text-slate-900'
 
 	const [copied, setCopied] = useState(false)
 	const [copiedSig, setCopiedSig] = useState(false)
@@ -110,6 +134,10 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	const [accountingSyncTx, setAccountingSyncTx] = useState<string | null>(null)
 	/** 收款地址显示：'aa' 优先 AA，'eoa' 为 EOA；有 AA 时点击胶囊可切换 */
 	const [receivingMode, setReceivingMode] = useState<'aa' | 'eoa'>('aa')
+
+	useEffect(() => {
+		if (hideEoaReceivingToggle) setReceivingMode('aa')
+	}, [hideEoaReceivingToggle])
 
 	
   const {profiles, setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, usdcToUSD, setMyAddress, setShowFooter, currencyData, beamio, setBeamio} = useDaemonContext()
@@ -327,13 +355,17 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 						{!showAmountInput && (() => {
 							const showAA = receivingMode === 'aa' && merchantAA && ethers.isAddress(merchantAA)
 							const displayAddr = showAA ? merchantAA : myAddress
-							const canToggle = !!(merchantAA && ethers.isAddress(merchantAA) && myAddress && ethers.isAddress(myAddress))
+							const canToggle =
+								!hideEoaReceivingToggle &&
+								!!(merchantAA && ethers.isAddress(merchantAA) && myAddress && ethers.isAddress(myAddress))
 							const label = showAA ? 'Express Pay (Smart Account)' : 'Main Vault (EOA)'
 							const content = (
 								<>
-									<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase mr-2 self-center">
-										{label}
-									</span>
+									{!hideReceivingWalletHeading && (
+										<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase mr-2 self-center">
+											{label}
+										</span>
+									)}
 									{displayAddr && (
 										<span className={`flex items-center gap-1 px-2 py-0.5 rounded-md ${showAA ? 'bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300' : 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'}`}>
 											{showAA ? <CreditCard className="w-4 h-4 shrink-0" strokeWidth={2.2} /> : <Wallet className="w-4 h-4 shrink-0" strokeWidth={2.2} />}
@@ -379,7 +411,10 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								{/* Loading：等待 requestAccounting 服务器确认 */}
 								{pendingPaymentUrl && accountingStatus === 'loading' && (
 									<div className="relative z-10 flex flex-col items-center justify-center rounded-[20px] sm:rounded-[28px] bg-white p-8 sm:p-12 shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)] min-w-[200px] min-h-[200px]">
-										<Loader className="w-12 h-12 text-sky-500 animate-spin" strokeWidth={2} />
+										<Loader
+											className={`h-12 w-12 animate-spin ${receivePanelLimeButtons ? 'text-[#65A30D]' : 'text-sky-500'}`}
+											strokeWidth={2}
+										/>
 										<p className="mt-3 text-sm text-slate-600 dark:text-slate-400">Creating payment request…</p>
 									</div>
 								)}
@@ -416,7 +451,11 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 													setAccountingStatus('idle')
 													setShowAmountInput(true)
 												}}
-												className="w-full py-2.5 px-4 rounded-xl bg-sky-100 dark:bg-sky-900/40 text-blue-600 dark:text-blue-400 font-semibold text-sm hover:bg-sky-200 dark:hover:bg-sky-900/60 transition-colors"
+												className={
+													receivePanelLimeButtons
+														? limeSecondaryBtn
+														: 'w-full rounded-xl bg-sky-100 px-4 py-2.5 text-sm font-semibold text-blue-600 transition-colors hover:bg-sky-200 dark:bg-sky-900/40 dark:text-blue-400 dark:hover:bg-sky-900/60'
+												}
 											>
 												Try again
 											</button>
@@ -539,7 +578,9 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 									<button
 										type="button"
 										onClick={() => setShowAmountInput(true)}
-										className="w-full py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl bg-sky-100 dark:bg-sky-900/40 text-blue-600 dark:text-blue-400 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-sky-200 dark:hover:bg-sky-900/60 transition-colors"
+										className={
+											receivePanelLimeButtons ? limeSecondaryBtn : `${defaultSecondaryBtn} flex items-center justify-center gap-2`
+										}
 									>
 										<Plus className="w-5 h-5" strokeWidth={2.5} />
 										Set Specific Amount
@@ -594,7 +635,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 										<button
 											type="button"
 											onClick={handleDoneAmount}
-											className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-[var(--beamio-brand,#2F78FF)] text-white font-semibold text-sm hover:opacity-90 active:scale-[0.98] transition"
+											className={receivePanelLimeButtons ? limePrimaryBtn : defaultPrimaryBtn}
 										>
 											Generate request
 										</button>
@@ -610,23 +651,28 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								type="button"
 								onClick={onCopyPayLink}
 								className={[
-									"flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl font-semibold text-sm",
-									"bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200",
-									"hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.98] transition",
-									copied ? "ring-2 ring-blue-400" : ""
-								].join(" ")}
+									'flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 px-3 font-semibold text-sm transition sm:gap-2 sm:px-4 sm:py-3',
+									'bg-slate-100 text-slate-800 hover:bg-slate-200 active:scale-[0.98] dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700',
+									copied
+										? receivePanelLimeButtons
+											? 'ring-2 ring-[#96EB3C]'
+											: 'ring-2 ring-blue-400'
+										: '',
+								].join(' ')}
 							>
 								{copied ? (
-									<Check className="w-5 h-5 text-blue-600 shrink-0" />
+									<Check
+										className={`h-5 w-5 shrink-0 ${receivePanelLimeButtons ? 'text-[#65A30D]' : 'text-blue-600'}`}
+									/>
 								) : (
-									<Copy className="w-5 h-5 text-slate-600 dark:text-slate-400 shrink-0" />
+									<Copy className="h-5 w-5 shrink-0 text-slate-600 dark:text-slate-400" />
 								)}
 								<span>Copy</span>
 							</button>
 							<button
 								type="button"
 								onClick={onShare}
-								className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl font-semibold text-sm bg-black dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 active:scale-[0.98] transition"
+								className={receivePanelLimeButtons ? limeShareBtn : defaultShareBtn}
 							>
 								<Share2 className="w-5 h-5 shrink-0" />
 								<span>Share</span>

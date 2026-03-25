@@ -64,8 +64,8 @@ const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
 export const isCardExcludedFromDisplay = (cardAddress: string): boolean =>
 	USER_CARD_DISPLAY_EXCLUDED.has((cardAddress || '').trim().toLowerCase())
 
-/** AA Factory 作为 UserCard gateway（与 config/base-addresses AA_FACTORY 一致） */
-const BeamioUserCardGatewayAddress = '0xD86403DD1755F7add19540489Ea10cdE876Cc1CE'.toLowerCase()
+/** AA Factory 作为 UserCard gateway（与 config/chainAddresses BASE_AA_FACTORY 一致） */
+const BeamioUserCardGatewayAddress = BASE_MAINNET_FACTORIES.AA_FACTORY.toLowerCase()
 const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,

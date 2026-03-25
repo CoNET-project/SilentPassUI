@@ -4,8 +4,6 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, useAnimation } from 'framer-motion'
 import html2canvas from 'html2canvas'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { ReactComponent as HomeIconGrey } from './assets/home-icon-grey.svg'
-import { ReactComponent as HomeBlueIcon } from './assets/home-icon-blue.svg'
 import { ReactComponent as ShoppingIconGrey } from './assets/shopping-1-icon.grey.svg'
 import { ReactComponent as ShoppingBlueIcon } from './assets/shopping-1-icon.blue.svg'
 import { ReactComponent as WalletBlueIcon } from './assets/wallet-1-icon-blue.svg'
@@ -22,7 +20,9 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import type { Transition } from 'framer-motion'
 
 
-type TabKey = '/' | '/history' | '/pay' | '/chat' | '/settings'
+/** Footer 可点击 tab；首格 key 仍为 `/history`（与 badge 一致），但路由指向首页 `/` */
+type TabKey = '/history' | '/pay' | '/chat' | '/settings'
+type ActiveKey = TabKey | 'home'
 type Phase = 'idle' | 'moving' | 'settling' | 'impact'
 
 const ICON_CLASS = 'w-[18px] h-[18px] block'
@@ -160,7 +160,6 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 	
 	const [badgeMap, setBadgeMap] = useState<Record<TabKey, number>>({
-		'/': 0,
 		'/history': 0,
 		'/pay': 0,        // ✅ 中间 B icon 不用（即使有值也不会显示）
 		'/chat': 0,
@@ -208,7 +207,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	}, [messageCount])
 
 
-	const activeKey = useMemo<TabKey>(() => {
+	const activeKey = useMemo<ActiveKey>(() => {
 		requestAnimationFrame(() => {
 			const el = document.activeElement as HTMLElement | null
 			if (!el) return
@@ -219,12 +218,12 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		})
 
 		const p = (pathname || '/').toLowerCase()
-		if (p === '/' || p.startsWith('/?')) return '/'
+		if (p === '/' || p.startsWith('/?')) return '/history'
 		if (p.startsWith('/history')) return '/history'
 		if (p.startsWith('/pay') || p.startsWith('/qr')) return '/pay'
 		if (p.startsWith('/chat')) return '/chat'
 		if (p.startsWith('/settings')) return '/settings'
-		return '/'
+		return 'home'
 	}, [pathname])
 
 	const go = (k: TabKey) => {
@@ -248,25 +247,29 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			return
 		}
 
-		navigate(k)
+		if (k === '/history') {
+			navigate('/')
+		} else {
+			navigate(k)
+		}
 	}
 
 	const tabs = useMemo(
 		() =>
 		([
 			{
-			key: '/' as const,
-				iconGrey: <HomeIconGrey className={ICON_CLASS} />,
-				iconBlue: <HomeBlueIcon className={ICON_CLASS} />,
-				title: '', //'Home',
-				badge: getBadge('/'),
-			},
-			{
 			key: '/history' as const,
 				iconGrey: <WalletIconGrey className={ICON_CLASS} />,
 				iconBlue: <WalletBlueIcon className={ICON_CLASS} />,
 				title: '',//'Transactions',
 				badge: getBadge('/history'),
+			},
+			{
+				key: '/settings' as const,
+				iconGrey: <ShoppingIconGrey className={ICON_CLASS} />,
+				iconBlue: <ShoppingBlueIcon className={ICON_CLASS} />,
+				title: '', //Me',
+				badge: getBadge('/settings')
 			},
 			{
 				key: '/pay' as const,
@@ -282,13 +285,6 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				title: '', //'Chat',
 				badge: getBadge('/chat'),
 			},
-			{
-				key: '/settings' as const,
-				iconGrey: <ShoppingIconGrey className={ICON_CLASS} />,
-				iconBlue: <ShoppingBlueIcon className={ICON_CLASS} />,
-				title: '', //Me',
-				badge: getBadge('/settings') // ✅ charts.length 在这里生效
-			},
 		] as const),
 		// ✅ 依赖 getBadge / badgeMap / darkModle
 		// getBadge 是闭包函数，这里最简单就是把 badgeMap 放进依赖，并且保证 getBadge 不在 useMemo 外重建也行
@@ -297,8 +293,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
   )
 
 	const activeIndex = useMemo(() => {
+		if (activeKey === 'home') return -1
 		const i = tabs.findIndex(t => t.key === activeKey)
-		return i >= 0 ? i : 0
+		return i >= 0 ? i : -1
 	}, [tabs, activeKey])
 
 
@@ -329,11 +326,18 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	useEffect(() => {
 		if (!shouldRender) return
 
+		if (activeIndex < 0) {
+			dropletControls.set({ opacity: 0, x: '0%', borderRadius: 12, scaleX: 1, scaleY: 1 })
+			setPhase('idle')
+			return
+		}
+
 		let cancelled = false
 
 		const run = async () => {
 			dropletControls.set({
-				x: `${prevIndexRef.current * 100}%`,
+				opacity: 1,
+				x: `${Math.max(0, prevIndexRef.current) * 100}%`,
 				borderRadius: 12,
 				scaleX: 0.5,
 				scaleY: 0.5,
@@ -342,6 +346,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			setPhase('moving')
 
 			await dropletControls.start({
+				opacity: 1,
 				borderRadius: 12,
 				scaleX: 1.10,
 				scaleY: 0.90,
@@ -365,8 +370,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 			await dropletControls.start({
 				borderRadius: 12,
-				scaleX: 1.06,
-				scaleY: 0.96,
+				scaleX: 1,
+				scaleY: 1,
 				transition: {
 					duration: 0.55,
 					ease: [0.2, 0.9, 0.2, 1],
@@ -399,7 +404,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		title: string
 		badge?: string
 	}) => {
-		const active = activeKey === k
+		const active = activeKey !== 'home' && activeKey === k
 
 		const iconTarget = (() => {
 			if (!active) return { scaleX: 1, scaleY: 1, y: 0 }
@@ -520,7 +525,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 						<div className="relative h-full">
 						<motion.div
 							className="
-							absolute inset-y-0 left-0 w-1/5
+							absolute inset-y-0 left-0 w-1/4
 							overflow-hidden
 							-top-2 -bottom-2
 							border border-white/60 dark:border-slate-700/70
@@ -529,13 +534,15 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 							style={{
 							background: darkModle
 								? 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.12), rgba(15,23,42,0.78) 55%)'
-								: 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.98), rgba(255,255,255,0.70) 58%)'
+								: 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.98), rgba(255,255,255,0.70) 58%)',
+							transformOrigin: 'center center',
 							}}
 							initial={{
-							x: `${activeIndex * 100}%`,
+							opacity: activeIndex < 0 ? 0 : 1,
+							x: `${Math.max(0, activeIndex) * 100}%`,
 							borderRadius: 12,
-							scaleX: 1.06,
-							scaleY: 0.96
+							scaleX: 1,
+							scaleY: 1
 							}}
 							animate={dropletControls}
 						>
@@ -555,7 +562,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 					{/* ✅ 前景内容层：不裁切，所以 badge 可以越界 */}
 					<div className="relative pt-1 pb-1.5 overflow-visible pointer-events-auto">
-						<div className="relative grid grid-cols-5 items-center gap-0 overflow-visible">
+						<div className="relative grid grid-cols-4 items-center gap-0 overflow-visible">
 						{tabs.map(t => (
 							<Item
 							key={t.key}

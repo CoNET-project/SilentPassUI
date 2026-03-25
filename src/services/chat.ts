@@ -183,115 +183,119 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	try {
 		const allNodes = await getAllNodes()
 		setAllNodes(allNodes)
-	const temp = CoNET_Data
-	if (!temp || !temp?.profiles?.length) {
-		setGossip(false)
-		return
-	}
-	const profiles: profile[] =  temp.profiles
-	let profile = profiles[0]
-	if (!profile) {
-		setGossip(false)
-		return
-	}
-	if (!profile.privateKeyArmor || !isValidEthersPrivateKey(profile.privateKeyArmor)) {
-		console.warn('[initChat] profile.privateKeyArmor invalid or missing, cannot init')
-		setGossip(false)
-		return
-	}
-	let chatManager: IChat|undefined = profile?.chatManager
-	let routes: string = chatManager?.router||''
-	//		本地非初始化 或 pgpKey 不完整则重新生成
-	if (!chatManager || !isPgpKeyComplete(chatManager.pgpKey)) {
-		const pgpData = await initBeamioPGPKeys(profile)
-		if (!pgpData) {
+		const temp = CoNET_Data
+		if (!temp || !temp?.profiles?.length) {
 			setGossip(false)
 			return
 		}
-
-		chatManager = {
-			pgpKey: pgpData,
-			router: chatManager?.router || '',
-
+		const profiles: profile[] =  temp.profiles
+		let profile = profiles[0]
+		if (!profile) {
+			setGossip(false)
+			return
 		}
-		profile.chatManager = chatManager
-		routes = pgpData.routes || chatManager.router || ''
-	}
+		if (!profile.privateKeyArmor || !isValidEthersPrivateKey(profile.privateKeyArmor)) {
+			console.warn('[initChat] profile.privateKeyArmor invalid or missing, cannot init')
+			setGossip(false)
+			return
+		}
+		let chatManager: IChat|undefined = profile?.chatManager
+		let routes: string = chatManager?.router||''
+		//		本地非初始化 或 pgpKey 不完整则重新生成
+		if (!chatManager || !isPgpKeyComplete(chatManager.pgpKey)) {
+			const pgpData = await initBeamioPGPKeys(profile)
+			if (!pgpData) {
+				setGossip(false)
+				return
+			}
+
+			chatManager = {
+				pgpKey: pgpData,
+				router: chatManager?.router || '',
+
+			}
+			profile.chatManager = chatManager
+			routes = pgpData.routes || chatManager.router || ''
+		}
 
 
-	// ✅ 如果没有 routes，从链上/SC 找；再不行就随机注册一个
-	//	寻找链上信息
-	const rr = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
-	routes = rr?.routersArmoreds||''
+		// ✅ 如果没有 routes，从链上/SC 找；再不行就随机注册一个
+		//	寻找链上信息
+		const rr = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
+		routes = rr?.routersArmoreds||''
 
-	//	链上route信息
-	if (routes) {
-		chatManager.router = routes
-	}
+		//	链上route信息
+		if (routes) {
+			chatManager.router = routes
+		}
 
-	// 检测：本地 PGP 与链上不一致时，说明用户在本地更换了密钥对但未重新登记，需调用 regiestChatRoute 同步
-	if (rr?.userPgpKeyID && chatManager.pgpKey.publicKey) {
-		try {
-			const localKeyID = await getPublicKeyArmoredKeyID(chatManager.pgpKey.publicKey)
-			const chainKeyID = (rr.userPgpKeyID || '').toUpperCase()
-			if (localKeyID && chainKeyID && localKeyID !== chainKeyID) {
-				console.warn('[initChat] 本地 PGP KeyID 与链上不一致，重新登记', { localKeyID, chainKeyID })
-				const node = getRandomNode(allNodes)
-				if (node) {
-					const ok = await regiestChatRoute(
-						profile.privateKeyArmor,
-						chatManager.pgpKey.publicKey,
-						localKeyID,
-						chatManager.pgpKey.privateKey,
-						node.domain
-					)
-					if (ok) {
-						await new Promise(r => setTimeout(r, 5000))
-						const rr2 = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
-						const chainKeyID2 = (rr2?.userPgpKeyID || '').toUpperCase()
-						if (chainKeyID2 === localKeyID) {
-							console.log('[initChat] 重新登记验证成功', { localKeyID, chainKeyID2 })
-						} else {
-							console.warn('[initChat] 重新登记 5 秒后验证失败：链上仍为', chainKeyID2, '，期望', localKeyID)
+		// 检测：本地 PGP 与链上不一致时，说明用户在本地更换了密钥对但未重新登记，需调用 regiestChatRoute 同步
+		if (rr?.userPgpKeyID && chatManager.pgpKey.publicKey) {
+			try {
+				const localKeyID = await getPublicKeyArmoredKeyID(chatManager.pgpKey.publicKey)
+				const chainKeyID = (rr.userPgpKeyID || '').toUpperCase()
+				if (localKeyID && chainKeyID && localKeyID !== chainKeyID) {
+					console.warn('[initChat] 本地 PGP KeyID 与链上不一致，重新登记', { localKeyID, chainKeyID })
+					const node = getRandomNode(allNodes)
+					if (node) {
+						const ok = await regiestChatRoute(
+							profile.privateKeyArmor,
+							chatManager.pgpKey.publicKey,
+							localKeyID,
+							chatManager.pgpKey.privateKey,
+							node.domain
+						)
+						if (ok) {
+							await new Promise(r => setTimeout(r, 5000))
+							const rr2 = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
+							const chainKeyID2 = (rr2?.userPgpKeyID || '').toUpperCase()
+							if (chainKeyID2 === localKeyID) {
+								console.log('[initChat] 重新登记验证成功', { localKeyID, chainKeyID2 })
+							} else {
+								console.warn('[initChat] 重新登记 5 秒后验证失败：链上仍为', chainKeyID2, '，期望', localKeyID)
+							}
 						}
 					}
 				}
+			} catch (e: any) {
+				console.warn('[initChat] 检测 PGP KeyID 时出错', e?.message ?? e)
 			}
-		} catch (e: any) {
-			console.warn('[initChat] 检测 PGP KeyID 时出错', e?.message ?? e)
 		}
-	}
 
-	if (!routes) {
-		const node = getRandomNode(allNodes)
-		if (node) {
-			await regiestChatRoute(
-				profile.privateKeyArmor,
-				chatManager.pgpKey.publicKey,
-				chatManager.pgpKey.keyID,
-				chatManager.pgpKey.privateKey,
-				node.domain
-			)
-			chatManager.router = node.armoredPublicKey
+		if (!routes) {
+			const node = getRandomNode(allNodes)
+			if (node) {
+				await regiestChatRoute(
+					profile.privateKeyArmor,
+					chatManager.pgpKey.publicKey,
+					chatManager.pgpKey.keyID,
+					chatManager.pgpKey.privateKey,
+					node.domain
+				)
+				chatManager.router = node.armoredPublicKey
+			}
 		}
-	}
 
 
-	profile.chatManager = chatManager
-	temp.profiles[0] = profile
-	setProfiles(profiles)
-	setCoNET_Data(temp)
-	storeSystemData()
+		profile.chatManager = chatManager
+		temp.profiles[0] = profile
+		setProfiles(profiles)
+		setCoNET_Data(temp)
+		storeSystemData()
 
-	if (!allNodes?.length) {
-		setGossip(false)
-		return
-	}
+		if (!allNodes?.length) {
+			setGossip(false)
+			return
+		}
 	
 		connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
-	} finally {
-		initChatInProgress = false
+	} catch (error) {
+		console.error('[initChat] Error:', error)
 	}
+	
+	finally {
+		initChatInProgress = false
+	} 
 }
 
 export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGPKeysRet|null> => {
@@ -871,8 +875,13 @@ export const sendMessage = async (
 		entryNodes.map(node => {
 			const url = `https://${node.domain}.conet.network/post`
 			return postWithTimeout(url, postOpts, 12_000)
-				.then(res => res.ok)
-				.catch(() => false)
+				.then(res => {
+					return res.ok
+				})	
+				.catch((error) => {
+					console.error('[sendMessage] Error:', error)
+					return false
+				})
 		})
 	)
 

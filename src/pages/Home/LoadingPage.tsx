@@ -839,6 +839,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									onGoToHome={() => home()}
 									address={eoaAddress || undefined}
 									balanceFiat={formatAmount(parseFloat(usdcBal || '0') || 0, 'CAD')}
+									beamioTag={beamioTag || undefined}
 								/>
 							}
 							{

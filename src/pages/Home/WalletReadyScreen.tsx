@@ -1,114 +1,150 @@
-import React, { useState } from 'react'
-import { Check, Smartphone, Copy } from 'lucide-react'
-import base_icon from '@/components/assets/base-logo.png'
-import { fiatPrefix } from '@/services/currency'
+import React from 'react'
+import { Check, Wallet, Store, CreditCard, Shield, ArrowRight } from 'lucide-react'
 
 type WalletReadyScreenProps = {
-  usdcBalance: string
-  onGoToHome: () => void
-  /** EOA 地址（可选），用于卡片底部展示 */
-  address?: string
-  /** 法币等价显示（可选），如 "0.00" */
-  balanceFiat?: string
+	/** 保留兼容 LoadingPage 传参；新布局不展示余额 */
+	usdcBalance?: string
+	onGoToHome: () => void
+	address?: string
+	balanceFiat?: string
+	/** 用于头像首字与 @handle 胶囊，如 alex.tag → @alex.tag */
+	beamioTag?: string
 }
 
+const LIME = '#A3E635'
+
 /**
- * Wallet Ready 页：Master Key 之后、进入 home 之前的成功确认页
- * 图示：绿色对勾 + Wallet Ready! + EOA 风格钱包卡片 + Save Wallet to Home Screen
+ * Master Key / 恢复流程后：账户已创建，引导进入 CashTrees 前激活 Smart Account
  */
 export default function WalletReadyScreen({
-  usdcBalance,
-  onGoToHome,
-  address,
-  balanceFiat = "0",
+	onGoToHome,
+	beamioTag,
 }: WalletReadyScreenProps) {
-  const [addressCopied, setAddressCopied] = useState(false)
+	const handle = (beamioTag || '').replace(/^@/, '').trim()
+	const displayHandle = handle ? `@${handle}` : '@beamio'
+	const initial = (handle.charAt(0) || 'B').toUpperCase()
 
-  const copyAddress = () => {
-    if (!address) return
-    navigator.clipboard.writeText(address).then(() => {
-      setAddressCopied(true)
-      setTimeout(() => setAddressCopied(false), 2000)
-    }).catch(() => {})
-  }
+	return (
+		<div
+			className="box-border flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#F7F8FA] px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] dark:bg-slate-950"
+			style={{ height: '100dvh', maxHeight: '100dvh' }}
+		>
+			<div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-col">
+				{/* Success header */}
+				<div className="flex shrink-0 flex-col items-center text-center">
+					<div
+						className="mb-3 flex h-[3.75rem] w-[3.75rem] items-center justify-center rounded-full sm:mb-4 sm:h-[4.5rem] sm:w-[4.5rem] dark:shadow-[0_0_0_8px_rgba(163,230,53,0.15),0_12px_40px_rgba(163,230,53,0.2)]"
+						style={{
+							backgroundColor: LIME,
+							boxShadow: `0 0 0 8px rgba(163, 230, 53, 0.2), 0 12px 40px rgba(163, 230, 53, 0.35)`,
+						}}
+					>
+						<Check size={32} strokeWidth={3.5} className="text-[#0F172A]" aria-hidden />
+					</div>
+					<h1
+						className="text-xl font-bold leading-tight tracking-tight text-[#0F172A] sm:text-[1.75rem] dark:text-slate-100"
+					>
+						Account Created
+					</h1>
+					<p className="mt-2 max-w-[280px] text-[15px] font-medium leading-snug text-slate-500 dark:text-slate-400">
+						Your secure identity is ready to use.
+					</p>
+				</div>
 
-  return (
-    <div className="flex flex-col min-h-full bg-white dark:bg-slate-900 px-6 pt-6 pb-10">
-      {/* 顶部成功区域 */}
-      <div className="flex flex-col items-center mb-6">
-        <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/30 mb-6">
-          <Check size={32} className="text-white" strokeWidth={4} />
-        </div>
-        <h1 className="text-[32px] font-bold text-slate-900 dark:text-slate-100 tracking-tight text-center">
-          Wallet Ready!
-        </h1>
-        <p className="text-slate-500 dark:text-slate-400 font-medium mt-2 text-center">
-          Your session is active in this browser.
-        </p>
-      </div>
+				{/* Profile pill */}
+				<div className="mt-3 flex shrink-0 justify-center sm:mt-5">
+					<div
+						className="inline-flex items-center gap-3 rounded-full border border-slate-200/80 bg-white py-2.5 pl-2.5 pr-5 shadow-sm dark:border-slate-600 dark:bg-slate-800"
+						style={{ boxShadow: '0 4px 24px rgba(15, 23, 42, 0.06)' }}
+					>
+						<div
+							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white"
+							style={{ backgroundColor: LIME }}
+							aria-hidden
+						>
+							{initial}
+						</div>
+						<span className="text-base font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
+							{displayHandle}
+						</span>
+					</div>
+				</div>
 
-      {/* Beamio 钱包卡片 - EOA 风格 */}
-      <div className="w-full mb-10">
-        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">
-          Main Vault (EOA)
-        </h2>
-        <div className="relative w-full h-52 rounded-[24px] bg-gradient-to-br from-[#1b6dff] via-[#6d3dff] to-[#f54b8b] text-white shadow-lg overflow-hidden transition-all duration-[600ms] cubic-bezier(0.19, 1, 0.22, 1)">
-          <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500 opacity-20 rounded-full blur-3xl pointer-events-none" />
-          <div className="p-5 h-full flex flex-col justify-between relative z-10">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2">
-                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/60 bg-white/20 backdrop-blur-sm">
-                  <img src={base_icon} alt="Base" className="w-5 h-5 object-contain" />
-                </div>
-                <span className="font-medium">USDC on Base</span>
-              </div>
-              <div className="px-2.5 py-1 bg-green-500/90 rounded-full flex items-center">
-                <span className="text-[10px] font-bold text-white">ACTIVE</span>
-              </div>
-            </div>
+				{/* Activation card — flex-1 + inner scroll so the viewport never gains a page scrollbar */}
+				<div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-800/90 dark:shadow-xl sm:mt-5">
+					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-5 py-4 sm:px-6 sm:py-5">
+						<div className="mx-auto mb-3 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-slate-200 bg-slate-50 sm:mb-4 sm:h-[4.5rem] sm:w-[4.5rem] dark:border-slate-600 dark:bg-slate-900/50">
+							<Wallet className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8 dark:text-slate-500" strokeWidth={1.75} aria-hidden />
+						</div>
+						<h2 className="shrink-0 text-center text-base font-bold text-[#0F172A] sm:text-lg dark:text-slate-100">
+							Next: Activate Wallet
+						</h2>
+						<p className="mx-auto mt-2 max-w-[300px] shrink-0 text-center text-[13px] leading-snug text-slate-500 sm:mt-3 sm:text-[14px] sm:leading-relaxed dark:text-slate-400">
+							To deploy your Smart Account on the network, you&apos;ll need to complete a quick setup inside the app:
+						</p>
 
-            <div className="text-center mt-4">
-              <div className="text-5xl font-bold tracking-tight tabular-nums">
-                {usdcBalance}{' '}
-                <span className="text-2xl font-normal opacity-80">USDC</span>
-              </div>
-              <div className="text-white/70 mt-1 text-sm tabular-nums">
-                ≈ {fiatPrefix('CAD')} {balanceFiat}
-              </div>
-            </div>
+						<ul className="mt-3 flex shrink-0 flex-col gap-2 sm:mt-4 sm:gap-3">
+						<li className="flex items-center gap-3 rounded-2xl bg-slate-100/90 px-3 py-2.5 sm:px-4 sm:py-3.5 dark:bg-slate-900/60">
+							<span
+								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full dark:bg-lime-400/20"
+								style={{ backgroundColor: `${LIME}33` }}
+							>
+								<Store
+									className="h-[18px] w-[18px] text-[#4d7c0f] dark:text-lime-300"
+									strokeWidth={2.2}
+									aria-hidden
+								/>
+							</span>
+							<span className="text-left text-[14px] font-semibold text-slate-800 dark:text-slate-200">
+								Load cash at any Alliance Store
+							</span>
+						</li>
+						<li className="flex items-center gap-3 rounded-2xl bg-slate-100/90 px-3 py-2.5 sm:px-4 sm:py-3.5 dark:bg-slate-900/60">
+							<span
+								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full dark:bg-lime-400/20"
+								style={{ backgroundColor: `${LIME}33` }}
+							>
+								<CreditCard
+									className="h-[18px] w-[18px] text-[#4d7c0f] dark:text-lime-300"
+									strokeWidth={2.2}
+									aria-hidden
+								/>
+							</span>
+							<span className="text-left text-[14px] font-semibold text-slate-800 dark:text-slate-200">
+								Or sync a pre-funded physical card
+							</span>
+						</li>
+						</ul>
+					</div>
 
-            {address && (
-              <div className="flex justify-start mt-auto">
-                <button
-                  type="button"
-                  onClick={copyAddress}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-black/20 backdrop-blur-sm rounded-full text-xs font-mono text-white/90 cursor-pointer hover:bg-black/30 transition-colors"
-                >
-                  {`${address.slice(0, 6)}...${address.slice(-4)}`}
-                  {addressCopied ? (
-                    <Check size={10} className="text-emerald-400 shrink-0" />
-                  ) : (
-                    <Copy size={10} />
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+					<div className="shrink-0 border-t border-slate-100/80 px-5 py-3 dark:border-slate-700/80 sm:px-6 sm:py-3.5">
+						<div
+							className="flex items-center justify-center gap-2 rounded-xl py-2 dark:bg-lime-400/15 sm:py-2.5"
+							style={{ backgroundColor: `${LIME}26` }}
+						>
+							<Shield
+								className="h-4 w-4 shrink-0 text-[#3f6212] dark:text-lime-400"
+								strokeWidth={2.5}
+								aria-hidden
+							/>
+							<span className="text-[11px] font-bold tracking-widest text-[#3f6212] dark:text-lime-300">
+								ZERO SETUP FEES
+							</span>
+						</div>
+					</div>
+				</div>
 
-      {/* Go To Home 按钮 */}
-      <div className="mt-auto">
-        <button
-          onClick={() => {
-			window.location.reload()
-		  }}
-          className="w-full h-16 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full font-bold text-[17px] shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3"
-        >
-          <Smartphone size={22} strokeWidth={2.5} />
-          Go To Home
-        </button>
-      </div>
-    </div>
-  )
+				<div className="mt-3 shrink-0 sm:mt-4">
+					<button
+						type="button"
+						onClick={onGoToHome}
+						className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#0F172A] text-[17px] font-bold text-white shadow-[0_12px_32px_rgba(15,23,42,0.25)] transition-transform active:scale-[0.98] dark:bg-white dark:text-slate-900 dark:shadow-lg"
+					>
+						Enter CashTrees
+						<ArrowRight className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+					</button>
+				</div>
+			</div>
+		</div>
+	)
 }

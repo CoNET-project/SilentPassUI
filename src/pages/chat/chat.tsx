@@ -1093,7 +1093,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 
   return (
-		<div className="fixed inset-0 bg-[#F2F2F7]">
+		<div className="fixed inset-0 bg-[#F1F8ED]">
 			<ChatHeaderIOS
 				beamioer={fromBeamio}
 				onBack={onBack}
@@ -1161,7 +1161,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 			{/* 内容区：消息列表 */}
 			<div
-				className={["absolute inset-0", "bg-[#F2F2F7]"].join(" ")}
+				className={["absolute inset-0", "bg-[#F1F8ED]"].join(" ")}
 				style={{
 					// paddingTop: "calc(env(safe-area-inset-top) + 140px)",
 					// paddingBottom: "calc(env(safe-area-inset-bottom) + 112px)"
@@ -1170,13 +1170,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			{/* 顶部白色渐变蒙版 */}
 			<div
 				className="absolute left-0 right-0 top-0 h-[10rem] pointer-events-none z-10"
-				style={{ background: "linear-gradient(to bottom, rgba(242,242,247,1) 0%, rgba(242,242,247,0) 100%)" }}
+				style={{ background: "linear-gradient(to bottom, rgba(241,248,237,1) 0%, rgba(241,248,237,0) 100%)" }}
 				aria-hidden
 			/>
 			{/* 底部白色渐变蒙版 */}
 			<div
 				className="absolute left-0 right-0 bottom-0 h-[10rem] pointer-events-none z-10"
-				style={{ background: "linear-gradient(to top, rgba(242,242,247,1) 0%, rgba(242,242,247,0) 100%)" }}
+				style={{ background: "linear-gradient(to top, rgba(241,248,237,1) 0%, rgba(241,248,237,0) 100%)" }}
 				aria-hidden
 			/>
 			<div

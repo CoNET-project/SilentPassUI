@@ -1,11 +1,12 @@
 /**
- * SilentPassUI 是独立项目，发布/构建时不能跨项目相对引用 BeamioContract 根仓配置。
- * 本文件必须保持自包含，地址由同步脚本或手工更新。
+ * beamio.app 是独立项目，发布/构建时不能跨项目相对引用 BeamioContract 根仓配置。
+ * 本文件必须保持自包含，地址与根仓 config/base-addresses.json 对齐（手工或脚本更新）。
  */
 export const BASE_MAINNET_CHAIN_ID = 8453
 
-export const BASE_AA_FACTORY = '0xD86403DD1755F7add19540489Ea10cdE876Cc1CE'
-export const BASE_CARD_FACTORY = '0x2F45f38f2B6EF97b606ec2557E237529e8db9281'
+export const BASE_AA_FACTORY = '0x4b31D6a05Cdc817CAc1B06369555b37a5b182122'
+export const BASE_BEAMIO_ACCOUNT_DEPLOYER = '0x139D55591A03550259AF32097A9848ECE9869C90'
+export const BASE_CARD_FACTORY = '0xfB5E3F2AbFe24DC17970d78245BeF56aAE8cb71a'
 export const BASE_CCSA_CARD_ADDRESS = '0x2032A363BB2cf331142391fC0DAd21D6504922C7'
 export const BASE_TREASURY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'
 /** CashTrees 卡（新部署） */
@@ -17,6 +18,7 @@ export const BEAMIO_INDEXER_DIAMOND = '0xd990719B2f05ccab4Acdd5D7A3f7aDfd2Fc584F
 
 export const BASE_MAINNET_FACTORIES = {
   AA_FACTORY: BASE_AA_FACTORY,
+  BEAMIO_ACCOUNT_DEPLOYER: BASE_BEAMIO_ACCOUNT_DEPLOYER,
   CARD_FACTORY: BASE_CARD_FACTORY,
   BeamioCardCCSA_ADDRESS: BASE_CCSA_CARD_ADDRESS,
 } as const
@@ -25,6 +27,7 @@ export const CONTRACT_ADDRESSES = {
   base: {
     chainId: BASE_MAINNET_CHAIN_ID,
     aaFactory: BASE_AA_FACTORY,
+    beamioAccountDeployer: BASE_BEAMIO_ACCOUNT_DEPLOYER,
     cardFactory: BASE_CARD_FACTORY,
     ccsaCard: BASE_CCSA_CARD_ADDRESS,
     baseTreasury: BASE_TREASURY,

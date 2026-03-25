@@ -10,6 +10,7 @@ import {
 	getCardMetadataFromApi,
 	getCardMetadataFromUri,
 	getCardTiersFromContract,
+	getCardUpgradeTypeFromContract,
 	getEOAUSDCBalance,
 	getMyAssets,
 	postUSDCUserCardTopup,
@@ -25,7 +26,6 @@ type TierItem = {
 	description?: string
 	image?: string
 	backgroundColor?: string
-	upgradeByBalance?: boolean
 }
 
 type Props = {
@@ -46,8 +46,9 @@ const MIN_TOPUP_USDC6 = 100_000n // 0.1 USDC
 const CARD_METADATA_STORAGE_PREFIX = "beamio_card_metadata_"
 
 type CachedCardMetadata = {
-	tiers: { index: number; minUsdc6: string; name: string; description?: string; image?: string; backgroundColor?: string; upgradeByBalance?: boolean }[]
+	tiers: { index: number; minUsdc6: string; name: string; description?: string; image?: string; backgroundColor?: string }[]
 	cardName: string
+	upgradeType?: 0 | 1 | 2
 }
 
 function loadCardMetadataFromStorage(cardAddress: string): CachedCardMetadata | null {
@@ -161,7 +162,10 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		currentTier: TierItem | null
 		nextTier: TierItem | null
 	}>({ show: false, currentTier: null, nextTier: null })
+	const [cardUpgradeType, setCardUpgradeType] = useState<0 | 1 | 2>(0)
 	const amountInputRef = useRef<HTMLInputElement>(null)
+	const balanceUpgradeMode = cardUpgradeType === 1
+	const cumulativeAdminUpgradeMode = cardUpgradeType === 2
 
 	useEffect(() => {
 		let alive = true
@@ -182,28 +186,31 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 						description: t.description,
 						image: t.image,
 						backgroundColor: normalizeHexColor(t.backgroundColor),
-						upgradeByBalance: t.upgradeByBalance,
 					}))
 					if (!alive) return
 					setTiers(merged)
 					setCardName(cached.cardName)
-					const [myAssets, eoaUsdc] = await Promise.all([
+					const [myAssets, eoaUsdc, ut] = await Promise.all([
 						getMyAssets(profile, cardAddress),
 						getEOAUSDCBalance(profile),
+						getCardUpgradeTypeFromContract(cardAddress),
 					])
 					if (!alive) return
+					setCardUpgradeType(ut)
 					setAssets(myAssets)
 					setLiveUsdcBalance(String(eoaUsdc ?? "0"))
 					return
 				}
-				const [metaApi, metaUri, contractTiers, myAssets, eoaUsdc] = await Promise.all([
+				const [metaApi, metaUri, contractTiers, myAssets, eoaUsdc, ut] = await Promise.all([
 					getCardMetadataFromApi(cardAddress),
 					getCardMetadataFromUri(cardAddress),
 					getCardTiersFromContract(cardAddress),
 					getMyAssets(profile, cardAddress),
 					getEOAUSDCBalance(profile),
+					getCardUpgradeTypeFromContract(cardAddress),
 				])
 				if (!alive) return
+				setCardUpgradeType(ut)
 				const metaTiers = metaApi?.tiers ?? metaUri?.tiers ?? []
 				const merged: TierItem[] = contractTiers
 					.map((t, idx) => {
@@ -215,7 +222,6 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 							description: mt?.description?.trim(),
 							image: mt?.image?.trim(),
 							backgroundColor: normalizeHexColor(mt?.backgroundColor),
-							upgradeByBalance: Boolean(t.upgradeByBalance),
 						}
 					})
 					.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : 1))
@@ -232,9 +238,9 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 						description: t.description,
 						image: t.image,
 						backgroundColor: t.backgroundColor,
-						upgradeByBalance: t.upgradeByBalance,
 					})),
 					cardName: name,
+					upgradeType: ut,
 				})
 			} catch (e: any) {
 				if (!alive) return
@@ -426,7 +432,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 			return
 		}
 		setTopupIntent("upgrade")
-		if (tier.upgradeByBalance) {
+		if (balanceUpgradeMode) {
 			const delta = tier.minUsdc6 > points6 ? tier.minUsdc6 - points6 : MIN_TOPUP_USDC6
 			setAmount(points6ToCardAmountInt(delta))
 			return
@@ -454,23 +460,31 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		}
 		if (nextTier) {
 			setTopupIntent("upgrade")
-			const delta = nextTier.minUsdc6 > points6 ? nextTier.minUsdc6 - points6 : MIN_TOPUP_USDC6
-			setAmount(points6ToCardAmountInt(delta))
+			if (cumulativeAdminUpgradeMode) {
+				setAmount("")
+				return
+			}
+			if (balanceUpgradeMode) {
+				const delta = nextTier.minUsdc6 > points6 ? nextTier.minUsdc6 - points6 : MIN_TOPUP_USDC6
+				setAmount(points6ToCardAmountInt(delta))
+			} else {
+				setAmount(points6ToCardAmountInt(nextTier.minUsdc6))
+			}
 			return
 		}
 		setTopupIntent("topup")
 		setAmount("")
-	}, [loading, hasEffectiveMembership, minTier?.minUsdc6, maxTier, nextTier, points6, selectedTier, cardCurrency, usdcPerCurrencyUnit, initialTierPreference, presetAmountEmpty])
+	}, [loading, hasEffectiveMembership, minTier?.minUsdc6, maxTier, nextTier, points6, selectedTier, cardCurrency, usdcPerCurrencyUnit, initialTierPreference, presetAmountEmpty, balanceUpgradeMode, cumulativeAdminUpgradeMode])
 
 	const requiredMinPoints6ForUi = useMemo(() => {
 		if (!hasEffectiveMembership) {
 			return selectedTier?.minUsdc6 ?? minTier?.minUsdc6 ?? 1_000_000n
 		}
 		if (selectedTier && selectedTier.minUsdc6 > points6) {
-			return selectedTier.upgradeByBalance ? (selectedTier.minUsdc6 - points6) : selectedTier.minUsdc6
+			return balanceUpgradeMode ? (selectedTier.minUsdc6 - points6) : selectedTier.minUsdc6
 		}
 		return MIN_TOPUP_USDC6
-	}, [hasEffectiveMembership, minTier?.minUsdc6, points6, selectedTier])
+	}, [hasEffectiveMembership, minTier?.minUsdc6, points6, selectedTier, balanceUpgradeMode])
 
 	const userUsdcBalance6 = useMemo(() => {
 		try {
@@ -493,12 +507,10 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 
 	/**
 	 * Load more hint: when user has card, amount > current tier threshold, amount < next tier threshold.
-	 * Two upgrade modes (per nextTier.upgradeByBalance):
-	 * - upgradeByBalance=true:  next tier by total balance; amountNeeded = nextTier.minUsdc6 - points6
-	 * - upgradeByBalance=false: next tier by single topup amount; amountNeeded = nextTier.minUsdc6
-	 * Note: minUsdc6 is points-based (semantic: minPointsDelta6), use points6ToCardAmount for conversion.
+	 * Card-level upgradeType: 1 = balance gap to next minUsdc6; 0 = single topup must reach next minUsdc6; 2 = not driven by topup UI.
 	 */
 	const loadMoreHint = useMemo(() => {
+		if (cumulativeAdminUpgradeMode) return null
 		if (!hasEffectiveMembership || !nextTier) return null
 		const currentTier = effectiveCurrentTier
 		if (!currentTier) return null
@@ -509,7 +521,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 			return null
 		}
 		if (inputPoints6 <= 0n) return null
-		const amountNeededPoints6 = nextTier.upgradeByBalance
+		const amountNeededPoints6 = balanceUpgradeMode
 			? (nextTier.minUsdc6 > points6 ? nextTier.minUsdc6 - points6 : 0n)
 			: nextTier.minUsdc6
 		if (amountNeededPoints6 <= 0n) return null
@@ -520,10 +532,11 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		const moreNeeded = Number(ethers.formatUnits(moreNeededPoints6, 6))
 		const { prefix, amount: moreText, suffix } = formatBalanceWithCurrencyProtocol(moreNeeded, cardCurrency)
 		return { moreDisplay: `${prefix}${moreText}${suffix}`.trim(), nextTierName: nextTier.name }
-	}, [hasEffectiveMembership, nextTier, effectiveCurrentTier, amount, points6, cardCurrency])
+	}, [hasEffectiveMembership, nextTier, effectiveCurrentTier, amount, points6, cardCurrency, balanceUpgradeMode, cumulativeAdminUpgradeMode])
 
 	/** Upgrade unlocked: when input amount reaches or exceeds next tier threshold */
 	const upgradeUnlockedHint = useMemo(() => {
+		if (cumulativeAdminUpgradeMode) return null
 		if (!hasEffectiveMembership || !nextTier) return null
 		const currentTier = effectiveCurrentTier
 		if (!currentTier) return null
@@ -534,7 +547,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 			return null
 		}
 		if (inputPoints6 <= 0n) return null
-		const amountNeededPoints6 = nextTier.upgradeByBalance
+		const amountNeededPoints6 = balanceUpgradeMode
 			? (nextTier.minUsdc6 > points6 ? nextTier.minUsdc6 - points6 : 0n)
 			: nextTier.minUsdc6
 		if (amountNeededPoints6 <= 0n) return null
@@ -542,7 +555,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 		if (inputPoints6 < currentTier.minUsdc6) return null
 		const bg = nextTier.backgroundColor ?? "#2C5535"
 		return { nextTierName: nextTier.name, backgroundColor: bg, textColor: getContrastTextColor(bg) }
-	}, [hasEffectiveMembership, nextTier, effectiveCurrentTier, amount, points6, cardCurrency])
+	}, [hasEffectiveMembership, nextTier, effectiveCurrentTier, amount, points6, cardCurrency, balanceUpgradeMode, cumulativeAdminUpgradeMode])
 
 	const amountToPoints6 = (human: string): bigint => {
 		const normalized = human.replace(/,/g, "").trim()
@@ -624,8 +637,8 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 			amount6 = await currencyAmountToSafeUsdc6(cardAddress, cardCurrency, amount || "0")
 			// Upgrade: only bump when user's input is close to threshold (intended upgrade, rounding may undercut)
 			// If amount6 << threshold, user wants normal topup - do not bump
-			if (nextTier && effectiveCurrentTier) {
-				const amountNeededPoints6 = nextTier.upgradeByBalance
+			if (nextTier && effectiveCurrentTier && !cumulativeAdminUpgradeMode) {
+				const amountNeededPoints6 = balanceUpgradeMode
 					? (nextTier.minUsdc6 > points6 ? nextTier.minUsdc6 - points6 : 0n)
 					: nextTier.minUsdc6
 				const CLOSE_THRESHOLD = 95n // 95% - within 5% of threshold
@@ -668,8 +681,8 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 			const { prefix, amount: amtText, suffix } = formatBalanceWithCurrencyProtocol(amtNum, cardCurrency)
 			setSuccessAmountDisplay(`${prefix}${prefix ? " " : ""}${amtText}${suffix}`.trim())
 			// Show upgrade modal when the USDC sent met the tier threshold (UI ensures amount6 >= amountNeededPoints6 for upgrade)
-			if (nextTier && effectiveCurrentTier) {
-				const amountNeededPoints6 = nextTier.upgradeByBalance
+			if (nextTier && effectiveCurrentTier && !cumulativeAdminUpgradeMode) {
+				const amountNeededPoints6 = balanceUpgradeMode
 					? (nextTier.minUsdc6 > points6 ? nextTier.minUsdc6 - points6 : 0n)
 					: nextTier.minUsdc6
 				if (amountNeededPoints6 > 0n && amount6 >= amountNeededPoints6) {

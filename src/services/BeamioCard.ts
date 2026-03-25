@@ -64,8 +64,8 @@ const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
 export const isCardExcludedFromDisplay = (cardAddress: string): boolean =>
 	USER_CARD_DISPLAY_EXCLUDED.has((cardAddress || '').trim().toLowerCase())
 
-/** AA Factory 作为 UserCard gateway（与 config/base-addresses AA_FACTORY 一致） */
-const BeamioUserCardGatewayAddress = '0xD86403DD1755F7add19540489Ea10cdE876Cc1CE'.toLowerCase()
+/** AA Factory 作为 UserCard gateway（与 config/chainAddresses BASE_AA_FACTORY 一致） */
+const BeamioUserCardGatewayAddress = BASE_MAINNET_FACTORIES.AA_FACTORY.toLowerCase()
 const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,
@@ -743,7 +743,7 @@ export type ShareTokenMetadata = {
 	image?: string
 }
 
-/** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。upgradeByBalance 对应 BeamioUserCard.Tier：true=按余额升级，false=按单次 topup/redeem 金额升级 */
+/** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。会员升级模式由卡级 upgradeType（链上 constructor）决定，不再使用 per-tier 字段。 */
 export type TierMetadata = {
 	index: number
 	minUsdc6: string
@@ -754,8 +754,6 @@ export type TierMetadata = {
 	description?: string
 	image?: string
 	backgroundColor?: string
-	/** true = 按余额达到 minUsdc6 即升级到本档；false = 按单次 topup/redeem 金额达到 minUsdc6 即升级 */
-	upgradeByBalance?: boolean
 }
 
 /** createCardCollectionWithInitCode 所需关键参数 */
@@ -768,6 +766,10 @@ export type CreateBeamioCardParams = {
 	unitPriceHuman: string | number
 	/** metadata URI（可选），默认 0x{owner}.json 由后端生成 */
 	uri?: string
+	/** When true, card is deployed with points transfer whitelist enforcement enabled */
+	transferWhitelistEnabled?: boolean
+	/** 0=single topup/redeem delta; 1=points balance vs next minUsdc6; 2=cumulative points sent to admin */
+	upgradeType?: 0 | 1 | 2
 	/** ERC-1155 shareTokenMetadata，用于创建 0x{owner}.json */
 	shareTokenMetadata?: ShareTokenMetadata
 	/** Tier 类型 metadata（如 Gold Card 说明），存于 0x{owner}.json，回送 NFT metadata 时包含 */
@@ -782,6 +784,10 @@ export const createBeamioCard = async (params: CreateBeamioCardParams): Promise<
 			currency: params.currency,
 			unitPriceHuman: String(params.unitPriceHuman),
 			...(params.uri && { uri: params.uri }),
+			...(typeof params.transferWhitelistEnabled === 'boolean' && {
+				transferWhitelistEnabled: params.transferWhitelistEnabled,
+			}),
+			...(params.upgradeType === 1 || params.upgradeType === 2 ? { upgradeType: params.upgradeType } : {}),
 			...(params.shareTokenMetadata && { shareTokenMetadata: params.shareTokenMetadata }),
 			...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
 		})
@@ -1100,21 +1106,19 @@ export const encodeCreateRedeemAdmin = (
 }
 
 const appendTierInterface = new ethers.Interface([
-    'function appendTier(uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
+    'function appendTier(uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds)',
 ])
 
 /** 构建 appendTier 的 calldata（供 executeForOwner 或 appendTierForCardWithOwnerSignature 使用）。tierExpirySeconds=0 表示使用卡全局 expirySeconds */
 export const encodeAppendTier = (
     minUsdc6: number | bigint | string,
     attr: number | bigint,
-    tierExpirySeconds: number | bigint,
-    upgradeByBalance: boolean
+    tierExpirySeconds: number | bigint
 ): string =>
     appendTierInterface.encodeFunctionData('appendTier', [
         BigInt(minUsdc6),
         BigInt(attr),
         BigInt(tierExpirySeconds),
-        upgradeByBalance,
     ])
 
 const createIssuedNftInterface = new ethers.Interface([
@@ -1778,26 +1782,38 @@ export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAss
 export type CardTierMetadata = { index: number; minUsdc6?: string; attr?: number; name?: string; description?: string; image?: string; backgroundColor?: string }
 
 /** 从 BeamioUserCard 合约读取 tiers（getTiersCount + getTierAt），用于根据 redeem 金额确定 tier */
-export const getCardTiersFromContract = async (cardAddress: string): Promise<{ minUsdc6: string; attr: number; upgradeByBalance: boolean }[]> => {
+export const getCardTiersFromContract = async (cardAddress: string): Promise<{ minUsdc6: string; attr: number }[]> => {
 	try {
 		const card = new ethers.Contract(
 			cardAddress,
 			[
 				'function getTiersCount() view returns (uint256)',
-				'function getTierAt(uint256 idx) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
+				'function getTierAt(uint256 idx) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds)',
 			],
 			baseEndpoint
 		)
 		const count = Number(await card.getTiersCount())
 		if (count === 0) return []
-		const tiers: { minUsdc6: string; attr: number; upgradeByBalance: boolean }[] = []
+		const tiers: { minUsdc6: string; attr: number }[] = []
 		for (let i = 0; i < count; i++) {
-			const [minUsdc6, attr, , upgradeByBalance] = await card.getTierAt(i)
-			tiers.push({ minUsdc6: minUsdc6.toString(), attr: Number(attr), upgradeByBalance })
+			const [minUsdc6, attr] = await card.getTierAt(i)
+			tiers.push({ minUsdc6: minUsdc6.toString(), attr: Number(attr) })
 		}
 		return tiers
 	} catch {
 		return []
+	}
+}
+
+/** 卡级会员升级模式：0 / 1 / 2，与链上 upgradeType 一致 */
+export const getCardUpgradeTypeFromContract = async (cardAddress: string): Promise<0 | 1 | 2> => {
+	try {
+		const card = new ethers.Contract(cardAddress, ['function upgradeType() view returns (uint8)'], baseEndpoint)
+		const v = Number(await card.upgradeType())
+		if (v === 1 || v === 2) return v
+		return 0
+	} catch {
+		return 0
 	}
 }
 

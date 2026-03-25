@@ -161,8 +161,9 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 	const [error, setError] = useState("")
 	const fileInputRef = useRef<HTMLInputElement>(null)
 
-	/** Tier form row; attr derived from tier order (chain uses for entitlements/redeem, default to index). upgradeByBalance: true=按余额升级，false=按单次 topup/redeem 金额升级 */
-	type TierFormRow = { minHuman: string; name: string; description: string; image: string; backgroundColor: string; upgradeByBalance: boolean }
+	type TierFormRow = { minHuman: string; name: string; description: string; image: string; backgroundColor: string }
+	/** 0=single topup/redeem delta; 1=points balance; 2=cumulative points to admin (fixed at deploy) */
+	const [cardUpgradeType, setCardUpgradeType] = useState<0 | 1 | 2>(0)
 	const [tiers, setTiers] = useState<TierFormRow[]>([])
 	const [tierImageUploading, setTierImageUploading] = useState<number | null>(null)
 	const tierFileInputRef = useRef<HTMLInputElement>(null)
@@ -207,7 +208,6 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 									description: t.description.trim() || undefined,
 									image: t.image.trim() || undefined,
 									backgroundColor: t.backgroundColor.trim() || undefined,
-									upgradeByBalance: t.upgradeByBalance,
 								}
 							})
 						valid.sort((a, b) => b.minUsdc6 - a.minUsdc6)
@@ -219,7 +219,6 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 							...(t.description && { description: t.description }),
 							...(t.image && { image: t.image }),
 							...(t.backgroundColor && { backgroundColor: t.backgroundColor }),
-							upgradeByBalance: t.upgradeByBalance,
 						}))
 					})()
 				: undefined
@@ -235,6 +234,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 				cardOwner: ownerTrimmed,
 				currency,
 				unitPriceHuman: priceHuman,
+				...(cardUpgradeType === 1 || cardUpgradeType === 2 ? { upgradeType: cardUpgradeType } : {}),
 				shareTokenMetadata: {
 					name: metaName.trim(),
 					description: metaDescription.trim() || undefined,
@@ -552,6 +552,20 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 					</div>
 
 					<div className="p-4 rounded-xl bg-white/5 border border-white/10">
+						<h3 className="text-sm font-medium text-white/80 mb-1">Membership upgrade mode</h3>
+						<p className="text-xs text-white/50 mb-2">Fixed at card creation for all tiers.</p>
+						<select
+							value={cardUpgradeType}
+							onChange={(e) => setCardUpgradeType(Number(e.target.value) as 0 | 1 | 2)}
+							className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:border-[#6f4de7] mb-4"
+						>
+							<option value={0}>0 — Single top-up / redeem amount reaches next tier threshold</option>
+							<option value={1}>1 — Total points balance reaches next tier threshold</option>
+							<option value={2}>2 — Cumulative points transferred to an admin reaches next tier threshold</option>
+						</select>
+					</div>
+
+					<div className="p-4 rounded-xl bg-white/5 border border-white/10">
 						<h3 className="text-sm font-medium text-white/80 mb-1">Card Tiers</h3>
 						<p className="text-xs text-white/50 mb-3">
 							No tiers by default = all cards are normal. Tap + to add tiers (e.g. Gold Card / Silver Card). Per-tier image (IPFS) and background color are used in NFT metadata.
@@ -645,18 +659,6 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 												className="flex-1 px-2 py-1.5 rounded bg-white/10 border border-white/20 text-white text-sm placeholder-white/40 focus:outline-none focus:border-[#6f4de7] font-mono"
 											/>
 										</div>
-									</div>
-									<div className="flex items-center gap-2">
-										<input
-											type="checkbox"
-											id={`tier-${i}-upgradeByBalance`}
-											checked={t.upgradeByBalance}
-											onChange={(e) => updateTier(i, "upgradeByBalance", e.target.checked)}
-											className="rounded border-white/30 bg-white/10 text-[#6f4de7] focus:ring-[#6f4de7]"
-										/>
-										<label htmlFor={`tier-${i}-upgradeByBalance`} className="text-xs text-white/70">
-											Upgrade by balance (uncheck = upgrade by single topup/redeem amount)
-										</label>
 									</div>
 								</div>
 							))}

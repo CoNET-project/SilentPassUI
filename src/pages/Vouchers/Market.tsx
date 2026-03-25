@@ -29,7 +29,7 @@ import {
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
+import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
 import { fiatPrefix } from "@/services/currency"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
@@ -610,13 +610,18 @@ const PurchaseCreditsSheet = ({
     let cancelled = false
     const run = async () => {
       try {
-        const [contractTiers, meta, assets] = await Promise.all([
+        const [contractTiers, meta, assets, upgradeType] = await Promise.all([
           getCardTiersFromContract(cardAddress),
           getCardMetadataFromApi(cardAddress).then((m) => m ?? getCardMetadataFromUri(cardAddress)),
           getMyAssets(profile as Parameters<typeof getMyAssets>[0], cardAddress),
+          getCardUpgradeTypeFromContract(cardAddress),
         ])
         if (cancelled) return
         if (contractTiers.length === 0 || !assets) {
+          setUpgradeCapsule(null)
+          return
+        }
+        if (upgradeType === 2) {
           setUpgradeCapsule(null)
           return
         }
@@ -640,9 +645,8 @@ const PurchaseCreditsSheet = ({
         }
         const nextTier = sortedTiers[nextTierIdx]
         const nextMinUsdc = Number(BigInt(nextTier.minUsdc6) / 1_000_000n)
-        const amountNeededUsdc = nextTier.upgradeByBalance
-          ? Math.max(0, nextMinUsdc - currentPoints)
-          : nextMinUsdc
+        const amountNeededUsdc =
+          upgradeType === 1 ? Math.max(0, nextMinUsdc - currentPoints) : nextMinUsdc
         if (amountNeededUsdc <= 0) {
           setUpgradeCapsule(null)
           return

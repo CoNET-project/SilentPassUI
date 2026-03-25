@@ -21,7 +21,6 @@ type TierItem = {
 	description?: string
 	image?: string
 	backgroundColor?: string
-	upgradeByBalance?: boolean
 }
 
 type Props = {
@@ -132,7 +131,6 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 							description: mt?.description?.trim(),
 							image: mt?.image?.trim(),
 							backgroundColor: normalizeHexColor(mt?.backgroundColor),
-							upgradeByBalance: Boolean(t.upgradeByBalance),
 						}
 					})
 					.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : 1))
@@ -303,11 +301,6 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 			return
 		}
 		setTopupIntent("upgrade")
-		if (tier.upgradeByBalance) {
-			const delta = tier.minUsdc6 > points6 ? tier.minUsdc6 - points6 : MIN_TOPUP_USDC6
-			setAmount(points6ToCardAmount(delta))
-			return
-		}
 		setAmount(points6ToCardAmount(tier.minUsdc6))
 	}
 
@@ -334,7 +327,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 			return selectedTier?.minUsdc6 ?? minTier?.minUsdc6 ?? 1_000_000n
 		}
 		if (selectedTier && selectedTier.minUsdc6 > points6) {
-			return selectedTier.upgradeByBalance ? (selectedTier.minUsdc6 - points6) : selectedTier.minUsdc6
+			return selectedTier.minUsdc6
 		}
 		return MIN_TOPUP_USDC6
 	}, [hasMembership, minTier?.minUsdc6, points6, selectedTier])

@@ -33,6 +33,7 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 	'0x66be7ec7111145becdfc2b5aa63143d6be1e3dd4',
 	'0x97a1453254a7d0b4bfa5f9b402047ce49deed9c9',
 	'0x1829fa7dfe1a4afbea40978eb57dbb7d6237381d',
+	'0x9cda8477c9f03b8759ac64e21941e578908fd750', // BEAMIO_USER_CARD_ASSET_ADDRESS (infra)
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
@@ -353,6 +354,37 @@ export const quotePointsForUSDC = async (
 
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
+
+/** Logs the exact JSON body sent to POST /api/createCard when: Vite dev, NODE_ENV=development, localStorage BEAMIO_DEBUG_CREATE_CARD=1, or URL ?debugCreateCard=1 */
+function shouldLogCreateCardRequestBody(): boolean {
+	if (typeof window !== 'undefined') {
+		try {
+			if (window.localStorage?.getItem('BEAMIO_DEBUG_CREATE_CARD') === '1') return true
+			if (/(?:^|[?&])debugCreateCard=1(?:&|$)/.test(window.location.search || '')) return true
+		} catch {
+			/* storage blocked */
+		}
+	}
+	try {
+		const im = import.meta as ImportMeta & { env?: { DEV?: boolean; MODE?: string } }
+		if (im.env?.DEV === true || im.env?.MODE === 'development') return true
+	} catch {
+		/* no import.meta */
+	}
+	if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') return true
+	return false
+}
+
+function logCreateCardRequestBody(endpoint: string, body: string): void {
+	if (!shouldLogCreateCardRequestBody() || typeof console === 'undefined' || !console.info) return
+	try {
+		console.info('[createCard] POST /api/createCard — URL:', endpoint)
+		console.info('[createCard] POST /api/createCard — JSON body (as sent to endpoint):', JSON.parse(body))
+	} catch {
+		console.info('[createCard] POST /api/createCard — URL:', endpoint, 'raw:', body)
+	}
+}
+
 const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
@@ -743,6 +775,7 @@ export const createBeamioCard = async (params: CreateBeamioCardParams): Promise<
 			...(params.shareTokenMetadata && { shareTokenMetadata: params.shareTokenMetadata }),
 			...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
 		})
+		logCreateCardRequestBody(createCardEndpoint, body)
 		const response = await fetch(createCardEndpoint, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },

@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES, BASE_TREASURY } from "@/config/chainAddresses";
+import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -379,7 +380,7 @@ export const quotePointsForUSDC = async (
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 
-/** Logs the exact JSON body sent to POST /api/createCard when: Vite dev, NODE_ENV=development, localStorage BEAMIO_DEBUG_CREATE_CARD=1, or URL ?debugCreateCard=1 */
+/** Logs the exact JSON body sent to POST /api/createCard when: NODE_ENV=development (CRA), localStorage BEAMIO_DEBUG_CREATE_CARD=1, or URL ?debugCreateCard=1 */
 function shouldLogCreateCardRequestBody(): boolean {
 	if (typeof window !== 'undefined') {
 		try {
@@ -388,12 +389,6 @@ function shouldLogCreateCardRequestBody(): boolean {
 		} catch {
 			/* storage blocked */
 		}
-	}
-	try {
-		const im = import.meta as ImportMeta & { env?: { DEV?: boolean; MODE?: string } }
-		if (im.env?.DEV === true || im.env?.MODE === 'development') return true
-	} catch {
-		/* no import.meta */
 	}
 	if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') return true
 	return false
@@ -1101,7 +1096,7 @@ export const postCardMintIssuedNftToAddress = async (payload: {
 	}
 }
 
-/** 提交 adminManager 到 API cardAddAdmin。若传 adminEOA，Cluster 会先 ensureAAForEOA 再执行。 */
+/** 提交 adminManager 到 API cardAddAdmin。adminEOA 须与 calldata 中 adminManager.to 同为商户 EOA（无合约代码）；Cluster ensureAAForEOA 仅确保该 EOA 链下有 AA，上链登记的 admin 身份仍是 EOA。 */
 export const postCardAddAdmin = async (payload: {
     cardAddress: string
     data: string
@@ -2075,7 +2070,7 @@ async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
 	}
 }
 
-/** 为 EOA 确保存在 AA（无则创建），返回 AA 地址。登记 admin 前 UI 必须传 EOA 调用此接口获取 AA，再构建 adminManager(AA,...) 并签字。 */
+/** 为 EOA 确保存在 AA（无则创建），返回 { aa }。cardAddAdmin 的 adminManager.to 须为该 EOA 本身，勿把返回值填进 to（与 MemberCard 预检一致）。 */
 export const ensureAAForEOA = async (eoa: string): Promise<string> => {
 	if (!eoa?.trim() || !ethers.isAddress(eoa)) throw new Error('Invalid EOA')
 	const addr = ethers.getAddress(eoa.trim())
@@ -2091,15 +2086,8 @@ export const getAAAccountByEOA = async (eoa: string): Promise<string | null> => 
 	if (!eoa?.trim() || !ethers.isAddress(eoa)) return null
 	const addr = eoa.trim()
 	try {
-		const accountFactory = new ethers.Contract(
-			contracts.BeamioAAAcountFactory.address,
-			BeamioAAAcountFactoryAbi,
-			baseEndpoint
-		)
-		const account = await accountFactory.primaryAccountOf(addr)
-		if (account === ethers.ZeroAddress) return null
-		const code = await baseEndpoint.getCode(account)
-		if (code === '0x') return null
+		const account = await resolveBeamioAaForEoaWithFallback(baseEndpoint, addr)
+		if (!account) return fetchAAAccountFromApi(addr)
 		try {
 			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
 			await aa.factory()

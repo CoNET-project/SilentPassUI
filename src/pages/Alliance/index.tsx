@@ -591,10 +591,12 @@ export default function App() {
     });
   };
 
+  /** Mint Partner NFT path: adminManager.to + body.adminEOA 必须是同一商户 EOA（无 bytecode），与 cardAddAdminPreCheck / 卡合约 governance 一致；勿使用 addressAA。 */
   const handleRegistrationMerchant = async () => {
     if (!handleResolved) return;
-    const adminEOA = handleResolved.address;
-    if (!adminEOA || !ethers.isAddress(adminEOA)) return;
+    const rawAdmin = handleResolved.address;
+    if (!rawAdmin || !ethers.isAddress(rawAdmin)) return;
+    const adminEOA = ethers.getAddress(rawAdmin);
     const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
     const ownerPk = profile?.privateKeyArmor;
     if (!ownerPk) {
@@ -606,6 +608,13 @@ export default function App() {
     setIsGeneratingKyb(true);
     setKybGeneratingPhase('register');
     try {
+      const codeAtAdmin = await baseEndpoint.getCode(adminEOA);
+      if (codeAtAdmin && codeAtAdmin !== '0x' && codeAtAdmin.length > 2) {
+        setKybError(
+          'Admin must be the merchant EOA, not a smart account. Search by @handle or paste the merchant wallet EOA (0x… with no contract code).'
+        );
+        return;
+      }
       const metadata = JSON.stringify({
         restaurantName: restaurantName.trim() || `@${handleResolved.username}`,
         cuisine: restaurantCuisine.trim(),

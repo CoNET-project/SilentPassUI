@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND } from "@/config/chainAddresses";
+import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -413,12 +414,7 @@ function shouldLogCreateCardRequestBody(): boolean {
 			/* storage blocked */
 		}
 	}
-	try {
-		const im = import.meta as ImportMeta & { env?: { DEV?: boolean; MODE?: string } }
-		if (im.env?.DEV === true || im.env?.MODE === 'development') return true
-	} catch {
-		/* no import.meta */
-	}
+	
 	if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') return true
 	return false
 }
@@ -2084,15 +2080,8 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 	const eoa = profile?.keyID?.trim()
 	if (!eoa || !ethers.isAddress(eoa)) return null
 	try {
-		const accountFactory = new ethers.Contract(
-			contracts.BeamioAAAcountFactory.address,
-			BeamioAAAcountFactoryAbi,
-			baseEndpoint
-		)
-		const account = await accountFactory.primaryAccountOf(eoa)
-		if (account === ethers.ZeroAddress) return null
-		const code = await baseEndpoint.getCode(account)
-		if (code === '0x') return null
+		const account = await resolveBeamioAaForEoaWithFallback(baseEndpoint, eoa)
+		if (!account) return fetchAAAccountFromApi(eoa)
 		try {
 			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
 			await aa.factory()

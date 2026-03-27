@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND } from "@/config/chainAddresses";
+import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -403,7 +404,7 @@ const usdcTopupEndpoint = `${beamioApi}/api/usdcTopup`
 const usdcTopupPreviewEndpoint = `${beamioApi}/api/usdcTopupPreview`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 
-/** Logs the exact JSON body sent to POST /api/createCard when: Vite dev, NODE_ENV=development, localStorage BEAMIO_DEBUG_CREATE_CARD=1, or URL ?debugCreateCard=1 */
+/** Logs the exact JSON body sent to POST /api/createCard when: NODE_ENV=development (CRA), localStorage BEAMIO_DEBUG_CREATE_CARD=1, or URL ?debugCreateCard=1 */
 function shouldLogCreateCardRequestBody(): boolean {
 	if (typeof window !== 'undefined') {
 		try {
@@ -412,12 +413,6 @@ function shouldLogCreateCardRequestBody(): boolean {
 		} catch {
 			/* storage blocked */
 		}
-	}
-	try {
-		const im = import.meta as ImportMeta & { env?: { DEV?: boolean; MODE?: string } }
-		if (im.env?.DEV === true || im.env?.MODE === 'development') return true
-	} catch {
-		/* no import.meta */
 	}
 	if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') return true
 	return false
@@ -2082,15 +2077,8 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 	const eoa = profile?.keyID?.trim()
 	if (!eoa || !ethers.isAddress(eoa)) return null
 	try {
-		const accountFactory = new ethers.Contract(
-			contracts.BeamioAAAcountFactory.address,
-			BeamioAAAcountFactoryAbi,
-			baseEndpoint
-		)
-		const account = await accountFactory.primaryAccountOf(eoa)
-		if (account === ethers.ZeroAddress) return null
-		const code = await baseEndpoint.getCode(account)
-		if (code === '0x') return null
+		const account = await resolveBeamioAaForEoaWithFallback(baseEndpoint, eoa)
+		if (!account) return fetchAAAccountFromApi(eoa)
 		try {
 			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
 			await aa.factory()
@@ -2580,4 +2568,361 @@ export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<se
         console.log(`❌ getCardOwnerByCardAddress Failed: ${error.message}`);
         return null
     }
+}
+
+/** Android POS Check Balance：POST /api/getUIDAssets（uid + 可选 SUN e,c,m） */
+export type UidAssetsNfcCardRow = {
+	cardAddress: string
+	cardName?: string
+	points?: string
+	cardCurrency?: string
+	cardType?: string
+}
+
+export type UidAssetsNfcResponse = {
+	ok: boolean
+	uid?: string
+	tagIdHex?: string
+	address?: string
+	aaAddress?: string
+	points?: string
+	usdcBalance?: string
+	cardCurrency?: string
+	cards?: UidAssetsNfcCardRow[]
+	error?: string
+}
+
+/** POS / PWA：SUN 校验通过后登记 Link 会话（与 android-NDEF postNfcLinkApp 一致） */
+export type NfcLinkAppApiResult =
+	| {
+			ok: true
+			nftRedeemcode: string
+			tagid: string
+			uid: string
+			counter: number
+			deepLinkUrl: string
+			migrateViaContainer?: boolean
+			redeemOnChain?: boolean
+	  }
+	| {
+			ok: false
+			error: string
+			errorCode?: string
+			redeemOnChain?: boolean
+			httpStatus?: number
+	  }
+
+export async function postNfcLinkApp(body: {
+	uid: string
+	e: string
+	c: string
+	m: string
+	cardAddress?: string
+}): Promise<NfcLinkAppApiResult> {
+	const uid = body.uid?.trim() ?? ''
+	const e = body.e?.trim() ?? ''
+	const c = body.c?.trim() ?? ''
+	const m = body.m?.trim() ?? ''
+	if (!/^[0-9A-Fa-f]{14}$/.test(uid)) {
+		return { ok: false, error: 'Invalid uid for NFC link.' }
+	}
+	if (e.length !== 64 || c.length !== 6 || m.length !== 16) {
+		return { ok: false, error: 'SUN params (e, c, m) are invalid or missing.' }
+	}
+	const payload: Record<string, string> = { uid, e, c, m }
+	if (body.cardAddress?.trim()) payload.cardAddress = body.cardAddress.trim()
+	try {
+		const res = await fetch(`${beamioApi}/api/nfcLinkApp`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+			body: JSON.stringify(payload),
+		})
+		const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+		const success = Boolean(json.success)
+		const errStr = json.error != null ? String(json.error) : ''
+		const errorCode = json.errorCode != null ? String(json.errorCode) : undefined
+		const redeemOnChain = Boolean(json.redeemOnChain)
+		if (res.status === 409) {
+			return {
+				ok: false,
+				error: errStr || 'This card is locked by another link session.',
+				errorCode,
+				redeemOnChain,
+				httpStatus: 409,
+			}
+		}
+		if (!res.ok || !success) {
+			return {
+				ok: false,
+				error: errStr || `Request failed (${res.status})`,
+				errorCode,
+				redeemOnChain,
+				httpStatus: res.status,
+			}
+		}
+		const deepLinkUrl = json.deepLinkUrl != null ? String(json.deepLinkUrl) : ''
+		const code = json.nftRedeemcode != null ? String(json.nftRedeemcode) : ''
+		const tagid = json.tagid != null ? String(json.tagid).replace(/^0x/i, '') : ''
+		const uidOut = json.uid != null ? String(json.uid).replace(/^0x/i, '').toLowerCase() : ''
+		const counterRaw = json.counter
+		const counter =
+			typeof counterRaw === 'number' && Number.isFinite(counterRaw)
+				? counterRaw
+				: parseInt(String(counterRaw ?? ''), 10)
+		if (!deepLinkUrl || !code || !tagid || !uidOut || !Number.isFinite(counter)) {
+			return { ok: false, error: 'Invalid link response from server.' }
+		}
+		return {
+			ok: true,
+			nftRedeemcode: code,
+			tagid,
+			uid: uidOut,
+			counter,
+			deepLinkUrl,
+			migrateViaContainer: Boolean(json.migrateViaContainer),
+			redeemOnChain,
+		}
+	} catch (e: unknown) {
+		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+	}
+}
+
+/** App 端认领：用当前钱包私钥完成换绑与可选链上迁移（HTTPS；勿记录私钥） */
+export type NfcLinkAppClaimApiResult =
+	| { ok: true; address?: string; redeemTxHash?: string | null }
+	| { ok: false; error: string }
+
+export async function postNfcLinkAppClaimWithKey(body: {
+	nftRedeemcode: string
+	tagid: string
+	uid: string
+	counter: number
+	/** 0x + 64 hex，与 MemberCard.normalizeNfcLinkClaimPrivateKey 一致 */
+	privateKey: string
+}): Promise<NfcLinkAppClaimApiResult> {
+	const pk = body.privateKey.trim()
+	const pkHex = pk.startsWith('0x') ? pk : `0x${pk}`
+	if (!/^0x[0-9a-fA-F]{64}$/.test(pkHex)) {
+		return { ok: false, error: 'Invalid private key format.' }
+	}
+	try {
+		const res = await fetch(`${beamioApi}/api/nfcLinkAppClaimWithKey`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+			body: JSON.stringify({
+				nftRedeemcode: body.nftRedeemcode.trim(),
+				tagid: body.tagid.replace(/^0x/i, ''),
+				uid: body.uid.replace(/^0x/i, ''),
+				counter: body.counter,
+				privateKey: pkHex,
+			}),
+		})
+		const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+		const success = Boolean(json.success)
+		if (!res.ok || !success) {
+			return {
+				ok: false,
+				error: json.error != null ? String(json.error) : `Request failed (${res.status})`,
+			}
+		}
+		return {
+			ok: true,
+			address: json.address != null ? String(json.address) : undefined,
+			redeemTxHash: json.redeemTxHash != null ? String(json.redeemTxHash) : null,
+		}
+	} catch (e: unknown) {
+		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+	}
+}
+
+/** 与 x402sdk db.buildNfcCardLinkStateSignMessage 一致（键排序 JSON，供 /api/nfcCardLinkState） */
+const NFC_CARD_LINK_STATE_SCOPE = 'beamio:NfcCardLinkState:v1'
+
+function buildNfcCardLinkStateSignMessage(
+	action: 'active' | 'deactive' | 'remove',
+	tagId16: string,
+	issuedAtSec: number
+): string {
+	const tag = String(tagId16 || '')
+		.trim()
+		.replace(/^0x/i, '')
+		.toUpperCase()
+	if (!/^[0-9A-F]{16}$/.test(tag)) {
+		throw new Error('tagId must be 16 hex characters')
+	}
+	if (!Number.isFinite(issuedAtSec) || issuedAtSec <= 0) {
+		throw new Error('issuedAt must be a positive Unix timestamp in seconds')
+	}
+	if (action !== 'active' && action !== 'deactive' && action !== 'remove') {
+		throw new Error('action must be active, deactive, or remove')
+	}
+	const o = {
+		action,
+		issuedAt: Math.floor(issuedAtSec),
+		scope: NFC_CARD_LINK_STATE_SCOPE,
+		tagId: tag,
+	}
+	return JSON.stringify(o, Object.keys(o).sort())
+}
+
+export type LinkedNfcCardApiRow = {
+	uid: string
+	tagId: string
+	linkState: 'active' | 'deactive'
+}
+
+export type ListLinkedNfcCardsResult =
+	| {
+			ok: true
+			ownerEoa: string
+			inputWasSmartAccount: boolean
+			count: number
+			cards: LinkedNfcCardApiRow[]
+	  }
+	| { ok: false; error: string }
+
+/** POST /api/listLinkedNfcCards — wallet 可为 AA 或 EOA */
+export async function postListLinkedNfcCards(walletRaw: string): Promise<ListLinkedNfcCardsResult> {
+	const w = String(walletRaw || '').trim()
+	if (!w) return { ok: false, error: 'Missing wallet' }
+	let addr: string
+	try {
+		addr = ethers.getAddress(w)
+	} catch {
+		return { ok: false, error: 'Invalid wallet address' }
+	}
+	try {
+		const res = await fetch(`${beamioApi}/api/listLinkedNfcCards`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+			body: JSON.stringify({ wallet: addr }),
+		})
+		const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+		if (!res.ok || json.ok !== true) {
+			return {
+				ok: false,
+				error: json.error != null ? String(json.error) : `Request failed (${res.status})`,
+			}
+		}
+		const cardsRaw = json.cards
+		const cards: LinkedNfcCardApiRow[] = []
+		if (Array.isArray(cardsRaw)) {
+			for (const row of cardsRaw) {
+				const r = row as Record<string, unknown>
+				const uid = String(r.uid ?? '')
+					.replace(/^0x/i, '')
+					.toLowerCase()
+				const tagId = String(r.tagId ?? r.tagid ?? '')
+					.replace(/^0x/i, '')
+					.toUpperCase()
+				const ls = String(r.linkState ?? r.nfc_link_state ?? 'active').toLowerCase()
+				const linkState: 'active' | 'deactive' = ls === 'deactive' ? 'deactive' : 'active'
+				if (uid && tagId.length === 16 && /^[0-9A-F]+$/.test(tagId)) {
+					cards.push({ uid, tagId, linkState })
+				}
+			}
+		}
+		return {
+			ok: true,
+			ownerEoa: json.ownerEoa != null ? String(json.ownerEoa) : '',
+			inputWasSmartAccount: Boolean(json.inputWasSmartAccount),
+			count: typeof json.count === 'number' ? json.count : cards.length,
+			cards,
+		}
+	} catch (e: unknown) {
+		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+	}
+}
+
+export async function postNfcCardLinkStateSigned(params: {
+	/** Raw hex or 0x+64，与 Link Claim 所用用户钱包一致 */
+	privateKeyArmorOrHex: string
+	action: 'active' | 'deactive' | 'remove'
+	tagId16: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+	const raw = params.privateKeyArmorOrHex.trim()
+	const pkHex = raw.startsWith('0x') ? raw : `0x${raw}`
+	if (!/^0x[0-9a-fA-F]{64}$/.test(pkHex)) {
+		return { ok: false, error: 'Invalid private key format.' }
+	}
+	let message: string
+	try {
+		message = buildNfcCardLinkStateSignMessage(params.action, params.tagId16, Math.floor(Date.now() / 1000))
+	} catch (e: unknown) {
+		return { ok: false, error: e instanceof Error ? e.message : 'Invalid request' }
+	}
+	try {
+		const wallet = new ethers.Wallet(pkHex)
+		const signature = await wallet.signMessage(message)
+		const res = await fetch(`${beamioApi}/api/nfcCardLinkState`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+			body: JSON.stringify({ message, signature }),
+		})
+		const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+		if (!res.ok || json.ok !== true) {
+			return {
+				ok: false,
+				error: json.error != null ? String(json.error) : `Request failed (${res.status})`,
+			}
+		}
+		return { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+	}
+}
+
+export async function postGetUidAssetsForNfcScan(body: {
+	uid: string
+	e?: string
+	c?: string
+	m?: string
+}): Promise<UidAssetsNfcResponse> {
+	const uid = body.uid?.trim() ?? ''
+	if (!uid) return { ok: false, error: 'Missing uid' }
+	const payload: Record<string, string> = { uid }
+	if (body.e?.trim()) payload.e = body.e.trim()
+	if (body.c?.trim()) payload.c = body.c.trim()
+	if (body.m?.trim()) payload.m = body.m.trim()
+	try {
+		const res = await fetch(`${beamioApi}/api/getUIDAssets`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+			body: JSON.stringify(payload),
+		})
+		const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+		const ok = Boolean(json.ok)
+		const errStr = json.error != null ? String(json.error) : ''
+		if (!res.ok && !ok) {
+			return { ok: false, error: errStr || `Request failed (${res.status})` }
+		}
+		if (!ok) {
+			return { ok: false, error: errStr || 'Card query failed' }
+		}
+		const cardsRaw = json.cards
+		let cards: UidAssetsNfcCardRow[] | undefined
+		if (Array.isArray(cardsRaw)) {
+			cards = cardsRaw.map((c: Record<string, unknown>) => ({
+				cardAddress: String(c.cardAddress ?? ''),
+				cardName: c.cardName != null ? String(c.cardName) : undefined,
+				points: c.points != null ? String(c.points) : undefined,
+				cardCurrency: c.cardCurrency != null ? String(c.cardCurrency) : undefined,
+				cardType: c.cardType != null ? String(c.cardType) : undefined,
+			}))
+		}
+		return {
+			ok: true,
+			uid: json.uid != null ? String(json.uid) : undefined,
+			tagIdHex: json.tagIdHex != null ? String(json.tagIdHex) : undefined,
+			address: json.address != null ? String(json.address) : undefined,
+			aaAddress: json.aaAddress != null ? String(json.aaAddress) : undefined,
+			points: json.points != null ? String(json.points) : undefined,
+			usdcBalance: json.usdcBalance != null ? String(json.usdcBalance) : undefined,
+			cardCurrency: json.cardCurrency != null ? String(json.cardCurrency) : undefined,
+			cards,
+			error: errStr || undefined,
+		}
+	} catch (e: unknown) {
+		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+	}
 }

@@ -23,8 +23,8 @@ import {
   Banknote,
   PackageOpen,
   ArrowLeft,
-  Star,
-  Clock,
+  Store,
+  Plus,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -894,6 +894,15 @@ export default function Market() {
 		flash()
 	}
 
+	/** Discover — Green Card “Get” opens CashTrees top-up (202 = min / green tier). */
+	const openDiscoverGreenCardTopup = () => {
+		setShowFooter(false)
+		setTopupCardAddress(USDC_TOPUP_CARD_ADDRESS)
+		setTopupItemId(202)
+		setTopupPresetAmountEmpty(false)
+		setSettingsOpen("USDCTopup")
+	}
+
 	const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] ?? []
 
 	const finalizeGenesis = () => {
@@ -912,7 +921,7 @@ export default function Market() {
 			style={{ top: 'max(1rem, env(safe-area-inset-top))', opacity: capsuleOpacity, pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
 		>
 			<div className="px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
-				<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Market</h1>
+				<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Discover</h1>
 			</div>
 		</div>
 
@@ -924,15 +933,15 @@ export default function Market() {
 		{/* Discover：与 renderAction Store 标签一致（联盟商家 + 限时券票样式） */}
 		<div className="animate-in fade-in duration-300 pb-8">
 			<div className="px-6 pt-2 mb-6">
-				<h1 className="text-4xl font-extrabold text-gray-900 dark:text-slate-100 tracking-tight">Discover</h1>
+				
 				<div className="flex items-center mt-2 bg-yellow-100 dark:bg-yellow-950/50 text-yellow-800 dark:text-yellow-200 px-3 py-1 rounded-md w-max shadow-sm border border-yellow-200/50 dark:border-yellow-800/50">
 					<Sparkles size={12} className="mr-1.5 shrink-0" />
-					<span className="text-[11px] font-bold uppercase tracking-wider">Alliance Members & Offers</span>
+					<span className="text-[11px] font-bold uppercase tracking-wider">Store Memberships & Offers</span>
 				</div>
 			</div>
 
 			<div className="px-6 space-y-6">
-				{/* 卡券 1：Sen Pho + Cafe — 自动抵扣 */}
+				{/* Store 1：Sen Pho + Cafe — membership tiers（与 beamio.app renderAction Discover 一致） */}
 				<div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all duration-300 group relative">
 					<div className="h-32 relative overflow-hidden bg-orange-50 dark:bg-orange-950/30 rounded-t-[2rem]">
 						<span className="text-7xl absolute opacity-30 flex items-center justify-center w-full h-full">🍜</span>
@@ -958,35 +967,62 @@ export default function Market() {
 					</div>
 
 					<div className="px-5 pb-5 pt-1 bg-white dark:bg-slate-900 rounded-b-[2rem] z-30 relative">
-						<div className="flex justify-between items-start mb-4">
-							<div>
-								<div className="flex items-center gap-1.5 mb-1">
-									<Star size={14} className="text-yellow-500 fill-yellow-500" />
-									<span className="text-xs font-bold text-yellow-600 dark:text-yellow-400 uppercase tracking-wider">Alliance Member</span>
-								</div>
-								<p className="text-sm text-gray-500 dark:text-slate-400 font-medium">10% Off All Menu Items</p>
+						<div className="mb-4">
+							<div className="flex items-center gap-1.5 mb-1">
+								<Store size={14} className="text-[#65A30D] dark:text-[#9AE66E]" />
+								<span className="text-xs font-bold text-[#65A30D] dark:text-[#9AE66E] uppercase tracking-wider">Store Membership Cards</span>
 							</div>
+							<p className="text-sm text-gray-500 dark:text-slate-400 font-medium">Top up to unlock exclusive discounts.</p>
 						</div>
 
-						<div className="flex justify-between items-center bg-gray-50 dark:bg-slate-800/80 p-3 rounded-2xl border border-gray-100 dark:border-slate-700">
-							<div className="flex flex-col">
-								<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mb-0.5">How to use</span>
-								<span className="text-sm font-bold text-gray-700 dark:text-slate-200">Pay with CashTrees</span>
+						<div className="space-y-3">
+							<div className="flex justify-between items-center bg-emerald-50/50 dark:bg-emerald-950/30 p-3 rounded-2xl border border-emerald-100 dark:border-emerald-900/60">
+								<div className="flex flex-col min-w-0 pr-2">
+									<div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+										<span className="text-sm font-bold text-gray-900 dark:text-slate-100">Green Card</span>
+										<span className="text-[9px] bg-emerald-100 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded font-bold">5% OFF</span>
+									</div>
+									<span className="text-xs text-gray-500 dark:text-slate-400">Min. $50 Top-up</span>
+								</div>
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation()
+										openDiscoverGreenCardTopup()
+									}}
+									className="shrink-0 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-200 hover:text-gray-900 dark:hover:text-white px-4 py-2 rounded-xl font-bold text-xs transition-colors shadow-sm active:scale-95 flex items-center gap-1"
+								>
+									<Plus size={14} /> Get
+								</button>
 							</div>
-							<div className="bg-[#96EB3C]/20 text-[#65A30D] dark:text-[#9AE66E] dark:bg-[#96EB3C]/15 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm">
-								<ShieldCheck size={14} /> Auto-Applied
+
+							<div className="flex justify-between items-center bg-gray-900 dark:bg-slate-950 p-3 rounded-2xl border border-gray-800 dark:border-slate-700">
+								<div className="flex flex-col">
+									<div className="flex items-center gap-1.5 mb-0.5">
+										<span className="text-sm font-bold text-white">Black Card</span>
+										<span className="text-[9px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-bold">10% OFF</span>
+									</div>
+									<span className="text-xs text-gray-400">Min. $100 Top-up</span>
+								</div>
+								<button
+									type="button"
+									disabled
+									className="shrink-0 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-400 dark:text-slate-500 px-4 py-2 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1 cursor-not-allowed opacity-90"
+								>
+									<CheckCircle2 size={14} /> Owned
+								</button>
 							</div>
 						</div>
 					</div>
 				</div>
 
-				{/* 卡券 2：Cha Cha Matcha — Claim */}
+				{/* Store 2：Lumina Roasters */}
 				<div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all duration-300 group relative">
-					<div className="h-32 relative overflow-hidden bg-green-50 dark:bg-green-950/30 rounded-t-[2rem]">
-						<span className="text-6xl absolute opacity-30 flex items-center justify-center w-full h-full">🧋</span>
+					<div className="h-32 relative overflow-hidden bg-amber-50 dark:bg-amber-950/25 rounded-t-[2rem]">
+						<span className="text-6xl absolute opacity-30 flex items-center justify-center w-full h-full">☕️</span>
 						<img
-							src="https://images.unsplash.com/photo-1558855567-1a42823b18d2?auto=format&fit=crop&q=80&w=800"
-							alt="Boba Tea"
+							src="https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&q=80&w=800"
+							alt="Lumina Roasters"
 							className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out z-10"
 							onError={(e) => {
 								const el = e.currentTarget
@@ -995,12 +1031,7 @@ export default function Market() {
 						/>
 						<div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 to-transparent z-20" />
 						<div className="absolute bottom-4 left-5 right-5 z-30">
-							<h3 className="font-extrabold text-xl text-white tracking-tight drop-shadow-md">Cha Cha Matcha</h3>
-						</div>
-
-						<div className="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1 z-30">
-							<Clock size={12} />
-							Ends Tomorrow
+							<h3 className="font-extrabold text-xl text-white tracking-tight drop-shadow-md">Lumina Roasters</h3>
 						</div>
 					</div>
 
@@ -1011,30 +1042,26 @@ export default function Market() {
 					</div>
 
 					<div className="px-5 pb-5 pt-1 bg-white dark:bg-slate-900 rounded-b-[2rem] z-30 relative">
-						<div className="flex justify-between items-start mb-4">
-							<div>
-								<div className="flex items-center gap-1.5 mb-1">
-									<Zap size={14} className="text-red-500 fill-red-500" />
-									<span className="text-xs font-bold text-red-500 uppercase tracking-wider">Limited Voucher</span>
-								</div>
-								<p className="text-sm text-gray-500 dark:text-slate-400 font-medium">1 Free Brown Sugar Boba</p>
+						<div className="mb-4">
+							<div className="flex items-center gap-1.5 mb-1">
+								<Store size={14} className="text-gray-400 dark:text-slate-500" />
+								<span className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Store Membership Cards</span>
 							</div>
 						</div>
 
 						<div className="flex justify-between items-center bg-gray-50 dark:bg-slate-800/80 p-3 rounded-2xl border border-gray-100 dark:border-slate-700">
 							<div className="flex flex-col">
-								<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mb-0.5">Your Price</span>
-								<div className="flex items-center">
-									<span className="text-sm font-bold text-gray-400 dark:text-slate-500 line-through mr-1.5">$7.50</span>
-									<span className="text-xl font-extrabold text-[#65A30D] leading-none">FREE</span>
+								<div className="flex items-center gap-1.5 mb-0.5">
+									<span className="text-sm font-bold text-gray-900 dark:text-slate-100">Green Card</span>
 								</div>
+								<span className="text-xs text-gray-500 dark:text-slate-400">Min. $50 Top-up</span>
 							</div>
 							<button
 								type="button"
-								onClick={() => navigate("/")}
-								className="bg-gray-900 dark:bg-slate-100 hover:bg-gray-800 dark:hover:bg-white text-white dark:text-gray-900 px-5 py-2.5 rounded-xl font-bold text-sm transition-colors shadow-sm active:scale-95 flex items-center gap-1.5"
+								disabled
+								className="shrink-0 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-400 dark:text-slate-500 px-4 py-2 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1 cursor-not-allowed opacity-90"
 							>
-								Claim Now
+								<CheckCircle2 size={14} /> Owned
 							</button>
 						</div>
 					</div>

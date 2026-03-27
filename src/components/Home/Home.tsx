@@ -1,6 +1,6 @@
 // Home.tsx
 
-import { useEffect, useRef, useState, useMemo, useLayoutEffect } from "react"
+import { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -8,6 +8,7 @@ import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEv
 import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
+import type { LucideIcon } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { createOrGetWallet, storeSystemData, postBeamio} from "@/services/beamio"
 import BeamioAlphaHowItWorks from './BeamioAlphaHowItWorks'
@@ -16,7 +17,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info } 
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info, Star, Nfc, SlidersHorizontal, CheckCircle2, Trash2, Smartphone }
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -31,7 +32,16 @@ import { QRCodeCanvas } from 'qrcode.react'
 import bIcon from '@/components/assets/logo512.png'
 import { baseEndpoint } from '@/utils/constants'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
-import { getAAAccount, getMyAssets, getMyAssetsAggregated, getBUnitBalanceOnConet } from '@/services/BeamioCard'
+import {
+	getAAAccount,
+	getMyAssets,
+	getMyAssetsAggregated,
+	getBUnitBalanceOnConet,
+	postNfcLinkApp,
+	postNfcLinkAppClaimWithKey,
+	postListLinkedNfcCards,
+	postNfcCardLinkStateSigned,
+} from '@/services/BeamioCard'
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
@@ -61,8 +71,80 @@ const displayName = (item: beamio | searchResult | null | undefined) => {
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 
+type CashTreesNativeNfcStatus =
+	| 'unknown'
+	| 'no_bridge'
+	| 'no_hardware'
+	| 'disabled'
+	| 'ready'
+	| 'permission_denied'
 
+type CashTreesNfcOverlayPhase = 'hidden' | 'tap' | 'fetch' | 'result' | 'error'
 
+type CashTreesNfcLinkOverlayResult = {
+	redeemTxHash?: string | null
+	address?: string
+}
+
+type CashTreesNfcOverlayState = {
+	phase: CashTreesNfcOverlayPhase
+	errorMsg?: string
+	/** Link App 完成后的链上/账户摘要（替代原 getUIDAssets 余额展示） */
+	linkResult?: CashTreesNfcLinkOverlayResult | null
+	ndefUri?: string
+	tagUidHex?: string
+}
+
+/** Card Management 列表行（/api/listLinkedNfcCards + 本地主卡 UI） */
+type HomeLinkedNfcCardRow = {
+	id: string
+	uid: string
+	tagId: string
+	linkState: 'active' | 'deactive'
+	last4: string
+	isPrimaryUi: boolean
+}
+
+const shortNfcId = (s: string, head = 8, tail = 4) =>
+	s.length > head + tail + 1 ? `${s.slice(0, head)}…${s.slice(-tail)}` : s
+
+/** 与 nfcLinkAppClaimWithKey 服务端校验一致：导出 0x+64 hex 私钥 */
+function privateKeyHexForNfcLinkClaim(raw: string | null | undefined): string | null {
+	const t = raw?.trim() ?? ''
+	if (!t) return null
+	try {
+		const w = new ethers.Wallet(t.startsWith('0x') ? t : `0x${t}`)
+		const pk = w.privateKey
+		if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) return null
+		return pk
+	} catch {
+		return null
+	}
+}
+
+function readCashTreesAndroidBridge() {
+	return (
+		window as Window & {
+			CashTreesAndroid?: {
+				getNfcStatus: () => string
+				startPhysicalCardBind: () => void
+				cancelPhysicalCardBind: () => void
+			}
+		}
+	).CashTreesAndroid
+}
+
+type HomeStoreCardRow = {
+	id: string
+	name: string
+	type: string
+	color: string
+	borderColor: string
+	iconColor: string
+	bgColor: string
+	icon: LucideIcon
+	balanceCad: number
+}
 
 const Home = ({}) => {
 	const { setDarkModle, profiles,
@@ -109,12 +191,34 @@ const Home = ({}) => {
 	/** Add Cash 后：底部 sheet 内显示 Coinbase 确认 (204-221)，非全屏 */
 	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
 	const [aaAddrCopied, setAaAddrCopied] = useState(false)
+	/** 首页 CashTrees 大卡：与 getMyAssets(BEAMIO_USER_CARD) 同源（AA USDC + POINTS_ID #0） */
+	const [cashTreesWalletSnapshot, setCashTreesWalletSnapshot] = useState<{
+		aaUsdc: string
+		points0: string
+	} | null>(null)
 	/** CashTrees 卡点击：AA USDC + 基础设施卡 points（token #0 口径，与 getMyAssets 一致） */
 	const [showCashTreesBalanceDetails, setShowCashTreesBalanceDetails] = useState(false)
 	const [cashTreesBalanceLoading, setCashTreesBalanceLoading] = useState(false)
 	const [cashTreesBalanceError, setCashTreesBalanceError] = useState<string | null>(null)
 	const [cashTreesSheetAaUsdc, setCashTreesSheetAaUsdc] = useState<string | null>(null)
 	const [cashTreesSheetPoints0, setCashTreesSheetPoints0] = useState<string | null>(null)
+	/** CaehTrees Android WebView：NFC 能力探测与贴卡绑定 */
+	const [cashTreesNativeNfcStatus, setCashTreesNativeNfcStatus] =
+		useState<CashTreesNativeNfcStatus>('unknown')
+	const [cashTreesNfcOverlay, setCashTreesNfcOverlay] = useState<CashTreesNfcOverlayState>({
+		phase: 'hidden',
+	})
+	const [linkedNfcCards, setLinkedNfcCards] = useState<HomeLinkedNfcCardRow[]>([])
+	const [showCardManagementModal, setShowCardManagementModal] = useState(false)
+	const [linkedNfcListLoading, setLinkedNfcListLoading] = useState(false)
+	const [nfcLinkActionTagId, setNfcLinkActionTagId] = useState<string | null>(null)
+	const [cardMgmtError, setCardMgmtError] = useState<string | null>(null)
+	const cashTreesNfcReq = useRef(0)
+	const [homeStoreCards] = useState<HomeStoreCardRow[]>([
+		{ id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-gray-800 to-gray-900', borderColor: 'border-gray-700', iconColor: 'text-yellow-500', bgColor: 'bg-yellow-500/20', icon: Star, balanceCad: 50.0 },
+		{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-emerald-500 to-teal-700', borderColor: 'border-emerald-600', iconColor: 'text-white', bgColor: 'bg-white/20', icon: CreditCard, balanceCad: 10.0 },
+	])
+	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
 
 	/** 链上 / 本地已存在与 EOA 不同的 Smart Account 地址时视为已激活 AA */
@@ -124,6 +228,51 @@ const Home = ({}) => {
 		const eoa = (profiles?.[0]?.keyID || '').toLowerCase()
 		return aa.toLowerCase() !== eoa
 	}, [profiles?.[0]?.aaAccount, profiles?.[0]?.keyID])
+
+	/** POST /api/listLinkedNfcCards：AA 已部署时传 AA，否则传 EOA */
+	const refreshLinkedNfcCards = useCallback(async () => {
+		const profile = profiles?.[0]
+		if (!profile?.keyID) return
+		const aa = profile.aaAccount?.trim()
+		const eoa = profile.keyID.toLowerCase()
+		const useAa = Boolean(aa && ethers.isAddress(aa) && aa.toLowerCase() !== eoa)
+		const wallet = useAa && aa ? aa : profile.keyID
+		if (!wallet || !ethers.isAddress(wallet)) return
+		setLinkedNfcListLoading(true)
+		setCardMgmtError(null)
+		try {
+			const res = await postListLinkedNfcCards(wallet)
+			if (!res.ok) {
+				setLinkedNfcCards([])
+				return
+			}
+			const cards = res.cards
+			setLinkedNfcCards((prev) => {
+				if (!cards.length) return []
+				const preferred = prev.find((x) => x.isPrimaryUi)?.id ?? null
+				const ids = new Set(cards.map((c) => `${c.uid}-${c.tagId}`))
+				let primaryId = preferred && ids.has(preferred) ? preferred : null
+				if (!primaryId) {
+					const idx = cards.findIndex((c) => c.linkState === 'active')
+					const pick = idx >= 0 ? cards[idx]! : cards[0]!
+					primaryId = `${pick.uid}-${pick.tagId}`
+				}
+				return cards.map((c) => {
+					const id = `${c.uid}-${c.tagId}`
+					return {
+						id,
+						uid: c.uid,
+						tagId: c.tagId,
+						linkState: c.linkState,
+						last4: c.tagId.slice(-4),
+						isPrimaryUi: id === primaryId,
+					}
+				})
+			})
+		} finally {
+			setLinkedNfcListLoading(false)
+		}
+	}, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
 
 	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
 	/** 已登录 EOA、尚未部署 AA 时在首页展示激活引导（与 renderAction Activate Wallet 对齐） */
@@ -186,6 +335,15 @@ const Home = ({}) => {
 		getMyAssetsAggregated(profile)
 			.then(setCcsaAssets)
 			.catch(() => setCcsaAssets(null))
+		getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS)
+			.then((res) => {
+				setCashTreesWalletSnapshot(
+					res
+						? { aaUsdc: res.usdcBalance ?? '0', points0: res.points ?? '0' }
+						: { aaUsdc: '0', points0: '0' }
+				)
+			})
+			.catch(() => setCashTreesWalletSnapshot({ aaUsdc: '0', points0: '0' }))
 		getBUnitBalanceOnConet(profile.keyID)
 			.then(setBUnitBalance)
 			.catch(() => setBUnitBalance(null))
@@ -321,8 +479,9 @@ const Home = ({}) => {
 	useEffect(() => {
 		if (profiles?.length && profiles[0]?.keyID) {
 			reflashProcess()
+			void refreshLinkedNfcCards()
 		}
-	}, [profiles?.length, profiles?.[0]?.keyID])
+	}, [profiles?.length, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, refreshLinkedNfcCards])
 
 
 
@@ -782,15 +941,184 @@ const Home = ({}) => {
 		[beamio?.accountName]
 	)
 
-	/** CashTrees 卡片区：AA 短地址、USDC 总余额展示（与 renderAction home 一致） */
+	/** CashTrees 卡片区：AA 短地址；Total = Oracle 牌价 USDC→CAD + 基础设施卡 POINTS_ID（#0） */
 	const cashTreesCardDisplay = useMemo(() => {
 		const aaFull = (profiles?.[0]?.aaAccount ?? '').trim()
-		const n = Number(usdcbalance)
-		const safe = Number.isFinite(n) ? Math.max(0, n) : 0
-		const [whole, frac = '00'] = safe.toFixed(2).split('.')
-		// 实体 NFC 绑定状态暂无单一链上字段；未接 NFC 旗标前与 renderAction 默认一致（Virtual + Bind）
-		return { aaFull, aaShort: fmtAddr(aaFull), whole, frac, isPhysicalCardBound: false }
-	}, [profiles?.[0]?.aaAccount, usdcbalance])
+		const d = currencyData as { USDC?: number; CAD?: number } | undefined
+		const usdcRate = Number(d?.USDC) > 0 ? Number(d?.USDC) : 1
+		const cadPerUsd = Number(d?.CAD) > 0 ? Number(d?.CAD) : 1.35
+		const usdcHuman = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
+		const safeUsdc = Number.isFinite(usdcHuman) ? Math.max(0, usdcHuman) : 0
+		const cadFromUsdc = safeUsdc * usdcRate * cadPerUsd
+		const ptsHuman = Number(cashTreesWalletSnapshot?.points0 ?? '0')
+		const safePts = Number.isFinite(ptsHuman) ? Math.max(0, ptsHuman) : 0
+		const totalCad = cadFromUsdc + safePts
+		const [whole, frac = '00'] = totalCad.toFixed(2).split('.')
+		return { aaFull, aaShort: fmtAddr(aaFull), whole, frac, isPhysicalCardBound: linkedNfcCards.length > 0 }
+	}, [profiles?.[0]?.aaAccount, currencyData, cashTreesWalletSnapshot, linkedNfcCards.length])
+
+	/** 链上/后端「已关联实体卡」；以 listLinkedNfcCards 为准。 */
+	const cashTreesPhysicalCardBoundEffective = cashTreesCardDisplay.isPhysicalCardBound
+
+	useEffect(() => {
+		const android = readCashTreesAndroidBridge()
+		if (!android?.getNfcStatus) {
+			setCashTreesNativeNfcStatus('no_bridge')
+			return
+		}
+		try {
+			const s = android.getNfcStatus()
+			if (s === 'ready') setCashTreesNativeNfcStatus('ready')
+			else if (s === 'no_hardware') setCashTreesNativeNfcStatus('no_hardware')
+			else if (s === 'disabled') setCashTreesNativeNfcStatus('disabled')
+			else if (s === 'nfc_permission_denied') setCashTreesNativeNfcStatus('permission_denied')
+			else setCashTreesNativeNfcStatus('no_bridge')
+		} catch {
+			setCashTreesNativeNfcStatus('no_bridge')
+		}
+	}, [])
+
+	useEffect(() => {
+		const profile = profiles?.[0]
+		const onNfc = (ev: Event) => {
+			const d = (ev as CustomEvent<Record<string, unknown>>).detail
+			if (!d || typeof d !== 'object') return
+			if (d.ok === false) {
+				const err = typeof d.error === 'string' ? d.error : 'NFC error'
+				if (err === 'cancelled' || err === 'paused') {
+					cashTreesNfcReq.current++
+					setCashTreesNfcOverlay({ phase: 'hidden' })
+					return
+				}
+				setCashTreesNfcOverlay({ phase: 'error', errorMsg: err })
+				return
+			}
+			if (d.ok !== true) return
+			const queryUid = typeof d.queryUid === 'string' ? d.queryUid.trim() : ''
+			if (!queryUid) {
+				setCashTreesNfcOverlay({ phase: 'error', errorMsg: 'Invalid NFC payload' })
+				return
+			}
+			const sunRaw = d.sun
+			const sun =
+				sunRaw && typeof sunRaw === 'object'
+					? (sunRaw as { e?: string; c?: string; m?: string })
+					: undefined
+			const e = typeof sun?.e === 'string' ? sun.e.trim() : ''
+			const c = typeof sun?.c === 'string' ? sun.c.trim() : ''
+			const m = typeof sun?.m === 'string' ? sun.m.trim() : ''
+			if (e.length !== 64 || c.length !== 6 || m.length !== 16) {
+				setCashTreesNfcOverlay({
+					phase: 'error',
+					errorMsg:
+						'This card does not support secure link. Missing or invalid SUN data (e, c, m).',
+					ndefUri: typeof d.ndefUri === 'string' ? d.ndefUri : undefined,
+					tagUidHex: typeof d.tagUidHex === 'string' ? d.tagUidHex : undefined,
+				})
+				return
+			}
+			const pkHex = privateKeyHexForNfcLinkClaim(profile?.privateKeyArmor ?? null)
+			if (!pkHex) {
+				setCashTreesNfcOverlay({
+					phase: 'error',
+					errorMsg: 'Wallet key is not available. Unlock your wallet and try again.',
+					ndefUri: typeof d.ndefUri === 'string' ? d.ndefUri : undefined,
+					tagUidHex: typeof d.tagUidHex === 'string' ? d.tagUidHex : undefined,
+				})
+				return
+			}
+			const rid = ++cashTreesNfcReq.current
+			const base = {
+				ndefUri: typeof d.ndefUri === 'string' ? d.ndefUri : undefined,
+				tagUidHex: typeof d.tagUidHex === 'string' ? d.tagUidHex : undefined,
+			}
+			setCashTreesNfcOverlay({
+				phase: 'fetch',
+				...base,
+			})
+			void (async () => {
+				const link = await postNfcLinkApp({
+					uid: queryUid,
+					e,
+					c,
+					m,
+					cardAddress: BEAMIO_USER_CARD_ASSET_ADDRESS,
+				})
+				if (rid !== cashTreesNfcReq.current) return
+				if (!link.ok) {
+					const locked =
+						link.errorCode === 'NFC_LINK_APP_CARD_LOCKED' || link.httpStatus === 409
+					setCashTreesNfcOverlay({
+						phase: 'error',
+						errorMsg: locked
+							? 'This card is already in a pending link session. Ask the merchant to cancel the link lock on the POS, then try again.'
+							: link.error,
+						...base,
+					})
+					return
+				}
+				const claim = await postNfcLinkAppClaimWithKey({
+					nftRedeemcode: link.nftRedeemcode,
+					tagid: link.tagid,
+					uid: link.uid,
+					counter: link.counter,
+					privateKey: pkHex,
+				})
+				if (rid !== cashTreesNfcReq.current) return
+				if (!claim.ok) {
+					setCashTreesNfcOverlay({
+						phase: 'error',
+						errorMsg: claim.error,
+						...base,
+					})
+					return
+				}
+				setCashTreesNfcOverlay({
+					phase: 'result',
+					linkResult: {
+						address: claim.address,
+						redeemTxHash: claim.redeemTxHash,
+					},
+					...base,
+				})
+				if (profile) {
+					void getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS)
+						.then((res) => {
+							if (!res) return
+							setCashTreesWalletSnapshot({
+								aaUsdc: res.usdcBalance ?? '0',
+								points0: res.points ?? '0',
+							})
+						})
+						.catch(() => {})
+					void refreshLinkedNfcCards()
+				}
+			})()
+		}
+		window.addEventListener('cashtreesnfc', onNfc)
+		return () => window.removeEventListener('cashtreesnfc', onNfc)
+	}, [profiles, refreshLinkedNfcCards])
+
+	const startCashTreesPhysicalCardBind = () => {
+		const android = readCashTreesAndroidBridge()
+		if (android?.startPhysicalCardBind) {
+			cashTreesNfcReq.current++
+			setCashTreesNfcOverlay({ phase: 'tap' })
+			try {
+				android.startPhysicalCardBind()
+			} catch {
+				setCashTreesNfcOverlay({ phase: 'hidden' })
+			}
+			return
+		}
+		navigate('/myWallet')
+	}
+
+	const cancelCashTreesNfcBind = () => {
+		readCashTreesAndroidBridge()?.cancelPhysicalCardBind?.()
+		cashTreesNfcReq.current++
+		setCashTreesNfcOverlay({ phase: 'hidden' })
+	}
 
 	const copyCashTreesAaAddress = async () => {
 		if (!cashTreesCardDisplay.aaFull) return
@@ -800,6 +1128,64 @@ const Home = ({}) => {
 			window.setTimeout(() => setAaAddrCopied(false), 2000)
 		} catch {
 			// ignore
+		}
+	}
+
+	const openCardManagement = () => {
+		setCardMgmtError(null)
+		setShowCardManagementModal(true)
+		void refreshLinkedNfcCards()
+	}
+
+	const setLinkedNfcPrimaryById = (id: string) => {
+		setLinkedNfcCards((prev) => prev.map((c) => ({ ...c, isPrimaryUi: c.id === id })))
+	}
+
+	const enableLinkedNfcOnServer = async (tagId: string) => {
+		const pk = profiles?.[0]?.privateKeyArmor
+		if (!pk) {
+			setCardMgmtError('Wallet key is not available.')
+			return
+		}
+		setNfcLinkActionTagId(tagId)
+		setCardMgmtError(null)
+		try {
+			const out = await postNfcCardLinkStateSigned({
+				privateKeyArmorOrHex: pk,
+				action: 'active',
+				tagId16: tagId.replace(/^0x/i, '').toUpperCase(),
+			})
+			if (!out.ok) {
+				setCardMgmtError(out.error)
+				return
+			}
+			await refreshLinkedNfcCards()
+		} finally {
+			setNfcLinkActionTagId(null)
+		}
+	}
+
+	const removeLinkedNfcOnServer = async (tagId: string) => {
+		const pk = profiles?.[0]?.privateKeyArmor
+		if (!pk) {
+			setCardMgmtError('Wallet key is not available.')
+			return
+		}
+		setNfcLinkActionTagId(tagId)
+		setCardMgmtError(null)
+		try {
+			const out = await postNfcCardLinkStateSigned({
+				privateKeyArmorOrHex: pk,
+				action: 'remove',
+				tagId16: tagId.replace(/^0x/i, '').toUpperCase(),
+			})
+			if (!out.ok) {
+				setCardMgmtError(out.error)
+				return
+			}
+			await refreshLinkedNfcCards()
+		} finally {
+			setNfcLinkActionTagId(null)
 		}
 	}
 
@@ -917,42 +1303,71 @@ const Home = ({}) => {
 					</span>
 				</button>
 			</div> */}
-			{/* 固定独立胶囊：头像 + @username，悬浮于顶部，左对齐，随滚动渐隐 */}
+			{/* 顶部栏：左右胶囊同一行 items-center 上下对齐；中间不拦截触摸 */}
 			{!openSearch && (
-				<button
-					type="button"
-					onClick={() => navigate('/myWallet')}
-					className="fixed left-4 z-30 flex items-center justify-start transition-opacity duration-300"
-					style={{ top: 'max(1rem, env(safe-area-inset-top))', opacity: capsuleOpacity, pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
-					aria-label="Open wallet"
+				<div
+					className="pointer-events-none fixed left-4 right-4 z-30 flex items-center justify-between transition-opacity duration-300"
+					style={{
+						top: 'max(1rem, env(safe-area-inset-top))',
+						opacity: capsuleOpacity,
+					}}
 				>
-					<div
-						className="flex items-center gap-2.5 pl-2 pr-4 py-2 bg-white dark:bg-slate-800 rounded-full shadow-[0_4px_24px_rgba(15,23,42,0.08)] border border-slate-100/90 dark:border-slate-700/80 group active:scale-[0.98] transition-transform"
+					<button
+						type="button"
+						onClick={() => navigate('/myWallet')}
+						className="flex items-center justify-start"
+						style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+						aria-label="Open wallet"
 					>
-						<div
-							className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shrink-0 text-base font-bold text-white"
-							style={{ backgroundColor: homeAccent }}
-						>
-							{beamio?.image ? (
-								<img
-									src={beamio.image}
-									alt={beamio.accountName}
-									className="w-full h-full object-cover"
-									draggable={false}
-								/>
-							) : (
-								<span className="leading-none">
-									{(beamio?.accountName || 'B').replace(/^@/, '').charAt(0).toUpperCase() || '?'}
-								</span>
-							)}
+						<div className="flex items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] dark:border-slate-700/80 dark:bg-slate-800">
+							<div
+								className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-base font-bold text-white"
+								style={{ backgroundColor: homeAccent }}
+							>
+								{beamio?.image ? (
+									<img
+										src={beamio.image}
+										alt={beamio.accountName}
+										className="h-full w-full object-cover"
+										draggable={false}
+									/>
+								) : (
+									<span className="leading-none">
+										{(beamio?.accountName || 'B').replace(/^@/, '').charAt(0).toUpperCase() || '?'}
+									</span>
+								)}
+							</div>
+							<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
+								@{beamio?.accountName?.replace(/^@/, '') || 'Beamio'}
+							</span>
 						</div>
-						<span
-							className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100"
+					</button>
+					{hasAAWallet ? (
+						<button
+							type="button"
+							onClick={openCardManagement}
+							className="flex items-center justify-end"
+							style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+							aria-label="NFC cards"
 						>
-							@{beamio?.accountName?.replace(/^@/, '') || 'Beamio'}
-						</span>
-					</div>
-				</button>
+							<div className="relative flex items-center justify-center rounded-full border border-slate-100/90 bg-white py-2 pl-2.5 pr-2.5 shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] dark:border-slate-700/80 dark:bg-slate-800">
+								<SlidersHorizontal
+									className="h-5 w-5 shrink-0 text-[#0F172A] dark:text-slate-100"
+									strokeWidth={2.2}
+									aria-hidden
+								/>
+								{linkedNfcCards.length > 0 && (
+									<span
+										className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#65A30D] dark:border-slate-800"
+										aria-hidden
+									/>
+								)}
+							</div>
+						</button>
+					) : (
+						<span className="pointer-events-none w-0 shrink-0" aria-hidden />
+					)}
+				</div>
 			)}
 
 			{/*
@@ -1144,9 +1559,11 @@ const Home = ({}) => {
 
 									<div className="relative z-10 flex justify-between items-end gap-3">
 										<div className="min-w-0">
-											<p className="text-sm text-gray-800 font-bold mb-0.5 opacity-90 tracking-wide">Total Balance</p>
+											<p className="text-sm text-gray-800 font-bold mb-0.5 opacity-90 tracking-wide">
+												Total Balance
+											</p>
 											<div className="flex items-baseline flex-wrap">
-												<span className="text-3xl font-bold mr-1 opacity-80">$</span>
+												<span className="text-3xl font-bold mr-1 opacity-80">CA$</span>
 												<p className="text-[44px] font-extrabold tracking-tighter text-gray-900 leading-none">
 													{cashTreesCardDisplay.whole}
 													<span className="text-3xl font-bold text-gray-800/80">.{cashTreesCardDisplay.frac}</span>
@@ -1160,17 +1577,22 @@ const Home = ({}) => {
 												<span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
 											</div>
 											<span className="text-[10px] font-bold text-gray-900 tracking-wider uppercase">
-												{cashTreesCardDisplay.isPhysicalCardBound ? 'Card Linked' : 'Virtual Active'}
+												{cashTreesPhysicalCardBoundEffective ? 'Card Linked' : 'Virtual Active'}
 											</span>
 										</div>
 									</div>
 								</div>
 
-								{!cashTreesCardDisplay.isPhysicalCardBound && (
+								{!cashTreesPhysicalCardBoundEffective && cashTreesNativeNfcStatus === 'permission_denied' && (
+									<p className="text-center text-[11px] text-amber-700 dark:text-amber-400 mt-3 px-4 font-medium">
+										NFC requires an app update. Please install the latest CashTrees build from the store.
+									</p>
+								)}
+								{!cashTreesPhysicalCardBoundEffective && cashTreesNativeNfcStatus === 'ready' && (
 									<div className="flex justify-center mt-4 animate-in zoom-in-95 duration-300">
 										<button
 											type="button"
-											onClick={() => navigate('/myWallet')}
+											onClick={() => startCashTreesPhysicalCardBind()}
 											className="flex items-center gap-1.5 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:text-[#65A30D] dark:hover:text-[#9AE66E] hover:border-[#96EB3C]/50 transition-all active:scale-95"
 										>
 											<Plus size={14} strokeWidth={2.5} aria-hidden />
@@ -1179,6 +1601,65 @@ const Home = ({}) => {
 										</button>
 									</div>
 								)}
+							</div>
+
+							{/* My Store Cards — 与 beamio.app renderAction 同结构：不外扩 -mx，左右与外层 px-5 对齐；末卡右侧留 pr */}
+							<div className="mt-2 mb-1">
+								<div className="flex justify-between items-center mb-3">
+									<h2 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
+										My Store Cards ({homeStoreCards.length})
+									</h2>
+								</div>
+								<div className="flex overflow-x-auto hide-scrollbar gap-4 pb-3 snap-x pr-5">
+									{homeStoreCards.map((card) => {
+										const IconComponent = card.icon
+										return (
+											<div
+												key={card.id}
+												role="button"
+												tabIndex={0}
+												onClick={() => setSelectedHomeStoreCard(card)}
+												onKeyDown={(e) => {
+													if (e.key === 'Enter' || e.key === ' ') {
+														e.preventDefault()
+														setSelectedHomeStoreCard(card)
+													}
+												}}
+												className={`snap-start min-w-[240px] bg-gradient-to-br ${card.color} rounded-[1.5rem] p-5 shadow-md border ${card.borderColor} relative overflow-hidden flex-shrink-0 cursor-pointer hover:-translate-y-1 transition-transform`}
+											>
+												<div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-10 -mt-10 blur-xl" />
+												<div className="flex justify-between items-start mb-6 relative z-10">
+													<div>
+														<h3 className="text-white font-bold text-lg leading-tight mb-1">{card.name}</h3>
+														<div className={`flex items-center gap-1 ${card.bgColor} ${card.iconColor} px-2 py-0.5 rounded-md w-max`}>
+															<IconComponent size={10} aria-hidden />
+															<span className="text-[10px] font-bold uppercase tracking-wider text-white">{card.type}</span>
+														</div>
+													</div>
+												</div>
+												<div className="relative z-10">
+													<p className="text-gray-300 text-xs font-medium mb-0.5">Store Balance (CAD)</p>
+													<p className="text-2xl font-extrabold text-white tracking-tight">${card.balanceCad.toFixed(2)}</p>
+												</div>
+											</div>
+										)
+									})}
+									<div
+										role="button"
+										tabIndex={0}
+										onClick={() => navigate('/Browser')}
+										onKeyDown={(e) => {
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault()
+												navigate('/Browser')
+											}
+										}}
+										className="snap-start min-w-[120px] bg-gray-50 dark:bg-slate-800/80 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-[#65A30D] dark:hover:text-[#9AE66E] hover:border-[#65A30D] transition-colors cursor-pointer flex-shrink-0"
+									>
+										<Plus size={24} className="mb-2" aria-hidden />
+										<span className="text-xs font-bold uppercase tracking-wider">Discover</span>
+									</div>
+								</div>
 							</div>
 
 							{/* Add Cash | Send | Pay */}
@@ -1312,6 +1793,63 @@ const Home = ({}) => {
 				document.body
 			)}
 
+			{/* My Store Card：首页横向卡点击摘要（对齐 renderAction） */}
+			{createPortal(
+				<AnimatePresence>
+					{selectedHomeStoreCard && (
+						<>
+							<motion.div
+								key="home-store-card-backdrop"
+								className="fixed inset-0 z-[10040] bg-black/50 dark:bg-black/60 backdrop-blur-sm"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+								transition={{ duration: 0.2 }}
+								onClick={() => setSelectedHomeStoreCard(null)}
+							/>
+							<motion.div
+								key="home-store-card-sheet"
+								className="fixed left-0 right-0 bottom-0 z-[10041] bg-white dark:bg-slate-900 rounded-t-[24px] shadow-2xl pb-[calc(env(safe-area-inset-bottom)+1.25rem)] px-6 pt-2"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="mx-auto w-12 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full mb-4" />
+								<div className="flex justify-between items-start gap-3 mb-4">
+									<div className="min-w-0">
+										<h3 className="text-xl font-bold text-[#0F172A] dark:text-slate-100 truncate">{selectedHomeStoreCard.name}</h3>
+										<p className="text-sm text-gray-500 dark:text-slate-400 mt-1">{selectedHomeStoreCard.type}</p>
+									</div>
+									<button
+										type="button"
+										onClick={() => setSelectedHomeStoreCard(null)}
+										className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+										aria-label="Close"
+									>
+										<X className="w-5 h-5" />
+									</button>
+								</div>
+								<p className="text-sm text-gray-500 dark:text-slate-400 mb-2">Store Balance (CAD)</p>
+								<p className="text-3xl font-extrabold text-[#0F172A] dark:text-slate-100 mb-6">${selectedHomeStoreCard.balanceCad.toFixed(2)}</p>
+								<button
+									type="button"
+									onClick={() => {
+										setSelectedHomeStoreCard(null)
+										navigate('/Browser')
+									}}
+									className="w-full py-3.5 rounded-2xl bg-[#96EB3C] text-[#0F172A] font-bold hover:bg-[#8ad936] active:scale-[0.99] transition-transform"
+								>
+									View in Discover
+								</button>
+							</motion.div>
+						</>
+					)}
+				</AnimatePresence>,
+				document.body,
+			)}
+
 			{/* CashTrees 卡：Balance Details（链上 AA USDC + 基础设施卡 points / token #0，对齐 renderAction 1082–1131） */}
 			{createPortal(
 				<AnimatePresence>
@@ -1405,6 +1943,295 @@ const Home = ({}) => {
 					)}
 				</AnimatePresence>,
 				document.body
+			)}
+
+			{createPortal(
+				<AnimatePresence>
+					{cashTreesNfcOverlay.phase !== 'hidden' && (
+						<div className="fixed inset-0 z-[10030] flex items-center justify-center p-5">
+							<button
+								type="button"
+								className={`absolute inset-0 border-0 p-0 ${
+									cashTreesNfcOverlay.phase === 'fetch' ? 'cursor-default' : 'cursor-pointer'
+								} bg-gray-900/45 dark:bg-black/55 backdrop-blur-md`}
+								aria-label="Dismiss"
+								onClick={() => {
+									if (cashTreesNfcOverlay.phase !== 'fetch') {
+										cancelCashTreesNfcBind()
+									}
+								}}
+							/>
+							<div className="relative z-10 w-full max-w-[300px] rounded-[2rem] border-2 border-[#96EB3C]/45 dark:border-[#65A30D]/50 bg-white dark:bg-slate-900 shadow-xl shadow-[#96EB3C]/15 overflow-hidden min-h-[280px] flex flex-col">
+								{(cashTreesNfcOverlay.phase === 'tap' || cashTreesNfcOverlay.phase === 'fetch') && (
+									<>
+										<div className="relative flex-1 flex flex-col items-center justify-center px-6 pt-10 pb-6 min-h-[220px]">
+											<div className="absolute inset-3 border-2 border-[#96EB3C]/25 rounded-[1.65rem] pointer-events-none" />
+											{cashTreesNfcOverlay.phase === 'tap' ? (
+												<>
+													<Nfc
+														className="w-[7.5rem] h-[7.5rem] text-gray-200 dark:text-slate-700 mb-4"
+														strokeWidth={1.25}
+														aria-hidden
+													/>
+													<p className="text-xs text-gray-500 dark:text-slate-400 text-center font-medium leading-relaxed">
+														Hold the CashTrees NTAG card near the NFC sensor on your phone.
+													</p>
+												</>
+											) : (
+												<>
+													<Loader2
+														className="w-16 h-16 text-[#65A30D] dark:text-[#9AE66E] animate-spin mb-4"
+														aria-hidden
+													/>
+													<p className="text-lg font-bold text-gray-900 dark:text-slate-100 text-center">
+														Linking your card
+													</p>
+													<p className="text-xs text-gray-500 dark:text-slate-400 text-center mt-2">
+														Opening a secure session and attaching this tag to your wallet.
+													</p>
+												</>
+											)}
+										</div>
+										<div className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-50/90 dark:bg-slate-800/90 border-t border-gray-100 dark:border-slate-700">
+											<ShieldCheck size={14} className="text-gray-400 shrink-0" aria-hidden />
+											<span className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
+												Secured by Beamio Protocol
+											</span>
+										</div>
+										<div className="p-4 pt-2">
+											<button
+												type="button"
+												onClick={() => cancelCashTreesNfcBind()}
+												className="w-full py-3.5 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 active:scale-[0.98] text-gray-900 dark:text-slate-100 rounded-full font-bold text-sm border border-gray-200 dark:border-slate-600"
+											>
+												Cancel
+											</button>
+										</div>
+									</>
+								)}
+								{cashTreesNfcOverlay.phase === 'result' && cashTreesNfcOverlay.linkResult != null && (
+									<div className="flex flex-col p-6 pb-5">
+										<div className="flex flex-col items-center mb-5">
+											<div className="w-12 h-12 rounded-full bg-emerald-500/15 flex items-center justify-center mb-3">
+												<Check className="w-7 h-7 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} aria-hidden />
+											</div>
+											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight text-center">
+												Physical card linked
+											</h3>
+											<p className="text-xs text-gray-500 dark:text-slate-400 text-center mt-2 leading-relaxed px-1">
+												This NFC tag is now bound to your CashTrees wallet. Your home balance will refresh
+												shortly.
+											</p>
+											<p className="text-[11px] text-gray-500 dark:text-slate-400 mt-3 font-mono text-center">
+												{shortNfcId(cashTreesNfcOverlay.tagUidHex || '—', 6, 4)}
+											</p>
+											{cashTreesNfcOverlay.linkResult.redeemTxHash ? (
+												<p
+													className="text-[10px] text-gray-400 dark:text-slate-500 mt-2 text-center break-all line-clamp-2 max-w-full"
+													title={cashTreesNfcOverlay.linkResult.redeemTxHash}
+												>
+													Tx {shortNfcId(cashTreesNfcOverlay.linkResult.redeemTxHash, 10, 6)}
+												</p>
+											) : null}
+											{cashTreesNfcOverlay.ndefUri ? (
+												<p
+													className="text-[10px] text-gray-400 dark:text-slate-500 mt-2 text-center break-all line-clamp-2 max-w-full"
+													title={cashTreesNfcOverlay.ndefUri}
+												>
+													{cashTreesNfcOverlay.ndefUri}
+												</p>
+											) : null}
+										</div>
+										<button
+											type="button"
+											onClick={() => cancelCashTreesNfcBind()}
+											className="w-full py-3.5 bg-gradient-to-r from-[#8AE131] to-[#67AD0F] dark:from-[#6fb828] dark:to-[#4f9410] text-gray-900 font-bold rounded-full shadow-md border border-[#96EB3C]/40"
+										>
+											Done
+										</button>
+									</div>
+								)}
+								{cashTreesNfcOverlay.phase === 'error' && (
+									<div className="flex flex-col p-6">
+										<p className="text-sm text-amber-700 dark:text-amber-400 text-center font-semibold mb-2">
+											{cashTreesNfcOverlay.errorMsg ?? 'Something went wrong'}
+										</p>
+										{cashTreesNfcOverlay.ndefUri ? (
+											<p className="text-[10px] text-gray-400 text-center break-all line-clamp-3 mb-4" title={cashTreesNfcOverlay.ndefUri}>
+												{cashTreesNfcOverlay.ndefUri}
+											</p>
+										) : (
+											<p className="text-xs text-gray-500 dark:text-slate-400 text-center mb-4">
+												Tap retry after checking NFC and try again.
+											</p>
+										)}
+										<button
+											type="button"
+											onClick={() => cancelCashTreesNfcBind()}
+											className="w-full py-3.5 bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-full font-bold border border-gray-200 dark:border-slate-600"
+										>
+											Close
+										</button>
+									</div>
+								)}
+							</div>
+						</div>
+					)}
+				</AnimatePresence>,
+				document.body,
+			)}
+
+			{/* NFC Card Management（对齐 beamio.app renderAction） */}
+			{createPortal(
+				<AnimatePresence>
+					{showCardManagementModal && (
+						<motion.div
+							key="home-nfc-card-management"
+							className="pointer-events-none fixed inset-0 z-[10035] flex flex-col"
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							transition={{ duration: 0.2 }}
+						>
+							<button
+								type="button"
+								className="pointer-events-auto absolute inset-0 border-0 bg-gray-900/60 p-0 backdrop-blur-sm dark:bg-black/55"
+								aria-label="Close"
+								onClick={() => setShowCardManagementModal(false)}
+							/>
+							<motion.div
+								className="pointer-events-auto relative z-10 mt-auto flex max-h-[85dvh] flex-col overflow-y-auto overscroll-contain rounded-t-[2.5rem] bg-[#F1F8ED] p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] dark:bg-slate-900 dark:shadow-[0_-10px_40px_rgba(0,0,0,0.35)]"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="mx-auto mb-6 h-1.5 w-12 shrink-0 rounded-full bg-gray-300 dark:bg-slate-600" />
+								<div className="mb-6 flex items-center justify-between gap-2">
+									<h3 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-slate-100">NFC Cards</h3>
+									<button
+										type="button"
+										onClick={() => setShowCardManagementModal(false)}
+										className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-base font-bold text-gray-600 hover:bg-gray-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+										aria-label="Close"
+									>
+										✕
+									</button>
+								</div>
+								<p className="mb-6 text-sm text-gray-500 dark:text-slate-400">
+									Manage your linked physical keys. Only one card can be active at a time to prevent conflicts.
+								</p>
+								{linkedNfcListLoading && linkedNfcCards.length === 0 && (
+									<div className="mb-4 flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
+										<Loader2 className="h-4 w-4 animate-spin text-[#65A30D]" aria-hidden />
+										Loading linked cards…
+									</div>
+								)}
+								{cardMgmtError && (
+									<p className="mb-4 rounded-xl border border-amber-200/80 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
+										{cardMgmtError}
+									</p>
+								)}
+								<div className="mb-auto space-y-3">
+									{linkedNfcCards.map((card) => (
+										<div
+											key={card.id}
+											className={`flex items-center justify-between rounded-2xl border bg-white p-4 shadow-sm transition-all dark:bg-slate-800 ${
+												card.isPrimaryUi && card.linkState === 'active'
+													? 'border-[#96EB3C] dark:border-[#65A30D]'
+													: 'border-gray-100 dark:border-slate-600'
+											}`}
+										>
+											<div className="flex min-w-0 items-center">
+												<div
+													className={`mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+														card.linkState === 'active'
+															? 'bg-[#96EB3C]/20 text-[#65A30D] dark:bg-[#65A30D]/25 dark:text-[#9AE66E]'
+															: 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500'
+													}`}
+												>
+													<Radio size={18} aria-hidden />
+												</div>
+												<div className="min-w-0">
+													<h4 className="font-bold text-gray-900 dark:text-slate-100">CashTrees Card</h4>
+													<p className="font-mono text-xs text-gray-500 dark:text-slate-400">•••• {card.last4}</p>
+													{card.linkState === 'deactive' && (
+														<p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+															Paused on server
+														</p>
+													)}
+												</div>
+											</div>
+											<div className="flex shrink-0 items-center gap-2">
+												{card.linkState === 'deactive' && (
+													<button
+														type="button"
+														onClick={() => void enableLinkedNfcOnServer(card.tagId)}
+														disabled={nfcLinkActionTagId !== null}
+														className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+													>
+														{nfcLinkActionTagId === card.tagId ? (
+															<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+														) : (
+															'Enable'
+														)}
+													</button>
+												)}
+												{card.linkState === 'active' && !card.isPrimaryUi && (
+													<button
+														type="button"
+														onClick={() => setLinkedNfcPrimaryById(card.id)}
+														disabled={nfcLinkActionTagId !== null}
+														className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+													>
+														Activate
+													</button>
+												)}
+												{card.linkState === 'active' && card.isPrimaryUi && (
+													<span className="flex items-center gap-1 rounded-lg bg-[#96EB3C]/20 px-3 py-1.5 text-xs font-bold text-[#65A30D] dark:bg-[#65A30D]/25 dark:text-[#9AE66E]">
+														<CheckCircle2 size={14} aria-hidden /> Active
+													</span>
+												)}
+												<button
+													type="button"
+													onClick={() => void removeLinkedNfcOnServer(card.tagId)}
+													disabled={nfcLinkActionTagId !== null}
+													className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40"
+													aria-label="Remove card link"
+												>
+													{nfcLinkActionTagId === card.tagId ? (
+														<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+													) : (
+														<Trash2 size={16} aria-hidden />
+													)}
+												</button>
+											</div>
+										</div>
+									))}
+									{!linkedNfcListLoading && linkedNfcCards.length === 0 && (
+										<div className="rounded-2xl border border-dashed border-gray-100 bg-white py-10 text-center dark:border-slate-700 dark:bg-slate-800">
+											<Smartphone size={32} className="mx-auto mb-2 text-gray-300 dark:text-slate-600" aria-hidden />
+											<p className="text-sm font-medium text-gray-400 dark:text-slate-500">No physical cards linked.</p>
+										</div>
+									)}
+								</div>
+								<button
+									type="button"
+									onClick={() => {
+										setShowCardManagementModal(false)
+										startCashTreesPhysicalCardBind()
+									}}
+									className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-900 py-4 font-bold text-white shadow-md transition-all hover:bg-gray-800 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+								>
+									<Plus size={20} aria-hidden />
+									Bind Another Card
+								</button>
+							</motion.div>
+						</motion.div>
+					)}
+				</AnimatePresence>,
+				document.body,
 			)}
 
 			{/* Pay / Receive 底栏（对齐 renderAction index Pay|Receive） */}

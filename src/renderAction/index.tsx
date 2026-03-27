@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { 
   CreditCard, 
   Settings, 
@@ -43,6 +44,18 @@ import {
   Star
 } from 'lucide-react';
 
+type StoreCardRow = {
+  id: string;
+  name: string;
+  type: string;
+  color: string;
+  borderColor: string;
+  iconColor: string;
+  bgColor: string;
+  icon: LucideIcon;
+  balanceCad: number;
+};
+
 export default function CashTreesApp() {
   const [showQR, setShowQR] = useState(false);
   const [qrMode, setQrMode] = useState('receive');
@@ -73,6 +86,12 @@ export default function CashTreesApp() {
 
   // Tab State
   const [activeTab, setActiveTab] = useState('home'); 
+
+  const [storeCards] = useState<StoreCardRow[]>([
+    { id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-gray-800 to-gray-900', borderColor: 'border-gray-700', iconColor: 'text-yellow-500', bgColor: 'bg-yellow-500/20', icon: Star, balanceCad: 50.0 },
+    { id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-emerald-500 to-teal-700', borderColor: 'border-emerald-600', iconColor: 'text-white', bgColor: 'bg-white/20', icon: CreditCard, balanceCad: 10.0 },
+  ]);
+  const [selectedStoreCard, setSelectedStoreCard] = useState<StoreCardRow | null>(null);
 
   const userBeamioTag = "@alex.tag";
   const eoaAddress = "0x212F...8A9B";
@@ -263,6 +282,63 @@ export default function CashTreesApp() {
                 </button>
               </div>
             )}
+          </div>
+
+          <div className="pl-6 mb-6 mt-2">
+            <div className="flex justify-between items-center mb-3 pr-6">
+              <h2 className="text-sm font-bold text-gray-500 uppercase tracking-widest">My Store Cards ({storeCards.length})</h2>
+            </div>
+            <div className="flex overflow-x-auto hide-scrollbar gap-4 pb-4 pr-6 snap-x">
+              {storeCards.map((card) => {
+                const IconComponent = card.icon;
+                return (
+                  <div
+                    key={card.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedStoreCard(card)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedStoreCard(card);
+                      }
+                    }}
+                    className={`snap-start min-w-[240px] bg-gradient-to-br ${card.color} rounded-[1.5rem] p-5 shadow-md border ${card.borderColor} relative overflow-hidden flex-shrink-0 cursor-pointer hover:-translate-y-1 transition-transform`}
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-10 -mt-10 blur-xl" />
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                      <div>
+                        <h3 className="text-white font-bold text-lg leading-tight mb-1">{card.name}</h3>
+                        <div className={`flex items-center gap-1 ${card.bgColor} ${card.iconColor} px-2 py-0.5 rounded-md w-max`}>
+                          <IconComponent size={10} />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-white">{card.type}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="relative z-10">
+                      <p className="text-gray-300 text-xs font-medium mb-0.5">Store Balance (CAD)</p>
+                      <p className="text-2xl font-extrabold text-white tracking-tight">${card.balanceCad.toFixed(2)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setActiveTab('store')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveTab('store');
+                  }
+                }}
+                className="snap-start min-w-[120px] bg-gray-50 border-2 border-dashed border-gray-300 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 hover:bg-white hover:text-[#65A30D] hover:border-[#65A30D] transition-colors cursor-pointer flex-shrink-0"
+              >
+                <Plus size={24} className="mb-2" />
+                <span className="text-xs font-bold uppercase tracking-wider">Discover</span>
+              </div>
+            </div>
           </div>
 
           <div className="px-6 flex gap-4 mb-10">
@@ -593,6 +669,45 @@ export default function CashTreesApp() {
             <Search size={24} strokeWidth={2.5} />
           </button>
         </div>
+
+        {selectedStoreCard && (
+          <div className="absolute inset-0 z-[45] flex flex-col justify-end pointer-events-auto">
+            <div
+              className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"
+              onClick={() => setSelectedStoreCard(null)}
+              aria-hidden
+            />
+            <div className="relative z-10 mt-auto bg-white rounded-t-[2.5rem] p-6 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] animate-in slide-in-from-bottom-full duration-300">
+              <div className="mx-auto w-12 h-1.5 bg-gray-200 rounded-full mb-5" />
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">{selectedStoreCard.name}</h3>
+                  <p className="text-sm text-gray-500 mt-1">{selectedStoreCard.type}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStoreCard(null)}
+                  className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 font-bold flex items-center justify-center hover:bg-gray-200"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mb-2">Store Balance (CAD)</p>
+              <p className="text-3xl font-extrabold text-gray-900 mb-6">${selectedStoreCard.balanceCad.toFixed(2)}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedStoreCard(null);
+                  setActiveTab('store');
+                }}
+                className="w-full py-3.5 rounded-2xl bg-[#96EB3C] text-gray-900 font-bold hover:bg-[#8ad936] active:scale-[0.99] transition-transform"
+              >
+                View in Discover
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* --- QR Code Modal (Pay / Receive) --- */}
         {showQR && (

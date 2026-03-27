@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, searchUsername} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, searchUsername, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
 import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
@@ -17,7 +17,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info, Star, Nfc, SlidersHorizontal, CheckCircle2, Trash2, Smartphone }
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info, Star, Nfc, SlidersHorizontal, CheckCircle2, Trash2, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift, Scan, UserCircle, MessageCircle, Layers, Search }
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -48,7 +48,6 @@ import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
-import BankingBridge from '@/pages/History/components/BankingBridge'
 import FuelView from './FuelView'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
@@ -70,6 +69,51 @@ const displayName = (item: beamio | searchResult | null | undefined) => {
 
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+
+/** Gift To: 下拉与 SearchBarWithResults 一致 */
+function giftSearchFormatUserDate(timestamp?: string | number): string {
+	if (!timestamp) return ''
+	const num = Number(timestamp)
+	if (!num) return ''
+	const ms = num < 10_000_000_000 ? num * 1000 : num
+	const d = new Date(ms)
+	if (isNaN(d.getTime())) return ''
+	return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function makeGiftSearchAddressOnlyResult(address: string): searchResult {
+	return {
+		username: 'unknow',
+		image: '',
+		address,
+		created_at: 0,
+		first_name: '',
+		last_name: '',
+		follow_count: '',
+		follower_count: '',
+	}
+}
+
+/** 与 Pay/send PayScreen 共用，Gift 选人写入后 Pay 侧「最近」一致 */
+const PAY_RECENT_KEY = 'beamio_pay_recent'
+const PAY_RECENT_MAX = 8
+function loadPayRecentRecipients(): searchResult[] {
+	try {
+		const raw = localStorage.getItem(PAY_RECENT_KEY)
+		if (!raw) return []
+		const arr = JSON.parse(raw) as searchResult[]
+		return Array.isArray(arr) ? arr.slice(0, PAY_RECENT_MAX) : []
+	} catch {
+		return []
+	}
+}
+function savePayRecentRecipients(items: searchResult[]) {
+	try {
+		localStorage.setItem(PAY_RECENT_KEY, JSON.stringify(items.slice(0, PAY_RECENT_MAX)))
+	} catch {
+		/* ignore */
+	}
+}
 
 type CashTreesNativeNfcStatus =
 	| 'unknown'
@@ -122,16 +166,28 @@ function privateKeyHexForNfcLinkClaim(raw: string | null | undefined): string | 
 	}
 }
 
-function readCashTreesAndroidBridge() {
-	return (
-		window as Window & {
-			CashTreesAndroid?: {
-				getNfcStatus: () => string
-				startPhysicalCardBind: () => void
-				cancelPhysicalCardBind: () => void
-			}
-		}
-	).CashTreesAndroid
+/** Android：`JavascriptInterface` 注入 `window.CashTreesAndroid`。iOS：`WKScriptMessageHandler` + 注入 `window.CashTreesIOS`（方法签名对齐 Android）。 */
+type CashTreesNativeNfcBridge = {
+	getNfcStatus: () => string
+	startPhysicalCardBind: () => void
+	cancelPhysicalCardBind?: () => void
+}
+
+/** 当前原生壳：由宿主注入的全局决定，优于 UA 猜测。 */
+export function getCashTreesNativeNfcHost(): 'android' | 'ios' | null {
+	if (typeof window === 'undefined') return null
+	const w = window as Window & { CashTreesAndroid?: CashTreesNativeNfcBridge; CashTreesIOS?: CashTreesNativeNfcBridge }
+	if (typeof w.CashTreesAndroid?.getNfcStatus === 'function') return 'android'
+	if (typeof w.CashTreesIOS?.getNfcStatus === 'function') return 'ios'
+	return null
+}
+
+export function getCashTreesNativeNfcBridge(): CashTreesNativeNfcBridge | null {
+	if (typeof window === 'undefined') return null
+	const w = window as Window & { CashTreesAndroid?: CashTreesNativeNfcBridge; CashTreesIOS?: CashTreesNativeNfcBridge }
+	if (typeof w.CashTreesAndroid?.getNfcStatus === 'function') return w.CashTreesAndroid
+	if (typeof w.CashTreesIOS?.getNfcStatus === 'function') return w.CashTreesIOS
+	return null
 }
 
 type HomeStoreCardRow = {
@@ -145,6 +201,25 @@ type HomeStoreCardRow = {
 	icon: LucideIcon
 	balanceCad: number
 }
+
+/** Send a Store Gift：资产来源（与 renderAction UsdcGiftVault / GiftSource 对齐） */
+type HomeUsdcGiftVault = {
+	id: 'usdc'
+	name: string
+	type: string
+	color: string
+	text: string
+	balanceCad: number
+}
+
+type HomeGiftSource = HomeStoreCardRow | HomeUsdcGiftVault
+
+const INITIAL_HOME_STORE_CARDS: HomeStoreCardRow[] = [
+	{ id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-gray-800 to-gray-900', borderColor: 'border-gray-700', iconColor: 'text-yellow-500', bgColor: 'bg-yellow-500/20', icon: Star, balanceCad: 50.0 },
+	{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-emerald-500 to-teal-700', borderColor: 'border-emerald-600', iconColor: 'text-white', bgColor: 'bg-white/20', icon: CreditCard, balanceCad: 10.0 },
+]
+
+type AddCashSheetMode = 'methods' | 'store_qr' | 'coinbase' | 'topup_store'
 
 const Home = ({}) => {
 	const { setDarkModle, profiles,
@@ -188,8 +263,33 @@ const Home = ({}) => {
 	const [payRelayQRLoading, setPayRelayQRLoading] = useState(false)
 	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
 	const [showFuelView, setShowFuelView] = useState(false)
-	/** Add Cash 后：底部 sheet 内显示 Coinbase 确认 (204-221)，非全屏 */
+	/** Coinbase：methods 内进入后展示 BeamioAddUSDCFlow */
 	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
+	const [addCashMode, setAddCashMode] = useState<AddCashSheetMode>('methods')
+	const [addCashAmountCad, setAddCashAmountCad] = useState('')
+	const [topUpStore, setTopUpStore] = useState<HomeStoreCardRow>(() => INITIAL_HOME_STORE_CARDS[0]!)
+	const [isSelectingTopUpStore, setIsSelectingTopUpStore] = useState(false)
+	const [addCashWalletCopied, setAddCashWalletCopied] = useState(false)
+	/** Top Up：链上 BeamioOracle 报价，1 USDC 可换多少 CAD（与 TenKeyInput cad/usdc 换算一致：CAD×USDC） */
+	const [topUpOracleCadPerUsdc, setTopUpOracleCadPerUsdc] = useState<number | null>(null)
+	const [topUpOracleLoading, setTopUpOracleLoading] = useState(false)
+	const [topUpOracleError, setTopUpOracleError] = useState(false)
+	const [topUpRateRefreshStatus, setTopUpRateRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+	const [showGiftSheet, setShowGiftSheet] = useState(false)
+	const [giftAmount, setGiftAmount] = useState('')
+	const [giftRecipient, setGiftRecipient] = useState('')
+	const [giftMessage, setGiftMessage] = useState('')
+	const [giftStore, setGiftStore] = useState<HomeGiftSource | null>(null)
+	const [isSelectingGiftStore, setIsSelectingGiftStore] = useState(false)
+	const [giftRecipientHits, setGiftRecipientHits] = useState<searchResult[]>([])
+	const [giftRecipientSearchLoading, setGiftRecipientSearchLoading] = useState(false)
+	const [giftRecipientSuggestOpen, setGiftRecipientSuggestOpen] = useState(true)
+	const giftRecipientSearchRef = useRef<HTMLDivElement>(null)
+	const giftRecipientSearchSeq = useRef(0)
+	const [giftRecipientSelected, setGiftRecipientSelected] = useState<searchResult | null>(null)
+	const [giftPayRecentRecipients, setGiftPayRecentRecipients] = useState<searchResult[]>([])
+	const [giftPayHandoffPayee, setGiftPayHandoffPayee] = useState<searchResult | null>(null)
+	const [giftPayPrefill, setGiftPayPrefill] = useState<{ note?: string; usdc?: string } | null>(null)
 	const [aaAddrCopied, setAaAddrCopied] = useState(false)
 	/** 首页 CashTrees 大卡：与 getMyAssets(BEAMIO_USER_CARD) 同源（AA USDC + POINTS_ID #0） */
 	const [cashTreesWalletSnapshot, setCashTreesWalletSnapshot] = useState<{
@@ -214,10 +314,7 @@ const Home = ({}) => {
 	const [nfcLinkActionTagId, setNfcLinkActionTagId] = useState<string | null>(null)
 	const [cardMgmtError, setCardMgmtError] = useState<string | null>(null)
 	const cashTreesNfcReq = useRef(0)
-	const [homeStoreCards] = useState<HomeStoreCardRow[]>([
-		{ id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-gray-800 to-gray-900', borderColor: 'border-gray-700', iconColor: 'text-yellow-500', bgColor: 'bg-yellow-500/20', icon: Star, balanceCad: 50.0 },
-		{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-emerald-500 to-teal-700', borderColor: 'border-emerald-600', iconColor: 'text-white', bgColor: 'bg-white/20', icon: CreditCard, balanceCad: 10.0 },
-	])
+	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
 	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
 
@@ -600,10 +697,276 @@ const Home = ({}) => {
 		setShowAlphaHowItWorks('CoinbaseRamps')
 	}
 
+	const addCashDepositAddress = useMemo(() => {
+		const eoa = profiles?.[0]?.keyID?.trim() ?? ''
+		const aa = profiles?.[0]?.aaAccount?.trim() ?? ''
+		if (hasAAWallet && aa && ethers.isAddress(aa)) return aa
+		if (eoa && ethers.isAddress(eoa)) return eoa
+		return ''
+	}, [hasAAWallet, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID])
+
+	const addCashVaultUsdc = useMemo(() => {
+		const n = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
+		return Number.isFinite(n) ? Math.max(0, n) : 0
+	}, [cashTreesWalletSnapshot?.aaUsdc])
+
+	/** 1 USDC → CAD；链上刷新成功后以 Oracle 为准，否则与全局 currencyData（同源 feeder）一致 */
+	const addCashTopUpCadPerUsdc = useMemo(() => {
+		const d = currencyData as Record<string, number> | undefined
+		const ctx = (Number(d?.CAD) || 1.35) * (Number(d?.USDC) || 1)
+		if (topUpOracleCadPerUsdc != null && topUpOracleCadPerUsdc > 0) return topUpOracleCadPerUsdc
+		return ctx
+	}, [currencyData, topUpOracleCadPerUsdc])
+
+	/** Gift 资产列表：USDC 金库按 Oracle 折算为 CAD 展示 */
+	const giftUsdcValuationCad = useMemo(
+		() => addCashVaultUsdc * addCashTopUpCadPerUsdc,
+		[addCashVaultUsdc, addCashTopUpCadPerUsdc]
+	)
+
+	const refreshTopUpOracleRate = useCallback(
+		async (fromUserRefresh: boolean) => {
+			if (fromUserRefresh) setTopUpRateRefreshStatus('loading')
+			setTopUpOracleLoading(true)
+			setTopUpOracleError(false)
+			try {
+				const raw = await getOracle()
+				const parsed = parseOracleToCurrencyData(raw)
+				const v = Number(parsed.CAD) * Number(parsed.USDC)
+				if (!Number.isFinite(v) || v <= 0) throw new Error('invalid oracle rate')
+				setTopUpOracleCadPerUsdc(v)
+				if (fromUserRefresh) {
+					setTopUpRateRefreshStatus('success')
+					window.setTimeout(() => setTopUpRateRefreshStatus('idle'), 3000)
+				}
+			} catch {
+				setTopUpOracleError(true)
+				const d = currencyData as Record<string, number> | undefined
+				setTopUpOracleCadPerUsdc((Number(d?.CAD) || 1.35) * (Number(d?.USDC) || 1))
+				if (fromUserRefresh) {
+					setTopUpRateRefreshStatus('error')
+					window.setTimeout(() => setTopUpRateRefreshStatus('idle'), 3000)
+				}
+			} finally {
+				setTopUpOracleLoading(false)
+			}
+		},
+		[currencyData]
+	)
+
+	useEffect(() => {
+		if (!showAddCashSheet || addCashMode !== 'topup_store') return
+		void refreshTopUpOracleRate(false)
+	}, [showAddCashSheet, addCashMode, refreshTopUpOracleRate])
+
+	useEffect(() => {
+		if (!showGiftSheet) return
+		void refreshTopUpOracleRate(false)
+	}, [showGiftSheet, refreshTopUpOracleRate])
+
+	const closeAddCashSheet = useCallback(() => {
+		setShowAddCashSheet(false)
+		setShowAddUsdcInSheet(false)
+		setAddCashMode('methods')
+		setIsSelectingTopUpStore(false)
+		setAddCashAmountCad('')
+		setTopUpOracleCadPerUsdc(null)
+		setTopUpOracleLoading(false)
+		setTopUpOracleError(false)
+		setTopUpRateRefreshStatus('idle')
+		setShowFooter(true)
+	}, [setShowFooter])
+
+	const copyAddCashDepositAddress = useCallback(async () => {
+		const a = addCashDepositAddress
+		if (!a) return
+		try {
+			await navigator.clipboard.writeText(a)
+			setAddCashWalletCopied(true)
+			window.setTimeout(() => setAddCashWalletCopied(false), 2000)
+		} catch {
+			/* ignore */
+		}
+	}, [addCashDepositAddress])
+
+	const handleConfirmHomeTopUp = useCallback(() => {
+		const cadToAdd = parseFloat(addCashAmountCad)
+		if (!cadToAdd || cadToAdd <= 0) return
+		const cadPerUsdc = addCashTopUpCadPerUsdc
+		if (!Number.isFinite(cadPerUsdc) || cadPerUsdc <= 0) return
+		const usdcRequired = cadToAdd / cadPerUsdc
+		if (usdcRequired > addCashVaultUsdc) return
+		setHomeStoreCards((prev) =>
+			prev.map((c) => (c.id === topUpStore.id ? { ...c, balanceCad: c.balanceCad + cadToAdd } : c))
+		)
+		closeAddCashSheet()
+	}, [addCashAmountCad, addCashTopUpCadPerUsdc, addCashVaultUsdc, closeAddCashSheet, topUpStore.id])
+
 	const handleAddFunds = () => {
+		setAddCashMode('methods')
+		setShowAddUsdcInSheet(false)
+		setIsSelectingTopUpStore(false)
+		setAddCashAmountCad('')
+		const first = homeStoreCards[0] ?? INITIAL_HOME_STORE_CARDS[0]!
+		setTopUpStore(first)
 		setShowAddCashSheet(true)
 		setShowFooter(false)
 	}
+
+	const closeGiftSheet = useCallback(() => {
+		giftRecipientSearchSeq.current++
+		setShowGiftSheet(false)
+		setIsSelectingGiftStore(false)
+		setGiftAmount('')
+		setGiftRecipient('')
+		setGiftMessage('')
+		setGiftStore(null)
+		setGiftRecipientSelected(null)
+		setGiftRecipientHits([])
+		setGiftRecipientSearchLoading(false)
+		setGiftRecipientSuggestOpen(true)
+		setShowFooter(true)
+	}, [setShowFooter])
+
+	useEffect(() => {
+		if (showGiftSheet) setGiftPayRecentRecipients(loadPayRecentRecipients())
+	}, [showGiftSheet])
+
+	const onPickGiftRecipientHit = useCallback((hit: searchResult) => {
+		setGiftRecipientSelected(hit)
+		const u = (hit.username || '').trim().toLowerCase()
+		if (u && u !== 'unknow') setGiftRecipient(`@${u}`)
+		else setGiftRecipient(hit.address)
+		setGiftRecipientHits([])
+		setGiftRecipientSuggestOpen(false)
+		const prev = loadPayRecentRecipients()
+		const next = [
+			hit,
+			...prev.filter((p) => (p.address || '').toLowerCase() !== (hit.address || '').toLowerCase()),
+		]
+		savePayRecentRecipients(next)
+		setGiftPayRecentRecipients(next)
+	}, [])
+
+	useEffect(() => {
+		if (!showGiftSheet) return
+		const down = (e: MouseEvent) => {
+			if (!giftRecipientSearchRef.current?.contains(e.target as Node)) {
+				setGiftRecipientSuggestOpen(false)
+			}
+		}
+		document.addEventListener('mousedown', down)
+		return () => document.removeEventListener('mousedown', down)
+	}, [showGiftSheet])
+
+	useEffect(() => {
+		if (!showGiftSheet) return
+		if (giftRecipientSelected) return
+		const q = giftRecipient.trim().replace(/^@/, '')
+		if (q.length < 3) {
+			setGiftRecipientHits([])
+			setGiftRecipientSearchLoading(false)
+			return
+		}
+		const t = window.setTimeout(() => {
+			const seq = ++giftRecipientSearchSeq.current
+			setGiftRecipientSearchLoading(true)
+			void (async () => {
+				try {
+					const data = await searchUsername(q.toLowerCase())
+					if (giftRecipientSearchSeq.current !== seq) return
+					let rows: searchResult[] = data?.results ?? []
+					const my = (
+						profiles?.[0]?.aaAccount ||
+						profiles?.[0]?.keyID ||
+						''
+					).toLowerCase()
+					rows = rows.filter((n) => (n.address || '').toLowerCase() !== my)
+					if (!rows.length && ethers.isAddress(q)) {
+						rows = [makeGiftSearchAddressOnlyResult(q)]
+					}
+					setGiftRecipientHits(rows)
+				} catch {
+					if (giftRecipientSearchSeq.current === seq) setGiftRecipientHits([])
+				} finally {
+					if (giftRecipientSearchSeq.current === seq) setGiftRecipientSearchLoading(false)
+				}
+			})()
+		}, 320)
+		return () => window.clearTimeout(t)
+	}, [giftRecipient, giftRecipientSelected, showGiftSheet, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID])
+
+	const giftCadAmount = parseFloat(giftAmount) || 0
+	const giftCadPerUsdc = addCashTopUpCadPerUsdc
+	const giftUsdcEquivalent = giftCadPerUsdc > 0 ? giftCadAmount / giftCadPerUsdc : 0
+	let giftFeeUsdc = giftUsdcEquivalent * 0.008
+	if (giftCadAmount > 0) {
+		if (giftFeeUsdc < 0.02) giftFeeUsdc = 0.02
+		if (giftFeeUsdc > 2) giftFeeUsdc = 2
+	} else {
+		giftFeeUsdc = 0
+	}
+	const totalGiftCostCad = giftCadAmount + giftFeeUsdc * giftCadPerUsdc
+
+	const handleConfirmGift = useCallback(() => {
+		const cadAmt = parseFloat(giftAmount) || 0
+		if (!cadAmt || cadAmt <= 0) return
+		const r = addCashTopUpCadPerUsdc
+		if (!Number.isFinite(r) || r <= 0) return
+		let fee = (r > 0 ? cadAmt / r : 0) * 0.008
+		if (cadAmt > 0) {
+			if (fee < 0.02) fee = 0.02
+			if (fee > 2) fee = 2
+		} else {
+			fee = 0
+		}
+		const totalCad = cadAmt + fee * r
+		const usdcCost = r > 0 ? totalCad / r : 0
+		const source = giftStore
+		const isStoreCard = Boolean(source && source.id !== 'usdc')
+
+		if (isStoreCard && source && source.id !== 'usdc') {
+			const card = source as HomeStoreCardRow
+			if (card.balanceCad < totalCad) {
+				window.alert('Insufficient store card balance.')
+				return
+			}
+			setHomeStoreCards((prev) =>
+				prev.map((c) => (c.id === card.id ? { ...c, balanceCad: c.balanceCad - totalCad } : c))
+			)
+			closeGiftSheet()
+			return
+		}
+		if (usdcCost > addCashVaultUsdc) {
+			window.alert('Insufficient USDC balance.')
+			return
+		}
+		const payee =
+			giftRecipientSelected ??
+			(ethers.isAddress(giftRecipient.trim()) ? makeGiftSearchAddressOnlyResult(giftRecipient.trim()) : null)
+		if (!payee?.address || !ethers.isAddress(payee.address)) {
+			window.alert('Please select a recipient from search or enter a valid wallet address.')
+			return
+		}
+		setGiftPayHandoffPayee(payee)
+		setGiftPayPrefill({
+			note: giftMessage.trim() || undefined,
+			usdc: usdcCost.toFixed(6),
+		})
+		closeGiftSheet()
+		setSettingsOpen('Pay')
+		setShowFooter(false)
+	}, [
+		giftAmount,
+		giftStore,
+		giftRecipient,
+		giftRecipientSelected,
+		giftMessage,
+		addCashTopUpCadPerUsdc,
+		addCashVaultUsdc,
+		closeGiftSheet,
+		setShowFooter,
+	])
 
 	/** 余额卡：白底 + 渐变描边 */
 	function BalanceCard() {
@@ -961,21 +1324,27 @@ const Home = ({}) => {
 	const cashTreesPhysicalCardBoundEffective = cashTreesCardDisplay.isPhysicalCardBound
 
 	useEffect(() => {
-		const android = readCashTreesAndroidBridge()
-		if (!android?.getNfcStatus) {
-			setCashTreesNativeNfcStatus('no_bridge')
-			return
+		const apply = () => {
+			const native = getCashTreesNativeNfcBridge()
+			if (!native?.getNfcStatus) {
+				setCashTreesNativeNfcStatus('no_bridge')
+				return
+			}
+			try {
+				const s = native.getNfcStatus()
+				if (s === 'ready') setCashTreesNativeNfcStatus('ready')
+				else if (s === 'no_hardware') setCashTreesNativeNfcStatus('no_hardware')
+				else if (s === 'disabled') setCashTreesNativeNfcStatus('disabled')
+				else if (s === 'nfc_permission_denied') setCashTreesNativeNfcStatus('permission_denied')
+				else setCashTreesNativeNfcStatus('no_bridge')
+			} catch {
+				setCashTreesNativeNfcStatus('no_bridge')
+			}
 		}
-		try {
-			const s = android.getNfcStatus()
-			if (s === 'ready') setCashTreesNativeNfcStatus('ready')
-			else if (s === 'no_hardware') setCashTreesNativeNfcStatus('no_hardware')
-			else if (s === 'disabled') setCashTreesNativeNfcStatus('disabled')
-			else if (s === 'nfc_permission_denied') setCashTreesNativeNfcStatus('permission_denied')
-			else setCashTreesNativeNfcStatus('no_bridge')
-		} catch {
-			setCashTreesNativeNfcStatus('no_bridge')
-		}
+		apply()
+		/** iOS WK 注入在 document start，极少数情况下首帧早于注入可用，下一帧再读一次 */
+		const t = window.setTimeout(apply, 0)
+		return () => window.clearTimeout(t)
 	}, [])
 
 	useEffect(() => {
@@ -1100,12 +1469,12 @@ const Home = ({}) => {
 	}, [profiles, refreshLinkedNfcCards])
 
 	const startCashTreesPhysicalCardBind = () => {
-		const android = readCashTreesAndroidBridge()
-		if (android?.startPhysicalCardBind) {
+		const native = getCashTreesNativeNfcBridge()
+		if (native?.startPhysicalCardBind) {
 			cashTreesNfcReq.current++
 			setCashTreesNfcOverlay({ phase: 'tap' })
 			try {
-				android.startPhysicalCardBind()
+				native.startPhysicalCardBind()
 			} catch {
 				setCashTreesNfcOverlay({ phase: 'hidden' })
 			}
@@ -1115,7 +1484,7 @@ const Home = ({}) => {
 	}
 
 	const cancelCashTreesNfcBind = () => {
-		readCashTreesAndroidBridge()?.cancelPhysicalCardBind?.()
+		getCashTreesNativeNfcBridge()?.cancelPhysicalCardBind?.()
 		cashTreesNfcReq.current++
 		setCashTreesNfcOverlay({ phase: 'hidden' })
 	}
@@ -1585,7 +1954,9 @@ const Home = ({}) => {
 
 								{!cashTreesPhysicalCardBoundEffective && cashTreesNativeNfcStatus === 'permission_denied' && (
 									<p className="text-center text-[11px] text-amber-700 dark:text-amber-400 mt-3 px-4 font-medium">
-										NFC requires an app update. Please install the latest CashTrees build from the store.
+										{getCashTreesNativeNfcHost() === 'ios'
+											? 'NFC could not be enabled for this build. Install the latest CashTrees app from the App Store.'
+											: 'NFC requires an app update. Please install the latest CashTrees build from the store.'}
 									</p>
 								)}
 								{!cashTreesPhysicalCardBoundEffective && cashTreesNativeNfcStatus === 'ready' && (
@@ -1662,49 +2033,45 @@ const Home = ({}) => {
 								</div>
 							</div>
 
-							{/* Add Cash | Send | Pay */}
-							<div className="grid grid-cols-3 gap-2.5">
+							{/* Add Cash | Gift Card | Pay / Scan — 对齐 beamio.app renderAction */}
+							<div className="flex gap-3">
 								<button
 									type="button"
 									onClick={handleAddFunds}
-									className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-slate-800 rounded-[26px] shadow-[0_8px_28px_rgba(15,23,42,0.07)] border border-slate-100/90 dark:border-slate-700/50 py-5 px-2 active:scale-[0.97] transition-transform"
+									className="flex-1 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/80 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 dark:border-slate-600 group"
 								>
-									<div
-										className="w-12 h-12 rounded-full flex items-center justify-center"
-										style={{ backgroundColor: homeAccent }}
-									>
-										<Plus className="w-6 h-6 text-[#0F172A]" strokeWidth={2.5} />
+									<div className="w-12 h-12 bg-[#96EB3C] rounded-full flex items-center justify-center shadow-[0_4px_14px_rgba(150,235,60,0.4)]">
+										<ArrowDownToLine size={24} className="text-gray-900" />
 									</div>
-									<span className="text-[13px] font-bold text-center leading-tight text-[#0F172A] dark:text-slate-100">
-										Add Cash
-									</span>
+									<span className="font-semibold text-[11px] text-gray-700 dark:text-slate-300 tracking-wide uppercase">Add Cash</span>
 								</button>
 								<button
 									type="button"
 									onClick={() => {
-										setSettingsOpen('Pay')
+										setShowGiftSheet(true)
 										setShowFooter(false)
 									}}
-									className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-slate-800 rounded-[26px] shadow-[0_8px_28px_rgba(15,23,42,0.07)] border border-slate-100/90 dark:border-slate-700/50 py-5 px-2 active:scale-[0.97] transition-transform"
+									className="flex-1 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/80 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 dark:border-slate-600 group relative overflow-hidden"
 								>
-									<div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-										<Send className="w-5 h-5 text-[#0F172A] dark:text-slate-100" strokeWidth={2.2} />
+									<div className="absolute top-0 right-0 w-12 h-12 bg-pink-100 dark:bg-pink-900/30 rounded-full -mr-4 -mt-4 blur-xl opacity-60" />
+									<div className="w-12 h-12 bg-pink-50 dark:bg-pink-950/50 rounded-full flex items-center justify-center text-pink-500 border border-pink-100 dark:border-pink-800/50 relative z-10">
+										<Gift size={22} className="group-hover:scale-110 transition-transform duration-300" />
 									</div>
-									<span className="text-[13px] font-bold text-[#0F172A] dark:text-slate-100">Send</span>
+									<span className="font-semibold text-[11px] text-gray-700 dark:text-slate-300 tracking-wide uppercase relative z-10">Gift Card</span>
 								</button>
 								<button
 									type="button"
 									onClick={() => {
-										setPayReceiveQrMode('receive')
+										setPayReceiveQrMode('pay')
 										setShowPayReceiveSheet(true)
 										setShowFooter(false)
 									}}
-									className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-slate-800 rounded-[26px] shadow-[0_8px_28px_rgba(15,23,42,0.07)] border border-slate-100/90 dark:border-slate-700/50 py-5 px-2 active:scale-[0.97] transition-transform"
+									className="flex-1 bg-gray-900 dark:bg-gray-950 hover:bg-gray-800 dark:hover:bg-black active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-xl shadow-gray-900/20"
 								>
-									<div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-										<QrCode className="w-5 h-5 text-[#0F172A] dark:text-slate-100" strokeWidth={2.2} />
+									<div className="w-12 h-12 bg-gray-800 dark:bg-gray-800 rounded-full flex items-center justify-center text-white border border-gray-700 dark:border-gray-600">
+										<Scan size={20} />
 									</div>
-									<span className="text-[13px] font-bold text-[#0F172A] dark:text-slate-100">Pay/Receive</span>
+									<span className="font-semibold text-[11px] text-white tracking-wide uppercase">Pay / Scan</span>
 								</button>
 							</div>
 
@@ -2366,55 +2733,41 @@ const Home = ({}) => {
 				document.body
 			)}
 
-			{/* Add Cash - BankingBridge 底部滑出 */}
+			{/* Add Cash — 与 beamio.app renderAction 同结构（methods / store_qr / coinbase / topup_store） */}
 			{createPortal(
 				<AnimatePresence>
 					{showAddCashSheet && (
 						<>
 							<motion.div
-								className="fixed inset-0 z-[9997] bg-black/40"
+								className="fixed inset-0 z-[9997] bg-black/40 backdrop-blur-md"
 								initial={{ opacity: 0 }}
 								animate={{ opacity: 1 }}
 								exit={{ opacity: 0 }}
 								transition={{ duration: 0.2 }}
-								onClick={() => {
-									setShowAddCashSheet(false)
-									setShowAddUsdcInSheet(false)
-									setShowFooter(true)
-								}}
+								onClick={closeAddCashSheet}
 							/>
 							<motion.div
-								className="fixed left-0 right-0 bottom-0 z-[9998] bg-white dark:bg-slate-900 rounded-t-[24px] shadow-2xl flex flex-col max-h-[92dvh] pb-[calc(env(safe-area-inset-bottom)+2rem)]"
+								className="fixed left-0 right-0 bottom-0 z-[9998] bg-white dark:bg-slate-900 rounded-t-[2.5rem] shadow-2xl flex flex-col max-h-[85dvh] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-10px_40px_rgba(0,0,0,0.1)]"
 								initial={{ y: '100%' }}
 								animate={{ y: 0 }}
 								exit={{ y: '100%' }}
 								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
 								onClick={(e) => e.stopPropagation()}
 							>
-								<div className="flex-shrink-0 flex items-center justify-between px-4 py-2">
+								<div className="flex-shrink-0 flex items-center justify-between px-4 pt-2 pb-1">
 									<div className="w-10" />
-									<div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-slate-600" />
+									<div className="w-12 h-1.5 rounded-full bg-gray-200 dark:bg-slate-600" />
 									<button
 										type="button"
-										onClick={() => {
-											setShowAddCashSheet(false)
-											setShowAddUsdcInSheet(false)
-											setShowFooter(true)
-										}}
+										onClick={closeAddCashSheet}
 										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
 										aria-label="Close"
 									>
 										<X className="w-5 h-5" />
 									</button>
 								</div>
-								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-									{!showAddUsdcInSheet && (
-										<BankingBridge
-											onAddCash={() => setShowAddUsdcInSheet(true)}
-											onCashOut={() => setShowAddUsdcInSheet(true)}
-										/>
-									)}
-									{showAddUsdcInSheet && (
+								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain px-6 pb-4 flex flex-col">
+									{showAddUsdcInSheet ? (
 										<>
 											<BeamioNavBack
 												title=""
@@ -2426,6 +2779,771 @@ const Home = ({}) => {
 												onCancel={() => setShowAddUsdcInSheet(false)}
 											/>
 										</>
+									) : addCashMode === 'methods' ? (
+										<>
+											<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">
+												Add Funds
+											</h3>
+											<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center px-4">
+												Fund your self-custodial wallet or top up merchant cards.
+											</p>
+											<div className="space-y-3 mb-auto">
+												<h4 className="text-sm font-bold text-gray-900 dark:text-slate-100 mb-3 px-1">Funding Source</h4>
+												<button
+													type="button"
+													onClick={() => setAddCashMode('store_qr')}
+													className="w-full text-left bg-white dark:bg-slate-800/80 border border-[#96EB3C]/50 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-[#96EB3C]/10 dark:hover:bg-[#96EB3C]/15 active:scale-[0.98] transition-all relative overflow-hidden group"
+												>
+													<div className="absolute top-0 right-0 w-24 h-24 bg-[#96EB3C]/20 rounded-full -mr-10 -mt-10 blur-xl group-hover:bg-[#96EB3C]/30 transition-colors" />
+													<div className="flex items-center relative z-10">
+														<div className="w-10 h-10 bg-[#96EB3C] rounded-xl flex items-center justify-center mr-3 shadow-sm">
+															<Store className="text-gray-900" size={20} />
+														</div>
+														<div>
+															<p className="font-bold text-gray-900 dark:text-slate-100">Load Store Card via Cashier</p>
+															<p className="text-xs text-gray-600 dark:text-slate-400">Give physical cash to the issuing merchant</p>
+														</div>
+													</div>
+													<QrCode className="text-gray-900 dark:text-slate-100 relative z-10" size={20} />
+												</button>
+												<button
+													type="button"
+													onClick={() => setAddCashMode('coinbase')}
+													className="w-full text-left bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
+												>
+													<div className="flex items-center">
+														<div className="w-10 h-10 bg-[#0052FF] rounded-xl flex items-center justify-center mr-3 shadow-sm">
+															<span className="text-white font-bold text-xl">C</span>
+														</div>
+														<div>
+															<p className="font-bold text-gray-900 dark:text-slate-100">Buy USDC via Coinbase</p>
+															<p className="text-xs text-gray-500 dark:text-slate-400">3rd-party platform. Auto-deposits to wallet.</p>
+														</div>
+													</div>
+													<ChevronRight className="text-gray-400" size={20} />
+												</button>
+												<button
+													type="button"
+													onClick={() => setAddCashMode('topup_store')}
+													className="w-full text-left bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
+												>
+													<div className="flex items-center">
+														<div className="w-10 h-10 bg-blue-50 dark:bg-slate-700 border border-blue-100 dark:border-slate-600 rounded-xl flex items-center justify-center mr-3">
+															<ArrowRightLeft className="text-blue-600 dark:text-blue-400" size={20} />
+														</div>
+														<div>
+															<p className="font-bold text-gray-900 dark:text-slate-100">Top Up Store Card</p>
+															<p className="text-xs text-gray-500 dark:text-slate-400">Use your USDC to fund a merchant card</p>
+														</div>
+													</div>
+													<ChevronRight className="text-gray-400" size={20} />
+												</button>
+											</div>
+										</>
+									) : addCashMode === 'store_qr' ? (
+										<>
+											<div className="flex items-center mb-6 w-full relative">
+												<button
+													type="button"
+													onClick={() => setAddCashMode('methods')}
+													className="text-[#65A30D] dark:text-[#96EB3C] font-bold flex items-center text-sm absolute left-0"
+												>
+													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
+												</button>
+												<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Store Deposit</h3>
+											</div>
+											<div className="flex flex-col items-center justify-center mb-auto pt-4">
+												<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center max-w-[260px] leading-relaxed">
+													Show this code to the <span className="font-bold text-gray-900 dark:text-slate-100">issuing merchant</span> and hand
+													them your paper cash.
+												</p>
+												<div className="w-64 h-64 bg-white dark:bg-slate-800 rounded-[2rem] p-4 mb-6 shadow-md border border-gray-100 dark:border-slate-600">
+													<div className="w-full h-full bg-gray-50 dark:bg-slate-900/80 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border border-gray-200 dark:border-slate-600">
+														{addCashDepositAddress ? (
+															<QRCodeCanvas
+																value={addCashDepositAddress}
+																size={180}
+																className="rounded-xl"
+																includeMargin={false}
+															/>
+														) : (
+															<QrCode size={140} className="text-gray-900 dark:text-slate-300" />
+														)}
+														<div className="absolute bg-white dark:bg-slate-800 p-1 rounded-full shadow-sm border border-gray-100 dark:border-slate-600">
+															<div className="w-8 h-8 bg-[#96EB3C] rounded-full flex items-center justify-center text-gray-900 font-bold text-lg">
+																🌳
+															</div>
+														</div>
+													</div>
+												</div>
+												<div className="bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl p-3 w-full max-w-[280px] flex items-center justify-between mb-8">
+													<div className="flex flex-col overflow-hidden mr-3">
+														<span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">
+															Wallet Address
+														</span>
+														<span className="text-xs font-mono text-gray-700 dark:text-slate-200 truncate">
+															{addCashDepositAddress || '—'}
+														</span>
+													</div>
+													<button
+														type="button"
+														onClick={copyAddCashDepositAddress}
+														disabled={!addCashDepositAddress}
+														className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 shadow-sm text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-transform disabled:opacity-50"
+													>
+														{addCashWalletCopied ? 'Copied' : 'Copy'}
+													</button>
+												</div>
+											</div>
+										</>
+									) : addCashMode === 'coinbase' ? (
+										<>
+											<div className="flex items-center mb-6 w-full relative">
+												<button
+													type="button"
+													onClick={() => setAddCashMode('methods')}
+													className="text-[#65A30D] dark:text-[#96EB3C] font-bold flex items-center text-sm absolute left-0"
+												>
+													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
+												</button>
+												<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Coinbase</h3>
+											</div>
+											<div className="flex flex-col items-center justify-center mb-auto pt-4 w-full">
+												<div className="w-16 h-16 bg-[#0052FF] rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-6">
+													C
+												</div>
+												<h4 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">Buy USDC directly</h4>
+												<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center px-4 leading-relaxed">
+													CashTrees is a self-custodial wallet and never touches your fiat. You will be securely redirected to Coinbase to
+													complete your purchase. USDC will auto-deposit to your wallet.
+												</p>
+												<div className="w-full max-w-[280px] bg-gray-50 dark:bg-slate-800/80 rounded-2xl p-4 border border-gray-200 dark:border-slate-600 mb-6 shadow-sm">
+													<div className="flex justify-between items-center mb-3 gap-2">
+														<span className="text-xs text-gray-500 dark:text-slate-400 font-medium shrink-0">To Wallet</span>
+														<span className="text-xs font-mono text-gray-900 dark:text-slate-100 font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600 truncate max-w-[60%]">
+															{addCashDepositAddress || '—'}
+														</span>
+													</div>
+													<div className="flex justify-between items-center">
+														<span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Network</span>
+														<div className="flex items-center bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600">
+															<div className="w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center mr-1.5" />
+															<span className="text-xs font-bold text-gray-900 dark:text-slate-100">Base</span>
+														</div>
+													</div>
+												</div>
+												<button
+													type="button"
+													onClick={() => setShowAddUsdcInSheet(true)}
+													className="w-full max-w-[280px] py-4 rounded-2xl font-bold bg-[#0052FF] text-white hover:bg-[#0047e0] active:scale-[0.98] transition-all shadow-lg"
+												>
+													Continue with Coinbase
+												</button>
+											</div>
+										</>
+									) : addCashMode === 'topup_store' ? (
+										isSelectingTopUpStore ? (
+											<div className="flex flex-col h-full min-h-[280px]">
+												<div className="flex items-center mb-6 relative w-full">
+													<button
+														type="button"
+														onClick={() => setIsSelectingTopUpStore(false)}
+														className="absolute left-0 p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors"
+														aria-label="Back"
+													>
+														<ChevronLeft size={20} />
+													</button>
+													<h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mx-auto">Select Store Card</h3>
+												</div>
+												<div className="space-y-4 overflow-y-auto pb-6">
+													{homeStoreCards.map((card) => {
+														const IconCmp = card.icon
+														return (
+															<button
+																type="button"
+																key={card.id}
+																onClick={() => {
+																	setTopUpStore(card)
+																	setIsSelectingTopUpStore(false)
+																}}
+																className="w-full flex items-center p-4 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl cursor-pointer hover:border-[#65A30D] dark:hover:border-[#96EB3C] hover:bg-[#96EB3C]/5 dark:hover:bg-[#96EB3C]/10 transition-colors shadow-sm text-left"
+															>
+																<div
+																	className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 shadow-inner bg-gradient-to-br ${card.color} text-white`}
+																>
+																	<IconCmp size={18} />
+																</div>
+																<div className="flex-1 min-w-0">
+																	<h4 className="font-bold text-gray-900 dark:text-slate-100">{card.name}</h4>
+																	<p className="text-[10px] text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">{card.type}</p>
+																</div>
+																<div className="text-right shrink-0">
+																	<p className="text-sm font-bold text-gray-900 dark:text-slate-100">CA$ {card.balanceCad.toFixed(2)}</p>
+																</div>
+															</button>
+														)
+													})}
+												</div>
+											</div>
+										) : (
+											<>
+												<div className="flex items-center mb-6 w-full relative">
+													<button
+														type="button"
+														onClick={() => setAddCashMode('methods')}
+														className="text-[#65A30D] dark:text-[#96EB3C] font-bold flex items-center text-sm absolute left-0"
+													>
+														<ChevronRight className="rotate-180 mr-1" size={16} /> Back
+													</button>
+													<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Top Up Store Card</h3>
+												</div>
+												<div className="flex flex-col mb-auto pt-2 w-full">
+													<div className="bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-3xl p-5 mb-2 relative shadow-inner">
+														<div className="flex justify-between items-center mb-2">
+															<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">From Vault (USDC)</span>
+															<span className="text-xs font-bold text-gray-400 dark:text-slate-500">Bal: {addCashVaultUsdc.toFixed(2)}</span>
+														</div>
+														<div className="flex items-center justify-between gap-2">
+															<span className="text-3xl font-bold text-gray-900 dark:text-slate-100 break-all">
+																{addCashAmountCad &&
+																addCashTopUpCadPerUsdc > 0 &&
+																Number.isFinite(parseFloat(addCashAmountCad))
+																	? (parseFloat(addCashAmountCad) / addCashTopUpCadPerUsdc).toFixed(2)
+																	: '0.00'}
+															</span>
+															<div className="flex items-center bg-white dark:bg-slate-900 px-3 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-slate-600 shrink-0">
+																<div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-[10px] mr-1.5">
+																	$
+																</div>
+																<span className="text-sm font-bold text-gray-900 dark:text-slate-100">USDC</span>
+															</div>
+														</div>
+													</div>
+													<div className="flex justify-center -my-4 relative z-10">
+														<div className="w-10 h-10 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-full flex items-center justify-center shadow-sm">
+															<ArrowDownToLine size={18} className="text-gray-400" />
+														</div>
+													</div>
+													<div className="bg-white dark:bg-slate-800/80 border border-[#96EB3C]/50 rounded-3xl p-5 mt-2 relative shadow-sm">
+														<div className="flex justify-between items-center mb-2">
+															<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">To Store Card (CAD)</span>
+															<button
+																type="button"
+																onClick={() => setIsSelectingTopUpStore(true)}
+																className="text-xs text-[#65A30D] dark:text-[#96EB3C] font-bold hover:underline"
+															>
+																Change
+															</button>
+														</div>
+														<div className="flex items-center justify-between mb-4">
+															<div className="flex items-center gap-2 min-w-0">
+																<div
+																	className={`w-6 h-6 rounded-full bg-gradient-to-br ${topUpStore.color} border border-gray-200 dark:border-slate-600 shadow-inner shrink-0`}
+																/>
+																<span className="font-bold text-gray-900 dark:text-slate-100 truncate">{topUpStore.name}</span>
+															</div>
+														</div>
+														<div className="flex items-center justify-between gap-2">
+															<input
+																type="number"
+																placeholder="0.00"
+																value={addCashAmountCad}
+																onChange={(e) => setAddCashAmountCad(e.target.value)}
+																inputMode="decimal"
+																autoComplete="off"
+																className="bg-transparent text-3xl font-bold text-[#65A30D] dark:text-[#96EB3C] outline-none w-1/2 min-w-0 placeholder-[#65A30D]/30 dark:placeholder-[#96EB3C]/30 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+															/>
+															<div className="flex items-center bg-gray-50 dark:bg-slate-900 px-3 py-1.5 rounded-full border border-gray-100 dark:border-slate-600 shrink-0">
+																<span className="text-sm font-bold text-gray-700 dark:text-slate-200">CAD</span>
+															</div>
+														</div>
+													</div>
+													<div className="mt-8 bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-gray-200 dark:border-slate-600">
+														<div className="flex justify-between items-start gap-2 text-sm mb-2">
+															<span className="text-gray-500 dark:text-slate-400 shrink-0">Exchange Rate</span>
+															<div className="flex flex-col items-end gap-1 min-w-0">
+																<div className="flex items-center gap-2">
+																	<span className="font-semibold text-gray-900 dark:text-slate-100 text-right inline-flex items-center gap-1">
+																		1 USDC = {addCashTopUpCadPerUsdc.toFixed(4)} CAD
+																		{topUpOracleLoading && topUpRateRefreshStatus === 'idle' ? (
+																			<Loader2 className="w-3.5 h-3.5 animate-spin text-[#65A30D] shrink-0" aria-hidden />
+																		) : null}
+																	</span>
+																	<button
+																		type="button"
+																		onClick={() => void refreshTopUpOracleRate(true)}
+																		disabled={topUpRateRefreshStatus !== 'idle'}
+																		className="p-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+																		aria-label="Refresh exchange rate"
+																	>
+																		{topUpRateRefreshStatus === 'loading' ? (
+																			<Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+																		) : topUpRateRefreshStatus === 'success' ? (
+																			<Check className="w-4 h-4 text-emerald-500" aria-hidden />
+																		) : topUpRateRefreshStatus === 'error' ? (
+																			<AlertTriangle className="w-4 h-4 text-amber-500" aria-hidden />
+																		) : (
+																			<RefreshCw className="w-4 h-4" aria-hidden />
+																		)}
+																	</button>
+																</div>
+																<span className="text-[10px] text-gray-400 dark:text-slate-500 text-right">
+																	Base BeamioOracle (USDC→CAD)
+																</span>
+															</div>
+														</div>
+														{topUpOracleError ? (
+															<p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1">
+																Oracle unreachable; using app cache fallback. Use refresh to retry.
+															</p>
+														) : null}
+														<p className="text-[11px] text-gray-400 dark:text-slate-500">
+															Demo: store card balances update locally only; vault balance follows chain after refresh.
+														</p>
+													</div>
+													<button
+														type="button"
+														onClick={handleConfirmHomeTopUp}
+														disabled={
+															!addCashAmountCad ||
+															addCashTopUpCadPerUsdc <= 0 ||
+															!Number.isFinite(parseFloat(addCashAmountCad)) ||
+															parseFloat(addCashAmountCad) / addCashTopUpCadPerUsdc > addCashVaultUsdc
+														}
+														className={`w-full py-4 mt-6 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 ${
+															!addCashAmountCad ||
+															addCashTopUpCadPerUsdc <= 0 ||
+															!Number.isFinite(parseFloat(addCashAmountCad)) ||
+															parseFloat(addCashAmountCad) / addCashTopUpCadPerUsdc > addCashVaultUsdc
+																? 'bg-gray-200 dark:bg-slate-700 text-gray-400 dark:text-slate-500 cursor-not-allowed'
+																: 'bg-[#96EB3C] hover:bg-[#8ad936] active:scale-95 text-gray-900 shadow-[0_4px_14px_rgba(150,235,60,0.4)]'
+														}`}
+													>
+														<ArrowDownToLine
+															size={20}
+															className={
+																!addCashAmountCad ||
+																addCashTopUpCadPerUsdc <= 0 ||
+																!Number.isFinite(parseFloat(addCashAmountCad)) ||
+																parseFloat(addCashAmountCad) / addCashTopUpCadPerUsdc > addCashVaultUsdc
+																	? 'text-gray-400'
+																	: 'text-gray-900'
+															}
+														/>
+														Confirm Top Up
+													</button>
+												</div>
+											</>
+										)
+									) : null}
+								</div>
+							</motion.div>
+						</>
+					)}
+				</AnimatePresence>,
+				document.body
+			)}
+
+			{/* Send a Store Gift — 对齐 beamio.app renderAction Gift Modal */}
+			{createPortal(
+				<AnimatePresence>
+					{showGiftSheet && (
+						<>
+							<motion.div
+								className="fixed inset-0 z-[9997] bg-black/40 backdrop-blur-md"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+								transition={{ duration: 0.2 }}
+								onClick={closeGiftSheet}
+							/>
+							<motion.div
+								className="fixed left-0 right-0 bottom-0 z-[9998] bg-white dark:bg-slate-900 rounded-t-[2.5rem] shadow-2xl flex flex-col max-h-[88dvh] pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="flex-shrink-0 flex items-center justify-between px-4 pt-2 pb-1">
+									<div className="w-10" />
+									<div className="w-12 h-1.5 rounded-full bg-gray-200 dark:bg-slate-600" />
+									<button
+										type="button"
+										onClick={closeGiftSheet}
+										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+										aria-label="Close"
+									>
+										<X className="w-5 h-5" />
+									</button>
+								</div>
+								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain px-6 pb-4">
+									{isSelectingGiftStore ? (
+										<div className="flex flex-col min-h-[240px]">
+											<div className="flex items-center mb-6 relative w-full">
+												<button
+													type="button"
+													onClick={() => setIsSelectingGiftStore(false)}
+													className="absolute left-0 p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors"
+													aria-label="Back"
+												>
+													<ChevronLeft size={20} />
+												</button>
+												<h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mx-auto">Select Asset to Gift</h3>
+											</div>
+											<div className="space-y-4 overflow-y-auto pb-6">
+												{(
+													[
+														{
+															id: 'usdc' as const,
+															name: 'USDC Balance',
+															type: 'Unallocated Funds',
+															color: 'bg-blue-500',
+															text: 'text-white',
+															balanceCad: giftUsdcValuationCad,
+														} satisfies HomeUsdcGiftVault,
+														...homeStoreCards,
+													] satisfies HomeGiftSource[]
+												).map((card) => {
+													const IconCmp: LucideIcon =
+														card.id === 'usdc' ? Layers : (card as HomeStoreCardRow).icon
+													return (
+														<button
+															type="button"
+															key={card.id}
+															onClick={() => {
+																setGiftStore(card)
+																setIsSelectingGiftStore(false)
+															}}
+															className="w-full flex items-center p-4 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl cursor-pointer hover:border-[#65A30D] dark:hover:border-[#96EB3C] hover:bg-[#96EB3C]/5 dark:hover:bg-[#96EB3C]/10 transition-colors shadow-sm text-left"
+														>
+															<div
+																className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 shadow-inner ${
+																	card.id === 'usdc'
+																		? 'bg-blue-500'
+																		: `bg-gradient-to-br ${(card as HomeStoreCardRow).color}`
+																} text-white`}
+															>
+																{card.id === 'usdc' ? (
+																	<span className="font-bold">$</span>
+																) : (
+																	<IconCmp size={18} />
+																)}
+															</div>
+															<div className="flex-1 min-w-0">
+																<h4 className="font-bold text-gray-900 dark:text-slate-100">{card.name}</h4>
+																<p className="text-[10px] text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+																	{card.type}
+																</p>
+															</div>
+															<div className="text-right shrink-0">
+																<p className="text-sm font-bold text-gray-900 dark:text-slate-100">
+																	CA$ {card.balanceCad ? card.balanceCad.toFixed(2) : '0.00'}
+																</p>
+																<p className="text-[10px] text-gray-400 dark:text-slate-500">Available</p>
+															</div>
+														</button>
+													)
+												})}
+											</div>
+										</div>
+									) : (
+										<div className="flex flex-col animate-in fade-in duration-200">
+											<div className="flex flex-col items-center justify-center mb-6 mt-2">
+												<div className="w-16 h-16 bg-pink-50 dark:bg-pink-950/40 rounded-full flex items-center justify-center mb-4 shadow-sm border border-pink-100 dark:border-pink-900/50">
+													<Gift size={32} className="text-pink-500" />
+												</div>
+												<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">
+													Send a Store Gift
+												</h3>
+												<p className="text-sm text-gray-500 dark:text-slate-400 mb-6 text-center px-6">
+													Gift specific store cards or unallocated USDC to friends.
+												</p>
+												<div className="flex items-center text-gray-900 dark:text-slate-100 font-bold text-6xl tracking-tighter">
+													<span className="text-3xl mr-1 text-gray-400 dark:text-slate-500">$</span>
+													<input
+														type="number"
+														placeholder="0.00"
+														value={giftAmount}
+														onChange={(e) => setGiftAmount(e.target.value)}
+														inputMode="decimal"
+														autoComplete="off"
+														className="w-40 bg-transparent outline-none text-center placeholder-gray-200 dark:placeholder-slate-600 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+													/>
+												</div>
+												<button
+													type="button"
+													onClick={() => setIsSelectingGiftStore(true)}
+													className="mt-4 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border border-gray-200 dark:border-slate-600 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors shadow-sm"
+												>
+													{giftStore ? (
+														<>
+															<div
+																className={`w-4 h-4 rounded-full ${
+																	giftStore.id === 'usdc'
+																		? 'bg-blue-500'
+																		: `bg-gradient-to-br ${(giftStore as HomeStoreCardRow).color}`
+																} border border-white/20 shadow-inner`}
+															/>
+															{giftStore.name}{' '}
+															<ChevronRight size={14} className="text-gray-400 inline" />
+														</>
+													) : (
+														<>
+															<div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white text-[8px] font-bold">
+																$
+															</div>
+															Unallocated USDC <ChevronRight size={14} className="text-gray-400 inline" />
+														</>
+													)}
+												</button>
+											</div>
+											<div
+												ref={giftRecipientSearchRef}
+												className="relative z-20 mb-3 overflow-visible rounded-2xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800/80 shadow-sm"
+											>
+												{!giftRecipientSelected ? (
+													<>
+														<div className="flex items-center p-4">
+															<UserCircle className="text-gray-400 dark:text-slate-500 mr-3 shrink-0" size={24} />
+															<div className="flex-1 flex items-center min-w-0">
+																<span className="text-gray-900 dark:text-slate-100 font-bold mr-2 shrink-0">To:</span>
+																<input
+																	type="text"
+																	placeholder="@beamio.tag or Phone #"
+																	value={giftRecipient}
+																	onChange={(e) => {
+																		setGiftRecipient(e.target.value)
+																		setGiftRecipientSelected(null)
+																		setGiftRecipientSuggestOpen(true)
+																	}}
+																	onFocus={() => setGiftRecipientSuggestOpen(true)}
+																	autoComplete="off"
+																	autoCorrect="off"
+																	autoCapitalize="none"
+																	spellCheck={false}
+																	inputMode="search"
+																	enterKeyHint="search"
+																	className="w-full bg-transparent outline-none text-gray-800 dark:text-slate-200 font-semibold placeholder-gray-400 dark:placeholder-slate-500 text-[13px]"
+																/>
+															</div>
+														</div>
+														{giftPayRecentRecipients.length > 0 &&
+														!(
+															giftRecipientSuggestOpen &&
+															giftRecipient.trim().replace(/^@/, '').length >= 3 &&
+															(giftRecipientSearchLoading || giftRecipientHits.length > 0)
+														) ? (
+															<div className="flex items-center gap-3 overflow-x-auto px-4 pb-3 no-scrollbar">
+																{giftPayRecentRecipients.map((r) => (
+																	<button
+																		key={r.address}
+																		type="button"
+																		onClick={() => onPickGiftRecipientHit(r)}
+																		className="flex flex-shrink-0 flex-col items-center gap-1 active:scale-95 transition-transform"
+																	>
+																		<div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-slate-200 ring-2 ring-transparent hover:ring-blue-300 dark:bg-slate-600 dark:hover:ring-blue-500">
+																			{r.image ? (
+																				<img src={r.image} alt={r.username} className="h-full w-full object-cover" />
+																			) : (
+																				<img
+																					src={getImg(r.username || r.address)}
+																					alt={r.username}
+																					className="h-full w-full object-cover"
+																				/>
+																			)}
+																		</div>
+																		<span className="max-w-[56px] truncate text-[11px] font-medium text-blue-600 dark:text-blue-400">
+																			@
+																			{(r.username || r.address?.slice(0, 6) || '').replace(/^@/, '')}
+																		</span>
+																	</button>
+																))}
+															</div>
+														) : null}
+														{giftRecipientSuggestOpen &&
+															!giftRecipientSelected &&
+															giftRecipient.trim().replace(/^@/, '').length >= 3 && (
+																<div
+																	className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200/80 dark:border-slate-600 bg-white dark:bg-slate-900 py-1 shadow-xl shadow-slate-200/80 dark:shadow-black/40"
+																	onMouseDown={(e) => e.preventDefault()}
+																>
+																	<button
+																		type="button"
+																		className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
+																	>
+																		<Search
+																			className="h-4 w-4 flex-shrink-0 text-slate-500 dark:text-slate-400"
+																			strokeWidth={2}
+																		/>
+																		<span className="flex-1 truncate text-[13px] text-slate-700 dark:text-slate-200">
+																			{giftRecipient.trim()
+																				? `${giftRecipient.trim()} Beamio search`
+																				: 'Beamio search'}
+																		</span>
+																		{giftRecipientSearchLoading ? (
+																			<span className="text-[11px] text-slate-400 dark:text-slate-500">
+																				Searching…
+																			</span>
+																		) : null}
+																	</button>
+																	{!giftRecipientSearchLoading &&
+																		giftRecipientHits.map((hit) => (
+																			<button
+																				key={`${hit.address}-${hit.username}`}
+																				type="button"
+																				className="flex w-full items-center px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
+																				onClick={() => onPickGiftRecipientHit(hit)}
+																			>
+																				<img
+																					src={hit.image ? hit.image : getImg(hit.username)}
+																					alt={hit.username}
+																					className="mr-2 h-7 w-7 flex-shrink-0 rounded-full bg-slate-200 object-cover dark:bg-slate-700"
+																				/>
+																				<div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+																					<div className="flex min-w-0 flex-col">
+																						<span className="truncate text-[13px] text-slate-900 dark:text-slate-100">
+																							{displayName(hit)}
+																						</span>
+																						<span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+																							@{hit.username} · {fmtAddr(hit.address)}
+																						</span>
+																						<span className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
+																							{Number(hit.follow_count || '0').toLocaleString()} following ·{' '}
+																							{Number(hit.follower_count || '0').toLocaleString()} followers
+																						</span>
+																					</div>
+																					<span className="whitespace-nowrap text-[10px] text-slate-400 dark:text-slate-500">
+																						{giftSearchFormatUserDate(hit.created_at)}
+																					</span>
+																				</div>
+																			</button>
+																		))}
+																	{!giftRecipientSearchLoading && giftRecipientHits.length === 0 ? (
+																		<div className="px-3 py-2.5 text-[12px] text-slate-400 dark:text-slate-500">
+																			No results
+																		</div>
+																	) : null}
+																</div>
+															)}
+													</>
+												) : (
+													<div className="flex w-full flex-col items-center px-4 pb-4 pt-2">
+														<div
+															className="inline-flex cursor-default select-none flex-col items-center"
+															role="group"
+															aria-label="Selected recipient"
+														>
+															<div className="mt-2 flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-slate-200 dark:bg-slate-600">
+																{giftRecipientSelected.image ? (
+																	<img
+																		src={giftRecipientSelected.image}
+																		alt={giftRecipientSelected.username}
+																		className="h-full w-full object-cover"
+																	/>
+																) : (
+																	<img
+																		src={getImg(giftRecipientSelected.username)}
+																		alt={giftRecipientSelected.username}
+																		className="h-full w-full object-cover"
+																	/>
+																)}
+															</div>
+															<div className="pointer-events-none mt-1 flex flex-col items-center">
+																<div className="text-[18px] font-semibold leading-[18px] text-blue-600 dark:text-blue-400">
+																	@{giftRecipientSelected.username}
+																</div>
+																<div className="mt-0.5 text-[12px] leading-[13px] text-blue-600 dark:text-blue-400">
+																	{fmtAddr(giftRecipientSelected.address)}
+																</div>
+															</div>
+														</div>
+														<button
+															type="button"
+															onClick={() => {
+																setGiftRecipientSelected(null)
+																setGiftRecipient('')
+																setGiftRecipientSuggestOpen(true)
+															}}
+															className="mt-3 text-[13px] font-medium text-blue-600 hover:underline dark:text-blue-400"
+														>
+															Change recipient
+														</button>
+													</div>
+												)}
+											</div>
+											<div className="bg-gray-50 dark:bg-slate-800/80 rounded-2xl p-4 mb-auto border border-gray-200 dark:border-slate-600 flex items-center shadow-sm">
+												<MessageCircle className="text-gray-400 dark:text-slate-500 mr-3 shrink-0" size={24} />
+												<div className="flex-1 flex items-center min-w-0">
+													<input
+														type="text"
+														placeholder="Add a message..."
+														value={giftMessage}
+														onChange={(e) => setGiftMessage(e.target.value)}
+														className="w-full bg-transparent outline-none text-gray-800 dark:text-slate-200 font-medium placeholder-gray-400 dark:placeholder-slate-500"
+													/>
+												</div>
+											</div>
+											<div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-5 mt-6 border border-gray-200 dark:border-slate-600 shadow-sm">
+												<div className="flex justify-between items-center mb-3">
+													<span className="text-sm text-gray-500 dark:text-slate-400 font-medium">Gift Amount</span>
+													<span className="text-sm font-bold text-gray-900 dark:text-slate-100">
+														{giftStore && giftStore.id !== 'usdc' ? 'CA$' : 'USDC'} {giftCadAmount.toFixed(2)}
+													</span>
+												</div>
+												<div className="flex justify-between items-center pt-3 border-t border-dashed border-gray-200 dark:border-slate-600">
+													<span className="text-sm text-gray-500 dark:text-slate-400 font-medium flex items-center">
+														Network Fee (0.8%)
+														<Info size={12} className="ml-1 text-gray-400 shrink-0" />
+													</span>
+													<div className="text-right flex flex-col items-end">
+														<span className="text-sm font-mono font-bold text-gray-900 dark:text-slate-100">
+															+ {giftFeeUsdc.toFixed(2)} USDC
+														</span>
+														{giftCadAmount > 0 && giftFeeUsdc <= 0.0200001 ? (
+															<span className="text-[9px] text-gray-400 dark:text-slate-500 mt-0.5">
+																Minimum fee applied
+															</span>
+														) : giftCadAmount > 0 && giftFeeUsdc >= 1.999 ? (
+															<span className="text-[9px] text-gray-400 dark:text-slate-500 mt-0.5">
+																Maximum fee cap applied
+															</span>
+														) : null}
+													</div>
+												</div>
+												<div className="flex justify-between items-center pt-3 mt-3 border-t border-gray-200 dark:border-slate-600">
+													<span className="text-sm font-bold text-gray-900 dark:text-slate-100">Total Cost</span>
+													<div className="text-right">
+														<span className="text-base font-extrabold text-gray-900 dark:text-slate-100">
+															USDC{' '}
+															{giftCadPerUsdc > 0
+																? (giftCadAmount / giftCadPerUsdc + giftFeeUsdc).toFixed(2)
+																: '0.00'}
+														</span>
+													</div>
+												</div>
+											</div>
+											<button
+												type="button"
+												onClick={handleConfirmGift}
+												disabled={!giftCadAmount || giftCadAmount <= 0}
+												className={`w-full py-4 rounded-2xl font-bold transition-all shadow-md flex items-center justify-center gap-2 mt-4 ${
+													!giftCadAmount || giftCadAmount <= 0
+														? 'bg-gray-200 dark:bg-slate-700 text-gray-400 cursor-not-allowed shadow-none'
+														: 'bg-gray-900 dark:bg-gray-100 hover:bg-gray-800 dark:hover:bg-white active:scale-95 text-white dark:text-gray-900'
+												}`}
+											>
+												<Gift
+													size={20}
+													className={
+														!giftCadAmount || giftCadAmount <= 0
+															? 'text-gray-400'
+															: 'text-white dark:text-gray-900'
+													}
+												/>
+												Confirm & Send Gift
+											</button>
+										</div>
 									)}
 								</div>
 							</motion.div>
@@ -2654,12 +3772,19 @@ const Home = ({}) => {
 
 							{ settingsOpen === 'Pay' && (
 								<PayScreen 
-									beamioer={userPreviewItem || undefined}
+									beamioer={giftPayHandoffPayee ?? userPreviewItem ?? undefined}
+									initialNote={giftPayPrefill?.note}
+									initialSendAmount={giftPayPrefill?.usdc}
+									focusAmountOnMount={Boolean(giftPayPrefill)}
 									close={() => {
+										setGiftPayHandoffPayee(null)
+										setGiftPayPrefill(null)
 										setSettingsOpen('')
 										setShowFooter(true)
 									}}
 									onShowFuelCenter={() => {
+										setGiftPayHandoffPayee(null)
+										setGiftPayPrefill(null)
 										setSettingsOpen('')
 										setShowFooter(true)
 										setShowFuelView(true)

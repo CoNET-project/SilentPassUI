@@ -100,9 +100,13 @@ type Props = {
 	focusAmountOnMount?: boolean
 	/** B-Unit 不足时点击「Go to Fuel Center」的回调，用于跳转显示 Fuel Center 供用户 topup */
 	onShowFuelCenter?: () => void
+	/** 外部带入的备注（如 Home Gift → Pay） */
+	initialNote?: string
+	/** 外部带入的 USDC 金额字符串（如 Gift 总成本） */
+	initialSendAmount?: string
 }
 
-export default function PayScreen ({close, beamioer, preferredToAddress, mode = 'eoa-pay', aaAccountUsdcBalance, focusAmountOnMount, onShowFuelCenter}: Props) {
+export default function PayScreen ({close, beamioer, preferredToAddress, mode = 'eoa-pay', aaAccountUsdcBalance, focusAmountOnMount, onShowFuelCenter, initialNote, initialSendAmount}: Props) {
 	
 	const [sendAmount, setSendAmount] = useState("")
 	const [processing, setProcessing] = useState(false)
@@ -220,6 +224,20 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 			return () => clearTimeout(t)
 		}
 	}, [focusAmountOnMount])
+
+	/** Gift / 深链预填：与 beamioer 同时由外部传入时写入一次 */
+	useEffect(() => {
+		const n = initialNote?.trim()
+		if (n) setNote(n)
+	}, [initialNote])
+
+	useEffect(() => {
+		if (initialSendAmount === undefined || initialSendAmount === null) return
+		const s = String(initialSendAmount).trim()
+		if (!s) return
+		const num = Number(s)
+		if (Number.isFinite(num) && num > 0) setSendAmount(s)
+	}, [initialSendAmount])
 
 	// AA/EOA 模式：根据方向同步收款人 item（用于提交）；AA→EOA 固定为 myAddress
 	useEffect(() => {

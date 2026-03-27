@@ -9,11 +9,12 @@ const payment_endpoint = `https://hooks.conet.network/api/`;
 const XMLHttpRequestTimeout = 90 * 1000;
 // const conetRpc = "https://cancun-rpc.conet.network";
 const mainChain_rpc = "https://mainnet-rpc.conet.network";
-/** CoNET L1 WebSocket（BeamioIndexerDiamond 事件订阅）；可用 VITE_CONET_RPC_WSS 覆盖 */
-const _viteConetWss =
-	typeof import.meta !== 'undefined' &&
-	(import.meta as ImportMeta & { env?: { VITE_CONET_RPC_WSS?: string } }).env?.VITE_CONET_RPC_WSS;
-export const CONET_MAINNET_WSS = _viteConetWss || 'wss://mainnet-rpc.conet.network';
+/** CoNET L1 WebSocket（BeamioIndexerDiamond 事件订阅）；CRA 可用 REACT_APP_CONET_RPC_WSS；兼容旧名 VITE_CONET_RPC_WSS（需构建配置注入） */
+const _envConetWss =
+	typeof process !== 'undefined'
+		? process.env.REACT_APP_CONET_RPC_WSS || process.env.VITE_CONET_RPC_WSS
+		: undefined
+export const CONET_MAINNET_WSS = _envConetWss || 'wss://mainnet-rpc.conet.network';
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
 
 const beamioApi = 'https://beamio.app'

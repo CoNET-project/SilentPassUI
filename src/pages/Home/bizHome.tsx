@@ -5,7 +5,8 @@ import { ethers } from 'ethers'
 import { restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio'
 import { setCoNET_Data } from '@/utils/globals'
 import { initChat } from '@/services/chat'
-import { getAAAccount } from '@/services/BeamioCard'
+import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
+import { baseEndpoint } from '@/utils/constants'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import MerchantOS from '@/pages/Vouchers/example/biz'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
@@ -58,13 +59,40 @@ const assembleEncryptKeysObject = async (
 	bo.initialLoading = true
 	temp.beamio = bo
 
-	// Fetch AA address from chain (profile from restoreWithUserPin has no aaAccount)
+	// Trusted RPC：与本地缓存比对，不一致则更新（含链上无 AA 时清除无 bytecode 的错误缓存）
 	try {
-		const chainAa = await getAAAccount(profiles[0])
-		if (chainAa) {
-			const nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: chainAa } : p))
-			temp.profiles = nextProfiles
-			setProfiles(nextProfiles)
+		const eoa0 = profiles[0]?.keyID?.trim()
+		if (eoa0 && ethers.isAddress(eoa0)) {
+			const r = await fetchTrustedCanonicalAaFromRpc(eoa0)
+			if (r.trusted) {
+				let nextProfiles = profiles
+				let changed = false
+				if (r.aa) {
+					const chainAa = ethers.getAddress(r.aa)
+					const cached = profiles[0].aaAccount?.trim()
+					if (
+						!cached ||
+						!ethers.isAddress(cached) ||
+						ethers.getAddress(cached).toLowerCase() !== chainAa.toLowerCase()
+					) {
+						nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: chainAa } : p))
+						changed = true
+					}
+				} else {
+					const cached = profiles[0].aaAccount?.trim()
+					if (cached && ethers.isAddress(cached)) {
+						const code = await baseEndpoint.getCode(cached)
+						if (!code || code === '0x' || code.length <= 2) {
+							nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: undefined } : p))
+							changed = true
+						}
+					}
+				}
+				if (changed) {
+					temp.profiles = nextProfiles
+					setProfiles(nextProfiles)
+				}
+			}
 		}
 	} catch {
 		// Keep last trusted; RPC failure does not overwrite

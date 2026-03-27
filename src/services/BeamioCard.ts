@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, baseRpcProviderDirect, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES, BASE_TREASURY } from "@/config/chainAddresses";
+import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -355,7 +356,7 @@ export const quotePointsForUSDC = async (
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 
-/** Logs the exact JSON body sent to POST /api/createCard when: Vite dev, NODE_ENV=development, localStorage BEAMIO_DEBUG_CREATE_CARD=1, or URL ?debugCreateCard=1 */
+/** Logs the exact JSON body sent to POST /api/createCard when: NODE_ENV=development (CRA), localStorage BEAMIO_DEBUG_CREATE_CARD=1, or URL ?debugCreateCard=1 */
 function shouldLogCreateCardRequestBody(): boolean {
 	if (typeof window !== 'undefined') {
 		try {
@@ -364,12 +365,6 @@ function shouldLogCreateCardRequestBody(): boolean {
 		} catch {
 			/* storage blocked */
 		}
-	}
-	try {
-		const im = import.meta as ImportMeta & { env?: { DEV?: boolean; MODE?: string } }
-		if (im.env?.DEV === true || im.env?.MODE === 'development') return true
-	} catch {
-		/* no import.meta */
 	}
 	if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') return true
 	return false
@@ -1953,7 +1948,7 @@ const getICurrency = (currency: bigint | number): ICurrency => {
 
 
 
-const _isDev = typeof import.meta !== 'undefined' && (import.meta as { env?: { DEV?: boolean } }).env?.DEV
+const _isDev = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development'
 
 /** RPC 失败或 primaryAccountOf 为空时从 API 获取 AA 地址 */
 async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
@@ -2000,6 +1995,22 @@ async function tryPredictedAAFromFactory(eoa: string): Promise<string | null> {
 	}
 }
 
+/**
+ * 仅 RPC：`UserCardFactory._aaFactory` → `beamioAccountOf`（须有合约 code）；与 x402sdk `resolveBeamioAaForEoaWithFallback` 一致，**无**旧工厂回退。
+ * 用于首页与 Merchant OS：仅在 `trusted === true` 时用结果比对并覆盖本地缓存的 `aaAccount`。
+ */
+export async function fetchTrustedCanonicalAaFromRpc(
+	eoa: string
+): Promise<{ trusted: true; aa: string | null } | { trusted: false }> {
+	try {
+		const addr = ethers.getAddress(eoa.trim())
+		const aa = await resolveBeamioAaForEoaWithFallback(baseEndpoint, addr)
+		return { trusted: true, aa }
+	} catch {
+		return { trusted: false }
+	}
+}
+
 export const getAAAccount = async (profile: profile): Promise<string | null> => {
 	const eoa = profile?.keyID?.trim()
 	if (!eoa || !ethers.isAddress(eoa)) {
@@ -2007,21 +2018,9 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 		return null
 	}
 	try {
-		const accountFactory = new ethers.Contract(
-			contracts.BeamioAAAcountFactory.address,
-			BeamioAAAcountFactoryAbi,
-			baseEndpoint
-		)
-		const account = await accountFactory.primaryAccountOf(eoa)
-		if (account === ethers.ZeroAddress) {
-			if (_isDev) console.warn('[getAAAccount] primaryAccountOf returned ZeroAddress for', eoa)
-			const fromApi = await fetchAAAccountFromApi(eoa)
-			if (fromApi && ethers.isAddress(fromApi)) return fromApi
-			return tryPredictedAAFromFactory(eoa)
-		}
-		const code = await baseEndpoint.getCode(account)
-		if (code === '0x') {
-			if (_isDev) console.warn('[getAAAccount] Account has no bytecode at', account)
+		const account = await resolveBeamioAaForEoaWithFallback(baseEndpoint, eoa)
+		if (!account) {
+			if (_isDev) console.warn('[getAAAccount] resolve returned null for', eoa)
 			const fromApi = await fetchAAAccountFromApi(eoa)
 			if (fromApi && ethers.isAddress(fromApi)) return fromApi
 			return tryPredictedAAFromFactory(eoa)

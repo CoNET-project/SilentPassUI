@@ -13,6 +13,7 @@ import {
   isCardAdmin,
   postCardRedeemAdmin,
   getAAAccount,
+  fetchTrustedCanonicalAaFromRpc,
   postCardAddAdminByAdmin,
   postCardAddAdmin,
   encodeAddAdminWithMintLimit,
@@ -27,7 +28,8 @@ import {
   type CardTierMetadata,
 } from '@/services/BeamioCard';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect, CONET_MAINNET_WSS } from '@/utils/constants';
-import { BASE_AA_FACTORY, BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
+import { BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
+import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import {
   CHARGE_BUINT_LEDGER_MAX_ENTRIES,
@@ -1688,9 +1690,7 @@ async function pickInfraTierTokenIdByMaxMinUsdc6(
   return fallbackId
 }
 
-const BEAMIO_AA_FACTORY_ABI = ['function beamioAccountOf(address) view returns (address)'] as const
-
-/** Same account the card uses for active membership: payer AA, or EOA → primary AA. */
+/** Same account the card uses for active membership: payer AA, or EOA → UserCard._aaFactory path AA. */
 async function resolveMembershipAccountForCard(
   payerAddress: string,
   provider: ethers.Provider,
@@ -1699,11 +1699,7 @@ async function resolveMembershipAccountForCard(
   const norm = ethers.getAddress(payerAddress)
   if (isContract) return norm
   try {
-    const factory = new ethers.Contract(BASE_AA_FACTORY, BEAMIO_AA_FACTORY_ABI, provider)
-    const aa = await factory.beamioAccountOf(norm)
-    const a = typeof aa === 'string' ? aa : String(aa)
-    if (!a || !ethers.isAddress(a) || ethers.getAddress(a) === ethers.ZeroAddress) return null
-    return ethers.getAddress(a)
+    return await resolveBeamioAaForEoaWithFallback(provider, norm)
   } catch {
     return null
   }
@@ -2846,40 +2842,63 @@ export default function MerchantOS() {
    }
  }, [profiles, setProfiles, myAddress]);
 
- // On entry: if profiles[0] exists but aaAccount is empty, or myAddress exists without profile, fetch AA from chain and update
+ // On entry: trusted RPC 与本地 aaAccount 比对；不一致则更新；链上无 AA 时清除无 bytecode 的错误缓存
  useEffect(() => {
    const p0 = profiles?.[0];
    const eoa = (p0?.keyID?.trim() || myAddress?.trim()) || '';
    if (!eoa || !ethers.isAddress(eoa)) return;
-   if (p0?.aaAccount?.trim()) return;
    let cancelled = false;
    const run = async (retryCount = 0) => {
      if (cancelled) return;
      try {
-       const profileForFetch = p0?.keyID?.trim() ? p0 : { ...(p0 ?? {}), keyID: myAddress };
-       const chainAa = await getAAAccount(profileForFetch);
+       const r = await fetchTrustedCanonicalAaFromRpc(eoa);
        if (cancelled) return;
-       if (!chainAa) {
+       if (!r.trusted) {
          if (retryCount === 0) setTimeout(() => run(1), 2500);
          return;
        }
-       if (p0) {
-         const nextProfiles = (profiles ?? []).map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
+
+       const persist = async (nextProfiles: profile[]) => {
          setProfiles(nextProfiles);
          const temp = CoNET_Data;
-         if (temp?.profiles?.length) {
-           temp.profiles = temp.profiles.map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
-           setCoNET_Data(temp);
-           await storeSystemData();
-         }
-       } else {
-         setProfiles([{ keyID: myAddress, aaAccount: chainAa } as profile]);
-         const temp = CoNET_Data;
          if (temp) {
-           temp.profiles = [{ keyID: myAddress, aaAccount: chainAa } as profile];
+           temp.profiles = nextProfiles;
            setCoNET_Data(temp);
            await storeSystemData();
          }
+       };
+
+       if (r.aa) {
+         const chainAa = ethers.getAddress(r.aa);
+         const cached = p0?.aaAccount?.trim();
+         if (
+           cached &&
+           ethers.isAddress(cached) &&
+           ethers.getAddress(cached).toLowerCase() === chainAa.toLowerCase()
+         ) {
+           return;
+         }
+         if (p0) {
+           const nextProfiles = (profiles ?? []).map((p: profile, i: number) =>
+             i === 0 ? { ...p, aaAccount: chainAa } : p
+           );
+           await persist(nextProfiles);
+         } else if (myAddress && ethers.isAddress(myAddress)) {
+           await persist([{ keyID: ethers.getAddress(myAddress), aaAccount: chainAa } as profile]);
+         }
+         return;
+       }
+
+       const cached = p0?.aaAccount?.trim();
+       if (!cached || !ethers.isAddress(cached)) return;
+       const code = await baseEndpoint.getCode(cached);
+       if (cancelled) return;
+       if (code && code !== '0x' && code.length > 2) return;
+       if (p0) {
+         const nextProfiles = (profiles ?? []).map((p: profile, i: number) =>
+           i === 0 ? { ...p, aaAccount: undefined } : p
+         );
+         await persist(nextProfiles);
        }
      } catch {
        if (retryCount === 0) setTimeout(() => run(1), 2500);

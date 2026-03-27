@@ -6,6 +6,7 @@
 
 import { ethers } from 'ethers'
 import {baseEndpoint} from '@/utils/constants'
+import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory'
 import BeamioModuleABI from './ABI/BeamioModuleABI.json'
 import BeamioAccountABI from './ABI/BeamioAccount.json'
 
@@ -455,11 +456,39 @@ export async function readContainerNonceFromAAStorage(
 	return BigInt(raw)
 }
 
+/**
+ * OpenContainer / ContainerMainRelayed 签名必须用 UserCardFactory._aaFactory() 链路与链上扣点一致；
+ * profile.aaAccount 可能仍是旧 BASE_AA_FACTORY 预测地址（同 EOA 两个 AA 并存）。
+ */
+async function resolveSigningAaAccount(
+	provider: ethers.Provider,
+	profileAa: string | undefined,
+	signerEoa: string
+): Promise<string> {
+	const canonical = await resolveBeamioAaForEoaWithFallback(provider, signerEoa)
+	if (!canonical) {
+		throw new Error(
+			'No Beamio AA for this EOA on the UserCard factory path. Create or link a smart account, or check BASE_CARD_FACTORY and on-chain _aaFactory().'
+		)
+	}
+	const aa = ethers.getAddress(canonical)
+	if (
+		profileAa &&
+		ethers.isAddress(profileAa) &&
+		ethers.getAddress(profileAa).toLowerCase() !== aa.toLowerCase()
+	) {
+		console.warn(
+			`[AAaccount] profile.aaAccount ${profileAa} != canonical ${aa} (UserCard factory); signing with canonical`
+		)
+	}
+	return aa
+}
+
 
 /**
  * 使用 BeamioContainerModuleV07.containerMainRelayed（绑定 to）将 AA 内 USDC 转到 owner 的 EOA。
  * 用 owner 私钥对 EIP-712 ContainerMain(account, to, itemsHash, nonce, deadline) 签名，返回 payload 供 Factory.relayContainerMainRelayed 或服务端 relay。
- * @param profile 含 privateKeyArmor、aaAccount（必填）
+ * @param profile 含 privateKeyArmor；aaAccount 可选（若与卡工厂 canonical 不一致则自动改用 canonical）
  * @param amountUSDC 本次转账金额（6 位小数，如 "10.5"），人类可读 → bigint = amountUSDC * 10**6
  * @param options.provider 可选，默认 Base 主网
  */
@@ -473,10 +502,7 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayed(
 	const provider = baseEndpoint
 	const signer = new ethers.Wallet(profile.privateKeyArmor, provider)
 
-	const aaAccount = profile.aaAccount
-	if (!aaAccount || !ethers.isAddress(aaAccount)) {
-		throw new Error('profile.aaAccount is required and must be a valid address')
-	}
+	const aaAccount = await resolveSigningAaAccount(provider, profile.aaAccount, signer.address)
 
 	// owner 校验
 	const aa = new ethers.Contract(aaAccount, BEAMIO_ACCOUNT_ABI, provider)
@@ -546,7 +572,7 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayed(
  * - nonce 从 AA storage 读 openRelayedNonce。
  */
 export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
-	profile: { privateKeyArmor: string; aaAccount: string },
+	profile: { privateKeyArmor: string; aaAccount?: string },
 	amountUSDC: string,
 	options?: { provider?: ethers.Provider; to?: string; deadlineSeconds?: number }
   ): Promise<OpenContainerRelayPayload> {
@@ -554,10 +580,7 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 
 	const signer = new ethers.Wallet(profile.privateKeyArmor, prov)
 
-	const aaAccount = profile.aaAccount
-	if (!aaAccount || !ethers.isAddress(aaAccount)) {
-	  throw new Error('profile.aaAccount is required and must be a valid address')
-	}
+	const aaAccount = await resolveSigningAaAccount(prov, profile.aaAccount, signer.address)
 
 	const code = await prov.getCode(aaAccount)
 	if (!code || code === '0x' || code.length <= 2) {

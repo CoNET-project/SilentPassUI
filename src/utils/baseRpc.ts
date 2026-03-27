@@ -2,7 +2,7 @@
  * Base 主网 RPC 自动切换模块
  * 使用 https://base-rpc.conet.network，故障时自动切换到 CoNET 代理节点
  * 支持 CoNET allNodes：限流时仅使用 CoNET 节点，不向 API 服务器请求
- * 支持 VITE_BASE_RPC 环境变量覆盖（使用单节点，不切换）
+ * 支持 REACT_APP_BASE_RPC（CRA）或 VITE_BASE_RPC（需构建配置注入）覆盖（使用单节点，不切换）
  */
 import { ethers } from 'ethers'
 
@@ -10,11 +10,14 @@ const BASE_NETWORK = { name: 'base', chainId: 8453 } as const
 
 const BEAMIO_BASE_RPC = 'https://base-rpc.conet.network'
 
-const _viteBaseRpc = typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_BASE_RPC?: string } }).env?.VITE_BASE_RPC
+const _envBaseRpc =
+	typeof process !== 'undefined'
+		? process.env.REACT_APP_BASE_RPC || process.env.VITE_BASE_RPC
+		: undefined
 
-/** Base 主网 RPC 列表（VITE_BASE_RPC 未设置时：多节点 fallback，RPC 限流/失败时自动切换） */
-export const BASE_RPC_URLS = _viteBaseRpc
-	? [_viteBaseRpc]
+/** Base 主网 RPC 列表（覆盖变量未设置时：多节点 fallback，RPC 限流/失败时自动切换） */
+export const BASE_RPC_URLS = _envBaseRpc
+	? [_envBaseRpc]
 	: [BEAMIO_BASE_RPC]
 
 /** 检测是否为 RPC 配额/网络类错误（应触发切换） */

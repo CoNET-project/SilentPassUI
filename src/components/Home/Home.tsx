@@ -25,12 +25,18 @@ import CoinbaseRamps from '@/components/Setting/CoinbaseRamps'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
+import cashTreesHeroBg1 from '@/components/assets/cashTreesHeroBg1.png'
+import cashTreesHeroBg2 from '@/components/assets/cashTreesHeroBg2.png'
+import cashTreesHeroBg3 from '@/components/assets/cashTreesHeroBg3.png'
+import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
+import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
 
 import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
 import bIcon from '@/components/assets/logo512.png'
-import { baseEndpoint } from '@/utils/constants'
+import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
+import usdc_abi from '@/services/ABI/usdc_abi.json'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {
 	getAAAccount,
@@ -52,7 +58,10 @@ import FuelView from './FuelView'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 
-
+/** CashTrees 大卡背景轮播：每图静止 5s，短时 cross-fade 切换 */
+const CASH_TREES_HERO_BACKGROUNDS = [cashTreesHeroBg1, cashTreesHeroBg2, cashTreesHeroBg3] as const
+const CASH_TREES_HERO_BG_INTERVAL_MS = 5000
+const CASH_TREES_HERO_BG_FADE_MS = 480
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
@@ -166,6 +175,53 @@ function privateKeyHexForNfcLinkClaim(raw: string | null | undefined): string | 
 	}
 }
 
+/**
+ * 与 MainActivity.parseSunParamsFromNdefUrl 一致：从 NDEF URL 的 query 取 e/c/m。
+ * 用于原生已传 `ndefUri` 但 `detail.sun` 缺失/序列化异常时的回退解析。
+ */
+function parseSunEcmFromNdefUrl(urlStr: string | undefined): { e: string; c: string; m: string } | null {
+	if (!urlStr || typeof urlStr !== 'string') return null
+	const trimmed = urlStr.trim()
+	if (!trimmed) return null
+	try {
+		const u = new URL(trimmed)
+		const e = u.searchParams.get('e')?.trim() ?? ''
+		const c = u.searchParams.get('c')?.trim() ?? ''
+		const m = u.searchParams.get('m')?.trim() ?? ''
+		if (e.length !== 64 || c.length !== 6 || m.length !== 16) return null
+		if (!/^[0-9a-fA-F]+$/.test(e) || !/^[0-9a-fA-F]+$/.test(c) || !/^[0-9a-fA-F]+$/.test(m)) return null
+		const el = e.toLowerCase()
+		const cl = c.toLowerCase()
+		const ml = m.toLowerCase()
+		if (el.split('').every((ch) => ch === '0') && cl.split('').every((ch) => ch === '0') && ml.split('').every((ch) => ch === '0')) {
+			return null
+		}
+		return { e, c, m }
+	} catch {
+		return null
+	}
+}
+
+/** POS 仅写入模板（e/c/m 全 0）时尚无可用 SUN，与链上/服务端一致应拒绝 link。 */
+function isTemplateOnlySunNdefUrl(urlStr: string | undefined): boolean {
+	if (!urlStr || typeof urlStr !== 'string') return false
+	try {
+		const u = new URL(urlStr.trim())
+		const e = u.searchParams.get('e')?.trim() ?? ''
+		const c = u.searchParams.get('c')?.trim() ?? ''
+		const m = u.searchParams.get('m')?.trim() ?? ''
+		if (e.length !== 64 || c.length !== 6 || m.length !== 16) return false
+		if (!/^[0-9a-fA-F]+$/.test(e) || !/^[0-9a-fA-F]+$/.test(c) || !/^[0-9a-fA-F]+$/.test(m)) return false
+		return (
+			e.toLowerCase().split('').every((ch) => ch === '0') &&
+			c.toLowerCase().split('').every((ch) => ch === '0') &&
+			m.toLowerCase().split('').every((ch) => ch === '0')
+		)
+	} catch {
+		return false
+	}
+}
+
 /** Android：`JavascriptInterface` 注入 `window.CashTreesAndroid`。iOS：`WKScriptMessageHandler` + 注入 `window.CashTreesIOS`（方法签名对齐 Android）。 */
 type CashTreesNativeNfcBridge = {
 	getNfcStatus: () => string
@@ -200,6 +256,8 @@ type HomeStoreCardRow = {
 	bgColor: string
 	icon: LucideIcon
 	balanceCad: number
+	/** Full-bleed card artwork (bundled asset URL); text sits in a frosted panel. */
+	backgroundImage?: string
 }
 
 /** Send a Store Gift：资产来源（与 renderAction UsdcGiftVault / GiftSource 对齐） */
@@ -214,10 +272,48 @@ type HomeUsdcGiftVault = {
 
 type HomeGiftSource = HomeStoreCardRow | HomeUsdcGiftVault
 
+/** Bundled Sen Pho artwork URL — also used when card state omits `backgroundImage`. */
+const SEN_PHO_STORE_CARD_ART_URL: string = senPhoCafeStoreCardBg
+
+/** Bundled Lumina Roasters artwork URL — also used when card state omits `backgroundImage`. */
+const LUMINA_STORE_CARD_ART_URL: string = luminaRoastersStoreCardBg
+
 const INITIAL_HOME_STORE_CARDS: HomeStoreCardRow[] = [
-	{ id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-gray-800 to-gray-900', borderColor: 'border-gray-700', iconColor: 'text-yellow-500', bgColor: 'bg-yellow-500/20', icon: Star, balanceCad: 50.0 },
-	{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-emerald-500 to-teal-700', borderColor: 'border-emerald-600', iconColor: 'text-white', bgColor: 'bg-white/20', icon: CreditCard, balanceCad: 10.0 },
+	{ id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-lime-400 to-lime-600', borderColor: 'border-lime-700/50', iconColor: 'text-yellow-700', bgColor: 'bg-yellow-400/35', icon: Star, balanceCad: 50.0, backgroundImage: SEN_PHO_STORE_CARD_ART_URL },
+	{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-amber-900 to-stone-900', borderColor: 'border-amber-950/50', iconColor: 'text-amber-200', bgColor: 'bg-amber-950/30', icon: CreditCard, balanceCad: 10.0, backgroundImage: LUMINA_STORE_CARD_ART_URL },
 ]
+
+/** CashTrees 大卡：EOA / AA 两侧 USDC（链上 balanceOf）+ 基础设施卡 points（与 getMyAssets 同源）；CAD 合计在 UI 内按 Oracle 折算 */
+async function loadCashTreesWalletSnapshot(profile: Parameters<typeof getMyAssets>[0]): Promise<{
+	eoaUsdc: string
+	aaUsdc: string
+	points0: string
+	pointsCurrency: string
+}> {
+	const res = await getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS)
+	const points0 = res?.points ?? '0'
+	const pointsCurrency = res?.cardCurrency ?? 'CAD'
+	const eoa = profile.keyID
+	if (!eoa || !ethers.isAddress(eoa)) {
+		return { eoaUsdc: '0', aaUsdc: '0', points0, pointsCurrency }
+	}
+	const usdc = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
+	const readBal = async (addr: string) => {
+		try {
+			return ethers.formatUnits(await usdc.balanceOf(addr), 6)
+		} catch {
+			return '0'
+		}
+	}
+	const aa = (profile.aaAccount ?? '').trim()
+	const hasDistinctAa = Boolean(aa && ethers.isAddress(aa) && aa.toLowerCase() !== eoa.toLowerCase())
+	if (!hasDistinctAa) {
+		const bal = await readBal(eoa)
+		return { eoaUsdc: bal, aaUsdc: '0', points0, pointsCurrency }
+	}
+	const [eoaBal, aaBal] = await Promise.all([readBal(eoa), readBal(aa)])
+	return { eoaUsdc: eoaBal, aaUsdc: aaBal, points0, pointsCurrency }
+}
 
 type AddCashSheetMode = 'methods' | 'store_qr' | 'coinbase' | 'topup_store'
 
@@ -291,15 +387,18 @@ const Home = ({}) => {
 	const [giftPayHandoffPayee, setGiftPayHandoffPayee] = useState<searchResult | null>(null)
 	const [giftPayPrefill, setGiftPayPrefill] = useState<{ note?: string; usdc?: string } | null>(null)
 	const [aaAddrCopied, setAaAddrCopied] = useState(false)
-	/** 首页 CashTrees 大卡：与 getMyAssets(BEAMIO_USER_CARD) 同源（AA USDC + POINTS_ID #0） */
+	/** 首页 CashTrees 大卡：EOA+AA USDC（链上）+ 基础设施卡 points；合计 CAD 用 Oracle（与 Top Up 同源） */
 	const [cashTreesWalletSnapshot, setCashTreesWalletSnapshot] = useState<{
+		eoaUsdc: string
 		aaUsdc: string
 		points0: string
+		pointsCurrency: string
 	} | null>(null)
-	/** CashTrees 卡点击：AA USDC + 基础设施卡 points（token #0 口径，与 getMyAssets 一致） */
+	/** CashTrees 卡点击：EOA / AA USDC + 基础设施卡 token #0（points） */
 	const [showCashTreesBalanceDetails, setShowCashTreesBalanceDetails] = useState(false)
 	const [cashTreesBalanceLoading, setCashTreesBalanceLoading] = useState(false)
 	const [cashTreesBalanceError, setCashTreesBalanceError] = useState<string | null>(null)
+	const [cashTreesSheetEoaUsdc, setCashTreesSheetEoaUsdc] = useState<string | null>(null)
 	const [cashTreesSheetAaUsdc, setCashTreesSheetAaUsdc] = useState<string | null>(null)
 	const [cashTreesSheetPoints0, setCashTreesSheetPoints0] = useState<string | null>(null)
 	/** CaehTrees Android WebView：NFC 能力探测与贴卡绑定 */
@@ -314,9 +413,18 @@ const Home = ({}) => {
 	const [nfcLinkActionTagId, setNfcLinkActionTagId] = useState<string | null>(null)
 	const [cardMgmtError, setCardMgmtError] = useState<string | null>(null)
 	const cashTreesNfcReq = useRef(0)
+	const [cashTreesHeroBgIndex, setCashTreesHeroBgIndex] = useState(0)
 	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
 	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
+
+	/** CashTrees 大卡：背景每 5s 切换，短 opacity 过渡交叉淡入淡出 */
+	useEffect(() => {
+		const id = window.setInterval(() => {
+			setCashTreesHeroBgIndex((i) => (i + 1) % CASH_TREES_HERO_BACKGROUNDS.length)
+		}, CASH_TREES_HERO_BG_INTERVAL_MS)
+		return () => window.clearInterval(id)
+	}, [])
 
 	/** 链上 / 本地已存在与 EOA 不同的 Smart Account 地址时视为已激活 AA */
 	const hasAAWallet = useMemo(() => {
@@ -432,15 +540,16 @@ const Home = ({}) => {
 		getMyAssetsAggregated(profile)
 			.then(setCcsaAssets)
 			.catch(() => setCcsaAssets(null))
-		getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS)
-			.then((res) => {
-				setCashTreesWalletSnapshot(
-					res
-						? { aaUsdc: res.usdcBalance ?? '0', points0: res.points ?? '0' }
-						: { aaUsdc: '0', points0: '0' }
-				)
-			})
-			.catch(() => setCashTreesWalletSnapshot({ aaUsdc: '0', points0: '0' }))
+		loadCashTreesWalletSnapshot(profile)
+			.then(setCashTreesWalletSnapshot)
+			.catch(() =>
+				setCashTreesWalletSnapshot({
+					eoaUsdc: '0',
+					aaUsdc: '0',
+					points0: '0',
+					pointsCurrency: 'CAD',
+				})
+			)
 		getBUnitBalanceOnConet(profile.keyID)
 			.then(setBUnitBalance)
 			.catch(() => setBUnitBalance(null))
@@ -706,9 +815,11 @@ const Home = ({}) => {
 	}, [hasAAWallet, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID])
 
 	const addCashVaultUsdc = useMemo(() => {
-		const n = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
-		return Number.isFinite(n) ? Math.max(0, n) : 0
-	}, [cashTreesWalletSnapshot?.aaUsdc])
+		const a = Number(cashTreesWalletSnapshot?.eoaUsdc ?? '0')
+		const b = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
+		const t = (Number.isFinite(a) ? Math.max(0, a) : 0) + (Number.isFinite(b) ? Math.max(0, b) : 0)
+		return t
+	}, [cashTreesWalletSnapshot?.eoaUsdc, cashTreesWalletSnapshot?.aaUsdc])
 
 	/** 1 USDC → CAD；链上刷新成功后以 Oracle 为准，否则与全局 currencyData（同源 feeder）一致 */
 	const addCashTopUpCadPerUsdc = useMemo(() => {
@@ -753,6 +864,12 @@ const Home = ({}) => {
 		},
 		[currencyData]
 	)
+
+	/** CashTrees 大卡合计依赖链上 Oracle；登录后预拉取与 Top Up / Gift 一致 */
+	useEffect(() => {
+		if (!profiles?.[0]?.keyID) return
+		void refreshTopUpOracleRate(false)
+	}, [profiles?.[0]?.keyID, refreshTopUpOracleRate])
 
 	useEffect(() => {
 		if (!showAddCashSheet || addCashMode !== 'topup_store') return
@@ -1304,21 +1421,45 @@ const Home = ({}) => {
 		[beamio?.accountName]
 	)
 
-	/** CashTrees 卡片区：AA 短地址；Total = Oracle 牌价 USDC→CAD + 基础设施卡 POINTS_ID（#0） */
+	/** CashTrees 卡片区：AA 短地址；Total CAD = (EOA+AA) USDC × BeamioOracle(USDC→CAD) + 基础设施卡 points 按卡币种折 CAD */
 	const cashTreesCardDisplay = useMemo(() => {
 		const aaFull = (profiles?.[0]?.aaAccount ?? '').trim()
-		const d = currencyData as { USDC?: number; CAD?: number } | undefined
-		const usdcRate = Number(d?.USDC) > 0 ? Number(d?.USDC) : 1
-		const cadPerUsd = Number(d?.CAD) > 0 ? Number(d?.CAD) : 1.35
-		const usdcHuman = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
-		const safeUsdc = Number.isFinite(usdcHuman) ? Math.max(0, usdcHuman) : 0
-		const cadFromUsdc = safeUsdc * usdcRate * cadPerUsd
+		const d = currencyData as Record<string, number> | undefined
+		const cadPerUsdc =
+			topUpOracleCadPerUsdc != null && topUpOracleCadPerUsdc > 0
+				? topUpOracleCadPerUsdc
+				: (Number(d?.CAD) || 1.35) * (Number(d?.USDC) || 1)
+		const eoaU = Number(cashTreesWalletSnapshot?.eoaUsdc ?? '0')
+		const aaU = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
+		const totalUsdc =
+			(Number.isFinite(eoaU) ? Math.max(0, eoaU) : 0) + (Number.isFinite(aaU) ? Math.max(0, aaU) : 0)
+		const cadFromUsdc = totalUsdc * cadPerUsdc
 		const ptsHuman = Number(cashTreesWalletSnapshot?.points0 ?? '0')
 		const safePts = Number.isFinite(ptsHuman) ? Math.max(0, ptsHuman) : 0
-		const totalCad = cadFromUsdc + safePts
+		const pCur = (cashTreesWalletSnapshot?.pointsCurrency ?? 'CAD').toUpperCase()
+		let pointsCad = 0
+		if (safePts > 0) {
+			if (pCur === 'CAD') {
+				pointsCad = safePts
+			} else if (pCur === 'USDC') {
+				pointsCad = safePts * cadPerUsdc
+			} else {
+				const targetPerUsd = Number(d?.CAD) > 0 ? Number(d?.CAD) : 1.35
+				const srcRaw = d?.[pCur]
+				const srcPerUsd = typeof srcRaw === 'number' && srcRaw > 0 ? srcRaw : 1
+				pointsCad = safePts * (targetPerUsd / srcPerUsd)
+			}
+		}
+		const totalCad = cadFromUsdc + pointsCad
 		const [whole, frac = '00'] = totalCad.toFixed(2).split('.')
 		return { aaFull, aaShort: fmtAddr(aaFull), whole, frac, isPhysicalCardBound: linkedNfcCards.length > 0 }
-	}, [profiles?.[0]?.aaAccount, currencyData, cashTreesWalletSnapshot, linkedNfcCards.length])
+	}, [
+		profiles?.[0]?.aaAccount,
+		currencyData,
+		topUpOracleCadPerUsdc,
+		cashTreesWalletSnapshot,
+		linkedNfcCards.length,
+	])
 
 	/** 链上/后端「已关联实体卡」；以 listLinkedNfcCards 为准。 */
 	const cashTreesPhysicalCardBoundEffective = cashTreesCardDisplay.isPhysicalCardBound
@@ -1373,15 +1514,26 @@ const Home = ({}) => {
 				sunRaw && typeof sunRaw === 'object'
 					? (sunRaw as { e?: string; c?: string; m?: string })
 					: undefined
-			const e = typeof sun?.e === 'string' ? sun.e.trim() : ''
-			const c = typeof sun?.c === 'string' ? sun.c.trim() : ''
-			const m = typeof sun?.m === 'string' ? sun.m.trim() : ''
+			let e = typeof sun?.e === 'string' ? sun.e.trim() : ''
+			let c = typeof sun?.c === 'string' ? sun.c.trim() : ''
+			let m = typeof sun?.m === 'string' ? sun.m.trim() : ''
+			const ndefUriStr = typeof d.ndefUri === 'string' ? d.ndefUri : undefined
 			if (e.length !== 64 || c.length !== 6 || m.length !== 16) {
+				const fromUrl = parseSunEcmFromNdefUrl(ndefUriStr)
+				if (fromUrl) {
+					e = fromUrl.e
+					c = fromUrl.c
+					m = fromUrl.m
+				}
+			}
+			if (e.length !== 64 || c.length !== 6 || m.length !== 16) {
+				const templateOnly = isTemplateOnlySunNdefUrl(ndefUriStr)
 				setCashTreesNfcOverlay({
 					phase: 'error',
-					errorMsg:
-						'This card does not support secure link. Missing or invalid SUN data (e, c, m).',
-					ndefUri: typeof d.ndefUri === 'string' ? d.ndefUri : undefined,
+					errorMsg: templateOnly
+						? 'This tag is still a template (SUN not enabled). Ask the merchant to finish NFC provisioning on the card before linking.'
+						: 'This card does not support secure link. Missing or invalid SUN data (e, c, m).',
+					ndefUri: ndefUriStr,
 					tagUidHex: typeof d.tagUidHex === 'string' ? d.tagUidHex : undefined,
 				})
 				return
@@ -1451,15 +1603,7 @@ const Home = ({}) => {
 					...base,
 				})
 				if (profile) {
-					void getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS)
-						.then((res) => {
-							if (!res) return
-							setCashTreesWalletSnapshot({
-								aaUsdc: res.usdcBalance ?? '0',
-								points0: res.points ?? '0',
-							})
-						})
-						.catch(() => {})
+					void loadCashTreesWalletSnapshot(profile).then(setCashTreesWalletSnapshot).catch(() => {})
 					void refreshLinkedNfcCards()
 				}
 			})()
@@ -1472,7 +1616,10 @@ const Home = ({}) => {
 		const native = getCashTreesNativeNfcBridge()
 		if (native?.startPhysicalCardBind) {
 			cashTreesNfcReq.current++
-			setCashTreesNfcOverlay({ phase: 'tap' })
+			/** iOS：`NFCTagReaderSession` 必须由系统全屏扫描 UI 承载，无法关闭；避免与 PWA 遮罩叠两层。Android 仍用应用内引导。 */
+			if (getCashTreesNativeNfcHost() !== 'ios') {
+				setCashTreesNfcOverlay({ phase: 'tap' })
+			}
 			try {
 				native.startPhysicalCardBind()
 			} catch {
@@ -1581,13 +1728,15 @@ const Home = ({}) => {
 		let cancelled = false
 		setCashTreesBalanceLoading(true)
 		setCashTreesBalanceError(null)
+		setCashTreesSheetEoaUsdc(null)
 		setCashTreesSheetAaUsdc(null)
 		setCashTreesSheetPoints0(null)
-		getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS)
-			.then((res) => {
+		loadCashTreesWalletSnapshot(profile)
+			.then((snap) => {
 				if (cancelled) return
-				setCashTreesSheetAaUsdc(res?.usdcBalance ?? '0')
-				setCashTreesSheetPoints0(res?.points ?? '0')
+				setCashTreesSheetEoaUsdc(snap.eoaUsdc)
+				setCashTreesSheetAaUsdc(snap.aaUsdc)
+				setCashTreesSheetPoints0(snap.points0)
 			})
 			.catch((e: unknown) => {
 				if (!cancelled) setCashTreesBalanceError(e instanceof Error ? e.message : 'Failed to load balances')
@@ -1867,7 +2016,7 @@ const Home = ({}) => {
 							) : (
 								<>
 							{/* CashTrees 卡（对齐 renderAction index 199–266） */}
-							<div className="pt-2 pb-2">
+							<div className="w-full max-w-full pt-2 pb-2 min-w-0">
 								<div
 									role="button"
 									tabIndex={0}
@@ -1878,76 +2027,104 @@ const Home = ({}) => {
 											openCashTreesBalanceSheet()
 										}
 									}}
-									className="relative bg-gradient-to-br from-[#8AE131] to-[#67AD0F] dark:from-[#6fb828] dark:to-[#4f9410] rounded-[2rem] p-6 text-gray-900 shadow-xl shadow-[#96EB3C]/20 dark:shadow-[#65A30D]/15 overflow-hidden transform transition-transform hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer border border-[#96EB3C]/40 dark:border-[#65A30D]/50"
+									className="relative w-full max-w-full max-md:aspect-[7/4] md:aspect-auto flex min-h-0 flex-col rounded-[2rem] p-4 text-gray-900 shadow-xl shadow-black/15 dark:shadow-black/30 md:p-6 overflow-hidden transform transition-transform hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer border border-white/35 dark:border-white/15"
 								>
-									<div className="absolute top-0 right-0 w-48 h-48 bg-white/20 rounded-full -mr-16 -mt-16 blur-3xl pointer-events-none" />
-
-									<div className="flex justify-between items-center mb-8 relative z-10">
-										<div className="flex items-center min-w-0">
+									<div
+										className="absolute inset-0 w-full min-w-full pointer-events-none overflow-hidden rounded-[inherit]"
+										aria-hidden
+									>
+										{CASH_TREES_HERO_BACKGROUNDS.map((src, i) => (
 											<img
-												src={`${process.env.PUBLIC_URL ?? ''}/logo512.png`}
-												alt="CashTrees"
-												className="w-[4.5rem] h-[4.5rem] mr-3 shrink-0 object-contain"
+												key={i}
+												src={src}
+												alt=""
+												className="absolute inset-0 block h-full w-full min-h-full min-w-full max-w-none object-cover object-center select-none"
+												style={{
+													opacity: i === cashTreesHeroBgIndex ? 1 : 0,
+													transition: `opacity ${CASH_TREES_HERO_BG_FADE_MS}ms ease-in-out`,
+												}}
 												draggable={false}
+												aria-hidden
 											/>
-											<div className="flex flex-col items-start justify-center min-w-0">
-												<span className="font-extrabold text-[22px] tracking-tight text-gray-900 leading-none mb-1.5">CashTrees</span>
-												<button
-													type="button"
-													onClick={(e) => {
-														e.stopPropagation()
-														void copyCashTreesAaAddress()
-													}}
-													disabled={!cashTreesCardDisplay.aaFull}
-													className="flex items-center gap-1.5 bg-gray-900/10 border border-gray-900/5 px-2 py-0.5 rounded-md shadow-sm hover:bg-gray-900/20 transition-colors max-w-full disabled:opacity-50"
-													aria-label="Copy Smart Account address"
-												>
-													<span className="text-[10px] text-gray-800 font-mono tracking-widest font-semibold uppercase truncate">
-														{cashTreesCardDisplay.aaShort}
-													</span>
-													{aaAddrCopied ? (
-														<Check size={10} className="text-gray-800 shrink-0" strokeWidth={3} aria-hidden />
-													) : (
-														<Copy size={10} className="text-gray-700 shrink-0" aria-hidden />
-													)}
-												</button>
-											</div>
-										</div>
-										<button
-											type="button"
-											onClick={(e) => {
-												e.stopPropagation()
-												openCashTreesBalanceSheet()
-											}}
-											className="w-8 h-8 rounded-full bg-gray-900/10 flex items-center justify-center text-gray-900 backdrop-blur-sm border border-gray-900/5 hover:bg-gray-900/20 transition-colors shadow-sm shrink-0"
-											aria-label="Balance details"
-										>
-											<Info size={16} strokeWidth={2.5} aria-hidden />
-										</button>
+										))}
 									</div>
+									<div
+										className="absolute inset-0 bg-gradient-to-b from-white/82 from-0% via-white/28 via-42% to-black/58 to-100% pointer-events-none"
+										aria-hidden
+									/>
 
-									<div className="relative z-10 flex justify-between items-end gap-3">
-										<div className="min-w-0">
-											<p className="text-sm text-gray-800 font-bold mb-0.5 opacity-90 tracking-wide">
-												Total Balance
-											</p>
-											<div className="flex items-baseline flex-wrap">
-												<span className="text-3xl font-bold mr-1 opacity-80">CA$</span>
-												<p className="text-[44px] font-extrabold tracking-tighter text-gray-900 leading-none">
-													{cashTreesCardDisplay.whole}
-													<span className="text-3xl font-bold text-gray-800/80">.{cashTreesCardDisplay.frac}</span>
-												</p>
+									<div className="relative z-10 flex min-h-0 flex-1 flex-col justify-between gap-3 md:gap-6">
+										<div className="flex justify-between items-center shrink-0">
+											<div className="flex items-center min-w-0">
+												<img
+													src={`${process.env.PUBLIC_URL ?? ''}/logo512.png`}
+													alt="CashTrees"
+													className="mr-2 h-12 w-12 shrink-0 object-contain md:mr-3 md:h-[4.5rem] md:w-[4.5rem]"
+													draggable={false}
+												/>
+												<div className="flex min-w-0 flex-col items-start justify-center">
+													<span className="mb-1 text-lg font-extrabold leading-none tracking-tight text-[#65A30D] dark:text-[#9AE66E] drop-shadow-sm md:mb-1.5 md:text-[22px]">
+														VERRA
+													</span>
+													<button
+														type="button"
+														onClick={(e) => {
+															e.stopPropagation()
+															void copyCashTreesAaAddress()
+														}}
+														disabled={!cashTreesCardDisplay.aaFull}
+														className="flex max-w-full items-center gap-1.5 rounded-md border border-gray-900/5 bg-gray-900/10 px-2 py-0.5 shadow-sm transition-colors hover:bg-gray-900/20 disabled:opacity-50"
+														aria-label="Copy Smart Account address"
+													>
+														<span className="truncate font-mono text-[9px] font-semibold uppercase tracking-widest text-gray-800 md:text-[10px]">
+															{cashTreesCardDisplay.aaShort}
+														</span>
+														{aaAddrCopied ? (
+															<Check size={10} className="shrink-0 text-gray-800" strokeWidth={3} aria-hidden />
+														) : (
+															<Copy size={10} className="shrink-0 text-gray-700" aria-hidden />
+														)}
+													</button>
+												</div>
 											</div>
+											<button
+												type="button"
+												onClick={(e) => {
+													e.stopPropagation()
+													openCashTreesBalanceSheet()
+												}}
+												className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-900/5 bg-gray-900/10 text-gray-900 shadow-sm backdrop-blur-sm transition-colors hover:bg-gray-900/20 md:h-8 md:w-8"
+												aria-label="Balance details"
+											>
+												<Info size={16} strokeWidth={2.5} aria-hidden />
+											</button>
 										</div>
 
-										<div className="flex items-center bg-gray-900/10 backdrop-blur-md border border-gray-900/5 px-3 py-1.5 rounded-full shadow-sm mb-1.5 shrink-0">
-											<div className="relative flex h-2 w-2 mr-2">
-												<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-												<span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+										<div className="flex shrink-0 items-end justify-between gap-2 md:gap-3">
+											<div className="min-w-0">
+												<p className="mb-0.5 font-bold tracking-wide text-white/90 drop-shadow-sm max-[349px]:text-[10px] min-[350px]:text-sm">
+													Total Balance
+												</p>
+												<div className="flex flex-wrap items-baseline drop-shadow-md">
+													<span className="mr-1 font-bold text-white/90 max-[349px]:text-base min-[350px]:text-3xl">CA$</span>
+													<p className="font-extrabold leading-none tracking-tighter text-white max-[349px]:text-2xl min-[350px]:text-[44px]">
+														{cashTreesCardDisplay.whole}
+														<span className="font-bold text-white/85 max-[349px]:text-lg min-[350px]:text-3xl">
+															.{cashTreesCardDisplay.frac}
+														</span>
+													</p>
+												</div>
 											</div>
-											<span className="text-[10px] font-bold text-gray-900 tracking-wider uppercase">
-												{cashTreesPhysicalCardBoundEffective ? 'Card Linked' : 'Virtual Active'}
-											</span>
+
+											<div className="mb-0 flex shrink-0 items-center rounded-full border border-white/25 bg-white/20 px-2 py-1 shadow-sm backdrop-blur-md md:mb-1.5 md:px-3 md:py-1.5">
+												<div className="relative mr-0 flex h-2 w-2 shrink-0 min-[350px]:mr-2">
+													<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-200 opacity-75" />
+													<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-100" />
+												</div>
+												<span className="max-[349px]:sr-only text-[9px] font-bold uppercase tracking-wider text-white drop-shadow-sm md:text-[10px]">
+													{cashTreesPhysicalCardBoundEffective ? 'Card Linked' : 'Virtual Active'}
+												</span>
+											</div>
 										</div>
 									</div>
 								</div>
@@ -1975,20 +2152,30 @@ const Home = ({}) => {
 							</div>
 
 							{/* My Store Cards — 与 beamio.app renderAction 同结构：不外扩 -mx，左右与外层 px-5 对齐；末卡右侧留 pr */}
-							<div className="mt-2 mb-1">
+							<div className="mt-2 mb-1 overflow-visible">
 								<div className="flex justify-between items-center mb-3">
 									<h2 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
 										My Store Cards ({homeStoreCards.length})
 									</h2>
 								</div>
-								<div className="flex overflow-x-auto hide-scrollbar gap-4 pb-3 snap-x pr-5">
+								{/* pt/pb: room for hover:-translate-y-1 + shadow so overflow-x scrollport does not clip card tops */}
+								<div className="flex overflow-x-auto hide-scrollbar gap-4 snap-x pr-5 items-stretch pt-5 pb-5">
 									{homeStoreCards.map((card) => {
 										const IconComponent = card.icon
+										const storeCardPhotoUrl =
+											card.backgroundImage ||
+											(card.id === 'senpho'
+												? SEN_PHO_STORE_CARD_ART_URL
+												: card.id === 'lumina'
+													? LUMINA_STORE_CARD_ART_URL
+													: '')
+										const photoBg = Boolean(storeCardPhotoUrl)
 										return (
 											<div
 												key={card.id}
 												role="button"
 												tabIndex={0}
+												aria-label={`${card.name}. Store balance ${card.balanceCad.toFixed(2)} CAD.`}
 												onClick={() => setSelectedHomeStoreCard(card)}
 												onKeyDown={(e) => {
 													if (e.key === 'Enter' || e.key === ' ') {
@@ -1996,21 +2183,71 @@ const Home = ({}) => {
 														setSelectedHomeStoreCard(card)
 													}
 												}}
-												className={`snap-start min-w-[240px] bg-gradient-to-br ${card.color} rounded-[1.5rem] p-5 shadow-md border ${card.borderColor} relative overflow-hidden flex-shrink-0 cursor-pointer hover:-translate-y-1 transition-transform`}
+												className={`snap-start w-[min(280px,calc(100vw-5rem))] aspect-[7/4] shrink-0 rounded-[1.5rem] p-5 shadow-md border border-white/50 relative overflow-hidden cursor-pointer hover:-translate-y-1 transition-transform flex flex-col ${
+													photoBg
+														? card.id === 'senpho'
+															? 'bg-[#9ACD32]'
+															: 'bg-[#3d2b1f]'
+														: `bg-gradient-to-br ${card.color}`
+												}`}
 											>
-												<div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-10 -mt-10 blur-xl" />
-												<div className="flex justify-between items-start mb-6 relative z-10">
-													<div>
-														<h3 className="text-white font-bold text-lg leading-tight mb-1">{card.name}</h3>
-														<div className={`flex items-center gap-1 ${card.bgColor} ${card.iconColor} px-2 py-0.5 rounded-md w-max`}>
-															<IconComponent size={10} aria-hidden />
-															<span className="text-[10px] font-bold uppercase tracking-wider text-white">{card.type}</span>
-														</div>
-													</div>
-												</div>
-												<div className="relative z-10">
-													<p className="text-gray-300 text-xs font-medium mb-0.5">Store Balance (CAD)</p>
-													<p className="text-2xl font-extrabold text-white tracking-tight">${card.balanceCad.toFixed(2)}</p>
+												{photoBg ? (
+													<>
+														<div
+															className={`absolute inset-0 z-0 pointer-events-none bg-center bg-cover bg-no-repeat ${
+																card.id === 'lumina' ? 'scale-[1.18]' : ''
+															}`}
+															style={{ backgroundImage: `url(${storeCardPhotoUrl})` }}
+															aria-hidden
+														/>
+														<div
+															className="absolute inset-0 z-[1] bg-gradient-to-t from-black/35 via-transparent to-white/20 pointer-events-none"
+															aria-hidden
+														/>
+													</>
+												) : (
+													<div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-10 -mt-10 blur-xl" />
+												)}
+												<div
+													className={`relative z-10 flex min-h-0 flex-1 flex-col ${photoBg ? 'justify-end' : 'justify-between'}`}
+												>
+													{photoBg ? (
+														<p
+															className={`text-2xl font-extrabold tracking-tight leading-none tabular-nums self-start ${
+																card.id === 'senpho'
+																	? 'text-gray-900 drop-shadow-[0_1px_2px_rgba(255,255,255,0.95)]'
+																	: 'text-amber-100 drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)]'
+															}`}
+														>
+															${card.balanceCad.toFixed(2)}
+														</p>
+													) : (
+														<>
+															<div className="flex justify-between items-start">
+																<div>
+																	<h3 className="text-white font-bold text-lg leading-tight mb-1">
+																		{card.name}
+																	</h3>
+																	<div
+																		className={`flex items-center gap-1 ${card.bgColor} ${card.iconColor} px-2 py-0.5 rounded-md w-max`}
+																	>
+																		<IconComponent size={10} aria-hidden />
+																		<span className="text-[10px] font-bold uppercase tracking-wider text-white">
+																			{card.type}
+																		</span>
+																	</div>
+																</div>
+															</div>
+															<div>
+																<p className="text-gray-300 text-xs font-medium mb-0.5">
+																	Store Balance (CAD)
+																</p>
+																<p className="text-2xl font-extrabold text-white tracking-tight">
+																	${card.balanceCad.toFixed(2)}
+																</p>
+															</div>
+														</>
+													)}
 												</div>
 											</div>
 										)
@@ -2025,7 +2262,7 @@ const Home = ({}) => {
 												navigate('/Browser')
 											}
 										}}
-										className="snap-start min-w-[120px] bg-gray-50 dark:bg-slate-800/80 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-[#65A30D] dark:hover:text-[#9AE66E] hover:border-[#65A30D] transition-colors cursor-pointer flex-shrink-0"
+										className="snap-start self-stretch min-w-[120px] max-w-[132px] shrink-0 bg-gray-50 dark:bg-slate-800/80 border-2 border-dashed border-white/50 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-[#65A30D] dark:hover:text-[#9AE66E] hover:border-white/70 transition-colors cursor-pointer"
 									>
 										<Plus size={24} className="mb-2" aria-hidden />
 										<span className="text-xs font-bold uppercase tracking-wider">Discover</span>
@@ -2217,7 +2454,7 @@ const Home = ({}) => {
 				document.body,
 			)}
 
-			{/* CashTrees 卡：Balance Details（链上 AA USDC + 基础设施卡 points / token #0，对齐 renderAction 1082–1131） */}
+			{/* CashTrees 卡：Balance Details（链上 EOA+AA USDC + 基础设施卡 token #0 / points） */}
 			{createPortal(
 				<AnimatePresence>
 					{showCashTreesBalanceDetails && (
@@ -2246,8 +2483,7 @@ const Home = ({}) => {
 								<div className="mx-auto w-12 h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full mb-6 shrink-0" />
 
 								<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">Balance Details</h3>
-								<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center">AA USDC and infrastructure card (token #0) balance</p>
-
+								
 								{cashTreesBalanceLoading && (
 									<div className="flex flex-col items-center justify-center py-10 gap-3 mb-4">
 										<Loader2 className="w-10 h-10 text-[#65A30D] animate-spin" aria-hidden />
@@ -2261,7 +2497,7 @@ const Home = ({}) => {
 
 								{!cashTreesBalanceLoading && !cashTreesBalanceError && (
 									<div className="w-full bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden flex flex-col mb-8">
-										{/* 1：AA 钱包 USDC（getMyAssets 内对 aaAccount 的 USDC balanceOf） */}
+										{/* Wallet (USDC)：EOA + AA 链上 USDC 合计 */}
 										<div className="p-4 flex items-center justify-between border-b border-gray-100/50 dark:border-slate-700">
 											<div className="flex items-center gap-3 min-w-0">
 												<div className="w-10 h-10 bg-gray-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center border border-gray-200 dark:border-slate-600 shrink-0 relative">
@@ -2271,23 +2507,35 @@ const Home = ({}) => {
 													</div>
 												</div>
 												<div className="flex flex-col min-w-0">
-													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">AA Wallet (USDC)</span>
-													<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-0.5">Smart Account on Base</span>
+													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">Wallet (USDC)</span>
+													<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-0.5">On Base</span>
 												</div>
 											</div>
 											<div className="text-right shrink-0 pl-2">
-												<span className="text-lg font-bold text-gray-900 dark:text-slate-100">{formatCashTreesUsd2(cashTreesSheetAaUsdc)}</span>
+												<span className="text-lg font-bold text-gray-900 dark:text-slate-100">
+													{formatCashTreesUsd2(
+														String(
+															Math.max(0, Number(cashTreesSheetEoaUsdc ?? '') || 0) +
+																Math.max(0, Number(cashTreesSheetAaUsdc ?? '') || 0)
+														)
+													)}
+												</span>
 											</div>
 										</div>
 
-										{/* 2：基础设施卡 token #0 / points（合约 points 余额，与 getMyAssets.points 一致） */}
+										{/* 基础设施卡 token #0 / points */}
 										<div className="p-4 flex items-center justify-between bg-gradient-to-r from-[#96EB3C]/15 to-transparent dark:from-[#65A30D]/20 dark:to-transparent">
 											<div className="flex items-center gap-3 min-w-0">
-												<div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-[#96EB3C]/30 dark:border-[#65A30D]/40 text-lg shrink-0" aria-hidden>
-													🌳
+												<div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-[#96EB3C]/30 dark:border-[#65A30D]/40 shrink-0" aria-hidden>
+													<img
+														src={`${process.env.PUBLIC_URL ?? ''}/logo512.png`}
+														alt=""
+														className="h-7 w-7 object-contain"
+														draggable={false}
+													/>
 												</div>
 												<div className="flex flex-col min-w-0">
-													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">Infrastructure Card</span>
+													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">Sen Pho + Cafe</span>
 													<span className="text-[10px] text-[#65A30D] dark:text-[#9AE66E] font-bold uppercase tracking-wider mt-0.5">Eligible for Store Discounts</span>
 												</div>
 											</div>
@@ -2763,7 +3011,7 @@ const Home = ({}) => {
 										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
 										aria-label="Close"
 									>
-										<X className="w-5 h-5" />
+										
 									</button>
 								</div>
 								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain px-6 pb-4 flex flex-col">
@@ -2869,30 +3117,7 @@ const Home = ({}) => {
 														) : (
 															<QrCode size={140} className="text-gray-900 dark:text-slate-300" />
 														)}
-														<div className="absolute bg-white dark:bg-slate-800 p-1 rounded-full shadow-sm border border-gray-100 dark:border-slate-600">
-															<div className="w-8 h-8 bg-[#96EB3C] rounded-full flex items-center justify-center text-gray-900 font-bold text-lg">
-																🌳
-															</div>
-														</div>
 													</div>
-												</div>
-												<div className="bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl p-3 w-full max-w-[280px] flex items-center justify-between mb-8">
-													<div className="flex flex-col overflow-hidden mr-3">
-														<span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">
-															Wallet Address
-														</span>
-														<span className="text-xs font-mono text-gray-700 dark:text-slate-200 truncate">
-															{addCashDepositAddress || '—'}
-														</span>
-													</div>
-													<button
-														type="button"
-														onClick={copyAddCashDepositAddress}
-														disabled={!addCashDepositAddress}
-														className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 shadow-sm text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-transform disabled:opacity-50"
-													>
-														{addCashWalletCopied ? 'Copied' : 'Copy'}
-													</button>
 												</div>
 											</div>
 										</>

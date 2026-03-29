@@ -1128,6 +1128,19 @@ export const encodeAdminManagerAdd = (toEoa: string, newThreshold: number | bigi
 		metadata,
 	])
 
+/** adminManager(to, false, newThreshold, metadata) — 移除 admin；newThreshold 须 ≤ 移除后 adminList.length 且 ≥1（常见为 1）。 */
+export const encodeRemoveAdmin = (
+	adminToRemove: string,
+	newThreshold: number | bigint,
+	metadata: string = '{}',
+): string =>
+	adminManagerInterface.encodeFunctionData('adminManager(address,bool,uint256,string)', [
+		ethers.getAddress(adminToRemove),
+		false,
+		BigInt(newThreshold),
+		metadata,
+	])
+
 const createIssuedNftInterface = new ethers.Interface([
     'function createIssuedNft(bytes32 title, uint64 validAfter, uint64 validBefore, uint256 maxSupply, uint256 priceInCurrency6, bytes32 sharedMetadataHash)',
 ])

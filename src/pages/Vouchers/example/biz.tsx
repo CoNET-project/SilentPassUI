@@ -18,6 +18,7 @@ import {
   postCardAddAdmin,
   encodeAdminManagerAdd,
   encodeAddAdminWithMintLimit,
+  encodeRemoveAdmin,
   signExecuteForAdmin,
   signClearAdminMintCounter,
   postCardClearAdminMintCounter,
@@ -71,7 +72,13 @@ import {
   sumTipsCollectedLedgerValuesForLocalCalendarDay,
   type TipsCollectedLedgerEntry,
 } from './bizTipsCollectedLedger';
-import { generateRegisterPOSNonce, signRemovePOS, removePOSApi } from '@/services/merchantPOS';
+import {
+  generateRegisterPOSNonce,
+  registerPOSApi,
+  signRegisterPOS,
+  signRemovePOS,
+  removePOSApi,
+} from '@/services/merchantPOS';
 import {
  LayoutDashboard,
  Receipt,
@@ -3912,17 +3919,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        const nonce = ethers.hexlify(ethers.randomBytes(32));
 
        let res: { success: boolean; error?: string; hash?: string; txHash?: string };
-       if (isOwner && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA)) {
-         const ownerSignature = await signExecuteForOwner(pk, cardAddress, data, deadline, nonce);
-         res = await postCardAddAdmin({
-           cardAddress,
-           data,
-           deadline,
-           nonce,
-           ownerSignature,
-           adminEOA: terminalEOA,
-         });
-       } else if (isAdminUser) {
+       if (isAdminUser) {
          const adminSignature = await signExecuteForAdmin(pk, cardAddress, data, deadline, nonce);
          res = await postCardAddAdminByAdmin({
            cardAddress,
@@ -3930,6 +3927,16 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
            deadline,
            nonce,
            adminSignature,
+           adminEOA: terminalEOA,
+         });
+       } else if (isOwner && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA)) {
+         const ownerSignature = await signExecuteForOwner(pk, cardAddress, data, deadline, nonce);
+         res = await postCardAddAdmin({
+           cardAddress,
+           data,
+           deadline,
+           nonce,
+           ownerSignature,
            adminEOA: terminalEOA,
          });
        } else {
@@ -8684,52 +8691,105 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                     );
                   };
                   const cardAddress = await resolveRegistrationProgramCardAddress();
+                  const userNorm = ethers.getAddress(userEOA);
+                  const posNorm = ethers.getAddress(adminEOA);
+                  if (posNorm.toLowerCase() === userNorm.toLowerCase()) {
+                    throw new Error('POS address must differ from the merchant wallet.');
+                  }
                   const metadata = JSON.stringify({
                     deviceName: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
                     handle: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : '',
                   });
                   const limitNum = Math.max(1, parseFloat(String(newTerminalMintLimit).replace(/[^0-9.]/g, '')) || 1000);
                   const mintLimitPoints6 = BigInt(Math.round(limitNum * 1_000_000));
-                  const data = encodeAddAdminWithMintLimit(adminEOA, 1, metadata, mintLimitPoints6);
-                  const now = Math.floor(Date.now() / 1000);
-                  const deadline = now + 300;
-                  const nonce = ethers.hexlify(ethers.randomBytes(32));
-                  const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
-                  const cardOwner = (await card.owner()) as string;
+                  const cardDirect = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+                  const cardOwner = (await cardDirect.owner()) as string;
+                  const ownerNorm = cardOwner ? ethers.getAddress(cardOwner) : '';
                   const userAA = profiles?.[0]?.aaAccount?.trim();
                   const isOwner =
-                    (cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA)) ||
-                    (userAA && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userAA));
+                    (ownerNorm && ownerNorm === userNorm) ||
+                    (userAA && ownerNorm && ownerNorm === ethers.getAddress(userAA));
                   const isAdminUser = await isCardAdmin(cardAddress, userEOA);
+                  if (isAdminUser) {
+                    const parentOfMerchant = ethers.getAddress((await cardDirect.adminParent(userNorm)) as string);
+                    if (parentOfMerchant !== ethers.ZeroAddress) {
+                      throw new Error(
+                        'Your wallet is a subordinate admin. Connect the card owner or a top-level admin (direct under owner) to register a terminal.',
+                      );
+                    }
+                  }
                   if (!isAdminUser && !isOwner) {
                     throw new Error('Wallet must be card owner or admin to register device.');
                   }
-                  let res: { success: boolean; error?: string; hash?: string; txHash?: string };
-                  if (isOwner && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userEOA)) {
-                    const ownerSignature = await signExecuteForOwner(pk, cardAddress, data, deadline, nonce);
-                    res = await postCardAddAdmin({
-                      cardAddress,
-                      data,
-                      deadline,
-                      nonce,
-                      ownerSignature,
-                      adminEOA,
-                    });
-                  } else if (isAdminUser) {
-                    const adminSignature = await signExecuteForAdmin(pk, cardAddress, data, deadline, nonce);
-                    res = await postCardAddAdminByAdmin({
-                      cardAddress,
-                      data,
-                      deadline,
-                      nonce,
-                      adminSignature,
-                      adminEOA,
-                    });
-                  } else {
-                    throw new Error('Card owner is AA. Add your EOA as admin first via redeem code, then register device.');
+                  /** EOA owner 可先签 executeForOwner：始终先走 Cluster /cardAddAdmin 登记本卡 owner EOA，再 cardAddAdminByAdmin 挂 POS。 */
+                  const ownerIsSigningEoa = ownerNorm === userNorm;
+                  if (!isAdminUser && !ownerIsSigningEoa) {
+                    throw new Error(
+                      'Card owner is a smart account. Add your EOA as a top-level admin first (e.g. redeem), then register the device.',
+                    );
                   }
+                  if (ownerIsSigningEoa) {
+                    const merchantSelfMetadata = JSON.stringify({
+                      role: 'merchant',
+                      label: 'Program owner (top-level admin)',
+                    });
+                    const dataSelf = encodeAddAdminWithMintLimit(userNorm, 1, merchantSelfMetadata, mintLimitPoints6);
+                    const nowSelf = Math.floor(Date.now() / 1000);
+                    const deadlineSelf = nowSelf + 300;
+                    const nonceSelf = ethers.hexlify(ethers.randomBytes(32));
+                    const ownerSignatureSelf = await signExecuteForOwner(pk, cardAddress, dataSelf, deadlineSelf, nonceSelf);
+                    const resSelf = await postCardAddAdmin({
+                      cardAddress,
+                      data: dataSelf,
+                      deadline: deadlineSelf,
+                      nonce: nonceSelf,
+                      ownerSignature: ownerSignatureSelf,
+                      adminEOA: userNorm,
+                    });
+                    if (!resSelf.success) {
+                      throw new Error(resSelf.error ?? 'Failed to register merchant wallet as top-level admin');
+                    }
+                    const isAdAfter = await isCardAdmin(cardAddress, userEOA);
+                    const parentAfter = ethers.getAddress((await cardDirect.adminParent(userNorm)) as string);
+                    if (!isAdAfter || parentAfter !== ethers.ZeroAddress) {
+                      throw new Error('Could not confirm top-level merchant admin on-chain. Wait a few seconds and try again.');
+                    }
+                  }
+                  /** 顶层 admin（adminParent==0）才能签 executeForAdmin 添加下级；目标结构 owner → 商户 EOA → POS。 */
+                  const data = encodeAddAdminWithMintLimit(posNorm, 1, metadata, mintLimitPoints6);
+                  const nowPos = Math.floor(Date.now() / 1000);
+                  const deadlinePos = nowPos + 300;
+                  const noncePos = ethers.hexlify(ethers.randomBytes(32));
+                  const adminSignature = await signExecuteForAdmin(pk, cardAddress, data, deadlinePos, noncePos);
+                  const res = await postCardAddAdminByAdmin({
+                    cardAddress,
+                    data,
+                    deadline: deadlinePos,
+                    nonce: noncePos,
+                    adminSignature,
+                    adminEOA: posNorm,
+                  });
                   if (!res.success) {
                     throw new Error(res.error ?? 'Failed to register device as admin');
+                  }
+                  try {
+                    const posMerchant = ethers.getAddress(userEOA);
+                    const posNorm = ethers.getAddress(adminEOA);
+                    const posDeadline = Math.floor(Date.now() / 1000) + 60 * 15;
+                    const posNonce = generateRegisterPOSNonce();
+                    const registerSig = await signRegisterPOS(pk, posMerchant, posNorm, posDeadline, posNonce);
+                    const regPos = await registerPOSApi({
+                      merchant: posMerchant,
+                      pos: posNorm,
+                      deadline: posDeadline,
+                      nonce: posNonce,
+                      signature: registerSig,
+                    });
+                    if (!regPos.success) {
+                      console.warn('[Registration Device] CoNET registerPOS:', regPos.error ?? 'unknown');
+                    }
+                  } catch (regErr) {
+                    console.warn('[Registration Device] CoNET registerPOS failed:', (regErr as Error)?.message ?? regErr);
                   }
                   const newTerminal: TerminalRecord = {
                     id: adminEOA.toLowerCase(),
@@ -8789,8 +8849,8 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                <X size={20} />
              </button>
            </div>
-           <p className="text-[15px] text-slate-600 mb-4">
-             Are you sure you want to revoke authorization for <span className="font-mono font-semibold text-slate-800">{deleteTerminalToRemove.eoa}</span>? This will remove the terminal from your store.
+             <p className="text-[15px] text-slate-600 mb-4">
+             Are you sure you want to revoke authorization for <span className="font-mono font-semibold text-slate-800">{deleteTerminalToRemove.eoa}</span>? This removes the terminal admin on your Beamio card (Base) and unlinks it in the POS registry.
            </p>
            {removeTerminalError && (
              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-[13px] font-medium text-rose-700">
@@ -8814,14 +8874,90 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    const privateKey = profiles?.[0]?.privateKeyArmor;
                    if (!privateKey) throw new Error('Private key not available. Please unlock your wallet.');
                    const pkHex = privateKey.startsWith('0x') ? privateKey : '0x' + privateKey;
-                   const pos = deleteTerminalToRemove.id;
+                   const posRaw = deleteTerminalToRemove.id;
+                   if (!posRaw || !ethers.isAddress(posRaw)) {
+                     throw new Error('Invalid terminal address.');
+                   }
+                   const posNorm = ethers.getAddress(posRaw);
+                   const userEOA = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+                   if (!userEOA || !ethers.isAddress(userEOA)) {
+                     throw new Error('Wallet address not available.');
+                   }
+                   const userNorm = ethers.getAddress(userEOA);
+                   const cardAddress = ethers.getAddress(staffProgramBeamioCardAddress);
+                   const cardDirect = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+                   const posIsAdmin = await isCardAdmin(cardAddress, posNorm);
+                   if (posIsAdmin) {
+                     const adminListAbi = ['function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)'];
+                     const cardList = new ethers.Contract(cardAddress, adminListAbi, baseRpcProviderDirect);
+                     const [admins] = (await cardList.getAdminListWithMetadata()) as [string[]];
+                     const n = (admins ?? []).length;
+                     if (n <= 1) {
+                       throw new Error('Cannot remove the last admin on this card.');
+                     }
+                     const newThreshold = 1;
+                     const rmMeta = '{}';
+                     const rmData = encodeRemoveAdmin(posNorm, newThreshold, rmMeta);
+                     const nowRm = Math.floor(Date.now() / 1000);
+                     const deadlineRm = nowRm + 300;
+                     const nonceRm = ethers.hexlify(ethers.randomBytes(32));
+                     const ownerAddr = ethers.getAddress((await cardDirect.owner()) as string);
+                     const parentOfPos = ethers.getAddress((await cardDirect.adminParent(posNorm)) as string);
+                     /** executeForOwner 签名者须为 owner() EOA；卡 owner 为 AA 且终端挂在 owner 下时需其它路径。 */
+                     const ownerIsSigningEoa = ownerAddr === userNorm;
+                     let rmRes: { success: boolean; error?: string } = { success: false, error: 'Unauthorized to remove this admin on-chain.' };
+                     if (ownerIsSigningEoa) {
+                       const ownerSig = await signExecuteForOwner(pkHex, cardAddress, rmData, deadlineRm, nonceRm);
+                       rmRes = await postCardAddAdmin({
+                         cardAddress,
+                         data: rmData,
+                         deadline: deadlineRm,
+                         nonce: nonceRm,
+                         ownerSignature: ownerSig,
+                       });
+                     } else if (parentOfPos !== ethers.ZeroAddress && parentOfPos === userNorm) {
+                       const adSig = await signExecuteForAdmin(pkHex, cardAddress, rmData, deadlineRm, nonceRm);
+                       rmRes = await postCardAddAdminByAdmin({
+                         cardAddress,
+                         data: rmData,
+                         deadline: deadlineRm,
+                         nonce: nonceRm,
+                         adminSignature: adSig,
+                         adminEOA: posNorm,
+                       });
+                     } else if (parentOfPos === ethers.ZeroAddress) {
+                       throw new Error(
+                         'This terminal is a top-level admin under the card owner. Connect with the card owner EOA to remove it on-chain.',
+                       );
+                     } else {
+                       throw new Error(
+                         'Connect with the card owner or the admin that registered this terminal to revoke it on-chain.',
+                       );
+                     }
+                     if (!rmRes.success) {
+                       throw new Error(rmRes.error ?? 'Failed to remove terminal admin on card');
+                     }
+                     invalidateFetchCache(`card:${cardAddress.toLowerCase()}`);
+                     try {
+                       window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}card-admins:${cardAddress.toLowerCase()}:v2`);
+                     } catch {
+                       /* ignore */
+                     }
+                   }
+                   const merchantNorm = ethers.getAddress(merchant);
                    const deadline = Math.floor(Date.now() / 1000) + 60 * 15;
                    const nonce = generateRegisterPOSNonce();
-                   const signature = await signRemovePOS(pkHex, merchant, pos, deadline, nonce);
-                   const result = await removePOSApi({ merchant, pos, deadline, nonce, signature });
-                   if (!result.success) throw new Error(result.error ?? 'Remove failed');
+                   const signature = await signRemovePOS(pkHex, merchantNorm, posNorm, deadline, nonce);
+                   const result = await removePOSApi({
+                     merchant: merchantNorm,
+                     pos: posNorm,
+                     deadline,
+                     nonce,
+                     signature,
+                   });
+                   if (!result.success) throw new Error(result.error ?? 'Remove failed (POS registry)');
                    setDeleteTerminalToRemove(null);
-                   const posLower = pos.toLowerCase();
+                   const posLower = posNorm.toLowerCase();
                    const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
                    const afterRemove = cached.filter((t) => t.id.toLowerCase() !== posLower);
                    saveTrustedCache(linkedTerminalsCacheKey, afterRemove);

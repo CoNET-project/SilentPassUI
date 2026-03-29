@@ -29,6 +29,7 @@ import RestoreWithUsernamePinScreen from './RestoreWithUsernamePinScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl'
+import { bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
 const ISSUED_NFT_START_ID = 100_000_000_000
@@ -186,17 +187,14 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
               flex items-center justify-center
             "
           >
-            <span
-              className="text-[44px] font-extrabold leading-none"
-              style={{ color: "#1652f0" }} // Beamio Blue
-            >
-              B
+            <span className="text-[44px] font-extrabold italic leading-none text-[#1562f0]">
+              V
             </span>
           </div>
 
           {/* Beamio */}
           <div className="mt-6 text-[44px] font-extrabold tracking-[-0.02em] text-slate-900">
-            Beamio
+            VERRA
           </div>
 
           {/* Slogan */}
@@ -218,12 +216,11 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
         <div className="w-full mt-10">
           <AppButton
             fullWidth
-            className="
+            className={`
               rounded-[999px] py-8 text-[18px] font-semibold
-              shadow-[0_14px_30px_rgba(22,82,240,0.28)]
-              active:shadow-[0_10px_20px_rgba(22,82,240,0.22)]
-            "
-            style={{ backgroundColor: "#1652f0" }}
+              ${bizBrandOnboardingPrimaryBtnClass}
+              ${bizBrandFocusRingClass}
+            `}
             onClick={() => setSettingsOpen("CreateUsernamePinScreen")}
           >
             Create Wallet
@@ -233,14 +230,15 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
             <AppButton
               fullWidth
               variant="secondary"
-              className="
+              className={`
                 rounded-[999px] py-8 text-[18px] font-semibold
                 bg-white
                 border border-slate-200
                 text-slate-900
                 shadow-[0_10px_24px_rgba(15,23,42,0.08)]
                 active:shadow-[0_7px_16px_rgba(15,23,42,0.06)]
-              "
+                ${bizBrandFocusRingClass}
+              `}
               onClick={() => setSettingsOpen("RestoreEntryScreen")}
             >
               Restore Wallet
@@ -394,15 +392,18 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							{
 								settingsOpen === 'RestoreWithQRScreen' && <RestoreWithQRScreen
 									initialRecoveryCode={restoreFromUrlMasterKey}
-									onRestore={temp => {
+									onRestore={async (temp) => {
 										setSettingsOpen('')
 										setRestoreFromUrlMasterKey('')
-										init(temp)
+										await init(temp)
+										home()
 									}} />
 							}
 							{
-								settingsOpen === 'RestoreWithUsernamePinScreen' && <RestoreWithUsernamePinScreen onRestore={temp => {
-									init(temp)
+								settingsOpen === 'RestoreWithUsernamePinScreen' && <RestoreWithUsernamePinScreen onRestore={async (temp) => {
+									setSettingsOpen('')
+									await init(temp)
+									home()
 								}} />
 							}
 						</div>

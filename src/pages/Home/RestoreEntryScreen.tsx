@@ -1,5 +1,6 @@
 import React from 'react'
 import { QrCode, User } from 'lucide-react'
+import { bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 
 type RestoreEntryScreenProps = {
   onUseRecoveryQR: () => void
@@ -20,8 +21,9 @@ const RestoreEntryScreen = ({
       <div className="flex flex-col gap-4">
         {/* Card 1: Scan QR / Enter Code */}
         <button
+          type="button"
           onClick={onUseRecoveryQR}
-          className="
+          className={`
             w-full
             p-6
             bg-white
@@ -31,11 +33,12 @@ const RestoreEntryScreen = ({
             flex flex-col items-start gap-4
             text-left
             transition-transform active:scale-[0.98]
-          "
+            ${bizBrandFocusRingClass}
+          `}
         >
           {/* Icon Container: Blue */}
-          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
-            <QrCode className="w-7 h-7 text-[#1652f0]" strokeWidth={2.5} />
+          <div className="w-14 h-14 rounded-full bg-[#1562f0]/10 flex items-center justify-center">
+            <QrCode className="w-7 h-7 text-[#1562f0]" strokeWidth={2.5} />
           </div>
 
           <div>
@@ -50,8 +53,9 @@ const RestoreEntryScreen = ({
 
         {/* Card 2: Use @BeamioTag */}
         <button
+          type="button"
           onClick={onUseUsernamePin}
-          className="
+          className={`
             w-full
             p-6
             bg-white
@@ -61,7 +65,8 @@ const RestoreEntryScreen = ({
             flex flex-col items-start gap-4
             text-left
             transition-transform active:scale-[0.98]
-          "
+            ${bizBrandFocusRingClass}
+          `}
         >
           {/* Icon Container: Grey */}
           <div className="w-14 h-14 rounded-full bg-slate-50 flex items-center justify-center">

@@ -4,8 +4,9 @@ import { onWalletEvent, restoreWithRedeem } from '@/services/beamio'
 import ScanBtn from '@/components/scanBtn/ScanButton' // 引入 ScanBtn
 import { Scan, AlertCircle } from 'lucide-react' 
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
 type RestoreWithQRScreenProps = {
-  onRestore: (temp: encrypt_keys_object) => void
+  onRestore: (temp: encrypt_keys_object) => void | Promise<void>
   /** 从 URL 等途径预填的 recovery code（如 PWA 从 Save to Home Screen 携带） */
   initialRecoveryCode?: string
 }
@@ -56,15 +57,18 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
     }
 
     setLoading(true)
-    const canRestore = await restoreWithRedeem(recoveryCode, '')
-    setLoading(false)
+    try {
+      const canRestore = await restoreWithRedeem(recoveryCode, '')
 
-    if (!canRestore) {
-      setError('Invalid recovery code')
-      return
+      if (!canRestore) {
+        setError('Invalid recovery code')
+        return
+      }
+
+      await onRestore(canRestore)
+    } finally {
+      setLoading(false)
     }
-
-    onRestore(canRestore)
   }
 
   // ⭐ 2. 核心 workflow：监听扫描结果
@@ -114,7 +118,7 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
           <button
             type="button"
             onClick={onOpenScanner} // 点击这里 -> 触发上面的 ScanBtn
-            className="
+            className={`
               w-full h-[64px]
               rounded-[20px]
               bg-[#0F172A] 
@@ -122,7 +126,8 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
               flex items-center justify-center gap-2.5
               active:scale-[0.98] transition-transform
               shadow-[0_10px_20px_rgba(15,23,42,0.15)]
-            "
+              ${bizBrandFocusRingClass} focus-visible:ring-offset-[#0F172A]
+            `}
           >
             <Scan className="w-6 h-6" strokeWidth={2.5} />
             	Scan QR
@@ -153,8 +158,7 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
               resize-none outline-none
               shadow-[0_4px_12px_rgba(0,0,0,0.02)]
               transition-all
-              focus:border-blue-400 focus:ring-4 focus:ring-blue-50
-              ${error ? 'border-red-300 ring-4 ring-red-50' : 'border-slate-200'}
+              ${error ? 'border-red-300 ring-4 ring-red-50' : `border-slate-200 ${bizBrandFocusRingClass} focus:border-[#1562f0]`}
             `}
             placeholder="Paste your code string here..."
             value={recoveryCode}
@@ -178,12 +182,12 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
           fullWidth
           disabled={loading || !recoveryCode.trim()}
           loading={loading}
-          className="
+          className={`
             h-[64px] rounded-full
             text-[20px] font-bold
-            bg-[#2563EB] hover:bg-[#1d4ed8]
-            shadow-[0_12px_30px_rgba(37,99,235,0.3)]
-          "
+            ${bizBrandOnboardingPrimaryBtnClass}
+            ${bizBrandFocusRingClass}
+          `}
         >
           Restore Wallet
         </AppButton>

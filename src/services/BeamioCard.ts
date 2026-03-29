@@ -355,6 +355,44 @@ export const quotePointsForUSDC = async (
 
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
+const cardsByCategoryEndpoint = `${beamioApi}/api/cardsByCategory`
+
+/** 与 x402sdk getLatestCards / cardsByCategory 返回的单卡结构一致（Cluster JSON） */
+export type BeamioLatestCardApiItem = {
+	cardAddress: string
+	cardOwner: string
+	currency: string
+	priceInCurrencyE6: string
+	uri: string | null
+	metadata: Record<string, unknown> | null
+	txHash: string | null
+	totalPointsMinted6: string
+	holderCount: number
+	createdAt: string
+}
+
+export type CardsByCategoryGroup = {
+	categoryId: string
+	items: BeamioLatestCardApiItem[]
+}
+
+/** GET /api/cardsByCategory — 按 shareTokenMetadata.categories 聚合已登记发卡 */
+export const fetchCardsByCategory = async (opts?: {
+	scanLimit?: number
+	limitPerCategory?: number
+}): Promise<CardsByCategoryGroup[]> => {
+	const params = new URLSearchParams()
+	if (opts?.scanLimit != null) params.set('scanLimit', String(opts.scanLimit))
+	if (opts?.limitPerCategory != null) params.set('limitPerCategory', String(opts.limitPerCategory))
+	const q = params.toString()
+	const url = q ? `${cardsByCategoryEndpoint}?${q}` : cardsByCategoryEndpoint
+	const response = await fetch(url)
+	const data = (await response.json()) as { groups?: CardsByCategoryGroup[]; error?: string }
+	if (!response.ok) {
+		throw new Error(data?.error ?? `cardsByCategory HTTP ${response.status}`)
+	}
+	return Array.isArray(data.groups) ? data.groups : []
+}
 
 /** Logs the exact JSON body sent to POST /api/createCard when: NODE_ENV=development (CRA), localStorage BEAMIO_DEBUG_CREATE_CARD=1, or URL ?debugCreateCard=1 */
 function shouldLogCreateCardRequestBody(): boolean {
@@ -723,6 +761,10 @@ export type ShareTokenMetadata = {
 	name: string
 	description?: string
 	image?: string
+	/** Program category ids (e.g. travel, gaming); optional, for merchant UI / discovery */
+	categories?: string[]
+	/** Points / fungible display symbol (e.g. "$VERRA"); persisted for merchant Daily Dashboard */
+	Symbol?: string
 }
 
 /** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。升级模式由卡级 upgradeType（链上）决定。 */
@@ -1072,6 +1114,19 @@ export const encodeAddAdminWithMintLimit = (
     mintLimitPoints6: bigint
 ): string =>
     adminManagerInterface.encodeFunctionData('adminManager(address,bool,uint256,string,uint256)', [newAdmin, true, BigInt(newThreshold), metadata, mintLimitPoints6])
+
+/**
+ * `adminManager(to, true, threshold, metadata)` — 4 参 calldata。
+ * - `POST /api/cardAddAdmin`（executeForOwner）：原样执行 adminManager。
+ * - `POST /api/cardAddAdminByAdmin`（executeForAdmin）：工厂合约把其重写为 `adminManagerByAdmin(..., signer)`。
+ */
+export const encodeAdminManagerAdd = (toEoa: string, newThreshold: number | bigint, metadata: string): string =>
+	adminManagerInterface.encodeFunctionData('adminManager(address,bool,uint256,string)', [
+		ethers.getAddress(toEoa),
+		true,
+		BigInt(newThreshold),
+		metadata,
+	])
 
 const createIssuedNftInterface = new ethers.Interface([
     'function createIssuedNft(bytes32 title, uint64 validAfter, uint64 validBefore, uint256 maxSupply, uint256 priceInCurrency6, bytes32 sharedMetadataHash)',
@@ -1751,14 +1806,33 @@ export const getTierIndexForRedeemAmount = (
 }
 
 /** 卡级 metadata（getCardMetadataFromApi / getCardMetadataFromUri）；cardOwner 用于请求 per-NFT metadata */
-export type CardMetadataFromUri = { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string }
+export type CardMetadataFromUri = {
+	name?: string
+	image?: string
+	tiers?: CardTierMetadata[]
+	cardOwner?: string
+	categories?: string[]
+}
 
 /** 单张成员 NFT 的 tier metadata（GET /metadata/0x{owner}{NFT#}.json） */
 export type NftTierMetadata = { name?: string; description?: string; image?: string; tierIndex?: number; minUsdc6?: string; backgroundColor?: string }
 
-/** ERC1155 metadata 缓存：cardAddress -> { name?, image?, tiers?, cardOwner?, timestamp }，TTL 5 分钟 */
-const cardMetadataCache = new Map<string, { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string; timestamp: number }>()
+/** ERC1155 metadata 缓存：cardAddress -> { name?, image?, tiers?, cardOwner?, categories?, timestamp }，TTL 5 分钟 */
+const cardMetadataCache = new Map<
+	string,
+	{ name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string; categories?: string[]; timestamp: number }
+>()
 const CARD_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
+
+function shareTokenCategoriesFromUnknown(share: Record<string, unknown> | undefined | null): string[] | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw = share.categories
+	if (!Array.isArray(raw)) return undefined
+	const out = raw
+		.filter((c): c is string => typeof c === 'string' && c.trim() !== '')
+		.map((c) => c.trim().toLowerCase())
+	return out.length > 0 ? Array.from(new Set(out)) : undefined
+}
 
 /** per-NFT metadata 缓存：cardOwner_tokenId -> { name?, description?, image?, timestamp }，TTL 5 分钟 */
 const nftMetadataCache = new Map<string, { name?: string; description?: string; image?: string; timestamp: number }>()
@@ -1782,15 +1856,17 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			name?: string
 			image?: string
 			description?: string
-			shareTokenMetadata?: { name?: string; image?: string; description?: string }
+			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown }
 			tiers?: CardTierMetadata[]
 			properties?: Record<string, unknown>
 		}
 		const share = json?.shareTokenMetadata
+		const categories = shareTokenCategoriesFromUnknown(share as Record<string, unknown> | undefined)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? json?.name) as string | undefined,
 			image: (share?.image ?? json?.image) as string | undefined,
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
+			...(categories && { categories }),
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
@@ -1814,12 +1890,14 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const metaJson = data?.metadata
 		if (!metaJson || typeof metaJson !== 'object') return null
 		const share = metaJson.shareTokenMetadata as Record<string, unknown> | undefined
+		const categories = shareTokenCategoriesFromUnknown(share)
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? metaJson.name) as string | undefined,
 			image: (share?.image ?? metaJson.image) as string | undefined,
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
+			...(categories && { categories }),
 		}
 		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
 		return meta
@@ -1904,14 +1982,18 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			name?: string
 			image?: string
 			description?: string
-			shareTokenMetadata?: { name?: string; image?: string; description?: string }
+			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown }
 			tiers?: CardTierMetadata[]
 		}
 		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers
+		const categories = shareTokenCategoriesFromUnknown(
+			json?.shareTokenMetadata as Record<string, unknown> | undefined
+		)
 		const meta: CardMetadataFromUri = {
 			name: json?.name ?? json?.shareTokenMetadata?.name,
 			image: json?.image ?? json?.shareTokenMetadata?.image,
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
+			...(categories && { categories }),
 		}
 		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
 		return meta

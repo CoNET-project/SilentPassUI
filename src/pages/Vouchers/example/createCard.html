@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Card Issuance Setup | Verra Portal</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary-fixed-dim": "#648eff",
+              "tertiary-container": "#f797ef",
+              "on-surface-variant": "#595c5e",
+              "on-primary-fixed-variant": "#00276d",
+              "tertiary-dim": "#7f2d7e",
+              "error": "#b31b25",
+              "surface": "#f5f7f9",
+              "on-tertiary-fixed-variant": "#6c1a6c",
+              "outline-variant": "#abadaf",
+              "surface-container-low": "#eef1f3",
+              "inverse-on-surface": "#9a9d9f",
+              "surface-tint": "#0051d1",
+              "surface-variant": "#d9dde0",
+              "surface-container-lowest": "#ffffff",
+              "error-container": "#fb5151",
+              "surface-dim": "#d0d5d8",
+              "on-background": "#2c2f31",
+              "on-tertiary-container": "#610e62",
+              "surface-container-high": "#dfe3e6",
+              "on-error": "#ffefee",
+              "secondary-fixed-dim": "#cad5ed",
+              "primary-container": "#7a9dff",
+              "primary": "#0051d1",
+              "on-secondary-fixed-variant": "#515c70",
+              "secondary-dim": "#455064",
+              "surface-bright": "#f5f7f9",
+              "error-dim": "#9f0519",
+              "secondary-fixed": "#d8e3fb",
+              "on-surface": "#2c2f31",
+              "on-error-container": "#570008",
+              "inverse-primary": "#5f8bff",
+              "on-primary": "#f1f2ff",
+              "surface-container": "#e5e9eb",
+              "on-secondary-container": "#475266",
+              "outline": "#747779",
+              "secondary": "#515c70",
+              "on-tertiary": "#ffeef8",
+              "on-secondary-fixed": "#354053",
+              "surface-container-highest": "#d9dde0",
+              "primary-dim": "#0047b8",
+              "on-secondary": "#eff2ff",
+              "background": "#f5f7f9",
+              "tertiary": "#8d3a8b",
+              "on-primary-container": "#001e59",
+              "secondary-container": "#d8e3fb",
+              "tertiary-fixed-dim": "#e88ae1",
+              "on-primary-fixed": "#000000",
+              "inverse-surface": "#0b0f10",
+              "primary-fixed": "#7a9dff",
+              "tertiary-fixed": "#f797ef",
+              "on-tertiary-fixed": "#400041"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(20px);
+      }
+      .verra-gradient {
+        background: linear-gradient(135deg, #0051d1 0%, #7a9dff 100%);
+      }
+      body {
+        -webkit-font-smoothing: antialiased;
+      }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface">
+<!-- SideNavBar -->
+<aside class="h-screen w-72 fixed left-0 top-0 z-40 bg-slate-50 flex flex-col py-8 h-full shadow-[20px_0_40px_rgba(21,98,240,0.04)] font-['Manrope'] antialiased tracking-tight">
+<div class="px-8 mb-10">
+<span class="text-2xl font-black text-blue-600 tracking-tighter">Verra Portal</span>
+<p class="text-xs text-on-surface-variant font-medium mt-1">Enterprise Merchant</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-medium">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 bg-blue-600 text-white rounded-full px-4 py-3 mx-2 font-semibold active:scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="credit_card">credit_card</span>
+<span class="font-medium">Card Issuance</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-medium">Cardholders</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-medium">Transactions</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="leaderboard">leaderboard</span>
+<span class="font-medium">Analytics</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-medium">Settings</span>
+</a>
+</nav>
+<div class="mt-auto border-t border-slate-100 pt-6 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-medium">Help Center</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span class="font-medium">Sign Out</span>
+</a>
+</div>
+</aside>
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 left-72 h-20 z-30 bg-white/70 backdrop-blur-2xl flex justify-between items-center px-10 w-full font-['Manrope'] font-medium">
+<div class="flex items-center gap-6">
+<h1 class="text-xl font-extrabold text-on-surface tracking-tight">Merchant Dashboard</h1>
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline" data-icon="search">search</span>
+<input class="pl-12 pr-6 py-2 bg-surface-container-low rounded-full border-none focus:ring-2 focus:ring-primary/20 w-64 text-sm transition-all" placeholder="Search parameters..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-8">
+<nav class="flex items-center gap-6">
+<a class="text-slate-500 hover:text-slate-900" href="#">Docs</a>
+<a class="text-slate-500 hover:text-slate-900" href="#">Support</a>
+<a class="text-slate-500 hover:text-slate-900" href="#">API</a>
+</nav>
+<div class="flex items-center gap-4">
+<button class="p-2 hover:bg-slate-50/50 rounded-full transition-opacity active:opacity-80">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="notifications">notifications</span>
+</button>
+<div class="flex items-center gap-3 pl-4 border-l border-slate-200">
+<img alt="Administrator Profile" class="w-10 h-10 rounded-full object-cover" data-alt="Professional headshot of a smiling executive in a modern office setting with soft natural light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7601lwVQN3tdQI5Nrp6MMFhU-c9zJUz99MmS0tH5R1veYawcPpsaUqi9YKA2p0YGni7iR_-jHhS7QFAoutCQ6y6njTjLjTt3GyuVTIgS-9Q2i5yQaH55dIdtJfXnu0kIJSBolIsuVMEKcJSnWXCWv8pMjLEE55F1JtCAglj7Pb_G7mM_a8y4MZoJxlzhDgrtXCJ28xuxWQz9bdWAH9tugXIIaO9iD3X_-UN6WVe3ddDCjoXTuCMvsJbVX_o5a2V6DviULQafp5o1L"/>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="account_circle">account_circle</span>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="pl-72 pt-20 pb-20 min-h-screen">
+<div class="max-w-6xl mx-auto px-12 py-12">
+<!-- Page Header -->
+<div class="flex flex-col mb-12">
+<span class="text-primary font-bold tracking-widest text-[10px] uppercase mb-2">Configuration Studio</span>
+<h2 class="text-4xl font-extrabold font-headline tracking-tighter text-on-surface">Card Issuance Setup</h2>
+<p class="text-on-surface-variant mt-2 text-lg">Define the parameters and rewards logic for your new merchant card program.</p>
+</div>
+<div class="grid grid-cols-12 gap-10">
+<!-- Setup Form (Left/Center) -->
+<div class="col-span-8 space-y-10">
+<!-- Section 1: Card Identity -->
+<section class="bg-surface-container-lowest rounded-lg p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-4 mb-8">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="fingerprint">fingerprint</span>
+</div>
+<h3 class="text-xl font-bold font-headline">Card Identity</h3>
+</div>
+<div class="grid grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="text-sm font-semibold text-on-surface-variant ml-2">Program Name</label>
+<input class="w-full bg-surface-container-low border-none rounded-md px-6 py-4 focus:ring-2 focus:ring-primary/20 transition-all font-medium" placeholder="e.g., Acme Rewards Plus" type="text"/>
+</div>
+<div class="space-y-2">
+<label class="text-sm font-semibold text-on-surface-variant ml-2">Currency Symbol</label>
+<input class="w-full bg-surface-container-low border-none rounded-md px-6 py-4 focus:ring-2 focus:ring-primary/20 transition-all font-medium" placeholder="e.g., $VERRA" type="text"/>
+</div>
+</div>
+</section>
+<!-- Section 2: Recharge Parameters -->
+<section class="bg-surface-container-lowest rounded-lg p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-4 mb-2">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<h3 class="text-xl font-bold font-headline">Recharge Parameters</h3>
+</div>
+<p class="text-sm text-on-surface-variant mb-8 ml-16">Define the limits for card balance additions. Default is capped under $1,000.</p>
+<div class="grid grid-cols-2 gap-6 ml-16">
+<div class="space-y-2">
+<label class="text-sm font-semibold text-on-surface-variant ml-2">Minimum Top-up</label>
+<div class="relative">
+<span class="absolute left-6 top-1/2 -translate-y-1/2 font-bold text-primary">$</span>
+<input class="w-full bg-surface-container-low border-none rounded-md pl-12 pr-6 py-4 focus:ring-2 focus:ring-primary/20 transition-all font-medium" placeholder="10" type="number"/>
+</div>
+</div>
+<div class="space-y-2">
+<label class="text-sm font-semibold text-on-surface-variant ml-2">Maximum Top-up</label>
+<div class="relative">
+<span class="absolute left-6 top-1/2 -translate-y-1/2 font-bold text-primary">$</span>
+<input class="w-full bg-surface-container-low border-none rounded-md pl-12 pr-6 py-4 focus:ring-2 focus:ring-primary/20 transition-all font-medium" placeholder="1,000" type="number"/>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 3: Loyalty Tier Rules -->
+<section class="bg-surface-container-lowest rounded-lg p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-4 mb-8">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="military_tech">military_tech</span>
+</div>
+<h3 class="text-xl font-bold font-headline">Loyalty Tier Rules</h3>
+</div>
+<div class="space-y-4">
+<label class="flex items-center p-6 bg-surface border-2 border-transparent hover:border-primary/20 rounded-lg cursor-pointer transition-all group">
+<input checked="" class="w-5 h-5 text-primary border-outline-variant focus:ring-primary" name="tier_rule" type="radio"/>
+<div class="ml-6">
+<span class="block font-bold text-on-surface">Single Top-up Amount</span>
+<span class="block text-sm text-on-surface-variant">Tier granted based on a single recharge value. No downgrades.</span>
+</div>
+<span class="material-symbols-outlined ml-auto text-outline group-hover:text-primary transition-colors" data-icon="bolt">bolt</span>
+</label>
+<label class="flex items-center p-6 bg-surface border-2 border-transparent hover:border-primary/20 rounded-lg cursor-pointer transition-all group">
+<input class="w-5 h-5 text-primary border-outline-variant focus:ring-primary" name="tier_rule" type="radio"/>
+<div class="ml-6">
+<span class="block font-bold text-on-surface">Cumulative Spend</span>
+<span class="block text-sm text-on-surface-variant">Tier granted based on lifetime spending. Permanent status.</span>
+</div>
+<span class="material-symbols-outlined ml-auto text-outline group-hover:text-primary transition-colors" data-icon="history">history</span>
+</label>
+<label class="flex items-center p-6 bg-surface border-2 border-transparent hover:border-primary/20 rounded-lg cursor-pointer transition-all group">
+<input class="w-5 h-5 text-primary border-outline-variant focus:ring-primary" name="tier_rule" type="radio"/>
+<div class="ml-6">
+<span class="block font-bold text-on-surface">Current Balance</span>
+<span class="block text-sm text-on-surface-variant">Dynamic auto-upgrade and downgrade based on active balance.</span>
+</div>
+<span class="material-symbols-outlined ml-auto text-outline group-hover:text-primary transition-colors" data-icon="sync_alt">sync_alt</span>
+</label>
+</div>
+</section>
+<!-- Section 4: Tier Configuration -->
+<section class="bg-surface-container-lowest rounded-lg p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+<div class="flex items-center justify-between mb-8">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="layers">layers</span>
+</div>
+<h3 class="text-xl font-bold font-headline">Tier Configuration</h3>
+</div>
+<button class="text-primary text-sm font-bold hover:underline flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                                Add Custom Tier
+                            </button>
+</div>
+<div class="overflow-hidden rounded-md border border-outline-variant/10">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low">
+<tr>
+<th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Tier Name</th>
+<th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Threshold ($)</th>
+<th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Benefits</th>
+<th class="px-6 py-4"></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-3 h-3 rounded-full bg-slate-300"></div>
+<span class="font-bold">Silver</span>
+</div>
+</td>
+<td class="px-6 py-5">
+<input class="w-24 bg-surface border-none rounded-md px-3 py-1 text-sm font-bold text-primary" type="text" value="500"/>
+</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant">2% Cashback</td>
+<td class="px-6 py-5 text-right"><span class="material-symbols-outlined text-outline cursor-pointer" data-icon="edit">edit</span></td>
+</tr>
+<tr>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-3 h-3 rounded-full bg-yellow-400"></div>
+<span class="font-bold">Gold</span>
+</div>
+</td>
+<td class="px-6 py-5">
+<input class="w-24 bg-surface border-none rounded-md px-3 py-1 text-sm font-bold text-primary" type="text" value="1,500"/>
+</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant">5% Cashback</td>
+<td class="px-6 py-5 text-right"><span class="material-symbols-outlined text-outline cursor-pointer" data-icon="edit">edit</span></td>
+</tr>
+<tr>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-3 h-3 rounded-full bg-slate-500"></div>
+<span class="font-bold">Platinum</span>
+</div>
+</td>
+<td class="px-6 py-5">
+<input class="w-24 bg-surface border-none rounded-md px-3 py-1 text-sm font-bold text-primary" type="text" value="5,000"/>
+</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant">10% Cashback</td>
+<td class="px-6 py-5 text-right"><span class="material-symbols-outlined text-outline cursor-pointer" data-icon="edit">edit</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+<!-- Preview Sidebar (Right) -->
+<div class="col-span-4 space-y-8">
+<div class="sticky top-32">
+<!-- Card Preview -->
+<div class="bg-surface-container-lowest rounded-lg p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)] mb-8 overflow-hidden relative">
+<h3 class="text-sm font-bold uppercase tracking-widest text-on-surface-variant mb-6">Live Preview</h3>
+<!-- Verra Card Mockup -->
+<div class="verra-gradient w-full aspect-[1.58/1] rounded-lg p-8 text-white relative flex flex-col justify-between shadow-2xl">
+<!-- Glass Overlay Effect -->
+<div class="absolute inset-0 bg-white/5 backdrop-blur-[1px] pointer-events-none"></div>
+<div class="relative z-10 flex justify-between items-start">
+<div class="flex flex-col">
+<span class="text-[10px] opacity-70 uppercase tracking-widest font-bold">Program</span>
+<span class="text-lg font-bold font-headline tracking-tight">Acme Rewards Plus</span>
+</div>
+<span class="material-symbols-outlined text-3xl opacity-40" data-icon="contactless">contactless</span>
+</div>
+<div class="relative z-10 mt-auto">
+<div class="flex items-center gap-4 mb-4">
+<div class="w-12 h-9 bg-white/20 rounded-md backdrop-blur-md flex items-center justify-center">
+<div class="w-8 h-6 bg-gradient-to-br from-yellow-200 to-yellow-500 rounded-sm opacity-80"></div>
+</div>
+</div>
+<div class="flex justify-between items-end">
+<div class="flex flex-col">
+<span class="text-[8px] opacity-60 uppercase tracking-widest font-bold">Member ID</span>
+<span class="text-sm font-mono tracking-[0.2em] font-medium">4412 • 0098 • 1120</span>
+</div>
+<span class="text-2xl font-black italic tracking-tighter">VERRA</span>
+</div>
+</div>
+</div>
+<div class="mt-8 space-y-4">
+<div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
+<span class="text-sm text-on-surface-variant">Tier Logic</span>
+<span class="text-sm font-bold">Single Top-up</span>
+</div>
+<div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
+<span class="text-sm text-on-surface-variant">Initial Currency</span>
+<span class="text-sm font-bold">$VERRA</span>
+</div>
+<div class="flex justify-between items-center py-2">
+<span class="text-sm text-on-surface-variant">Program Status</span>
+<span class="flex items-center gap-1.5 text-xs font-bold bg-primary/10 text-primary px-3 py-1 rounded-full">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                                        Drafting
+                                    </span>
+</div>
+</div>
+</div>
+<!-- Action Button -->
+<button class="w-full verra-gradient text-white rounded-full py-5 font-bold text-lg shadow-xl hover:shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
+<span class="material-symbols-outlined" data-icon="rocket_launch">rocket_launch</span>
+                            Publish &amp; Issue Card
+                        </button>
+<p class="text-center text-xs text-on-surface-variant mt-4 px-6">By publishing, you agree to the Merchant Services Agreement and Program Compliance terms.</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

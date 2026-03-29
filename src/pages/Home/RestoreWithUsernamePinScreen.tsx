@@ -2,6 +2,7 @@ import { FormEvent, useState, useEffect } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { restoreWithUserPin } from '@/services/beamio'
 import { Eye, EyeOff, AlertCircle } from "lucide-react"
+import { bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
 
 type RestoreWithUsernamePinScreenProps = {
   onRestore: (temp: encrypt_keys_object) => Promise<void> | void
@@ -53,15 +54,18 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
     }
 
     setLoading(true)
-    const canRestore = await restoreWithUserPin(trimmed, password)
-    setLoading(false)
+    try {
+      const canRestore = await restoreWithUserPin(trimmed, password)
 
-    if (!canRestore || typeof canRestore === 'boolean') {
-      setError('Something went wrong while restoring your wallet.')
-      return
+      if (!canRestore || typeof canRestore === 'boolean') {
+        setError('Something went wrong while restoring your wallet.')
+        return
+      }
+
+      await onRestore(canRestore)
+    } finally {
+      setLoading(false)
     }
-
-    onRestore(canRestore)
   }
 
   return (
@@ -96,8 +100,7 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
                 text-[20px] font-bold text-slate-900
                 placeholder:text-slate-300 placeholder:font-bold
                 outline-none transition-all
-                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
-                ${error && !username ? 'border-red-200 ring-4 ring-red-50' : ''}
+                ${error && !username ? 'border-red-200 ring-4 ring-red-50' : `${bizBrandFocusRingClass} focus:border-[#1562f0]`}
               `}
               placeholder="beamio" // 对应截图中的 placeholder
               value={username}
@@ -123,8 +126,7 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
                 text-[20px] font-bold text-slate-900
                 placeholder:text-slate-300 placeholder:font-bold placeholder:tracking-widest
                 outline-none transition-all
-                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
-                ${error && !pin ? 'border-red-200 ring-4 ring-red-50' : ''}
+                ${error && !pin ? 'border-red-200 ring-4 ring-red-50' : `${bizBrandFocusRingClass} focus:border-[#1562f0]`}
               `}
               placeholder="......" // 对应截图中的 dots
               value={pin}
@@ -137,14 +139,14 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
             {/* Eye Icon Button */}
             <button
               type="button"
-              tabIndex={-1}
-              className="
+              className={`
                 absolute right-4 top-1/2 -translate-y-1/2
                 w-12 h-12 rounded-full
                 flex items-center justify-center
                 text-slate-400 hover:text-slate-600
                 active:bg-slate-100 transition
-              "
+                ${bizBrandFocusRingClass}
+              `}
               onPointerDown={e => {
                 e.preventDefault()
                 setPeekPin(true)
@@ -179,13 +181,12 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
           fullWidth
           disabled={loading}
           loading={loading}
-          className="
+          className={`
             h-[64px] rounded-full
             text-[20px] font-bold
-            bg-[#1652f0] hover:bg-[#1345ca]
-            shadow-[0_12px_30px_rgba(22,82,240,0.3)]
-            text-white
-          "
+            ${bizBrandOnboardingPrimaryBtnClass}
+            ${bizBrandFocusRingClass}
+          `}
         >
           Restore
         </AppButton>

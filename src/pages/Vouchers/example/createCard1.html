@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Loyalty Rules | Verra Business</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary-fixed": "#354053",
+              "outline-variant": "#abadaf",
+              "on-tertiary": "#ffeef8",
+              "surface": "#f5f7f9",
+              "tertiary-container": "#f797ef",
+              "on-error": "#ffefee",
+              "tertiary-fixed": "#f797ef",
+              "primary-fixed": "#7a9dff",
+              "primary-dim": "#0047b8",
+              "tertiary-fixed-dim": "#e88ae1",
+              "secondary-container": "#d8e3fb",
+              "surface-container-low": "#eef1f3",
+              "surface-container-highest": "#d9dde0",
+              "on-primary-fixed-variant": "#00276d",
+              "on-tertiary-fixed-variant": "#6c1a6c",
+              "on-secondary-container": "#475266",
+              "primary-fixed-dim": "#648eff",
+              "error-dim": "#9f0519",
+              "inverse-surface": "#0b0f10",
+              "on-primary-container": "#001e59",
+              "inverse-on-surface": "#9a9d9f",
+              "on-surface-variant": "#595c5e",
+              "inverse-primary": "#5f8bff",
+              "surface-container-lowest": "#ffffff",
+              "on-tertiary-container": "#610e62",
+              "tertiary": "#8d3a8b",
+              "on-primary": "#f1f2ff",
+              "secondary": "#515c70",
+              "on-primary-fixed": "#000000",
+              "secondary-fixed-dim": "#cad5ed",
+              "tertiary-dim": "#7f2d7e",
+              "surface-container-high": "#dfe3e6",
+              "error-container": "#fb5151",
+              "surface-variant": "#d9dde0",
+              "on-background": "#2c2f31",
+              "background": "#f5f7f9",
+              "on-surface": "#2c2f31",
+              "surface-bright": "#f5f7f9",
+              "on-tertiary-fixed": "#400041",
+              "error": "#b31b25",
+              "outline": "#747779",
+              "surface-container": "#e5e9eb",
+              "secondary-fixed": "#d8e3fb",
+              "surface-dim": "#d0d5d8",
+              "secondary-dim": "#455064",
+              "primary-container": "#7a9dff",
+              "surface-tint": "#0051d1",
+              "on-secondary-fixed-variant": "#515c70",
+              "on-secondary": "#eff2ff",
+              "on-error-container": "#570008",
+              "primary": "#0051d1"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(20px);
+      }
+      .mesh-gradient {
+        background: radial-gradient(at 135% 0%, #7a9dff 0%, #0051d1 100%);
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #d9dde0;
+        border-radius: 10px;
+      }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl shadow-[0_20px_40px_rgba(21,98,240,0.06)] flex items-center justify-between px-6 py-4 max-w-full">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-blue-600 dark:text-blue-400" data-icon="toll">toll</span>
+<h1 class="font-manrope font-bold text-slate-900 dark:text-slate-100 text-xl tracking-tight">Merchant Portal</h1>
+</div>
+<div class="hidden md:flex items-center gap-8">
+<nav class="flex gap-6">
+<a class="text-slate-500 dark:text-slate-400 hover:text-blue-500 transition-colors font-medium" href="#">Dashboard</a>
+<a class="text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 font-medium" href="#">Loyalty Rules</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-blue-500 transition-colors font-medium" href="#">Card Issuance</a>
+</nav>
+<div class="h-10 w-10 rounded-full bg-surface-container-highest overflow-hidden border-2 border-primary/10">
+<img alt="Merchant Business Logo" data-alt="close-up of a professional corporate logo on a glass office door with soft natural lighting and reflections" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsthzjR5Uui2oqgWqRvGVsgA9Xh5BMWzUXgzj1huYdfPmmVm_jC8Ezp1CZVC9TdJwq1sDe1990CxZpBWeaKKdnieIc4bveHKclChTPrhRYXn0C9le0tj6s-txWOsQzEK-5jQv2xCh-IzS0sJcqtWp29dZIBhgWgkxco2-aSi_PUNyt05lldWuZ341DdNiiBNvqhAH9ufAjSCJqLFgqMjrznCONSdtb6Rw6XiHM91ehm2n0KQxlODJ9Q3Wp48B9WBwwTLS-lE8DTUA"/>
+</div>
+</div>
+<button class="md:hidden text-on-surface">
+<span class="material-symbols-outlined">menu</span>
+</button>
+</header>
+<div class="flex min-h-screen pt-20">
+<!-- NavigationDrawer (Desktop Only) -->
+<aside class="hidden md:flex flex-col gap-2 p-4 pt-8 h-full w-64 border-r border-slate-200/50 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950">
+<div class="px-4 mb-6">
+<span class="text-lg font-bold text-slate-900 dark:text-slate-100 font-headline">Verra Business</span>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-all rounded-xl" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-manrope text-sm font-medium">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-all rounded-xl" href="#">
+<span class="material-symbols-outlined" data-icon="style">style</span>
+<span class="font-manrope text-sm font-medium">Card Issuance</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl transition-all font-bold" href="#">
+<span class="material-symbols-outlined" data-icon="military_tech">military_tech</span>
+<span class="font-manrope text-sm font-medium">Loyalty Rules</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-all rounded-xl" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-manrope text-sm font-medium">Recharge Limits</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 hover:translate-x-1 transition-all rounded-xl" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-manrope text-sm font-medium">Settings</span>
+</a>
+</nav>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 p-6 md:p-12 max-w-7xl mx-auto w-full">
+<header class="mb-12">
+<div class="flex items-center gap-2 mb-2">
+<span class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary bg-primary/10 px-3 py-1 rounded-full">Automated Loyalty</span>
+</div>
+<h2 class="text-4xl md:text-5xl font-headline font-extrabold tracking-tight text-on-surface mb-4">Define Tier Rules</h2>
+<p class="text-on-surface-variant max-w-2xl text-lg">Our software-driven engine automatically manages customer upgrades and benefits based on the logic you define below. Set it once, and let Verra handle the rest.</p>
+</header>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Rule Selector - Left Column -->
+<section class="lg:col-span-5 flex flex-col gap-6">
+<div class="bg-surface-container-lowest p-8 rounded-lg shadow-sm">
+<h3 class="font-headline text-xl font-bold mb-6">Core Rule Logic</h3>
+<div class="space-y-4">
+<!-- Option 1 -->
+<label class="group relative flex items-start gap-4 p-5 rounded-lg border border-transparent hover:border-primary/20 bg-surface-container-low transition-all cursor-pointer">
+<input checked="" class="mt-1 text-primary focus:ring-primary h-5 w-5 border-outline-variant" name="rule_logic" type="radio"/>
+<div class="flex flex-col">
+<span class="font-bold text-on-surface">Single Top-up Amount</span>
+<span class="text-sm text-on-surface-variant">Tiers based on a one-time load value. No downgrades possible.</span>
+</div>
+</label>
+<!-- Option 2 -->
+<label class="group relative flex items-start gap-4 p-5 rounded-lg border border-transparent hover:border-primary/20 bg-surface-container-low transition-all cursor-pointer">
+<input class="mt-1 text-primary focus:ring-primary h-5 w-5 border-outline-variant" name="rule_logic" type="radio"/>
+<div class="flex flex-col">
+<span class="font-bold text-on-surface">Cumulative Spend</span>
+<span class="text-sm text-on-surface-variant">Reward lifetime loyalty. Tiers unlock as total spending grows.</span>
+</div>
+</label>
+<!-- Option 3 -->
+<label class="group relative flex items-start gap-4 p-5 rounded-lg border border-transparent hover:border-primary/20 bg-surface-container-low transition-all cursor-pointer">
+<input class="mt-1 text-primary focus:ring-primary h-5 w-5 border-outline-variant" name="rule_logic" type="radio"/>
+<div class="flex flex-col">
+<span class="font-bold text-on-surface">Current Balance</span>
+<span class="text-sm text-on-surface-variant">Dynamic tiers. Auto upgrade or downgrade based on wallet balance.</span>
+</div>
+</label>
+</div>
+</div>
+<!-- Automation Card -->
+<div class="mesh-gradient p-8 rounded-lg text-white relative overflow-hidden">
+<div class="relative z-10">
+<span class="material-symbols-outlined mb-4 text-4xl" data-icon="auto_awesome">auto_awesome</span>
+<h4 class="font-headline text-2xl font-bold mb-2">Hands-Free Growth</h4>
+<p class="text-on-primary text-sm leading-relaxed opacity-90">When a customer reaches a threshold, Verra's engine instantly updates their card tier and notifies them via push notification. No manual verification required.</p>
+</div>
+<div class="absolute -right-10 -bottom-10 opacity-20">
+<span class="material-symbols-outlined text-[160px]" data-icon="bolt" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+</div>
+</section>
+<!-- Tier Editor - Right Column -->
+<section class="lg:col-span-7 bg-surface-container-lowest p-8 rounded-lg shadow-sm flex flex-col">
+<div class="flex items-center justify-between mb-8">
+<div>
+<h3 class="font-headline text-xl font-bold">Tier Configuration</h3>
+<p class="text-sm text-on-surface-variant">Configure thresholds and discount benefits.</p>
+</div>
+<button class="bg-primary text-white px-6 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                            Add Tier
+                        </button>
+</div>
+<div class="overflow-x-auto custom-scrollbar">
+<table class="w-full text-left border-separate border-spacing-y-4">
+<thead>
+<tr class="text-on-surface-variant uppercase text-[10px] tracking-widest font-bold">
+<th class="px-4 pb-2">Tier Identity</th>
+<th class="px-4 pb-2">Threshold ($)</th>
+<th class="px-4 pb-2">Discount (%)</th>
+<th class="px-4 pb-2">Actions</th>
+</tr>
+</thead>
+<tbody class="text-sm">
+<!-- Silver Tier -->
+<tr class="bg-surface-container-low group hover:bg-surface-container-high transition-colors">
+<td class="px-4 py-6 rounded-l-2xl">
+<div class="flex items-center gap-3">
+<div class="h-10 w-10 rounded-xl bg-slate-200 flex items-center justify-center">
+<span class="material-symbols-outlined text-slate-500" data-icon="stars">stars</span>
+</div>
+<span class="font-bold text-base">Silver</span>
+</div>
+</td>
+<td class="px-4 py-6">
+<input class="bg-white border-none rounded-md w-24 text-center font-medium focus:ring-primary/20" type="text" value="500.00"/>
+</td>
+<td class="px-4 py-6">
+<div class="flex items-center gap-2">
+<input class="bg-white border-none rounded-md w-12 text-center font-medium focus:ring-primary/20" type="text" value="5"/>
+<span class="text-on-surface-variant">%</span>
+</div>
+</td>
+<td class="px-4 py-6 rounded-r-2xl">
+<button class="text-on-surface-variant hover:text-error transition-colors">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</td>
+</tr>
+<!-- Gold Tier -->
+<tr class="bg-surface-container-low group hover:bg-surface-container-high transition-colors">
+<td class="px-4 py-6 rounded-l-2xl">
+<div class="flex items-center gap-3">
+<div class="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center">
+<span class="material-symbols-outlined text-amber-500" data-icon="military_tech" style="font-variation-settings: 'FILL' 1;">military_tech</span>
+</div>
+<span class="font-bold text-base">Gold</span>
+</div>
+</td>
+<td class="px-4 py-6">
+<input class="bg-white border-none rounded-md w-24 text-center font-medium focus:ring-primary/20" type="text" value="1,500.00"/>
+</td>
+<td class="px-4 py-6">
+<div class="flex items-center gap-2">
+<input class="bg-white border-none rounded-md w-12 text-center font-medium focus:ring-primary/20" type="text" value="10"/>
+<span class="text-on-surface-variant">%</span>
+</div>
+</td>
+<td class="px-4 py-6 rounded-r-2xl">
+<button class="text-on-surface-variant hover:text-error transition-colors">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</td>
+</tr>
+<!-- Platinum Tier -->
+<tr class="bg-surface-container-low group hover:bg-surface-container-high transition-colors">
+<td class="px-4 py-6 rounded-l-2xl">
+<div class="flex items-center gap-3">
+<div class="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center">
+<span class="material-symbols-outlined text-blue-600" data-icon="diamond" style="font-variation-settings: 'FILL' 1;">diamond</span>
+</div>
+<span class="font-bold text-base">Platinum</span>
+</div>
+</td>
+<td class="px-4 py-6">
+<input class="bg-white border-none rounded-md w-24 text-center font-medium focus:ring-primary/20" type="text" value="5,000.00"/>
+</td>
+<td class="px-4 py-6">
+<div class="flex items-center gap-2">
+<input class="bg-white border-none rounded-md w-12 text-center font-medium focus:ring-primary/20" type="text" value="15"/>
+<span class="text-on-surface-variant">%</span>
+</div>
+</td>
+<td class="px-4 py-6 rounded-r-2xl">
+<button class="text-on-surface-variant hover:text-error transition-colors">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="mt-auto pt-8 flex justify-end gap-4">
+<button class="px-8 py-3 text-sm font-bold text-on-surface hover:bg-surface-container-low rounded-full transition-colors">Discard Changes</button>
+<button class="px-10 py-3 text-sm font-bold text-white bg-primary rounded-full shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">Publish Live Rules</button>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full flex justify-around items-center px-4 py-3 pb-safe bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg rounded-t-[2rem] z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="add_card">add_card</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest mt-1">Issuance</span>
+</a>
+<a class="flex flex-col items-center justify-center text-blue-600 dark:text-blue-400 font-bold scale-110 duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="rule">rule</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest mt-1">Rules</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest mt-1">Account</span>
+</a>
+</nav>
+</body></html>

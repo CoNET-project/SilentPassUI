@@ -3,6 +3,11 @@ import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
 import { Eye, EyeOff, ShieldCheck, AlertTriangle, Check, Loader, KeyRound, RefreshCw } from "lucide-react"
 import { ACTIVATING_STEPS } from "./RecoveryQRScreen"
+import {
+	bizBrandFocusRingClass,
+	bizBrandInvalidFieldRingClass,
+	bizBrandOnboardingPrimaryBtnClass,
+} from "@/pages/Home/brandUi"
 
 const CREATING_STEPS = [
   { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
@@ -122,9 +127,8 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
                 text-[24px] font-bold text-slate-900
                 placeholder:text-slate-300 placeholder:font-bold
                 outline-none transition-all
-                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
+                ${status === "invalid" ? bizBrandInvalidFieldRingClass : `${bizBrandFocusRingClass} focus:border-[#1562f0]`}
                 disabled:opacity-70
-                ${status === 'invalid' ? 'border-orange-200 ring-4 ring-orange-50 focus:border-orange-300 focus:ring-orange-100' : ''}
               `}
               value={value}
               placeholder="tagname" // Matches Screenshot 1
@@ -200,7 +204,7 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
             h-[64px] rounded-full
             text-[20px] font-bold tracking-wide
             ${isValid
-              ? 'bg-[#1652f0] hover:bg-[#1345ca] shadow-[0_12px_30px_rgba(22,82,240,0.3)] text-white'
+              ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}`
               : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
           `}
           onClick={onNext}
@@ -253,14 +257,14 @@ const SecureWalletPassword = ({
               type={show ? "text" : "password"}
               autoComplete="new-password"
               enterKeyHint="done"
-              className="
+              className={`
                 w-full h-[72px] pl-6 pr-16 rounded-[24px]
                 border border-slate-100 bg-white shadow-sm
                 text-[20px] font-semibold text-slate-900
                 placeholder:text-slate-300 placeholder:font-medium
                 outline-none transition-all
-                focus:border-sky-300 focus:ring-4 focus:ring-sky-50
-              "
+                ${bizBrandFocusRingClass} focus:border-[#1562f0]
+              `}
               value={password}
               placeholder="Set Password (6+ chars)" // Matches Screenshot 3
               onChange={e => setPassword(e.currentTarget.value)}
@@ -275,13 +279,14 @@ const SecureWalletPassword = ({
 
             <button
               type="button"
-              className="
+              className={`
                 absolute right-4 top-1/2 -translate-y-1/2
                 w-12 h-12 rounded-full
                 flex items-center justify-center
                 text-slate-400 hover:text-slate-600
                 active:bg-slate-100 transition
-              "
+                ${bizBrandFocusRingClass}
+              `}
               onClick={() => setShow(!show)}
             >
               {show ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
@@ -311,7 +316,7 @@ const SecureWalletPassword = ({
             text-[20px] font-bold
             transition-all duration-200
             ${canSubmit 
-              ? 'bg-[#1652f0] shadow-[0_12px_30px_rgba(22,82,240,0.3)] text-white' 
+              ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}` 
               : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
           `}
           onClick={() => {
@@ -395,10 +400,10 @@ const CreateUsernamePinScreen = forwardRef<
     return (
       <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
         <div className="relative mb-8">
-          <div className="w-20 h-20 bg-[#1652f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-blue-500/40">
+          <div className="w-20 h-20 bg-[#1562f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-[#1562f0]/40">
             <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
           </div>
-          <div className="absolute -inset-4 bg-[#1652f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
+          <div className="absolute -inset-4 bg-[#1562f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
         </div>
         <div className="w-full max-w-sm space-y-6">
           {steps.map((s, idx) => {
@@ -411,7 +416,7 @@ const CreateUsernamePinScreen = forwardRef<
                   className={[
                     'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors',
                     isCompleted && 'bg-emerald-500',
-                    isActive && 'bg-[#1652f0]',
+                    isActive && 'bg-[#1562f0]',
                     !isCompleted && !isActive && 'bg-slate-200',
                   ].filter(Boolean).join(' ')}
                 >
@@ -427,7 +432,7 @@ const CreateUsernamePinScreen = forwardRef<
                   <p
                     className={[
                       'font-semibold text-[15px] transition-colors',
-                      isActive && 'text-[#1652f0]',
+                      isActive && 'text-[#1562f0]',
                       isCompleted && 'text-slate-700',
                       !isCompleted && !isActive && 'text-slate-400',
                     ].filter(Boolean).join(' ')}

@@ -4,6 +4,7 @@ import { QRCodeCanvas } from 'qrcode.react'
 import { Download, Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw } from 'lucide-react'
 import bIcon from '@/components/assets/logo512.png'
 import { useNavigate } from 'react-router-dom'
+import { bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
 
 export const ACTIVATING_STEPS = [
   { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
@@ -98,10 +99,10 @@ const RecoveryQRScreen = ({
     return (
       <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
         <div className="relative mb-8">
-          <div className="w-20 h-20 bg-[#1652f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-blue-500/40">
+          <div className="w-20 h-20 bg-[#1562f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-[#1562f0]/40">
             <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
           </div>
-          <div className="absolute -inset-4 bg-[#1652f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
+          <div className="absolute -inset-4 bg-[#1562f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
         </div>
         <div className="w-full max-w-sm space-y-6">
           {ACTIVATING_STEPS.map((step, idx) => {
@@ -114,7 +115,7 @@ const RecoveryQRScreen = ({
                   className={[
                     'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors',
                     isCompleted && 'bg-emerald-500',
-                    isActive && 'bg-[#1652f0]',
+                    isActive && 'bg-[#1562f0]',
                     !isCompleted && !isActive && 'bg-slate-200',
                   ]
                     .filter(Boolean)
@@ -132,7 +133,7 @@ const RecoveryQRScreen = ({
                   <p
                     className={[
                       'font-semibold text-[15px] transition-colors',
-                      isActive && 'text-[#1652f0]',
+                      isActive && 'text-[#1562f0]',
                       isCompleted && 'text-slate-700',
                       !isCompleted && !isActive && 'text-slate-400',
                     ]
@@ -214,28 +215,32 @@ const RecoveryQRScreen = ({
         {/* Action Buttons Row (Save & Copy) */}
         <div className="mt-10 grid grid-cols-2 gap-4">
           <button
+            type="button"
             onClick={handleSaveImage}
-            className="
+            className={`
               flex items-center justify-center gap-2
               h-[64px] rounded-[20px]
               bg-slate-100 hover:bg-slate-200 active:bg-slate-300
               text-slate-900 text-[18px] font-bold
               transition-colors
-            "
+              ${bizBrandFocusRingClass}
+            `}
           >
             <Download className="w-6 h-6" strokeWidth={2.5} />
             Save
           </button>
 
           <button
+            type="button"
             onClick={handleCopyCode}
-            className="
+            className={`
               flex items-center justify-center gap-2
               h-[64px] rounded-[20px]
               bg-slate-100 hover:bg-slate-200 active:bg-slate-300
               text-slate-900 text-[18px] font-bold
               transition-colors
-            "
+              ${bizBrandFocusRingClass}
+            `}
           >
             {copied ? (
               <>
@@ -308,7 +313,7 @@ const RecoveryQRScreen = ({
              text-[22px] font-bold
              transition-all duration-200
              ${isConfirmed
-               ? 'bg-[#1652f0] shadow-[0_12px_30px_rgba(22,82,240,0.3)] text-white' 
+               ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}` 
                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}
            `}
         >

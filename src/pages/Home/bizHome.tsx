@@ -10,18 +10,18 @@ import { baseEndpoint } from '@/utils/constants'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import MerchantOS from '@/pages/Vouchers/example/biz'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
+import {
+	BIZ_BRAND_HEX,
+	bizBrandFocusRingClass,
+	bizBrandPrimarySolidClass,
+} from '@/pages/Home/brandUi'
 
-/**
- * Primary CTA lime — matches `cashTreeHome` / `biz.tsx` Merchant OS.
- * Hover / active / on-color: `#8ADC32`, `#7ECF28`, `#0F172A`.
- */
-const BIZ_UI_PRIMARY = '#96EB3C'
+/** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
+const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
 
-const bizUiPrimarySolid =
-	'bg-[#96EB3C] text-[#0F172A] hover:bg-[#8ADC32] active:bg-[#7ECF28] shadow-[0_14px_32px_rgba(150,235,60,0.42)] active:shadow-[0_10px_24px_rgba(150,235,60,0.32)]'
+const bizUiPrimarySolid = bizBrandPrimarySolidClass
 
-const inputFocusPrimary =
-	'focus:outline-none focus:ring-2 focus:ring-[#96EB3C]/30 focus:border-[#96EB3C]'
+const inputFocusPrimary = `${bizBrandFocusRingClass} focus:border-[#1562f0] transition-all`
 
 /** `public/logo512.png` (respects `homepage` e.g. `/biz`) */
 const BIZ_PUBLIC_LOGO512 = `${process.env.PUBLIC_URL ?? ''}/logo512.png`
@@ -192,10 +192,10 @@ const BizHome = () => {
 		return (
 			<div
 				data-biz-ui-primary={BIZ_UI_PRIMARY}
-				className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#96EB3C]/30"
+				className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#1562f0]/25"
 			>
 				<div className="w-full max-w-[420px] bg-white/80 backdrop-blur-3xl rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white p-12 flex flex-col items-center justify-center relative overflow-hidden">
-					<div className="w-16 h-16 border-[3px] border-slate-100 border-t-[#96EB3C] rounded-full animate-spin mb-10" />
+					<div className="w-16 h-16 border-[3px] border-slate-100 border-t-[#1562f0] rounded-full animate-spin mb-10" />
 					<div className="space-y-5 w-full">
 						{LOGIN_STAGES.map((text, idx) => (
 							<div
@@ -204,13 +204,13 @@ const BizHome = () => {
 							>
 								<div
 									className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors duration-500 shrink-0 ${
-										loadingStep > idx ? 'bg-[#96EB3C] text-[#0F172A]' : 'bg-slate-100 text-slate-300'
+										loadingStep > idx ? 'bg-[#1562f0] text-white' : 'bg-slate-100 text-slate-300'
 									}`}
 								>
 									{loadingStep > idx ? (
 										<CheckCircle2 size={16} />
 									) : loadingStep === idx ? (
-										<span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-[#96EB3C] rounded-full animate-spin" />
+										<span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-[#1562f0] rounded-full animate-spin" />
 									) : (
 										<div className="w-2 h-2 rounded-full bg-slate-300" />
 									)}
@@ -231,10 +231,10 @@ const BizHome = () => {
 	return (
 		<div
 			data-biz-ui-primary={BIZ_UI_PRIMARY}
-			className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#96EB3C]/30"
+			className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 selection:bg-[#1562f0]/25"
 		>
 			<div className="w-full max-w-md bg-white rounded-[40px] shadow-[0_20px_60px_rgba(0,0,0,0.05)] border border-slate-100 p-10 overflow-hidden relative">
-				<div className="absolute top-0 right-0 w-64 h-64 bg-[#96EB3C]/15 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
+				<div className="absolute top-0 right-0 w-64 h-64 bg-[#1562f0]/18 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 				<div className="relative z-10 flex flex-col items-center">
 					<img
 						src={BIZ_PUBLIC_LOGO512}
@@ -289,11 +289,11 @@ const BizHome = () => {
 						<button
 							type="submit"
 							disabled={isLoading}
-							className={`w-full py-4 rounded-[20px] font-semibold text-[16px] transition-all mt-6 flex justify-center items-center gap-2 hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:bg-[#96EB3C] disabled:shadow-none ${bizUiPrimarySolid}`}
+							className={`w-full py-4 rounded-[20px] font-semibold text-[16px] transition-all mt-6 flex justify-center items-center gap-2 hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:bg-[#1562f0] disabled:shadow-none ${bizUiPrimarySolid}`}
 						>
 							{isLoading ? (
 								<>
-									<span className="w-5 h-5 border-2 border-[#0F172A]/25 border-t-[#0F172A] rounded-full animate-spin shrink-0" />
+									<span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
 									Unlocking...
 								</>
 							) : (
@@ -310,7 +310,7 @@ const BizHome = () => {
 							onClick={() => setShowNewBiz(true)}
 							className="flex items-center gap-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
 						>
-							<ShieldCheck size={14} className="text-[#96EB3C]" />
+							<ShieldCheck size={14} className="text-[#1562f0]" />
 							<span>Local EOA Derivation • Zero-Knowledge</span>
 						</button>
 						<span className="text-[10px] text-slate-400 font-medium">v{APP_VERSION}</span>

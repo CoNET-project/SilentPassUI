@@ -5,7 +5,7 @@ import { ethers } from 'ethers';
 import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
-import { storeSystemData, getBalance, formatWithThousands, purchaseBUnitFromBase } from '@/services/beamio';
+import { storeSystemData, getBalance, formatWithThousands, purchaseBUnitFromBase, postToIPFS } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername, getOracleCadUsdcFromConet } from '@/services/beamio';
 import {
@@ -16,6 +16,7 @@ import {
   fetchTrustedCanonicalAaFromRpc,
   postCardAddAdminByAdmin,
   postCardAddAdmin,
+  encodeAdminManagerAdd,
   encodeAddAdminWithMintLimit,
   signExecuteForAdmin,
   signClearAdminMintCounter,
@@ -23,14 +24,30 @@ import {
   signExecuteForOwner,
   getCardMetadataFromApi,
   getCardMetadataFrom1155Json,
+  getCardMetadataFromUri,
   getNftMetadataFromApi,
+  getCardsOfOwnerWithDetailsForProfile,
   signBUnitRefuel3009,
+  createBeamioCard,
+  fetchCardsByCategory,
+  getCardOwner,
+  type CardMetadataFromUri,
   type CardTierMetadata,
+  type TierMetadata,
+  type UserCardInfo,
 } from '@/services/BeamioCard';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect, CONET_MAINNET_WSS } from '@/utils/constants';
-import { BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
+import { BASE_CARD_FACTORY, BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
+import {
+  IPFS_GET_FRAGMENT,
+  IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES,
+  IPFS_UPLOAD_TARGET_MAX_BYTES,
+  blobToDataUrl,
+  compressToJpeg,
+  resizeToFitLimit,
+} from '@/utils/ipfsCardImageUpload';
 import {
   CHARGE_BUINT_LEDGER_MAX_ENTRIES,
   loadChargeBUnitLedgerMap,
@@ -87,6 +104,7 @@ import {
  Crown,
  MonitorSmartphone, // 新增：用于终端图标
  Plus,              // 新增：用于添加按钮
+ Minus,             // Tier description expand/collapse
  Trash2,            // 新增：用于删除按钮
  RefreshCcw,
  Link as LinkIcon,  // 新增：用于关联图标
@@ -102,6 +120,7 @@ import {
  Hexagon,
  Award,
  CreditCard,
+ ImagePlus,
  Paperclip,
  MoreVertical,
  AlertTriangle,
@@ -117,6 +136,20 @@ import {
  Menu,
  CalendarDays,
  Code,
+ UserPlus,
+ BadgeInfo,
+ Ban,
+ Fingerprint,
+ Layers,
+ Medal,
+ Rocket,
+ Gem,
+ Star,
+ Plane,
+ Gamepad2,
+ ShoppingBag,
+ UtensilsCrossed,
+ Clapperboard,
 } from 'lucide-react';
 
 const getImg = (avatarSeed: string | undefined) =>
@@ -129,19 +162,26 @@ const BASE_ICON_URL = 'https://beamio.app/app/static/media/base-logo.275b67e9455
 const BIZ_PUBLIC_LOGO512 = `${process.env.PUBLIC_URL ?? ''}/logo512.png`;
 
 /**
- * Primary CTA lime — matches SilentPassUI `LoadingPage` Create Wallet.
- * Hover / active / label: `#8ADC32`, `#7ECF28`, `#0F172A` (keep in sync with `bizUiPrimary*` classes).
+ * Merchant OS brand blue — primary + hover/active for solid CTAs, shadows use RGB of `#1562f0`.
+ * Focus: use `bizFocusRingClass` on inputs/selects; dark panels use `bizGlowBlurClass` / brand-tinted gradients.
  */
-const BIZ_UI_PRIMARY = '#96EB3C';
+const BIZ_UI_PRIMARY = '#1562f0';
+/** Tailwind: visible focus ring (offset for contrast on light UI) */
+const bizFocusRingClass =
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
 
-/** Filled primary control: lime background, dark label, LoadingPage-style shadow */
+/** Filled primary: blue field, white label, blue glow */
 const bizUiPrimarySolid =
-  'bg-[#96EB3C] text-[#0F172A] hover:bg-[#8ADC32] active:bg-[#7ECF28] shadow-[0_14px_32px_rgba(150,235,60,0.42)] active:shadow-[0_10px_24px_rgba(150,235,60,0.32)]';
-/** Spinner / inline loader accent (replaces former blue primary loaders) */
-const bizUiPrimaryLoader = 'text-[#96EB3C]';
+  'bg-[#1562f0] text-white hover:bg-[#2b74f5] active:bg-[#0d4ec4] shadow-[0_14px_32px_rgba(21,98,240,0.38)] active:shadow-[0_10px_24px_rgba(21,98,240,0.28)]';
 
-/** Text & icon accent on light backgrounds (replaces former primary blue text) */
-const bizUiPrimaryAccent = 'text-emerald-800';
+/** Spinner / inline loader accent */
+const bizUiPrimaryLoader = 'text-[#1562f0]';
+
+/** Text & icon accent on light backgrounds (dark blue, readable on white/slate-50) */
+const bizUiPrimaryAccent = 'text-blue-900';
+
+/** Soft radial/blur highlight for dark cards (Settlement, linked card) */
+const bizGlowBlurClass = 'bg-[#1562f0]/28';
 
 /** USDC on Base 复合图标：主圆标 + 右下 Base 角标（beamio-usdc-base-composite-icon） */
 const UsdcBaseCompositeIcon = ({ size = 16, badgeSize }: { size?: number; badgeSize?: number }) => {
@@ -308,12 +348,31 @@ const MOCK_MESSAGES = [
   { id: 'm4', sender: 'them', text: 'Your KYB application is approved. The Alliance NFT has been minted directly to your Smart Terminal.', time: '10:42 AM' }
 ];
 
+/** Members & Loyalty (demo rows; not on-chain) */
+type BizLoyaltyMemberRow = {
+  id: string
+  tag: string
+  address: string
+  tier: string
+  balance: number
+  ltv: number
+  lastActive: string
+  store: string
+  status: 'Active' | 'Suspended'
+}
+
+const BIZ_LOYALTY_BRANCHES = ['All Stores (Network View)', 'Main Store', 'Franchise North'] as const
+
+const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
+  { id: 'blm001', tag: '@alice_chen', address: '0x1A4…9F21', tier: 'Green Card', balance: 50.0, ltv: 850.0, lastActive: '2 hrs ago', store: 'Main Store', status: 'Active' },
+  { id: 'blm002', tag: '@senpho_wholesale', address: '0x3C8…E4A1', tier: 'Black VIP', balance: 45.0, ltv: 3200.0, lastActive: 'Yesterday', store: 'Franchise North', status: 'Active' },
+  { id: 'blm003', tag: '@cashtrees_support', address: '0x9E2…1B7C', tier: 'Standard', balance: 12.5, ltv: 45.0, lastActive: '3 days ago', store: 'Main Store', status: 'Active' },
+]
+
+const ISSUE_CARD_MIN_BUINTS = 200
+
 /** 指定商户卡地址 - 必须使用此卡 */
 const FIXED_USER_CARD_CONTRACT_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
-/** Card-level cache key for on-chain `tiers[]` (not EOA-scoped) */
-const ROUTING_ONCHAIN_TIERS_CACHE_KEY = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:onchain-tiers`
-/** Card-level JSON metadata `tiers[]` (names from 0x{card}…0.json / cardMetadata API) */
-const ROUTING_TIER_METADATA_CACHE_KEY = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:routing-tier-metadata`
 const CONET_BUINT_ADDRESS = '0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879'
 const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)'] as const
 /** ERC-1155 `POINTS_ID` on BeamioUserCard is 0 — AA-held points balance for voucher display */
@@ -335,7 +394,7 @@ const USER_CARD_ADMIN_READ_ABI = [
   'function getAdminStatsFull(address admin, uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 mintCounterFromClear, uint256 burnCounterFromClear, uint256 transferCounterFromClear, uint256 transferAmountFromClear, uint256 redeemMintCounterFromClear, uint256 usdcMintCounterFromClear, address[] subordinates)',
   'function getAdminAirdropLimit(address admin) view returns (address admin, address parent, uint256 limit, uint256 usedFromClear, uint256 remainingAvailable, bool unlimited)',
   'function adminParent(address admin) view returns (address)',
-  'function getGlobalStatsFull(uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 adminCount)',
+  'function getGlobalStatsFull(uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 adminCount, uint256 cumulativeAdminToAdminTransfer, uint256 cumulativeAdminToAdminTransferAmount, uint256 periodAdminToAdminTransfer, uint256 periodAdminToAdminTransferAmount, uint256 lifetimeAdminToAdminTransferCount, uint256 lifetimeAdminToAdminTransferAmount)',
 ] as const
 
 /** BeamioUserCard: `tiers(uint256)` + global `currency` (BeamioCurrency.CurrencyType, uint8) */
@@ -600,6 +659,8 @@ type FixedUserCardMetadata = {
   description?: string
   image?: string
   cardOwner?: string
+  /** `shareTokenMetadata.Symbol` or `symbol` — card points token label for dashboard */
+  currencySymbol?: string
 }
 
 const firstNonEmptyString = (...values: unknown[]): string | undefined => {
@@ -618,14 +679,31 @@ const parseFixedUserCardMetadata = (raw: unknown, cardOwner?: string): FixedUser
     ? meta.shareTokenMetadata as Record<string, unknown>
     : null;
 
+  const symRaw = firstNonEmptyString(
+    typeof share?.Symbol === 'string' ? share.Symbol : undefined,
+    typeof share?.symbol === 'string' ? share.symbol : undefined,
+    typeof meta.Symbol === 'string' ? meta.Symbol : undefined,
+    typeof meta.symbol === 'string' ? meta.symbol : undefined
+  );
+
   const parsed: FixedUserCardMetadata = {
     name: firstNonEmptyString(share?.name, meta.name),
     description: firstNonEmptyString(share?.description, meta.description),
     image: firstNonEmptyString(share?.image, meta.image),
     ...(cardOwner ? { cardOwner } : {}),
+    ...(symRaw ? { currencySymbol: symRaw } : {}),
   };
 
-  return parsed.name || parsed.description || parsed.image || parsed.cardOwner ? parsed : null;
+  return parsed.name || parsed.description || parsed.image || parsed.cardOwner || parsed.currencySymbol ? parsed : null;
+}
+
+/** Fallback label when card metadata has no `Symbol` (e.g. infra CashTrees asset). */
+const DASHBOARD_DEFAULT_POINTS_SYMBOL = '$CTree';
+
+function normalizeDashboardPointsSymbol(raw: string | undefined | null): string {
+  const t = (raw ?? '').trim();
+  if (!t) return DASHBOARD_DEFAULT_POINTS_SYMBOL;
+  return t.startsWith('$') ? t : `$${t}`;
 }
 
 const amountE6ToDisplayNumber = (value: bigint): number => Number(value) / 1_000_000
@@ -700,6 +778,65 @@ async function callGetAdminStatsFullParsed(
 }
 
 /**
+ * `getGlobalStatsFull` on deployed Base cards often returns **17** static words (through `adminCount`) with no leading offset;
+ * newer modules may return 23 words behind a `0x20` offset. Supports both.
+ */
+function parseGetGlobalStatsFullReturnHex(rawHex: string): {
+  cumulativeMint: bigint
+  cumulativeTransfer: bigint
+  cumulativeTransferAmount: bigint
+  cumulativeUSDCMint: bigint
+  periodMint: bigint
+  periodTransfer: bigint
+  periodTransferAmount: bigint
+  periodUSDCMint: bigint
+  cumulativeIssued: bigint
+  cumulativeUpgraded: bigint
+  periodIssued: bigint
+  periodUpgraded: bigint
+} | null {
+  if (!rawHex || typeof rawHex !== 'string') return null
+  const hex = rawHex.replace(/^0x/, '')
+  if (hex.length < 17 * 64) return null
+  const nWords = hex.length / 64
+  if (!Number.isInteger(nWords)) return null
+  const u256 = (wordIndex: number) => BigInt('0x' + hex.slice(wordIndex * 64, (wordIndex + 1) * 64))
+  let base = 0
+  if (nWords > 17) {
+    const head = u256(0)
+    if (head === 32n || head === 64n) base = Number(head) / 32
+  }
+  if (hex.length < (base + 17) * 64) return null
+  return {
+    cumulativeMint: u256(base + 0),
+    cumulativeTransfer: u256(base + 2),
+    cumulativeTransferAmount: u256(base + 3),
+    cumulativeUSDCMint: u256(base + 5),
+    periodMint: u256(base + 8),
+    periodTransfer: u256(base + 10),
+    periodTransferAmount: u256(base + 11),
+    periodUSDCMint: u256(base + 13),
+    cumulativeIssued: u256(base + 6),
+    cumulativeUpgraded: u256(base + 7),
+    periodIssued: u256(base + 14),
+    periodUpgraded: u256(base + 15),
+  }
+}
+
+async function callGetGlobalStatsFullParsed(
+  cardAddress: string,
+  periodType: number,
+  provider: ethers.Provider,
+  anchorTs: bigint = 0n,
+  cumulativeStartTs: bigint = 0n
+): Promise<ReturnType<typeof parseGetGlobalStatsFullReturnHex>> {
+  const iface = new ethers.Interface([...USER_CARD_ADMIN_READ_ABI])
+  const data = iface.encodeFunctionData('getGlobalStatsFull', [periodType, anchorTs, cumulativeStartTs])
+  const raw = await provider.call({ to: cardAddress, data })
+  return parseGetGlobalStatsFullReturnHex(typeof raw === 'string' ? raw : '')
+}
+
+/**
  * Overview "Today": sum `getAdminStatsFull(..., PERIOD_HOUR, anchor in hour h)` for each UTC hour index
  * overlapping the client-local calendar day [local midnight, now]. Each hourly call already aggregates
  * the admin subtree on `BEAMIO_USER_CARD_ASSET_ADDRESS` (same as `getAdminStatsFull` period stats).
@@ -721,6 +858,51 @@ async function aggregateAdminNetworkSummaryLocalTodayFromHourlyBuckets(
       callGetAdminStatsFullParsed(
         cardAddress,
         admin,
+        PERIOD_HOUR,
+        provider,
+        BigInt(h * 3600 + 1800),
+        0n
+      )
+    )
+  )
+  let periodTransferAmount = 0n
+  let periodTransfer = 0n
+  let periodUSDCMint = 0n
+  let periodMint = 0n
+  for (const p of results) {
+    if (!p) continue
+    periodTransferAmount += p.periodTransferAmount
+    periodTransfer += p.periodTransfer
+    periodUSDCMint += p.periodUSDCMint
+    periodMint += p.periodMint
+  }
+  return {
+    cadVol: amountE6ToDisplayNumber(periodTransferAmount),
+    txCount: Number(periodTransfer),
+    usdc: amountE6ToDisplayNumber(periodUSDCMint),
+    vouchers: amountE6ToDisplayNumber(periodMint),
+    localDayKey: formatLocalYmd(new Date()),
+  }
+}
+
+/**
+ * Overview "Today" (global / full card): sum `getGlobalStatsFull(..., PERIOD_HOUR, ...)` over local-calendar-day hours.
+ */
+async function aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
+  cardAddress: string,
+  provider: ethers.Provider
+): Promise<BizNetworkSummaryRow | null> {
+  const nowSec = Math.floor(Date.now() / 1000)
+  const startSec = getLocalCalendarDayStartUnixSec(new Date())
+  if (nowSec < startSec) return null
+  const startHour = Math.floor(startSec / 3600)
+  const endHour = Math.floor(nowSec / 3600)
+  const hours: number[] = []
+  for (let h = startHour; h <= endHour; h++) hours.push(h)
+  const results = await Promise.all(
+    hours.map((h) =>
+      callGetGlobalStatsFullParsed(
+        cardAddress,
         PERIOD_HOUR,
         provider,
         BigInt(h * 3600 + 1800),
@@ -2018,25 +2200,592 @@ const AddressRow = ({ label, icon: Icon, address, fullAddress, onRefresh, refres
   );
 };
 
+/** Fixed to `BeamioCurrency.CurrencyType.CAD` (enum index 0). See `src/BeamioUserCard/BeamioCurrency.sol`. */
+const CARD_ISSUANCE_BEAMIO_CURRENCY = 'CAD' as const;
+const CARD_ISSUANCE_MIN_TOPUP_MIN = 10;
+const CARD_ISSUANCE_MAX_TOPUP_MAX = 1000;
+/** Default maximum top-up (whole dollars only, no decimals). */
+const CARD_ISSUANCE_MAX_TOPUP_DEFAULT = 100;
+/** Default minimum top-up (whole dollars only, no decimals). */
+const CARD_ISSUANCE_MIN_TOPUP_DEFAULT = 10;
+/** Max length for Card Issuance configuration text (card description, tier description, etc.). */
+const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
+
+const CARD_ISSUANCE_FACTORY_LATEST_ABI = ['function latestCardOfOwner(address) view returns (address)'] as const;
+
+/** Prefer factory.latestCardOfOwner(AA) then EOA; fallback to last entry from merged cardsOfOwner list. */
+async function pickPrimaryIssuedCardAddressForBiz(
+  profile: { aaAccount?: string | null; keyID?: string | null },
+  ownedCards: UserCardInfo[],
+  provider: ethers.Provider
+): Promise<string | null> {
+  if (!ownedCards.length) return null;
+  const setAddrs = new Set(ownedCards.map((c) => c.cardAddress.toLowerCase()));
+  try {
+    const factory = new ethers.Contract(BASE_CARD_FACTORY, CARD_ISSUANCE_FACTORY_LATEST_ABI, provider);
+    const aa = profile?.aaAccount?.trim();
+    const eoa = profile?.keyID?.trim();
+    for (const owner of [aa, eoa]) {
+      if (!owner || !ethers.isAddress(owner)) continue;
+      const lc = await factory.latestCardOfOwner(ethers.getAddress(owner));
+      if (lc && lc !== ethers.ZeroAddress) {
+        const a = ethers.getAddress(lc);
+        if (setAddrs.has(a.toLowerCase())) return a;
+      }
+    }
+  } catch {
+    /* use fallback */
+  }
+  return ownedCards[ownedCards.length - 1]?.cardAddress ?? null;
+}
+
+/** On-chain `BeamioUserCard.upgradeType()` (fixed at deploy). Labels align with Card Issuance Setup form. */
+const CARD_ISSUANCE_UPGRADE_TYPE_UI: Record<0 | 1 | 2, { title: string; detail: string }> = {
+  0: {
+    title: 'Single Top-up',
+    detail: 'Single top-up or redeem amount reaches the next tier threshold.',
+  },
+  1: {
+    title: 'Current Balance',
+    detail: 'Total balance reaches the next tier threshold.',
+  },
+  2: {
+    title: 'Cumulative Spend',
+    detail: 'When cumulative spending reaches the next tier threshold.',
+  },
+};
+
+/** Card Identity — merchant program categories (aligned with market Example horizontal chips) */
+type CardIssuanceCategoryOption = {
+  id: string;
+  label: string;
+  Icon: LucideIcon;
+  circleClass: string;
+};
+
+const CARD_ISSUANCE_CATEGORY_OPTIONS: CardIssuanceCategoryOption[] = [
+  { id: 'travel', label: 'Travel', Icon: Plane, circleClass: 'bg-blue-50 text-blue-600' },
+  { id: 'gaming', label: 'Gaming', Icon: Gamepad2, circleClass: 'bg-purple-50 text-purple-600' },
+  { id: 'shopping', label: 'Shopping', Icon: ShoppingBag, circleClass: 'bg-orange-50 text-orange-600' },
+  { id: 'food', label: 'Food', Icon: UtensilsCrossed, circleClass: 'bg-red-50 text-red-600' },
+  { id: 'movies', label: 'Movies', Icon: Clapperboard, circleClass: 'bg-emerald-50 text-emerald-600' },
+];
+
+type CardIssuanceTierRule = 'single' | 'cumulative' | 'balance';
+type CardIssuanceTierPreset = 'silver' | 'gold' | 'platinum' | 'custom';
+type CardIssuanceTierRow = {
+  id: string;
+  name: string;
+  preset: CardIssuanceTierPreset;
+  threshold: string;
+  discountPercent: string;
+  /** Optional ERC-1155 tier metadata description; omitted on-chain when empty. */
+  tierDescription: string;
+  /** When true, tier description textarea is shown (opened via +). */
+  tierDescriptionOpen: boolean;
+};
+const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
+  { id: 'tier-silver', name: 'Silver', preset: 'silver', threshold: '10', discountPercent: '5', tierDescription: '', tierDescriptionOpen: false },
+  { id: 'tier-gold', name: 'Gold', preset: 'gold', threshold: '50', discountPercent: '7.5', tierDescription: '', tierDescriptionOpen: false },
+  { id: 'tier-platinum', name: 'Platinum', preset: 'platinum', threshold: '100', discountPercent: '10', tierDescription: '', tierDescriptionOpen: false },
+];
+const CardIssuanceTierIdentityIcon = ({ preset }: { preset: CardIssuanceTierPreset }) => {
+  const box = 'h-10 w-10 rounded-xl flex items-center justify-center shrink-0';
+  if (preset === 'silver') {
+    return (
+      <div className={`${box} bg-slate-200`}>
+        <Star className="w-5 h-5 text-slate-500" strokeWidth={2} aria-hidden />
+      </div>
+    );
+  }
+  if (preset === 'gold') {
+    return (
+      <div className={`${box} bg-amber-100`}>
+        <Medal className="w-5 h-5 text-amber-500" strokeWidth={2} aria-hidden />
+      </div>
+    );
+  }
+  if (preset === 'platinum') {
+    return (
+      <div className={`${box} bg-blue-100`}>
+        <Gem className="w-5 h-5 text-blue-600" strokeWidth={2} aria-hidden />
+      </div>
+    );
+  }
+  return (
+    <div className={`${box} bg-sky-100`}>
+      <Sparkles className="w-5 h-5 text-sky-600" strokeWidth={2} aria-hidden />
+    </div>
+  );
+};
+
 export default function MerchantOS() {
  const { beamio, profiles, myAddress, setProfiles } = useDaemonContext();
  const navigate = useNavigate();
  const [activeTab, setActiveTab] = useState('Overview');
+ const [cardIssuanceProgramName, setCardIssuanceProgramName] = useState('VERRA');
+ const [cardIssuanceCurrencySymbol, setCardIssuanceCurrencySymbol] = useState('$VERRA');
+ const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
+ const [cardIssuanceMaxTopup, setCardIssuanceMaxTopup] = useState(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
+ const [cardIssuanceTierRule, setCardIssuanceTierRule] = useState<CardIssuanceTierRule>('single');
+ const [cardIssuanceTiers, setCardIssuanceTiers] = useState<CardIssuanceTierRow[]>(() => defaultCardIssuanceTiers());
+ const [cardIssuanceShareImageUrl, setCardIssuanceShareImageUrl] = useState('');
+ const [cardIssuanceShareImageUploading, setCardIssuanceShareImageUploading] = useState(false);
+ /** Single category id (e.g. travel); stored in metadata `shareTokenMetadata.categories` as one-element array */
+ const [cardIssuanceCategoryId, setCardIssuanceCategoryId] = useState<string>('');
+ /** Card-level metadata description (`shareTokenMetadata.description`). */
+ const [cardIssuanceDescription, setCardIssuanceDescription] = useState('');
+ const [cardIssuanceCreateLoading, setCardIssuanceCreateLoading] = useState(false);
+ const [cardIssuanceCreateError, setCardIssuanceCreateError] = useState('');
+  const [cardIssuanceCreateResult, setCardIssuanceCreateResult] = useState<{ cardAddress: string; hash?: string } | null>(
+    null
+  );
+  const [cardIssuanceCategoryIndexSummary, setCardIssuanceCategoryIndexSummary] = useState<string | null>(null);
+  const [cardIssuanceOwnerAdminNotice, setCardIssuanceOwnerAdminNotice] = useState<{
+    kind: 'ok' | 'warn';
+    text: string;
+  } | null>(null);
+ const cardIssuanceIconFileRef = useRef<HTMLInputElement>(null);
+ const [cardIssuanceOnchainFetch, setCardIssuanceOnchainFetch] = useState<'idle' | 'loading' | 'done'>('idle');
+ const [cardIssuanceExistingCard, setCardIssuanceExistingCard] = useState<{
+   cardAddress: string;
+   userCard: UserCardInfo;
+   meta: CardMetadataFromUri | null;
+   /** On-chain `upgradeType`: 0 | 1 | 2 */
+   upgradeType: number;
+ } | null>(null);
+ const [cardIssuanceOnChainRefreshNonce, setCardIssuanceOnChainRefreshNonce] = useState(0);
+ /** Profile is owner of ≥1 BeamioUserCard (via factory / cardsOfOwner); Staff tab hides «Smart Terminal Locked» for issuers. */
+ const [profileOwnsIssuedBeamioCard, setProfileOwnsIssuedBeamioCard] = useState(false);
+ const [profileOwnsIssuedBeamioCardFetched, setProfileOwnsIssuedBeamioCardFetched] = useState(false);
+ /** Primary BeamioUserCard owned by profile (factory / cardsOfOwner); Staff terminals + registration use this instead of infra when set. */
+ const [merchantOwnCardAddress, setMerchantOwnCardAddress] = useState<string | null>(null);
+ const cardIssuanceTierRuleLabels: Record<CardIssuanceTierRule, string> = {
+   single: 'Single Top-up',
+   cumulative: 'Cumulative Spend',
+   balance: 'Current Balance',
+ };
+ const cardIssuancePreviewBrand = useMemo(() => {
+   const raw = (cardIssuanceCurrencySymbol || '').trim().replace(/^\$/, '');
+   return (raw || 'VERRA').toUpperCase();
+ }, [cardIssuanceCurrencySymbol]);
+ const cardIssuancePreviewProgram = cardIssuanceProgramName.trim() || 'VERRA';
+ const bizNumericNoSpinnerClass =
+   '[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]';
+
+ const buildCardIssuanceTiersPayload = useCallback((): TierMetadata[] | undefined => {
+   if (cardIssuanceTiers.length === 0) return undefined;
+   const valid = cardIssuanceTiers
+     .filter((t) => t.name.trim() !== '')
+     .map((t, idx) => {
+       const raw = t.threshold.replace(/,/g, '').trim();
+       const minInt = Number.parseInt(raw, 10);
+       const minFloat = parseFloat(raw);
+       const minUnits =
+         Number.isFinite(minInt) && Number.isFinite(minFloat) && minFloat === minInt ? minInt : idx + 1;
+       const discount = t.discountPercent.trim();
+       const customDesc = t.tierDescription.trim();
+       const discountLine = discount ? `${discount}% discount` : undefined;
+       const description = customDesc || discountLine || undefined;
+       return {
+         minUsdc6: Math.round(minUnits * 1e6),
+         name: t.name.trim(),
+         ...(description ? { description } : {}),
+       };
+     });
+   if (valid.length === 0) return undefined;
+   valid.sort((a, b) => b.minUsdc6 - a.minUsdc6);
+   return valid.map((t, idx) => ({
+     index: idx,
+     minUsdc6: String(t.minUsdc6),
+     attr: idx,
+     name: t.name,
+     ...(t.description ? { description: t.description } : {}),
+   }));
+ }, [cardIssuanceTiers]);
+
+ const handleCardIssuanceIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+   async (e) => {
+     const input = e.currentTarget;
+     const file = input.files?.[0];
+     input.value = '';
+     if (!file || !file.type.startsWith('image/')) return;
+     const isSvg = file.type === 'image/svg+xml';
+     const p0 = profiles?.[0];
+     if (!p0?.privateKeyArmor) {
+       setCardIssuanceCreateError('Profile not available for upload. Open Settings and ensure your wallet is ready.');
+       return;
+     }
+     setCardIssuanceCreateError('');
+     setCardIssuanceShareImageUploading(true);
+     try {
+       let blob: Blob = file;
+       if (!isSvg && file.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
+         blob = await resizeToFitLimit(file, IPFS_UPLOAD_TARGET_MAX_BYTES);
+       }
+       let dataUrl = await blobToDataUrl(blob);
+       let hash: string | null = null;
+       try {
+         hash = await postToIPFS(p0, dataUrl);
+       } catch (err: any) {
+         const msg = err?.message ?? String(err);
+         if (typeof msg === 'string' && msg.includes('413') && !isSvg) {
+           blob = await compressToJpeg(blob, IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES);
+           dataUrl = await blobToDataUrl(blob);
+           hash = await postToIPFS(p0, dataUrl);
+         } else {
+           throw err;
+         }
+       }
+       if (hash) {
+         setCardIssuanceShareImageUrl(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+       } else {
+         setCardIssuanceCreateError('Card icon upload failed.');
+       }
+     } catch (err: any) {
+       setCardIssuanceCreateError(err?.message ?? 'Card icon upload failed.');
+     } finally {
+       setCardIssuanceShareImageUploading(false);
+     }
+   },
+   [profiles]
+ );
+
+ const handlePublishCardIssuance = useCallback(async () => {
+   setCardIssuanceCreateError('');
+   setCardIssuanceCreateResult(null);
+   setCardIssuanceCategoryIndexSummary(null);
+   setCardIssuanceOwnerAdminNotice(null);
+   const ownerRaw = (profiles?.[0]?.aaAccount ?? profiles?.[0]?.keyID ?? '').trim();
+   if (!ownerRaw) {
+     setCardIssuanceCreateError('Owner address not loaded. Ensure your account is ready in Settings.');
+     return;
+   }
+   let owner: string;
+   try {
+     owner = ethers.getAddress(ownerRaw);
+   } catch {
+     setCardIssuanceCreateError('Owner address is invalid.');
+     return;
+   }
+   const metaName = cardIssuanceProgramName.trim();
+   if (!metaName) {
+     setCardIssuanceCreateError('Card name is required.');
+     return;
+   }
+   const tiersPayload = buildCardIssuanceTiersPayload();
+   if (cardIssuanceTiers.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
+     setCardIssuanceCreateError('Each tier must have a name.');
+     return;
+   }
+   for (const row of cardIssuanceTiers) {
+     const tierName = row.name.trim();
+     if (!tierName) continue;
+     const tr = row.threshold.replace(/,/g, '').trim();
+     if (tr === '') {
+       setCardIssuanceCreateError(`Tier "${tierName}": threshold is required.`);
+       return;
+     }
+     const tInt = Number.parseInt(tr, 10);
+     const tFloat = parseFloat(tr);
+     if (!Number.isFinite(tFloat) || !Number.isFinite(tInt) || tFloat !== tInt) {
+       setCardIssuanceCreateError(`Tier "${tierName}": threshold must be a whole number (no decimals).`);
+       return;
+     }
+   }
+   const minTopupRaw = cardIssuanceMinTopup.replace(/,/g, '').trim();
+   if (minTopupRaw === '') {
+     setCardIssuanceCreateError('Minimum top-up is required.');
+     return;
+   }
+   const minTopupN = Number.parseInt(minTopupRaw, 10);
+   const minTopupAsFloat = parseFloat(minTopupRaw);
+   if (
+     !Number.isFinite(minTopupAsFloat) ||
+     !Number.isFinite(minTopupN) ||
+     minTopupAsFloat !== minTopupN
+   ) {
+     setCardIssuanceCreateError('Minimum top-up must be a whole number (no decimals).');
+     return;
+   }
+   const maxTopupRaw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
+   if (maxTopupRaw === '') {
+     setCardIssuanceCreateError('Maximum top-up is required.');
+     return;
+   }
+   const maxTopupN = Number.parseInt(maxTopupRaw, 10);
+   const maxTopupAsFloat = parseFloat(maxTopupRaw);
+   if (minTopupN < CARD_ISSUANCE_MIN_TOPUP_MIN) {
+     setCardIssuanceCreateError(
+       `Minimum top-up must be at least ${CARD_ISSUANCE_MIN_TOPUP_MIN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}.`
+     );
+     return;
+   }
+   if (
+     !Number.isFinite(maxTopupAsFloat) ||
+     !Number.isFinite(maxTopupN) ||
+     maxTopupAsFloat !== maxTopupN
+   ) {
+     setCardIssuanceCreateError('Maximum top-up must be a whole number (no decimals).');
+     return;
+   }
+   if (maxTopupN > CARD_ISSUANCE_MAX_TOPUP_MAX) {
+     setCardIssuanceCreateError(
+       `Maximum top-up must not exceed ${CARD_ISSUANCE_MAX_TOPUP_MAX} ${CARD_ISSUANCE_BEAMIO_CURRENCY}.`
+     );
+     return;
+   }
+   if (minTopupN > maxTopupN) {
+     setCardIssuanceCreateError('Minimum top-up cannot be greater than maximum top-up.');
+     return;
+   }
+   setCardIssuanceCreateLoading(true);
+   try {
+     const res = await createBeamioCard({
+       cardOwner: owner,
+       currency: CARD_ISSUANCE_BEAMIO_CURRENCY,
+       unitPriceHuman: '1',
+       ...(cardIssuanceTierRule === 'balance'
+         ? { upgradeType: 1 }
+         : cardIssuanceTierRule === 'cumulative'
+           ? { upgradeType: 2 }
+           : {}),
+       shareTokenMetadata: {
+         name: metaName,
+         ...(cardIssuanceCurrencySymbol.trim() ? { Symbol: cardIssuanceCurrencySymbol.trim() } : {}),
+         ...(cardIssuanceShareImageUrl.trim() ? { image: cardIssuanceShareImageUrl.trim() } : {}),
+         ...(cardIssuanceCategoryId.trim() ? { categories: [cardIssuanceCategoryId.trim()] } : {}),
+         ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
+       },
+       ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
+     });
+     if (res.success && res.cardAddress) {
+       setCardIssuanceCreateResult({ cardAddress: res.cardAddress, hash: res.hash });
+       setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+       setProfileOwnsIssuedBeamioCard(true);
+       setProfileOwnsIssuedBeamioCardFetched(true);
+       const categoryIdForIndex = cardIssuanceCategoryId.trim();
+       const profileForPost = profiles?.[0];
+       void (async () => {
+         const createdAddr = res.cardAddress;
+         if (!createdAddr) {
+           return;
+         }
+         const cardAddrNorm = ethers.getAddress(createdAddr);
+         try {
+           const pk = profileForPost?.privateKeyArmor;
+           if (!pk) {
+             setCardIssuanceOwnerAdminNotice({
+               kind: 'warn',
+               text: 'Wallet key not available; owner admin registration was skipped. Add your owner EOA as admin manually if needed.',
+             });
+           } else {
+               const chainOwner = await getCardOwner(cardAddrNorm);
+               const signerAddr = new ethers.Wallet(pk).address;
+               if (ethers.getAddress(signerAddr) !== ethers.getAddress(chainOwner)) {
+                 setCardIssuanceOwnerAdminNotice({
+                   kind: 'warn',
+                   text: 'Auto admin registration skipped: your signing wallet must match the card on-chain owner().',
+                 });
+               } else {
+                 const nowSec = Math.floor(Date.now() / 1000);
+                 const deadline = nowSec + 3600;
+                 const nonce = ethers.hexlify(ethers.randomBytes(32));
+                 const data = encodeAdminManagerAdd(chainOwner, 1, 'program-owner');
+                 /** Factory executeForAdmin rewrites adminManager calldata to adminManagerByAdmin(..., signer). */
+                 const adminSignature = await signExecuteForAdmin(pk, cardAddrNorm, data, deadline, nonce);
+                 const addRes = await postCardAddAdminByAdmin({
+                   cardAddress: cardAddrNorm,
+                   data,
+                   deadline,
+                   nonce,
+                   adminSignature,
+                   adminEOA: chainOwner,
+                 });
+                 if (addRes.success) {
+                   setCardIssuanceOwnerAdminNotice({
+                     kind: 'ok',
+                     text: 'Owner EOA registered as card admin (executeForAdmin → adminManagerByAdmin on-chain).',
+                   });
+                 } else {
+                   setCardIssuanceOwnerAdminNotice({
+                     kind: 'warn',
+                     text: addRes.error ?? 'Failed to register owner as admin.',
+                   });
+                 }
+               }
+             }
+         } catch (e: unknown) {
+           setCardIssuanceOwnerAdminNotice({
+             kind: 'warn',
+             text: e instanceof Error ? e.message : 'Owner admin registration failed.',
+           });
+         }
+         if (categoryIdForIndex) {
+           try {
+             const groups = await fetchCardsByCategory({ scanLimit: 1200, limitPerCategory: 120 });
+             const g = groups.find((x) => x.categoryId === categoryIdForIndex);
+             setCardIssuanceCategoryIndexSummary(
+               g
+                 ? `Category “${categoryIdForIndex}” now lists ${g.items.length} program card(s) on the index (GET /api/cardsByCategory).`
+                 : `Category “${categoryIdForIndex}” was saved. The category index may update after a short cache refresh (about 30 seconds).`
+             );
+           } catch {
+             setCardIssuanceCategoryIndexSummary(null);
+           }
+         }
+       })();
+     } else {
+       setCardIssuanceCreateError(res.error ?? 'Create card failed.');
+     }
+   } catch (e: any) {
+     setCardIssuanceCreateError(e?.message ?? String(e));
+   } finally {
+     setCardIssuanceCreateLoading(false);
+   }
+ }, [
+   profiles,
+   cardIssuanceProgramName,
+   cardIssuanceCurrencySymbol,
+   cardIssuanceTiers,
+   cardIssuanceTierRule,
+   cardIssuanceShareImageUrl,
+   cardIssuanceCategoryId,
+   cardIssuanceDescription,
+   cardIssuanceMinTopup,
+   cardIssuanceMaxTopup,
+   buildCardIssuanceTiersPayload,
+ ]);
+
+ useEffect(() => {
+   if (activeTab !== 'Card Issuance Setup') {
+     return;
+   }
+   const p0 = profiles?.[0];
+   if (!p0) {
+     setCardIssuanceExistingCard(null);
+     setCardIssuanceOnchainFetch('done');
+     return;
+   }
+   let cancelled = false;
+   setCardIssuanceOnchainFetch('loading');
+   void (async () => {
+     try {
+       const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
+       if (cancelled) return;
+       if (!trusted || cards.length === 0) {
+         setCardIssuanceExistingCard(null);
+         return;
+       }
+       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards, baseRpcProviderDirect);
+       if (cancelled) return;
+       if (!primary) {
+         setCardIssuanceExistingCard(null);
+         return;
+       }
+       const userCard =
+         cards.find((c) => c.cardAddress.toLowerCase() === primary.toLowerCase()) ?? cards[0];
+       const meta =
+         (await getCardMetadataFromApi(primary)) ??
+         (await getCardMetadataFrom1155Json(primary)) ??
+         (await getCardMetadataFromUri(primary));
+       if (cancelled) return;
+       let upgradeType = -1;
+       try {
+         const card = new ethers.Contract(
+           primary,
+           ['function upgradeType() view returns (uint8)'],
+           baseRpcProviderDirect
+         );
+         const raw = await card.upgradeType();
+         upgradeType = Number(raw);
+       } catch {
+         upgradeType = -1;
+       }
+       if (cancelled) return;
+       setCardIssuanceExistingCard({ cardAddress: primary, userCard, meta, upgradeType });
+     } catch {
+       if (!cancelled) setCardIssuanceExistingCard(null);
+     } finally {
+       if (!cancelled) setCardIssuanceOnchainFetch('done');
+     }
+   })();
+   return () => {
+     cancelled = true;
+   };
+ }, [
+   activeTab,
+   profiles?.[0]?.keyID,
+   profiles?.[0]?.aaAccount,
+   profiles?.[0]?.privateKeyArmor,
+   cardIssuanceOnChainRefreshNonce,
+ ]);
+
+ useEffect(() => {
+   const p0 = profiles?.[0];
+   if (!p0 || (!p0.keyID?.trim() && !p0.aaAccount?.trim() && !p0.privateKeyArmor)) {
+     setProfileOwnsIssuedBeamioCard(false);
+     setProfileOwnsIssuedBeamioCardFetched(true);
+     setMerchantOwnCardAddress(null);
+     return;
+   }
+   let cancelled = false;
+   setProfileOwnsIssuedBeamioCardFetched(false);
+   void (async () => {
+     try {
+       const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
+       if (cancelled) return;
+       setProfileOwnsIssuedBeamioCard(cards.length > 0);
+       setProfileOwnsIssuedBeamioCardFetched(true);
+       if (!trusted || cards.length === 0) {
+         setMerchantOwnCardAddress(null);
+         return;
+       }
+       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards, baseRpcProviderDirect);
+       if (cancelled) return;
+       setMerchantOwnCardAddress(primary ? ethers.getAddress(primary) : null);
+     } catch {
+       if (!cancelled) {
+         setProfileOwnsIssuedBeamioCard(false);
+         setProfileOwnsIssuedBeamioCardFetched(true);
+         setMerchantOwnCardAddress(null);
+       }
+     }
+   })();
+   return () => {
+     cancelled = true;
+   };
+ }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, profiles?.[0]?.privateKeyArmor, cardIssuanceOnChainRefreshNonce]);
+
  const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('Today');
  const [oracleCadUsdc, setOracleCadUsdc] = useState<number | null>(null);
  const [activeLedger, setActiveLedger] = useState<'All' | 'AA' | 'EOA'>('All');
  const [txSearchTerm, setTxSearchTerm] = useState('');
  const [txFilterTerminal, setTxFilterTerminal] = useState('All');
  const [txFilterType, setTxFilterType] = useState('All');
- const fixedCardAdminsCacheKey = `card-admins:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:v2`;
- const linkedMerchantAdminsCacheKey = `linked-merchants:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:v2`;
- const fixedCardMetadataCacheKey = `card-metadata:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
  const currentEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase();
+ /** Staff / POS / Overview chain reads: merchant-issued BeamioUserCard when present; else infra `BEAMIO_USER_CARD_ASSET_ADDRESS`. */
+ const staffProgramBeamioCardAddress = useMemo(
+   () => merchantOwnCardAddress ?? FIXED_USER_CARD_CONTRACT_ADDRESS,
+   [merchantOwnCardAddress],
+ );
+ const fixedCardAdminsCacheKey = `card-admins:${staffProgramBeamioCardAddress.toLowerCase()}:v2`;
+ const linkedMerchantAdminsCacheKey = `linked-merchants:${staffProgramBeamioCardAddress.toLowerCase()}:v2`;
+ const fixedCardMetadataCacheKey = `card-metadata:${staffProgramBeamioCardAddress.toLowerCase()}`;
  const overviewPeriodType = useMemo(() => overviewTimeFilterToPeriodType(timeFilter), [timeFilter]);
- const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
+ const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${staffProgramBeamioCardAddress.toLowerCase()}`;
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
  const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
  const [fixedCardMetadata, setFixedCardMetadata] = useState<FixedUserCardMetadata | null>(() => loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey));
+ /** Points / voucher token label on Daily Dashboard (metadata `Symbol` or issuance form fallback for own card). */
+ const dashboardPointsCurrencySymbol = useMemo(() => {
+   const fromMeta = fixedCardMetadata?.currencySymbol?.trim();
+   if (fromMeta) return normalizeDashboardPointsSymbol(fromMeta);
+   if (merchantOwnCardAddress && (cardIssuanceCurrencySymbol || '').trim()) {
+     return normalizeDashboardPointsSymbol(cardIssuanceCurrencySymbol);
+   }
+   return DASHBOARD_DEFAULT_POINTS_SYMBOL;
+ }, [fixedCardMetadata?.currencySymbol, merchantOwnCardAddress, cardIssuanceCurrencySymbol]);
  const [merchantOwnerProfile, setMerchantOwnerProfile] = useState<BeamioProfile>(null);
  const [adminNetworkSummaryToday, setAdminNetworkSummaryToday] = useState<{ cadVol: number; txCount: number; usdc: number; vouchers: number } | null>(null);
  /** Chain cumulative admin subtree stats (not tied to Overview date filter) — same shape as period summary */
@@ -2233,15 +2982,17 @@ export default function MerchantOS() {
  const [rawTxJsonModal, setRawTxJsonModal] = useState<TxDisplayRow | null>(null);
  /** Transactions table: payer/payee address (lowercase) → @beamioTag from searchUsername (Top-Up / Charge / Tip) */
  const [txReportingBeamioTagByAddress, setTxReportingBeamioTagByAddress] = useState<Record<string, string>>({});
- /** Charge payer → infrastructure card tier capsule (metadata.name + background_color from per-NFT JSON) */
+ /** Charge payer → program/staff BeamioUserCard tier capsule (metadata.name + background_color from per-NFT JSON) */
  const [chargePayerInfraTierCapsuleByPayer, setChargePayerInfraTierCapsuleByPayer] = useState<
    Record<string, { name: string; backgroundColor?: string } | null>
  >({});
  /** Chain-verified admin status (EOA-scoped): local cache first, chain fetch as backup (beamio-ai-onchain-fetch) */
- const isAdminTrustedCacheKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:is-admin`;
+ const isAdminTrustedCacheKey = `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:is-admin`;
  const [isCurrentUserCardAdmin, setIsCurrentUserCardAdmin] = useState<boolean | null>(() =>
    currentEoa && ethers.isAddress(currentEoa) ? (loadTrustedCache<boolean>(isAdminTrustedCacheKey) ?? null) : null
  );
+ /** First chain address in EOA-first order (keyID → myAddress → aaAccount) with `isAdmin` true — dashboard / indexer stats align with EOA owner–admin model. */
+ const [chainResolvedStatsAdminAddress, setChainResolvedStatsAdminAddress] = useState<string | null>(null);
 
  // Store Wallets, Market, Messages, Partner Alliances
  const [joinedAlliances, setJoinedAlliances] = useState<AllianceId[]>([]);
@@ -2279,6 +3030,20 @@ export default function MerchantOS() {
  const [activeContact, setActiveContact] = useState('c1');
  const [chatInput, setChatInput] = useState('');
 
+ const [membersLoyaltyBranch, setMembersLoyaltyBranch] = useState<string>(BIZ_LOYALTY_BRANCHES[0]);
+ const [membersLoyaltyRows, setMembersLoyaltyRows] = useState<BizLoyaltyMemberRow[]>(INITIAL_BIZ_LOYALTY_MEMBERS);
+ const [membersLoyaltySearch, setMembersLoyaltySearch] = useState('');
+ const [isIssueCardModalOpen, setIsIssueCardModalOpen] = useState(false);
+ const [issueCardStep, setIssueCardStep] = useState(1);
+ const [issueTarget, setIssueTarget] = useState('');
+ const [issueType, setIssueType] = useState<'PREPAID' | 'VIP_TIER'>('PREPAID');
+ const [issueValue, setIssueValue] = useState('');
+ const [issueExpiry, setIssueExpiry] = useState('Never');
+ const [issueTokenSymbol, setIssueTokenSymbol] = useState('$CTree');
+ const [isCreatingTier, setIsCreatingTier] = useState(false);
+ const [newTierName, setNewTierName] = useState('');
+ const [newTierDiscount, setNewTierDiscount] = useState('');
+
  const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
  const [aaUsdcBalance, setAaUsdcBalance] = useState<string | null>(null);
  /** `balanceOf(AA, 0)` on `BEAMIO_USER_CARD_ASSET_ADDRESS` (points token), human units (÷1e6) */
@@ -2307,78 +3072,6 @@ export default function MerchantOS() {
    setMarketRefuelSuccess(null);
    setMarketRefuelError(null);
  }, []);
-
- const handleMarketPurchase = useCallback(async () => {
-   if (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') {
-     const pk = profiles?.[0]?.privateKeyArmor;
-     const account = (profiles?.[0]?.keyID ?? myAddress)?.trim();
-     if (!pk || !account) {
-       setMarketRefuelError('Wallet not ready. Please unlock or sign in.');
-       return;
-     }
-     const amountHuman =
-       selectedProduct === 'starter' ? '1' : String(customFuelAmount).replace(/,/g, '.').trim();
-     let need6: bigint;
-     try {
-       need6 = ethers.parseUnits(amountHuman, 6);
-     } catch {
-       setMarketRefuelError('Invalid USDC amount');
-       return;
-     }
-     if (need6 < 1_000_000n) {
-       setMarketRefuelError('Minimum purchase is 1 USDC');
-       return;
-     }
-     const bal = await getBalance(account);
-     if (!bal?.usdc) {
-       setMarketRefuelError('Unable to verify USDC balance. Please try again.');
-       return;
-     }
-     let avail6: bigint;
-     try {
-       avail6 = ethers.parseUnits(String(bal.usdc).trim(), 6);
-     } catch {
-       setMarketRefuelError('Unable to verify USDC balance. Please try again.');
-       return;
-     }
-     if (avail6 < need6) {
-       setMarketRefuelError(
-         `Insufficient USDC on Base. You have ${ethers.formatUnits(avail6, 6)} USDC; this refill requires ${ethers.formatUnits(need6, 6)} USDC.`
-       );
-       return;
-     }
-     setMarketRefuelError(null);
-     setMarketRefuelSuccess(null);
-     setMarketRefuelProcessing(true);
-     try {
-       const payload = await signBUnitRefuel3009(pk, amountHuman);
-       const result = await purchaseBUnitFromBase(payload);
-       if (result.success) {
-         setMarketRefuelSuccess(result.txHash ?? '');
-         setOverviewRefreshTrigger((t) => t + 1);
-         const pollMs = 5000;
-         const pollCount = 24;
-         for (let i = 0; i < pollCount; i++) {
-           window.setTimeout(() => {
-             setOverviewRefreshTrigger((t) => t + 1);
-           }, (i + 1) * pollMs);
-         }
-       } else {
-         setMarketRefuelError(result.error ?? 'Refuel failed');
-       }
-     } catch (e) {
-       setMarketRefuelError((e as Error)?.message ?? 'Refuel failed');
-     } finally {
-       setMarketRefuelProcessing(false);
-     }
-     return;
-   }
-   setSelectedProduct((prev) => {
-     if (prev === 'custom_fuel') setCustomFuelAmount('');
-     return null;
-   });
-   setActiveTab('Wallets');
- }, [selectedProduct, profiles, myAddress, customFuelAmount]);
 
  const handleRemitToAlliance = useCallback((aId: AllianceId) => {
    setAlliancesDb((prev) => ({
@@ -2418,8 +3111,9 @@ export default function MerchantOS() {
    setRoutingModalTiersError(null);
    setRoutingModalCardTiersMeta(null);
 
-   void fetchWithCache(ROUTING_TIER_METADATA_CACHE_KEY, () =>
-     fetchCardTierMetadataListForRouting(FIXED_USER_CARD_CONTRACT_ADDRESS)
+   const routingTierMetaKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:routing-tier-metadata`
+   void fetchWithCache(routingTierMetaKey, () =>
+     fetchCardTierMetadataListForRouting(staffProgramBeamioCardAddress)
    )
      .then((metaTiers) => {
        if (!cancelled) setRoutingModalCardTiersMeta(metaTiers.length > 0 ? metaTiers : null);
@@ -2428,8 +3122,9 @@ export default function MerchantOS() {
        if (!cancelled) setRoutingModalCardTiersMeta(null);
      });
 
-   void fetchWithCache(ROUTING_ONCHAIN_TIERS_CACHE_KEY, () =>
-     fetchBeamioUserCardTiersAndCurrencyFromChain(FIXED_USER_CARD_CONTRACT_ADDRESS, baseRpcProviderDirect)
+   const routingOnchainTiersKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:onchain-tiers`
+   void fetchWithCache(routingOnchainTiersKey, () =>
+     fetchBeamioUserCardTiersAndCurrencyFromChain(staffProgramBeamioCardAddress, baseRpcProviderDirect)
    )
      .then(({ tiers: rows, currencyType }) => {
        if (!cancelled) {
@@ -2449,7 +3144,7 @@ export default function MerchantOS() {
    return () => {
      cancelled = true;
    };
- }, [isConfigModalOpen, configAllianceId]);
+    }, [isConfigModalOpen, configAllianceId, staffProgramBeamioCardAddress]);
 
  useEffect(() => {
    if (!isConfigModalOpen || configAllianceId !== ALLIANCE_ID_FOR_FIXED_USER_CARD || !routingModalChainTiers?.length) return;
@@ -2480,7 +3175,7 @@ export default function MerchantOS() {
 
    void (async () => {
      try {
-       const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
+       const cardAddress = staffProgramBeamioCardAddress;
        const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
        const cardOwner = ((await card.owner()) as string)?.trim();
        if (myGen !== routingHydrateAsyncGenRef.current) return;
@@ -2558,13 +3253,12 @@ export default function MerchantOS() {
    routingModalTiersError,
    profiles,
    myAddress,
+   staffProgramBeamioCardAddress,
  ]);
 
  const clearCardCacheAndRetry = useCallback(() => {
    try {
-   invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
-   invalidateFetchCache(ROUTING_ONCHAIN_TIERS_CACHE_KEY);
-   invalidateFetchCache(ROUTING_TIER_METADATA_CACHE_KEY);
+   invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
    invalidateFetchCache('indexer:tips');
    invalidateFetchCache('eoa:');
      const keys = [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey];
@@ -2594,7 +3288,7 @@ export default function MerchantOS() {
    } catch {
      setAdminRetryCount((c) => c + 1);
    }
- }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey, currentEoa]);
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey, currentEoa, staffProgramBeamioCardAddress]);
 
  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
  const [payoutStep, setPayoutStep] = useState(1);
@@ -2630,7 +3324,7 @@ export default function MerchantOS() {
      invalidateFetchCache('eoa:');
      invalidateFetchCache('aa:');
      invalidateFetchCache('indexer:tx');
-     invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+     invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
      try {
        Object.keys(window.localStorage)
          .filter((k) => k.startsWith(`${BIZ_CACHE_PREFIX}eoa:${oldEoa}:`))
@@ -2659,7 +3353,7 @@ export default function MerchantOS() {
      setAdminRetryCount((c) => c + 1);
    }
    prevEoaRef.current = currentEoa;
- }, [currentEoa, fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey]);
+ }, [currentEoa, fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, staffProgramBeamioCardAddress]);
 
  const handleTabChange = useCallback((tab: string) => {
    setActiveTab(tab);
@@ -2772,22 +3466,43 @@ export default function MerchantOS() {
 
  const merchant = profiles?.[0]?.keyID ?? myAddress;
  const adminCandidateAddresses = [
-   profiles?.[0]?.aaAccount,
    profiles?.[0]?.keyID,
    myAddress,
+   profiles?.[0]?.aaAccount,
  ].filter((address): address is string => !!address && ethers.isAddress(address))
    .map((address) => ethers.getAddress(address));
  const normalizedAdminCandidates = adminCandidateAddresses.map((address) => address.toLowerCase());
- /** Use current EOA (local account) only: if not admin, show "-" (no fallback to AA). Align with cache keys & isAdmin. */
- const localEoa = (currentEoa ?? '').trim();
- /** On-card admin for stats: admin list OR chain-verified isAdmin (list can lag behind `isCardAdmin` fetch). */
- const effectiveAdminAddress = useMemo(() => {
-   if (!localEoa || !ethers.isAddress(localEoa)) return null;
-   const addr = ethers.getAddress(localEoa);
-   if (fixedCardAdmins.some((a) => a.toLowerCase() === addr.toLowerCase())) return addr;
-   if (isCurrentUserCardAdmin === true) return addr;
+ /** Card owner (metadata API or admin list slot 0 when owner is prepended there). Prefer this root for dashboard when the wallet controls owner. */
+ const programCardOwnerAddress = useMemo(() => {
+   if (fixedCardMetadata?.cardOwner && ethers.isAddress(fixedCardMetadata.cardOwner)) {
+     return ethers.getAddress(fixedCardMetadata.cardOwner);
+   }
+   if (fixedCardAdmins[0] && ethers.isAddress(fixedCardAdmins[0])) {
+     return ethers.getAddress(fixedCardAdmins[0]);
+   }
    return null;
- }, [localEoa, fixedCardAdmins, isCurrentUserCardAdmin]);
+ }, [fixedCardMetadata?.cardOwner, fixedCardAdmins]);
+ const walletIdentityAddresses = useMemo(() => {
+   const raw = [profiles?.[0]?.keyID, myAddress, profiles?.[0]?.aaAccount].filter(
+     (x): x is string => !!x && ethers.isAddress(x)
+   ).map((x) => ethers.getAddress(x));
+   const out: string[] = [];
+   for (const a of raw) {
+     if (!out.some((o) => o.toLowerCase() === a.toLowerCase())) out.push(a);
+   }
+   return out;
+ }, [profiles?.[0]?.aaAccount, profiles?.[0]?.keyID, myAddress]);
+ /** Admin root for `getAdminStatsFull` / indexer: EOA-first chain winner, or card owner when the wallet controls owner (EOA). */
+ const effectiveAdminAddress = useMemo(() => {
+   const controlsOwner =
+     programCardOwnerAddress != null &&
+     walletIdentityAddresses.some((w) => w.toLowerCase() === programCardOwnerAddress.toLowerCase());
+   if (controlsOwner) return programCardOwnerAddress;
+   return chainResolvedStatsAdminAddress;
+ }, [programCardOwnerAddress, walletIdentityAddresses, chainResolvedStatsAdminAddress]);
+
+ /** Latest `handleRefreshAA` for deferred calls (e.g. post–B-Unit refuel) without stale closures */
+ const handleRefreshAARef = useRef<(() => Promise<void>) | undefined>(undefined);
 
  const handleRefreshAA = useCallback(async () => {
    const p0 = profiles?.[0];
@@ -2841,6 +3556,87 @@ export default function MerchantOS() {
      setTimeout(() => setAaRefreshStatus('idle'), 3000);
    }
  }, [profiles, setProfiles, myAddress]);
+
+ handleRefreshAARef.current = handleRefreshAA;
+
+ const handleMarketPurchase = useCallback(async () => {
+   if (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') {
+     const pk = profiles?.[0]?.privateKeyArmor;
+     const account = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+     if (!pk || !account) {
+       setMarketRefuelError('Wallet not ready. Please unlock or sign in.');
+       return;
+     }
+     const amountHuman =
+       selectedProduct === 'starter' ? '1' : String(customFuelAmount).replace(/,/g, '.').trim();
+     let need6: bigint;
+     try {
+       need6 = ethers.parseUnits(amountHuman, 6);
+     } catch {
+       setMarketRefuelError('Invalid USDC amount');
+       return;
+     }
+     if (need6 < 1_000_000n) {
+       setMarketRefuelError('Minimum purchase is 1 USDC');
+       return;
+     }
+     const bal = await getBalance(account);
+     if (!bal?.usdc) {
+       setMarketRefuelError('Unable to verify USDC balance. Please try again.');
+       return;
+     }
+     let avail6: bigint;
+     try {
+       avail6 = ethers.parseUnits(String(bal.usdc).trim(), 6);
+     } catch {
+       setMarketRefuelError('Unable to verify USDC balance. Please try again.');
+       return;
+     }
+     if (avail6 < need6) {
+       setMarketRefuelError(
+         `Insufficient USDC on Base. You have ${ethers.formatUnits(avail6, 6)} USDC; this refill requires ${ethers.formatUnits(need6, 6)} USDC.`
+       );
+       return;
+     }
+     setMarketRefuelError(null);
+     setMarketRefuelSuccess(null);
+     setMarketRefuelProcessing(true);
+     try {
+       const payload = await signBUnitRefuel3009(pk, amountHuman);
+       const result = await purchaseBUnitFromBase(payload);
+       if (result.success) {
+         setMarketRefuelSuccess(result.txHash ?? '');
+         setOverviewRefreshTrigger((t) => t + 1);
+         const pollMs = 5000;
+         const pollCount = 24;
+         for (let i = 0; i < pollCount; i++) {
+           window.setTimeout(() => {
+             setOverviewRefreshTrigger((t) => t + 1);
+           }, (i + 1) * pollMs);
+         }
+         const aaTrim = profiles?.[0]?.aaAccount?.trim();
+         const lacksAa = !aaTrim || !ethers.isAddress(aaTrim);
+         if (lacksAa) {
+           window.setTimeout(() => {
+             void handleRefreshAARef.current?.();
+           }, 3000);
+         }
+       } else {
+         setMarketRefuelError(result.error ?? 'Refuel failed');
+       }
+     } catch (e) {
+       setMarketRefuelError((e as Error)?.message ?? 'Refuel failed');
+     } finally {
+       setMarketRefuelProcessing(false);
+     }
+     return;
+   }
+   setSelectedProduct((prev) => {
+     if (prev === 'custom_fuel') setCustomFuelAmount('');
+     return null;
+   });
+   setActiveTab('Wallets');
+ }, [selectedProduct, profiles, myAddress, customFuelAmount]);
 
  // On entry: trusted RPC 与本地 aaAccount 比对；不一致则更新；链上无 AA 时清除无 bytecode 的错误缓存
  useEffect(() => {
@@ -2919,7 +3715,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   }
   if (!opts?.silent) setTerminalsLoading(true);
   try {
-    const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
+    const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
     const cardOwner = await card.owner() as string;
     const userAA = profiles?.[0]?.aaAccount?.trim();
     const isOwner =
@@ -2988,7 +3784,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   } finally {
     if (!opts?.silent) setTerminalsLoading(false);
   }
-}, [profiles, myAddress, linkedTerminalsCacheKey]);
+}, [profiles, myAddress, linkedTerminalsCacheKey, staffProgramBeamioCardAddress]);
 
  /** Map Staff terminal row (EOA id) to on-chain subordinate address (AA or EOA) for adminParent / clear counter. */
  const resolveTerminalChainSubordinate = useCallback(
@@ -2997,7 +3793,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      if (!userEOA || !ethers.isAddress(userEOA)) {
        throw new Error('Wallet not connected.');
      }
-     const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
      const cardOwner = (await card.owner()) as string;
      const userAA = profiles?.[0]?.aaAccount?.trim();
      const isOwner =
@@ -3015,7 +3811,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      }
      return ethers.getAddress(terminalEoaId);
    },
-   [profiles, myAddress],
+   [profiles, myAddress, staffProgramBeamioCardAddress],
  );
 
  const handleSignDeployRules = useCallback(async () => {
@@ -3062,7 +3858,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
    setRoutingRulesDeployLoading(true);
    try {
-     const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
+     const cardAddress = staffProgramBeamioCardAddress;
      const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
      const cardOwner = (await card.owner()) as string;
      const userAA = profiles?.[0]?.aaAccount?.trim();
@@ -3144,7 +3940,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        }
      }
 
-     invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+     invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
      try {
        window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
      } catch {
@@ -3168,6 +3964,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    myAddress,
    fetchTerminals,
    fixedCardAdminsCacheKey,
+   staffProgramBeamioCardAddress,
  ]);
 
  useEffect(() => {
@@ -3202,7 +3999,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    return () => { cancelled = true; };
  }, [profiles, overviewRefreshTrigger]);
 
- // CashTrees / infrastructure card: AA balance of ERC-1155 id 0 (points) on fixed BeamioUserCard
+ // Alliance voucher row: AA balance of ERC-1155 id 0 (points) on program BeamioUserCard (issued card or infra fallback)
  useEffect(() => {
    const aaAddr = profiles?.[0]?.aaAccount?.trim();
    if (!aaAddr || !ethers.isAddress(aaAddr)) {
@@ -3210,10 +4007,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      return;
    }
    let cancelled = false;
-   const key = `aa:beamioUserCard:balanceOf0:${ethers.getAddress(aaAddr).toLowerCase()}:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`;
+   const key = `aa:beamioUserCard:balanceOf0:${ethers.getAddress(aaAddr).toLowerCase()}:${staffProgramBeamioCardAddress.toLowerCase()}`;
    void fetchWithCache(key, async () => {
      const card = new ethers.Contract(
-       FIXED_USER_CARD_CONTRACT_ADDRESS,
+       staffProgramBeamioCardAddress,
        BEAMIO_USER_CARD_ERC1155_BALANCE_ABI,
        baseRpcProviderDirect
      );
@@ -3229,7 +4026,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    return () => {
      cancelled = true;
    };
- }, [profiles, overviewRefreshTrigger]);
+ }, [profiles, overviewRefreshTrigger, staffProgramBeamioCardAddress]);
 
  // Fetch USDC balance for each subordinate admin (terminals)
  useEffect(() => {
@@ -3258,7 +4055,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    if (!params) return;
    const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
    if (!userEOA || !ethers.isAddress(userEOA)) return;
-   if (params.cardAddress.toLowerCase() !== FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()) return;
+   if (params.cardAddress.toLowerCase() !== staffProgramBeamioCardAddress.toLowerCase()) return;
 
    let cancelled = false;
    const run = async () => {
@@ -3300,7 +4097,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    };
    void run();
    return () => { cancelled = true; };
- }, [profiles, profiles?.[0]?.keyID, myAddress, setProfiles, clearCardCacheAndRetry]);
+ }, [profiles, profiles?.[0]?.keyID, myAddress, setProfiles, clearCardCacheAndRetry, staffProgramBeamioCardAddress]);
 
  useEffect(() => {
    let cancelled = false;
@@ -3316,10 +4113,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      setLinkedMerchantLookupDone(true);
    }
 
-   const cardKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admins:v2`;
+   const cardKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:admins:v2`;
    void fetchWithCache(cardKey, async () => {
      const card = new ethers.Contract(
-       FIXED_USER_CARD_CONTRACT_ADDRESS,
+       staffProgramBeamioCardAddress,
        USER_CARD_ADMIN_READ_ABI,
        baseEndpoint
      );
@@ -3388,38 +4185,45 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    });
 
    return () => { cancelled = true; };
- }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, adminRetryCount, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress]);
+ }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, adminRetryCount, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress, staffProgramBeamioCardAddress]);
 
  /** Admin status: local cache first (fast show/hide), chain fetch as backup. Only write cache on chain success (trusted). */
  useEffect(() => {
    if (!currentEoa || !ethers.isAddress(currentEoa)) {
      setIsCurrentUserCardAdmin(false);
+     setChainResolvedStatsAdminAddress(null);
      return;
    }
    let cancelled = false;
    const cached = loadTrustedCache<boolean>(isAdminTrustedCacheKey);
    if (cached !== null) setIsCurrentUserCardAdmin(cached);
-   const fetchKey = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:is-admin`;
+   setChainResolvedStatsAdminAddress(null);
+   const fetchKey = `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:is-admin:v2`;
    void fetchWithCache(fetchKey, async () => {
-     const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
      const addrs = [
-       profiles?.[0]?.aaAccount,
        profiles?.[0]?.keyID,
        myAddress,
+       profiles?.[0]?.aaAccount,
      ].filter((a): a is string => !!a && ethers.isAddress(a)).map((a) => ethers.getAddress(a));
-     if (addrs.length === 0) return false;
+     if (addrs.length === 0) return { ok: false as const, winner: null as string | null };
      const checks = await Promise.all(addrs.map((addr) => card.isAdmin(addr) as Promise<boolean>));
-     return checks.some(Boolean);
-   }).then((ok) => {
+     const idx = checks.findIndex(Boolean);
+     return { ok: idx >= 0, winner: idx >= 0 ? addrs[idx]! : null };
+   }).then((result) => {
      if (!cancelled) {
-       setIsCurrentUserCardAdmin(ok);
-       saveTrustedCache(isAdminTrustedCacheKey, ok);
+       setIsCurrentUserCardAdmin(result.ok);
+       setChainResolvedStatsAdminAddress(result.winner);
+       saveTrustedCache(isAdminTrustedCacheKey, result.ok);
      }
    }).catch(() => {
-     if (!cancelled && cached === null) setIsCurrentUserCardAdmin(false);
+     if (!cancelled && cached === null) {
+       setIsCurrentUserCardAdmin(false);
+       setChainResolvedStatsAdminAddress(null);
+     }
    });
    return () => { cancelled = true; };
- }, [currentEoa, isAdminTrustedCacheKey, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID, myAddress, overviewRefreshTrigger, adminRetryCount]);
+ }, [currentEoa, isAdminTrustedCacheKey, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID, myAddress, overviewRefreshTrigger, adminRetryCount, staffProgramBeamioCardAddress]);
 
  useEffect(() => {
    const owner = fixedCardMetadata?.cardOwner;
@@ -3450,7 +4254,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    if (resolved) setFeederEoa(resolved);
  }, [profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
 
- /** Unified Base overview feeder: every 6s on Overview + Staff tabs. Card metadata without login; Overview dashboard uses current EOA admin subtree + today (not global card totals). Staff terminal stats share this tick. */
+ /** Unified Base overview feeder: every 6s on Overview + Staff tabs. Card metadata without login; Daily Dashboard network summary uses card-level `getGlobalStatsFull` (all admins). Staff terminal stats remain per-admin. */
  const feederInProgressRef = useRef(false);
  const feederCancelledRef = useRef(false);
  const feederAccountRef = useRef('');
@@ -3474,18 +4278,18 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
    const networkSummaryCacheKey =
      timeFilter === 'Today'
-       ? `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:ptoday-local`
-       : `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:p${overviewPeriodType}`;
+       ? `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:ptoday-local`
+       : `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:p${overviewPeriodType}`;
    const networkSummaryLifetimeCacheKey =
      effectiveAdmin && ethers.isAddress(effectiveAdmin)
-       ? `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:lifetime`
+       ? `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:lifetime`
        : '';
    const adminTipsLifetimeStorageKey =
      effectiveAdmin && ethers.isAddress(effectiveAdmin)
-       ? `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:tips:lifetime`
+       ? `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:tips:lifetime`
        : '';
    /** Use account (current EOA) for quota cache key so we fetch even when fixedCardAdmins not yet loaded */
-   const quotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${accountResolved ? accountResolved.toLowerCase() : ''}:quota-and-mint-counter`;
+   const quotaCacheKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${accountResolved ? accountResolved.toLowerCase() : ''}:quota-and-mint-counter`;
    const buintBalanceCacheKey = accountResolved ? `eoa:${accountResolved.toLowerCase()}:buint:balance` : '';
    const aa = profiles?.[0]?.aaAccount?.trim();
    /** EOA + AA addresses for BUint reserve read (same closure as cache key — do not use stale empty `account` inside async feederWork). */
@@ -3508,7 +4312,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const cachedQuota = loadTrustedCache<{ quota: number; mintCounterFromClear: number }>(quotaCacheKey);
    const cachedBuintBalance = buintBalanceCacheKey ? loadTrustedCache<number>(buintBalanceCacheKey) : null;
    const cachedNetworkSummaryLifetime =
-     networkSummaryLifetimeCacheKey ? loadTrustedCache<{ cadVol: number; txCount: number; usdc: number; vouchers: number }>(networkSummaryLifetimeCacheKey) : null;
+     loadTrustedCache<{ cadVol: number; txCount: number; usdc: number; vouchers: number }>(networkSummaryLifetimeCacheKey);
    const cachedTipsLifetime = adminTipsLifetimeStorageKey ? loadTrustedCache<number>(adminTipsLifetimeStorageKey) : null;
 
    if (cachedMetadata != null) setFixedCardMetadata(cachedMetadata);
@@ -3538,7 +4342,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      feederInProgressRef.current = true;
      const accountRaw = (feederAccountRef.current || feederEoa || '').trim();
      const account = accountRaw && ethers.isAddress(accountRaw) ? ethers.getAddress(accountRaw) : '';
-     const card = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
      const buint = new ethers.Contract(CONET_BUINT_ADDRESS, ERC20_BALANCE_ABI, conetDepinProvider);
      const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
      const ACCOUNT_MODE_ALL = 0;
@@ -3550,7 +4354,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        if (!feederCancelledRef.current) {
          try {
            const apiRes = await fetch(
-             `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(FIXED_USER_CARD_CONTRACT_ADDRESS)}`
+             `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(staffProgramBeamioCardAddress)}`
            );
            let parsed: FixedUserCardMetadata | null = null;
            if (apiRes.ok) {
@@ -3558,7 +4362,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              parsed = parseFixedUserCardMetadata(apiData.metadata, typeof apiData.cardOwner === 'string' ? apiData.cardOwner : undefined);
            }
            if (!parsed) {
-             const normalizedCardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase().replace(/^0x/, '');
+             const normalizedCardAddress = staffProgramBeamioCardAddress.toLowerCase().replace(/^0x/, '');
              const metadataResource = `0x${normalizedCardAddress}${'0'.repeat(64)}.json`;
              const metadataRes = await fetch(`${BEAMIO_APP_URL}/api/metadata/${metadataResource}`);
              if (metadataRes.ok) {
@@ -3575,21 +4379,17 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          }
        }
 
-       // 1. Admin network summary (when EOA is on-card admin): selected period + subtree — raw-decode getAdminStatsFull (ethers often fails on struct + dynamic tail)
-       //    "Today" uses client-local midnight→now: sum PERIOD_HOUR buckets on `FIXED_USER_CARD_CONTRACT_ADDRESS` (UTC hour cells; same subtree semantics as period stats).
+       // 1. Daily Dashboard network summary: card-level `getGlobalStatsFull` (all admins). "Today" = local day via summed PERIOD_HOUR buckets.
        if (effectiveAdmin && ethers.isAddress(effectiveAdmin) && !feederCancelledRef.current) {
          try {
-           const adminChk = ethers.getAddress(effectiveAdmin);
            if (timeFilter === 'Today') {
              const [periodLocalToday, parsedLifetime] = await Promise.all([
-               aggregateAdminNetworkSummaryLocalTodayFromHourlyBuckets(
-                 FIXED_USER_CARD_CONTRACT_ADDRESS,
-                 adminChk,
+               aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
+                 staffProgramBeamioCardAddress,
                  baseRpcProviderDirect
                ),
-               callGetAdminStatsFullParsed(
-                 FIXED_USER_CARD_CONTRACT_ADDRESS,
-                 adminChk,
+               callGetGlobalStatsFullParsed(
+                 staffProgramBeamioCardAddress,
                  PERIOD_DAY,
                  baseRpcProviderDirect,
                  0n,
@@ -3606,7 +4406,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
                  vouchers: amountE6ToDisplayNumber(parsedLifetime.cumulativeMint),
                };
                setAdminNetworkSummaryLifetime(lifetimeSummary);
-               if (networkSummaryLifetimeCacheKey) saveTrustedCache(networkSummaryLifetimeCacheKey, lifetimeSummary);
+               saveTrustedCache(networkSummaryLifetimeCacheKey, lifetimeSummary);
              } else if (!feederCancelledRef.current && cachedNetworkSummary != null) {
                setAdminNetworkSummaryToday(cachedNetworkSummary);
                if (cachedNetworkSummaryLifetime != null) setAdminNetworkSummaryLifetime(cachedNetworkSummaryLifetime);
@@ -3616,9 +4416,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
                setAdminNetworkSummaryLifetime(null);
              }
            } else {
-             const parsed = await callGetAdminStatsFullParsed(
-               FIXED_USER_CARD_CONTRACT_ADDRESS,
-               adminChk,
+             const parsed = await callGetGlobalStatsFullParsed(
+               staffProgramBeamioCardAddress,
                overviewPeriodType,
                baseRpcProviderDirect
              );
@@ -3638,7 +4437,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
                  vouchers: amountE6ToDisplayNumber(parsed.cumulativeMint),
                };
                setAdminNetworkSummaryLifetime(lifetimeSummary);
-               if (networkSummaryLifetimeCacheKey) saveTrustedCache(networkSummaryLifetimeCacheKey, lifetimeSummary);
+               saveTrustedCache(networkSummaryLifetimeCacheKey, lifetimeSummary);
              } else if (!feederCancelledRef.current && cachedNetworkSummary != null) {
                setAdminNetworkSummaryToday(cachedNetworkSummary);
                if (cachedNetworkSummaryLifetime != null) setAdminNetworkSummaryLifetime(cachedNetworkSummaryLifetime);
@@ -3661,9 +4460,9 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
        // 2. Admin quota and mintCounterFromClear (account from feederAccountRef at execution time)
        if (account && ethers.isAddress(account) && !feederCancelledRef.current) {
-         const step3QuotaCacheKey = `card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${ethers.getAddress(account).toLowerCase()}:quota-and-mint-counter`;
+         const step3QuotaCacheKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${ethers.getAddress(account).toLowerCase()}:quota-and-mint-counter`;
          const step3CachedQuota = loadTrustedCache<{ quota: number; mintCounterFromClear: number }>(step3QuotaCacheKey);
-         const cardDirect = new ethers.Contract(FIXED_USER_CARD_CONTRACT_ADDRESS, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+         const cardDirect = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
          try {
            const adminLower = ethers.getAddress(account).toLowerCase();
            const fetchStatsWithRawFallback = async (): Promise<{ mintCounterFromClear: bigint }> => {
@@ -3673,7 +4472,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              } catch {
                const iface = new ethers.Interface([...USER_CARD_ADMIN_READ_ABI]);
                const calldata = iface.encodeFunctionData('getAdminStatsFull', [account, 0, 0, 0]);
-               const hex = await baseRpcProviderDirect.call({ to: FIXED_USER_CARD_CONTRACT_ADDRESS, data: calldata });
+               const hex = await baseRpcProviderDirect.call({ to: staffProgramBeamioCardAddress, data: calldata });
                const raw = (hex as string).replace(/^0x/, '');
                if (raw.length >= 1344) {
                  const structOffset = Number(BigInt('0x' + raw.slice(0, 64)));
@@ -3740,7 +4539,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
            for (const taddr of termAddrs) {
              if (feederCancelledRef.current) break;
              const k = taddr.toLowerCase();
-             next[k] = await fetchBizTerminalChainStats(card, baseRpcProviderDirect, FIXED_USER_CARD_CONTRACT_ADDRESS, taddr);
+             next[k] = await fetchBizTerminalChainStats(card, baseRpcProviderDirect, staffProgramBeamioCardAddress, taddr);
            }
            if (!feederCancelledRef.current) setTerminalStats(next);
          }
@@ -3801,7 +4600,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              let reportedTotal = 0n;
              while (true) {
                const [total, , , page] = await indexerAsset.getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(
-                 FIXED_USER_CARD_CONTRACT_ADDRESS,
+                 staffProgramBeamioCardAddress,
                  ethers.getAddress(effectiveAdmin),
                  PERIOD_YEAR,
                  yearOff,
@@ -3869,6 +4668,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    profiles?.[0]?.aaAccount,
    myAddress,
    timeFilter,
+   staffProgramBeamioCardAddress,
  ]);
 
  // Fetch BeamioIndexerDiamond transactions: admin UI shows only this admin's accounting (account-based, excludes subordinates).
@@ -3888,7 +4688,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    }
    const userAA = profiles?.[0]?.aaAccount?.trim();
    const userAAAddr = userAA && ethers.isAddress(userAA) ? ethers.getAddress(userAA) : '';
-   const txKey = `eoa:${currentEoa}:indexer:tx:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:${effectiveAdminAddress.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
+   const txKey = `eoa:${currentEoa}:indexer:tx:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdminAddress.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
    void fetchWithCache(txKey, async () => {
      const ACCOUNT_MODE_ALL = 0;
      const indexerAccount = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ACCOUNT_ABI, conetDepinProvider);
@@ -3998,7 +4798,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      const queryAssetByAccount = async (account: string) => {
        for (const periodOffset of [0, 1, 2]) {
          try {
-           const [total, , , page] = await indexerAsset.getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(FIXED_USER_CARD_CONTRACT_ADDRESS, account, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
+           const [total, , , page] = await indexerAsset.getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(staffProgramBeamioCardAddress, account, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
            addPage(page);
            if (Number(total) <= 100) return;
          } catch { return; }
@@ -4010,7 +4810,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
     const queryAssetByTopAdmin = async (topAdmin: string) => {
       for (const periodOffset of [0, 1, 2]) {
         try {
-          const [total, , , page] = await indexerAsset.getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(FIXED_USER_CARD_CONTRACT_ADDRESS, topAdmin, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
+          const [total, , , page] = await indexerAsset.getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(staffProgramBeamioCardAddress, topAdmin, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
           addPage(page);
           if (Number(total) <= 100) return;
         } catch { return; }
@@ -4019,7 +4819,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
     const queryAssetBySubordinate = async (subordinate: string) => {
       for (const periodOffset of [0, 1, 2]) {
         try {
-          const [total, , , page] = await indexerAsset.getAssetTransactionsBySubordinateAndCurrentPeriodOffsetAndAccountModePaged(FIXED_USER_CARD_CONTRACT_ADDRESS, subordinate, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
+          const [total, , , page] = await indexerAsset.getAssetTransactionsBySubordinateAndCurrentPeriodOffsetAndAccountModePaged(staffProgramBeamioCardAddress, subordinate, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
           addPage(page);
           if (Number(total) <= 100) return;
         } catch { return; }
@@ -4113,7 +4913,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      }
    });
    return () => { cancelled = true; };
- }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa, overviewRefreshTrigger, txListPollTick]);
+ }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa, overviewRefreshTrigger, txListPollTick, staffProgramBeamioCardAddress]);
 
  /** Entering Transactions: Overview may already reflect new Base stats while indexer list was cached or never polled on this tab. */
  useEffect(() => {
@@ -4301,9 +5101,9 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      await Promise.all(
        [...payers].map(async (lower) => {
          try {
-           const cacheKey = `payer:${lower}:infra:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:tier-capsule-v2`;
+           const cacheKey = `payer:${lower}:program:${staffProgramBeamioCardAddress.toLowerCase()}:tier-capsule-v3`;
            const val = await fetchWithCache(cacheKey, async () =>
-             fetchPayerInfraTierCapsuleMeta(ethers.getAddress(lower), baseRpcProviderDirect, FIXED_USER_CARD_CONTRACT_ADDRESS)
+             fetchPayerInfraTierCapsuleMeta(ethers.getAddress(lower), baseRpcProviderDirect, staffProgramBeamioCardAddress)
            );
            updates[lower] = val as { name: string; backgroundColor?: string } | null;
          } catch {
@@ -4318,11 +5118,17 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    return () => {
      cancelled = true;
    };
- }, [activeTab, indexerTransactions]);
+ }, [activeTab, indexerTransactions, staffProgramBeamioCardAddress]);
 
  const isFixedUserCardAdmin = fixedCardAdmins.some((address) => normalizedAdminCandidates.includes(address.toLowerCase()));
  /** Chain-verified admin for UI: only true when chain confirms; avoids persisted-session/cache showing admin to non-admin on production */
  const isAdminForUI = isCurrentUserCardAdmin === true;
+ /** Staff: hide «Smart Terminal Locked» once user owns a self-issued BeamioUserCard (even if not infra-card admin). */
+ const showStaffSmartTerminalLockedPanel =
+   !isAdminForUI && profileOwnsIssuedBeamioCardFetched && !profileOwnsIssuedBeamioCard;
+ /** Staff: terminal list + Link New Terminal — infra-card admin or owner of at least one self-issued BeamioUserCard. */
+ const showStaffTerminalsManagement =
+   isAdminForUI || (profileOwnsIssuedBeamioCardFetched && profileOwnsIssuedBeamioCard);
 
  /** User EOA is listed on the fixed card admin list → treat as joined to `ALLIANCE_ID_FOR_FIXED_USER_CARD` for UI */
  const merchantWalletEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
@@ -4338,6 +5144,89 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  }, [joinedAlliances, eoaOnFixedCardAdminList]);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
+ const membersLoyaltyFiltered = useMemo(() => {
+   const q = membersLoyaltySearch.trim().toLowerCase();
+   return membersLoyaltyRows.filter((m) => {
+     const branchOk =
+       membersLoyaltyBranch === BIZ_LOYALTY_BRANCHES[0] || m.store === membersLoyaltyBranch;
+     if (!branchOk) return false;
+     if (!q) return true;
+     return (
+       m.tag.toLowerCase().includes(q) ||
+       m.address.toLowerCase().includes(q) ||
+       m.tier.toLowerCase().includes(q)
+     );
+   });
+ }, [membersLoyaltyRows, membersLoyaltySearch, membersLoyaltyBranch]);
+
+ const closeIssueCardModal = useCallback(() => {
+   setIsIssueCardModalOpen(false);
+   window.setTimeout(() => {
+     setIssueCardStep(1);
+     setIssueTarget('');
+     setIssueType('PREPAID');
+     setIssueValue('');
+     setIssueExpiry('Never');
+     setIssueTokenSymbol('$CTree');
+     setIsCreatingTier(false);
+     setNewTierName('');
+     setNewTierDiscount('');
+   }, 300);
+ }, []);
+
+ const handleToggleLoyaltyMemberStatus = useCallback((id: string) => {
+   setMembersLoyaltyRows((rows) =>
+     rows.map((m) =>
+       m.id === id ? { ...m, status: m.status === 'Active' ? 'Suspended' : 'Active' } : m
+     )
+   );
+ }, []);
+
+ const handleDeleteLoyaltyMember = useCallback((id: string) => {
+   setMembersLoyaltyRows((rows) => rows.filter((m) => m.id !== id));
+ }, []);
+
+ const handleCreateLoyaltyTier = useCallback(() => {
+   const name = newTierName.trim();
+   const disc = parseFloat(newTierDiscount);
+   if (!name || !Number.isFinite(disc)) return;
+   const id = `ct_${Date.now()}`;
+   setAlliancesDb((prev) => {
+     const row = prev[ALLIANCE_ID_FOR_FIXED_USER_CARD];
+     return {
+       ...prev,
+       [ALLIANCE_ID_FOR_FIXED_USER_CARD]: {
+         ...row,
+         tiers: [...row.tiers, { id, name, discount: Math.round(disc), iconType: 'emerald' as const }],
+       },
+     };
+   });
+   setIsCreatingTier(false);
+   setNewTierName('');
+   setNewTierDiscount('');
+ }, [newTierName, newTierDiscount]);
+
+ const handleConfirmIssueCard = useCallback(() => {
+   setIssueCardStep(3);
+   window.setTimeout(() => {
+     const isPrepaid = issueType === 'PREPAID';
+     const branchDefault =
+       membersLoyaltyBranch === BIZ_LOYALTY_BRANCHES[0] ? 'Main Store' : membersLoyaltyBranch;
+     const newMember: BizLoyaltyMemberRow = {
+       id: `blm${Math.floor(1000 + Math.random() * 9000)}`,
+       tag: issueTarget.startsWith('@') ? issueTarget : `@${issueTarget}`,
+       address: `0x${Math.random().toString(16).slice(2, 6)}…${Math.random().toString(16).slice(2, 6)}`,
+       tier: isPrepaid ? 'Standard' : issueValue,
+       balance: isPrepaid ? parseFloat(issueValue) || 0 : 0,
+       ltv: 0,
+       lastActive: 'Just joined',
+       store: branchDefault,
+       status: 'Active',
+     };
+     setMembersLoyaltyRows((prev) => [newMember, ...prev]);
+   }, 400);
+ }, [issueType, issueTarget, issueValue, membersLoyaltyBranch]);
+
  const hasLinkedMerchant = linkedMerchantAdmins.length > 0;
  /** When user is admin (incl. owner), always show panels. linkedMerchantAdmins excludes owner, so owner-only would wrongly hide. */
  const hideTransactionsPanel = linkedMerchantLookupDone && !hasLinkedMerchant && !isAdminForUI;
@@ -4346,16 +5235,18 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
  const handleOverviewRefresh = useCallback(() => {
    tipsLifetimeScanNonceRef.current += 1;
-   invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+   invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
    invalidateFetchCache('indexer:tips');
    invalidateFetchCache('indexer:tx');
    invalidateFetchCache('eoa:');
    invalidateFetchCache('aa:');
    try {
-     const adminSummaryPrefix = `eoa:${currentEoa}:card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}:admin:`;
+     const adminSummaryPrefix = `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:`;
+     const globalSummaryPrefix = `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:network-summary:global:`;
      Object.keys(window.localStorage)
        .filter((k) =>
          k.startsWith(`${BIZ_CACHE_PREFIX}${adminSummaryPrefix}`) ||
+         k.startsWith(`${BIZ_CACHE_PREFIX}${globalSummaryPrefix}`) ||
          (k.startsWith(`${BIZ_CACHE_PREFIX}card:`) && (k.includes('quota-and-mint-counter') || k.includes('mint-limit-quota'))) ||
          (k.startsWith(BIZ_CACHE_PREFIX) && k.includes('buint:balance'))
        )
@@ -4364,7 +5255,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    setOverviewRefreshing(true);
    setOverviewRefreshTrigger((t) => t + 1);
    setTimeout(() => setOverviewRefreshing(false), 2500);
- }, [currentEoa]);
+ }, [currentEoa, staffProgramBeamioCardAddress]);
 
  useEffect(() => {
    if (hideTransactionsPanel && activeTab === 'Transactions') {
@@ -4373,7 +5264,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  }, [activeTab, hideTransactionsPanel]);
 
 
- // --- Financial Data: Overview uses current EOA admin subtree on `FIXED_USER_CARD_CONTRACT_ADDRESS` (not global card totals). "Today" = local calendar day via summed PERIOD_HOUR stats; other ranges = `getAdminStatsFull` period (UTC-aligned calendar per chain). ---
+ // --- Financial Data: Overview network summary uses `getGlobalStatsFull` on the staff/program BeamioUserCard (full card). "Today" = local calendar day via summed PERIOD_HOUR global buckets; other ranges = global period slice. Tips / tx list may still be admin-scoped. ---
  const adminToday = adminNetworkSummaryToday;
  const totalSales = effectiveAdminAddress && adminToday ? adminToday.cadVol : 0;
  /** Tips Collected (CAD Base): sum of CAD-equivalent from `finalRequestAmountFiat6` + `currencyFiat` (and USDC6→CAD when fiat leg is zero). */
@@ -4388,7 +5279,7 @@ const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // B-Units: CoNET B
 /** Charge-only sum of `fees.bServiceUnits6` from `transactionsFilteredForTable`, windowed by header `timeFilter`. */
 const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
- // Chain gives totals; show in $CTree capsule. When not admin / no data, show 0.
+ // Chain gives totals; points row uses `dashboardPointsCurrencySymbol` from card metadata. When not admin / no data, show 0.
  const salesCTree = totalSales;
  const salesUSDC = 0;
  const tipsUSDC = tipsCollectedOverviewSums.usdcPayments;
@@ -4423,7 +5314,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
      onClick={onClick}
      className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'gap-3 px-4'} py-3 rounded-2xl transition-all ${
        isActive
-         ? 'bg-[#96EB3C] text-[#0F172A] shadow-md hover:bg-[#8ADC32] active:bg-[#7ECF28]'
+         ? 'bg-[#1562f0] text-white shadow-md hover:bg-[#2b74f5] active:bg-[#0d4ec4]'
          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
      }`}
      title={collapsed ? label : undefined}
@@ -4477,17 +5368,17 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                <div className="bg-white rounded-[24px] shadow-sm border border-slate-100 overflow-hidden">
                  <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
                    <Activity size={18} className="text-emerald-800" />
-                   <span className="font-semibold text-[15px] text-black">Net Calculation ($CTree)</span>
+                   <span className="font-semibold text-[15px] text-black">Net Calculation ({dashboardPointsCurrencySymbol})</span>
                  </div>
                 
                  <div className="p-6 space-y-4">
                    <div className="flex justify-between items-center">
-                     <span className="text-[14px] text-slate-500 font-medium">$CTree Received (Sales & Tips)</span>
+                     <span className="text-[14px] text-slate-500 font-medium">{dashboardPointsCurrencySymbol} Received (Sales & Tips)</span>
                      <span className="text-[15px] font-semibold text-black">+${totalCTreeReceivedLifetime.toFixed(2)}</span>
                    </div>
                   
                    <div className="flex justify-between items-center">
-                     <span className="text-[14px] text-slate-500 font-medium">$CTree Issued (In-Store Top-Ups)</span>
+                     <span className="text-[14px] text-slate-500 font-medium">{dashboardPointsCurrencySymbol} Issued (In-Store Top-Ups)</span>
                      <span className="text-[15px] font-semibold text-rose-500">-${topUpsIssuedLifetime.toFixed(2)}</span>
                    </div>
                   
@@ -4522,10 +5413,10 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
            {payoutStep === 2 && (
              <div className="h-full flex flex-col items-center justify-center animate-in fade-in">
-               <div className="w-20 h-20 border-4 border-slate-100 border-t-[#96EB3C] rounded-full animate-spin mb-6"></div>
+               <div className="mb-6 h-20 w-20 animate-spin rounded-full border-4 border-slate-100 border-t-[#1562f0] shadow-[0_0_24px_rgba(21,98,240,0.35)]" />
                <h3 className="text-xl font-bold text-black mb-2">Initiating Settlement...</h3>
                <p className="text-[15px] text-slate-500 font-medium text-center">
-                 Burning Net $CTree and<br/>notifying CashTrees Treasury.
+                 Burning Net {dashboardPointsCurrencySymbol} and<br/>notifying CashTrees Treasury.
                </p>
              </div>
            )}
@@ -4579,7 +5470,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
 
  const renderDashboard = () => (
-   <div data-biz-ui-primary={BIZ_UI_PRIMARY} className="flex h-screen bg-[#f5f5f7] font-sans text-slate-900 overflow-hidden selection:bg-[#96EB3C]/25">
+   <div data-biz-ui-primary={BIZ_UI_PRIMARY} className="flex h-screen bg-[#f5f5f7] font-sans text-slate-900 overflow-hidden selection:bg-[#1562f0]/25">
     
      {isMobileMenuOpen && (
        <div
@@ -4661,9 +5552,11 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto overflow-x-hidden">
          {(!isSidebarCollapsed || isMobileMenuOpen) && <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-2 whitespace-nowrap">Store Management</p>}
          <NavItem icon={LayoutDashboard} label="Daily Dashboard" isActive={activeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={CreditCard} label="Card Issuance Setup" isActive={activeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          {!hideTransactionsPanel && (
            <NavItem icon={Receipt} label="Transactions" isActive={activeTab === 'Transactions'} onClick={() => handleTabChange('Transactions')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          )}
+         <NavItem icon={Award} label="Members & Loyalty" isActive={activeTab === 'MembersLoyalty'} onClick={() => handleTabChange('MembersLoyalty')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={Wallet} label="Store Wallets" isActive={activeTab === 'Wallets'} onClick={() => handleTabChange('Wallets')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={Store} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={MessageSquare} label="Messages" isActive={activeTab === 'Messages'} onClick={() => handleTabChange('Messages')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
@@ -4718,7 +5611,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                  const v = e.target.value
                  if ((OVERVIEW_TIME_FILTERS as readonly string[]).includes(v)) setTimeFilter(v as OverviewTimeFilter)
                }}
-               className="bg-transparent text-[14px] font-medium text-slate-700 focus:outline-none cursor-pointer appearance-none pl-1 pr-6"
+               className={`cursor-pointer appearance-none rounded-md bg-transparent pl-1 pr-6 text-[14px] font-medium text-slate-700 ${bizFocusRingClass}`}
                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.25rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em 1em' }}
              >
                <option value="Today">Today, {dateString}</option>
@@ -4733,7 +5626,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                type="button"
                onClick={handleOverviewRefresh}
                disabled={overviewRefreshing}
-               className="p-2.5 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+               className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                title="Refresh panel data"
              >
                <RefreshCw size={20} className={overviewRefreshing ? `animate-spin ${bizUiPrimaryLoader}` : ''} />
@@ -4758,7 +5651,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
           <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
             {SHOW_LINKED_MERCHANT_CARD_PANEL && showFixedCardMetadata && (
               <div className="flex justify-end">
-                <div className="w-full max-w-xl h-[280px] relative rounded-[32px] overflow-hidden border border-slate-800 shadow-[0_0_30px_rgba(150,235,60,0.15)] bg-gradient-to-br from-slate-950 via-slate-900 to-[#0a0a0c]">
+                <div className="relative h-[280px] w-full max-w-xl overflow-hidden rounded-[32px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_40px_rgba(21,98,240,0.28)]">
                   {fixedCardMetadata?.image ? (
                     <img
                       src={fixedCardMetadata.image}
@@ -4767,7 +5660,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                     />
                   ) : null}
                   <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/45 to-[#0a0a0c]" />
-                  <div className="absolute -right-8 -top-8 w-36 h-36 rounded-full bg-[#96EB3C]/30 blur-[70px]" />
+                  <div className={`absolute -right-8 -top-8 h-36 w-36 rounded-full ${bizGlowBlurClass} blur-[70px]`} />
                   <div className="absolute -left-10 bottom-8 w-40 h-40 rounded-full bg-emerald-500/10 blur-[90px]" />
 
                   <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
@@ -4785,17 +5678,17 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                           )}
                         </div>
                         <div className="min-w-0">
-                          <span className="inline-flex bg-[#96EB3C]/25 text-blue-300 border border-blue-500/30 text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-[0.18em]">
+                          <span className="inline-flex rounded-lg border border-[#1562f0]/45 bg-[#1562f0]/35 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-100">
                             Linked Merchant Card
                           </span>
                           <div className="mt-2">
-                            <AddressCapsule address={FIXED_USER_CARD_CONTRACT_ADDRESS} className="bg-white/10 border-white/15 text-white/80 hover:bg-white/15" />
+                            <AddressCapsule address={staffProgramBeamioCardAddress} className="bg-white/10 border-white/15 text-white/80 hover:bg-white/15" />
                           </div>
                         </div>
                       </div>
                       <div className="bg-white/8 backdrop-blur-md rounded-2xl border border-white/10 px-3 py-2 text-right shrink-0">
                         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Status</p>
-                        <p className="text-[13px] font-semibold text-emerald-300 mt-1">Franchise Merchant</p>
+                        <p className="mt-1 text-[13px] font-semibold text-sky-200">Franchise Merchant</p>
                       </div>
                     </div>
 
@@ -4816,33 +5709,31 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
           {/* When no AA account: show Welcome panel */}
           {!profiles?.[0]?.aaAccount?.trim() && (
             <div>
-              <div className="bg-[#96EB3C] rounded-[32px] p-8 sm:p-12 shadow-lg shadow-[#96EB3C]/25 relative overflow-hidden min-h-[280px] flex flex-col justify-center">
+              <div className="relative overflow-hidden rounded-[24px] bg-[#1562f0] p-6 text-white shadow-lg shadow-[#1562f0]/20 sm:p-8">
+                <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-white/10 blur-3xl" aria-hidden />
                 {redeemAdminInProgress && (
-                  <div className="absolute top-4 right-4 flex items-center gap-2 bg-[#0F172A]/10 text-[#0F172A] px-3 py-1.5 rounded-full text-[13px] font-medium">
-                    <span className="w-4 h-4 border-2 border-[#0F172A]/25 border-t-[#0F172A] rounded-full animate-spin" />
+                  <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white backdrop-blur-sm">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                     Redeeming admin access...
                   </div>
                 )}
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
                 <div className="relative z-10 max-w-2xl">
-                  <h3 className="text-[22px] sm:text-[28px] font-bold text-[#0F172A] tracking-tight mb-3">Welcome to Beamio Web3 POS!</h3>
-                  <p className="text-[15px] text-[#0F172A]/85 leading-relaxed mb-6">
-                    Your EOA Vault is ready. You can currently send/receive direct USDC payments. <strong className="font-semibold text-[#0F172A]">Your Smart Terminal (AA) is locked.</strong> To unlock zero-gas routing, VIP memberships, and voucher economies, purchase a Fuel Pack or join an Alliance.
+                  <h3 className="mb-2 text-[22px] font-bold">Welcome to VERRA Web3 POS!</h3>
+                  <p className="mb-6 text-[15px] leading-relaxed text-white/80">
+                    Your EOA Vault is ready. You can currently send/receive direct USDC payments.{' '}
+                    <strong>Your Smart Terminal (AA) is locked.</strong> To unlock zero-gas routing, VIP
+                    memberships, and voucher economies, you must activate your account with a Fuel Pack.
                   </p>
-                  <div className="flex flex-wrap gap-3">
+                  <div className="flex gap-3">
                     <button
                       type="button"
-                      onClick={() => setActiveTab('Market')}
-                      className="bg-white text-[#0F172A] px-6 py-3 rounded-[14px] font-semibold text-[14px] hover:bg-slate-50 transition-colors shadow-sm border border-[#96EB3C]/35"
+                      onClick={() => {
+                        setActiveTab('Market');
+                        setSelectedProduct('starter');
+                      }}
+                      className="flex items-center gap-2 rounded-[14px] bg-white px-6 py-3 text-[14px] font-semibold text-[#1562f0] shadow-sm transition-colors hover:bg-slate-50"
                     >
-                      Buy Fuel Pack
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('Alliances')}
-                      className="bg-[#0F172A] text-white px-6 py-3 rounded-[14px] font-semibold text-[14px] hover:bg-slate-800 transition-colors shadow-sm border border-transparent"
-                    >
-                      Join Alliance
+                      <Zap size={16} /> Buy B-Units to Activate
                     </button>
                   </div>
                 </div>
@@ -4880,7 +5771,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    <div className="bg-emerald-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
                      <div className="flex items-center gap-1">
 					 <Ticket size={12} className="text-emerald-600" />
-                       <span className="text-[11px] font-semibold text-emerald-600">$CTree</span>
+                       <span className="text-[11px] font-semibold text-emerald-600">{dashboardPointsCurrencySymbol}</span>
                      </div>
                      <span className="text-[16px] font-bold text-black">${salesCTree.toFixed(2)}</span>
                      <span className="text-[10px] text-slate-500">≈ ${salesCTree.toFixed(2)} CAD</span>
@@ -4916,7 +5807,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    <div className="bg-emerald-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
                      <div className="flex items-center gap-1">
                        <Ticket size={12} className="text-emerald-600" />
-                       <span className="text-[11px] font-semibold text-emerald-600">$CTree</span>
+                       <span className="text-[11px] font-semibold text-emerald-600">{dashboardPointsCurrencySymbol}</span>
                      </div>
                      <span className="text-[16px] font-bold text-black">${tipsCTree.toFixed(2)}</span>
                      <span className="text-[10px] text-slate-500">≈ ${tipsCTree.toFixed(2)} CAD</span>
@@ -4945,7 +5836,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                      effectiveAdminAddress ? (
                        <div className="bg-rose-50 px-4 py-3 rounded-2xl flex items-center justify-between">
                          <div className="flex flex-col gap-0.5">
-                           <span className="text-[12px] font-semibold text-slate-700">Issued $CTree</span>
+                           <span className="text-[12px] font-semibold text-slate-700">Issued {dashboardPointsCurrencySymbol}</span>
                            <span className="text-[12px] font-medium text-rose-600">
                              Quota: ${(topUpsUsedFromClear / 1000).toFixed(1)}k / {topUpsQuota >= 1e15 ? 'Unlimited' : `$${(topUpsQuota / 1000).toFixed(0)}k`}
                            </span>
@@ -5022,11 +5913,11 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                </div>
 
                {/* Panel 6: CashTrees Settlement */}
-               <div className="bg-slate-900 rounded-[48px] p-10 shadow-xl border border-slate-800 flex flex-col justify-between text-white relative overflow-hidden">
-                 <div className="absolute top-0 right-0 w-64 h-64 bg-[#96EB3C]/25 rounded-full blur-[80px] -mr-10 -mt-10 pointer-events-none" />
+               <div className="relative flex flex-col justify-between overflow-hidden rounded-[48px] border border-slate-800 bg-gradient-to-br from-slate-900 via-[#0f2748] to-slate-950 p-10 text-white shadow-[0_20px_50px_rgba(21,98,240,0.2)]">
+                 <div className={`pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full ${bizGlowBlurClass} blur-[80px]`} />
                  <div className="relative z-10">
                    <div className="flex justify-between items-start mb-6">
-                     <p className="text-[14px] font-semibold text-[#96EB3C] flex items-center gap-2">
+                     <p className="text-[14px] font-semibold text-[#1562f0] flex items-center gap-2">
                        <Ticket size={18} /> CashTrees Settlement
                      </p>
                      <span className="bg-white/10 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-[12px] font-medium border border-white/5">Net Balance</span>
@@ -5156,17 +6047,17 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
                 <div className="relative w-full sm:w-auto">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                  <input type="text" placeholder="Search receipt, hash..." value={txSearchTerm} onChange={(e) => setTxSearchTerm(e.target.value)} className="pl-12 pr-4 py-3.5 sm:py-3 bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-[20px] sm:rounded-2xl w-full sm:w-80 text-[15px] font-medium focus:outline-none focus:ring-4 focus:ring-[#96EB3C]/25 focus:border-[#96EB3C] transition-all shadow-sm" />
+                  <input type="text" placeholder="Search receipt, hash..." value={txSearchTerm} onChange={(e) => setTxSearchTerm(e.target.value)} className={`pl-12 pr-4 py-3.5 sm:py-3 bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-[20px] sm:rounded-2xl w-full sm:w-80 text-[15px] font-medium ${bizFocusRingClass} focus:border-[#1562f0] transition-all shadow-sm`} />
                 </div>
                 <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-                  <select value={txFilterTerminal} onChange={(e) => setTxFilterTerminal(e.target.value)} className="bg-white/80 backdrop-blur-xl border border-slate-200/80 px-4 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-4 focus:ring-[#96EB3C]/25 cursor-pointer appearance-none shrink-0">
+                  <select value={txFilterTerminal} onChange={(e) => setTxFilterTerminal(e.target.value)} className={`cursor-pointer appearance-none shrink-0 rounded-[20px] border border-slate-200/80 bg-white/80 px-4 py-3.5 text-[14px] font-semibold text-slate-700 shadow-sm backdrop-blur-xl sm:rounded-2xl sm:py-3 ${bizFocusRingClass} focus:border-[#1562f0]`}>
                     <option value="All">All Terminals</option>
                     {terminals.map((t) => (
                       <option key={t.tag} value={t.tag}>{t.name} ({t.tag})</option>
                     ))}
                     <option value="The Vault">The Vault (EOA)</option>
                   </select>
-                  <select value={txFilterType} onChange={(e) => setTxFilterType(e.target.value)} className="bg-white/80 backdrop-blur-xl border border-slate-200/80 px-4 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-4 focus:ring-[#96EB3C]/25 cursor-pointer appearance-none shrink-0">
+                  <select value={txFilterType} onChange={(e) => setTxFilterType(e.target.value)} className={`cursor-pointer appearance-none shrink-0 rounded-[20px] border border-slate-200/80 bg-white/80 px-4 py-3.5 text-[14px] font-semibold text-slate-700 shadow-sm backdrop-blur-xl sm:rounded-2xl sm:py-3 ${bizFocusRingClass} focus:border-[#1562f0]`}>
                     <option value="All">All Actions</option>
                     <option value="Charge">Charge</option>
                     <option value="In-Store Top-Up">Top-Up</option>
@@ -5232,7 +6123,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                         <tr>
                           <td colSpan={5} className="px-8 py-16 text-center text-slate-500">
                             <span className="inline-flex items-center gap-2">
-                              <span className="w-4 h-4 border-2 border-slate-300 border-t-[#96EB3C] rounded-full animate-spin" />
+                              <span className="w-4 h-4 border-2 border-slate-300 border-t-[#1562f0] rounded-full animate-spin" />
                               Loading transactions...
                             </span>
                           </td>
@@ -5287,7 +6178,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                      <button
                                        type="button"
                                        onClick={() => setRawTxJsonModal(tx)}
-                                       className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:text-emerald-800 hover:bg-slate-100 transition-colors shrink-0"
+                                       className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-[#1562f0] transition-colors shrink-0"
                                        title="View TxDisplayRow JSON (includes raw Transaction)"
                                        aria-label="View TxDisplayRow JSON"
                                      >
@@ -5301,7 +6192,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                        <button
                                          type="button"
                                          onClick={() => setRawTxJsonModal(tx)}
-                                         className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:text-emerald-800 hover:bg-slate-100 transition-colors shrink-0"
+                                         className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-[#1562f0] transition-colors shrink-0"
                                          title="View TxDisplayRow JSON (includes raw Transaction)"
                                          aria-label="View TxDisplayRow JSON"
                                        >
@@ -5368,7 +6259,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                            <span
                                              className="inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1"
                                              style={tierPres.wrap}
-                                             title="Payer membership tier (infrastructure card NFT metadata)"
+                                             title="Payer membership tier (program BeamioUserCard NFT metadata)"
                                            >
                                              <ShieldCheck size={14} className="shrink-0" strokeWidth={2.25} style={{ color: tierPres.fg }} />
                                              <span
@@ -5428,10 +6319,10 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                    </div>
                                    {tx.source === 'APP' && tx.beamioTag && (
                                      <div className="hidden lg:group-hover:flex items-center gap-1 pt-0.5">
-                                       <button type="button" className="p-1.5 bg-[#96EB3C]/20 text-emerald-800 rounded-md hover:bg-[#96EB3C] hover:text-[#0F172A] transition-colors" title="Send Message">
+                                       <button type="button" className="rounded-md bg-[#1562f0]/20 p-1.5 text-blue-900 hover:bg-[#1562f0] hover:text-white transition-colors" title="Send Message">
                                          <MessageSquare size={14} />
                                        </button>
-                                       <button type="button" className="p-1.5 bg-[#96EB3C]/20 text-emerald-800 rounded-md hover:bg-[#96EB3C] hover:text-[#0F172A] transition-colors" title="Send Smart Receipt">
+                                       <button type="button" className="rounded-md bg-[#1562f0]/20 p-1.5 text-blue-900 hover:bg-[#1562f0] hover:text-white transition-colors" title="Send Smart Receipt">
                                          <Send size={14} />
                                        </button>
                                      </div>
@@ -5683,7 +6574,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
              <div className="flex flex-col gap-6 lg:gap-8">
                 <div className="flex flex-wrap gap-6 lg:gap-8">
                 <div className="bg-slate-900 rounded-[32px] p-6 sm:p-8 shadow-2xl text-white relative overflow-hidden flex flex-col justify-between border border-slate-800/50 min-w-[500px] flex-1">
-                   <div className="absolute top-0 right-0 w-80 h-80 bg-[#96EB3C]/25 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none"></div>
+                   <div className={`pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full ${bizGlowBlurClass} blur-[80px]`} />
                    <div className="relative z-10">
                      <div className="flex justify-between items-start mb-8">
                         <div className="flex items-center gap-4">
@@ -5691,7 +6582,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                               <Shield size={28} className="text-emerald-800" />
                            </div>
                            <div>
-                              <h4 className="text-[20px] font-semibold text-white tracking-tight flex items-center gap-2">The Vault <span className="text-[11px] bg-[#96EB3C]/25 text-emerald-800 px-2 py-0.5 rounded-md border border-[#96EB3C]/40 font-bold">EOA</span></h4>
+                              <h4 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-white">The Vault <span className="rounded-md border border-[#1562f0]/50 bg-[#1562f0]/30 px-2 py-0.5 text-[11px] font-bold text-sky-100">EOA</span></h4>
                               <p className="text-[13px] text-slate-400 font-mono mt-1">{fmtAddr(profiles?.[0]?.keyID ?? myAddress)}</p>
                            </div>
                         </div>
@@ -5705,7 +6596,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                      </div>
                    </div>
                    <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4">
-                      <button className="bg-[#96EB3C] text-[#0F172A] py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-[#8ADC32] shadow-[0_8px_20px_rgba(150,235,60,0.3)] active:scale-[0.98] flex flex-col items-center justify-center gap-1">
+                      <button className="bg-[#1562f0] text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-[#2b74f5] shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] flex flex-col items-center justify-center gap-1">
                          <div className="flex items-center gap-1.5"><Send size={16} /> P2P Send</div>
                          <span className="text-[10px] bg-blue-900/30 px-1.5 rounded">2 B-Units</span>
                       </button>
@@ -5734,7 +6625,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95 flex items-center gap-2">
                      <Fuel size={18} /> Buy Fuel
                    </button>
-                   <button onClick={() => setActiveTab('Alliances')} className="bg-[#96EB3C] text-[#0F172A] px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-[#8ADC32] transition-colors shadow-lg shadow-[#96EB3C]/25 active:scale-95 flex items-center gap-2">
+                   <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-[#2b74f5] transition-colors shadow-lg shadow-[#1562f0]/25 active:scale-95 flex items-center gap-2">
                      <Hexagon size={18} /> Join Alliance
                    </button>
                  </div>
@@ -5871,8 +6762,8 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    onClick={() => setActiveTab('Alliances')}
                    className="bg-white rounded-[32px] border border-slate-200 border-dashed p-8 cursor-pointer hover:bg-slate-50 transition-colors flex items-center gap-4 group"
                  >
-                   <div className="w-14 h-14 rounded-2xl bg-[#96EB3C]/20 flex items-center justify-center shrink-0 group-hover:bg-[#96EB3C]/20 transition-colors">
-                     <Hexagon size={24} className="text-emerald-800" />
+                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#1562f0]/20 transition-colors group-hover:bg-[#1562f0]/30">
+                     <Hexagon size={24} className="text-blue-900" />
                    </div>
                    <div className="flex-1 min-w-0">
                      <h4 className="text-[18px] font-semibold text-slate-900">Partner Alliances</h4>
@@ -5983,9 +6874,9 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                   <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
                     {!hasAaAccount ? (
                       <div>
-                        <div className="flex justify-between items-center mb-10">
-                          <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Starter</span>
-                          <span className="text-[13px] font-mono font-medium text-slate-400">Unlimited</span>
+                        <div className="mb-10 flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3">
+                          <span className="w-fit shrink-0 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Starter</span>
+                          <span className="min-w-0 text-[13px] font-mono font-medium text-slate-400 break-words 2xl:text-right">Unlimited</span>
                         </div>
                         <div className="flex justify-center mb-10 relative">
                           <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -6002,9 +6893,9 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                       </div>
                     ) : (
                       <div>
-                        <div className="flex justify-between items-center mb-6">
-                          <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Custom Refill</span>
-                          <span className="text-[13px] font-mono font-medium text-slate-400">0.01 USDC / Unit</span>
+                        <div className="mb-6 flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3">
+                          <span className="w-fit shrink-0 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Custom Refill</span>
+                          <span className="min-w-0 text-[13px] font-mono font-medium text-slate-400 break-words 2xl:text-right">0.01 USDC / Unit</span>
                         </div>
                         <div className="flex justify-center mb-10 relative">
                           <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -6031,19 +6922,19 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                       </div>
                     )}
 
-                    <div className="mt-10 flex items-center justify-between bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md">
-                      <div>
+                    <div className="mt-10 flex flex-col gap-3 bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-4">
+                      <div className="min-w-0 pr-1">
                         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Total</p>
-                        <div className="flex items-baseline gap-1.5">
-                          <p className="text-[24px] font-bold text-white">${!hasAaAccount ? '1' : (customFuelAmount || '0')}</p>
-                          <span className="text-[13px] font-medium text-slate-500">USDC</span>
+                        <div className="flex flex-wrap items-baseline gap-1.5">
+                          <p className="text-[24px] font-bold text-white break-all tabular-nums">${!hasAaAccount ? '1' : (customFuelAmount || '0')}</p>
+                          <span className="text-[13px] font-medium text-slate-500 shrink-0">USDC</span>
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setSelectedProduct(!hasAaAccount ? 'starter' : 'custom_fuel')}
                         disabled={hasAaAccount && (!customFuelAmount || Number(customFuelAmount) <= 0)}
-                        className="bg-emerald-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full shrink-0 bg-emerald-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed 2xl:w-auto"
                       >
                         View
                       </button>
@@ -6056,9 +6947,9 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                   <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-orange-500/10 via-transparent to-transparent pointer-events-none"></div>
                   <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
                     <div>
-                      <div className="flex justify-between items-center mb-10">
-                        <span className="bg-orange-500/10 text-orange-500 border border-orange-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Package A</span>
-                        <span className="text-[13px] font-mono font-medium text-slate-400">842 / 1000</span>
+                      <div className="mb-10 flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3">
+                        <span className="w-fit shrink-0 bg-orange-500/10 text-orange-500 border border-orange-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Package A</span>
+                        <span className="min-w-0 text-[13px] font-mono font-medium text-slate-400 break-words tabular-nums 2xl:text-right">842 / 1000</span>
                       </div>
                       <div className="flex justify-center mb-10 relative">
                         <div className="absolute inset-0 bg-orange-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -6073,15 +6964,15 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                       <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Limited Fuel Pack</h4>
                       <p className="text-[14px] font-medium text-orange-500/80 mt-2 uppercase tracking-widest">The Store Clearing Fuel</p>
                     </div>
-                    <div className="mt-10 flex items-center justify-between bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md">
-                      <div>
+                    <div className="mt-10 flex flex-col gap-3 bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-4">
+                      <div className="min-w-0 pr-1">
                         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Pricing</p>
-                        <div className="flex items-baseline gap-1.5">
-                          <p className="text-[24px] font-bold text-white">$499</p>
-                          <span className="text-[13px] font-medium text-slate-500">USDC</span>
+                        <div className="flex flex-wrap items-baseline gap-1.5">
+                          <p className="text-[24px] font-bold text-white tabular-nums">$499</p>
+                          <span className="text-[13px] font-medium text-slate-500 shrink-0">USDC</span>
                         </div>
                       </div>
-                      <button type="button" onClick={() => setSelectedProduct('fuel')} className="bg-orange-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95">
+                      <button type="button" onClick={() => setSelectedProduct('fuel')} className="w-full shrink-0 bg-orange-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95 2xl:w-auto">
                         View
                       </button>
                     </div>
@@ -6090,31 +6981,31 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
                 {/* Product 2: Genesis Node Pack */}
                 <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
-                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-[#96EB3C]/20 via-transparent to-transparent pointer-events-none"></div>
+                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-[#1562f0]/20 via-transparent to-transparent pointer-events-none"></div>
                   <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
                     <div>
-                      <div className="flex justify-between items-center mb-10">
-                        <span className="bg-[#96EB3C]/20 text-emerald-800 border border-[#96EB3C]/35 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Package B</span>
-                        <span className="text-[13px] font-mono font-medium text-slate-400">247 / 300</span>
+                      <div className="mb-10 flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3">
+                        <span className="w-fit shrink-0 rounded-[8px] border border-[#1562f0]/45 bg-[#1562f0]/25 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-sky-200">Package B</span>
+                        <span className="min-w-0 text-[13px] font-mono font-medium text-slate-400 break-words tabular-nums 2xl:text-right">247 / 300</span>
                       </div>
                       <div className="flex justify-center mb-10 relative">
-                        <div className="absolute inset-0 bg-[#96EB3C]/25 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        <div className="w-28 h-28 bg-[#1a1c23] border border-[#96EB3C]/40 rounded-[28px] flex items-center justify-center shadow-[0_0_40px_rgba(150,235,60,0.15)] relative z-10">
+                        <div className="absolute inset-0 bg-[#1562f0]/25 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="w-28 h-28 bg-[#1a1c23] border border-[#1562f0]/40 rounded-[28px] flex items-center justify-center shadow-[0_0_40px_rgba(21,98,240,0.15)] relative z-10">
                           <Activity size={40} className="text-emerald-800" strokeWidth={1.5} />
                         </div>
                       </div>
                       <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Genesis Node Pack</h4>
-                      <p className="text-[14px] font-medium text-[#96EB3C]/90 mt-2 uppercase tracking-widest">The Infrastructure Backbone</p>
+                      <p className="text-[14px] font-medium text-[#1562f0]/90 mt-2 uppercase tracking-widest">The Infrastructure Backbone</p>
                     </div>
-                    <div className="mt-10 flex items-center justify-between bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md">
-                      <div>
+                    <div className="mt-10 flex flex-col gap-3 bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-4">
+                      <div className="min-w-0 pr-1">
                         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Pricing</p>
-                        <div className="flex items-baseline gap-1.5">
-                          <p className="text-[24px] font-bold text-white">$999</p>
-                          <span className="text-[13px] font-medium text-slate-500">USDC</span>
+                        <div className="flex flex-wrap items-baseline gap-1.5">
+                          <p className="text-[24px] font-bold text-white tabular-nums">$999</p>
+                          <span className="text-[13px] font-medium text-slate-500 shrink-0">USDC</span>
                         </div>
                       </div>
-                      <button type="button" onClick={() => setSelectedProduct('node')} className="bg-[#96EB3C] text-[#0F172A] px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-[#8ADC32] transition-colors shadow-lg shadow-[#96EB3C]/25 active:scale-95">
+                      <button type="button" onClick={() => setSelectedProduct('node')} className="w-full shrink-0 bg-[#1562f0] text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-[#2b74f5] transition-colors shadow-lg shadow-[#1562f0]/25 active:scale-95 2xl:w-auto">
                         View
                       </button>
                     </div>
@@ -6212,6 +7103,270 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            </div>
          )}
 
+         {/* --- MEMBERS & LOYALTY TAB --- */}
+         {activeTab === 'MembersLoyalty' && (
+           <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative space-y-6 sm:space-y-8">
+             {!hasAaAccount && (
+               <div className="relative flex min-h-[320px] flex-col items-center justify-center overflow-hidden rounded-[32px] border border-slate-200 bg-white p-8 text-center shadow-sm">
+                 <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-slate-200 bg-slate-50 shadow-sm">
+                   <Lock size={32} className="text-slate-400" />
+                 </div>
+                 <h3 className="mb-3 text-[24px] font-bold tracking-tight text-slate-900">Decentralized Loyalty Locked</h3>
+                 <p className="mb-8 max-w-md text-[15px] font-medium leading-relaxed text-slate-500">
+                   Memberships require a Brand Loyalty Contract on Base L2. Activate your Smart Terminal with a Fuel Pack to deploy your contract.
+                 </p>
+                 <button
+                   type="button"
+                   onClick={() => {
+                     setActiveTab('Market');
+                     setSelectedProduct('starter');
+                   }}
+                   className="flex items-center gap-2 rounded-[16px] bg-[#1562f0] px-8 py-3.5 text-[15px] font-semibold text-white shadow-[0_8px_20px_rgba(21,98,240,0.25)] transition-colors hover:bg-[#2b74f5] active:scale-95"
+                 >
+                   <Zap size={18} /> Buy B-Units to Activate
+                 </button>
+               </div>
+             )}
+
+             <div
+               className={`space-y-6 sm:space-y-8 ${
+                 !hasAaAccount ? 'pointer-events-none select-none opacity-40 blur-sm' : ''
+               }`}
+             >
+               <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+                 <div>
+                   <h3 className="text-[26px] font-semibold tracking-tight text-slate-900">Members & Loyalty</h3>
+                   <p className="mt-1 text-[15px] font-medium text-slate-500">
+                     Manage global VIP tiers and prepaid balances across your franchise.
+                   </p>
+                 </div>
+                 <button
+                   type="button"
+                   onClick={() => setIsIssueCardModalOpen(true)}
+                   className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-[#1562f0] px-6 py-4 text-[15px] font-semibold text-white shadow-[0_8px_20px_rgba(21,98,240,0.25)] transition-all hover:shadow-[0_12px_24px_rgba(21,98,240,0.35)] active:scale-[0.98] sm:w-auto sm:py-3.5"
+                 >
+                   <UserPlus size={20} strokeWidth={2.5} /> Issue New Asset
+                 </button>
+               </div>
+
+               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
+                 <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
+                   <div className="mb-4 flex items-center gap-3">
+                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0]">
+                       <Users size={20} />
+                     </div>
+                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Total Network Members</p>
+                   </div>
+                   <p className="text-3xl font-light tracking-tight text-slate-900">
+                     {membersLoyaltyRows.length.toLocaleString()}
+                   </p>
+                 </div>
+                 <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
+                   <div className="mb-4 flex items-center gap-3">
+                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500">
+                       <BadgeInfo size={20} />
+                     </div>
+                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Active Prepaid Balances</p>
+                   </div>
+                   <div className="flex items-baseline gap-1.5">
+                     <p className="text-3xl font-light tracking-tight text-slate-900">
+                       ${membersLoyaltyRows.reduce((sum, m) => sum + m.balance, 0).toFixed(2)}
+                     </p>
+                     <span className="text-[13px] font-medium text-slate-500">CAD</span>
+                   </div>
+                 </div>
+                 <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
+                   <div className="mb-4 flex items-center gap-3">
+                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-500">
+                       <Crown size={20} />
+                     </div>
+                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">VIP Tiers Issued</p>
+                   </div>
+                   <p className="text-3xl font-light tracking-tight text-slate-900">
+                     {membersLoyaltyRows.filter((m) => m.tier !== 'Standard').length}
+                   </p>
+                 </div>
+               </div>
+
+               <div className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] sm:rounded-[32px]">
+                 <div className="flex flex-col items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/50 p-4 sm:flex-row sm:p-6">
+                   <div className="relative w-full sm:max-w-xs">
+                     <Search className="absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-slate-400" />
+                     <input
+                       type="text"
+                       placeholder="Search @tag or address..."
+                       value={membersLoyaltySearch}
+                       onChange={(e) => setMembersLoyaltySearch(e.target.value)}
+                       className={`w-full rounded-[14px] border border-slate-200/60 bg-white py-2.5 pl-11 pr-4 text-[13px] font-medium text-slate-900 ${bizFocusRingClass} focus:border-[#1562f0]`}
+                     />
+                   </div>
+                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                     <select
+                       value={membersLoyaltyBranch}
+                       onChange={(e) => setMembersLoyaltyBranch(e.target.value)}
+                       className={`w-full cursor-pointer rounded-[14px] border border-slate-200/60 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 sm:w-auto ${bizFocusRingClass}`}
+                     >
+                       {BIZ_LOYALTY_BRANCHES.map((b) => (
+                         <option key={b} value={b}>
+                           {b}
+                         </option>
+                       ))}
+                     </select>
+                     <div className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
+                       <Filter size={16} /> Filter by store
+                     </div>
+                   </div>
+                 </div>
+                 <div className="overflow-x-auto">
+                   <table className="w-full min-w-[950px]">
+                     <thead className="border-b border-slate-100/80 bg-slate-50/50 text-left">
+                       <tr>
+                         <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Customer Identity</th>
+                         <th className="px-6 py-5 text-center text-[12px] font-semibold text-slate-400">Status</th>
+                         <th className="px-6 py-5 text-center text-[12px] font-semibold text-slate-400">Active Tier</th>
+                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Prepaid Balance</th>
+                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Lifetime Value (LTV)</th>
+                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Issuing Store</th>
+                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400 sm:px-8">Actions</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100/80">
+                       {membersLoyaltyFiltered.map((member) => (
+                         <tr
+                           key={member.id}
+                           className={`transition-colors ${
+                             member.status === 'Suspended'
+                               ? 'bg-rose-50/20'
+                               : 'hover:bg-slate-50/50'
+                           }`}
+                         >
+                           <td className="px-6 py-4">
+                             <div className="flex items-center gap-3">
+                               <div
+                                 className={`flex h-10 w-10 items-center justify-center rounded-full font-bold text-white shadow-sm ${
+                                   member.status === 'Suspended'
+                                     ? 'bg-rose-300'
+                                     : member.balance > 0
+                                       ? 'bg-[#1562f0]'
+                                       : 'bg-slate-300'
+                                 }`}
+                               >
+                                 {member.tag.replace('@', '').substring(0, 2).toUpperCase()}
+                               </div>
+                               <div>
+                                 <div
+                                   className={`text-[15px] font-semibold ${
+                                     member.status === 'Suspended'
+                                       ? 'text-slate-400 line-through'
+                                       : 'text-slate-900'
+                                   }`}
+                                 >
+                                   {member.tag}
+                                 </div>
+                                 <div className="mt-0.5 font-mono text-[12px] font-medium text-slate-400">
+                                   {member.address}
+                                 </div>
+                               </div>
+                             </div>
+                           </td>
+                           <td className="px-6 py-4 text-center">
+                             {member.status === 'Active' ? (
+                               <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200/50 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-600">
+                                 <CheckCircle2 size={12} /> Active
+                               </span>
+                             ) : (
+                               <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-200/50 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-600">
+                                 <Ban size={12} /> Suspended
+                               </span>
+                             )}
+                           </td>
+                           <td className="px-6 py-4 text-center">
+                             {member.tier === 'Black VIP' ? (
+                               <span className="inline-flex items-center gap-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-[11px] font-bold text-yellow-400 shadow-sm">
+                                 <Crown size={12} className="text-yellow-400" /> VIP
+                               </span>
+                             ) : member.tier === 'Green Card' ? (
+                               <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200/50 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-600">
+                                 <ShieldCheck size={12} className="text-emerald-500" /> Green
+                               </span>
+                             ) : member.tier === 'Standard' ? (
+                               <span className="inline-flex items-center gap-1 rounded-md border border-slate-200/50 bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500">
+                                 Standard
+                               </span>
+                             ) : (
+                               <span className="inline-flex items-center gap-1 rounded-md border border-[#1562f0]/20 bg-[#1562f0]/10 px-2 py-1 text-[11px] font-bold text-[#1562f0]">
+                                 <Crown size={12} /> {member.tier}
+                               </span>
+                             )}
+                           </td>
+                           <td className="px-6 py-4 text-right">
+                             <span
+                               className={`text-[15px] font-semibold ${
+                                 member.status === 'Suspended'
+                                   ? 'text-slate-400'
+                                   : member.balance > 0
+                                     ? 'text-[#1562f0]'
+                                     : 'text-slate-400'
+                               }`}
+                             >
+                               ${member.balance.toFixed(2)}
+                             </span>
+                           </td>
+                           <td className="px-6 py-4 text-right">
+                             <span
+                               className={`text-[15px] font-semibold ${
+                                 member.status === 'Suspended' ? 'text-slate-400' : 'text-slate-900'
+                               }`}
+                             >
+                               ${member.ltv.toFixed(2)}
+                             </span>
+                           </td>
+                           <td className="px-6 py-4 text-right">
+                             <span className="rounded-md border border-slate-100 bg-slate-50 px-2.5 py-1 text-[13px] font-medium text-slate-500">
+                               {member.store}
+                             </span>
+                             <div className="mt-1 text-[11px] text-slate-400">{member.lastActive}</div>
+                           </td>
+                           <td className="flex items-center justify-end gap-2 px-6 py-4 text-right sm:px-8">
+                             <button
+                               type="button"
+                               onClick={() => handleToggleLoyaltyMemberStatus(member.id)}
+                               className={`rounded-[12px] p-2.5 shadow-sm transition-colors ${
+                                 member.status === 'Active'
+                                   ? 'bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white'
+                                   : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'
+                               }`}
+                               title={member.status === 'Active' ? 'Suspend' : 'Reactivate'}
+                             >
+                               {member.status === 'Active' ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                             </button>
+                             <button
+                               type="button"
+                               onClick={() => handleDeleteLoyaltyMember(member.id)}
+                               className="rounded-[12px] bg-slate-50 p-2.5 text-slate-400 shadow-sm transition-colors hover:bg-rose-500 hover:text-white"
+                               title="Remove from list"
+                             >
+                               <Trash2 size={16} />
+                             </button>
+                           </td>
+                         </tr>
+                       ))}
+                       {membersLoyaltyFiltered.length === 0 && (
+                         <tr>
+                           <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                             <Search size={24} className="mx-auto mb-2 opacity-50" />
+                             No members match this filter.
+                           </td>
+                         </tr>
+                       )}
+                     </tbody>
+                   </table>
+                 </div>
+               </div>
+             </div>
+           </div>
+         )}
+
          {/* --- MESSAGES TAB --- */}
          {activeTab === 'Messages' && (
            <div className="max-w-[1400px] mx-auto h-[calc(100vh-160px)] sm:h-[calc(100vh-200px)] flex flex-col sm:flex-row gap-6 animate-in fade-in duration-300">
@@ -6220,7 +7375,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                  <h3 className="text-[20px] font-bold text-slate-900 tracking-tight mb-4">Messages</h3>
                  <div className="relative">
                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                   <input type="text" placeholder="Search CoNET tags..." className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200/60 rounded-[14px] focus:outline-none focus:ring-2 focus:ring-[#96EB3C]/30 focus:border-[#96EB3C] transition-all font-medium text-[13px] text-slate-900" />
+                   <input type="text" placeholder="Search CoNET tags..." className={`w-full rounded-[14px] border border-slate-200/60 bg-slate-50 py-2.5 pl-11 pr-4 text-[13px] font-medium text-slate-900 transition-all ${bizFocusRingClass} focus:border-[#1562f0]`} />
                  </div>
                </div>
                <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -6228,7 +7383,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    <div
                      key={contact.id}
                      onClick={() => setActiveContact(contact.id)}
-                     className={`p-4 border-b border-slate-50 cursor-pointer transition-colors flex items-center gap-4 ${activeContact === contact.id ? 'bg-[#96EB3C]/10 border-l-4 border-l-[#96EB3C]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
+                     className={`p-4 border-b border-slate-50 cursor-pointer transition-colors flex items-center gap-4 ${activeContact === contact.id ? 'bg-[#1562f0]/10 border-l-4 border-l-[#1562f0]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
                    >
                      <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center text-white font-bold tracking-wider shrink-0 shadow-sm ${contact.avatarBg}`}>
                        {contact.avatarText}
@@ -6243,7 +7398,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                        </p>
                      </div>
                      {contact.unread > 0 && (
-                       <div className="w-5 h-5 rounded-full bg-[#96EB3C] flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                       <div className="w-5 h-5 rounded-full bg-[#1562f0] flex items-center justify-center text-[10px] font-bold text-white shrink-0">
                          {contact.unread}
                        </div>
                      )}
@@ -6278,7 +7433,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                  </div>
                  {MOCK_MESSAGES.map((msg) => (
                    <div key={msg.id} className={`flex flex-col ${msg.sender === 'me' ? 'items-end' : 'items-start'}`}>
-                     <div className={`max-w-[80%] sm:max-w-[70%] p-4 rounded-[20px] ${msg.sender === 'me' ? 'bg-[#96EB3C] text-[#0F172A] rounded-tr-[4px] shadow-[0_4px_15px_rgba(150,235,60,0.2)]' : 'bg-white text-slate-800 rounded-tl-[4px] shadow-sm border border-slate-100'}`}>
+                     <div className={`max-w-[80%] sm:max-w-[70%] p-4 rounded-[20px] ${msg.sender === 'me' ? 'bg-[#1562f0] text-white rounded-tr-[4px] shadow-[0_4px_15px_rgba(21,98,240,0.2)]' : 'bg-white text-slate-800 rounded-tl-[4px] shadow-sm border border-slate-100'}`}>
                        <p className="text-[14.5px] font-medium leading-relaxed">{msg.text}</p>
                      </div>
                      <span className="text-[11px] font-medium text-slate-400 mt-2 px-1">{msg.time} {msg.sender === 'me' && '• Read'}</span>
@@ -6297,7 +7452,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
                <div className="p-4 sm:p-6 bg-white border-t border-slate-100/80 shrink-0">
                  <div className="flex items-center gap-3">
-                   <button className="p-3 text-slate-400 hover:text-emerald-800 hover:bg-[#96EB3C]/15 rounded-full transition-colors shrink-0">
+                   <button className="p-3 text-slate-400 hover:bg-[#1562f0]/15 hover:text-[#1562f0] rounded-full transition-colors shrink-0">
                      <Paperclip size={20} />
                    </button>
                    <div className="flex-1 relative">
@@ -6307,9 +7462,9 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                        value={chatInput}
                        onChange={(e) => setChatInput(e.target.value)}
                        onKeyDown={(e) => { if (e.key === 'Enter' && chatInput.trim()) setChatInput(''); }}
-                       className="w-full pl-5 pr-12 py-4 bg-slate-50 border border-slate-200/60 rounded-[20px] focus:outline-none focus:ring-2 focus:ring-[#96EB3C]/30 focus:border-[#96EB3C] transition-all font-medium text-[15px] text-slate-900"
+                       className={`w-full rounded-[20px] border border-slate-200/60 bg-slate-50 py-4 pl-5 pr-12 text-[15px] font-medium text-slate-900 transition-all ${bizFocusRingClass} focus:border-[#1562f0]`}
                      />
-                     <button onClick={() => setChatInput('')} className={`absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-full transition-all ${chatInput.trim() ? 'bg-[#96EB3C] text-[#0F172A] shadow-md' : 'text-slate-400 hover:bg-slate-200'}`}>
+                     <button onClick={() => setChatInput('')} className={`absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-full transition-all ${chatInput.trim() ? 'bg-[#1562f0] text-white shadow-md' : 'text-slate-400 hover:bg-slate-200'}`}>
                        <Send size={18} className={chatInput.trim() ? 'translate-x-0.5' : ''} />
                      </button>
                    </div>
@@ -6325,7 +7480,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
          {/* --- STAFF TERMINALS TAB --- */}
          {activeTab === 'Staff' && (
            <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative">
-             {!isAdminForUI && (
+             {showStaffSmartTerminalLockedPanel && (
                <div className="flex flex-col items-start justify-center min-h-[400px] py-12">
                  <div className="w-full max-w-[400px] bg-white rounded-[32px] shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-100 flex flex-col items-center text-center p-10">
                    <div className="w-16 h-16 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
@@ -6339,7 +7494,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                      <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-md flex items-center gap-2">
                        <Fuel size={18} /> Buy Fuel
                      </button>
-                     <button onClick={() => setActiveTab('Alliances')} className="bg-[#96EB3C] text-[#0F172A] px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-[#8ADC32] transition-colors shadow-md flex items-center gap-2">
+                     <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-[#2b74f5] transition-colors shadow-md flex items-center gap-2">
                        <Hexagon size={18} /> Join Alliance
                      </button>
                    </div>
@@ -6347,7 +7502,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                </div>
              )}
 
-             {isAdminForUI && (
+             {showStaffTerminalsManagement && (
            <div className="space-y-6">
               <div className="flex justify-between items-end mb-6">
                 <div>
@@ -6356,7 +7511,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                 </div>
                 <button
                   onClick={() => setIsAddTerminalOpen(true)}
-                  className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl text-[14px] font-bold shadow-lg shadow-[#96EB3C]/30 transition-all active:scale-95 ${bizUiPrimarySolid}`}
+                  className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl text-[14px] font-bold shadow-lg shadow-[#1562f0]/30 transition-all active:scale-95 ${bizUiPrimarySolid}`}
                 >
                   <Plus size={18} strokeWidth={2.5} /> Link New Terminal
                 </button>
@@ -6380,7 +7535,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                         <tr>
                           <td colSpan={5} className="px-6 sm:px-8 py-16 text-center text-slate-500">
                             <span className="inline-flex items-center gap-2">
-                              <span className="w-4 h-4 border-2 border-slate-300 border-t-[#96EB3C] rounded-full animate-spin" />
+                              <span className="w-4 h-4 border-2 border-slate-300 border-t-[#1562f0] rounded-full animate-spin" />
                               Loading terminals...
                             </span>
                           </td>
@@ -6464,7 +7619,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                     setResetTerminalLimitError(null);
                                     setResetTerminalLimitModal(term);
                                   }}
-                                  className="p-3 bg-blue-50 text-emerald-800 rounded-[14px] hover:bg-[#96EB3C] hover:text-[#0F172A] transition-colors"
+                                  className="rounded-[14px] bg-blue-50 p-3 text-blue-900 transition-colors hover:bg-[#1562f0] hover:text-white"
                                   title="Reset terminal issuance limit (parent admin)"
                                 >
                                   <RefreshCcw size={18} />
@@ -6491,6 +7646,865 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            </div>
          )}
 
+         {activeTab === 'Card Issuance Setup' && (
+           <div className="max-w-[1200px] mx-auto animate-in fade-in duration-300 pb-8">
+             <div className="flex flex-col mb-10">
+               <span className="text-[#1562f0] font-bold tracking-widest text-[10px] uppercase mb-2">Configuration Studio</span>
+               {cardIssuanceOnchainFetch === 'loading' || !cardIssuanceExistingCard ? (
+                 <p className="text-slate-500 mt-2 text-base sm:text-lg font-medium">
+                   {cardIssuanceOnchainFetch === 'loading'
+                     ? 'Checking the User Card factory for cards owned by your wallet…'
+                     : 'Define the parameters and rewards logic for your new merchant card program.'}
+                 </p>
+               ) : null}
+             </div>
+
+             {cardIssuanceOnchainFetch === 'loading' ? (
+               <div className="flex flex-col items-center justify-center py-24 gap-4 rounded-2xl border border-slate-100 bg-white shadow-sm">
+                 <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
+                 <p className="text-sm font-medium text-slate-500">Loading your issued card from the factory…</p>
+               </div>
+             ) : cardIssuanceExistingCard ? (
+               <section className="bg-white rounded-2xl p-8 sm:p-10 shadow-sm border border-slate-100 space-y-8">
+                 <div className="flex items-start gap-4">
+                   <div className="w-12 h-12 rounded-full bg-[#1562f0]/10 flex items-center justify-center shrink-0">
+                     <CreditCard className="w-6 h-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                   </div>
+                   <div className="min-w-0 flex-1">
+                     <h4 className="text-xl font-bold text-slate-900">Issued BeamioUserCard</h4>
+                   </div>
+                 </div>
+                 <div className="space-y-6 sm:pl-0">
+                   <div className="space-y-2">
+                     <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Contract</span>
+                     <div className="flex flex-wrap items-center gap-3">
+                       <AddressCapsule
+                         address={cardIssuanceExistingCard.cardAddress}
+                         className="bg-slate-50 border-slate-200 text-slate-800"
+                       />
+                       <a
+                         href={`https://basescan.org/address/${cardIssuanceExistingCard.cardAddress}`}
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         className="inline-flex items-center gap-1 text-sm font-bold text-[#1562f0] hover:underline"
+                       >
+                         Basescan
+                         <ExternalLink className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />
+                       </a>
+                     </div>
+                   </div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                     <div className="space-y-2">
+                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Card name</span>
+                       <p className="text-lg font-bold text-slate-900">
+                         {cardIssuanceExistingCard.meta?.name?.trim() ||
+                           cardIssuanceExistingCard.userCard.name ||
+                           '—'}
+                       </p>
+                     </div>
+                     <div className="space-y-2">
+                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">On-chain currency</span>
+                       <p className="text-lg font-bold text-slate-900">{cardIssuanceExistingCard.userCard.currency}</p>
+                     </div>
+                   </div>
+                   <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-4">
+                     <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                       Membership upgrade mode
+                     </span>
+                     {cardIssuanceExistingCard.upgradeType === 0 ||
+                     cardIssuanceExistingCard.upgradeType === 1 ||
+                     cardIssuanceExistingCard.upgradeType === 2 ? (
+                       <>
+                         <p className="text-lg font-bold text-slate-900">
+                           <span className="font-mono text-base text-[#1562f0] tabular-nums">
+                             {cardIssuanceExistingCard.upgradeType}
+                           </span>
+                           <span className="mx-2 text-slate-300">·</span>
+                           {CARD_ISSUANCE_UPGRADE_TYPE_UI[cardIssuanceExistingCard.upgradeType as 0 | 1 | 2].title}
+                         </p>
+                         <p className="text-sm text-slate-600 font-medium leading-snug">
+                           {CARD_ISSUANCE_UPGRADE_TYPE_UI[cardIssuanceExistingCard.upgradeType as 0 | 1 | 2].detail}
+                         </p>
+                       </>
+                     ) : (
+                       <p className="text-sm font-medium text-slate-600">
+                         Could not read <span className="font-mono">upgradeType</span> on-chain
+                         {cardIssuanceExistingCard.upgradeType >= 0
+                           ? ` (raw: ${cardIssuanceExistingCard.upgradeType})`
+                           : ''}
+                         .
+                       </p>
+                     )}
+                   </div>
+                   {cardIssuanceExistingCard.meta?.image ? (
+                     <div className="space-y-2">
+                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Share image</span>
+                       <img
+                         src={cardIssuanceExistingCard.meta.image}
+                         alt=""
+                         className="h-24 w-24 rounded-xl border border-slate-200 object-cover shadow-sm"
+                       />
+                     </div>
+                   ) : null}
+                   {cardIssuanceExistingCard.meta?.categories && cardIssuanceExistingCard.meta.categories.length > 0 ? (
+                     <div className="space-y-3">
+                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Categories</span>
+                       <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
+                         {cardIssuanceExistingCard.meta.categories.map((catId) => {
+                           const opt = CARD_ISSUANCE_CATEGORY_OPTIONS.find(
+                             (o) => o.id === catId.toLowerCase()
+                           );
+                           const Icon = opt?.Icon ?? Sparkles;
+                           const circle = opt?.circleClass ?? 'bg-slate-100 text-slate-600';
+                           const label = opt?.label ?? catId;
+                           return (
+                             <div
+                               key={catId}
+                               className="flex-shrink-0 flex flex-col items-center gap-2 min-w-[4.5rem]"
+                             >
+                               <div
+                                 className={`w-16 h-16 rounded-full flex items-center justify-center shadow-sm ${circle}`}
+                               >
+                                 <Icon className="w-7 h-7" strokeWidth={2} aria-hidden />
+                               </div>
+                               <span className="text-[11px] font-bold text-slate-600 tracking-tight text-center leading-tight max-w-[5rem]">
+                                 {label}
+                               </span>
+                             </div>
+                           );
+                         })}
+                       </div>
+                     </div>
+                   ) : null}
+                   {cardIssuanceExistingCard.meta?.tiers && cardIssuanceExistingCard.meta.tiers.length > 0 ? (
+                     <div className="space-y-3">
+                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Tiers (metadata)</span>
+                       <div className="overflow-x-auto rounded-xl border border-slate-100">
+                         <table className="w-full text-left text-sm">
+                           <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-widest font-bold">
+                             <tr>
+                               <th className="px-4 py-3">Name</th>
+                               <th className="px-4 py-3">
+                                 {`Min (${cardIssuanceExistingCard.userCard.currency?.trim() || '—'})`}
+                               </th>
+                               <th className="px-4 py-3">Description</th>
+                             </tr>
+                           </thead>
+                           <tbody className="divide-y divide-slate-100">
+                             {[...cardIssuanceExistingCard.meta.tiers]
+                               .sort((a, b) => {
+                                 const na =
+                                   a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
+                                 const nb =
+                                   b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
+                                 const ca = Number.isFinite(na) ? na : Number.POSITIVE_INFINITY;
+                                 const cb = Number.isFinite(nb) ? nb : Number.POSITIVE_INFINITY;
+                                 return ca - cb;
+                               })
+                               .map((t, i) => {
+                                 const minRaw =
+                                   t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
+                                 const minLabel = Number.isFinite(minRaw)
+                                   ? (minRaw / 1e6).toLocaleString()
+                                   : '—';
+                                 return (
+                                   <tr key={`${t.index ?? 'idx'}-${i}`} className="bg-white">
+                                     <td className="px-4 py-3 font-semibold text-slate-900">{t.name ?? '—'}</td>
+                                     <td className="px-4 py-3 font-mono text-slate-700">{minLabel}</td>
+                                     <td className="px-4 py-3 text-slate-600">{t.description ?? '—'}</td>
+                                   </tr>
+                                 );
+                               })}
+                           </tbody>
+                         </table>
+                       </div>
+                     </div>
+                   ) : null}
+                   {!cardIssuanceExistingCard.meta ? (
+                     <p className="text-sm font-medium text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                       Metadata JSON was not available from the API or URI. Contract address and on-chain currency are still shown above.
+                     </p>
+                   ) : null}
+                 </div>
+               </section>
+             ) : (
+             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
+               <div className="lg:col-span-8 space-y-8">
+                 <section className="bg-white rounded-2xl p-8 sm:p-10 shadow-sm border border-slate-100">
+                   <div className="flex items-center gap-4 mb-8">
+                     <div className="w-12 h-12 rounded-full bg-[#1562f0]/10 flex items-center justify-center shrink-0">
+                       <Fingerprint className="w-6 h-6 text-[#1562f0]" strokeWidth={2} />
+                     </div>
+                     <h4 className="text-xl font-bold text-slate-900">Card Identity</h4>
+                   </div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                     <div className="space-y-2">
+                       <label htmlFor="card-issuance-program-name" className="text-sm font-semibold text-slate-500 ml-1">
+                         Card Name
+                       </label>
+                       <input
+                         id="card-issuance-program-name"
+                         type="text"
+                         value={cardIssuanceProgramName}
+                         onChange={(e) => setCardIssuanceProgramName(e.target.value)}
+                         placeholder="e.g., Acme Rewards Plus"
+                         className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-medium text-slate-900 placeholder:text-slate-400 ${bizFocusRingClass}`}
+                       />
+                     </div>
+                     
+                     <div className="space-y-2 sm:col-span-2 lg:col-span-1">
+                       <label htmlFor="card-issuance-currency" className="text-sm font-semibold text-slate-500 ml-1">
+                         Currency Symbol
+                       </label>
+                       <input
+                         id="card-issuance-currency"
+                         type="text"
+                         value={cardIssuanceCurrencySymbol}
+                         onChange={(e) => setCardIssuanceCurrencySymbol(e.target.value)}
+                         placeholder="e.g., $VERRA"
+                         className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-medium text-slate-900 placeholder:text-slate-400 ${bizFocusRingClass}`}
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <span className="text-sm font-semibold text-slate-500 ml-1 block">Currency</span>
+                       <div
+                         className="w-full rounded-xl border border-slate-200 bg-slate-100/80 px-5 py-3.5 text-[15px] font-semibold text-slate-700"
+                         aria-label="Program currency"
+                       >
+                         {CARD_ISSUANCE_BEAMIO_CURRENCY}
+                         <span className="ml-2 text-xs font-medium text-slate-400">(BeamioCurrency only)</span>
+                       </div>
+                     </div>
+                   </div>
+                   <div className="mt-8 space-y-6">
+                     <div className="space-y-2">
+                       <div className="flex justify-between items-end gap-3 ml-1">
+                         <label
+                           htmlFor="card-issuance-description"
+                           className="text-sm font-semibold text-slate-500"
+                         >
+                           Card description
+                         </label>
+                         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Optional</span>
+                       </div>
+                       <textarea
+                         id="card-issuance-description"
+                         value={cardIssuanceDescription}
+                         onChange={(e) =>
+                           setCardIssuanceDescription(e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS))
+                         }
+                         placeholder="Short summary for wallets and explorers (shown in card metadata)."
+                         rows={4}
+                         maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                         spellCheck={true}
+                         className={`w-full resize-y min-h-[96px] bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-medium text-slate-900 placeholder:text-slate-400 ${bizFocusRingClass}`}
+                       />
+                       <p className="text-[11px] text-slate-400 font-medium ml-1">
+                         {cardIssuanceDescription.length}/{CARD_ISSUANCE_CONFIGURATION_MAX_CHARS} characters
+                       </p>
+                     </div>
+                     <div className="space-y-2">
+                     <div className="flex flex-wrap items-center gap-3 ml-1">
+                       <input
+                         ref={cardIssuanceIconFileRef}
+                         type="file"
+                         accept="image/*"
+                         className="hidden"
+                         onChange={handleCardIssuanceIconPick}
+                       />
+                       <button
+                         type="button"
+                         onClick={() => cardIssuanceIconFileRef.current?.click()}
+                         disabled={cardIssuanceShareImageUploading}
+                         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40"
+                       >
+                         {cardIssuanceShareImageUploading ? (
+                           <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
+                         ) : (
+                           <ImagePlus className="h-4 w-4" strokeWidth={2} aria-hidden />
+                         )}
+                         {cardIssuanceShareImageUploading ? 'Uploading…' : 'Add card icon'}
+                       </button>
+                       {cardIssuanceShareImageUrl ? (
+                         <>
+                           <img
+                             src={cardIssuanceShareImageUrl}
+                             alt=""
+                             className="h-12 w-12 rounded-lg border border-slate-200 object-cover shadow-sm"
+                           />
+                           <button
+                             type="button"
+                             onClick={() => setCardIssuanceShareImageUrl('')}
+                             className="rounded-lg px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50"
+                           >
+                             Remove
+                           </button>
+                         </>
+                       ) : null}
+                     </div>
+                     </div>
+                   </div>
+                   <div className="mt-8 space-y-3">
+                     <div className="flex justify-between items-end gap-3 ml-1">
+                       <span className="text-sm font-semibold text-slate-500">Category</span>
+                       <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                         {cardIssuanceCategoryId
+                           ? CARD_ISSUANCE_CATEGORY_OPTIONS.find((o) => o.id === cardIssuanceCategoryId)?.label ??
+                             cardIssuanceCategoryId
+                           : 'Optional'}
+                       </span>
+                     </div>
+                     <p className="text-[11px] text-slate-400 font-medium ml-1">
+                       Tap to tag your program. Optional — helps classify offers for members.
+                     </p>
+                     {/** ring-inset: parent overflow-x-auto clips outer ring+offset; inset keeps highlight inside button */}
+                     <div className="flex overflow-x-auto gap-3 py-1 pl-1 -mx-1 px-1 scrollbar-hide">
+                       {CARD_ISSUANCE_CATEGORY_OPTIONS.map((opt) => {
+                         const selected = cardIssuanceCategoryId === opt.id;
+                         const Icon = opt.Icon;
+                         return (
+                           <button
+                             key={opt.id}
+                             type="button"
+                             onClick={() => {
+                               setCardIssuanceCategoryId((prev) => (prev === opt.id ? '' : opt.id));
+                             }}
+                             className={`flex-shrink-0 flex flex-col items-center gap-2 min-w-[4.5rem] rounded-2xl p-1.5 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1562f0]/45 ${
+                               selected
+                                 ? 'ring-2 ring-inset ring-[#1562f0] bg-blue-50/50 shadow-sm'
+                                 : ''
+                             }`}
+                           >
+                             <div
+                               className={`w-16 h-16 rounded-full flex items-center justify-center shadow-sm transition-transform ${opt.circleClass} ${
+                                 selected ? 'shadow-md scale-[1.02]' : ''
+                               }`}
+                             >
+                               <Icon className="w-7 h-7" strokeWidth={2} aria-hidden />
+                             </div>
+                             <span className="text-[11px] font-bold text-slate-600 tracking-tight text-center leading-tight max-w-[5rem]">
+                               {opt.label}
+                             </span>
+                           </button>
+                         );
+                       })}
+                     </div>
+                   </div>
+                 </section>
+
+                 <section className="bg-white rounded-2xl p-8 sm:p-10 shadow-sm border border-slate-100">
+                   <div className="flex items-center gap-4 mb-2">
+                     <div className="w-12 h-12 rounded-full bg-[#1562f0]/10 flex items-center justify-center shrink-0">
+                       <Wallet className="w-6 h-6 text-[#1562f0]" strokeWidth={2} />
+                     </div>
+                     <h4 className="text-xl font-bold text-slate-900">Recharge Parameters</h4>
+                   </div>
+                   <p className="text-sm text-slate-500 mb-8 sm:ml-16 font-medium">
+                     Define the limits for card balance additions. Minimum must be at least {CARD_ISSUANCE_MIN_TOPUP_MIN}{' '}
+                     {CARD_ISSUANCE_BEAMIO_CURRENCY}; maximum must not exceed {CARD_ISSUANCE_MAX_TOPUP_MAX}{' '}
+                     {CARD_ISSUANCE_BEAMIO_CURRENCY}. Minimum and maximum top-up must be whole numbers (no decimals).
+                   </p>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:ml-16">
+                     <div className="space-y-2">
+                       <label htmlFor="card-issuance-min-topup" className="text-sm font-semibold text-slate-500 ml-1">
+                         Minimum Top-up
+                       </label>
+                       <div className="relative">
+                         <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-[#1562f0]">$</span>
+                         <input
+                           id="card-issuance-min-topup"
+                           type="number"
+                           inputMode="numeric"
+                           autoComplete="off"
+                           min={CARD_ISSUANCE_MIN_TOPUP_MIN}
+                           max={CARD_ISSUANCE_MAX_TOPUP_MAX}
+                           step={1}
+                           value={cardIssuanceMinTopup}
+                           onChange={(e) => {
+                             const raw = e.target.value.replace(/,/g, '');
+                             if (raw === '') {
+                               setCardIssuanceMinTopup('');
+                               return;
+                             }
+                             const beforeDot = raw.split('.')[0];
+                             const digitsOnly = beforeDot.replace(/\D/g, '');
+                             setCardIssuanceMinTopup(digitsOnly);
+                           }}
+                           onBlur={() => {
+                             const raw = cardIssuanceMinTopup.replace(/,/g, '').trim();
+                             let v = raw === '' ? NaN : Number.parseInt(raw, 10);
+                             if (!Number.isFinite(v)) {
+                               setCardIssuanceMinTopup(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
+                               return;
+                             }
+                             v = Math.min(
+                               CARD_ISSUANCE_MAX_TOPUP_MAX,
+                               Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
+                             );
+                             setCardIssuanceMinTopup(String(v));
+                           }}
+                           placeholder="10"
+                           className={`w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-5 py-3.5 text-[15px] font-medium text-slate-900 placeholder:text-slate-400 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                         />
+                       </div>
+                     </div>
+                     <div className="space-y-2">
+                       <label htmlFor="card-issuance-max-topup" className="text-sm font-semibold text-slate-500 ml-1">
+                         Maximum Top-up
+                       </label>
+                       <div className="relative">
+                         <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-[#1562f0]">$</span>
+                         <input
+                           id="card-issuance-max-topup"
+                           type="number"
+                           inputMode="numeric"
+                           autoComplete="off"
+                           min={CARD_ISSUANCE_MIN_TOPUP_MIN}
+                           max={CARD_ISSUANCE_MAX_TOPUP_MAX}
+                           step={1}
+                           value={cardIssuanceMaxTopup}
+                           onChange={(e) => {
+                             const raw = e.target.value.replace(/,/g, '');
+                             if (raw === '') {
+                               setCardIssuanceMaxTopup('');
+                               return;
+                             }
+                             const beforeDot = raw.split('.')[0];
+                             const digitsOnly = beforeDot.replace(/\D/g, '');
+                             setCardIssuanceMaxTopup(digitsOnly);
+                           }}
+                           onBlur={() => {
+                             const raw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
+                             let v = raw === '' ? NaN : Number.parseInt(raw, 10);
+                             if (!Number.isFinite(v)) {
+                               setCardIssuanceMaxTopup(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
+                               return;
+                             }
+                             v = Math.min(
+                               CARD_ISSUANCE_MAX_TOPUP_MAX,
+                               Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
+                             );
+                             setCardIssuanceMaxTopup(String(v));
+                           }}
+                           placeholder="100"
+                           className={`w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-5 py-3.5 text-[15px] font-medium text-slate-900 placeholder:text-slate-400 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                         />
+                       </div>
+                     </div>
+                   </div>
+                 </section>
+
+                 <section className="bg-white rounded-2xl p-8 sm:p-10 shadow-sm border border-slate-100 space-y-8">
+                   <div className="flex items-center gap-4">
+                     <div className="w-12 h-12 rounded-full bg-[#1562f0]/10 flex items-center justify-center shrink-0">
+                       <Medal className="w-6 h-6 text-[#1562f0]" strokeWidth={2} />
+                     </div>
+                     <h4 className="text-xl font-bold text-slate-900">Loyalty Tier Rules</h4>
+                   </div>
+                   <div>
+                     <h5 className="text-xl font-bold text-slate-900 mb-6">Core Rule Logic</h5>
+                     <div className="space-y-4">
+                       {(
+                         [
+                           {
+                             key: 'single' as const,
+                             title: 'Single Top-up Amount',
+                             desc: 'Tiers based on a one-time load value. No downgrades possible.',
+                           },
+                           {
+                             key: 'cumulative' as const,
+                             title: 'Cumulative Spend',
+                             desc: 'Reward lifetime loyalty. Tiers unlock as total spending grows.',
+                           },
+                           {
+                             key: 'balance' as const,
+                             title: 'Current Balance',
+                             desc: 'Dynamic tiers. Auto upgrade or downgrade based on wallet balance.',
+                           },
+                         ] as const
+                       ).map(({ key, title, desc }) => (
+                         <label
+                           key={key}
+                           className={`group relative flex items-start gap-4 p-5 rounded-xl border cursor-pointer transition-all ${
+                             cardIssuanceTierRule === key
+                               ? 'border-[#1562f0]/35 bg-blue-50/40'
+                               : 'border-transparent hover:border-[#1562f0]/20 bg-slate-50'
+                           }`}
+                         >
+                           <input
+                             type="radio"
+                             name="card-issuance-core-rule"
+                             checked={cardIssuanceTierRule === key}
+                             onChange={() => setCardIssuanceTierRule(key)}
+                             className={`mt-1 h-5 w-5 shrink-0 border-slate-300 text-[#0051d1] ${bizFocusRingClass}`}
+                           />
+                           <div className="flex flex-col min-w-0">
+                             <span className="font-bold text-slate-900">{title}</span>
+                             <span className="text-sm text-slate-500 mt-0.5 font-medium leading-snug">{desc}</span>
+                           </div>
+                         </label>
+                       ))}
+                     </div>
+                   </div>
+                   <div
+                     className="p-6 sm:p-8 rounded-2xl text-white relative overflow-hidden border border-white/10"
+                     style={{ background: 'radial-gradient(at 135% 0%, #7a9dff 0%, #0051d1 100%)' }}
+                   >
+                     <div className="relative z-10">
+                       <Sparkles className="mb-4 w-9 h-9 sm:w-10 sm:h-10 opacity-95" strokeWidth={1.75} aria-hidden />
+                       <h5 className="text-xl sm:text-2xl font-bold mb-2">Hands-Free Growth</h5>
+                       <p className="text-sm leading-relaxed text-white/90 font-medium max-w-lg">
+                         When a customer reaches a threshold, the loyalty engine instantly updates their card tier and notifies them via push notification. No manual verification required.
+                       </p>
+                     </div>
+                     <Zap
+                       className="absolute -right-6 -bottom-8 sm:-right-10 sm:-bottom-10 w-28 h-28 sm:w-36 sm:h-36 text-white opacity-[0.18] pointer-events-none"
+                       strokeWidth={1.25}
+                       aria-hidden
+                     />
+                   </div>
+                 </section>
+
+                 <section className="bg-white rounded-2xl p-8 sm:p-10 shadow-sm border border-slate-100 flex flex-col min-h-0">
+                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
+                     <div className="flex items-start gap-4">
+                       <div className="w-12 h-12 rounded-full bg-[#1562f0]/10 flex items-center justify-center shrink-0 mt-0.5">
+                         <Layers className="w-6 h-6 text-[#1562f0]" strokeWidth={2} />
+                       </div>
+                       <div>
+                         <h4 className="text-xl font-bold text-slate-900">Tier Configuration</h4>
+                         <p className="text-sm text-slate-500 mt-1 font-medium">
+                           Configure thresholds and discount benefits. Threshold amounts must be whole numbers (no decimals).
+                         </p>
+                       </div>
+                     </div>
+                     <button
+                       type="button"
+                       onClick={() =>
+                         setCardIssuanceTiers((rows) => [
+                           ...rows,
+                           {
+                             id: `tier-${Date.now()}`,
+                             name: 'Custom',
+                             preset: 'custom',
+                             threshold: '0',
+                             discountPercent: '0',
+                             tierDescription: '',
+                             tierDescriptionOpen: false,
+                           },
+                         ])
+                       }
+                       className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0051d1] text-white px-6 py-2.5 text-sm font-bold shadow-lg shadow-[#0051d1]/20 hover:opacity-90 transition-opacity shrink-0"
+                     >
+                       <Plus className="w-4 h-4" strokeWidth={2.5} />
+                       Add Tier
+                     </button>
+                   </div>
+                   <div className="overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300">
+                     <table className="w-full text-left border-separate border-spacing-y-4 min-w-[520px]">
+                       <thead>
+                         <tr className="text-slate-500 uppercase text-[10px] tracking-widest font-bold">
+                           <th className="px-4 pb-2 text-left">Tier Identity</th>
+                           <th className="px-4 pb-2 text-left">Threshold ($)</th>
+                           <th className="px-4 pb-2 text-left">Discount (%)</th>
+                           <th className="px-4 pb-2 text-left">Actions</th>
+                         </tr>
+                       </thead>
+                       <tbody className="text-sm">
+                         {cardIssuanceTiers.map((row) => (
+                           <tr key={row.id} className="bg-slate-50 group hover:bg-slate-100/90 transition-colors">
+                             <td className="px-4 py-5 rounded-l-2xl align-top border-y border-l border-slate-100/80 group-hover:border-slate-200/80">
+                               <div className="flex flex-col gap-3 min-w-0">
+                                 <div className="flex items-center gap-3 min-w-0">
+                                   <CardIssuanceTierIdentityIcon preset={row.preset} />
+                                   <input
+                                     type="text"
+                                     value={row.name}
+                                     onChange={(e) => {
+                                       const v = e.target.value;
+                                       setCardIssuanceTiers((tiers) => tiers.map((t) => (t.id === row.id ? { ...t, name: v } : t)));
+                                     }}
+                                     className="font-bold text-base text-slate-900 bg-transparent border-none min-w-0 max-w-[120px] sm:max-w-[160px] focus:outline-none focus:ring-0"
+                                     aria-label={`Tier name for ${row.id}`}
+                                   />
+                                 </div>
+                                 {row.tierDescriptionOpen ? (
+                                   <div className="min-w-0 max-w-[min(100%,320px)] space-y-2 pl-[3.25rem]">
+                                     <textarea
+                                       value={row.tierDescription}
+                                       onChange={(e) =>
+                                         setCardIssuanceTiers((tiers) =>
+                                           tiers.map((t) =>
+                                             t.id === row.id
+                                               ? {
+                                                   ...t,
+                                                   tierDescription: e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
+                                                 }
+                                               : t
+                                           )
+                                         )
+                                       }
+                                       placeholder="Optional. Shown in tier metadata for wallets and explorers."
+                                       rows={3}
+                                       maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                                       spellCheck={true}
+                                       className={`w-full resize-y min-h-[72px] text-[13px] bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800 placeholder:text-slate-400 ${bizFocusRingClass}`}
+                                       aria-label={`Tier description for ${row.name || row.id}`}
+                                     />
+                                     <div className="flex flex-wrap items-center gap-2">
+                                       <button
+                                         type="button"
+                                         onClick={() =>
+                                           setCardIssuanceTiers((tiers) =>
+                                             tiers.map((t) =>
+                                               t.id === row.id ? { ...t, tierDescriptionOpen: false } : t
+                                             )
+                                           )
+                                         }
+                                         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
+                                       >
+                                         <Minus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+                                         Hide
+                                       </button>
+                                       <span className="text-[10px] font-medium text-slate-400">
+                                         {row.tierDescription.length}/{CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                                       </span>
+                                     </div>
+                                   </div>
+                                 ) : (
+                                   <button
+                                     type="button"
+                                     onClick={() =>
+                                       setCardIssuanceTiers((tiers) =>
+                                         tiers.map((t) => (t.id === row.id ? { ...t, tierDescriptionOpen: true } : t))
+                                       )
+                                     }
+                                     className="inline-flex items-center gap-1.5 self-start rounded-lg border border-dashed border-slate-200 bg-white/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:border-[#1562f0]/40 hover:text-[#1562f0] hover:bg-blue-50/50 transition-colors ml-[3.25rem]"
+                                     aria-label={`Add tier description for ${row.name || row.id}`}
+                                   >
+                                     <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+                                     Tier description
+                                   </button>
+                                 )}
+                               </div>
+                             </td>
+                             <td className="px-4 py-5 align-top border-y border-slate-100/80 group-hover:border-slate-200/80">
+                               <input
+                                 type="text"
+                                 inputMode="numeric"
+                                 autoComplete="off"
+                                 value={row.threshold}
+                                 onChange={(e) => {
+                                   const raw = e.target.value.replace(/,/g, '');
+                                   if (raw === '') {
+                                     setCardIssuanceTiers((tiers) =>
+                                       tiers.map((t) => (t.id === row.id ? { ...t, threshold: '' } : t))
+                                     );
+                                     return;
+                                   }
+                                   const beforeDot = raw.split('.')[0];
+                                   const digitsOnly = beforeDot.replace(/\D/g, '');
+                                   setCardIssuanceTiers((tiers) =>
+                                     tiers.map((t) => (t.id === row.id ? { ...t, threshold: digitsOnly } : t))
+                                   );
+                                 }}
+                                 className={`bg-white border border-slate-200 rounded-lg w-24 text-center text-sm font-semibold text-slate-900 py-1.5 shadow-sm ${bizFocusRingClass}`}
+                                 aria-label={`Threshold dollars for ${row.name || row.id}`}
+                               />
+                             </td>
+                             <td className="px-4 py-5 align-top border-y border-slate-100/80 group-hover:border-slate-200/80">
+                               <div className="flex items-center gap-2">
+                                 <input
+                                   type="text"
+                                   inputMode="decimal"
+                                   autoComplete="off"
+                                   value={row.discountPercent}
+                                   onChange={(e) => {
+                                     const v = e.target.value;
+                                     setCardIssuanceTiers((tiers) => tiers.map((t) => (t.id === row.id ? { ...t, discountPercent: v } : t)));
+                                   }}
+                                   className={`bg-white border border-slate-200 rounded-lg w-12 text-center text-sm font-semibold text-slate-900 py-1.5 shadow-sm ${bizFocusRingClass}`}
+                                 />
+                                 <span className="text-slate-500 font-medium">%</span>
+                               </div>
+                             </td>
+                             <td className="px-4 py-5 rounded-r-2xl align-top border-y border-r border-slate-100/80 group-hover:border-slate-200/80">
+                               <button
+                                 type="button"
+                                 disabled={cardIssuanceTiers.length <= 1}
+                                 onClick={() =>
+                                   setCardIssuanceTiers((tiers) =>
+                                     tiers.length <= 1 ? tiers : tiers.filter((t) => t.id !== row.id)
+                                   )
+                                 }
+                                 className="text-slate-400 hover:text-rose-600 transition-colors disabled:opacity-35 disabled:pointer-events-none p-1 rounded-lg"
+                                 title="Remove tier"
+                                 aria-label={`Remove tier ${row.name}`}
+                               >
+                                 <Trash2 className="w-[22px] h-[22px]" strokeWidth={2} />
+                               </button>
+                             </td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+                   <div className="mt-auto pt-8 flex justify-end">
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setCardIssuanceTierRule('single');
+                         setCardIssuanceTiers(defaultCardIssuanceTiers());
+                         setCardIssuanceCategoryId('');
+                         setCardIssuanceDescription('');
+                         setCardIssuanceCreateResult(null);
+                         setCardIssuanceCreateError('');
+                       }}
+                       className="px-8 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+                     >
+                       Discard Changes
+                     </button>
+                   </div>
+                 </section>
+               </div>
+
+               <div className="lg:col-span-4">
+                 <div className="lg:sticky lg:top-24 space-y-6">
+                   <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)] border border-slate-100 overflow-hidden">
+                     <h4 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-6">Live Preview</h4>
+                     <div className="w-full aspect-[1.58/1] rounded-xl p-6 sm:p-8 text-white relative flex flex-col justify-between shadow-2xl bg-gradient-to-br from-[#0051d1] to-[#7a9dff]">
+                       <div className="absolute inset-0 bg-white/5 backdrop-blur-[1px] pointer-events-none rounded-xl" />
+                       
+                       <div className="relative z-10 mt-auto">
+                         <div className="flex items-center gap-3 mb-3 sm:mb-4">
+                           <div className="w-11 h-8 sm:w-12 sm:h-9 bg-white/20 rounded-md backdrop-blur-md flex items-center justify-center overflow-hidden">
+                             {cardIssuanceShareImageUrl ? (
+                               <img
+                                 src={cardIssuanceShareImageUrl}
+                                 alt=""
+                                 className="h-full w-full object-cover"
+                               />
+                             ) : (
+                               <div className="w-8 h-5 bg-gradient-to-br from-yellow-200 to-yellow-500 rounded-sm opacity-80" />
+                             )}
+                           </div>
+                         </div>
+                         <p className="text-base sm:text-lg font-bold tracking-tight truncate mb-3 sm:mb-4 pr-1 max-w-full">
+                           {cardIssuancePreviewProgram}
+                         </p>
+                         <div className="flex justify-between items-end gap-2">
+                           <div className="flex flex-col min-w-0">
+                             <span className="text-[8px] opacity-60 uppercase tracking-widest font-bold">Member ID</span>
+                             <span className="text-xs sm:text-sm font-mono tracking-[0.15em] font-medium truncate">
+                               4412 • 0098 • 1120
+                             </span>
+                           </div>
+                           <span className="text-xl sm:text-2xl font-black italic tracking-tighter shrink-0">{cardIssuancePreviewBrand}</span>
+                         </div>
+                       </div>
+                     </div>
+                     <div className="mt-8 space-y-1">
+                       <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                         <span className="text-sm text-slate-500 font-medium">Tier Logic</span>
+                         <span className="text-sm font-bold text-slate-900">{cardIssuanceTierRuleLabels[cardIssuanceTierRule]}</span>
+                       </div>
+                       {cardIssuanceCategoryId ? (
+                         <div className="flex justify-between items-start gap-2 py-2 border-b border-slate-100">
+                           <span className="text-sm text-slate-500 font-medium shrink-0">Category</span>
+                           <span className="text-sm font-bold text-slate-900 text-right leading-snug">
+                             {CARD_ISSUANCE_CATEGORY_OPTIONS.find((o) => o.id === cardIssuanceCategoryId)?.label ??
+                               cardIssuanceCategoryId}
+                           </span>
+                         </div>
+                       ) : null}
+                       {cardIssuanceDescription.trim() ? (
+                         <div className="flex justify-between items-start gap-2 py-2 border-b border-slate-100">
+                           <span className="text-sm text-slate-500 font-medium shrink-0">Description</span>
+                           <span className="text-sm font-bold text-slate-900 text-right leading-snug line-clamp-3">
+                             {cardIssuanceDescription.trim()}
+                           </span>
+                         </div>
+                       ) : null}
+                       <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                         <span className="text-sm text-slate-500 font-medium">Initial Currency</span>
+                         <span className="text-sm font-bold text-slate-900 truncate ml-2 max-w-[55%] text-right">
+                           {cardIssuanceCurrencySymbol.trim()
+                             ? `${CARD_ISSUANCE_BEAMIO_CURRENCY} · ${cardIssuanceCurrencySymbol.trim()}`
+                             : CARD_ISSUANCE_BEAMIO_CURRENCY}
+                         </span>
+                       </div>
+                       <div className="flex justify-between items-center py-2">
+                         <span className="text-sm text-slate-500 font-medium">Program Status</span>
+                         <span className="flex items-center gap-1.5 text-xs font-bold bg-[#1562f0]/10 text-[#1562f0] px-3 py-1 rounded-full">
+                           <span className="w-1.5 h-1.5 rounded-full bg-[#1562f0]" />
+                           Drafting
+                         </span>
+                       </div>
+                     </div>
+                   </div>
+
+                   {cardIssuanceCreateError ? (
+                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                       {cardIssuanceCreateError}
+                     </div>
+                   ) : null}
+
+                   {cardIssuanceCreateResult ? (
+                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 space-y-2">
+                       <p>Card created successfully.</p>
+                       <p className="font-mono text-xs break-all text-emerald-950/90">{cardIssuanceCreateResult.cardAddress}</p>
+                       {cardIssuanceCreateResult.hash ? (
+                         <a
+                           href={`https://basescan.org/tx/${cardIssuanceCreateResult.hash}`}
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           className="inline-flex items-center gap-1 text-[#1562f0] hover:underline font-bold"
+                         >
+                           View transaction on Basescan
+                           <ExternalLink className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />
+                         </a>
+                       ) : null}
+                       {cardIssuanceOwnerAdminNotice ? (
+                         <p
+                           className={`text-xs font-semibold pt-1 border-t border-emerald-200/80 ${
+                             cardIssuanceOwnerAdminNotice.kind === 'warn'
+                               ? 'text-amber-900'
+                               : 'text-emerald-950/90'
+                           }`}
+                         >
+                           {cardIssuanceOwnerAdminNotice.text}
+                         </p>
+                       ) : null}
+                       {cardIssuanceCategoryIndexSummary ? (
+                         <p className="text-xs font-semibold text-emerald-950/90 pt-1 border-t border-emerald-200/80">
+                           {cardIssuanceCategoryIndexSummary}
+                         </p>
+                       ) : null}
+                     </div>
+                   ) : null}
+
+                   <button
+                     type="button"
+                     onClick={() => void handlePublishCardIssuance()}
+                     disabled={cardIssuanceCreateLoading}
+                     className="w-full rounded-full py-4 sm:py-5 font-bold text-base sm:text-lg text-white shadow-xl bg-gradient-to-br from-[#0051d1] to-[#7a9dff] hover:shadow-[0_12px_32px_rgba(0,81,209,0.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-65"
+                   >
+                     {cardIssuanceCreateLoading ? (
+                       <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin" strokeWidth={2} aria-hidden />
+                     ) : (
+                       <Rocket className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2} aria-hidden />
+                     )}
+                     {cardIssuanceCreateLoading ? 'Creating…' : 'Publish & Issue Card'}
+                   </button>
+                   <p className="text-center text-xs text-slate-500 font-medium px-4">
+                     By publishing, you agree to the Merchant Services Agreement and Program Compliance terms.
+                   </p>
+                 </div>
+               </div>
+             </div>
+             )}
+           </div>
+         )}
 
          {activeTab === 'Settings' && (
            <div className="absolute inset-0 z-10 overflow-hidden animate-in fade-in duration-300">
@@ -6537,7 +8551,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                   value={newDeviceName}
                   onChange={(e) => setNewDeviceName(e.target.value)}
                   placeholder="e.g. POS Terminal 1"
-                  className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#96EB3C]/30 focus:border-[#96EB3C] transition-all font-semibold text-[15px] text-slate-900"
+                  className={`w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-[15px] font-semibold text-slate-900 transition-all ${bizFocusRingClass} focus:border-[#1562f0]`}
                 />
               </div>
 
@@ -6550,7 +8564,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                   value={newTerminalMintLimit}
                   onChange={(e) => setNewTerminalMintLimit(e.target.value)}
                   placeholder="e.g. 1000"
-                  className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#96EB3C]/30 focus:border-[#96EB3C] transition-all font-semibold text-[15px] text-slate-900"
+                  className={`w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-[15px] font-semibold text-slate-900 transition-all ${bizFocusRingClass} focus:border-[#1562f0]`}
                 />
                 <p className="text-[11px] text-slate-500 mt-1 ml-1">Max in-store top-up amount this terminal can process per transaction.</p>
               </div>
@@ -6587,7 +8601,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                       onFocus={() => { deviceValidateAbortRef.current = true; }}
                       onKeyDown={(e) => e.key === 'Enter' && validateDeviceHandle(newTerminalTag)}
                       placeholder="@handle or 0x..."
-                      className={`w-full pr-14 py-3.5 bg-white border rounded-2xl focus:outline-none focus:ring-2 font-semibold text-[15px] text-slate-900 font-mono placeholder:text-slate-400 ${newTerminalTag.startsWith('0x') ? 'pl-4' : 'pl-9'} ${deviceHandleError ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' : 'border-slate-200 focus:border-[#96EB3C] focus:ring-[#96EB3C]/30'}`}
+                      className={`w-full rounded-2xl border bg-white py-3.5 pr-14 font-mono text-[15px] font-semibold text-slate-900 placeholder:text-slate-400 ${newTerminalTag.startsWith('0x') ? 'pl-4' : 'pl-9'} ${deviceHandleError ? 'border-rose-500 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/25' : `border-slate-200 ${bizFocusRingClass} focus:border-[#1562f0]`}`}
                     />
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                       {deviceHandleChecking ? (
@@ -6651,7 +8665,25 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                     }
                     adminEOA = ethers.getAddress(peer.address);
                   }
-                  const cardAddress = FIXED_USER_CARD_CONTRACT_ADDRESS;
+                  const resolveRegistrationProgramCardAddress = async (): Promise<string> => {
+                    if (merchantOwnCardAddress) return merchantOwnCardAddress;
+                    const p0 = profiles?.[0];
+                    if (p0) {
+                      const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
+                      if (trusted && cards.length > 0) {
+                        const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards, baseRpcProviderDirect);
+                        if (primary) return ethers.getAddress(primary);
+                      }
+                    }
+                    const ex = cardIssuanceExistingCard?.cardAddress;
+                    if (ex) return ethers.getAddress(ex);
+                    const cr = cardIssuanceCreateResult?.cardAddress;
+                    if (cr) return ethers.getAddress(cr);
+                    throw new Error(
+                      'No merchant-issued card found. Create your program card in Card Issuance Setup before registering a terminal.',
+                    );
+                  };
+                  const cardAddress = await resolveRegistrationProgramCardAddress();
                   const metadata = JSON.stringify({
                     deviceName: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
                     handle: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : '',
@@ -6712,9 +8744,11 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                   saveTrustedCache(linkedTerminalsCacheKey, next);
                   setTerminals(next);
                   closeAddTerminalModal();
-                  invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+                  invalidateFetchCache(`card:${cardAddress.toLowerCase()}`);
                   try {
-                    window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
+                    window.localStorage.removeItem(
+                      `${BIZ_CACHE_PREFIX}card-admins:${cardAddress.toLowerCase()}:v2`,
+                    );
                   } catch { /* ignore */ }
                   setTimeout(() => fetchTerminals({ silent: true }), 15_000);
                 } catch (e: unknown) {
@@ -6928,7 +8962,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    }
                    const chainSub = await resolveTerminalChainSubordinate(resetTerminalLimitModal.id);
                    const card = new ethers.Contract(
-                     FIXED_USER_CARD_CONTRACT_ADDRESS,
+                     staffProgramBeamioCardAddress,
                      USER_CARD_ADMIN_READ_ABI,
                      baseRpcProviderDirect,
                    );
@@ -6947,13 +8981,13 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    const nonce = ethers.hexlify(ethers.randomBytes(32));
                    const adminSignature = await signClearAdminMintCounter(
                      pk,
-                     FIXED_USER_CARD_CONTRACT_ADDRESS,
+                     staffProgramBeamioCardAddress,
                      chainSub,
                      deadline,
                      nonce,
                    );
                    const res = await postCardClearAdminMintCounter({
-                     cardAddress: FIXED_USER_CARD_CONTRACT_ADDRESS,
+                     cardAddress: staffProgramBeamioCardAddress,
                      subordinate: chainSub,
                      deadline,
                      nonce,
@@ -6964,7 +8998,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    }
                    setResetTerminalLimitModal(null);
                    setOverviewRefreshTrigger((t) => t + 1);
-                   invalidateFetchCache(`card:${FIXED_USER_CARD_CONTRACT_ADDRESS.toLowerCase()}`);
+                   invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
                    try {
                      window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
                    } catch {
@@ -6977,7 +9011,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                  }
                }}
                disabled={resetTerminalLimitLoading}
-               className="flex-1 py-3.5 rounded-2xl text-[15px] font-semibold bg-[#96EB3C] text-[#0F172A] hover:bg-[#8ADC32] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+               className="flex-1 py-3.5 rounded-2xl text-[15px] font-semibold bg-[#1562f0] text-white hover:bg-[#2b74f5] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
              >
                {resetTerminalLimitLoading ? (
                  <>
@@ -7056,12 +9090,12 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                <h2 className="text-[22px] font-semibold tracking-tight text-slate-900 mb-1">{alliance.name} Routing</h2>
                <p className="text-[14px] text-slate-500 font-medium leading-relaxed">
                  {useOnChainTiers
-                   ? 'Discounts are configured per on-chain membership tier from the infrastructure card contract. Enforced by your Smart Terminal.'
+                   ? 'Discounts are configured per on-chain membership tier from your program BeamioUserCard contract. Enforced by your Smart Terminal.'
                    : 'Configure automatic point-of-sale discounts for ecosystem VIP tiers. Enforced by your Smart Terminal.'}
                </p>
                {useOnChainTiers && (
                  <p className="text-[11px] text-slate-400 font-mono mt-2 break-all">
-                   {FIXED_USER_CARD_CONTRACT_ADDRESS}
+                   {staffProgramBeamioCardAddress}
                  </p>
                )}
              </div>
@@ -7121,7 +9155,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                            if (!Number.isFinite(n)) return;
                            setRoutingTaxRatePercent(Math.min(100, Math.max(0, n)));
                          }}
-                         className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] font-semibold tabular-nums text-slate-900 outline-none focus:border-[#96EB3C] focus:ring-2 focus:ring-[#96EB3C]/30 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                         className={`w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] font-semibold tabular-nums text-slate-900 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${bizFocusRingClass} focus:border-[#1562f0]`}
                        />
                        <p className="text-[11px] text-slate-400 mt-2">Default 0%. Range 0–100.</p>
                      </div>
@@ -7169,7 +9203,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                          step="1"
                          value={tempDiscounts[tier.id] ?? 0}
                          onChange={(e) => setTempDiscounts((prev) => ({ ...prev, [tier.id]: parseInt(e.target.value, 10) }))}
-                         className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#96EB3C]"
+                         className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1562f0]"
                        />
                        <div className="flex justify-between text-[11px] font-medium text-slate-400 mt-2 px-1">
                          <span>0%</span>
@@ -7222,7 +9256,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
             <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden"></div>
             <div className="flex justify-between items-center mb-8">
                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-[#96EB3C]/20 text-emerald-800 rounded-[20px] flex items-center justify-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-[#1562f0]/20 text-blue-900">
                      <Hexagon size={24} />
                   </div>
                   <div>
@@ -7240,7 +9274,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                 .map((aId) => {
                   const alliance = alliancesDb[aId];
                   return (
-                    <div key={aId} className="border border-slate-200 rounded-[20px] p-5 hover:border-[#96EB3C]/55 hover:bg-[#96EB3C]/10 transition-all">
+                    <div key={aId} className="border border-slate-200 rounded-[20px] p-5 hover:border-[#1562f0]/55 hover:bg-[#1562f0]/10 transition-all">
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <h4 className="font-bold text-slate-900 text-[16px]">{alliance.name}</h4>
@@ -7277,7 +9311,14 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
          <div className="relative bg-[#0f1115] w-full max-w-[500px] h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 border border-white/10">
             <div className={`relative h-48 sm:h-56 shrink-0 bg-gradient-to-b ${selectedProduct === 'fuel' ? 'from-orange-900/40' : selectedProduct === 'starter' || selectedProduct === 'custom_fuel' ? 'from-emerald-900/40' : 'from-blue-900/40'} to-[#0f1115]`}>
               <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none" />
-              <button type="button" onClick={closeMarketProductModal} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={22} /></button>
+              <button
+                type="button"
+                onClick={closeMarketProductModal}
+                className="absolute top-6 left-6 z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/70 backdrop-blur-md transition-colors hover:text-white"
+                aria-label="Close"
+              >
+                <X size={22} strokeWidth={2} className="shrink-0" />
+              </button>
               <div className="absolute bottom-6 left-8 right-8">
                  <span className={`inline-block px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase mb-3 border ${
                     selectedProduct === 'fuel' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
@@ -7315,7 +9356,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                         href={`https://basescan.org/tx/${marketRefuelSuccess}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[12px] font-mono text-[#96EB3C] hover:bg-white/10 transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[12px] font-mono text-[#1562f0] hover:bg-white/10 transition-colors"
                       >
                         {marketRefuelSuccess.slice(0, 10)}...{marketRefuelSuccess.slice(-8)}
                         <ExternalLink size={14} strokeWidth={2.5} />
@@ -7441,7 +9482,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                 className={`flex items-center gap-2 px-8 py-4 rounded-[16px] font-semibold text-[16px] text-white transition-all shadow-lg active:scale-95 ${
                  selectedProduct === 'fuel' ? 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/20' :
                  selectedProduct === 'starter' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' :
-                 'bg-[#96EB3C] hover:bg-[#8ADC32] shadow-[#96EB3C]/25'
+                 'bg-[#1562f0] hover:bg-[#2b74f5] shadow-[#1562f0]/25'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {selectedProduct === 'fuel' ? 'Secure Fuel' : selectedProduct === 'starter' ? 'Activate AA' : 'Secure Node'} <ChevronRight size={18} />
@@ -7450,6 +9491,338 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
             )}
               </>
             )}
+         </div>
+       </div>
+     )}
+
+     {/* --- Issue brand asset / membership (Members & Loyalty) --- */}
+     {isIssueCardModalOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end justify-center p-0 font-sans sm:items-center sm:p-6">
+         <div
+           className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+           onClick={closeIssueCardModal}
+           aria-hidden
+         />
+         <div className="relative flex w-full max-w-[440px] flex-col overflow-hidden rounded-t-[40px] border border-white/10 bg-[#0f1115] shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 sm:rounded-[40px]">
+           {issueCardStep === 1 && (
+             <>
+               <div className="relative shrink-0 border-b border-white/5 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] p-6">
+                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent opacity-20" />
+                 <button
+                   type="button"
+                   onClick={closeIssueCardModal}
+                   className="absolute right-6 top-6 z-10 rounded-full border border-white/10 bg-black/40 p-2.5 text-white/70 backdrop-blur-md transition-colors hover:text-white"
+                 >
+                   <X size={20} />
+                 </button>
+                 <div className="relative z-10 mt-2 text-center">
+                   <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#1562f0]/30 bg-[#1562f0]/20 text-[#1562f0]">
+                     <UserPlus size={20} />
+                   </div>
+                   <h2 className="mb-1 text-[20px] font-bold tracking-tight text-white">Issue Brand Asset</h2>
+                   <p className="text-[13px] font-medium text-slate-400">Mint ERC-1155 Prepaid or NFT Tiers to users</p>
+                 </div>
+               </div>
+
+               <div className="flex flex-col items-center p-6 sm:p-8">
+                 <div className="relative mb-6 w-full">
+                   <Search className="absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-slate-400" />
+                   <input
+                     type="text"
+                     placeholder="Customer @BeamioTag..."
+                     value={issueTarget}
+                     onChange={(e) => setIssueTarget(e.target.value)}
+                     className="w-full rounded-[16px] border border-white/10 bg-white/5 py-3.5 pl-11 pr-4 text-[14px] font-medium text-white placeholder:text-slate-500 focus:border-[#1562f0] focus:outline-none"
+                   />
+                 </div>
+
+                 <div className="mb-6 flex w-full rounded-[16px] border border-white/10 bg-white/5 p-1">
+                   <button
+                     type="button"
+                     onClick={() => {
+                       setIssueType('PREPAID');
+                       setIssueValue('');
+                     }}
+                     className={`flex-1 rounded-[12px] py-2.5 text-[13px] font-bold transition-colors ${
+                       issueType === 'PREPAID'
+                         ? 'bg-[#1562f0] text-white shadow-sm'
+                         : 'text-slate-400 hover:text-white'
+                     }`}
+                   >
+                     Prepaid (ID: 0)
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => {
+                       setIssueType('VIP_TIER');
+                       const first = alliancesDb[ALLIANCE_ID_FOR_FIXED_USER_CARD].tiers[0]?.name ?? 'Green Card';
+                       setIssueValue(first);
+                     }}
+                     className={`flex-1 rounded-[12px] py-2.5 text-[13px] font-bold transition-colors ${
+                       issueType === 'VIP_TIER'
+                         ? 'bg-[#1562f0] text-white shadow-sm'
+                         : 'text-slate-400 hover:text-white'
+                     }`}
+                   >
+                     VIP Tiers (ID: 99+)
+                   </button>
+                 </div>
+
+                 <div className="mb-6 flex w-full items-center justify-between rounded-[16px] border border-white/10 bg-black/40 p-3">
+                   <span className="pl-2 text-[13px] font-bold text-slate-400">Asset Expiration</span>
+                   <select
+                     value={issueExpiry}
+                     onChange={(e) => setIssueExpiry(e.target.value)}
+                     className="rounded-[10px] border border-white/10 bg-white/10 px-3 py-1.5 text-[12px] font-bold text-white focus:outline-none"
+                   >
+                     <option value="Never" className="text-slate-900">
+                       Never (Lifetime)
+                     </option>
+                     <option value="1 Month" className="text-slate-900">
+                       1 Month
+                     </option>
+                     <option value="1 Year" className="text-slate-900">
+                       1 Year
+                     </option>
+                   </select>
+                 </div>
+
+                 {issueType === 'PREPAID' ? (
+                   <div className="mb-4 flex w-full flex-col items-center space-y-4">
+                     <input
+                       type="text"
+                       placeholder="Token Symbol (e.g. $CTree)"
+                       value={issueTokenSymbol}
+                       onChange={(e) => {
+                         let val = e.target.value.toUpperCase();
+                         if (val && !val.startsWith('$')) val = `$${val}`;
+                         setIssueTokenSymbol(val);
+                       }}
+                       className="w-full rounded-[16px] border border-white/10 bg-white/5 px-4 py-3.5 text-center text-[15px] font-bold tracking-widest text-emerald-400 placeholder:text-slate-600 focus:border-emerald-500 focus:outline-none"
+                     />
+                     <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-500">
+                       Minting {issueTokenSymbol} (Fungible)
+                     </span>
+                     <div className="flex items-center justify-center gap-2">
+                       <span className="mt-1 text-[28px] font-semibold text-slate-500">$</span>
+                       <input
+                         type="number"
+                         placeholder="0.00"
+                         value={issueValue}
+                         onChange={(e) => setIssueValue(e.target.value)}
+                         className="w-[180px] bg-transparent text-center text-[56px] font-semibold text-white placeholder:text-slate-600 focus:outline-none"
+                       />
+                     </div>
+                   </div>
+                 ) : (
+                   <div className="mb-4 flex max-h-[220px] w-full flex-col items-center space-y-4 overflow-y-auto pr-1 scrollbar-hide">
+                     {alliancesDb[ALLIANCE_ID_FOR_FIXED_USER_CARD].tiers.map((tier) => (
+                       <div
+                         key={tier.id}
+                         onClick={() => setIssueValue(tier.name)}
+                         className={`flex w-full shrink-0 cursor-pointer items-center justify-between rounded-[16px] border-2 p-4 transition-all ${
+                           issueValue === tier.name
+                             ? tier.iconType === 'yellow'
+                               ? 'border-yellow-500 bg-yellow-500/10'
+                               : 'border-emerald-500 bg-emerald-500/10'
+                             : 'border-white/10 bg-white/5 hover:border-white/20'
+                         }`}
+                       >
+                         <div className="flex items-center gap-3">
+                           <div
+                             className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                               tier.iconType === 'yellow'
+                                 ? 'bg-yellow-500/20 text-yellow-500'
+                                 : 'bg-emerald-500/20 text-emerald-500'
+                             }`}
+                           >
+                             {tier.iconType === 'yellow' ? (
+                               <Crown size={18} />
+                             ) : (
+                               <ShieldCheck size={18} />
+                             )}
+                           </div>
+                           <div>
+                             <h4 className="text-[15px] font-bold text-white">{tier.name}</h4>
+                             <p className="text-[12px] text-slate-400">
+                               ID: {tier.id} • {tier.discount}% Auto-Discount
+                             </p>
+                           </div>
+                         </div>
+                         {issueValue === tier.name && (
+                           <CheckCircle2
+                             size={20}
+                             className={tier.iconType === 'yellow' ? 'text-yellow-500' : 'text-emerald-500'}
+                           />
+                         )}
+                       </div>
+                     ))}
+                     {!isCreatingTier ? (
+                       <button
+                         type="button"
+                         onClick={() => setIsCreatingTier(true)}
+                         className="mt-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-[16px] border border-dashed border-white/20 py-4 text-[13px] font-bold text-slate-400 transition-colors hover:border-white/40 hover:text-white"
+                       >
+                         <Plus size={16} /> Create Custom Tier
+                       </button>
+                     ) : (
+                       <div className="shrink-0 space-y-3 rounded-[16px] border border-[#1562f0]/30 bg-[#1562f0]/5 p-4 animate-in fade-in">
+                         <input
+                           type="text"
+                           placeholder="Tier Name (e.g. Diamond VIP)"
+                           value={newTierName}
+                           onChange={(e) => setNewTierName(e.target.value)}
+                           className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-[14px] text-white focus:border-[#1562f0] focus:outline-none"
+                         />
+                         <div className="relative">
+                           <input
+                             type="number"
+                             placeholder="Discount Percentage"
+                             value={newTierDiscount}
+                             onChange={(e) => setNewTierDiscount(e.target.value)}
+                             className="w-full rounded-lg border border-white/10 bg-black/40 py-3 pl-4 pr-10 text-[14px] text-white focus:border-[#1562f0] focus:outline-none"
+                           />
+                           <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</span>
+                         </div>
+                         <div className="flex gap-2 pt-2">
+                           <button
+                             type="button"
+                             onClick={() => setIsCreatingTier(false)}
+                             className="flex-1 rounded-lg py-2.5 text-[13px] font-bold text-slate-400 transition-colors hover:bg-white/10"
+                           >
+                             Cancel
+                           </button>
+                           <button
+                             type="button"
+                             onClick={handleCreateLoyaltyTier}
+                             disabled={!newTierName.trim() || !newTierDiscount}
+                             className="flex-1 rounded-lg bg-[#1562f0] py-2.5 text-[13px] font-bold text-white shadow-[0_4px_12px_rgba(21,98,240,0.2)] transition-colors disabled:opacity-50"
+                           >
+                             Save New Tier
+                           </button>
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 )}
+               </div>
+
+               <div className="shrink-0 border-t border-white/5 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent p-6 sm:p-8">
+                 <button
+                   type="button"
+                   onClick={() => setIssueCardStep(2)}
+                   disabled={
+                     !issueTarget ||
+                     !issueValue ||
+                     (issueType === 'PREPAID' && parseFloat(issueValue) <= 0) ||
+                     (protocolFuelReserveBalance ?? 0) < ISSUE_CARD_MIN_BUINTS
+                   }
+                   className={`w-full rounded-[20px] py-4 text-[16px] font-bold transition-all ${
+                     !issueTarget ||
+                     !issueValue ||
+                     (issueType === 'PREPAID' && parseFloat(issueValue) <= 0) ||
+                     (protocolFuelReserveBalance ?? 0) < ISSUE_CARD_MIN_BUINTS
+                       ? 'cursor-not-allowed border border-white/5 bg-white/5 text-slate-500'
+                       : 'bg-[#1562f0] text-white shadow-[0_8px_20px_rgba(21,98,240,0.25)] hover:bg-blue-600 active:scale-[0.98]'
+                   }`}
+                 >
+                   Continue
+                 </button>
+                 {(protocolFuelReserveBalance ?? 0) < ISSUE_CARD_MIN_BUINTS && (
+                   <p className="mt-3 text-center text-[12px] font-bold text-rose-500">
+                     Insufficient Protocol Fuel. Requires {ISSUE_CARD_MIN_BUINTS} B-Units.
+                   </p>
+                 )}
+               </div>
+             </>
+           )}
+
+           {issueCardStep === 2 && (
+             <>
+               <div className="relative shrink-0 border-b border-white/5 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] p-6">
+                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent opacity-20" />
+                 <button
+                   type="button"
+                   onClick={() => setIssueCardStep(1)}
+                   className="absolute left-6 top-6 z-10 rounded-full border border-white/10 bg-black/40 p-2.5 text-white/70 backdrop-blur-md transition-colors hover:text-white"
+                 >
+                   <ArrowRightLeft size={20} />
+                 </button>
+               </div>
+
+               <div className="flex flex-col items-center p-6 animate-in slide-in-from-right sm:p-8">
+                 <div className="relative z-10 -mt-12 mb-8 flex flex-col items-center">
+                   <div className="relative mb-4 flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-4 border-[#0f1115] bg-slate-900 shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+                     <span className="text-[20px] font-bold text-white drop-shadow-md">
+                       {issueTarget.replace('@', '').substring(0, 2).toUpperCase()}
+                     </span>
+                   </div>
+                   <h3 className="mb-0.5 text-[22px] font-bold text-white">{issueTarget}</h3>
+                   <p className="text-[13px] font-medium text-[#1562f0]">Will receive this asset</p>
+                 </div>
+
+                 <div className="mb-4 flex w-full flex-col items-center justify-center gap-2 rounded-[24px] border border-white/10 bg-white/5 p-5 shadow-sm">
+                   <span className="text-[12px] font-bold uppercase tracking-widest text-slate-400">
+                     {issueType === 'PREPAID' ? 'Amount to Issue (ID: 0)' : 'Tier to Mint (ID: 99+)'}
+                   </span>
+                   {issueType === 'PREPAID' ? (
+                     <div className="text-[32px] font-bold leading-none text-white">
+                       ${parseFloat(issueValue || '0').toFixed(2)}{' '}
+                       <span className="text-[16px] text-slate-400">{issueTokenSymbol.replace('$', '')}</span>
+                     </div>
+                   ) : (
+                     <div className="text-[24px] font-bold leading-none text-white">{issueValue}</div>
+                   )}
+                   <span className="mt-2 text-[11px] font-medium text-slate-500">Expires: {issueExpiry}</span>
+                 </div>
+
+                 <div className="mb-4 flex w-full items-center justify-between border-b border-white/5 px-4 py-5">
+                   <span className="text-[14px] font-bold text-slate-300">Network fee</span>
+                   <div className="flex flex-col items-end">
+                     <div className="flex items-center gap-1.5 rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-orange-500">
+                       <Fuel size={14} />
+                       <span className="text-[13px] font-bold">{ISSUE_CARD_MIN_BUINTS} B-Units</span>
+                     </div>
+                     <span className="mt-1 text-[11px] font-medium text-slate-500">≈ 2.00 USDC</span>
+                   </div>
+                 </div>
+               </div>
+
+               <div className="shrink-0 border-t border-white/5 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent p-6 sm:p-8">
+                 <button
+                   type="button"
+                   onClick={handleConfirmIssueCard}
+                   className="w-full rounded-[20px] bg-[#1562f0] py-4.5 text-[16px] font-bold text-white shadow-[0_8px_20px_rgba(21,98,240,0.25)] transition-all hover:bg-blue-600 active:scale-[0.98]"
+                 >
+                   Mint to Customer
+                 </button>
+               </div>
+             </>
+           )}
+
+           {issueCardStep === 3 && (
+             <div className="flex h-full flex-col items-center justify-center p-8 py-16 animate-in zoom-in-95">
+               <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-[#1562f0] shadow-[0_0_40px_rgba(21,98,240,0.5)]">
+                 <Check size={48} className="text-white" strokeWidth={2.5} />
+               </div>
+               <h3 className="mb-3 text-[20px] font-semibold text-slate-300">Successfully Issued</h3>
+               <div className="mb-4 text-center text-[32px] font-bold leading-none text-white">
+                 {issueType === 'PREPAID'
+                   ? `$${parseFloat(issueValue || '0').toFixed(2)} ${issueTokenSymbol.replace('$', '')}`
+                   : issueValue}
+               </div>
+               <p className="mb-12 max-w-xs text-center text-[14px] font-medium text-slate-500">
+                 ERC-1155 Asset recorded for {issueTarget} (demo). On production, mint via Beamio User Card flows.
+               </p>
+               <button
+                 type="button"
+                 onClick={closeIssueCardModal}
+                 className="mt-auto w-full rounded-[20px] bg-[#1562f0] py-4.5 text-[16px] font-bold text-white shadow-[0_8px_20px_rgba(21,98,240,0.25)] transition-all hover:bg-blue-600 active:scale-[0.98]"
+               >
+                 Done
+               </button>
+             </div>
+           )}
          </div>
        </div>
      )}
@@ -7486,7 +9859,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            </div>
            <div className="p-4 overflow-auto flex-1 min-h-0">
              <div className="bg-[#1C1C1E] rounded-[16px] p-5 overflow-x-auto shadow-inner">
-               <pre className="text-[11px] text-[#34C759] font-mono leading-relaxed whitespace-pre-wrap break-all">
+                 <pre className="break-all whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-sky-400">
                  {JSON.stringify(rawTxJsonModal, null, 2)}
                </pre>
              </div>

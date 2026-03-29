@@ -11,8 +11,6 @@ type WalletReadyScreenProps = {
 	beamioTag?: string
 }
 
-const LIME = '#A3E635'
-
 /**
  * Master Key / 恢复流程后：账户已创建，引导进入 CashTrees 前激活 Smart Account
  */
@@ -33,13 +31,12 @@ export default function WalletReadyScreen({
 				{/* Success header */}
 				<div className="flex shrink-0 flex-col items-center text-center">
 					<div
-						className="mb-3 flex h-[3.75rem] w-[3.75rem] items-center justify-center rounded-full sm:mb-4 sm:h-[4.5rem] sm:w-[4.5rem] dark:shadow-[0_0_0_8px_rgba(163,230,53,0.15),0_12px_40px_rgba(163,230,53,0.2)]"
+						className="mb-3 flex h-[3.75rem] w-[3.75rem] items-center justify-center rounded-full bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] sm:mb-4 sm:h-[4.5rem] sm:w-[4.5rem] dark:shadow-[0_0_0_8px_rgba(21,98,240,0.2),0_12px_40px_rgba(21,98,240,0.35)]"
 						style={{
-							backgroundColor: LIME,
-							boxShadow: `0 0 0 8px rgba(163, 230, 53, 0.2), 0 12px 40px rgba(163, 230, 53, 0.35)`,
+							boxShadow: `0 0 0 8px rgba(21, 98, 240, 0.18), 0 12px 40px rgba(21, 98, 240, 0.32)`,
 						}}
 					>
-						<Check size={32} strokeWidth={3.5} className="text-[#0F172A]" aria-hidden />
+						<Check size={32} strokeWidth={3.5} className="text-white" aria-hidden />
 					</div>
 					<h1
 						className="text-xl font-bold leading-tight tracking-tight text-[#0F172A] sm:text-[1.75rem] dark:text-slate-100"
@@ -58,8 +55,7 @@ export default function WalletReadyScreen({
 						style={{ boxShadow: '0 4px 24px rgba(15, 23, 42, 0.06)' }}
 					>
 						<div
-							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white"
-							style={{ backgroundColor: LIME }}
+							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] text-lg font-bold text-white"
 							aria-hidden
 						>
 							{initial}
@@ -86,11 +82,10 @@ export default function WalletReadyScreen({
 						<ul className="mt-3 flex shrink-0 flex-col gap-2 sm:mt-4 sm:gap-3">
 						<li className="flex items-center gap-3 rounded-2xl bg-slate-100/90 px-3 py-2.5 sm:px-4 sm:py-3.5 dark:bg-slate-900/60">
 							<span
-								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full dark:bg-lime-400/20"
-								style={{ backgroundColor: `${LIME}33` }}
+								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/18 dark:bg-[#1562f0]/25"
 							>
 								<Store
-									className="h-[18px] w-[18px] text-[#4d7c0f] dark:text-lime-300"
+									className="h-[18px] w-[18px] text-[#1562f0] dark:text-[#6ba3ff]"
 									strokeWidth={2.2}
 									aria-hidden
 								/>
@@ -101,11 +96,10 @@ export default function WalletReadyScreen({
 						</li>
 						<li className="flex items-center gap-3 rounded-2xl bg-slate-100/90 px-3 py-2.5 sm:px-4 sm:py-3.5 dark:bg-slate-900/60">
 							<span
-								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full dark:bg-lime-400/20"
-								style={{ backgroundColor: `${LIME}33` }}
+								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/18 dark:bg-[#1562f0]/25"
 							>
 								<CreditCard
-									className="h-[18px] w-[18px] text-[#4d7c0f] dark:text-lime-300"
+									className="h-[18px] w-[18px] text-[#1562f0] dark:text-[#6ba3ff]"
 									strokeWidth={2.2}
 									aria-hidden
 								/>
@@ -119,15 +113,14 @@ export default function WalletReadyScreen({
 
 					<div className="shrink-0 border-t border-slate-100/80 px-5 py-3 dark:border-slate-700/80 sm:px-6 sm:py-3.5">
 						<div
-							className="flex items-center justify-center gap-2 rounded-xl py-2 dark:bg-lime-400/15 sm:py-2.5"
-							style={{ backgroundColor: `${LIME}26` }}
+							className="flex items-center justify-center gap-2 rounded-xl bg-[#1562f0]/12 py-2 dark:bg-[#1562f0]/18 sm:py-2.5"
 						>
 							<Shield
-								className="h-4 w-4 shrink-0 text-[#3f6212] dark:text-lime-400"
+								className="h-4 w-4 shrink-0 text-[#0e4cbb] dark:text-[#6ba3ff]"
 								strokeWidth={2.5}
 								aria-hidden
 							/>
-							<span className="text-[11px] font-bold tracking-widest text-[#3f6212] dark:text-lime-300">
+							<span className="text-[11px] font-bold tracking-widest text-[#0e4cbb] dark:text-[#6ba3ff]">
 								ZERO SETUP FEES
 							</span>
 						</div>
@@ -138,7 +131,7 @@ export default function WalletReadyScreen({
 					<button
 						type="button"
 						onClick={onGoToHome}
-						className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#0F172A] text-[17px] font-bold text-white shadow-[0_12px_32px_rgba(15,23,42,0.25)] transition-transform active:scale-[0.98] dark:bg-white dark:text-slate-900 dark:shadow-lg"
+						className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] text-[17px] font-bold text-white shadow-[0_12px_32px_rgba(21,98,240,0.35)] transition-all hover:opacity-[0.96] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/75 focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F8FA] dark:from-[#3d8ef5] dark:to-[#1562f0] dark:shadow-[0_12px_36px_rgba(21,98,240,0.4)] dark:focus-visible:ring-offset-slate-950"
 					>
 						Enter CashTrees
 						<ArrowRight className="h-5 w-5" strokeWidth={2.5} aria-hidden />

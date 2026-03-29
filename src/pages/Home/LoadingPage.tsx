@@ -84,7 +84,7 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 					</div>
 				) : (
 				<div className="flex items-center gap-2 bg-white/60 backdrop-blur-xl border border-white/40 px-4 py-2 rounded-full shadow-sm mb-8">
-					<div className="w-4 h-4 rounded-full bg-[#1652f0] flex items-center justify-center"><ShieldCheck size={10} className="text-white" /></div>
+					<div className="w-4 h-4 rounded-full bg-[#1562f0] flex items-center justify-center"><ShieldCheck size={10} className="text-white" /></div>
 					<span className="text-[11px] font-bold text-slate-800 uppercase tracking-wide">Verified Asset • Ready to Claim</span>
 				</div>
 				)}
@@ -103,7 +103,7 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 							<div><p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">Balance</p><div className="flex items-baseline gap-1"><span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{isValid && redeemDetails ? (() => { const pts = Number(redeemDetails.pointsHuman); const ptsPer1 = Number(redeemDetails.ptsPer1Currency); const amt = ptsPer1 ? pts / ptsPer1 : pts; return formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined); })() : '100.00'}</span><span className="text-sm font-semibold opacity-90 text-[#fff2c6]">{isValid && redeemDetails ? (redeemDetails.currency as string) : 'CAD'}</span></div></div>
 						</div>
 					</div>
-					<div className="w-[90%] h-4 mx-auto bg-blue-900/20 blur-xl rounded-full mt-4" />
+					<div className="w-[90%] h-4 mx-auto bg-[#1562f0]/20 blur-xl rounded-full mt-4" />
 				</div>
 				<div className="mt-4 text-center space-y-3 max-w-xs mx-auto">
 					<h1 className="text-3xl font-bold text-slate-900 tracking-tight">Activate Your Card.</h1>
@@ -112,12 +112,13 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 			</div>
 			<div className="p-6 pb-10 mb-40 bg-gradient-to-t from-[#F5F5F7] to-transparent z-20">
 				<button
+					type="button"
 					onClick={onActivate}
 					disabled={isInvalid}
-					className={`group w-full h-16 rounded-full font-bold text-[17px] transition-all flex items-center justify-between px-2 pl-6 ${isValid ? 'bg-[#1652f0] text-white shadow-lg shadow-blue-500/30 active:scale-95' : isInvalid ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#1652f0] text-white shadow-lg shadow-blue-500/30 animate-pulse'}`}
+					className={`group w-full h-16 rounded-full font-bold text-[17px] transition-all flex items-center justify-between px-2 pl-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 ${isValid ? 'bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] text-white shadow-lg shadow-[#1562f0]/35 active:scale-95' : isInvalid ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] text-white shadow-lg shadow-[#1562f0]/35 animate-pulse'}`}
 				>
 					<span>Activate Now</span>
-					<div className={`w-12 h-12 rounded-full flex items-center justify-center ${isValid ? 'bg-white text-[#1652f0] group-hover:scale-105' : isInvalid ? 'bg-slate-100' : 'bg-white/80'}`}><ArrowRight size={24} strokeWidth={3} /></div>
+					<div className={`w-12 h-12 rounded-full flex items-center justify-center ${isValid ? 'bg-white text-[#1562f0] group-hover:scale-105' : isInvalid ? 'bg-slate-100' : 'bg-white/90 text-[#1562f0]'}`}><ArrowRight size={24} strokeWidth={3} /></div>
 				</button>
 			</div>
 		</div>
@@ -493,11 +494,11 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
             fullWidth
             className="
               rounded-[999px] !h-auto min-h-[56px] py-5 text-[17px] font-bold
-              !bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28]
-              !text-[#0F172A]
-              !shadow-[0_14px_32px_rgba(150,235,60,0.42)]
-              active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)]
-              focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50
+              !bg-gradient-to-r !from-[#1562f0] !to-[#0e4cbb] hover:!opacity-[0.96] active:!scale-[0.99]
+              !text-white
+              !shadow-[0_14px_32px_rgba(21,98,240,0.42)]
+              active:!shadow-[0_10px_24px_rgba(21,98,240,0.32)]
+              focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/70 focus-visible:!ring-offset-2
             "
             onClick={() => setSettingsOpen("CreateUsernamePinScreen")}
           >
@@ -514,6 +515,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
               !text-[#0F172A]
               !shadow-[0_10px_26px_rgba(15,23,42,0.07)]
               active:!shadow-[0_7px_18px_rgba(15,23,42,0.05)]
+              focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/40 focus-visible:!ring-offset-2
             "
             onClick={() => setSettingsOpen("RestoreEntryScreen")}
           >
@@ -531,7 +533,12 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
             bg-[#F8F9FA]
           "
         >
-          Card Ready. Non-custodial.
+          <div>Card Ready. Non-custodial.</div>
+          {APP_VERSION ? (
+            <div className="mt-1 text-[11px] font-medium text-slate-400/75 tabular-nums">
+              v{APP_VERSION}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -559,7 +566,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							<div className="w-full max-w-lg mx-auto px-6 md:px-8 min-h-full flex flex-col pt-6 pb-10" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 2.5rem)' }}>
 								{/* Success Header */}
 								<div className="flex flex-col items-center mb-8">
-									<div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/30 mb-6">
+									<div className="w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] shadow-lg shadow-[#1562f0]/35 mb-6">
 										<Check size={32} className="text-white" strokeWidth={4} />
 									</div>
 									<h1 className="text-[32px] font-bold text-slate-900 tracking-tight text-center leading-tight">Card Active!</h1>
@@ -587,7 +594,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 													<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs text-white font-semibold flex items-center gap-1">
 														<Globe size={10} className="text-white" /> Membership
 													</div>
-													<div className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1">
+													<div className="bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg shadow-[#1562f0]/30 flex items-center gap-1">
 														<Zap size={10} fill="currentColor" /> READY
 													</div>
 												</div>
@@ -626,7 +633,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										onClick={() => {
 											window.location.reload()
 										}}
-										className="h-16 rounded-full text-base font-bold uppercase tracking-wide bg-[#1652f0] hover:bg-[#1345ca] text-white shadow-[0_12px_30px_rgba(22,82,240,0.3)]"
+										className="h-16 rounded-full text-base font-bold uppercase tracking-wide bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] hover:opacity-[0.96] text-white shadow-[0_12px_30px_rgba(21,98,240,0.35)] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 focus-visible:!ring-offset-2"
 									>
 										Go To Home
 									</AppButton>
@@ -648,7 +655,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										CashTrees Wallet
 									</span>
 								</div>
-								<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
+								<span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1562f0]/12 dark:bg-[#1562f0]/25 text-[#1562f0] dark:text-[#6ba3ff] text-xs font-semibold">
 									<Check className="w-3.5 h-3.5" strokeWidth={3} />
 									VAULT ACTIVE
 								</span>
@@ -719,8 +726,8 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
 							{/* Reward Received Card */}
 							{redeemFromUrl && (
-								<div className="rounded-2xl bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/50 p-4 mb-4 flex items-start gap-3">
-									<div className="h-10 w-10 rounded-xl bg-violet-600 flex items-center justify-center shrink-0">
+								<div className="rounded-2xl bg-[#1562f0]/08 dark:bg-[#1562f0]/15 border border-[#1562f0]/18 dark:border-[#1562f0]/35 p-4 mb-4 flex items-start gap-3">
+									<div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] flex items-center justify-center shrink-0 shadow-md shadow-[#1562f0]/25">
 										{redeemDetailsLoading || redeeming ? (
 											<Loader className="w-5 h-5 text-white animate-spin" strokeWidth={2.5} />
 										) : (
@@ -754,7 +761,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										onClick={() => {
 											window.location.reload()
 										}}
-										className="h-[56px] rounded-2xl text-base font-bold uppercase tracking-wide bg-[#1652f0] hover:bg-[#1345ca] text-white shadow-[0_12px_30px_rgba(22,82,240,0.3)]"
+										className="h-[56px] rounded-2xl text-base font-bold uppercase tracking-wide bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] hover:opacity-[0.96] text-white shadow-[0_12px_30px_rgba(21,98,240,0.35)] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 focus-visible:!ring-offset-2"
 									>
 										Go To Home
 									</AppButton>

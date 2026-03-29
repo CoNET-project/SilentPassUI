@@ -279,7 +279,7 @@ const SEN_PHO_STORE_CARD_ART_URL: string = senPhoCafeStoreCardBg
 const LUMINA_STORE_CARD_ART_URL: string = luminaRoastersStoreCardBg
 
 const INITIAL_HOME_STORE_CARDS: HomeStoreCardRow[] = [
-	{ id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-lime-400 to-lime-600', borderColor: 'border-lime-700/50', iconColor: 'text-yellow-700', bgColor: 'bg-yellow-400/35', icon: Star, balanceCad: 50.0, backgroundImage: SEN_PHO_STORE_CARD_ART_URL },
+	{ id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-[#1562f0] to-[#0e4cbb]', borderColor: 'border-[#0e4cbb]/50', iconColor: 'text-blue-100', bgColor: 'bg-[#1562f0]/25', icon: Star, balanceCad: 50.0, backgroundImage: SEN_PHO_STORE_CARD_ART_URL },
 	{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-amber-900 to-stone-900', borderColor: 'border-amber-950/50', iconColor: 'text-amber-200', bgColor: 'bg-amber-950/30', icon: CreditCard, balanceCad: 10.0, backgroundImage: LUMINA_STORE_CARD_ART_URL },
 ]
 
@@ -1337,7 +1337,7 @@ const Home = ({}) => {
 		return (
 			<div className="flex gap-3 mt-4">
 				<button
-					className="flex-1 h-9 rounded-full bg-white text-sm font-semibold text-blue-600 shadow-md"
+					className="flex-1 h-9 rounded-full bg-white text-sm font-semibold text-[#1562f0] shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2"
 					onClick={() => {
 						setShowAlphaHowItWorks('Pay')
 					}}
@@ -1345,7 +1345,7 @@ const Home = ({}) => {
 					Send
 				</button>
 				<button
-					className="flex-1 h-9 rounded-full border border-blue-600 text-sm font-semibold text-blue-600 bg-white/10 shadow-md"
+					className="flex-1 h-9 rounded-full border border-[#1562f0] text-sm font-semibold text-[#1562f0] bg-white/10 shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2"
 					onClick={() => {
 						setPayTag('request')
 						navigate('/Pay')
@@ -1414,7 +1414,7 @@ const Home = ({}) => {
 
 
 	/** Home 主视觉：浅灰底 + 青柠强调（与产品 mock 对齐） */
-	const homeAccent = '#7ED321'
+	const homeAccent = '#1562f0'
 
 	const userBeamioTagDisplay = useMemo(
 		() => `@${(beamio?.accountName || '').replace(/^@/, '') || 'beamio'}`,
@@ -1806,7 +1806,7 @@ const Home = ({}) => {
 	return (
 		<div
 			className="
-		box-border flex h-full min-h-[100vh] w-full flex-col bg-[#F1F8ED] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-slate-900
+		box-border flex h-full min-h-[100vh] w-full flex-col bg-[#F3F8FF] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-slate-900
 		"
 		>
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
@@ -1876,7 +1876,7 @@ const Home = ({}) => {
 								/>
 								{linkedNfcCards.length > 0 && (
 									<span
-										className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#65A30D] dark:border-slate-800"
+										className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#1562f0] dark:border-slate-800"
 										aria-hidden
 									/>
 								)}
@@ -1951,15 +1951,15 @@ const Home = ({}) => {
 													<div className="relative">
 														<div
 															aria-hidden
-															className="pointer-events-none absolute inset-[-8px] z-0 rounded-[28px] bg-[radial-gradient(60%_60%_at_50%_40%,rgba(132,120,255,0.22),rgba(132,120,255,0.06)_55%,transparent_72%)] opacity-90"
+															className="pointer-events-none absolute inset-[-8px] z-0 rounded-[28px] bg-[radial-gradient(60%_60%_at_50%_40%,rgba(21,98,240,0.22),rgba(21,98,240,0.08)_55%,transparent_72%)] opacity-90"
 														/>
 														<div className="relative z-10 flex justify-center">
 															<div
 																className="
 																	rounded-[20px] bg-white
 																	p-2
-																	shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)]
-																	border-2 border-[#96EB3C]
+																	shadow-[0_26px_50px_rgba(21,98,240,0.22),0_10px_22px_rgba(0,0,0,0.08)]
+																	border-2 border-[#1562f0]
 																"
 															>
 																{activateWalletEoaQrValue ? (
@@ -2000,13 +2000,13 @@ const Home = ({}) => {
 
 										<button
 											type="button"
-											className="w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#96EB3C]/10 dark:hover:bg-[#96EB3C]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex flex-col items-center cursor-pointer group text-left"
+											className="w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex flex-col items-center cursor-pointer group text-left"
 										>
 											<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
 												<CreditCard size={14} aria-hidden /> Option 2: Got a Card?
 											</span>
 											<div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center mb-2 shadow-sm border border-gray-100 dark:border-slate-600 group-hover:scale-110 transition-transform">
-												<Radio size={20} className="text-[#65A30D]" aria-hidden />
+												<Radio size={20} className="text-[#1562f0]" aria-hidden />
 											</div>
 											<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Sync NFC Card</p>
 											<p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Tap funded card to phone.</p>
@@ -2027,7 +2027,7 @@ const Home = ({}) => {
 											openCashTreesBalanceSheet()
 										}
 									}}
-									className="relative w-full max-w-full max-md:aspect-[7/4] md:aspect-auto flex min-h-0 flex-col rounded-[2rem] p-4 text-gray-900 shadow-xl shadow-black/15 dark:shadow-black/30 md:p-6 overflow-hidden transform transition-transform hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer border border-white/35 dark:border-white/15"
+									className="relative w-full max-w-full max-md:aspect-[7/4] md:aspect-auto flex min-h-0 flex-col rounded-[2rem] p-4 text-gray-900 shadow-xl shadow-black/15 dark:shadow-black/30 md:p-6 overflow-hidden transform transition-transform hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer border border-white/35 dark:border-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F8FF] dark:focus-visible:ring-offset-slate-900"
 								>
 									<div
 										className="absolute inset-0 w-full min-w-full pointer-events-none overflow-hidden rounded-[inherit]"
@@ -2063,7 +2063,7 @@ const Home = ({}) => {
 													draggable={false}
 												/>
 												<div className="flex min-w-0 flex-col items-start justify-center">
-													<span className="mb-1 text-lg font-extrabold leading-none tracking-tight text-[#65A30D] dark:text-[#9AE66E] drop-shadow-sm md:mb-1.5 md:text-[22px]">
+													<span className="mb-1 text-lg font-extrabold leading-none tracking-tight text-[#1562f0] dark:text-[#6ba3ff] drop-shadow-sm md:mb-1.5 md:text-[22px]">
 														VERRA
 													</span>
 													<button
@@ -2073,7 +2073,7 @@ const Home = ({}) => {
 															void copyCashTreesAaAddress()
 														}}
 														disabled={!cashTreesCardDisplay.aaFull}
-														className="flex max-w-full items-center gap-1.5 rounded-md border border-gray-900/5 bg-gray-900/10 px-2 py-0.5 shadow-sm transition-colors hover:bg-gray-900/20 disabled:opacity-50"
+														className="flex max-w-full items-center gap-1.5 rounded-md border border-gray-900/5 bg-gray-900/10 px-2 py-0.5 shadow-sm transition-colors hover:bg-gray-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 disabled:opacity-50"
 														aria-label="Copy Smart Account address"
 													>
 														<span className="truncate font-mono text-[9px] font-semibold uppercase tracking-widest text-gray-800 md:text-[10px]">
@@ -2093,7 +2093,7 @@ const Home = ({}) => {
 													e.stopPropagation()
 													openCashTreesBalanceSheet()
 												}}
-												className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-900/5 bg-gray-900/10 text-gray-900 shadow-sm backdrop-blur-sm transition-colors hover:bg-gray-900/20 md:h-8 md:w-8"
+												className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-900/5 bg-gray-900/10 text-gray-900 shadow-sm backdrop-blur-sm transition-colors hover:bg-gray-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 md:h-8 md:w-8"
 												aria-label="Balance details"
 											>
 												<Info size={16} strokeWidth={2.5} aria-hidden />
@@ -2118,8 +2118,8 @@ const Home = ({}) => {
 
 											<div className="mb-0 flex shrink-0 items-center rounded-full border border-white/25 bg-white/20 px-2 py-1 shadow-sm backdrop-blur-md md:mb-1.5 md:px-3 md:py-1.5">
 												<div className="relative mr-0 flex h-2 w-2 shrink-0 min-[350px]:mr-2">
-													<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-200 opacity-75" />
-													<span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-100" />
+													<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#1562f0]/35 opacity-75" />
+													<span className="relative inline-flex h-2 w-2 rounded-full bg-[#6ba3ff]" />
 												</div>
 												<span className="max-[349px]:sr-only text-[9px] font-bold uppercase tracking-wider text-white drop-shadow-sm md:text-[10px]">
 													{cashTreesPhysicalCardBoundEffective ? 'Card Linked' : 'Virtual Active'}
@@ -2141,7 +2141,7 @@ const Home = ({}) => {
 										<button
 											type="button"
 											onClick={() => startCashTreesPhysicalCardBind()}
-											className="flex items-center gap-1.5 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:text-[#65A30D] dark:hover:text-[#9AE66E] hover:border-[#96EB3C]/50 transition-all active:scale-95"
+											className="flex items-center gap-1.5 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:text-[#1562f0] dark:hover:text-[#6ba3ff] hover:border-[#1562f0]/50 transition-all active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/60 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800"
 										>
 											<Plus size={14} strokeWidth={2.5} aria-hidden />
 											<Radio size={14} aria-hidden />
@@ -2186,7 +2186,7 @@ const Home = ({}) => {
 												className={`snap-start w-[min(280px,calc(100vw-5rem))] aspect-[7/4] shrink-0 rounded-[1.5rem] p-5 shadow-md border border-white/50 relative overflow-hidden cursor-pointer hover:-translate-y-1 transition-transform flex flex-col ${
 													photoBg
 														? card.id === 'senpho'
-															? 'bg-[#9ACD32]'
+															? 'bg-[#1562f0]/35'
 															: 'bg-[#3d2b1f]'
 														: `bg-gradient-to-br ${card.color}`
 												}`}
@@ -2262,7 +2262,7 @@ const Home = ({}) => {
 												navigate('/Browser')
 											}
 										}}
-										className="snap-start self-stretch min-w-[120px] max-w-[132px] shrink-0 bg-gray-50 dark:bg-slate-800/80 border-2 border-dashed border-white/50 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-[#65A30D] dark:hover:text-[#9AE66E] hover:border-white/70 transition-colors cursor-pointer"
+										className="snap-start self-stretch min-w-[120px] max-w-[132px] shrink-0 bg-gray-50 dark:bg-slate-800/80 border-2 border-dashed border-white/50 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-[#1562f0] dark:hover:text-[#6ba3ff] hover:border-white/70 transition-colors cursor-pointer"
 									>
 										<Plus size={24} className="mb-2" aria-hidden />
 										<span className="text-xs font-bold uppercase tracking-wider">Discover</span>
@@ -2275,10 +2275,10 @@ const Home = ({}) => {
 								<button
 									type="button"
 									onClick={handleAddFunds}
-									className="flex-1 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/80 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 dark:border-slate-600 group"
+									className="flex-1 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/80 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 dark:border-slate-600 group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/65 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
 								>
-									<div className="w-12 h-12 bg-[#96EB3C] rounded-full flex items-center justify-center shadow-[0_4px_14px_rgba(150,235,60,0.4)]">
-										<ArrowDownToLine size={24} className="text-gray-900" />
+									<div className="w-12 h-12 bg-[#1562f0] rounded-full flex items-center justify-center shadow-[0_4px_14px_rgba(21,98,240,0.45)]">
+										<ArrowDownToLine size={24} className="text-white" />
 									</div>
 									<span className="font-semibold text-[11px] text-gray-700 dark:text-slate-300 tracking-wide uppercase">Add Cash</span>
 								</button>
@@ -2288,10 +2288,10 @@ const Home = ({}) => {
 										setShowGiftSheet(true)
 										setShowFooter(false)
 									}}
-									className="flex-1 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/80 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 dark:border-slate-600 group relative overflow-hidden"
+									className="flex-1 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/80 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 dark:border-slate-600 group relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/65 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
 								>
-									<div className="absolute top-0 right-0 w-12 h-12 bg-pink-100 dark:bg-pink-900/30 rounded-full -mr-4 -mt-4 blur-xl opacity-60" />
-									<div className="w-12 h-12 bg-pink-50 dark:bg-pink-950/50 rounded-full flex items-center justify-center text-pink-500 border border-pink-100 dark:border-pink-800/50 relative z-10">
+									<div className="absolute top-0 right-0 w-12 h-12 bg-[#1562f0]/15 dark:bg-[#1562f0]/20 rounded-full -mr-4 -mt-4 blur-xl opacity-70" />
+									<div className="w-12 h-12 bg-[#1562f0]/10 dark:bg-[#1562f0]/15 rounded-full flex items-center justify-center text-[#1562f0] border border-[#1562f0]/25 dark:border-[#1562f0]/35 relative z-10">
 										<Gift size={22} className="group-hover:scale-110 transition-transform duration-300" />
 									</div>
 									<span className="font-semibold text-[11px] text-gray-700 dark:text-slate-300 tracking-wide uppercase relative z-10">Gift Card</span>
@@ -2303,7 +2303,7 @@ const Home = ({}) => {
 										setShowPayReceiveSheet(true)
 										setShowFooter(false)
 									}}
-									className="flex-1 bg-gray-900 dark:bg-gray-950 hover:bg-gray-800 dark:hover:bg-black active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-xl shadow-gray-900/20"
+									className="flex-1 bg-gray-900 dark:bg-gray-950 hover:bg-gray-800 dark:hover:bg-black active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-xl shadow-gray-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F8FF] dark:focus-visible:ring-offset-slate-900"
 								>
 									<div className="w-12 h-12 bg-gray-800 dark:bg-gray-800 rounded-full flex items-center justify-center text-white border border-gray-700 dark:border-gray-600">
 										<Scan size={20} />
@@ -2331,7 +2331,7 @@ const Home = ({}) => {
 								compactLimit={5}
 								bare
 								sectionTitleClassName="text-base font-bold text-[#0F172A] dark:text-slate-100 tracking-tight"
-								viewAllClassName="text-[#7ED321] hover:text-[#6bc11a]"
+								viewAllClassName="text-[#1562f0] hover:text-[#0e4cbb]"
 							/>
 								</>
 							)}
@@ -2443,7 +2443,7 @@ const Home = ({}) => {
 										setSelectedHomeStoreCard(null)
 										navigate('/Browser')
 									}}
-									className="w-full py-3.5 rounded-2xl bg-[#96EB3C] text-[#0F172A] font-bold hover:bg-[#8ad936] active:scale-[0.99] transition-transform"
+									className="w-full py-3.5 rounded-2xl bg-[#1562f0] text-white font-bold hover:bg-[#1257d9] active:scale-[0.99] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
 								>
 									View in Discover
 								</button>
@@ -2473,7 +2473,7 @@ const Home = ({}) => {
 								aria-hidden
 							/>
 							<motion.div
-								className="relative z-10 w-full max-h-[85dvh] pointer-events-auto bg-[#F1F8ED] dark:bg-slate-900 rounded-t-[2.5rem] p-6 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-gray-200/80 dark:border-slate-700 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] overflow-y-auto overscroll-contain"
+								className="relative z-10 w-full max-h-[85dvh] pointer-events-auto bg-[#F3F8FF] dark:bg-slate-900 rounded-t-[2.5rem] p-6 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-gray-200/80 dark:border-slate-700 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] overflow-y-auto overscroll-contain"
 								initial={{ y: '100%' }}
 								animate={{ y: 0 }}
 								exit={{ y: '100%' }}
@@ -2486,7 +2486,7 @@ const Home = ({}) => {
 								
 								{cashTreesBalanceLoading && (
 									<div className="flex flex-col items-center justify-center py-10 gap-3 mb-4">
-										<Loader2 className="w-10 h-10 text-[#65A30D] animate-spin" aria-hidden />
+										<Loader2 className="w-10 h-10 text-[#1562f0] animate-spin" aria-hidden />
 										<span className="text-sm text-gray-500 dark:text-slate-400">Loading balances…</span>
 									</div>
 								)}
@@ -2524,9 +2524,9 @@ const Home = ({}) => {
 										</div>
 
 										{/* 基础设施卡 token #0 / points */}
-										<div className="p-4 flex items-center justify-between bg-gradient-to-r from-[#96EB3C]/15 to-transparent dark:from-[#65A30D]/20 dark:to-transparent">
+										<div className="p-4 flex items-center justify-between bg-gradient-to-r from-[#1562f0]/15 to-transparent dark:from-[#1562f0]/20 dark:to-transparent">
 											<div className="flex items-center gap-3 min-w-0">
-												<div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-[#96EB3C]/30 dark:border-[#65A30D]/40 shrink-0" aria-hidden>
+												<div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-[#1562f0]/30 dark:border-[#1562f0]/40 shrink-0" aria-hidden>
 													<img
 														src={`${process.env.PUBLIC_URL ?? ''}/logo512.png`}
 														alt=""
@@ -2536,7 +2536,7 @@ const Home = ({}) => {
 												</div>
 												<div className="flex flex-col min-w-0">
 													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">Sen Pho + Cafe</span>
-													<span className="text-[10px] text-[#65A30D] dark:text-[#9AE66E] font-bold uppercase tracking-wider mt-0.5">Eligible for Store Discounts</span>
+													<span className="text-[10px] text-[#1562f0] dark:text-[#6ba3ff] font-bold uppercase tracking-wider mt-0.5">Eligible for Store Discounts</span>
 												</div>
 											</div>
 											<div className="text-right shrink-0 pl-2">
@@ -2549,7 +2549,7 @@ const Home = ({}) => {
 								<button
 									type="button"
 									onClick={closeCashTreesBalanceSheet}
-									className="w-full py-4 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 active:scale-[0.98] text-gray-900 dark:text-slate-100 rounded-2xl font-bold transition-all shadow-sm border border-gray-200 dark:border-slate-600 shrink-0"
+									className="w-full py-4 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 active:scale-[0.98] text-gray-900 dark:text-slate-100 rounded-2xl font-bold transition-all shadow-sm border border-gray-200 dark:border-slate-600 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
 								>
 									Close
 								</button>
@@ -2576,11 +2576,11 @@ const Home = ({}) => {
 									}
 								}}
 							/>
-							<div className="relative z-10 w-full max-w-[300px] rounded-[2rem] border-2 border-[#96EB3C]/45 dark:border-[#65A30D]/50 bg-white dark:bg-slate-900 shadow-xl shadow-[#96EB3C]/15 overflow-hidden min-h-[280px] flex flex-col">
+							<div className="relative z-10 w-full max-w-[300px] rounded-[2rem] border-2 border-[#1562f0]/45 dark:border-[#1562f0]/50 bg-white dark:bg-slate-900 shadow-xl shadow-[#1562f0]/15 overflow-hidden min-h-[280px] flex flex-col">
 								{(cashTreesNfcOverlay.phase === 'tap' || cashTreesNfcOverlay.phase === 'fetch') && (
 									<>
 										<div className="relative flex-1 flex flex-col items-center justify-center px-6 pt-10 pb-6 min-h-[220px]">
-											<div className="absolute inset-3 border-2 border-[#96EB3C]/25 rounded-[1.65rem] pointer-events-none" />
+											<div className="absolute inset-3 border-2 border-[#1562f0]/25 rounded-[1.65rem] pointer-events-none" />
 											{cashTreesNfcOverlay.phase === 'tap' ? (
 												<>
 													<Nfc
@@ -2595,7 +2595,7 @@ const Home = ({}) => {
 											) : (
 												<>
 													<Loader2
-														className="w-16 h-16 text-[#65A30D] dark:text-[#9AE66E] animate-spin mb-4"
+														className="w-16 h-16 text-[#1562f0] dark:text-[#6ba3ff] animate-spin mb-4"
 														aria-hidden
 													/>
 													<p className="text-lg font-bold text-gray-900 dark:text-slate-100 text-center">
@@ -2627,8 +2627,8 @@ const Home = ({}) => {
 								{cashTreesNfcOverlay.phase === 'result' && cashTreesNfcOverlay.linkResult != null && (
 									<div className="flex flex-col p-6 pb-5">
 										<div className="flex flex-col items-center mb-5">
-											<div className="w-12 h-12 rounded-full bg-emerald-500/15 flex items-center justify-center mb-3">
-												<Check className="w-7 h-7 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} aria-hidden />
+											<div className="w-12 h-12 rounded-full bg-[#1562f0]/15 flex items-center justify-center mb-3">
+												<Check className="w-7 h-7 text-[#1562f0] dark:text-[#6ba3ff]" strokeWidth={2.5} aria-hidden />
 											</div>
 											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight text-center">
 												Physical card linked
@@ -2660,7 +2660,7 @@ const Home = ({}) => {
 										<button
 											type="button"
 											onClick={() => cancelCashTreesNfcBind()}
-											className="w-full py-3.5 bg-gradient-to-r from-[#8AE131] to-[#67AD0F] dark:from-[#6fb828] dark:to-[#4f9410] text-gray-900 font-bold rounded-full shadow-md border border-[#96EB3C]/40"
+											className="w-full py-3.5 bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] dark:from-[#3d8ef5] dark:to-[#1562f0] text-white font-bold rounded-full shadow-md shadow-[#1562f0]/25 border border-[#1562f0]/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
 										>
 											Done
 										</button>
@@ -2715,7 +2715,7 @@ const Home = ({}) => {
 								onClick={() => setShowCardManagementModal(false)}
 							/>
 							<motion.div
-								className="pointer-events-auto relative z-10 mt-auto flex max-h-[85dvh] flex-col overflow-y-auto overscroll-contain rounded-t-[2.5rem] bg-[#F1F8ED] p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] dark:bg-slate-900 dark:shadow-[0_-10px_40px_rgba(0,0,0,0.35)]"
+								className="pointer-events-auto relative z-10 mt-auto flex max-h-[85dvh] flex-col overflow-y-auto overscroll-contain rounded-t-[2.5rem] bg-[#F3F8FF] p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] dark:bg-slate-900 dark:shadow-[0_-10px_40px_rgba(0,0,0,0.35)]"
 								initial={{ y: '100%' }}
 								animate={{ y: 0 }}
 								exit={{ y: '100%' }}
@@ -2739,7 +2739,7 @@ const Home = ({}) => {
 								</p>
 								{linkedNfcListLoading && linkedNfcCards.length === 0 && (
 									<div className="mb-4 flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
-										<Loader2 className="h-4 w-4 animate-spin text-[#65A30D]" aria-hidden />
+										<Loader2 className="h-4 w-4 animate-spin text-[#1562f0]" aria-hidden />
 										Loading linked cards…
 									</div>
 								)}
@@ -2754,7 +2754,7 @@ const Home = ({}) => {
 											key={card.id}
 											className={`flex items-center justify-between rounded-2xl border bg-white p-4 shadow-sm transition-all dark:bg-slate-800 ${
 												card.isPrimaryUi && card.linkState === 'active'
-													? 'border-[#96EB3C] dark:border-[#65A30D]'
+													? 'border-[#1562f0] dark:border-[#1562f0]'
 													: 'border-gray-100 dark:border-slate-600'
 											}`}
 										>
@@ -2762,7 +2762,7 @@ const Home = ({}) => {
 												<div
 													className={`mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
 														card.linkState === 'active'
-															? 'bg-[#96EB3C]/20 text-[#65A30D] dark:bg-[#65A30D]/25 dark:text-[#9AE66E]'
+															? 'bg-[#1562f0]/20 text-[#1562f0] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]'
 															: 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500'
 													}`}
 												>
@@ -2804,7 +2804,7 @@ const Home = ({}) => {
 													</button>
 												)}
 												{card.linkState === 'active' && card.isPrimaryUi && (
-													<span className="flex items-center gap-1 rounded-lg bg-[#96EB3C]/20 px-3 py-1.5 text-xs font-bold text-[#65A30D] dark:bg-[#65A30D]/25 dark:text-[#9AE66E]">
+													<span className="flex items-center gap-1 rounded-lg bg-[#1562f0]/20 px-3 py-1.5 text-xs font-bold text-[#1562f0] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
 														<CheckCircle2 size={14} aria-hidden /> Active
 													</span>
 												)}
@@ -2908,7 +2908,7 @@ const Home = ({}) => {
 											<div className="w-full flex flex-col items-center mb-4">
 												{payRelayQRLoading && !payRelayQRPayload && (
 													<div className="flex flex-col items-center justify-center py-10 gap-3">
-														<Loader2 className="w-10 h-10 text-[#65A30D] animate-spin" aria-hidden />
+														<Loader2 className="w-10 h-10 text-[#1562f0] animate-spin" aria-hidden />
 														<span className="text-sm text-gray-500 dark:text-slate-400">Generating pay code...</span>
 													</div>
 												)}
@@ -2934,7 +2934,7 @@ const Home = ({}) => {
 												)}
 											</div>
 											<div className="flex items-center gap-2 mb-6">
-												<div className="w-2 h-2 bg-[#65A30D] rounded-full animate-pulse" />
+												<div className="w-2 h-2 bg-[#1562f0] rounded-full animate-pulse" />
 												<span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
 													Auto-refreshes every minute
 												</span>
@@ -2942,7 +2942,7 @@ const Home = ({}) => {
 											<button
 												type="button"
 												onClick={closePayReceiveSheet}
-												className="mt-auto w-full rounded-full border border-[#96EB3C]/50 bg-gradient-to-r from-[#8AE131] to-[#67AD0F] py-4 font-bold text-gray-900 shadow-md shadow-[#96EB3C]/25 transition-all hover:opacity-95 active:scale-[0.98] dark:border-[#65A30D]/50 dark:from-[#6fb828] dark:to-[#4f9410] dark:shadow-[#65A30D]/20"
+												className="mt-auto w-full rounded-full border border-[#1562f0]/50 bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] py-4 font-bold text-white shadow-md shadow-[#1562f0]/35 transition-all hover:opacity-95 active:scale-[0.98] dark:border-[#1562f0]/50 dark:from-[#3d8ef5] dark:to-[#1562f0] dark:shadow-[#1562f0]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
 											>
 												Done
 											</button>
@@ -2967,7 +2967,7 @@ const Home = ({}) => {
 											<button
 												type="button"
 												onClick={closePayReceiveSheet}
-												className="mt-4 w-full shrink-0 rounded-full border border-[#96EB3C]/50 bg-gradient-to-r from-[#8AE131] to-[#67AD0F] py-4 font-bold text-gray-900 shadow-md shadow-[#96EB3C]/25 transition-all hover:opacity-95 active:scale-[0.98] dark:border-[#65A30D]/50 dark:from-[#6fb828] dark:to-[#4f9410] dark:shadow-[#65A30D]/20"
+												className="mt-4 w-full shrink-0 rounded-full border border-[#1562f0]/50 bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] py-4 font-bold text-white shadow-md shadow-[#1562f0]/35 transition-all hover:opacity-95 active:scale-[0.98] dark:border-[#1562f0]/50 dark:from-[#3d8ef5] dark:to-[#1562f0] dark:shadow-[#1562f0]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
 											>
 												Done
 											</button>
@@ -3040,12 +3040,12 @@ const Home = ({}) => {
 												<button
 													type="button"
 													onClick={() => setAddCashMode('store_qr')}
-													className="w-full text-left bg-white dark:bg-slate-800/80 border border-[#96EB3C]/50 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-[#96EB3C]/10 dark:hover:bg-[#96EB3C]/15 active:scale-[0.98] transition-all relative overflow-hidden group"
+													className="w-full text-left bg-white dark:bg-slate-800/80 border border-[#1562f0]/50 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 active:scale-[0.98] transition-all relative overflow-hidden group"
 												>
-													<div className="absolute top-0 right-0 w-24 h-24 bg-[#96EB3C]/20 rounded-full -mr-10 -mt-10 blur-xl group-hover:bg-[#96EB3C]/30 transition-colors" />
+													<div className="absolute top-0 right-0 w-24 h-24 bg-[#1562f0]/20 rounded-full -mr-10 -mt-10 blur-xl group-hover:bg-[#1562f0]/30 transition-colors" />
 													<div className="flex items-center relative z-10">
-														<div className="w-10 h-10 bg-[#96EB3C] rounded-xl flex items-center justify-center mr-3 shadow-sm">
-															<Store className="text-gray-900" size={20} />
+														<div className="w-10 h-10 bg-[#1562f0] rounded-xl flex items-center justify-center mr-3 shadow-sm">
+															<Store className="text-white" size={20} />
 														</div>
 														<div>
 															<p className="font-bold text-gray-900 dark:text-slate-100">Load Store Card via Cashier</p>
@@ -3076,8 +3076,8 @@ const Home = ({}) => {
 													className="w-full text-left bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
 												>
 													<div className="flex items-center">
-														<div className="w-10 h-10 bg-blue-50 dark:bg-slate-700 border border-blue-100 dark:border-slate-600 rounded-xl flex items-center justify-center mr-3">
-															<ArrowRightLeft className="text-blue-600 dark:text-blue-400" size={20} />
+														<div className="w-10 h-10 bg-[#1562f0]/10 dark:bg-slate-700 border border-[#1562f0]/20 dark:border-slate-600 rounded-xl flex items-center justify-center mr-3">
+															<ArrowRightLeft className="text-[#1562f0] dark:text-[#6ba3ff]" size={20} />
 														</div>
 														<div>
 															<p className="font-bold text-gray-900 dark:text-slate-100">Top Up Store Card</p>
@@ -3094,7 +3094,7 @@ const Home = ({}) => {
 												<button
 													type="button"
 													onClick={() => setAddCashMode('methods')}
-													className="text-[#65A30D] dark:text-[#96EB3C] font-bold flex items-center text-sm absolute left-0"
+													className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
 												>
 													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
 												</button>
@@ -3127,7 +3127,7 @@ const Home = ({}) => {
 												<button
 													type="button"
 													onClick={() => setAddCashMode('methods')}
-													className="text-[#65A30D] dark:text-[#96EB3C] font-bold flex items-center text-sm absolute left-0"
+													className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
 												>
 													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
 												</button>
@@ -3152,7 +3152,7 @@ const Home = ({}) => {
 													<div className="flex justify-between items-center">
 														<span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Network</span>
 														<div className="flex items-center bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600">
-															<div className="w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center mr-1.5" />
+															<div className="w-3.5 h-3.5 bg-[#1562f0] rounded-full flex items-center justify-center mr-1.5" />
 															<span className="text-xs font-bold text-gray-900 dark:text-slate-100">Base</span>
 														</div>
 													</div>
@@ -3191,7 +3191,7 @@ const Home = ({}) => {
 																	setTopUpStore(card)
 																	setIsSelectingTopUpStore(false)
 																}}
-																className="w-full flex items-center p-4 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl cursor-pointer hover:border-[#65A30D] dark:hover:border-[#96EB3C] hover:bg-[#96EB3C]/5 dark:hover:bg-[#96EB3C]/10 transition-colors shadow-sm text-left"
+																className="w-full flex items-center p-4 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl cursor-pointer hover:border-[#1562f0] dark:hover:border-[#1562f0] hover:bg-[#1562f0]/5 dark:hover:bg-[#1562f0]/10 transition-colors shadow-sm text-left"
 															>
 																<div
 																	className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 shadow-inner bg-gradient-to-br ${card.color} text-white`}
@@ -3216,7 +3216,7 @@ const Home = ({}) => {
 													<button
 														type="button"
 														onClick={() => setAddCashMode('methods')}
-														className="text-[#65A30D] dark:text-[#96EB3C] font-bold flex items-center text-sm absolute left-0"
+														className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
 													>
 														<ChevronRight className="rotate-180 mr-1" size={16} /> Back
 													</button>
@@ -3237,7 +3237,7 @@ const Home = ({}) => {
 																	: '0.00'}
 															</span>
 															<div className="flex items-center bg-white dark:bg-slate-900 px-3 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-slate-600 shrink-0">
-																<div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-[10px] mr-1.5">
+																<div className="w-5 h-5 bg-[#1562f0] rounded-full flex items-center justify-center text-white font-bold text-[10px] mr-1.5">
 																	$
 																</div>
 																<span className="text-sm font-bold text-gray-900 dark:text-slate-100">USDC</span>
@@ -3249,13 +3249,13 @@ const Home = ({}) => {
 															<ArrowDownToLine size={18} className="text-gray-400" />
 														</div>
 													</div>
-													<div className="bg-white dark:bg-slate-800/80 border border-[#96EB3C]/50 rounded-3xl p-5 mt-2 relative shadow-sm">
+													<div className="bg-white dark:bg-slate-800/80 border border-[#1562f0]/50 rounded-3xl p-5 mt-2 relative shadow-sm">
 														<div className="flex justify-between items-center mb-2">
 															<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">To Store Card (CAD)</span>
 															<button
 																type="button"
 																onClick={() => setIsSelectingTopUpStore(true)}
-																className="text-xs text-[#65A30D] dark:text-[#96EB3C] font-bold hover:underline"
+																className="text-xs text-[#1562f0] dark:text-[#6ba3ff] font-bold hover:underline"
 															>
 																Change
 															</button>
@@ -3276,7 +3276,7 @@ const Home = ({}) => {
 																onChange={(e) => setAddCashAmountCad(e.target.value)}
 																inputMode="decimal"
 																autoComplete="off"
-																className="bg-transparent text-3xl font-bold text-[#65A30D] dark:text-[#96EB3C] outline-none w-1/2 min-w-0 placeholder-[#65A30D]/30 dark:placeholder-[#96EB3C]/30 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+																className="bg-transparent text-3xl font-bold text-[#1562f0] dark:text-[#6ba3ff] outline-none w-1/2 min-w-0 placeholder-[#1562f0]/30 dark:placeholder-[#6ba3ff]/35 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
 															/>
 															<div className="flex items-center bg-gray-50 dark:bg-slate-900 px-3 py-1.5 rounded-full border border-gray-100 dark:border-slate-600 shrink-0">
 																<span className="text-sm font-bold text-gray-700 dark:text-slate-200">CAD</span>
@@ -3291,20 +3291,20 @@ const Home = ({}) => {
 																	<span className="font-semibold text-gray-900 dark:text-slate-100 text-right inline-flex items-center gap-1">
 																		1 USDC = {addCashTopUpCadPerUsdc.toFixed(4)} CAD
 																		{topUpOracleLoading && topUpRateRefreshStatus === 'idle' ? (
-																			<Loader2 className="w-3.5 h-3.5 animate-spin text-[#65A30D] shrink-0" aria-hidden />
+																			<Loader2 className="w-3.5 h-3.5 animate-spin text-[#1562f0] shrink-0" aria-hidden />
 																		) : null}
 																	</span>
 																	<button
 																		type="button"
 																		onClick={() => void refreshTopUpOracleRate(true)}
 																		disabled={topUpRateRefreshStatus !== 'idle'}
-																		className="p-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+																		className="p-1.5 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/60"
 																		aria-label="Refresh exchange rate"
 																	>
 																		{topUpRateRefreshStatus === 'loading' ? (
 																			<Loader2 className="w-4 h-4 animate-spin" aria-hidden />
 																		) : topUpRateRefreshStatus === 'success' ? (
-																			<Check className="w-4 h-4 text-emerald-500" aria-hidden />
+																			<Check className="w-4 h-4 text-[#1562f0]" aria-hidden />
 																		) : topUpRateRefreshStatus === 'error' ? (
 																			<AlertTriangle className="w-4 h-4 text-amber-500" aria-hidden />
 																		) : (
@@ -3341,7 +3341,7 @@ const Home = ({}) => {
 															!Number.isFinite(parseFloat(addCashAmountCad)) ||
 															parseFloat(addCashAmountCad) / addCashTopUpCadPerUsdc > addCashVaultUsdc
 																? 'bg-gray-200 dark:bg-slate-700 text-gray-400 dark:text-slate-500 cursor-not-allowed'
-																: 'bg-[#96EB3C] hover:bg-[#8ad936] active:scale-95 text-gray-900 shadow-[0_4px_14px_rgba(150,235,60,0.4)]'
+																: 'bg-[#1562f0] hover:bg-[#1257d9] active:scale-95 text-white shadow-[0_4px_14px_rgba(21,98,240,0.45)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900'
 														}`}
 													>
 														<ArrowDownToLine
@@ -3352,7 +3352,7 @@ const Home = ({}) => {
 																!Number.isFinite(parseFloat(addCashAmountCad)) ||
 																parseFloat(addCashAmountCad) / addCashTopUpCadPerUsdc > addCashVaultUsdc
 																	? 'text-gray-400'
-																	: 'text-gray-900'
+																	: 'text-white'
 															}
 														/>
 														Confirm Top Up
@@ -3423,7 +3423,7 @@ const Home = ({}) => {
 															id: 'usdc' as const,
 															name: 'USDC Balance',
 															type: 'Unallocated Funds',
-															color: 'bg-blue-500',
+															color: 'bg-[#1562f0]',
 															text: 'text-white',
 															balanceCad: giftUsdcValuationCad,
 														} satisfies HomeUsdcGiftVault,
@@ -3440,12 +3440,12 @@ const Home = ({}) => {
 																setGiftStore(card)
 																setIsSelectingGiftStore(false)
 															}}
-															className="w-full flex items-center p-4 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl cursor-pointer hover:border-[#65A30D] dark:hover:border-[#96EB3C] hover:bg-[#96EB3C]/5 dark:hover:bg-[#96EB3C]/10 transition-colors shadow-sm text-left"
+															className="w-full flex items-center p-4 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl cursor-pointer hover:border-[#1562f0] dark:hover:border-[#1562f0] hover:bg-[#1562f0]/5 dark:hover:bg-[#1562f0]/10 transition-colors shadow-sm text-left"
 														>
 															<div
 																className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 shadow-inner ${
 																	card.id === 'usdc'
-																		? 'bg-blue-500'
+																		? 'bg-[#1562f0]'
 																		: `bg-gradient-to-br ${(card as HomeStoreCardRow).color}`
 																} text-white`}
 															>
@@ -3475,8 +3475,8 @@ const Home = ({}) => {
 									) : (
 										<div className="flex flex-col animate-in fade-in duration-200">
 											<div className="flex flex-col items-center justify-center mb-6 mt-2">
-												<div className="w-16 h-16 bg-pink-50 dark:bg-pink-950/40 rounded-full flex items-center justify-center mb-4 shadow-sm border border-pink-100 dark:border-pink-900/50">
-													<Gift size={32} className="text-pink-500" />
+												<div className="w-16 h-16 bg-[#1562f0]/10 dark:bg-[#1562f0]/15 rounded-full flex items-center justify-center mb-4 shadow-sm border border-[#1562f0]/20 dark:border-[#1562f0]/30">
+													<Gift size={32} className="text-[#1562f0] dark:text-[#6ba3ff]" />
 												</div>
 												<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">
 													Send a Store Gift
@@ -3506,7 +3506,7 @@ const Home = ({}) => {
 															<div
 																className={`w-4 h-4 rounded-full ${
 																	giftStore.id === 'usdc'
-																		? 'bg-blue-500'
+																		? 'bg-[#1562f0]'
 																		: `bg-gradient-to-br ${(giftStore as HomeStoreCardRow).color}`
 																} border border-white/20 shadow-inner`}
 															/>
@@ -3515,7 +3515,7 @@ const Home = ({}) => {
 														</>
 													) : (
 														<>
-															<div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white text-[8px] font-bold">
+															<div className="w-4 h-4 rounded-full bg-[#1562f0] flex items-center justify-center text-white text-[8px] font-bold">
 																$
 															</div>
 															Unallocated USDC <ChevronRight size={14} className="text-gray-400 inline" />
@@ -3567,7 +3567,7 @@ const Home = ({}) => {
 																		onClick={() => onPickGiftRecipientHit(r)}
 																		className="flex flex-shrink-0 flex-col items-center gap-1 active:scale-95 transition-transform"
 																	>
-																		<div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-slate-200 ring-2 ring-transparent hover:ring-blue-300 dark:bg-slate-600 dark:hover:ring-blue-500">
+																		<div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-slate-200 ring-2 ring-transparent hover:ring-[#1562f0]/35 dark:bg-slate-600 dark:hover:ring-[#6ba3ff]/45">
 																			{r.image ? (
 																				<img src={r.image} alt={r.username} className="h-full w-full object-cover" />
 																			) : (
@@ -3578,7 +3578,7 @@ const Home = ({}) => {
 																				/>
 																			)}
 																		</div>
-																		<span className="max-w-[56px] truncate text-[11px] font-medium text-blue-600 dark:text-blue-400">
+																		<span className="max-w-[56px] truncate text-[11px] font-medium text-[#1562f0] dark:text-[#6ba3ff]">
 																			@
 																			{(r.username || r.address?.slice(0, 6) || '').replace(/^@/, '')}
 																		</span>
@@ -3675,10 +3675,10 @@ const Home = ({}) => {
 																)}
 															</div>
 															<div className="pointer-events-none mt-1 flex flex-col items-center">
-																<div className="text-[18px] font-semibold leading-[18px] text-blue-600 dark:text-blue-400">
+																<div className="text-[18px] font-semibold leading-[18px] text-[#1562f0] dark:text-[#6ba3ff]">
 																	@{giftRecipientSelected.username}
 																</div>
-																<div className="mt-0.5 text-[12px] leading-[13px] text-blue-600 dark:text-blue-400">
+																<div className="mt-0.5 text-[12px] leading-[13px] text-[#1562f0] dark:text-[#6ba3ff]">
 																	{fmtAddr(giftRecipientSelected.address)}
 																</div>
 															</div>
@@ -3690,7 +3690,7 @@ const Home = ({}) => {
 																setGiftRecipient('')
 																setGiftRecipientSuggestOpen(true)
 															}}
-															className="mt-3 text-[13px] font-medium text-blue-600 hover:underline dark:text-blue-400"
+															className="mt-3 text-[13px] font-medium text-[#1562f0] hover:underline dark:text-[#6ba3ff]"
 														>
 															Change recipient
 														</button>

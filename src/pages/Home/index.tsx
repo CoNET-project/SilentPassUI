@@ -7,6 +7,9 @@ import SplashScreen from "@/components/SplashScreen"
 import InstallTerminalSheet, { getInstallTerminalSeen } from '@/components/InstallTerminalSheet'
 import { refreshManifestThen } from '@/utils/updateManifestStartUrl'
 
+/** CashTrees onboarding + shell brand primary（与 LoadingPage / RecoveryQRScreen / Home 对齐） */
+export const SILENTPASS_BRAND_PRIMARY = '#1562f0' as const
+
 const HomePage = ({}) => {
 	const { isInitialLoading, setIsInitialLoading, setBeamio, setProfiles } = useDaemonContext()
 	const [showBeamioOnboardingModal, setShowBeamioOnboardingModal] = useState(false)

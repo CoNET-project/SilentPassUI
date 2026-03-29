@@ -3,11 +3,13 @@ import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
 import { Download, Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw } from 'lucide-react'
 import bIcon from '@/components/assets/logo512.png'
-import { useNavigate } from 'react-router-dom'
 
-/** 与 LoadingPage / CreateUsernamePinScreen 主色一致（Tailwind 任意类请写死 #hex，勿拼进模板字符串） */
-export const CASHTREES_PRIMARY_LIME = '#96EB3C'
+/** 与 LoadingPage / WalletReady / Home 主色一致（Tailwind 任意类请写死 #hex，勿拼进模板字符串） */
+export const CASHTREES_PRIMARY_BRAND = '#1562f0'
+/** @deprecated 使用 CASHTREES_PRIMARY_BRAND */
+export const CASHTREES_PRIMARY_LIME = CASHTREES_PRIMARY_BRAND
 export const CASHTREES_PRIMARY_INK = '#0F172A'
+export const CASHTREES_PRIMARY_BRAND_SOFT = '#6ba3ff'
 
 export const ACTIVATING_STEPS = [
   { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
@@ -44,7 +46,6 @@ const RecoveryQRScreen = ({
   redeemActivating = false,
   close
 }: RecoveryQRScreenProps) => {
-  const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [isConfirmed, setIsConfirmed] = useState(false)
@@ -100,12 +101,12 @@ const RecoveryQRScreen = ({
   // Redeem flow: 进入时或点击后显示 4 步 Activating loading 动画（总长约 30 秒）
   if (isActivating) {
     return (
-      <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
+      <div className="flex flex-col h-full items-center justify-center p-8 bg-white dark:bg-slate-900 min-h-0 overflow-y-auto">
         <div className="relative mb-8">
-          <div className="w-20 h-20 bg-[#96EB3C] rounded-[28px] flex items-center justify-center shadow-[0_14px_40px_rgba(150,235,60,0.38)]">
-            <Loader className="w-9 h-9 text-[#0F172A] animate-spin" strokeWidth={2.5} />
+          <div className="w-20 h-20 rounded-[28px] flex items-center justify-center bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] shadow-[0_14px_40px_rgba(21,98,240,0.38)] dark:shadow-[0_14px_44px_rgba(21,98,240,0.45)]">
+            <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
           </div>
-          <div className="absolute -inset-4 bg-[#96EB3C] rounded-[40px] opacity-10 blur-xl animate-pulse" />
+          <div className="absolute -inset-4 rounded-[40px] bg-[#1562f0] opacity-[0.12] blur-xl animate-pulse dark:opacity-20" />
         </div>
         <div className="w-full max-w-sm space-y-6">
           {ACTIVATING_STEPS.map((step, idx) => {
@@ -117,9 +118,9 @@ const RecoveryQRScreen = ({
                 <div
                   className={[
                     'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors',
-                    isCompleted && 'bg-emerald-500',
-                    isActive && 'bg-[#96EB3C]',
-                    !isCompleted && !isActive && 'bg-slate-200',
+                    isCompleted && 'bg-[#0e4cbb]',
+                    isActive && 'bg-[#1562f0]',
+                    !isCompleted && !isActive && 'bg-slate-200 dark:bg-slate-700',
                   ]
                     .filter(Boolean)
                     .join(' ')}
@@ -127,18 +128,18 @@ const RecoveryQRScreen = ({
                   {isCompleted ? (
                     <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
                   ) : isActive ? (
-                    <Icon className="w-5 h-5 text-[#0F172A]" strokeWidth={2.5} />
+                    <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
                   ) : (
-                    <Icon className="w-5 h-5 text-slate-400" strokeWidth={2.5} />
+                    <Icon className="w-5 h-5 text-slate-400 dark:text-slate-500" strokeWidth={2.5} />
                   )}
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
                   <p
                     className={[
                       'font-semibold text-[15px] transition-colors',
-                      isActive && 'text-[#0F172A] font-bold',
-                      isCompleted && 'text-slate-700',
-                      !isCompleted && !isActive && 'text-slate-400',
+                      isActive && 'text-[#1562f0] dark:text-[#6ba3ff] font-bold',
+                      isCompleted && 'text-slate-700 dark:text-slate-300',
+                      !isCompleted && !isActive && 'text-slate-400 dark:text-slate-500',
                     ]
                       .filter(Boolean)
                       .join(' ')}
@@ -148,9 +149,9 @@ const RecoveryQRScreen = ({
                   <p
                     className={[
                       'text-sm mt-0.5 transition-colors',
-                      isActive && 'text-slate-700',
-                      isCompleted && 'text-slate-500',
-                      !isCompleted && !isActive && 'text-slate-400',
+                      isActive && 'text-slate-700 dark:text-slate-300',
+                      isCompleted && 'text-slate-500 dark:text-slate-400',
+                      !isCompleted && !isActive && 'text-slate-400 dark:text-slate-500',
                     ]
                       .filter(Boolean)
                       .join(' ')}
@@ -167,10 +168,10 @@ const RecoveryQRScreen = ({
   }
 
   return (
-    <div className="flex flex-col h-full px-6 pt-6 pb-6 bg-white">
+    <div className="flex flex-col h-full px-6 pt-6 pb-6 bg-white dark:bg-slate-900">
       <div className="flex-1">
         {/* Header */}
-        <h1 className="text-[32px] md:text-[40px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-900">
+        <h1 className="text-[32px] md:text-[40px] leading-[1.05] font-extrabold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
           Master Key
         </h1>
 
@@ -187,8 +188,8 @@ const RecoveryQRScreen = ({
               bg-white
               rounded-[32px]
               
-			  shadow-[0_26px_50px_rgba(150,235,60,0.2),0_10px_22px_rgba(0,0,0,0.08)]
-              border border-slate-100
+			  shadow-[0_26px_50px_rgba(21,98,240,0.18),0_10px_22px_rgba(0,0,0,0.08)]
+              border border-slate-100 dark:border-slate-700
             "
           >
             {qrDataUrl ? (
@@ -223,8 +224,10 @@ const RecoveryQRScreen = ({
               flex items-center justify-center gap-2
               h-[64px] rounded-[20px]
               bg-slate-100 hover:bg-slate-200 active:bg-slate-300
-              text-slate-900 text-[18px] font-bold
+              dark:bg-slate-800 dark:hover:bg-slate-700 dark:active:bg-slate-600
+              text-slate-900 dark:text-slate-100 text-[18px] font-bold
               transition-colors
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900
             "
           >
             <Download className="w-6 h-6" strokeWidth={2.5} />
@@ -237,14 +240,16 @@ const RecoveryQRScreen = ({
               flex items-center justify-center gap-2
               h-[64px] rounded-[20px]
               bg-slate-100 hover:bg-slate-200 active:bg-slate-300
-              text-slate-900 text-[18px] font-bold
+              dark:bg-slate-800 dark:hover:bg-slate-700 dark:active:bg-slate-600
+              text-slate-900 dark:text-slate-100 text-[18px] font-bold
               transition-colors
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900
             "
           >
             {copied ? (
               <>
-                <Check className="w-6 h-6 text-emerald-600" strokeWidth={3} />
-                <span className="text-emerald-700">Copied</span>
+                <Check className="w-6 h-6 text-[#1562f0] dark:text-[#6ba3ff]" strokeWidth={3} />
+                <span className="text-[#1562f0] dark:text-[#6ba3ff]">Copied</span>
               </>
             ) : (
               <>
@@ -288,7 +293,7 @@ const RecoveryQRScreen = ({
               {isConfirmed && <Check className="w-4 h-4 text-white" strokeWidth={4} />}
             </div>
           </div>
-          <p className="flex-1 text-[16px] leading-snug text-slate-500 font-medium select-none">
+          <p className="flex-1 text-[16px] leading-snug text-slate-500 dark:text-slate-400 font-medium select-none">
             I understand Beamio stores only an encrypted backup.
           </p>
         </div>
@@ -312,8 +317,8 @@ const RecoveryQRScreen = ({
              text-[22px] font-bold
              transition-all duration-200
              ${isConfirmed
-               ? '!bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28] !text-[#0F172A] !shadow-[0_12px_30px_rgba(150,235,60,0.42)] active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50' 
-               : '!bg-slate-200 !text-slate-400 cursor-not-allowed !shadow-none'}
+               ? '!bg-gradient-to-r !from-[#1562f0] !to-[#0e4cbb] hover:!opacity-[0.96] active:!scale-[0.99] !text-white dark:!from-[#3d8ef5] dark:!to-[#1562f0] !shadow-[0_12px_30px_rgba(21,98,240,0.4)] active:!shadow-[0_10px_24px_rgba(21,98,240,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 focus-visible:!ring-offset-2 dark:focus-visible:!ring-offset-slate-900' 
+               : '!bg-slate-200 dark:!bg-slate-700 !text-slate-400 dark:!text-slate-500 cursor-not-allowed !shadow-none'}
            `}
         >
           {isRedeemFlow ? 'Continue' : 'Open Wallet'}

@@ -93,13 +93,13 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
   }, [value, status])
 
   return (
-    <div className="flex flex-col h-full px-6 pt-6 pb-6">
+    <div className="flex flex-col h-full px-6 pt-6 pb-6 dark:bg-slate-900">
       <div className="flex-1">
         {/* Header */}
-        <h1 className="text-[32px] md:text-[40px] leading-[1.02] font-extrabold tracking-[-0.02em] text-slate-900">
+        <h1 className="text-[32px] md:text-[40px] leading-[1.02] font-extrabold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
           Claim BeamioTag
         </h1>
-        <p className="mt-3 text-[18px] md:text-[20px] text-slate-500 font-medium">
+        <p className="mt-3 text-[18px] md:text-[20px] text-slate-500 dark:text-slate-400 font-medium">
 		Your unique identity in the commerce layer.
         </p>
 
@@ -107,7 +107,7 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
         <div className="mt-8">
           <div className="relative">
             {/* Fixed @ Symbol */}
-            <div className="absolute left-5 top-1/2 -translate-y-1/2 text-[24px] font-bold text-slate-300 select-none pointer-events-none">
+            <div className="absolute left-5 top-1/2 -translate-y-1/2 text-[24px] font-bold text-slate-300 dark:text-slate-500 select-none pointer-events-none">
               @
             </div>
 
@@ -118,13 +118,13 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
               enterKeyHint="next"
               className={`
                 w-full h-[72px] pl-12 pr-20 rounded-[24px]
-                border border-slate-100 bg-white shadow-sm
-                text-[24px] font-bold text-slate-900
-                placeholder:text-slate-300 placeholder:font-bold
+                border border-slate-100 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm
+                text-[24px] font-bold text-slate-900 dark:text-slate-100
+                placeholder:text-slate-300 dark:placeholder:text-slate-500 placeholder:font-bold
                 outline-none transition-all
-                focus:border-[#96EB3C]/50 focus:ring-4 focus:ring-[#96EB3C]/12
+                focus:border-[#1562f0]/55 focus:ring-4 focus:ring-[#1562f0]/15 dark:focus:ring-[#1562f0]/20
                 disabled:opacity-70
-                ${status === 'invalid' ? 'border-orange-200 ring-4 ring-orange-50 focus:border-orange-300 focus:ring-orange-100' : ''}
+                ${status === 'invalid' ? 'border-orange-200 dark:border-orange-500/40 ring-4 ring-orange-50 dark:ring-orange-950/30 focus:border-orange-300 focus:ring-orange-100' : ''}
               `}
               value={value}
               placeholder="tagname" // Matches Screenshot 1
@@ -159,14 +159,14 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
             {/* Right Side Indicator */}
             <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
               {isChecking && (
-                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-700 flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-500 border-t-[#1562f0] dark:border-t-[#6ba3ff] rounded-full animate-spin" />
                 </div>
               )}
 
               {isValid && (
-                <div className="w-[42px] h-[42px] rounded-full bg-emerald-100/80 flex items-center justify-center">
-                  <Check className="w-6 h-6 text-emerald-600" strokeWidth={3} />
+                <div className="w-[42px] h-[42px] rounded-full bg-[#1562f0]/15 dark:bg-[#1562f0]/25 flex items-center justify-center shadow-[0_6px_20px_rgba(21,98,240,0.2)]">
+                  <Check className="w-6 h-6 text-[#1562f0] dark:text-[#6ba3ff]" strokeWidth={3} />
                 </div>
               )}
             </div>
@@ -174,15 +174,15 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
 
           {/* Warning / Error Message */}
           {status === "invalid" ? (
-             <div className="mt-4 flex items-center gap-2 text-orange-600 animate-in fade-in slide-in-from-top-1">
-             <AlertTriangle className="w-5 h-5 fill-orange-100 shrink-0" />
+             <div className="mt-4 flex items-center gap-2 text-orange-600 dark:text-orange-400 animate-in fade-in slide-in-from-top-1">
+             <AlertTriangle className="w-5 h-5 fill-orange-100 dark:fill-orange-950/50 shrink-0" />
              <span className="text-[15px] font-semibold leading-snug">
                {error}
              </span>
            </div>
           ) : (
-            <div className="mt-4 flex items-center gap-2 text-orange-500">
-              <AlertTriangle className="w-5 h-5 fill-orange-100 text-orange-500 shrink-0" />
+            <div className="mt-4 flex items-center gap-2 text-orange-500 dark:text-orange-400/90">
+              <AlertTriangle className="w-5 h-5 fill-orange-100 dark:fill-orange-950/50 text-orange-500 dark:text-orange-400 shrink-0" />
               <span className="text-[15px] font-bold leading-snug">
                 Permanent. Cannot be changed later.
               </span>
@@ -200,8 +200,8 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
             h-[64px] rounded-full
             text-[20px] font-bold tracking-wide
             ${isValid
-              ? '!bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28] !text-[#0F172A] !shadow-[0_12px_30px_rgba(150,235,60,0.42)] active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50'
-              : '!bg-slate-200 !text-slate-400 cursor-not-allowed !shadow-none'}
+              ? '!bg-gradient-to-r !from-[#1562f0] !to-[#0e4cbb] hover:!opacity-[0.96] active:!scale-[0.99] !text-white dark:!from-[#3d8ef5] dark:!to-[#1562f0] !shadow-[0_12px_30px_rgba(21,98,240,0.4)] active:!shadow-[0_10px_24px_rgba(21,98,240,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 focus-visible:!ring-offset-2 dark:focus-visible:!ring-offset-slate-900'
+              : '!bg-slate-200 dark:!bg-slate-700 !text-slate-400 dark:!text-slate-500 cursor-not-allowed !shadow-none'}
           `}
           onClick={onNext}
         >
@@ -231,12 +231,12 @@ const SecureWalletPassword = ({
   const canSubmit = isValidLength && !loading
 
   return (
-    <div className="flex flex-col h-full px-6 pt-6 pb-6">
+    <div className="flex flex-col h-full px-6 pt-6 pb-6 dark:bg-slate-900">
       <div className="flex-1">
-        <h1 className="text-[32px] md:text-[40px] leading-[1.02] font-extrabold tracking-[-0.02em] text-slate-900">
+        <h1 className="text-[32px] md:text-[40px] leading-[1.02] font-extrabold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
           Secure Wallet
         </h1>
-        <p className="mt-3 text-[18px] md:text-[20px] text-slate-500 font-medium">
+        <p className="mt-3 text-[18px] md:text-[20px] text-slate-500 dark:text-slate-400 font-medium">
           Encrypts your keys locally.
         </p>
 
@@ -249,11 +249,11 @@ const SecureWalletPassword = ({
               enterKeyHint="done"
               className="
                 w-full h-[72px] pl-6 pr-16 rounded-[24px]
-                border border-slate-100 bg-white shadow-sm
-                text-[20px] font-semibold text-slate-900
-                placeholder:text-slate-300 placeholder:font-medium
+                border border-slate-100 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm
+                text-[20px] font-semibold text-slate-900 dark:text-slate-100
+                placeholder:text-slate-300 dark:placeholder:text-slate-500 placeholder:font-medium
                 outline-none transition-all
-                focus:border-[#96EB3C]/50 focus:ring-4 focus:ring-[#96EB3C]/12
+                focus:border-[#1562f0]/55 focus:ring-4 focus:ring-[#1562f0]/15 dark:focus:ring-[#1562f0]/20
               "
               value={password}
               placeholder="Set Password (6+ chars)" // Matches Screenshot 3
@@ -286,9 +286,9 @@ const SecureWalletPassword = ({
           <div className="mt-6 flex items-start gap-4">
             <div className="shrink-0">
                {/* Matches the Shield Icon in Screenshot 3 */}
-              <ShieldCheck className="w-7 h-7 text-slate-400" />
+              <ShieldCheck className="w-7 h-7 text-slate-400 dark:text-slate-500" />
             </div>
-            <div className="text-[16px] leading-snug text-slate-500 font-medium pt-0.5">
+            <div className="text-[16px] leading-snug text-slate-500 dark:text-slate-400 font-medium pt-0.5">
               CashTrees is non-custodial. We cannot reset this.
             </div>
           </div>
@@ -305,8 +305,8 @@ const SecureWalletPassword = ({
             text-[20px] font-bold
             transition-all duration-200
             ${canSubmit 
-              ? '!bg-[#96EB3C] hover:!bg-[#8ADC32] active:!bg-[#7ECF28] !text-[#0F172A] !shadow-[0_12px_30px_rgba(150,235,60,0.42)] active:!shadow-[0_10px_24px_rgba(150,235,60,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#96EB3C]/50' 
-              : '!bg-slate-200 !text-slate-400 cursor-not-allowed !shadow-none'}
+              ? '!bg-gradient-to-r !from-[#1562f0] !to-[#0e4cbb] hover:!opacity-[0.96] active:!scale-[0.99] !text-white dark:!from-[#3d8ef5] dark:!to-[#1562f0] !shadow-[0_12px_30px_rgba(21,98,240,0.4)] active:!shadow-[0_10px_24px_rgba(21,98,240,0.32)] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 focus-visible:!ring-offset-2 dark:focus-visible:!ring-offset-slate-900' 
+              : '!bg-slate-200 dark:!bg-slate-700 !text-slate-400 dark:!text-slate-500 cursor-not-allowed !shadow-none'}
           `}
           onClick={() => {
             if (password.trim().length < 6) return
@@ -351,7 +351,7 @@ const CreateUsernamePinScreen = forwardRef<
       timers.push(setTimeout(advance, i * stepDuration))
     }
     return () => timers.forEach((t) => clearTimeout(t))
-  }, [loading, isRedeemFlow])
+  }, [loading, isRedeemFlow, steps.length])
 
   useImperativeHandle(ref, () => ({
     goBack: () => {
@@ -387,12 +387,12 @@ const CreateUsernamePinScreen = forwardRef<
   // Create Wallet 处理中：4 步 loading（1.Generating Secure ID 2.Deploying Smart Vault 3.Minting Membership 4.Verifying on Base L2）
   if (loading) {
     return (
-      <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
+      <div className="flex flex-col h-full items-center justify-center p-8 bg-white dark:bg-slate-900 min-h-0 overflow-y-auto">
         <div className="relative mb-8">
-          <div className="w-20 h-20 bg-[#96EB3C] rounded-[28px] flex items-center justify-center shadow-[0_14px_40px_rgba(150,235,60,0.38)]">
-            <Loader className="w-9 h-9 text-[#0F172A] animate-spin" strokeWidth={2.5} />
+          <div className="w-20 h-20 rounded-[28px] flex items-center justify-center bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] shadow-[0_14px_40px_rgba(21,98,240,0.38)] dark:shadow-[0_14px_44px_rgba(21,98,240,0.45)]">
+            <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
           </div>
-          <div className="absolute -inset-4 bg-[#96EB3C] rounded-[40px] opacity-10 blur-xl animate-pulse" />
+          <div className="absolute -inset-4 rounded-[40px] bg-[#1562f0] opacity-[0.12] blur-xl animate-pulse dark:opacity-20" />
         </div>
         <div className="w-full max-w-sm space-y-6">
           {steps.map((s, idx) => {
@@ -404,26 +404,26 @@ const CreateUsernamePinScreen = forwardRef<
                 <div
                   className={[
                     'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors',
-                    isCompleted && 'bg-emerald-500',
-                    isActive && 'bg-[#96EB3C]',
-                    !isCompleted && !isActive && 'bg-slate-200',
+                    isCompleted && 'bg-[#0e4cbb]',
+                    isActive && 'bg-[#1562f0]',
+                    !isCompleted && !isActive && 'bg-slate-200 dark:bg-slate-700',
                   ].filter(Boolean).join(' ')}
                 >
                   {isCompleted ? (
                     <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
                   ) : isActive ? (
-                    <Icon className="w-5 h-5 text-[#0F172A]" strokeWidth={2.5} />
+                    <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
                   ) : (
-                    <Icon className="w-5 h-5 text-slate-400" strokeWidth={2.5} />
+                    <Icon className="w-5 h-5 text-slate-400 dark:text-slate-500" strokeWidth={2.5} />
                   )}
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
                   <p
                     className={[
                       'font-semibold text-[15px] transition-colors',
-                      isActive && 'text-[#0F172A] font-bold',
-                      isCompleted && 'text-slate-700',
-                      !isCompleted && !isActive && 'text-slate-400',
+                      isActive && 'text-[#1562f0] dark:text-[#6ba3ff] font-bold',
+                      isCompleted && 'text-slate-700 dark:text-slate-300',
+                      !isCompleted && !isActive && 'text-slate-400 dark:text-slate-500',
                     ].filter(Boolean).join(' ')}
                   >
                     {s.title}
@@ -431,9 +431,9 @@ const CreateUsernamePinScreen = forwardRef<
                   <p
                     className={[
                       'text-sm mt-0.5 transition-colors',
-                      isActive && 'text-slate-700',
-                      isCompleted && 'text-slate-500',
-                      !isCompleted && !isActive && 'text-slate-400',
+                      isActive && 'text-slate-700 dark:text-slate-300',
+                      isCompleted && 'text-slate-500 dark:text-slate-400',
+                      !isCompleted && !isActive && 'text-slate-400 dark:text-slate-500',
                     ].filter(Boolean).join(' ')}
                   >
                     {s.desc}
@@ -448,7 +448,7 @@ const CreateUsernamePinScreen = forwardRef<
   }
 
   return (
-    <div className="flex flex-col h-full bg-white"> 
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900"> 
       {step === "tag" ? (
         <CreateBeamioTag
           loading={loading}

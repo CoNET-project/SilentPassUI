@@ -427,8 +427,11 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					relative w-full h-6 px-[1px]
 					flex flex-col items-center justify-center
 					gap-[1px]
-					
+					rounded-md
 					select-none focus:outline-none
+					focus-visible:ring-2 focus-visible:ring-[#1562f0]/70
+					focus-visible:ring-offset-2 focus-visible:ring-offset-white/90
+					dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900
 				"
 			>
 				<motion.div
@@ -436,7 +439,20 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					animate={iconTarget}
 					transition={iconTransition}
 				>
-					{active ? <span className="inline-flex [&_path]:!fill-[#96EB3C] [&_path]:!fill-opacity-100">{iconBlue}</span> : <span className={`inline-flex [&_path]:!fill-opacity-100 ${isDarkUnderneath ? '[&_path]:!fill-black' : '[&_path]:!fill-white'}`}>{iconGrey}</span>}
+					{active ? (
+						<span
+							className="
+								inline-flex [&_path]:!fill-[#1562f0] dark:[&_path]:!fill-[#6ba3ff]
+								[&_path]:!fill-opacity-100
+								drop-shadow-[0_2px_10px_rgba(21,98,240,0.32)]
+								dark:drop-shadow-[0_2px_14px_rgba(21,98,240,0.48)]
+							"
+						>
+							{iconBlue}
+						</span>
+					) : (
+						<span className={`inline-flex [&_path]:!fill-opacity-100 ${isDarkUnderneath ? '[&_path]:!fill-black' : '[&_path]:!fill-white'}`}>{iconGrey}</span>
+					)}
 
 					{badge && (
 						<span
@@ -460,7 +476,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				<motion.div
 					className={`
 						text-[9px] leading-none font-medium
-						${active ? 'text-[#96EB3C]' : isDarkUnderneath ? 'text-black/80' : 'text-white/90'}
+						${active ? 'text-[#1562f0] dark:text-[#6ba3ff]' : isDarkUnderneath ? 'text-black/80' : 'text-white/90'}
 					`}
 					animate={
 						active && (phase === 'impact' || phase === 'settling')
@@ -528,13 +544,12 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 							absolute inset-y-0 left-0 w-1/4
 							overflow-hidden
 							-top-2 -bottom-2
-							border border-white/60 dark:border-slate-700/70
+							border border-white/20
+							bg-white/20
 							pointer-events-none
 							"
 							style={{
-							background: darkModle
-								? 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.12), rgba(15,23,42,0.78) 55%)'
-								: 'radial-gradient(120% 120% at 20% 10%, rgba(255,255,255,0.98), rgba(255,255,255,0.70) 58%)',
+							boxShadow: 'none',
 							transformOrigin: 'center center',
 							}}
 							initial={{
@@ -545,18 +560,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 							scaleY: 1
 							}}
 							animate={dropletControls}
-						>
-							<motion.div
-							className="absolute inset-0"
-							animate={{ x: ['-18%', '18%', '-18%'] }}
-							transition={{ duration: 3.0, repeat: Infinity, ease: 'easeInOut' }}
-							style={{
-								background:
-								'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.36) 45%, transparent 60%)',
-								filter: 'blur(10px)'
-							}}
-							/>
-						</motion.div>
+						/>
 						</div>
 					</div>
 
@@ -585,7 +589,11 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 						setChatSearchOpen(true)
 						setShowFooter(false)
 					}}
-					className="fixed bottom-[1.5rem] right-4 w-10 h-10 rounded-full flex items-center justify-center border flex-shrink-0 pointer-events-auto z-10"
+					className="
+						fixed bottom-[1.5rem] right-4 w-10 h-10 rounded-full flex items-center justify-center border flex-shrink-0 pointer-events-auto z-10
+						focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90
+						dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900
+					"
 					style={{
 						backgroundColor: isDarkUnderneath ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
 						color: isDarkUnderneath ? '#000' : '#fff',
